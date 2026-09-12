@@ -1,0 +1,15 @@
+# sbt / Scala build output
+target/
+project/project/
+.bsp/
+.bloop/
+.metals/
+.scala-build/
+
+# emitted channels and bundles (regenerate with emitRoku / scala-cli)
+out-roku/
+out-js/
+
+# IDE
+.idea/
+*.iml
