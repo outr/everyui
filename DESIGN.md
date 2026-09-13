@@ -1075,7 +1075,7 @@ the frozen frame matches the golden (0.096 px) and it runs at 62 fps under Xvfb
 
 | | version |
 |---|---|
-| Scala | **3.9.0** (3.10 is at RC2) — the TASTy compiler, every backend and reactify moved without a change |
+| Scala | **3.10.0-RC2** (decided 2026-09-13: the RC now, the final when it lands) — 3.9 needed no change; 3.10 needed two emitter cases, below |
 | sbt | **2.0.8** (2.1 is at M1) |
 | Scala.js | **1.22.0** (3.9 emits IR 1.22; the linker had to follow) via scala-cli **1.17.0** |
 | JavaFX | **26.0.2** |
@@ -1083,9 +1083,21 @@ the frozen frame matches the golden (0.096 px) and it runs at 62 fps under Xvfb
 | Android | build-tools **37.0.0** (R8 8.10), platform **android-37.0** (Android 17), target SDK 37, min 30 |
 | RoboBrowser, spice, reactify | local snapshots / source, as before |
 
-Re-verified after the move: JVM golden, Roku emit (0 gaps, brighterscript
+**What 3.10 changed for the compiler.** Two of its breaking changes alter the
+TASTy the emitter reads: the `Rich*` wrappers became extension methods in the
+primitive companions (`Int.until(0)(n)`, `Double.compare(a)(b)`, `Double.abs(a)`
+instead of `intWrapper(0).until(n)`), and `k -> v` became a call of a top-level
+`->` instead of `ArrowAssoc(k).->(v)`. `RokuEmitter` (and so `SwiftEmitter`,
+regenerated) recognises both shapes — `isPrimitiveExtension`, restricted to the
+wrapper methods it translates, since the same companions also hold the
+implicit widening conversions the generic path already handles — so it reads
+3.9's and 3.10's TASTy alike. Everything else in 3.10's notes (strict-equality
+pattern matching by default, `with` as a type operator, `any2stringadd` gone)
+passed without a change in our code or reactify.
+
+Re-verified on 3.10.0-RC2: JVM golden, Roku emit (0 gaps, brighterscript
 clean), web frame, desktop frame (JVM and native), Android frame on the
-emulator (262 KB dex). **Not yet re-verified: tvOS/iOS** — the Mac was
+emulator. **Not yet re-verified: tvOS/iOS** — the Mac was
 unreachable (asleep) when the Swift spike was rerun; `tools/swift-spike.sh` and
 `tools/tvos-run.sh --freeze` are the two commands to run when it is back.
 

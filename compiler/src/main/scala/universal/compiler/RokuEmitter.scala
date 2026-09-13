@@ -768,6 +768,23 @@ class RokuEmitter(
         val sy = ta.dealias.typeSymbol
         userTypeDefs.contains(sy) || isUserClassSym(sy)
       }
+    // Scala 3.10 replaced the `Rich*` wrappers by extension methods in the primitive companions
+    // (`Int.until(0)(n)`, `Double.compare(a)(b)`, `Double.abs(a)`), and `k -> v` by a call of a top-level `->`.
+    // Both shapes are recognised, so the emitter reads 3.9's and 3.10's TASTy alike.
+    def primitiveCompanions: Set[String] = Set("scala.Int", "scala.Long", "scala.Double", "scala.Float", "scala.Short", "scala.Byte", "scala.Char")
+    def primitiveExtensionNames: Set[String] = Set("compare", "until", "to", "max", "min", "abs", "floor", "ceil", "round")
+    def isPrimitiveExtension(fn: Term): Boolean =
+      fn.symbol.exists && fn.symbol.isDefDef && primitiveCompanions.contains(ownerFqn(fn.symbol))
+        && primitiveExtensionNames.contains(fn.symbol.name)
+    /** A primitive companion's extension method, uncurried to `receiver :: arguments`, onto the same runtime the
+      * wrapper shapes reach. */
+    def emitPrimitiveExtension(fn: Term, name: String, args: List[Term]): String = name match
+      case "compare" if args.size == 2 => s"_cmpNum(${emitTerm(args(0))}, ${emitArgVal(args(1))})"
+      case "until" if args.size == 2   => s"_until(${emitTerm(args(0))}, ${emitTerm(args(1))})"
+      case "to" if args.size == 2      => s"_toIncl(${emitTerm(args(0))}, ${emitTerm(args(1))})"
+      case "max" | "min" if args.size == 2 => emitMath(name, args)
+      case "abs" | "floor" | "ceil" | "round" if args.size == 1 => emitMath(name, args)
+      case _ => todo(fn)
     def isRichNumWrapper(wrap: Term): Boolean =
       val sy = stripTypeApply(wrap).symbol
       sy.exists && Set("doubleWrapper", "intWrapper", "longWrapper", "floatWrapper", "shortWrapper",
@@ -1016,6 +1033,9 @@ class RokuEmitter(
               s"AtomicBoolean_$m(${(emitTerm(recv) :: emitArgList(args)).mkString(", ")})"
             case Select(Apply(wrap, List(x)), "compare") if isRichNumWrapper(wrap) && args.size == 1 =>
               s"_cmpNum(${emitTerm(x)}, ${emitArgVal(args.head)})"
+            case Ident("->" | "$minus$greater") if args.size == 2 =>
+              s"Tuple2(${emitTerm(args(0))}, ${emitArgVal(args(1))})"
+            case Select(_, name) if isPrimitiveExtension(fn) => emitPrimitiveExtension(fn, name, args)
             case Select(Apply(arrow, List(k)), "->" | "$minus$greater") if isArrowAssoc(arrow) && args.size == 1 =>
               s"Tuple2(${emitTerm(k)}, ${emitArgVal(args.head)})"
             case _ if fn.symbol.exists && fn.symbol.name == "assertFailed" =>

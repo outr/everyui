@@ -4,7 +4,7 @@
 // Roku has no Scala runtime, so `compiler/` — universal-ui's own Scala 3 TASTy →
 // BrightScript compiler — translates the same code into a SceneGraph channel.
 
-ThisBuild / scalaVersion := "3.9.0"
+ThisBuild / scalaVersion := "3.10.0-RC2"
 ThisBuild / organization := "com.outr"
 
 @transient val emitRoku = taskKey[File]("Compile this project, and the libraries it emits with, into a Roku channel")
