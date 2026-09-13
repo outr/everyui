@@ -17,14 +17,23 @@ import universal.roku.*
   * (`node.getText` would yield the function ref, not call it).
   */
 class RenderNode(val sg: SGNode):
+  // Every position change goes through this node, so it keeps its own coordinates and writes SceneGraph's
+  // `translation` in one step rather than reading the field back on every write.
+  private var left: Double = uiGetX(sg)
+  private var top: Double = uiGetY(sg)
+
   def getText(): String = uiGetText(sg)
   def setText(text: String): Unit = uiSetText(sg, text)
 
-  def getX(): Double = uiGetX(sg)
-  def setX(x: Double): Unit = uiSetX(sg, x)
+  def getX(): Double = left
+  def setX(x: Double): Unit =
+    left = x
+    uiSetTranslation(sg, left, top)
 
-  def getY(): Double = uiGetY(sg)
-  def setY(y: Double): Unit = uiSetY(sg, y)
+  def getY(): Double = top
+  def setY(y: Double): Unit =
+    top = y
+    uiSetTranslation(sg, left, top)
 
   /** Radians, clockwise, about the node's own centre — matching youi's
     * `ImageView.rotation`, which is in TURNS (0..1); the example converts. */
@@ -33,7 +42,35 @@ class RenderNode(val sg: SGNode):
 
   def setFontSize(size: Double): Unit = uiSetFontSize(sg, size)
 
+  /** `"#rrggbb"`. */
+  def setColor(hex: String): Unit = uiSetColor(sg, hex)
+
+  /** A bundled face (`assets/fonts/`, copied to `pkg:/fonts/`): family, CSS
+    * weight, size in pixels. */
+  def setFont(family: String, weight: Int, size: Double): Unit = uiSetFont(sg, family, weight, size)
+
+  /** The laid-out size in pixels (SceneGraph's bounding rect). */
+  def getWidth(): Double = uiGetWidth(sg)
+  def getHeight(): Double = uiGetHeight(sg)
+
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
+
+  /** Detach from the parent, if attached. */
+  def remove(): Unit = uiRemove(sg)
+
+  def setWidth(width: Double): Unit = uiSetWidth(sg, width)
+  def setHeight(height: Double): Unit = uiSetHeight(sg, height)
+
+  /** `"#rrggbb"`, or `""` for transparent. */
+  def setBackgroundColor(hex: String): Unit = uiSetBackgroundColor(sg, hex)
+
+  /** SceneGraph places every node by its translation, so there is no position type to set. */
+  def setPositionType(name: String): Unit = ()
+
+  /** A Label is a single line unless told to wrap. */
+  def setWhiteSpace(value: String): Unit = ()
+
+  def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
 
 /** Backend node factories. */
 object Nodes:
@@ -41,6 +78,11 @@ object Nodes:
   def root(): RenderNode = new RenderNode(uiRoot())
   /** A text node — a SceneGraph `Label`. */
   def text(): RenderNode = new RenderNode(uiText())
+  /** A container — a transparent `Rectangle` other nodes are appended to. */
+  def container(): RenderNode = new RenderNode(uiContainer())
+
+  /** A Material Icons glyph, by codepoint, `size` pixels. */
+  def icon(glyph: String, size: Double): RenderNode = new RenderNode(uiIcon(glyph, size))
   /** An image node — a SceneGraph `Poster` loading from `pkg:/`. */
   def image(uri: String, width: Double, height: Double): RenderNode =
     new RenderNode(uiImage(uri, width, height))
@@ -51,11 +93,25 @@ object Platform:
   def ticks(): Double = uiTicks()
   def animate(tick: () => Unit): Unit = uiAnimate(tick)
 
+  /** Assets live in the channel package: `/images/icon.png` is `pkg:/images/icon.png`. */
+  def resolvePath(path: String): String = "pkg:" + path
+
+  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = uiLoadImage(uri, loaded)
+
+  /** Bundled faces load synchronously from the channel package. */
+  def loadFont(family: String, weight: Int, loaded: () => Unit): Unit = loaded()
+
+  /** Fonts load synchronously from the channel package, so this runs `f` now. */
+  def whenFontsReady(f: () => Unit): Unit = f()
+
   /** Channel-package URI — Roku loads assets from `pkg:/`. */
   def imagePath(name: String): String = "pkg:/images/" + name
 
   def screenWidth(): Double = uiScreenWidth()
   def screenHeight(): Double = uiScreenHeight()
+
+  /** A channel's design resolution never changes. */
+  def onResize(f: () => Unit): Unit = ()
 
   // BrightScript intrinsics, through universal-ui's runtime. The web backend
   // supplies the same four from the real Scala stdlib.

@@ -105,6 +105,12 @@ class RokuEmitter(
     // referencing a later def across an intervening local val.
     val userTypeDefs = mutable.LinkedHashMap[Symbol, ClassDef]()
     val objectModelTypes = mutable.Set[Symbol]()
+    // `object`s that extend a user class or trait (including case objects): emitted as a singleton instance
+    // of an object-model type, reached through `<Name>__module()`.
+    val modelModules = mutable.Set[Symbol]()
+    // While a parent constructor's arguments are emitted, the class's own constructor parameters are still
+    // locals of `<Type>__init` — their fields are assigned after the parent init runs.
+    var inParentArgs = false
     val userMethodSyms = mutable.Set[Symbol]()
     val aaIfaceMethods = Set("addreplace", "lookup", "lookupci", "doesexist", "delete", "clear",
       "keys", "items", "setmodecasesensitive", "append", "count", "reset", "next", "isnext", "isempty")
@@ -126,9 +132,14 @@ class RokuEmitter(
     // Runtime classes a user or anonymous class may extend, by the name of the
     // runtime's `<X>__install` / `<X>_init` pair.
     val shimParents = Map("java.lang.ThreadLocal" -> "ThreadLocal")
+    /** A Scala name (backticks allow `Open Sans`, `600`) as a BrightScript identifier. */
+    def brIdent(name: String): String =
+      val cleaned = name.map(c => if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' then c else '_')
+      if cleaned.nonEmpty && cleaned.head >= '0' && cleaned.head <= '9' then "_" + cleaned else cleaned
     def modulePrefix(s: Symbol): String =
-      val base = s.name.stripSuffix("$")
-      if userClassNames.contains(base) then base + "Obj" else base
+      val raw = s.name.stripSuffix("$")
+      val base = brIdent(raw)
+      if userClassNames.contains(raw) then base + "Obj" else base
     def isEnumLike(s: Symbol): Boolean =
       s.exists && (s.flags.is(Flags.Enum)
         || (s.companionClass.exists && s.companionClass.flags.is(Flags.Enum))
@@ -201,8 +212,9 @@ class RokuEmitter(
       else name
 
     def brSafe(name: String): String =
-      val s = brMangleOps(name.replace("$", "_"))
+      val s = brIdent(brMangleOps(name.replace("$", "_")))
       if brReserved(s.toLowerCase) then s + "_" else s
+
 
     /** BrightScript has ONE name per function, Scala allows overloads
      *  (`Transaction.commit()` and `Transaction.commit(v)`). Overloaded members
@@ -310,13 +322,20 @@ class RokuEmitter(
         override def traverseTree(t: Tree)(owner: Symbol): Unit =
           t match
             case v: ValDef => bound += v.symbol
+            // a name a pattern binds (`case (name, e) =>`) is local to the case, not captured from outside
+            case b: Bind => bound += b.symbol
             case id: Ident =>
               val s = id.symbol
-              if s.exists && s.isTerm && !s.isDefDef && !bound.contains(s)
+              val parentParam = inParentArgs && s.exists && s.flags.is(Flags.ParamAccessor) && currentClass.exists && s.owner == currentClass
+              if parentParam && !bound.contains(s) then found.getOrElseUpdate(s, brSafe(id.name))
+              else if s.exists && s.isTerm && !s.isDefDef && !bound.contains(s)
                  && !isFacade(s) && !moduleSyms.contains(s.owner)
-                 && s.owner.exists && !s.owner.isClassDef && s.owner.flags.is(Flags.Method)
+                 && s.owner.exists && !s.owner.isClassDef && (s.owner.flags.is(Flags.Method) || s.owner.isValDef)
                  && anonCaptureRef(s).isEmpty
               then found.getOrElseUpdate(s, brSafe(id.name))
+            case sel @ Select(q: This, n) if inParentArgs && sel.symbol.exists && sel.symbol.flags.is(Flags.ParamAccessor)
+                && currentClass.exists && sel.symbol.owner == currentClass && !bound.contains(sel.symbol) =>
+              found.getOrElseUpdate(sel.symbol, brSafe(n))
             case _ =>
           super.traverseTree(t)(owner)
       trav.traverseTree(body)(Symbol.noSymbol)
@@ -436,7 +455,7 @@ class RokuEmitter(
     def isUserTypeSym(s: Symbol): Boolean =
       s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !hasNative(s) && !isBuiltin(s) && !isEnumLike(s)
     def isModel(s: Symbol): Boolean = s.exists && objectModelTypes.contains(s)
-    def typeName(s: Symbol): String = typeNameOverride.getOrElse(s, s.name)
+    def typeName(s: Symbol): String = typeNameOverride.getOrElse(s, brIdent(s.name))
 
     // BrightScript roAssociativeArray INTERFACE methods. `aa.clear()` calls the
     // built-in ifAssociativeArray.Clear, never a member named `clear`, so a
@@ -460,7 +479,13 @@ class RokuEmitter(
             .flatMap(b => try b.declaredMethods.filter(_.name == top.name) catch case _: Throwable => Nil)
             .map(arityOf).distinct
         else Nil
-      val named = if arities.size > 1 then base + "__" + arityOf(top) else base
+      val named0 = if arities.size > 1 then base + "__" + arityOf(top) else base
+      // A method named like a FIELD of the same object (case class `AnimateIn(easing: Easing)` with
+      // `def easing(e)`) would share the field's key and be overwritten by its value.
+      val fieldClash = top.isDefDef && owner.exists && userTypeDefs.contains(owner) &&
+        owner.typeRef.baseClasses.filter(userTypeDefs.contains).exists(b =>
+          try b.declaredFields.exists(f => f.name == top.name) catch case _: Throwable => false)
+      val named = if fieldClash then named0 + "__m" else named0
       if aaIfaceMethods.contains(named.toLowerCase) then named + "_" else named
 
     // A `val` (or case-class param) that overrides a `def` — `override val
@@ -559,10 +584,38 @@ class RokuEmitter(
      *  zero-arg closure (a thunk); an omitted default is a real argument for a
      *  function the emitter writes, and dropped for anything else (a facade,
      *  a runtime function), whose runtime supplies it. */
+    def isRepeatedParam(p: Symbol): Boolean =
+      try p.tree match
+        case vd: ValDef =>
+          val tp = vd.tpt.tpe
+          tp.typeSymbol.name.contains("repeated") || tp.show.endsWith("*")
+            || (tp match { case AppliedType(t, _) => t.typeSymbol.name.contains("repeated"); case _ => false })
+        case _ => false
+      catch case _: Throwable => false
+    def isSplice(t: Term): Boolean = t match
+      case Typed(_, tpt) => tpt.tpe.typeSymbol.name == "<repeated>" && repeatedElemsOpt(t).isEmpty
+      case _             => false
+    /** A varargs argument as one array: its elements, or the spliced sequence itself (`xs*`). */
+    def varargsArray(args: List[Term]): String =
+      if args.size == 1 && isSplice(args.head) then emitTerm(unwrap(args.head))
+      else "[" + flattenVarargs(args).map(emitArgVal).mkString(", ") + "]"
+
     def argParts(args: List[Term], callee: Symbol): List[() => String] =
-      val flat = flattenVarargs(args)
       val params =
         if userEmittedCallee(callee) && callee.isDefDef then callee.paramSymss.filter(isTermClause).flatten else Nil
+      val repeatedAt =
+        val byParam = params.indexWhere(isRepeatedParam)
+        if byParam >= 0 then byParam
+        else if params.nonEmpty then args.indexWhere(a => repeatedElemsOpt(a).isDefined || isSplice(a))
+        else -1
+      if repeatedAt >= 0 then
+        val fixed = argParts(args.take(repeatedAt), Symbol.noSymbol).zipWithIndex.map { case (part, i) =>
+          val arg = args(i)
+          val inner = arg match { case NamedArg(_, v) => v; case other => other }
+          if params.lift(i).exists(isByNameParam) && !isDefaultArg(arg) then (() => emitThunk(inner)) else part
+        }
+        return fixed :+ (() => varargsArray(args.drop(repeatedAt)))
+      val flat = flattenVarargs(args)
       flat.zipWithIndex.map { case (arg, i) => () =>
         val inner = arg match { case NamedArg(_, v) => v; case other => other }
         val byName = params.lift(i).exists(isByNameParam)
@@ -790,6 +843,7 @@ class RokuEmitter(
       if name == "Nil" then "[]"
       else if name == "None" && sym.exists && sym.fullName.endsWith(".None") then "invalid"
       else if isFacade(sym) then name
+      else if modelModuleOf(sym).isDefined then moduleAccessor(modelModuleOf(sym).get)
       // A symbol with no denotation (some local/synthetic Idents) has no owner —
       // `sym.owner` would throw NoDenotation.owner — so emit the bare safe name.
       else if !sym.exists || !sym.owner.exists then brSafe(name)
@@ -804,7 +858,8 @@ class RokuEmitter(
           case Some(ref) =>
             if boxed then ref + ".v" else if byName then s"RtForce($ref)" else ref
           case None =>
-            if isModelMember(sym) && inCurrentClass(sym.owner) then emitModelCall(None, sym, Nil)
+            if inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass then brSafe(name)
+            else if isModelMember(sym) && inCurrentClass(sym.owner) then emitModelCall(None, sym, Nil)
             else if inCurrentClass(sym.owner) then s"self.${fieldKey(sym)}"
             else moduleSyms.get(sym.owner) match
               case Some(prefix) => s"${prefix}_${memberName(sym, name)}()"
@@ -836,6 +891,90 @@ class RokuEmitter(
           case _ => None
       case _ => None
 
+    def mathNames: Set[String] =
+      Set("sqrt", "pow", "sin", "cos", "tan", "atan", "exp", "log", "abs", "min", "max", "floor", "ceil", "round")
+    /** `scala.math` onto BrightScript's numeric builtins. */
+    def emitMath(name: String, args: List[Term]): String =
+      val a = flattenVarargs(args).map(emitArgVal)
+      name match
+        case "sqrt"  => s"Sqr(${a(0)})"
+        case "pow"   => s"(${a(0)} ^ ${a(1)})"
+        case "sin"   => s"Sin(${a(0)})"
+        case "cos"   => s"Cos(${a(0)})"
+        case "tan"   => s"Tan(${a(0)})"
+        case "atan"  => s"Atn(${a(0)})"
+        case "exp"   => s"Exp(${a(0)})"
+        case "log"   => s"Log(${a(0)})"
+        case "abs"   => s"Abs(${a(0)})"
+        case "min"   => s"RtMin(${a(0)}, ${a(1)})"
+        case "max"   => s"RtMax(${a(0)}, ${a(1)})"
+        case "floor" => s"Int(${a(0)})"
+        case "ceil"  => s"(-Int(-(${a(0)})))"
+        case _       => s"Int(${a(0)} + 0.5)"
+
+    /** Milliseconds per unit of a `scala.concurrent.duration` conversion (`5.seconds`). */
+    def durationFactor(conv: Term, unit: String): Option[String] =
+      val sy = stripTypeApply(conv).symbol
+      if !(sy.exists && Set("DurationInt", "DurationLong", "DurationDouble").contains(sy.name)) then None
+      else unit match
+        case "nanoseconds" | "nanos" | "nanosecond" | "nano"      => Some("0.000001")
+        case "microseconds" | "micros" | "microsecond" | "micro"  => Some("0.001")
+        case "milliseconds" | "millis" | "millisecond" | "milli"  => Some("1")
+        case "seconds" | "second"                                 => Some("1000")
+        case "minutes" | "minute"                                 => Some("60000")
+        case "hours" | "hour"                                     => Some("3600000")
+        case "days" | "day"                                       => Some("86400000")
+        case _                                                    => None
+
+    /** Scala compiles `super.m(...)` inside a trait into a call to a synthetic accessor `pkg$T$$super$m`, which
+      * only exists after mixin. Resolve it statically to the nearest user implementation in T's base classes. */
+    def isSuperAccessor(sy: Symbol): Boolean = sy.exists && sy.name.contains("$$super$")
+    def superAccessorImpl(sy: Symbol): Option[Symbol] =
+      if !isSuperAccessor(sy) || !sy.owner.exists then None
+      else
+        val m = sy.name.substring(sy.name.lastIndexOf("$$super$") + "$$super$".length)
+        val arity = arityOf(sy)
+        sy.owner.typeRef.baseClasses.drop(1).iterator.filter(userTypeDefs.contains).flatMap { b =>
+          userTypeDefs(b).body.collectFirst {
+            case dd: DefDef if dd.name == m && emittableMethod(dd) && arityOf(dd.symbol) == arity => dd.symbol
+          }
+        }.nextOption()
+
+    /** The constructor a `new C(...)` / parent `C(...)` call invokes. */
+    def parentCtor(p: Tree): Symbol =
+      def peel(t: Term): Symbol = t match
+        case Apply(f, _)             => peel(f)
+        case TypeApply(f, _)         => peel(f)
+        case sel @ Select(New(_), _) => sel.symbol
+        case Block(_, e)             => peel(e)
+        case _                       => Symbol.noSymbol
+      p match
+        case t: Term => peel(t)
+        case _       => Symbol.noSymbol
+    def secondaryCtors(cls: Symbol): List[DefDef] =
+      userTypeDefs.get(cls).map(_.body.collect {
+        case dd: DefDef if dd.name == "<init>" && dd.symbol != cls.primaryConstructor && dd.rhs.isDefined => dd
+      }).getOrElse(Nil)
+    /** `C__init` for the primary constructor, `C__init__k` for the k-th secondary one. */
+    def initName(cls: Symbol, ctor: Symbol): String =
+      val k = if !ctor.exists || ctor == cls.primaryConstructor then 0 else secondaryCtors(cls).map(_.symbol).indexOf(ctor) + 1
+      if k <= 0 then s"${typeName(cls)}__init" else s"${typeName(cls)}__init__$k"
+
+    /** The singleton instance a model module's term or class refers to, if any. */
+    def modelModuleOf(sy: Symbol): Option[Symbol] =
+      if !sy.exists then None
+      else if sy.isClassDef then Some(sy).filter(modelModules.contains)
+      else if sy.flags.is(Flags.Module) then
+        val mc = try sy.moduleClass catch case _: Throwable => Symbol.noSymbol
+        Some(mc).filter(m => m.exists && modelModules.contains(m))
+      else None
+    /** A case object is initialised once at startup (rtMain) and then read straight from the global AA; any
+      * other object (or code running inside a module's own initialisation) goes through its lazy accessor. */
+    def moduleAccessor(mc: Symbol): String =
+      if mc.flags.is(Flags.Case) && !(currentClass.exists && modelModules.contains(currentClass)) then
+        s"ga.__mod_${typeName(mc)}"
+      else s"${typeName(mc)}__module()"
+
     def emitApply(t: Term): String =
       someArg(t) match
         case Some(x) => return emitArgVal(x)
@@ -856,11 +995,12 @@ class RokuEmitter(
             return "[" + flattenVarargs(args).map(emitArgVal).mkString(", ") + "]"
           caseApply(t.tpe) match
             case Some(_) if isCaseCtor(fn, t.tpe) && isModel(t.tpe.typeSymbol) =>
-              return s"${t.tpe.typeSymbol.name}_new(${emitArgs(args, fn.symbol)})"
+              return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             case Some(fields) if isCaseCtor(fn, t.tpe) =>
               val flat = flattenVarargs(args).filterNot(isDefaultArg)
               val fs = fields.zip(flat).map((f, a) => s"$f: ${emitArgVal(a)}")
-              return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: fs).mkString(", ") + " }"
+              val fieldList = fields.take(flat.size).map(f => brStr(f)).mkString(", ")
+              return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: fs).mkString(", ") + " }"
             case _ =>
           fn match
             // ── stdlib the emitter models directly (runtime shims) ──
@@ -895,6 +1035,20 @@ class RokuEmitter(
               else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) =>
               s"_distinct([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
+            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) =>
+              s"_mapFromPairs(${varargsArray(args)})"
+            case _ if ownerIs(fn, "scala.math.package") && mathNames.contains(fn.symbol.name) =>
+              emitMath(fn.symbol.name, args)
+            case Select(q, "apply") if q.symbol.exists && q.symbol.fullName.startsWith("scala.StringContext") =>
+              varargsArray(args)
+            case Select(recv, "s") if fqnOf(recv.tpe) == "scala.StringContext" =>
+              s"_strInterp(${emitTerm(recv)}, ${varargsArray(args)})"
+            case Select(recv, "length") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
+              s"Len(${emitTerm(recv)})"
+            case Select(recv, "isEmpty") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
+              s"(Len(${emitTerm(recv)}) = 0)"
+            case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
+              s"(Instr(1, ${emitTerm(recv)}, ${emitArgVal(args.head)}) - 1)"
             case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
               s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
@@ -923,12 +1077,16 @@ class RokuEmitter(
             case Select(New(tpt), _) if hasNative(tpt.tpe.typeSymbol) =>
               s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
             case Select(New(tpt), _) if isUserClassSym(tpt.tpe.typeSymbol) =>
-              s"${tpt.tpe.typeSymbol.name}_new(${emitArgs(args, fn.symbol)})"
+              s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             case Select(New(tpt), _) =>
-              s"${tpt.tpe.typeSymbol.name}_new(${emitArgs(args, fn.symbol)})"
+              s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             // var setter x.p_=(v) → assignment
             case Select(recv, setter) if setter.endsWith("_=") && args.length == 1 && !userMethodSyms.contains(fn.symbol) =>
               s"${emitTerm(recv)}.${setter.dropRight(2)} = ${emitTerm(args.head)}"
+            case _ if isSuperAccessor(fn.symbol) =>
+              superAccessorImpl(fn.symbol) match
+                case Some(impl) => s"${modelImplName(impl)}(self${emitArgList(args, impl).map(", " + _).mkString})"
+                case None       => "invalid"
             // Object-model dispatch (see "object model" above).
             case Select(recv, _) if isModelMember(fn.symbol) && !isFacade(fn.symbol) && !isSuper(recv) =>
               emitModelCall(Some(recv), fn.symbol, args)
@@ -954,7 +1112,11 @@ class RokuEmitter(
             // f.apply(x)). A function value is a defunctionalised {fn, env}
             // closure, so it must be called via RtInvoke, not `f(x)`.
             case Select(recv, "apply") if isFunctionType(recv.tpe) =>
-              s"RtInvoke(${emitTerm(recv)}, [${emitArgs(args, fn.symbol)}])"
+              val r = emitTerm(recv)
+              val a = emitArgs(args, fn.symbol)
+              // A closure held in a local or a field chain is called in place — one call fewer than RtInvoke.
+              if r.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*") && r != "invalid" then s"$r.fn($r.env, [$a])"
+              else s"RtInvoke($r, [$a])"
             // A method DECLARED on a user class dispatches to its own emitted
             // function — it must win over the collection/string/Option builtins
             // below, which match on NAME alone. `Var.map` is not `List.map`,
@@ -965,8 +1127,8 @@ class RokuEmitter(
               val a = emitArgs(args, fn.symbol)
               val tail = if a.isEmpty then "" else ", " + a
               if isThis(recv) && inCurrentClass(fn.symbol.owner) then
-                s"${currentClass.name}_${memberName(fn.symbol, name)}(self$tail)"
-              else s"${fn.symbol.owner.name}_${memberName(fn.symbol, name)}(${emitTerm(recv)}$tail)"
+                s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(self$tail)"
+              else s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}$tail)"
             // A method on a user `object` → the flat `Obj_m(args)` function
             // emitModule wrote. Matches the BARE-Ident form too (`build(x)`
             // inside the same object, where Scala drops the qualifier):
@@ -1076,14 +1238,14 @@ class RokuEmitter(
             // self method call (private def) → Class_method(self, args)
             case Select(recv, name) if inCurrentClass(fn.symbol.owner) && isThis(recv) =>
               val a = emitArgs(args, fn.symbol)
-              s"${currentClass.name}_${memberName(fn.symbol, name)}(self${if a.isEmpty then "" else ", " + a})"
+              s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(self${if a.isEmpty then "" else ", " + a})"
             // A self method referenced as a BARE Ident (`load()` inside another
             // method) — Scala drops the `this.`; emit Class_method(self, …), not
             // `self.load()` (a field-call passes no `self` → "wrong # of params").
             case _ if fn.symbol.exists && fn.symbol.isDefDef && fn.symbol.flags.is(Flags.Method)
                 && inCurrentClass(fn.symbol.owner) && !isFacade(fn.symbol) =>
               val a = emitArgs(args, fn.symbol)
-              s"${currentClass.name}_${memberName(fn.symbol, fn.symbol.name)}(self${if a.isEmpty then "" else ", " + a})"
+              s"${typeName(currentClass)}_${memberName(fn.symbol, fn.symbol.name)}(self${if a.isEmpty then "" else ", " + a})"
             // Cross-object user-method call: `recv.m(args)` where recv is another
             // user object. RokuEmitter methods take `self` explicitly, so emit
             // Owner_method(recv, args), NOT recv.m(args) — a field-call passes no
@@ -1092,7 +1254,7 @@ class RokuEmitter(
                 if fn.symbol.exists && fn.symbol.isDefDef && fn.symbol.flags.is(Flags.Method)
                    && isUserClassSym(fn.symbol.owner) && !isFacade(fn.symbol) =>
               val a = emitArgs(args, fn.symbol)
-              s"${fn.symbol.owner.name}_${memberName(fn.symbol, name)}(${emitTerm(recv)}${if a.isEmpty then "" else ", " + a})"
+              s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}${if a.isEmpty then "" else ", " + a})"
             case _ =>
               val fe = emitTerm(fn)
               // `throw e` is a keyword in BrightScript, not a call → runtime helper.
@@ -1117,10 +1279,10 @@ class RokuEmitter(
           s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
         case Apply(TypeApply(Select(New(tpt), _), _), args) if hasNative(tpt.tpe.typeSymbol) =>
           s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
-        case Apply(Select(New(tpt), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
-          s"${tpt.tpe.typeSymbol.name}_new(${emitArgs(args)})"
-        case Apply(TypeApply(Select(New(tpt), _), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
-          s"${tpt.tpe.typeSymbol.name}_new(${emitArgs(args)})"
+        case Apply(ctor @ Select(New(tpt), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
+          s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, ctor.symbol)})"
+        case Apply(TypeApply(ctor @ Select(New(tpt), _), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
+          s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, ctor.symbol)})"
         // super.m(...) — a user base resolves statically to the implementation
         // TASTy names; into a @native base (State.initState etc.) it is a no-op.
         case Apply(f0, sargs) if superSel(f0).isDefined =>
@@ -1142,6 +1304,19 @@ class RokuEmitter(
           if n == "MaxValue" then "RtDoubleMax()" else "RtDoubleMin()"
         case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Int" =>
           if n == "MaxValue" then "2147483647" else "(-2147483647 - 1)"
+        case sel @ Select(_, n @ ("Pi" | "E")) if ownerFqn(sel.symbol) == "scala.math.package" =>
+          if n == "Pi" then "3.141592653589793" else "2.718281828459045"
+        case Select(Apply(conv, List(n)), unit) if durationFactor(conv, unit).isDefined =>
+          s"RtDuration((${emitTerm(n)}) * ${durationFactor(conv, unit).get})"
+        case Select(q, "toMillis") if fqnOf(q.tpe).startsWith("scala.concurrent.duration") =>
+          s"RtDurationMs(${emitTerm(q)})"
+        case Select(q, "toSeconds") if fqnOf(q.tpe).startsWith("scala.concurrent.duration") =>
+          s"Int(RtDurationMs(${emitTerm(q)}) / 1000)"
+        case Select(Apply(f, List(str)), m @ ("nonEmpty" | "isEmpty"))
+            if stripTypeApply(f).symbol.exists && stripTypeApply(f).symbol.name == "augmentString" =>
+          if m == "nonEmpty" then s"(Len(${emitTerm(str)}) > 0)" else s"(Len(${emitTerm(str)}) = 0)"
+        case Select(q, "toList" | "toSeq" | "toVector") if isMapTpe(q.tpe) => s"_mapToList(${emitTerm(q)})"
+        case Select(q, "length") if fqnOf(q.tpe) == "java.lang.String" => s"Len(${emitTerm(q)})"
         case ta @ TypeApply(Select(_, "empty"), _) if isMapTpe(ta.tpe) => "_mapEmpty()"
         case ta @ TypeApply(Select(_, "empty"), _) if isSetTpe(ta.tpe) || isListTpe(ta.tpe) => "[]"
         case sel @ Select(_, "empty") if isMapTpe(sel.tpe) => "_mapEmpty()"
@@ -1155,7 +1330,7 @@ class RokuEmitter(
         case Select(q, "isEmpty") if isOptionType(q)               => s"(${emitTerm(q)} = invalid)"
         case Select(q, "get" | "orNull") if isOptionType(q)        => emitTerm(q)
         case Select(q, "toOption") if isTryType(q) || isEitherType(q) => s"_tryToOption(${emitTerm(q)})"
-        case Select(q, "toList" | "toSeq" | "toArray") if isCollType(q) => emitTerm(q)
+        case Select(q, "toList" | "toSeq" | "toArray" | "toVector" | "toIndexedSeq") if isCollType(q) => emitTerm(q)
         // Paren-less collection getters → runtime helpers.
         case Select(q, "isEmpty") if isCollType(q)   => s"(${emitTerm(q)}.count() = 0)"
         case Select(q, "nonEmpty") if isCollType(q)  => s"(${emitTerm(q)}.count() > 0)"
@@ -1172,6 +1347,9 @@ class RokuEmitter(
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
+        case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
+        case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
+          if isByNameParam(sel.symbol) then s"RtForce(${brSafe(n)})" else brSafe(n)
         case sel @ Select(q, _) if isModelMember(sel.symbol) && !isFacade(sel.symbol) && !isSuper(q) =>
           emitModelCall(Some(q), sel.symbol, Nil)
         case Select(q, "unary_$bang" | "unary_!") => s"(not ${emitTerm(q)})"
@@ -1201,12 +1379,12 @@ class RokuEmitter(
             // instance of the same class (`child.node` inside a Component
             // method). Only a real `this.` receiver resolves against `self`.
             if inCurrentClass(s.owner) && isThis(q) then
-              if parenlessSelf then s"${currentClass.name}_${memberName(s, name)}(self)" else s"self.${brSafe(name)}"
+              if parenlessSelf then s"${typeName(currentClass)}_${memberName(s, name)}(self)" else s"self.${brSafe(name)}"
             else moduleSyms.get(s.owner) match
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `self.getter` only holds the function ref, so call it.
-              case None if parenlessSelf => s"${s.owner.name}_${memberName(s, name)}(${emitTerm(q)})"
+              case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               case None                  => s"${emitTerm(q)}.${brSafe(name)}"
         // `_iif(c, a, b)` only where both arms are pure; any other control flow
         // in value position is hoisted into statements (A-normalisation).
@@ -1240,6 +1418,8 @@ class RokuEmitter(
       if t.isEmpty || t == "invalid" then ""
       else if t.matches("\"(?:[^\"]|\"\")*\"") then ""
       else if t.matches("-?[0-9][0-9.]*") then ""
+      // a discarded VALUE (`(a - b)`, `x.field`) is not a BrightScript statement; keep its evaluation
+      else if t.startsWith("(") || !t.endsWith(")") then "  __discard = " + e
       else "  " + e
 
     // ── pattern matching ─────────────────────────────────────────────────────
@@ -1299,7 +1479,10 @@ class RokuEmitter(
       case t: Term if (t match { case Ident(_) | Select(_, _) => true; case _ => false })
                       && t.symbol.exists && (t.symbol.flags.is(Flags.Module) || t.symbol.isValDef) =>
         val v = emitTerm(t)
-        if v == "invalid" then (s"($subj = invalid)", Nil) else (s"_eq($subj, $v)", Nil)
+        // An `object` is a single instance: matching `case Conclusion.Continue =>` is an identity test.
+        if v == "invalid" then (s"($subj = invalid)", Nil)
+        else if t.symbol.exists && t.symbol.flags.is(Flags.Module) then (s"RtIdentity($subj, $v)", Nil)
+        else (s"_eq($subj, $v)", Nil)
       case _ => ("true", Nil)
 
     // ── statements, sinks and A-normalisation ────────────────────────────────
@@ -1568,7 +1751,7 @@ class RokuEmitter(
           out.append(s"function ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
           out.append(emitBody(rhs, true)).append("\n")
           out.append("end function\n\n")
-        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) =>
+        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
           out.append(s"function ${base}_${brSafe(name)}() as dynamic\n")
           unwrap(rhs) match
@@ -1580,6 +1763,8 @@ class RokuEmitter(
               // JVM would see null, rather than recursing.
               val k = s"${base}_${brSafe(name)}"
               out.append("  ga = GetGlobalAA()\n")
+              out.append(s"  cached = ga[${brStr("__mv_" + k)}]\n")
+              out.append("  if cached <> invalid then return cached\n")
               out.append(s"  if not ga.DoesExist(${brStr("__mvs_" + k)}) then\n")
               out.append(s"    ga[${brStr("__mvs_" + k)}] = true\n")
               out.append(emitInto(rhs, s"ga[${brStr("__mv_" + k)}]")).append("\n")
@@ -1700,6 +1885,8 @@ class RokuEmitter(
         case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined =>
           val k = brSafe(vd.name)
           sb.append(s"function ${modelImplName(vd.symbol)}(self as object) as dynamic\n")
+          sb.append(s"  cached = self[${brStr("__lz_" + k)}]\n")
+          sb.append("  if cached <> invalid then return cached\n")
           sb.append(s"  if not self.DoesExist(${brStr("__lzs_" + k)}) then\n")
           sb.append(s"    self[${brStr("__lzs_" + k)}] = true\n")
           sb.append(emitInto(vd.rhs.get, s"self[${brStr("__lz_" + k)}]")).append("\n")
@@ -1713,13 +1900,17 @@ class RokuEmitter(
 
       // init: super -> mixins -> own fields and statements, guarded for diamonds
       val guard = brStr("__i_" + cn)
-      sb.append(s"function ${cn}_init(self as object${ctorParams.map(p => s", $p as dynamic").mkString}) as dynamic\n")
+      sb.append(s"function ${cn}__init(self as object${ctorParams.map(p => s", $p as dynamic").mkString}) as dynamic\n")
       sb.append(s"  if self.DoesExist($guard) then return invalid\n")
       sb.append(s"  self[$guard] = true\n")
       cd.parents.foreach { p =>
         val (ps, pargs) = parentInfo(p)
         if ps.exists && ps != sym && userTypeDefs.contains(ps) then
-          sb.append(withStatement(s"  ${typeName(ps)}_init(self${emitArgList(pargs).map(", " + _).mkString})")).append("\n")
+          val ctor = parentCtor(p)
+          inParentArgs = true
+          val call = withStatement(s"  ${initName(ps, ctor)}(self${emitArgList(pargs, ctor).map(", " + _).mkString})")
+          inParentArgs = false
+          sb.append(call).append("\n")
         else if ps.exists && shimParents.contains(ps.fullName) then
           sb.append(s"  ${shimParents(ps.fullName)}_init(self)\n")
       }
@@ -1738,8 +1929,41 @@ class RokuEmitter(
       }
       sb.append("  return invalid\nend function\n\n")
 
+      // secondary constructors: `def this(...) = { this(...); stats }`
+      secondaryCtors(sym).zipWithIndex.foreach { case (dd, k) =>
+        val ps = termParams(dd.paramss)
+        sb.append(s"function ${cn}__init__${k + 1}(self as object${ps.map(p => s", $p as dynamic").mkString}) as dynamic\n")
+        val stats = unwrap(dd.rhs.get) match
+          case Block(ss, e) => ss :+ e
+          case other        => List(other)
+        stats.foreach {
+          case Apply(f, as) if f.symbol.exists && f.symbol.isClassConstructor =>
+            sb.append(withStatement(s"  ${initName(sym, f.symbol)}(self${emitArgList(as, f.symbol).map(", " + _).mkString})")).append("\n")
+          case st =>
+            val e = emitStat(st)
+            if e.trim.nonEmpty then sb.append(e).append("\n")
+        }
+        sb.append("  return invalid\nend function\n\n")
+      }
+
+      // a module: one instance, stored BEFORE its init runs (as the JVM sets MODULE$), so init can refer to it
+      if sym.flags.is(Flags.Module) then
+        val key = brStr("__mod_" + cn)
+        sb.append(s"function ${cn}__module() as object\n")
+        sb.append("  ga = GetGlobalAA()\n")
+        sb.append(s"  self = ga[$key]\n")
+        sb.append("  if self <> invalid then return self\n")
+        sb.append("  self = {}\n")
+        sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sym.typeRef.baseClasses.reverse.foreach { bc =>
+          shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
+        }
+        vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
+        sb.append(s"  ga[$key] = self\n")
+        sb.append(s"  ${cn}__init(self)\n")
+        sb.append("  return self\nend function\n\n")
       // constructor: allocate, captures, runtime-parent slots, vtable, init
-      if !isTrait && !sym.flags.is(Flags.Abstract) then
+      else if !isTrait && !sym.flags.is(Flags.Abstract) then
         sb.append(s"function ${cn}_new(${(extraParams ++ ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
@@ -1750,7 +1974,7 @@ class RokuEmitter(
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
         vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
-        sb.append(s"  ${cn}_init(self${ctorParams.map(p => ", " + p).mkString})\n")
+        sb.append(s"  ${cn}__init(self${ctorParams.map(p => ", " + p).mkString})\n")
         sb.append("  return self\nend function\n\n")
       currentClass = savedClass
 
@@ -1771,7 +1995,7 @@ class RokuEmitter(
               case id: Ident =>
                 val sy = id.symbol
                 if sy.exists && sy.isTerm && !sy.isDefDef && !isFacade(sy) && !moduleSyms.contains(sy.owner)
-                   && sy.owner.exists && !sy.owner.isClassDef && sy.owner.flags.is(Flags.Method)
+                   && sy.owner.exists && !sy.owner.isClassDef && (sy.owner.flags.is(Flags.Method) || sy.owner.isValDef)
                    && !isOwnedWithin(sy, sym)
                 then caps += sy
               case _ =>
@@ -1843,7 +2067,23 @@ class RokuEmitter(
     // Every user TYPE name (traits and case classes too) claims its namespace,
     // so a companion object's members take the `Obj` infix wherever they would
     // collide — `Reaction.apply` (trait) vs `Reaction.apply` (object).
-    userClassNames ++= userTypeDefs.keys.map(_.name)
+    for tasty <- tastys do
+      eachClassDef(tasty.ast) { cd =>
+        val sy = cd.symbol
+        if sy.flags.is(Flags.Module) && !hasNative(sy) && !isBuiltin(sy) && !isEnumLike(sy)
+           && !sy.name.stripSuffix("$").endsWith("$package") && !mainNames.contains(sy.name)
+           && sy.typeRef.baseClasses.exists(b => b != sy && userTypeDefs.contains(b)) then
+          modelModules += sy
+          userTypeDefs(sy) = cd
+      }
+    for mc <- modelModules do
+      val base = brIdent(mc.name.stripSuffix("$"))
+      val owner = mc.owner
+      val qualified =
+        if owner.exists && owner.flags.is(Flags.Module) then brIdent(owner.name.stripSuffix("$")) + "_" + base else base
+      typeNameOverride(mc) =
+        if mc.companionClass.exists && userTypeDefs.contains(mc.companionClass) then qualified + "Obj" else qualified
+    userClassNames ++= userTypeDefs.keys.filterNot(modelModules.contains).map(_.name)
     for (_, cd) <- userTypeDefs do
       cd.body.foreach { case dd: DefDef => userMethodSyms += dd.symbol; case _ => () }
     locally {
@@ -1853,10 +2093,12 @@ class RokuEmitter(
         val extended = all.exists(o => o != sy && o.typeRef.baseClasses.contains(sy))
         val caseWithMethods = sy.flags.is(Flags.Case) &&
           userTypeDefs(sy).body.exists { case dd: DefDef => emittableMethod(dd) && !dd.name.contains("$default$"); case _ => false }
-        if sy.flags.is(Flags.Trait) || bases.nonEmpty || extended || caseWithMethods then objectModelTypes += sy
+        // A `lazy val` needs the object model's lazy getter; the flat class path would evaluate it eagerly.
+        val hasLazy = userTypeDefs(sy).body.exists { case vd: ValDef => vd.symbol.flags.is(Flags.Lazy); case _ => false }
+        if sy.flags.is(Flags.Trait) || bases.nonEmpty || extended || caseWithMethods || hasLazy then objectModelTypes += sy
     }
     for tasty <- tastys do
-      eachClassDef(tasty.ast) { cd => if isUserModule(cd) then moduleSyms.getOrElseUpdate(cd.symbol, modulePrefix(cd.symbol)) }
+      eachClassDef(tasty.ast) { cd => if isUserModule(cd) && !modelModules.contains(cd.symbol) then moduleSyms.getOrElseUpdate(cd.symbol, modulePrefix(cd.symbol)) }
     for tasty <- tastys do scanBoxedVars(tasty.ast)
     for tasty <- tastys do
       eachClassDef(tasty.ast) { cd =>
@@ -1866,6 +2108,8 @@ class RokuEmitter(
       }
     // @main → rtMain(): the entry the scene calls.
     out.append("sub rtMain()\n")
+    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).sortBy(typeName) do
+      out.append(s"  ${typeName(mc)}__module()\n")
     for dd <- mains; body <- dd.rhs do
       out.append(emitBody(body, false)).append("\n")
     out.append("end sub\n")
@@ -1920,7 +2164,7 @@ class RokuEmitter(
        |build_version=1
        |ui_resolutions=fhd
        |rsg_version=1.3
-       |splash_color=#FEF7FF
+       |splash_color=#FFFFFF
        |splash_min_time=0
        |""".stripMargin
 
@@ -1949,7 +2193,7 @@ class RokuEmitter(
       |  <script type="text/brightscript" uri="pkg:/components/ScalaRuntime.brs" />
       |  <script type="text/brightscript" uri="pkg:/components/App.brs" />
       |  <children>
-      |    <Rectangle id="bg" width="1920" height="1080" color="0xFEF7FFFF" />
+      |    <Rectangle id="bg" width="1920" height="1080" color="0xFFFFFFFF" />
       |    <Group id="root" />
       |  </children>
       |</component>
@@ -2356,7 +2600,55 @@ class RokuEmitter(
       |function Tuple2(a = invalid as dynamic, b = invalid as dynamic) as object : return { _1: a, _2: b } : end function
       |function wrapRefArray(a = invalid as dynamic) as dynamic : return a : end function
       |function intWrapper(x = invalid as dynamic) as dynamic : return x : end function
-      |""".stripMargin
+      |' -- Scala stdlib shims added for universal-ui's component model --
+      |function RtMin(a as dynamic, b as dynamic) as dynamic
+      |    if a < b then return a
+      |    return b
+      |end function
+      |function RtMax(a as dynamic, b as dynamic) as dynamic
+      |    if a > b then return a
+      |    return b
+      |end function
+      |' scala.concurrent.duration.FiniteDuration, in milliseconds
+      |function RtDuration(ms as dynamic) as object
+      |    return { _cls: "FiniteDuration", _fields: ["ms"], ms: ms }
+      |end function
+      |function RtDurationMs(d as dynamic) as dynamic
+      |    if d = invalid then return 0
+      |    return d.ms
+      |end function
+      |' StringContext#s: parts interleaved with the arguments
+      |function _strInterp(parts as object, args as object) as string
+      |    r = ""
+      |    for i = 0 to parts.count() - 1
+      |        r = r + _str(parts[i])
+      |        if i < args.count() then r = r + _str(args[i])
+      |    end for
+      |    return r
+      |end function
+      |' Map(k -> v, ...) and map.toList
+      |function _mapFromPairs(pairs as object) as object
+      |    m = _mapEmpty()
+      |    for each t in pairs
+      |        m = _mapPut(m, t._1, t._2)
+      |    end for
+      |    return m
+      |end function
+      |function _mapToList(m as dynamic) as object
+      |    r = []
+      |    if m = invalid then return r
+      |    if _rtIsEntryMap(m)
+      |        for each e in m.entries
+      |            r.push(Tuple2(e.k, e.v))
+      |        end for
+      |    else
+      |        for each k in m
+      |            r.push(Tuple2(k, m[k]))
+      |        end for
+      |    end if
+      |    return r
+      |end function
+""".stripMargin
 
   /** Runtime support for emitting GENERAL Scala libraries (reactify, unmodified):
    *  identity and structural equality, virtual dispatch, real exceptions,
@@ -2443,6 +2735,10 @@ class RokuEmitter(
       |function _eq(a as dynamic, b as dynamic) as boolean
       |    ' Fast path: identical primitive types compare directly.
       |    ta = type(a)
+      |    ' Instances of classes (and case objects) without case fields are equal only to themselves.
+      |    if ta = "roAssociativeArray" and type(b) = "roAssociativeArray"
+      |        if a._fields = invalid and b._fields = invalid and (a._cls <> invalid or b._cls <> invalid) then return RtIdentity(a, b)
+      |    end if
       |    if ta = type(b)
       |        if ta = "Integer" or ta = "Float" or ta = "Double" or ta = "String" or ta = "Boolean" then return a = b
       |        if ta = "roString" or ta = "roInteger" or ta = "roFloat" or ta = "roDouble" or ta = "roBoolean" then return a = b
@@ -2457,7 +2753,13 @@ class RokuEmitter(
       |    if ka = "arr"
       |        if a.count() <> b.count() then return false
       |        for i = 0 to a.count() - 1
-      |            if not _eq(a[i], b[i]) then return false
+      |            x = a[i]
+      |            y = b[i]
+      |            same = false
+      |            if type(x) = "roAssociativeArray" and type(y) = "roAssociativeArray"
+      |                if x._id <> invalid and y._id <> invalid then same = (x._id = y._id)
+      |            end if
+      |            if not same and not _eq(x, y) then return false
       |        end for
       |        return true
       |    end if
@@ -2947,7 +3249,7 @@ class RokuEmitter(
       |        for each f in o._fields
       |            parts.push(_str(o[f]))
       |        end for
-      |        return _str(o._cls) + "(" + parts.Join(", ") + ")"
+      |        return _str(o._cls) + "(" + parts.Join(",") + ")"
       |    end if
       |    if o.DoesExist("message") then return _str(o.message)
       |    if o.DoesExist("_cls") then return _str(o._cls)

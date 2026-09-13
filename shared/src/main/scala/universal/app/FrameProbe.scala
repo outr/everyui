@@ -1,8 +1,9 @@
 package universal.app
 
 import reactify.*
-import universal.render.{Nodes, Platform, RenderNode}
-import universal.ui.Label
+import universal.component.TextView
+import universal.render.Platform
+import universal.ui
 
 /** One animated label: its reactive position and its direction of travel. */
 class Mover(val pos: Var[Double], private var dir: Double):
@@ -40,8 +41,8 @@ object FrameProbe:
     * actually on screen and actually drawn. */
   private val Rows: Int = 17
 
-  def run(root: RenderNode): Unit =
-    val movers = build(root)
+  def run(): Unit =
+    val movers = build()
     var frames = 0.0
     var lastReport = Platform.ticks()
 
@@ -58,15 +59,15 @@ object FrameProbe:
         lastReport = now
     )
 
-  private def build(root: RenderNode): List[Mover] =
+  private def build(): List[Mover] =
     (0 until Count).toList.map(i =>
-      val label = Label()
+      val label = new TextView
       label.content @= "mover " + i.toString
-      label.y @= 40.0 + (i % Rows).toDouble * RowHeight
-      root.append(label.node)
+      label.position.top @= 40.0 + (i % Rows).toDouble * RowHeight
+      ui.children += label
 
       // The whole point: the animated property is BOUND, never poked.
       val pos = Var(MinX + (i / Rows).toDouble * 7.0)
-      if Bound then label.x := pos() else label.x @= pos()
+      if Bound then label.position.left := pos() else label.position.left @= pos()
       new Mover(pos, Step)
     ).take(Animated)

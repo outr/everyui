@@ -1,8 +1,9 @@
 package universal.app
 
 import reactify.*
-import universal.render.{Nodes, Platform}
-import universal.ui.Label
+import universal.component.TextView
+import universal.render.Platform
+import universal.ui
 
 /** The vertical slice's app — ONE source, compiled against two backends.
   *
@@ -13,13 +14,12 @@ import universal.ui.Label
   */
 object HelloWorld:
   def run(): Unit =
-    val root = Nodes.root()
     val name = Var("World")
 
-    val label = Label()
+    val label = new TextView
     label.content := "Hello, " + name() + "!"
-    label.x @= 100.0
-    root.append(label.node)
+    label.position.left @= 100.0
+    ui.children += label
 
     // Read back through the seam's OTHER half — `node.getText()` asks the
     // backend node itself, so this proves the Prop's setter actually reached the
@@ -31,6 +31,6 @@ object HelloWorld:
     // read `name`.
     name @= "Universal UI"
     Platform.log("updated: " + label.content() + " | node: " + label.node.getText())
-    Platform.log("x: " + label.x().toString + " | node x: " + label.node.getX().toString)
+    Platform.log("x: " + label.position.left().toString + " | node x: " + label.node.getX().toString)
 
-    FrameProbe.run(root)
+    FrameProbe.run()

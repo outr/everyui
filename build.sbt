@@ -103,7 +103,7 @@ lazy val sharedSources = (file("shared") / "src" / "main" / "scala").getAbsolute
 // only `sbt-scalajs_2.12_1.0` exists, so this build cannot host it. scala-cli
 // builds it instead, pulling in the same shared/ sources:
 //
-//   mkdir -p web/out-js && cp web/index.html web/out-js/
+//   mkdir -p web/out-js && cp web/index.html web/out-js/ && cp -r assets/images assets/fonts web/out-js/
 //   scala-cli --power package web -o web/out-js/main.js -f   (add --js-mode release for Closure)
 //   sbt server/run                                           (serves web/out-js)
 //
@@ -126,6 +126,9 @@ lazy val roku = (project in file("roku"))
       // backends are compared on identical pixels.
       val images = (ThisBuild / baseDirectory).value / "assets" / "images"
       if (images.isDirectory) IO.copyDirectory(images, outDir / "images")
+      // Bundled faces, loaded by SceneGraph Font nodes from pkg:/fonts/.
+      val fonts = (ThisBuild / baseDirectory).value / "assets" / "fonts"
+      (fonts * "*.ttf").get().foreach(f => IO.copyFile(f, outDir / "fonts" / f.getName))
       // The scene is generated; add our runtime to its <script> list so the
       // ui* globals resolve in the component's scope.
       val scene = outDir / "components" / "AppScene.xml"

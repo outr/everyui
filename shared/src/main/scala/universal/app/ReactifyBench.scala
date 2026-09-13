@@ -1,8 +1,10 @@
 package universal.app
 
 import reactify.*
-import universal.render.{Nodes, Platform}
-import universal.ui.{Label, Prop}
+import universal.component.TextView
+import universal.component.types.Prop
+import universal.render.{Nodes, Platform, RenderNode}
+import universal.ui
 
 /** Per-operation cost of reactify on the linked backend, one step of the
   * binding chain at a time, so an optimisation can be aimed at the step that
@@ -35,7 +37,7 @@ object ReactifyBench:
     pass(root)
     pass(root)
 
-  private def pass(root: universal.render.RenderNode): Unit =
+  private def pass(root: RenderNode): Unit =
     var flip = false
     val base = time("(loop+call baseline)", 20000, 0.0, () => ())
 
@@ -73,7 +75,7 @@ object ReactifyBench:
     })
 
     val src2 = Var(0.0)
-    val prop = new Prop[Double](() => 0.0, _ => ())
+    val prop = new Prop[Double](0.0, _ => ())
     prop := src2()
     time("v @= x -> bound Prop (no-op setter)", 2000, base, () => {
       flip = !flip
@@ -81,9 +83,9 @@ object ReactifyBench:
     })
 
     val src3 = Var(0.0)
-    val label = Label()
-    root.append(label.node)
-    label.x := src3()
+    val label = new TextView
+    ui.children += label
+    label.position.left := src3()
     time("v @= x -> bound Prop -> node", 2000, base, () => {
       flip = !flip
       src3 @= (if flip then 1.0 else 2.0)

@@ -255,7 +255,7 @@ frame. `FrameProbe`'s `Count` / `Animated` / `Bound` constants are the sweep
 knobs; `/tmp/.../sweep2.sh`-style re-emit-and-sideload loops regenerate the
 table.
 
-## youi's `AnimationExample`, reproduced — ✅ BOTH BACKENDS (2026-09-12)
+## youi's `AnimationExample`, first reproduction — *history* (superseded by "youi's AnimationExample, verbatim")
 
 youi's `example/.../ui/AnimationExample.scala` — one labelled row per easing
 curve, each running `right → sleep → left → sleep` forever, plus an image
@@ -699,18 +699,150 @@ object model, stdlib shims) plus generic facade calls.
 - The sart repo was only read, never changed, during the extraction. It still
   holds the earlier emitter and reactify-performance work uncommitted.
 
+## youi's AnimationExample, verbatim — youi's component model on both backends (2026-09-12)
+
+`shared/src/main/scala/universal/example/ui/AnimationExample.scala` is youi's
+`example/.../ui/AnimationExample.scala` with only its package and imports
+changed (`youi.*` → `universal.*`, `rapid.Task` → `universal.async.Task`,
+`spice.net._` → `universal.net._`). The class body is youi's, line for line:
+`new TextView { content @= …; font.weight @= fnt; position.left @= 50.0 }`,
+``label.position.right `to` container.size.width - 50.0 `in` 5.seconds `easing` easingFunction``,
+`forever(sequential(…)).start(this)`, `container.children += label`,
+`Image("/images/icon.png").flatMap { img => GoogleFont.`Open Sans`.`regular`.load().map { fnt => … } }`.
+
+Deliberate differences from youi's file:
+- One line reads `label.position.right.to(…).in(5.seconds).easing(easingFunction)`
+  (method-call syntax) instead of youi's backtick infix form — changed on disk
+  after the port was written; same meaning.
+- **A youi bug, fixed.** youi puts the bouncing logo in `container` (which starts
+  under the 75px header) but gives it screen coordinates: it starts at
+  `container.size.middle + header.size.height`, bounces to
+  `bottom to ui.size.height` and `top to header.size.height`. So it started 75px
+  low, never reached the top, and ran 75px off the bottom (youi's own capture
+  shows the doubled offset: centre at 75 + 502.5 + 75). universal-ui uses the
+  container's coordinates — `container.size.middle`,
+  `bottom to container.size.height`, `top to 0.0`. youi is the reference, not
+  always correct: its bugs are fixed here and noted.
+
+### What made that possible — youi's model, ported onto `RenderNode`
+
+| Package (`shared/.../universal/`) | From youi |
+|---|---|
+| `component/` — `Component`, `Container`, `TextView`, `ImageView` | `youi.component` over a `RenderNode` instead of an `html.Element` |
+| `component/feature/` — measured, size, position (`left/center/right`, `top/middle/bottom` as reactify `Dep`s), font, container children | `youi.component.feature` |
+| `component/types/` — `Prop` (youi's own), `SizeProperty`, `PositionType`, `WhiteSpace`, `FontWeight` | `youi.component.types` |
+| `task/` — `Animation` (youi's `task.Task`), `AnimateIn`, `PartialAnimate`, `Sequential`, `Parallel`, `Repeat`, `Sleep`, `Action`, `TaskInstance`, `TaskSupport`, the `to`/`forever`/`sequential` DSL | `youi.task`, line for line |
+| `easing/` | youi's `Easing` files, verbatim |
+| `app/screen/` — `Screen`, `UIScreen`, `ScreenManager` (reduced to running one screen) | `youi.app.screen` |
+| `example/` — `ExampleApp`, `UIExampleScreen`, `Header` | youi's example app |
+| `ui`, `Color`, `scribe`, `async.Task`, `net`, `image.Image`, `font.GoogleFont` | the parts of youi / rapid / spice the example uses |
+
+youi's `rapid.Task` becomes `universal.async.Task` (callback-driven) and youi's
+`task.Task` becomes `Animation`: the Roku compiler names classes by their simple
+name, so two `Task`s would collide. The example never names the latter.
+
+**Backends** gained what the model needs, with identical signatures:
+containers, width/height, colour, background, font (family/weight/size), measured
+size, image source, removal, a Material Icons node, async image and font loading,
+`resolvePath`, `onResize`. **Assets:** `assets/fonts/` (Open Sans 400/600 and
+Material Icons as TTF, from the same Google Fonts youi loads), `youi.png`, and a
+pre-rendered header gradient so both backends draw the same pixels.
+
+### What the Roku compiler needed
+
+- Objects that extend a user class or trait (including case objects) are
+  singleton instances: `<Name>__module()`, stored before init as the JVM stores
+  `MODULE$`; nested names owner-qualified (`ReactionStatus_Continue`).
+- Superclass secondary constructors (`extends Var[T](getter)`), with constructor
+  params read as locals and captured by closures in parent arguments.
+- Trait super accessors (`pkg$T$$super$m`) resolved statically.
+- Varargs to emitted functions as one array (`sequential(a, b, c)`, `Prop(…, callbacks*)`).
+- A method named like a field (`AnimateIn(easing: Easing)` + `def easing(e)`) gets its own slot.
+- Backtick names (`Open Sans`, `600`) sanitised; the init chain renamed `__init` so a user `init` can't collide.
+- Stdlib: `Map(k -> v, …)`, `.toList`, `scala.math`, `scala.concurrent.duration`,
+  `StringContext.s`, `String.length/isEmpty/indexOf`, `augmentString(…).nonEmpty`,
+  case-class `toString` with Scala's `,`.
+- Faster: `case SomeObject =>` is an identity test; `_eq` on class instances is identity.
+
+### How it was verified
+
+- **Web vs youi**, same frozen moment (`ExampleApp.freezeSeconds`, a virtual 60 Hz
+  clock): logo, toggle, header gradient and all 31 rows within 2px of youi's own
+  capture; the icon's centre identical.
+- **Roku vs web**, component-tree dumps of the same frozen frame: row positions
+  median 0.02px apart; text widths within 1% (after font calibration, below); row
+  text at youi's height (median vertical offset 0px on the device screenshot).
+- reactify: JVM golden unchanged, Roku acceptance PASS (65 lines); gap meter 0 and
+  brighterscript 0 errors on both channels.
+
+### Remaining differences (known)
+
+- youi's header "600" weight is the browser's synthesized bold (its webfont loader
+  only fetches Open Sans 400); universal-ui bundles the real SemiBold, ~9px wider.
+- youi starts the icon's spin one async `rapid` step later, so its early rotation phase differs.
+- youi shows scrollbars when the ElasticOut row or the icon overflows; the render seam clips.
+- **Roku text:** on a 720p panel SceneGraph rasterises small text at fewer pixels
+  and it comes out ~7.5% narrower. `uiSetFont` calibrates each face and size once
+  (measures at 4× and picks the closest whole size), which brought widths within 1%.
+
+### Roku frame rate — ✅ 60 fps, AnimationExample unchanged
+
+Live on the Roku, youi's AnimationExample (31 moving rows plus the icon) now holds
+**59.9 fps** — over 91 one-second samples: minimum 59.4, median 59.9, 90 of 91 at
+≥59.5. None of it touched `AnimationExample.scala`.
+
+How it got there, measured with `app/YouiBench.scala` (`val demo = "youibench"`,
+µs on the device):
+
+| | position write | `right := x` | frame: 32 moving rows | live fps while moving |
+|---|---|---|---|---|
+| as first ported | 849 | 931 | 39.5 ms | ~17–22.5 |
+| lazy vals, derived positions, one-pass fire | 221 | 315 | 16.3 ms | ~49 |
+| tasks stepped directly, cached accessors | 212 | 304 | 14.4 ms | ~54 |
+| case objects inline, single-reaction fire, cached translation | 172 | 266 | 12.7 ms | 58–60 |
+| closures called in place | — | — | — | **59.9** |
+
+What changed, by layer:
+- **Roku compiler.** A class with a `lazy val` goes through the object model —
+  the flat class path had been evaluating lazy vals eagerly, so every component
+  built all four position `Dep`s and every position write re-evaluated two of
+  them (the biggest single cost: `position.x` had 3 reactions instead of 1).
+  Case objects are created once in `rtMain` and read inline (`ga.__mod_…`);
+  object and lazy-val accessors read the cached value first; a function value in
+  a local or field is called in place (`cl.fn(cl.env, […])`); a discarded value
+  expression becomes an assignment; locals of a `val` initialiser are captured.
+- **Framework (`shared/`).** `center/right/middle/bottom` are a `DerivedPosition`:
+  youi's `Dep` behaviour (reads derive from `left` + size, tracked; writes set
+  `left := x - size`), but it only keeps a derived `Val` when something attaches
+  to it. Each `TaskSupport` steps its running tasks directly, in start order, with
+  youi's snapshot rules, instead of one reactive fire per task per frame. The Roku
+  `RenderNode` keeps its x/y and writes `translation` once.
+- **reactify** (uncommitted, in the reactify repo). `fireInternal` is one pass (no
+  recursion on `reactions.tail`), with a direct path for a single reaction;
+  `Val.evaluate` compares dependencies by identity before set equality. reactify's
+  67 tests pass on the JVM and Scala.js; the Roku acceptance suite passes (65 lines).
+
+⚠️ **A regression this caused, and its fix.** `DerivedPosition` no longer read
+the size when created, so a component's measured size (lazy) came into being only
+after `container.children += label` had already measured — widths stayed 0 and
+the rows slid off the right edge. `SizeFeature` now creates the measured size with
+the component, as youi's does. Verified on the frozen frame: Roku rows identical to
+the earlier verified frame (no zero widths), web rows within 2px of youi's capture
+(the four icon-covered rows aside, as before). **Lesson:** a frame-rate change needs
+the frozen-frame position check, not only "runs without errors".
+
 ## IMMEDIATE NEXT STEP
 
-**1. Make the Roku compiler regression-proof.** The acceptance suite, the gap
-meter (`tools/emit-gaps.py`) and a brighterscript check over the three emitted
-channels should become goldens that run without the device.
+**1. Make the Roku compiler and the example regression-proof.** The acceptance
+suite, the gap meter (`tools/emit-gaps.py`), brighterscript, the AnimationExample
+frozen-frame tree dump (positions and widths) and the YouiBench frame cost should
+become checks that run in one command — the width regression above was caught by
+eye, not by a check.
 
-**2. Commit the reactify performance pass and `_references` fix** in the
-reactify repo, once confirmed there (it's a separate project).
+**2. Commit the reactify performance work** (pass, `_references` fix, fire and
+dependency-comparison changes) in the reactify repo, once confirmed there.
 
-**3. Then port youi's widget layer.** Class inheritance works (the object model
-above), so `Label extends Component` can replace the composition workaround in
-`shared/`.
+**3. Port more of youi's widget layer** onto the model in `shared/`.
 
 ## Build / ops notes
 
@@ -731,13 +863,16 @@ above), so `Label extends Component` can replace the composition workaround in
   Undertow, reads `web/out-js` from disk so a rebuild needs no restart).
 - Sweeping the FPS table: edit `FrameProbe`'s `Count`/`Animated`/`Bound`, then
   re-emit → zip `roku/out-roku` → sideload → read the debug console.
-- `shared/app/Main.scala` picks the demo: `"animation"` (youi's
-  AnimationExample), `"hello"` (the seam proof + FrameProbe), `"easings"` (the
-  numeric curve dump). `AnimationExample.Deterministic` freezes at frame 180 for
-  backend-vs-backend comparison.
-- Shared assets live in `assets/images/`; `emitRoku` copies them into the
-  channel (`pkg:/images/`), and the web bundle serves the same files from
-  `web/out-js/images/`, so the two backends are compared on identical pixels.
+- `shared/app/Main.scala` picks the demo: `"animation"` (youi's example app
+  running youi's AnimationExample), `"hello"` (the seam proof + FrameProbe),
+  `"bench"` (ReactifyBench), `"easings"` (the numeric curve dump).
+- Comparing a frame across backends: override `freezeSeconds` in
+  `ExampleApp` (e.g. `0.434`) to step a virtual 60 Hz clock and stop; the
+  `ScreenManager` then logs `tree …` lines (every component's position and size).
+- Shared assets live in `assets/images/` and `assets/fonts/`; `emitRoku` copies
+  them into the channel (`pkg:/images/`, `pkg:/fonts/`), and the web bundle serves
+  the same files from `web/out-js/` (copy `assets/images` and `assets/fonts` next
+  to `index.html`), so the two backends are compared on identical pixels.
 - Roku screenshot (the only way to see the device from here):
   `curl --digest -u rokudev:<pw> -F mysubmit=Screenshot -F archive= -F passwd=
   http://192.168.1.112/plugin_inspect` then GET `http://192.168.1.112/pkgs/dev.jpg`.

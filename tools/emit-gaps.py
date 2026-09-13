@@ -56,11 +56,13 @@ interface_methods = {m.lower() for m in {
     "items", "lookup", "doesExist", "setModeCaseSensitive", "sortBy", "sort", "reverse", "getField",
     "setField", "observeField", "callFunc", "findNode", "appendChild", "removeChild", "getChild",
     "getChildCount", "createChild", "update", "isEmpty", "addReplace", "getEntityEncode", "subtype",
-    "setFocus", "initialValue"}}
+    "setFocus", "initialValue", "closure_call"}}
 slots = {s.lower() for s in re.findall(r'^\s*self\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[A-Za-z_][A-Za-z0-9_]*\s*$', code, re.M)}
 # `ga.<Module>.<member>(…)` is a facade namespace the runtime installs in the
 # global assoc array, not an object method.
 facade_free = re.sub(r'\bga\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\s*\(', 'ga_facade(', code)
+# `cl.fn(cl.env, [...])` is a closure called in place (a Scala function value), not an object method.
+facade_free = re.sub(r'\.fn\(([A-Za-z_][A-Za-z0-9_.]*)\.env\s*,', r'.closure_call(\1.env,', facade_free)
 unknown = sorted({n for n in re.findall(r'\.([A-Za-z_][A-Za-z0-9_]*)\s*\(', facade_free)
                   if n.lower() not in interface_methods and n.lower() not in slots})
 

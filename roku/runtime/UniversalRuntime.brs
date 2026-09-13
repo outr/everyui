@@ -164,3 +164,162 @@ end function
 function uiCos(x as dynamic) as dynamic
     return Cos(x)
 end function
+
+' "#rrggbb" -> SceneGraph's "0xRRGGBBAA".
+sub uiSetColor(node as object, hex as string)
+    if node = invalid then return
+    node.color = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
+end sub
+
+' The bundled faces: emitRoku copies assets/fonts/*.ttf to pkg:/fonts/.
+function uiFontUri(family as string, weight as integer) as string
+    if family = "Open Sans"
+        if weight >= 600 then return "pkg:/fonts/OpenSans-SemiBold.ttf"
+        return "pkg:/fonts/OpenSans-Regular.ttf"
+    end if
+    if family = "Material Icons" then return "pkg:/fonts/MaterialIcons-Regular.ttf"
+    if weight >= 600 then return "font:BoldSystemFontFile"
+    return "font:SystemFontFile"
+end function
+
+' A SceneGraph Font's size is whole pixels. On a panel whose UI resolution is
+' below the channel's 1080p design space, small text is rasterised at fewer real
+' pixels and its glyph advances round down, so it comes out narrower than the
+' same size in a browser. Calibrate once per face and size: measure a reference
+' string at four times the size (where rounding is negligible) and pick the
+' whole size whose width comes closest to a quarter of it.
+function uiCalibratedSize(uri as string, size as float) as integer
+    ga = GetGlobalAA()
+    if ga.uiFontSizes = invalid then ga.uiFontSizes = {}
+    key = uri + "@" + Str(size)
+    cached = ga.uiFontSizes[key]
+    if cached <> invalid then return cached
+    probe = CreateObject("roSGNode", "Label")
+    probe.text = "Hamburgefonstiv Example 0123"
+    big = CreateObject("roSGNode", "Font")
+    big.uri = uri
+    big.size = Int(size * 4.0 + 0.5)
+    probe.font = big
+    target = probe.boundingRect().width / 4.0
+    best = Int(size + 0.5)
+    bestErr = 1.0e9
+    for candidate = Int(size + 0.5) to Int(size * 1.25 + 1.0)
+        f = CreateObject("roSGNode", "Font")
+        f.uri = uri
+        f.size = candidate
+        probe.font = f
+        err = Abs(probe.boundingRect().width - target)
+        if err < bestErr
+            bestErr = err
+            best = candidate
+        end if
+    end for
+    ga.uiFontSizes[key] = best
+    return best
+end function
+
+sub uiSetFont(node as object, family as string, weight as integer, size as float)
+    if node = invalid then return
+    f = CreateObject("roSGNode", "Font")
+    f.uri = uiFontUri(family, weight)
+    f.size = uiCalibratedSize(f.uri, size)
+    node.font = f
+end sub
+
+function uiGetWidth(node as object) as float
+    if node = invalid then return 0.0
+    return node.boundingRect().width
+end function
+
+function uiGetHeight(node as object) as float
+    if node = invalid then return 0.0
+    return node.boundingRect().height
+end function
+
+function uiIcon(glyph as string, size as float) as object
+    n = uiText()
+    uiSetFont(n, "Material Icons", 400, size)
+    n.text = glyph
+    return n
+end function
+
+' A container: a Rectangle is a Group that can also paint a background.
+function uiContainer() as object
+    n = CreateObject("roSGNode", "Rectangle")
+    n.color = "0x00000000"
+    n.width = 0
+    n.height = 0
+    n.translation = [0.0, 0.0]
+    return n
+end function
+
+' Posters keep rotating about their centre as their size changes.
+sub uiSetWidth(node as object, width as float)
+    if node = invalid then return
+    if not node.hasField("width") then return
+    node.width = width
+    if node.subtype() = "Poster" then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
+end sub
+
+sub uiSetHeight(node as object, height as float)
+    if node = invalid then return
+    if not node.hasField("height") then return
+    node.height = height
+    if node.subtype() = "Poster" then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
+end sub
+
+sub uiSetBackgroundColor(node as object, hex as string)
+    if node = invalid then return
+    if node.subtype() <> "Rectangle" then return
+    if hex = ""
+        node.color = "0x00000000"
+    else
+        node.color = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
+    end if
+end sub
+
+sub uiSetImageSource(node as object, uri as string)
+    if node = invalid then return
+    if node.hasField("uri") then node.uri = uri
+end sub
+
+sub uiRemove(node as object)
+    if node = invalid then return
+    p = node.getParent()
+    if p <> invalid then p.removeChild(node)
+end sub
+
+' Load an image off-screen to learn its natural size, then call `loaded(width,
+' height)`. SceneGraph reports it through the Poster's loadStatus field.
+sub uiLoadImage(uri as string, loaded as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiImageLoads = invalid then ga.uiImageLoads = {}
+    if ga.uiImageSeq = invalid then ga.uiImageSeq = 0
+    ga.uiImageSeq = ga.uiImageSeq + 1
+    p = CreateObject("roSGNode", "Poster")
+    p.id = "uiImageLoad" + ga.uiImageSeq.ToStr()
+    p.visible = false
+    ga.uiImageLoads[p.id] = { poster: p, loaded: loaded }
+    ga.appScene.appendChild(p)
+    p.observeField("loadStatus", "uiOnImageLoadStatus")
+    p.uri = uri
+end sub
+
+sub uiOnImageLoadStatus(event as object)
+    status = event.getData()
+    if status <> "ready" and status <> "failed" then return
+    p = event.getRoSGNode()
+    ga = GetGlobalAA()
+    entry = ga.uiImageLoads[p.id]
+    if entry = invalid then return
+    ga.uiImageLoads.Delete(p.id)
+    ga.appScene.removeChild(p)
+    ' bitmapWidth/Height come back scaled from the device's UI resolution to the
+    ' channel's 1080p design space; report the image's own pixels, as a browser does.
+    scale = CreateObject("roDeviceInfo").GetUIResolution().height / 1080.0
+    RtInvoke(entry.loaded, [p.bitmapWidth * scale, p.bitmapHeight * scale])
+end sub
+
+sub uiSetTranslation(node as object, x as float, y as float)
+    if node <> invalid then node.translation = [x, y]
+end sub

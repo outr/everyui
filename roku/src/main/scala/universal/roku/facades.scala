@@ -63,3 +63,37 @@ class SGNode
   def apply(x: Double): Double = native.value
 @native object uiCos:
   def apply(x: Double): Double = native.value
+/** `"#rrggbb"` onto a Label's color. */
+@native object uiSetColor:
+  def apply(node: SGNode, hex: String): Unit = native.value
+/** A bundled face (`pkg:/fonts/`) by family and CSS weight; size in pixels. */
+@native object uiSetFont:
+  def apply(node: SGNode, family: String, weight: Int, size: Double): Unit = native.value
+/** The node's laid-out bounding box. */
+@native object uiGetWidth:
+  def apply(node: SGNode): Double = native.value
+@native object uiGetHeight:
+  def apply(node: SGNode): Double = native.value
+/** A Material Icons glyph, by codepoint, as a Label. */
+@native object uiIcon:
+  def apply(glyph: String, size: Double): SGNode = native.value
+/** A transparent `Rectangle`: a group that can also paint a background. */
+@native object uiContainer:
+  def apply(): SGNode = native.value
+@native object uiSetWidth:
+  def apply(node: SGNode, width: Double): Unit = native.value
+@native object uiSetHeight:
+  def apply(node: SGNode, height: Double): Unit = native.value
+/** `"#rrggbb"`, or `""` for transparent. */
+@native object uiSetBackgroundColor:
+  def apply(node: SGNode, hex: String): Unit = native.value
+@native object uiSetImageSource:
+  def apply(node: SGNode, uri: String): Unit = native.value
+@native object uiRemove:
+  def apply(node: SGNode): Unit = native.value
+/** Load `uri` and report its natural size once SceneGraph has it. */
+@native object uiLoadImage:
+  def apply(uri: String, loaded: (Double, Double) => Unit): Unit = native.value
+/** Both coordinates at once. */
+@native object uiSetTranslation:
+  def apply(node: SGNode, x: Double, y: Double): Unit = native.value
