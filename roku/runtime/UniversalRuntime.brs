@@ -81,15 +81,17 @@ function uiImage(uri as string, width as float, height as float) as object
     return n
 end function
 
+' The seam's rotation is clockwise, as CSS rotate() is. SceneGraph's is
+' counter-clockwise, so the sign flips here.
 function uiGetRotation(node as object) as float
     if node = invalid then return 0.0
     r = node.rotation
     if r = invalid then return 0.0
-    return r
+    return -r
 end function
 
 sub uiSetRotation(node as object, radians as float)
-    if node <> invalid then node.rotation = radians
+    if node <> invalid then node.rotation = -radians
 end sub
 
 sub uiSetFontSize(node as object, size as float)
@@ -236,11 +238,32 @@ function uiGetHeight(node as object) as float
     return node.boundingRect().height
 end function
 
-function uiIcon(glyph as string, size as float) as object
-    n = uiText()
-    uiSetFont(n, "Material Icons", 400, size)
-    n.text = glyph
-    return n
+' How wide a Label's text is at exactly `size` pixels. A Font's size is whole
+' pixels and small text is rasterised at the panel's resolution, so the Label's
+' own bounding rect is a few pixels off the same text in a browser. Measured at
+' four times the size, where that rounding is negligible, and scaled back. One
+' probe Label and one Font per face and size are reused, so measuring creates
+' no nodes.
+function uiTextWidth(node as object, uri as string, size as float) as float
+    if node = invalid then return 0.0
+    ga = GetGlobalAA()
+    if ga.uiMeasureLabel = invalid
+        ga.uiMeasureLabel = CreateObject("roSGNode", "Label")
+        ga.uiMeasureFonts = {}
+    end if
+    big = Int(size * 4.0 + 0.5)
+    key = uri + "@" + big.ToStr()
+    f = ga.uiMeasureFonts[key]
+    if f = invalid
+        f = CreateObject("roSGNode", "Font")
+        f.uri = uri
+        f.size = big
+        ga.uiMeasureFonts[key] = f
+    end if
+    probe = ga.uiMeasureLabel
+    probe.font = f
+    probe.text = node.text
+    return probe.boundingRect().width * size / big
 end function
 
 ' A container: a Rectangle is a Group that can also paint a background.
@@ -323,3 +346,11 @@ end sub
 sub uiSetTranslation(node as object, x as float, y as float)
     if node <> invalid then node.translation = [x, y]
 end sub
+
+' tools/check.sh adds pkg:/freeze.txt to a test sideload: how many seconds of
+' animation to step before freezing the frame. -1 (run live) when absent.
+function uiFreezeSeconds() as float
+    text = ReadAsciiFile("pkg:/freeze.txt")
+    if text = "" then return -1.0
+    return Val(text)
+end function

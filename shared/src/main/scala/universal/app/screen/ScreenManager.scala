@@ -13,9 +13,11 @@ trait ScreenManager extends TaskSupport:
 
   protected def load(): Task[Unit] = Task.unit
 
-  /** When zero or more, step that many seconds on a virtual 60 Hz clock once the screen is up, then stop — so a
-    * frame can be compared with youi's position for position. Negative runs live. */
-  protected def freezeSeconds: Double = -1.0
+  /** When zero or more, step that many seconds on a virtual 60 Hz clock once the screen is up, log the component
+    * tree, then stop — so a frame can be compared position for position (tools/check.sh). Negative runs live. The
+    * platform supplies it: `?freeze=<seconds>` in the page URL, `pkg:/freeze.txt` in a Roku sideload, `--es freeze`
+    * on the Android launch intent, `--freeze=` on the desktop. */
+  protected def freezeSeconds: Double = Platform.freezeSeconds()
 
   def run(screen: Screen): Unit =
     load()
@@ -42,6 +44,7 @@ trait ScreenManager extends TaskSupport:
       update(step)
     scribe.info("frozen at " + freezeSeconds.toString + "s")
     dump(ui, "")
+    Platform.frozen()
 
   /** Log the component tree with each node's position and size, for comparing a frame across backends. */
   def dump(component: Component, indent: String): Unit =

@@ -1,5 +1,6 @@
 package universal.render
 
+import universal.font.Faces
 import universal.roku.*
 
 /** **The one invention.** The abstract render node, Roku edition: a SceneGraph
@@ -21,6 +22,10 @@ class RenderNode(val sg: SGNode):
   // `translation` in one step rather than reading the field back on every write.
   private var left: Double = uiGetX(sg)
   private var top: Double = uiGetY(sg)
+  // A text node's face and size, once set: its box comes from them rather than from SceneGraph's bounding rect.
+  private var fontUri: String = ""
+  private var fontSize: Double = 0.0
+  private var lineHeight: Double = 0.0
 
   def getText(): String = uiGetText(sg)
   def setText(text: String): Unit = uiSetText(sg, text)
@@ -47,11 +52,19 @@ class RenderNode(val sg: SGNode):
 
   /** A bundled face (`assets/fonts/`, copied to `pkg:/fonts/`): family, CSS
     * weight, size in pixels. */
-  def setFont(family: String, weight: Int, size: Double): Unit = uiSetFont(sg, family, weight, size)
+  def setFont(family: String, weight: Int, size: Double): Unit =
+    uiSetFont(sg, family, weight, size)
+    if family.nonEmpty then
+      val face = Faces(family, weight)
+      fontUri = "pkg:/fonts/" + face.file
+      fontSize = size
+      lineHeight = face.lineHeight(size)
 
-  /** The laid-out size in pixels (SceneGraph's bounding rect). */
-  def getWidth(): Double = uiGetWidth(sg)
-  def getHeight(): Double = uiGetHeight(sg)
+  /** The laid-out size in pixels. Text is as wide as its face makes it at exactly its size (a `Label` draws at whole
+    * pixel sizes, so its own bounding rect is a few pixels off) and one shared line (universal.font.Face) tall;
+    * anything else is SceneGraph's bounding rect. */
+  def getWidth(): Double = if fontSize > 0.0 then uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
+  def getHeight(): Double = if lineHeight > 0.0 then lineHeight else uiGetHeight(sg)
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
 
@@ -82,7 +95,11 @@ object Nodes:
   def container(): RenderNode = new RenderNode(uiContainer())
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
-  def icon(glyph: String, size: Double): RenderNode = new RenderNode(uiIcon(glyph, size))
+  def icon(glyph: String, size: Double): RenderNode =
+    val node = new RenderNode(uiText())
+    node.setFont("Material Icons", 400, size)
+    node.setText(glyph)
+    node
   /** An image node — a SceneGraph `Poster` loading from `pkg:/`. */
   def image(uri: String, width: Double, height: Double): RenderNode =
     new RenderNode(uiImage(uri, width, height))
@@ -109,6 +126,13 @@ object Platform:
 
   def screenWidth(): Double = uiScreenWidth()
   def screenHeight(): Double = uiScreenHeight()
+
+  /** `pkg:/freeze.txt` in the channel (added by tools/check.sh to a test sideload): step the animation that far on
+    * a virtual clock and stop. Negative when absent. */
+  def freezeSeconds(): Double = uiFreezeSeconds()
+
+  /** The frozen frame is complete. (tools/check.sh reads it off the debug console.) */
+  def frozen(): Unit = ()
 
   /** A channel's design resolution never changes. */
   def onResize(f: () => Unit): Unit = ()

@@ -74,9 +74,9 @@ class SGNode
   def apply(node: SGNode): Double = native.value
 @native object uiGetHeight:
   def apply(node: SGNode): Double = native.value
-/** A Material Icons glyph, by codepoint, as a Label. */
-@native object uiIcon:
-  def apply(glyph: String, size: Double): SGNode = native.value
+/** A Label's text width at exactly `size` pixels of the face at `uri`. */
+@native object uiTextWidth:
+  def apply(node: SGNode, uri: String, size: Double): Double = native.value
 /** A transparent `Rectangle`: a group that can also paint a background. */
 @native object uiContainer:
   def apply(): SGNode = native.value
@@ -97,3 +97,6 @@ class SGNode
 /** Both coordinates at once. */
 @native object uiSetTranslation:
   def apply(node: SGNode, x: Double, y: Double): Unit = native.value
+/** Seconds from `pkg:/freeze.txt`, or -1. */
+@native object uiFreezeSeconds:
+  def apply(): Double = native.value

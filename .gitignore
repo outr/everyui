@@ -9,6 +9,9 @@ project/project/
 # emitted channels and bundles (regenerate with emitRoku / scala-cli)
 out-roku/
 out-js/
+out-apk/
+desktop/out/
+webcheck/out/
 
 # IDE
 .idea/

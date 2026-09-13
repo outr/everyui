@@ -88,7 +88,7 @@ lazy val reactiveTest = (project in file("reactive-test"))
     emitRoku := emitRokuTask("out-roku", "ReactifyTest", reactiveLibrary).value
   )
 
-// ─── the render-node seam: one shared UI layer, two backends ────────────────
+// ─── the render-node seam: one shared UI layer, a backend per platform ──────
 //
 // `shared/` is the portable UI layer (Prop, Component, Label, animation) plus
 // the apps. It names `universal.render.RenderNode` but never a DOM or
@@ -164,6 +164,172 @@ lazy val server = (project in file("server"))
     run / connectInput := true
   )
 
+// --- desktop: the JavaFX backend ---------------------------------------------
+// JavaFX's retained scene graph (Pane, Text, ImageView) on the JVM — DESIGN.md's
+// near-term desktop path, to ship later as a GraalVM native image.
+//
+//   sbt desktop/run                 a 1920x1080 window
+//   tools/check.sh                  freezes a frame under Xvfb and compares it
+lazy val javafxVersion = "21"
+lazy val javafxPlatform = {
+  val os = sys.props("os.name").toLowerCase
+  if (os.contains("mac")) "mac" else if (os.contains("win")) "win" else "linux"
+}
+@transient val desktopClasspath = taskKey[File]("Compile the desktop backend and write its runtime classpath to desktop/out/classpath.txt")
+
+lazy val desktop = (project in file("desktop"))
+  .dependsOn(reactive)
+  .settings(
+    name := "universal-desktop",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories += sharedSources,
+    libraryDependencies ++= Seq("base", "graphics").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
+    Compile / mainClass := Some("universal.desktop.DesktopApp"),
+    Compile / run / fork := true,
+    run / baseDirectory := (ThisBuild / baseDirectory).value,
+    desktopClasspath := {
+      val conv = fileConverter.value
+      val cp = (Runtime / fullClasspath).value.map(e => conv.toPath(e.data).toAbsolutePath.toString)
+      val out = baseDirectory.value / "out" / "classpath.txt"
+      IO.write(out, cp.mkString(java.io.File.pathSeparator))
+      out
+    }
+  )
+
+// --- android: the Android Views backend --------------------------------------
+// Native Views (TextView, ImageView, a ViewGroup that positions absolutely) for
+// Android phones and Android TV. No Gradle: the SDK's own tools package it —
+// d8 (the program and the Scala library to dex), aapt2 (manifest and assets),
+// zipalign, apksigner (the debug key).
+//
+//   sbt android/packageApk          android/out-apk/universal-ui.apk
+//   tools/check.sh --android        runs it on an emulator and compares a frame
+lazy val androidSdk = file(sys.env.getOrElse("ANDROID_HOME", sys.props("user.home") + "/opt/android-sdk"))
+lazy val androidPlatform = "android-35"
+lazy val androidBuildTools = "36.0.0"
+lazy val androidMinSdk = "30"
+lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
+@transient val packageApk = taskKey[File]("Compile the Android backend and package it as a debug-signed APK in android/out-apk/")
+
+lazy val android = (project in file("android"))
+  .dependsOn(reactive)
+  .settings(
+    name := "universal-android",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories += sharedSources,
+    Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
+    Compile / scalacOptions ++= Seq("-release", "17"),
+    packageApk := {
+      val log = streams.value.log
+      val conv = fileConverter.value
+      val buildRoot = (ThisBuild / baseDirectory).value
+      val tools = androidSdk / "build-tools" / androidBuildTools
+      val work = target.value / "apk"
+      IO.delete(work)
+      IO.createDirectory(work)
+      def exec(cmd: Seq[String]): Unit = {
+        val rc = sys.process.Process(cmd).!
+        if (rc != 0) sys.error(s"packageApk: ${cmd.head} exited $rc")
+      }
+
+      // The program: this project, reactify and the Scala library — the classpath without android.jar. d8 reads jars,
+      // so class directories are zipped first.
+      val inputs = (Compile / fullClasspath).value
+        .map(e => conv.toPath(e.data).toFile)
+        .filterNot(_ == androidJar)
+        .zipWithIndex
+        .map { case (f, i) =>
+          if (f.isDirectory) {
+            val jar = work / "classes" / s"$i.jar"
+            IO.zip(Path.allSubpaths(f).filterNot(_._1.isDirectory), jar, None)
+            jar
+          } else f
+        }
+      val dex = work / "dex"
+      IO.createDirectory(dex)
+      log.info(s"packageApk: dexing ${inputs.size} inputs")
+      exec(Seq((tools / "d8").toString, "--release", "--min-api", androidMinSdk, "--lib", androidJar.toString,
+        "--output", dex.toString) ++ inputs.map(_.toString))
+
+      // Shared assets, the same files the other backends load.
+      val assets = work / "assets"
+      IO.copyDirectory(buildRoot / "assets" / "images", assets / "images")
+      (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
+      val linked = work / "linked.apk"
+      exec(Seq((tools / "aapt2").toString, "link", "-o", linked.toString,
+        "--manifest", (baseDirectory.value / "AndroidManifest.xml").toString, "-I", androidJar.toString,
+        "-A", assets.toString, "--min-sdk-version", androidMinSdk, "--target-sdk-version", "35",
+        "--version-code", "1", "--version-name", version.value))
+
+      // aapt2 cannot add dex files: copy its APK entry for entry (stored entries stay stored) and add them.
+      val withDex = work / "with-dex.apk"
+      val in = new java.util.zip.ZipFile(linked)
+      val out = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(withDex))
+      try {
+        val entries = in.entries()
+        while (entries.hasMoreElements) {
+          val e = entries.nextElement()
+          val copy = new java.util.zip.ZipEntry(e.getName)
+          copy.setMethod(e.getMethod)
+          if (e.getMethod == java.util.zip.ZipEntry.STORED) {
+            copy.setSize(e.getSize)
+            copy.setCompressedSize(e.getSize)
+            copy.setCrc(e.getCrc)
+          }
+          out.putNextEntry(copy)
+          out.write(in.getInputStream(e).readAllBytes())
+          out.closeEntry()
+        }
+        (dex * "*.dex").get().sortBy(_.getName).foreach { d =>
+          out.putNextEntry(new java.util.zip.ZipEntry(d.getName))
+          out.write(IO.readBytes(d))
+          out.closeEntry()
+        }
+      } finally {
+        in.close()
+        out.close()
+      }
+
+      val aligned = work / "aligned.apk"
+      exec(Seq((tools / "zipalign").toString, "-f", "-p", "4", withDex.toString, aligned.toString))
+      val keystore = file(sys.props("user.home")) / ".android" / "debug.keystore"
+      if (!keystore.exists) sys.error(s"packageApk: no debug keystore at $keystore")
+      val apk = baseDirectory.value / "out-apk" / "universal-ui.apk"
+      IO.createDirectory(apk.getParentFile)
+      exec(Seq((tools / "apksigner").toString, "sign", "--ks", keystore.toString, "--ks-pass", "pass:android",
+        "--key-pass", "pass:android", "--ks-key-alias", "androiddebugkey", "--out", apk.toString, aligned.toString))
+      log.info(s"packageApk: $apk")
+      apk
+    }
+  )
+
+// --- webcheck: the web build in a real browser ---------------------------------
+// Headless Chrome throttles requestAnimationFrame, so it cannot measure the web
+// backend's frame rate. RoboBrowser (outr's CDP library, from ~/.ivy2/local)
+// runs a HEADFUL Chrome on its own Xvfb display at 1920x1080 — rAF at the
+// display's 60 Hz — and relays the page's console. Not part of the app: a tool.
+//
+//   tools/check.sh --web-live       runs the web build live and checks its frame rate
+@transient val webcheckClasspath = taskKey[File]("Compile the web checker and write its runtime classpath to webcheck/out/classpath.txt")
+
+lazy val webcheck = (project in file("webcheck"))
+  .settings(
+    name := "universal-webcheck",
+    publish / skip := true,
+    libraryDependencies ++= Seq(
+      "com.outr" %% "robobrowser-cdp" % "2.4.7-SNAPSHOT",
+      // spice's HTTP client is pluggable; RoboBrowser talks to Chrome's debug endpoint through it
+      "com.outr" %% "spice-client-netty" % spiceVersion
+    ),
+    webcheckClasspath := {
+      val conv = fileConverter.value
+      val cp = (Runtime / fullClasspath).value.map(e => conv.toPath(e.data).toAbsolutePath.toString)
+      val out = baseDirectory.value / "out" / "classpath.txt"
+      IO.write(out, cp.mkString(java.io.File.pathSeparator))
+      out
+    }
+  )
+
 lazy val root = (project in file("."))
-  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, server)
+  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, desktop, android, webcheck, server)
   .settings(name := "universal-ui", publish / skip := true)

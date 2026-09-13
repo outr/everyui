@@ -1,0 +1,41 @@
+tree Container x=0 y=0 w=1920 h=1080 rot=0
+tree   Container x=0 y=0 w=1920 h=75 rot=0
+tree     ImageView x=0 y=0 w=1920 h=75 rot=0
+tree     ImageView x=10 y=5 w=169.87627986348122 h=65 rot=0
+tree     Component x=1871 y=25.5 w=24 h=24 rot=0
+tree     TextView(Animation Example) x=1610.171875 y=12 w=250.828125 h=36 rot=0
+tree     TextView(View Source) x=1751.796875 y=38 w=109.203125 h=25 rot=0
+tree   Container x=0 y=75 w=1920 h=1005 rot=0
+tree     Container x=0 y=0 w=1920 h=1005 rot=0
+tree       TextView(BackIn Example) x=31.831394225896645 y=0 w=176.28125 h=33 rot=0
+tree       TextView(BackInOut Example) x=2.4311640854729433 y=25 w=218.21875 h=33 rot=0
+tree       TextView(BackOut Example) x=636.98426838307 y=50 w=196.796875 h=33 rot=0
+tree       TextView(BounceIn Example) x=54.34890662937494 y=75 w=207.6875 h=33 rot=0
+tree       TextView(BounceInOut Example) x=98.67317638250006 y=100 w=249.625 h=33 rot=0
+tree       TextView(BounceOut Example) x=140.69690888671875 y=125 w=228.203125 h=33 rot=0
+tree       TextView(CircularIn Example) x=56.07753288255765 y=150 w=209.734375 h=33 rot=0
+tree       TextView(CircularInOut Example) x=61.90655357787733 y=175 w=251.671875 h=33 rot=0
+tree       TextView(CircularOut Example) x=697.8416750687701 y=200 w=230.25 h=33 rot=0
+tree       TextView(CubicIn Example) x=51.068978596182006 y=225 w=185.40625 h=33 rot=0
+tree       TextView(CubicInOut Example) x=54.166210576360015 y=250 w=227.34375 h=33 rot=0
+tree       TextView(CubicOut Example) x=434.87894978371287 y=275 w=205.921875 h=33 rot=0
+tree       TextView(ElasticIn Example) x=52.78873023984431 y=300 w=193.609375 h=33 rot=0
+tree       TextView(ElasticInOut Example) x=51.33194739105625 y=325 w=235.546875 h=33 rot=0
+tree       TextView(ElasticOut Example) x=1871.1176594400963 y=350 w=214.125 h=33 rot=0
+tree       TextView(ExponentialIn Example) x=52.78888345806024 y=375 w=255.28125 h=33 rot=0
+tree       TextView(ExponentialInOut Example) x=52.47682681513908 y=400 w=297.21875 h=33 rot=0
+tree       TextView(ExponentialOut Example) x=748.1251479198527 y=425 w=275.796875 h=33 rot=0
+tree       TextView(Linear Example) x=193.05996249999998 y=450 w=171.84375 h=33 rot=0
+tree       TextView(QuadraticIn Example) x=61.94930463999998 y=475 w=234 h=33 rot=0
+tree       TextView(QuadraticInOut Example) x=73.2666749 y=500 w=275.9375 h=33 rot=0
+tree       TextView(QuadraticOut Example) x=309.9733525025 y=525 w=254.515625 h=33 rot=0
+tree       TextView(QuarticIn Example) x=50.091620116516594 y=550 w=205.96875 h=33 rot=0
+tree       TextView(QuarticInOut Example) x=50.71390925540345 y=575 w=247.921875 h=33 rot=0
+tree       TextView(QuarticOut Example) x=535.3062944271841 y=600 w=226.5 h=33 rot=0
+tree       TextView(QuinticIn Example) x=50.007964251184234 y=625 w=203.609375 h=33 rot=0
+tree       TextView(QuinticInOut Example) x=50.12412187966322 y=650 w=245.546875 h=33 rot=0
+tree       TextView(QuinticOut Example) x=632.3641893270502 y=675 w=224.125 h=33 rot=0
+tree       TextView(SineIn Example) x=65.30603855639379 y=700 w=170.75 h=33 rot=0
+tree       TextView(SineInOut Example) x=79.69522908642489 y=725 w=212.6875 h=33 rot=0
+tree       TextView(SineOut Example) x=271.38257841688016 y=750 w=191.265625 h=33 rot=0
+tree       ImageView x=98.0016268 y=402.5 w=200 h=200 rot=0.1202

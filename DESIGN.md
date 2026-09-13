@@ -67,7 +67,7 @@ render backend.
 | Drawn (apps ARE a rendered surface) | desktop, iOS, macOS, Win, Linux | **Skia** (via Scala Native) |
 | Retained-semantic | web | **DOM** (Scala.js) |
 | TV retained | Roku | **SceneGraph** |
-| Android / ATV | — | **Views** (or could join the Skia tier — OPEN) |
+| Android / ATV | phones, Android TV | **Views** (chosen 2026-09-12; see "AnimationExample on every platform") |
 
 **Skia is explicitly REJECTED for web** (= Flutter Web / CanvasKit): it buys
 pixel-consistency but loses the browser's native form semantics — 1Password /
@@ -310,7 +310,8 @@ precision, Scala.js doubles are not. The one genuine difference is the icon's
 image is ~130 bound properties changing per frame, right at the budget the
 FrameProbe sweep measured. (A headless browser under virtual time cannot be
 asked for a frame rate; rAF is throttled there, so the web figure in that mode
-is an artifact, not a measurement.)
+is an artifact, not a measurement. `tools/check.sh --live` measures it in a
+real browser instead — see "AnimationExample on every platform".)
 
 ## Web payload — the "one lean UI" claim, measured
 
@@ -831,18 +832,121 @@ the earlier verified frame (no zero widths), web rows within 2px of youi's captu
 (the four icon-covered rows aside, as before). **Lesson:** a frame-rate change needs
 the frozen-frame position check, not only "runs without errors".
 
+## One-command checks — `tools/check.sh` (2026-09-12)
+
+The width regression above was caught by eye. Everything that verified it is now
+one command that prints PASS/FAIL per check, exits non-zero on any failure, and
+keeps every log in `target/check/`:
+
+| check | offline | `--device` |
+|---|---|---|
+| one sbt run: `reactiveTest/run` + all three `emitRoku`s | ✓ | ✓ |
+| reactify on the JVM identical to `reactive-test/expected-output.txt` (65 lines) | ✓ | ✓ |
+| `tools/emit-gaps.py`: TOTAL GAPS 0 on reactive, reactive-test, roku | ✓ | ✓ |
+| brighterscript: 0 errors on all three (BS1054/BS1104 excluded) | ✓ | ✓ |
+| web bundle builds (scala-cli) | ✓ | ✓ |
+| the shared font table (`universal.font.Faces`) matches `assets/fonts` | ✓ | ✓ |
+| web: AnimationExample frozen at 0.434s in headless Chrome over `file://`, every component vs `tools/golden/animation-tree.txt` (±1px) | ✓ | ✓ |
+| desktop: the same frame in JavaFX under Xvfb, vs the same golden | ✓ | ✓ |
+| web (`--live`): 60s live in a headful Chrome on a virtual 1920x1080 display (RoboBrowser), median ≥ 59.5 fps and minimum ≥ 58.5 | | |
+| Android (`--android`): the APK builds; the same frame on an emulator, vs the same golden | | |
+| Roku: `tools/roku-acceptance.sh` | | ✓ |
+| Roku: the same frozen frame vs the same golden | | ✓ |
+| Roku: 60s live, median ≥ 59.5 fps and minimum ≥ 58.5 | | ✓ |
+
+About 10s offline and 2.5 min with the device. `--update` rewrites the frame
+goldens after an intended change; review the diff before committing it.
+
+- **The freeze is now a runtime switch, not a code edit.** `ScreenManager.freezeSeconds`
+  comes from `Platform.freezeSeconds()`: `?freeze=<seconds>` in the page URL on
+  the web, `pkg:/freeze.txt` in the channel on Roku. The check adds that file to
+  a test sideload, so the channel built for real use never freezes.
+- **One golden for every backend** (since "AnimationExample on every platform"):
+  identical geometry on every platform is what is checked, not each backend
+  against its own past.
+- **Proven to catch the regression:** with `SizeFeature`'s measured size made
+  lazy again, the web frame check fails (text `w=0`, x positions off by up to
+  94px). Two device runs gave identical Roku frames (0px) and 59.9 fps.
+- Not a check: YouiBench's per-layer cost. The live frame-rate floor covers what
+  it guarded, on the real workload.
+
+## AnimationExample on every platform — one geometry (2026-09-12)
+
+youi's AnimationExample runs unchanged on four backends, and they produce the
+same frame: `tools/check.sh` compares each backend's frozen frame (0.434s) with
+ONE golden, `tools/golden/animation-tree.txt` — every component's position,
+size and rotation within 1px. "Identical" means that geometry, with the same
+fonts and images; each platform still rasterises its own text.
+
+| backend | tier | nodes | vs the golden | live |
+|---|---|---|---|---|
+| web | DOM (Scala.js) | `div`, `img` | 0 px (writes the golden) | 60.0 fps (headful Chrome on Xvfb, via RoboBrowser) |
+| desktop | JavaFX 21 (JVM) | `Pane`, `Text`, `ImageView` | 0.096 px | 62 fps (Xvfb) |
+| Android TV | Views (JVM → dex) | `NodeGroup`, `TextView`, `ImageView` | 0.043 px on the **Google TV Streamer** (API 34, real hardware) and on the Pixel 7 emulator | **60.0 fps on the Streamer** — 59 one-second samples, every one ≥ 59.98 after start-up; 60.0 on the emulator |
+| Roku | SceneGraph | `Rectangle`, `Label`, `Poster` | **not yet re-measured** — the device was switched off | 59.9 fps before these changes |
+
+The pixels agree too, not only the boxes: over the 1080x1080 area all three
+screenshots share, fewer than 0.6% of pixels differ by more than 25% (glyph
+anti-aliasing), and a row's text ink spans the same pixel rows on web, desktop
+and Android (83–106 for "BackIn Example").
+
+### What made the geometry identical
+
+- **One line box for text — `shared/.../font/Faces.scala`.** Every platform's
+  line height differs (at 24px Open Sans: Chrome 33, a Roku `Label` 37). Every
+  backend now takes a text box's height from the bundled font's own metrics,
+  `round((ascender + descender) × size / unitsPerEm)`, and puts the baseline in
+  it from the same numbers; the web sets it as `line-height`. `tools/check.sh`
+  fails if the table drifts from `assets/fonts`.
+- **Widths stay native, measured exactly.** Chrome, JavaFX and Android shape
+  Open Sans within 0.1px of each other. Two traps: Android's
+  `Paint.measureText` rounds UP to a whole pixel (every width was the ceiling of
+  the browser's) — `getRunAdvance` is exact; a Roku `Label` draws at whole-pixel
+  font sizes, so its bounding rect is a few pixels off — `uiTextWidth` measures
+  at 4× the size and scales back, reusing one probe `Label`.
+- **Roku rotation was mirrored.** SceneGraph's `rotation` is counter-clockwise,
+  CSS's clockwise, so the logo spun the wrong way on the Roku. The tree check
+  could not see it (it logs the model's value); a screenshot did.
+  `uiSetRotation` flips the sign.
+- **The same viewport everywhere.** Headless Chrome lays out in its window minus
+  87px of UI but screenshots at the full window, re-laying out first — so the web
+  frame is logged from a 1920x1167 window and photographed from a 1920x1080 one.
+  Android launches with `--es viewport 1920x1080`, so the phone emulator lays out
+  the TV frame (and shows its top-left).
+
+### The two new backends
+
+- **`desktop/`** — JavaFX 21 (base + graphics) on the JVM, DESIGN's near-term
+  desktop path (a GraalVM native image later). A `Pane` never moves its
+  children, so nodes are placed absolutely; a `Text` is placed by its baseline.
+  `sbt desktop/run` opens a 1920x1080 window.
+- **`android/`** — native Views: `NodeGroup` (a `ViewGroup` that measures each
+  child at its own size and lays it out at the origin; its translation places
+  it), single-line `TextView` (no font padding, baseline moved onto the shared
+  line box), `ImageView`. No Gradle: `sbt android/packageApk` runs d8 over the
+  program, reactify and the Scala 3.8 library (5.6 MB of dex in 3s), aapt2 for
+  the manifest and assets, zipalign, and apksigner with the debug key. minSdk 30,
+  target 35, a LEANBACK launcher entry so it runs on Android TV — verified on the
+  Google TV Streamer (2026-09-13): the app is listed by the TV launcher, the
+  frozen frame matches the golden, and it holds 60 fps live at the Streamer's
+  1920x1080 UI size (a 3840x2160 panel with a 1080p override).
+- `Platform.frozen()` joined the seam: the desktop saves its screenshot and exits
+  there; the other backends do nothing.
+
 ## IMMEDIATE NEXT STEP
 
-**1. Make the Roku compiler and the example regression-proof.** The acceptance
-suite, the gap meter (`tools/emit-gaps.py`), brighterscript, the AnimationExample
-frozen-frame tree dump (positions and widths) and the YouiBench frame cost should
-become checks that run in one command — the width regression above was caught by
-eye, not by a check.
+**1. Verify the Roku against the shared golden.** The Roku changes — rotation
+sign, `uiTextWidth`, the shared line height, the icon built through `setFont` —
+compile with 0 gaps and 0 brighterscript errors, but have not run on the device
+(it was switched off). `ROKU_PASS=… tools/check.sh --device`, then check a
+screenshot: the `Label` still places glyphs by its own vertical metrics inside
+the shared box, and the frame rate must still hold 59.9.
 
 **2. Commit the reactify performance work** (pass, `_references` fix, fire and
 dependency-comparison changes) in the reactify repo, once confirmed there.
 
-**3. Port more of youi's widget layer** onto the model in `shared/`.
+**3. Port more of youi's widget layer** onto the model in `shared/`, starting with
+focus handling. Run `tools/check.sh --android --device` before each commit.
 
 ## Build / ops notes
 
@@ -866,9 +970,33 @@ dependency-comparison changes) in the reactify repo, once confirmed there.
 - `shared/app/Main.scala` picks the demo: `"animation"` (youi's example app
   running youi's AnimationExample), `"hello"` (the seam proof + FrameProbe),
   `"bench"` (ReactifyBench), `"easings"` (the numeric curve dump).
-- Comparing a frame across backends: override `freezeSeconds` in
-  `ExampleApp` (e.g. `0.434`) to step a virtual 60 Hz clock and stop; the
-  `ScreenManager` then logs `tree …` lines (every component's position and size).
+- **Run every check:** `tools/check.sh` (offline: JVM, Roku emit, web, desktop),
+  `--android` (adds an emulator), `ROKU_PASS=<password> tools/check.sh --device`
+  (adds the Roku), `--update` to rewrite the golden from the web's frame.
+- Desktop: `sbt desktop/run` (a window; `--freeze=0.434 --screenshot=out.png`
+  as arguments to capture a frame). Android: `sbt android/packageApk` →
+  `android/out-apk/universal-ui.apk`; SDK from `ANDROID_HOME` (default
+  `~/opt/android-sdk`), build-tools 36.0.0, platform android-35. Test on an
+  emulator; the only physical Android device to use is the Google TV Streamer
+  (`ANDROID_SERIAL=192.168.1.73:5555 tools/check.sh --android`). Google TV turns
+  network ADB off after a reboot or update — if `adb connect` is refused, it has
+  to be re-enabled on the TV (Settings → System → Developer options).
+  Helpers (sideload, console capture, tree extract/compare, fps) are in
+  `tools/checks.py`.
+- **The web's live frame rate:** `tools/check.sh --live`. `webcheck/` (a tool
+  project, not the app) uses RoboBrowser (`com.outr::robobrowser-cdp`
+  2.4.7-SNAPSHOT from `~/.ivy2/local`, plus `spice-client-netty` — spice's HTTP
+  client needs an implementation) to run a HEADFUL Chrome kiosk-fullscreen on
+  its own Xvfb display, where rAF follows the display's 60 Hz, and relays the
+  page's console; `tools/checks.py fps` reads the `[ui] fps=` lines as it does
+  the Roku's. First run: 27 samples, median 60.0, minimum 59.9. (The kiosk
+  window reports a 1919x1079 viewport — immaterial to a frame rate, which is
+  why the frame check stays on headless Chrome.)
+- Freezing a frame by hand: `--freeze=0.434` on the desktop, `am start … --es
+  freeze 0.434` on Android, `?freeze=0.434` on the web build, or add
+  `freeze.txt` containing `0.434` to the Roku channel (`python3 tools/checks.py
+  roku-install roku/out-roku --add freeze.txt=0.434`). It steps a virtual 60 Hz
+  clock, stops, and logs `tree …` lines (every component's position and size).
 - Shared assets live in `assets/images/` and `assets/fonts/`; `emitRoku` copies
   them into the channel (`pkg:/images/`, `pkg:/fonts/`), and the web bundle serves
   the same files from `web/out-js/` (copy `assets/images` and `assets/fonts` next
@@ -897,7 +1025,11 @@ dependency-comparison changes) in the reactify repo, once confirmed there.
 
 ## Open questions
 
-- **Android/ATV:** Views (true native widgets) vs Skia (join the drawn tier)?
+- ~~Android/ATV: Views vs Skia~~ — **Views**, decided 2026-09-12.
+- **Units on Android:** screen pixels today, so a 1920x1080 Android TV lays out
+  exactly as the Roku does (TV-first). A phone, or a 4K panel without a 1080p
+  override, will want density or design-resolution scaling — decide with the
+  widget layer.
 - **iOS/tvOS path:** Scala Native → UIKit vs Kotlin interop vs bytecode routes.
 - **Naming** (.com/.org available; retire "youi"/"Sart").
 - **Skia-on-Scala-Native** de-risk before committing desktop + mobile to it.

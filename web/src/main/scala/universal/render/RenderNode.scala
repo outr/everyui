@@ -2,13 +2,14 @@ package universal.render
 
 import org.scalajs.dom
 import org.scalajs.dom.html
+import universal.font.Faces
 
 import scala.scalajs.js
 
 /** **The one invention.** The abstract render node, DOM edition.
   *
-  * Signature-for-signature the same as its Roku twin
-  * (`roku/.../universal/render/RenderNode.scala`) — that parallel IS the seam.
+  * Signature-for-signature the same as its Roku, Android and JavaFX twins
+  * (`roku/`, `android/`, `desktop/` …/universal/render/RenderNode.scala) — that parallel IS the seam.
   * The shared `Component`/`Label` name only this type, and each backend's
   * source root supplies it at compile time.
   *
@@ -42,11 +43,14 @@ class RenderNode(val el: html.Element):
   def setColor(hex: String): Unit = el.style.color = hex
 
   /** A bundled face (index.html's `@font-face` rules): family, CSS weight,
-    * size in pixels. */
+    * size in pixels. The line box is the shared one (universal.font.Face), not
+    * the browser's `line-height: normal`, so text is the same height on every
+    * backend. */
   def setFont(family: String, weight: Int, size: Double): Unit =
     if family.nonEmpty then el.style.fontFamily = "'" + family + "'"
     el.style.fontWeight = weight.toString
     el.style.fontSize = size.toString + "px"
+    el.style.lineHeight = Faces(family, weight).lineHeight(size).toString + "px"
 
   /** The laid-out size in pixels (text is measured with its real font). */
   def getWidth(): Double = el.getBoundingClientRect().width
@@ -121,11 +125,11 @@ object Nodes:
     new RenderNode(el)
 
   /** A Material Icons glyph, by codepoint, `size` pixels — youi's
-    * `<i class="material-icons">` (line-height 1, so the box is the glyph). */
+    * `<i class="material-icons">`. The face's ascent is its whole em, so the
+    * line box is the glyph's `size` square, as youi's `line-height: 1` has it. */
   def icon(glyph: String, size: Double): RenderNode =
     val node = text()
     node.setFont("Material Icons", 400, size)
-    node.el.style.lineHeight = "1"
     node.setText(glyph)
     node
 
@@ -153,6 +157,15 @@ object Platform:
   // content, so no scrollbar ever takes space out of it.
   def screenWidth(): Double = dom.window.innerWidth.toDouble
   def screenHeight(): Double = dom.window.innerHeight.toDouble
+
+  /** `?freeze=<seconds>` in the page URL: step the animation that far on a virtual clock and stop (tools/check.sh).
+    * Negative when absent. */
+  def freezeSeconds(): Double =
+    val value = new dom.URLSearchParams(dom.window.location.search).get("freeze")
+    if value == null then -1.0 else value.toDoubleOption.getOrElse(-1.0)
+
+  /** The frozen frame is complete. (tools/check.sh screenshots the page itself.) */
+  def frozen(): Unit = ()
 
   /** Called whenever the window changes size. */
   def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())
