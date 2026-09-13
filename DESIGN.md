@@ -1026,6 +1026,32 @@ home screen behind it (the root's geometry is the screen's, never the model's);
 a `UILabel` with no explicit size must take its natural size, as a `div` or a
 SceneGraph `Label` does, or it draws nothing.
 
+**iOS, the same day (2026-09-13).** The same app, built against the iPhone
+simulator SDK (`tools/tvos-run.sh --ios`; the device family and a
+`UILaunchScreen` key in the plist are the only differences): the frozen frame
+laid out at a 1920x1080 viewport matches the shared golden (41 components,
+0.096 px) and it runs at 60.0 fps on the iPhone 17 Pro simulator at the phone's
+own 402x874 — where the TV layout simply overflows the screen (the header runs
+under the status bar), as expected until there is a phone layout.
+
+### Deployment size, AnimationExample, as it stands
+
+| platform | what ships | size |
+|---|---|---|
+| web (dev) | `main.js` | 1.88 MB raw, 230 KB gzip, 155 KB brotli |
+| web (release, Closure) | `main.js` | 375 KB raw, 97 KB gzip, **77 KB brotli** |
+| Roku | the channel zip (BrightScript + assets) | **331 KB** (App.brs 250 KB, runtimes 46 KB, before zip) |
+| Android | `universal-ui.apk` (debug-signed, no R8) | **2.25 MB** (classes.dex 5.98 MB uncompressed: the whole Scala library, unshrunk) |
+| tvOS | `UniversalUI.app` | **1.55 MB** (binary 1.06 MB, 0.92 MB stripped; Swift runtime is the OS's) |
+| iOS | `UniversalUI.app` | **1.55 MB** (the same binary, iOS SDK) |
+| desktop (JavaFX) | the JVM classpath | 14.6 MB of jars (scala-library 9.2 MB, JavaFX 5.4 MB) **plus a JRE** — no native image yet |
+| assets, every platform | 3 images + 3 fonts | 501 KB (Material Icons alone 357 KB) |
+
+The web figure is larger than the 97 KB release measured for the first slice
+because the app now carries youi's whole component model, task DSL and
+reactify. Android and desktop are the outliers: neither has had its dead code
+removed (R8 / native-image), which is where their numbers fall.
+
 **The collector's cost is the next thing to fix.** 4–5 ms of a 16.7 ms frame,
 every frame, is a mark over the whole live graph. Options, in order: collect
 every N frames or when allocations since the last pass exceed a threshold (the
@@ -1035,7 +1061,7 @@ Roku-era fast paths to allocate less per frame. Measured before it is chosen.
 
 ## IMMEDIATE NEXT STEP
 
-**0. tvOS is real: keep it green.** `tools/check.sh --tvos` runs the frame and
+**0. tvOS and iOS are real: keep them green.** `tools/check.sh --tvos` runs the frame and
 frame-rate checks on the simulator via the Mac. Next: bring the collector's
 per-frame cost down (above), then a physical Apple TV.
 

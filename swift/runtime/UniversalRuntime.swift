@@ -17,6 +17,8 @@ enum UI {
     static var root: UIView!
     /// `--freeze=<seconds>` from the launch arguments, or -1.
     static var freeze: Double = -1.0
+    /// `--viewport=WxH`: lay out at that size whatever the screen (a phone shows the top-left of a TV frame).
+    static var viewport: CGSize? = nil
     /// The animation callback, a Scala closure, driven by a display link.
     static var tick: V = .vNull
     static var link: CADisplayLink?
@@ -257,8 +259,8 @@ func uiLoadImage(_ uri: V, _ loaded: V) throws -> V {
 
 // MARK: - platform
 
-func uiScreenWidth() -> V { .vDbl(Double(UIScreen.main.bounds.width)) }
-func uiScreenHeight() -> V { .vDbl(Double(UIScreen.main.bounds.height)) }
+func uiScreenWidth() -> V { .vDbl(Double((UI.viewport ?? UIScreen.main.bounds.size).width)) }
+func uiScreenHeight() -> V { .vDbl(Double((UI.viewport ?? UIScreen.main.bounds.size).height)) }
 
 func uiLog(_ message: V) -> V {
     print("[ui] " + rtS(message))
