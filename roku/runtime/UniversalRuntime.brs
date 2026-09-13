@@ -355,3 +355,82 @@ function uiFreezeSeconds() as float
     if text = "" then return -1.0
     return Val(text)
 end function
+
+' `pkg:/<name>.txt`, or "" — a test sideload adds it (Checks roku-install --add name.txt=value).
+function uiLaunchArg(name as string) as string
+    return ReadAsciiFile("pkg:/" + name + ".txt")
+end function
+
+' ── the network module (network/native): sockets and HTTP through Task nodes ──────
+' The render thread cannot own an roStreamSocket or an roUrlTransfer, so each socket is an EveryUISocketTask node
+' and each request an EveryUIHttpTask node (roku/runtime/*Task.brs): their fields carry the traffic, and the
+' callbacks run here, on the render thread, like every other facade.
+function uiSocketOpen(url as string, onOpen as dynamic, onText as dynamic, onClose as dynamic) as object
+    ga = GetGlobalAA()
+    if ga.uiSockets = invalid
+        ga.uiSockets = {}
+        ga.uiSocketSeq = 0
+    end if
+    ga.uiSocketSeq = ga.uiSocketSeq + 1
+    t = CreateObject("roSGNode", "EveryUISocketTask")
+    t.id = "uiSocket" + ga.uiSocketSeq.ToStr()
+    ga.uiSockets[t.id] = { onOpen: onOpen, onText: onText, onClose: onClose, node: t }
+    t.observeField("socketEvent", "uiOnSocketEvent")
+    t.url = url
+    t.control = "RUN"
+    return t
+end function
+
+sub uiOnSocketEvent(event as object)
+    ga = GetGlobalAA()
+    t = event.getRoSGNode()
+    h = ga.uiSockets[t.id]
+    if h = invalid then return
+    ev = event.getData()
+    if ev.kind = "open"
+        RtInvoke(h.onOpen, [])
+    else if ev.kind = "text"
+        RtInvoke(h.onText, [ev.data])
+    else if ev.kind = "close"
+        ga.uiSockets.Delete(t.id)
+        RtInvoke(h.onClose, [ev.code, ev.reason])
+    end if
+end sub
+
+sub uiSocketSend(t as object, text as string)
+    t.outbox = text
+end sub
+
+sub uiSocketClose(t as object)
+    t.command = "close"
+end sub
+
+sub uiHttp(method as string, url as string, headersJson as string, body as string, hasBody as boolean, done as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiHttps = invalid
+        ga.uiHttps = {}
+        ga.uiHttpSeq = 0
+    end if
+    ga.uiHttpSeq = ga.uiHttpSeq + 1
+    t = CreateObject("roSGNode", "EveryUIHttpTask")
+    t.id = "uiHttp" + ga.uiHttpSeq.ToStr()
+    ga.uiHttps[t.id] = { done: done, node: t }
+    t.observeField("result", "uiOnHttpResult")
+    t.url = url
+    t.method = method
+    headers = ParseJson(headersJson)
+    if headers = invalid then headers = {}
+    t.headers = headers
+    t.body = body
+    t.control = "RUN"
+end sub
+
+sub uiOnHttpResult(event as object)
+    ga = GetGlobalAA()
+    t = event.getRoSGNode()
+    e = ga.uiHttps[t.id]
+    if e = invalid then return
+    ga.uiHttps.Delete(t.id)
+    r = event.getData()
+    RtInvoke(e.done, [r.status, r.headers, r.body])
+end sub

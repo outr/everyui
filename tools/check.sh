@@ -51,6 +51,8 @@ FREEZE=0.434                      # the moment of youi's reference capture
 LOGS="$ROOT/target/check"
 GOLDEN="$ROOT/tools/golden/animation-tree.txt"
 # the helpers are a Scala CLI (everyui.checks.Checks), run from the classpath the build stages
+. "$ROOT/tools/durable.sh"           # the network module's check: server_start, durable_web … (needs $CHECKS)
+
 checks_cli() { CHECKS="java -cp $(cat "$ROOT/checks/out/classpath.txt") everyui.checks.Checks"; }
 rm -rf "$LOGS"
 mkdir -p "$LOGS" "$(dirname "$GOLDEN")"
@@ -100,21 +102,31 @@ frame() {
 faces() { $CHECKS faces assets/fonts shared/src/main/scala/everyui/font/Faces.scala; }
 
 build() {                          # one sbt run: the JVM suite, every Roku channel, the desktop (and web checker) classpath
-  local live=""
-  [ $LIVE = 1 ] && live="; webcheck/webcheckClasspath"
-  "$SBT" "checks/checksClasspath; reactiveTest/run; reactive/emitRoku; reactiveTest/emitRoku; roku/emitRoku; desktop/desktopClasspath$live" &&
-    [ "$(grep -c 'emitRoku: emitting' "$LOGS/build.log")" = 3 ]
+  # (webcheck: the web checks run the page in a real Chrome via RoboBrowser — the live frame rate and the durable demo)
+
+  "$SBT" "checks/checksClasspath; reactiveTest/run; network/run; reactive/emitRoku; reactiveTest/emitRoku; roku/emitRoku; network/emitRoku; desktop/desktopClasspath; server/serverClasspath; webcheck/webcheckClasspath" &&
+    [ "$(grep -c 'emitRoku: emitting' "$LOGS/build.log")" = 4 ]
 }
 
+# suite_lines LOG MARKER OUT: one program's RX lines from the build log — from the line containing MARKER to its RX DONE
+suite_lines() { awk -v m="$2" 'index($0, "RX ") && index($0, m) { p = 1 } p && match($0, /RX .*/) { print substr($0, RSTART) } p && /RX DONE/ { exit }' "$1" > "$3"; }
+
 jvm_suite() {
-  grep -oE 'RX .*' "$LOGS/build.log" > "$LOGS/jvm-suite.txt"
+  suite_lines "$LOGS/build.log" "var.initial" "$LOGS/jvm-suite.txt"
   diff -u reactive-test/expected-output.txt "$LOGS/jvm-suite.txt" &&
     echo "identical to reactive-test/expected-output.txt ($(wc -l < "$LOGS/jvm-suite.txt") lines)"
 }
 
+# the network probe: spice's durable client over a loopback socket, the JVM run is its golden for the devices
+jvm_probe() {
+  suite_lines "$LOGS/build.log" "state.active" "$LOGS/jvm-probe.txt"
+  diff -u network/expected-output.txt "$LOGS/jvm-probe.txt" &&
+    echo "identical to network/expected-output.txt ($(wc -l < "$LOGS/jvm-probe.txt") lines)"
+}
+
 gaps() {
   local rc=0 out
-  for d in reactive reactive-test roku; do
+  for d in reactive reactive-test roku network; do
     out=$($CHECKS gaps "$d/out-roku/components")
     echo "$d: $(echo "$out" | tail -n 1)"
     echo "$out" | tail -n 1 | grep -qE 'TOTAL GAPS +: 0$' || { echo "$out"; rc=1; }
@@ -125,7 +137,7 @@ gaps() {
 brighterscript() {
   [ -f "$BSC" ] || { echo "brighterscript not found at $BSC (set BSC to its dist/cli.js)"; return 1; }
   local rc=0 stage errors count
-  for d in reactive reactive-test roku; do
+  for d in reactive reactive-test roku network; do
     stage=$(mktemp -d)
     # BS1054 (`: if` one-liners in the runtime) and BS1104 (a local named like a function) are brighterscript
     # strictness the Roku itself accepts.
@@ -251,11 +263,12 @@ if run "build: JVM suite, Roku channels, desktop" build.log build; then
   checks_cli
   run "fonts: shared table matches assets/fonts" faces.log faces
   run "reactify on the JVM matches its golden" jvm-suite.log jvm_suite
+  run "network probe on the JVM matches its golden" jvm-probe.log jvm_probe
   run "Roku channels: no emit gaps" gaps.log gaps
   run "Roku channels: brighterscript clean" brighterscript.log brighterscript
   BUILT=1
 else
-  for s in "fonts: shared table matches assets/fonts" "reactify on the JVM matches its golden" "Roku channels: no emit gaps" "Roku channels: brighterscript clean"; do
+  for s in "fonts: shared table matches assets/fonts" "reactify on the JVM matches its golden" "network probe on the JVM matches its golden" "Roku channels: no emit gaps" "Roku channels: brighterscript clean"; do
     skip "$s" "build failed"
   done
   BUILT=0
@@ -287,10 +300,22 @@ if [ $NATIVE = 1 ]; then
   run "desktop: native image builds, frame, frame rate" desktop-native.log desktop_native
 fi
 
+# ── the network module: DurableDemo on every backend, against server/ (tools/durable.sh) ──
+if [ $BUILT = 1 ] && [ $WEB_BUILT = 1 ] && run "durable: server up" server-start.log server_start; then
+  trap server_stop EXIT
+  run "durable: web (Chrome via RoboBrowser)" durable-web.log durable_web
+  run "durable: desktop (JavaFX)" durable-desktop.log durable_desktop
+  DURABLE_SERVER=1
+else
+  for s in "durable: web (Chrome via RoboBrowser)" "durable: desktop (JavaFX)"; do skip "$s" "no server"; done
+  DURABLE_SERVER=0
+fi
+
 if [ $ANDROID = 1 ]; then
   if run "Android: APK builds" android-build.log android_build; then
     run "Android: AnimationExample frame" android-frame.log android_frame
     run "Android: live frame rate and motion" android-live.log android_live
+    if [ $DURABLE_SERVER = 1 ]; then run "durable: Android emulator" durable-android.log durable_android; else skip "durable: Android emulator" "no server"; fi
   else
     skip "Android: AnimationExample frame" "APK did not build"
   fi
@@ -299,6 +324,7 @@ fi
 if [ $TVOS = 1 ]; then
   run "tvOS: AnimationExample frame (simulator)" tvos-frame.log tvos_frame
   run "tvOS: live frame rate (simulator)" tvos-fps.log tvos_fps
+  if [ $DURABLE_SERVER = 1 ]; then run "durable: tvOS (simulator)" durable-tvos.log durable_tvos; else skip "durable: tvOS (simulator)" "no server"; fi
 fi
 
 if [ $DEVICE = 1 ]; then
@@ -311,6 +337,7 @@ if [ $DEVICE = 1 ]; then
     run "Roku: reactify acceptance" acceptance.log acceptance
     run "Roku: AnimationExample frame" roku-frame.log roku_frame
     run "Roku: live frame rate" roku-fps.log roku_fps
+    if [ $DURABLE_SERVER = 1 ]; then run "durable: Roku" durable-roku.log durable_roku; else skip "durable: Roku" "no server"; fi
   else
     for s in "Roku: reactify acceptance" "Roku: AnimationExample frame" "Roku: live frame rate"; do
       skip "$s" "build failed"

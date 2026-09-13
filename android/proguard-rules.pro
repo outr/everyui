@@ -30,3 +30,22 @@
 
 # Readable stack traces from the device.
 -keepattributes SourceFile,LineNumberTable
+
+# The network module (Spice over OkHttp): platform-optional pieces OkHttp and Kotlin probe for at runtime.
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn kotlin.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
+-dontwarn android.net.http.**
+-dontwarn javax.annotation.**
+# rapid probes for virtual threads (Java 21); Android has none and rapid is told so (NetworkBackend.init)
+-dontwarn java.lang.Thread$Builder$OfVirtual
+-dontwarn java.lang.Thread$Builder
+# profig's YAML/XML readers (jackson-dataformat-xml) reach javax.xml.stream, which Android does not ship; unused here
+-dontwarn javax.xml.stream.**
+-dontwarn org.codehaus.stax2.**
+-dontwarn com.fasterxml.jackson.**
+# java.util.EnumSet reaches a Java enum's `values()` by reflection (Enum.enumValues); R8 must keep it.
+-keepclassmembers enum * { public static **[] values(); public static ** valueOf(java.lang.String); }

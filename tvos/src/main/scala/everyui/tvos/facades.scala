@@ -100,3 +100,9 @@ class SGNode
 /** Seconds from `--freeze=` on the launch, or -1. */
 @native object uiFreezeSeconds:
   def apply(): Double = native.value
+/** `--<name>=value` on the launch, or "". */
+@native object uiLaunchArg:
+  def apply(name: String): String = native.value
+/** Exit the process. */
+@native object uiQuit:
+  def apply(): Unit = native.value

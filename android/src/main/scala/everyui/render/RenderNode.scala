@@ -229,6 +229,11 @@ object Platform:
   /** Logcat, tag `everyui`. */
   def log(message: String): Unit = Log.i("everyui", "[ui] " + message)
 
+  /** A failure with its cause: logcat gets the stack. */
+  def logError(message: String, t: Throwable): Unit =
+    Log.i("everyui", "[ui] ERROR " + message + ": " + t.toString)
+    Log.e("everyui", message, t)
+
   def ticks(): Double = System.nanoTime() / 1.0e6
 
   /** Packaged as APK assets. */
@@ -245,6 +250,14 @@ object Platform:
   /** `--es freeze <seconds>` on the launch intent: step the animation that far on a virtual clock and stop
     * (tools/check.sh). Negative when absent. */
   def freezeSeconds(): Double = Host.freeze
+
+  /** `--es name value` on the launch intent, or "". */
+  def launchArg(name: String): String =
+    val value = Host.activity.getIntent.getStringExtra(name)
+    if value == null then "" else value
+
+  /** Finish the activity (a demo that is done); the process follows (MainActivity.onDestroy). */
+  def quit(): Unit = Host.activity.finish()
 
   /** The frozen frame is complete. The check reads it from logcat and screenshots the device itself. */
   def frozen(): Unit = ()

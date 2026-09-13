@@ -147,6 +147,8 @@ object Host:
   var assets: File = new File("assets")
   var freeze: Double = -1.0
   var screenshot: String = ""
+  /** Every `--name=value` on the command line. */
+  var args: Map[String, String] = Map.empty
 
   private val fontNames = mutable.Map.empty[String, String]
   private val images = mutable.Map.empty[String, Image]
@@ -261,6 +263,11 @@ object Nodes:
 object Platform:
   def log(message: String): Unit = println("[ui] " + message)
 
+  /** A failure with its cause: the console gets the stack. */
+  def logError(message: String, t: Throwable): Unit =
+    println("[ui] ERROR " + message + ": " + t.toString)
+    t.printStackTrace()
+
   def ticks(): Double = System.nanoTime() / 1.0e6
 
   def imagePath(name: String): String = resolvePath("/images/" + name)
@@ -272,6 +279,14 @@ object Platform:
   /** `--freeze=<seconds>`: step the animation that far on a virtual clock and stop (tools/check.sh). Negative when
     * absent. */
   def freezeSeconds(): Double = Host.freeze
+
+  /** `--name=value` on the launch, or "". */
+  def launchArg(name: String): String = Host.args.getOrElse(name, "")
+
+  /** Exit the process (a demo that is done). */
+  def quit(): Unit =
+    javafx.application.Platform.exit()
+    System.exit(0)
 
   /** The frozen frame is complete: save it if asked to (`--screenshot`). */
   def frozen(): Unit = Host.frozen()

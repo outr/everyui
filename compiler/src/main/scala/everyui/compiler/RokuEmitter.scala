@@ -112,6 +112,15 @@ class RokuEmitter(
     // locals of `<Type>__init` — their fields are assigned after the parent init runs.
     var inParentArgs = false
     val userMethodSyms = mutable.Set[Symbol]()
+    // Reachability (see "reachability" below): every ClassDef anywhere in the input, local and anonymous ones
+    // included; the classes something constructs (or their ancestors); the members those classes reach. Until
+    // the analysis has run, everything is kept.
+    val allClassDefs = mutable.LinkedHashMap[Symbol, ClassDef]()
+    val reachableClasses = mutable.Set[Symbol]()
+    val reachableMembers = mutable.Set[Symbol]()
+    var pruning = false
+    def keepClass(s: Symbol): Boolean = !pruning || reachableClasses.contains(s)
+    def keepMember(s: Symbol): Boolean = !pruning || reachableMembers.contains(s)
     val aaIfaceMethods = Set("addreplace", "lookup", "lookupci", "doesexist", "delete", "clear",
       "keys", "items", "setmodecasesensitive", "append", "count", "reset", "next", "isnext", "isempty")
     val primitiveFqns = Set("scala.Int", "scala.Long", "scala.Double", "scala.Float", "scala.Short",
@@ -146,9 +155,10 @@ class RokuEmitter(
         || (s.companionModule.exists && s.companionModule.flags.is(Flags.Enum)))
     def isUserModule(cd: ClassDef): Boolean =
       val s = cd.symbol
+      // A case class's companion is emitted too (its `given rw`, its own defs); its synthetic apply/unapply are not
+      // user members, and its default getters are inlined at the call site.
       s.exists && s.flags.is(Flags.Module) && !s.flags.is(Flags.Case) && !hasNative(s)
         && !isEnumLike(s) && !s.name.stripSuffix("$").endsWith("$package") && !isBuiltin(s)
-        && !(s.companionClass.exists && s.companionClass.flags.is(Flags.Case))
 
     def isUserClassSym(s: Symbol): Boolean =
       s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !s.flags.is(Flags.Case)
@@ -508,7 +518,7 @@ class RokuEmitter(
 
     def emittableMethod(dd: DefDef): Boolean =
       dd.rhs.isDefined && dd.name != "<init>" && !dd.symbol.flags.is(Flags.FieldAccessor)
-        && (userMember(dd.symbol) || dd.name.contains("$default$"))
+        && (userMember(dd.symbol) || dd.name.contains("$default$")) && keepMember(dd.symbol)
 
     // A receiver that is safe to evaluate twice (`recv.m(recv, …)`): a local,
     // `this`, a literal, or a plain field chain. Anything else — a call, a
@@ -792,6 +802,130 @@ class RokuEmitter(
     def isArrowAssoc(arrow: Term): Boolean =
       val sy = stripTypeApply(arrow).symbol
       sy.exists && sy.name == "ArrowAssoc"
+
+    // ── library shims (the network module): rapid's Task, fabric's Json and RW, scribe, java.util ──
+    // Spice's durable client compiles through with these libraries left OUT of the TASTy; a call into them
+    // emits a runtime-neutral helper name (`RapidTask_map`, `_jsonGet`, `ConcurrentHashMap_put`, …) that both
+    // runtimes define. Implicit clauses (sourcecode positions, MDC) are dropped at the call.
+    def baseNames(s: Symbol): List[String] =
+      try s.typeRef.baseClasses.map(_.fullName) catch case _: Throwable => Nil
+    def instanceOf(fn: Term, fqn: String): Boolean =
+      val o = fn.symbol.owner
+      fn.symbol.exists && o.exists && !o.flags.is(Flags.Module) && (o.fullName == fqn || baseNames(o).contains(fqn))
+    def isRapidTask(fn: Term): Boolean = instanceOf(fn, "rapid.Task")
+    def isRapidTaskCompanion(fn: Term): Boolean =
+      fn.symbol.exists && fn.symbol.owner.exists && fn.symbol.owner.flags.is(Flags.Module) && ownerFqn(fn.symbol) == "rapid.Task"
+    def isFabricJson(fn: Term): Boolean = instanceOf(fn, "fabric.Json")
+    def isFabricBuilder(fn: Term): Boolean =
+      fn.symbol.exists && ownerFqn(fn.symbol).startsWith("fabric.") && !ownerFqn(fn.symbol).startsWith("fabric.rw")
+        && Set("obj", "arr", "str", "num", "bool").contains(fn.symbol.name)
+    def isFabricRW(s: Symbol): Boolean =
+      s.exists && s.isTerm && s.name.endsWith("RW")
+        && (try s.owner.fullName.startsWith("fabric.rw") catch case _: Throwable => false)
+    def isScribeLog(fn: Term): Boolean =
+      fn.symbol.exists && Set("trace", "debug", "info", "warn", "error").contains(fn.symbol.name)
+        && { val o = ownerFqn(fn.symbol); o == "scribe" || o.startsWith("scribe.") }
+    def isDurationTerm(t: Term): Boolean = fqnOf(t.tpe).startsWith("scala.concurrent.duration")
+    /** The arguments of the explicit clauses only — a trailing implicit clause is dropped. */
+    def explicitArgs(sy: Symbol, args: List[Term]): List[Term] =
+      val clauses = try sy.paramSymss.filter(c => c.nonEmpty && c.head.isTerm) catch case _: Throwable => Nil
+      val n = clauses.takeWhile(c => !(c.head.flags.is(Flags.Given) || c.head.flags.is(Flags.Implicit))).map(_.size).sum
+      if clauses.isEmpty then args else args.take(n)
+    def shimCall(name: String, recv: Option[Term], args: List[Term]): String =
+      s"$name(${(recv.map(emitTerm).toList ++ args.map(emitArgVal)).mkString(", ")})"
+    /** `new Wrapper(v)` (an implicit class application) → `v`. */
+    def unwrapCtor(t: Term): Term = unwrap(t) match
+      case Apply(TypeApply(Select(New(_), _), _), List(v)) => v
+      case Apply(Select(New(_), _), List(v))               => v
+      case Apply(TypeApply(_, _), List(v))                 => v
+      case Apply(_, List(v))                               => v
+      case other                                           => other
+    /** `q.getClass` → `q`. */
+    def getClassRecv(t: Term): Option[Term] = unwrap(t) match
+      case Apply(f, Nil) => stripTypeApply(f) match { case Select(q, "getClass") => Some(q); case _ => None }
+      case Select(q, "getClass") => Some(q)
+      case _                     => None
+    /** A Scala 3 enum's simple case: the companion's stable value with the Enum and Case flags. */
+    def isEnumCase(s: Symbol): Boolean =
+      s.exists && s.isTerm && s.flags.is(Flags.Enum) && s.flags.is(Flags.Case)
+        && (try s.owner.exists && s.owner.companionClass.exists && s.owner.companionClass.flags.is(Flags.Enum) catch case _: Throwable => false)
+    def emitEnumCase(s: Symbol, name: String): String =
+      val enumClass = s.owner.companionClass
+      val ordinal = try enumClass.children.indexOf(s) catch case _: Throwable => -1
+      s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, $ordinal)"
+    def isTaskModule(q: Term): Boolean =
+      q.symbol.exists && q.symbol.flags.is(Flags.Module) && q.symbol.fullName.stripSuffix("$") == "rapid.Task"
+    def isTaskTerm(t: Term): Boolean =
+      try t.tpe.baseClasses.exists(_.fullName == "rapid.Task") catch case _: Throwable => false
+    def isFabricWrapper(fn: Term, name: String): Boolean =
+      fn.symbol.exists && fn.symbol.owner.exists && fn.symbol.owner.name == name && ownerFqn(fn.symbol).startsWith("fabric.rw")
+    /** A constructor call with every argument clause (`new C[A, B]()(using rwA, rwB)`): the class, the
+      * constructor, and the arguments of all clauses in order. */
+    def newChain(t: Term): Option[(Symbol, Symbol, List[Term])] = t match
+      case Apply(ctor @ Select(New(tpt), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
+        Some((tpt.tpe.typeSymbol, ctor.symbol, args))
+      case Apply(TypeApply(ctor @ Select(New(tpt), _), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
+        Some((tpt.tpe.typeSymbol, ctor.symbol, args))
+      case Apply(inner @ Apply(_, _), more) => newChain(inner).map((c, k, a) => (c, k, a ++ more))
+      case _ => None
+    // ── fabric RW derivation (`given rw: RW[T] = RW.gen`) ──
+    // The emitted object model carries a case class as `{ _cls, _fields, <field>: … }`, so the runtime can read and
+    // write one by its field names given a codec per field; a model case class is constructed through its `_new`.
+    // Nothing of fabric's macro output is emitted: its ClassRW / Definition machinery has no place here.
+    def rwGenType(call: Tree): Option[TypeRepr] =
+      def find(t: Tree): Option[TypeRepr] = t match
+        case Apply(f, _)                 => find(f)
+        case TypeApply(f, List(targ)) if f.symbol.exists && f.symbol.name == "gen" && ownerFqn(f.symbol).startsWith("fabric.rw.") =>
+          Some(targ.tpe)
+        case TypeApply(f, _)             => find(f)
+        case Inlined(_, _, e)            => find(e)
+        case Typed(e, _)                 => find(e)
+        case _                           => None
+      try find(call) catch case _: Throwable => None
+    /** The runtime codec for a field of type `tp`: a primitive, a String or a Json value is itself; Option, List
+      * and Map wrap their element's; another case class derives inline. */
+    def rwFor(tp: TypeRepr, depth: Int): String =
+      val sym  = tp.typeSymbol
+      val fqn  = fqnOf(tp)
+      val args = try tp.typeArgs catch case _: Throwable => Nil
+      if fqn == "scala.Option" && args.nonEmpty then s"_rwOpt(${rwFor(args.head, depth)})"
+      else if args.size == 1 && Set("scala.collection.immutable.List", "scala.collection.immutable.Vector",
+          "scala.collection.immutable.Seq", "scala.collection.Seq", "scala.collection.immutable.Set", "scala.Array").contains(fqn) then
+        s"_rwList(${rwFor(args.head, depth)})"
+      else if args.size == 2 && fqn.endsWith(".Map") then s"_rwMap(${rwFor(args(1), depth)})"
+      else if sym.exists && sym.flags.is(Flags.Case) && !isBuiltin(sym) && depth < 6 then emitRwGen(tp, depth + 1)
+      else "_rw(\"valueRW\")"
+    def emitRwGen(tp: TypeRepr, depth: Int): String =
+      val cls    = tp.typeSymbol
+      val fields = try cls.caseFields catch case _: Throwable => Nil
+      val types  = fields.map(f => try f.tree match { case vd: ValDef => vd.tpt.tpe; case _ => TypeRepr.of[Any] } catch case _: Throwable => TypeRepr.of[Any])
+      val keysL  = fields.map(f => brStr(f.name))
+      val slotsL = fields.map(f => brStr(if isModel(cls) then fieldKey(f) else f.name))
+      val rwsL   = types.map(t => rwFor(t, depth))
+      val ctor = if isModel(cls) then s"${typeName(cls)}_new" else "invalid"
+      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor)"
+
+    /** A default argument's value: the getter's right-hand side, from its tree or from the companion's ClassDef. */
+    def defaultRhsOf(sy: Symbol): Option[Term] =
+      defaultGetterRhs(sy).orElse {
+        if !sy.exists || !sy.owner.exists then None
+        else allClassDefs.get(sy.owner).flatMap(_.body.collectFirst { case dd: DefDef if dd.symbol == sy => dd.rhs }.flatten)
+      }
+    /** A case-class literal's arguments in field order: named arguments by name, a default argument as
+      * the default's own value (inlined), a field with neither as `null`. */
+    def caseLiteralArgs(fields: List[String], args: List[Term]): List[Term] =
+      val byName = args.collect { case NamedArg(n, v) => n -> v }.toMap
+      val positional = args.filterNot(_.isInstanceOf[NamedArg])
+      var i = 0
+      fields.map { f =>
+        val a = byName.get(f).orElse {
+          if i < positional.size then { val p = positional(i); i += 1; Some(p) } else None
+        }
+        a.flatMap { t =>
+          if isDefaultArg(t) then defaultRhsOf(unwrap(t match { case NamedArg(_, v) => v; case o => o }).symbol)
+          else Some(t)
+        }.getOrElse(Literal(NullConstant()))
+      }
     /** The factory an `implicit class` generates (`ListVar(xs)`), if `sy` is one. */
     def implicitClassTarget(sy: Symbol): Symbol =
       if !(sy.exists && sy.isDefDef && sy.flags.is(Flags.Implicit)) then Symbol.noSymbol
@@ -1014,12 +1148,76 @@ class RokuEmitter(
             case Some(_) if isCaseCtor(fn, t.tpe) && isModel(t.tpe.typeSymbol) =>
               return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             case Some(fields) if isCaseCtor(fn, t.tpe) =>
-              val flat = flattenVarargs(args).filterNot(isDefaultArg)
+              val flat = caseLiteralArgs(fields, flattenVarargs(args))
               val fs = fields.zip(flat).map((f, a) => s"$f: ${emitArgVal(a)}")
               val fieldList = fields.take(flat.size).map(f => brStr(f)).mkString(", ")
               return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: fs).mkString(", ") + " }"
             case _ =>
           fn match
+            // ── a call into a type nothing ever constructs: dead at runtime (see "reachability") ──
+            case _ if pruning && fn.symbol.exists && fn.symbol.isDefDef && !fn.symbol.isClassConstructor
+                && allClassDefs.contains(fn.symbol.owner) && !keepClass(fn.symbol.owner) =>
+              s"RtDead(${brStr(fn.symbol.owner.name.stripSuffix("$") + "." + fn.symbol.name)})"
+            // ── rapid.Task (see "library shims") ──
+            case Select(q, m) if isTaskModule(q) =>   // `Task.unit`, `Task.sleep` … inherited by the companion too
+              val ea = explicitArgs(fn.symbol, args)
+              m match
+                case "apply" | "defer" if ea.size == 1 => s"RapidTaskObj_$m(${emitThunk(ea.head)})"
+                case _                                 => shimCall(s"RapidTaskObj_$m", None, ea)
+            case _ if isRapidTaskCompanion(fn) =>
+              val ea = explicitArgs(fn.symbol, args)
+              fn.symbol.name match
+                case m @ ("apply" | "defer") if ea.size == 1 => s"RapidTaskObj_$m(${emitThunk(ea.head)})"
+                case m                                       => shimCall(s"RapidTaskObj_$m", None, ea)
+            case Select(recv, m) if isRapidTask(fn) =>
+              val ea = explicitArgs(fn.symbol, args)
+              m match
+                case "apply" if ea.isEmpty       => shimCall("RapidTask_sync", Some(recv), Nil)
+                case "guarantee" if ea.size == 1 => s"RapidTask_guarantee(${emitTerm(recv)}, ${emitThunk(ea.head)})"
+                case _                           => shimCall(s"RapidTask_$m", Some(recv), ea)
+            // ── fabric.Json, its builders, the parser and formatter, RW ──
+            // `RW.gen[T]` reaches here as a plain call (the macro's expansion is not in the TASTy the emitter reads)
+            case _ if fn.symbol.exists && fn.symbol.name == "gen" && ownerFqn(fn.symbol).startsWith("fabric.rw.")   // RW.gen lives in CompileRW
+                && (try t.tpe.widen.typeArgs.nonEmpty catch case _: Throwable => false) =>
+              emitRwGen(t.tpe.widen.typeArgs.head, 0)   // the call's type is RW[T]
+            case Select(recv, "apply") if isFabricJson(fn) && args.size == 1 => shimCall("_jsonGet", Some(recv), args)
+            case Select(recv, "get") if isFabricJson(fn) && args.size == 1   => shimCall("_jsonOpt", Some(recv), args)
+            case Select(recv, m) if isFabricJson(fn) => shimCall(s"_json_$m", Some(recv), explicitArgs(fn.symbol, args))
+            case _ if isFabricBuilder(fn) =>
+              fn.symbol.name match
+                case "obj" => s"_jsonObj([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
+                case "arr" => s"[${flattenVarargs(args).map(emitArgVal).mkString(", ")}]"
+                case _     => emitArgVal(args.head)
+            case _ if fnIs(fn, "fabric.io.JsonParser", "apply") => s"_jsonParse(${emitArgVal(args.head)})"
+            case Select(_, "apply") if ownerIs(fn, "fabric.io.JsonFormatter") && args.size == 1 =>
+              s"_jsonFormat(${emitArgVal(args.head)})"
+            case Select(wrapped, "json") if isFabricWrapper(fn, "Convertible") && args.size == 1 =>
+              s"_rwWrite(${emitArgVal(args.head)}, ${emitTerm(unwrapCtor(wrapped))})"
+            case Select(wrapped, "as") if isFabricWrapper(fn, "Asable") && args.size == 1 =>
+              s"_rwRead(${emitArgVal(args.head)}, ${emitTerm(unwrapCtor(wrapped))})"
+            // ── scribe ──
+            case _ if isScribeLog(fn) =>
+              s"Scribe_log(${brStr(fn.symbol.name)}, [${flattenVarargs(explicitArgs(fn.symbol, args)).map(emitArgVal).mkString(", ")}])"
+            case _ if fn.symbol.exists && fn.symbol.name.endsWith("2LoggableMessage") && args.size == 1 => emitArgVal(args.head)
+            // ── java.util.concurrent, UUID, System, Math; Predef's wrappers ──
+            case Select(recv, m) if ownerIs(fn, "java.util.concurrent.ConcurrentHashMap") && !fn.symbol.isClassConstructor =>
+              shimCall(s"ConcurrentHashMap_$m", Some(recv), args)
+            case Select(recv, m) if ownerIs(fn, "java.util.concurrent.ConcurrentLinkedQueue") && !fn.symbol.isClassConstructor =>
+              shimCall(s"ConcurrentLinkedQueue_$m", Some(recv), args)
+            case Select(recv, m)
+                if (ownerIs(fn, "java.util.concurrent.atomic.AtomicLong") || ownerIs(fn, "java.util.concurrent.atomic.AtomicInteger"))
+                   && !fn.symbol.isClassConstructor =>
+              shimCall(s"AtomicLong_$m", Some(recv), args)
+            case _ if fnIs(fn, "java.util.UUID", "randomUUID")           => "_uuid()"
+            case _ if fnIs(fn, "java.lang.System", "currentTimeMillis")  => "_nowMillis()"
+            case _ if fn.symbol.exists && ownerFqn(fn.symbol) == "java.lang.Math" => emitMath(fn.symbol.name, args)
+            case Select(Apply(wrap, List(x)), m @ ("min" | "max" | "abs")) if isRichNumWrapper(wrap) => emitMath(m, x :: args)
+            case _ if fn.symbol.exists && primitiveCompanions.contains(ownerFqn(fn.symbol))
+                && fn.symbol.name.matches("[a-z]+2[a-z]+") && args.size == 1 => emitTerm(args.head)
+            case _ if fn.symbol.exists && fn.symbol.name == "augmentString" && args.size == 1 => emitTerm(args.head)
+            case Select(recv, "getMessage") if args.isEmpty => s"_getMessage(${emitTerm(recv)})"
+            case Select(recv, "getSimpleName" | "getName") if args.isEmpty && getClassRecv(recv).isDefined =>
+              s"_clsName(${emitTerm(getClassRecv(recv).get)})"
             // ── stdlib the emitter models directly (runtime shims) ──
             case _ if fnIs(fn, "scala.Option", "apply") && args.size == 1 => emitArgVal(args.head)
             case _ if fnIs(fn, "scala.concurrent.Promise", "apply") => "Promise_new()"
@@ -1183,6 +1381,18 @@ class RokuEmitter(
             case Select(recv, "endsWith")    => s"_endsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "replace") if args.length == 2 =>
               s"_replace(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
+            // FiniteDuration arithmetic and ordering, on the runtime's millisecond representation
+            case Select(recv, op @ ("*" | "$times" | "/" | "$div")) if isDurationTerm(recv) && args.length == 1 =>
+              val o = if op == "*" || op == "$times" then "*" else "/"
+              s"RtDuration(RtDurationMs(${emitTerm(recv)}) $o ${emitArgVal(args.head)})"
+            case Select(recv, op @ (">" | "<" | ">=" | "<=" | "$greater" | "$less" | "$greater$eq" | "$less$eq"))
+                if isDurationTerm(recv) && args.length == 1 =>
+              val o = op match
+                case ">" | "$greater"      => ">"
+                case "<" | "$less"         => "<"
+                case ">=" | "$greater$eq"  => ">="
+                case _                     => "<="
+              s"(RtDurationMs(${emitTerm(recv)}) $o RtDurationMs(${emitArgVal(args.head)}))"
             case Select(recv, op) if binOps.contains(op) && args.length == 1 =>
               s"(${emitTerm(recv)} ${binOps(op)} ${emitTerm(args.head)})"
             // ── Option ops → invalid-checks (Option lowers to a nullable). Must
@@ -1287,6 +1497,11 @@ class RokuEmitter(
       case _        => false
 
     def emitTerm(t0: Term): String = t0 match
+      // fabric's `RW.gen[T]`: the emitter derives the codec itself (see emitRwGen); the macro's output is not emitted
+      case Inlined(Some(call), _, _) if rwGenType(call).isDefined => emitRwGen(rwGenType(call).get, 0)
+      case Inlined(call, bs, e) if call.exists(c => c.show.contains("gen")) =>
+        System.err.println("DEBUG inlined call=" + call.map(_.show.take(160)) + " bs=" + bs.size + " expansion=" + e.show.take(200))
+        emitTermU(t0)
       // An inlined call's bindings (`assert`'s message proxy …) are real vals.
       case Inlined(_, bs, e) if bs.nonEmpty && pendingStack.nonEmpty =>
         bs.foreach { bd => val st = emitStat(bd); if st.trim.nonEmpty then pendingStack.top += st }
@@ -1317,6 +1532,18 @@ class RokuEmitter(
           else "invalid"
         case Literal(c)  => emitConst(c)
         case th: This    => thisRef(th.symbol)
+        // a constructor with several argument clauses: one `_new` with all of them
+        case Apply(inner @ Apply(_, _), more) if newChain(inner).isDefined =>
+          val (cls, ctor, first) = newChain(inner).get
+          s"${typeName(cls)}_new(${emitArgs(first ++ more, ctor)})"
+        // `task.start` (a Task's fiber; `.start()` syncs on it, so it is fire-and-forget)
+        case Select(q, "start") if isTaskTerm(q) => s"RapidTask_start(${emitTerm(q)})"
+        // a fabric RW instance (`stringRW`, `valueRW`): the runtime's codec of that name
+        case id @ Ident(n) if isFabricRW(id.symbol)       => s"_rw(${brStr(n)})"
+        case sel @ Select(_, n) if isFabricRW(sel.symbol) => s"_rw(${brStr(n)})"
+        // a Scala 3 enum's simple case (`ProtocolState.Active`): a runtime singleton, named and ordered
+        case sel @ Select(_, n) if isEnumCase(sel.symbol) => emitEnumCase(sel.symbol, n)
+        case id @ Ident(n) if isEnumCase(id.symbol)       => emitEnumCase(id.symbol, n)
         case id @ Ident(n) => emitRef(id.symbol, n)
         case Select(q, "toString")             => s"_str(${emitTerm(q)})"
         case Apply(Select(q, "toString"), Nil) => s"_str(${emitTerm(q)})"
@@ -1546,6 +1773,7 @@ class RokuEmitter(
         emitTerm(bl.expr)
 
     def emitInto(t: Term, sk: String): String = t match
+      case Inlined(Some(call), _, _) if rwGenType(call).isDefined => withStatement(sinkLine(sk, emitRwGen(rwGenType(call).get, 0)))
       case Inlined(_, bindings, expansion) if bindings.nonEmpty =>
         (bindings.map(emitStat) :+ emitInto(expansion, sk)).filter(_.trim.nonEmpty).mkString("\n")
       case _ => emitIntoU(unwrap(t), sk)
@@ -1766,7 +1994,7 @@ class RokuEmitter(
       val base = modulePrefix(cd.symbol)
       cd.body.foreach {
         case dd @ DefDef(name, pcs, _, Some(rhs))
-            if userMember(dd.symbol) && name != "<init>" && !name.endsWith("_=") =>
+            if userMember(dd.symbol) && name != "<init>" && !name.endsWith("_=") && keepMember(dd.symbol) =>
           val ps = termParams(pcs)
           out.append(s"function ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
           out.append(emitBody(rhs, true)).append("\n")
@@ -1874,7 +2102,7 @@ class RokuEmitter(
           case dd: DefDef if emittableMethod(dd) && !dd.symbol.flags.is(Flags.Private) =>
             val sl = slotName(dd.symbol)
             if !slots.contains(sl) then slots(sl) = modelImplName(dd.symbol)
-          case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Private) =>
+          case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Private) && !vd.symbol.flags.is(Flags.Module) =>
             val sl = slotName(vd.symbol)
             if !slots.contains(sl) then slots(sl) = modelImplName(vd.symbol)
           case vd: ValDef if isVirtualField(vd.symbol) =>
@@ -1902,7 +2130,7 @@ class RokuEmitter(
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
-        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined =>
+        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) =>
           val k = brSafe(vd.name)
           sb.append(s"function ${modelImplName(vd.symbol)}(self as object) as dynamic\n")
           sb.append(s"  cached = self[${brStr("__lz_" + k)}]\n")
@@ -2079,6 +2307,16 @@ class RokuEmitter(
       case _                 => ()
 
     for tasty <- tastys do collectMains(tasty.ast)
+    // every class anywhere, local and anonymous ones included (reachability and the extended-by test)
+    locally {
+      val collector = new TreeTraverser:
+        override def traverseTree(t: Tree)(owner: Symbol): Unit =
+          t match
+            case cd: ClassDef => allClassDefs(cd.symbol) = cd
+            case _            => ()
+          super.traverseTree(t)(owner)
+      for tasty <- tastys do collector.traverseTree(tasty.ast)(Symbol.noSymbol)
+    }
     val mainNames = mains.map(_.name).toSet
     for tasty <- tastys do
       eachClassDef(tasty.ast) { cd =>
@@ -2110,25 +2348,106 @@ class RokuEmitter(
       val all = userTypeDefs.keys.toList
       for sy <- all do
         val bases    = sy.typeRef.baseClasses.filter(b => b != sy && userTypeDefs.contains(b))
-        val extended = all.exists(o => o != sy && o.typeRef.baseClasses.contains(sy))
+        // extended by any class at all — an anonymous `new C { … }` inside a method counts (spice's
+        // DurableSocketClient subclasses DurableSocket that way)
+        val extended = allClassDefs.keys.exists(o => o != sy && (try o.typeRef.baseClasses.contains(sy) catch case _: Throwable => false))
         val caseWithMethods = sy.flags.is(Flags.Case) &&
           userTypeDefs(sy).body.exists { case dd: DefDef => emittableMethod(dd) && !dd.name.contains("$default$"); case _ => false }
         // A `lazy val` needs the object model's lazy getter; the flat class path would evaluate it eagerly.
-        val hasLazy = userTypeDefs(sy).body.exists { case vd: ValDef => vd.symbol.flags.is(Flags.Lazy); case _ => false }
+        val hasLazy = userTypeDefs(sy).body.exists { case vd: ValDef => vd.symbol.flags.is(Flags.Lazy) && !vd.symbol.flags.is(Flags.Module); case _ => false }
         if sy.flags.is(Flags.Trait) || bases.nonEmpty || extended || caseWithMethods || hasLazy then objectModelTypes += sy
     }
     for tasty <- tastys do
       eachClassDef(tasty.ast) { cd => if isUserModule(cd) && !modelModules.contains(cd.symbol) then moduleSyms.getOrElseUpdate(cd.symbol, modulePrefix(cd.symbol)) }
     for tasty <- tastys do scanBoxedVars(tasty.ast)
+
+    // ── reachability ─────────────────────────────────────────────────────
+    // Only what `main` reaches is emitted. A class is LIVE when something constructs it (`new`, a case-class
+    // apply, a module reference) or it is an ancestor of a live class; a member can only run on a live class,
+    // so one reached through a type nothing ever constructs is dead and its call site becomes `RtDead`. A
+    // method is reached by reference; with it, every same-name-and-arity method of every live class (virtual
+    // dispatch, over-approximated) and the names the runtime calls by itself. A live class keeps all its
+    // fields (they are initialised with it), so their initialisers are walked too.
+    locally {
+      val runtimeNames = Set("toString", "equals", "hashCode", "apply", "initialValue", "compare", "compareTo")
+      def arity(s: Symbol): Int = try s.paramSymss.flatten.count(_.isTerm) catch case _: Throwable => 0
+      val queue = mutable.Queue[Tree]()
+      val virtualKeys = mutable.Set[(String, Int)]()
+      val pending = mutable.Map[Symbol, mutable.ListBuffer[Symbol]]()   // reached before their class was live
+      def memberTree(m: Symbol): Option[Tree] =
+        allClassDefs.get(m.owner).flatMap(_.body.collectFirst {
+          case dd: DefDef if dd.symbol == m => dd
+          case vd: ValDef if vd.symbol == m => vd
+        })
+      def activate(m: Symbol): Unit =
+        memberTree(m).foreach(queue += _)
+        if m.isDefDef then
+          val key = (m.name, arity(m))
+          if virtualKeys.add(key) then
+            for c <- reachableClasses.toList; cd <- allClassDefs.get(c) do
+              cd.body.foreach {
+                case dd: DefDef if dd.symbol != m && dd.name == key._1 && arity(dd.symbol) == key._2 => markMember(dd.symbol)
+                case _ => ()
+              }
+      def markMember(m: Symbol): Unit =
+        if m.exists && !m.isClassConstructor && allClassDefs.contains(m.owner) && reachableMembers.add(m) then
+          // naming a module's member names the module
+          if m.owner.flags.is(Flags.Module) then markClass(m.owner)
+          if reachableClasses.contains(m.owner) then activate(m)
+          else pending.getOrElseUpdate(m.owner, mutable.ListBuffer()) += m
+      def markClass(c: Symbol): Unit =
+        if c.exists && allClassDefs.contains(c) && reachableClasses.add(c) then
+          val cd = allClassDefs(c)
+          (try c.typeRef.baseClasses catch case _: Throwable => Nil).foreach(b => if b != c then markClass(b))
+          queue += cd.constructor
+          cd.parents.foreach(queue += _)
+          cd.body.foreach {
+            case vd: ValDef if vd.symbol.flags.is(Flags.Module) => ()   // a nested object: live only when named
+            case vd: ValDef => vd.rhs.foreach(queue += _)
+            case _: DefDef | _: ClassDef | _: TypeDef => ()
+            case t: Term => queue += t                       // a constructor statement
+            case _ => ()
+          }
+          cd.body.foreach {
+            case dd: DefDef if runtimeNames(dd.name) || virtualKeys((dd.name, arity(dd.symbol))) => markMember(dd.symbol)
+            case _ => ()
+          }
+          pending.remove(c).foreach(_.foreach(activate))
+      def markRef(s: Symbol): Unit =
+        if s.exists then
+          if s.isClassDef then markClass(s)
+          else if s.flags.is(Flags.Module) then markClass(try s.moduleClass catch case _: Throwable => Symbol.noSymbol)
+          else if s.isTerm then
+            if s.isClassConstructor then markClass(s.owner)
+            else
+              markMember(s)
+              // a companion `apply` constructs the case class
+              if s.name == "apply" && s.owner.exists && s.owner.flags.is(Flags.Module) then
+                val cc = try s.owner.companionClass catch case _: Throwable => Symbol.noSymbol
+                if cc.exists && cc.flags.is(Flags.Case) then markClass(cc)
+      val walker = new TreeTraverser:
+        override def traverseTree(t: Tree)(owner: Symbol): Unit =
+          t match
+            case New(tpt)             => try markClass(tpt.tpe.typeSymbol) catch case _: Throwable => ()
+            case _: Ident | _: Select => try markRef(t.symbol) catch case _: Throwable => ()
+            case _                    => ()
+          super.traverseTree(t)(owner)
+      for dd <- mains; body <- dd.rhs do queue += body
+      while queue.nonEmpty do walker.traverseTree(queue.dequeue())(Symbol.noSymbol)
+      // No `@main` (a library emitted alone, for the gap meter): nothing is a root, so everything is kept.
+      if mains.nonEmpty then pruning = true
+    }
+
     for tasty <- tastys do
       eachClassDef(tasty.ast) { cd =>
-        if isModel(cd.symbol) then emitModelType(cd, out)
+        if !keepClass(cd.symbol) then ()
+        else if isModel(cd.symbol) then emitModelType(cd, out)
         else if isUserClass(cd) && !mainNames.contains(cd.symbol.name) then emitClass(cd)
         else if isUserModule(cd) then emitModule(cd)
       }
     // @main → rtMain(): the entry the scene calls.
     out.append("sub rtMain()\n")
-    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).sortBy(typeName) do
+    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).filter(keepClass).sortBy(typeName) do
       out.append(s"  ${typeName(mc)}__module()\n")
     for dd <- mains; body <- dd.rhs do
       out.append(emitBody(body, false)).append("\n")
@@ -2612,6 +2931,11 @@ class RokuEmitter(
       |    n.text = "[todo: " + label + "]"
       |    n.color = "0x49454FFF"
       |    return n
+      |end function
+      |' A call into a type nothing constructs (the emitter's reachability analysis): it cannot run.
+      |function RtDead(what as string) as dynamic
+      |    RtThrow("unreachable: " + what)
+      |    return invalid
       |end function
       |
       |' ── Scala stdlib collections + synthetics (best-effort; keep the channel loading) ──
@@ -3102,6 +3426,586 @@ class RokuEmitter(
       |        return true
       |    end if
       |    return false
+      |end function
+      |
+      |' ── rapid.Task (the network module) ───────────────────────────────────────
+      |' One thread: a task is a continuation-passing computation, { _cls: "Task", run: closure } where `run`
+      |' takes [cb] and `cb` takes [ok, value]. A Completable holds its waiters instead. `sync` returns only a
+      |' task that completes at once; anything that would block is an error here. `sleep` is a SceneGraph Timer.
+      |function RtTask(runFn as function, env as object) as object
+      |    return { _cls: "Task", run: { fn: runFn, env: env } }
+      |end function
+      |function RtCb(fn as function, env as object) as object
+      |    return { fn: fn, env: env }
+      |end function
+      |function RapidTask_run(t as dynamic, cb as dynamic) as dynamic
+      |    if t = invalid
+      |        RtInvoke(cb, [true, invalid])
+      |    else if t._cls = "Completable"
+      |        if t.done then RtInvoke(cb, [t.ok, t.value]) else t.waiters.push(cb)
+      |    else
+      |        RtInvoke(t.run, [cb])
+      |    end if
+      |    return invalid
+      |end function
+      |function RapidTaskObj_pure(v as dynamic) as object
+      |    return RtTask(RtTaskPureRun, { v: v })
+      |end function
+      |function RtTaskPureRun(env as object, args as object) as dynamic
+      |    RtInvoke(args[0], [true, env.v])
+      |    return invalid
+      |end function
+      |function RapidTaskObj_unit() as object
+      |    return RapidTaskObj_pure(invalid)
+      |end function
+      |function RapidTaskObj_error(e as dynamic) as object
+      |    return RtTask(RtTaskErrorRun, { e: e })
+      |end function
+      |function RtTaskErrorRun(env as object, args as object) as dynamic
+      |    RtInvoke(args[0], [false, env.e])
+      |    return invalid
+      |end function
+      |function RapidTaskObj_apply(thunk as dynamic) as object
+      |    return RtTask(RtTaskApplyRun, { thunk: thunk })
+      |end function
+      |function RtTaskApplyRun(env as object, args as object) as dynamic
+      |    try
+      |        v = RtForce(env.thunk)
+      |    catch e
+      |        RtInvoke(args[0], [false, e])
+      |        return invalid
+      |    end try
+      |    RtInvoke(args[0], [true, v])
+      |    return invalid
+      |end function
+      |function RapidTaskObj_defer(thunk as dynamic) as object
+      |    return RtTask(RtTaskDeferRun, { thunk: thunk })
+      |end function
+      |function RtTaskDeferRun(env as object, args as object) as dynamic
+      |    try
+      |        t = RtForce(env.thunk)
+      |    catch e
+      |        RtInvoke(args[0], [false, e])
+      |        return invalid
+      |    end try
+      |    RapidTask_run(t, args[0])
+      |    return invalid
+      |end function
+      |function RapidTaskObj_sleep(d as dynamic) as object
+      |    return RtTask(RtTaskSleepRun, { ms: RtDurationMs(d) })
+      |end function
+      |function RtTaskSleepRun(env as object, args as object) as dynamic
+      |    RtSetTimeout(env.ms, RtCb(RtTaskSleepFire, { cb: args[0] }))
+      |    return invalid
+      |end function
+      |function RtTaskSleepFire(env as object, args as object) as dynamic
+      |    RtInvoke(env.cb, [true, invalid])
+      |    return invalid
+      |end function
+      |function RapidTaskObj_completable() as object
+      |    return { _cls: "Completable", done: false, ok: false, value: invalid, waiters: [] }
+      |end function
+      |function RapidTask_success(c as object, v as dynamic) as dynamic
+      |    return RtTaskComplete(c, true, v)
+      |end function
+      |function RapidTask_failure(c as object, e as dynamic) as dynamic
+      |    return RtTaskComplete(c, false, e)
+      |end function
+      |function RtTaskComplete(c as object, ok as boolean, v as dynamic) as dynamic
+      |    if c.done then return invalid
+      |    c.done = true
+      |    c.ok = ok
+      |    c.value = v
+      |    ws = c.waiters
+      |    c.waiters = []
+      |    for each w in ws
+      |        RtInvoke(w, [ok, v])
+      |    end for
+      |    return invalid
+      |end function
+      |function RapidTask_map(t as dynamic, f as dynamic) as object
+      |    return RtTask(RtTaskMapRun, { t: t, f: f })
+      |end function
+      |function RtTaskMapRun(env as object, args as object) as dynamic
+      |    RapidTask_run(env.t, RtCb(RtTaskMapCb, { f: env.f, cb: args[0] }))
+      |    return invalid
+      |end function
+      |function RtTaskMapCb(env as object, args as object) as dynamic
+      |    if not args[0]
+      |        RtInvoke(env.cb, [false, args[1]])
+      |        return invalid
+      |    end if
+      |    try
+      |        r = RtInvoke(env.f, [args[1]])
+      |    catch e
+      |        RtInvoke(env.cb, [false, e])
+      |        return invalid
+      |    end try
+      |    RtInvoke(env.cb, [true, r])
+      |    return invalid
+      |end function
+      |function RapidTask_flatMap(t as dynamic, f as dynamic) as object
+      |    return RtTask(RtTaskFlatMapRun, { t: t, f: f })
+      |end function
+      |function RtTaskFlatMapRun(env as object, args as object) as dynamic
+      |    RapidTask_run(env.t, RtCb(RtTaskFlatMapCb, { f: env.f, cb: args[0] }))
+      |    return invalid
+      |end function
+      |function RtTaskFlatMapCb(env as object, args as object) as dynamic
+      |    if not args[0]
+      |        RtInvoke(env.cb, [false, args[1]])
+      |        return invalid
+      |    end if
+      |    try
+      |        nt = RtInvoke(env.f, [args[1]])
+      |    catch e
+      |        RtInvoke(env.cb, [false, e])
+      |        return invalid
+      |    end try
+      |    RapidTask_run(nt, env.cb)
+      |    return invalid
+      |end function
+      |function RapidTask_handleError(t as dynamic, f as dynamic) as object
+      |    return RtTask(RtTaskHandleRun, { t: t, f: f })
+      |end function
+      |function RtTaskHandleRun(env as object, args as object) as dynamic
+      |    RapidTask_run(env.t, RtCb(RtTaskHandleCb, { f: env.f, cb: args[0] }))
+      |    return invalid
+      |end function
+      |function RtTaskHandleCb(env as object, args as object) as dynamic
+      |    if args[0]
+      |        RtInvoke(env.cb, [true, args[1]])
+      |        return invalid
+      |    end if
+      |    try
+      |        nt = RtInvoke(env.f, [args[1]])
+      |    catch e
+      |        RtInvoke(env.cb, [false, e])
+      |        return invalid
+      |    end try
+      |    RapidTask_run(nt, env.cb)
+      |    return invalid
+      |end function
+      |function RapidTask_guarantee(t as dynamic, thunk as dynamic) as object
+      |    return RtTask(RtTaskGuaranteeRun, { t: t, thunk: thunk })
+      |end function
+      |function RtTaskGuaranteeRun(env as object, args as object) as dynamic
+      |    RapidTask_run(env.t, RtCb(RtTaskGuaranteeCb, { thunk: env.thunk, cb: args[0] }))
+      |    return invalid
+      |end function
+      |function RtTaskGuaranteeCb(env as object, args as object) as dynamic
+      |    RapidTask_run(RtForce(env.thunk), RtCb(RtTaskGuaranteeDone, { ok: args[0], v: args[1], cb: env.cb }))
+      |    return invalid
+      |end function
+      |function RtTaskGuaranteeDone(env as object, args as object) as dynamic
+      |    RtInvoke(env.cb, [env.ok, env.v])
+      |    return invalid
+      |end function
+      |function RapidTask_timeout(t as dynamic, d as dynamic) as object
+      |    return RtTask(RtTaskTimeoutRun, { t: t, ms: RtDurationMs(d) })
+      |end function
+      |function RtTaskTimeoutRun(env as object, args as object) as dynamic
+      |    state = { fired: false, cb: args[0], ms: env.ms }
+      |    RtSetTimeout(env.ms, RtCb(RtTaskTimeoutFire, { state: state }))
+      |    RapidTask_run(env.t, RtCb(RtTaskTimeoutCb, { state: state }))
+      |    return invalid
+      |end function
+      |function RtTaskTimeoutFire(env as object, args as object) as dynamic
+      |    if env.state.fired then return invalid
+      |    env.state.fired = true
+      |    RtInvoke(env.state.cb, [false, { _cls: "TimeoutException", message: "Task timed out after " + _str(env.state.ms) + " ms" }])
+      |    return invalid
+      |end function
+      |function RtTaskTimeoutCb(env as object, args as object) as dynamic
+      |    if env.state.fired then return invalid
+      |    env.state.fired = true
+      |    RtInvoke(env.state.cb, args)
+      |    return invalid
+      |end function
+      |function RapidTask_unit(t as dynamic) as object
+      |    return RapidTask_map(t, RtCb(RtTaskConstUnit, {}))
+      |end function
+      |function RtTaskConstUnit(env as object, args as object) as dynamic
+      |    return invalid
+      |end function
+      |function RapidTask_foreach(t as dynamic, f as dynamic) as dynamic
+      |    return RapidTask_start(RapidTask_map(t, f))
+      |end function
+      |function RapidTask_start(t as dynamic) as object
+      |    RapidTask_run(t, RtCb(RtTaskStartCb, {}))
+      |    return RapidTaskObj_pure(invalid)
+      |end function
+      |function RapidTask_startUnit(t as dynamic) as dynamic
+      |    RapidTask_start(t)
+      |    return invalid
+      |end function
+      |function RtTaskStartCb(env as object, args as object) as dynamic
+      |    if not args[0] then print "[rt] task failed: "; _getMessage(args[1])
+      |    return invalid
+      |end function
+      |function RapidTask_sync(t as dynamic) as dynamic
+      |    res = { done: false, ok: false, v: invalid }
+      |    RapidTask_run(t, RtCb(RtTaskSyncCb, { box: res }))
+      |    if not res.done then RtThrow({ _cls: "IllegalStateException", message: "Task.sync: the task did not complete at once (one thread)" })
+      |    if not res.ok then RtThrow(res.v)
+      |    return res.v
+      |end function
+      |function RtTaskSyncCb(env as object, args as object) as dynamic
+      |    env.box.done = true
+      |    env.box.ok = args[0]
+      |    env.box.v = args[1]
+      |    return invalid
+      |end function
+      |' a one-shot timer on the scene's thread: `cb` runs after `ms`
+      |function RtSetTimeout(ms as dynamic, cb as dynamic) as dynamic
+      |    ga = GetGlobalAA()
+      |    if ga.__rtTimers = invalid
+      |        ga.__rtTimers = {}
+      |        ga.__rtTimerSeq = 0
+      |    end if
+      |    ga.__rtTimerSeq = ga.__rtTimerSeq + 1
+      |    t = CreateObject("roSGNode", "Timer")
+      |    t.id = "rtTimer" + ga.__rtTimerSeq.ToStr()
+      |    t.repeat = false
+      |    seconds = ms / 1000.0
+      |    if seconds < 0.001 then seconds = 0.001
+      |    t.duration = seconds
+      |    ga.__rtTimers[t.id] = cb
+      |    ga.appScene.appendChild(t)
+      |    t.observeField("fire", "RtOnTimer")
+      |    t.control = "start"
+      |    return invalid
+      |end function
+      |sub RtOnTimer(event as object)
+      |    ga = GetGlobalAA()
+      |    n = event.getRoSGNode()
+      |    cb = ga.__rtTimers[n.id]
+      |    if cb = invalid then return
+      |    ga.__rtTimers.Delete(n.id)
+      |    ga.appScene.removeChild(n)
+      |    RtInvoke(cb, [])
+      |end sub
+      |
+      |' ── fabric.Json (the network module): the native JSON values — an assoc array, an array, a string, a number,
+      |' a boolean, invalid — and BrightScript's own parser and formatter ────────
+      |function _jsonParse(text as dynamic) as dynamic
+      |    return ParseJson(text)
+      |end function
+      |function _jsonFormat(j as dynamic) as string
+      |    return FormatJson(j)
+      |end function
+      |function _jsonGet(j as dynamic, key as dynamic) as dynamic
+      |    if j = invalid then return invalid
+      |    k = _rtKind(j)
+      |    if k = "aa" then return j[key]
+      |    if k = "arr" and _rtKind(key) = "n" then return j[key]
+      |    return invalid
+      |end function
+      |function _jsonOpt(j as dynamic, key as dynamic) as dynamic
+      |    return _jsonGet(j, key)
+      |end function
+      |function _jsonObj(pairs as object) as object
+      |    aa = {}
+      |    aa.SetModeCaseSensitive()
+      |    for each p in pairs
+      |        aa[p._1] = p._2
+      |    end for
+      |    return aa
+      |end function
+      |function _json_asString(j as dynamic) as string
+      |    return _str(j)
+      |end function
+      |function _json_asLong(j as dynamic) as dynamic
+      |    if _rtKind(j) = "s" then return Val(j, 10)
+      |    return j
+      |end function
+      |function _json_asInt(j as dynamic) as dynamic
+      |    return _json_asLong(j)
+      |end function
+      |function _json_asDouble(j as dynamic) as dynamic
+      |    if _rtKind(j) = "s" then return Val(j)
+      |    return j
+      |end function
+      |function _json_asFloat(j as dynamic) as dynamic
+      |    return _json_asDouble(j)
+      |end function
+      |function _json_asBoolean(j as dynamic) as dynamic
+      |    return j
+      |end function
+      |function _json_asVector(j as dynamic) as dynamic
+      |    return j
+      |end function
+      |function _json_asArr(j as dynamic) as dynamic
+      |    return j
+      |end function
+      |function _json_asObj(j as dynamic) as dynamic
+      |    return j
+      |end function
+      |function _json_asMap(j as dynamic) as dynamic
+      |    return j
+      |end function
+      |function _json_isNull(j as dynamic) as boolean
+      |    return j = invalid
+      |end function
+      |function _json_toString(j as dynamic) as string
+      |    return FormatJson(j)
+      |end function
+      |' fabric.rw: codecs. A primitive, a String or a Json value is itself (`_rw(name)`); a case class reads and
+      |' writes by its field names with a codec per field (`_rwGen`, the emitter's derivation of `RW.gen`); Option,
+      |' List and Map wrap their element's codec.
+      |function _rw(name as string) as object
+      |    return { _cls: "RW", name: name }
+      |end function
+      |function _rwGen(cls as string, keys as object, slots as object, rws as object, ctor as dynamic) as object
+      |    return { _cls: "RW", kind: "case", cls: cls, keys: keys, slots: slots, rws: rws, ctor: ctor }
+      |end function
+      |function _rwOpt(inner as object) as object
+      |    return { _cls: "RW", kind: "opt", inner: inner }
+      |end function
+      |function _rwList(inner as object) as object
+      |    return { _cls: "RW", kind: "list", inner: inner }
+      |end function
+      |function _rwMap(inner as object) as object
+      |    return { _cls: "RW", kind: "map", inner: inner }
+      |end function
+      |' JSON → value
+      |function _rwRead(rw as dynamic, j as dynamic) as dynamic
+      |    if rw = invalid or rw.kind = invalid or j = invalid then return j
+      |    if rw.kind = "opt" then return _rwRead(rw.inner, j)
+      |    if rw.kind = "list"
+      |        r = []
+      |        for each x in j
+      |            r.push(_rwRead(rw.inner, x))
+      |        end for
+      |        return r
+      |    end if
+      |    if rw.kind = "map"
+      |        m = _mapEmpty()
+      |        for each k in j
+      |            m = _mapPut(m, k, _rwRead(rw.inner, j[k]))
+      |        end for
+      |        return m
+      |    end if
+      |    n = rw.keys.count()
+      |    args = []
+      |    for i = 0 to n - 1
+      |        args.push(_rwRead(rw.rws[i], j[rw.keys[i]]))
+      |    end for
+      |    if rw.ctor <> invalid then return RtCallArgs(rw.ctor, args)
+      |    o = { _cls: rw.cls, _fields: rw.slots }
+      |    for i = 0 to n - 1
+      |        o[rw.slots[i]] = args[i]
+      |    end for
+      |    return o
+      |end function
+      |' value → JSON
+      |function _rwWrite(rw as dynamic, v as dynamic) as dynamic
+      |    if rw = invalid or rw.kind = invalid or v = invalid then return v
+      |    if rw.kind = "opt" then return _rwWrite(rw.inner, v)
+      |    if rw.kind = "list"
+      |        r = []
+      |        for each x in v
+      |            r.push(_rwWrite(rw.inner, x))
+      |        end for
+      |        return r
+      |    end if
+      |    if rw.kind = "map"
+      |        aa = {}
+      |        aa.SetModeCaseSensitive()
+      |        for each t in _mapToList(v)
+      |            aa[_str(t._1)] = _rwWrite(rw.inner, t._2)
+      |        end for
+      |        return aa
+      |    end if
+      |    aa = {}
+      |    aa.SetModeCaseSensitive()
+      |    n = rw.keys.count()
+      |    for i = 0 to n - 1
+      |        aa[rw.keys[i]] = _rwWrite(rw.rws[i], v[rw.slots[i]])
+      |    end for
+      |    return aa
+      |end function
+      |' a function reference applied to an argument list (BrightScript cannot spread one)
+      |function RtCallArgs(f as function, args as object) as dynamic
+      |    n = args.count()
+      |    if n = 0 then return f()
+      |    if n = 1 then return f(args[0])
+      |    if n = 2 then return f(args[0], args[1])
+      |    if n = 3 then return f(args[0], args[1], args[2])
+      |    if n = 4 then return f(args[0], args[1], args[2], args[3])
+      |    if n = 5 then return f(args[0], args[1], args[2], args[3], args[4])
+      |    if n = 6 then return f(args[0], args[1], args[2], args[3], args[4], args[5])
+      |    if n = 7 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+      |    if n = 8 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7])
+      |    RtThrow("RtCallArgs: more than 8 arguments")
+      |    return invalid
+      |end function
+      |' A Scala 3 enum's simple case: one singleton per (enum, case), named by `toString`, ordered by `ordinal`.
+      |function RtEnum(cls as string, name as string, ordinal as integer) as object
+      |    ga = GetGlobalAA()
+      |    key = "__enum_" + cls + "_" + name
+      |    e = ga[key]
+      |    if e <> invalid then return e
+      |    e = { _cls: cls, _enum: name, ordinal: ordinal, toString: RtEnumToString }
+      |    ga[key] = e
+      |    return e
+      |end function
+      |function RtEnumToString(self as object) as string
+      |    return self._enum
+      |end function
+      |
+      |' ── java.util.concurrent.ConcurrentHashMap, AtomicLong / AtomicInteger, UUID, System, scribe ──
+      |function ConcurrentHashMap_new() as object
+      |    m = {}
+      |    m.SetModeCaseSensitive()
+      |    return { _cls: "ConcurrentHashMap", m: m }
+      |end function
+      |function ConcurrentHashMap_put(self as object, k as dynamic, v as dynamic) as dynamic
+      |    key = _str(k)
+      |    old = self.m[key]
+      |    self.m[key] = v
+      |    return old
+      |end function
+      |function ConcurrentHashMap_get(self as object, k as dynamic) as dynamic
+      |    return self.m[_str(k)]
+      |end function
+      |function ConcurrentHashMap_remove(self as object, k as dynamic) as dynamic
+      |    key = _str(k)
+      |    old = self.m[key]
+      |    self.m.Delete(key)
+      |    return old
+      |end function
+      |function ConcurrentHashMap_getOrDefault(self as object, k as dynamic, d as dynamic) as dynamic
+      |    v = self.m[_str(k)]
+      |    if v = invalid then return d
+      |    return v
+      |end function
+      |function ConcurrentHashMap_containsKey(self as object, k as dynamic) as boolean
+      |    return self.m.DoesExist(_str(k))
+      |end function
+      |function ConcurrentHashMap_computeIfAbsent(self as object, k as dynamic, f as dynamic) as dynamic
+      |    key = _str(k)
+      |    v = self.m[key]
+      |    if v = invalid
+      |        v = RtInvoke(f, [k])
+      |        self.m[key] = v
+      |    end if
+      |    return v
+      |end function
+      |function ConcurrentHashMap_values(self as object) as object
+      |    r = []
+      |    for each key in self.m
+      |        r.push(self.m[key])
+      |    end for
+      |    return r
+      |end function
+      |function ConcurrentHashMap_size(self as object) as integer
+      |    return self.m.Count()
+      |end function
+      |function ConcurrentHashMap_isEmpty(self as object) as boolean
+      |    return self.m.Count() = 0
+      |end function
+      |function ConcurrentHashMap_clear(self as object) as dynamic
+      |    self.m.Clear()
+      |    return invalid
+      |end function
+      |function ConcurrentHashMap_forEach(self as object, f as dynamic) as dynamic
+      |    for each key in self.m
+      |        RtInvoke(f, [key, self.m[key]])
+      |    end for
+      |    return invalid
+      |end function
+      |function ConcurrentLinkedQueue_new() as object
+      |    return { _cls: "ConcurrentLinkedQueue", items: [] }
+      |end function
+      |function ConcurrentLinkedQueue_add(self as object, x as dynamic) as boolean
+      |    self.items.push(x)
+      |    return true
+      |end function
+      |function ConcurrentLinkedQueue_offer(self as object, x as dynamic) as boolean
+      |    self.items.push(x)
+      |    return true
+      |end function
+      |function ConcurrentLinkedQueue_poll(self as object) as dynamic
+      |    if self.items.count() = 0 then return invalid
+      |    return self.items.shift()
+      |end function
+      |function ConcurrentLinkedQueue_peek(self as object) as dynamic
+      |    if self.items.count() = 0 then return invalid
+      |    return self.items[0]
+      |end function
+      |function ConcurrentLinkedQueue_isEmpty(self as object) as boolean
+      |    return self.items.count() = 0
+      |end function
+      |function ConcurrentLinkedQueue_size(self as object) as integer
+      |    return self.items.count()
+      |end function
+      |function ConcurrentLinkedQueue_clear(self as object) as dynamic
+      |    self.items.clear()
+      |    return invalid
+      |end function
+      |function AtomicLong_new(v = 0 as dynamic) as object
+      |    return { _cls: "AtomicLong", value: v }
+      |end function
+      |function AtomicInteger_new(v = 0 as dynamic) as object
+      |    return { _cls: "AtomicInteger", value: v }
+      |end function
+      |function AtomicLong_get(self as object) as dynamic
+      |    return self.value
+      |end function
+      |function AtomicLong_set(self as object, v as dynamic) as dynamic
+      |    self.value = v
+      |    return invalid
+      |end function
+      |function AtomicLong_incrementAndGet(self as object) as dynamic
+      |    self.value = self.value + 1
+      |    return self.value
+      |end function
+      |function AtomicLong_decrementAndGet(self as object) as dynamic
+      |    self.value = self.value - 1
+      |    return self.value
+      |end function
+      |function AtomicLong_getAndIncrement(self as object) as dynamic
+      |    old = self.value
+      |    self.value = old + 1
+      |    return old
+      |end function
+      |function AtomicLong_addAndGet(self as object, d as dynamic) as dynamic
+      |    self.value = self.value + d
+      |    return self.value
+      |end function
+      |function AtomicLong_compareAndSet(self as object, expect as dynamic, update as dynamic) as boolean
+      |    if self.value = expect
+      |        self.value = update
+      |        return true
+      |    end if
+      |    return false
+      |end function
+      |function _uuid() as string
+      |    return CreateObject("roDeviceInfo").GetRandomUUID()
+      |end function
+      |function _nowMillis() as dynamic
+      |    dt = CreateObject("roDateTime")
+      |    return dt.AsSecondsLong() * 1000 + dt.GetMilliseconds()
+      |end function
+      |function Scribe_log(level as string, msgs as object) as dynamic
+      |    s = ""
+      |    for each m in msgs
+      |        s = s + _str(RtForce(m))
+      |    end for
+      |    print "[" + level + "] " + s
+      |    return invalid
+      |end function
+      |function _getMessage(e as dynamic) as dynamic
+      |    if _rtKind(e) = "aa" and e.message <> invalid then return e.message
+      |    return _str(e)
+      |end function
+      |function _clsName(x as dynamic) as string
+      |    if _rtKind(x) = "aa" and x._cls <> invalid then return _str(x._cls)
+      |    return type(x)
+      |end function
+      |function _regex(pattern as string) as object
+      |    return CreateObject("roRegex", pattern, "")
       |end function
       |
       |' ── java.lang.ThreadLocal (one thread: a slot, lazily seeded) ─────────────

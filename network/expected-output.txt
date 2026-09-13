@@ -1,0 +1,8 @@
+RX PASS state.active = Active
+RX PASS server.saw.connect = server: connect probe
+RX PASS events.received = 1:one,2:two
+RX PASS push.seq = 1
+RX PASS server.received = hello
+RX PASS rpc.echo = ping
+RX PASS state.after.drop = Closed
+RX DONE

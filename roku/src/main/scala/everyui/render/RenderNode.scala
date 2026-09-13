@@ -107,6 +107,7 @@ object Nodes:
 /** The handful of non-render platform services the slice needs. */
 object Platform:
   def log(message: String): Unit = uiLog(message)
+  def logError(message: String, t: Throwable): Unit = uiLog("ERROR " + message + ": " + t.getMessage)
   def ticks(): Double = uiTicks()
   def animate(tick: () => Unit): Unit = uiAnimate(tick)
 
@@ -133,6 +134,12 @@ object Platform:
 
   /** The frozen frame is complete. (tools/check.sh reads it off the debug console.) */
   def frozen(): Unit = ()
+
+  /** `pkg:/<name>.txt` in the channel (a test sideload adds it, `roku-install --add name=value`), or "". */
+  def launchArg(name: String): String = uiLaunchArg(name)
+
+  /** A channel cannot exit itself from the render thread; a demo that is done just stops. */
+  def quit(): Unit = ()
 
   /** A channel's design resolution never changes. */
   def onResize(f: () => Unit): Unit = ()

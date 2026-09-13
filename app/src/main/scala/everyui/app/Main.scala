@@ -1,0 +1,26 @@
+package everyui.app
+
+import everyui.example.ExampleApp
+import everyui.render.Platform
+
+/** The single entry point every backend runs.
+  *
+  * `demo=<name>` on the launch (`?demo=` in the page URL, `--demo=` on the desktop and tvOS, `--es demo` on
+  * Android, `demo.txt` in a Roku sideload — `Platform.launchArg`) picks what runs; the Roku compiler collects
+  * `@main` and calls it from the generated scene, and Scala.js links it as the module initializer, so there can
+  * only be one.
+  *
+  *   animation  youi's AnimationExample, in youi's example app (the default)
+  *   durable    the network module's example: a durable socket to `socket=<url>` (tools/check.sh)
+  *   hello      the original seam proof plus the frame-rate probe
+  *   bench      reactify's per-operation cost
+  *   easings    every easing curve as numbers
+  */
+@main def main(): Unit =
+  val demo = Platform.launchArg("demo")
+  if demo == "hello" then HelloWorld.run()
+  else if demo == "bench" then ReactifyBench.run()
+  else if demo == "easings" then EasingTable.run()
+  else if demo == "youibench" then YouiBench.run()
+  else if demo == "durable" then DurableDemo.run()
+  else ExampleApp.main()

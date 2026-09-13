@@ -28,6 +28,9 @@ object DesktopApp:
     Host.freeze = arg("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
     Host.screenshot = arg("screenshot").getOrElse("")
     Host.assets = new File(arg("assets").getOrElse("assets"))
+    // every --name=value, for Platform.launchArg (`--demo=durable --socket=ws://…`)
+    Host.args = args.collect { case a if a.startsWith("--") && a.contains('=') =>
+      val eq = a.indexOf('='); a.substring(2, eq) -> a.substring(eq + 1) }.toMap
 
     javafx.application.Platform.startup(() => {
       val root = new Pane()

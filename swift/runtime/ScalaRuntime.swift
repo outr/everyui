@@ -422,6 +422,8 @@ func println(_ s: V) -> V {
 }
 
 func RtTodo(_ label: String) -> V { .vStr("[todo: " + label + "]") }
+/// A call into a type nothing constructs (the emitter's reachability analysis): it cannot run.
+func RtDead(_ what: V) throws -> V { throw RtError(v: .vStr("unreachable: " + rtS(what))) }
 
 // MARK: - numbers
 
@@ -760,6 +762,350 @@ func _mapEq(_ a: V, _ b: V) -> V {
     }
     return .vBool(true)
 }
+
+// MARK: - rapid.Task (the network module)
+// One thread: a task is a continuation-passing computation, { _cls: "Task", run: fn } where `run` takes the
+// callback and the callback takes (ok, value). A Completable holds its waiters instead. `sync` returns only a
+// task that completes at once; anything that would block is an error here. `sleep` is the main queue's timer.
+
+func RtTask(_ run: @escaping (V) throws -> V) -> V { rtObj(["_cls": .vStr("Task"), "run": rtFn(run)]) }
+func RtCb(_ f: @escaping (V, V) throws -> V) -> V { rtFn(f) }
+func rtB(_ v: V) -> Bool { if case .vBool(let b) = v { return b }; return false }
+func rtCall(_ cb: V, _ ok: Bool, _ v: V) throws { _ = try RtInvoke(cb, rtArr([.vBool(ok), v])) }
+/** The exception value of a thrown error, as the emitted `catch` sees it. */
+func rtErrorValue(_ error: Error) -> V {
+    if let e = error as? RtError { return e.v }
+    return rtException("RuntimeException", "\(error)")
+}
+func RapidTask_run(_ t: V, _ cb: V) throws -> V {
+    if case .vNull = t { try rtCall(cb, true, .vNull); return .vNull }
+    if rtS(t["_cls"]) == "Completable" {
+        if rtB(t["done"]) { try rtCall(cb, rtB(t["ok"]), t["value"]) }
+        else if case .vArr(let ws) = t["waiters"] { ws.items.append(cb) }
+        return .vNull
+    }
+    _ = try RtInvoke(t["run"], rtArr([cb]))
+    return .vNull
+}
+func RapidTaskObj_pure(_ v: V) -> V { RtTask { cb in try rtCall(cb, true, v); return .vNull } }
+func RapidTaskObj_unit() -> V { RapidTaskObj_pure(.vNull) }
+func RapidTaskObj_error(_ e: V) -> V { RtTask { cb in try rtCall(cb, false, e); return .vNull } }
+func RapidTaskObj_apply(_ thunk: V) -> V {
+    RtTask { cb in
+        let v: V
+        do { v = try RtForce(thunk) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
+        try rtCall(cb, true, v)
+        return .vNull
+    }
+}
+func RapidTaskObj_defer(_ thunk: V) -> V {
+    RtTask { cb in
+        let t: V
+        do { t = try RtForce(thunk) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
+        return try RapidTask_run(t, cb)
+    }
+}
+func RapidTaskObj_sleep(_ d: V) -> V {
+    let ms = rtDouble(RtDurationMs(d))
+    return RtTask { cb in RtSetTimeout(ms, rtFn { try rtCall(cb, true, .vNull); return .vNull }); return .vNull }
+}
+func RapidTaskObj_completable() -> V {
+    rtObj(["_cls": .vStr("Completable"), "done": .vBool(false), "ok": .vBool(false), "value": .vNull, "waiters": rtArr([])])
+}
+func RtTaskComplete(_ c: V, _ ok: Bool, _ v: V) throws -> V {
+    if rtB(c["done"]) { return .vNull }
+    c["done"] = .vBool(true); c["ok"] = .vBool(ok); c["value"] = v
+    let ws = rtItems(c["waiters"])
+    c["waiters"] = rtArr([])
+    for w in ws { try rtCall(w, ok, v) }
+    return .vNull
+}
+func RapidTask_success(_ c: V, _ v: V) throws -> V { try RtTaskComplete(c, true, v) }
+func RapidTask_failure(_ c: V, _ e: V) throws -> V { try RtTaskComplete(c, false, e) }
+func RapidTask_map(_ t: V, _ f: V) -> V {
+    RtTask { cb in
+        try RapidTask_run(t, RtCb { ok, v in
+            if !rtB(ok) { try rtCall(cb, false, v); return .vNull }
+            let r: V
+            do { r = try RtInvoke(f, rtArr([v])) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
+            try rtCall(cb, true, r)
+            return .vNull
+        })
+    }
+}
+func RapidTask_flatMap(_ t: V, _ f: V) -> V {
+    RtTask { cb in
+        try RapidTask_run(t, RtCb { ok, v in
+            if !rtB(ok) { try rtCall(cb, false, v); return .vNull }
+            let nt: V
+            do { nt = try RtInvoke(f, rtArr([v])) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
+            return try RapidTask_run(nt, cb)
+        })
+    }
+}
+func RapidTask_handleError(_ t: V, _ f: V) -> V {
+    RtTask { cb in
+        try RapidTask_run(t, RtCb { ok, v in
+            if rtB(ok) { try rtCall(cb, true, v); return .vNull }
+            let nt: V
+            do { nt = try RtInvoke(f, rtArr([v])) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
+            return try RapidTask_run(nt, cb)
+        })
+    }
+}
+func RapidTask_guarantee(_ t: V, _ thunk: V) -> V {
+    RtTask { cb in
+        try RapidTask_run(t, RtCb { ok, v in
+            try RapidTask_run(try RtForce(thunk), RtCb { _, _ in try rtCall(cb, rtB(ok), v); return .vNull })
+        })
+    }
+}
+func RapidTask_timeout(_ t: V, _ d: V) -> V {
+    let ms = rtDouble(RtDurationMs(d))
+    return RtTask { cb in
+        let state = rtObj(["fired": .vBool(false)])
+        RtSetTimeout(ms, rtFn {
+            if rtB(state["fired"]) { return .vNull }
+            state["fired"] = .vBool(true)
+            try rtCall(cb, false, rtException("TimeoutException", "Task timed out after \(Int(ms)) ms"))
+            return .vNull
+        })
+        return try RapidTask_run(t, RtCb { ok, v in
+            if rtB(state["fired"]) { return .vNull }
+            state["fired"] = .vBool(true)
+            try rtCall(cb, rtB(ok), v)
+            return .vNull
+        })
+    }
+}
+func RapidTask_unit(_ t: V) -> V { RapidTask_map(t, rtFn { (_: V) in .vNull }) }
+func RapidTask_foreach(_ t: V, _ f: V) throws -> V { try RapidTask_start(RapidTask_map(t, f)) }
+func RapidTask_start(_ t: V) throws -> V {
+    _ = try RapidTask_run(t, RtCb { ok, v in
+        if !rtB(ok) { print("[rt] task failed: " + rtS(_getMessage(v))) }
+        return .vNull
+    })
+    return RapidTaskObj_pure(.vNull)
+}
+func RapidTask_startUnit(_ t: V) throws -> V { _ = try RapidTask_start(t); return .vNull }
+func RapidTask_sync(_ t: V) throws -> V {
+    let box = rtObj(["done": .vBool(false), "ok": .vBool(false), "v": .vNull])
+    _ = try RapidTask_run(t, RtCb { ok, v in box["done"] = .vBool(true); box["ok"] = ok; box["v"] = v; return .vNull })
+    if !rtB(box["done"]) {
+        try RtThrow(rtException("IllegalStateException", "Task.sync: the task did not complete at once (one thread)"))
+    }
+    if !rtB(box["ok"]) { try RtThrow(box["v"]) }
+    return box["v"]
+}
+/** A one-shot timer on the main queue: `cb` (a zero-argument closure) runs after `ms`. */
+func RtSetTimeout(_ ms: Double, _ cb: V) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + max(ms, 0) / 1000.0) {
+        do { _ = try RtInvoke(cb, rtArr([])) }
+        catch { print("[rt] timer callback failed: " + rtS(_getMessage(rtErrorValue(error)))) }
+    }
+}
+func rtDouble(_ v: V) -> Double {
+    switch v {
+    case .vInt(let i): return Double(i)
+    case .vDbl(let d): return d
+    case .vStr(let s): return Double(s) ?? 0
+    default: return 0
+    }
+}
+
+// MARK: - fabric.Json (the network module): JSON values are V — an object, an array, a string, a number, a bool, null
+
+func _jsonParse(_ text: V) throws -> V {
+    guard let data = rtS(text).data(using: .utf8),
+          let any = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return .vNull }
+    return rtFromJsonAny(any)
+}
+func rtFromJsonAny(_ any: Any) -> V {
+    switch any {
+    case let d as [String: Any]:
+        var fields: [String: V] = [:]
+        for (k, v) in d { fields[k] = rtFromJsonAny(v) }
+        return rtObj(fields)
+    case let a as [Any]: return rtArr(a.map(rtFromJsonAny))
+    case let s as String: return .vStr(s)
+    case let n as NSNumber:
+        if CFGetTypeID(n) == CFBooleanGetTypeID() { return .vBool(n.boolValue) }
+        let d = n.doubleValue
+        if d == d.rounded() && abs(d) < 9.0e15 { return .vInt(Int(d)) }
+        return .vDbl(d)
+    default: return .vNull
+    }
+}
+func rtToJsonAny(_ v: V) -> Any {
+    switch v {
+    case .vNull: return NSNull()
+    case .vBool(let b): return b
+    case .vInt(let i): return i
+    case .vDbl(let d): return d
+    case .vStr(let s): return s
+    case .vObj(let o):
+        var d: [String: Any] = [:]
+        for (k, x) in o.fields { d[k] = rtToJsonAny(x) }
+        return d
+    case .vArr(let a): return a.items.map(rtToJsonAny)
+    default: return rtS(v)
+    }
+}
+func _jsonFormat(_ j: V) -> V {
+    guard let data = try? JSONSerialization.data(withJSONObject: rtToJsonAny(j), options: [.fragmentsAllowed]),
+          let s = String(data: data, encoding: .utf8) else { return .vStr("null") }
+    return .vStr(s)
+}
+func _jsonGet(_ j: V, _ key: V) -> V {
+    switch j {
+    case .vObj: return j[rtS(key)]
+    case .vArr: return j[key]
+    default: return .vNull
+    }
+}
+func _jsonOpt(_ j: V, _ key: V) -> V { _jsonGet(j, key) }
+func _jsonObj(_ pairs: V) -> V {
+    var fields: [String: V] = [:]
+    for p in rtItems(pairs) { fields[rtS(p["_1"])] = p["_2"] }
+    return rtObj(fields)
+}
+func _json_asString(_ j: V) -> V { _str(j) }
+func _json_asLong(_ j: V) -> V { if case .vStr(let s) = j { return .vInt(Int(s) ?? 0) }; return j }
+func _json_asInt(_ j: V) -> V { _json_asLong(j) }
+func _json_asDouble(_ j: V) -> V { if case .vStr(let s) = j { return .vDbl(Double(s) ?? 0) }; return j }
+func _json_asFloat(_ j: V) -> V { _json_asDouble(j) }
+func _json_asBoolean(_ j: V) -> V { j }
+func _json_asVector(_ j: V) -> V { j }
+func _json_asArr(_ j: V) -> V { j }
+func _json_asObj(_ j: V) -> V { j }
+func _json_asMap(_ j: V) -> V { j }
+func _json_isNull(_ j: V) -> V { if case .vNull = j { return .vBool(true) }; return .vBool(false) }
+func _json_toString(_ j: V) -> V { _jsonFormat(j) }
+/// fabric.rw: codecs. A primitive, a String or a Json value is itself (`_rw(name)`); a case class reads and writes
+/// by its field names with a codec per field (`_rwGen`, the emitter's derivation of `RW.gen`); Option, List and
+/// Map wrap their element's codec.
+func _rw(_ name: V) -> V { rtObj(["_cls": .vStr("RW"), "name": name]) }
+func _rwGen(_ cls: V, _ keys: V, _ slots: V, _ rws: V, _ ctor: V) -> V {
+    rtObj(["_cls": .vStr("RW"), "kind": .vStr("case"), "cls": cls, "keys": keys, "slots": slots, "rws": rws, "ctor": ctor])
+}
+func _rwOpt(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("opt"), "inner": inner]) }
+func _rwList(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("list"), "inner": inner]) }
+func _rwMap(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("map"), "inner": inner]) }
+/// JSON → value
+func _rwRead(_ rw: V, _ j: V) throws -> V {
+    guard case .vObj = rw, case .vStr(let kind) = rw["kind"] else { return j }
+    if case .vNull = j { return j }
+    switch kind {
+    case "opt": return try _rwRead(rw["inner"], j)
+    case "list": return rtArr(try rtItems(j).map { try _rwRead(rw["inner"], $0) })
+    case "map":
+        var m = _mapEmpty()
+        if case .vObj(let o) = j { for (k, x) in o.fields { m = try _mapPut(m, .vStr(k), try _rwRead(rw["inner"], x)) } }
+        return m
+    default:
+        let keys = rtItems(rw["keys"]), slots = rtItems(rw["slots"]), rws = rtItems(rw["rws"])
+        var args: [V] = []
+        for i in keys.indices { args.append(try _rwRead(rws[i], j[rtS(keys[i])])) }
+        if case .vFn(let f) = rw["ctor"] { return try f.call(args) }
+        let o = rtObj(["_cls": rw["cls"], "_fields": rw["slots"]])
+        for i in slots.indices { o[rtS(slots[i])] = args[i] }
+        return o
+    }
+}
+/// value → JSON
+func _rwWrite(_ rw: V, _ v: V) throws -> V {
+    guard case .vObj = rw, case .vStr(let kind) = rw["kind"] else { return v }
+    if case .vNull = v { return v }
+    switch kind {
+    case "opt": return try _rwWrite(rw["inner"], v)
+    case "list": return rtArr(try rtItems(v).map { try _rwWrite(rw["inner"], $0) })
+    case "map":
+        var fields: [String: V] = [:]
+        for t in rtItems(_mapToList(v)) { fields[rtS(t["_1"])] = try _rwWrite(rw["inner"], t["_2"]) }
+        return rtObj(fields)
+    default:
+        let keys = rtItems(rw["keys"]), slots = rtItems(rw["slots"]), rws = rtItems(rw["rws"])
+        var fields: [String: V] = [:]
+        for i in keys.indices { fields[rtS(keys[i])] = try _rwWrite(rws[i], v[rtS(slots[i])]) }
+        return rtObj(fields)
+    }
+}
+/// A Scala 3 enum's simple case: one singleton per (enum, case), named by `toString`, ordered by `ordinal`.
+func RtEnum(_ cls: V, _ name: V, _ ordinal: V) -> V {
+    let key = "__enum_" + rtS(cls) + "_" + rtS(name)
+    if case .vObj = ga[key] { return ga[key] }
+    let e = rtObj(["_cls": cls, "_enum": name, "ordinal": ordinal, "toString": rtFn { (s: V) in s["_enum"] }])
+    ga[key] = e
+    return e
+}
+
+// MARK: - java.util.concurrent.ConcurrentHashMap, AtomicLong / AtomicInteger, UUID, System, scribe
+
+func ConcurrentHashMap_new() -> V { rtObj(["_cls": .vStr("ConcurrentHashMap"), "m": rtObj([:])]) }
+func ConcurrentHashMap_put(_ s: V, _ k: V, _ v: V) -> V { let m = s["m"]; let old = m[rtS(k)]; m[rtS(k)] = v; return old }
+func ConcurrentHashMap_get(_ s: V, _ k: V) -> V { s["m"][rtS(k)] }
+func ConcurrentHashMap_remove(_ s: V, _ k: V) -> V {
+    let m = s["m"]; let old = m[rtS(k)]
+    if case .vObj(let o) = m { o.fields.removeValue(forKey: rtS(k)) }
+    return old
+}
+func ConcurrentHashMap_getOrDefault(_ s: V, _ k: V, _ d: V) -> V { rtHas(s["m"], rtS(k)) ? s["m"][rtS(k)] : d }
+func ConcurrentHashMap_containsKey(_ s: V, _ k: V) -> V { .vBool(rtHas(s["m"], rtS(k))) }
+func ConcurrentHashMap_computeIfAbsent(_ s: V, _ k: V, _ f: V) throws -> V {
+    let m = s["m"]
+    if rtHas(m, rtS(k)) { return m[rtS(k)] }
+    let v = try RtInvoke(f, rtArr([k]))
+    m[rtS(k)] = v
+    return v
+}
+func ConcurrentHashMap_values(_ s: V) -> V { if case .vObj(let o) = s["m"] { return rtArr(Array(o.fields.values)) }; return rtArr([]) }
+func ConcurrentHashMap_size(_ s: V) -> V { if case .vObj(let o) = s["m"] { return .vInt(o.fields.count) }; return .vInt(0) }
+func ConcurrentHashMap_isEmpty(_ s: V) -> V { if case .vObj(let o) = s["m"] { return .vBool(o.fields.isEmpty) }; return .vBool(true) }
+func ConcurrentHashMap_clear(_ s: V) -> V { if case .vObj(let o) = s["m"] { o.fields.removeAll() }; return .vNull }
+func ConcurrentHashMap_forEach(_ s: V, _ f: V) throws -> V {
+    if case .vObj(let o) = s["m"] { for (k, v) in o.fields { _ = try RtInvoke(f, rtArr([.vStr(k), v])) } }
+    return .vNull
+}
+func ConcurrentLinkedQueue_new() -> V { rtObj(["_cls": .vStr("ConcurrentLinkedQueue"), "items": rtArr([])]) }
+func ConcurrentLinkedQueue_add(_ s: V, _ x: V) -> V { if case .vArr(let a) = s["items"] { a.items.append(x) }; return .vBool(true) }
+func ConcurrentLinkedQueue_offer(_ s: V, _ x: V) -> V { ConcurrentLinkedQueue_add(s, x) }
+func ConcurrentLinkedQueue_poll(_ s: V) -> V {
+    if case .vArr(let a) = s["items"], !a.items.isEmpty { return a.items.removeFirst() }
+    return .vNull
+}
+func ConcurrentLinkedQueue_peek(_ s: V) -> V { rtItems(s["items"]).first ?? .vNull }
+func ConcurrentLinkedQueue_isEmpty(_ s: V) -> V { .vBool(rtItems(s["items"]).isEmpty) }
+func ConcurrentLinkedQueue_size(_ s: V) -> V { .vInt(rtItems(s["items"]).count) }
+func ConcurrentLinkedQueue_clear(_ s: V) -> V { if case .vArr(let a) = s["items"] { a.items.removeAll() }; return .vNull }
+func AtomicLong_new(_ v: V = .vInt(0)) -> V { rtObj(["_cls": .vStr("AtomicLong"), "value": v]) }
+func AtomicInteger_new(_ v: V = .vInt(0)) -> V { rtObj(["_cls": .vStr("AtomicInteger"), "value": v]) }
+func AtomicLong_get(_ s: V) -> V { s["value"] }
+func AtomicLong_set(_ s: V, _ v: V) -> V { s["value"] = v; return .vNull }
+func AtomicLong_incrementAndGet(_ s: V) -> V { s["value"] = s["value"] + .vInt(1); return s["value"] }
+func AtomicLong_decrementAndGet(_ s: V) -> V { s["value"] = s["value"] - .vInt(1); return s["value"] }
+func AtomicLong_getAndIncrement(_ s: V) -> V { let old = s["value"]; s["value"] = old + .vInt(1); return old }
+func AtomicLong_addAndGet(_ s: V, _ d: V) -> V { s["value"] = s["value"] + d; return s["value"] }
+func AtomicLong_compareAndSet(_ s: V, _ expect: V, _ update: V) -> V {
+    if rtPrimEq(s["value"], expect) { s["value"] = update; return .vBool(true) }
+    return .vBool(false)
+}
+func _uuid() -> V { .vStr(UUID().uuidString.lowercased()) }
+func _nowMillis() -> V { .vInt(Int(Date().timeIntervalSince1970 * 1000)) }
+func Scribe_log(_ level: V, _ msgs: V) throws -> V {
+    var s = ""
+    for m in rtItems(msgs) { s += rtS(try RtForce(m)) }
+    print("[" + rtS(level) + "] " + s)
+    return .vNull
+}
+func _getMessage(_ e: V) -> V {
+    if case .vObj = e, rtHas(e, "message") { return e["message"] }
+    return _str(e)
+}
+func _clsName(_ x: V) -> V {
+    if case .vObj = x, rtHas(x, "_cls") { return _str(x["_cls"]) }
+    return .vStr(rtKindName(x))
+}
+func _regex(_ pattern: V) -> V { .vRef(try! NSRegularExpression(pattern: rtS(pattern))) }
 
 // MARK: - java.util.concurrent.atomic.AtomicBoolean, java.lang.ThreadLocal (one thread)
 

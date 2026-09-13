@@ -322,3 +322,128 @@ func uiSqrt(_ x: V) -> V { rtSqrt(x) }
 func uiPow(_ x: V, _ y: V) -> V { rtPow(x, y) }
 func uiSin(_ x: V) -> V { rtSin(x) }
 func uiCos(_ x: V) -> V { rtCos(x) }
+
+// MARK: - the network module (network/native): WebSocket and HTTP over URLSession, callbacks on the main queue
+
+final class SocketBox {
+    let task: URLSessionWebSocketTask
+    let onOpen: V
+    let onText: V
+    let onClose: V
+    var opened = false
+    var finished = false
+    init(_ task: URLSessionWebSocketTask, _ onOpen: V, _ onText: V, _ onClose: V) {
+        self.task = task; self.onOpen = onOpen; self.onText = onText; self.onClose = onClose
+    }
+}
+
+final class SocketDelegate: NSObject, URLSessionWebSocketDelegate {
+    static let shared = SocketDelegate()
+    var boxes: [ObjectIdentifier: SocketBox] = [:]
+    static let session = URLSession(configuration: .default, delegate: SocketDelegate.shared, delegateQueue: OperationQueue.main)
+
+    func box(_ task: URLSessionTask) -> SocketBox? { boxes[ObjectIdentifier(task)] }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        guard let b = box(webSocketTask) else { return }
+        b.opened = true
+        _ = try? RtInvoke(b.onOpen, rtArr([]))
+        receive(b)
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        guard let b = box(webSocketTask) else { return }
+        let text = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        finish(b, closeCode.rawValue, text)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let b = box(task) else { return }
+        finish(b, 1006, error?.localizedDescription ?? "closed")
+    }
+
+    func receive(_ b: SocketBox) {
+        b.task.receive { result in
+            DispatchQueue.main.async {
+                if b.finished { return }
+                switch result {
+                case .success(.string(let s)):
+                    _ = try? RtInvoke(b.onText, rtArr([.vStr(s)]))
+                    self.receive(b)
+                case .success(.data(let d)):
+                    _ = try? RtInvoke(b.onText, rtArr([.vStr(String(data: d, encoding: .utf8) ?? "")]))
+                    self.receive(b)
+                case .success: self.receive(b)
+                case .failure(let e): self.finish(b, 1006, e.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func finish(_ b: SocketBox, _ code: Int, _ reason: String) {
+        if b.finished { return }
+        b.finished = true
+        boxes.removeValue(forKey: ObjectIdentifier(b.task))
+        _ = try? RtInvoke(b.onClose, rtArr([.vInt(code), .vStr(reason)]))
+    }
+}
+
+func uiSocketOpen(_ url: V, _ onOpen: V, _ onText: V, _ onClose: V) -> V {
+    guard let u = URL(string: rtS(url)) else {
+        _ = try? RtInvoke(onClose, rtArr([.vInt(1006), .vStr("bad url: " + rtS(url))]))
+        return .vNull
+    }
+    let task = SocketDelegate.session.webSocketTask(with: u)
+    let box = SocketBox(task, onOpen, onText, onClose)
+    SocketDelegate.shared.boxes[ObjectIdentifier(task)] = box
+    task.resume()
+    return .vRef(box)
+}
+
+func uiSocketSend(_ h: V, _ text: V) -> V {
+    if case .vRef(let o) = h, let b = o as? SocketBox { b.task.send(.string(rtS(text))) { _ in } }
+    return .vNull
+}
+
+func uiSocketClose(_ h: V) -> V {
+    if case .vRef(let o) = h, let b = o as? SocketBox { b.task.cancel(with: .normalClosure, reason: nil) }
+    return .vNull
+}
+
+func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ done: V) -> V {
+    guard let u = URL(string: rtS(url)) else {
+        _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url))]))
+        return .vNull
+    }
+    var request = URLRequest(url: u)
+    request.httpMethod = rtS(method)
+    if let data = rtS(headersJson).data(using: .utf8),
+       let headers = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        for (k, v) in headers { request.setValue("\(v)", forHTTPHeaderField: k) }
+    }
+    if hasBody.rtTrue { request.httpBody = rtS(body).data(using: .utf8) }
+    URLSession.shared.dataTask(with: request) { data, response, error in
+        DispatchQueue.main.async {
+            if let error = error {
+                _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription)]))
+                return
+            }
+            let http = response as? HTTPURLResponse
+            var headers: [String: String] = [:]
+            http?.allHeaderFields.forEach { headers["\($0.key)"] = "\($0.value)" }
+            let headersJson = (try? JSONSerialization.data(withJSONObject: headers)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+            let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            _ = try? RtInvoke(done, rtArr([.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text)]))
+        }
+    }.resume()
+    return .vNull
+}
+
+/// `--<name>=value` on the launch, or "".
+func uiLaunchArg(_ name: V) -> V {
+    let prefix = "--" + rtS(name) + "="
+    for a in CommandLine.arguments where a.hasPrefix(prefix) { return .vStr(String(a.dropFirst(prefix.count))) }
+    return .vStr("")
+}
+
+func uiQuit() -> V { exit(0) }

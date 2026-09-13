@@ -15,6 +15,11 @@
 </head>
 <body>
   <div id="app"></div>
+  <script>
+    // an uncaught error reaches the console capture the checks read (tools/check.sh), with its stack
+    window.addEventListener("error", e => console.log("[ui] uncaught " + (e.error && e.error.stack ? e.error.stack : e.message)));
+    window.addEventListener("unhandledrejection", e => console.log("[ui] unhandled rejection " + (e.reason && e.reason.stack ? e.reason.stack : e.reason)));
+  </script>
   <script src="main.js"></script>
 </body>
 </html>

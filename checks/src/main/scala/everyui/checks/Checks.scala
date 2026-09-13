@@ -40,8 +40,9 @@ object Checks:
         fps(log, opt(rest, "--median-min", 59.5), opt(rest, "--min", 58.5), opt(rest, "--skip", 3.0).toInt, opt(rest, "--samples-min", 20.0).toInt)
       case "gaps" :: dir :: Nil => gaps(dir)
       case "motion" :: a :: b :: rest => motion(a, b, opt(rest, "--min-fraction", 0.01))
-      case "suite-lines" :: raw :: out :: Nil => suiteLines(raw, out)
-      case "android-wait" :: serial :: out :: rest => androidWait(serial, out, opt(rest, "--timeout", 90.0))
+      case "suite-lines" :: raw :: out :: rest => suiteLines(raw, out, rest.sliding(2, 2).collectFirst { case List("--start", m) => m }.getOrElse("var.initial"))
+      case "android-wait" :: serial :: out :: rest =>
+        androidWait(serial, out, opt(rest, "--timeout", 90.0), rest.sliding(2, 2).collectFirst { case List("--pattern", p) => p })
       case "roku-install" :: channel :: rest => rokuInstall(channel, rest.sliding(2, 2).collect { case List("--add", spec) => spec }.toList)
       case "roku-console" :: seconds :: out :: Nil => rokuConsole(seconds.toDouble, out)
       case _ =>
@@ -237,9 +238,11 @@ object Checks:
   // ── Roku ────────────────────────────────────────────────────────────────────
 
   /** The latest run of the suite in a console capture (the console replays history on connect): its `RX` lines. */
-  def suiteLines(raw: String, out: String): Int =
+  /** The RX lines of the LATEST run in a console capture (the console replays history on connect): from the
+    * last line containing `start` on. */
+  def suiteLines(raw: String, out: String, start: String): Int =
     val all = lines(raw)
-    val starts = all.zipWithIndex.collect { case (l, i) if l.startsWith("RX ") && l.contains("var.initial") => i }
+    val starts = all.zipWithIndex.collect { case (l, i) if l.startsWith("RX ") && l.contains(start) => i }
     val rx = (if starts.isEmpty then Vector.empty else all.drop(starts.last)).filter(_.startsWith("RX ")).map(_.stripTrailing)
     write(out, if rx.isEmpty then "" else rx.mkString("", "\n", "\n"))
     println(s"captured ${rx.size} suite lines")
@@ -299,7 +302,8 @@ object Checks:
 
   // ── Android ─────────────────────────────────────────────────────────────────
 
-  def androidWait(serial: String, out: String, timeout: Double): Int =
+  /** Wait for the app on `serial` to log its frozen frame — or, with `pattern`, any line matching it. */
+  def androidWait(serial: String, out: String, timeout: Double, pattern: Option[String] = None): Int =
     def log() = Seq("adb", "-s", serial, "logcat", "-d", "-s", "everyui:I", "AndroidRuntime:E").!!
     val end = System.currentTimeMillis() + (timeout * 1000).toLong
     var last: Option[String] = None
@@ -308,7 +312,14 @@ object Checks:
       if text.contains("FATAL EXCEPTION") then
         write(out, text)
         return fail("the app crashed:\n" + text.takeRight(4000))
-      if text.contains("[ui] frozen at") then
+      pattern.foreach { p =>
+        p.r.findFirstIn(text).foreach { hit =>
+          write(out, text)
+          println("matched: " + hit)
+          return 0
+        }
+      }
+      if pattern.isEmpty && text.contains("[ui] frozen at") then
         if last.contains(text) then   // nothing new since the last look: the whole tree is in
           write(out, text)
           println("the frozen frame is logged")

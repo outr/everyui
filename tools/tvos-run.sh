@@ -5,6 +5,7 @@
 #   tools/tvos-run.sh                 run live for LIVE_SECONDS (30), report the frame rate
 #   tools/tvos-run.sh --freeze        freeze the frame at 0.434s, compare it with tools/golden/animation-tree.txt
 #                                     (on a phone, laid out at a 1920x1080 viewport)
+#   tools/tvos-run.sh --console       run for LIVE_SECONDS with EXTRA_ARGS on the launch and print the console
 #   tools/tvos-run.sh --show          also open the Simulator window on the Mac
 #   tools/tvos-run.sh --ios           an iPhone simulator instead of the Apple TV
 #
@@ -31,6 +32,7 @@ PLATFORM=tvos
 for arg in "$@"; do
   case "$arg" in
     --freeze) MODE=freeze ;;
+    --console) MODE=console ;;   # run for LIVE_SECONDS with EXTRA_ARGS on the launch and print the console (the durable demo)
     --show) SHOW=1 ;;
     --ios) PLATFORM=ios ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
@@ -86,6 +88,7 @@ if $SSH "$MAC" "xcrun simctl list devices" | grep -F "$UDID" | grep -q Booted; t
 step "install + launch ($MODE)"
 ARGS=""
 [ $MODE = freeze ] && ARGS="--freeze=$FREEZE --viewport=1920x1080"
+[ -n "${EXTRA_ARGS:-}" ] && ARGS="$ARGS $EXTRA_ARGS"
 SECONDS_TO_RUN=$LIVE_SECONDS
 [ $MODE = freeze ] && SECONDS_TO_RUN=12
 # macOS has no `timeout`: the launch (which stays attached to the app's console) runs in the background for
@@ -98,6 +101,7 @@ $SSH "$MAC" "cd $APP && xcrun simctl terminate $UDID $BUNDLE > /dev/null 2>&1; x
   cat console.log" > "$LOGS/console.log" 2>&1
 scp -q "$MAC:$APP/screen.png" "$LOGS/screen.png" 2>/dev/null; scp -q "$MAC:$APP/screen2.png" "$LOGS/screen2.png" 2>/dev/null
 if grep -aq '\[ui\] root' "$LOGS/console.log"; then pass "$(grep -aoE '\[ui\] root .*' "$LOGS/console.log")"; else fail "(target/$PLATFORM/console.log)"; tail -n 15 "$LOGS/console.log"; exit 1; fi
+if [ $MODE = console ]; then grep -a '\[ui\]' "$LOGS/console.log"; exit 0; fi
 
 if [ $MODE = freeze ]; then
   step "frame vs golden"

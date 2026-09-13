@@ -9,6 +9,9 @@
 #   sbt "checks/checksClasspath; reactiveTest/emitRoku"   # the helpers, and the channel
 #   ROKU_PASS=<dev password> tools/roku-acceptance.sh      # run and diff
 #
+# Any emitted program that prints RX lines works the same way — the network probe:
+#   CHANNEL=network/out-roku GOLDEN=network/expected-output.txt START=state.active tools/roku-acceptance.sh
+#
 # Regenerate the expected output after changing the suite:
 #   sbt "reactiveTest/run" | grep '^RX ' > reactive-test/expected-output.txt
 set -euo pipefail
@@ -19,6 +22,7 @@ ROKU_IP=${ROKU_IP:-192.168.1.112}
 CHANNEL=${CHANNEL:-$ROOT/reactive-test/out-roku}
 GOLDEN=${GOLDEN:-$ROOT/reactive-test/expected-output.txt}
 CAPTURE_SECONDS=${CAPTURE_SECONDS:-30}
+START=${START:-var.initial}          # a substring of the run's first RX line
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -34,7 +38,7 @@ sleep 2
 
 CHECKS="java -cp $(cat "$ROOT/checks/out/classpath.txt") everyui.checks.Checks"   # sbt checks/checksClasspath
 $CHECKS roku-console "$CAPTURE_SECONDS" "$WORK/raw.txt"
-$CHECKS suite-lines "$WORK/raw.txt" "$WORK/device.txt"
+$CHECKS suite-lines "$WORK/raw.txt" "$WORK/device.txt" --start "$START"
 
 if grep -qE "runtime error|BRIGHTSCRIPT: ERROR" "$WORK/raw.txt"; then
   echo "--- device runtime error:"

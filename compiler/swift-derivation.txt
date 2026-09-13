@@ -993,7 +993,7 @@ class SwiftEmitter(
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
-        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined =>
+        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) =>
           val k = brSafe(vd.name)
           sb.append(s"function ${modelImplName(vd.symbol)}(self as object) as dynamic\n")
           sb.append(s"  cached = self[${brStr("__lz_" + k)}]\n")
@@ -1095,7 +1095,7 @@ class SwiftEmitter(
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append(s"  return $NULL\n}\n\n")
-        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined =>
+        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) =>
           val k = brSafe(vd.name)
           sb.append(s"func ${modelImplName(vd.symbol)}(_ this: V) throws -> V {\n")
           sb.append(s"  cached = ${field("this", "__lz_" + k)}\n")
@@ -1194,7 +1194,7 @@ class SwiftEmitter(
 @@ old
     // @main → rtMain(): the entry the scene calls.
     out.append("sub rtMain()\n")
-    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).sortBy(typeName) do
+    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).filter(keepClass).sortBy(typeName) do
       out.append(s"  ${typeName(mc)}__module()\n")
     for dd <- mains; body <- dd.rhs do
       out.append(emitBody(body, false)).append("\n")
@@ -1204,7 +1204,7 @@ class SwiftEmitter(
     // Case objects are initialised once, up front (the emitted code reads them straight from the global
     // table); a harness that skips `rtMain` calls `rtInitModules` itself.
     out.append("func rtInitModules() throws -> V {\n")
-    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).sortBy(typeName) do
+    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).filter(keepClass).sortBy(typeName) do
       out.append(s"  _ = try ${typeName(mc)}__module()\n")
     out.append(s"  return $NULL\n}\n\n")
     out.append("func rtMain() throws -> V {\n")
@@ -1212,6 +1212,26 @@ class SwiftEmitter(
     for dd <- mains; body <- dd.rhs do
       out.append(emitBody(body, false)).append("\n")
     out.append(s"  return $NULL\n}\n")
+@@ old
+                case "obj" => s"_jsonObj([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
+                case "arr" => s"[${flattenVarargs(args).map(emitArgVal).mkString(", ")}]"
+@@ new
+                case "obj" => s"_jsonObj(${rtArr(flattenVarargs(args).map(emitArgVal))})"
+                case "arr" => rtArr(flattenVarargs(args).map(emitArgVal))
+@@ old
+              s"Scribe_log(${brStr(fn.symbol.name)}, [${flattenVarargs(explicitArgs(fn.symbol, args)).map(emitArgVal).mkString(", ")}])"
+@@ new
+              s"Scribe_log(${brStr(fn.symbol.name)}, ${rtArr(flattenVarargs(explicitArgs(fn.symbol, args)).map(emitArgVal))})"
+@@ old
+      val ctor = if isModel(cls) then s"${typeName(cls)}_new" else "invalid"
+      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor)"
+@@ new
+      val ctor = if isModel(cls) then s"rtFn(${typeName(cls)}_new)" else NULL
+      s"_rwGen(${brStr(cls.name)}, ${rtArr(keysL)}, ${rtArr(slotsL)}, ${rtArr(rwsL)}, $ctor)"
+@@ old
+      s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, $ordinal)"
+@@ new
+      s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, ${vInt(ordinal)})"
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit =

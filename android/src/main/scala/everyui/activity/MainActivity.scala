@@ -15,6 +15,7 @@ class MainActivity extends Activity:
   override def onCreate(savedInstanceState: Bundle): Unit =
     super.onCreate(savedInstanceState)
     Host.activity = this
+    everyui.network.NetworkBackend.init()   // rapid on a thread pool, before anything starts a Task
     Host.freeze = extra("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
     extra("viewport").map(_.split('x')).foreach {
       case Array(w, h) =>

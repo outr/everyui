@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- EveryUI's WebSocket on the Roku: an roStreamSocket in a Task node (roku/runtime/SocketTask.brs). -->
+<component name="EveryUISocketTask" extends="Task">
+  <interface>
+    <field id="url" type="string" />
+    <field id="outbox" type="string" alwaysNotify="true" />
+    <field id="command" type="string" alwaysNotify="true" />
+    <field id="socketEvent" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/SocketTask.brs" />
+</component>

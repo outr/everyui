@@ -1208,7 +1208,104 @@ Screenshots per platform: the Roku's developer page (`plugin_inspect`),
 `simctl io screenshot`, `adb screencap`, ImageMagick's `import` inside the Xvfb
 session, RoboBrowser (a second capture a second before the last).
 
+## The network module — Spice as the core, on every backend (2026-09-13)
+
+The first release replaces Sart in DataWrangler's dashboard, and DataWrangler
+moves to two-way sockets (it is a real-time dashboard). DataWrangler targets the
+web only; the module exists on every backend so none is left behind.
+
+**Decision: Spice is the core.** `spice.http.WebSocket`, `DurableSocketClient`
+(sequenced, replayed events, typed RPC, reconnect with backoff) and the pluggable
+client implementation are exactly the protocol and the seam we need, and they are
+the same code DataWrangler's server runs. One module, `network/`, holds both
+HTTP and DurableSocket for now; it can split later.
+
+Layout (`build.sbt`, `backendSources`):
+- `network/src` — the portable API: `Network.webSocket(url)`,
+  `Network.durable[Event, Info](url, channel, info, config)`, `Network.http(HttpCall)`.
+  Nothing in `shared/` depends on it.
+- `network/spice` + `network/jvm` (desktop), `network/js` (web), `network/android`
+  (OkHttp) — Spice's own client as published, named explicitly (`SpiceHttp.use`)
+  because an APK or a native image has no `moduload.list` for the classpath scan.
+- `network/native` — Roku and tvOS: the platform's socket and HTTP behind the same
+  `WebSocket` trait via facades (`uiSocketOpen/Send/Close`, `uiHttp`). The Roku
+  side is `roku/runtime/SocketTask.brs`, an `roStreamSocket` speaking RFC 6455 in
+  a Task node (the render thread cannot own a socket; `ws://` only — no TLS),
+  and `HttpTask.brs` (`roUrlTransfer`). tvOS: `URLSessionWebSocketTask` and
+  `URLSession` in `swift/runtime/UniversalRuntime.swift`.
+- `app/` — the example app, moved out of `shared/` (`shared/` is the framework);
+  `app/protocol` — the demo's wire types, fabric case classes with `RW.gen`,
+  compiled by the app and by `server/`.
+- `server/` — `/durable`: a real `DurableSocketServer[String, Tick, ClientInfo]`
+  with a ticker and an RPC (`echo`, `drop`). `--host=0.0.0.0` for devices.
+
+**Wire types are fabric case classes, never hand-built JSON** (the user's rule):
+`Tick`, `ClientInfo`, `DemoRequest`, `DemoResponse` with `given rw = RW.gen`.
+
+### What the emitter needed for Spice's durable client (Roku, tvOS)
+
+The spike (`network/emitRoku`, the loopback probe `NetworkProbe`, golden
+`network/expected-output.txt`) sized it; all of this is in `RokuEmitter`:
+- **Reachability**: only what `main` reaches is emitted — a class is live when
+  constructed or an ancestor of a live class, a member when reached on a live
+  class; a call into a never-constructed type becomes `RtDead`. It dropped the
+  file-transfer facet (and its java.nio) untouched, and shrank the app channel
+  by 44 KB. A library emitted alone (no `@main`) keeps everything.
+- **Shims** for the libraries left out of the TASTy, runtime-neutral names in
+  both runtimes: rapid's `Task` (`RapidTask_*`: a continuation-passing task on
+  one thread, `sleep` on a SceneGraph Timer / the main queue, `sync` only for a
+  task that completes at once), fabric's `Json` (native JSON values;
+  `ParseJson`/`FormatJson`, `JSONSerialization`), fabric `RW` (the emitter
+  derives `RW.gen[T]` itself: `_rwGen(name, keys, slots, field codecs, ctor)`,
+  with Option/List/Map wrappers), scribe, `ConcurrentHashMap`,
+  `ConcurrentLinkedQueue`, `AtomicLong`, `UUID`, `System.currentTimeMillis`,
+  `FiniteDuration` arithmetic.
+- Scala 3 enums' simple cases (`ProtocolState.Active`) as runtime singletons
+  (`RtEnum`); case-class companions emitted (their `given rw`); a class extended
+  only by an anonymous local class is now in the object model; case literals
+  honour named and default arguments; constructors with several clauses.
+
+Gaps: 0 on every channel; brighterscript clean; the probe's eight lines pass on
+the JVM (the Roku and Swift runs wait for the devices).
+
+### Status per backend (`tools/check.sh` → `tools/durable.sh`)
+
+`DurableDemo` (`demo=durable`, `socket=<url>`): connect, five events, RPC echo,
+a server-side drop, resume with the missed events replayed, five more events,
+no gap in either sequence → `[ui] durable ok events=10 resumed=1 gaps=0`.
+- desktop (JVM, `java.net.http`): ✅ · web (Chrome via RoboBrowser): ✅ ·
+  Android emulator (OkHttp): ✅ with the spice fix below · Roku, tvOS: built, 0 gaps, not yet run — both devices were off
+  the network.
+
+### Found on the way (library notes, for approval before any change)
+
+- **spice-core's Scala.js artifact lists its dependencies by their JVM names**
+  (`fabric-io_3`, `rapid-core_3`, …) in the locally published ivy; the web
+  build names the `_sjs1` builds explicitly in `web/project.scala`.
+- **`OkHttpWebSocket.onClosing` never completed the close handshake**, so a
+  server-initiated close never reached `onClosed` and the durable client never
+  learned the socket was gone; and a close frame without a status arrives as
+  1005, which OkHttp refuses to echo. Fixed in spice (approved): `onClosing`
+  replies with the peer's code, or 1000 for a status-less close. Published
+  locally as 1.10.9-SNAPSHOT2; uncommitted in the spice repo.
+- `String.split` in `URLPath.parse` needs the ES2018 regex engine on Scala.js;
+  the web bundle targets ES2021 now.
+- spice-core brings profig, which brings jackson (xml, yaml): the APK went from
+  443 KB to 1.16 MB; R8 needs `-dontwarn` for `javax.xml.stream`. Worth an
+  exclusion or a lighter spice-core split.
+- Android has no Loom: `rapid.Task.Virtual = false` before any Task runs; R8
+  must keep enum `values()` (`EnumSet` reflects on it).
+- The native HTTP backends do not surface response headers yet.
+
 ## IMMEDIATE NEXT STEP
+
+**-1. Run the durable demo on the Roku and the Apple TV simulator** once they are
+back on the network: `ROKU_PASS=… tools/check.sh --device` and `--tvos` (the
+`durable:` rows), plus the probe: `CHANNEL=network/out-roku
+GOLDEN=network/expected-output.txt START=state.active tools/roku-acceptance.sh`
+and `PROJECT=network DIR=network GOLDEN=network/expected-output.txt
+HARNESS=probe-main.swift tools/swift-spike.sh`. Then DataWrangler's server gets
+a `DurableSocketServer` and its app the client.
 
 **0. tvOS and iOS are real: keep them green.** `tools/check.sh --tvos` runs the frame and
 frame-rate checks on the simulator via the Mac. Next: bring the collector's

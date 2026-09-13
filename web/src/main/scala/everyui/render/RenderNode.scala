@@ -148,6 +148,11 @@ object Nodes:
 object Platform:
   def log(message: String): Unit = dom.console.log("[ui] " + message)
 
+  /** A failure with its cause: the console gets the stack. */
+  def logError(message: String, t: Throwable): Unit =
+    dom.console.log("[ui] ERROR " + message + ": " + t.toString)
+    dom.console.error(t.asInstanceOf[js.Any])
+
   def ticks(): Double = dom.window.performance.now()
 
   /** Served next to index.html. */
@@ -166,6 +171,14 @@ object Platform:
 
   /** The frozen frame is complete. (tools/check.sh screenshots the page itself.) */
   def frozen(): Unit = ()
+
+  /** `?name=value` in the page URL, or "" — how a launch chooses a demo (`demo`) and hands it a URL (`socket`). */
+  def launchArg(name: String): String =
+    val value = new dom.URLSearchParams(dom.window.location.search).get(name)
+    if value == null then "" else value
+
+  /** A page has nowhere to exit to; a demo that is done just stops. */
+  def quit(): Unit = ()
 
   /** Called whenever the window changes size. */
   def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())

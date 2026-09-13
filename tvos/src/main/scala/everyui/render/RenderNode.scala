@@ -106,6 +106,7 @@ object Nodes:
 /** The handful of non-render platform services the slice needs. */
 object Platform:
   def log(message: String): Unit = uiLog(message)
+  def logError(message: String, t: Throwable): Unit = uiLog("ERROR " + message + ": " + t.getMessage)
   def ticks(): Double = uiTicks()
   def animate(tick: () => Unit): Unit = uiAnimate(tick)
 
@@ -132,6 +133,12 @@ object Platform:
 
   /** The frozen frame is complete. (tools/tvos-run.sh reads it off the app's console.) */
   def frozen(): Unit = ()
+
+  /** `--name=value` on the launch, or "". */
+  def launchArg(name: String): String = uiLaunchArg(name)
+
+  /** Exit the process (a demo that is done). */
+  def quit(): Unit = uiQuit()
 
   /** An Apple TV's screen never changes size. */
   def onResize(f: () => Unit): Unit = ()

@@ -6,6 +6,9 @@
 
 ThisBuild / scalaVersion := "3.10.0-RC2"
 ThisBuild / organization := "com.outr"
+// reactify is compiled from its source tree (the `reactive` project); the published jar Spice depends on must not
+// come along too (R8 refuses a class defined twice)
+ThisBuild / excludeDependencies += ExclusionRule("com.outr", "reactify_3")
 
 @transient val emitRoku = taskKey[File]("Compile this project, and the libraries it emits with, into a Roku channel")
 
@@ -131,6 +134,14 @@ lazy val reactiveTest = (project in file("reactive-test"))
 // root, so the backend is chosen at COMPILE time (the Scala.js / Scala Native
 // pattern) rather than by subtype dispatch.
 lazy val sharedSources = (file("shared") / "src" / "main" / "scala").getAbsoluteFile
+lazy val appSources = (file("app") / "src" / "main" / "scala").getAbsoluteFile
+lazy val protocolSources = (file("app") / "protocol" / "src" / "main" / "scala").getAbsoluteFile   // the demo's wire types, shared with server/
+lazy val networkSources = (file("network") / "src" / "main" / "scala").getAbsoluteFile
+def networkBackend(name: String): File = (file("network") / name / "src" / "main" / "scala").getAbsoluteFile
+/** A backend's source roots: the framework (`shared/`), the example app (`app/`), the network module and its
+  * backend — with Spice's own client where Spice runs (`spice = true`: the JVM and JS backends). */
+def backendSources(backend: String, spice: Boolean): Seq[File] =
+  Seq(sharedSources, appSources, protocolSources, networkSources, networkBackend(backend)) ++ (if (spice) Seq(networkBackend("spice")) else Nil)
 
 // --- web: the DOM backend ------------------------------------------------
 // NOT an sbt project. The web backend is real Scala.js over the live DOM (see
@@ -152,11 +163,12 @@ lazy val roku = (project in file("roku"))
     name := "everyui-roku",
     publish / skip := true,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
-    Compile / unmanagedSourceDirectories += sharedSources,
+    Compile / unmanagedSourceDirectories ++= backendSources("native", spice = false),
+    libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
     emitRoku := {
-      val outDir = emitRokuTask("out-roku", "EveryUI", reactiveLibrary).value
-      val rt = baseDirectory.value / "runtime" / "UniversalRuntime.brs"
-      IO.copyFile(rt, outDir / "components" / "UniversalRuntime.brs")
+      val outDir = emitRokuTask("out-roku", "EveryUI", networkLibraries).value
+      // the runtime, and the network module's Task nodes (a socket or an HTTP transfer cannot live on the render thread)
+      (baseDirectory.value / "runtime" * ("*.brs" | "*.xml")).get().foreach(f => IO.copyFile(f, outDir / "components" / f.getName))
       // Shared image assets — the SAME files the web bundle serves, so the two
       // backends are compared on identical pixels.
       val images = (ThisBuild / baseDirectory).value / "assets" / "images"
@@ -199,7 +211,10 @@ lazy val roku = (project in file("roku"))
 // when the framework needs them. Consumed from ~/.ivy2/local.
 lazy val spiceVersion = "1.10.9-SNAPSHOT2"
 
+@transient val serverClasspath = taskKey[File]("Compile the server and write its runtime classpath to server/out/classpath.txt")
+
 lazy val server = (project in file("server"))
+  .dependsOn(reactive)   // spice's reactify is the source tree, not the published jar (excluded above)
   .settings(
     name := "everyui-server",
     publish / skip := true,
@@ -209,8 +224,16 @@ lazy val server = (project in file("server"))
     ),
     // The web root is resolved relative to the BUILD root, not server/.
     run / baseDirectory := (ThisBuild / baseDirectory).value,
+    Compile / unmanagedSourceDirectories += protocolSources,
     Compile / run / fork := true,
-    run / connectInput := true
+    run / connectInput := true,
+    serverClasspath := {
+      val conv = fileConverter.value
+      val cp = (Runtime / fullClasspath).value.map(e => conv.toPath(e.data).toAbsolutePath.toString)
+      val out = baseDirectory.value / "out" / "classpath.txt"
+      IO.write(out, cp.mkString(java.io.File.pathSeparator))
+      out
+    }
   )
 
 // --- tvos: the UIKit backend, through the Swift compiler ----------------------
@@ -224,9 +247,10 @@ lazy val tvos = (project in file("tvos"))
     name := "everyui-tvos",
     publish / skip := true,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
-    Compile / unmanagedSourceDirectories += sharedSources,
+    Compile / unmanagedSourceDirectories ++= backendSources("native", spice = false),
+    libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
     emitSwift := {
-      val outDir = emitSwiftTask("out-swift", reactiveLibrary).value
+      val outDir = emitSwiftTask("out-swift", networkLibraries).value
       val swift = (ThisBuild / baseDirectory).value / "swift"
       IO.copyFile(swift / "runtime" / "ScalaRuntime.swift", outDir / "ScalaRuntime.swift")
       IO.copyFile(swift / "runtime" / "UniversalRuntime.swift", outDir / "UniversalRuntime.swift")
@@ -258,7 +282,8 @@ lazy val desktop = (project in file("desktop"))
   .settings(
     name := "everyui-desktop",
     publish / skip := true,
-    Compile / unmanagedSourceDirectories += sharedSources,
+    Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true),
+    libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
     libraryDependencies ++= Seq("base", "graphics").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
@@ -293,7 +318,8 @@ lazy val android = (project in file("android"))
   .settings(
     name := "everyui-android",
     publish / skip := true,
-    Compile / unmanagedSourceDirectories += sharedSources,
+    Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true),
+    libraryDependencies += "com.outr" %% "spice-client-okhttp" % spiceVersion,
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     Compile / scalacOptions ++= Seq("-release", "17"),
     packageApk := {
@@ -402,6 +428,7 @@ lazy val android = (project in file("android"))
 @transient val webcheckClasspath = taskKey[File]("Compile the web checker and write its runtime classpath to webcheck/out/classpath.txt")
 
 lazy val webcheck = (project in file("webcheck"))
+  .dependsOn(reactive)
   .settings(
     name := "everyui-webcheck",
     publish / skip := true,
@@ -455,4 +482,49 @@ lazy val root = (project in file("."))
       Icons.make((ThisBuild / baseDirectory).value, m => log.info(m))
     },
     makeIcons / aggregate := false
+  )
+
+// --- network: HTTP and DurableSocket on every backend, with Spice as the core --
+// Spice (outr's HTTP stack) already has the protocol: `spice.http.WebSocket`, the
+// pluggable `HttpClientImplementation`, and `DurableSocketClient` — the same code
+// DataWrangler's server runs. JVM and JS backends use spice-core as published
+// (a client implementation per backend); Roku and tvOS compile spice's durable
+// client THROUGH the emitter, with rapid's Task, fabric's Json and scribe as
+// runtime shims. Optional: nothing in shared/ depends on it.
+//
+// `network/run` is the JVM truth of the loopback probe; `network/emitRoku` and
+// `network/emitSwift` emit the same probe with spice's durable package compiled
+// through — the spike that sizes the emitter work.
+lazy val spiceDurableTasty = Def.task {
+  // Only the durable client's TASTy (and the WebSocket types it is written
+  // against) is compiled through — not all of spice-core. The full jar stays on
+  // the inspector's classpath for symbol resolution.
+  val conv = fileConverter.value
+  val jar = (Compile / dependencyClasspath).value
+    .map(e => conv.toPath(e.data).toFile)
+    .find(_.getName.startsWith("spice-core_3"))
+    .getOrElse(sys.error("spice-core_3 jar not on the network classpath"))
+  val dir = target.value / "spice-tasty"
+  IO.delete(dir)
+  val keep = Set("spice/http/WebSocket.tasty", "spice/http/WebSocketChannels.tasty", "spice/http/ConnectionStatus.tasty",
+    "spice/http/BinaryData.tasty", "spice/http/ByteBufferData.tasty", "spice/http/CloseReason.tasty", "spice/http/BufferedWebSocketChannels.tasty")
+  IO.unzip(jar, dir, (name: String) => keep(name) || (name.startsWith("spice/http/durable/") && name.endsWith(".tasty")))
+  dir
+}
+
+lazy val networkLibraries = Def.task { reactiveLibrary.value :+ spiceDurableTasty.value }
+
+lazy val network = (project in file("network"))
+  .dependsOn(reactive, compilerApi)
+  .settings(
+    name := "everyui-network",
+    publish / skip := true,
+    libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
+    // the probe runs on the JVM with the desktop's backend; emitted, only what the probe reaches is kept
+    Compile / unmanagedSourceDirectories ++= Seq(baseDirectory.value / "probe" / "src" / "main" / "scala", networkBackend("jvm"), networkBackend("spice")),
+    libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
+    Compile / scalacOptions ++= Seq("-Yretain-trees"),
+    Compile / run / fork := true,
+    emitRoku := emitRokuTask("out-roku", "NetworkProbe", networkLibraries).value,
+    emitSwift := emitSwiftTask("out-swift", networkLibraries).value
   )

@@ -100,3 +100,6 @@ class SGNode
 /** Seconds from `pkg:/freeze.txt`, or -1. */
 @native object uiFreezeSeconds:
   def apply(): Double = native.value
+/** The text of `pkg:/<name>.txt`, or "". */
+@native object uiLaunchArg:
+  def apply(name: String): String = native.value
