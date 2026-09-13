@@ -9,7 +9,7 @@ import everyui.image.Image
 import everyui.render.{Nodes, Platform}
 import everyui.ui
 
-/** youi's example-app `Header` (its wide layout): a gradient bar with the youi logo, the active screen's title with
+/** youi's example-app `Header` (its wide layout): a gradient bar with the logo, the active screen's title with
   * "View Source" under it, and the light/dark toggle. youi paints the gradient with CSS and loads the logo's size
   * and the icon font over the network; here the gradient is a bundled image, so both backends draw the same
   * pixels. */
@@ -23,9 +23,10 @@ class Header extends Container { self =>
   }
 
   private val logo: ImageView = new ImageView {
-    image @= new Image(Platform.resolvePath("/images/youi.png"), 3063.0, 1172.0)
+    // EveryUI's horizontal lockup (sbt makeIcons), where youi's example shows youi's own logo
+    image @= new Image(Platform.resolvePath("/images/logo.png"), 942.0, 260.0)
     size.height @= 65.0
-    size.width @= 65.0 * 3063.0 / 1172.0
+    size.width @= 65.0 * 942.0 / 260.0
     position.left @= 10.0
     position.top @= 5.0
   }

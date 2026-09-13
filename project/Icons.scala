@@ -8,7 +8,8 @@ import scala.sys.process._
   * mark on the brand dark for app icons, the lockup for TV banners, channel icons and splash screens.
   *
   * `sbt makeIcons` writes:
-  *   - `assets/images/everyui-mark.png` — 256 px, transparent: the web favicon and the desktop window icon
+  *   - `assets/images/everyui-mark.png` — 256 px, transparent: the web favicon and the desktop window icon;
+ *     `assets/images/icon.png` — the 200 px image AnimationExample bounces (was youi's)
   *   - `android/res/mipmap-*​/ic_launcher.png` 48–192 px and `android/res/drawable-xhdpi/banner.png` 320x180
   *   - `roku/images/icon-{fhd,hd,sd}.png` and `splash-{fhd,hd,sd}.png`
   *   - `swift/app/Assets.xcassets/…`: the iOS 1024 icon, the tvOS App Icon 400x240 @1x/@2x, App Store 1280x768,
@@ -65,6 +66,35 @@ object Icons {
     rgb
   }
 
+  /** The mark at `h` tall, a gap, then "EveryUI" at 0.62 h, on a transparent canvas cropped to the content. */
+  private def headerLockup(mark: File, fontFile: File, h: Int = 260): BufferedImage = {
+    val font = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, fontFile).deriveFont(java.awt.Font.BOLD, h * 0.62f)
+    val m = render(mark, h)
+    val probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).createGraphics()
+    probe.setFont(font)
+    val metrics = probe.getFontMetrics
+    val every = metrics.stringWidth("Every")
+    val ui = metrics.stringWidth("UI")
+    probe.dispose()
+    val gap = (h * 0.16).toInt
+    val img = new BufferedImage(m.getWidth + gap + every + ui + (h * 0.04).toInt, h, BufferedImage.TYPE_INT_ARGB)
+    val g = img.createGraphics()
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+    g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
+    g.drawImage(m, 0, 0, null)
+    g.setFont(font)
+    // the text sits on the mark's optical centre line
+    val baseline = (h + metrics.getAscent - metrics.getDescent) / 2
+    val x = m.getWidth + gap
+    g.setColor(new Color(0x1a, 0x1b, 0x21))
+    g.drawString("Every", x, baseline)
+    g.setPaint(new java.awt.GradientPaint(x + every, 0, new Color(0x3f, 0xb4, 0xff), x + every + ui, 0, new Color(0x6a, 0x7c, 0xff)))
+    g.drawString("UI", x + every, baseline)
+    g.dispose()
+    img
+  }
+
   def write(root: File, rel: String, img: BufferedImage, log: String => Unit): Unit = {
     val f = new File(root, rel)
     f.getParentFile.mkdirs()
@@ -79,8 +109,13 @@ object Icons {
     def markOnDark(w: Int, h: Int, scale: Double, rounded: Double = 0.0) = centred(mark, w, h, scale, Some(Dark), rounded)
     def lockupOnDark(w: Int, h: Int, scale: Double) = opaque(centred(lockup, w, h, scale, Some(Dark)))
 
-    // shared: the mark alone
+    // shared: the mark alone — the favicon / window icon, and the 200x200 image AnimationExample bounces
     write(root, "assets/images/everyui-mark.png", render(mark, 256), log)
+    write(root, "assets/images/icon.png", render(mark, 200), log)
+
+    // the example app's header: a horizontal lockup — the mark, then "EveryUI" in the logo's face, dark on the
+    // light header bar, "UI" in the brand blue
+    write(root, "assets/images/logo.png", headerLockup(mark, new File(root, "work/logo/font/AdwaitaSans-Regular.ttf")), log)
 
     // Android: launcher icons per density (a full-bleed square the launcher masks), and the TV banner
     for ((density, px) <- Seq("mdpi" -> 48, "hdpi" -> 72, "xhdpi" -> 96, "xxhdpi" -> 144, "xxxhdpi" -> 192))

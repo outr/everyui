@@ -1,7 +1,7 @@
 tree Container x=0 y=0 w=1920 h=1080 rot=0
 tree   Container x=0 y=0 w=1920 h=75 rot=0
 tree     ImageView x=0 y=0 w=1920 h=75 rot=0
-tree     ImageView x=10 y=5 w=169.87627986348122 h=65 rot=0
+tree     ImageView x=10 y=5 w=235.5 h=65 rot=0
 tree     Component x=1871 y=25.5 w=24 h=24 rot=0
 tree     TextView(Animation Example) x=1610.171875 y=12 w=250.828125 h=36 rot=0
 tree     TextView(View Source) x=1751.796875 y=38 w=109.203125 h=25 rot=0

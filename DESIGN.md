@@ -746,7 +746,7 @@ name, so two `Task`s would collide. The example never names the latter.
 containers, width/height, colour, background, font (family/weight/size), measured
 size, image source, removal, a Material Icons node, async image and font loading,
 `resolvePath`, `onResize`. **Assets:** `assets/fonts/` (Open Sans 400/600 and
-Material Icons as TTF, from the same Google Fonts youi loads), `youi.png`, and a
+Material Icons as TTF, from the same Google Fonts youi loads), the header logo (since 2026-09-13 EveryUI's, `logo.png`), and a
 pre-rendered header gradient so both backends draw the same pixels.
 
 ### What the Roku compiler needed
