@@ -252,8 +252,9 @@ lazy val desktop = (project in file("desktop"))
 // --- android: the Android Views backend --------------------------------------
 // Native Views (TextView, ImageView, a ViewGroup that positions absolutely) for
 // Android phones and Android TV. No Gradle: the SDK's own tools package it —
-// d8 (the program and the Scala library to dex), aapt2 (manifest and assets),
-// zipalign, apksigner (the debug key).
+// R8 (the program and the Scala library shrunk, optimised and dexed; it ships
+// inside build-tools' d8.jar), aapt2 (manifest and assets), zipalign, apksigner
+// (the debug key).
 //
 //   sbt android/packageApk          android/out-apk/universal-ui.apk
 //   tools/check.sh --android        runs it on an emulator and compares a frame
@@ -300,9 +301,18 @@ lazy val android = (project in file("android"))
         }
       val dex = work / "dex"
       IO.createDirectory(dex)
-      log.info(s"packageApk: dexing ${inputs.size} inputs")
-      exec(Seq((tools / "d8").toString, "--release", "--min-api", androidMinSdk, "--lib", androidJar.toString,
+      // R8: whole-program shrinking from the activity the manifest names (android/proguard-rules.pro),
+      // then dexing — in place of d8's dex-everything.
+      val rules = baseDirectory.value / "proguard-rules.pro"
+      // what the rules matched, and what R8 removed — the record when a shrunk build misbehaves
+      val diagnostics = work / "diagnostics.pro"
+      IO.write(diagnostics, s"-printseeds ${work / "seeds.txt"}\n-printusage ${work / "usage.txt"}\n")
+      log.info(s"packageApk: R8 over ${inputs.size} inputs")
+      exec(Seq("java", "-cp", (tools / "lib" / "d8.jar").toString, "com.android.tools.r8.R8",
+        "--release", "--min-api", androidMinSdk, "--lib", androidJar.toString, "--pg-conf", rules.toString,
+        "--pg-map-output", (work / "mapping.txt").toString, "--pg-conf", diagnostics.toString,
         "--output", dex.toString) ++ inputs.map(_.toString))
+      (dex * "*.dex").get().foreach(d => log.info(s"packageApk: ${d.getName} ${d.length / 1024} KB"))
 
       // Shared assets, the same files the other backends load.
       val assets = work / "assets"

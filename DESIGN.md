@@ -1041,7 +1041,7 @@ under the status bar), as expected until there is a phone layout.
 | web (dev) | `main.js` | 1.88 MB raw, 230 KB gzip, 155 KB brotli |
 | web (release, Closure) | `main.js` | 375 KB raw, 97 KB gzip, **77 KB brotli** |
 | Roku | the channel zip (BrightScript + assets) | **331 KB** (App.brs 250 KB, runtimes 46 KB, before zip) |
-| Android | `universal-ui.apk` (debug-signed, no R8) | **2.25 MB** (classes.dex 5.98 MB uncompressed: the whole Scala library, unshrunk) |
+| Android | `universal-ui.apk` (debug-signed, R8) | **423 KB** (classes.dex 260 KB; was 2.25 MB / 5.98 MB before R8) |
 | tvOS | `UniversalUI.app` | **1.55 MB** (binary 1.06 MB, 0.92 MB stripped; Swift runtime is the OS's) |
 | iOS | `UniversalUI.app` | **1.55 MB** (the same binary, iOS SDK) |
 | desktop (JavaFX) | the JVM classpath | 14.6 MB of jars (scala-library 9.2 MB, JavaFX 5.4 MB) **plus a JRE** — no native image yet |
@@ -1049,8 +1049,33 @@ under the status bar), as expected until there is a phone layout.
 
 The web figure is larger than the 97 KB release measured for the first slice
 because the app now carries youi's whole component model, task DSL and
-reactify. Android and desktop are the outliers: neither has had its dead code
-removed (R8 / native-image), which is where their numbers fall.
+reactify. Desktop is the outlier: no native image yet.
+
+### R8 on the Android build (2026-09-13)
+
+`android/packageApk` now runs R8 (it ships inside build-tools' `d8.jar`) in
+place of D8: whole-program shrinking from the one class the manifest names,
+then dexing. 5.98 MB of dex became 260 KB; the APK 2.25 MB → 423 KB; the frame
+still matches the golden and the Google TV Streamer still holds 59.9–60.0 fps.
+Two Scala-specific traps, both now rules in `android/proguard-rules.pro`:
+
+- **Lazy vals.** Scala 3 reads a `lazy val`'s cell through a VarHandle the
+  class initialiser finds *by name*. For a stdlib companion that
+  `scala.package$`'s initialiser merely touches (`BigInt$`, `BigDecimal$`),
+  no instance is live, so R8 removed the cell but kept the lookup — a
+  `NoSuchFieldException` in `<clinit>`. `-keepclassmembers` needs a live
+  instance and does not apply; an unconditional `-keep` pinned every class with
+  a lazy val (233 KB → 1,045 KB). The precise rule is conditional: wherever a
+  `$lzyHandle` survives, keep its `$lzy` cell, by name.
+- **Trait super calls.** R8 merges a trait into its only implementor. A Scala
+  `super.m()` reaches the parent trait through a super accessor that D8 lowers
+  to `invoke-super` on that parent; after the merge it targets the child itself
+  and recurses until the stack overflows (`UIExampleScreen.init →
+  UIScreen.init`). `-keepnames interface **` pins every surviving interface
+  against merging: +61 KB, no recursion.
+
+The build writes R8's `seeds.txt`, `usage.txt` and `mapping.txt` next to the
+dex (`target/out/…/universal-android/apk/`), which is how both were found.
 
 **The collector's cost, brought down (2026-09-13).** The first collector marked
 through a `Set` of identifiers, swept a registry of weak references, and made a
