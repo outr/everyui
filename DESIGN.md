@@ -849,11 +849,11 @@ keeps every log in `target/check/`:
 | web: AnimationExample frozen at 0.434s in headless Chrome over `file://`, every component vs `tools/golden/animation-tree.txt` (±1px) | ✓ | ✓ |
 | desktop: the same frame in JavaFX under Xvfb, vs the same golden | ✓ | ✓ |
 | web (`--live`): 60s live in a headful Chrome on a virtual 1920x1080 display (RoboBrowser), median ≥ 59.5 fps and minimum ≥ 58.5 | | |
-| Android (`--android`): the APK builds; the same frame on an emulator, vs the same golden | | |
+| Android (`--android`): the APK builds; the same frame on an emulator, vs the same golden; live frame rate and motion | | |
 | tvOS (`--tvos`): the same frame on the Apple TV simulator (built on the Mac by tools/tvos-run.sh), and 60 s live | | |
 | Roku: `tools/roku-acceptance.sh` | | ✓ |
 | Roku: the same frozen frame vs the same golden | | ✓ |
-| Roku: 60s live, median ≥ 59.5 fps and minimum ≥ 58.5 | | ✓ |
+| Roku: 60s live, median ≥ 59.5 fps and minimum ≥ 58.5, and two screenshots a second apart differ | | ✓ |
 
 About 10s offline and 2.5 min with the device. `--update` rewrites the frame
 goldens after an intended change; review the diff before committing it.
@@ -904,7 +904,11 @@ and Android (83–106 for "BackIn Example").
   `Paint.measureText` rounds UP to a whole pixel (every width was the ceiling of
   the browser's) — `getRunAdvance` is exact; a Roku `Label` draws at whole-pixel
   font sizes, so its bounding rect is a few pixels off — `uiTextWidth` measures
-  at 4× the size and scales back, reusing one probe `Label`.
+  at a multiple of the size and scales back, reusing one probe `Label`. On the
+  device the multiple mattered: at 4× a 720p panel still came out 1.3% narrow
+  (glyph advances hint to the panel's pixels), at 16× the SemiBold header row
+  was 1.3px off, at **32×** every row is within 0.92px of the golden
+  (verified 2026-09-13: 41 components match).
 - **Roku rotation was mirrored.** SceneGraph's `rotation` is counter-clockwise,
   CSS's clockwise, so the logo spun the wrong way on the Roku. The tree check
   could not see it (it logs the model's value); a screenshot did.
@@ -1097,9 +1101,8 @@ passed without a change in our code or reactify.
 
 Re-verified on 3.10.0-RC2: JVM golden, Roku emit (0 gaps, brighterscript
 clean), web frame, desktop frame (JVM and native), Android frame on the
-emulator. **Not yet re-verified: tvOS/iOS** — the Mac was
-unreachable (asleep) when the Swift spike was rerun; `tools/swift-spike.sh` and
-`tools/tvos-run.sh --freeze` are the two commands to run when it is back.
+emulator. tvOS/iOS re-verified the same day (spike, frames), and the Roku (acceptance,
+frame at 32×, 59.9 fps).
 
 ### R8 on the Android build (2026-09-13)
 
@@ -1189,21 +1192,31 @@ the Roku are back.
 The shell scripts remain as thin drivers (Chrome, adb, ssh, simctl); moving the
 orchestration itself into sbt tasks is the next tooling step if wanted.
 
-## IMMEDIATE NEXT STEP
+## The animation must visibly move — the motion check (2026-09-13)
 
-**-1. Re-verify tvOS/iOS on Scala 3.9** (`tools/swift-spike.sh`, `tools/tvos-run.sh
---freeze`) once the Mac is reachable.
+A frame-rate line proves the tick loop runs, not that pixels change: a backend
+whose `setX` did nothing would still report 60 fps. And a device left on the
+`--freeze` build after a check sits on one frame by design — which is exactly
+what a screen showed once (the Roku after a manual frozen sideload). So every
+live check now also takes two screenshots a second apart and requires at least
+1% of pixels to differ (`Checks motion`, a channel off by >12/255 counts), and
+the device scripts leave the live build behind. Measured: Roku 7.5%, tvOS 6.4%,
+iOS 22% (the phone shows a smaller, faster-moving region), Android 4.3%,
+desktop 5.4%, web 5.4% — at 59.9–62 fps everywhere.
+
+Screenshots per platform: the Roku's developer page (`plugin_inspect`),
+`simctl io screenshot`, `adb screencap`, ImageMagick's `import` inside the Xvfb
+session, RoboBrowser (a second capture a second before the last).
+
+## IMMEDIATE NEXT STEP
 
 **0. tvOS and iOS are real: keep them green.** `tools/check.sh --tvos` runs the frame and
 frame-rate checks on the simulator via the Mac. Next: bring the collector's
 per-frame cost down (above), then a physical Apple TV.
 
-**1. Verify the Roku against the shared golden.** The Roku changes — rotation
-sign, `uiTextWidth`, the shared line height, the icon built through `setFont` —
-compile with 0 gaps and 0 brighterscript errors, but have not run on the device
-(it was switched off). `ROKU_PASS=… tools/check.sh --device`, then check a
-screenshot: the `Label` still places glyphs by its own vertical metrics inside
-the shared box, and the frame rate must still hold 59.9.
+**1. The Roku is verified** (2026-09-13): acceptance identical, the frame matches
+the shared golden at the 32× probe, 59.9 fps live, the EveryUI header and mark on
+screen.
 
 **2. Commit the reactify performance work** (pass, `_references` fix, fire and
 dependency-comparison changes) in the reactify repo, once confirmed there.

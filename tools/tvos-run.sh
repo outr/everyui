@@ -38,8 +38,8 @@ for arg in "$@"; do
 done
 # per platform: the simulator SDK, the target triple's OS, the device, the app's device family (1 iPhone, 2 iPad, 3 TV)
 # and the app icon set in swift/app/Assets.xcassets (sbt makeIcons), compiled into the bundle by actool
-if [ $PLATFORM = ios ]; then SDK=iphonesimulator; OS=ios; DEVICE=$IOS_DEVICE; FAMILY='[1,2]'; APPICON=AppIcon
-else SDK=appletvsimulator; OS=tvos; DEVICE=$TVOS_DEVICE; FAMILY='[3]'; APPICON='App Icon & Top Shelf Image'; fi
+if [ $PLATFORM = ios ]; then SDK=iphonesimulator; OS=ios; DEVICE=$IOS_DEVICE; FAMILY='[1,2]'; APPICON=AppIcon; TARGETS="--target-device iphone --target-device ipad"
+else SDK=appletvsimulator; OS=tvos; DEVICE=$TVOS_DEVICE; FAMILY='[3]'; APPICON='App Icon & Top Shelf Image'; TARGETS="--target-device tv"; fi
 LOGS="$ROOT/target/$PLATFORM"
 rm -rf "$LOGS"
 mkdir -p "$LOGS"
@@ -70,7 +70,7 @@ $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
     src/ScalaRuntime.swift src/UniversalRuntime.swift src/App.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
   test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && cp -r src/images src/fonts EveryUI.app/ && \
   plutil -replace UIDeviceFamily -json '$FAMILY' EveryUI.app/Info.plist && \
-  xcrun actool src/Assets.xcassets --compile EveryUI.app --platform $SDK --minimum-deployment-target 15.0 \
+  xcrun actool src/Assets.xcassets --compile EveryUI.app --platform $SDK $TARGETS --minimum-deployment-target 15.0 \
     --app-icon '$APPICON' --output-partial-info-plist icons.plist > actool.log 2>&1 && \
   /usr/libexec/PlistBuddy -c 'Merge icons.plist' EveryUI.app/Info.plist && \
   codesign --force --sign - EveryUI.app > /dev/null 2>&1; test -x EveryUI.app/EveryUI" > "$LOGS/build.log" 2>&1
@@ -94,9 +94,9 @@ STOP="xcrun simctl terminate $UDID $BUNDLE > /dev/null 2>&1"
 [ $SHOW = 1 ] && [ $MODE = live ] && STOP="true"
 $SSH "$MAC" "cd $APP && xcrun simctl terminate $UDID $BUNDLE > /dev/null 2>&1; xcrun simctl install $UDID EveryUI.app && \
   (nohup xcrun simctl launch --console-pty $UDID $BUNDLE $ARGS > console.log 2>&1 &) ; sleep $SECONDS_TO_RUN; \
-  xcrun simctl io $UDID screenshot screen.png > /dev/null 2>&1; $STOP; \
+  xcrun simctl io $UDID screenshot screen.png > /dev/null 2>&1; sleep 1; xcrun simctl io $UDID screenshot screen2.png > /dev/null 2>&1; $STOP; \
   cat console.log" > "$LOGS/console.log" 2>&1
-scp -q "$MAC:$APP/screen.png" "$LOGS/screen.png" 2>/dev/null
+scp -q "$MAC:$APP/screen.png" "$LOGS/screen.png" 2>/dev/null; scp -q "$MAC:$APP/screen2.png" "$LOGS/screen2.png" 2>/dev/null
 if grep -aq '\[ui\] root' "$LOGS/console.log"; then pass "$(grep -aoE '\[ui\] root .*' "$LOGS/console.log")"; else fail "(target/$PLATFORM/console.log)"; tail -n 15 "$LOGS/console.log"; exit 1; fi
 
 if [ $MODE = freeze ]; then
@@ -109,11 +109,13 @@ if [ $MODE = freeze ]; then
   fi
 else
   step "live frame rate"
-  if $CHECKS fps "$LOGS/console.log" --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1; then
+  if $CHECKS fps "$LOGS/console.log" --samples-min 12 --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1; then
     pass "$(tail -n 1 "$LOGS/fps.log")"
   else
     fail "(target/$PLATFORM/fps.log)"; tail -n 5 "$LOGS/fps.log"
   fi
+  step "motion (two screenshots a second apart)"
+  if $CHECKS motion "$LOGS/screen.png" "$LOGS/screen2.png" > "$LOGS/motion.log" 2>&1; then pass "$(tail -n 1 "$LOGS/motion.log")"; else fail "(target/$PLATFORM/motion.log)"; tail -n 2 "$LOGS/motion.log"; fi
   grep -aE '\[ui\] collect' "$LOGS/console.log" | tail -n 3 | sed 's/^/    /'
 fi
 grep -aE 'uncaught|not found|todo' "$LOGS/console.log" | head -n 5 | sed 's/^/    /'

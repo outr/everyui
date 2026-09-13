@@ -16,6 +16,7 @@ import scala.util.matching.Regex
   *   compare-tree GOLDEN ACTUAL [--tol PX]   structure must match exactly; positions and sizes within a tolerance
   *   faces FONTS_DIR FACES_SCALA             the shared face table repeats the bundled fonts' own metrics
   *   fps LOG [--median-min F] [--min F]      the live frame rate after the last app start meets a floor
+  *   motion A.png B.png [--min-fraction F]   two screenshots of a running app differ: at least F of the pixels moved (0.01)
   *   gaps CHANNEL_COMPONENTS_DIR             the static gap meter over an emitted Roku channel (0 on every line is clean)
   *   suite-lines RAW OUT                     the latest run of the reactify suite (`RX` lines) from a Roku console capture
   *   android-wait SERIAL OUT                 wait for the app on an Android device to log its frozen frame, then save its log
@@ -38,6 +39,7 @@ object Checks:
       case "fps" :: log :: rest =>
         fps(log, opt(rest, "--median-min", 59.5), opt(rest, "--min", 58.5), opt(rest, "--skip", 3.0).toInt, opt(rest, "--samples-min", 20.0).toInt)
       case "gaps" :: dir :: Nil => gaps(dir)
+      case "motion" :: a :: b :: rest => motion(a, b, opt(rest, "--min-fraction", 0.01))
       case "suite-lines" :: raw :: out :: Nil => suiteLines(raw, out)
       case "android-wait" :: serial :: out :: rest => androidWait(serial, out, opt(rest, "--timeout", 90.0))
       case "roku-install" :: channel :: rest => rokuInstall(channel, rest.sliding(2, 2).collect { case List("--add", spec) => spec }.toList)
@@ -161,6 +163,29 @@ object Checks:
     val low = sorted.head
     println(f"${samples.size} samples: median $median%.1f fps, minimum $low%.1f fps (floors: median $medianMin%.1f, minimum $min%.1f)")
     if median < medianMin || low < min then 1 else 0
+
+  // ── motion ──────────────────────────────────────────────────────────────────
+
+  /** The animation is visibly running: two screenshots taken a moment apart differ in at least `minFraction` of
+    * their pixels (a channel off by more than 12/255 counts). A frozen frame, a black screen, or a tick loop
+    * that reports 60 fps while nothing on screen moves all fail here. */
+  def motion(aPath: String, bPath: String, minFraction: Double): Int =
+    val a = javax.imageio.ImageIO.read(new File(aPath))
+    val b = javax.imageio.ImageIO.read(new File(bPath))
+    if a == null || b == null then return fail("could not decode a screenshot")
+    if a.getWidth != b.getWidth || a.getHeight != b.getHeight then return fail(s"screenshots differ in size: ${a.getWidth}x${a.getHeight} vs ${b.getWidth}x${b.getHeight}")
+    var changed = 0L
+    var y = 0
+    while y < a.getHeight do
+      var x = 0
+      while x < a.getWidth do
+        val p = a.getRGB(x, y); val q = b.getRGB(x, y)
+        if math.abs(((p >> 16) & 0xff) - ((q >> 16) & 0xff)) > 12 || math.abs(((p >> 8) & 0xff) - ((q >> 8) & 0xff)) > 12 || math.abs((p & 0xff) - (q & 0xff)) > 12 then changed += 1
+        x += 1
+      y += 1
+    val fraction = changed.toDouble / (a.getWidth.toLong * a.getHeight)
+    println(f"${fraction * 100}%.2f%% of pixels changed between the two screenshots (floor ${minFraction * 100}%.2f%%)")
+    if fraction < minFraction then 1 else 0
 
   // ── the gap meter ───────────────────────────────────────────────────────────
 

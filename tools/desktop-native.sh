@@ -72,10 +72,12 @@ else
   fail "(target/native/frame-check.log)"; tail -n 10 "$LOGS/frame-check.log"
 fi
 
-step "live frame rate (Xvfb, 20 s)"
-timeout 22 xvfb-run -a -s "-screen 0 1920x1080x24" "$OUT" > "$LOGS/live.log" 2>&1
-if $CHECKS fps "$LOGS/live.log" --samples-min 12 --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1; then
-  pass "$(tail -n 1 "$LOGS/fps.log")"
+step "live frame rate and motion (Xvfb, 20 s)"
+# the app runs inside the Xvfb session; two screenshots of that display a second apart must differ
+xvfb-run -a -s "-screen 0 1920x1080x24" bash -c "\"$OUT\" > \"$LOGS/live.log\" 2>&1 & pid=\$!; sleep 8; magick import -window root \"$LOGS/live-1.png\"; sleep 1; magick import -window root \"$LOGS/live-2.png\"; sleep 11; kill \$pid"
+if $CHECKS fps "$LOGS/live.log" --samples-min 12 --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1 &&
+   $CHECKS motion "$LOGS/live-1.png" "$LOGS/live-2.png" >> "$LOGS/fps.log" 2>&1; then
+  pass "$(tail -n 2 "$LOGS/fps.log" | tr '\n' ' ')"
 else
   fail "(target/native/fps.log)"; tail -n 5 "$LOGS/fps.log"
 fi

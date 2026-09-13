@@ -164,10 +164,11 @@ web_live() {
   local seconds=${FPS_SECONDS:-60}
   timeout $(( seconds + 120 )) java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.vector \
     -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.WebLive \
-    "file://$ROOT/web/out-js/index.html" "$seconds" "$LOGS/web-live.png" > "$LOGS/web-live-console.log" 2>&1
+    "file://$ROOT/web/out-js/index.html" "$seconds" "$LOGS/web-live.png" "$LOGS/web-live-earlier.png" > "$LOGS/web-live-console.log" 2>&1
   grep -h '\[webcheck\] viewport' "$LOGS/web-live-console.log"
   $CHECKS fps "$LOGS/web-live-console.log" --median-min "${FPS_MEDIAN_MIN:-59.5}" --min "${FPS_MIN:-58.5}" ||
     { echo "--- console:"; tail -n 20 "$LOGS/web-live-console.log"; return 1; }
+  $CHECKS motion "$LOGS/web-live-earlier.png" "$LOGS/web-live.png"
 }
 
 desktop_frame() {
@@ -199,6 +200,21 @@ android_frame() {
   frame android "$LOGS/android-console.log"
 }
 
+# live on the same device: the frame rate, and two screenshots a second apart must differ (the animation moves)
+android_live() {
+  local serial=${ANDROID_SERIAL:-$(adb devices | awk '$1 ~ /^emulator-/ && $2 == "device" { print $1; exit }')}
+  [ -n "$serial" ] || { echo "no Android emulator on adb"; return 1; }
+  adb -s "$serial" logcat -c
+  adb -s "$serial" shell am start -S -n com.outr.everyui/everyui.activity.MainActivity > /dev/null || return 1
+  sleep "${ANDROID_LIVE_SECONDS:-25}"
+  adb -s "$serial" exec-out screencap -p > "$LOGS/android-live-1.png"; sleep 1
+  adb -s "$serial" exec-out screencap -p > "$LOGS/android-live-2.png"
+  adb -s "$serial" logcat -d -s everyui:I AndroidRuntime:E > "$LOGS/android-live-console.log"
+  adb -s "$serial" shell am force-stop com.outr.everyui
+  $CHECKS fps "$LOGS/android-live-console.log" --samples-min 15 --median-min "${FPS_MEDIAN_MIN:-59.5}" --min "${FPS_MIN:-55}" &&
+    $CHECKS motion "$LOGS/android-live-1.png" "$LOGS/android-live-2.png"
+}
+
 # ── tvOS ─────────────────────────────────────────────────────────────────────
 
 tvos_frame() { tools/tvos-run.sh --freeze; }
@@ -214,10 +230,19 @@ roku_frame() {
     frame roku "$LOGS/roku-frame-console.log"
 }
 
+# roku_shot OUT: the device's screen right now (the developer web page's screenshot)
+roku_shot() {
+  curl -s --digest -u "rokudev:$ROKU_PASS" -F mysubmit=Screenshot -F archive= -F passwd= "http://${ROKU_IP:-192.168.1.112}/plugin_inspect" > /dev/null &&
+    curl -s --digest -u "rokudev:$ROKU_PASS" -o "$1" "http://${ROKU_IP:-192.168.1.112}/pkgs/dev.jpg"
+}
+
+# the live build stays on the device afterwards; two screenshots a second apart must differ (the animation moves)
 roku_fps() {
   $CHECKS roku-install roku/out-roku &&
     $CHECKS roku-console "${FPS_SECONDS:-60}" "$LOGS/roku-fps-console.log" &&
-    $CHECKS fps "$LOGS/roku-fps-console.log" --median-min "${FPS_MEDIAN_MIN:-59.5}" --min "${FPS_MIN:-58.5}"
+    $CHECKS fps "$LOGS/roku-fps-console.log" --median-min "${FPS_MEDIAN_MIN:-59.5}" --min "${FPS_MIN:-58.5}" &&
+    roku_shot "$LOGS/roku-live-1.jpg" && sleep 1 && roku_shot "$LOGS/roku-live-2.jpg" &&
+    $CHECKS motion "$LOGS/roku-live-1.jpg" "$LOGS/roku-live-2.jpg"
 }
 
 # ── run ──────────────────────────────────────────────────────────────────────
@@ -265,6 +290,7 @@ fi
 if [ $ANDROID = 1 ]; then
   if run "Android: APK builds" android-build.log android_build; then
     run "Android: AnimationExample frame" android-frame.log android_frame
+    run "Android: live frame rate and motion" android-live.log android_live
   else
     skip "Android: AnimationExample frame" "APK did not build"
   fi

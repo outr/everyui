@@ -15,7 +15,7 @@ import scala.concurrent.duration.*
   * tools/checks.py to read, exactly as the Roku's come off its debug console.
   *
   * {{{
-  *   WebLive <url> [seconds = 60] [screenshot.png]
+  *   WebLive <url> [seconds = 60] [screenshot.png [screenshot-a-second-earlier.png]]
   * }}}
   */
 object WebLive extends RapidApp:
@@ -23,6 +23,7 @@ object WebLive extends RapidApp:
     val url = args.headOption.getOrElse(sys.error("usage: WebLive <url> [seconds] [screenshot.png]"))
     val seconds = args.lift(1).flatMap(_.toIntOption).getOrElse(60)
     val screenshot = args.lift(2)
+    val earlier = args.lift(3)   // a second before the last one, for the motion check
     RoboBrowser.withBrowser(RoboBrowserConfig(
       browserConfig = BrowserConfig(noSandbox = true),
       tabSelector = TabSelector.FirstPage,
@@ -39,7 +40,9 @@ object WebLive extends RapidApp:
         viewport <- browser.eval("return window.innerWidth + 'x' + window.innerHeight + ' at ' + window.devicePixelRatio + 'x'")
           .map(_("result")("value").asString)
         _ <- Task(println("[webcheck] viewport " + viewport))
-        _ <- Task.sleep(seconds.seconds)
+        _ <- Task.sleep((seconds - 1).seconds)
+        _ <- earlier.map(path => browser.screenshot(Paths.get(path))).getOrElse(Task.unit)
+        _ <- Task.sleep(1.second)
         _ <- screenshot.map(path => browser.screenshot(Paths.get(path))).getOrElse(Task.unit)
       yield ()
     }

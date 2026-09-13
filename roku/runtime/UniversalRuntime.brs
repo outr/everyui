@@ -241,7 +241,8 @@ end function
 ' How wide a Label's text is at exactly `size` pixels. A Font's size is whole
 ' pixels and small text is rasterised at the panel's resolution, so the Label's
 ' own bounding rect is a few pixels off the same text in a browser. Measured at
-' four times the size, where that rounding is negligible, and scaled back. One
+' sixteen times the size, where that rounding is negligible (at four times, a
+' 720p panel still came out 1.3% narrow), and scaled back. One
 ' probe Label and one Font per face and size are reused, so measuring creates
 ' no nodes.
 function uiTextWidth(node as object, uri as string, size as float) as float
@@ -251,7 +252,7 @@ function uiTextWidth(node as object, uri as string, size as float) as float
         ga.uiMeasureLabel = CreateObject("roSGNode", "Label")
         ga.uiMeasureFonts = {}
     end if
-    big = Int(size * 4.0 + 0.5)
+    big = Int(size * 32.0 + 0.5)
     key = uri + "@" + big.ToStr()
     f = ga.uiMeasureFonts[key]
     if f = invalid

@@ -12,7 +12,8 @@ import scala.sys.process._
  *     `assets/images/icon.png` — the 200 px image AnimationExample bounces (was youi's)
   *   - `android/res/mipmap-*​/ic_launcher.png` 48–192 px and `android/res/drawable-xhdpi/banner.png` 320x180
   *   - `roku/images/icon-{fhd,hd,sd}.png` and `splash-{fhd,hd,sd}.png`
-  *   - `swift/app/Assets.xcassets/…`: the iOS 1024 icon, the tvOS App Icon 400x240 @1x/@2x, App Store 1280x768,
+  *   - `swift/app/Assets.xcassets/…`: the iOS 1024 icon, the tvOS App Icon 400x240 @1x/@2x and App Store 1280x768
+ *     (two-layer stacks: the mark over solid dark),
   *     Top Shelf 1920x720 and 2320x720 (the catalog's `Contents.json` files are checked in; actool compiles it)
   *
   * Rendering is `rsvg-convert` (librsvg), composition is AWT.
@@ -132,9 +133,12 @@ object Icons {
     val xc = "swift/app/Assets.xcassets"
     val tv = xc + "/App Icon & Top Shelf Image.brandassets"
     write(root, xc + "/AppIcon.appiconset/ios-1024.png", opaque(markOnDark(1024, 1024, 0.74)), log)
-    write(root, tv + "/App Icon.imagestack/Back.imagestacklayer/Content.imageset/icon-400x240.png", lockupOnDark(400, 240, 0.95), log)
-    write(root, tv + "/App Icon.imagestack/Back.imagestacklayer/Content.imageset/icon-800x480.png", lockupOnDark(800, 480, 0.95), log)
-    write(root, tv + "/App Icon - App Store.imagestack/Back.imagestacklayer/Content.imageset/icon-1280x768.png", lockupOnDark(1280, 768, 0.95), log)
+    // a tvOS app icon is a stack of at least two layers (the home screen parallaxes them): the mark in front of a
+    // solid dark back
+    for ((stack, w, h) <- Seq(("App Icon.imagestack", 400, 240), ("App Icon.imagestack", 800, 480), ("App Icon - App Store.imagestack", 1280, 768))) {
+      write(root, s"$tv/$stack/Front.imagestacklayer/Content.imageset/icon-${w}x$h.png", centred(mark, w, h, 0.72, None), log)
+      write(root, s"$tv/$stack/Back.imagestacklayer/Content.imageset/icon-${w}x$h.png", opaque(canvas(w, h, Some(Dark), 0.0)), log)
+    }
     write(root, tv + "/Top Shelf Image.imageset/top-shelf-1920x720.png", lockupOnDark(1920, 720, 0.9), log)
     write(root, tv + "/Top Shelf Image Wide.imageset/top-shelf-2320x720.png", lockupOnDark(2320, 720, 0.9), log)
   }
