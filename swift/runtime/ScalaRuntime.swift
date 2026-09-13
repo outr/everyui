@@ -11,6 +11,11 @@
 // so the object graph is fully visible: `rtCollectCycles(roots)` marks what is reachable from the roots and
 // clears every other object's fields, breaking its cycles. It must only run where no emitted code is on the
 // stack — between frames, or between calls into the program — since a Swift local is not a root.
+//
+// Every instance sits on an intrusive doubly-linked list (unowned links, unlinked in `deinit`, so acyclic
+// garbage still goes the moment reference counting drops it) and carries a mark epoch; a collection is one
+// traversal from the roots stamping the epoch, then one walk of the list clearing whatever it did not stamp.
+// No allocation, no hashing and no weak loads per object, so the cost is a few hundred nanoseconds each.
 
 import Foundation
 
@@ -73,16 +78,43 @@ enum V {
 
 final class Obj {
     var fields: [String: V]
+    var mark: UInt32 = 0
+    unowned(unsafe) var prev: Obj
+    unowned(unsafe) var next: Obj
+
     init(_ fields: [String: V]) {
         self.fields = fields
+        // link before the list's sentinel
+        let tail = Rt.sentinel.prev
+        prev = tail
+        next = Rt.sentinel
+        tail.next = self
+        Rt.sentinel.prev = self
         Rt.live += 1
-        Rt.registry.append(WeakObj(self))
+        Rt.allocated += 1
+        Rt.allocatedTotal += 1
     }
-    deinit { Rt.live -= 1 }
+
+    /** The list's sentinel: links to itself, never marked, never collected. */
+    private init(sentinel: ()) {
+        fields = [:]
+        prev = unsafeBitCast(0, to: Obj.self)   // overwritten below
+        next = unsafeBitCast(0, to: Obj.self)
+        prev = self
+        next = self
+    }
+    static func makeSentinel() -> Obj { Obj(sentinel: ()) }
+
+    deinit {
+        prev.next = next
+        next.prev = prev
+        Rt.live -= 1
+    }
 }
 
 final class Arr {
     var items: [V]
+    var mark: UInt32 = 0
     init(_ items: [V]) { self.items = items }
 }
 
@@ -91,19 +123,19 @@ final class Fn {
     init(_ call: @escaping ([V]) throws -> V) { self.call = call }
 }
 
-final class WeakObj {
-    weak var obj: Obj?
-    init(_ obj: Obj) { self.obj = obj }
-}
-
 /** A Scala exception in flight: the exception object itself, so a `catch` can match its `_cls`. */
 struct RtError: Error { let v: V }
 
 enum Rt {
     /** Instances alive right now. */
     static var live = 0
-    /** Every instance, weakly, for the cycle collector. */
-    static var registry: [WeakObj] = []
+    /** Instances created since the last collection (the frame driver's trigger), and ever. */
+    static var allocated = 0
+    static var allocatedTotal = 0
+    /** The list of every instance, for the cycle collector. */
+    static let sentinel: Obj = Obj.makeSentinel()
+    /** The current mark. */
+    static var epoch: UInt32 = 0
     /** Silences `println` (the memory probe runs the suite repeatedly). */
     static var quiet = false
 }
@@ -804,26 +836,46 @@ func _caseCopy(_ src: V, _ overrides: V) -> V {
   * on the stack. */
 @discardableResult
 func rtCollectCycles(_ roots: [V]) -> Int {
-    var marked = Swift.Set<ObjectIdentifier>()
-    var stack = roots
+    Rt.epoch &+= 1
+    if Rt.epoch == 0 { Rt.epoch = 1 }
+    let epoch = Rt.epoch
+    var stack: [V] = roots
+    stack.reserveCapacity(1024)
     while let v = stack.popLast() {
         switch v {
         case .vObj(let o):
-            if marked.insert(ObjectIdentifier(o)).inserted { stack.append(contentsOf: o.fields.values) }
+            if o.mark != epoch {
+                o.mark = epoch
+                for f in o.fields.values {
+                    switch f {
+                    case .vObj, .vArr: stack.append(f)
+                    default: break
+                    }
+                }
+            }
         case .vArr(let a):
-            if marked.insert(ObjectIdentifier(a)).inserted { stack.append(contentsOf: a.items) }
+            if a.mark != epoch {
+                a.mark = epoch
+                for f in a.items {
+                    switch f {
+                    case .vObj, .vArr: stack.append(f)
+                    default: break
+                    }
+                }
+            }
         default:
             break
         }
     }
-    var kept: [WeakObj] = []
-    kept.reserveCapacity(Rt.registry.count)
+    // The sweep holds the garbage strongly while their fields are cleared: an object that frees during the
+    // clearing unlinks itself from the list, so the list is not walked at the same time.
     var garbage: [Obj] = []
-    for w in Rt.registry {
-        guard let o = w.obj else { continue }
-        if marked.contains(ObjectIdentifier(o)) { kept.append(w) } else { garbage.append(o) }
+    var o = Rt.sentinel.next
+    while o !== Rt.sentinel {
+        if o.mark != epoch { garbage.append(o) }
+        o = o.next
     }
-    Rt.registry = kept
-    for o in garbage { o.fields.removeAll() }
+    for g in garbage { g.fields.removeAll() }
+    Rt.allocated = 0
     return garbage.count
 }

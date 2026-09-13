@@ -23,6 +23,9 @@ enum UI {
     static var tick: V = .vNull
     static var link: CADisplayLink?
     static var frames = 0
+    static var collections = 0
+    static var allocs = 0
+    static var allocsAt = 0
     static var collectMs = 0.0
     static var collectMaxMs = 0.0
     static var reported = CACurrentMediaTime()
@@ -281,17 +284,26 @@ final class FrameDriver {
         } catch {
             print("[ui] uncaught in frame: \(error)")
         }
-        // Between frames, with no emitted code on the stack: collect the cycles this frame left behind.
-        let t = CACurrentMediaTime()
-        rtCollectCycles([ga, rtUnit, UI.tick])
-        let ms = (CACurrentMediaTime() - t) * 1000.0
-        UI.collectMs += ms
-        UI.collectMaxMs = max(UI.collectMaxMs, ms)
+        // Between frames, with no emitted code on the stack: collect the cycles the frames left behind — once
+        // the allocations since the last pass are worth a walk of the live graph (a quarter of it, at least
+        // 2,000), so a steady-state frame that allocates little costs nothing here.
         UI.frames += 1
+        UI.allocs += Rt.allocatedTotal - UI.allocsAt
+        UI.allocsAt = Rt.allocatedTotal
+        if Rt.allocated >= max(2000, Rt.live / 4) {
+            let t = CACurrentMediaTime()
+            rtCollectCycles([ga, rtUnit, UI.tick])
+            let ms = (CACurrentMediaTime() - t) * 1000.0
+            UI.collectMs += ms
+            UI.collectMaxMs = max(UI.collectMaxMs, ms)
+            UI.collections += 1
+        }
         let now = CACurrentMediaTime()
         if now - UI.reported >= 1.0 {
-            print(String(format: "[ui] collect avg=%.2fms max=%.2fms live=%d", UI.collectMs / Double(UI.frames), UI.collectMaxMs, Rt.live))
-            UI.frames = 0; UI.collectMs = 0; UI.collectMaxMs = 0; UI.reported = now
+            print(String(format: "[ui] collect n=%d avg=%.2fms max=%.2fms per.frame=%.2fms allocs/frame=%d live=%d",
+                         UI.collections, UI.collections > 0 ? UI.collectMs / Double(UI.collections) : 0, UI.collectMaxMs,
+                         UI.collectMs / Double(UI.frames), UI.allocs / UI.frames, Rt.live))
+            UI.frames = 0; UI.collections = 0; UI.allocs = 0; UI.collectMs = 0; UI.collectMaxMs = 0; UI.reported = now
         }
     }
 }

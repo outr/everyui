@@ -1052,12 +1052,27 @@ because the app now carries youi's whole component model, task DSL and
 reactify. Android and desktop are the outliers: neither has had its dead code
 removed (R8 / native-image), which is where their numbers fall.
 
-**The collector's cost is the next thing to fix.** 4–5 ms of a 16.7 ms frame,
-every frame, is a mark over the whole live graph. Options, in order: collect
-every N frames or when allocations since the last pass exceed a threshold (the
-example's steady state allocates little); a generational registry (mark only
-objects created since the last pass plus their reachable set); or reactify's
-Roku-era fast paths to allocate less per frame. Measured before it is chosen.
+**The collector's cost, brought down (2026-09-13).** The first collector marked
+through a `Set` of identifiers, swept a registry of weak references, and made a
+`WeakObj` for every allocation: 4–5 ms of every 16.7 ms frame. Now every
+instance sits on an intrusive doubly-linked list (unowned links, unlinked in
+`deinit`, so acyclic garbage still goes the moment reference counting drops it)
+and carries a mark epoch; a pass is one traversal stamping the epoch and one
+walk of the list clearing what it did not stamp — no allocation, hashing or
+weak load per object. And the frame driver runs it only when the allocations
+since the last pass are worth a walk of the live graph (a quarter of it, at
+least 2,000).
+
+| | before | after |
+|---|---|---|
+| one pass over ~8,400 live instances | 4–5 ms | 2.6–3.4 ms |
+| passes per second, live | 60 | 1–8 (the example allocates 20–300 instances a frame) |
+| cost per frame, amortised | 4–5 ms | **0.05–0.35 ms** |
+| the spike's probe: 200 suite runs, a pass each | 555 ms | 349 ms (a single pass over 77,200 garbage: 44 ms, was 68) |
+
+Still 60.0 fps, still 0 growth. Remaining lever if a bigger app needs it: a
+generational pass (young objects plus a remembered set) so a pass no longer
+walks the whole live graph.
 
 ## IMMEDIATE NEXT STEP
 
