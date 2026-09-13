@@ -162,7 +162,8 @@ object Host:
 
   def image(uri: String): Image = images.getOrElseUpdate(uri, new Image(uri))
 
-  /** With `--screenshot`, save the frozen frame as a PNG and exit. */
+  /** With `--screenshot`, save the frozen frame as a PNG and exit. Written by hand (no AWT/ImageIO), so the
+    * desktop stays buildable as a GraalVM native image without the java.desktop module. */
   def frozen(): Unit =
     if screenshot.nonEmpty then
       javafx.application.Platform.runLater(() => {
@@ -170,17 +171,50 @@ object Host:
         val width = image.getWidth.toInt
         val height = image.getHeight.toInt
         val pixels = image.getPixelReader
-        val out = new java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        val rows = new java.io.ByteArrayOutputStream(width * height * 4 + height)
         var y = 0
         while y < height do
+          rows.write(0) // filter: none
           var x = 0
           while x < width do
-            out.setRGB(x, y, pixels.getArgb(x, y))
+            val argb = pixels.getArgb(x, y)
+            rows.write((argb >> 16) & 0xff); rows.write((argb >> 8) & 0xff); rows.write(argb & 0xff); rows.write((argb >>> 24) & 0xff)
             x += 1
           y += 1
-        javax.imageio.ImageIO.write(out, "png", new File(screenshot))
+        java.nio.file.Files.write(java.nio.file.Paths.get(screenshot), Png.encode(width, height, rows.toByteArray))
         javafx.application.Platform.exit()
       })
+
+/** A minimal PNG encoder: 8-bit RGBA, one IDAT, zlib through java.util.zip. */
+object Png:
+  def encode(width: Int, height: Int, filteredRows: Array[Byte]): Array[Byte] =
+    val out = new java.io.ByteArrayOutputStream()
+    out.write(Array[Byte](0x89.toByte, 'P', 'N', 'G', 13, 10, 26, 10))
+    val header = java.nio.ByteBuffer.allocate(13)
+    header.putInt(width).putInt(height).put(8.toByte).put(6.toByte).put(0.toByte).put(0.toByte).put(0.toByte)
+    chunk(out, "IHDR", header.array())
+    val deflater = new java.util.zip.Deflater(java.util.zip.Deflater.BEST_SPEED)
+    deflater.setInput(filteredRows)
+    deflater.finish()
+    val compressed = new java.io.ByteArrayOutputStream(filteredRows.length / 4)
+    val buffer = new Array[Byte](65536)
+    while !deflater.finished() do
+      val n = deflater.deflate(buffer)
+      compressed.write(buffer, 0, n)
+    chunk(out, "IDAT", compressed.toByteArray)
+    chunk(out, "IEND", Array.empty[Byte])
+    out.toByteArray
+
+  private def chunk(out: java.io.ByteArrayOutputStream, kind: String, data: Array[Byte]): Unit =
+    val length = java.nio.ByteBuffer.allocate(4).putInt(data.length).array()
+    out.write(length)
+    val typeBytes = kind.getBytes(java.nio.charset.StandardCharsets.US_ASCII)
+    out.write(typeBytes)
+    out.write(data)
+    val crc = new java.util.zip.CRC32()
+    crc.update(typeBytes)
+    crc.update(data)
+    out.write(java.nio.ByteBuffer.allocate(4).putInt(crc.getValue.toInt).array())
 
 /** Backend node factories. */
 object Nodes:

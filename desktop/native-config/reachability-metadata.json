@@ -1,0 +1,1326 @@
+{
+  "reflection": [
+    {
+      "type": "com.sun.glass.ui.Application",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "GetApplication",
+          "parameterTypes": []
+        },
+        {
+          "name": "getName",
+          "parameterTypes": []
+        },
+        {
+          "name": "notifyPreferencesChanged",
+          "parameterTypes": [
+            "java.util.Map"
+          ]
+        },
+        {
+          "name": "reportException",
+          "parameterTypes": [
+            "java.lang.Throwable"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.Clipboard",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "contentChanged",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.Cursor",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "ptr"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.Pixels",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "attachData",
+          "parameterTypes": [
+            "long"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.Screen",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "long",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "float",
+            "float",
+            "float",
+            "float"
+          ]
+        },
+        {
+          "name": "notifySettingsChanged",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.Screen[]"
+    },
+    {
+      "type": "com.sun.glass.ui.Size",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.View",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "ptr"
+        }
+      ],
+      "methods": [
+        {
+          "name": "notifyDragDrop",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyDragEnter",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyDragLeave",
+          "parameterTypes": []
+        },
+        {
+          "name": "notifyDragOver",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyKey",
+          "parameterTypes": [
+            "int",
+            "int",
+            "char[]",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyMenu",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "boolean"
+          ]
+        },
+        {
+          "name": "notifyMouse",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "boolean",
+            "boolean"
+          ]
+        },
+        {
+          "name": "notifyRepaint",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyResize",
+          "parameterTypes": [
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyScroll",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "double",
+            "double",
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "double",
+            "double"
+          ]
+        },
+        {
+          "name": "notifyView",
+          "parameterTypes": [
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.Window",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "ptr"
+        }
+      ],
+      "methods": [
+        {
+          "name": "isEnabled",
+          "parameterTypes": []
+        },
+        {
+          "name": "notifyClose",
+          "parameterTypes": []
+        },
+        {
+          "name": "notifyDelegatePtr",
+          "parameterTypes": [
+            "long"
+          ]
+        },
+        {
+          "name": "notifyDestroy",
+          "parameterTypes": []
+        },
+        {
+          "name": "notifyFocus",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "notifyFocusDisabled",
+          "parameterTypes": []
+        },
+        {
+          "name": "notifyFocusUngrab",
+          "parameterTypes": []
+        },
+        {
+          "name": "notifyLevelChanged",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "notifyMove",
+          "parameterTypes": [
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyMoveToAnotherScreen",
+          "parameterTypes": [
+            "com.sun.glass.ui.Screen"
+          ]
+        },
+        {
+          "name": "notifyResize",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.gtk.GtkApplication",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "display"
+        },
+        {
+          "name": "screen"
+        },
+        {
+          "name": "visualID"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.gtk.GtkPixels",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "int",
+            "java.nio.ByteBuffer"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.gtk.GtkPlatformFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.gtk.GtkView",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "notifyInputMethodCandidateRelativePosRequest",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "notifyInputMethodLinux",
+          "parameterTypes": [
+            "java.lang.String",
+            "int",
+            "int",
+            "byte"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.gtk.GtkWindow",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "nonClientHitTest",
+          "parameterTypes": [
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "notifyStateChanged",
+          "parameterTypes": [
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.PreviewFeature"
+    },
+    {
+      "type": "com.sun.javafx.font.FontConfigManager$FcCompFont",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "allFonts"
+        },
+        {
+          "name": "fcName"
+        },
+        {
+          "name": "firstFont"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.font.FontConfigManager$FontConfigFont",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "familyName"
+        },
+        {
+          "name": "fontFile"
+        },
+        {
+          "name": "fullName"
+        },
+        {
+          "name": "styleStr"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.font.FontConfigManager$FontConfigFont[]"
+    },
+    {
+      "type": "com.sun.javafx.font.freetype.FTFactory",
+      "methods": [
+        {
+          "name": "getFactory",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.font.freetype.FT_Bitmap",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "buffer"
+        },
+        {
+          "name": "num_grays"
+        },
+        {
+          "name": "palette"
+        },
+        {
+          "name": "palette_mode"
+        },
+        {
+          "name": "pitch"
+        },
+        {
+          "name": "pixel_mode"
+        },
+        {
+          "name": "rows"
+        },
+        {
+          "name": "width"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.font.freetype.FT_GlyphSlotRec",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "advance_x"
+        },
+        {
+          "name": "advance_y"
+        },
+        {
+          "name": "bitmap"
+        },
+        {
+          "name": "bitmap_left"
+        },
+        {
+          "name": "bitmap_top"
+        },
+        {
+          "name": "format"
+        },
+        {
+          "name": "linearHoriAdvance"
+        },
+        {
+          "name": "linearVertAdvance"
+        },
+        {
+          "name": "metrics"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.font.freetype.FT_Glyph_Metrics",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "height"
+        },
+        {
+          "name": "horiAdvance"
+        },
+        {
+          "name": "horiBearingX"
+        },
+        {
+          "name": "horiBearingY"
+        },
+        {
+          "name": "vertAdvance"
+        },
+        {
+          "name": "vertBearingX"
+        },
+        {
+          "name": "vertBearingY"
+        },
+        {
+          "name": "width"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.logging.PrintLogger",
+      "methods": [
+        {
+          "name": "createInstance",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.logging.jfr.JFRPulseLogger",
+      "methods": [
+        {
+          "name": "createInstance",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.tk.quantum.QuantumToolkit",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.pisces.AbstractSurface",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "nativePtr"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.pisces.JavaSurface",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "dataInt"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.pisces.PiscesRenderer",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "nativePtr"
+        },
+        {
+          "name": "surface"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.pisces.Transform6",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "m00"
+        },
+        {
+          "name": "m01"
+        },
+        {
+          "name": "m02"
+        },
+        {
+          "name": "m10"
+        },
+        {
+          "name": "m11"
+        },
+        {
+          "name": "m12"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.prism.GraphicsPipeline",
+      "methods": [
+        {
+          "name": "getFontFactory",
+          "parameterTypes": []
+        },
+        {
+          "name": "getPipeline",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.prism.sw.SWPipeline",
+      "methods": [
+        {
+          "name": "getInstance",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Boolean",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "FALSE"
+        },
+        {
+          "name": "TRUE"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Character",
+      "methods": [
+        {
+          "name": "isIdeographic",
+          "parameterTypes": [
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.ClassValue"
+    },
+    {
+      "type": "java.lang.Iterable",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "iterator",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Object",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "equals",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Runnable",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "run",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.String",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "toLowerCase",
+          "parameterTypes": [
+            "java.util.Locale"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.System",
+      "methods": [
+        {
+          "name": "getSecurityManager",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.ByteBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "wrap",
+          "parameterTypes": [
+            "byte[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.ArrayList",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "add",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "get",
+          "parameterTypes": [
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.Collections",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "unmodifiableMap",
+          "parameterTypes": [
+            "java.util.Map"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.HashMap",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        },
+        {
+          "name": "containsKey",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "get",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "put",
+          "parameterTypes": [
+            "java.lang.Object",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.HashSet",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.util.Iterator",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "hasNext",
+          "parameterTypes": []
+        },
+        {
+          "name": "next",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.util.Map",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "containsKey",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "get",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "keySet",
+          "parameterTypes": []
+        },
+        {
+          "name": "put",
+          "parameterTypes": [
+            "java.lang.Object",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.Set",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "add",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "size",
+          "parameterTypes": []
+        },
+        {
+          "name": "toArray",
+          "parameterTypes": [
+            "java.lang.Object[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "javafx.animation.Interpolator"
+    },
+    {
+      "type": "javafx.scene.Camera"
+    },
+    {
+      "type": "javafx.scene.Node"
+    },
+    {
+      "type": "javafx.scene.ParallelCamera"
+    },
+    {
+      "type": "javafx.scene.Parent"
+    },
+    {
+      "type": "javafx.scene.Scene"
+    },
+    {
+      "type": "javafx.scene.image.Image"
+    },
+    {
+      "type": "javafx.scene.image.ImageView"
+    },
+    {
+      "type": "javafx.scene.layout.Pane"
+    },
+    {
+      "type": "javafx.scene.layout.Region"
+    },
+    {
+      "type": "javafx.scene.paint.Color",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "rgb",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "double"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "javafx.scene.shape.Rectangle"
+    },
+    {
+      "type": "javafx.scene.shape.Shape"
+    },
+    {
+      "type": "javafx.scene.text.Font"
+    },
+    {
+      "type": "javafx.scene.text.Text"
+    },
+    {
+      "type": "javafx.scene.transform.Transform"
+    },
+    {
+      "type": "javafx.stage.Stage"
+    },
+    {
+      "type": "javafx.stage.Window"
+    },
+    {
+      "type": "reactify.Channel",
+      "fields": [
+        {
+          "name": "reactify$Reactive$$_status$lzy1"
+        },
+        {
+          "name": "reactions$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "reactify.Val",
+      "fields": [
+        {
+          "name": "reactify$Reactive$$_status$lzy1"
+        },
+        {
+          "name": "reaction$lzy1"
+        },
+        {
+          "name": "reactions$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scala.collection.immutable.ArraySeq$",
+      "fields": [
+        {
+          "name": "emptyImpl$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scala.math.BigDecimal$",
+      "fields": [
+        {
+          "name": "cache$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.MD5",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en_US"
+    },
+    {
+      "type": "universal.Color$",
+      "fields": [
+        {
+          "name": "Black$lzy1"
+        },
+        {
+          "name": "Clear$lzy1"
+        },
+        {
+          "name": "DarkGray$lzy1"
+        },
+        {
+          "name": "LightGray$lzy1"
+        },
+        {
+          "name": "SteelBlue$lzy1"
+        },
+        {
+          "name": "White$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.Component",
+      "fields": [
+        {
+          "name": "backgroundColor$lzy1"
+        },
+        {
+          "name": "color$lzy1"
+        },
+        {
+          "name": "effectiveHeight$lzy1"
+        },
+        {
+          "name": "effectiveWidth$lzy1"
+        },
+        {
+          "name": "measure$lzy1"
+        },
+        {
+          "name": "measured$lzy1"
+        },
+        {
+          "name": "position$lzy1"
+        },
+        {
+          "name": "rotation$lzy1"
+        },
+        {
+          "name": "whiteSpace$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.Container",
+      "fields": [
+        {
+          "name": "children$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.ImageView",
+      "fields": [
+        {
+          "name": "image$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.TextView",
+      "fields": [
+        {
+          "name": "content$lzy1"
+        },
+        {
+          "name": "font$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.feature.DerivedPosition",
+      "fields": [
+        {
+          "name": "reactify$Reactive$$_status$lzy1"
+        },
+        {
+          "name": "reactions$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.feature.FontFeature",
+      "fields": [
+        {
+          "name": "family$lzy1"
+        },
+        {
+          "name": "size$lzy1"
+        },
+        {
+          "name": "weight$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.feature.PositionFeature",
+      "fields": [
+        {
+          "name": "bottom$lzy1"
+        },
+        {
+          "name": "center$lzy1"
+        },
+        {
+          "name": "left$lzy1"
+        },
+        {
+          "name": "middle$lzy1"
+        },
+        {
+          "name": "right$lzy1"
+        },
+        {
+          "name": "top$lzy1"
+        },
+        {
+          "name": "type$lzy1"
+        },
+        {
+          "name": "x$lzy1"
+        },
+        {
+          "name": "y$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.feature.SizeFeature",
+      "fields": [
+        {
+          "name": "center$lzy1"
+        },
+        {
+          "name": "height$lzy1"
+        },
+        {
+          "name": "middle$lzy1"
+        },
+        {
+          "name": "width$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.component.types.FontWeight$",
+      "fields": [
+        {
+          "name": "Bold$lzy1"
+        },
+        {
+          "name": "Normal$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.easing.Easing$",
+      "fields": [
+        {
+          "name": "all$lzy1"
+        },
+        {
+          "name": "map$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.example.ExampleApp$",
+      "fields": [
+        {
+          "name": "animation$lzy1"
+        },
+        {
+          "name": "appHeader$lzy1"
+        },
+        {
+          "name": "contentContainer$lzy1"
+        },
+        {
+          "name": "delta$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.example.ui.AnimationExample",
+      "fields": [
+        {
+          "name": "container$lzy1"
+        },
+        {
+          "name": "delta$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.font.Faces$",
+      "fields": [
+        {
+          "name": "MaterialIcons$lzy1"
+        },
+        {
+          "name": "OpenSansRegular$lzy1"
+        },
+        {
+          "name": "OpenSansSemiBold$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.font.GoogleFont$Open$u0020Sans$",
+      "fields": [
+        {
+          "name": "600$lzy1"
+        },
+        {
+          "name": "family$lzy1"
+        },
+        {
+          "name": "regular$lzy1"
+        },
+        {
+          "name": "weights$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.image.Image",
+      "fields": [
+        {
+          "name": "size$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.image.Image$",
+      "fields": [
+        {
+          "name": "empty$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "universal.ui$",
+      "fields": [
+        {
+          "name": "delta$lzy1"
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/fonts.mf"
+    },
+    {
+      "glob": "META-INF/services/java.time.zone.ZoneRulesProvider"
+    },
+    {
+      "glob": "META-INF/services/java.util.spi.ResourceBundleControlProvider"
+    },
+    {
+      "glob": "com/sun/glass/utils/NativeLibLoader.class"
+    },
+    {
+      "glob": "com/sun/javafx/tk/quantum/QuantumMessagesBundle.properties"
+    },
+    {
+      "glob": "com/sun/javafx/tk/quantum/QuantumMessagesBundle_en.properties"
+    },
+    {
+      "glob": "com/sun/javafx/tk/quantum/QuantumMessagesBundle_en_US.properties"
+    },
+    {
+      "glob": "libglass.so"
+    },
+    {
+      "glob": "libglassgtk3.so"
+    },
+    {
+      "glob": "libjavafx_font.so"
+    },
+    {
+      "glob": "libjavafx_font_freetype.so"
+    },
+    {
+      "glob": "libjavafx_font_pango.so"
+    },
+    {
+      "glob": "libprism_sw.so"
+    },
+    {
+      "module": "java.base",
+      "glob": "jdk/internal/icu/impl/data/icudt76b/ubidi.icu"
+    },
+    {
+      "module": "java.logging",
+      "glob": "sun/util/logging/resources/logging_en.properties"
+    },
+    {
+      "module": "java.logging",
+      "glob": "sun/util/logging/resources/logging_en_US.properties"
+    },
+    {
+      "bundle": "com.sun.javafx.tk.quantum.QuantumMessagesBundle"
+    },
+    {
+      "bundle": "sun.util.logging.resources.logging"
+    }
+  ]
+}

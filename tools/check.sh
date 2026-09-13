@@ -8,6 +8,7 @@
 #                              1px) on the web (headless Chrome) and the desktop (JavaFX, under Xvfb)
 #   tools/check.sh --live      also the web build's live frame rate, in a real (headful) Chrome on a virtual
 #                              1920x1080 display via RoboBrowser — headless Chrome throttles requestAnimationFrame
+#   tools/check.sh --native    also the desktop as a GraalVM native image: build it, the same frame, the frame rate
 #   tools/check.sh --android   also on Android: build the APK, run it on an emulator, compare the same frame
 #   tools/check.sh --device    also on the Roku: reactify acceptance, the same frame, and the live frame rate
 #   tools/check.sh --tvos      also on the Apple TV simulator (via the Mac, ssh mbp): the same frame, and the live
@@ -25,6 +26,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
 ANDROID=0
+NATIVE=0
 TVOS=0
 LIVE=0
 DEVICE=0
@@ -32,6 +34,7 @@ UPDATE=0
 for arg in "$@"; do
   case "$arg" in
     --android) ANDROID=1 ;;
+    --native) NATIVE=1 ;;
     --tvos) TVOS=1 ;;
     --live) LIVE=1 ;;
     --device) DEVICE=1 ;;
@@ -174,6 +177,10 @@ desktop_frame() {
   frame desktop "$LOGS/desktop-console.log" || { echo "--- desktop console:"; tail -n 20 "$LOGS/desktop-console.log"; return 1; }
 }
 
+# ── desktop, native image ────────────────────────────────────────────────────
+
+desktop_native() { tools/desktop-native.sh; }
+
 # ── Android ──────────────────────────────────────────────────────────────────
 
 android_build() { "$SBT" "android/packageApk"; }
@@ -248,6 +255,10 @@ if [ $BUILT = 1 ]; then
   run "desktop: AnimationExample frame" desktop-frame.log desktop_frame
 else
   skip "desktop: AnimationExample frame" "build failed"
+fi
+
+if [ $NATIVE = 1 ]; then
+  run "desktop: native image builds, frame, frame rate" desktop-native.log desktop_native
 fi
 
 if [ $ANDROID = 1 ]; then

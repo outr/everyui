@@ -1044,12 +1044,50 @@ under the status bar), as expected until there is a phone layout.
 | Android | `universal-ui.apk` (debug-signed, R8) | **423 KB** (classes.dex 260 KB; was 2.25 MB / 5.98 MB before R8) |
 | tvOS | `UniversalUI.app` | **1.55 MB** (binary 1.06 MB, 0.92 MB stripped; Swift runtime is the OS's) |
 | iOS | `UniversalUI.app` | **1.55 MB** (the same binary, iOS SDK) |
-| desktop (JavaFX) | the JVM classpath | 14.6 MB of jars (scala-library 9.2 MB, JavaFX 5.4 MB) **plus a JRE** — no native image yet |
+| desktop (JavaFX) | `universal-desktop`, a GraalVM native image | **28.6 MB**, one self-contained binary (JavaFX's native libraries ride inside; links only libc and libz); was 14.6 MB of jars plus a JRE |
 | assets, every platform | 3 images + 3 fonts | 501 KB (Material Icons alone 357 KB) |
 
 The web figure is larger than the 97 KB release measured for the first slice
 because the app now carries youi's whole component model, task DSL and
-reactify. Desktop is the outlier: no native image yet.
+reactify.
+
+### The desktop as a native binary (2026-09-13)
+
+`tools/desktop-native.sh` builds the JavaFX backend with GraalVM `native-image`
+into `desktop/out/native/universal-desktop` and holds it to the same checks:
+the frozen frame matches the golden (0.096 px) and it runs at 62 fps under Xvfb
+— `tools/check.sh --native`. What it took:
+
+- **No AWT.** The screenshot used `javax.imageio`; native-image on Linux does
+  not take `java.desktop` gracefully, so the desktop writes its PNG by hand
+  (`Png`, 40 lines over `java.util.zip`).
+- **JavaFX's reflection, JNI and resources** come from GraalVM's tracing agent
+  (`--trace`: a frozen run and a short live run under Xvfb), kept in
+  `desktop/native-config/reachability-metadata.json` (25 KB). Rerun it when the
+  app touches more of JavaFX.
+- **`-Os`**: 23.5 MB against `-O2`'s 36.8, at the same frame rate (JavaFX 21);
+  28.6 MB on JavaFX 26.
+- **Self-contained, verified.** `ldd` lists libc and libz only; run with a fresh
+  `HOME`, JavaFX reports every native library "loaded from resource". Build time
+  19 s.
+
+### Toolchain — the latest of everything (2026-09-13)
+
+| | version |
+|---|---|
+| Scala | **3.9.0** (3.10 is at RC2) — the TASTy compiler, every backend and reactify moved without a change |
+| sbt | **2.0.8** (2.1 is at M1) |
+| Scala.js | **1.22.0** (3.9 emits IR 1.22; the linker had to follow) via scala-cli **1.17.0** |
+| JavaFX | **26.0.2** |
+| GraalVM | **25.3.4** (Oracle GraalVM, JDK 25.0.4.1; sdkman default) |
+| Android | build-tools **37.0.0** (R8 8.10), platform **android-37.0** (Android 17), target SDK 37, min 30 |
+| RoboBrowser, spice, reactify | local snapshots / source, as before |
+
+Re-verified after the move: JVM golden, Roku emit (0 gaps, brighterscript
+clean), web frame, desktop frame (JVM and native), Android frame on the
+emulator (262 KB dex). **Not yet re-verified: tvOS/iOS** — the Mac was
+unreachable (asleep) when the Swift spike was rerun; `tools/swift-spike.sh` and
+`tools/tvos-run.sh --freeze` are the two commands to run when it is back.
 
 ### R8 on the Android build (2026-09-13)
 
@@ -1101,6 +1139,9 @@ walks the whole live graph.
 
 ## IMMEDIATE NEXT STEP
 
+**-1. Re-verify tvOS/iOS on Scala 3.9** (`tools/swift-spike.sh`, `tools/tvos-run.sh
+--freeze`) once the Mac is reachable.
+
 **0. tvOS and iOS are real: keep them green.** `tools/check.sh --tvos` runs the frame and
 frame-rate checks on the simulator via the Mac. Next: bring the collector's
 per-frame cost down (above), then a physical Apple TV.
@@ -1121,7 +1162,7 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
 ## Build / ops notes
 
 - sbt: `~/.local/share/coursier/bin/sbt` (NOT on PATH).
-- Scala 3.8.4. The Roku compiler is an in-build project (`compiler/`, with
+- Scala 3.9.0. The Roku compiler is an in-build project (`compiler/`, with
   `compiler-api/` for `@native`). `<project>/emitRoku` compiles the project and
   runs `universal.compiler.Main` over its TASTy, compiling `reactive` (reactify)
   through as a library. Nothing is consumed from the sart repo.
@@ -1152,6 +1193,8 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
   golden), `--show` (opens the Simulator window on the Mac and leaves the app
   running). `sbt tvos/emitSwift` → `tvos/out-swift/` (App.swift + the two runtimes,
   main.swift, Info.plist, assets). The Mac side lives in `~/universal-ui-spike/app`.
+- **Desktop native image:** `tools/desktop-native.sh` (build + frame + frame rate;
+  `--trace` refreshes `desktop/native-config/` first). `tools/check.sh --native`.
 - **Run every check:** `tools/check.sh` (offline: JVM, Roku emit, web, desktop),
   `--android` (adds an emulator), `ROKU_PASS=<password> tools/check.sh --device`
   (adds the Roku), `--update` to rewrite the golden from the web's frame.

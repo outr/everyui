@@ -4,7 +4,7 @@
 // Roku has no Scala runtime, so `compiler/` — universal-ui's own Scala 3 TASTy →
 // BrightScript compiler — translates the same code into a SceneGraph channel.
 
-ThisBuild / scalaVersion := "3.8.4"
+ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / organization := "com.outr"
 
 @transient val emitRoku = taskKey[File]("Compile this project, and the libraries it emits with, into a Roku channel")
@@ -223,7 +223,7 @@ lazy val tvos = (project in file("tvos"))
 //
 //   sbt desktop/run                 a 1920x1080 window
 //   tools/check.sh                  freezes a frame under Xvfb and compares it
-lazy val javafxVersion = "21"
+lazy val javafxVersion = "26.0.2"
 lazy val javafxPlatform = {
   val os = sys.props("os.name").toLowerCase
   if (os.contains("mac")) "mac" else if (os.contains("win")) "win" else "linux"
@@ -259,8 +259,8 @@ lazy val desktop = (project in file("desktop"))
 //   sbt android/packageApk          android/out-apk/universal-ui.apk
 //   tools/check.sh --android        runs it on an emulator and compares a frame
 lazy val androidSdk = file(sys.env.getOrElse("ANDROID_HOME", sys.props("user.home") + "/opt/android-sdk"))
-lazy val androidPlatform = "android-35"
-lazy val androidBuildTools = "36.0.0"
+lazy val androidPlatform = "android-37.0"
+lazy val androidBuildTools = "37.0.0"
 lazy val androidMinSdk = "30"
 lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
 @transient val packageApk = taskKey[File]("Compile the Android backend and package it as a debug-signed APK in android/out-apk/")
@@ -321,7 +321,7 @@ lazy val android = (project in file("android"))
       val linked = work / "linked.apk"
       exec(Seq((tools / "aapt2").toString, "link", "-o", linked.toString,
         "--manifest", (baseDirectory.value / "AndroidManifest.xml").toString, "-I", androidJar.toString,
-        "-A", assets.toString, "--min-sdk-version", androidMinSdk, "--target-sdk-version", "35",
+        "-A", assets.toString, "--min-sdk-version", androidMinSdk, "--target-sdk-version", "37",
         "--version-code", "1", "--version-name", version.value))
 
       // aapt2 cannot add dex files: copy its APK entry for entry (stored entries stay stored) and add them.
