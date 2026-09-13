@@ -156,7 +156,7 @@ def cmd_fps(args):
 
 def cmd_android_wait(args):
     def log():
-        return subprocess.run(["adb", "-s", args.serial, "logcat", "-d", "-s", "universal-ui:I", "AndroidRuntime:E"],
+        return subprocess.run(["adb", "-s", args.serial, "logcat", "-d", "-s", "everyui:I", "AndroidRuntime:E"],
                               capture_output=True, text=True).stdout
     end, last = time.time() + args.timeout, None
     while time.time() < end:

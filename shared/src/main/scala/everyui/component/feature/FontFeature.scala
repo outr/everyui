@@ -1,0 +1,18 @@
+package everyui.component.feature
+
+import everyui.component.Component
+import everyui.component.types.{FontWeight, Prop}
+
+/** youi's `FontFeature`: family, weight and size (pixels). Setting a weight converted from a Google Fonts weight
+  * sets the family too. */
+class FontFeature(component: Component):
+  lazy val family: Prop[String] = new Prop[String]("", _ => applyFont(), () => component.measure.trigger())
+
+  lazy val weight: Prop[FontWeight] = new Prop[FontWeight](FontWeight.Normal, w => {
+    if w.family.nonEmpty then family @= w.family
+    applyFont()
+  }, () => component.measure.trigger())
+
+  lazy val size: Prop[Double] = new Prop[Double](16.0, _ => applyFont(), () => component.measure.trigger())
+
+  private def applyFont(): Unit = component.node.setFont(family(), weight().value, size())

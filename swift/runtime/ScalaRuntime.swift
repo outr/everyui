@@ -1,4 +1,4 @@
-// universal-ui — the Swift runtime for Scala emitted by universal-ui's compiler (Swift spike).
+// everyui — the Swift runtime for Scala emitted by everyui's compiler (Swift spike).
 //
 // The emitted Swift follows the same object model as the Roku channel, so this file follows roku's
 // ScalaRuntime.brs: one dynamic value type `V`; an instance is a field dictionary carrying `_cls` and its
@@ -143,7 +143,7 @@ enum Rt {
 /** The global table (BrightScript's GetGlobalAA): object singletons and their caches live here. A root. */
 let ga: V = .vObj(Obj(["_cls": .vStr("Global")]))
 
-func rtFatal(_ message: String) -> Never { fatalError("universal-ui runtime: " + message) }
+func rtFatal(_ message: String) -> Never { fatalError("everyui runtime: " + message) }
 
 func rtKindName(_ v: V) -> String {
     switch v {

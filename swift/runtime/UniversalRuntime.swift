@@ -1,7 +1,7 @@
-// universal-ui — the UIKit support runtime for the Swift backend (tvOS, and iOS to come).
+// everyui — the UIKit support runtime for the Swift backend (tvOS, and iOS to come).
 //
 // The render seam's primitives as plain Swift functions over `V`, one per `@native` facade in
-// tvos/src/main/scala/universal/tvos/facades.scala — the twin of roku/runtime/UniversalRuntime.brs. A node is a
+// tvos/src/main/scala/everyui/tvos/facades.scala — the twin of roku/runtime/UniversalRuntime.brs. A node is a
 // UIKit view: a `UILabel` for text, a `UIImageView` for an image, a plain `UIView` for a container. Layout is
 // absolute: every view is placed by its own top-left `(x, y)` and size, kept in a side table so a rotation
 // (a `transform`, which makes `frame` meaningless) never disturbs it.

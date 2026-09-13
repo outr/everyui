@@ -5,4 +5,4 @@
 //> using dep org.scala-js::scalajs-dom::2.8.1
 //> using file ../shared/src/main/scala
 //> using file ../../reactify/reactify/src/main/scala
-//> using mainClass universal.app.main
+//> using mainClass everyui.app.main

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every universal-ui check, in one command.
+# Every everyui check, in one command.
 #
 #   tools/check.sh             offline: reactify on the JVM matches its golden; all three Roku channels compile with no
 #                              gaps and no brighterscript errors; the shared font table matches the bundled fonts; and
@@ -96,7 +96,7 @@ frame() {
 
 # ── offline ──────────────────────────────────────────────────────────────────
 
-faces() { $CHECKS faces assets/fonts shared/src/main/scala/universal/font/Faces.scala; }
+faces() { $CHECKS faces assets/fonts shared/src/main/scala/everyui/font/Faces.scala; }
 
 build() {                          # one sbt run: the JVM suite, every Roku channel, the desktop (and web checker) classpath
   local live=""
@@ -162,7 +162,7 @@ web_live() {
   command -v Xvfb > /dev/null || { echo "Xvfb not found"; return 1; }
   local seconds=${FPS_SECONDS:-60}
   timeout $(( seconds + 120 )) java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.vector \
-    -cp "$(cat webcheck/out/classpath.txt)" universal.webcheck.WebLive \
+    -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.WebLive \
     "file://$ROOT/web/out-js/index.html" "$seconds" "$LOGS/web-live.png" > "$LOGS/web-live-console.log" 2>&1
   grep -h '\[webcheck\] viewport' "$LOGS/web-live-console.log"
   $CHECKS fps "$LOGS/web-live-console.log" --median-min "${FPS_MEDIAN_MIN:-59.5}" --min "${FPS_MIN:-58.5}" ||
@@ -172,7 +172,7 @@ web_live() {
 desktop_frame() {
   command -v xvfb-run > /dev/null || { echo "xvfb-run not found"; return 1; }
   timeout 120 xvfb-run -a -s "-screen 0 1920x1080x24" \
-    java -Dprism.order=sw -Dprism.lcdtext=false -cp "$(cat desktop/out/classpath.txt)" universal.desktop.DesktopApp \
+    java -Dprism.order=sw -Dprism.lcdtext=false -cp "$(cat desktop/out/classpath.txt)" everyui.desktop.DesktopApp \
     --freeze="$FREEZE" --screenshot="$LOGS/desktop-frame.png" > "$LOGS/desktop-console.log" 2>&1
   frame desktop "$LOGS/desktop-console.log" || { echo "--- desktop console:"; tail -n 20 "$LOGS/desktop-console.log"; return 1; }
 }
@@ -189,9 +189,9 @@ android_frame() {
   local serial=${ANDROID_SERIAL:-$(adb devices | awk '$1 ~ /^emulator-/ && $2 == "device" { print $1; exit }')}
   [ -n "$serial" ] || { echo "no Android emulator on adb (start one, or set ANDROID_SERIAL)"; return 1; }
   echo "device: $serial ($(adb -s "$serial" shell getprop ro.product.model | tr -d '\r'))"
-  adb -s "$serial" install -r android/out-apk/universal-ui.apk || return 1
+  adb -s "$serial" install -r android/out-apk/everyui.apk || return 1
   adb -s "$serial" logcat -c
-  adb -s "$serial" shell am start -S -W -n com.outr.universalui/universal.activity.MainActivity \
+  adb -s "$serial" shell am start -S -W -n com.outr.everyui/everyui.activity.MainActivity \
     --es freeze "$FREEZE" --es viewport 1920x1080 || return 1
   $CHECKS android-wait "$serial" "$LOGS/android-console.log" || return 1
   adb -s "$serial" exec-out screencap -p > "$LOGS/android-frame.png"

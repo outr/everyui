@@ -1,4 +1,4 @@
-// Swift spike harness: reactify's acceptance suite, compiled from Scala by universal-ui's compiler.
+// Swift spike harness: reactify's acceptance suite, compiled from Scala by everyui's compiler.
 //
 //   suite            run the suite (its `RX` lines must match reactive-test/expected-output.txt)
 //   suite probe      then the memory probe: run the suite's parts repeatedly and report how many

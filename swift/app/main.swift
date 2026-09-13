@@ -1,4 +1,4 @@
-// universal-ui on tvOS: a UIKit app whose root view is the render root, then the shared `main`.
+// everyui on tvOS: a UIKit app whose root view is the render root, then the shared `main`.
 //
 //   --freeze=<seconds>   step the animation that far on a virtual clock and stop (tools/check.sh)
 //   --viewport=WxH       lay out at that size whatever the screen (the frame check on a phone)

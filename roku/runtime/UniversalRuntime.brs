@@ -1,4 +1,4 @@
-' universal-ui — Roku support runtime.
+' everyui — Roku support runtime.
 '
 ' The render seam's primitives as plain BrightScript globals. `emitRoku`
 ' copies this into the emitted channel's components/ and adds a <script> line
@@ -7,7 +7,7 @@
 ' what a render node and the platform can do.
 '
 ' Every function here is declared as an @native facade in
-' `universal.roku.facades` — the Scala side and this file are one API,
+' `everyui.roku.facades` — the Scala side and this file are one API,
 ' mirrored by web/universal-runtime.js on the DOM backend.
 
 function uiRoot() as object

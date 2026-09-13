@@ -1,16 +1,16 @@
-# universal-ui — design & status
+# everyui — design & status
 
 > **Handoff doc.** This project was spun out of work done in the `sart` repo's
 > Claude Code session (which is namespaced to Sart). Everything needed to
 > continue lives here — this file is the source of truth. Memory does not cross
 > project boundaries, so start fresh conversations from this doc.
 >
-> **Git:** universal-ui is a git repository (initialised 2026-09-12, branch
+> **Git:** everyui is a git repository (initialised 2026-09-12, branch
 > `master`, no remote yet). Build output is ignored — regenerate Roku channels
 > with `<project>/emitRoku` and the web bundle with scala-cli (see "Build / ops
 > notes").
 >
-> **Sart is reference-only (decided 2026-09-12).** universal-ui owns its Roku
+> **Sart is reference-only (decided 2026-09-12).** everyui owns its Roku
 > toolchain — `compiler/`, `compiler-api/`, `roku/runtime/`, the `emitRoku`
 > task — and depends on Sart in no way: no plugin, artifact, import or runtime
 > name. Sections marked *history* describe work done in the sart repo before
@@ -25,14 +25,14 @@ limiting/broad. We get there by merging:
 - **youi**'s reactive UI model (`/home/mhicks/projects/open/youi`, Scala 3,
   Scala.js + DOM, reactive components) — the API and the render seam.
 - **A Scala 3 → TASTy compiler** for runtimes with no Scala of their own (Roku).
-  universal-ui's is `compiler/`. It started from Sart's Roku emitter
+  everyui's is `compiler/`. It started from Sart's Roku emitter
   (`/home/mhicks/projects/open/sart`), which is now a reference only.
 
 **Flutter is DROPPED as a target.** The legacy Flutter app covers Apple
 transitionally.
 
-Naming: TBD (user researching separately; wants .com/.org; not "youi"/"Sart").
-`universal-ui` is a working title.
+Naming: **EveryUI** (everyui.com registered 2026-09-13).
+`everyui` is the project name (EveryUI, everyui.com; `universal-ui` was the working title until 2026-09-13).
 
 ## The "native" principle (settled)
 
@@ -44,7 +44,7 @@ runtime.
 |---|---|---|
 | Android / Android TV | JVM/ART lineage | Scala-JVM is the native path — settled |
 | Web | JS engine | Scala.js |
-| Roku | BrightScript | via universal-ui's Roku compiler |
+| Roku | BrightScript | via everyui's Roku compiler |
 | iOS / tvOS | native | Scala Native → UIKit (research; undecided) |
 | Desktop | *(none exists)* | → ship a **native binary**, not JVM+JRE |
 
@@ -115,15 +115,15 @@ Portability map:
 | youi `core` + `spatial` (crossProject) | ✅ cross-platform |
 | `Component.element`, `css`, concrete Props | ⛔ the only DOM-bound code |
 
-**universal-ui's one invention** = an abstract **render node** (attribute
+**everyui's one invention** = an abstract **render node** (attribute
 get/set, a style/property bag, children, measure, events) that
 `Component`/`Feature` build their `Prop`s against, instead of `html.Element`.
 DOM becomes *one* implementation of it (youi's existing `dom`/`ui` code);
 Roku-SceneGraph / Skia / Android-Views are others.
 
-## Reuse from youi (agreed: bring the code into universal-ui)
+## Reuse from youi (agreed: bring the code into everyui)
 
-Decision: bring youi's proven code **into universal-ui** and evolve it here (new
+Decision: bring youi's proven code **into everyui** and evolve it here (new
 name, full control) rather than refactor the abandoned youi tree in place.
 
 youi modules (`/home/mhicks/projects/open/youi`, Scala 3.8.2, reactify 4.2.0):
@@ -174,7 +174,7 @@ rather than by reading it.
 ## Render-node seam vertical slice — ✅ DONE (2026-09-12)
 
 The abstraction is proven end to end on two backends that share ONE set of
-sources. `shared/src/main/scala/universal/` holds the whole portable layer:
+sources. `shared/src/main/scala/everyui/` holds the whole portable layer:
 
 | File | What it is |
 |---|---|
@@ -184,7 +184,7 @@ sources. `shared/src/main/scala/universal/` holds the whole portable layer:
 | `app/HelloWorld.scala` | the app — names no DOM or SceneGraph type |
 | `app/FrameProbe.scala` | the animation measurement |
 
-Each backend supplies its own `universal.render.RenderNode` with an identical
+Each backend supplies its own `everyui.render.RenderNode` with an identical
 signature (`getText/setText/getX/setX/getY/setY/append`) plus `Nodes` and
 `Platform`. **The backend is selected by SOURCE ROOT at compile time** — the
 Scala.js / Scala Native pattern — not by subtype dispatch. One app targets one
@@ -205,7 +205,7 @@ console reads back through the seam's getter half —
 
 ```
 [ui] mounted: Hello, World!         | node: Hello, World!
-[ui] updated: Hello, Universal UI!  | node: Hello, Universal UI!
+[ui] updated: Hello, EveryUI!  | node: Hello, EveryUI!
 [ui] x: 100 | node x: 100
 ```
 
@@ -213,7 +213,7 @@ The `node:` half is the real proof: it asks the SceneGraph node itself, so the
 Prop's setter demonstrably reached the backend, not just the reactive cell.
 
 **Verified in Chrome** (headless, same shared sources): `#app` contains
-`<div style="left: 100px; ...">Hello, Universal UI!</div>`.
+`<div style="left: 100px; ...">Hello, EveryUI!</div>`.
 
 ## Animation on the TV tier — ✅ MEASURED, and the answer is yes
 
@@ -473,7 +473,7 @@ Worth remembering, because both produced code that looked right:
 - sart's 13 demos: JS output **byte-identical**; Roku `RtTodo` count
   unchanged (4); brighterscript reports **no new diagnostics** and two
   pre-existing ones are gone (an undefined `global`, an arity mismatch).
-- universal-ui's AnimationExample: brighterscript diagnostics unchanged; on the
+- everyui's AnimationExample: brighterscript diagnostics unchanged; on the
   Roku it renders correctly and holds **59.94 fps**.
 - The 100 Dart goldens stay green — they cover none of this.
 
@@ -487,7 +487,7 @@ Worth remembering, because both produced code that looked right:
 - `Some(())` collapses to `None`: Option lowers to a nullable. `RtUnit()`
   exists in the runtime but the emitter doesn't produce it yet.
 - BrightScript is case-insensitive, so a parameter named `text` shadows the
-  runtime's `Text()` (BS1104; pre-existing in universal-ui, harmless unless the
+  runtime's `Text()` (BS1104; pre-existing in everyui, harmless unless the
   function calls `Text`).
 - A virtual call whose receiver isn't a simple value goes through
   `RtVcallN` — one extra call.
@@ -515,7 +515,7 @@ behaviour.
 
 ⚠️ The library half is **uncommitted in the reactify repo**
 (`/home/mhicks/projects/open/reactify`, 5 files, including the `_references`
-fix below). The compiler half is in universal-ui's `compiler/`; it was made in
+fix below). The compiler half is in everyui's `compiler/`; it was made in
 the sart repo before the extraction, which still holds it uncommitted.
 
 ### Frame rate (Roku FrameProbe sweep, every label bound and on screen)
@@ -649,17 +649,17 @@ Not changed — still decisions:
 - Pattern matches on case objects (`case BindSet.LeftToRight =>`) still use
   `_eq`.
 
-## Sart extraction — universal-ui owns its Roku toolchain (2026-09-12)
+## Sart extraction — everyui owns its Roku toolchain (2026-09-12)
 
 Decision: **Sart is reference-only.** Nothing in the build, the sources or a
 generated channel depends on it or carries its name.
 
 ### What moved, and where
 
-| Was (sart repo / plugin) | Now (universal-ui) |
+| Was (sart repo / plugin) | Now (everyui) |
 |---|---|
-| `sbt-sart` plugin, compiler from `~/.ivy2/local` | `compiler/` — an in-build project on `scala3-tasty-inspector`; `universal.compiler.Main` (Roku only) |
-| `sart.dart.native` | `compiler-api/` — `universal.compiler.api.native` |
+| `sbt-sart` plugin, compiler from `~/.ivy2/local` | `compiler/` — an in-build project on `scala3-tasty-inspector`; `everyui.compiler.Main` (Roku only) |
+| `sart.dart.native` | `compiler-api/` — `everyui.compiler.api.native` |
 | `sart.stdlib.math` for `Platform.sqrt/pow/sin/cos` | `uiSqrt` / `uiPow` / `uiSin` / `uiCos` facades in `UniversalRuntime.brs` |
 | `sartEmitRoku` task | `emitRoku` (reactify compiled through via `--library`) |
 | `SartScene.xml/.brs`, `SartRuntime.brs` | `AppScene.xml/.brs`, `ScalaRuntime.brs` |
@@ -672,7 +672,7 @@ still resolves Spice.
 
 ### What was removed
 
-Sart's **Flutter-on-SceneGraph layer**, which universal-ui never used (its
+Sart's **Flutter-on-SceneGraph layer**, which everyui never used (its
 render seam is `UniversalRuntime.brs`):
 - the widget, theme/token, media-player, render-normalisation, facade-stub and
   D-pad-focus sections of the runtime, including `RtInitGlobals` and its
@@ -702,10 +702,10 @@ object model, stdlib shims) plus generic facade calls.
 
 ## youi's AnimationExample, verbatim — youi's component model on both backends (2026-09-12)
 
-`shared/src/main/scala/universal/example/ui/AnimationExample.scala` is youi's
+`shared/src/main/scala/everyui/example/ui/AnimationExample.scala` is youi's
 `example/.../ui/AnimationExample.scala` with only its package and imports
-changed (`youi.*` → `universal.*`, `rapid.Task` → `universal.async.Task`,
-`spice.net._` → `universal.net._`). The class body is youi's, line for line:
+changed (`youi.*` → `everyui.*`, `rapid.Task` → `everyui.async.Task`,
+`spice.net._` → `everyui.net._`). The class body is youi's, line for line:
 `new TextView { content @= …; font.weight @= fnt; position.left @= 50.0 }`,
 ``label.position.right `to` container.size.width - 50.0 `in` 5.seconds `easing` easingFunction``,
 `forever(sequential(…)).start(this)`, `container.children += label`,
@@ -720,14 +720,14 @@ Deliberate differences from youi's file:
   `container.size.middle + header.size.height`, bounces to
   `bottom to ui.size.height` and `top to header.size.height`. So it started 75px
   low, never reached the top, and ran 75px off the bottom (youi's own capture
-  shows the doubled offset: centre at 75 + 502.5 + 75). universal-ui uses the
+  shows the doubled offset: centre at 75 + 502.5 + 75). everyui uses the
   container's coordinates — `container.size.middle`,
   `bottom to container.size.height`, `top to 0.0`. youi is the reference, not
   always correct: its bugs are fixed here and noted.
 
 ### What made that possible — youi's model, ported onto `RenderNode`
 
-| Package (`shared/.../universal/`) | From youi |
+| Package (`shared/.../everyui/`) | From youi |
 |---|---|
 | `component/` — `Component`, `Container`, `TextView`, `ImageView` | `youi.component` over a `RenderNode` instead of an `html.Element` |
 | `component/feature/` — measured, size, position (`left/center/right`, `top/middle/bottom` as reactify `Dep`s), font, container children | `youi.component.feature` |
@@ -738,7 +738,7 @@ Deliberate differences from youi's file:
 | `example/` — `ExampleApp`, `UIExampleScreen`, `Header` | youi's example app |
 | `ui`, `Color`, `scribe`, `async.Task`, `net`, `image.Image`, `font.GoogleFont` | the parts of youi / rapid / spice the example uses |
 
-youi's `rapid.Task` becomes `universal.async.Task` (callback-driven) and youi's
+youi's `rapid.Task` becomes `everyui.async.Task` (callback-driven) and youi's
 `task.Task` becomes `Animation`: the Roku compiler names classes by their simple
 name, so two `Task`s would collide. The example never names the latter.
 
@@ -779,7 +779,7 @@ pre-rendered header gradient so both backends draw the same pixels.
 ### Remaining differences (known)
 
 - youi's header "600" weight is the browser's synthesized bold (its webfont loader
-  only fetches Open Sans 400); universal-ui bundles the real SemiBold, ~9px wider.
+  only fetches Open Sans 400); everyui bundles the real SemiBold, ~9px wider.
 - youi starts the icon's spin one async `rapid` step later, so its early rotation phase differs.
 - youi shows scrollbars when the ElasticOut row or the icon overflows; the render seam clips.
 - **Roku text:** on a 720p panel SceneGraph rasterises small text at fewer pixels
@@ -845,7 +845,7 @@ keeps every log in `target/check/`:
 | `tools/emit-gaps.py`: TOTAL GAPS 0 on reactive, reactive-test, roku | ✓ | ✓ |
 | brighterscript: 0 errors on all three (BS1054/BS1104 excluded) | ✓ | ✓ |
 | web bundle builds (scala-cli) | ✓ | ✓ |
-| the shared font table (`universal.font.Faces`) matches `assets/fonts` | ✓ | ✓ |
+| the shared font table (`everyui.font.Faces`) matches `assets/fonts` | ✓ | ✓ |
 | web: AnimationExample frozen at 0.434s in headless Chrome over `file://`, every component vs `tools/golden/animation-tree.txt` (±1px) | ✓ | ✓ |
 | desktop: the same frame in JavaFX under Xvfb, vs the same golden | ✓ | ✓ |
 | web (`--live`): 60s live in a headful Chrome on a virtual 1920x1080 display (RoboBrowser), median ≥ 59.5 fps and minimum ≥ 58.5 | | |
@@ -1005,7 +1005,7 @@ the same 36 `@native` facade names (`tvos/.../facades.scala`), the same
 its own top-left and size from a side table (so a rotation `transform`, which
 makes `frame` meaningless, never disturbs it) with rotation about the centre.
 `swift/app/main.swift` is the UIApplication shell; there is no Xcode project —
-`tools/tvos-run.sh` builds `UniversalUI.app` with `swiftc` on the Mac, signs it
+`tools/tvos-run.sh` builds `EveryUI.app` with `swiftc` on the Mac, signs it
 ad hoc, installs it with `simctl` and reads its console.
 
 | | result |
@@ -1017,7 +1017,7 @@ ad hoc, installs it with `simctl` and reads its console.
 
 So youi's AnimationExample now produces the same frame on **five** backends:
 web, JavaFX, Android, Roku (pending re-verification) and tvOS — the last one
-compiled from Scala to Swift by universal-ui's own compiler.
+compiled from Scala to Swift by everyui's own compiler.
 
 What the simulator taught: `ui.size.width @= 1920` reaches `uiSetWidth(root)`
 before the height is read, so a runtime that resized the root view left it
@@ -1041,10 +1041,10 @@ under the status bar), as expected until there is a phone layout.
 | web (dev) | `main.js` | 1.88 MB raw, 230 KB gzip, 155 KB brotli |
 | web (release, Closure) | `main.js` | 375 KB raw, 97 KB gzip, **77 KB brotli** |
 | Roku | the channel zip (BrightScript + assets) | **331 KB** (App.brs 250 KB, runtimes 46 KB, before zip) |
-| Android | `universal-ui.apk` (debug-signed, R8) | **423 KB** (classes.dex 260 KB; was 2.25 MB / 5.98 MB before R8) |
-| tvOS | `UniversalUI.app` | **1.55 MB** (binary 1.06 MB, 0.92 MB stripped; Swift runtime is the OS's) |
-| iOS | `UniversalUI.app` | **1.55 MB** (the same binary, iOS SDK) |
-| desktop (JavaFX) | `universal-desktop`, a GraalVM native image | **28.6 MB**, one self-contained binary (JavaFX's native libraries ride inside; links only libc and libz); was 14.6 MB of jars plus a JRE |
+| Android | `everyui.apk` (debug-signed, R8) | **423 KB** (classes.dex 260 KB; was 2.25 MB / 5.98 MB before R8) |
+| tvOS | `EveryUI.app` | **1.55 MB** (binary 1.06 MB, 0.92 MB stripped; Swift runtime is the OS's) |
+| iOS | `EveryUI.app` | **1.55 MB** (the same binary, iOS SDK) |
+| desktop (JavaFX) | `everyui-desktop`, a GraalVM native image | **28.6 MB**, one self-contained binary (JavaFX's native libraries ride inside; links only libc and libz); was 14.6 MB of jars plus a JRE |
 | assets, every platform | 3 images + 3 fonts | 501 KB (Material Icons alone 357 KB) |
 
 The web figure is larger than the 97 KB release measured for the first slice
@@ -1054,7 +1054,7 @@ reactify.
 ### The desktop as a native binary (2026-09-13)
 
 `tools/desktop-native.sh` builds the JavaFX backend with GraalVM `native-image`
-into `desktop/out/native/universal-desktop` and holds it to the same checks:
+into `desktop/out/native/everyui-desktop` and holds it to the same checks:
 the frozen frame matches the golden (0.096 px) and it runs at 62 fps under Xvfb
 — `tools/check.sh --native`. What it took:
 
@@ -1125,7 +1125,7 @@ Two Scala-specific traps, both now rules in `android/proguard-rules.pro`:
   against merging: +61 KB, no recursion.
 
 The build writes R8's `seeds.txt`, `usage.txt` and `mapping.txt` next to the
-dex (`target/out/…/universal-android/apk/`), which is how both were found.
+dex (`target/out/…/everyui-android/apk/`), which is how both were found.
 
 **The collector's cost, brought down (2026-09-13).** The first collector marked
 through a `Set` of identifiers, swept a registry of weak references, and made a
@@ -1176,7 +1176,7 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
 - sbt: `~/.local/share/coursier/bin/sbt` (NOT on PATH).
 - Scala 3.9.0. The Roku compiler is an in-build project (`compiler/`, with
   `compiler-api/` for `@native`). `<project>/emitRoku` compiles the project and
-  runs `universal.compiler.Main` over its TASTy, compiling `reactive` (reactify)
+  runs `everyui.compiler.Main` over its TASTy, compiling `reactive` (reactify)
   through as a library. Nothing is consumed from the sart repo.
 - Layout: `shared/` (portable UI layer + app), `roku/` (SceneGraph backend +
   `runtime/UniversalRuntime.brs`), `web/` (Scala.js DOM backend), `compiler/` +
@@ -1196,7 +1196,7 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
 - **The Swift spike:** `tools/swift-spike.sh` — emits reactify's suite as Swift
   (`sbt reactiveTest/emitSwift` → `reactive-test/out-swift/App.swift`), rsyncs it
   with `swift/runtime/ScalaRuntime.swift` and `swift/spike/main.swift` to the Mac
-  (`ssh mbp`, `~/universal-ui-spike/`), builds for macOS and the tvOS simulator,
+  (`ssh mbp`, `~/everyui-spike/`), builds for macOS and the tvOS simulator,
   runs both against `reactive-test/expected-output.txt`, then the memory probe.
   `MAC`, `MAC_DIR`, `TVOS_DEVICE` override the defaults. `SwiftEmitter.scala` is
   GENERATED: edit `RokuEmitter.scala` or `tools/make-swift-emitter.py`, then rerun
@@ -1204,7 +1204,7 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
 - **tvOS:** `tools/tvos-run.sh` (live, 30 s, frame rate), `--freeze` (the frame vs the
   golden), `--show` (opens the Simulator window on the Mac and leaves the app
   running). `sbt tvos/emitSwift` → `tvos/out-swift/` (App.swift + the two runtimes,
-  main.swift, Info.plist, assets). The Mac side lives in `~/universal-ui-spike/app`.
+  main.swift, Info.plist, assets). The Mac side lives in `~/everyui-spike/app`.
 - **Desktop native image:** `tools/desktop-native.sh` (build + frame + frame rate;
   `--trace` refreshes `desktop/native-config/` first). `tools/check.sh --native`.
 - **Run every check:** `tools/check.sh` (offline: JVM, Roku emit, web, desktop),
@@ -1212,7 +1212,7 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
   (adds the Roku), `--update` to rewrite the golden from the web's frame.
 - Desktop: `sbt desktop/run` (a window; `--freeze=0.434 --screenshot=out.png`
   as arguments to capture a frame). Android: `sbt android/packageApk` →
-  `android/out-apk/universal-ui.apk`; SDK from `ANDROID_HOME` (default
+  `android/out-apk/everyui.apk`; SDK from `ANDROID_HOME` (default
   `~/opt/android-sdk`), build-tools 36.0.0, platform android-35. Test on an
   emulator; the only physical Android device to use is the Google TV Streamer
   (`ANDROID_SERIAL=192.168.1.73:5555 tools/check.sh --android`). Google TV turns

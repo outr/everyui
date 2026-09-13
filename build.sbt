@@ -1,7 +1,7 @@
-// universal-ui — youi's reactive UI model, one lean UI on every screen.
+// everyui — youi's reactive UI model, one lean UI on every screen.
 //
 // JVM, Scala.js and Scala Native run the shared layer and reactify natively.
-// Roku has no Scala runtime, so `compiler/` — universal-ui's own Scala 3 TASTy →
+// Roku has no Scala runtime, so `compiler/` — everyui's own Scala 3 TASTy →
 // BrightScript compiler — translates the same code into a SceneGraph channel.
 
 ThisBuild / scalaVersion := "3.10.0-RC2"
@@ -14,7 +14,7 @@ ThisBuild / organization := "com.outr"
 // being emitted (kept inspectable by -Yretain-trees).
 lazy val compiler = (project in file("compiler"))
   .settings(
-    name := "universal-compiler",
+    name := "everyui-compiler",
     publish / skip := true,
     libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value
   )
@@ -24,7 +24,7 @@ lazy val compiler = (project in file("compiler"))
 // Compiled against, never emitted.
 lazy val compilerApi = (project in file("compiler-api"))
   .settings(
-    name := "universal-compiler-api",
+    name := "everyui-compiler-api",
     publish / skip := true
   )
 
@@ -45,10 +45,10 @@ def emitRokuTask(outName: String, title: String, libraries: Def.Initialize[Task[
   IO.delete(outDir); IO.createDirectory(outDir)
   log.info(s"emitRoku: emitting a Roku channel into $outDir")
   val rc = sys.process.Process(
-    Seq("java", "-cp", compilerCp, "universal.compiler.Main") ++ libArgs ++
+    Seq("java", "-cp", compilerCp, "everyui.compiler.Main") ++ libArgs ++
       Seq(classes.getAbsolutePath, cp, outDir.getAbsolutePath, baseDirectory.value.getAbsolutePath, title)
   ).!
-  if (rc != 0) sys.error(s"universal.compiler.Main exited $rc")
+  if (rc != 0) sys.error(s"everyui.compiler.Main exited $rc")
   outDir
 }
 
@@ -71,10 +71,10 @@ def emitSwiftTask(outName: String, libraries: Def.Initialize[Task[Seq[File]]]) =
   IO.delete(outDir); IO.createDirectory(outDir)
   log.info(s"emitSwift: emitting Swift into $outDir")
   val rc = sys.process.Process(
-    Seq("java", "-cp", compilerCp, "universal.compiler.Main", "--target=swift") ++ libArgs ++
+    Seq("java", "-cp", compilerCp, "everyui.compiler.Main", "--target=swift") ++ libArgs ++
       Seq(classes.getAbsolutePath, cp, outDir.getAbsolutePath, baseDirectory.value.getAbsolutePath, "App")
   ).!
-  if (rc != 0) sys.error(s"universal.compiler.Main exited $rc")
+  if (rc != 0) sys.error(s"everyui.compiler.Main exited $rc")
   outDir
 }
 
@@ -90,7 +90,7 @@ lazy val reactiveLibrary = Def.task {
 // input to the gap meter (`tools/emit-gaps.py`).
 lazy val reactive = (project in file("reactive"))
   .settings(
-    name := "universal-reactive",
+    name := "everyui-reactive",
     Compile / unmanagedSourceDirectories :=
       Seq(file("/home/mhicks/projects/open/reactify/reactify/src/main/scala")),
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
@@ -107,7 +107,7 @@ lazy val reactive = (project in file("reactive"))
 lazy val reactiveTest = (project in file("reactive-test"))
   .dependsOn(reactive)
   .settings(
-    name := "universal-reactive-test",
+    name := "everyui-reactive-test",
     publish / skip := true,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / run / fork := true,
@@ -118,7 +118,7 @@ lazy val reactiveTest = (project in file("reactive-test"))
 // ─── the render-node seam: one shared UI layer, a backend per platform ──────
 //
 // `shared/` is the portable UI layer (Prop, Component, Label, animation) plus
-// the apps. It names `universal.render.RenderNode` but never a DOM or
+// the apps. It names `everyui.render.RenderNode` but never a DOM or
 // SceneGraph type; each backend project supplies its OWN RenderNode source
 // root, so the backend is chosen at COMPILE time (the Scala.js / Scala Native
 // pattern) rather than by subtype dispatch.
@@ -141,12 +141,12 @@ lazy val sharedSources = (file("shared") / "src" / "main" / "scala").getAbsolute
 lazy val roku = (project in file("roku"))
   .dependsOn(reactive, compilerApi)
   .settings(
-    name := "universal-roku",
+    name := "everyui-roku",
     publish / skip := true,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / unmanagedSourceDirectories += sharedSources,
     emitRoku := {
-      val outDir = emitRokuTask("out-roku", "UniversalUI", reactiveLibrary).value
+      val outDir = emitRokuTask("out-roku", "EveryUI", reactiveLibrary).value
       val rt = baseDirectory.value / "runtime" / "UniversalRuntime.brs"
       IO.copyFile(rt, outDir / "components" / "UniversalRuntime.brs")
       // Shared image assets — the SAME files the web bundle serves, so the two
@@ -179,7 +179,7 @@ lazy val spiceVersion = "1.10.9-SNAPSHOT2"
 
 lazy val server = (project in file("server"))
   .settings(
-    name := "universal-server",
+    name := "everyui-server",
     publish / skip := true,
     libraryDependencies ++= Seq(
       "com.outr" %% "spice-server" % spiceVersion,
@@ -199,7 +199,7 @@ lazy val server = (project in file("server"))
 lazy val tvos = (project in file("tvos"))
   .dependsOn(reactive, compilerApi)
   .settings(
-    name := "universal-tvos",
+    name := "everyui-tvos",
     publish / skip := true,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / unmanagedSourceDirectories += sharedSources,
@@ -233,11 +233,11 @@ lazy val javafxPlatform = {
 lazy val desktop = (project in file("desktop"))
   .dependsOn(reactive)
   .settings(
-    name := "universal-desktop",
+    name := "everyui-desktop",
     publish / skip := true,
     Compile / unmanagedSourceDirectories += sharedSources,
     libraryDependencies ++= Seq("base", "graphics").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
-    Compile / mainClass := Some("universal.desktop.DesktopApp"),
+    Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,
     desktopClasspath := {
@@ -256,7 +256,7 @@ lazy val desktop = (project in file("desktop"))
 // inside build-tools' d8.jar), aapt2 (manifest and assets), zipalign, apksigner
 // (the debug key).
 //
-//   sbt android/packageApk          android/out-apk/universal-ui.apk
+//   sbt android/packageApk          android/out-apk/everyui.apk
 //   tools/check.sh --android        runs it on an emulator and compares a frame
 lazy val androidSdk = file(sys.env.getOrElse("ANDROID_HOME", sys.props("user.home") + "/opt/android-sdk"))
 lazy val androidPlatform = "android-37.0"
@@ -268,7 +268,7 @@ lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
 lazy val android = (project in file("android"))
   .dependsOn(reactive)
   .settings(
-    name := "universal-android",
+    name := "everyui-android",
     publish / skip := true,
     Compile / unmanagedSourceDirectories += sharedSources,
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
@@ -357,7 +357,7 @@ lazy val android = (project in file("android"))
       exec(Seq((tools / "zipalign").toString, "-f", "-p", "4", withDex.toString, aligned.toString))
       val keystore = file(sys.props("user.home")) / ".android" / "debug.keystore"
       if (!keystore.exists) sys.error(s"packageApk: no debug keystore at $keystore")
-      val apk = baseDirectory.value / "out-apk" / "universal-ui.apk"
+      val apk = baseDirectory.value / "out-apk" / "everyui.apk"
       IO.createDirectory(apk.getParentFile)
       exec(Seq((tools / "apksigner").toString, "sign", "--ks", keystore.toString, "--ks-pass", "pass:android",
         "--key-pass", "pass:android", "--ks-key-alias", "androiddebugkey", "--out", apk.toString, aligned.toString))
@@ -377,7 +377,7 @@ lazy val android = (project in file("android"))
 
 lazy val webcheck = (project in file("webcheck"))
   .settings(
-    name := "universal-webcheck",
+    name := "everyui-webcheck",
     publish / skip := true,
     libraryDependencies ++= Seq(
       "com.outr" %% "robobrowser-cdp" % "2.4.7-SNAPSHOT",
@@ -395,4 +395,4 @@ lazy val webcheck = (project in file("webcheck"))
 
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, server)
-  .settings(name := "universal-ui", publish / skip := true)
+  .settings(name := "everyui", publish / skip := true)

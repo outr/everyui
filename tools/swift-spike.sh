@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # The Swift spike (DESIGN.md, "tvOS"): reactify's acceptance suite, compiled from Scala to Swift by
-# universal-ui's compiler, built by Xcode's toolchain on the Mac and run on the Apple TV simulator.
+# everyui's compiler, built by Xcode's toolchain on the Mac and run on the Apple TV simulator.
 #
 #   tools/swift-spike.sh              emit, build for macOS and the tvOS simulator, run the suite on both,
 #                                     diff it against reactive-test/expected-output.txt, run the memory probe
 #
-# Environment: MAC (ssh host, default mbp), MAC_DIR (default ~/universal-ui-spike), TVOS_DEVICE (a simulator
+# Environment: MAC (ssh host, default mbp), MAC_DIR (default ~/everyui-spike), TVOS_DEVICE (a simulator
 # name, default "Apple TV 4K (3rd generation) (at 1080p)"). Logs go to target/swift-spike/.
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 MAC=${MAC:-mbp}
-MAC_DIR=${MAC_DIR:-universal-ui-spike}
+MAC_DIR=${MAC_DIR:-everyui-spike}
 TVOS_DEVICE=${TVOS_DEVICE:-"Apple TV 4K (3rd generation) (at 1080p)"}
 SBT=${SBT:-$(command -v sbt || echo "$HOME/.local/share/coursier/bin/sbt")}
 SSH="ssh -o VisualHostKey=no"
@@ -35,6 +35,7 @@ fi
 step "ship to $MAC:$MAC_DIR"
 STAGE=$(mktemp -d)
 cp swift/runtime/ScalaRuntime.swift reactive-test/out-swift/App.swift swift/spike/main.swift "$STAGE/"
+$SSH "$MAC" "mkdir -p $MAC_DIR" > /dev/null 2>&1
 if rsync -a --delete "$STAGE/" "$MAC:$MAC_DIR/src/" > "$LOGS/ship.log" 2>&1; then pass "3 files"; else fail "(target/swift-spike/ship.log)"; exit 1; fi
 rm -rf "$STAGE"
 

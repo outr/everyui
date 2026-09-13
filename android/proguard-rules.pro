@@ -1,8 +1,8 @@
-# R8 rules for universal-ui's Android build (build.sbt: android/packageApk).
+# R8 rules for everyui's Android build (build.sbt: android/packageApk).
 #
 # The program is instantiated by name only at one point — the manifest's activity; everything else is
 # reached from there, so R8 can remove the rest of the Scala library and reactify's unused surface.
--keep class universal.activity.MainActivity { *; }
+-keep class everyui.activity.MainActivity { *; }
 
 # Scala's runtime reaches for JDK internals the Android platform does not declare; the references are
 # guarded at runtime.
