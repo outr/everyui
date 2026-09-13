@@ -88,9 +88,15 @@ object NetworkProbe:
     var events: List[String] = Nil
     client.onEvent.attach { case (seq, note) => events = events :+ (seq.toString + ":" + note.text) }
 
-    client.connect().sync()
-    check("state.active", client.state().toString, "Active")
+    // the client's connect, step by step, so a device run shows where it stops: open the socket, bind the
+    // protocol to it, send `connect`, and the loopback server's synchronous `connected` makes it Active
+    socket = new LoopbackSocket(log)
+    check("socket.open", socket.connect().sync().toString, "Open")
+    client.protocol.bind(socket)
+    check("state.bound", client.state().toString, "Disconnected")
+    client.protocol.sendConnect("client-1", Who("probe"))
     check("server.saw.connect", log.items.mkString("|"), "server: connect probe")
+    check("state.active", client.state().toString, "Active")
 
     socket.push(Note("one"))
     socket.push(Note("two"))

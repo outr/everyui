@@ -1,5 +1,7 @@
-RX PASS state.active = Active
+RX PASS socket.open = Open
+RX PASS state.bound = Disconnected
 RX PASS server.saw.connect = server: connect probe
+RX PASS state.active = Active
 RX PASS events.received = 1:one,2:two
 RX PASS push.seq = 1
 RX PASS server.received = hello

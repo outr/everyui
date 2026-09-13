@@ -47,6 +47,7 @@ sub runTask()
     m.sock.SetSendToAddress(addr)
     m.sock.SetMessagePort(m.port)
     m.sock.NotifyReadable(true)
+    print "[socket] connecting to "; host; ":"; port; " path "; path
     if not m.sock.Connect()
         emitEvent({ kind: "close", code: 1006, reason: "connect failed: " + host + ":" + port.ToStr() })
         return
@@ -66,6 +67,7 @@ sub runTask()
         return
     end if
 
+    print "[socket] upgrade sent, "; bytes.Count(); " bytes"
     m.buf = CreateObject("roByteArray")
     m.pos = 0
     m.open = false
@@ -137,6 +139,7 @@ function finishHandshake() as boolean
                 return false
             end if
             m.open = true
+            print "[socket] open"
             emitEvent({ kind: "open" })
             return parseFrames()
         end if

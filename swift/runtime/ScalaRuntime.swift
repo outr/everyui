@@ -369,6 +369,7 @@ func rtObjString(_ o: V) -> String {
         return rtS(o["_cls"]) + "(" + rtItems(o["_fields"]).map { rtS(o[rtS($0)]) }.joined(separator: ",") + ")"
     }
     if rtHas(o, "message") { return rtS(o["message"]) }
+    if rtHas(o, "_name") { return rtS(o["_name"]) }
     if rtHas(o, "_cls") { return rtS(o["_cls"]) }
     return "<object>"
 }
@@ -768,8 +769,15 @@ func _mapEq(_ a: V, _ b: V) -> V {
 // callback and the callback takes (ok, value). A Completable holds its waiters instead. `sync` returns only a
 // task that completes at once; anything that would block is an error here. `sleep` is the main queue's timer.
 
-func RtTask(_ run: @escaping (V) throws -> V) -> V { rtObj(["_cls": .vStr("Task"), "run": rtFn(run)]) }
-func RtCb(_ f: @escaping (V, V) throws -> V) -> V { rtFn(f) }
+// Closures the runtime invokes through RtInvoke are `{ fn, env }` objects whose `fn` takes (env, args), like the
+// emitted ones; `run` takes the callback, a callback takes (ok, value).
+func RtTask(_ run: @escaping (V) throws -> V) -> V {
+    rtObj(["_cls": .vStr("Task"), "run": rtClosure({ _, args in try run(rtArg(rtItems(args), 0)) }, .vNull)])
+}
+func RtCb(_ f: @escaping (V, V) throws -> V) -> V {
+    rtClosure({ _, args in let a = rtItems(args); return try f(rtArg(a, 0), rtArg(a, 1)) }, .vNull)
+}
+func rtThunk(_ f: @escaping () throws -> V) -> V { rtClosure({ _, _ in try f() }, .vNull) }
 func rtB(_ v: V) -> Bool { if case .vBool(let b) = v { return b }; return false }
 func rtCall(_ cb: V, _ ok: Bool, _ v: V) throws { _ = try RtInvoke(cb, rtArr([.vBool(ok), v])) }
 /** The exception value of a thrown error, as the emitted `catch` sees it. */
@@ -807,7 +815,7 @@ func RapidTaskObj_defer(_ thunk: V) -> V {
 }
 func RapidTaskObj_sleep(_ d: V) -> V {
     let ms = rtDouble(RtDurationMs(d))
-    return RtTask { cb in RtSetTimeout(ms, rtFn { try rtCall(cb, true, .vNull); return .vNull }); return .vNull }
+    return RtTask { cb in RtSetTimeout(ms, rtThunk { try rtCall(cb, true, .vNull); return .vNull }); return .vNull }
 }
 func RapidTaskObj_completable() -> V {
     rtObj(["_cls": .vStr("Completable"), "done": .vBool(false), "ok": .vBool(false), "value": .vNull, "waiters": rtArr([])])
@@ -864,7 +872,7 @@ func RapidTask_timeout(_ t: V, _ d: V) -> V {
     let ms = rtDouble(RtDurationMs(d))
     return RtTask { cb in
         let state = rtObj(["fired": .vBool(false)])
-        RtSetTimeout(ms, rtFn {
+        RtSetTimeout(ms, rtThunk {
             if rtB(state["fired"]) { return .vNull }
             state["fired"] = .vBool(true)
             try rtCall(cb, false, rtException("TimeoutException", "Task timed out after \(Int(ms)) ms"))
@@ -878,7 +886,7 @@ func RapidTask_timeout(_ t: V, _ d: V) -> V {
         })
     }
 }
-func RapidTask_unit(_ t: V) -> V { RapidTask_map(t, rtFn { (_: V) in .vNull }) }
+func RapidTask_unit(_ t: V) -> V { RapidTask_map(t, rtClosure({ _, _ in .vNull }, .vNull)) }
 func RapidTask_foreach(_ t: V, _ f: V) throws -> V { try RapidTask_start(RapidTask_map(t, f)) }
 func RapidTask_start(_ t: V) throws -> V {
     _ = try RapidTask_run(t, RtCb { ok, v in
@@ -1102,6 +1110,7 @@ func _getMessage(_ e: V) -> V {
     return _str(e)
 }
 func _clsName(_ x: V) -> V {
+    if case .vObj = x, rtHas(x, "_name") { return _str(x["_name"]) }
     if case .vObj = x, rtHas(x, "_cls") { return _str(x["_cls"]) }
     return .vStr(rtKindName(x))
 }

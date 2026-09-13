@@ -1273,9 +1273,21 @@ the JVM (the Roku and Swift runs wait for the devices).
 `DurableDemo` (`demo=durable`, `socket=<url>`): connect, five events, RPC echo,
 a server-side drop, resume with the missed events replayed, five more events,
 no gap in either sequence → `[ui] durable ok events=10 resumed=1 gaps=0`.
-- desktop (JVM, `java.net.http`): ✅ · web (Chrome via RoboBrowser): ✅ ·
-  Android emulator (OkHttp): ✅ with the spice fix below · Roku, tvOS: built, 0 gaps, not yet run — both devices were off
-  the network.
+- ✅ on all five: desktop (JVM, `java.net.http`), web (Chrome via RoboBrowser),
+  Android emulator (OkHttp, with the spice fix below), Roku (the Task-node socket)
+  and the Apple TV simulator (`URLSessionWebSocketTask`). The probe is identical
+  on the JVM, the Roku, macOS and the tvOS simulator; reactify's suite still is.
+
+What the devices found that brighterscript and the JVM could not (all fixed):
+- a block of user `val`s ending in a library call was treated as scalac's
+  default-argument temporaries and its rhs inlined at every use — `val ws =
+  createWebSocket()` made three sockets; the rule now needs compiler temporaries
+- positional case-class arguments dropped (`isInstanceOf` on the Quotes API's
+  abstract `NamedArg` erases to always-true); `Some("a" | "b")` alternatives
+  matched anything; `"…".r` and parenthesis-less `json("k").asString` had no
+  shim; the Swift task shim invoked bare functions where the runtime expects
+  `{ fn, env }` closures; `m` is reserved as a loop variable on the device;
+  case objects stringified by their emitted (qualified) name.
 
 ### Found on the way (library notes, for approval before any change)
 
@@ -1302,7 +1314,7 @@ no gap in either sequence → `[ui] durable ok events=10 resumed=1 gaps=0`.
 **-1. Run the durable demo on the Roku and the Apple TV simulator** once they are
 back on the network: `ROKU_PASS=… tools/check.sh --device` and `--tvos` (the
 `durable:` rows), plus the probe: `CHANNEL=network/out-roku
-GOLDEN=network/expected-output.txt START=state.active tools/roku-acceptance.sh`
+GOLDEN=network/expected-output.txt START=socket.open tools/roku-acceptance.sh`
 and `PROJECT=network DIR=network GOLDEN=network/expected-output.txt
 HARNESS=probe-main.swift tools/swift-spike.sh`. Then DataWrangler's server gets
 a `DurableSocketServer` and its app the client.

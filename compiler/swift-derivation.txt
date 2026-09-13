@@ -1066,6 +1066,7 @@ class SwiftEmitter(
         sb.append("  if self <> invalid then return self\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
@@ -1166,6 +1167,7 @@ class SwiftEmitter(
         sb.append(s"  existing = ga[$key]\n")
         sb.append(s"  if (existing != $NULL).rtTrue { return existing }\n")
         sb.append(s"  let this: V = rtNew(${swStr(cn)})\n")
+        sb.append(s"  ${field("this", "_name")} = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  _ = ${shim}__install(this)\n"))
         }
@@ -1232,6 +1234,10 @@ class SwiftEmitter(
       s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, $ordinal)"
 @@ new
       s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, ${vInt(ordinal)})"
+@@ old
+        ("(" + ts.map(_._1).mkString(" or ") + ")", ts.flatMap(_._2))
+@@ new
+        ("(" + ts.map(_._1).mkString(" || ") + ")", ts.flatMap(_._2))
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit =

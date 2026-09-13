@@ -119,7 +119,7 @@ jvm_suite() {
 
 # the network probe: spice's durable client over a loopback socket, the JVM run is its golden for the devices
 jvm_probe() {
-  suite_lines "$LOGS/build.log" "state.active" "$LOGS/jvm-probe.txt"
+  suite_lines "$LOGS/build.log" "socket.open" "$LOGS/jvm-probe.txt"
   diff -u network/expected-output.txt "$LOGS/jvm-probe.txt" &&
     echo "identical to network/expected-output.txt ($(wc -l < "$LOGS/jvm-probe.txt") lines)"
 }

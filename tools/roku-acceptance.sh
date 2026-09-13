@@ -10,7 +10,7 @@
 #   ROKU_PASS=<dev password> tools/roku-acceptance.sh      # run and diff
 #
 # Any emitted program that prints RX lines works the same way — the network probe:
-#   CHANNEL=network/out-roku GOLDEN=network/expected-output.txt START=state.active tools/roku-acceptance.sh
+#   CHANNEL=network/out-roku GOLDEN=network/expected-output.txt START=socket.open tools/roku-acceptance.sh
 #
 # Regenerate the expected output after changing the suite:
 #   sbt "reactiveTest/run" | grep '^RX ' > reactive-test/expected-output.txt

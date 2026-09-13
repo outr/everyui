@@ -894,7 +894,7 @@ class RokuEmitter(
         s"_rwList(${rwFor(args.head, depth)})"
       else if args.size == 2 && fqn.endsWith(".Map") then s"_rwMap(${rwFor(args(1), depth)})"
       else if sym.exists && sym.flags.is(Flags.Case) && !isBuiltin(sym) && depth < 6 then emitRwGen(tp, depth + 1)
-      else "_rw(\"valueRW\")"
+      else s"_rw(${brStr("valueRW")})"
     def emitRwGen(tp: TypeRepr, depth: Int): String =
       val cls    = tp.typeSymbol
       val fields = try cls.caseFields catch case _: Throwable => Nil
@@ -915,7 +915,7 @@ class RokuEmitter(
       * the default's own value (inlined), a field with neither as `null`. */
     def caseLiteralArgs(fields: List[String], args: List[Term]): List[Term] =
       val byName = args.collect { case NamedArg(n, v) => n -> v }.toMap
-      val positional = args.filterNot(_.isInstanceOf[NamedArg])
+      val positional = args.filterNot { case NamedArg(_, _) => true; case _ => false }
       var i = 0
       fields.map { f =>
         val a = byName.get(f).orElse {
@@ -1538,6 +1538,10 @@ class RokuEmitter(
           s"${typeName(cls)}_new(${emitArgs(first ++ more, ctor)})"
         // `task.start` (a Task's fiber; `.start()` syncs on it, so it is fire-and-forget)
         case Select(q, "start") if isTaskTerm(q) => s"RapidTask_start(${emitTerm(q)})"
+        // `"…".r` (StringOps.r): the platform's regex
+        case Select(Apply(aug, List(s)), "r") if aug.symbol.exists && aug.symbol.name == "augmentString" => s"_regex(${emitTerm(s)})"
+        // a fabric Json accessor without parentheses (`json("type").asString`): the runtime's (see "library shims")
+        case sel @ Select(q, m) if isFabricJson(sel) => s"_json_$m(${emitTerm(q)})"
         // a fabric RW instance (`stringRW`, `valueRW`): the runtime's codec of that name
         case id @ Ident(n) if isFabricRW(id.symbol)       => s"_rw(${brStr(n)})"
         case sel @ Select(_, n) if isFabricRW(sel.symbol) => s"_rw(${brStr(n)})"
@@ -1643,7 +1647,7 @@ class RokuEmitter(
         case Block(List(cd: ClassDef), e) if isLocalClassInstantiation(cd, e) => emitAnonInstance(cd, e)
         case Block(List(dd: DefDef), _: Closure) => emitClosure(dd)
         case Block(Nil, e) => emitTerm(e)
-        case Block(stats, e) if allValDefs(stats) && dropsDefaults(e) =>
+        case Block(stats, e) if allValDefs(stats) && isTempVals(stats) && dropsDefaults(e) =>
           emitTempValBlock(stats.collect { case v: ValDef => v }, e)
         case bl: Block => hoistBlock(bl)
         case asg: Assign =>
@@ -1689,6 +1693,10 @@ class RokuEmitter(
       case Bind(name, inner) =>
         val (t, b) = patternTest(inner, subj)
         (t, s"${brSafe(name)} = $subj" :: b)
+      // `"a" | "b"` inside a pattern: any of them
+      case Alternatives(ps) =>
+        val ts = ps.map(x => patternTest(x, subj))
+        ("(" + ts.map(_._1).mkString(" or ") + ")", ts.flatMap(_._2))
       case Literal(c)        => (s"($subj = ${emitConst(c)})", Nil)
       case Typed(inner, _)   => patternTest(inner, subj)
       case TypedOrTest(inner, tpt) =>
@@ -1788,7 +1796,7 @@ class RokuEmitter(
       // position it stays `RtSynchronized(thunk)`, preserving evaluation order.)
       case Apply(fn, List(body)) if fn.symbol.exists && fn.symbol.name == "synchronized" =>
         emitInto(body, sk)
-      case Block(stats, e) if allValDefs(stats) && dropsDefaults(e) =>
+      case Block(stats, e) if allValDefs(stats) && isTempVals(stats) && dropsDefaults(e) =>
         withStatement(sinkLine(sk, emitTempValBlock(stats.collect { case v: ValDef => v }, e)))
       case Block(stats, e) =>
         (stats.map(emitStat) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
@@ -1859,6 +1867,9 @@ class RokuEmitter(
 
     def allValDefs(stats: List[Statement]): Boolean =
       stats.nonEmpty && stats.forall { case _: ValDef => true; case _ => false }
+    // scalac's own temporaries (`x$1`, default-argument proxies) — never a user's `val`, which is bound once
+    def isTempVals(stats: List[Statement]): Boolean =
+      stats.forall { case v: ValDef => v.name.contains("$") || v.symbol.flags.is(Flags.Synthetic) || v.symbol.flags.is(Flags.Artifact); case _ => false }
 
     def isStmtExpr(t: Term): Boolean = unwrap(t) match
       case _: Assign => true
@@ -2203,6 +2214,7 @@ class RokuEmitter(
         sb.append("  if self <> invalid then return self\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
@@ -3990,8 +4002,8 @@ class RokuEmitter(
       |end function
       |function Scribe_log(level as string, msgs as object) as dynamic
       |    s = ""
-      |    for each m in msgs
-      |        s = s + _str(RtForce(m))
+      |    for each msg in msgs
+      |        s = s + _str(RtForce(msg))
       |    end for
       |    print "[" + level + "] " + s
       |    return invalid
@@ -4001,6 +4013,7 @@ class RokuEmitter(
       |    return _str(e)
       |end function
       |function _clsName(x as dynamic) as string
+      |    if _rtKind(x) = "aa" and x._name <> invalid then return _str(x._name)
       |    if _rtKind(x) = "aa" and x._cls <> invalid then return _str(x._cls)
       |    return type(x)
       |end function
@@ -4176,6 +4189,7 @@ class RokuEmitter(
       |        return _str(o._cls) + "(" + parts.Join(",") + ")"
       |    end if
       |    if o.DoesExist("message") then return _str(o.message)
+      |    if o.DoesExist("_name") then return _str(o._name)
       |    if o.DoesExist("_cls") then return _str(o._cls)
       |    return "<object>"
       |end function
