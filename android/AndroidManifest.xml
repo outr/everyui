@@ -3,7 +3,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.outr.everyui">
   <uses-feature android:name="android.software.leanback" android:required="false" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-  <application android:label="EveryUI" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+  <application android:label="EveryUI" android:icon="@mipmap/ic_launcher" android:banner="@drawable/banner"
+    android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
     <activity
       android:name="everyui.activity.MainActivity"
       android:exported="true"

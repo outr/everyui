@@ -12,6 +12,7 @@ out-swift/
 out-js/
 out-apk/
 desktop/out/
+checks/out/
 webcheck/out/
 
 # IDE

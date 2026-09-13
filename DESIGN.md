@@ -430,7 +430,7 @@ captured 65 suite lines
 PASS: device output is identical to the JVM (65 lines)
 ```
 
-`tools/emit-gaps.py <channel>/components` is the static meter: `RtTodo`
+The static gap meter (`Checks gaps <channel>/components`, once `tools/emit-gaps.py`): `RtTodo`
 markers, dangling symbols, duplicate definitions, unknown method calls. For
 reactify alone and for the suite, every count is **0**.
 
@@ -664,7 +664,7 @@ generated channel depends on it or carries its name.
 | `sartEmitRoku` task | `emitRoku` (reactify compiled through via `--library`) |
 | `SartScene.xml/.brs`, `SartRuntime.brs` | `AppScene.xml/.brs`, `ScalaRuntime.brs` |
 | runtime names `Sart*`, `_sart*`, `__SART_*`, `ga.sartRoot` | `Rt*`, `_rt*`, `__RT_*`, `ga.appRoot` |
-| `tools/sart-gaps.py` | `tools/emit-gaps.py` |
+| `tools/sart-gaps.py` | the gap meter, now `everyui.checks.Checks gaps` |
 | `example/` (the first Sart probe) | retired; a copy is in the session scratchpad only |
 
 The GitHub Packages resolver (there for Sart's siblings) is gone; `server/`
@@ -842,7 +842,7 @@ keeps every log in `target/check/`:
 |---|---|---|
 | one sbt run: `reactiveTest/run` + all three `emitRoku`s | ✓ | ✓ |
 | reactify on the JVM identical to `reactive-test/expected-output.txt` (65 lines) | ✓ | ✓ |
-| `tools/emit-gaps.py`: TOTAL GAPS 0 on reactive, reactive-test, roku | ✓ | ✓ |
+| the gap meter (`Checks gaps`): TOTAL GAPS 0 on reactive, reactive-test, roku | ✓ | ✓ |
 | brighterscript: 0 errors on all three (BS1054/BS1104 excluded) | ✓ | ✓ |
 | web bundle builds (scala-cli) | ✓ | ✓ |
 | the shared font table (`everyui.font.Faces`) matches `assets/fonts` | ✓ | ✓ |
@@ -951,7 +951,7 @@ swapped — the same object model (vtable slots, `<Type>__init` chain, singleton
 defunctionalised closures, A-normalisation, if-chain pattern matching and stdlib
 shims, printed as Swift over one dynamic value type `V`
 (`swift/runtime/ScalaRuntime.swift`, the BrightScript runtime's twin). It is
-produced by `tools/make-swift-emitter.py` from the Roku source (every template
+derived from the Roku source at build time (every template
 replaced exactly once, so the two cannot drift silently). Type-erased on
 purpose: instance fields are `this["name"]`, a method slot is called
 `this["m"](this, …)`, every function is `throws -> V`. `--target=swift` on the
@@ -1149,6 +1149,46 @@ Still 60.0 fps, still 0 growth. Remaining lever if a bigger app needs it: a
 generational pass (young objects plus a remembered set) so a pass no longer
 walks the whole live graph.
 
+## EveryUI: the rename, the icons, and no Python (2026-09-13)
+
+**The rename.** `universal.*` → `everyui.*` in every source root; sbt modules
+`everyui-*`; the native binary `everyui-desktop`; app labels, the Android
+package and Apple bundle `com.outr.everyui`, the Roku channel title, log tags,
+scripts, docs. The emitted goldens did not change (package names never reach
+the output). `youi.*` stays what it is in AnimationExample's header: that is
+youi's example reproduced as the reference, not our branding.
+
+**Icons.** `sbt makeIcons` (`project/Icons.scala`, rendering the SVGs in
+`work/logo/svg` with `rsvg-convert` and composing with AWT) writes every
+platform's icon from the logo: the mark alone at 256 px for the web favicon and
+the desktop window icon (`assets/images/everyui-mark.png`); Android launcher
+icons at five densities and the TV banner (`android/res`, compiled by aapt2
+into the APK; `android:icon`/`android:banner` in the manifest); Roku channel
+icons and splash screens at fhd/hd/sd (`roku/images`, declared in the manifest
+by `emitRoku`); the Apple asset catalog (`swift/app/Assets.xcassets`: the iOS
+1024 icon, the tvOS App Icon at 400x240 @1x/@2x, App Store 1280x768, Top Shelf
+1920x720 and 2320x720), compiled into the bundle by `actool` in
+`tools/tvos-run.sh` and merged into the plist. Verified on the desktop (window
+icon), the web (favicon) and the Android emulator (launcher icon and banner
+resolve); the Apple and Roku icons are wired but unverified until the Mac and
+the Roku are back.
+
+**No Python.** Tooling is Scala now:
+- `checks/` — `everyui.checks.Checks`, one CLI behind `tools/check.sh` and the
+  device scripts: frame extraction and comparison, the font table, frame-rate
+  floors, the Roku gap meter, sideloading, console capture, Android waits, the
+  suite-line extraction the acceptance script needs. Run from the classpath
+  `sbt checks/checksClasspath` stages.
+- `sbt makeIcons` — the icons, above.
+- `SwiftEmitter.scala` is no longer checked in: `project/SwiftEmitterDerivation.scala`
+  derives it from `RokuEmitter.scala` at build time (a source generator on the
+  compiler project) by the replacements in `compiler/swift-derivation.txt`, a
+  plain record file. Each replacement must match exactly the number of times the
+  table says, so a change to the Roku emitter that moves a template fails the
+  build. The first generated file was byte-identical to the last checked-in one.
+The shell scripts remain as thin drivers (Chrome, adb, ssh, simctl); moving the
+orchestration itself into sbt tasks is the next tooling step if wanted.
+
 ## IMMEDIATE NEXT STEP
 
 **-1. Re-verify tvOS/iOS on Scala 3.9** (`tools/swift-spike.sh`, `tools/tvos-run.sh
@@ -1199,14 +1239,16 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
   (`ssh mbp`, `~/everyui-spike/`), builds for macOS and the tvOS simulator,
   runs both against `reactive-test/expected-output.txt`, then the memory probe.
   `MAC`, `MAC_DIR`, `TVOS_DEVICE` override the defaults. `SwiftEmitter.scala` is
-  GENERATED: edit `RokuEmitter.scala` or `tools/make-swift-emitter.py`, then rerun
-  `python3 tools/make-swift-emitter.py` from the repo root.
+  GENERATED at build time from `RokuEmitter.scala` (see "No Python").
 - **tvOS:** `tools/tvos-run.sh` (live, 30 s, frame rate), `--freeze` (the frame vs the
   golden), `--show` (opens the Simulator window on the Mac and leaves the app
   running). `sbt tvos/emitSwift` → `tvos/out-swift/` (App.swift + the two runtimes,
   main.swift, Info.plist, assets). The Mac side lives in `~/everyui-spike/app`.
 - **Desktop native image:** `tools/desktop-native.sh` (build + frame + frame rate;
   `--trace` refreshes `desktop/native-config/` first). `tools/check.sh --native`.
+- **Tooling is Scala:** `checks/` (the check helpers CLI), `sbt makeIcons`,
+  `project/SwiftEmitterDerivation.scala` (SwiftEmitter is generated — edit
+  `RokuEmitter.scala` or `compiler/swift-derivation.txt`). No Python.
 - **Run every check:** `tools/check.sh` (offline: JVM, Roku emit, web, desktop),
   `--android` (adds an emulator), `ROKU_PASS=<password> tools/check.sh --device`
   (adds the Roku), `--update` to rewrite the golden from the web's frame.
@@ -1218,21 +1260,21 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
   (`ANDROID_SERIAL=192.168.1.73:5555 tools/check.sh --android`). Google TV turns
   network ADB off after a reboot or update — if `adb connect` is refused, it has
   to be re-enabled on the TV (Settings → System → Developer options).
-  Helpers (sideload, console capture, tree extract/compare, fps) are in
-  `tools/checks.py`.
+  Helpers (sideload, console capture, tree extract/compare, fps) are the Scala
+  CLI `everyui.checks.Checks` in `checks/`.
 - **The web's live frame rate:** `tools/check.sh --live`. `webcheck/` (a tool
   project, not the app) uses RoboBrowser (`com.outr::robobrowser-cdp`
   2.4.7-SNAPSHOT from `~/.ivy2/local`, plus `spice-client-netty` — spice's HTTP
   client needs an implementation) to run a HEADFUL Chrome kiosk-fullscreen on
   its own Xvfb display, where rAF follows the display's 60 Hz, and relays the
-  page's console; `tools/checks.py fps` reads the `[ui] fps=` lines as it does
+  page's console; `Checks fps` reads the `[ui] fps=` lines as it does
   the Roku's. First run: 27 samples, median 60.0, minimum 59.9. (The kiosk
   window reports a 1919x1079 viewport — immaterial to a frame rate, which is
   why the frame check stays on headless Chrome.)
 - Freezing a frame by hand: `--freeze=0.434` on the desktop, `am start … --es
   freeze 0.434` on Android, `?freeze=0.434` on the web build, or add
-  `freeze.txt` containing `0.434` to the Roku channel (`python3 tools/checks.py
-  roku-install roku/out-roku --add freeze.txt=0.434`). It steps a virtual 60 Hz
+  `freeze.txt` containing `0.434` to the Roku channel (`Checks roku-install
+  roku/out-roku --add freeze.txt=0.434`). It steps a virtual 60 Hz
   clock, stops, and logs `tree …` lines (every component's position and size).
 - Shared assets live in `assets/images/` and `assets/fonts/`; `emitRoku` copies
   them into the channel (`pkg:/images/`, `pkg:/fonts/`), and the web bundle serves
@@ -1245,8 +1287,8 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
   `ROKU_PASS=<password> tools/roku-acceptance.sh` (diffs the device against
   `reactive-test/expected-output.txt`; regenerate that with
   `sbt "reactiveTest/run" | grep '^RX ' > reactive-test/expected-output.txt`).
-- Static gap meter for any emitted channel:
-  `python3 tools/emit-gaps.py reactive-test/out-roku/components`.
+- Static gap meter for any emitted channel: `Checks gaps reactive-test/out-roku/components`
+  (from the classpath `sbt checks/checksClasspath` stages).
 - When running brighterscript on an emitted channel, pass `--stagingDir`
   somewhere outside it — its default stages INTO the channel directory, and
   the next sideload zip picks that up.

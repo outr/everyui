@@ -42,6 +42,9 @@ object DesktopApp:
 
       val stage = new Stage()
       stage.setTitle("EveryUI")
+      // the window / dock icon: the mark, from the shared assets (tools/make-icons.py)
+      val icon = new File(Host.assets, "images/everyui-mark.png")
+      if icon.exists then stage.getIcons.add(new javafx.scene.image.Image(icon.toURI.toString))
       stage.setScene(scene)
       stage.show()
 

@@ -21,6 +21,7 @@ TVOS_DEVICE=${TVOS_DEVICE:-"Apple TV 4K (3rd generation) (at 1080p)"}
 IOS_DEVICE=${IOS_DEVICE:-"iPhone 17 Pro"}
 LIVE_SECONDS=${LIVE_SECONDS:-30}
 SBT=${SBT:-$(command -v sbt || echo "$HOME/.local/share/coursier/bin/sbt")}
+CHECKS="java -cp $(cat $ROOT/checks/out/classpath.txt 2>/dev/null) everyui.checks.Checks"   # staged by the sbt step below
 SSH="ssh -o VisualHostKey=no"
 BUNDLE=com.outr.everyui
 FREEZE=0.434
@@ -36,8 +37,9 @@ for arg in "$@"; do
   esac
 done
 # per platform: the simulator SDK, the target triple's OS, the device, the app's device family (1 iPhone, 2 iPad, 3 TV)
-if [ $PLATFORM = ios ]; then SDK=iphonesimulator; OS=ios; DEVICE=$IOS_DEVICE; FAMILY='[1,2]'
-else SDK=appletvsimulator; OS=tvos; DEVICE=$TVOS_DEVICE; FAMILY='[3]'; fi
+# and the app icon set in swift/app/Assets.xcassets (sbt makeIcons), compiled into the bundle by actool
+if [ $PLATFORM = ios ]; then SDK=iphonesimulator; OS=ios; DEVICE=$IOS_DEVICE; FAMILY='[1,2]'; APPICON=AppIcon
+else SDK=appletvsimulator; OS=tvos; DEVICE=$TVOS_DEVICE; FAMILY='[3]'; APPICON='App Icon & Top Shelf Image'; fi
 LOGS="$ROOT/target/$PLATFORM"
 rm -rf "$LOGS"
 mkdir -p "$LOGS"
@@ -48,7 +50,7 @@ fail() { echo "FAIL  ${1:-}"; FAILED=1; }
 FAILED=0
 
 step "emit: everyui → Swift"
-if "$SBT" "tvos/emitSwift" > "$LOGS/emit.log" 2>&1 && [ -f tvos/out-swift/App.swift ]; then
+if "$SBT" "checks/checksClasspath; tvos/emitSwift" > "$LOGS/emit.log" 2>&1 && [ -f tvos/out-swift/App.swift ]; then
   todos=$(grep -c 'RtTodo(' tvos/out-swift/App.swift || true)
   pass "$(wc -l < tvos/out-swift/App.swift) lines, $todos todo(s)"
 else
@@ -68,6 +70,9 @@ $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
     src/ScalaRuntime.swift src/UniversalRuntime.swift src/App.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
   test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && cp -r src/images src/fonts EveryUI.app/ && \
   plutil -replace UIDeviceFamily -json '$FAMILY' EveryUI.app/Info.plist && \
+  xcrun actool src/Assets.xcassets --compile EveryUI.app --platform $SDK --minimum-deployment-target 15.0 \
+    --app-icon '$APPICON' --output-partial-info-plist icons.plist > actool.log 2>&1 && \
+  /usr/libexec/PlistBuddy -c 'Merge icons.plist' EveryUI.app/Info.plist && \
   codesign --force --sign - EveryUI.app > /dev/null 2>&1; test -x EveryUI.app/EveryUI" > "$LOGS/build.log" 2>&1
 if [ $? = 0 ]; then pass "$OS $SDK_VERSION"; else fail "(target/$PLATFORM/build.log)"; grep -E "error:" "$LOGS/build.log" | head -n 20; exit 1; fi
 
@@ -96,15 +101,15 @@ if grep -aq '\[ui\] root' "$LOGS/console.log"; then pass "$(grep -aoE '\[ui\] ro
 
 if [ $MODE = freeze ]; then
   step "frame vs golden"
-  if python3 tools/checks.py extract-tree "$LOGS/console.log" "$LOGS/tvos-tree.txt" > "$LOGS/frame.log" 2>&1 &&
-     python3 tools/checks.py compare-tree tools/golden/animation-tree.txt "$LOGS/tvos-tree.txt" >> "$LOGS/frame.log" 2>&1; then
+  if $CHECKS extract-tree "$LOGS/console.log" "$LOGS/tvos-tree.txt" > "$LOGS/frame.log" 2>&1 &&
+     $CHECKS compare-tree tools/golden/animation-tree.txt "$LOGS/tvos-tree.txt" >> "$LOGS/frame.log" 2>&1; then
     pass "$(tail -n 1 "$LOGS/frame.log")"
   else
     fail "(target/$PLATFORM/frame.log)"; tail -n 20 "$LOGS/frame.log"
   fi
 else
   step "live frame rate"
-  if python3 tools/checks.py fps "$LOGS/console.log" --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1; then
+  if $CHECKS fps "$LOGS/console.log" --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1; then
     pass "$(tail -n 1 "$LOGS/fps.log")"
   else
     fail "(target/$PLATFORM/fps.log)"; tail -n 5 "$LOGS/fps.log"

@@ -14,6 +14,7 @@ set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 SBT=${SBT:-$(command -v sbt || echo "$HOME/.local/share/coursier/bin/sbt")}
+CHECKS="java -cp $(cat $ROOT/checks/out/classpath.txt 2>/dev/null) everyui.checks.Checks"   # staged by the sbt step below
 CFG="$ROOT/desktop/native-config"
 OUT="$ROOT/desktop/out/native/everyui-desktop"
 LOGS="$ROOT/target/native"
@@ -38,7 +39,7 @@ command -v native-image > /dev/null || { echo "native-image not found (GraalVM)"
 command -v xvfb-run > /dev/null || { echo "xvfb-run not found"; exit 1; }
 
 step "compile: desktop classpath"
-if "$SBT" "desktop/desktopClasspath" > "$LOGS/sbt.log" 2>&1; then pass; else fail "(target/native/sbt.log)"; exit 1; fi
+if "$SBT" "checks/checksClasspath; desktop/desktopClasspath" > "$LOGS/sbt.log" 2>&1; then pass; else fail "(target/native/sbt.log)"; exit 1; fi
 CP=$(cat desktop/out/classpath.txt)
 
 if [ $TRACE = 1 ]; then
@@ -64,8 +65,8 @@ fi
 
 step "frame vs golden (Xvfb)"
 timeout 120 xvfb-run -a -s "-screen 0 1920x1080x24" "$OUT" --freeze=$FREEZE --screenshot="$LOGS/frame.png" > "$LOGS/freeze.log" 2>&1
-if python3 tools/checks.py extract-tree "$LOGS/freeze.log" "$LOGS/tree.txt" > "$LOGS/frame-check.log" 2>&1 &&
-   python3 tools/checks.py compare-tree tools/golden/animation-tree.txt "$LOGS/tree.txt" >> "$LOGS/frame-check.log" 2>&1; then
+if $CHECKS extract-tree "$LOGS/freeze.log" "$LOGS/tree.txt" > "$LOGS/frame-check.log" 2>&1 &&
+   $CHECKS compare-tree tools/golden/animation-tree.txt "$LOGS/tree.txt" >> "$LOGS/frame-check.log" 2>&1; then
   pass "$(tail -n 1 "$LOGS/frame-check.log")"
 else
   fail "(target/native/frame-check.log)"; tail -n 10 "$LOGS/frame-check.log"
@@ -73,7 +74,7 @@ fi
 
 step "live frame rate (Xvfb, 20 s)"
 timeout 22 xvfb-run -a -s "-screen 0 1920x1080x24" "$OUT" > "$LOGS/live.log" 2>&1
-if python3 tools/checks.py fps "$LOGS/live.log" --samples-min 12 --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1; then
+if $CHECKS fps "$LOGS/live.log" --samples-min 12 --median-min 59 --min 55 > "$LOGS/fps.log" 2>&1; then
   pass "$(tail -n 1 "$LOGS/fps.log")"
 else
   fail "(target/native/fps.log)"; tail -n 5 "$LOGS/fps.log"

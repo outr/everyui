@@ -50,7 +50,8 @@ CHROME=${CHROME:-$(command -v google-chrome || command -v chromium || echo googl
 FREEZE=0.434                      # the moment of youi's reference capture
 LOGS="$ROOT/target/check"
 GOLDEN="$ROOT/tools/golden/animation-tree.txt"
-CHECKS="python3 $ROOT/tools/checks.py"
+# the helpers are a Scala CLI (everyui.checks.Checks), run from the classpath the build stages
+checks_cli() { CHECKS="java -cp $(cat "$ROOT/checks/out/classpath.txt") everyui.checks.Checks"; }
 rm -rf "$LOGS"
 mkdir -p "$LOGS" "$(dirname "$GOLDEN")"
 
@@ -101,7 +102,7 @@ faces() { $CHECKS faces assets/fonts shared/src/main/scala/everyui/font/Faces.sc
 build() {                          # one sbt run: the JVM suite, every Roku channel, the desktop (and web checker) classpath
   local live=""
   [ $LIVE = 1 ] && live="; webcheck/webcheckClasspath"
-  "$SBT" "reactiveTest/run; reactive/emitRoku; reactiveTest/emitRoku; roku/emitRoku; desktop/desktopClasspath$live" &&
+  "$SBT" "checks/checksClasspath; reactiveTest/run; reactive/emitRoku; reactiveTest/emitRoku; roku/emitRoku; desktop/desktopClasspath$live" &&
     [ "$(grep -c 'emitRoku: emitting' "$LOGS/build.log")" = 3 ]
 }
 
@@ -114,7 +115,7 @@ jvm_suite() {
 gaps() {
   local rc=0 out
   for d in reactive reactive-test roku; do
-    out=$(python3 tools/emit-gaps.py "$d/out-roku/components")
+    out=$($CHECKS gaps "$d/out-roku/components")
     echo "$d: $(echo "$out" | tail -n 1)"
     echo "$out" | tail -n 1 | grep -qE 'TOTAL GAPS +: 0$' || { echo "$out"; rc=1; }
   done
@@ -221,15 +222,15 @@ roku_fps() {
 
 # ── run ──────────────────────────────────────────────────────────────────────
 
-run "fonts: shared table matches assets/fonts" faces.log faces
-
 if run "build: JVM suite, Roku channels, desktop" build.log build; then
+  checks_cli
+  run "fonts: shared table matches assets/fonts" faces.log faces
   run "reactify on the JVM matches its golden" jvm-suite.log jvm_suite
   run "Roku channels: no emit gaps" gaps.log gaps
   run "Roku channels: brighterscript clean" brighterscript.log brighterscript
   BUILT=1
 else
-  for s in "reactify on the JVM matches its golden" "Roku channels: no emit gaps" "Roku channels: brighterscript clean"; do
+  for s in "fonts: shared table matches assets/fonts" "reactify on the JVM matches its golden" "Roku channels: no emit gaps" "Roku channels: brighterscript clean"; do
     skip "$s" "build failed"
   done
   BUILT=0

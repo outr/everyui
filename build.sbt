@@ -16,7 +16,15 @@ lazy val compiler = (project in file("compiler"))
   .settings(
     name := "everyui-compiler",
     publish / skip := true,
-    libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value
+    libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value,
+    // SwiftEmitter.scala is derived from RokuEmitter.scala by compiler/swift-derivation.txt (project/SwiftEmitterDerivation.scala)
+    Compile / sourceGenerators += Def.task {
+      val out = (Compile / sourceManaged).value / "everyui" / "compiler" / "SwiftEmitter.scala"
+      SwiftEmitterDerivation.derive(
+        baseDirectory.value / "src" / "main" / "scala" / "everyui" / "compiler" / "RokuEmitter.scala",
+        baseDirectory.value / "swift-derivation.txt", out)
+      Seq(out)
+    }.taskValue
   )
 
 // --- compiler-api: what user code shares with the compiler --------------------
@@ -153,6 +161,20 @@ lazy val roku = (project in file("roku"))
       // backends are compared on identical pixels.
       val images = (ThisBuild / baseDirectory).value / "assets" / "images"
       if (images.isDirectory) IO.copyDirectory(images, outDir / "images")
+      // The channel's own icons and splash screens (roku/images, from tools/make-icons.py), declared in the manifest.
+      val channelImages = baseDirectory.value / "images"
+      if (channelImages.isDirectory) {
+        IO.copyDirectory(channelImages, outDir / "images")
+        val manifest = outDir / "manifest"
+        IO.write(manifest, IO.read(manifest) +
+          """mm_icon_focus_fhd=pkg:/images/icon-fhd.png
+            |mm_icon_focus_hd=pkg:/images/icon-hd.png
+            |mm_icon_focus_sd=pkg:/images/icon-sd.png
+            |splash_screen_fhd=pkg:/images/splash-fhd.png
+            |splash_screen_hd=pkg:/images/splash-hd.png
+            |splash_screen_sd=pkg:/images/splash-sd.png
+            |""".stripMargin)
+      }
       // Bundled faces, loaded by SceneGraph Font nodes from pkg:/fonts/.
       val fonts = (ThisBuild / baseDirectory).value / "assets" / "fonts"
       (fonts * "*.ttf").get().foreach(f => IO.copyFile(f, outDir / "fonts" / f.getName))
@@ -210,6 +232,7 @@ lazy val tvos = (project in file("tvos"))
       IO.copyFile(swift / "runtime" / "UniversalRuntime.swift", outDir / "UniversalRuntime.swift")
       IO.copyFile(swift / "app" / "main.swift", outDir / "main.swift")
       IO.copyFile(swift / "app" / "Info.plist", outDir / "Info.plist")
+      IO.copyDirectory(swift / "app" / "Assets.xcassets", outDir / "Assets.xcassets")   // app icons (tools/make-icons.py)
       val assets = (ThisBuild / baseDirectory).value / "assets"
       IO.copyDirectory(assets / "images", outDir / "images")
       (assets / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, outDir / "fonts" / f.getName))
@@ -318,10 +341,13 @@ lazy val android = (project in file("android"))
       val assets = work / "assets"
       IO.copyDirectory(buildRoot / "assets" / "images", assets / "images")
       (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
+      // Resources: the launcher icon and TV banner (android/res, from tools/make-icons.py), compiled then linked.
+      val resources = work / "res.zip"
+      exec(Seq((tools / "aapt2").toString, "compile", "--dir", (baseDirectory.value / "res").toString, "-o", resources.toString))
       val linked = work / "linked.apk"
       exec(Seq((tools / "aapt2").toString, "link", "-o", linked.toString,
         "--manifest", (baseDirectory.value / "AndroidManifest.xml").toString, "-I", androidJar.toString,
-        "-A", assets.toString, "--min-sdk-version", androidMinSdk, "--target-sdk-version", "37",
+        "-A", assets.toString, resources.toString, "--min-sdk-version", androidMinSdk, "--target-sdk-version", "37",
         "--version-code", "1", "--version-name", version.value))
 
       // aapt2 cannot add dex files: copy its APK entry for entry (stored entries stay stored) and add them.
@@ -393,6 +419,40 @@ lazy val webcheck = (project in file("webcheck"))
     }
   )
 
+// --- checks: the helpers behind tools/check.sh and the device scripts -------
+// One small Scala CLI (everyui.checks.Checks): frame extraction and comparison,
+// the font table check, frame-rate floors, the Roku gap meter, sideloading and
+// console capture, waiting on an Android device. Scripts run it from its staged
+// classpath, `checks/out/classpath.txt`.
+@transient val checksClasspath = taskKey[File]("Compile the checks CLI and write its runtime classpath to checks/out/classpath.txt")
+
+lazy val checks = (project in file("checks"))
+  .settings(
+    name := "everyui-checks",
+    publish / skip := true,
+    Compile / mainClass := Some("everyui.checks.Checks"),
+    checksClasspath := {
+      val conv = fileConverter.value
+      val cp = (Runtime / fullClasspath).value.map(e => conv.toPath(e.data).toAbsolutePath.toString)
+      val out = baseDirectory.value / "out" / "classpath.txt"
+      IO.write(out, cp.mkString(java.io.File.pathSeparator))
+      out
+    }
+  )
+
+// --- icons: every platform's icon from the logo (project/Icons.scala) ---------
+// A bare setting in sbt 2 is ThisBuild-scoped, and aggregation would then run it in every project at once
+// (racing on the same files), so the task lives on the root project only.
+@transient val makeIcons = taskKey[Unit]("Render every platform's icons from work/logo/svg (needs rsvg-convert)")
+
 lazy val root = (project in file("."))
-  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, server)
-  .settings(name := "everyui", publish / skip := true)
+  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server)
+  .settings(
+    name := "everyui",
+    publish / skip := true,
+    makeIcons := {
+      val log = streams.value.log
+      Icons.make((ThisBuild / baseDirectory).value, m => log.info(m))
+    },
+    makeIcons / aggregate := false
+  )
