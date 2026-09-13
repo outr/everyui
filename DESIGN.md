@@ -850,6 +850,7 @@ keeps every log in `target/check/`:
 | desktop: the same frame in JavaFX under Xvfb, vs the same golden | ✓ | ✓ |
 | web (`--live`): 60s live in a headful Chrome on a virtual 1920x1080 display (RoboBrowser), median ≥ 59.5 fps and minimum ≥ 58.5 | | |
 | Android (`--android`): the APK builds; the same frame on an emulator, vs the same golden | | |
+| tvOS (`--tvos`): the same frame on the Apple TV simulator (built on the Mac by tools/tvos-run.sh), and 60 s live | | |
 | Roku: `tools/roku-acceptance.sh` | | ✓ |
 | Roku: the same frozen frame vs the same golden | | ✓ |
 | Roku: 60s live, median ≥ 59.5 fps and minimum ≥ 58.5 | | ✓ |
@@ -933,7 +934,110 @@ and Android (83–106 for "BackIn Example").
 - `Platform.frozen()` joined the seam: the desktop saves its screenshot and exits
   there; the other backends do nothing.
 
+## tvOS — the Swift spike ✅ (2026-09-13)
+
+**The question.** Native on Apple TV means no JVM: nothing compiles Scala for tvOS
+today (RoboVM has no tvOS target; Multi-OS Engine's is a stub; Scala Native is
+unofficial there, with open GC crashes on iOS; Kotlin/Native would add a third
+toolchain). The candidate that fits the project is the one we already have for
+Roku: **our own TASTy compiler, printing Swift**. The risk was never TASTy
+coverage — Roku proved the feature set — but two things Swift adds: the emitted
+code must type-check, and Swift's reference counting never frees a cycle, while
+reactify's dependency graph (a `Val` holds its references, each holds the
+`Val`'s reaction) is cyclic by design.
+
+**The spike.** `compiler/.../SwiftEmitter.scala` is [[RokuEmitter]] with the syntax
+swapped — the same object model (vtable slots, `<Type>__init` chain, singletons),
+defunctionalised closures, A-normalisation, if-chain pattern matching and stdlib
+shims, printed as Swift over one dynamic value type `V`
+(`swift/runtime/ScalaRuntime.swift`, the BrightScript runtime's twin). It is
+produced by `tools/make-swift-emitter.py` from the Roku source (every template
+replaced exactly once, so the two cannot drift silently). Type-erased on
+purpose: instance fields are `this["name"]`, a method slot is called
+`this["m"](this, …)`, every function is `throws -> V`. `--target=swift` on the
+compiler; `sbt reactiveTest/emitSwift`; `tools/swift-spike.sh` ships the three
+Swift files to the Mac (`ssh mbp`, Xcode 26.3), builds with `swiftc`, and runs
+them.
+
+| | result |
+|---|---|
+| reactify's acceptance suite, macOS (arm64) | **65 lines identical** to the JVM golden, 10 ms |
+| the same, **Apple TV 4K simulator, tvOS 26.2** (`simctl spawn`) | **65 lines identical**, 3 ms |
+| memory, reference counting alone | leaks **386 instances per suite run** (77,200 over 200 runs) — the cycles, as predicted |
+| one cycle collection after those 200 runs | frees **all 77,200**, growth back to 0, in 68 ms |
+| a collection after every run | growth **0**, peak **0**; 200 runs 555 ms vs 510 ms uncollected |
+
+**Why the collector works.** Every reference the emitted code holds lives in an
+`Obj`'s fields or an `Arr`'s items — nothing hides in a Swift closure context — so
+the object graph is fully visible. `rtCollectCycles(roots)` marks from the global
+table (where every singleton and cached object val lives) and clears the fields
+of every unmarked instance, breaking its cycles; reference counting then frees
+them. It runs only where no emitted code is on the stack (between frames, in an
+app), because a Swift local is not a root. That is a mark phase over the live
+graph, so its cost scales with the app's object count, not the garbage's.
+
+**What the spike cost.** ~90 template replacements over the Roku emitter, a
+650-line Swift runtime, and four fixes found by the Swift compiler and the
+runs: `throw` is a Swift keyword (the emitter's `throw` detection); `-target`
+belongs to swiftc, not xcrun; the probe must start from a fresh state (the
+suite's last test leaves a transaction open on purpose); and case objects need
+initialising before any code reads them (`rtInitModules`, now emitted). Nothing
+in `RokuEmitter` changed but the trait it extends; `tools/check.sh` still passes.
+
+**What it does not show.** No UIKit yet — this is reactify and the suite, not a
+frame. Types are erased, so Swift-side interop (a `UILabel` from Scala) will
+need typed facades at the boundary. And the collector's cost on a real UI graph
+(41 components, ~130 bound properties, per-frame updates) is unmeasured.
+
+**Decision it enables.** Scala → Swift is viable for tvOS: correctness proven on
+the simulator, the cycle question answered. The next step is the real thing —
+split the compiler into shared lowering + two printers (Roku green throughout),
+then a UIKit `RenderNode` held to the shared golden and 60 fps on the Apple TV
+simulator, with `rtCollectCycles` between frames.
+
+## tvOS — AnimationExample on the Apple TV simulator ✅ (2026-09-13)
+
+The spike became the backend the same day. `tvos/` is the Roku backend's twin:
+the same 36 `@native` facade names (`tvos/.../facades.scala`), the same
+`RenderNode` (copied, with the bundle in place of `pkg:/`), implemented by
+`swift/runtime/UniversalRuntime.swift` over UIKit — a `UILabel` for text, a
+`UIImageView` for an image, a `UIView` for a container, every view placed by
+its own top-left and size from a side table (so a rotation `transform`, which
+makes `frame` meaningless, never disturbs it) with rotation about the centre.
+`swift/app/main.swift` is the UIApplication shell; there is no Xcode project —
+`tools/tvos-run.sh` builds `UniversalUI.app` with `swiftc` on the Mac, signs it
+ad hoc, installs it with `simctl` and reads its console.
+
+| | result |
+|---|---|
+| emitted program (shared layer + reactify) | 8,577 lines of Swift, 0 todos, compiles |
+| frozen frame vs the shared golden | **41 components match, largest difference 0.096 px** |
+| live, Apple TV 4K simulator at 1080p | **60.0 fps** (26 one-second samples, median 60.0, minimum 60.0) |
+| the cycle collector, every frame | 4–5 ms per frame over ~8,400 live instances |
+
+So youi's AnimationExample now produces the same frame on **five** backends:
+web, JavaFX, Android, Roku (pending re-verification) and tvOS — the last one
+compiled from Scala to Swift by universal-ui's own compiler.
+
+What the simulator taught: `ui.size.width @= 1920` reaches `uiSetWidth(root)`
+before the height is read, so a runtime that resized the root view left it
+1920x0 — the screen height read 0 and the transparent window showed the tvOS
+home screen behind it (the root's geometry is the screen's, never the model's);
+a `UILabel` with no explicit size must take its natural size, as a `div` or a
+SceneGraph `Label` does, or it draws nothing.
+
+**The collector's cost is the next thing to fix.** 4–5 ms of a 16.7 ms frame,
+every frame, is a mark over the whole live graph. Options, in order: collect
+every N frames or when allocations since the last pass exceed a threshold (the
+example's steady state allocates little); a generational registry (mark only
+objects created since the last pass plus their reachable set); or reactify's
+Roku-era fast paths to allocate less per frame. Measured before it is chosen.
+
 ## IMMEDIATE NEXT STEP
+
+**0. tvOS is real: keep it green.** `tools/check.sh --tvos` runs the frame and
+frame-rate checks on the simulator via the Mac. Next: bring the collector's
+per-frame cost down (above), then a physical Apple TV.
 
 **1. Verify the Roku against the shared golden.** The Roku changes — rotation
 sign, `uiTextWidth`, the shared line height, the icon built through `setFont` —
@@ -970,6 +1074,18 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
 - `shared/app/Main.scala` picks the demo: `"animation"` (youi's example app
   running youi's AnimationExample), `"hello"` (the seam proof + FrameProbe),
   `"bench"` (ReactifyBench), `"easings"` (the numeric curve dump).
+- **The Swift spike:** `tools/swift-spike.sh` — emits reactify's suite as Swift
+  (`sbt reactiveTest/emitSwift` → `reactive-test/out-swift/App.swift`), rsyncs it
+  with `swift/runtime/ScalaRuntime.swift` and `swift/spike/main.swift` to the Mac
+  (`ssh mbp`, `~/universal-ui-spike/`), builds for macOS and the tvOS simulator,
+  runs both against `reactive-test/expected-output.txt`, then the memory probe.
+  `MAC`, `MAC_DIR`, `TVOS_DEVICE` override the defaults. `SwiftEmitter.scala` is
+  GENERATED: edit `RokuEmitter.scala` or `tools/make-swift-emitter.py`, then rerun
+  `python3 tools/make-swift-emitter.py` from the repo root.
+- **tvOS:** `tools/tvos-run.sh` (live, 30 s, frame rate), `--freeze` (the frame vs the
+  golden), `--show` (opens the Simulator window on the Mac and leaves the app
+  running). `sbt tvos/emitSwift` → `tvos/out-swift/` (App.swift + the two runtimes,
+  main.swift, Info.plist, assets). The Mac side lives in `~/universal-ui-spike/app`.
 - **Run every check:** `tools/check.sh` (offline: JVM, Roku emit, web, desktop),
   `--android` (adds an emulator), `ROKU_PASS=<password> tools/check.sh --device`
   (adds the Roku), `--update` to rewrite the golden from the web's frame.

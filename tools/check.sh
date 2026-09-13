@@ -10,6 +10,8 @@
 #                              1920x1080 display via RoboBrowser — headless Chrome throttles requestAnimationFrame
 #   tools/check.sh --android   also on Android: build the APK, run it on an emulator, compare the same frame
 #   tools/check.sh --device    also on the Roku: reactify acceptance, the same frame, and the live frame rate
+#   tools/check.sh --tvos      also on the Apple TV simulator (via the Mac, ssh mbp): the same frame, and the live
+#                              frame rate — tools/tvos-run.sh
 #   tools/check.sh --update    rewrite the golden from the web's frame, after an intended change
 #
 # Every backend is compared with the ONE golden: identical geometry on every platform is the point.
@@ -23,12 +25,14 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
 ANDROID=0
+TVOS=0
 LIVE=0
 DEVICE=0
 UPDATE=0
 for arg in "$@"; do
   case "$arg" in
     --android) ANDROID=1 ;;
+    --tvos) TVOS=1 ;;
     --live) LIVE=1 ;;
     --device) DEVICE=1 ;;
     --update) UPDATE=1 ;;
@@ -187,6 +191,11 @@ android_frame() {
   frame android "$LOGS/android-console.log"
 }
 
+# ── tvOS ─────────────────────────────────────────────────────────────────────
+
+tvos_frame() { tools/tvos-run.sh --freeze; }
+tvos_fps() { LIVE_SECONDS="${FPS_SECONDS:-60}" tools/tvos-run.sh; }
+
 # ── Roku ─────────────────────────────────────────────────────────────────────
 
 acceptance() { tools/roku-acceptance.sh; }
@@ -247,6 +256,11 @@ if [ $ANDROID = 1 ]; then
   else
     skip "Android: AnimationExample frame" "APK did not build"
   fi
+fi
+
+if [ $TVOS = 1 ]; then
+  run "tvOS: AnimationExample frame (simulator)" tvos-frame.log tvos_frame
+  run "tvOS: live frame rate (simulator)" tvos-fps.log tvos_fps
 fi
 
 if [ $DEVICE = 1 ]; then

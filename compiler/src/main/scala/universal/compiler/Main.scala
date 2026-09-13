@@ -6,7 +6,7 @@ import scala.jdk.CollectionConverters.*
 
 /** CLI entry for universal-ui's Roku compiler (driven by the build's `emitRoku`).
   *
-  *   universal.compiler.Main [--strict] [--library=<classes-dir-or-jar>]...
+  *   universal.compiler.Main [--strict] [--target=roku|swift] [--library=<classes-dir-or-jar>]...
   *     <classes-dir> <classpath> <out-dir> [<source-root> [<channel-title>]]
   *
   *  - `<classes-dir>`: the TASTy root of the program to emit.
@@ -19,18 +19,21 @@ import scala.jdk.CollectionConverters.*
   *    reaches the Roku.
   *  - `--strict`: exit non-zero if anything could not be translated, listing
   *    each gap at its Scala source.
+  *  - `--target`: `roku` (the default, a channel) or `swift` (the Swift spike: one `App.swift` over
+  *    `swift/runtime/ScalaRuntime.swift`).
   */
 object Main:
   def main(args: Array[String]): Unit =
     val (flags, positional) = args.toList.partition(_.startsWith("--"))
     val strict = flags.contains("--strict")
     val libraries = flags.collect { case f if f.startsWith("--library=") => f.stripPrefix("--library=") }
-    val unknown = flags.filterNot(f => f == "--strict" || f.startsWith("--library="))
+    val target = flags.collectFirst { case f if f.startsWith("--target=") => f.stripPrefix("--target=") }.getOrElse("roku")
+    val unknown = flags.filterNot(f => f == "--strict" || f.startsWith("--library=") || f.startsWith("--target="))
 
     if unknown.nonEmpty || positional.length < 3 || positional.length > 5 then
       unknown.foreach(f => System.err.println(s"unknown flag: $f"))
       System.err.println(
-        "usage: universal.compiler.Main [--strict] [--library=<classes-dir-or-jar>]... " +
+        "usage: universal.compiler.Main [--strict] [--target=roku|swift] [--library=<classes-dir-or-jar>]... " +
           "<classes-dir> <classpath> <out-dir> [<source-root> [<channel-title>]]"
       )
       System.exit(2)
@@ -52,14 +55,16 @@ object Main:
     if libraries.nonEmpty then
       println(s"Compiling through ${libJars.size} library jar(s) and ${libDirs.size} project dir(s)")
 
-    val emitter = new RokuEmitter(outDir, sourceRoot, title)
+    val emitter: Emitter =
+      if target == "swift" then new SwiftEmitter(outDir, sourceRoot, title)
+      else new RokuEmitter(outDir, sourceRoot, title)
     val ok = TastyInspector.inspectAllTastyFiles(tastyFiles, libJars.map(_.toString), classpath)(emitter)
     if !ok then
       System.err.println("TASTy inspection failed")
       System.exit(1)
 
     emitter.writeOutput()
-    println(s"Wrote Roku channel to ${outDir.toAbsolutePath}")
+    println(s"Wrote $target output to ${outDir.toAbsolutePath}")
 
     if strict && emitter.unsupported.nonEmpty then
       System.err.println(s"--strict: ${emitter.unsupported.size} unsupported construct(s):")

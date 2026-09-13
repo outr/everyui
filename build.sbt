@@ -52,6 +52,32 @@ def emitRokuTask(outName: String, title: String, libraries: Def.Initialize[Task[
   outDir
 }
 
+/** The Swift spike: the same program and libraries, emitted as `<out>/App.swift` for
+  * `swift/runtime/ScalaRuntime.swift` (see tools/swift-spike.sh). */
+@transient val emitSwift = taskKey[File]("Compile this project and emit it, with the libraries it emits with, as Swift")
+
+def emitSwiftTask(outName: String, libraries: Def.Initialize[Task[Seq[File]]]) = Def.task {
+  val log = streams.value.log
+  (Compile / compile).value
+  val conv = fileConverter.value
+  val sep = java.io.File.pathSeparator
+  val classes = (Compile / classDirectory).value
+  val cp = (Compile / fullClasspath).value
+    .map(e => conv.toPath(e.data).toAbsolutePath.toString).mkString(sep)
+  val compilerCp = (compiler / Compile / fullClasspath).value
+    .map(e => conv.toPath(e.data).toAbsolutePath.toString).mkString(sep)
+  val libArgs = libraries.value.map(f => s"--library=${f.getAbsolutePath}")
+  val outDir = baseDirectory.value / outName
+  IO.delete(outDir); IO.createDirectory(outDir)
+  log.info(s"emitSwift: emitting Swift into $outDir")
+  val rc = sys.process.Process(
+    Seq("java", "-cp", compilerCp, "universal.compiler.Main", "--target=swift") ++ libArgs ++
+      Seq(classes.getAbsolutePath, cp, outDir.getAbsolutePath, baseDirectory.value.getAbsolutePath, "App")
+  ).!
+  if (rc != 0) sys.error(s"universal.compiler.Main exited $rc")
+  outDir
+}
+
 /** reactify's classes, compiled through with every channel that uses it. */
 lazy val reactiveLibrary = Def.task {
   (reactive / Compile / compile).value
@@ -85,7 +111,8 @@ lazy val reactiveTest = (project in file("reactive-test"))
     publish / skip := true,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / run / fork := true,
-    emitRoku := emitRokuTask("out-roku", "ReactifyTest", reactiveLibrary).value
+    emitRoku := emitRokuTask("out-roku", "ReactifyTest", reactiveLibrary).value,
+    emitSwift := emitSwiftTask("out-swift", reactiveLibrary).value
   )
 
 // ─── the render-node seam: one shared UI layer, a backend per platform ──────
@@ -162,6 +189,32 @@ lazy val server = (project in file("server"))
     run / baseDirectory := (ThisBuild / baseDirectory).value,
     Compile / run / fork := true,
     run / connectInput := true
+  )
+
+// --- tvos: the UIKit backend, through the Swift compiler ----------------------
+// The Roku backend's twin: the same @native facade names, implemented by
+// swift/runtime/UniversalRuntime.swift over UIKit. `tvos/emitSwift` emits the
+// program with reactify compiled through; tools/tvos-run.sh builds the app on
+// the Mac and runs it on the Apple TV simulator.
+lazy val tvos = (project in file("tvos"))
+  .dependsOn(reactive, compilerApi)
+  .settings(
+    name := "universal-tvos",
+    publish / skip := true,
+    Compile / scalacOptions ++= Seq("-Yretain-trees"),
+    Compile / unmanagedSourceDirectories += sharedSources,
+    emitSwift := {
+      val outDir = emitSwiftTask("out-swift", reactiveLibrary).value
+      val swift = (ThisBuild / baseDirectory).value / "swift"
+      IO.copyFile(swift / "runtime" / "ScalaRuntime.swift", outDir / "ScalaRuntime.swift")
+      IO.copyFile(swift / "runtime" / "UniversalRuntime.swift", outDir / "UniversalRuntime.swift")
+      IO.copyFile(swift / "app" / "main.swift", outDir / "main.swift")
+      IO.copyFile(swift / "app" / "Info.plist", outDir / "Info.plist")
+      val assets = (ThisBuild / baseDirectory).value / "assets"
+      IO.copyDirectory(assets / "images", outDir / "images")
+      (assets / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, outDir / "fonts" / f.getName))
+      outDir
+    }
   )
 
 // --- desktop: the JavaFX backend ---------------------------------------------
@@ -331,5 +384,5 @@ lazy val webcheck = (project in file("webcheck"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, desktop, android, webcheck, server)
+  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, server)
   .settings(name := "universal-ui", publish / skip := true)

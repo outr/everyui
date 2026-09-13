@@ -8,6 +8,7 @@ project/project/
 
 # emitted channels and bundles (regenerate with emitRoku / scala-cli)
 out-roku/
+out-swift/
 out-js/
 out-apk/
 desktop/out/

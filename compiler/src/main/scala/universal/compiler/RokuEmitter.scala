@@ -27,7 +27,7 @@ class RokuEmitter(
   outDir: Path,
   sourceRoot: Option[Path] = None,
   projectName: String = "app"
-) extends Inspector:
+) extends Emitter:
 
   private val out      = new StringBuilder   // emitted app BrightScript
   private val closures = new StringBuilder    // defunctionalised lambda bodies

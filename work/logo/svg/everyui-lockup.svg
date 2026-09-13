@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1254 1254" width="1254" height="1254">
+  <defs>
+    <linearGradient id="spine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"    stop-color="#3FB4FF"/>
+      <stop offset="0.33" stop-color="#262B85"/>
+      <stop offset="0.50" stop-color="#3A3FB8"/>
+      <stop offset="0.62" stop-color="#7A46E8"/>
+      <stop offset="0.80" stop-color="#C24FE0"/>
+      <stop offset="1"    stop-color="#FF5DA5"/>
+    </linearGradient>
+    <linearGradient id="top" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"    stop-color="#3FA8FF"/>
+      <stop offset="0.35" stop-color="#4DD6FF"/>
+      <stop offset="1"    stop-color="#6BFFD2"/>
+    </linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"    stop-color="#4650DD"/>
+      <stop offset="0.35" stop-color="#7A7CFF"/>
+      <stop offset="1"    stop-color="#D062FF"/>
+    </linearGradient>
+    <linearGradient id="bot" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"    stop-color="#B34BFF"/>
+      <stop offset="0.28" stop-color="#FF5DA5"/>
+      <stop offset="0.65" stop-color="#FF8A5C"/>
+      <stop offset="1"    stop-color="#FFD04A"/>
+    </linearGradient>
+    <linearGradient id="tuck" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <!-- highlight: applied to the ribbon path itself, so it never spills onto the background -->
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"    stop-color="#fff" stop-opacity="0.16"/>
+      <stop offset="0.3"  stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="drop" x="-15%" y="-25%" width="130%" height="170%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="12" result="s"/>
+      <feComponentTransfer in="s" result="s2"><feFuncA type="linear" slope="0.6"/></feComponentTransfer>
+      <feMerge><feMergeNode in="s2"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <defs>
+    <linearGradient id="ui" gradientUnits="userSpaceOnUse" x1="800" y1="0" x2="1020" y2="0">
+      <stop offset="0"   stop-color="#3FB4FF"/>
+      <stop offset="0.45" stop-color="#6A7CFF"/>
+      <stop offset="0.8" stop-color="#C55CFF"/>
+      <stop offset="1"   stop-color="#FF5DA5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1254" height="1254" fill="#0A0A0C"/>
+  <g transform="translate(428 232) scale(0.64)">
+  <g id="mark">
+    <path fill="url(#spine)" d="M0,210 C0,94 94,0 210,0 L200,0 L200,700 L210,700 C94,700 0,606 0,490 Z"/>
+    <!-- bottom ribbon: shallow diagonal across the spine, small fillet into a straight-topped bar -->
+    <g filter="url(#drop)">
+      <path id="botPath" fill="url(#bot)" d="M0,545 C60,515 130,465 200,435 C200,505 260,560 330,560 L570,560 C610,560 640,590 640,630 L640,665 C640,684 624,700 605,700 L210,700 C94,700 0,606 0,490 Z"/>
+    </g>
+    <use href="#botPath" fill="url(#sheen)"/>
+    <!-- middle bar, tucked into the crease -->
+    <g filter="url(#drop)">
+      <path fill="url(#mid)" d="M200,280 L505,280 C546,280 580,314 580,355 C580,396 546,430 505,430 L200,430 Z"/>
+    </g>
+    <rect x="200" y="280" width="150" height="150" fill="url(#tuck)"/>
+    <!-- top ribbon: straight underside, small fillet into the spine, shallow diagonal crease -->
+    <g filter="url(#drop)">
+      <path id="topPath" fill="url(#top)" d="M0,210 C0,94 94,0 210,0 L605,0 C624,0 640,16 640,35 L640,70 C640,110 610,140 570,140 L330,140 C260,140 200,195 200,265 C130,295 60,265 0,235 Z"/>
+    </g>
+    <use href="#topPath" fill="url(#sheen)"/>
+  </g>
+  </g>
+  <text x="627" y="900" text-anchor="middle" font-family="Adwaita Sans, Inter, Fira Sans, sans-serif" font-weight="800" font-size="220" letter-spacing="-5" fill="#FFFFFF">Every<tspan fill="url(#ui)">UI</tspan></text>
+  <text x="627" y="996" text-anchor="middle" font-family="Adwaita Sans, Inter, Fira Sans, sans-serif" font-weight="500" font-size="34" letter-spacing="9" fill="#B9BCC6">NATIVE UI FOR EVERY DEVICE</text>
+</svg>
