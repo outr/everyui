@@ -44,9 +44,6 @@ class Component(val node: RenderNode):
 
   lazy val event: Events = new Events(this)
   /** Whether the focus can land here: by a click, `focus()`, or the arrows from a neighbour (everyui.focus.Focus). */
-  lazy val focusable: Var[Boolean] =
-    val v = Var(false)
-    v.attach(f => if f then Focus.register(this) else Focus.unregister(this))
-    v
+  lazy val focusable: Var[Boolean] = Var(false)
   lazy val focused: Val[Boolean] = Val(Focus.focused().exists(_ eq this))
   def focus(): Unit = Focus.focused @= Some(this)

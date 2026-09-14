@@ -1231,6 +1231,9 @@ youi's `Events` over the render seam, and a focus model the platforms do not sha
   activity's `dispatchKeyEvent`. Roku: no pointer; `AppScene.onKeyEvent` → the generated runtime's `RtKeyEvent`
   → the hook `uiOnKey` set. tvOS: no pointer; `pressesBegan/Ended` → `uiKeyEvent` → the hook.
 - `Component.parent` (kept by `ContainerFeature`) and `absoluteLeft/Top`, for the focus geometry.
+- The key hook answers whether the focus layer took the key, so the platform leaves it be (the browser does not
+  scroll on an arrow that moved the focus). With nothing focused, the first arrow focuses the first focusable
+  component; a screen that was swapped out keeps its components, so only components under `ui` count.
 
 `demo=input` (`everyui.app.InputDemo`): three focusable boxes; with `probe=1` it drives `Focus` itself and prints
 `[ui] input ok focus=a focus=b click=b focus=a`. tools/check.sh runs the probe on the web, the desktop, Android and
