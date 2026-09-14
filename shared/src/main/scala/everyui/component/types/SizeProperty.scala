@@ -6,6 +6,8 @@ import reactify.{Val, Var}
   * every value is written out to the node. */
 class SizeProperty(measured: Val[Double], write: Double => Unit) extends Var[Double](measured()) {
   private var explicitlySet = false
+  /** Whether something has set this, rather than it following the measured size. */
+  def explicit: Boolean = explicitlySet
 
   attach { d =>
     if (explicitlySet) write(d)

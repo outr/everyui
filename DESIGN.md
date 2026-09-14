@@ -1298,6 +1298,31 @@ into `shared/` — every backend compiles it, the Roku channel emits it with no 
 DataWrangler's `ui/` is now a Scala.js module of its own sbt build (sbt 1.12 has sbt-scalajs; EveryUI's sbt 2
 build does not), taking EveryUI's and reactify's sources as source directories until they are published.
 `sbt ui/webBundle` writes `ui/out`, which `docker/stage.sh` ships.
+
+### The second pass: what the layouts carry (2026-09-14)
+
+youi's layouts were already here; what was missing around them was what made the dashboard verbose:
+
+- A container given a layout sizes itself: its height always, its width when the layout `fitsWidth()` (a row,
+  a column; not a flow or a grid, which wrap to the width they are given). `padding` keeps the children in from
+  the edges and counts toward the content extents. `Row(spacing, middle, padding)(children*)` and
+  `Column(spacing, padding)(children*)` build the common cases in one call; `GridLayout` joins the three.
+- `children.bind(values)(render)`: the children follow a reactive list of *data*, rendered again when what it
+  reads changes. Data, not components: a component built inside the tracked expression makes its own
+  measurements dependencies, and the list rebuilds itself forever (the first port did exactly that, and the
+  page's script thread never came back).
+- `TextView.optional(value)`: a line that is out of the way, with no height, while there is nothing to say.
+- A screen declares a `pattern` (`/run/:id`) and reads `parameter("id")`; the manager's path matching and the
+  query fall out of it.
+- `demo=widgets` (`everyui.app.WidgetsDemo`) builds every widget on one page and logs its size — the desktop's
+  stack dump is how a stuck layout is found.
+- The emitter prunes a module's unreferenced lazy vals (the icon table is 2,231 of them; the Roku channel
+  carries the three the demo names). BrightScript names are case-insensitive, so the icon generator drops a
+  name that repeats in a different case.
+- One class per file: the layouts, the button family, the events, the modal, the bar, the table column, the
+  easings, the font face, the derived position each have their own.
+
+The dashboard is at 786 lines, with no size bindings, no path parsing, and two clear-and-refill blocks left.
 ## The network module — Spice as the core, on every backend (2026-09-13)
 
 The first release replaces Sart in DataWrangler's dashboard, and DataWrangler

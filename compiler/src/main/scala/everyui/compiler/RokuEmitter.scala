@@ -127,6 +127,9 @@ class RokuEmitter(
     var pruning = false
     def keepClass(s: Symbol): Boolean = !pruning || reachableClasses.contains(s)
     def keepMember(s: Symbol): Boolean = !pruning || reachableMembers.contains(s)
+    /** A module's lazy val is emitted only when something names it (an icon table has thousands); a class's
+      * always, since a trait slot may reach it. */
+    def liveLazy(s: Symbol): Boolean = !s.owner.flags.is(Flags.Module) || keepMember(s)
     val aaIfaceMethods = Set("addreplace", "lookup", "lookupci", "doesexist", "delete", "clear",
       "keys", "items", "setmodecasesensitive", "append", "count", "reset", "next", "isnext", "isempty")
     val primitiveFqns = Set("scala.Int", "scala.Long", "scala.Double", "scala.Float", "scala.Short",
@@ -2186,7 +2189,7 @@ class RokuEmitter(
           out.append(s"function ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
           out.append(emitBody(rhs, true)).append("\n")
           out.append("end function\n\n")
-        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty =>
+        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
           out.append(s"function ${base}_${brSafe(name)}() as dynamic\n")
           unwrap(rhs) match {
@@ -2297,7 +2300,7 @@ class RokuEmitter(
           case dd: DefDef if emittableMethod(dd) && !dd.symbol.flags.is(Flags.Private) =>
             val sl = slotName(dd.symbol)
             if (!slots.contains(sl)) slots(sl) = modelImplName(dd.symbol)
-          case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Private) && !vd.symbol.flags.is(Flags.Module) =>
+          case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Private) && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
             val sl = slotName(vd.symbol)
             if (!slots.contains(sl)) slots(sl) = modelImplName(vd.symbol)
           case vd: ValDef if isVirtualField(vd.symbol) =>
@@ -2326,7 +2329,7 @@ class RokuEmitter(
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
-        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) =>
+        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
           val k = brSafe(vd.name)
           sb.append(s"function ${modelImplName(vd.symbol)}(self as object) as dynamic\n")
           sb.append(s"  cached = self[${brStr("__lz_" + k)}]\n")

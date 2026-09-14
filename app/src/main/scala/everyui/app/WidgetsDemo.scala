@@ -1,0 +1,48 @@
+package everyui.app
+
+import everyui.Color
+import everyui.component.*
+import everyui.font.MaterialIcon
+import everyui.layout.FlowLayout
+import everyui.render.Platform
+import everyui.theme.Theme
+import everyui.ui
+import reactify.*
+
+/** The widget layer, all of it on one page: rows, columns, padding, a table, bars, a progress bar, a checkbox, a
+  * chip, choices, buttons, and a dialog. Logs `widgets ok` with the page's size once built, so a platform that
+  * cannot build it says so. */
+object WidgetsDemo {
+  def run(): Unit = {
+    ui.backgroundColor := Theme.background()
+    val checked = new Checkbox("Optimise", initial = false, Some("Rebuilds the search indexes; slow, so off by default."))
+    val progress = ProgressBar(0.6, 240.0)
+    val dialog = new Dialog("A dialog", 400.0)
+    dialog.body.children ++= List(TextView.wrapped("Some words that are long enough to wrap onto a second line inside the dialog's body.", 400.0), new Checkbox("A choice", initial = true))
+    dialog.buttons.children ++= List(new Button("Cancel", () => dialog.close()), new Button("Do it", () => dialog.close(), primary = true))
+    val table = new Table[(String, Int)](List(
+      TableColumn("Name", 200.0, r => TextView(r._1)),
+      TableColumn("Count", 120.0, r => TextView(r._2.toString)),
+      TableColumn("Status", 130.0, r => new Chip(if (r._2 > 1) "many" else "one", Color.fromHex("2e7d32")))))
+    table.rows @= List(("alpha", 1), ("beta", 2), ("gamma", 3))
+    val page = Column(16.0, padding = 16.0)(
+      Row(8.0, middle = true)(TextView("Widgets", 22.0), new Chip("live", Color.fromHex("1565c0")), new IconButton(MaterialIcon.Home, "Home")),
+      Row(8.0)(new Choice("Name", true, () => ()), new Choice("Last run", false, () => ()), new Choice("Failures", false, () => ())),
+      Row(12.0, middle = true)(new Button("Open dialog", () => dialog.show(), primary = true), new Button("Quiet"), progress),
+      checked,
+      new Bars(List(Bar(0.2, Color.fromHex("2e7d32"), "a"), Bar(1.0, Color.fromHex("c62828"), "b"), Bar(0.5, Color.fromHex("1565c0"), "c"))),
+      table,
+      new Container {
+        layout @= Some(FlowLayout(8.0, 8.0))
+        size.width @= 500.0
+        children ++= (1 to 7).map(i => Column(4.0, padding = 8.0)(TextView("tile " + i.toString, 11.0, Theme.muted()), TextView((i * 137).toString, 12.0)))
+      })
+    ui.children += page
+    Platform.log("widgets ok " + page.size.width().toInt.toString + "x" + page.size.height().toInt.toString + " rows=" + table.size.height().toInt.toString)
+    if (Platform.launchArg("probe") == "1") {
+      dialog.show()
+      Platform.log("dialog " + dialog.size.width().toInt.toString + "x" + dialog.size.height().toInt.toString)
+      dialog.close()
+    }
+  }
+}

@@ -1573,7 +1573,7 @@ class SwiftEmitter(
           out.append(s"function ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
           out.append(emitBody(rhs, true)).append("\n")
           out.append("end function\n\n")
-        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty =>
+        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
           out.append(s"function ${base}_${brSafe(name)}() as dynamic\n")
           unwrap(rhs) match {
@@ -1613,7 +1613,7 @@ class SwiftEmitter(
           out.append(s"func ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
           out.append(emitBody(rhs, true)).append("\n")
           out.append(s"  return $NULL\n}\n\n")
-        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty =>
+        case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
           out.append(s"func ${base}_${brSafe(name)}() throws -> V {\n")
           unwrap(rhs) match {
@@ -1726,7 +1726,7 @@ class SwiftEmitter(
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
-        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) =>
+        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
           val k = brSafe(vd.name)
           sb.append(s"function ${modelImplName(vd.symbol)}(self as object) as dynamic\n")
           sb.append(s"  cached = self[${brStr("__lz_" + k)}]\n")
@@ -1778,7 +1778,7 @@ class SwiftEmitter(
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append(s"  return $NULL\n}\n\n")
-        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) =>
+        case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
           val k = brSafe(vd.name)
           sb.append(s"func ${modelImplName(vd.symbol)}(_ this: V) throws -> V {\n")
           sb.append(s"  cached = ${field("this", "__lz_" + k)}\n")

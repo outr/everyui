@@ -15,9 +15,10 @@ import java.nio.file.{Files, Paths}
   val entries = Files.readAllLines(table).toArray.map(_.toString.trim).filter(_.nonEmpty).flatMap { line =>
     val Array(name, code) = line.split(" ")
     val camel = name.split("_").map(_.capitalize).mkString
-    if (seen.contains(camel)) None
+    // BrightScript names are case-insensitive, so `AddChart` and `Addchart` would collide there: the first wins
+    if (seen.contains(camel.toLowerCase)) None
     else {
-      seen += camel
+      seen += camel.toLowerCase
       val ident = if (camel.head.isDigit) "`" + camel + "`" else camel
       Some(s"""  lazy val $ident: MaterialIcon = MaterialIcon("$name", "\\u$code")""")
     }

@@ -25,5 +25,6 @@ import everyui.render.Platform
   else if (demo == "youibench") YouiBench.run()
   else if (demo == "durable") DurableDemo.run()
   else if (demo == "input") InputDemo.run()
+  else if (demo == "widgets") WidgetsDemo.run()
   else ExampleApp.main()
 }

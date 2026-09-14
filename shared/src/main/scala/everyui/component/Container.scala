@@ -8,12 +8,16 @@ import reactify.*
 class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   lazy val children: ContainerFeature = new ContainerFeature(this)
 
-  /** youi's `LayoutSupport`: the layout, if any, places the children again whenever they, the container's size
-    * or their sizes change. */
+  /** youi's `LayoutSupport`: the layout, if any, places the children again whenever they, the container's size or
+    * their sizes change. A container given a layout sizes itself to its content, unless a size was set: its height
+    * always, its width when the layout fits it (a column, a row; not a flow, which wraps to the width it is given). */
   lazy val layout: Var[Option[Layout]] = Var(None)
-  /** How far the children reach: bind `size.height := contentHeight` for a container that wraps its content. */
-  lazy val contentWidth: Val[Double] = Val(extent(c => c.position.left() + c.size.width()))
-  lazy val contentHeight: Val[Double] = Val(extent(c => c.position.top() + c.size.height()))
+  /** Space between the edges and the children, on every side. */
+  lazy val padding: Var[Double] = Var(0.0)
+
+  /** How far the children reach, plus the padding beyond them. */
+  lazy val contentWidth: Val[Double] = Val(extent(c => c.position.left() + c.size.width()) + padding())
+  lazy val contentHeight: Val[Double] = Val(extent(c => c.position.top() + c.size.height()) + padding())
 
   /** The furthest any child reaches, by `edge`; 0 with no children. */
   private def extent(edge: Component => Double): Double = {
@@ -29,7 +33,14 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     try layout().foreach(_.layout(this, children()))
     finally placing = false
   }
-  layout.attach(_ => place())
+  layout.attach { l =>
+    l.foreach { lay =>
+      if (!size.height.explicit) size.height := contentHeight()
+      if (lay.fitsWidth() && !size.width.explicit) size.width := contentWidth()
+    }
+    place()
+  }
+  padding.attach(_ => place())
   children.attach(_ => place())
   size.width.attach(_ => place())
   size.height.attach(_ => place())
@@ -38,3 +49,4 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   override def kind: String = "Container"
   override def childComponents: Vector[Component] = children()
 }
+

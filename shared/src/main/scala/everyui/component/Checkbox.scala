@@ -36,7 +36,7 @@ class Checkbox(label: String, initial: Boolean = false, note: Option[String] = N
   size.width @= width
   size.height := 28.0 + detail.map(_.size.height() + 4.0).getOrElse(0.0)
   backgroundColor := (if (focused() || event.pointer.over()) Theme.raised() else Color.Clear)
-  children ++= List(Some(box), Some(title), detail).flatten
+  children ++= List(box, title) ++ detail.toList
   event.click.attach { e =>
     e.consume()
     checked @= !checked()

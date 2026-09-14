@@ -5,12 +5,9 @@ import everyui.layout.VerticalLayout
 import everyui.theme.Theme
 import reactify.*
 
-/** A column: its title, its width, and the cell for a row. */
-case class Column[T](title: String, width: Double, cell: T => Component)
-
 /** Rows of `T` under a header, each column at its width. A row brightens under the pointer or the focus and
   * reports a click. */
-class Table[T](columns: List[Column[T]], onRow: T => Unit = (_: T) => ()) extends Container {
+class Table[T](columns: List[TableColumn[T]], onRow: T => Unit = (_: T) => ()) extends Container {
   val rows: Var[List[T]] = Var(Nil)
 
   private val header = new Container {
@@ -43,10 +40,10 @@ class Table[T](columns: List[Column[T]], onRow: T => Unit = (_: T) => ()) extend
   /** Each cell at its column's left, a little down from the row's top. */
   private def place(cells: List[Component]): List[Component] = {
     var left = 12.0
-    columns.zip(cells).map { case (column, cell) =>
+    cells.zipWithIndex.map { case (cell, i) =>
       cell.position.left @= left
       cell.position.top @= 10.0
-      left = left + column.width
+      left = left + columns(i).width
       cell
     }
   }

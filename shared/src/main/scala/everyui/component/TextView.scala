@@ -28,6 +28,13 @@ object TextView {
     color := colour
   }
 
+  /** Bound to `value`, and out of the way — no height — while there is none. */
+  def optional(value: => Option[String], points: Double = 14.0, colour: => Color = Theme.text()): TextView = {
+    val view = bound(value.getOrElse(""), points, colour)
+    view.size.height := (if (value.isEmpty) 0.0 else view.measured.height())
+    view
+  }
+
   /** Wrapped to `width`, as tall as it needs. */
   def wrapped(value: String, width: Double, points: Double = 14.0, colour: => Color = Theme.text()): TextView = new TextView {
     content @= value
