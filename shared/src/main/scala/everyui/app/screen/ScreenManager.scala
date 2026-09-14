@@ -2,14 +2,22 @@ package everyui.app.screen
 
 import everyui.async.Task
 import everyui.component.Component
+import everyui.net.URLPath
 import everyui.render.Platform
 import everyui.task.TaskSupport
 import everyui.{scribe, ui}
+import reactify.*
 
-/** youi's `ScreenManager`, reduced to running one screen: load the app, then init, load and activate the screen,
-  * then pump every frame's delta through the app, `ui` and the screen. */
+/** youi's `ScreenManager`: load the app, then show one screen at a time — each is init'd and loaded once, on its
+  * first showing, and activated on every showing after the last one is deactivated. Every frame's delta goes
+  * through the app, `ui` and the active screen.
+  *
+  * The address bar follows: showing a screen pushes its path, and the browser's back or forward shows the screen
+  * that claims the new path. `run` starts on the screen claiming the page's path, or the first. */
 trait ScreenManager extends TaskSupport:
-  private var active: List[Screen] = Nil
+  val active: Var[Option[Screen]] = Var(None)
+  private var screens: List[Screen] = Nil
+  private var loaded: List[Screen] = Nil
 
   protected def load(): Task[Unit] = Task.unit
 
@@ -19,21 +27,40 @@ trait ScreenManager extends TaskSupport:
     * on the Android launch intent, `--freeze=` on the desktop. */
   protected def freezeSeconds: Double = Platform.freezeSeconds()
 
-  def run(screen: Screen): Unit =
+  def run(screen: Screen, others: Screen*): Unit =
+    screens = screen :: others.toList
+    Platform.onPath(path => at(URLPath(path)).foreach(s => show(s, push = false).startUnit()))
     load()
-      .flatMap(_ => Screen.init(screen))
-      .flatMap(_ => Screen.load(screen))
+      .flatMap(_ => show(at(URLPath(Platform.path())).getOrElse(screen), push = false))
+      .map(_ => if freezeSeconds >= 0.0 then freeze() else live())
+      .startUnit()
+
+  /** The screen claiming `path`, if any. */
+  def at(path: URLPath): Option[Screen] = screens.find {
+    case p: PathActivation => p.matches(path)
+    case _ => false
+  }
+
+  def show(screen: Screen, push: Boolean = true): Task[Unit] =
+    active().filterNot(_ eq screen).map(Screen.deactivate).getOrElse(Task.unit)
+      .flatMap { _ =>
+        if loaded.exists(_ eq screen) then Task.unit
+        else
+          loaded = screen :: loaded
+          Screen.init(screen).flatMap(_ => Screen.load(screen))
+      }
       .flatMap(_ => Screen.activate(screen))
       .map { _ =>
-        active = List(screen)
-        if freezeSeconds >= 0.0 then freeze() else live()
+        active @= Some(screen)
+        screen match
+          case p: PathActivation if push => Platform.pushPath(p.path.value)
+          case _ => ()
       }
-      .startUnit()
 
   override def update(delta: Double): Unit =
     super.update(delta)
     ui.update(delta)
-    active.foreach(_.update(delta))
+    active().foreach(_.update(delta))
 
   private def freeze(): Unit =
     val frame = 1.0 / 60.0

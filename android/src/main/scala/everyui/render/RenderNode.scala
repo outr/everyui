@@ -118,7 +118,8 @@ class RenderNode(val view: View):
   private var background: Int = 0
   private var radius: Float = 0f
   def setBackgroundColor(hex: String): Unit =
-    background = if hex.isEmpty then 0 else android.graphics.Color.parseColor(hex)
+    // Android wants #aarrggbb; the seam says #rrggbb or #rrggbbaa
+    background = if hex.isEmpty then 0 else if hex.length == 9 then android.graphics.Color.parseColor("#" + hex.substring(7) + hex.substring(1, 7)) else android.graphics.Color.parseColor(hex)
     paintBackground()
   def setRadius(r: Double): Unit =
     radius = r.toFloat
@@ -134,6 +135,12 @@ class RenderNode(val view: View):
     * drive down/move/up and a click on an up that stays on the view; a mouse or a hover drives enter/leave. */
   def onPointer(kind: String, f: (Double, Double) => Unit): Unit =
     pointer += kind -> f
+    if kind == "wheel" then view.setOnGenericMotionListener { (_, e) =>
+      if e.getAction == MotionEvent.ACTION_SCROLL then
+        f(-e.getAxisValue(MotionEvent.AXIS_HSCROLL) * 40.0, -e.getAxisValue(MotionEvent.AXIS_VSCROLL) * 40.0)
+        true
+      else false
+    }
     if !listening then
       listening = true
       view.setOnTouchListener((_, e) => touch(e))
@@ -159,6 +166,14 @@ class RenderNode(val view: View):
       if inside then fire("click", e)
     else if action == MotionEvent.ACTION_CANCEL then fire("up", e)
     true
+
+  /** The shared ScrollContainer shifts the content; the node only clips. */
+  def setScrollable(vertical: Boolean): Unit = ()
+  def setScrollTop(y: Double): Unit = ()
+  def setClip(width: Double, height: Double): Unit = view match
+    case g: ViewGroup => g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)
+    case _ => ()
+  def setTooltip(text: String): Unit = view.setTooltipText(if text.isEmpty then null else text)
 
   def setPositionType(name: String): Unit = ()
 
@@ -297,6 +312,19 @@ object Platform:
   def imagePath(name: String): String = "images/" + name
 
   /** The window, in pixels — or the viewport the launch asked for (`--es viewport 1920x1080`). */
+  /** The shared ScrollContainer scrolls. */
+  def nativeScroll(): Boolean = false
+  def openUrl(url: String): Unit =
+    Host.activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+  def copyText(text: String): Unit =
+    val manager = Host.activity.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[android.content.ClipboardManager]
+    manager.setPrimaryClip(android.content.ClipData.newPlainText("everyui", text))
+
+  /** No address bar: no path to show, push or follow. */
+  def path(): String = ""
+  def pushPath(path: String): Unit = ()
+  def onPath(f: String => Unit): Unit = ()
+
   def screenWidth(): Double =
     if Host.viewportWidth > 0.0 then Host.viewportWidth
     else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.width.toDouble

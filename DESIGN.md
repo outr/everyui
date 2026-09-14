@@ -1238,6 +1238,34 @@ tvOS, then real events: DOM keyboard and pointer events through RoboBrowser (`we
 tap through adb — both must reach the same channels (`focus=c click=c`, plus `enter c`/`leave c` where there is a
 pointer). Verified 2026-09-13 on the web, the desktop and the Android emulator; the Roku (off) and the Apple TV
 simulator (the Mac dropped off the network) compile clean and are not yet run.
+
+## Screens, scrolling, and the rest of what a dashboard needs (2026-09-13)
+
+What the DataWrangler dashboard's port asked of the shared layer, each on every backend:
+
+- **Screens.** `ScreenManager` holds several screens and shows one at a time: each is init'd and loaded once, on
+  its first showing, and activated after the last is deactivated. Showing a screen pushes its path; the browser's
+  back and forward show the screen claiming the new path (`PathActivation.matches`, so `/run/<id>` is one screen);
+  `run(first, others*)` starts on the screen claiming the page's path. The seam: `Platform.path`, `pushPath`,
+  `onPath` (the DOM's history; nothing elsewhere).
+- **Scrolling.** `ScrollContainer`: a viewport over `content`. The web scrolls the node itself (`overflow: auto`,
+  so the browser's scrollbar, wheel, touch and keys); every other backend clips the node (`RenderNode.setClip`)
+  and the shared container shifts the content on the wheel (`event.pointer.wheel`), a drag, or the arrows and page
+  keys while focused. `Platform.nativeScroll` says which.
+- **Text.** `Icon`, a text view over a Material Icons glyph. `Component.tooltip` (the DOM's `title`, a JavaFX
+  `Tooltip`, Android's tooltip text; nothing on a TV). `TextView.whiteSpace` defaults to `NoWrap`, which is what
+  every node starts as; `Normal` with an explicit width wraps on the web. Roboto Mono joins the bundled faces
+  (`Faces.RobotoMono`, registered by every runtime) for logs. A text view applies the font defaults to its node on
+  construction, so a view that never sets a font still lays out by the shared line box.
+- **Layouts.** `HorizontalLayout(spacing, middle = true)` centres a row's children on its tallest.
+- **Colour.** `Color.withAlpha`; a translucent background reaches the node as `#rrggbbaa` (a dialog's dim sheet).
+- **Pointer.** `PointerEvent.consume()` keeps a click from the components underneath, so a button's click is not
+  also its card's.
+- **Platform.** `openUrl` (a new tab, the desktop browser, an Android intent), `copyText` (the clipboard).
+
+The dashboard itself (datawrangler `ui/`) is the reference use: five screens, dialogs on a `Modal` sheet, tables,
+toggles, a run history that loads when opened, a log that follows, and every daemon action, all over the live
+channel. tools/check.sh is unchanged and green.
 ## The network module — Spice as the core, on every backend (2026-09-13)
 
 The first release replaces Sart in DataWrangler's dashboard, and DataWrangler

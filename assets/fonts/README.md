@@ -10,3 +10,4 @@ unwrapped from WOFF to TTF without changing any table.
 | `OpenSans-Regular.ttf` | Open Sans 400 (v44) | SIL Open Font License 1.1 |
 | `OpenSans-SemiBold.ttf` | Open Sans 600 (v44) | SIL Open Font License 1.1 |
 | `MaterialIcons-Regular.ttf` | Material Icons (v145) | Apache License 2.0 |
+| `RobotoMono-Regular.ttf` | Roboto Mono 400 (googlefonts/RobotoMono, static) | SIL Open Font License 1.1 |

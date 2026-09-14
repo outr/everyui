@@ -25,7 +25,7 @@ object Focus:
       if pressed then c.event.key.down @= KeyEvent(name) else c.event.key.up @= KeyEvent(name)
     }
     if pressed then
-      if name == "Enter" then focused().foreach(c => c.event.click @= PointerEvent(c.absoluteLeft + c.size.center(), c.absoluteTop + c.size.middle()))
+      if name == "Enter" then focused().foreach(c => c.event.click @= PointerEvent("click", c.absoluteLeft + c.size.center(), c.absoluteTop + c.size.middle()))
       else if name.startsWith("Arrow") then move(name)
 
   /** Focus the nearest focusable component in `direction` ("ArrowUp" …), if any. */

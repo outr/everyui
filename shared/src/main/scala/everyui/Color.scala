@@ -3,6 +3,10 @@ package everyui
 /** youi's `Color`, reduced to what the ported examples use: RGBA channels and hex. */
 class Color(val red: Int, val green: Int, val blue: Int, val alpha: Int):
   def toHex: String = "#" + Color.hex2(red) + Color.hex2(green) + Color.hex2(blue)
+  /** `#rrggbbaa`. */
+  def toHexAlpha: String = toHex + Color.hex2(alpha)
+  /** The same colour at `opacity` (0..1). */
+  def withAlpha(opacity: Double): Color = new Color(red, green, blue, (opacity * 255.0 + 0.5).toInt)
 
   override def toString: String = toHex
 

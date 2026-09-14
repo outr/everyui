@@ -71,10 +71,22 @@ class RenderNode(val el: html.Element):
   def setRadius(radius: Double): Unit = el.style.borderRadius = radius.toString + "px"
 
   /** CSS `position`; `""` is static. */
-  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click") with its viewport coordinates. */
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
+    * viewport coordinates. */
   def onPointer(kind: String, f: (Double, Double) => Unit): Unit =
-    val name = if kind == "click" then "click" else "pointer" + kind
-    el.addEventListener(name, (e: dom.MouseEvent) => f(e.clientX, e.clientY))
+    if kind == "wheel" then el.addEventListener("wheel", (e: dom.WheelEvent) => f(e.deltaX, e.deltaY))
+    else
+      val name = if kind == "click" then "click" else "pointer" + kind
+      el.addEventListener(name, (e: dom.MouseEvent) => f(e.clientX, e.clientY))
+
+  /** The node scrolls its own overflow: the browser's scrollbar, wheel, touch and keys. */
+  def setScrollable(vertical: Boolean): Unit =
+    el.style.overflowY = if vertical then "auto" else "hidden"
+    el.style.overflowX = "hidden"
+  def setScrollTop(y: Double): Unit = el.scrollTop = y
+  /** Clipping is the browser's overflow; a scrollable node already clips. */
+  def setClip(width: Double, height: Double): Unit = if el.style.overflowY != "auto" then el.style.overflow = "hidden"
+  def setTooltip(text: String): Unit = el.title = text
 
   def setPositionType(name: String): Unit = el.style.position = if name.isEmpty then "static" else name
 
@@ -167,6 +179,29 @@ object Platform:
 
   // The window's inner size, as youi's `ui` measures it. The root clips its
   // content, so no scrollbar ever takes space out of it.
+  /** The DOM scrolls a scrollable node itself. */
+  def nativeScroll(): Boolean = true
+  /** `url` in a new tab. */
+  def openUrl(url: String): Unit = dom.window.open(url, "_blank")
+  /** `text` onto the clipboard: the async clipboard where the page is a secure context, else the selection command. */
+  def copyText(text: String): Unit =
+    val clipboard = dom.window.navigator.asInstanceOf[js.Dynamic].clipboard
+    if !js.isUndefined(clipboard) then clipboard.writeText(text)
+    else
+      val area = dom.document.createElement("textarea").asInstanceOf[html.TextArea]
+      area.value = text
+      dom.document.body.appendChild(area)
+      area.select()
+      dom.document.execCommand("copy")
+      dom.document.body.removeChild(area)
+
+  /** The page's path and query (`/runs?state=x`) — what a screen is reached at. */
+  def path(): String = dom.window.location.pathname + dom.window.location.search
+  /** Show `path` in the address bar as a new history entry, without loading anything. */
+  def pushPath(path: String): Unit = dom.window.history.pushState(null, "", path)
+  /** The path after the browser's back or forward. */
+  def onPath(f: String => Unit): Unit = dom.window.addEventListener("popstate", (_: dom.Event) => f(path()))
+
   def screenWidth(): Double = dom.window.innerWidth.toDouble
   def screenHeight(): Double = dom.window.innerHeight.toDouble
 

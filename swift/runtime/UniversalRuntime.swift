@@ -69,9 +69,12 @@ func dbl(_ v: V) -> Double { rtD(v) ?? 0.0 }
 func uiColor(_ hex: String) -> UIColor {
     var s = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
     if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
+    // #rrggbb, or #rrggbbaa
+    let alpha: CGFloat = s.count == 8 ? CGFloat(UInt32(s.suffix(2), radix: 16) ?? 255) / 255.0 : 1.0
+    if s.count == 8 { s = String(s.prefix(6)) }
     let n = UInt32(s, radix: 16) ?? 0
     return UIColor(red: CGFloat((n >> 16) & 0xFF) / 255.0, green: CGFloat((n >> 8) & 0xFF) / 255.0,
-                   blue: CGFloat(n & 0xFF) / 255.0, alpha: 1.0)
+                   blue: CGFloat(n & 0xFF) / 255.0, alpha: alpha)
 }
 
 /// A site-absolute asset path (`/images/icon.png`) inside the app bundle.
@@ -91,6 +94,7 @@ func registerFonts() {
         // the same choice roku's uiFontUri makes: the file decides the family and weight
         let key: String
         if name.hasPrefix("MaterialIcons") { key = "Material Icons|400" }
+        else if name.hasPrefix("RobotoMono") { key = "Roboto Mono|400" }
         else if name.contains("SemiBold") { key = "Open Sans|600" }
         else { key = "Open Sans|400" }
         UI.fonts[key] = d
@@ -99,7 +103,7 @@ func registerFonts() {
 }
 
 func font(_ family: String, _ weight: Int, _ size: Double) -> UIFont {
-    let key = family == "Material Icons" ? "Material Icons|400" : (weight >= 600 ? "Open Sans|600" : "Open Sans|400")
+    let key = family == "Material Icons" ? "Material Icons|400" : family == "Roboto Mono" ? "Roboto Mono|400" : (weight >= 600 ? "Open Sans|600" : "Open Sans|400")
     if let d = UI.fonts[key] { return UIFont(descriptor: d, size: size) }
     return UIFont.systemFont(ofSize: size, weight: weight >= 600 ? .semibold : .regular)
 }
@@ -489,4 +493,10 @@ func uiKeyEvent(_ press: UIPress, _ pressed: Bool) -> Bool {
     }
     _ = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(pressed)]))
     return true
+}
+
+/// Clip a view to width by height (a scroll viewport).
+func uiSetClip(_ node: V, _ width: V, _ height: V) -> V {
+    view(node)?.clipsToBounds = true
+    return .vNull
 }

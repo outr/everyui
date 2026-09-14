@@ -180,6 +180,7 @@ function uiFontUri(family as string, weight as integer) as string
         return "pkg:/fonts/OpenSans-Regular.ttf"
     end if
     if family = "Material Icons" then return "pkg:/fonts/MaterialIcons-Regular.ttf"
+    if family = "Roboto Mono" then return "pkg:/fonts/RobotoMono-Regular.ttf"
     if weight >= 600 then return "font:BoldSystemFontFile"
     return "font:SystemFontFile"
 end function
@@ -298,7 +299,7 @@ sub uiSetBackgroundColor(node as object, hex as string)
     if hex = ""
         node.color = "0x00000000"
     else
-        node.color = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
+        if Len(hex) = 9 then node.color = "0x" + UCase(Mid(hex, 2, 8)) else node.color = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
     end if
 end sub
 
@@ -455,4 +456,10 @@ end sub
 sub uiOnKey(f as dynamic)
     ga = GetGlobalAA()
     ga.uiKey = f
+end sub
+
+' Clip a Group to width by height (a scroll viewport).
+sub uiSetClip(node as object, width as float, height as float)
+    if node = invalid then return
+    node.clippingRect = [0, 0, width, height]
 end sub

@@ -284,7 +284,7 @@ lazy val desktop = (project in file("desktop"))
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true),
     libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
-    libraryDependencies ++= Seq("base", "graphics").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
+    libraryDependencies ++= Seq("base", "graphics", "controls").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,

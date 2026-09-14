@@ -82,6 +82,13 @@ class RenderNode(val sg: SGNode):
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
   def onPointer(kind: String, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind, f)
 
+  /** The shared ScrollContainer shifts the content; the node only clips. */
+  def setScrollable(vertical: Boolean): Unit = ()
+  def setScrollTop(y: Double): Unit = ()
+  def setClip(width: Double, height: Double): Unit = uiSetClip(sg, width, height)
+  /** No pointer to rest. */
+  def setTooltip(text: String): Unit = ()
+
   def setPositionType(name: String): Unit = ()
 
   /** A Label is a single line unless told to wrap. */
@@ -128,6 +135,17 @@ object Platform:
 
   /** Channel-package URI — Roku loads assets from `pkg:/`. */
   def imagePath(name: String): String = "pkg:/images/" + name
+
+  /** The shared ScrollContainer scrolls. */
+  def nativeScroll(): Boolean = false
+  /** No browser, no clipboard. */
+  def openUrl(url: String): Unit = ()
+  def copyText(text: String): Unit = ()
+
+  /** No address bar: no path to show, push or follow. */
+  def path(): String = ""
+  def pushPath(path: String): Unit = ()
+  def onPath(f: String => Unit): Unit = ()
 
   def screenWidth(): Double = uiScreenWidth()
   def screenHeight(): Double = uiScreenHeight()

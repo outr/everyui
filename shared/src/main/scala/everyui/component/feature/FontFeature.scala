@@ -16,3 +16,6 @@ class FontFeature(component: Component):
   lazy val size: Prop[Double] = new Prop[Double](16.0, _ => applyFont(), () => component.measure.trigger())
 
   private def applyFont(): Unit = component.node.setFont(family(), weight().value, size())
+
+  // The defaults reach the node too, so a text view that never sets a font still lays out by the shared line box.
+  applyFont()

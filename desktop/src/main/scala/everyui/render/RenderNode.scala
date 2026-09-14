@@ -3,7 +3,9 @@ package everyui.render
 import javafx.animation.AnimationTimer
 import javafx.geometry.VPos
 import javafx.scene.image.{Image, ImageView}
-import javafx.scene.input.{KeyCode, KeyEvent, MouseEvent}
+import javafx.scene.control.Tooltip
+import javafx.scene.input.{Clipboard, ClipboardContent, KeyCode, KeyEvent, MouseEvent, ScrollEvent}
+import javafx.scene.shape.Rectangle
 import javafx.scene.layout.{Background, BackgroundFill, Pane}
 import javafx.scene.paint.Color
 import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text}
@@ -136,12 +138,21 @@ class RenderNode(val fx: Node):
     case _ => ()
 
   /** Every node is placed by its layout position, so there is no position type to set. */
-  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click") with its scene coordinates. */
-  def onPointer(kind: String, f: (Double, Double) => Unit): Unit =
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
+    * scene coordinates. */
+  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = if kind == "wheel" then
+    fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => f(-e.getDeltaX, -e.getDeltaY))
+  else
     val kinds = Map("down" -> MouseEvent.MOUSE_PRESSED, "up" -> MouseEvent.MOUSE_RELEASED, "move" -> MouseEvent.MOUSE_MOVED,
       "enter" -> MouseEvent.MOUSE_ENTERED, "leave" -> MouseEvent.MOUSE_EXITED, "click" -> MouseEvent.MOUSE_CLICKED)
     fx.setPickOnBounds(true)   // a transparent Pane is not hit-tested unless told to be
     fx.addEventHandler(kinds(kind), (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
+
+  /** The shared ScrollContainer shifts the content; the node only clips. */
+  def setScrollable(vertical: Boolean): Unit = ()
+  def setScrollTop(y: Double): Unit = ()
+  def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
+  def setTooltip(text: String): Unit = if text.nonEmpty then Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
 
   def setPositionType(name: String): Unit = ()
 
@@ -296,6 +307,19 @@ object Platform:
   def imagePath(name: String): String = resolvePath("/images/" + name)
 
   /** The window's content size. */
+  /** The shared ScrollContainer scrolls. */
+  def nativeScroll(): Boolean = false
+  def openUrl(url: String): Unit = java.awt.Desktop.getDesktop.browse(new java.net.URI(url))
+  def copyText(text: String): Unit =
+    val content = new ClipboardContent()
+    content.putString(text)
+    Clipboard.getSystemClipboard.setContent(content)
+
+  /** No address bar: no path to show, push or follow. */
+  def path(): String = ""
+  def pushPath(path: String): Unit = ()
+  def onPath(f: String => Unit): Unit = ()
+
   def screenWidth(): Double = Host.scene.getWidth
   def screenHeight(): Double = Host.scene.getHeight
 
