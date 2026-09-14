@@ -235,10 +235,10 @@ object Platform:
     (if l.protocol == "https:" then "wss://" else "ws://") + l.host
 
   /** Called whenever the window changes size. */
-  /** Every key on the page, by its DOM name, pressed or released. */
-  def onKey(f: (String, Boolean) => Unit): Unit =
-    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => f(e.key, true))
-    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => f(e.key, false))
+  /** Every key on the page, by its DOM name, pressed or released; a key the hook takes is kept from the browser. */
+  def onKey(f: (String, Boolean) => Boolean): Unit =
+    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => if f(e.key, true) then e.preventDefault())
+    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => if f(e.key, false) then e.preventDefault())
 
   def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())
 

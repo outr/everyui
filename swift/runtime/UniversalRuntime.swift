@@ -491,8 +491,8 @@ func uiKeyEvent(_ press: UIPress, _ pressed: Bool) -> Bool {
     case .menu: return false
     default: return false
     }
-    _ = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(pressed)]))
-    return true
+    if case .vBool(let taken)? = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(pressed)])) { return taken }
+    return false
 }
 
 /// Clip a view to width by height (a scroll viewport).

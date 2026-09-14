@@ -2587,8 +2587,8 @@ class RokuEmitter(
       |    names = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", OK: "Enter", play: "MediaPlayPause", rewind: "MediaRewind", fastforward: "MediaFastForward", replay: "MediaReplay", options: "ContextMenu" }
       |    name = names[key]
       |    if name = invalid then name = key
-      |    RtInvoke(ga.uiKey, [name, press])
-      |    return true
+      |    taken = RtInvoke(ga.uiKey, [name, press])
+      |    return taken = true
       |end function
       |function _str(v as dynamic) as string
       |    if v = invalid then return ""

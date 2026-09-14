@@ -170,7 +170,7 @@ object Platform:
 
   /** An Apple TV's screen never changes size. */
   /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released. */
-  def onKey(f: (String, Boolean) => Unit): Unit = uiOnKey(f)
+  def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey(f)
 
   def onResize(f: () => Unit): Unit = ()
 

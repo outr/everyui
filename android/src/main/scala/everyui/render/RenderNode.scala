@@ -230,7 +230,7 @@ object Host:
   var viewportHeight: Double = -1.0
 
   /** The key hook (Platform.onKey), fed by the activity. */
-  var key: (String, Boolean) => Unit = null
+  var key: (String, Boolean) => Boolean = null
 
   /** An Android key by the web's name: the remote's keys by their names, anything typed by its character. */
   def keyName(e: KeyEvent): String =
@@ -357,7 +357,7 @@ object Platform:
 
   /** Called whenever the root changes size (a rotation, a resized window). */
   /** Every key the activity sees, by the web's name, pressed or released. */
-  def onKey(f: (String, Boolean) => Unit): Unit = Host.key = f
+  def onKey(f: (String, Boolean) => Boolean): Unit = Host.key = f
 
   def onResize(f: () => Unit): Unit =
     Host.root.addOnLayoutChangeListener((_, l, t, r, b, oldL, oldT, oldR, oldB) =>

@@ -50,8 +50,8 @@ class MainActivity extends Activity:
     val hook = Host.key
     if hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE then super.dispatchKeyEvent(e)
     else
-      hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN)
-      if e.getKeyCode == KeyEvent.KEYCODE_BACK then super.dispatchKeyEvent(e) else true
+      val taken = hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN)
+      if e.getKeyCode == KeyEvent.KEYCODE_BACK then super.dispatchKeyEvent(e) else taken || super.dispatchKeyEvent(e)
 
   /** The shared layer's singletons (`ui`, the app) live as long as the process, as they live as long as a page or a
     * channel, so leaving the app ends the process and the next launch starts fresh. */

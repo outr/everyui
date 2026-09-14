@@ -114,7 +114,7 @@ class SGNode
   def apply(node: SGNode, kind: String, f: (Double, Double) => Unit): Unit = native.value
 /** Every key, by the web's name, pressed or released. */
 @native object uiOnKey:
-  def apply(f: (String, Boolean) => Unit): Unit = native.value
+  def apply(f: (String, Boolean) => Boolean): Unit = native.value
 /** Clip the node to `width` by `height`. */
 @native object uiSetClip:
   def apply(node: SGNode, width: Double, height: Double): Unit = native.value

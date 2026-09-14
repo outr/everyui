@@ -348,9 +348,9 @@ object Platform:
 
   /** Called whenever the window changes size. */
   /** Every key in the window, by the web's name, pressed or released. */
-  def onKey(f: (String, Boolean) => Unit): Unit =
-    Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => f(Host.keyName(e), true))
-    Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => f(Host.keyName(e), false))
+  def onKey(f: (String, Boolean) => Boolean): Unit =
+    Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => if f(Host.keyName(e), true) then e.consume())
+    Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => if f(Host.keyName(e), false) then e.consume())
 
   def onResize(f: () => Unit): Unit =
     Host.scene.widthProperty.addListener((_: javafx.beans.Observable) => f())
