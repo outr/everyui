@@ -76,6 +76,7 @@ class RenderNode(val sg: SGNode):
 
   /** `"#rrggbb"`, or `""` for transparent. */
   def setBackgroundColor(hex: String): Unit = uiSetBackgroundColor(sg, hex)
+  def setRadius(radius: Double): Unit = uiSetRadius(sg, radius)
 
   /** SceneGraph places every node by its translation, so there is no position type to set. */
   def setPositionType(name: String): Unit = ()
@@ -137,6 +138,12 @@ object Platform:
 
   /** `pkg:/<name>.txt` in the channel (a test sideload adds it, `roku-install --add name=value`), or "". */
   def launchArg(name: String): String = uiLaunchArg(name)
+
+  /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
+  def localDateTime(millis: Long): String = uiLocalDateTime(millis.toDouble)
+
+  /** No page to be served from: an app names its server. */
+  def webSocketOrigin(): String = ""
 
   /** A channel cannot exit itself from the render thread; a demo that is done just stops. */
   def quit(): Unit = ()

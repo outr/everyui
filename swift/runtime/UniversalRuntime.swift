@@ -447,3 +447,16 @@ func uiLaunchArg(_ name: V) -> V {
 }
 
 func uiQuit() -> V { exit(0) }
+
+func uiSetRadius(_ node: V, _ radius: V) -> V {
+    view(node)?.layer.cornerRadius = CGFloat(rtDouble(radius))
+    view(node)?.layer.masksToBounds = rtDouble(radius) > 0
+    return .vNull
+}
+
+/// Milliseconds since the epoch as local `yyyy-MM-dd HH:mm:ss`.
+func uiLocalDateTime(_ millis: V) -> V {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    return .vStr(f.string(from: Date(timeIntervalSince1970: rtDouble(millis) / 1000.0)))
+}

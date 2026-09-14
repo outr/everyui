@@ -1445,6 +1445,10 @@ class RokuEmitter(
               s"_drop(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "sortBy") =>
               s"_sortBy(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // `.sum` / `.min` / `.max` carry their Numeric / Ordering as the one argument
+            case Select(recv, "sum") if isCollType(recv) => s"_sum(${emitTerm(recv)})"
+            case Select(recv, "min") if isCollType(recv) => s"_minList(${emitTerm(recv)})"
+            case Select(recv, "max") if isCollType(recv) => s"_maxList(${emitTerm(recv)})"
             case Select(recv, "getOrElse") =>
               s"_getOrElse(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "until") =>

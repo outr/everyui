@@ -106,3 +106,9 @@ class SGNode
 /** Exit the process. */
 @native object uiQuit:
   def apply(): Unit = native.value
+/** Rounded corners; a SceneGraph Rectangle has none, so the Roku ignores it. */
+@native object uiSetRadius:
+  def apply(node: SGNode, radius: Double): Unit = native.value
+/** Milliseconds since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
+@native object uiLocalDateTime:
+  def apply(millis: Double): String = native.value

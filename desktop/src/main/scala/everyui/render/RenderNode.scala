@@ -121,8 +121,17 @@ class RenderNode(val fx: Node):
       case _ => ()
 
   /** `"#rrggbb"`, or `""` for transparent. */
-  def setBackgroundColor(hex: String): Unit = fx match
-    case p: Pane => p.setBackground(if hex.isEmpty then null else new Background(new BackgroundFill(Color.web(hex), null, null)))
+  private var background: String = ""
+  private var radius: Double = 0.0
+  def setBackgroundColor(hex: String): Unit =
+    background = hex
+    paintBackground()
+  def setRadius(r: Double): Unit =
+    radius = r
+    paintBackground()
+  private def paintBackground(): Unit = fx match
+    case p: Pane => p.setBackground(if background.isEmpty then null else
+      new Background(new BackgroundFill(Color.web(background), if radius > 0.0 then new javafx.scene.layout.CornerRadii(radius) else null, null)))
     case _ => ()
 
   /** Every node is placed by its layout position, so there is no position type to set. */
@@ -287,6 +296,14 @@ object Platform:
   def quit(): Unit =
     javafx.application.Platform.exit()
     System.exit(0)
+
+  /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
+  def localDateTime(millis: Long): String =
+    java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(millis), java.time.ZoneId.systemDefault())
+      .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+
+  /** No page to be served from: an app names its server (`--live=`). */
+  def webSocketOrigin(): String = ""
 
   /** The frozen frame is complete: save it if asked to (`--screenshot`). */
   def frozen(): Unit = Host.frozen()

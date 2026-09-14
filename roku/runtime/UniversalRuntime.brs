@@ -434,3 +434,15 @@ sub uiOnHttpResult(event as object)
     r = event.getData()
     RtInvoke(e.done, [r.status, r.headers, r.body])
 end sub
+
+' A SceneGraph Rectangle has no corner radius.
+sub uiSetRadius(node as object, radius as float)
+end sub
+
+' Milliseconds since the epoch as local "yyyy-MM-dd HH:mm:ss".
+function uiLocalDateTime(millis as float) as string
+    dt = CreateObject("roDateTime")
+    dt.FromSeconds(Int(millis / 1000.0))
+    dt.ToLocalTime()
+    return Right("0" + dt.GetYear().ToStr(), 4) + "-" + Right("0" + dt.GetMonth().ToStr(), 2) + "-" + Right("0" + dt.GetDayOfMonth().ToStr(), 2) + " " + Right("0" + dt.GetHours().ToStr(), 2) + ":" + Right("0" + dt.GetMinutes().ToStr(), 2) + ":" + Right("0" + dt.GetSeconds().ToStr(), 2)
+end function

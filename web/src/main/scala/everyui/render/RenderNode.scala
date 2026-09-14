@@ -68,6 +68,8 @@ class RenderNode(val el: html.Element):
   def setBackgroundColor(hex: String): Unit =
     el.style.backgroundColor = if hex.isEmpty then "transparent" else hex
 
+  def setRadius(radius: Double): Unit = el.style.borderRadius = radius.toString + "px"
+
   /** CSS `position`; `""` is static. */
   def setPositionType(name: String): Unit = el.style.position = if name.isEmpty then "static" else name
 
@@ -179,6 +181,18 @@ object Platform:
 
   /** A page has nowhere to exit to; a demo that is done just stops. */
   def quit(): Unit = ()
+
+  /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
+  def localDateTime(millis: Long): String =
+    val d = new js.Date(millis.toDouble)
+    def two(n: Int): String = if n < 10 then "0" + n.toString else n.toString
+    d.getFullYear().toInt.toString + "-" + two(d.getMonth().toInt + 1) + "-" + two(d.getDate().toInt) + " " +
+      two(d.getHours().toInt) + ":" + two(d.getMinutes().toInt) + ":" + two(d.getSeconds().toInt)
+
+  /** The WebSocket origin of the page itself (`ws://host:port`), so an app served by its own server needs no address. */
+  def webSocketOrigin(): String =
+    val l = dom.window.location
+    (if l.protocol == "https:" then "wss://" else "ws://") + l.host
 
   /** Called whenever the window changes size. */
   def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())

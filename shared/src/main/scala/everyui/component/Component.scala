@@ -21,6 +21,8 @@ class Component(val node: RenderNode):
   lazy val color: Prop[Color] = new Prop[Color](Color.Black, c => node.setColor(c.toHex))
   lazy val backgroundColor: Prop[Color] =
     new Prop[Color](Color.Clear, c => node.setBackgroundColor(if c.alpha == 0 then "" else c.toHex))
+  /** Rounded corners, in pixels (the Roku's Rectangle has none). */
+  lazy val radius: Prop[Double] = new Prop[Double](0.0, r => node.setRadius(r))
   /** In turns, as youi has it (1.0 is a full revolution). */
   lazy val rotation: Prop[Double] = new Prop[Double](0.0, turns => node.setRotation(turns * 2.0 * math.Pi))
   lazy val whiteSpace: Prop[WhiteSpace] =

@@ -115,8 +115,19 @@ class RenderNode(val view: View):
     view.setLayoutParams(params)
 
   /** `"#rrggbb"`, or `""` for transparent. */
+  private var background: Int = 0
+  private var radius: Float = 0f
   def setBackgroundColor(hex: String): Unit =
-    view.setBackgroundColor(if hex.isEmpty then 0 else android.graphics.Color.parseColor(hex))
+    background = if hex.isEmpty then 0 else android.graphics.Color.parseColor(hex)
+    paintBackground()
+  def setRadius(r: Double): Unit =
+    radius = r.toFloat
+    paintBackground()
+  private def paintBackground(): Unit =
+    val drawable = new android.graphics.drawable.GradientDrawable()
+    drawable.setColor(background)
+    drawable.setCornerRadius(radius)
+    view.setBackground(drawable)
 
   /** Every node is placed by its translation, so there is no position type to set. */
   def setPositionType(name: String): Unit = ()
@@ -258,6 +269,14 @@ object Platform:
 
   /** Finish the activity (a demo that is done); the process follows (MainActivity.onDestroy). */
   def quit(): Unit = Host.activity.finish()
+
+  /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
+  def localDateTime(millis: Long): String =
+    java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(millis), java.time.ZoneId.systemDefault())
+      .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+
+  /** No page to be served from: an app names its server (`--es live`). */
+  def webSocketOrigin(): String = ""
 
   /** The frozen frame is complete. The check reads it from logcat and screenshots the device itself. */
   def frozen(): Unit = ()
