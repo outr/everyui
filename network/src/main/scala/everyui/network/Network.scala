@@ -19,7 +19,7 @@ import spice.http.durable.{DurableSocketClient, DurableSocketConfig, InMemoryEve
   *
   * Optional: nothing in `shared/` depends on it. The example app's `DurableDemo` is its check on every backend.
   */
-object Network:
+object Network {
   /** A WebSocket to `url` — `ws://` or `wss://` where the platform has TLS; the Roku's `roStreamSocket` has none. */
   def webSocket(url: String): WebSocket = NetworkBackend.webSocket(url)
 
@@ -42,11 +42,13 @@ object Network:
   def get(url: String): Task[HttpResult] = http(HttpCall("GET", url))
   def post(url: String, body: String, contentType: String = "application/json"): Task[HttpResult] =
     http(HttpCall("POST", url, Nil, Some(body), contentType))
+}
 
 /** An HTTP request: a method, a URL, headers, and a text body with its content type. */
 case class HttpCall(method: String, url: String, headers: List[(String, String)] = Nil, body: Option[String] = None,
                     contentType: String = "application/json")
 
 /** An HTTP response: the status, the headers (as the backend surfaces them) and the body as text. */
-case class HttpResult(status: Int, headers: List[(String, String)], body: String):
+case class HttpResult(status: Int, headers: List[(String, String)], body: String) {
   def ok: Boolean = status >= 200 && status < 300
+}

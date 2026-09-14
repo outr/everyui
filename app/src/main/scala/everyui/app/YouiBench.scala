@@ -12,10 +12,10 @@ import scala.concurrent.duration.*
 
 /** Per-frame cost of youi's animation model, one layer at a time, so the Roku
   * frame rate of AnimationExample can be optimised where the time actually goes. */
-object YouiBench:
+object YouiBench {
   private class Frames extends TaskSupport
 
-  private def label(container: Container, text: String): TextView =
+  private def label(container: Container, text: String): TextView = {
     val l = new TextView {
       content @= text
       font.size @= 24.0
@@ -23,8 +23,9 @@ object YouiBench:
     }
     container.children += l
     l
+  }
 
-  def run(): Unit =
+  def run(): Unit = {
     val container = new Container
     ui.children += container
     val row = label(container, "Linear Example")
@@ -35,28 +36,28 @@ object YouiBench:
     val noop = new Prop[Double](0.0, _ => ())
     ReactifyBench.time("youi Prop @= x, no-op setter", 1000, base, () => {
       flip = !flip
-      noop @= (if flip then 60.0 else 70.0)
+      noop @= (if (flip) 60.0 else 70.0)
     })
     val direct = new Prop[Double](0.0, d => row.node.setX(d))
     ReactifyBench.time("youi Prop @= x, setter writes node", 1000, base, () => {
       flip = !flip
-      direct @= (if flip then 60.0 else 70.0)
+      direct @= (if (flip) 60.0 else 70.0)
     })
     ReactifyBench.time("row.node.setX(x) direct", 2000, base, () => {
       flip = !flip
-      row.node.setX(if flip then 60.0 else 70.0)
+      row.node.setX(if (flip) 60.0 else 70.0)
     })
     ReactifyBench.time("row.position.x @= x", 1000, base, () => {
       flip = !flip
-      row.position.x @= (if flip then 60.0 else 70.0)
+      row.position.x @= (if (flip) 60.0 else 70.0)
     })
     ReactifyBench.time("left @= x (Prop)", 1000, base, () => {
       flip = !flip
-      row.position.left @= (if flip then 60.0 else 70.0)
+      row.position.left @= (if (flip) 60.0 else 70.0)
     })
     ReactifyBench.time("right := x (Dep)", 1000, base, () => {
       flip = !flip
-      row.position.right := (if flip then 600.0 else 700.0)
+      row.position.right := (if (flip) 600.0 else 700.0)
     })
     ReactifyBench.time("read container.size.width - 50", 4000, base, () => { container.size.width - 50.0; () })
 
@@ -88,3 +89,5 @@ object YouiBench:
     moving.update(0.0)
     ReactifyBench.time("frame: 32 moving rows", 20, base, () => moving.update(0.000001))
     scribe.info("bench done")
+  }
+}

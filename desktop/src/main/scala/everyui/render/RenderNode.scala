@@ -22,7 +22,7 @@ import scala.collection.mutable
   * scales on a HiDPI display as a browser scales CSS pixels. A `Pane` never moves its children, so each node is placed
   * absolutely by its layout position, as on the other backends.
   */
-class RenderNode(val fx: Node):
+class RenderNode(val fx: Node) {
   private var left: Double = 0.0
   private var top: Double = 0.0
   private var rotation: Double = 0.0
@@ -31,145 +31,168 @@ class RenderNode(val fx: Node):
   private var face: Face = Faces.OpenSansRegular
   private var fontSize: Double = 32.0
 
-  def getText(): String = fx match
+  def getText(): String = fx match {
     case t: Text => t.getText
     case _ => ""
+  }
 
-  def setText(text: String): Unit = fx match
+  def setText(text: String): Unit = fx match {
     case t: Text => t.setText(text)
     case _ => ()
+  }
 
   def getX(): Double = left
-  def setX(x: Double): Unit =
+  def setX(x: Double): Unit = {
     left = x
     fx.setLayoutX(x)
+  }
 
   def getY(): Double = top
-  def setY(y: Double): Unit =
+  def setY(y: Double): Unit = {
     top = y
     placeY()
+  }
 
   /** Radians, clockwise, about the node's own centre — JavaFX's `rotate` is degrees, clockwise, about the centre of
     * the node's layout bounds. */
   def getRotation(): Double = rotation
-  def setRotation(radians: Double): Unit =
+  def setRotation(radians: Double): Unit = {
     rotation = radians
     fx.setRotate(math.toDegrees(radians))
+  }
 
-  def setFontSize(size: Double): Unit = fx match
+  def setFontSize(size: Double): Unit = fx match {
     case t: Text =>
       fontSize = size
       t.setFont(new Font(t.getFont.getName, size))
       placeY()
     case _ => ()
+  }
 
   /** `"#rrggbb"`. */
-  def setColor(hex: String): Unit = fx match
+  def setColor(hex: String): Unit = fx match {
     case t: Text => t.setFill(Color.web(hex))
     case _ => ()
+  }
 
   /** A bundled face (`assets/fonts/`): family, CSS weight, size in pixels. */
-  def setFont(family: String, weight: Int, size: Double): Unit = fx match
+  def setFont(family: String, weight: Int, size: Double): Unit = fx match {
     case t: Text =>
       face = Faces(family, weight)
       fontSize = size
       t.setFont(
-        if family.nonEmpty then Host.font(face, size)
-        else Font.font("System", if weight >= 600 then FontWeight.SEMI_BOLD else FontWeight.NORMAL, size)
+        if (family.nonEmpty) Host.font(face, size)
+        else Font.font("System", if (weight >= 600) FontWeight.SEMI_BOLD else FontWeight.NORMAL, size)
       )
       placeY()
     case _ => ()
+  }
 
   /** The laid-out size in pixels. Text is measured with its real font (its advance width) and is one shared line
     * (everyui.font.Face) tall. */
   def getWidth(): Double =
-    if explicitWidth >= 0.0 then explicitWidth
-    else fx match
+    if (explicitWidth >= 0.0) explicitWidth
+    else fx match {
       case t: Text => t.getLayoutBounds.getWidth
       case _ => 0.0
+    }
 
   def getHeight(): Double =
-    if explicitHeight >= 0.0 then explicitHeight
-    else fx match
+    if (explicitHeight >= 0.0) explicitHeight
+    else fx match {
       case _: Text => face.lineHeight(fontSize)
       case _ => 0.0
+    }
 
-  def append(child: RenderNode): Unit = fx match
+  def append(child: RenderNode): Unit = fx match {
     case p: Pane => p.getChildren.add(child.fx)
     case _ => ()
+  }
 
   /** Detach from the parent, if attached. */
-  def remove(): Unit = fx.getParent match
+  def remove(): Unit = fx.getParent match {
     case p: Pane => p.getChildren.remove(fx)
     case _ => ()
+  }
 
-  def setWidth(width: Double): Unit =
+  def setWidth(width: Double): Unit = {
     explicitWidth = width
-    fx match
+    fx match {
       case p: Pane =>
         p.setMinWidth(width)
         p.setPrefWidth(width)
         p.setMaxWidth(width)
       case i: ImageView => i.setFitWidth(width)
       case _ => ()
+    }
+  }
 
-  def setHeight(height: Double): Unit =
+  def setHeight(height: Double): Unit = {
     explicitHeight = height
-    fx match
+    fx match {
       case p: Pane =>
         p.setMinHeight(height)
         p.setPrefHeight(height)
         p.setMaxHeight(height)
       case i: ImageView => i.setFitHeight(height)
       case _ => ()
+    }
+  }
 
   /** `"#rrggbb"`, or `""` for transparent. */
   private var background: String = ""
   private var radius: Double = 0.0
-  def setBackgroundColor(hex: String): Unit =
+  def setBackgroundColor(hex: String): Unit = {
     background = hex
     paintBackground()
-  def setRadius(r: Double): Unit =
+  }
+  def setRadius(r: Double): Unit = {
     radius = r
     paintBackground()
-  private def paintBackground(): Unit = fx match
-    case p: Pane => p.setBackground(if background.isEmpty then null else
-      new Background(new BackgroundFill(Color.web(background), if radius > 0.0 then new javafx.scene.layout.CornerRadii(radius) else null, null)))
+  }
+  private def paintBackground(): Unit = fx match {
+    case p: Pane => p.setBackground(if (background.isEmpty) null else
+      new Background(new BackgroundFill(Color.web(background), if (radius > 0.0) new javafx.scene.layout.CornerRadii(radius) else null, null)))
     case _ => ()
+  }
 
   /** Every node is placed by its layout position, so there is no position type to set. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * scene coordinates. */
-  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = if kind == "wheel" then
+  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = if (kind == "wheel")
     fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => f(-e.getDeltaX, -e.getDeltaY))
-  else
+  else {
     val kinds = Map("down" -> MouseEvent.MOUSE_PRESSED, "up" -> MouseEvent.MOUSE_RELEASED, "move" -> MouseEvent.MOUSE_MOVED,
       "enter" -> MouseEvent.MOUSE_ENTERED, "leave" -> MouseEvent.MOUSE_EXITED, "click" -> MouseEvent.MOUSE_CLICKED)
     fx.setPickOnBounds(true)   // a transparent Pane is not hit-tested unless told to be
     fx.addEventHandler(kinds(kind), (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
+  }
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean): Unit = ()
   def setScrollTop(y: Double): Unit = ()
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
-  def setTooltip(text: String): Unit = if text.nonEmpty then Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
+  def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
 
   def setPositionType(name: String): Unit = ()
 
   /** Text nodes are single lines. */
   def setWhiteSpace(value: String): Unit = ()
 
-  def setImageSource(uri: String): Unit = fx match
-    case i: ImageView => if uri.nonEmpty then i.setImage(Host.image(uri))
+  def setImageSource(uri: String): Unit = fx match {
+    case i: ImageView => if (uri.nonEmpty) i.setImage(Host.image(uri))
     case _ => ()
+  }
 
   /** A `Text` is placed by its baseline: put that where the shared line box has it. */
-  private def placeY(): Unit = fx match
+  private def placeY(): Unit = fx match {
     case _: Text => fx.setLayoutY(top + face.baseline(fontSize))
     case _ => fx.setLayoutY(top)
+  }
+}
 
 /** What the launcher (everyui.desktop.DesktopApp) hands the backend: the scene, its root, and how it was run. */
-object Host:
+object Host {
   var scene: Scene = null
   var root: Pane = null
   var assets: File = new File("assets")
@@ -182,26 +205,28 @@ object Host:
   private val images = mutable.Map.empty[String, Image]
 
   /** A bundled face at `size`. JavaFX registers a font file by loading it once; after that it is found by name. */
-  def font(face: Face, size: Double): Font =
+  def font(face: Face, size: Double): Font = {
     val name = fontNames.getOrElseUpdate(face.file, {
       val loaded = Font.loadFont(new File(assets, "fonts/" + face.file).toURI.toString, size)
-      if loaded == null then throw new IllegalStateException("could not load font " + face.file)
+      if (loaded == null) throw new IllegalStateException("could not load font " + face.file)
       loaded.getName
     })
     new Font(name, size)
+  }
 
   def image(uri: String): Image = images.getOrElseUpdate(uri, new Image(uri))
 
   /** A JavaFX key by the web's name: the remote's keys by their names, anything typed by its text. */
-  def keyName(e: KeyEvent): String =
+  def keyName(e: KeyEvent): String = {
     val named = Map(KeyCode.ENTER -> "Enter", KeyCode.ESCAPE -> "Escape", KeyCode.UP -> "ArrowUp", KeyCode.DOWN -> "ArrowDown",
       KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ")
-    named.getOrElse(e.getCode, if e.getText.nonEmpty then e.getText else e.getCode.getName)
+    named.getOrElse(e.getCode, if (e.getText.nonEmpty) e.getText else e.getCode.getName)
+  }
 
   /** With `--screenshot`, save the frozen frame as a PNG and exit. Written by hand (no AWT/ImageIO), so the
     * desktop stays buildable as a GraalVM native image without the java.desktop module. */
   def frozen(): Unit =
-    if screenshot.nonEmpty then
+    if (screenshot.nonEmpty)
       javafx.application.Platform.runLater(() => {
         val image = scene.snapshot(null)
         val width = image.getWidth.toInt
@@ -209,21 +234,24 @@ object Host:
         val pixels = image.getPixelReader
         val rows = new java.io.ByteArrayOutputStream(width * height * 4 + height)
         var y = 0
-        while y < height do
+        while (y < height) {
           rows.write(0) // filter: none
           var x = 0
-          while x < width do
+          while (x < width) {
             val argb = pixels.getArgb(x, y)
             rows.write((argb >> 16) & 0xff); rows.write((argb >> 8) & 0xff); rows.write(argb & 0xff); rows.write((argb >>> 24) & 0xff)
             x += 1
+          }
           y += 1
+        }
         java.nio.file.Files.write(java.nio.file.Paths.get(screenshot), Png.encode(width, height, rows.toByteArray))
         javafx.application.Platform.exit()
       })
+}
 
 /** A minimal PNG encoder: 8-bit RGBA, one IDAT, zlib through java.util.zip. */
-object Png:
-  def encode(width: Int, height: Int, filteredRows: Array[Byte]): Array[Byte] =
+object Png {
+  def encode(width: Int, height: Int, filteredRows: Array[Byte]): Array[Byte] = {
     val out = new java.io.ByteArrayOutputStream()
     out.write(Array[Byte](0x89.toByte, 'P', 'N', 'G', 13, 10, 26, 10))
     val header = java.nio.ByteBuffer.allocate(13)
@@ -234,14 +262,16 @@ object Png:
     deflater.finish()
     val compressed = new java.io.ByteArrayOutputStream(filteredRows.length / 4)
     val buffer = new Array[Byte](65536)
-    while !deflater.finished() do
+    while (!deflater.finished()) {
       val n = deflater.deflate(buffer)
       compressed.write(buffer, 0, n)
+    }
     chunk(out, "IDAT", compressed.toByteArray)
     chunk(out, "IEND", Array.empty[Byte])
     out.toByteArray
+  }
 
-  private def chunk(out: java.io.ByteArrayOutputStream, kind: String, data: Array[Byte]): Unit =
+  private def chunk(out: java.io.ByteArrayOutputStream, kind: String, data: Array[Byte]): Unit = {
     val length = java.nio.ByteBuffer.allocate(4).putInt(data.length).array()
     out.write(length)
     val typeBytes = kind.getBytes(java.nio.charset.StandardCharsets.US_ASCII)
@@ -251,39 +281,44 @@ object Png:
     crc.update(typeBytes)
     crc.update(data)
     out.write(java.nio.ByteBuffer.allocate(4).putInt(crc.getValue.toInt).array())
+  }
+}
 
 /** Backend node factories. */
-object Nodes:
+object Nodes {
   /** The scene's root pane. */
   def root(): RenderNode = new RenderNode(Host.root)
 
   /** A container — a `Pane` other nodes are appended to, sized 0x0 until given a size (a `div`'s default). */
-  def container(): RenderNode =
+  def container(): RenderNode = {
     val p = new Pane()
     p.setMinSize(0.0, 0.0)
     p.setPrefSize(0.0, 0.0)
     p.setMaxSize(0.0, 0.0)
     p.setPickOnBounds(false)
     new RenderNode(p)
+  }
 
   /** A text node — a `Text`, positioned by its baseline. */
-  def text(): RenderNode =
+  def text(): RenderNode = {
     val t = new Text()
     t.setTextOrigin(VPos.BASELINE)
     t.setFontSmoothingType(FontSmoothingType.GRAY)
     t.setFill(Color.web("#1c1b1f"))
     t.setFont(Font.font("System", FontWeight.SEMI_BOLD, 32.0))
     new RenderNode(t)
+  }
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
-  def icon(glyph: String, size: Double): RenderNode =
+  def icon(glyph: String, size: Double): RenderNode = {
     val node = text()
     node.setFont("Material Icons", 400, size)
     node.setText(glyph)
     node
+  }
 
   /** An image node — an `ImageView` stretched to its box. */
-  def image(uri: String, width: Double, height: Double): RenderNode =
+  def image(uri: String, width: Double, height: Double): RenderNode = {
     val i = new ImageView()
     i.setPreserveRatio(false)
     i.setSmooth(true)
@@ -292,15 +327,18 @@ object Nodes:
     node.setHeight(height)
     node.setImageSource(uri)
     node
+  }
+}
 
 /** The handful of non-render platform services the slice needs. */
-object Platform:
+object Platform {
   def log(message: String): Unit = println("[ui] " + message)
 
   /** A failure with its cause: the console gets the stack. */
-  def logError(message: String, t: Throwable): Unit =
+  def logError(message: String, t: Throwable): Unit = {
     println("[ui] ERROR " + message + ": " + t.toString)
     t.printStackTrace()
+  }
 
   def ticks(): Double = System.nanoTime() / 1.0e6
 
@@ -310,10 +348,11 @@ object Platform:
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
   def openUrl(url: String): Unit = java.awt.Desktop.getDesktop.browse(new java.net.URI(url))
-  def copyText(text: String): Unit =
+  def copyText(text: String): Unit = {
     val content = new ClipboardContent()
     content.putString(text)
     Clipboard.getSystemClipboard.setContent(content)
+  }
 
   /** No address bar: no path to show, push or follow. */
   def path(): String = ""
@@ -331,9 +370,10 @@ object Platform:
   def launchArg(name: String): String = Host.args.getOrElse(name, "")
 
   /** Exit the process (a demo that is done). */
-  def quit(): Unit =
+  def quit(): Unit = {
     javafx.application.Platform.exit()
     System.exit(0)
+  }
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
   def localDateTime(millis: Long): String =
@@ -348,13 +388,15 @@ object Platform:
 
   /** Called whenever the window changes size. */
   /** Every key in the window, by the web's name, pressed or released. */
-  def onKey(f: (String, Boolean) => Boolean): Unit =
-    Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => if f(Host.keyName(e), true) then e.consume())
-    Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => if f(Host.keyName(e), false) then e.consume())
+  def onKey(f: (String, Boolean) => Boolean): Unit = {
+    Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => if (f(Host.keyName(e), true)) e.consume())
+    Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => if (f(Host.keyName(e), false)) e.consume())
+  }
 
-  def onResize(f: () => Unit): Unit =
+  def onResize(f: () => Unit): Unit = {
     Host.scene.widthProperty.addListener((_: javafx.beans.Observable) => f())
     Host.scene.heightProperty.addListener((_: javafx.beans.Observable) => f())
+  }
 
   def sqrt(x: Double): Double = math.sqrt(x)
   def pow(x: Double, y: Double): Double = math.pow(x, y)
@@ -365,19 +407,24 @@ object Platform:
   def resolvePath(path: String): String = new File(Host.assets, path.stripPrefix("/")).toURI.toString
 
   /** Load `uri` and report its natural size. */
-  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit =
+  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
     val image = Host.image(uri)
     loaded(image.getWidth, image.getHeight)
+  }
 
   /** Bundled faces load synchronously from the assets directory. */
-  def loadFont(family: String, weight: Int, loaded: () => Unit): Unit =
+  def loadFont(family: String, weight: Int, loaded: () => Unit): Unit = {
     Host.font(Faces(family, weight), 24.0)
     loaded()
+  }
 
   def whenFontsReady(f: () => Unit): Unit = f()
 
   /** Run `tick` once per JavaFX pulse. */
-  def animate(tick: () => Unit): Unit =
-    val timer = new AnimationTimer:
+  def animate(tick: () => Unit): Unit = {
+    val timer = new AnimationTimer {
       override def handle(now: Long): Unit = tick()
+    }
     timer.start()
+  }
+}

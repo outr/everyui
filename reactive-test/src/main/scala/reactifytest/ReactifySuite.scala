@@ -10,9 +10,10 @@ import reactify.transaction.Transaction
   * mutation — a failure here is reactify's, not the harness's. */
 class Box(var n: Int)
 
-class Log(var items: List[String]):
+class Log(var items: List[String]) {
   def add(s: String): Unit = items = items ::: List(s)
   def show(): String = items.mkString(",")
+}
 
 /** **The acceptance test for emitting reactify unmodified.**
   *
@@ -27,15 +28,17 @@ class Log(var items: List[String]):
   * Every line is deterministic and prefixed `RX`. Run natively it is the
   * expected output; emitted to the Roku it must match line for line.
   */
-object ReactifySuite:
-  def check(ok: Box, total: Box, name: String, got: String, expected: String): Unit =
+object ReactifySuite {
+  def check(ok: Box, total: Box, name: String, got: String, expected: String): Unit = {
     total.n = total.n + 1
-    if got == expected then
+    if (got == expected) {
       ok.n = ok.n + 1
       println("RX PASS " + name + " = " + got)
+    }
     else println("RX FAIL " + name + " got=" + got + " expected=" + expected)
+  }
 
-  def varBasics(ok: Box, total: Box): Unit =
+  def varBasics(ok: Box, total: Box): Unit = {
     val v = Var(1)
     check(ok, total, "var.initial", v().toString, "1")
     v := 2
@@ -44,8 +47,9 @@ object ReactifySuite:
     check(ok, total, "var.@=", v.get.toString, "3")
     v.set(4)
     check(ok, total, "var.set", v().toString, "4")
+  }
 
-  def valDependencies(ok: Box, total: Box): Unit =
+  def valDependencies(ok: Box, total: Box): Unit = {
     val a = Var(1)
     val b = Var(2)
     val sum = Val(a() + b())
@@ -60,12 +64,13 @@ object ReactifySuite:
     check(ok, total, "val.fires.on.dep", fires.n.toString, "1")
     a := 11
     check(ok, total, "val.same.value.no.fire", fires.n.toString, "1")
+  }
 
-  def valDynamicDeps(ok: Box, total: Box): Unit =
+  def valDynamicDeps(ok: Box, total: Box): Unit = {
     val useA = Var(true)
     val a = Var("A")
     val b = Var("B")
-    val pick = Val(if useA() then a() else b())
+    val pick = Val(if (useA()) a() else b())
     check(ok, total, "val.dyn.initial", pick(), "A")
     b := "B2"
     check(ok, total, "val.dyn.untracked", pick(), "A")
@@ -78,8 +83,9 @@ object ReactifySuite:
     b := "B3"
     check(ok, total, "val.dyn.retracked", pick(), "B3")
     check(ok, total, "val.dyn.retracked.fired", fires.n.toString, "1")
+  }
 
-  def attachAndDetach(ok: Box, total: Box): Unit =
+  def attachAndDetach(ok: Box, total: Box): Unit = {
     val v = Var(0)
     val log = new Log(Nil)
     val r = v.attach(x => log.add("got" + x.toString))
@@ -88,15 +94,17 @@ object ReactifySuite:
     v.reactions -= r
     v := 3
     check(ok, total, "attach.detach", log.show(), "got1,got2")
+  }
 
-  def attachAndFire(ok: Box, total: Box): Unit =
+  def attachAndFire(ok: Box, total: Box): Unit = {
     val v = Var(7)
     val log = new Log(Nil)
     v.attachAndFire(x => log.add(x.toString))
     v := 8
     check(ok, total, "attachAndFire", log.show(), "7,8")
+  }
 
-  def changesAndOnce(ok: Box, total: Box): Unit =
+  def changesAndOnce(ok: Box, total: Box): Unit = {
     val v = Var(1)
     val log = new Log(Nil)
     v.changes((before, after) => log.add(before.toString + ">" + after.toString))
@@ -108,8 +116,9 @@ object ReactifySuite:
     v := 4
     v := 5
     check(ok, total, "once", once.show(), "4")
+  }
 
-  def priorityAndStop(ok: Box, total: Box): Unit =
+  def priorityAndStop(ok: Box, total: Box): Unit = {
     val v = Var(0)
     val log = new Log(Nil)
     v.attach(_ => log.add("normal"), Priority.Normal)
@@ -138,8 +147,9 @@ object ReactifySuite:
     t.attach(_ => tlog.add("after"), Priority.High)
     t := 5
     check(ok, total, "anon.reaction.stop", tlog.show(), "anon5")
+  }
 
-  def channels(ok: Box, total: Box): Unit =
+  def channels(ok: Box, total: Box): Unit = {
     val c = Channel[Int]
     val log = new Log(Nil)
     c.attach(x => log.add("c" + x.toString))
@@ -160,8 +170,9 @@ object ReactifySuite:
     check(ok, total, "var.map.initial", m().toString, "6")
     v := 9
     check(ok, total, "var.map.tracks", m().toString, "10")
+  }
 
-  def deps(ok: Box, total: Box): Unit =
+  def deps(ok: Box, total: Box): Unit = {
     val left = Var(10)
     val right = Dep[Int, Int](left)((r: Int) => r + 5, (t: Int) => t - 5)
     check(ok, total, "dep.read", right().toString, "15")
@@ -169,8 +180,9 @@ object ReactifySuite:
     check(ok, total, "dep.write.through", left().toString, "25")
     left := 1
     check(ok, total, "dep.follows", right().toString, "6")
+  }
 
-  def groups(ok: Box, total: Box): Unit =
+  def groups(ok: Box, total: Box): Unit = {
     val a = Var(0)
     val b = Var(0)
     val both = a and b
@@ -181,8 +193,9 @@ object ReactifySuite:
     both.attach(x => glog.add(x.toString))
     a := 8
     check(ok, total, "group.attach.via.item", glog.show(), "8")
+  }
 
-  def binding(ok: Box, total: Box): Unit =
+  def binding(ok: Box, total: Box): Unit = {
     val x = Var(1)
     val y = Var(100)
     val bnd = x.bind(y, BindSet.LeftToRight)((i: Int) => i, (i: Int) => i)
@@ -194,8 +207,9 @@ object ReactifySuite:
     bnd.detach()
     x := 4
     check(ok, total, "bind.detached", y().toString, "3")
+  }
 
-  def transactions(ok: Box, total: Box): Unit =
+  def transactions(ok: Box, total: Box): Unit = {
     val v = Var(1)
     val txn = Transaction {
       v := 2
@@ -204,30 +218,33 @@ object ReactifySuite:
     check(ok, total, "txn.applied", v().toString, "3")
     txn.revert()
     check(ok, total, "txn.revert", v().toString, "1")
+  }
 
-  def listSugar(ok: Box, total: Box): Unit =
+  def listSugar(ok: Box, total: Box): Unit = {
     val xs = Var(List(1, 2))
     xs += 3
     check(ok, total, "listvar.+=", xs().mkString(","), "1,2,3")
     xs -= 1
     check(ok, total, "listvar.-=", xs().mkString(","), "2,3")
+  }
 
-  def failures(ok: Box, total: Box): Unit =
+  def failures(ok: Box, total: Box): Unit = {
     val flag = Var(false)
-    val risky = Val(if flag() then throw new RuntimeException("boom") else 1)
+    val risky = Val(if (flag()) throw new RuntimeException("boom") else 1)
     check(ok, total, "val.ok", risky().toString, "1")
     flag := true
     val caught = new Box(0)
     try risky()
     catch case _: Throwable => caught.n = 1
     check(ok, total, "val.failure.throws", caught.n.toString, "1")
+  }
 
   /** Edge semantics of the hot paths (`set` / `evaluate` / `get` / `fire` /
     * `Reactions.+=` / `Transaction.change`). The expected values were taken
     * from the UNMODIFIED library, so any performance fast path that changes
     * observable behaviour — even in a corner — fails here. The one deliberate
     * change since: dependency tracking (`references`) is maintained. */
-  def hotPathEdges(ok: Box, total: Box): Unit =
+  def hotPathEdges(ok: Box, total: Box): Unit = {
     // A function that reads its own Var sees the current state on a direct
     // set, but the PREVIOUS value when a dependency re-evaluates it.
     val base = Var(1)
@@ -269,9 +286,10 @@ object ReactifySuite:
     val rlog = new Log(Nil)
     re.attach(v => {
       rlog.add("r1:" + v.toString)
-      if v == 1 then
+      if (v == 1) {
         re.reactions.clear()
         re := 2
+      }
     }, Priority.Low)
     re.attach(v => rlog.add("r2:" + v.toString), Priority.High)
     re := 1
@@ -317,10 +335,11 @@ object ReactifySuite:
     tv := 9
     outer.revert()
     check(ok, total, "edge.txn.revert", tv().toString, "1")
+  }
 
-  def flagRecovery(ok: Box, total: Box): Unit =
+  def flagRecovery(ok: Box, total: Box): Unit = {
     val flag = Var(true)
-    val risky = Val(if flag() then throw new RuntimeException("boom") else 1)
+    val risky = Val(if (flag()) throw new RuntimeException("boom") else 1)
     // The first evaluation threw before its dependencies were recorded, so
     // the Val never hears about `flag` and stays failed.
     flag := false
@@ -328,10 +347,11 @@ object ReactifySuite:
       try risky().toString
       catch case _: Throwable => "threw"
     check(ok, total, "edge.failure.first.eval.untracked", got, "threw")
+  }
 
   /** Runs LAST: a Transaction whose body throws is never closed, so the
     * thread stays in it (and every later `set` is recorded). */
-  def transactionThrow(ok: Box, total: Box): Unit =
+  def transactionThrow(ok: Box, total: Box): Unit = {
     val lv = Var(1)
     try Transaction {
       lv := 2
@@ -343,10 +363,12 @@ object ReactifySuite:
     val t = Transaction { lv := 4 }
     t.revert()
     check(ok, total, "edge.txn.throw.records", lv().toString, "1")
+  }
+}
 
 class TxnRef(var t: Transaction)
 
-@main def reactifySuite(): Unit =
+@main def reactifySuite(): Unit = {
   val ok = new Box(0)
   val total = new Box(0)
   ReactifySuite.varBasics(ok, total)
@@ -366,3 +388,4 @@ class TxnRef(var t: Transaction)
   ReactifySuite.hotPathEdges(ok, total)
   ReactifySuite.transactionThrow(ok, total)
   println("RX DONE " + ok.n.toString + "/" + total.n.toString)
+}

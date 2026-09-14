@@ -12,7 +12,7 @@ import scala.concurrent.duration.*
 /** The network module on a backend where Spice's own client runs (the JVM, Scala.js): one `HttpClient` over the
   * implementation the backend names — named rather than found through moduload's classpath scan, which an APK
   * or a native image has no resources for. */
-object SpiceHttp:
+object SpiceHttp {
   /** Name the client implementation for `HttpClient`'s companion, which asks the implementation manager as it
     * initialises: a no-op where moduload already found one on the classpath. */
   def use(implementation: HttpClientImplementation): Unit =
@@ -40,7 +40,7 @@ object SpiceHttp:
   def webSocket(client: HttpClient, url: String): WebSocket =
     client.implementation.instance(client).webSocket(URL.parse(url), Headers.empty)
 
-  def call(client: HttpClient, call: HttpCall): Task[HttpResult] =
+  def call(client: HttpClient, call: HttpCall): Task[HttpResult] = {
     var c = client.url(URL.parse(call.url)).method(HttpMethod(call.method))
     call.headers.foreach((k, v) => c = c.header(k, v))
     call.body.foreach(b => c = c.content(StringContent(b, ContentType.parse(call.contentType))))
@@ -49,3 +49,5 @@ object SpiceHttp:
         HttpResult(response.status.code, response.headers.map.toList.flatMap((k, vs) => vs.map(v => k -> v)), body)
       }
     }
+  }
+}

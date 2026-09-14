@@ -10,7 +10,7 @@ import everyui.render.RenderNode
 
 /** youi's `Component`, with the DOM element replaced by a [[RenderNode]] — which each backend supplies — so the
   * same Props and features run over a DOM element or a SceneGraph node. */
-class Component(val node: RenderNode):
+class Component(val node: RenderNode) {
   /** For diagnostics (a tree dump): what this is, and what it contains. */
   def kind: String = "Component"
   def childComponents: Vector[Component] = Vector.empty
@@ -22,7 +22,7 @@ class Component(val node: RenderNode):
 
   lazy val color: Prop[Color] = new Prop[Color](Color.Black, c => node.setColor(c.toHex))
   lazy val backgroundColor: Prop[Color] =
-    new Prop[Color](Color.Clear, c => node.setBackgroundColor(if c.alpha == 0 then "" else if c.alpha < 255 then c.toHexAlpha else c.toHex))
+    new Prop[Color](Color.Clear, c => node.setBackgroundColor(if (c.alpha == 0) "" else if (c.alpha < 255) c.toHexAlpha else c.toHex))
   /** Rounded corners, in pixels (the Roku's Rectangle has none). */
   lazy val radius: Prop[Double] = new Prop[Double](0.0, r => node.setRadius(r))
   /** In turns, as youi has it (1.0 is a full revolution). */
@@ -47,3 +47,4 @@ class Component(val node: RenderNode):
   lazy val focusable: Var[Boolean] = Var(false)
   lazy val focused: Val[Boolean] = Val(Focus.focused().exists(_ eq this))
   def focus(): Unit = Focus.focused @= Some(this)
+}

@@ -5,11 +5,11 @@ import everyui.component.types.{FontWeight, Prop}
 
 /** youi's `FontFeature`: family, weight and size (pixels). Setting a weight converted from a Google Fonts weight
   * sets the family too. */
-class FontFeature(component: Component):
+class FontFeature(component: Component) {
   lazy val family: Prop[String] = new Prop[String]("", _ => applyFont(), () => component.measure.trigger())
 
   lazy val weight: Prop[FontWeight] = new Prop[FontWeight](FontWeight.Normal, w => {
-    if w.family.nonEmpty then family @= w.family
+    if (w.family.nonEmpty) family @= w.family
     applyFont()
   }, () => component.measure.trigger())
 
@@ -19,3 +19,4 @@ class FontFeature(component: Component):
 
   // The defaults reach the node too, so a text view that never sets a font still lays out by the shared line box.
   applyFont()
+}

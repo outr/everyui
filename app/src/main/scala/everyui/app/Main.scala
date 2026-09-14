@@ -17,12 +17,13 @@ import everyui.render.Platform
   *   bench      reactify's per-operation cost
   *   easings    every easing curve as numbers
   */
-@main def main(): Unit =
+@main def main(): Unit = {
   val demo = Platform.launchArg("demo")
-  if demo == "hello" then HelloWorld.run()
-  else if demo == "bench" then ReactifyBench.run()
-  else if demo == "easings" then EasingTable.run()
-  else if demo == "youibench" then YouiBench.run()
-  else if demo == "durable" then DurableDemo.run()
-  else if demo == "input" then InputDemo.run()
+  if (demo == "hello") HelloWorld.run()
+  else if (demo == "bench") ReactifyBench.run()
+  else if (demo == "easings") EasingTable.run()
+  else if (demo == "youibench") YouiBench.run()
+  else if (demo == "durable") DurableDemo.run()
+  else if (demo == "input") InputDemo.run()
   else ExampleApp.main()
+}

@@ -12,10 +12,10 @@ import scala.concurrent.duration.*
   *
   *   WebInput <url>
   */
-object WebInput extends RapidApp:
+object WebInput extends RapidApp {
   private val keys = List("ArrowRight", "Enter", "ArrowLeft", "ArrowDown")
 
-  override def run(args: List[String]): Task[Unit] =
+  override def run(args: List[String]): Task[Unit] = {
     val url = args.headOption.getOrElse(sys.error("usage: WebInput <url>"))
     RoboBrowser.withBrowser(RoboBrowserConfig(
       browserConfig = BrowserConfig(noSandbox = true),
@@ -26,7 +26,7 @@ object WebInput extends RapidApp:
         println(event.args.map(_.value).mkString(" "))
         System.out.flush()
       }
-      for
+      for {
         _ <- browser.enableRuntime
         _ <- browser.navigate(url)
         _ <- browser.waitForLoaded()
@@ -40,5 +40,8 @@ object WebInput extends RapidApp:
                              c.dispatchEvent(new MouseEvent("click", { clientX: 630, clientY: 160, bubbles: true }));
                              c.dispatchEvent(new PointerEvent("pointerleave", { clientX: 900, clientY: 160 }))""")
         _ <- Task.sleep(1.second)
+      }
       yield ()
     }
+  }
+}

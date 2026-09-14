@@ -6,11 +6,12 @@ import everyui.component.Container
 import everyui.component.types.PositionType
 import everyui.ui
 
-trait UIScreen extends Screen with PathActivation:
-  protected lazy val container: Container =
+trait UIScreen extends Screen with PathActivation {
+  protected lazy val container: Container = {
     val c = new Container
     c.position.`type` @= PositionType.Relative
     c
+  }
 
   override protected def init(): Task[Unit] = super.init().flatMap { _ =>
     container.size.width := ui.size.width
@@ -20,3 +21,4 @@ trait UIScreen extends Screen with PathActivation:
   }
 
   def createUI(): Task[Unit]
+}

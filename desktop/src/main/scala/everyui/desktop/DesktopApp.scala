@@ -18,8 +18,8 @@ import java.io.File
   *   --assets=dir           where images/ and fonts/ are (default: assets)
   * }}}
   */
-object DesktopApp:
-  def main(args: Array[String]): Unit =
+object DesktopApp {
+  def main(args: Array[String]): Unit = {
     def arg(name: String): Option[String] =
       args.collectFirst { case a if a.startsWith("--" + name + "=") => a.drop(name.length + 3) }
 
@@ -47,9 +47,11 @@ object DesktopApp:
       stage.setTitle("EveryUI")
       // the window / dock icon: the mark, from the shared assets (tools/make-icons.py)
       val icon = new File(Host.assets, "images/everyui-mark.png")
-      if icon.exists then stage.getIcons.add(new javafx.scene.image.Image(icon.toURI.toString))
+      if (icon.exists) stage.getIcons.add(new javafx.scene.image.Image(icon.toURI.toString))
       stage.setScene(scene)
       stage.show()
 
       everyui.app.main()
     })
+  }
+}

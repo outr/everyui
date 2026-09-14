@@ -10,13 +10,13 @@ import everyui.example.ui.component.Header
 import everyui.ui
 
 /** youi's `ExampleApp`: the shared theme colours, the header, and the content area screens are shown in. */
-object ExampleApp extends ScreenManager:
+object ExampleApp extends ScreenManager {
   val darkMode: Var[Boolean] = Var(false)
 
-  val textColor: Val[Color] = Val(if darkMode() then Color.fromHex("e0e0e0") else Color.fromHex("212121"))
-  val secondaryText: Val[Color] = Val(if darkMode() then Color.fromHex("b0b0b0") else Color.fromHex("666666"))
-  val accentColor: Val[Color] = Val(if darkMode() then Color.fromHex("90caf9") else Color.fromHex("3949ab"))
-  val bgColor: Val[Color] = Val(if darkMode() then Color.fromHex("121212") else Color.White)
+  val textColor: Val[Color] = Val(if (darkMode()) Color.fromHex("e0e0e0") else Color.fromHex("212121"))
+  val secondaryText: Val[Color] = Val(if (darkMode()) Color.fromHex("b0b0b0") else Color.fromHex("666666"))
+  val accentColor: Val[Color] = Val(if (darkMode()) Color.fromHex("90caf9") else Color.fromHex("3949ab"))
+  val bgColor: Val[Color] = Val(if (darkMode()) Color.fromHex("121212") else Color.White)
 
   /** The active screen's title, shown in the header. */
   val title: Var[String] = Var("")
@@ -38,3 +38,4 @@ object ExampleApp extends ScreenManager:
   lazy val animation: AnimationExample = new AnimationExample
 
   def main(): Unit = run(animation)
+}

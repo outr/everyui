@@ -10,9 +10,10 @@ import scala.annotation.StaticAnnotation
   */
 final class native extends StaticAnnotation
 
-object native:
+object native {
   /** The body of a facade member: `def apply(): SGNode = native.value`.
     * `Nothing`-typed so it fits any signature; it only runs if a facade is
     * called on a platform it doesn't describe, which is a bug. */
   def value: Nothing =
     throw new Error("everyui.compiler.api.native.value was evaluated: a @native facade was called outside its platform")
+}

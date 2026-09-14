@@ -18,8 +18,8 @@ import scala.concurrent.duration.*
   *   WebLive <url> [seconds = 60] [screenshot.png [screenshot-a-second-earlier.png]]
   * }}}
   */
-object WebLive extends RapidApp:
-  override def run(args: List[String]): Task[Unit] =
+object WebLive extends RapidApp {
+  override def run(args: List[String]): Task[Unit] = {
     val url = args.headOption.getOrElse(sys.error("usage: WebLive <url> [seconds] [screenshot.png]"))
     val seconds = args.lift(1).flatMap(_.toIntOption).getOrElse(60)
     val screenshot = args.lift(2)
@@ -33,7 +33,7 @@ object WebLive extends RapidApp:
         println(event.args.map(_.value).mkString(" "))
         System.out.flush()
       }
-      for
+      for {
         _ <- browser.enableRuntime
         _ <- browser.navigate(url)
         _ <- browser.waitForLoaded()
@@ -44,5 +44,8 @@ object WebLive extends RapidApp:
         _ <- earlier.map(path => browser.screenshot(Paths.get(path))).getOrElse(Task.unit)
         _ <- Task.sleep(1.second)
         _ <- screenshot.map(path => browser.screenshot(Paths.get(path))).getOrElse(Task.unit)
+      }
       yield ()
     }
+  }
+}

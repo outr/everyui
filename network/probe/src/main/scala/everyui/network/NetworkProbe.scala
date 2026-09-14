@@ -9,45 +9,52 @@ import spice.http.durable.*
 
 // The probe's payloads: fabric case classes with derived codecs, as an application's would be.
 case class Note(text: String)
-object Note:
+object Note {
   given rw: RW[Note] = RW.gen
+}
 case class Who(device: String)
-object Who:
+object Who {
   given rw: RW[Who] = RW.gen
+}
 case class Say(say: String)
-object Say:
+object Say {
   given rw: RW[Say] = RW.gen
+}
 case class Echoed(echo: String)
-object Echoed:
+object Echoed {
   given rw: RW[Echoed] = RW.gen
+}
 
 /** A `WebSocket` whose peer is a DurableSocket server living in the same object: every text the client sends is
   * answered synchronously, as spice's `DurableSocketServer` would answer it. The server half speaks the wire
   * protocol (the envelope is JSON by definition); the payloads inside it are case classes. No network, no
   * threads — the durable client's state machine alone, so the same program prints the same lines natively and
   * emitted. */
-class LoopbackSocket(log: Log) extends WebSocket:
+class LoopbackSocket(log: Log) extends WebSocket {
   var serverSeq: Long = 0L
   var lastAcked: Long = 0L
   var received: List[Note] = Nil
 
-  override def connect(): Task[ConnectionStatus] =
+  override def connect(): Task[ConnectionStatus] = {
     _status @= ConnectionStatus.Open
     send.text.attach(text => serve(text))
     Task.pure(ConnectionStatus.Open)
+  }
 
-  override def disconnect(): Unit =
+  override def disconnect(): Unit = {
     _status @= ConnectionStatus.Closed
     receive.close @= ()
+  }
 
   /** The server pushes an event to the client (one Event type each way on a socket, in spice's model). */
-  def push(value: Note): Unit =
+  def push(value: Note): Unit = {
     serverSeq = serverSeq + 1
     receive.text @= JsonFormatter.Default(obj("type" -> str("event"), "seq" -> num(serverSeq), "data" -> value.json))
+  }
 
-  private def serve(text: String): Unit =
+  private def serve(text: String): Unit = {
     val json = JsonParser(text)
-    json("type").asString match
+    json("type").asString match {
       case "connect" =>
         log.add("server: connect " + json("info").as[Who].device)
         receive.text @= JsonFormatter.Default(obj("type" -> str("connected"), "lastClientSeq" -> num(0L), "resumed" -> bool(false)))
@@ -65,16 +72,20 @@ class LoopbackSocket(log: Log) extends WebSocket:
         receive.text @= JsonFormatter.Default(obj("type" -> str("response"), "id" -> json("id"), "data" -> answer.json))
       case other =>
         log.add("server: ? " + other)
+    }
+  }
+}
 
-class Log(var items: List[String]):
+class Log(var items: List[String]) {
   def add(s: String): Unit = items = items ::: List(s)
+}
 
-object NetworkProbe:
+object NetworkProbe {
   def check(name: String, got: String, expected: String): Unit =
-    if got == expected then println("RX PASS " + name + " = " + got)
+    if (got == expected) println("RX PASS " + name + " = " + got)
     else println("RX FAIL " + name + " got=" + got + " expected=" + expected)
 
-  def run(): Unit =
+  def run(): Unit = {
     val log = new Log(Nil)
     var socket: LoopbackSocket = null
     val client = new DurableSocketClient[String, Note, Who](
@@ -113,5 +124,7 @@ object NetworkProbe:
     socket.disconnect()
     check("state.after.drop", client.state().toString, "Closed")
     println("RX DONE")
+  }
+}
 
 @main def networkProbe(): Unit = NetworkProbe.run()

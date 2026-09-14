@@ -6,12 +6,14 @@ import everyui.render.Platform
 import everyui.ui
 
 /** One animated label: its reactive position and its direction of travel. */
-class Mover(val pos: Var[Double], private var dir: Double):
-  def step(): Unit =
+class Mover(val pos: Var[Double], private var dir: Double) {
+  def step(): Unit = {
     val next = pos() + dir
-    if next > FrameProbe.MaxX then dir = -FrameProbe.Step
-    if next < FrameProbe.MinX then dir = FrameProbe.Step
+    if (next > FrameProbe.MaxX) dir = -FrameProbe.Step
+    if (next < FrameProbe.MinX) dir = FrameProbe.Step
     pos @= next
+  }
+}
 
 /** **Does reactive-driven animation survive a low-power TV?**
   *
@@ -23,7 +25,7 @@ class Mover(val pos: Var[Double], private var dir: Double):
   *
   * `Count` / `Animated` / `Bound` are the sweep knobs (see DESIGN.md).
   */
-object FrameProbe:
+object FrameProbe {
   val Step: Double = 12.0
   val MinX: Double = 20.0
   val MaxX: Double = 1700.0
@@ -41,26 +43,28 @@ object FrameProbe:
     * actually on screen and actually drawn. */
   private val Rows: Int = 17
 
-  def run(): Unit =
+  def run(): Unit = {
     val movers = build()
     var frames = 0.0
     var lastReport = Platform.ticks()
 
-    Platform.animate(() =>
+    Platform.animate(() => {
       movers.foreach(m => m.step())
 
       frames = frames + 1.0
       val now = Platform.ticks()
       val elapsed = now - lastReport
-      if elapsed >= ReportMs then
+      if (elapsed >= ReportMs) {
         Platform.log("n=" + Count.toString + " animated=" + Animated.toString +
           " bound=" + Bound.toString + " fps=" + (frames * 1000.0 / elapsed).toString)
         frames = 0.0
         lastReport = now
-    )
+      }
+    })
+  }
 
   private def build(): List[Mover] =
-    (0 until Count).toList.map(i =>
+    (0 until Count).toList.map(i => {
       val label = new TextView
       label.content @= "mover " + i.toString
       label.position.top @= 40.0 + (i % Rows).toDouble * RowHeight
@@ -68,6 +72,7 @@ object FrameProbe:
 
       // The whole point: the animated property is BOUND, never poked.
       val pos = Var(MinX + (i / Rows).toDouble * 7.0)
-      if Bound then label.position.left := pos() else label.position.left @= pos()
+      if (Bound) label.position.left := pos() else label.position.left @= pos()
       new Mover(pos, Step)
-    ).take(Animated)
+    }).take(Animated)
+}

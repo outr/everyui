@@ -8,18 +8,19 @@ import scala.language.implicitConversions
   * `font.weight @= googleFontWeight` sets both at once. */
 class FontWeight(val value: Int, val family: String)
 
-object FontWeight:
+object FontWeight {
   lazy val Normal: FontWeight = new FontWeight(400, "")
   lazy val Bold: FontWeight = new FontWeight(700, "")
 
   /** A Google Fonts weight name: "regular", "300" ... "800". */
   def fromName(name: String): FontWeight =
-    if name == "300" then new FontWeight(300, "")
-    else if name == "500" then new FontWeight(500, "")
-    else if name == "600" then new FontWeight(600, "")
-    else if name == "700" then new FontWeight(700, "")
-    else if name == "800" then new FontWeight(800, "")
+    if (name == "300") new FontWeight(300, "")
+    else if (name == "500") new FontWeight(500, "")
+    else if (name == "600") new FontWeight(600, "")
+    else if (name == "700") new FontWeight(700, "")
+    else if (name == "800") new FontWeight(800, "")
     else Normal
 
   implicit def fromGoogleFontWeight(weight: GoogleFontWeight): FontWeight =
     new FontWeight(fromName(weight.name).value, weight.font.family)
+}

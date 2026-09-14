@@ -14,7 +14,7 @@ import reactify.*
   *
   * The address bar follows: showing a screen pushes its path, and the browser's back or forward shows the screen
   * that claims the new path. `run` starts on the screen claiming the page's path, or the first. */
-trait ScreenManager extends TaskSupport:
+trait ScreenManager extends TaskSupport {
   val active: Var[Option[Screen]] = Var(None)
   private var screens: List[Screen] = Nil
   private var loaded: List[Screen] = Nil
@@ -27,13 +27,14 @@ trait ScreenManager extends TaskSupport:
     * on the Android launch intent, `--freeze=` on the desktop. */
   protected def freezeSeconds: Double = Platform.freezeSeconds()
 
-  def run(screen: Screen, others: Screen*): Unit =
+  def run(screen: Screen, others: Screen*): Unit = {
     screens = screen :: others.toList
     Platform.onPath(path => at(URLPath(path)).foreach(s => show(s, push = false).startUnit()))
     load()
       .flatMap(_ => show(at(URLPath(Platform.path())).getOrElse(screen), push = false))
-      .map(_ => if freezeSeconds >= 0.0 then freeze() else live())
+      .map(_ => if (freezeSeconds >= 0.0) freeze() else live())
       .startUnit()
+  }
 
   /** The screen claiming `path`, if any. */
   def at(path: URLPath): Option[Screen] = screens.find {
@@ -44,54 +45,63 @@ trait ScreenManager extends TaskSupport:
   def show(screen: Screen, push: Boolean = true): Task[Unit] =
     active().filterNot(_ eq screen).map(Screen.deactivate).getOrElse(Task.unit)
       .flatMap { _ =>
-        if loaded.exists(_ eq screen) then Task.unit
-        else
+        if (loaded.exists(_ eq screen)) Task.unit
+        else {
           loaded = screen :: loaded
           Screen.init(screen).flatMap(_ => Screen.load(screen))
+        }
       }
       .flatMap(_ => Screen.activate(screen))
       .map { _ =>
         active @= Some(screen)
-        screen match
+        screen match {
           case p: PathActivation if push => Platform.pushPath(p.path.value)
           case _ => ()
+        }
       }
 
-  override def update(delta: Double): Unit =
+  override def update(delta: Double): Unit = {
     super.update(delta)
     ui.update(delta)
     active().foreach(_.update(delta))
+  }
 
-  private def freeze(): Unit =
+  private def freeze(): Unit = {
     val frame = 1.0 / 60.0
     var t = 0.0
-    while t < freezeSeconds do
-      val step = if freezeSeconds - t < frame then freezeSeconds - t else frame
+    while (t < freezeSeconds) {
+      val step = if (freezeSeconds - t < frame) freezeSeconds - t else frame
       t = t + step
       update(step)
+    }
     scribe.info("frozen at " + freezeSeconds.toString + "s")
     dump(ui, "")
     Platform.frozen()
+  }
 
   /** Log the component tree with each node's position and size, for comparing a frame across backends. */
-  def dump(component: Component, indent: String): Unit =
+  def dump(component: Component, indent: String): Unit = {
     scribe.info("tree " + indent + component.kind +
       " x=" + component.position.left().toString + " y=" + component.position.top().toString +
       " w=" + component.size.width().toString + " h=" + component.size.height().toString +
       " rot=" + component.rotation().toString)
     component.childComponents.foreach(child => dump(child, indent + "  "))
+  }
 
-  private def live(): Unit =
+  private def live(): Unit = {
     var last = -1.0
     var frames = 0.0
     var reported = Platform.ticks()
-    Platform.animate(() =>
+    Platform.animate(() => {
       val now = Platform.ticks()
-      update(if last < 0.0 then 0.0 else (now - last) / 1000.0)
+      update(if (last < 0.0) 0.0 else (now - last) / 1000.0)
       last = now
       frames = frames + 1.0
-      if now - reported >= 1000.0 then
+      if (now - reported >= 1000.0) {
         scribe.info("fps=" + (frames * 1000.0 / (now - reported)).toString)
         frames = 0.0
         reported = now
-    )
+      }
+    })
+  }
+}

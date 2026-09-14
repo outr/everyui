@@ -6,6 +6,10 @@
 # `@@ old` / `@@ new` (`@@ old N` when the text occurs N times), then `@@ output` (the text that replaces
 # everything from `  // ── output` on). A record's text runs to the next `@@` line; a trailing newline is not
 # part of it.
+#
+# Regenerated 2026-09-14 for the braced emitter: the old/new records are the hunks of a unified diff between the
+# header-replaced Roku emitter and the Swift emitter (each unique in the Roku source), the output record the
+# Swift emitter's own output section.
 @@ header-pattern
 /\*\* everyui's Roku compiler: Scala 3 TASTy → a Roku channel\..*?\*/\nclass RokuEmitter\(
 @@ header-replacement
@@ -22,13 +26,41 @@
  */
 class SwiftEmitter(
 @@ old
+      case _           => false
+    }
+
     // BrightScript string literal: escape `"` by doubling; splice newlines.
-    def brStr(s: String): String =
+    def brStr(s: String): String = {
       val esc = s.replace("\"", "\"\"").replace("\n", "\" + Chr(10) + \"")
       "\"" + esc + "\""
+    }
+
+    def emitConst(c: Constant): String = c match {
+      case IntConstant(i)     => i.toString
+      case LongConstant(l)    => l.toString
+      case DoubleConstant(d)  => d.toString
+      case FloatConstant(f)   => f.toString
+      case StringConstant(s)  => brStr(s)
+      case BooleanConstant(b) => b.toString
+      case CharConstant(ch)   => brStr(ch.toString)
+      case NullConstant()     => "invalid"
+      case UnitConstant()     => "invalid"
+      case other              => brStr(other.value.toString)
+    }
+
+    def todo(t: Tree): String = {
+      val label = t.getClass.getSimpleName
+      todos += s"unsupported: $label"
+      s"RtTodo(${brStr(label)})"
+    }
+
+    // Class-emission context (mirrors JsEmitter): the class whose method we're
 @@ new
+      case _           => false
+    }
+
     // A Swift string literal.
-    def swStr(str: String): String =
+    def swStr(str: String): String = {
       val sb = new StringBuilder("\"")
       str.foreach {
         case '\\' => sb.append("\\\\")
@@ -40,32 +72,21 @@ class SwiftEmitter(
         case c => sb.append(c)
       }
       sb.append("\"").toString
+    }
     /** A Scala string as a `V`. */
     def brStr(str: String): String = "V.vStr(" + swStr(str) + ")"
     val NULL = "V.vNull"
     def vInt(i: Long): String = s"V.vInt($i)"
     def vDbl(d: Double): String =
-      if d.isNaN then "V.vDbl(Double.nan)"
-      else if d.isPosInfinity then "V.vDbl(Double.infinity)"
-      else if d.isNegInfinity then "V.vDbl(-Double.infinity)"
+      if (d.isNaN) "V.vDbl(Double.nan)"
+      else if (d.isPosInfinity) "V.vDbl(Double.infinity)"
+      else if (d.isNegInfinity) "V.vDbl(-Double.infinity)"
       else s"V.vDbl(${d.toString})"
     def rtArr(items: List[String]): String = "rtArr([" + items.mkString(", ") + "])"
-    def rtObj(pairs: List[String]): String = if pairs.isEmpty then "rtObj([:])" else "rtObj([" + pairs.mkString(", ") + "])"
+    def rtObj(pairs: List[String]): String = if (pairs.isEmpty) "rtObj([:])" else "rtObj([" + pairs.mkString(", ") + "])"
     def field(recv: String, name: String): String = s"$recv[${swStr(name)}]"
-@@ old
-    def emitConst(c: Constant): String = c match
-      case IntConstant(i)     => i.toString
-      case LongConstant(l)    => l.toString
-      case DoubleConstant(d)  => d.toString
-      case FloatConstant(f)   => f.toString
-      case StringConstant(s)  => brStr(s)
-      case BooleanConstant(b) => b.toString
-      case CharConstant(ch)   => brStr(ch.toString)
-      case NullConstant()     => "invalid"
-      case UnitConstant()     => "invalid"
-      case other              => brStr(other.value.toString)
-@@ new
-    def emitConst(c: Constant): String = c match
+
+    def emitConst(c: Constant): String = c match {
       case IntConstant(i)     => vInt(i)
       case LongConstant(l)    => vInt(l)
       case DoubleConstant(d)  => vDbl(d)
@@ -76,11 +97,19 @@ class SwiftEmitter(
       case NullConstant()     => NULL
       case UnitConstant()     => NULL
       case other              => brStr(other.value.toString)
-@@ old
-      s"RtTodo(${brStr(label)})"
-@@ new
+    }
+
+    def todo(t: Tree): String = {
+      val label = t.getClass.getSimpleName
+      todos += s"unsupported: $label"
       s"RtTodo(${swStr(label)})"
+    }
+
+    // Class-emission context (mirrors JsEmitter): the class whose method we're
 @@ old
+      case _                                       => false
+    }
+
     // BrightScript identifiers can't contain `$`, and a set of words are
     // reserved (a Scala local named `next`, or scalac's `_$1` params, collide).
     val brReserved = Set(
@@ -90,7 +119,12 @@ class SwiftEmitter(
       "as", "void", "integer", "float", "double", "string", "object", "boolean",
       "dynamic", "type", "box", "run", "eval", "line_num", "pos", "tab"
     )
+    // Operator characters → BrightScript-legal identifier fragments. BrightScript
+    // identifiers are letters/digits/underscore only (no `$`), so a Scala
 @@ new
+      case _                                       => false
+    }
+
     // Swift identifiers can't contain `$`, and its keywords are reserved (a Scala local named `default`
     // or `in`, or scalac's `_$1` params, collide).
     val brReserved = Set(
@@ -101,23 +135,47 @@ class SwiftEmitter(
       "throw", "switch", "where", "while", "Any", "as", "await", "false", "is", "nil", "self", "Self",
       "super", "throws", "true", "try", "async", "actor", "this", "ga", "V", "env", "args"
     )
+    // Operator characters → BrightScript-legal identifier fragments. BrightScript
+    // identifiers are letters/digits/underscore only (no `$`), so a Scala
 @@ old
-      if brReserved(s.toLowerCase) then s + "_" else s
+
+    def brSafe(name: String): String = {
+      val s = brIdent(brMangleOps(name.replace("$", "_")))
+      if (brReserved(s.toLowerCase)) s + "_" else s
+    }
+
+
 @@ new
-      if brReserved(s) then s + "_" else s
+
+    def brSafe(name: String): String = {
+      val s = brIdent(brMangleOps(name.replace("$", "_")))
+      if (brReserved(s)) s + "_" else s
+    }
+
+
 @@ old
+      pcs.exists { case _: TermParamClause => true; case _ => false }
+
     val binOps = Map(
       "==" -> "=", "!=" -> "<>", "+" -> "+", "-" -> "-", "*" -> "*",
       "/" -> "/", "%" -> "mod", "<" -> "<", ">" -> ">", "<=" -> "<=", ">=" -> ">=",
       "&&" -> "and", "||" -> "or"
     )
+
+    def isCollType(t: Term): Boolean = {
 @@ new
+      pcs.exists { case _: TermParamClause => true; case _ => false }
+
     val binOps = Map(
       "==" -> "==", "!=" -> "!=", "+" -> "+", "-" -> "-", "*" -> "*",
       "/" -> "/", "%" -> "%", "<" -> "<", ">" -> ">", "<=" -> "<=", ">=" -> ">=",
       "&&" -> "&&", "||" -> "||"
     )
+
+    def isCollType(t: Term): Boolean = {
 @@ old
+      // inlining later rewrites at the call site (value token) can't also
+      // clobber the env KEY: `{ fv_d: (self.demos[i]) }` stays valid.
       val binds =
         (fvs.map { case (nm, _) => s"  $nm = env.fv_$nm" } ++
          params.zipWithIndex.map { case (p, i) => s"  $p = args[$i]" }).mkString("\n")
@@ -127,15 +185,20 @@ class SwiftEmitter(
       val body = dd.rhs.map(b => emitBody(b, wantRet)).getOrElse("")
       closures.append(s"function $name(env as object, args as object) as dynamic\n")
       closures.append("  self = env.self\n")
-      if binds.nonEmpty then closures.append(binds).append("\n")
-      if body.nonEmpty then closures.append(body).append("\n")
-      if !wantRet then closures.append("  return invalid\n")
+      if (binds.nonEmpty) closures.append(binds).append("\n")
+      if (body.nonEmpty) closures.append(body).append("\n")
+      if (!wantRet) closures.append("  return invalid\n")
       closures.append("end function\n\n")
-      val envSelf = if currentClass.exists then "self" else "invalid"
+      val envSelf = if (currentClass.exists) "self" else "invalid"
       // A captured box / thunk travels as itself (raw name), never unboxed.
       val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
       s"{ fn: $name, env: { self: $envSelf$envFvs } }"
+    }
+
+    /** A by-name argument: a zero-arg closure over the expression, forced by
 @@ new
+      // inlining later rewrites at the call site (value token) can't also
+      // clobber the env KEY: `{ fv_d: (self.demos[i]) }` stays valid.
       val binds =
         (fvs.map { case (nm, _) => s"  $nm = ${field("env", "fv_" + nm)}" } ++
          params.zipWithIndex.map { case (p, i) => s"  $p = args[${vInt(i)}]" }).mkString("\n")
@@ -145,186 +208,391 @@ class SwiftEmitter(
       val body = dd.rhs.map(b => emitBody(b, wantRet)).getOrElse("")
       closures.append(s"func $name(_ env: V, _ args: V) throws -> V {\n")
       closures.append(s"  let this: V = ${field("env", "self")}\n")
-      if binds.nonEmpty then closures.append(binds).append("\n")
-      if body.nonEmpty then closures.append(body).append("\n")
+      if (binds.nonEmpty) closures.append(binds).append("\n")
+      if (body.nonEmpty) closures.append(body).append("\n")
       closures.append("  return V.vNull\n")
       closures.append("}\n\n")
-      val envSelf = if currentClass.exists then "this" else NULL
+      val envSelf = if (currentClass.exists) "this" else NULL
       // A captured box / thunk travels as itself (raw name), never unboxed.
       val envFvs = fvs.map { case (nm, _) => s"${swStr("fv_" + nm)}: $nm" }
       s"rtClosure($name, ${rtObj(s"${swStr("self")}: $envSelf" :: envFvs)})"
+    }
+
+    /** A by-name argument: a zero-arg closure over the expression, forced by
 @@ old
+          val n = closureCounter; closureCounter += 1
+          val name = s"closure$n"
           val fvs = freeVarsIn(body, Set.empty)
           val binds = fvs.map { case (nm, _) => s"  $nm = env.fv_$nm" }.mkString("\n")
           val unitBody = body.tpe.widen =:= TypeRepr.of[Unit]
-          val code = emitInto(body, if unitBody then "" else skReturn)
+          val code = emitInto(body, if (unitBody) "" else skReturn)
           closures.append(s"function $name(env as object, args as object) as dynamic\n")
           closures.append("  self = env.self\n")
-          if binds.nonEmpty then closures.append(binds).append("\n")
-          if code.trim.nonEmpty then closures.append(code).append("\n")
+          if (binds.nonEmpty) closures.append(binds).append("\n")
+          if (code.trim.nonEmpty) closures.append(code).append("\n")
           closures.append("  return invalid\n")
           closures.append("end function\n\n")
-          val envSelf = if currentClass.exists then "self" else "invalid"
+          val envSelf = if (currentClass.exists) "self" else "invalid"
           val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
           s"{ fn: $name, env: { self: $envSelf$envFvs } }"
+      }
+    }
+
 @@ new
+          val n = closureCounter; closureCounter += 1
+          val name = s"closure$n"
           val fvs = freeVarsIn(body, Set.empty)
           val binds = fvs.map { case (nm, _) => s"  $nm = ${field("env", "fv_" + nm)}" }.mkString("\n")
           val unitBody = body.tpe.widen =:= TypeRepr.of[Unit]
-          val code = emitInto(body, if unitBody then "" else skReturn)
+          val code = emitInto(body, if (unitBody) "" else skReturn)
           closures.append(s"func $name(_ env: V, _ args: V) throws -> V {\n")
           closures.append(s"  let this: V = ${field("env", "self")}\n")
-          if binds.nonEmpty then closures.append(binds).append("\n")
-          if code.trim.nonEmpty then closures.append(code).append("\n")
+          if (binds.nonEmpty) closures.append(binds).append("\n")
+          if (code.trim.nonEmpty) closures.append(code).append("\n")
           closures.append("  return V.vNull\n")
           closures.append("}\n\n")
-          val envSelf = if currentClass.exists then "this" else NULL
+          val envSelf = if (currentClass.exists) "this" else NULL
           val envFvs = fvs.map { case (nm, _) => s"${swStr("fv_" + nm)}: $nm" }
           s"rtClosure($name, ${rtObj(s"${swStr("self")}: $envSelf" :: envFvs)})"
+      }
+    }
+
 @@ old
+      args.foreach { a =>
+        if (!isDefaultArg(a))
+          a match {
             case NamedArg(n, v) => parts += s"$n: ${emitArgVal(v)}"
             case other =>
-              params.lift(i) match
+              params.lift(i) match {
                 case Some(p) => parts += s"${p.name}: ${emitArgVal(other)}"
                 case None    => parts += emitArgVal(other)
+              }
+          }
         i += 1
       }
       "{ " + parts.mkString(", ") + " }"
+    }
+
+    def emitFacadeArgs(args: List[Term]): String = {
 @@ new
+      args.foreach { a =>
+        if (!isDefaultArg(a))
+          a match {
             case NamedArg(n, v) => parts += s"${swStr(n)}: ${emitArgVal(v)}"
             case other =>
-              params.lift(i) match
+              params.lift(i) match {
                 case Some(p) => parts += s"${swStr(p.name)}: ${emitArgVal(other)}"
                 case None    => parts += s"${swStr("_" + i)}: ${emitArgVal(other)}"
+              }
+          }
         i += 1
       }
       rtObj(parts.toList)
+    }
+
+    def emitFacadeArgs(args: List[Term]): String = {
 @@ old
+      val pos   = mutable.ListBuffer[String]()
+      val named = mutable.ListBuffer[String]()
+      kept.foreach {
         case NamedArg(n, v) => named += s"$n: ${emitArgVal(v)}"
         case other          => pos += emitArgVal(other)
       }
-      if named.isEmpty then pos.mkString(", ")
-      else if pos.isEmpty then "{ " + named.mkString(", ") + " }"
+      if (named.isEmpty) pos.mkString(", ")
+      else if (pos.isEmpty) "{ " + named.mkString(", ") + " }"
       else pos.mkString(", ") + ", { " + named.mkString(", ") + " }"
+    }
+
+    // ── object model ─────────────────────────────────────────────────────────
 @@ new
+      val pos   = mutable.ListBuffer[String]()
+      val named = mutable.ListBuffer[String]()
+      kept.foreach {
         case NamedArg(n, v) => named += s"${swStr(n)}: ${emitArgVal(v)}"
         case other          => pos += emitArgVal(other)
       }
-      if named.isEmpty then pos.mkString(", ")
-      else if pos.isEmpty then rtObj(named.toList)
+      if (named.isEmpty) pos.mkString(", ")
+      else if (pos.isEmpty) rtObj(named.toList)
       else pos.mkString(", ") + ", " + rtObj(named.toList)
+    }
+
+    // ── object model ─────────────────────────────────────────────────────────
 @@ old
-      val named = if fieldClash then named0 + "__m" else named0
-      if aaIfaceMethods.contains(named.toLowerCase) then named + "_" else named
+      val fieldClash = top.isDefDef && owner.exists && userTypeDefs.contains(owner) &&
+        owner.typeRef.baseClasses.filter(userTypeDefs.contains).exists(b =>
+          try b.declaredFields.exists(f => f.name == top.name) catch case _: Throwable => false)
+      val named = if (fieldClash) named0 + "__m" else named0
+      if (aaIfaceMethods.contains(named.toLowerCase)) named + "_" else named
+    }
+
+    // A `val` (or case-class param) that overrides a `def` — `override val
 @@ new
-      if fieldClash then named0 + "__m" else named0
+      val fieldClash = top.isDefDef && owner.exists && userTypeDefs.contains(owner) &&
+        owner.typeRef.baseClasses.filter(userTypeDefs.contains).exists(b =>
+          try b.declaredFields.exists(f => f.name == top.name) catch case _: Throwable => false)
+      if (fieldClash) named0 + "__m" else named0
+    }
+
+    // A `val` (or case-class param) that overrides a `def` — `override val
 @@ old
-      val recvPart: () => String = () => recv match
+
+    def emitModelCall(recv: Option[Term], sy: Symbol, args: List[Term]): String = {
+      val recvPart: () => String = () => recv match {
         case None                 => "self"
         case Some(r) if isThis(r) => "self"
         case Some(r)              => emitTerm(r)
+      }
+      val all = emitOrdered(recvPart :: argParts(args, sy)).filter(_ != dropArg)
 @@ new
-      val recvPart: () => String = () => recv match
+
+    def emitModelCall(recv: Option[Term], sy: Symbol, args: List[Term]): String = {
+      val recvPart: () => String = () => recv match {
         case None                 => "this"
         case Some(r) if isThis(r) => "this"
         case Some(r)              => emitTerm(r)
+      }
+      val all = emitOrdered(recvPart :: argParts(args, sy)).filter(_ != dropArg)
 @@ old
-        if simple || argList.size > 8 then s"$recvStr.${slotName(sy)}($recvStr$tail)"
+          case None    => true
+          case Some(r) => isThis(r) || isSimpleRecv(r) || isTrivialExpr(recvStr)
+        }
+        if (simple || argList.size > 8) s"$recvStr.${slotName(sy)}($recvStr$tail)"
         else s"RtVcall${argList.size}($recvStr, ${brStr(slotName(sy))}$tail)"
+      }
+    }
+
 @@ new
-        if simple || argList.size > 8 then s"${field(recvStr, slotName(sy))}($recvStr$tail)"
+          case None    => true
+          case Some(r) => isThis(r) || isSimpleRecv(r) || isTrivialExpr(recvStr)
+        }
+        if (simple || argList.size > 8) s"${field(recvStr, slotName(sy))}($recvStr$tail)"
         else s"RtVcall${argList.size}($recvStr, ${swStr(slotName(sy))}$tail)"
+      }
+    }
+
 @@ old
+        || (o.flags.is(Flags.Module) && o.companionClass.exists && userTypeDefs.contains(o.companionClass)))
+    def dropArg: String = "__RT_DROP__"
     def isTrivialExpr(e: String): Boolean =
       e.matches("[A-Za-z_][A-Za-z0-9_]*") || e.matches("-?[0-9][0-9.eE+#-]*") || e.matches("\"(?:[^\"]|\"\")*\"")
+
+    /** Evaluate a call's parts left to right. If a later part hoists
+     *  statements (A-normalisation), every EARLIER non-trivial part is pinned
 @@ new
+        || (o.flags.is(Flags.Module) && o.companionClass.exists && userTypeDefs.contains(o.companionClass)))
+    def dropArg: String = "__RT_DROP__"
     def isTrivialExpr(e: String): Boolean =
       e.matches("[A-Za-z_][A-Za-z0-9_]*") || e == NULL || e.matches("V\\.v(Int|Dbl|Bool)\\([^()]*\\)")
         || e.matches("V\\.vStr\\(\"(?:[^\"\\\\]|\\\\.)*\"\\)")
+
+    /** Evaluate a call's parts left to right. If a later part hoists
+     *  statements (A-normalisation), every EARLIER non-trivial part is pinned
 @@ old
+            if (outs(j) != dropArg && !isTrivialExpr(outs(j))) {
+              anfCounter += 1
+              val tmp = s"_a$anfCounter"
               pendingStack.top.insert(at, s"  $tmp = ${outs(j)}")
+              at += 1
+              outs(j) = tmp
+            }
 @@ new
+            if (outs(j) != dropArg && !isTrivialExpr(outs(j))) {
+              anfCounter += 1
+              val tmp = s"_a$anfCounter"
               pendingStack.top.insert(at, s"  $tmp = try ${outs(j)}")
+              at += 1
+              outs(j) = tmp
+            }
 @@ old
-      if args.size == 1 && isSplice(args.head) then emitTerm(unwrap(args.head))
+    /** A varargs argument as one array: its elements, or the spliced sequence itself (`xs*`). */
+    def varargsArray(args: List[Term]): String =
+      if (args.size == 1 && isSplice(args.head)) emitTerm(unwrap(args.head))
       else "[" + flattenVarargs(args).map(emitArgVal).mkString(", ") + "]"
+
+    def argParts(args: List[Term], callee: Symbol): List[() => String] = {
+      val params =
 @@ new
-      if args.size == 1 && isSplice(args.head) then emitTerm(unwrap(args.head))
+    /** A varargs argument as one array: its elements, or the spliced sequence itself (`xs*`). */
+    def varargsArray(args: List[Term]): String =
+      if (args.size == 1 && isSplice(args.head)) emitTerm(unwrap(args.head))
       else rtArr(flattenVarargs(args).map(emitArgVal))
+
+    def argParts(args: List[Term], callee: Symbol): List[() => String] = {
+      val params =
 @@ old
+
+    // ── `this`, outer instances and captures of local classes ────────────────
     def thisRef(target: Symbol): String =
-      if !currentClass.exists || !target.exists then "self"
-      else
+      if (!currentClass.exists || !target.exists) "self"
+      else {
         var c = currentClass
         var ref = "self"
         var guard = 0
-        while c.exists && !(c == target || c.typeRef.baseClasses.contains(target)) && anonOuter.contains(c) && guard < 16 do
+        while (c.exists && !(c == target || c.typeRef.baseClasses.contains(target)) && anonOuter.contains(c) && guard < 16) {
           ref = ref + ".__outer"
+          c = anonOuter(c)
+          guard += 1
+        }
 @@ new
+
+    // ── `this`, outer instances and captures of local classes ────────────────
     def thisRef(target: Symbol): String =
-      if !currentClass.exists || !target.exists then "this"
-      else
+      if (!currentClass.exists || !target.exists) "this"
+      else {
         var c = currentClass
         var ref = "this"
         var guard = 0
-        while c.exists && !(c == target || c.typeRef.baseClasses.contains(target)) && anonOuter.contains(c) && guard < 16 do
+        while (c.exists && !(c == target || c.typeRef.baseClasses.contains(target)) && anonOuter.contains(c) && guard < 16) {
           ref = field(ref, "__outer")
+          c = anonOuter(c)
+          guard += 1
+        }
 @@ old
+      }
+    def anonCaptureRef(sy: Symbol): Option[String] = {
       var c = currentClass
       var ref = "self"
       var guard = 0
       var found: Option[String] = None
-      while found.isEmpty && c.exists && guard < 16 do
-        if anonCaptures.get(c).exists(_.contains(sy)) then found = Some(s"$ref.__fv_${brSafe(sy.name)}")
-        else anonOuter.get(c) match
+      while (found.isEmpty && c.exists && guard < 16) {
+        if (anonCaptures.get(c).exists(_.contains(sy))) found = Some(s"$ref.__fv_${brSafe(sy.name)}")
+        else anonOuter.get(c) match {
           case Some(o) =>
             ref = ref + ".__outer"
+            c = o
+          case None => c = Symbol.noSymbol
+        }
 @@ new
+      }
+    def anonCaptureRef(sy: Symbol): Option[String] = {
       var c = currentClass
       var ref = "this"
       var guard = 0
       var found: Option[String] = None
-      while found.isEmpty && c.exists && guard < 16 do
-        if anonCaptures.get(c).exists(_.contains(sy)) then found = Some(field(ref, "__fv_" + brSafe(sy.name)))
-        else anonOuter.get(c) match
+      while (found.isEmpty && c.exists && guard < 16) {
+        if (anonCaptures.get(c).exists(_.contains(sy))) found = Some(field(ref, "__fv_" + brSafe(sy.name)))
+        else anonOuter.get(c) match {
           case Some(o) =>
             ref = field(ref, "__outer")
+            c = o
+          case None => c = Symbol.noSymbol
+        }
 @@ old
+    def emitEnumCase(s: Symbol, name: String): String = {
+      val enumClass = s.owner.companionClass
+      val ordinal = try enumClass.children.indexOf(s) catch case _: Throwable => -1
+      s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, $ordinal)"
+    }
+    def isTaskModule(q: Term): Boolean =
+      q.symbol.exists && q.symbol.flags.is(Flags.Module) && q.symbol.fullName.stripSuffix("$") == "rapid.Task"
+@@ new
+    def emitEnumCase(s: Symbol, name: String): String = {
+      val enumClass = s.owner.companionClass
+      val ordinal = try enumClass.children.indexOf(s) catch case _: Throwable => -1
+      s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, ${vInt(ordinal)})"
+    }
+    def isTaskModule(q: Term): Boolean =
+      q.symbol.exists && q.symbol.flags.is(Flags.Module) && q.symbol.fullName.stripSuffix("$") == "rapid.Task"
+@@ old
+      val keysL  = fields.map(f => brStr(f.name))
+      val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
+      val rwsL   = types.map(t => rwFor(t, depth))
+      val ctor = if (isModel(cls)) s"${typeName(cls)}_new" else "invalid"
+      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor)"
+    }
+
+    /** A default argument's value: the getter's right-hand side, from its tree or from the companion's ClassDef. */
+@@ new
+      val keysL  = fields.map(f => brStr(f.name))
+      val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
+      val rwsL   = types.map(t => rwFor(t, depth))
+      val ctor = if (isModel(cls)) s"rtFn(${typeName(cls)}_new)" else NULL
+      s"_rwGen(${brStr(cls.name)}, ${rtArr(keysL)}, ${rtArr(slotsL)}, ${rtArr(rwsL)}, $ctor)"
+    }
+
+    /** A default argument's value: the getter's right-hand side, from its tree or from the companion's ClassDef. */
+@@ old
+      val overrides = cls.caseFields.zip(flattenVarargs(args)).collect {
+        case (f, arg) if !isDefaultArg(arg) =>
+          val v = arg match { case NamedArg(_, x) => x; case o => o }
           s"${fieldKey(f)}: ${emitArgVal(v)}"
       }
       s"_caseCopy(${emitTerm(recv)}, { ${overrides.mkString(", ")} })"
+    }
+
+    // `f(a)(b)` on a method with several term clauses is ONE call in the
 @@ new
+      val overrides = cls.caseFields.zip(flattenVarargs(args)).collect {
+        case (f, arg) if !isDefaultArg(arg) =>
+          val v = arg match { case NamedArg(_, x) => x; case o => o }
           s"${swStr(fieldKey(f))}: ${emitArgVal(v)}"
       }
       s"_caseCopy(${emitTerm(recv)}, ${rtObj(overrides)})"
+    }
+
+    // `f(a)(b)` on a method with several term clauses is ONE call in the
 @@ old
+
+    // ── expression emission ─────────────────────────────────────────────────
     def emitRef(sym: Symbol, name: String): String =
-      if name == "Nil" then "[]"
-      else if name == "None" && sym.exists && sym.fullName.endsWith(".None") then "invalid"
+      if (name == "Nil") "[]"
+      else if (name == "None" && sym.exists && sym.fullName.endsWith(".None")) "invalid"
+      else if (isFacade(sym)) name
+      else if (modelModuleOf(sym).isDefined) moduleAccessor(modelModuleOf(sym).get)
+      // A symbol with no denotation (some local/synthetic Idents) has no owner —
 @@ new
+
+    // ── expression emission ─────────────────────────────────────────────────
     def emitRef(sym: Symbol, name: String): String =
-      if name == "Nil" then rtArr(Nil)
-      else if name == "None" && sym.exists && sym.fullName.endsWith(".None") then NULL
+      if (name == "Nil") rtArr(Nil)
+      else if (name == "None" && sym.exists && sym.fullName.endsWith(".None")) NULL
+      else if (isFacade(sym)) name
+      else if (modelModuleOf(sym).isDefined) moduleAccessor(modelModuleOf(sym).get)
+      // A symbol with no denotation (some local/synthetic Idents) has no owner —
 @@ old
+          // EVERY use (Scala re-evaluates it — reactify's dependency tracking
+          // depends on exactly that)
           case Some(ref) =>
-            if boxed then ref + ".v" else if byName then s"RtForce($ref)" else ref
+            if (boxed) ref + ".v" else if (byName) s"RtForce($ref)" else ref
           case None =>
-            if inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass then brSafe(name)
-            else if isModelMember(sym) && inCurrentClass(sym.owner) then emitModelCall(None, sym, Nil)
-            else if inCurrentClass(sym.owner) then s"self.${fieldKey(sym)}"
+            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
+            else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
+            else if (inCurrentClass(sym.owner)) s"self.${fieldKey(sym)}"
+            else moduleSyms.get(sym.owner) match {
+              case Some(prefix) => s"${prefix}_${memberName(sym, name)}()"
+              case None         => brSafe(name)
 @@ new
+          // EVERY use (Scala re-evaluates it — reactify's dependency tracking
+          // depends on exactly that)
           case Some(ref) =>
-            if boxed then field(ref, "v") else if byName then s"RtForce($ref)" else ref
+            if (boxed) field(ref, "v") else if (byName) s"RtForce($ref)" else ref
           case None =>
-            if inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass then brSafe(name)
-            else if isModelMember(sym) && inCurrentClass(sym.owner) then emitModelCall(None, sym, Nil)
-            else if inCurrentClass(sym.owner) then field("this", fieldKey(sym))
+            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
+            else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
+            else if (inCurrentClass(sym.owner)) field("this", fieldKey(sym))
+            else moduleSyms.get(sym.owner) match {
+              case Some(prefix) => s"${prefix}_${memberName(sym, name)}()"
+              case None         => brSafe(name)
 @@ old
-            Some(if pieces.isEmpty then "\"\"" else pieces.mkString(" + "))
+              pieces += s"_str(${emitTerm(args(i))})"
+            }
+            if (parts.length > args.length && parts.last.nonEmpty) pieces += brStr(parts.last)
+            Some(if (pieces.isEmpty) "\"\"" else pieces.mkString(" + "))
+          case _ => None
+        }
+      case _ => None
 @@ new
-            Some(if pieces.isEmpty then brStr("") else pieces.mkString(" + "))
+              pieces += s"_str(${emitTerm(args(i))})"
+            }
+            if (parts.length > args.length && parts.last.nonEmpty) pieces += brStr(parts.last)
+            Some(if (pieces.isEmpty) brStr("") else pieces.mkString(" + "))
+          case _ => None
+        }
+      case _ => None
 @@ old
-      name match
+    def emitMath(name: String, args: List[Term]): String = {
+      val a = flattenVarargs(args).map(emitArgVal)
+      name match {
         case "sqrt"  => s"Sqr(${a(0)})"
         case "pow"   => s"(${a(0)} ^ ${a(1)})"
         case "sin"   => s"Sin(${a(0)})"
@@ -339,8 +607,13 @@ class SwiftEmitter(
         case "floor" => s"Int(${a(0)})"
         case "ceil"  => s"(-Int(-(${a(0)})))"
         case _       => s"Int(${a(0)} + 0.5)"
+      }
+    }
+
 @@ new
-      name match
+    def emitMath(name: String, args: List[Term]): String = {
+      val a = flattenVarargs(args).map(emitArgVal)
+      name match {
         case "sqrt"  => s"rtSqrt(${a(0)})"
         case "pow"   => s"rtPow(${a(0)}, ${a(1)})"
         case "sin"   => s"rtSin(${a(0)})"
@@ -355,8 +628,13 @@ class SwiftEmitter(
         case "floor" => s"rtFloor(${a(0)})"
         case "ceil"  => s"rtCeil(${a(0)})"
         case _       => s"rtRound(${a(0)})"
+      }
+    }
+
 @@ old
-      else unit match
+      val sy = stripTypeApply(conv).symbol
+      if (!(sy.exists && Set("DurationInt", "DurationLong", "DurationDouble").contains(sy.name))) None
+      else unit match {
         case "nanoseconds" | "nanos" | "nanosecond" | "nano"      => Some("0.000001")
         case "microseconds" | "micros" | "microsecond" | "micro"  => Some("0.001")
         case "milliseconds" | "millis" | "millisecond" | "milli"  => Some("1")
@@ -365,8 +643,12 @@ class SwiftEmitter(
         case "hours" | "hour"                                     => Some("3600000")
         case "days" | "day"                                       => Some("86400000")
         case _                                                    => None
+      }
+    }
 @@ new
-      else unit match
+      val sy = stripTypeApply(conv).symbol
+      if (!(sy.exists && Set("DurationInt", "DurationLong", "DurationDouble").contains(sy.name))) None
+      else unit match {
         case "nanoseconds" | "nanos" | "nanosecond" | "nano"      => Some(vDbl(0.000001))
         case "microseconds" | "micros" | "microsecond" | "micro"  => Some(vDbl(0.001))
         case "milliseconds" | "millis" | "millisecond" | "milli"  => Some(vInt(1))
@@ -375,425 +657,817 @@ class SwiftEmitter(
         case "hours" | "hour"                                     => Some(vInt(3600000))
         case "days" | "day"                                       => Some(vInt(86400000))
         case _                                                    => None
+      }
+    }
 @@ old
-      if mc.flags.is(Flags.Case) && !(currentClass.exists && modelModules.contains(currentClass)) then
+      * other object (or code running inside a module's own initialisation) goes through its lazy accessor. */
+    def moduleAccessor(mc: Symbol): String =
+      if (mc.flags.is(Flags.Case) && !(currentClass.exists && modelModules.contains(currentClass)))
         s"ga.__mod_${typeName(mc)}"
+      else s"${typeName(mc)}__module()"
+
+    def emitApply(t: Term): String = {
 @@ new
-      if mc.flags.is(Flags.Case) && !(currentClass.exists && modelModules.contains(currentClass)) then
+      * other object (or code running inside a module's own initialisation) goes through its lazy accessor. */
+    def moduleAccessor(mc: Symbol): String =
+      if (mc.flags.is(Flags.Case) && !(currentClass.exists && modelModules.contains(currentClass)))
         field("ga", "__mod_" + typeName(mc))
+      else s"${typeName(mc)}__module()"
+
+    def emitApply(t: Term): String = {
 @@ old
-          if isListApply(fn) then
+          val (fn0, args) = uncurry(fn00, args00)
+          val fn = stripTypeApply(fn0)
+          if (isListApply(fn))
             return "[" + flattenVarargs(args).map(emitArgVal).mkString(", ") + "]"
-@@ new
-          if isListApply(fn) then
-            return rtArr(flattenVarargs(args).map(emitArgVal))
-@@ old
+          caseApply(t.tpe) match {
+            case Some(_) if isCaseCtor(fn, t.tpe) && isModel(t.tpe.typeSymbol) =>
+              return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
+            case Some(fields) if isCaseCtor(fn, t.tpe) =>
+              val flat = caseLiteralArgs(fields, flattenVarargs(args))
               val fs = fields.zip(flat).map((f, a) => s"$f: ${emitArgVal(a)}")
               val fieldList = fields.take(flat.size).map(f => brStr(f)).mkString(", ")
               return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: fs).mkString(", ") + " }"
+            case _ =>
+          }
+          fn match {
 @@ new
+          val (fn0, args) = uncurry(fn00, args00)
+          val fn = stripTypeApply(fn0)
+          if (isListApply(fn))
+            return rtArr(flattenVarargs(args).map(emitArgVal))
+          caseApply(t.tpe) match {
+            case Some(_) if isCaseCtor(fn, t.tpe) && isModel(t.tpe.typeSymbol) =>
+              return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
+            case Some(fields) if isCaseCtor(fn, t.tpe) =>
+              val flat = caseLiteralArgs(fields, flattenVarargs(args))
               val fs = fields.zip(flat).map((f, a) => s"${swStr(f)}: ${emitArgVal(a)}")
               val fieldList = rtArr(fields.take(flat.size).map(f => brStr(f)))
               return rtObj(s"${swStr("_cls")}: ${brStr(t.tpe.typeSymbol.name)}" :: s"${swStr("_fields")}: $fieldList" :: fs)
+            case _ =>
+          }
+          fn match {
 @@ old
-              s"RtThrow(AssertionError_new(${if args.isEmpty then "invalid" else emitArgVal(args.head)}))"
+            case Select(recv, m) if isFabricJson(fn) => shimCall(s"_json_$m", Some(recv), explicitArgs(fn.symbol, args))
+            case _ if isFabricBuilder(fn) =>
+              fn.symbol.name match {
+                case "obj" => s"_jsonObj([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
+                case "arr" => s"[${flattenVarargs(args).map(emitArgVal).mkString(", ")}]"
+                case _     => emitArgVal(args.head)
+              }
+            case _ if fnIs(fn, "fabric.io.JsonParser", "apply") => s"_jsonParse(${emitArgVal(args.head)})"
 @@ new
-              s"RtThrow(AssertionError_new(${if args.isEmpty then NULL else emitArgVal(args.head)}))"
+            case Select(recv, m) if isFabricJson(fn) => shimCall(s"_json_$m", Some(recv), explicitArgs(fn.symbol, args))
+            case _ if isFabricBuilder(fn) =>
+              fn.symbol.name match {
+                case "obj" => s"_jsonObj(${rtArr(flattenVarargs(args).map(emitArgVal))})"
+                case "arr" => rtArr(flattenVarargs(args).map(emitArgVal))
+                case _     => emitArgVal(args.head)
+              }
+            case _ if fnIs(fn, "fabric.io.JsonParser", "apply") => s"_jsonParse(${emitArgVal(args.head)})"
 @@ old
+              s"_rwRead(${emitArgVal(args.head)}, ${emitTerm(unwrapCtor(wrapped))})"
+            // ── scribe ──
+            case _ if isScribeLog(fn) =>
+              s"Scribe_log(${brStr(fn.symbol.name)}, [${flattenVarargs(explicitArgs(fn.symbol, args)).map(emitArgVal).mkString(", ")}])"
+            case _ if fn.symbol.exists && fn.symbol.name.endsWith("2LoggableMessage") && args.size == 1 => emitArgVal(args.head)
+            // ── java.util.concurrent, UUID, System, Math; Predef's wrappers ──
+            case Select(recv, m) if ownerIs(fn, "java.util.concurrent.ConcurrentHashMap") && !fn.symbol.isClassConstructor =>
+@@ new
+              s"_rwRead(${emitArgVal(args.head)}, ${emitTerm(unwrapCtor(wrapped))})"
+            // ── scribe ──
+            case _ if isScribeLog(fn) =>
+              s"Scribe_log(${brStr(fn.symbol.name)}, ${rtArr(flattenVarargs(explicitArgs(fn.symbol, args)).map(emitArgVal))})"
+            case _ if fn.symbol.exists && fn.symbol.name.endsWith("2LoggableMessage") && args.size == 1 => emitArgVal(args.head)
+            // ── java.util.concurrent, UUID, System, Math; Predef's wrappers ──
+            case Select(recv, m) if ownerIs(fn, "java.util.concurrent.ConcurrentHashMap") && !fn.symbol.isClassConstructor =>
+@@ old
+            case Select(Apply(arrow, List(k)), "->" | "$minus$greater") if isArrowAssoc(arrow) && args.size == 1 =>
+              s"Tuple2(${emitTerm(k)}, ${emitArgVal(args.head)})"
+            case _ if fn.symbol.exists && fn.symbol.name == "assertFailed" =>
+              s"RtThrow(AssertionError_new(${if (args.isEmpty) "invalid" else emitArgVal(args.head)}))"
+            case _ if fnIs(fn, "scala.Predef", "assert") =>
+              s"RtAssert(${emitArgVal(args.head)}${if (args.size > 1) ", " + emitThunk(args(1)) else ""})"
+            case _ if fn.symbol.exists && fn.symbol.name == "synchronized" && args.size == 1 =>
+@@ new
+            case Select(Apply(arrow, List(k)), "->" | "$minus$greater") if isArrowAssoc(arrow) && args.size == 1 =>
+              s"Tuple2(${emitTerm(k)}, ${emitArgVal(args.head)})"
+            case _ if fn.symbol.exists && fn.symbol.name == "assertFailed" =>
+              s"RtThrow(AssertionError_new(${if (args.isEmpty) NULL else emitArgVal(args.head)}))"
+            case _ if fnIs(fn, "scala.Predef", "assert") =>
+              s"RtAssert(${emitArgVal(args.head)}${if (args.size > 1) ", " + emitThunk(args(1)) else ""})"
+            case _ if fn.symbol.exists && fn.symbol.name == "synchronized" && args.size == 1 =>
+@@ old
+              if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+              else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) =>
               s"_distinct([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
+            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) =>
+              s"_mapFromPairs(${varargsArray(args)})"
+            case _ if ownerIs(fn, "scala.math.package") && mathNames.contains(fn.symbol.name) =>
 @@ new
+              if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+              else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) =>
               s"_distinct(${rtArr(flattenVarargs(args).map(emitArgVal))})"
+            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) =>
+              s"_mapFromPairs(${varargsArray(args)})"
+            case _ if ownerIs(fn, "scala.math.package") && mathNames.contains(fn.symbol.name) =>
 @@ old
+            case Select(recv, "s") if fqnOf(recv.tpe) == "scala.StringContext" =>
+              s"_strInterp(${emitTerm(recv)}, ${varargsArray(args)})"
             case Select(recv, "length") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
               s"Len(${emitTerm(recv)})"
             case Select(recv, "isEmpty") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
               s"(Len(${emitTerm(recv)}) = 0)"
             case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
               s"(Instr(1, ${emitTerm(recv)}, ${emitArgVal(args.head)}) - 1)"
+            case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
+              s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
 @@ new
+            case Select(recv, "s") if fqnOf(recv.tpe) == "scala.StringContext" =>
+              s"_strInterp(${emitTerm(recv)}, ${varargsArray(args)})"
             case Select(recv, "length") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
               s"rtLen(${emitTerm(recv)})"
             case Select(recv, "isEmpty") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
               s"(rtLen(${emitTerm(recv)}) == ${vInt(0)})"
             case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
               s"rtIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
+              s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
 @@ old
+              s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
+            case Select(New(tpt), _) =>
+              s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             // var setter x.p_=(v) → assignment
             case Select(recv, setter) if setter.endsWith("_=") && args.length == 1 && !userMethodSyms.contains(fn.symbol) =>
               s"${emitTerm(recv)}.${setter.dropRight(2)} = ${emitTerm(args.head)}"
             case _ if isSuperAccessor(fn.symbol) =>
-              superAccessorImpl(fn.symbol) match
+              superAccessorImpl(fn.symbol) match {
                 case Some(impl) => s"${modelImplName(impl)}(self${emitArgList(args, impl).map(", " + _).mkString})"
                 case None       => "invalid"
+              }
+            // Object-model dispatch (see "object model" above).
+            case Select(recv, _) if isModelMember(fn.symbol) && !isFacade(fn.symbol) && !isSuper(recv) =>
 @@ new
+              s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
+            case Select(New(tpt), _) =>
+              s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             // var setter x.p_=(v) → a field write (a statement in Swift, so through the runtime)
             case Select(recv, setter) if setter.endsWith("_=") && args.length == 1 && !userMethodSyms.contains(fn.symbol) =>
               s"rtSet(${emitTerm(recv)}, ${swStr(setter.dropRight(2))}, ${emitTerm(args.head)})"
             case _ if isSuperAccessor(fn.symbol) =>
-              superAccessorImpl(fn.symbol) match
+              superAccessorImpl(fn.symbol) match {
                 case Some(impl) => s"${modelImplName(impl)}(this${emitArgList(args, impl).map(", " + _).mkString})"
                 case None       => NULL
+              }
+            // Object-model dispatch (see "object model" above).
+            case Select(recv, _) if isModelMember(fn.symbol) && !isFacade(fn.symbol) && !isSuper(recv) =>
 @@ old
+              emitModelCall(None, fn.symbol, args)
+            // `x == null` / `x ne null` on an object: a direct test, not a call.
             case Select(recv, op @ ("==" | "!=" | "eq" | "ne")) if args.length == 1 && nullCompared(recv, args.head).isDefined =>
-              val cmp = if op == "==" || op == "eq" then "=" else "<>"
+              val cmp = if (op == "==" || op == "eq") "=" else "<>"
               s"(${emitTerm(nullCompared(recv, args.head).get)} $cmp invalid)"
             case Select(recv, op @ ("==" | "!=")) if args.length == 1 && (isModuleOperand(recv) || isModuleOperand(args.head)) =>
               val e = s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-              if op == "==" then e else s"(not $e)"
+              if (op == "==") e else s"(not $e)"
             // Scala equality / identity on non-primitive operands.
             case Select(recv, op @ ("==" | "!=")) if args.length == 1 && !(isPrimLike(recv) && isPrimLike(args.head)) =>
               val e = s"_eq(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-              if op == "==" then e else s"(not $e)"
+              if (op == "==") e else s"(not $e)"
             case Select(recv, op @ ("eq" | "ne")) if args.length == 1 =>
               val e = s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-              if op == "eq" then e else s"(not $e)"
+              if (op == "eq") e else s"(not $e)"
+            case Select(recv, "apply") if args.length == 1 && isCollType(recv) =>
+              s"${emitTerm(recv)}[${emitTerm(args.head)}]"
+            // Invoking a function VALUE (`f(x)` where f: T => R desugars to
 @@ new
+              emitModelCall(None, fn.symbol, args)
+            // `x == null` / `x ne null` on an object: a direct test, not a call.
             case Select(recv, op @ ("==" | "!=" | "eq" | "ne")) if args.length == 1 && nullCompared(recv, args.head).isDefined =>
-              val cmp = if op == "==" || op == "eq" then "==" else "!="
+              val cmp = if (op == "==" || op == "eq") "==" else "!="
               s"(${emitTerm(nullCompared(recv, args.head).get)} $cmp $NULL)"
             case Select(recv, op @ ("==" | "!=")) if args.length == 1 && (isModuleOperand(recv) || isModuleOperand(args.head)) =>
               val e = s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-              if op == "==" then e else s"(!$e)"
+              if (op == "==") e else s"(!$e)"
             // Scala equality / identity on non-primitive operands.
             case Select(recv, op @ ("==" | "!=")) if args.length == 1 && !(isPrimLike(recv) && isPrimLike(args.head)) =>
               val e = s"_eq(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-              if op == "==" then e else s"(!$e)"
+              if (op == "==") e else s"(!$e)"
             case Select(recv, op @ ("eq" | "ne")) if args.length == 1 =>
               val e = s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-              if op == "eq" then e else s"(!$e)"
+              if (op == "eq") e else s"(!$e)"
+            case Select(recv, "apply") if args.length == 1 && isCollType(recv) =>
+              s"${emitTerm(recv)}[${emitTerm(args.head)}]"
+            // Invoking a function VALUE (`f(x)` where f: T => R desugars to
 @@ old
+            case Select(recv, "apply") if isFunctionType(recv.tpe) =>
+              val r = emitTerm(recv)
+              val a = emitArgs(args, fn.symbol)
               // A closure held in a local or a field chain is called in place — one call fewer than RtInvoke.
-              if r.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*") && r != "invalid" then s"$r.fn($r.env, [$a])"
+              if (r.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*") && r != "invalid") s"$r.fn($r.env, [$a])"
               else s"RtInvoke($r, [$a])"
+            // A method DECLARED on a user class dispatches to its own emitted
+            // function — it must win over the collection/string/Option builtins
+            // below, which match on NAME alone. `Var.map` is not `List.map`,
 @@ new
+            case Select(recv, "apply") if isFunctionType(recv.tpe) =>
+              val r = emitTerm(recv)
+              val a = emitArgs(args, fn.symbol)
               // A closure held in a local is called in place — one call fewer than RtInvoke.
-              if r.matches("[A-Za-z_][A-Za-z0-9_]*") then s"${field(r, "fn")}(${field(r, "env")}, ${rtArr(List(a))})"
+              if (r.matches("[A-Za-z_][A-Za-z0-9_]*")) s"${field(r, "fn")}(${field(r, "env")}, ${rtArr(List(a))})"
               else s"RtInvoke($r, ${rtArr(List(a))})"
+            // A method DECLARED on a user class dispatches to its own emitted
+            // function — it must win over the collection/string/Option builtins
+            // below, which match on NAME alone. `Var.map` is not `List.map`,
 @@ old
-              if isThis(recv) && inCurrentClass(fn.symbol.owner) then
+              val a = emitArgs(args, fn.symbol)
+              val tail = if (a.isEmpty) "" else ", " + a
+              if (isThis(recv) && inCurrentClass(fn.symbol.owner))
                 s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(self$tail)"
               else s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}$tail)"
+            // A method on a user `object` → the flat `Obj_m(args)` function
+            // emitModule wrote. Matches the BARE-Ident form too (`build(x)`
 @@ new
-              if isThis(recv) && inCurrentClass(fn.symbol.owner) then
+              val a = emitArgs(args, fn.symbol)
+              val tail = if (a.isEmpty) "" else ", " + a
+              if (isThis(recv) && inCurrentClass(fn.symbol.owner))
                 s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(this$tail)"
               else s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}$tail)"
+            // A method on a user `object` → the flat `Obj_m(args)` function
+            // emitModule wrote. Matches the BARE-Ident form too (`build(x)`
 @@ old
+              s"_substr(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
+            case Select(recv, "substring") if args.length == 1 =>
+              s"_substr1(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "toLowerCase") => s"LCase(${emitTerm(recv)})"
             case Select(recv, "toUpperCase") => s"UCase(${emitTerm(recv)})"
+            case Select(recv, "trim")        => s"_trim(${emitTerm(recv)})"
+            case Select(recv, "split")       => s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "startsWith")  => s"_startsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
 @@ new
+              s"_substr(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
+            case Select(recv, "substring") if args.length == 1 =>
+              s"_substr1(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "toLowerCase") => s"rtLower(${emitTerm(recv)})"
             case Select(recv, "toUpperCase") => s"rtUpper(${emitTerm(recv)})"
+            case Select(recv, "trim")        => s"_trim(${emitTerm(recv)})"
+            case Select(recv, "split")       => s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "startsWith")  => s"_startsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
 @@ old
+            case Select(recv, "exists") if isOptionType(recv) =>
+              s"_optExists(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "contains") if isOptionType(recv) =>
               s"(${emitTerm(recv)} = ${emitArgVal(args.head)})"
+            // ── Try / Either ops ──
+            case Select(recv, "fold") if (isTryType(recv) || isEitherType(recv)) && args.length == 2 =>
+              s"_tryFold(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
 @@ new
+            case Select(recv, "exists") if isOptionType(recv) =>
+              s"_optExists(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "contains") if isOptionType(recv) =>
               s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // ── Try / Either ops ──
+            case Select(recv, "fold") if (isTryType(recv) || isEitherType(recv)) && args.length == 2 =>
+              s"_tryFold(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
 @@ old
+                if !(fn.symbol.exists && fn.symbol.isDefDef && fn.symbol.flags.is(Flags.Method)
+                     && isUserClassSym(fn.symbol.owner) && !isFacade(fn.symbol)) =>
+              s"${emitTerm(recv)}(${emitArgs(args, fn.symbol)})"
             // self method call (private def) → Class_method(self, args)
             case Select(recv, name) if inCurrentClass(fn.symbol.owner) && isThis(recv) =>
               val a = emitArgs(args, fn.symbol)
-              s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(self${if a.isEmpty then "" else ", " + a})"
+              s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(self${if (a.isEmpty) "" else ", " + a})"
+            // A self method referenced as a BARE Ident (`load()` inside another
+            // method) — Scala drops the `this.`; emit Class_method(self, …), not
+            // `self.load()` (a field-call passes no `self` → "wrong # of params").
+            case _ if fn.symbol.exists && fn.symbol.isDefDef && fn.symbol.flags.is(Flags.Method)
+                && inCurrentClass(fn.symbol.owner) && !isFacade(fn.symbol) =>
+              val a = emitArgs(args, fn.symbol)
+              s"${typeName(currentClass)}_${memberName(fn.symbol, fn.symbol.name)}(self${if (a.isEmpty) "" else ", " + a})"
+            // Cross-object user-method call: `recv.m(args)` where recv is another
+            // user object. RokuEmitter methods take `self` explicitly, so emit
+            // Owner_method(recv, args), NOT recv.m(args) — a field-call passes no
 @@ new
+                if !(fn.symbol.exists && fn.symbol.isDefDef && fn.symbol.flags.is(Flags.Method)
+                     && isUserClassSym(fn.symbol.owner) && !isFacade(fn.symbol)) =>
+              s"${emitTerm(recv)}(${emitArgs(args, fn.symbol)})"
             // self method call (private def) → Class_method(this, args)
             case Select(recv, name) if inCurrentClass(fn.symbol.owner) && isThis(recv) =>
               val a = emitArgs(args, fn.symbol)
-              s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(this${if a.isEmpty then "" else ", " + a})"
-@@ old
+              s"${typeName(currentClass)}_${memberName(fn.symbol, name)}(this${if (a.isEmpty) "" else ", " + a})"
+            // A self method referenced as a BARE Ident (`load()` inside another
+            // method) — Scala drops the `this.`; emit Class_method(self, …), not
+            // `self.load()` (a field-call passes no `self` → "wrong # of params").
+            case _ if fn.symbol.exists && fn.symbol.isDefDef && fn.symbol.flags.is(Flags.Method)
+                && inCurrentClass(fn.symbol.owner) && !isFacade(fn.symbol) =>
               val a = emitArgs(args, fn.symbol)
-              s"${typeName(currentClass)}_${memberName(fn.symbol, fn.symbol.name)}(self${if a.isEmpty then "" else ", " + a})"
-@@ new
-              val a = emitArgs(args, fn.symbol)
-              s"${typeName(currentClass)}_${memberName(fn.symbol, fn.symbol.name)}(this${if a.isEmpty then "" else ", " + a})"
+              s"${typeName(currentClass)}_${memberName(fn.symbol, fn.symbol.name)}(this${if (a.isEmpty) "" else ", " + a})"
+            // Cross-object user-method call: `recv.m(args)` where recv is another
+            // user object. RokuEmitter methods take `self` explicitly, so emit
+            // Owner_method(recv, args), NOT recv.m(args) — a field-call passes no
 @@ old
+              s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}${if (a.isEmpty) "" else ", " + a})"
+            case _ =>
+              val fe = emitTerm(fn)
               // `throw e` is a keyword in BrightScript, not a call → runtime helper.
-              if fe == "throw" then s"RtThrow(${emitArgs(args, fn.symbol)})"
+              if (fe == "throw") s"RtThrow(${emitArgs(args, fn.symbol)})"
+              else s"$fe(${emitArgs(args, fn.symbol)})"
+          }
+        case _ => emitTerm(t)
 @@ new
+              s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}${if (a.isEmpty) "" else ", " + a})"
+            case _ =>
+              val fe = emitTerm(fn)
               // `throw e` is a statement in Swift, not an expression → runtime helper.
-              if fe == "throw" || fe == "throw_" then s"RtThrow(${emitArgs(args, fn.symbol)})"
+              if (fe == "throw" || fe == "throw_") s"RtThrow(${emitArgs(args, fn.symbol)})"
+              else s"$fe(${emitArgs(args, fn.symbol)})"
+          }
+        case _ => emitTerm(t)
 @@ old
-    def isThis(t: Term): Boolean = t match
+    }
+
+    def isThis(t: Term): Boolean = t match {
       case th: This => thisRef(th.symbol) == "self"
       case _        => false
+    }
+
 @@ new
-    def isThis(t: Term): Boolean = t match
+    }
+
+    def isThis(t: Term): Boolean = t match {
       case th: This => thisRef(th.symbol) == "this"
       case _        => false
+    }
+
 @@ old
-          if ss.exists && userTypeDefs.contains(ss.owner) then
+        case Apply(f0, sargs) if superSel(f0).isDefined =>
+          val ss = superSel(f0).get.symbol
+          if (ss.exists && userTypeDefs.contains(ss.owner))
             s"${modelImplName(ss)}(self${emitArgList(sargs).map(", " + _).mkString})"
           else "invalid"
         case sel @ Select(spr, _) if isSuper(spr) =>
           val ss = sel.symbol
-          if ss.exists && userTypeDefs.contains(ss.owner) && (ss.isDefDef || ss.flags.is(Flags.Lazy)) then
+          if (ss.exists && userTypeDefs.contains(ss.owner) && (ss.isDefDef || ss.flags.is(Flags.Lazy)))
             s"${modelImplName(ss)}(self)"
           else "invalid"
+        case Literal(c)  => emitConst(c)
+        case th: This    => thisRef(th.symbol)
+        // a constructor with several argument clauses: one `_new` with all of them
 @@ new
-          if ss.exists && userTypeDefs.contains(ss.owner) then
+        case Apply(f0, sargs) if superSel(f0).isDefined =>
+          val ss = superSel(f0).get.symbol
+          if (ss.exists && userTypeDefs.contains(ss.owner))
             s"${modelImplName(ss)}(this${emitArgList(sargs).map(", " + _).mkString})"
           else NULL
         case sel @ Select(spr, _) if isSuper(spr) =>
           val ss = sel.symbol
-          if ss.exists && userTypeDefs.contains(ss.owner) && (ss.isDefDef || ss.flags.is(Flags.Lazy)) then
+          if (ss.exists && userTypeDefs.contains(ss.owner) && (ss.isDefDef || ss.flags.is(Flags.Lazy)))
             s"${modelImplName(ss)}(this)"
           else NULL
+        case Literal(c)  => emitConst(c)
+        case th: This    => thisRef(th.symbol)
+        // a constructor with several argument clauses: one `_new` with all of them
 @@ old
+        case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Double" =>
+          if (n == "MaxValue") "RtDoubleMax()" else "RtDoubleMin()"
         case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Int" =>
-          if n == "MaxValue" then "2147483647" else "(-2147483647 - 1)"
+          if (n == "MaxValue") "2147483647" else "(-2147483647 - 1)"
         case sel @ Select(_, n @ ("Pi" | "E")) if ownerFqn(sel.symbol) == "scala.math.package" =>
-          if n == "Pi" then "3.141592653589793" else "2.718281828459045"
-@@ new
-        case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Int" =>
-          if n == "MaxValue" then vInt(2147483647L) else vInt(-2147483648L)
-        case sel @ Select(_, n @ ("Pi" | "E")) if ownerFqn(sel.symbol) == "scala.math.package" =>
-          if n == "Pi" then vDbl(math.Pi) else vDbl(math.E)
-@@ old
+          if (n == "Pi") "3.141592653589793" else "2.718281828459045"
+        case Select(Apply(conv, List(n)), unit) if durationFactor(conv, unit).isDefined =>
+          s"RtDuration((${emitTerm(n)}) * ${durationFactor(conv, unit).get})"
+        case Select(q, "toMillis") if fqnOf(q.tpe).startsWith("scala.concurrent.duration") =>
+          s"RtDurationMs(${emitTerm(q)})"
         case Select(q, "toSeconds") if fqnOf(q.tpe).startsWith("scala.concurrent.duration") =>
           s"Int(RtDurationMs(${emitTerm(q)}) / 1000)"
         case Select(Apply(f, List(str)), m @ ("nonEmpty" | "isEmpty"))
             if stripTypeApply(f).symbol.exists && stripTypeApply(f).symbol.name == "augmentString" =>
-          if m == "nonEmpty" then s"(Len(${emitTerm(str)}) > 0)" else s"(Len(${emitTerm(str)}) = 0)"
+          if (m == "nonEmpty") s"(Len(${emitTerm(str)}) > 0)" else s"(Len(${emitTerm(str)}) = 0)"
         case Select(q, "toList" | "toSeq" | "toVector") if isMapTpe(q.tpe) => s"_mapToList(${emitTerm(q)})"
         case Select(q, "length") if fqnOf(q.tpe) == "java.lang.String" => s"Len(${emitTerm(q)})"
         case ta @ TypeApply(Select(_, "empty"), _) if isMapTpe(ta.tpe) => "_mapEmpty()"
         case ta @ TypeApply(Select(_, "empty"), _) if isSetTpe(ta.tpe) || isListTpe(ta.tpe) => "[]"
         case sel @ Select(_, "empty") if isMapTpe(sel.tpe) => "_mapEmpty()"
         case sel @ Select(_, "empty") if isSetTpe(sel.tpe) || isListTpe(sel.tpe) => "[]"
+        case Select(q, "keys" | "keySet") if isMapTpe(q.tpe) => s"_mapKeys(${emitTerm(q)})"
+        case Select(q, "values") if isMapTpe(q.tpe) => s"_mapValues(${emitTerm(q)})"
+        case Select(q, "size") if isMapTpe(q.tpe) => s"_mapSize(${emitTerm(q)})"
+        case Select(q, "size" | "length") if isCollType(q) => s"${emitTerm(q)}.count()"
+        // Paren-less Option getters (Option lowers to a plain nullable).
+        case Select(q, "isDefined" | "nonEmpty") if isOptionType(q) => s"(${emitTerm(q)} <> invalid)"
+        case Select(q, "isEmpty") if isOptionType(q)               => s"(${emitTerm(q)} = invalid)"
+        case Select(q, "get" | "orNull") if isOptionType(q)        => emitTerm(q)
+        case Select(q, "toOption") if isTryType(q) || isEitherType(q) => s"_tryToOption(${emitTerm(q)})"
+        case Select(q, "toList" | "toSeq" | "toArray" | "toVector" | "toIndexedSeq") if isCollType(q) => emitTerm(q)
+        // Paren-less collection getters → runtime helpers.
+        case Select(q, "isEmpty") if isCollType(q)   => s"(${emitTerm(q)}.count() = 0)"
+        case Select(q, "nonEmpty") if isCollType(q)  => s"(${emitTerm(q)}.count() > 0)"
+        case Select(q, "head") if isCollType(q)      => s"${emitTerm(q)}[0]"
+        case Select(q, "last") if isCollType(q)      => s"_last(${emitTerm(q)})"
+        case Select(q, "headOption") if isCollType(q) => s"_headOption(${emitTerm(q)})"
+        case Select(q, "lastOption") if isCollType(q) => s"_lastOption(${emitTerm(q)})"
 @@ new
+        case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Double" =>
+          if (n == "MaxValue") "RtDoubleMax()" else "RtDoubleMin()"
+        case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Int" =>
+          if (n == "MaxValue") vInt(2147483647L) else vInt(-2147483648L)
+        case sel @ Select(_, n @ ("Pi" | "E")) if ownerFqn(sel.symbol) == "scala.math.package" =>
+          if (n == "Pi") vDbl(math.Pi) else vDbl(math.E)
+        case Select(Apply(conv, List(n)), unit) if durationFactor(conv, unit).isDefined =>
+          s"RtDuration((${emitTerm(n)}) * ${durationFactor(conv, unit).get})"
+        case Select(q, "toMillis") if fqnOf(q.tpe).startsWith("scala.concurrent.duration") =>
+          s"RtDurationMs(${emitTerm(q)})"
         case Select(q, "toSeconds") if fqnOf(q.tpe).startsWith("scala.concurrent.duration") =>
           s"rtFloor(RtDurationMs(${emitTerm(q)}) / ${vInt(1000)})"
         case Select(Apply(f, List(str)), m @ ("nonEmpty" | "isEmpty"))
             if stripTypeApply(f).symbol.exists && stripTypeApply(f).symbol.name == "augmentString" =>
-          if m == "nonEmpty" then s"(rtLen(${emitTerm(str)}) > ${vInt(0)})" else s"(rtLen(${emitTerm(str)}) == ${vInt(0)})"
+          if (m == "nonEmpty") s"(rtLen(${emitTerm(str)}) > ${vInt(0)})" else s"(rtLen(${emitTerm(str)}) == ${vInt(0)})"
         case Select(q, "toList" | "toSeq" | "toVector") if isMapTpe(q.tpe) => s"_mapToList(${emitTerm(q)})"
         case Select(q, "length") if fqnOf(q.tpe) == "java.lang.String" => s"rtLen(${emitTerm(q)})"
         case ta @ TypeApply(Select(_, "empty"), _) if isMapTpe(ta.tpe) => "_mapEmpty()"
         case ta @ TypeApply(Select(_, "empty"), _) if isSetTpe(ta.tpe) || isListTpe(ta.tpe) => rtArr(Nil)
         case sel @ Select(_, "empty") if isMapTpe(sel.tpe) => "_mapEmpty()"
         case sel @ Select(_, "empty") if isSetTpe(sel.tpe) || isListTpe(sel.tpe) => rtArr(Nil)
-@@ old
-        case Select(q, "size" | "length") if isCollType(q) => s"${emitTerm(q)}.count()"
-        // Paren-less Option getters (Option lowers to a plain nullable).
-        case Select(q, "isDefined" | "nonEmpty") if isOptionType(q) => s"(${emitTerm(q)} <> invalid)"
-        case Select(q, "isEmpty") if isOptionType(q)               => s"(${emitTerm(q)} = invalid)"
-@@ new
+        case Select(q, "keys" | "keySet") if isMapTpe(q.tpe) => s"_mapKeys(${emitTerm(q)})"
+        case Select(q, "values") if isMapTpe(q.tpe) => s"_mapValues(${emitTerm(q)})"
+        case Select(q, "size") if isMapTpe(q.tpe) => s"_mapSize(${emitTerm(q)})"
         case Select(q, "size" | "length") if isCollType(q) => s"rtCount(${emitTerm(q)})"
         // Paren-less Option getters (Option lowers to a plain nullable).
         case Select(q, "isDefined" | "nonEmpty") if isOptionType(q) => s"(${emitTerm(q)} != $NULL)"
         case Select(q, "isEmpty") if isOptionType(q)               => s"(${emitTerm(q)} == $NULL)"
-@@ old
-        case Select(q, "isEmpty") if isCollType(q)   => s"(${emitTerm(q)}.count() = 0)"
-        case Select(q, "nonEmpty") if isCollType(q)  => s"(${emitTerm(q)}.count() > 0)"
-        case Select(q, "head") if isCollType(q)      => s"${emitTerm(q)}[0]"
-@@ new
+        case Select(q, "get" | "orNull") if isOptionType(q)        => emitTerm(q)
+        case Select(q, "toOption") if isTryType(q) || isEitherType(q) => s"_tryToOption(${emitTerm(q)})"
+        case Select(q, "toList" | "toSeq" | "toArray" | "toVector" | "toIndexedSeq") if isCollType(q) => emitTerm(q)
+        // Paren-less collection getters → runtime helpers.
         case Select(q, "isEmpty") if isCollType(q)   => s"(rtCount(${emitTerm(q)}) == ${vInt(0)})"
         case Select(q, "nonEmpty") if isCollType(q)  => s"(rtCount(${emitTerm(q)}) > ${vInt(0)})"
         case Select(q, "head") if isCollType(q)      => s"${emitTerm(q)}[${vInt(0)}]"
+        case Select(q, "last") if isCollType(q)      => s"_last(${emitTerm(q)})"
+        case Select(q, "headOption") if isCollType(q) => s"_headOption(${emitTerm(q)})"
+        case Select(q, "lastOption") if isCollType(q) => s"_lastOption(${emitTerm(q)})"
 @@ old
+        case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
+        case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
+        case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
+        case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
-@@ new
-        case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, ${vInt(1)})"
-@@ old
+        case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
+        case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
+        case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
+          if (isByNameParam(sel.symbol)) s"RtForce(${brSafe(n)})" else brSafe(n)
+        case sel @ Select(q, _) if isModelMember(sel.symbol) && !isFacade(sel.symbol) && !isSuper(q) =>
+          emitModelCall(Some(q), sel.symbol, Nil)
         case Select(q, "unary_$bang" | "unary_!") => s"(not ${emitTerm(q)})"
+        case Select(q, "unary_$minus" | "unary_-") => s"(-${emitTerm(q)})"
+        // NOTE: do NOT special-case nullary Applys here as `emitTerm(fn)()` —
+        // that emits `self.load()` for a self method (a field-call passing no
 @@ new
+        case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
+        case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
+        case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
+        case Select(q, "toDouble" | "toFloat") => s"rtToDbl(${emitTerm(q)})"
+        case Select(q, "toInt" | "toLong")     => s"rtToInt(${emitTerm(q)})"
+        case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, ${vInt(1)})"
+        case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
+        case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
+        case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
+          if (isByNameParam(sel.symbol)) s"RtForce(${brSafe(n)})" else brSafe(n)
+        case sel @ Select(q, _) if isModelMember(sel.symbol) && !isFacade(sel.symbol) && !isSuper(q) =>
+          emitModelCall(Some(q), sel.symbol, Nil)
         case Select(q, "unary_$bang" | "unary_!") => s"(!${emitTerm(q)})"
+        case Select(q, "unary_$minus" | "unary_-") => s"(-${emitTerm(q)})"
+        // NOTE: do NOT special-case nullary Applys here as `emitTerm(fn)()` —
+        // that emits `self.load()` for a self method (a field-call passing no
 @@ old
-          if qs.exists && qs.flags.is(Flags.Module)
-             && (hasNative(qs) || hasNative(qs.companionClass)) then
+          // `ga.<Object>.<member>`, which the platform runtime installs.
+          if (qs.exists && qs.flags.is(Flags.Module)
+             && (hasNative(qs) || hasNative(qs.companionClass)))
             s"ga.${qs.name.stripSuffix("$")}.${brSafe(name)}"
+          else {
+            // paren-less USER getter → Class_getter(self); a member of a @native
+            // base class is a plain field → self.field.
 @@ new
-          if qs.exists && qs.flags.is(Flags.Module)
-             && (hasNative(qs) || hasNative(qs.companionClass)) then
+          // `ga.<Object>.<member>`, which the platform runtime installs.
+          if (qs.exists && qs.flags.is(Flags.Module)
+             && (hasNative(qs) || hasNative(qs.companionClass)))
             field(field("ga", qs.name.stripSuffix("$")), brSafe(name))
+          else {
+            // paren-less USER getter → Class_getter(self); a member of a @native
+            // base class is a plain field → self.field.
 @@ old
-            if inCurrentClass(s.owner) && isThis(q) then
-              if parenlessSelf then s"${typeName(currentClass)}_${memberName(s, name)}(self)" else s"self.${brSafe(name)}"
-            else moduleSyms.get(s.owner) match
+            // instance of the same class (`child.node` inside a Component
+            // method). Only a real `this.` receiver resolves against `self`.
+            if (inCurrentClass(s.owner) && isThis(q))
+              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(self)" else s"self.${brSafe(name)}"
+            else moduleSyms.get(s.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `self.getter` only holds the function ref, so call it.
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               case None                  => s"${emitTerm(q)}.${brSafe(name)}"
+            }
+          }
+        // `_iif(c, a, b)` only where both arms are pure; any other control flow
 @@ new
-            if inCurrentClass(s.owner) && isThis(q) then
-              if parenlessSelf then s"${typeName(currentClass)}_${memberName(s, name)}(this)" else field("this", brSafe(name))
-            else moduleSyms.get(s.owner) match
+            // instance of the same class (`child.node` inside a Component
+            // method). Only a real `this.` receiver resolves against `self`.
+            if (inCurrentClass(s.owner) && isThis(q))
+              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(this)" else field("this", brSafe(name))
+            else moduleSyms.get(s.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `this.getter` only holds the function ref, so call it.
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               case None                  => field(emitTerm(q), brSafe(name))
+            }
+          }
+        // `_iif(c, a, b)` only where both arms are pure; any other control flow
 @@ old
-        case asg: Assign =>
-          if pendingStack.nonEmpty then
+          if (pendingStack.nonEmpty) {
             val st = emitStat(asg)
-            if st.trim.nonEmpty then pendingStack.top += st
+            if (st.trim.nonEmpty) pendingStack.top += st
             "invalid"
+          }
           else todo(asg)
+        case other => todo(other)
 @@ new
-        case asg: Assign =>
-          if pendingStack.nonEmpty then
+          if (pendingStack.nonEmpty) {
             val st = emitStat(asg)
-            if st.trim.nonEmpty then pendingStack.top += st
+            if (st.trim.nonEmpty) pendingStack.top += st
             NULL
+          }
           else todo(asg)
+        case other => todo(other)
 @@ old
-        case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
-@@ new
-        case Select(q, "toDouble" | "toFloat") => s"rtToDbl(${emitTerm(q)})"
-        case Select(q, "toInt" | "toLong")     => s"rtToInt(${emitTerm(q)})"
-@@ old
-    def stmtTerm(e: String): String =
+    // BrightScript statement — drop those.
+    def stmtTerm(e: String): String = {
       val t = e.trim
       // A bare literal / no-op isn't a valid BrightScript statement — only
       // calls and assignments are. Drop `invalid`, "", string/number literals.
-      if t.isEmpty || t == "invalid" then ""
-      else if t.matches("\"(?:[^\"]|\"\")*\"") then ""
-      else if t.matches("-?[0-9][0-9.]*") then ""
+      if (t.isEmpty || t == "invalid") ""
+      else if (t.matches("\"(?:[^\"]|\"\")*\"")) ""
+      else if (t.matches("-?[0-9][0-9.]*")) ""
       // a discarded VALUE (`(a - b)`, `x.field`) is not a BrightScript statement; keep its evaluation
-      else if t.startsWith("(") || !t.endsWith(")") then "  __discard = " + e
+      else if (t.startsWith("(") || !t.endsWith(")")) "  __discard = " + e
       else "  " + e
+    }
+
+    // ── pattern matching ─────────────────────────────────────────────────────
 @@ new
-    def stmtTerm(e: String): String =
+    // BrightScript statement — drop those.
+    def stmtTerm(e: String): String = {
       val t = e.trim
       // A no-op or a literal in statement position is dropped; anything else is evaluated for its effect.
-      if t.isEmpty || t == NULL || isTrivialExpr(t) then ""
+      if (t.isEmpty || t == NULL || isTrivialExpr(t)) ""
       else "  _ = try " + t
+    }
+
+    // ── pattern matching ─────────────────────────────────────────────────────
 @@ old
+      // `"a" | "b"` inside a pattern: any of them
+      case Alternatives(ps) =>
+        val ts = ps.map(x => patternTest(x, subj))
+        ("(" + ts.map(_._1).mkString(" or ") + ")", ts.flatMap(_._2))
       case Literal(c)        => (s"($subj = ${emitConst(c)})", Nil)
+      case Typed(inner, _)   => patternTest(inner, subj)
+      case TypedOrTest(inner, tpt) =>
+        val ts = tpt.tpe.typeSymbol
 @@ new
+      // `"a" | "b"` inside a pattern: any of them
+      case Alternatives(ps) =>
+        val ts = ps.map(x => patternTest(x, subj))
+        ("(" + ts.map(_._1).mkString(" || ") + ")", ts.flatMap(_._2))
       case Literal(c)        => (s"($subj == ${emitConst(c)})", Nil)
+      case Typed(inner, _)   => patternTest(inner, subj)
+      case TypedOrTest(inner, tpt) =>
+        val ts = tpt.tpe.typeSymbol
 @@ old
-          else if ts.fullName == "scala.Some" || ts.fullName == "scala.Option" then s"($subj <> invalid)"
-          else if ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+") then
+        }
+        val tag =
+          if (!ts.exists || innerTests) "true"
+          else if (ts.fullName == "scala.Some" || ts.fullName == "scala.Option") s"($subj <> invalid)"
+          else if (ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
             s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
           else "true"
         val (it, ib) = patternTest(inner, subj)
-        val test = if it == "true" then tag else if tag == "true" then it else s"$tag and $it"
-@@ new
-          else if ts.fullName == "scala.Some" || ts.fullName == "scala.Option" then s"($subj != $NULL)"
-          else if ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+") then
-            s"($subj != $NULL && ${field(subj, "_cls")} == ${brStr(ts.name)})"
-          else "true"
-        val (it, ib) = patternTest(inner, subj)
-        val test = if it == "true" then tag else if tag == "true" then it else s"$tag && $it"
-@@ old
+        val test = if (it == "true") tag else if (tag == "true") it else s"$tag and $it"
+        (test, ib)
+      // Option lowers to a nullable: `Some(x)` is any non-invalid value, bound as-is.
+      case u @ Unapply(fun, _, subs)
+          if subs.size == 1 && { val c = patternClass(u); c.exists && c.fullName == "scala.Some" } =>
         val (it, ib) = patternTest(subs.head, subj)
-        (if it == "true" then s"($subj <> invalid)" else s"($subj <> invalid) and $it", ib)
-@@ new
-        val (it, ib) = patternTest(subs.head, subj)
-        (if it == "true" then s"($subj != $NULL)" else s"($subj != $NULL) && $it", ib)
-@@ old
+        (if (it == "true") s"($subj <> invalid)" else s"($subj <> invalid) and $it", ib)
+      case u @ Unapply(_, _, subs) =>
+        val cls = patternClass(u)
+        val fields = if (cls.exists) cls.caseFields.map(_.name) else Nil
         val tag =
-          if cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+") then s"($subj <> invalid and $subj._cls = ${brStr(cls.name)})"
-          else if cls.exists then s"($subj <> invalid)"
+          if (cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+")) s"($subj <> invalid and $subj._cls = ${brStr(cls.name)})"
+          else if (cls.exists) s"($subj <> invalid)"
           else "true"
         val subT = subs.zipWithIndex.map { case (sp, i) =>
           patternTest(sp, s"$subj.${fields.lift(i).map(brSafe).getOrElse("_" + (i + 1))}") }
         val test = (tag :: subT.map(_._1)).filter(_ != "true").mkString(" and ")
+        ((if (test.isEmpty) "true" else test), subT.flatMap(_._2))
+      // A stable identifier (a case object, `Nil`, `None`, a val) matches by
+      // equality. Without this it fell through to `true` and ALWAYS matched.
 @@ new
+        }
         val tag =
-          if cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+") then s"($subj != $NULL && ${field(subj, "_cls")} == ${brStr(cls.name)})"
-          else if cls.exists then s"($subj != $NULL)"
+          if (!ts.exists || innerTests) "true"
+          else if (ts.fullName == "scala.Some" || ts.fullName == "scala.Option") s"($subj != $NULL)"
+          else if (ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
+            s"($subj != $NULL && ${field(subj, "_cls")} == ${brStr(ts.name)})"
+          else "true"
+        val (it, ib) = patternTest(inner, subj)
+        val test = if (it == "true") tag else if (tag == "true") it else s"$tag && $it"
+        (test, ib)
+      // Option lowers to a nullable: `Some(x)` is any non-invalid value, bound as-is.
+      case u @ Unapply(fun, _, subs)
+          if subs.size == 1 && { val c = patternClass(u); c.exists && c.fullName == "scala.Some" } =>
+        val (it, ib) = patternTest(subs.head, subj)
+        (if (it == "true") s"($subj != $NULL)" else s"($subj != $NULL) && $it", ib)
+      case u @ Unapply(_, _, subs) =>
+        val cls = patternClass(u)
+        val fields = if (cls.exists) cls.caseFields.map(_.name) else Nil
+        val tag =
+          if (cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+")) s"($subj != $NULL && ${field(subj, "_cls")} == ${brStr(cls.name)})"
+          else if (cls.exists) s"($subj != $NULL)"
           else "true"
         val subT = subs.zipWithIndex.map { case (sp, i) =>
           patternTest(sp, field(subj, fields.lift(i).map(brSafe).getOrElse("_" + (i + 1)))) }
         val test = (tag :: subT.map(_._1)).filter(_ != "true").mkString(" && ")
+        ((if (test.isEmpty) "true" else test), subT.flatMap(_._2))
+      // A stable identifier (a case object, `Nil`, `None`, a val) matches by
+      // equality. Without this it fell through to `true` and ALWAYS matched.
 @@ old
-        if v == "invalid" then (s"($subj = invalid)", Nil)
+                      && t.symbol.exists && (t.symbol.flags.is(Flags.Module) || t.symbol.isValDef) =>
+        val v = emitTerm(t)
+        // An `object` is a single instance: matching `case Conclusion.Continue =>` is an identity test.
+        if (v == "invalid") (s"($subj = invalid)", Nil)
+        else if (t.symbol.exists && t.symbol.flags.is(Flags.Module)) (s"RtIdentity($subj, $v)", Nil)
+        else (s"_eq($subj, $v)", Nil)
+      case _ => ("true", Nil)
 @@ new
-        if v == NULL then (s"($subj == $NULL)", Nil)
+                      && t.symbol.exists && (t.symbol.flags.is(Flags.Module) || t.symbol.isValDef) =>
+        val v = emitTerm(t)
+        // An `object` is a single instance: matching `case Conclusion.Continue =>` is an identity test.
+        if (v == NULL) (s"($subj == $NULL)", Nil)
+        else if (t.symbol.exists && t.symbol.flags.is(Flags.Module)) (s"RtIdentity($subj, $v)", Nil)
+        else (s"_eq($subj, $v)", Nil)
+      case _ => ("true", Nil)
 @@ old
     def skReturn: String = "__RT_RET__"
     def sinkLine(sk: String, v: String): String =
-      if sk == "" then stmtTerm(v)
-      else if sk == skReturn then s"  return $v"
+      if (sk == "") stmtTerm(v)
+      else if (sk == skReturn) s"  return $v"
       else s"  $sk = $v"
     def sinkUnit(sk: String): String =
-      if sk == "" then "" else if sk == skReturn then "  return invalid" else s"  $sk = invalid"
+      if (sk == "") "" else if (sk == skReturn) "  return invalid" else s"  $sk = invalid"
+
+    /** Emit ONE statement: whatever its expressions hoist is written first. */
+    def withStatement(f: => String): String = {
 @@ new
     def skReturn: String = "__RT_RET__"
     def sinkLine(sk: String, v: String): String =
-      if sk == "" then stmtTerm(v)
-      else if sk == skReturn then s"  return try $v"
+      if (sk == "") stmtTerm(v)
+      else if (sk == skReturn) s"  return try $v"
       else s"  $sk = try $v"
     def sinkUnit(sk: String): String =
-      if sk == "" then "" else if sk == skReturn then s"  return $NULL" else s"  $sk = $NULL"
+      if (sk == "") "" else if (sk == skReturn) s"  return $NULL" else s"  $sk = $NULL"
+
+    /** Emit ONE statement: whatever its expressions hoist is written first. */
+    def withStatement(f: => String): String = {
 @@ old
+      case Block(stats, e) =>
+        (stats.map(emitStat) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
       case If(c, a, b) =>
         val head = withStatement(s"  if ${emitTerm(c)} then")
         val thenPart = emitInto(a, sk)
-        if sk == "" && isUnit(b) then s"$head\n$thenPart\n  end if"
+        if (sk == "" && isUnit(b)) s"$head\n$thenPart\n  end if"
         else s"$head\n$thenPart\n  else\n${emitInto(b, sk)}\n  end if"
       case Match(scrut, cases) => emitMatchStat(scrut, cases, sk)
       case Try(body, cases, fin) => emitTryStat(body, cases, fin, sk)
       case While(cond, body) =>
         val head = withStatement(s"  while ${emitTerm(cond)}")
         List(head, emitInto(body, ""), "  end while", sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
+      case asg: Assign =>
+        List(emitStat(asg), sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
+      case e if isUnit(e) => sinkUnit(sk)
 @@ new
+      case Block(stats, e) =>
+        (stats.map(emitStat) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
       case If(c, a, b) =>
         val head = withStatement(s"  if (try ${emitTerm(c)}).rtTrue {")
         val thenPart = emitInto(a, sk)
-        if sk == "" && isUnit(b) then s"$head\n$thenPart\n  }"
+        if (sk == "" && isUnit(b)) s"$head\n$thenPart\n  }"
         else s"$head\n$thenPart\n  } else {\n${emitInto(b, sk)}\n  }"
       case Match(scrut, cases) => emitMatchStat(scrut, cases, sk)
       case Try(body, cases, fin) => emitTryStat(body, cases, fin, sk)
       case While(cond, body) =>
         val head = withStatement(s"  while (try ${emitTerm(cond)}).rtTrue {")
         List(head, emitInto(body, ""), "  }", sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
+      case asg: Assign =>
+        List(emitStat(asg), sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
+      case e if isUnit(e) => sinkUnit(sk)
 @@ old
-        if boxedVars.contains(vd.symbol) then
+      case vd @ ValDef(name, _, Some(rhs)) =>
+        val lhs = brSafe(name)
+        if (boxedVars.contains(vd.symbol))
           List(emitInto(rhs, lhs), s"  $lhs = { v: $lhs }").filter(_.trim.nonEmpty).mkString("\n")
-@@ new
-        if boxedVars.contains(vd.symbol) then
-          List(emitInto(rhs, lhs), s"  $lhs = ${rtObj(List(s"${swStr("v")}: $lhs"))}").filter(_.trim.nonEmpty).mkString("\n")
-@@ old
+        else emitInto(rhs, lhs)
+      case ValDef(_, _, None) => ""
+      case Assign(lhs, rhs) if isModuleVar(lhs.symbol) =>
+        val k = s"${modulePrefix(lhs.symbol.owner)}_${brSafe(lhs.symbol.name)}"
+        val tmp = s"__mvset_$k"
         List(emitInto(rhs, tmp), s"  ${k}__set($tmp)").filter(_.trim.nonEmpty).mkString("\n")
+      case Assign(lhs, rhs) => emitInto(rhs, emitTerm(lhs))
+      case _: DefDef | _: ClassDef | _: TypeDef => ""
+      case term: Term => emitInto(term, "")
 @@ new
+      case vd @ ValDef(name, _, Some(rhs)) =>
+        val lhs = brSafe(name)
+        if (boxedVars.contains(vd.symbol))
+          List(emitInto(rhs, lhs), s"  $lhs = ${rtObj(List(s"${swStr("v")}: $lhs"))}").filter(_.trim.nonEmpty).mkString("\n")
+        else emitInto(rhs, lhs)
+      case ValDef(_, _, None) => ""
+      case Assign(lhs, rhs) if isModuleVar(lhs.symbol) =>
+        val k = s"${modulePrefix(lhs.symbol.owner)}_${brSafe(lhs.symbol.name)}"
+        val tmp = s"__mvset_$k"
         List(emitInto(rhs, tmp), s"  _ = try ${k}__set($tmp)").filter(_.trim.nonEmpty).mkString("\n")
+      case Assign(lhs, rhs) => emitInto(rhs, emitTerm(lhs))
+      case _: DefDef | _: ClassDef | _: TypeDef => ""
+      case term: Term => emitInto(term, "")
 @@ old
+              val eq = bd.indexOf(" = ")
+              if (eq > 0) ge = substToken(ge, bd.substring(0, eq).trim, bd.substring(eq + 3).trim)
+            }
             s" and ($ge)"
           }.getOrElse("")
-          sb += s"  ${if first then "if" else "else if"} $test$guard"
+          sb += s"  ${if (first) "if" else "else if"} $test$guard"
           first = false
           binds.foreach(bd => sb += s"    $bd")
           val body = emitInto(cd.rhs, sk)
-          if body.trim.nonEmpty then sb += body
-          if test == "true" && guard.isEmpty then exhaustive = true
-      }
-      if !exhaustive && noMatch.nonEmpty then
-        sb += "  else"
-        sb += noMatch
-      sb += "  end if"
-      sb.toList
 @@ new
+              val eq = bd.indexOf(" = ")
+              if (eq > 0) ge = substToken(ge, bd.substring(0, eq).trim, bd.substring(eq + 3).trim)
+            }
             s" && ($ge)"
           }.getOrElse("")
-          val cond = (if test == "true" then "V.vBool(true)" else test) + guard
-          sb += (if first then s"  if (try $cond).rtTrue {" else s"  } else if (try $cond).rtTrue {")
+          val cond = (if (test == "true") "V.vBool(true)" else test) + guard
+          sb += (if (first) s"  if (try $cond).rtTrue {" else s"  } else if (try $cond).rtTrue {")
           first = false
           binds.foreach(bd => sb += s"    $bd")
           val body = emitInto(cd.rhs, sk)
-          if body.trim.nonEmpty then sb += body
-          if test == "true" && guard.isEmpty then exhaustive = true
-      }
-      if first then List(noMatch).filter(_.trim.nonEmpty)
-      else
-        if !exhaustive && noMatch.nonEmpty then
-          sb += "  } else {"
-          sb += noMatch
-        sb += "  }"
-        sb.toList
 @@ old
+          if (test == "true" && guard.isEmpty) exhaustive = true
+        }
+      }
+      if (!exhaustive && noMatch.nonEmpty) {
+        sb += "  else"
+        sb += noMatch
+      }
+      sb += "  end if"
+      sb.toList
+    }
+
+    def emitMatchStat(scrut: Term, cases: List[CaseDef], sk: String): String = {
+      val mv = s"_mt${matchCounter}"; matchCounter += 1
       val head = withStatement(s"  $mv = ${emitTerm(scrut)}")
       (head :: emitCasesOn(mv, cases, sk, s"    RtThrow(MatchError_new($mv))")).mkString("\n")
+    }
+
+    // `try body catch { cases } finally fin`. The body and handlers assign a
 @@ new
+          if (test == "true" && guard.isEmpty) exhaustive = true
+        }
+      }
+      if (first) List(noMatch).filter(_.trim.nonEmpty)
+      else {
+        if (!exhaustive && noMatch.nonEmpty) {
+          sb += "  } else {"
+          sb += noMatch
+        }
+        sb += "  }"
+        sb.toList
+      }
+    }
+
+    def emitMatchStat(scrut: Term, cases: List[CaseDef], sk: String): String = {
+      val mv = s"_mt${matchCounter}"; matchCounter += 1
       val head = withStatement(s"  $mv = try ${emitTerm(scrut)}")
       (head :: emitCasesOn(mv, cases, sk, s"    _ = try RtThrow(MatchError_new($mv))")).mkString("\n")
+    }
+
+    // `try body catch { cases } finally fin`. The body and handlers assign a
 @@ old
-      fin match
+      val res = s"_tr$n"
+      val inner = if (wantsValue) res else ""
+      val sb = mutable.ListBuffer[String]()
+      fin match {
         case None =>
           sb += "  try"
           sb += emitInto(body, inner)
@@ -806,21 +1480,29 @@ class SwiftEmitter(
           sb += "  try"
           sb += emitInto(body, inner)
           sb += s"  catch $ex"
-          if cases.isEmpty then sb += s"    $err = $ex"
-          else
+          if (cases.isEmpty) sb += s"    $err = $ex"
+          else {
             sb += "    try"
             sb ++= emitCasesOn(ex, cases, inner, s"    throw $ex")
             sb += s"    catch ${ex}h"
             sb += s"      $err = ${ex}h"
             sb += "    end try"
+          }
           sb += "  end try"
           sb += emitInto(f, "")
           sb += s"  if $err <> invalid then throw $err"
-      if wantsValue then sb += sinkLine(sk, res)
-      else if sk == skReturn then sb += "  return invalid"
+      }
+      if (wantsValue) sb += sinkLine(sk, res)
+      else if (sk == skReturn) sb += "  return invalid"
+      sb.filter(_.trim.nonEmpty).mkString("\n")
+    }
+
 @@ new
+      val res = s"_tr$n"
+      val inner = if (wantsValue) res else ""
+      val sb = mutable.ListBuffer[String]()
       val err0 = s"_e$n"
-      fin match
+      fin match {
         case None =>
           sb += "  do {"
           sb += emitInto(body, inner)
@@ -834,40 +1516,59 @@ class SwiftEmitter(
           sb += "  do {"
           sb += emitInto(body, inner)
           sb += s"  } catch let $err0 as RtError {"
-          if cases.isEmpty then sb += s"    $err = $err0.v"
-          else
+          if (cases.isEmpty) sb += s"    $err = $err0.v"
+          else {
             sb += "    do {"
             sb += s"    $ex = $err0.v"
             sb ++= emitCasesOn(ex, cases, inner, s"    throw $err0")
             sb += s"    } catch let ${err0}h as RtError {"
             sb += s"      $err = ${err0}h.v"
             sb += "    }"
+          }
           sb += "  }"
           sb += emitInto(f, "")
           sb += s"  if ($err != $NULL).rtTrue { throw RtError(v: $err) }"
-      if wantsValue then sb += sinkLine(sk, res)
-      else if sk == skReturn then sb += s"  return $NULL"
+      }
+      if (wantsValue) sb += sinkLine(sk, res)
+      else if (sk == skReturn) sb += s"  return $NULL"
+      sb.filter(_.trim.nonEmpty).mkString("\n")
+    }
+
 @@ old
+        val rhs = vd.rhs.get
+        res = sub(res, brSafe(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
+      }
       val id = "[A-Za-z_$][A-Za-z0-9_$]*"
       res
         .replaceAll(id + ": " + marker + ", ", "")
         .replaceAll(", " + id + ": " + marker, "")
-        .replaceAll(marker + ", ", "")
-        .replaceAll(", " + marker, "")
-        .replaceAll("\\(" + marker + "\\)", "()")
-        .replaceAll(id + ": " + marker, "")
-        .replaceAll(marker, "invalid")
 @@ new
+        val rhs = vd.rhs.get
+        res = sub(res, brSafe(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
+      }
       val id = "\"[A-Za-z_$][A-Za-z0-9_$]*\""
       res
         .replaceAll(id + ": " + marker + ", ", "")
         .replaceAll(", " + id + ": " + marker, "")
-        .replaceAll(marker + ", ", "")
+@@ old
+        .replaceAll(", " + marker, "")
+        .replaceAll("\\(" + marker + "\\)", "()")
+        .replaceAll(id + ": " + marker, "")
+        .replaceAll(marker, "invalid")
+    }
+
+    // ── object → top-level Obj_member functions ──────────────────────────────
+@@ new
         .replaceAll(", " + marker, "")
         .replaceAll("\\(" + marker + "\\)", "()")
         .replaceAll(id + ": " + marker, "")
         .replaceAll(marker, NULL)
+    }
+
+    // ── object → top-level Obj_member functions ──────────────────────────────
 @@ old
+        case dd @ DefDef(name, pcs, _, Some(rhs))
+            if userMember(dd.symbol) && name != "<init>" && !name.endsWith("_=") && keepMember(dd.symbol) =>
           val ps = termParams(pcs)
           out.append(s"function ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
           out.append(emitBody(rhs, true)).append("\n")
@@ -875,7 +1576,7 @@ class SwiftEmitter(
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
           out.append(s"function ${base}_${brSafe(name)}() as dynamic\n")
-          unwrap(rhs) match
+          unwrap(rhs) match {
             case Literal(_) if !mutable => out.append(emitInto(rhs, skReturn)).append("\n")
             case _ =>
               // Scala evaluates an object's vals once; the accessor caches in
@@ -891,17 +1592,23 @@ class SwiftEmitter(
               out.append(emitInto(rhs, s"ga[${brStr("__mv_" + k)}]")).append("\n")
               out.append("  end if\n")
               out.append(s"  return ga[${brStr("__mv_" + k)}]\n")
+          }
           out.append("end function\n\n")
           // An object `var` also gets a setter. It marks the var initialised so
           // a first READ after a write doesn't re-run the initialiser over it.
-          if mutable then
+          if (mutable) {
             val k = s"${base}_${brSafe(name)}"
             out.append(s"function ${k}__set(v as dynamic) as dynamic\n")
             out.append("  ga = GetGlobalAA()\n")
             out.append(s"  ga[${brStr("__mvs_" + k)}] = true\n")
             out.append(s"  ga[${brStr("__mv_" + k)}] = v\n")
             out.append("  return invalid\nend function\n\n")
+          }
+        case _ => ()
+      }
 @@ new
+        case dd @ DefDef(name, pcs, _, Some(rhs))
+            if userMember(dd.symbol) && name != "<init>" && !name.endsWith("_=") && keepMember(dd.symbol) =>
           val ps = termParams(pcs)
           out.append(s"func ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
           out.append(emitBody(rhs, true)).append("\n")
@@ -909,7 +1616,7 @@ class SwiftEmitter(
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
           out.append(s"func ${base}_${brSafe(name)}() throws -> V {\n")
-          unwrap(rhs) match
+          unwrap(rhs) match {
             case Literal(_) if !mutable => out.append(emitInto(rhs, skReturn)).append("\n")
             case _ =>
               // Scala evaluates an object's vals once; the accessor caches in
@@ -924,16 +1631,22 @@ class SwiftEmitter(
               out.append(emitInto(rhs, field("ga", "__mv_" + k))).append("\n")
               out.append("  }\n")
               out.append(s"  return ${field("ga", "__mv_" + k)}\n")
+          }
           out.append("}\n\n")
           // An object `var` also gets a setter. It marks the var initialised so
           // a first READ after a write doesn't re-run the initialiser over it.
-          if mutable then
+          if (mutable) {
             val k = s"${base}_${brSafe(name)}"
             out.append(s"func ${k}__set(_ v: V) throws -> V {\n")
             out.append(s"  ${field("ga", "__mvs_" + k)} = V.vBool(true)\n")
             out.append(s"  ${field("ga", "__mv_" + k)} = v\n")
             out.append(s"  return $NULL\n}\n\n")
+          }
+        case _ => ()
+      }
 @@ old
+      val ctorParams = termParams(cd.constructor.paramss)
+
       // constructor
       out.append(s"function ${cn}_new(${ctorParams.map(p => s"$p as dynamic").mkString(", ")}) as object\n")
       out.append("  self = {}\n")
@@ -943,7 +1656,12 @@ class SwiftEmitter(
           out.append(s"  self.${brSafe(vd.name)} = ${brSafe(vd.name)}\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) =>
           out.append(emitInto(rhs, s"self.${brSafe(name)}")).append("\n")
+        // A constructor STATEMENT (`register(this)` in a class body) runs at
+        // construction; it used to be silently dropped.
+        case st: Term =>
 @@ new
+      val ctorParams = termParams(cd.constructor.paramss)
+
       // constructor
       out.append(s"func ${cn}_new(${ctorParams.map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
       out.append(s"  let this: V = rtNew(${swStr(cn)})\n")
@@ -952,7 +1670,12 @@ class SwiftEmitter(
           out.append(s"  ${field("this", brSafe(vd.name))} = ${brSafe(vd.name)}\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) =>
           out.append(emitInto(rhs, field("this", brSafe(name)))).append("\n")
+        // A constructor STATEMENT (`register(this)` in a class body) runs at
+        // construction; it used to be silently dropped.
+        case st: Term =>
 @@ old
+      cd.body.foreach {
+        case dd @ DefDef(name, _, _, Some(_)) if emittableMethod(dd) =>
           val mn = memberName(dd.symbol, name)
           out.append(s"  self.$mn = ${cn}_$mn\n")
         case _ => ()
@@ -969,7 +1692,12 @@ class SwiftEmitter(
           out.append(emitBody(rhs, wantRet)).append("\n")
           out.append("  return invalid\n")
           out.append("end function\n\n")
+        case _ => ()
+      }
+      currentClass = Symbol.noSymbol
 @@ new
+      cd.body.foreach {
+        case dd @ DefDef(name, _, _, Some(_)) if emittableMethod(dd) =>
           val mn = memberName(dd.symbol, name)
           out.append(s"  ${field("this", mn)} = rtFn(${cn}_$mn)\n")
         case _ => ()
@@ -986,7 +1714,12 @@ class SwiftEmitter(
           out.append(emitBody(rhs, wantRet)).append("\n")
           out.append(s"  return $NULL\n")
           out.append("}\n\n")
+        case _ => ()
+      }
+      currentClass = Symbol.noSymbol
 @@ old
+      // member implementations
+      cd.body.foreach {
         case dd: DefDef if emittableMethod(dd) =>
           val ps = "self as object" :: termParams(dd.paramss).map(p => s"$p as dynamic")
           sb.append(s"function ${modelImplName(dd.symbol)}(${ps.mkString(", ")}) as dynamic\n")
@@ -1016,80 +1749,29 @@ class SwiftEmitter(
       sb.append(s"  self[$guard] = true\n")
       cd.parents.foreach { p =>
         val (ps, pargs) = parentInfo(p)
-        if ps.exists && ps != sym && userTypeDefs.contains(ps) then
+        if (ps.exists && ps != sym && userTypeDefs.contains(ps)) {
           val ctor = parentCtor(p)
           inParentArgs = true
           val call = withStatement(s"  ${initName(ps, ctor)}(self${emitArgList(pargs, ctor).map(", " + _).mkString})")
           inParentArgs = false
           sb.append(call).append("\n")
-        else if ps.exists && shimParents.contains(ps.fullName) then
+        }
+        else if (ps.exists && shimParents.contains(ps.fullName))
           sb.append(s"  ${shimParents(ps.fullName)}_init(self)\n")
       }
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
           sb.append(s"  self.${fieldKey(vd.symbol)} = ${brSafe(vd.name)}\n")
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
-          rhsOpt match
+          rhsOpt match {
             case Some(r) if !isWildcardInit(r) => sb.append(emitInto(r, s"self.${fieldKey(vd.symbol)}")).append("\n")
             case _                             => sb.append(s"  self.${fieldKey(vd.symbol)} = invalid\n")
+          }
         case _: DefDef | _: ValDef | _: TypeDef | _: ClassDef => ()
         case st: Term =>
-          val e = emitStat(st)
-          if e.trim.nonEmpty then sb.append(e).append("\n")
-        case _ => ()
-      }
-      sb.append("  return invalid\nend function\n\n")
-
-      // secondary constructors: `def this(...) = { this(...); stats }`
-      secondaryCtors(sym).zipWithIndex.foreach { case (dd, k) =>
-        val ps = termParams(dd.paramss)
-        sb.append(s"function ${cn}__init__${k + 1}(self as object${ps.map(p => s", $p as dynamic").mkString}) as dynamic\n")
-        val stats = unwrap(dd.rhs.get) match
-          case Block(ss, e) => ss :+ e
-          case other        => List(other)
-        stats.foreach {
-          case Apply(f, as) if f.symbol.exists && f.symbol.isClassConstructor =>
-            sb.append(withStatement(s"  ${initName(sym, f.symbol)}(self${emitArgList(as, f.symbol).map(", " + _).mkString})")).append("\n")
-          case st =>
-            val e = emitStat(st)
-            if e.trim.nonEmpty then sb.append(e).append("\n")
-        }
-        sb.append("  return invalid\nend function\n\n")
-      }
-
-      // a module: one instance, stored BEFORE its init runs (as the JVM sets MODULE$), so init can refer to it
-      if sym.flags.is(Flags.Module) then
-        val key = brStr("__mod_" + cn)
-        sb.append(s"function ${cn}__module() as object\n")
-        sb.append("  ga = GetGlobalAA()\n")
-        sb.append(s"  self = ga[$key]\n")
-        sb.append("  if self <> invalid then return self\n")
-        sb.append("  self = {}\n")
-        sb.append(s"  self._cls = ${brStr(cn)}\n")
-        sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
-        sym.typeRef.baseClasses.reverse.foreach { bc =>
-          shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
-        }
-        vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
-        sb.append(s"  ga[$key] = self\n")
-        sb.append(s"  ${cn}__init(self)\n")
-        sb.append("  return self\nend function\n\n")
-      // constructor: allocate, captures, runtime-parent slots, vtable, init
-      else if !isTrait && !sym.flags.is(Flags.Abstract) then
-        sb.append(s"function ${cn}_new(${(extraParams ++ ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
-        sb.append("  self = {}\n")
-        sb.append(s"  self._cls = ${brStr(cn)}\n")
-        extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
-        if sym.flags.is(Flags.Case) then
-          sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
-        sym.typeRef.baseClasses.reverse.foreach { bc =>
-          shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
-        }
-        vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
-        sb.append(s"  ${cn}__init(self${ctorParams.map(p => ", " + p).mkString})\n")
-        sb.append("  return self\nend function\n\n")
-      currentClass = savedClass
 @@ new
+      // member implementations
+      cd.body.foreach {
         case dd: DefDef if emittableMethod(dd) =>
           val ps = "_ this: V" :: termParams(dd.paramss).map(p => s"_ $p: V")
           sb.append(s"func ${modelImplName(dd.symbol)}(${ps.mkString(", ")}) throws -> V {\n")
@@ -1119,26 +1801,87 @@ class SwiftEmitter(
       sb.append(s"  this[$guard] = V.vBool(true)\n")
       cd.parents.foreach { p =>
         val (ps, pargs) = parentInfo(p)
-        if ps.exists && ps != sym && userTypeDefs.contains(ps) then
+        if (ps.exists && ps != sym && userTypeDefs.contains(ps)) {
           val ctor = parentCtor(p)
           inParentArgs = true
           val call = withStatement(s"  _ = try ${initName(ps, ctor)}(this${emitArgList(pargs, ctor).map(", " + _).mkString})")
           inParentArgs = false
           sb.append(call).append("\n")
-        else if ps.exists && shimParents.contains(ps.fullName) then
+        }
+        else if (ps.exists && shimParents.contains(ps.fullName))
           sb.append(s"  _ = ${shimParents(ps.fullName)}_init(this)\n")
       }
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
           sb.append(s"  ${field("this", fieldKey(vd.symbol))} = ${brSafe(vd.name)}\n")
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
-          rhsOpt match
+          rhsOpt match {
             case Some(r) if !isWildcardInit(r) => sb.append(emitInto(r, field("this", fieldKey(vd.symbol)))).append("\n")
             case _                             => sb.append(s"  ${field("this", fieldKey(vd.symbol))} = $NULL\n")
+          }
         case _: DefDef | _: ValDef | _: TypeDef | _: ClassDef => ()
         case st: Term =>
-          val e = emitStat(st)
-          if e.trim.nonEmpty then sb.append(e).append("\n")
+@@ old
+          if (e.trim.nonEmpty) sb.append(e).append("\n")
+        case _ => ()
+      }
+      sb.append("  return invalid\nend function\n\n")
+
+      // secondary constructors: `def this(...) = { this(...); stats }`
+      secondaryCtors(sym).zipWithIndex.foreach { case (dd, k) =>
+        val ps = termParams(dd.paramss)
+        sb.append(s"function ${cn}__init__${k + 1}(self as object${ps.map(p => s", $p as dynamic").mkString}) as dynamic\n")
+        val stats = unwrap(dd.rhs.get) match {
+          case Block(ss, e) => ss :+ e
+          case other        => List(other)
+        }
+        stats.foreach {
+          case Apply(f, as) if f.symbol.exists && f.symbol.isClassConstructor =>
+            sb.append(withStatement(s"  ${initName(sym, f.symbol)}(self${emitArgList(as, f.symbol).map(", " + _).mkString})")).append("\n")
+          case st =>
+            val e = emitStat(st)
+            if (e.trim.nonEmpty) sb.append(e).append("\n")
+        }
+        sb.append("  return invalid\nend function\n\n")
+      }
+
+      // a module: one instance, stored BEFORE its init runs (as the JVM sets MODULE$), so init can refer to it
+      if (sym.flags.is(Flags.Module)) {
+        val key = brStr("__mod_" + cn)
+        sb.append(s"function ${cn}__module() as object\n")
+        sb.append("  ga = GetGlobalAA()\n")
+        sb.append(s"  self = ga[$key]\n")
+        sb.append("  if self <> invalid then return self\n")
+        sb.append("  self = {}\n")
+        sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
+        sym.typeRef.baseClasses.reverse.foreach { bc =>
+          shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
+        }
+        vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
+        sb.append(s"  ga[$key] = self\n")
+        sb.append(s"  ${cn}__init(self)\n")
+        sb.append("  return self\nend function\n\n")
+      }
+      // constructor: allocate, captures, runtime-parent slots, vtable, init
+      else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
+        sb.append(s"function ${cn}_new(${(extraParams ++ ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
+        sb.append("  self = {}\n")
+        sb.append(s"  self._cls = ${brStr(cn)}\n")
+        extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
+        if (sym.flags.is(Flags.Case))
+          sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
+        sym.typeRef.baseClasses.reverse.foreach { bc =>
+          shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
+        }
+        vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
+        sb.append(s"  ${cn}__init(self${ctorParams.map(p => ", " + p).mkString})\n")
+        sb.append("  return self\nend function\n\n")
+      }
+      currentClass = savedClass
+    }
+@@ new
+          if (e.trim.nonEmpty) sb.append(e).append("\n")
         case _ => ()
       }
       sb.append(s"  return $NULL\n}\n\n")
@@ -1147,21 +1890,22 @@ class SwiftEmitter(
       secondaryCtors(sym).zipWithIndex.foreach { case (dd, k) =>
         val ps = termParams(dd.paramss)
         sb.append(s"func ${cn}__init__${k + 1}(_ this: V${ps.map(p => s", _ $p: V").mkString}) throws -> V {\n")
-        val stats = unwrap(dd.rhs.get) match
+        val stats = unwrap(dd.rhs.get) match {
           case Block(ss, e) => ss :+ e
           case other        => List(other)
+        }
         stats.foreach {
           case Apply(f, as) if f.symbol.exists && f.symbol.isClassConstructor =>
             sb.append(withStatement(s"  _ = try ${initName(sym, f.symbol)}(this${emitArgList(as, f.symbol).map(", " + _).mkString})")).append("\n")
           case st =>
             val e = emitStat(st)
-            if e.trim.nonEmpty then sb.append(e).append("\n")
+            if (e.trim.nonEmpty) sb.append(e).append("\n")
         }
         sb.append(s"  return $NULL\n}\n\n")
       }
 
       // a module: one instance, stored BEFORE its init runs (as the JVM sets MODULE$), so init can refer to it
-      if sym.flags.is(Flags.Module) then
+      if (sym.flags.is(Flags.Module)) {
         val key = swStr("__mod_" + cn)
         sb.append(s"func ${cn}__module() throws -> V {\n")
         sb.append(s"  existing = ga[$key]\n")
@@ -1175,12 +1919,13 @@ class SwiftEmitter(
         sb.append(s"  ga[$key] = this\n")
         sb.append(s"  _ = try ${cn}__init(this)\n")
         sb.append("  return this\n}\n\n")
+      }
       // constructor: allocate, captures, runtime-parent slots, vtable, init
-      else if !isTrait && !sym.flags.is(Flags.Abstract) then
+      else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
         sb.append(s"func ${cn}_new(${(extraParams ++ ctorParams).map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
         sb.append(s"  let this: V = rtNew(${swStr(cn)})\n")
         extraParams.foreach(ep => sb.append(s"  ${field("this", ep)} = $ep\n"))
-        if sym.flags.is(Flags.Case) then
+        if (sym.flags.is(Flags.Case))
           sb.append(s"  ${field("this", "_fields")} = ${rtArr(sym.caseFields.map(f => brStr(fieldKey(f))))}\n")
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  _ = ${shim}__install(this)\n"))
@@ -1188,98 +1933,106 @@ class SwiftEmitter(
         vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  ${field("this", slot)} = rtFn($impl)\n") }
         sb.append(s"  _ = try ${cn}__init(this${ctorParams.map(p => ", " + p).mkString})\n")
         sb.append("  return this\n}\n\n")
+      }
       currentClass = savedClass
+    }
 @@ old
-      val outerArg = if currentClass.exists then thisRef(currentClass) else "invalid"
+        emitModelType(cd, sb)
+        closures.append(sb.toString)
+      }
+      val outerArg = if (currentClass.exists) thisRef(currentClass) else "invalid"
+      val capArgs = anonCaptures(sym).map(captureValue)
+      s"${typeNameOverride(sym)}_new(${(outerArg :: capArgs).mkString(", ")})"
+    }
 @@ new
-      val outerArg = if currentClass.exists then thisRef(currentClass) else NULL
+        emitModelType(cd, sb)
+        closures.append(sb.toString)
+      }
+      val outerArg = if (currentClass.exists) thisRef(currentClass) else NULL
+      val capArgs = anonCaptures(sym).map(captureValue)
+      s"${typeNameOverride(sym)}_new(${(outerArg :: capArgs).mkString(", ")})"
+    }
 @@ old
+        else if (isUserClass(cd) && !mainNames.contains(cd.symbol.name)) emitClass(cd)
+        else if (isUserModule(cd)) emitModule(cd)
+      }
     // @main → rtMain(): the entry the scene calls.
     out.append("sub rtMain()\n")
-    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).filter(keepClass).sortBy(typeName) do
+    for (mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).filter(keepClass).sortBy(typeName))
       out.append(s"  ${typeName(mc)}__module()\n")
-    for dd <- mains; body <- dd.rhs do
+    for (dd <- mains; body <- dd.rhs)
       out.append(emitBody(body, false)).append("\n")
     out.append("end sub\n")
+  }
+
 @@ new
+        else if (isUserClass(cd) && !mainNames.contains(cd.symbol.name)) emitClass(cd)
+        else if (isUserModule(cd)) emitModule(cd)
+      }
     // @main → rtMain(): the entry the harness calls.
     // Case objects are initialised once, up front (the emitted code reads them straight from the global
     // table); a harness that skips `rtMain` calls `rtInitModules` itself.
     out.append("func rtInitModules() throws -> V {\n")
-    for mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).filter(keepClass).sortBy(typeName) do
+    for (mc <- modelModules.toList.filter(_.flags.is(Flags.Case)).filter(keepClass).sortBy(typeName))
       out.append(s"  _ = try ${typeName(mc)}__module()\n")
     out.append(s"  return $NULL\n}\n\n")
     out.append("func rtMain() throws -> V {\n")
     out.append("  _ = try rtInitModules()\n")
-    for dd <- mains; body <- dd.rhs do
+    for (dd <- mains; body <- dd.rhs)
       out.append(emitBody(body, false)).append("\n")
     out.append(s"  return $NULL\n}\n")
-@@ old
-                case "obj" => s"_jsonObj([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
-                case "arr" => s"[${flattenVarargs(args).map(emitArgVal).mkString(", ")}]"
-@@ new
-                case "obj" => s"_jsonObj(${rtArr(flattenVarargs(args).map(emitArgVal))})"
-                case "arr" => rtArr(flattenVarargs(args).map(emitArgVal))
-@@ old
-              s"Scribe_log(${brStr(fn.symbol.name)}, [${flattenVarargs(explicitArgs(fn.symbol, args)).map(emitArgVal).mkString(", ")}])"
-@@ new
-              s"Scribe_log(${brStr(fn.symbol.name)}, ${rtArr(flattenVarargs(explicitArgs(fn.symbol, args)).map(emitArgVal))})"
-@@ old
-      val ctor = if isModel(cls) then s"${typeName(cls)}_new" else "invalid"
-      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor)"
-@@ new
-      val ctor = if isModel(cls) then s"rtFn(${typeName(cls)}_new)" else NULL
-      s"_rwGen(${brStr(cls.name)}, ${rtArr(keysL)}, ${rtArr(slotsL)}, ${rtArr(rwsL)}, $ctor)"
-@@ old
-      s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, $ordinal)"
-@@ new
-      s"RtEnum(${brStr(enumClass.name)}, ${brStr(name)}, ${vInt(ordinal)})"
-@@ old
-        ("(" + ts.map(_._1).mkString(" or ") + ")", ts.flatMap(_._2))
-@@ new
-        ("(" + ts.map(_._1).mkString(" || ") + ")", ts.flatMap(_._2))
+  }
+
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
-  def writeOutput(): Unit =
+  def writeOutput(): Unit = {
     val appCode = out.toString + "\n// ── defunctionalised closures ──\n" + closures.toString
     write("App.swift", "// Generated by everyui's compiler (Swift backend) — the translated program.\n\n" + declareLocals(appCode))
+  }
 
   /** BrightScript creates a local on first assignment; Swift needs a declaration. Every name a function
     * assigns (a Scala local, a hoisted temp, a pattern binding) is declared once at the top of its body. */
-  private def declareLocals(code: String): String =
+  private def declareLocals(code: String): String = {
     val lines = code.split("\n", -1)
     val sb = new StringBuilder
     val param = """_ ([A-Za-z_][A-Za-z0-9_]*): V""".r
     val assign = """^\s*([A-Za-z_][A-Za-z0-9_]*) = """.r
     var i = 0
-    while i < lines.length do
+    while (i < lines.length) {
       val line = lines(i)
-      if line.startsWith("func ") then
+      if (line.startsWith("func ")) {
         val params = param.findAllMatchIn(line).map(_.group(1)).toSet
         var j = i + 1
         val body = mutable.ListBuffer[String]()
-        while j < lines.length && lines(j) != "}" do
+        while (j < lines.length && lines(j) != "}") {
           body += lines(j)
           j += 1
+        }
         val lets = body.collect { case l if l.trim.startsWith("let ") =>
           l.trim.drop(4).takeWhile(c => c.isLetterOrDigit || c == '_') }.toSet
         val assigned = mutable.LinkedHashSet[String]()
         body.foreach { l =>
           assign.findFirstMatchIn(l).foreach { m =>
             val n = m.group(1)
-            if !params(n) && !lets(n) && n != "this" && n != "_" then assigned += n
+            if (!params(n) && !lets(n) && n != "this" && n != "_") assigned += n
           }
         }
         sb.append(line).append("\n")
         assigned.foreach(n => sb.append(s"  var $n: V = V.vNull\n"))
         body.foreach(l => sb.append(l).append("\n"))
         i = j
-      else
+      }
+      else {
         sb.append(line).append("\n")
         i += 1
+      }
+    }
     sb.toString
+  }
 
-  private def write(rel: String, content: String): Unit =
+  private def write(rel: String, content: String): Unit = {
     val p = outDir.resolve(rel)
     Files.createDirectories(p.getParent)
     Files.write(p, content.getBytes(StandardCharsets.UTF_8))
+  }
+}

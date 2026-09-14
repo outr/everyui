@@ -8,19 +8,23 @@ import fabric.rw.*
 
 /** The ticker's event: the server's counter and its clock. */
 case class Tick(n: Long, at: Long)
-object Tick:
+object Tick {
   given rw: RW[Tick] = RW.gen
+}
 
 /** What a client says about itself when it connects; the server finds a session by it. */
 case class ClientInfo(tag: String)
-object ClientInfo:
+object ClientInfo {
   given rw: RW[ClientInfo] = RW.gen
+}
 
 /** The demo's RPC: `echo` answers `say` back; `drop` makes the server close the caller's socket. */
 case class DemoRequest(op: String, say: Option[String] = None)
-object DemoRequest:
+object DemoRequest {
   given rw: RW[DemoRequest] = RW.gen
+}
 
 case class DemoResponse(echo: Option[String] = None, dropping: Boolean = false)
-object DemoResponse:
+object DemoResponse {
   given rw: RW[DemoResponse] = RW.gen
+}

@@ -11,8 +11,8 @@ import everyui.render.{Host, NodeGroup}
   * tools/check.sh launches it with `--es freeze 0.434` to freeze a frame, and `--es viewport 1920x1080` to lay out at
   * that size whatever the screen — so a phone emulator produces the same frame as a 1080p TV (and shows its top-left
   * corner). */
-class MainActivity extends Activity:
-  override def onCreate(savedInstanceState: Bundle): Unit =
+class MainActivity extends Activity {
+  override def onCreate(savedInstanceState: Bundle): Unit = {
     super.onCreate(savedInstanceState)
     Host.activity = this
     everyui.network.NetworkBackend.init()   // rapid on a thread pool, before anything starts a Task
@@ -28,7 +28,7 @@ class MainActivity extends Activity:
     // The render root is a viewport: content past its edges is clipped, as on every other backend.
     root.setClipChildren(true)
     root.setBackgroundColor(Color.WHITE)
-    def extent(size: Double): Int = if size > 0.0 then size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
+    def extent(size: Double): Int = if (size > 0.0) size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
     setContentView(root, new ViewGroup.LayoutParams(extent(Host.viewportWidth), extent(Host.viewportHeight)))
     Host.root = root
 
@@ -39,24 +39,30 @@ class MainActivity extends Activity:
     attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
     window.setAttributes(attributes)
     val insets = window.getInsetsController
-    if insets != null then
+    if (insets != null) {
       insets.hide(WindowInsets.Type.systemBars())
       insets.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
+    }
 
     everyui.app.main()
+  }
 
   /** Every key to the shared layer's hook, by the web's name; Back is also left to Android, so it still leaves the app. */
-  override def dispatchKeyEvent(e: KeyEvent): Boolean =
+  override def dispatchKeyEvent(e: KeyEvent): Boolean = {
     val hook = Host.key
-    if hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE then super.dispatchKeyEvent(e)
-    else
+    if (hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE) super.dispatchKeyEvent(e)
+    else {
       val taken = hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN)
-      if e.getKeyCode == KeyEvent.KEYCODE_BACK then super.dispatchKeyEvent(e) else taken || super.dispatchKeyEvent(e)
+      if (e.getKeyCode == KeyEvent.KEYCODE_BACK) super.dispatchKeyEvent(e) else taken || super.dispatchKeyEvent(e)
+    }
+  }
 
   /** The shared layer's singletons (`ui`, the app) live as long as the process, as they live as long as a page or a
     * channel, so leaving the app ends the process and the next launch starts fresh. */
-  override def onDestroy(): Unit =
+  override def onDestroy(): Unit = {
     super.onDestroy()
-    if isFinishing then android.os.Process.killProcess(android.os.Process.myPid())
+    if (isFinishing) android.os.Process.killProcess(android.os.Process.myPid())
+  }
 
   private def extra(name: String): Option[String] = Option(getIntent.getStringExtra(name))
+}

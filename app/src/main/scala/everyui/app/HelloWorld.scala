@@ -12,8 +12,8 @@ import everyui.ui
   * dependency tracking, and the content Prop's setter is whatever the linked
   * backend's `RenderNode` provides.
   */
-object HelloWorld:
-  def run(): Unit =
+object HelloWorld {
+  def run(): Unit = {
     val name = Var("World")
 
     val label = new TextView
@@ -34,3 +34,5 @@ object HelloWorld:
     Platform.log("x: " + label.position.left().toString + " | node x: " + label.node.getX().toString)
 
     FrameProbe.run()
+  }
+}

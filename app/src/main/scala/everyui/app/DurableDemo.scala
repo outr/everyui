@@ -18,16 +18,17 @@ import scala.concurrent.duration.DurationInt
   * sequence numbers or the server's counter. Five more events after that and it logs
   * `[ui] durable ok events=N resumed=1 gaps=0`, or `[ui] durable FAIL …`. The screen shows the state and the last
   * event, so a device that runs it live shows something too. */
-object DurableDemo:
-  class State:
+object DurableDemo {
+  class State {
     var received: Int = 0
     var lastSeq: Long = 0L
     var lastN: Long = -1L
     var gaps: Int = 0
     var activations: Int = 0
     var phase: String = "connecting"
+  }
 
-  def run(): Unit =
+  def run(): Unit = {
     val url = Platform.launchArg("socket")
     val status = new TextView
     status.position.left @= 40.0
@@ -38,10 +39,11 @@ object DurableDemo:
     last.position.left @= 40.0
     last.position.top @= 100.0
     ui.children += last
-    if url.isEmpty then fail("no socket url: launch with socket=ws://host:8731/durable")
+    if (url.isEmpty) fail("no socket url: launch with socket=ws://host:8731/durable")
     else start(url, status, last)
+  }
 
-  private def start(url: String, status: TextView, last: TextView): Unit =
+  private def start(url: String, status: TextView, last: TextView): Unit = {
     val state = new State
     val client = Network.durable[Tick, ClientInfo](url, "ticker", ClientInfo("demo-" + Platform.ticks().toString),
       DurableSocketConfig(reconnectStrategy = ReconnectStrategy.fixedInterval(250.millis)))
@@ -49,40 +51,43 @@ object DurableDemo:
     client.state.attach { s =>
       Platform.log("durable state=" + s.toString)
       status.content @= "durable " + s.toString + " events=" + state.received.toString
-      if s == ProtocolState.Active then state.activations = state.activations + 1
+      if (s == ProtocolState.Active) state.activations = state.activations + 1
     }
 
     client.onEvent.attach { case (seq, tick) =>
-      if state.lastSeq != 0L && seq != state.lastSeq + 1L then state.gaps = state.gaps + 1
-      if state.lastN >= 0L && tick.n != state.lastN + 1L then state.gaps = state.gaps + 1
+      if (state.lastSeq != 0L && seq != state.lastSeq + 1L) state.gaps = state.gaps + 1
+      if (state.lastN >= 0L && tick.n != state.lastN + 1L) state.gaps = state.gaps + 1
       state.lastSeq = seq
       state.lastN = tick.n
       state.received = state.received + 1
       last.content @= "event seq=" + seq.toString + " n=" + tick.n.toString
       Platform.log("durable event seq=" + seq.toString + " n=" + tick.n.toString)
 
-      if state.phase == "connecting" && state.received >= 5 then
+      if (state.phase == "connecting" && state.received >= 5) {
         state.phase = "rpc"
         client.ask[DemoRequest, DemoResponse](DemoRequest("echo", Some("ping"))).map { answer =>
           Platform.log("durable rpc echo=" + answer.echo.getOrElse(""))
-          if answer.echo.contains("ping") then
+          if (answer.echo.contains("ping")) {
             state.phase = "dropping"
             Platform.log("durable asking the server to drop the connection")
             // the answer may not make it back before the socket goes; that is the point
             client.ask[DemoRequest, DemoResponse](DemoRequest("drop")).handleError(_ => Task.unit).start()
+          }
           else fail("rpc echo mismatch")
         }.handleError { t =>
           fail("rpc failed: " + t.toString)
           Platform.logError("durable rpc", t)
           Task.unit
         }.start()
-      else if state.phase == "dropping" && state.activations >= 2 && state.received >= 10 then
+      }
+      else if (state.phase == "dropping" && state.activations >= 2 && state.received >= 10) {
         state.phase = "done"
-        if state.gaps == 0 then
+        if (state.gaps == 0)
           Platform.log("durable ok events=" + state.received.toString + " resumed=" + (state.activations - 1).toString + " gaps=0")
         else fail("gaps=" + state.gaps.toString)
         client.close()
         Platform.quit()
+      }
     }
 
     client.connect().handleError { t =>
@@ -90,5 +95,7 @@ object DurableDemo:
       Platform.logError("durable connect", t)
       Task.unit
     }.start()
+  }
 
   private def fail(why: String): Unit = Platform.log("durable FAIL " + why)
+}

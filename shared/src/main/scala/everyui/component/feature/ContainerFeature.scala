@@ -5,7 +5,7 @@ import everyui.component.Component
 
 /** youi's `ContainerFeature`: the children, as a reactify `Var`. Changing it adds and removes the children's
   * nodes; measuring the container measures its children first. */
-class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty):
+class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty) {
   changes { (old, current) =>
     old.filterNot(c => current.exists(_ eq c)).foreach { c =>
       c.node.remove()
@@ -30,3 +30,4 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   component.measure.on({
     get.foreach(_.measure.trigger())
   }, Priority.High)
+}

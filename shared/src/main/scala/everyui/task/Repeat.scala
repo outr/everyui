@@ -1,18 +1,22 @@
 package everyui.task
 
-class Repeat(task: Animation, times: Int = 1) extends Animation:
+class Repeat(task: Animation, times: Int = 1) extends Animation {
   private var resetOnNext = false
   private var completed = 0
 
-  override def update(delta: Double, reset: Boolean): Conclusion =
-    if reset then completed = 0
+  override def update(delta: Double, reset: Boolean): Conclusion = {
+    if (reset) completed = 0
     val resetNow = reset || resetOnNext
     resetOnNext = false
-    task.update(delta, resetNow) match
+    task.update(delta, resetNow) match {
       case Conclusion.Continue => Conclusion.Continue
       case Conclusion.Finished =>
-        if completed >= times then Conclusion.Finished
-        else
+        if (completed >= times) Conclusion.Finished
+        else {
           completed += 1
           resetOnNext = true
           Conclusion.Continue
+        }
+    }
+  }
+}

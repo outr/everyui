@@ -17,7 +17,7 @@ import everyui.roku.*
   * instance is ambiguous with a field read in the emitted BrightScript
   * (`node.getText` would yield the function ref, not call it).
   */
-class RenderNode(val sg: SGNode):
+class RenderNode(val sg: SGNode) {
   // Every position change goes through this node, so it keeps its own coordinates and writes SceneGraph's
   // `translation` in one step rather than reading the field back on every write.
   private var left: Double = uiGetX(sg)
@@ -31,14 +31,16 @@ class RenderNode(val sg: SGNode):
   def setText(text: String): Unit = uiSetText(sg, text)
 
   def getX(): Double = left
-  def setX(x: Double): Unit =
+  def setX(x: Double): Unit = {
     left = x
     uiSetTranslation(sg, left, top)
+  }
 
   def getY(): Double = top
-  def setY(y: Double): Unit =
+  def setY(y: Double): Unit = {
     top = y
     uiSetTranslation(sg, left, top)
+  }
 
   /** Radians, clockwise, about the node's own centre — matching youi's
     * `ImageView.rotation`, which is in TURNS (0..1); the example converts. */
@@ -52,19 +54,21 @@ class RenderNode(val sg: SGNode):
 
   /** A bundled face (`assets/fonts/`, copied to `pkg:/fonts/`): family, CSS
     * weight, size in pixels. */
-  def setFont(family: String, weight: Int, size: Double): Unit =
+  def setFont(family: String, weight: Int, size: Double): Unit = {
     uiSetFont(sg, family, weight, size)
-    if family.nonEmpty then
+    if (family.nonEmpty) {
       val face = Faces(family, weight)
       fontUri = "pkg:/fonts/" + face.file
       fontSize = size
       lineHeight = face.lineHeight(size)
+    }
+  }
 
   /** The laid-out size in pixels. Text is as wide as its face makes it at exactly its size (a `Label` draws at whole
     * pixel sizes, so its own bounding rect is a few pixels off) and one shared line (everyui.font.Face) tall;
     * anything else is SceneGraph's bounding rect. */
-  def getWidth(): Double = if fontSize > 0.0 then uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
-  def getHeight(): Double = if lineHeight > 0.0 then lineHeight else uiGetHeight(sg)
+  def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
+  def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg)
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
 
@@ -95,9 +99,10 @@ class RenderNode(val sg: SGNode):
   def setWhiteSpace(value: String): Unit = ()
 
   def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
+}
 
 /** Backend node factories. */
-object Nodes:
+object Nodes {
   /** The channel's root Group, created by the generated `AppScene`. */
   def root(): RenderNode = new RenderNode(uiRoot())
   /** A text node — a SceneGraph `Label`. */
@@ -106,17 +111,19 @@ object Nodes:
   def container(): RenderNode = new RenderNode(uiContainer())
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
-  def icon(glyph: String, size: Double): RenderNode =
+  def icon(glyph: String, size: Double): RenderNode = {
     val node = new RenderNode(uiText())
     node.setFont("Material Icons", 400, size)
     node.setText(glyph)
     node
+  }
   /** An image node — a SceneGraph `Poster` loading from `pkg:/`. */
   def image(uri: String, width: Double, height: Double): RenderNode =
     new RenderNode(uiImage(uri, width, height))
+}
 
 /** The handful of non-render platform services the slice needs. */
-object Platform:
+object Platform {
   def log(message: String): Unit = uiLog(message)
   def logError(message: String, t: Throwable): Unit = uiLog("ERROR " + message + ": " + t.getMessage)
   def ticks(): Double = uiTicks()
@@ -181,3 +188,4 @@ object Platform:
   def pow(x: Double, y: Double): Double = uiPow(x, y)
   def sin(x: Double): Double = uiSin(x)
   def cos(x: Double): Double = uiCos(x)
+}

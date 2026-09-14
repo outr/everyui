@@ -12,8 +12,8 @@ import scala.concurrent.duration.*
   *
   *   WebDrive <url> <script.js> [screenshot.png] [seconds before the screenshot = 2]
   */
-object WebDrive extends RapidApp:
-  override def run(args: List[String]): Task[Unit] =
+object WebDrive extends RapidApp {
+  override def run(args: List[String]): Task[Unit] = {
     val url = args.headOption.getOrElse(sys.error("usage: WebDrive <url> <script.js> [screenshot.png] [seconds]"))
     val script = Files.readString(Paths.get(args(1)))
     val screenshot = args.lift(2)
@@ -27,7 +27,7 @@ object WebDrive extends RapidApp:
         println(event.args.map(_.value).mkString(" "))
         System.out.flush()
       }
-      for
+      for {
         _ <- browser.enableRuntime
         _ <- browser.navigate(url)
         _ <- browser.waitForLoaded()
@@ -36,5 +36,8 @@ object WebDrive extends RapidApp:
         _ <- Task(println("[webdrive] " + result("result").get("value").map(_.toString).getOrElse("")))
         _ <- Task.sleep(seconds.seconds)
         _ <- screenshot.map(path => browser.screenshot(Paths.get(path))).getOrElse(Task.unit)
+      }
       yield ()
     }
+  }
+}

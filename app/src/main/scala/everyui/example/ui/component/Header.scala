@@ -69,7 +69,8 @@ class Header extends Container { self =>
   children ++= List(gradient, logo, darkModeToggle, heading, link)
 }
 
-object Header:
+object Header {
   /** Material Icons `brightness_7`, youi's light-mode toggle. */
   val Brightness7: String = ""
   val PointsToPixels: Double = 96.0 / 72.0
+}

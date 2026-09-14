@@ -25,7 +25,7 @@ import scala.concurrent.duration.*
   * Run with `sbt "server/run"`, optionally `sbt "server/run 9000 web/out-js --host=0.0.0.0"` (devices on the LAN
   * need the bind on every interface).
   */
-object WebServer extends StaticHttpServer:
+object WebServer extends StaticHttpServer {
   private val DefaultPort: Int = 8731
   private val DefaultRoot: String = "web/out-js"
 
@@ -34,7 +34,7 @@ object WebServer extends StaticHttpServer:
   private lazy val durable: DurableSocketServer[String, Tick, ClientInfo] = new DurableSocketServer[String, Tick, ClientInfo](
     eventLog = new InMemoryEventLog[String, Tick],
     resolveChannel = (_, _) => Task.pure("ticker"),
-    onRequest = (info, request) => request.as[DemoRequest] match
+    onRequest = (info, request) => request.as[DemoRequest] match {
       case DemoRequest("echo", say) => Task.pure(DemoResponse(echo = say).json)
       case DemoRequest("drop", _) =>
         // answer first, then close this caller's socket: the client must reconnect, resume, and replay the gap
@@ -43,6 +43,7 @@ object WebServer extends StaticHttpServer:
         }.start()
         Task.pure(DemoResponse(dropping = true).json)
       case DemoRequest(other, _) => Task.error(new RpcException("unknown_op", other))
+    }
   )
 
   private def ticker(n: Long): Task[Unit] =
@@ -50,19 +51,20 @@ object WebServer extends StaticHttpServer:
       .flatMap(_ => durable.broadcast("ticker", Tick(n, System.currentTimeMillis())))
       .flatMap(_ => ticker(n + 1L))
 
-  override protected val handler = new spice.http.server.handler.HttpHandler:
+  override protected val handler = new spice.http.server.handler.HttpHandler {
     override def handle(exchange: spice.http.HttpExchange)
                        (using mdc: scribe.mdc.MDC): Task[spice.http.HttpExchange] =
-      if exchange.request.url.path.decoded == "/durable" then durable.handle(exchange)
+      if (exchange.request.url.path.decoded == "/durable") durable.handle(exchange)
       else DirectoryPath(root).apply(exchange).map(_.exchange)
+  }
 
-  @main def serve(args: String*): Unit =
+  @main def serve(args: String*): Unit = {
     val (flags, positional) = args.partition(_.startsWith("--"))
     def flag(name: String): Option[String] = flags.collectFirst { case f if f.startsWith(s"--$name=") => f.drop(name.length + 3) }
     val port = positional.headOption.map(_.toInt).getOrElse(DefaultPort)
     val host = flag("host").getOrElse("127.0.0.1")
     root = File(positional.drop(1).headOption.getOrElse(DefaultRoot)).getCanonicalFile
-    if !root.isDirectory then
+    if (!root.isDirectory)
       sys.error(s"web root not found: $root — build it first with " +
         "`scala-cli --power package web -o web/out-js/main.js -f`")
     // Replace the default listener pair (8080 http + a disabled https) with a
@@ -75,3 +77,5 @@ object WebServer extends StaticHttpServer:
     // StaticHttpServer runs on non-daemon listener threads; park the main
     // thread so `sbt run` does not return and tear the JVM down underneath it.
     Thread.currentThread().join()
+  }
+}

@@ -9,11 +9,12 @@ import everyui.example.ExampleApp
 import everyui.example.ui.component.Header
 import everyui.ui
 
-trait UIExampleScreen extends UIScreen:
-  override protected lazy val container: Container =
+trait UIExampleScreen extends UIScreen {
+  override protected lazy val container: Container = {
     val c = new Container
     c.position.`type` @= PositionType.Relative
     c
+  }
 
   /** Shared app header (same for all example screens). */
   protected def header: Header = ExampleApp.appHeader
@@ -24,7 +25,7 @@ trait UIExampleScreen extends UIScreen:
     Task.unit
   }
 
-  override protected def activate(): Task[Unit] =
+  override protected def activate(): Task[Unit] = {
     ExampleApp.title @= title
     ExampleApp.contentContainer.children.clear()
     ExampleApp.contentContainer.children += container
@@ -32,3 +33,5 @@ trait UIExampleScreen extends UIScreen:
     container.size.height := ExampleApp.contentContainer.size.height
     container.backgroundColor := ExampleApp.bgColor
     super.activate()
+  }
+}
