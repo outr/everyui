@@ -1,5 +1,6 @@
 package everyui.component
 
+import everyui.event.Key
 import everyui.theme.Theme
 import everyui.ui
 import reactify.*
@@ -20,7 +21,7 @@ object Modal {
       panel.position.middle := size.middle
       children += panel
       event.click.attach(_ => close())
-      event.key.down.attach(k => if (k.key == "Escape") close())
+      event.key.down.attach(k => if (k.key == Key.Escape) close())
     }
     panel.event.click.attach(_.consume())
     open = Some(sheet)

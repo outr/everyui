@@ -1,6 +1,6 @@
 package everyui.component
 
-import everyui.event.PointerEvent
+import everyui.event.{Key, PointerEvent}
 import everyui.render.Platform
 import reactify.*
 
@@ -33,10 +33,10 @@ class ScrollContainer extends Container {
     event.pointer.move.attach(e => dragFrom.foreach(from => scrollTo(dragOffset + from - e.y)))
     event.pointer.up.attach(_ => dragFrom = None)
     event.key.down.attach { k =>
-      if (k.key == "ArrowDown") scrollBy(40.0)
-      else if (k.key == "ArrowUp") scrollBy(-40.0)
-      else if (k.key == "PageDown") scrollBy(size.height() * 0.9)
-      else if (k.key == "PageUp") scrollBy(-size.height() * 0.9)
+      if (k.key == Key.ArrowDown) scrollBy(40.0)
+      else if (k.key == Key.ArrowUp) scrollBy(-40.0)
+      else if (k.key == Key.PageDown) scrollBy(size.height() * 0.9)
+      else if (k.key == Key.PageUp) scrollBy(-size.height() * 0.9)
     }
   }
 

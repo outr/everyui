@@ -12,6 +12,7 @@ import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text}
 import javafx.scene.{Node, Scene}
 import everyui.font.{Face, Faces}
 import everyui.PlatformKind
+import everyui.event.PointerKind
 
 import java.io.File
 import scala.collection.mutable
@@ -160,11 +161,11 @@ class RenderNode(val fx: Node) {
   /** Every node is placed by its layout position, so there is no position type to set. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * scene coordinates. */
-  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = if (kind == "wheel")
+  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = if (kind == PointerKind.Wheel)
     fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => f(-e.getDeltaX, -e.getDeltaY))
   else {
-    val kinds = Map("down" -> MouseEvent.MOUSE_PRESSED, "up" -> MouseEvent.MOUSE_RELEASED, "move" -> MouseEvent.MOUSE_MOVED,
-      "enter" -> MouseEvent.MOUSE_ENTERED, "leave" -> MouseEvent.MOUSE_EXITED, "click" -> MouseEvent.MOUSE_CLICKED)
+    val kinds = Map(PointerKind.Down -> MouseEvent.MOUSE_PRESSED, PointerKind.Up -> MouseEvent.MOUSE_RELEASED, PointerKind.Move -> MouseEvent.MOUSE_MOVED,
+      PointerKind.Enter -> MouseEvent.MOUSE_ENTERED, PointerKind.Leave -> MouseEvent.MOUSE_EXITED, PointerKind.Click -> MouseEvent.MOUSE_CLICKED)
     fx.setPickOnBounds(true)   // a transparent Pane is not hit-tested unless told to be
     fx.addEventHandler(kinds(kind), (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
   }

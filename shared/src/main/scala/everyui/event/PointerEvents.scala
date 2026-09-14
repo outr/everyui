@@ -5,13 +5,13 @@ import reactify.*
 
 /** The pointer at a component: each channel listens on the node only once something asks for it. */
 class PointerEvents(component: Component) {
-  lazy val down: Channel[PointerEvent] = channel("down")
-  lazy val up: Channel[PointerEvent] = channel("up")
-  lazy val move: Channel[PointerEvent] = channel("move")
-  lazy val enter: Channel[PointerEvent] = channel("enter")
-  lazy val leave: Channel[PointerEvent] = channel("leave")
+  lazy val down: Channel[PointerEvent] = channel(PointerKind.Down)
+  lazy val up: Channel[PointerEvent] = channel(PointerKind.Up)
+  lazy val move: Channel[PointerEvent] = channel(PointerKind.Move)
+  lazy val enter: Channel[PointerEvent] = channel(PointerKind.Enter)
+  lazy val leave: Channel[PointerEvent] = channel(PointerKind.Leave)
   /** The wheel: `x` and `y` are the deltas, in pixels. */
-  lazy val wheel: Channel[PointerEvent] = channel("wheel")
+  lazy val wheel: Channel[PointerEvent] = channel(PointerKind.Wheel)
 
   /** Whether the pointer is over the component. */
   lazy val over: Val[Boolean] = {
@@ -21,7 +21,7 @@ class PointerEvents(component: Component) {
     state
   }
 
-  def channel(kind: String): Channel[PointerEvent] = {
+  def channel(kind: PointerKind): Channel[PointerEvent] = {
     val channel = Channel[PointerEvent]
     component.node.onPointer(kind, (x, y) => {
       val event = PointerEvent(kind, x, y)

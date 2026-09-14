@@ -10,7 +10,7 @@ class Events(component: Component) {
   lazy val key: KeyEvents = new KeyEvents
 
   lazy val click: Channel[PointerEvent] = {
-    val channel = pointer.channel("click")
+    val channel = pointer.channel(PointerKind.Click)
     channel.attach(_ => if (component.focusable()) component.focus())
     channel
   }

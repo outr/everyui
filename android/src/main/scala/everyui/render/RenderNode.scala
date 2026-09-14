@@ -8,6 +8,7 @@ import android.view.{Choreographer, KeyEvent, MotionEvent, View, ViewGroup}
 import android.widget.{ImageView, TextView}
 import everyui.font.{Face, Faces}
 import everyui.PlatformKind
+import everyui.event.PointerKind
 
 import scala.collection.mutable
 
@@ -151,9 +152,9 @@ class RenderNode(val view: View) {
   /** Every node is placed by its translation, so there is no position type to set. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click") with its root coordinates. Touches
     * drive down/move/up and a click on an up that stays on the view; a mouse or a hover drives enter/leave. */
-  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = {
+  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = {
     pointer += kind -> f
-    if (kind == "wheel") view.setOnGenericMotionListener { (_, e) =>
+    if (kind == PointerKind.Wheel) view.setOnGenericMotionListener { (_, e) =>
       if (e.getAction == MotionEvent.ACTION_SCROLL) {
         f(-e.getAxisValue(MotionEvent.AXIS_HSCROLL) * 40.0, -e.getAxisValue(MotionEvent.AXIS_VSCROLL) * 40.0)
         true
@@ -164,30 +165,30 @@ class RenderNode(val view: View) {
       listening = true
       view.setOnTouchListener((_, e) => touch(e))
       view.setOnHoverListener { (_, e) =>
-        if (e.getAction == MotionEvent.ACTION_HOVER_ENTER) fire("enter", e)
-        else if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) fire("leave", e)
+        if (e.getAction == MotionEvent.ACTION_HOVER_ENTER) fire(PointerKind.Enter, e)
+        else if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) fire(PointerKind.Leave, e)
         false
       }
     }
   }
 
-  private val pointer = mutable.Map.empty[String, (Double, Double) => Unit]
+  private val pointer = mutable.Map.empty[PointerKind, (Double, Double) => Unit]
   private var listening = false
-  private def fire(kind: String, e: MotionEvent): Unit = {
+  private def fire(kind: PointerKind, e: MotionEvent): Unit = {
     val at = Array(0, 0)
     Host.root.getLocationOnScreen(at)
     pointer.get(kind).foreach(f => f(e.getRawX - at(0), e.getRawY - at(1)))
   }
   private def touch(e: MotionEvent): Boolean = {
     val action = e.getActionMasked
-    if (action == MotionEvent.ACTION_DOWN) fire("down", e)
-    else if (action == MotionEvent.ACTION_MOVE) fire("move", e)
+    if (action == MotionEvent.ACTION_DOWN) fire(PointerKind.Down, e)
+    else if (action == MotionEvent.ACTION_MOVE) fire(PointerKind.Move, e)
     else if (action == MotionEvent.ACTION_UP) {
-      fire("up", e)
+      fire(PointerKind.Up, e)
       val inside = e.getX >= 0 && e.getY >= 0 && e.getX <= view.getWidth && e.getY <= view.getHeight
-      if (inside) fire("click", e)
+      if (inside) fire(PointerKind.Click, e)
     }
-    else if (action == MotionEvent.ACTION_CANCEL) fire("up", e)
+    else if (action == MotionEvent.ACTION_CANCEL) fire(PointerKind.Up, e)
     true
   }
 

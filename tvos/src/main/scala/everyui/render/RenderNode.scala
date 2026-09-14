@@ -2,6 +2,7 @@ package everyui.render
 
 import everyui.font.Faces
 import everyui.PlatformKind
+import everyui.event.PointerKind
 import everyui.tvos.*
 
 /** **The one invention.** The abstract render node, tvOS edition: a UIKit view behind a get/set/append surface
@@ -84,7 +85,7 @@ class RenderNode(val sg: SGNode) {
 
   /** Every view is placed by its own position, so there is no position type to set. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
-  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind, f)
+  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind.toString, f)
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean): Unit = ()

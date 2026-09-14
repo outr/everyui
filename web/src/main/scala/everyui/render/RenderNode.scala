@@ -4,6 +4,7 @@ import org.scalajs.dom
 import org.scalajs.dom.html
 import everyui.font.Faces
 import everyui.PlatformKind
+import everyui.event.PointerKind
 
 import scala.scalajs.js
 
@@ -76,13 +77,13 @@ class RenderNode(val el: html.Element) {
   /** CSS `position`; `""` is static. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * viewport coordinates. */
-  def onPointer(kind: String, f: (Double, Double) => Unit): Unit =
-    if (kind == "wheel") el.addEventListener("wheel", (e: dom.WheelEvent) => f(e.deltaX, e.deltaY))
+  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit =
+    if (kind == PointerKind.Wheel) el.addEventListener("wheel", (e: dom.WheelEvent) => f(e.deltaX, e.deltaY))
     else {
-      val name = if (kind == "click") "click" else "pointer" + kind
+      val name = if (kind == PointerKind.Click) "click" else "pointer" + kind.toString.toLowerCase
       el.addEventListener(name, (e: dom.MouseEvent) => f(e.clientX, e.clientY))
       // something that answers a click is clickable: the hand, and no text selection under it
-      if (kind == "click") {
+      if (kind == PointerKind.Click) {
         el.style.cursor = "pointer"
         el.style.setProperty("user-select", "none")
       }

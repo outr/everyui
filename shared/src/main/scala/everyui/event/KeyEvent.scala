@@ -1,5 +1,4 @@
 package everyui.event
 
-/** A key, named as the web names it: "Enter", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-  * "MediaPlayPause", "a"… Every remote's OK is "Enter" and its back is "Escape". */
-case class KeyEvent(key: String)
+/** A key, pressed or released, and the platform's own name for it ("a", "F5", "MediaTrackNext"). */
+case class KeyEvent(key: Key, name: String)

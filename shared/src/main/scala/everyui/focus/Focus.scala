@@ -1,7 +1,7 @@
 package everyui.focus
 
 import everyui.component.Component
-import everyui.event.{KeyEvent, PointerEvent}
+import everyui.event.{Key, KeyEvent, Keys, PointerEvent, PointerKind}
 import everyui.render.Platform
 import everyui.ui
 import reactify.*
@@ -22,20 +22,21 @@ object Focus {
   /** A key by the web's name, pressed or released — what each backend's key hook reports. Whether the focus
     * layer took it (Enter on, or an arrow moving, the focus), so the platform leaves it be. */
   def key(name: String, pressed: Boolean): Boolean = {
+    val key = Keys.of(name)
     focused().foreach { c =>
-      if (pressed) c.event.key.down @= KeyEvent(name) else c.event.key.up @= KeyEvent(name)
+      if (pressed) c.event.key.down @= KeyEvent(key, name) else c.event.key.up @= KeyEvent(key, name)
     }
     if (!pressed) false
-    else if (name == "Enter") focused().map { c =>
-      c.event.click @= PointerEvent("click", centerX(c), centerY(c))
+    else if (key == Key.Enter) focused().map { c =>
+      c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
       true
     }.getOrElse(false)
-    else if (name.startsWith("Arrow")) move(name)
+    else if (Keys.isArrow(key)) move(key)
     else false
   }
 
-  /** Focus the nearest candidate in `direction` ("ArrowUp" …). Whether anything was focused. */
-  def move(direction: String): Boolean = {
+  /** Focus the nearest candidate in `direction` (an arrow). Whether anything was focused. */
+  def move(direction: Key): Boolean = {
     val all = candidates(ui)
     focused() match {
       case None =>
@@ -53,12 +54,12 @@ object Focus {
             val dx = centerX(c) - fx
             val dy = centerY(c) - fy
             val ahead =
-              if (direction == "ArrowRight") dx > 1.0
-              else if (direction == "ArrowLeft") dx < -1.0
-              else if (direction == "ArrowDown") dy > 1.0
+              if (direction == Key.ArrowRight) dx > 1.0
+              else if (direction == Key.ArrowLeft) dx < -1.0
+              else if (direction == Key.ArrowDown) dy > 1.0
               else dy < -1.0
             // the distance along the way, plus twice the drift off it: a neighbour in line beats a nearer one aside
-            val sideways = direction == "ArrowLeft" || direction == "ArrowRight"
+            val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
             val distance = (if (sideways) math.abs(dx) else math.abs(dy)) + (if (sideways) math.abs(dy) else math.abs(dx)) * 2.0
             if (ahead && (best.isEmpty || distance < bestDistance)) {
               best = Some(c)
