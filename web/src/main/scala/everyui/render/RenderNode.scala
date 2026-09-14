@@ -80,6 +80,11 @@ class RenderNode(val el: html.Element) {
     else {
       val name = if (kind == "click") "click" else "pointer" + kind
       el.addEventListener(name, (e: dom.MouseEvent) => f(e.clientX, e.clientY))
+      // something that answers a click is clickable: the hand, and no text selection under it
+      if (kind == "click") {
+        el.style.cursor = "pointer"
+        el.style.setProperty("user-select", "none")
+      }
     }
 
   /** The node scrolls its own overflow: the browser's scrollbar, wheel, touch and keys. */
