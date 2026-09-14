@@ -251,7 +251,7 @@ object Color {
     if (s.isEmpty) None
     else if (s == "transparent") Some(Clear)
     else if (s.startsWith("rgb")) {
-      val inside = s.substring(s.indexOf('(') + 1, s.lastIndexOf(')'))
+      val inside = s.substring(s.indexOf('(') + 1, s.indexOf(')'))
       val parts = inside.split(',').toList.map(_.trim)
       if (parts.length == 3) Some(new Color(parts(0).toInt, parts(1).toInt, parts(2).toInt, 255))
       else if (parts.length == 4) Some(fromRGBA(parts(0).toInt, parts(1).toInt, parts(2).toInt, parts(3).toDouble))

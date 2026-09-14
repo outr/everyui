@@ -461,6 +461,12 @@ func uiSetRadius(_ node: V, _ radius: V) -> V {
 }
 
 /// Milliseconds since the epoch as local `yyyy-MM-dd HH:mm:ss`.
+/// The character at a Unicode code point, as a string.
+func uiChr(_ codePoint: V) -> V {
+    guard let scalar = Unicode.Scalar(UInt32(rtDouble(codePoint))) else { return .vStr("") }
+    return .vStr(String(Character(scalar)))
+}
+
 func uiLocalDateTime(_ millis: V) -> V {
     let f = DateFormatter()
     f.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -477,7 +483,8 @@ func uiOnKey(_ f: V) -> V {
     return .vNull
 }
 
-/// RootViewController's presses, by the web's names. Menu is left to tvOS, so it still leaves the app.
+/// RootViewController's presses, by the web's names. Menu is Back, and tvOS's (leaving the app) only when the app does
+/// not take it.
 func uiKeyEvent(_ press: UIPress, _ pressed: Bool) -> Bool {
     guard case .vFn = UI.key else { return false }
     let name: String
@@ -488,7 +495,7 @@ func uiKeyEvent(_ press: UIPress, _ pressed: Bool) -> Bool {
     case .leftArrow: name = "ArrowLeft"
     case .rightArrow: name = "ArrowRight"
     case .playPause: name = "MediaPlayPause"
-    case .menu: return false
+    case .menu: name = "Back"
     default: return false
     }
     if case .vBool(let taken)? = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(pressed)])) { return taken }

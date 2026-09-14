@@ -1323,6 +1323,103 @@ youi's layouts were already here; what was missing around them was what made the
   easings, the font face, the derived position each have their own.
 
 The dashboard is at 786 lines, with no size bindings, no path parsing, and two clear-and-refill blocks left.
+## NaboTV's sign-in screens, and what they needed (2026-09-14)
+
+NaboTV is EveryUI's primary target: it has to ship everywhere. Its port starts with the sign-in screens, built and
+driven on the desktop first. The app lives in the NaboTV repo (`app/everyui/src`, one source tree for every platform,
+and `app/everyui/desktop` for the desktop launcher; `sbt appDesktop/run`). What the screens needed from the framework:
+
+- **Text fields.** `TextInput(label, secure, width)`: a labelled field whose `value` binds both ways and whose Enter
+  fires `submitted`. It is the platform's own field — an `<input>`, a JavaFX `TextField`/`PasswordField`, an Android
+  `EditText` — behind `InputView` and a new node, `Nodes.input(secure)`, so typing, the caret, selection, the
+  clipboard, autofill and an input method are the platform's, as the web backend's argument for the DOM already
+  said. The shared focus drives the native one (`focusInput`), and a click on the native one takes the shared focus
+  (`onInputFocus`). Where there is no field of its own (`Platform.nativeInput()` false: a Roku, an Apple TV) the
+  field shows its value and asks the platform keyboard for a new one (`Platform.editText`); **those two runtimes are
+  still stand-ins** that return nothing.
+- **Where the keyboard is on the screen, Enter edits.** With a keyboard at hand (`Platform.keyboardSupport()`) the
+  focus on a field is the caret. Without one (a TV remote, a phone) the focus only lights the field; Enter or a tap
+  starts `editing`, which brings the on-screen keyboard up, and the keyboard's Done or Back ends it (`onInputDone`),
+  as the Flutter app's TV fields do. On Android the `EditText` (`FieldView`) takes no focus and no touches until then:
+  a TV hands the first focusable view the focus as a window opens, and Google TV brings the keyboard up with it.
+  Verified on the Google TV Streamer with its remote. `--remote=true` (or `--keyboard=false`) on the desktop launch
+  tries the same behaviour in a window.
+- **Android lays out in density units.** The root is scaled by the display's density, so a 1080p TV is a 960x540
+  layout, as its own apps have it, rather than 1920x1080 at half the size. A launch that pins `viewport` stays 1:1,
+  which the frame checks do. Android also loads images from the network now, and starts at `--es path`.
+- **The focus scrolls into view.** A `ScrollContainer` scrolls the least that shows a component the focus lands on
+  under its content: a remote has no other way to reach what is below the fold.
+- **Shared packaging and launchers.** `project/AndroidApk.scala` is the APK build (R8, aapt2, zipalign, apksigner)
+  that `android/packageApk` and an app's build both call. `EveryUIActivity` is the activity an app extends, as
+  `Desktop.launch` is the desktop's launcher, and the example's own `MainActivity` moved to `app/android`.
+- **Keys a component keeps.** `Component.keepsKey(key)`: a focused text field keeps Enter and the keys along its
+  line, so the arrows move the caret rather than the focus. Tab now moves the focus on in tree order.
+- **Borders.** `borderColor` and `borderWidth`, drawn inside the box so a border never changes a size: an inset
+  shadow on the web, a Region border on the desktop, a drawable stroke on Android. A Roku Rectangle has none.
+- **Button styles.** `ButtonStyle` (Filled, Tonal, Outlined, Text) replaces the `primary` flag; a button takes an
+  icon, a text size its padding follows, `enabled` (muted, still in place) and `minWidth` (content centred).
+- **Settings.** `Platform.setting(name)` and `saveSetting(name, value)`: localStorage, the Java preferences store,
+  SharedPreferences. The Roku registry and tvOS UserDefaults are not wired yet, so a session does not survive a
+  relaunch there.
+- **The UI thread.** `Platform.later(f)`: the desktop's and Android's HTTP clients answer on their own threads, and
+  a reply has to reach the components on the UI one. (DataWrangler never saw this: the web has one thread.)
+- **App faces.** `Faces.register(face)` adds an app's font (NaboTV's Roboto); `Theme.family` makes it the default
+  for text made after it is set. The web adds a registered face through the FontFace API and waits for it. The Roku
+  and tvOS runtimes still pick faces by family in their own tables, so registered faces are not used there yet.
+- **The rest.** `Platform.deviceName()`; `Image` accepts a URL (the desktop loads it in the background); the desktop
+  wraps text (`whiteSpace = Normal`), which it silently did not; `--path=` starts the desktop at a screen as a page's
+  address would; `Desktop.launch(args, title, icon)(run)` is the launcher an app's `main` calls, and the example's
+  own `DesktopApp` moved to `app/desktop`.
+
+Two bugs the screens found: `MaterialIconView` let its text feature reset the node to the default family at 16px, so
+the desktop drew icons in the system font and the web drew every icon at 16px whatever size was asked for; and
+`ProgressBar` sized its fill from its constructor width, so a bar whose width was bound later never filled. The Roku
+emitter cannot capture a lambda's parameter inside an anonymous class built in that lambda
+(`glyph.map(g => new MaterialIconView(g) { ... })` emits a free `g`); build the instance, then configure it.
+
+## Themes and languages, as core features (2026-09-14)
+
+Both went in before any more of NaboTV was ported, because retrofitting either into finished screens means touching
+every string and every colour again.
+
+**Themes.** `Theme.palette` was already a reactive `Var[Palette]`, so a theme change re-colours every binding that
+reads `Theme.x()`; the work was making sure nothing reads one only once. A default like `Var(Theme.accent())` is
+already live (reactify tracks it as a binding until something assigns the Var); the one real capture was
+`IconButton`'s colour parameter, now a live `tint` with an optional override. `Palette.extras` carries an app's own
+named colours (NaboTV's gold, amber, cyanDim, backgroundTop) and `Theme.extra(name, fallback)` reads them. NaboTV maps
+the server's theme JSON (the Flutter palette's names) onto the palette (`NaboTheme.palette`), keeps the choice on the
+device, and puts it on before anything is built; the signed-in placeholder offers `/api/themes` and switches live.
+
+**Languages.** `everyui.i18n`:
+
+- `Strings`: the current language's messages. A read (`Strings("signIn")`) is reactive, so text bound to it changes
+  language when `Strings.use(language)` loads another; a key the language lacks falls back to the template language.
+  Translations are ARB files among the app's assets (`/l10n/app_<code>.arb` by default), loaded with
+  `Platform.readText` before the app builds (`Strings.start(template, current)` in the manager's `load`).
+- `Arb.parse` and `Icu.format`: ARB messages (metadata skipped, escapes resolved) and the ICU subset app translations
+  use — placeholders, plurals with `=n`/`one`/`other` and `#`, selects, nested. Written with substrings and comparisons
+  only, so the Roku emitter carries them; `demo=widgets` logs `i18n ok` after checking both.
+- `tools/Arb.scala` generates an app's typed accessors from its template ARB: one `def` per message, an `Int` parameter
+  where the ARB declares one. NaboTV's `nabo.l10n.Tr` has 1,811.
+- `Direction.rtl`: a right-to-left language flips it. The platform takes it at its root (`Platform.setDirection`: the
+  page's `dir`, the Android root's layout direction, each JavaFX field's orientation), rows, flows and grids mirror, and
+  every container is laid out again (`Container.relayout`). `TextView.align` is logical (`TextAlign`: Start, Center,
+  End) and each backend resolves it against the direction.
+- `Language(code, native, english, rtl)`, and `Platform.language()` for the device's.
+
+Text that should follow a language change has to be bound: `TextView.bound(Tr.x)`, `button.label := Tr.x`. A value
+passed where a plain `String` is taken is read once, when the component is made, which the Streamer showed on the
+pairing screen's links before they were bound.
+
+Verified on the desktop and the Google TV Streamer: the language screen first on a new device, German, Italian,
+Traditional and Simplified Chinese (the platform fonts fill in the glyphs Roboto lacks), and Arabic mirrored (the pairing
+row, right-aligned labels, a field's caret starting at the right, which needed `android:supportsRtl` in the manifest).
+Themes switch live and survive a relaunch.
+
+Not yet: the Roku and tvOS runtimes read no packaged text (`readText` returns nothing, so keys show), set no direction
+and align no labels; right-to-left in custom components that place children by hand is theirs to mirror; dates and
+numbers are not localised.
+
 ## The network module — Spice as the core, on every backend (2026-09-13)
 
 The first release replaces Sart in DataWrangler's dashboard, and DataWrangler
@@ -1425,6 +1522,11 @@ What the devices found that brighterscript and the JVM could not (all fixed):
 - The native HTTP backends do not surface response headers yet.
 
 ## IMMEDIATE NEXT STEP
+
+**-2. NaboTV, a screen at a time** (app in the NaboTV repo, `app/everyui`). The sign-in screens run on the desktop
+and on the Google TV Streamer (`sbt appAndroid/appApk`). Next: the profile picker, then home. Before NaboTV goes to a
+Roku or an Apple TV, those runtimes need the keyboard (`Platform.editText`), the settings store and registered faces;
+and text alignment, so a wrapped note can centre.
 
 **-1. Run the durable demo on the Roku and the Apple TV simulator** once they are
 back on the network: `ROKU_PASS=… tools/check.sh --device` and `--tvos` (the

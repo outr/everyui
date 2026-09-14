@@ -1,11 +1,13 @@
 package everyui.component
 
 import everyui.event.{Key, PointerEvent}
+import everyui.focus.Focus
 import everyui.render.Platform
 import reactify.*
 
 /** A viewport over `content`, which may be taller than it: what fits shows, and the wheel, a drag, the arrows and
-  * the page keys (while focused) bring the rest into view. Add to `content.children`, not to this.
+  * the page keys (while focused) bring the rest into view, and the focus moving onto something out of view scrolls to
+  * it (a remote has no other way to see it). Add to `content.children`, not to this.
   *
   * The web scrolls the node itself (its own scrollbar, momentum and keys); every other backend clips the node and
   * this shifts the content. */
@@ -32,6 +34,7 @@ class ScrollContainer extends Container {
     event.pointer.down.attach { e => dragFrom = Some(e.y); dragOffset = offset() }
     event.pointer.move.attach(e => dragFrom.foreach(from => scrollTo(dragOffset + from - e.y)))
     event.pointer.up.attach(_ => dragFrom = None)
+    Focus.focused.attach(_.foreach(c => if (holds(c)) reveal(c)))
     event.key.down.attach { k =>
       if (k.key == Key.ArrowDown) scrollBy(40.0)
       else if (k.key == Key.ArrowUp) scrollBy(-40.0)
@@ -44,6 +47,25 @@ class ScrollContainer extends Container {
   def scrollTo(y: Double): Unit = {
     if (Platform.nativeScroll()) node.setScrollTop(y)
     else offset @= math.max(0.0, math.min(furthest(), y))
+  }
+
+  /** Scroll the least that shows all of `c` (a component under `content`), with a margin. */
+  def reveal(c: Component): Unit = {
+    val top = c.absoluteTop - content.absoluteTop
+    val bottom = top + c.size.height()
+    if (top < offset()) scrollTo(top - 16.0)
+    else if (bottom > offset() + size.height()) scrollTo(bottom - size.height() + 16.0)
+  }
+
+  /** Whether `c` is somewhere under `content`. */
+  private def holds(c: Component): Boolean = {
+    var at: Option[Component] = Some(c)
+    var found = false
+    while (!found && at.nonEmpty) {
+      if (at.exists(_ eq content)) found = true
+      at = at.flatMap(_.parent())
+    }
+    found
   }
 
   private def clip(): Unit = node.setClip(size.width(), size.height())

@@ -2802,11 +2802,11 @@ class RokuEmitter(
       |
       |' ── misc helpers ──
       |' AppScene's onKeyEvent: the remote's keys, by the web's names, to the hook uiOnKey set (everyui.focus.Focus).
-      |' Back is left to the Roku, so it still leaves the channel.
+      |' Back goes to the hook as well, and is the Roku's (leaving the channel) only when the app does not take it.
       |function RtKeyEvent(key as string, press as boolean) as boolean
       |    ga = GetGlobalAA()
-      |    if ga.uiKey = invalid or key = "back" then return false
-      |    names = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", OK: "Enter", play: "MediaPlayPause", rewind: "MediaRewind", fastforward: "MediaFastForward", replay: "MediaReplay", options: "ContextMenu" }
+      |    if ga.uiKey = invalid then return false
+      |    names = { back: "Back", up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", OK: "Enter", play: "MediaPlayPause", rewind: "MediaRewind", fastforward: "MediaFastForward", replay: "MediaReplay", options: "ContextMenu" }
       |    name = names[key]
       |    if name = invalid then name = key
       |    taken = RtInvoke(ga.uiKey, [name, press])

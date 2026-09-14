@@ -2,7 +2,7 @@ package everyui.render
 
 import org.scalajs.dom
 import org.scalajs.dom.html
-import everyui.font.Faces
+import everyui.font.{Face, Faces}
 import everyui.PlatformKind
 import everyui.event.PointerKind
 
@@ -74,6 +74,10 @@ class RenderNode(val el: html.Element) {
 
   def setRadius(radius: Double): Unit = el.style.borderRadius = radius.toString + "px"
 
+  /** An edge `width` pixels wide, inside the box (an inset shadow follows the corners and changes no size). */
+  def setBorder(width: Double, hex: String): Unit =
+    el.style.setProperty("box-shadow", if (hex.isEmpty || width <= 0.0) "none" else "inset 0 0 0 " + width.toString + "px " + hex)
+
   /** CSS `position`; `""` is static. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * viewport coordinates. */
@@ -104,6 +108,30 @@ class RenderNode(val el: html.Element) {
   def setWhiteSpace(value: String): Unit = el.style.whiteSpace = value
 
   def setImageSource(uri: String): Unit = el.setAttribute("src", uri)
+
+  /** "start", "center" or "end": CSS's own logical values, so the page's direction resolves them. */
+  def setTextAlign(align: String): Unit = el.style.textAlign = align
+
+  /** An `<input>`'s contents. */
+  def getValue(): String = el match {
+    case i: html.Input => i.value
+    case _ => ""
+  }
+  def setValue(value: String): Unit = el match {
+    case i: html.Input => i.value = value
+    case _ => ()
+  }
+  def setPlaceholder(text: String): Unit = el.setAttribute("placeholder", text)
+  /** Every edit, with the new contents. */
+  def onValue(f: String => Unit): Unit = el.addEventListener("input", (_: dom.Event) => f(getValue()))
+  /** The field taking the keyboard itself (a click, a tap, the browser's own Tab). */
+  def onInputFocus(f: () => Unit): Unit = el.addEventListener("focus", (_: dom.Event) => f())
+  /** The field losing the keyboard. */
+  def onInputDone(f: () => Unit): Unit = el.addEventListener("blur", (_: dom.Event) => f())
+  /** Give the field the keyboard, or take it away. */
+  def focusInput(on: Boolean): Unit =
+    if (on && dom.document.activeElement != el) el.focus()
+    else if (!on && dom.document.activeElement == el) el.blur()
 
   private var rotation: Double = 0.0
 
@@ -167,6 +195,22 @@ object Nodes {
     node.setFont("Material Icons", 400, size)
     node.setText(glyph)
     node
+  }
+
+  /** A text field — an `<input>`, `type=password` for a secret — with no box of its own: the component draws that. */
+  def input(secure: Boolean): RenderNode = {
+    val el = dom.document.createElement("input").asInstanceOf[html.Input]
+    el.`type` = if (secure) "password" else "text"
+    el.style.position = "absolute"
+    el.style.left = "0px"
+    el.style.top = "0px"
+    el.style.border = "none"
+    el.style.outline = "none"
+    el.style.padding = "0px"
+    el.style.margin = "0px"
+    el.style.background = "transparent"
+    el.style.setProperty("box-sizing", "border-box")
+    new RenderNode(el)
   }
 
   /** An image node — an `<img>`. */
@@ -236,6 +280,64 @@ object Platform {
   def pushPath(path: String): Unit = dom.window.history.pushState(null, "", path)
   /** The path after the browser's back or forward. */
   def onPath(f: String => Unit): Unit = dom.window.addEventListener("popstate", (_: dom.Event) => f(path()))
+
+  /** Run `f` after the current event: one thread, but the same order as every other backend. */
+  /** Back is the browser's own, so the address bar and its back button stay in step (the screen manager hears the
+    * new path). */
+  def historyBack(): Boolean = {
+    dom.window.history.back()
+    true
+  }
+
+  /** A text file served with the page (a translation), or "" if it cannot be had. */
+  def readText(path: String, done: String => Unit): Unit = {
+    val text: js.Function1[js.Dynamic, js.Any] = r => if (r.ok.asInstanceOf[Boolean]) r.text() else ""
+    val ok: js.Function1[js.Any, Unit] = t => done(t.toString)
+    val failed: js.Function1[js.Any, Unit] = _ => done("")
+    js.Dynamic.global.fetch(path).applyDynamic("then")(text).applyDynamic("then")(ok, failed)
+  }
+
+  /** The character at a Unicode code point, as a string. */
+  def fromCodePoint(codePoint: Int): String = js.Dynamic.global.String.fromCodePoint(codePoint).asInstanceOf[String]
+
+  /** The browser's language, as a BCP 47 tag (`en-US`). */
+  def language(): String = dom.window.navigator.language
+
+  /** The page's reading direction: text, fields and alignment follow it. */
+  def setDirection(rtl: Boolean): Unit = dom.document.documentElement.setAttribute("dir", if (rtl) "rtl" else "ltr")
+
+  def later(f: () => Unit): Unit = dom.window.setTimeout(() => f(), 0)
+
+  /** A value kept across visits (`localStorage`), or "" when there is none. */
+  def setting(name: String): String = {
+    val v = dom.window.localStorage.getItem(name)
+    if (v == null) "" else v
+  }
+  /** Keep `value` under `name`; "" forgets it. */
+  def saveSetting(name: String, value: String): Unit =
+    if (value.isEmpty) dom.window.localStorage.removeItem(name) else dom.window.localStorage.setItem(name, value)
+
+  /** The browser and the system it runs on, as its user agent says them. */
+  def deviceName(): String = {
+    val agent = dom.window.navigator.userAgent
+    val browser = if (agent.contains("Edg/")) "Edge" else if (agent.contains("Chrome/")) "Chrome" else if (agent.contains("Firefox/")) "Firefox" else if (agent.contains("Safari/")) "Safari" else "Browser"
+    val system = if (agent.contains("Windows")) "Windows" else if (agent.contains("Android")) "Android" else if (agent.contains("iPhone") || agent.contains("iPad")) "iOS" else if (agent.contains("Mac OS")) "macOS" else if (agent.contains("Linux")) "Linux" else ""
+    if (system.isEmpty) browser else browser + " on " + system
+  }
+
+  /** A browser has text fields of its own. */
+  def nativeInput(): Boolean = true
+  /** Only a platform without text fields asks its keyboard for a value. */
+  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
+
+  /** An app's face, served beside the bundled ones in `fonts/`, added to the page's fonts. */
+  def registerFont(face: Face): Unit = {
+    val options = js.Dynamic.literal(weight = face.weight.toString)
+    val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, "url(fonts/" + face.file + ")", options)
+    dom.document.asInstanceOf[js.Dynamic].fonts.add(font)
+    registered.push(font)
+  }
+  private val registered = js.Array[js.Dynamic]()
 
   def screenWidth(): Double = dom.window.innerWidth.toDouble
   def screenHeight(): Double = dom.window.innerHeight.toDouble
@@ -312,7 +414,7 @@ object Platform {
   def whenFontsReady(f: () => Unit): Unit = {
     val fonts = dom.document.asInstanceOf[js.Dynamic].fonts
     val loads = js.Array("400 24px 'Open Sans'", "600 24px 'Open Sans'", "400 24px 'Material Icons'")
-      .map(face => fonts.load(face))
+      .map(face => fonts.load(face)) ++ registered.map(font => font.load())
     val done: js.Function1[js.Any, Unit] = _ => f()
     js.Dynamic.global.Promise.all(loads).applyDynamic("then")(done, done)
   }

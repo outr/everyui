@@ -164,3 +164,7 @@ class SGNode
 @native object uiSetClip {
   def apply(node: SGNode, width: Double, height: Double): Unit = native.value
 }
+/** The character at a Unicode code point, as a string. */
+@native object uiChr {
+  def apply(codePoint: Int): String = native.value
+}

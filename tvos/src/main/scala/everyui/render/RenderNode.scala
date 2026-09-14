@@ -1,6 +1,6 @@
 package everyui.render
 
-import everyui.font.Faces
+import everyui.font.{Face, Faces}
 import everyui.PlatformKind
 import everyui.event.PointerKind
 import everyui.tvos.*
@@ -100,6 +100,20 @@ class RenderNode(val sg: SGNode) {
   def setWhiteSpace(value: String): Unit = ()
 
   def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
+
+  /** No edge: a SceneGraph Rectangle has none to draw. */
+  def setBorder(width: Double, hex: String): Unit = ()
+  /** Labels sit where they are placed. */
+  def setTextAlign(align: String): Unit = ()
+
+  /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
+  def getValue(): String = uiGetText(sg)
+  def setValue(value: String): Unit = uiSetText(sg, value)
+  def setPlaceholder(text: String): Unit = ()
+  def onValue(f: String => Unit): Unit = ()
+  def onInputFocus(f: () => Unit): Unit = ()
+  def onInputDone(f: () => Unit): Unit = ()
+  def focusInput(on: Boolean): Unit = ()
 }
 
 /** Backend node factories. */
@@ -110,6 +124,8 @@ object Nodes {
   def text(): RenderNode = new RenderNode(uiText())
   /** A container — a `UIView` other nodes are appended to. */
   def container(): RenderNode = new RenderNode(uiContainer())
+  /** No text field: a line of text, which TextInput fills from the keyboard. */
+  def input(secure: Boolean): RenderNode = new RenderNode(uiText())
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
   def icon(glyph: String, size: Double): RenderNode = {
@@ -161,6 +177,32 @@ object Platform {
   def path(): String = ""
   def pushPath(path: String): Unit = ()
   def onPath(f: String => Unit): Unit = ()
+
+  /** One thread: `f` runs now. */
+  /** No browser history here: the screen manager keeps its own. */
+  def historyBack(): Boolean = false
+
+  def later(f: () => Unit): Unit = f()
+
+  /** Not read yet: the runtime is still to open packaged text files, so translations fall back to their keys. */
+  def readText(path: String, done: String => Unit): Unit = done("")
+  def language(): String = "en"
+  def fromCodePoint(codePoint: Int): String = uiChr(codePoint)
+  def setDirection(rtl: Boolean): Unit = ()
+
+  /** Not kept yet: the registry is still to be wired to the runtime. */
+  def setting(name: String): String = ""
+  def saveSetting(name: String, value: String): Unit = ()
+
+  def deviceName(): String = "Apple TV"
+
+  /** No text fields of its own. */
+  def nativeInput(): Boolean = false
+  /** The platform keyboard is still to be wired to the runtime, so no value comes back yet. */
+  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
+
+  /** Faces are files the runtime opens by name. */
+  def registerFont(face: Face): Unit = ()
 
   def screenWidth(): Double = uiScreenWidth()
   def screenHeight(): Double = uiScreenHeight()

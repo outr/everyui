@@ -1,14 +1,15 @@
 package everyui.render
 
 import javafx.animation.AnimationTimer
-import javafx.geometry.VPos
+import javafx.geometry.{NodeOrientation, Pos, VPos}
 import javafx.scene.image.{Image, ImageView}
-import javafx.scene.control.Tooltip
+import javafx.beans.value.{ChangeListener, ObservableValue}
+import javafx.scene.control.{PasswordField, TextField, TextInputControl, Tooltip}
 import javafx.scene.input.{Clipboard, ClipboardContent, KeyCode, KeyEvent, MouseEvent, ScrollEvent}
 import javafx.scene.shape.Rectangle
-import javafx.scene.layout.{Background, BackgroundFill, Pane}
+import javafx.scene.layout.{Background, BackgroundFill, Border, BorderStroke, BorderStrokeStyle, BorderWidths, CornerRadii, Pane, Region}
 import javafx.scene.paint.Color
-import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text}
+import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text, TextAlignment}
 import javafx.scene.{Node, Scene}
 import everyui.font.{Face, Faces}
 import everyui.PlatformKind
@@ -32,6 +33,9 @@ class RenderNode(val fx: Node) {
   private var explicitHeight: Double = -1.0
   private var face: Face = Faces.OpenSansRegular
   private var fontSize: Double = 32.0
+  private var wrapping: Boolean = false
+  private var textColor: String = "#1c1b1f"
+  private var align: String = "start"
 
   def getText(): String = fx match {
     case t: Text => t.getText
@@ -68,12 +72,18 @@ class RenderNode(val fx: Node) {
       fontSize = size
       t.setFont(new Font(t.getFont.getName, size))
       placeY()
+    case f: TextInputControl =>
+      fontSize = size
+      f.setFont(new Font(f.getFont.getName, size))
     case _ => ()
   }
 
   /** `"#rrggbb"`. */
   def setColor(hex: String): Unit = fx match {
     case t: Text => t.setFill(Color.web(hex))
+    case f: TextInputControl =>
+      textColor = hex
+      f.setStyle(RenderNode.fieldStyle(hex))
     case _ => ()
   }
 
@@ -87,6 +97,10 @@ class RenderNode(val fx: Node) {
         else Font.font("System", if (weight >= 600) FontWeight.SEMI_BOLD else FontWeight.NORMAL, size)
       )
       placeY()
+    case f: TextInputControl =>
+      face = Faces(family, weight)
+      fontSize = size
+      f.setFont(if (family.nonEmpty) Host.font(face, size) else Font.font("System", size))
     case _ => ()
   }
 
@@ -102,7 +116,7 @@ class RenderNode(val fx: Node) {
   def getHeight(): Double =
     if (explicitHeight >= 0.0) explicitHeight
     else fx match {
-      case _: Text => face.lineHeight(fontSize)
+      case t: Text => if (wrapping) math.ceil(t.getLayoutBounds.getHeight) else face.lineHeight(fontSize)
       case _ => 0.0
     }
 
@@ -120,10 +134,11 @@ class RenderNode(val fx: Node) {
   def setWidth(width: Double): Unit = {
     explicitWidth = width
     fx match {
-      case p: Pane =>
-        p.setMinWidth(width)
-        p.setPrefWidth(width)
-        p.setMaxWidth(width)
+      case r: Region =>
+        r.setMinWidth(width)
+        r.setPrefWidth(width)
+        r.setMaxWidth(width)
+      case _: Text => applyAlign()
       case i: ImageView => i.setFitWidth(width)
       case _ => ()
     }
@@ -132,10 +147,10 @@ class RenderNode(val fx: Node) {
   def setHeight(height: Double): Unit = {
     explicitHeight = height
     fx match {
-      case p: Pane =>
-        p.setMinHeight(height)
-        p.setPrefHeight(height)
-        p.setMaxHeight(height)
+      case r: Region =>
+        r.setMinHeight(height)
+        r.setPrefHeight(height)
+        r.setMaxHeight(height)
       case i: ImageView => i.setFitHeight(height)
       case _ => ()
     }
@@ -144,6 +159,8 @@ class RenderNode(val fx: Node) {
   /** `"#rrggbb"`, or `""` for transparent. */
   private var background: String = ""
   private var radius: Double = 0.0
+  private var borderWidth: Double = 0.0
+  private var borderColor: String = ""
   def setBackgroundColor(hex: String): Unit = {
     background = hex
     paintBackground()
@@ -152,9 +169,18 @@ class RenderNode(val fx: Node) {
     radius = r
     paintBackground()
   }
+  /** An edge `width` pixels wide, inside the box. */
+  def setBorder(width: Double, hex: String): Unit = {
+    borderWidth = width
+    borderColor = hex
+    paintBackground()
+  }
   private def paintBackground(): Unit = fx match {
-    case p: Pane => p.setBackground(if (background.isEmpty) null else
-      new Background(new BackgroundFill(Color.web(background), if (radius > 0.0) new javafx.scene.layout.CornerRadii(radius) else null, null)))
+    case p: Pane =>
+      val corners = if (radius > 0.0) new CornerRadii(radius) else null
+      p.setBackground(if (background.isEmpty) null else new Background(new BackgroundFill(Color.web(background), corners, null)))
+      p.setBorder(if (borderColor.isEmpty || borderWidth <= 0.0) null
+        else new Border(new BorderStroke(Color.web(borderColor), BorderStrokeStyle.SOLID, corners, new BorderWidths(borderWidth))))
     case _ => ()
   }
 
@@ -178,8 +204,80 @@ class RenderNode(val fx: Node) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** Text nodes are single lines. */
-  def setWhiteSpace(value: String): Unit = ()
+  /** `"normal"` wraps a text node at its width; anything else keeps it on one line. */
+  def setWhiteSpace(value: String): Unit = fx match {
+    case t: Text =>
+      wrapping = value == "normal"
+      applyAlign()
+    case _ => ()
+  }
+
+  /** "start", "center" or "end", resolved against the window's direction (`Platform.setDirection`). */
+  def setTextAlign(value: String): Unit = {
+    align = value
+    applyAlign()
+  }
+
+  /** Text's alignment and wrap width, a field's alignment and orientation, for the alignment and the direction. A line
+    * that is neither wrapped nor aligned away from the left keeps no wrap width, so it never wraps. */
+  private[render] def applyAlign(): Unit = {
+    val centred = align == "center"
+    val right = (align == "end") != Host.rtl
+    fx match {
+      case t: Text =>
+        t.setTextAlignment(if (centred) TextAlignment.CENTER else if (right) TextAlignment.RIGHT else TextAlignment.LEFT)
+        t.setWrappingWidth(if ((wrapping || centred || right) && explicitWidth > 0.0) explicitWidth else 0.0)
+      case f: TextField =>
+        // a right-to-left field is mirrored already, so its alignment stays logical: left is where it starts
+        f.setAlignment(if (centred) Pos.CENTER else if (align == "end") Pos.CENTER_RIGHT else Pos.CENTER_LEFT)
+        f.setNodeOrientation(if (Host.rtl) NodeOrientation.RIGHT_TO_LEFT else NodeOrientation.LEFT_TO_RIGHT)
+      case _ => ()
+    }
+  }
+
+  /** A text field's contents. */
+  def getValue(): String = fx match {
+    case f: TextInputControl => f.getText
+    case _ => ""
+  }
+  def setValue(value: String): Unit = fx match {
+    case f: TextInputControl =>
+      f.setText(value)
+      f.positionCaret(value.length)
+    case _ => ()
+  }
+  def setPlaceholder(text: String): Unit = fx match {
+    case f: TextInputControl => f.setPromptText(text)
+    case _ => ()
+  }
+  /** Every edit of a text field, with its new contents. */
+  def onValue(f: String => Unit): Unit = fx match {
+    case field: TextInputControl => field.textProperty.addListener(new ChangeListener[String] {
+      override def changed(o: ObservableValue[? <: String], was: String, now: String): Unit = f(now)
+    })
+    case _ => ()
+  }
+  /** A text field taking the keyboard focus itself (a click on it). */
+  def onInputFocus(f: () => Unit): Unit = fx match {
+    case field: TextInputControl => field.focusedProperty.addListener(new ChangeListener[java.lang.Boolean] {
+      override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean, now: java.lang.Boolean): Unit = if (now) f()
+    })
+    case _ => ()
+  }
+  /** A text field losing the keyboard. */
+  def onInputDone(f: () => Unit): Unit = fx match {
+    case field: TextInputControl => field.focusedProperty.addListener(new ChangeListener[java.lang.Boolean] {
+      override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean, now: java.lang.Boolean): Unit = if (!now) f()
+    })
+    case _ => ()
+  }
+  /** Give a text field the keyboard, or take it back to the window. */
+  def focusInput(on: Boolean): Unit = fx match {
+    case field: TextInputControl =>
+      if (on && !field.isFocused) field.requestFocus()
+      else if (!on && field.isFocused) Host.root.requestFocus()
+    case _ => ()
+  }
 
   def setImageSource(uri: String): Unit = fx match {
     case i: ImageView => if (uri.nonEmpty) i.setImage(Host.image(uri))
@@ -193,8 +291,23 @@ class RenderNode(val fx: Node) {
   }
 }
 
-/** What the launcher (everyui.desktop.DesktopApp) hands the backend: the scene, its root, and how it was run. */
+object RenderNode {
+  /** A text field drawn by the component around it: no box of its own, the caret and the words in `hex`. */
+  def fieldStyle(hex: String): String =
+    "-fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; -fx-text-fill: " + hex +
+      "; -fx-prompt-text-fill: derive(" + hex + ", -40%); -fx-highlight-fill: derive(" + hex + ", -60%); -fx-highlight-text-fill: " + hex + ";"
+}
+
+/** What the launcher (everyui.desktop.Desktop) hands the backend: the scene, its root, and how it was run. */
 object Host {
+  /** The app's name: the window's title, and where its settings are kept. */
+  var app: String = "EveryUI"
+  /** Whether the window reads right to left, and every text node that follows it (held weakly). */
+  var rtl: Boolean = false
+  val aligned: java.util.Set[RenderNode] = java.util.Collections.newSetFromMap(new java.util.WeakHashMap[RenderNode, java.lang.Boolean]())
+
+  /** The path the app is at: `--path=` to start somewhere, then wherever it last pushed. */
+  var path: String = ""
   var scene: Scene = null
   var root: Pane = null
   var assets: File = new File("assets")
@@ -216,13 +329,18 @@ object Host {
     new Font(name, size)
   }
 
-  def image(uri: String): Image = images.getOrElseUpdate(uri, new Image(uri))
+  /** An image by URI, cached; one from the network loads in the background. */
+  def image(uri: String): Image = images.getOrElseUpdate(uri, new Image(uri, uri.startsWith("http")))
 
-  /** A JavaFX key by the web's name: the remote's keys by their names, anything typed by its text. */
+  lazy val settings: java.util.prefs.Preferences = java.util.prefs.Preferences.userRoot().node("everyui/" + app)
+
+  /** A JavaFX key by the web's name: the remote's keys by their names, Alt+Left as the browser's back, anything typed
+    * by its text. */
   def keyName(e: KeyEvent): String = {
     val named = Map(KeyCode.ENTER -> "Enter", KeyCode.ESCAPE -> "Escape", KeyCode.UP -> "ArrowUp", KeyCode.DOWN -> "ArrowDown",
       KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ")
-    named.getOrElse(e.getCode, if (e.getText.nonEmpty) e.getText else e.getCode.getName)
+    if (e.isAltDown && e.getCode == KeyCode.LEFT) "BrowserBack"
+    else named.getOrElse(e.getCode, if (e.getText.nonEmpty) e.getText else e.getCode.getName)
   }
 
   /** With `--screenshot`, save the frozen frame as a PNG and exit. Written by hand (no AWT/ImageIO), so the
@@ -308,7 +426,9 @@ object Nodes {
     t.setFontSmoothingType(FontSmoothingType.GRAY)
     t.setFill(Color.web("#1c1b1f"))
     t.setFont(Font.font("System", FontWeight.SEMI_BOLD, 32.0))
-    new RenderNode(t)
+    val node = new RenderNode(t)
+    Host.aligned.add(node)
+    node
   }
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
@@ -316,6 +436,17 @@ object Nodes {
     val node = text()
     node.setFont("Material Icons", 400, size)
     node.setText(glyph)
+    node
+  }
+
+  /** A text field — a JavaFX `TextField`, or a `PasswordField` for a secret — with no box of its own. */
+  def input(secure: Boolean): RenderNode = {
+    val f = if (secure) new PasswordField() else new TextField()
+    f.setStyle(RenderNode.fieldStyle("#1c1b1f"))
+    f.setFocusTraversable(false)
+    val node = new RenderNode(f)
+    Host.aligned.add(node)
+    node.applyAlign()
     node
   }
 
@@ -350,8 +481,9 @@ object Platform {
   def kind: PlatformKind = PlatformKind.Desktop
   def pointerSupport(): Boolean = true
   def touchSupport(): Boolean = false
-  def remoteNavigation(): Boolean = false
-  def keyboardSupport(): Boolean = true
+  /** A window has a pointer and a keyboard; `--remote=true` or `--keyboard=false` on the launch tries a TV's behaviour. */
+  def remoteNavigation(): Boolean = Host.args.get("remote").contains("true")
+  def keyboardSupport(): Boolean = !remoteNavigation() && !Host.args.get("keyboard").contains("false")
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
@@ -362,10 +494,54 @@ object Platform {
     Clipboard.getSystemClipboard.setContent(content)
   }
 
-  /** No address bar: no path to show, push or follow. */
-  def path(): String = ""
-  def pushPath(path: String): Unit = ()
+  /** No address bar, but a path all the same: `--path=` to start at a screen, and whatever the app pushes after. */
+  def path(): String = Host.path
+  def pushPath(path: String): Unit = Host.path = path
   def onPath(f: String => Unit): Unit = ()
+
+  /** A text file under the assets (a translation), by the URI `resolvePath` makes, or "" if it is not there. */
+  def readText(path: String, done: String => Unit): Unit = done(
+    try java.nio.file.Files.readString(java.nio.file.Paths.get(new java.net.URI(path)))
+    catch { case _: Exception => "" })
+
+  /** The character at a Unicode code point, as a string. */
+  def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))
+
+  /** The system's language, as a BCP 47 tag (`en-US`); `--language=` on the launch tries another. */
+  def language(): String = Host.args.getOrElse("language", java.util.Locale.getDefault.toLanguageTag)
+
+  /** The window's reading direction: every text node and field re-aligns. */
+  def setDirection(rtl: Boolean): Unit = {
+    Host.rtl = rtl
+    Host.aligned.forEach(_.applyAlign())
+  }
+
+  /** Run `f` on the JavaFX thread, soon: how a reply from another thread reaches the components. */
+  /** No browser history here: the screen manager keeps its own. */
+  def historyBack(): Boolean = false
+
+  def later(f: () => Unit): Unit = javafx.application.Platform.runLater(() => f())
+
+  /** A value kept across launches (the user's preferences store), or "" when there is none. */
+  def setting(name: String): String = Host.settings.get(name, "")
+  /** Keep `value` under `name`; "" forgets it. */
+  def saveSetting(name: String, value: String): Unit = {
+    if (value.isEmpty) Host.settings.remove(name) else Host.settings.put(name, value)
+    Host.settings.flush()
+  }
+
+  /** What this machine calls itself. */
+  def deviceName(): String =
+    try java.net.InetAddress.getLocalHost.getHostName
+    catch { case _: Exception => "Desktop" }
+
+  /** A desktop has text fields of its own. */
+  def nativeInput(): Boolean = true
+  /** Only a platform without text fields asks its keyboard for a value. */
+  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
+
+  /** A registered face loads from its file when first used. */
+  def registerFont(face: Face): Unit = ()
 
   def screenWidth(): Double = Host.scene.getWidth
   def screenHeight(): Double = Host.scene.getHeight
@@ -399,6 +575,9 @@ object Platform {
   def onKey(f: (String, Boolean) => Boolean): Unit = {
     Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => if (f(Host.keyName(e), true)) e.consume())
     Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => if (f(Host.keyName(e), false)) e.consume())
+    // a mouse's back button is Back too
+    Host.scene.addEventFilter(MouseEvent.MOUSE_PRESSED, (e: MouseEvent) => if (e.getButton == javafx.scene.input.MouseButton.BACK && f("BrowserBack", true)) e.consume())
+    Host.scene.addEventFilter(MouseEvent.MOUSE_RELEASED, (e: MouseEvent) => if (e.getButton == javafx.scene.input.MouseButton.BACK && f("BrowserBack", false)) e.consume())
   }
 
   def onResize(f: () => Unit): Unit = {
@@ -414,10 +593,18 @@ object Platform {
   /** A site-absolute asset path (`/images/icon.png`), as a file URL under the assets directory. */
   def resolvePath(path: String): String = new File(Host.assets, path.stripPrefix("/")).toURI.toString
 
-  /** Load `uri` and report its natural size. */
+  /** Load `uri` and report its natural size: at once from a file, once it arrives from the network (0 x 0 if it
+    * cannot). */
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
     val image = Host.image(uri)
-    loaded(image.getWidth, image.getHeight)
+    if (image.getProgress >= 1.0 || image.isError) loaded(image.getWidth, image.getHeight)
+    else image.progressProperty.addListener(new ChangeListener[Number] {
+      override def changed(o: ObservableValue[? <: Number], was: Number, now: Number): Unit =
+        if (now.doubleValue >= 1.0) {
+          o.removeListener(this)
+          loaded(image.getWidth, image.getHeight)
+        }
+    })
   }
 
   /** Bundled faces load synchronously from the assets directory. */

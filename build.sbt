@@ -283,6 +283,7 @@ lazy val desktop = (project in file("desktop"))
     name := "everyui-desktop",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true),
+    Compile / unmanagedSourceDirectories += (file("app") / "desktop" / "src" / "main" / "scala").getAbsoluteFile,   // the example's launcher
     libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
     libraryDependencies ++= Seq("base", "graphics", "controls").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
@@ -319,102 +320,22 @@ lazy val android = (project in file("android"))
     name := "everyui-android",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true),
+    Compile / unmanagedSourceDirectories += (file("app") / "android" / "src" / "main" / "scala").getAbsoluteFile,   // the example's activity
     libraryDependencies += "com.outr" %% "spice-client-okhttp" % spiceVersion,
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     Compile / scalacOptions ++= Seq("-release", "17"),
     packageApk := {
-      val log = streams.value.log
       val conv = fileConverter.value
       val buildRoot = (ThisBuild / baseDirectory).value
-      val tools = androidSdk / "build-tools" / androidBuildTools
-      val work = target.value / "apk"
-      IO.delete(work)
-      IO.createDirectory(work)
-      def exec(cmd: Seq[String]): Unit = {
-        val rc = sys.process.Process(cmd).!
-        if (rc != 0) sys.error(s"packageApk: ${cmd.head} exited $rc")
-      }
-
-      // The program: this project, reactify and the Scala library — the classpath without android.jar. d8 reads jars,
-      // so class directories are zipped first.
-      val inputs = (Compile / fullClasspath).value
-        .map(e => conv.toPath(e.data).toFile)
-        .filterNot(_ == androidJar)
-        .zipWithIndex
-        .map { case (f, i) =>
-          if (f.isDirectory) {
-            val jar = work / "classes" / s"$i.jar"
-            IO.zip(Path.allSubpaths(f).filterNot(_._1.isDirectory), jar, None)
-            jar
-          } else f
-        }
-      val dex = work / "dex"
-      IO.createDirectory(dex)
-      // R8: whole-program shrinking from the activity the manifest names (android/proguard-rules.pro),
-      // then dexing — in place of d8's dex-everything.
-      val rules = baseDirectory.value / "proguard-rules.pro"
-      // what the rules matched, and what R8 removed — the record when a shrunk build misbehaves
-      val diagnostics = work / "diagnostics.pro"
-      IO.write(diagnostics, s"-printseeds ${work / "seeds.txt"}\n-printusage ${work / "usage.txt"}\n")
-      log.info(s"packageApk: R8 over ${inputs.size} inputs")
-      exec(Seq("java", "-cp", (tools / "lib" / "d8.jar").toString, "com.android.tools.r8.R8",
-        "--release", "--min-api", androidMinSdk, "--lib", androidJar.toString, "--pg-conf", rules.toString,
-        "--pg-map-output", (work / "mapping.txt").toString, "--pg-conf", diagnostics.toString,
-        "--output", dex.toString) ++ inputs.map(_.toString))
-      (dex * "*.dex").get().foreach(d => log.info(s"packageApk: ${d.getName} ${d.length / 1024} KB"))
-
-      // Shared assets, the same files the other backends load.
-      val assets = work / "assets"
+      val assets = target.value / "apk-assets"
+      IO.delete(assets)
       IO.copyDirectory(buildRoot / "assets" / "images", assets / "images")
       (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
-      // Resources: the launcher icon and TV banner (android/res, from tools/make-icons.py), compiled then linked.
-      val resources = work / "res.zip"
-      exec(Seq((tools / "aapt2").toString, "compile", "--dir", (baseDirectory.value / "res").toString, "-o", resources.toString))
-      val linked = work / "linked.apk"
-      exec(Seq((tools / "aapt2").toString, "link", "-o", linked.toString,
-        "--manifest", (baseDirectory.value / "AndroidManifest.xml").toString, "-I", androidJar.toString,
-        "-A", assets.toString, resources.toString, "--min-sdk-version", androidMinSdk, "--target-sdk-version", "37",
-        "--version-code", "1", "--version-name", version.value))
-
-      // aapt2 cannot add dex files: copy its APK entry for entry (stored entries stay stored) and add them.
-      val withDex = work / "with-dex.apk"
-      val in = new java.util.zip.ZipFile(linked)
-      val out = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(withDex))
-      try {
-        val entries = in.entries()
-        while (entries.hasMoreElements) {
-          val e = entries.nextElement()
-          val copy = new java.util.zip.ZipEntry(e.getName)
-          copy.setMethod(e.getMethod)
-          if (e.getMethod == java.util.zip.ZipEntry.STORED) {
-            copy.setSize(e.getSize)
-            copy.setCompressedSize(e.getSize)
-            copy.setCrc(e.getCrc)
-          }
-          out.putNextEntry(copy)
-          out.write(in.getInputStream(e).readAllBytes())
-          out.closeEntry()
-        }
-        (dex * "*.dex").get().sortBy(_.getName).foreach { d =>
-          out.putNextEntry(new java.util.zip.ZipEntry(d.getName))
-          out.write(IO.readBytes(d))
-          out.closeEntry()
-        }
-      } finally {
-        in.close()
-        out.close()
-      }
-
-      val aligned = work / "aligned.apk"
-      exec(Seq((tools / "zipalign").toString, "-f", "-p", "4", withDex.toString, aligned.toString))
-      val keystore = file(sys.props("user.home")) / ".android" / "debug.keystore"
-      if (!keystore.exists) sys.error(s"packageApk: no debug keystore at $keystore")
-      val apk = baseDirectory.value / "out-apk" / "everyui.apk"
-      IO.createDirectory(apk.getParentFile)
-      exec(Seq((tools / "apksigner").toString, "sign", "--ks", keystore.toString, "--ks-pass", "pass:android",
-        "--key-pass", "pass:android", "--ks-key-alias", "androiddebugkey", "--out", apk.toString, aligned.toString))
-      log.info(s"packageApk: $apk")
-      apk
+      AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
+        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile),
+        baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
+        Seq(baseDirectory.value / "proguard-rules.pro"), target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
+        version.value)
     }
   )
 

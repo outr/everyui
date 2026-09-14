@@ -10,6 +10,8 @@ class FontWeight(val value: Int, val family: String)
 
 object FontWeight {
   lazy val Normal: FontWeight = new FontWeight(400, "")
+  lazy val Medium: FontWeight = new FontWeight(500, "")
+  lazy val SemiBold: FontWeight = new FontWeight(600, "")
   lazy val Bold: FontWeight = new FontWeight(700, "")
 
   /** A Google Fonts weight name: "regular", "300" ... "800". */

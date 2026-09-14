@@ -7,8 +7,9 @@ import everyui.ui
 import reactify.*
 
 /** Which component has the focus, and how the keys reach it. Every key goes to the focused component; Enter
-  * clicks it, and an arrow moves the focus to the nearest focusable component that way — the same spatial
-  * navigation for a remote, a keyboard and a TV browser, in one place rather than one per platform.
+  * clicks it, Tab moves it on in tree order, an arrow moves the focus to the nearest focusable component that way, and
+  * Back goes to the newest back handler (`onBack`) — the same navigation for a remote, a keyboard and a TV browser, in
+  * one place rather than one per platform.
   *
   * The candidates are the focusable components under `ui` at the time of the key, found by walking the tree: no
   * registry to keep, so a list rebuilt under the focus or a screen swapped out needs no bookkeeping. With
@@ -19,19 +20,42 @@ object Focus {
 
   Platform.onKey((name, pressed) => key(name, pressed))
 
+  private var backs: List[Key => Boolean] = Nil
+
+  /** Handle Back (or Escape) before anything registered earlier: the newest handler that takes it wins. A dialog
+    * registers while it is open, the screen manager for as long as it runs. The returned function unregisters it. */
+  def onBack(handler: Key => Boolean): () => Unit = {
+    backs = handler :: backs
+    () => backs = backs.filterNot(_ eq handler)
+  }
+
+  private def goBack(key: Key): Boolean = {
+    var taken = false
+    var left = backs
+    while (!taken && left.nonEmpty) {
+      taken = left.head(key)
+      left = left.tail
+    }
+    taken
+  }
+
   /** A key by the web's name, pressed or released — what each backend's key hook reports. Whether the focus
-    * layer took it (Enter on, or an arrow moving, the focus), so the platform leaves it be. */
+    * layer took it (Enter on, or an arrow or Tab moving, the focus), so the platform leaves it be. A key the focused
+    * component keeps (`keepsKey`) goes to it alone. */
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
     focused().foreach { c =>
       if (pressed) c.event.key.down @= KeyEvent(key, name) else c.event.key.up @= KeyEvent(key, name)
     }
     if (!pressed) false
+    else if (focused().exists(_.keepsKey(key))) false
     else if (key == Key.Enter) focused().map { c =>
       c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
       true
     }.getOrElse(false)
     else if (Keys.isArrow(key)) move(key)
+    else if (key == Key.Tab) next()
+    else if (key == Key.Back || key == Key.Escape) goBack(key)
     else false
   }
 
@@ -73,6 +97,18 @@ object Focus {
             true
           case None => false
         }
+    }
+  }
+
+  /** Tab: the next candidate in tree order, round to the first after the last. Whether anything was focused. */
+  def next(): Boolean = {
+    val all = candidates(ui)
+    if (all.isEmpty) false
+    else {
+      var at = -1
+      all.zipWithIndex.foreach { case (c, i) => if (focused().exists(_ eq c)) at = i }
+      all((at + 1) % all.length).focus()
+      true
     }
   }
 

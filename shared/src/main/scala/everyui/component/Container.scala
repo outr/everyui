@@ -14,6 +14,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   lazy val layout: Var[Option[Layout]] = Var(None)
   /** Space between the edges and the children, on every side. */
   lazy val padding: Var[Double] = Var(0.0)
+  /** Whether the width follows the children (a row or a column given no width): a mirrored row then spans its own run,
+    * not the width its last placement made. */
+  var widthFollowsContent: Boolean = false
 
   /** How far the children reach, plus the padding beyond them. */
   lazy val contentWidth: Val[Double] = Val(extent(c => c.position.left() + c.size.width()) + padding())
@@ -28,6 +31,15 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
 
   private var placing = false
   private val childSizes: Val[Double] = Val(children().map(c => c.size.width() + c.size.height()).sum)
+  /** Place the children again, here and all the way down: the reading direction changed. */
+  def relayout(): Unit = {
+    place()
+    children().foreach {
+      case c: Container => c.relayout()
+      case _ => ()
+    }
+  }
+
   private def place(): Unit = if (!placing) {
     placing = true
     try layout().foreach(_.layout(this, children()))
@@ -36,7 +48,10 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   layout.attach { l =>
     l.foreach { lay =>
       if (!size.height.explicit) size.height := contentHeight()
-      if (lay.fitsWidth() && !size.width.explicit) size.width := contentWidth()
+      if (lay.fitsWidth() && !size.width.explicit) {
+        widthFollowsContent = true
+        size.width := contentWidth()
+      }
     }
     place()
   }

@@ -5,6 +5,7 @@
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
   <uses-permission android:name="android.permission.INTERNET" />
   <application android:label="EveryUI" android:icon="@mipmap/ic_launcher" android:banner="@drawable/banner"
+    android:supportsRtl="true"
     android:usesCleartextTraffic="true"
     android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
     <activity

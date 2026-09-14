@@ -1,18 +1,28 @@
 package everyui.layout
 
 import everyui.component.{Component, Container}
+import everyui.i18n.Direction
 
-/** Left to right; with `middle`, each child's middle on the tallest child's. */
+/** Along the reading direction — left to right, or right to left in a right-to-left language; with `middle`, each
+  * child's middle on the tallest child's. */
 case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) extends Layout {
   override def fitsWidth(): Boolean = true
 
   override def layout(container: Container, children: Vector[Component]): Unit = {
     val pad = container.padding()
-    var x = pad
     var tallest = 0.0
-    children.foreach(child => if (child.size.height() > tallest) tallest = child.size.height())
+    var run = 0.0
     children.foreach { child =>
-      child.position.left @= x
+      if (child.size.height() > tallest) tallest = child.size.height()
+      run = run + child.size.width()
+    }
+    if (children.nonEmpty) run = run + spacing * (children.length - 1)
+    // mirrored within the run the children make when the container follows them, else within its own width
+    val width = if (container.widthFollowsContent || !container.size.width.explicit) run + pad * 2.0 else container.size.width()
+    val rtl = Direction.rtl()
+    var x = pad
+    children.foreach { child =>
+      child.position.left @= (if (rtl) width - x - child.size.width() else x)
       child.position.top @= (if (middle) pad + (tallest - child.size.height()) / 2.0 else pad)
       x = x + child.size.width() + spacing
     }

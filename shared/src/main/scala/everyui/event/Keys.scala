@@ -8,6 +8,7 @@ object Keys {
   def of(name: String): Key =
     if (name == "Enter") Enter
     else if (name == "Escape") Escape
+    else if (name == "Back" || name == "BrowserBack" || name == "GoBack" || name == "XF86Back") Back
     else if (name == "ArrowUp") ArrowUp
     else if (name == "ArrowDown") ArrowDown
     else if (name == "ArrowLeft") ArrowLeft

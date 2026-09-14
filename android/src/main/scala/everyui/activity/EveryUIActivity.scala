@@ -6,17 +6,22 @@ import android.os.Bundle
 import android.view.{KeyEvent, ViewGroup, WindowInsets, WindowInsetsController, WindowManager}
 import everyui.render.{Host, NodeGroup}
 
-/** The Android entry point: a full-screen window whose content view is the render root, then the shared `main`.
+/** The Android entry point an app's activity extends: a full-screen window whose content view is the render root,
+  * then `run` (the app's `main`).
   *
   * tools/check.sh launches it with `--es freeze 0.434` to freeze a frame, and `--es viewport 1920x1080` to lay out at
   * that size whatever the screen — so a phone emulator produces the same frame as a 1080p TV (and shows its top-left
   * corner). */
-class MainActivity extends Activity {
+abstract class EveryUIActivity extends Activity {
+  /** The app: build its screens. */
+  protected def run(): Unit
+
   override def onCreate(savedInstanceState: Bundle): Unit = {
     super.onCreate(savedInstanceState)
     Host.activity = this
     everyui.network.NetworkBackend.init()   // rapid on a thread pool, before anything starts a Task
     Host.freeze = extra("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
+    Host.path = extra("path").getOrElse("")
     extra("viewport").map(_.split('x')).foreach {
       case Array(w, h) =>
         Host.viewportWidth = w.toDouble
@@ -31,6 +36,13 @@ class MainActivity extends Activity {
     def extent(size: Double): Int = if (size > 0.0) size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
     setContentView(root, new ViewGroup.LayoutParams(extent(Host.viewportWidth), extent(Host.viewportHeight)))
     Host.root = root
+    if (Host.viewportWidth <= 0.0) {
+      Host.scale = getResources.getDisplayMetrics.density.toDouble
+      root.setPivotX(0f)
+      root.setPivotY(0f)
+      root.setScaleX(Host.scale.toFloat)
+      root.setScaleY(Host.scale.toFloat)
+    }
 
     val window = getWindow
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -44,17 +56,30 @@ class MainActivity extends Activity {
       insets.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
     }
 
-    everyui.app.main()
+    run()
   }
 
-  /** Every key to the shared layer's hook, by the web's name; Back is also left to Android, so it still leaves the app. */
+  /** Whether the app took the Back being held, so its release is the app's too. */
+  private var backTaken = false
+
+  /** Every key to the shared layer's hook, by the web's name. Back goes there first, and is Android's (leaving the app)
+    * only when the app has nowhere to go back to; a Back the app took keeps its release, or Android would act on that. */
   override def dispatchKeyEvent(e: KeyEvent): Boolean = {
     val hook = Host.key
     if (hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE) super.dispatchKeyEvent(e)
-    else {
-      val taken = hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN)
-      if (e.getKeyCode == KeyEvent.KEYCODE_BACK) super.dispatchKeyEvent(e) else taken || super.dispatchKeyEvent(e)
+    else if (e.getKeyCode == KeyEvent.KEYCODE_BACK) {
+      if (e.getAction == KeyEvent.ACTION_DOWN) {
+        if (e.getRepeatCount == 0) backTaken = hook("Back", true)
+        backTaken || super.dispatchKeyEvent(e)
+      }
+      else {
+        hook("Back", false)
+        val taken = backTaken
+        backTaken = false
+        taken || super.dispatchKeyEvent(e)
+      }
     }
+    else hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN) || super.dispatchKeyEvent(e)
   }
 
   /** The shared layer's singletons (`ui`, the app) live as long as the process, as they live as long as a page or a

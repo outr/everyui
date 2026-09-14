@@ -5,7 +5,7 @@ import android.content.Context
 import android.graphics.{Bitmap, BitmapFactory, Paint, Typeface}
 import android.util.{Log, TypedValue}
 import android.view.{Choreographer, KeyEvent, MotionEvent, View, ViewGroup}
-import android.widget.{ImageView, TextView}
+import android.widget.{EditText, ImageView, TextView}
 import everyui.font.{Face, Faces}
 import everyui.PlatformKind
 import everyui.event.PointerKind
@@ -27,6 +27,7 @@ class RenderNode(val view: View) {
   private var explicitHeight: Double = -1.0
   private var face: Face = Faces.OpenSansRegular
   private var fontSize: Double = 32.0
+  private var wrapping: Boolean = false
 
   if (view.getLayoutParams == null)
     view.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -92,6 +93,8 @@ class RenderNode(val view: View) {
   def getWidth(): Double =
     if (explicitWidth >= 0.0) explicitWidth
     else view match {
+      case _: EditText => 0.0
+      case t: TextView if wrapping => t.getPaint.measureText(t.getText.toString).toDouble
       case t: TextView =>
         val text = t.getText.toString
         t.getPaint.getRunAdvance(text, 0, text.length, 0, text.length, false, text.length).toDouble
@@ -101,6 +104,10 @@ class RenderNode(val view: View) {
   def getHeight(): Double =
     if (explicitHeight >= 0.0) explicitHeight
     else view match {
+      case t: TextView if wrapping =>
+        val text = t.getText
+        val width = math.max(1, math.round(explicitWidth).toInt)
+        android.text.StaticLayout.Builder.obtain(text, 0, text.length, t.getPaint, width).setIncludePad(false).build().getHeight.toDouble
       case _: TextView => face.lineHeight(fontSize)
       case _ => 0.0
     }
@@ -133,19 +140,28 @@ class RenderNode(val view: View) {
   /** `"#rrggbb"`, or `""` for transparent. */
   private var background: Int = 0
   private var radius: Float = 0f
+  private var borderWidth: Int = 0
+  private var borderColor: Int = 0
   def setBackgroundColor(hex: String): Unit = {
     // Android wants #aarrggbb; the seam says #rrggbb or #rrggbbaa
-    background = if (hex.isEmpty) 0 else if (hex.length == 9) android.graphics.Color.parseColor("#" + hex.substring(7) + hex.substring(1, 7)) else android.graphics.Color.parseColor(hex)
+    background = if (hex.isEmpty) 0 else RenderNode.color(hex)
     paintBackground()
   }
   def setRadius(r: Double): Unit = {
     radius = r.toFloat
     paintBackground()
   }
+  /** An edge `width` pixels wide, inside the box. */
+  def setBorder(width: Double, hex: String): Unit = {
+    borderWidth = if (hex.isEmpty) 0 else math.round(width).toInt
+    borderColor = if (hex.isEmpty) 0 else RenderNode.color(hex)
+    paintBackground()
+  }
   private def paintBackground(): Unit = {
     val drawable = new android.graphics.drawable.GradientDrawable()
     drawable.setColor(background)
     drawable.setCornerRadius(radius)
+    if (borderWidth > 0) drawable.setStroke(borderWidth, borderColor)
     view.setBackground(drawable)
   }
 
@@ -177,7 +193,7 @@ class RenderNode(val view: View) {
   private def fire(kind: PointerKind, e: MotionEvent): Unit = {
     val at = Array(0, 0)
     Host.root.getLocationOnScreen(at)
-    pointer.get(kind).foreach(f => f(e.getRawX - at(0), e.getRawY - at(1)))
+    pointer.get(kind).foreach(f => f((e.getRawX - at(0)) / Host.scale, (e.getRawY - at(1)) / Host.scale))
   }
   private def touch(e: MotionEvent): Boolean = {
     val action = e.getActionMasked
@@ -203,22 +219,101 @@ class RenderNode(val view: View) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** Text nodes are single lines. */
-  def setWhiteSpace(value: String): Unit = ()
+  /** `"normal"` wraps a text node at its width; anything else keeps it on one line. */
+  def setWhiteSpace(value: String): Unit = view match {
+    case _: EditText => ()
+    case t: TextView =>
+      wrapping = value == "normal"
+      t.setMaxLines(if (wrapping) Integer.MAX_VALUE else 1)
+      t.setHorizontallyScrolling(!wrapping)
+    case _ => ()
+  }
+
+  /** A text field's contents. */
+  def getValue(): String = view match {
+    case e: EditText => e.getText.toString
+    case _ => ""
+  }
+  def setValue(value: String): Unit = view match {
+    case e: EditText =>
+      e.setText(value)
+      e.setSelection(value.length)
+    case _ => ()
+  }
+  def setPlaceholder(text: String): Unit = view match {
+    case e: EditText => e.setHint(text)
+    case _ => ()
+  }
+  /** Every edit, with the new contents. */
+  def onValue(f: String => Unit): Unit = view match {
+    case e: EditText => e.addTextChangedListener(new android.text.TextWatcher {
+      override def beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int): Unit = ()
+      override def onTextChanged(s: CharSequence, start: Int, before: Int, count: Int): Unit = ()
+      override def afterTextChanged(s: android.text.Editable): Unit = f(s.toString)
+    })
+    case _ => ()
+  }
+  /** The field taking the keyboard itself (a tap on it). */
+  def onInputFocus(f: () => Unit): Unit = view match {
+    case e: EditText => e.setOnFocusChangeListener((_, has) => if (has) f())
+    case _ => ()
+  }
+  /** The field's keyboard finished: its Done (or Next, or Go), or Back putting it away. */
+  def onInputDone(f: () => Unit): Unit = view match {
+    case e: FieldView =>
+      e.done = f
+      e.setOnEditorActionListener((_, _, _) => {
+        f()
+        true
+      })
+    case _ => ()
+  }
+  /** Give the field the keyboard (and the soft keyboard where there is no other), or take both away. */
+  def focusInput(on: Boolean): Unit = view match {
+    case e: FieldView =>
+      val keyboard = Host.activity.getSystemService(Context.INPUT_METHOD_SERVICE).asInstanceOf[android.view.inputmethod.InputMethodManager]
+      if (on) e.edit(true)
+      if (on && !e.hasFocus) {
+        e.requestFocus()
+        e.post(() => keyboard.showSoftInput(e, 0))   // once the focus has landed, or the keyboard ignores it
+      }
+      else if (!on) keyboard.hideSoftInputFromWindow(e.getWindowToken, 0)
+      if (!on && e.hasFocus) {
+        // to the root rather than clearFocus, which hands Android's focus straight back to the first field
+        Host.root.setFocusableInTouchMode(true)
+        Host.root.requestFocus()
+      }
+      if (!on) e.edit(false)
+    case _ => ()
+  }
+
+  /** "start", "center" or "end", resolved against the root's layout direction. */
+  def setTextAlign(align: String): Unit = view match {
+    case t: TextView => t.setTextAlignment(
+      if (align == "center") View.TEXT_ALIGNMENT_CENTER else if (align == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
+    case _ => ()
+  }
 
   def setImageSource(uri: String): Unit = view match {
-    case i: ImageView => if (uri.nonEmpty) i.setImageBitmap(Host.bitmap(uri))
+    case i: ImageView => if (uri.nonEmpty) Host.bitmapThen(uri)(b => if (b != null) i.setImageBitmap(b))
     case _ => ()
   }
 
   /** A `TextView` draws its baseline `-ascent` (whole pixels) below its top: shift it so the baseline lands where the
     * shared line box puts it. */
   private def placeY(): Unit = view match {
+    case _: EditText => view.setTranslationY(top.toFloat)
     case t: TextView =>
       val ascent = -t.getPaint.getFontMetricsInt.ascent
       view.setTranslationY((top + face.baseline(fontSize) - ascent).toFloat)
     case _ => view.setTranslationY(top.toFloat)
   }
+}
+
+object RenderNode {
+  /** The seam's `"#rrggbb"` or `"#rrggbbaa"` as Android's ARGB. */
+  def color(hex: String): Int =
+    if (hex.length == 9) android.graphics.Color.parseColor("#" + hex.substring(7) + hex.substring(1, 7)) else android.graphics.Color.parseColor(hex)
 }
 
 /** A container: each child is laid out at its own size at the origin and placed by its translation — absolute
@@ -263,6 +358,8 @@ object Host {
   var viewportWidth: Double = -1.0
   var viewportHeight: Double = -1.0
 
+  lazy val settings: android.content.SharedPreferences = activity.getSharedPreferences("everyui", Context.MODE_PRIVATE)
+
   /** The key hook (Platform.onKey), fed by the activity. */
   var key: (String, Boolean) => Boolean = null
 
@@ -270,7 +367,8 @@ object Host {
   def keyName(e: KeyEvent): String = {
     val code = e.getKeyCode
     if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) "Enter"
-    else if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) "Escape"
+    else if (code == KeyEvent.KEYCODE_BACK) "Back"
+    else if (code == KeyEvent.KEYCODE_ESCAPE) "Escape"
     else if (code == KeyEvent.KEYCODE_DPAD_UP) "ArrowUp"
     else if (code == KeyEvent.KEYCODE_DPAD_DOWN) "ArrowDown"
     else if (code == KeyEvent.KEYCODE_DPAD_LEFT) "ArrowLeft"
@@ -291,6 +389,31 @@ object Host {
     val in = activity.getAssets.open(uri)
     try BitmapFactory.decodeStream(in) finally in.close()
   })
+
+  /** A bitmap by URI, then `done` on the main thread: at once from the APK or the cache, after a download on its own
+    * thread from the network (`null` if it cannot be had). */
+  def bitmapThen(uri: String)(done: Bitmap => Unit): Unit = bitmaps.get(uri) match {
+    case Some(b) => done(b)
+    case None if uri.startsWith("http") =>
+      new Thread(() => {
+        val b =
+          try {
+            val in = new java.net.URL(uri).openStream()
+            try BitmapFactory.decodeStream(in) finally in.close()
+          } catch { case _: Exception => null }
+        activity.runOnUiThread(() => {
+          if (b != null) bitmaps(uri) = b
+          done(b)
+        })
+      }).start()
+    case None => done(bitmap(uri))
+  }
+
+  /** Layout units to screen pixels: the display's density, so a TV or a phone is laid out in the same units its own
+    * apps are (1 on a launch that pins a viewport, whose frame is compared pixel for pixel). */
+  var scale: Double = 1.0
+  /** The path the app is at: `--es path /somewhere` to start there, then wherever it last pushed. */
+  var path: String = ""
 }
 
 /** Backend node factories. */
@@ -322,6 +445,21 @@ object Nodes {
     node.setFont("Material Icons", 400, size)
     node.setText(glyph)
     node
+  }
+
+  /** A text field — an `EditText`, hiding what is typed for a secret — with no box or padding of its own. */
+  def input(secure: Boolean): RenderNode = {
+    val e = new FieldView(Host.activity)
+    e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI)
+    e.setBackground(null)
+    e.setPadding(0, 0, 0, 0)
+    e.setIncludeFontPadding(false)
+    e.setSingleLine(true)
+    e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | (if (secure) android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD else 0))
+    e.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16.0f)
+    // from where the root reads, not the edit style's left: an empty field's caret starts at the right in Arabic
+    e.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START)
+    new RenderNode(e)
   }
 
   /** An image node — an `ImageView` stretched to its box. */
@@ -371,16 +509,59 @@ object Platform {
   }
 
   /** No address bar: no path to show, push or follow. */
-  def path(): String = ""
-  def pushPath(path: String): Unit = ()
+  def path(): String = Host.path
+  def pushPath(path: String): Unit = Host.path = path
   def onPath(f: String => Unit): Unit = ()
+
+  /** Run `f` on the main thread, soon: how a reply from another thread reaches the components. */
+  /** No browser history here: the screen manager keeps its own. */
+  def historyBack(): Boolean = false
+
+  /** A text file among the APK's assets (a translation), or "" if it is not there. */
+  def readText(path: String, done: String => Unit): Unit = done(
+    try {
+      val in = Host.activity.getAssets.open(path)
+      try new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8) finally in.close()
+    } catch { case _: Exception => "" })
+
+  /** The character at a Unicode code point, as a string. */
+  def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))
+
+  /** The device's language, as a BCP 47 tag (`en-US`). */
+  def language(): String = java.util.Locale.getDefault.toLanguageTag
+
+  /** The root's layout direction: text and fields start where the language reads from. */
+  def setDirection(rtl: Boolean): Unit =
+    Host.root.setLayoutDirection(if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
+
+  def later(f: () => Unit): Unit = new android.os.Handler(android.os.Looper.getMainLooper).post(() => f())
+
+  /** A value kept across launches (the app's shared preferences), or "" when there is none. */
+  def setting(name: String): String = Host.settings.getString(name, "")
+  /** Keep `value` under `name`; "" forgets it. */
+  def saveSetting(name: String, value: String): Unit = {
+    val edit = Host.settings.edit()
+    if (value.isEmpty) edit.remove(name) else edit.putString(name, value)
+    edit.apply()
+  }
+
+  /** The device's model name. */
+  def deviceName(): String = android.os.Build.MODEL
+
+  /** Android has text fields of its own. */
+  def nativeInput(): Boolean = true
+  /** Only a platform without text fields asks its keyboard for a value. */
+  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
+
+  /** A registered face loads from the APK's `assets/fonts/` when first used. */
+  def registerFont(face: Face): Unit = ()
 
   def screenWidth(): Double =
     if (Host.viewportWidth > 0.0) Host.viewportWidth
-    else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.width.toDouble
+    else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.width.toDouble / Host.scale
   def screenHeight(): Double =
     if (Host.viewportHeight > 0.0) Host.viewportHeight
-    else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.height.toDouble
+    else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.height.toDouble / Host.scale
 
   /** `--es freeze <seconds>` on the launch intent: step the animation that far on a virtual clock and stop
     * (tools/check.sh). Negative when absent. */
@@ -392,7 +573,7 @@ object Platform {
     if (value == null) "" else value
   }
 
-  /** Finish the activity (a demo that is done); the process follows (MainActivity.onDestroy). */
+  /** Finish the activity (a demo that is done); the process follows (EveryUIActivity.onDestroy). */
   def quit(): Unit = Host.activity.finish()
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
@@ -424,10 +605,8 @@ object Platform {
   def resolvePath(path: String): String = path.stripPrefix("/")
 
   /** Decode `uri` and report its natural size. */
-  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
-    val bitmap = Host.bitmap(uri)
-    loaded(bitmap.getWidth.toDouble, bitmap.getHeight.toDouble)
-  }
+  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit =
+    Host.bitmapThen(uri)(b => if (b == null) loaded(0.0, 0.0) else loaded(b.getWidth.toDouble, b.getHeight.toDouble))
 
   /** Bundled faces load synchronously from the APK. */
   def loadFont(family: String, weight: Int, loaded: () => Unit): Unit = {

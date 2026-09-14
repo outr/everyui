@@ -1,14 +1,15 @@
 package everyui.component
 
-import everyui.event.Key
+import everyui.focus.Focus
 import everyui.theme.Theme
 import everyui.ui
 import reactify.*
 
-/** youi's `Modal`: one dialog at a time over everything, on a sheet that dims the page. A click on the sheet or
-  * Escape closes it. */
+/** youi's `Modal`: one dialog at a time over everything, on a sheet that dims the page. A click on the sheet, Escape
+  * or Back closes it (before Back does anything else). */
 object Modal {
   private var open: Option[Container] = None
+  private var release: () => Unit = () => ()
 
   def show(panel: Container): Unit = {
     close()
@@ -21,10 +22,13 @@ object Modal {
       panel.position.middle := size.middle
       children += panel
       event.click.attach(_ => close())
-      event.key.down.attach(k => if (k.key == Key.Escape) close())
     }
     panel.event.click.attach(_.consume())
     open = Some(sheet)
+    release = Focus.onBack(_ => {
+      close()
+      true
+    })
     ui.children += sheet
     sheet.focus()
   }
@@ -32,5 +36,7 @@ object Modal {
   def close(): Unit = {
     open.foreach(sheet => ui.children -= sheet)
     open = None
+    release()
+    release = () => ()
   }
 }

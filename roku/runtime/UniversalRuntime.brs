@@ -463,3 +463,8 @@ sub uiSetClip(node as object, width as float, height as float)
     if node = invalid then return
     node.clippingRect = [0, 0, width, height]
 end sub
+
+' The character at a Unicode code point, as a string.
+function uiChr(codePoint as integer) as string
+    return Chr(codePoint)
+end function

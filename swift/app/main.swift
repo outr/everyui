@@ -22,12 +22,24 @@ final class RootViewController: UIViewController {
         }
     }
 
+    /// Whether the app took the Menu press being held: its release is the app's too, or tvOS would leave the app on it.
+    private var menuTaken = false
+
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if !presses.contains(where: { uiKeyEvent($0, true) }) { super.pressesBegan(presses, with: event) }
+        if presses.contains(where: { uiKeyEvent($0, true) }) {
+            if presses.contains(where: { $0.type == .menu }) { menuTaken = true }
+        } else {
+            super.pressesBegan(presses, with: event)
+        }
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if !presses.contains(where: { uiKeyEvent($0, false) }) { super.pressesEnded(presses, with: event) }
+        let taken = presses.contains(where: { uiKeyEvent($0, false) })
+        if menuTaken && presses.contains(where: { $0.type == .menu }) {
+            menuTaken = false
+        } else if !taken {
+            super.pressesEnded(presses, with: event)
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {

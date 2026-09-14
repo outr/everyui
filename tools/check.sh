@@ -229,11 +229,11 @@ input_android() {
   local serial=${ANDROID_SERIAL:-$(adb devices | awk '$1 ~ /^emulator-/ && $2 == "device" { print $1; exit }')}
   [ -n "$serial" ] || { echo "no Android emulator on adb"; return 1; }
   adb -s "$serial" logcat -c
-  adb -s "$serial" shell am start -S -n com.outr.everyui/everyui.activity.MainActivity --es demo input --es probe 1 > /dev/null || return 1
+  adb -s "$serial" shell am start -S -n com.outr.everyui/everyui.activity.MainActivity --es demo input --es probe 1 --es viewport 1920x1080 > /dev/null || return 1
   $CHECKS android-wait "$serial" "$LOGS/input-android-probe.log" --pattern "input ok|uncaught|FATAL" --timeout 60
   input_result "$LOGS/input-android-probe.log" || return 1
   adb -s "$serial" logcat -c
-  adb -s "$serial" shell am start -S -n com.outr.everyui/everyui.activity.MainActivity --es demo input > /dev/null || return 1
+  adb -s "$serial" shell am start -S -n com.outr.everyui/everyui.activity.MainActivity --es demo input --es viewport 1920x1080 > /dev/null || return 1
   sleep 4
   for k in KEYCODE_DPAD_RIGHT KEYCODE_DPAD_CENTER KEYCODE_DPAD_LEFT KEYCODE_DPAD_DOWN; do adb -s "$serial" shell input keyevent $k; done
   adb -s "$serial" shell input tap 630 160

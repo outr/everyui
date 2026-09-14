@@ -4,7 +4,7 @@ import reactify.*
 import everyui.Color
 import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
 import everyui.component.types.{Prop, WhiteSpace}
-import everyui.event.Events
+import everyui.event.{Events, Key}
 import everyui.focus.Focus
 import everyui.render.RenderNode
 
@@ -21,8 +21,11 @@ class Component(val node: RenderNode) {
   lazy val position: PositionFeature = new PositionFeature(this)
 
   lazy val color: Prop[Color] = new Prop[Color](Color.Black, c => node.setColor(c.toHex))
-  lazy val backgroundColor: Prop[Color] =
-    new Prop[Color](Color.Clear, c => node.setBackgroundColor(if (c.alphaInt == 0) "" else if (c.alphaInt < 255) c.toHexAlpha else c.toHex))
+  lazy val backgroundColor: Prop[Color] = new Prop[Color](Color.Clear, c => node.setBackgroundColor(Component.css(c)))
+  /** An edge `borderWidth` pixels wide in `borderColor`, drawn inside the box and following its corners, so a border
+    * never changes a size. (A Roku Rectangle has no edge to draw.) */
+  lazy val borderColor: Prop[Color] = new Prop[Color](Color.Clear, c => node.setBorder(borderWidth(), Component.css(c)))
+  lazy val borderWidth: Prop[Double] = new Prop[Double](0.0, w => node.setBorder(w, Component.css(borderColor())))
   /** Rounded corners, in pixels (the Roku's Rectangle has none). */
   lazy val radius: Prop[Double] = new Prop[Double](0.0, r => node.setRadius(r))
   /** In turns, as youi has it (1.0 is a full revolution). */
@@ -47,4 +50,13 @@ class Component(val node: RenderNode) {
   lazy val focusable: Var[Boolean] = Var(false)
   lazy val focused: Val[Boolean] = Val(Focus.focused().exists(_ eq this))
   def focus(): Unit = Focus.focused @= Some(this)
+
+  /** Whether this handles `key` itself while focused, so the focus layer leaves it be: a text field keeps Enter and
+    * the arrows along its line. */
+  def keepsKey(key: Key): Boolean = false
+}
+
+object Component {
+  /** A colour as the seam takes it: `"#rrggbb"`, `"#rrggbbaa"` when translucent, or `""` for none. */
+  def css(c: Color): String = if (c.alphaInt == 0) "" else if (c.alphaInt < 255) c.toHexAlpha else c.toHex
 }

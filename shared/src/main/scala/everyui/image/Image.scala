@@ -14,9 +14,9 @@ class Image(val source: String, val width: Double, val height: Double) {
 object Image {
   lazy val empty: Image = new Image("", 0.0, 0.0)
 
-  /** Load `source` (a site-absolute path, as in youi) and complete with its natural size. */
+  /** Load `source` (a site-absolute path, as in youi, or a URL) and complete with its natural size. */
   def apply(source: String): Task[Image] = {
-    val uri = Platform.resolvePath(source)
+    val uri = if (source.contains("://")) source else Platform.resolvePath(source)
     Task.async[Image](done => Platform.loadImage(uri, (w, h) => done(new Image(uri, w, h))))
   }
 }
