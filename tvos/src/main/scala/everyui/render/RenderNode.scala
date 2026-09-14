@@ -78,6 +78,9 @@ class RenderNode(val sg: SGNode):
   def setRadius(radius: Double): Unit = uiSetRadius(sg, radius)
 
   /** Every view is placed by its own position, so there is no position type to set. */
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
+  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind, f)
+
   def setPositionType(name: String): Unit = ()
 
   /** A label is a single line. */
@@ -148,6 +151,9 @@ object Platform:
   def quit(): Unit = uiQuit()
 
   /** An Apple TV's screen never changes size. */
+  /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released. */
+  def onKey(f: (String, Boolean) => Unit): Unit = uiOnKey(f)
+
   def onResize(f: () => Unit): Unit = ()
 
   // Through the runtime, as the Roku backend has them.

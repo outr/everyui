@@ -7,8 +7,14 @@ import everyui.component.Component
   * nodes; measuring the container measures its children first. */
 class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty):
   changes { (old, current) =>
-    old.filterNot(c => current.exists(_ eq c)).foreach(_.node.remove())
-    current.filterNot(c => old.exists(_ eq c)).foreach(c => component.node.append(c.node))
+    old.filterNot(c => current.exists(_ eq c)).foreach { c =>
+      c.node.remove()
+      c.parent @= None
+    }
+    current.filterNot(c => old.exists(_ eq c)).foreach { c =>
+      component.node.append(c.node)
+      c.parent @= Some(component)
+    }
     component.measure.trigger()
   }
 

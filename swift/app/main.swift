@@ -22,6 +22,14 @@ final class RootViewController: UIViewController {
         }
     }
 
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if !presses.contains(where: { uiKeyEvent($0, true) }) { super.pressesBegan(presses, with: event) }
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if !presses.contains(where: { uiKeyEvent($0, false) }) { super.pressesEnded(presses, with: event) }
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         registerFonts()

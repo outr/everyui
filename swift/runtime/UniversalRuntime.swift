@@ -21,6 +21,8 @@ enum UI {
     static var viewport: CGSize? = nil
     /// The animation callback, a Scala closure, driven by a display link.
     static var tick: V = .vNull
+    /// The key hook, a Scala closure (uiOnKey).
+    static var key: V = .vNull
     static var link: CADisplayLink?
     static var frames = 0
     static var collections = 0
@@ -459,4 +461,32 @@ func uiLocalDateTime(_ millis: V) -> V {
     let f = DateFormatter()
     f.dateFormat = "yyyy-MM-dd HH:mm:ss"
     return .vStr(f.string(from: Date(timeIntervalSince1970: rtDouble(millis) / 1000.0)))
+}
+
+// MARK: - input: the remote's presses to one hook (everyui.focus.Focus); there is no pointer
+
+/// A Siri Remote's touch surface only reaches views the focus engine owns, and the shared layer owns the focus.
+func uiOnPointer(_ node: V, _ kind: V, _ f: V) -> V { .vNull }
+
+func uiOnKey(_ f: V) -> V {
+    UI.key = f
+    return .vNull
+}
+
+/// RootViewController's presses, by the web's names. Menu is left to tvOS, so it still leaves the app.
+func uiKeyEvent(_ press: UIPress, _ pressed: Bool) -> Bool {
+    guard case .vFn = UI.key else { return false }
+    let name: String
+    switch press.type {
+    case .select: name = "Enter"
+    case .upArrow: name = "ArrowUp"
+    case .downArrow: name = "ArrowDown"
+    case .leftArrow: name = "ArrowLeft"
+    case .rightArrow: name = "ArrowRight"
+    case .playPause: name = "MediaPlayPause"
+    case .menu: return false
+    default: return false
+    }
+    _ = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(pressed)]))
+    return true
 }

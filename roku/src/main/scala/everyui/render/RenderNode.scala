@@ -79,6 +79,9 @@ class RenderNode(val sg: SGNode):
   def setRadius(radius: Double): Unit = uiSetRadius(sg, radius)
 
   /** SceneGraph places every node by its translation, so there is no position type to set. */
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
+  def onPointer(kind: String, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind, f)
+
   def setPositionType(name: String): Unit = ()
 
   /** A Label is a single line unless told to wrap. */
@@ -149,6 +152,9 @@ object Platform:
   def quit(): Unit = ()
 
   /** A channel's design resolution never changes. */
+  /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released. */
+  def onKey(f: (String, Boolean) => Unit): Unit = uiOnKey(f)
+
   def onResize(f: () => Unit): Unit = ()
 
   // BrightScript intrinsics, through everyui's runtime. The web backend

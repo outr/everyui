@@ -4,6 +4,8 @@ import reactify.*
 import everyui.Color
 import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
 import everyui.component.types.{Prop, WhiteSpace}
+import everyui.event.Events
+import everyui.focus.Focus
 import everyui.render.RenderNode
 
 /** youi's `Component`, with the DOM element replaced by a [[RenderNode]] — which each backend supplies — so the
@@ -30,3 +32,18 @@ class Component(val node: RenderNode):
 
   lazy val effectiveWidth: Val[Double] = Val(size.width())
   lazy val effectiveHeight: Val[Double] = Val(size.height())
+
+  /** The container this is in, kept by ContainerFeature. */
+  val parent: Var[Option[Component]] = Var(None)
+  /** The position in the render root: the parents' positions added up. */
+  def absoluteLeft: Double = position.left() + parent().map(_.absoluteLeft).getOrElse(0.0)
+  def absoluteTop: Double = position.top() + parent().map(_.absoluteTop).getOrElse(0.0)
+
+  lazy val event: Events = new Events(this)
+  /** Whether the focus can land here: by a click, `focus()`, or the arrows from a neighbour (everyui.focus.Focus). */
+  lazy val focusable: Var[Boolean] =
+    val v = Var(false)
+    v.attach(f => if f then Focus.register(this) else Focus.unregister(this))
+    v
+  lazy val focused: Val[Boolean] = Val(Focus.focused().exists(_ eq this))
+  def focus(): Unit = Focus.focused @= Some(this)

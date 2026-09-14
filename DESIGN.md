@@ -1208,6 +1208,36 @@ Screenshots per platform: the Roku's developer page (`plugin_inspect`),
 `simctl io screenshot`, `adb screencap`, ImageMagick's `import` inside the Xvfb
 session, RoboBrowser (a second capture a second before the last).
 
+
+## Input: events and focus, one model on every backend (2026-09-13)
+
+youi's `Events` over the render seam, and a focus model the platforms do not share, kept in the shared layer:
+
+- `component.event.pointer.{down, up, move, enter, leave}` and `event.click` are reactify `Channel`s of a
+  `PointerEvent(x, y)` in the render root's coordinates; `event.pointer.over` is a `Val`. Each channel listens on the
+  node only once something asks for it. `event.key.{down, up}` carry a `KeyEvent(key)` while the component has the
+  focus.
+- Keys are named as the web names them, everywhere: `Enter`, `Escape`, `ArrowUp`…, `MediaPlayPause`, or the
+  character typed. A remote's OK is `Enter`, its back is `Escape` (and is also left to the platform, so Back still
+  leaves a Roku channel, a tvOS app, an Android activity).
+- `Component.focusable`, `focused` and `focus()`; `everyui.focus.Focus` holds the focused component and routes every
+  key to it: `Enter` clicks it, an arrow moves the focus to the nearest focusable component that way (the distance
+  along the arrow plus twice the drift off it). A click on a focusable component focuses it. That is the same spatial
+  navigation for a Roku remote, a Siri Remote, an Android TV D-pad, a keyboard and a TV browser — no platform focus
+  engine is used (tvOS views stay out of UIKit's, so its presses arrive as keys).
+- The seam grew two members: `RenderNode.onPointer(kind, f)` and `Platform.onKey(f)`. Web: DOM `pointer*`/`click`
+  and `keydown`/`keyup` on the document. Desktop: JavaFX mouse handlers (`pickOnBounds`, so transparent panes hit)
+  and key filters on the scene. Android: one touch/hover listener per node (an up inside the view is a click), the
+  activity's `dispatchKeyEvent`. Roku: no pointer; `AppScene.onKeyEvent` → the generated runtime's `RtKeyEvent`
+  → the hook `uiOnKey` set. tvOS: no pointer; `pressesBegan/Ended` → `uiKeyEvent` → the hook.
+- `Component.parent` (kept by `ContainerFeature`) and `absoluteLeft/Top`, for the focus geometry.
+
+`demo=input` (`everyui.app.InputDemo`): three focusable boxes; with `probe=1` it drives `Focus` itself and prints
+`[ui] input ok focus=a focus=b click=b focus=a`. tools/check.sh runs the probe on the web, the desktop, Android and
+tvOS, then real events: DOM keyboard and pointer events through RoboBrowser (`webcheck/WebInput`), the D-pad and a
+tap through adb — both must reach the same channels (`focus=c click=c`, plus `enter c`/`leave c` where there is a
+pointer). Verified 2026-09-13 on the web, the desktop and the Android emulator; the Roku (off) and the Apple TV
+simulator (the Mac dropped off the network) compile clean and are not yet run.
 ## The network module — Spice as the core, on every backend (2026-09-13)
 
 The first release replaces Sart in DataWrangler's dashboard, and DataWrangler

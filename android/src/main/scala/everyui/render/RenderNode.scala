@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.{Bitmap, BitmapFactory, Paint, Typeface}
 import android.util.{Log, TypedValue}
-import android.view.{Choreographer, View, ViewGroup}
+import android.view.{Choreographer, KeyEvent, MotionEvent, View, ViewGroup}
 import android.widget.{ImageView, TextView}
 import everyui.font.{Face, Faces}
 
@@ -130,6 +130,36 @@ class RenderNode(val view: View):
     view.setBackground(drawable)
 
   /** Every node is placed by its translation, so there is no position type to set. */
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click") with its root coordinates. Touches
+    * drive down/move/up and a click on an up that stays on the view; a mouse or a hover drives enter/leave. */
+  def onPointer(kind: String, f: (Double, Double) => Unit): Unit =
+    pointer += kind -> f
+    if !listening then
+      listening = true
+      view.setOnTouchListener((_, e) => touch(e))
+      view.setOnHoverListener { (_, e) =>
+        if e.getAction == MotionEvent.ACTION_HOVER_ENTER then fire("enter", e)
+        else if e.getAction == MotionEvent.ACTION_HOVER_EXIT then fire("leave", e)
+        false
+      }
+
+  private val pointer = mutable.Map.empty[String, (Double, Double) => Unit]
+  private var listening = false
+  private def fire(kind: String, e: MotionEvent): Unit =
+    val at = Array(0, 0)
+    Host.root.getLocationOnScreen(at)
+    pointer.get(kind).foreach(f => f(e.getRawX - at(0), e.getRawY - at(1)))
+  private def touch(e: MotionEvent): Boolean =
+    val action = e.getActionMasked
+    if action == MotionEvent.ACTION_DOWN then fire("down", e)
+    else if action == MotionEvent.ACTION_MOVE then fire("move", e)
+    else if action == MotionEvent.ACTION_UP then
+      fire("up", e)
+      val inside = e.getX >= 0 && e.getY >= 0 && e.getX <= view.getWidth && e.getY <= view.getHeight
+      if inside then fire("click", e)
+    else if action == MotionEvent.ACTION_CANCEL then fire("up", e)
+    true
+
   def setPositionType(name: String): Unit = ()
 
   /** Text nodes are single lines. */
@@ -183,6 +213,22 @@ object Host:
   var freeze: Double = -1.0
   var viewportWidth: Double = -1.0
   var viewportHeight: Double = -1.0
+
+  /** The key hook (Platform.onKey), fed by the activity. */
+  var key: (String, Boolean) => Unit = null
+
+  /** An Android key by the web's name: the remote's keys by their names, anything typed by its character. */
+  def keyName(e: KeyEvent): String =
+    val code = e.getKeyCode
+    if code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER then "Enter"
+    else if code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE then "Escape"
+    else if code == KeyEvent.KEYCODE_DPAD_UP then "ArrowUp"
+    else if code == KeyEvent.KEYCODE_DPAD_DOWN then "ArrowDown"
+    else if code == KeyEvent.KEYCODE_DPAD_LEFT then "ArrowLeft"
+    else if code == KeyEvent.KEYCODE_DPAD_RIGHT then "ArrowRight"
+    else if code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE then "MediaPlayPause"
+    else if e.getUnicodeChar > 0 then e.getUnicodeChar.toChar.toString
+    else KeyEvent.keyCodeToString(code)
 
   private val typefaces = mutable.Map.empty[String, Typeface]
   private val bitmaps = mutable.Map.empty[String, Bitmap]
@@ -282,6 +328,9 @@ object Platform:
   def frozen(): Unit = ()
 
   /** Called whenever the root changes size (a rotation, a resized window). */
+  /** Every key the activity sees, by the web's name, pressed or released. */
+  def onKey(f: (String, Boolean) => Unit): Unit = Host.key = f
+
   def onResize(f: () => Unit): Unit =
     Host.root.addOnLayoutChangeListener((_, l, t, r, b, oldL, oldT, oldR, oldB) =>
       if r - l != oldR - oldL || b - t != oldB - oldT then f()

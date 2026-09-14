@@ -191,6 +191,66 @@ desktop_frame() {
   frame desktop "$LOGS/desktop-console.log" || { echo "--- desktop console:"; tail -n 20 "$LOGS/desktop-console.log"; return 1; }
 }
 
+# ── input: the input demo on every backend ──────────────────────────────────
+# The self-driven probe must print the same line everywhere; on the web and Android, real events must reach the same
+# channels: the arrows and Enter (a keyboard, a remote in a browser, a D-pad), a click or a tap on the third box.
+INPUT_OK="input ok focus=a focus=b click=b focus=a"
+
+input_result() {
+  grep -q "\[ui\] $INPUT_OK" "$1" || { echo "expected: $INPUT_OK"; grep "\[ui\]" "$1" | tail -n 8; return 1; }
+  echo "$INPUT_OK"
+}
+
+# the web, twice: the probe, then real DOM events (webcheck/WebInput), which must add the pointer's lines on box c
+input_web() {
+  timeout 60 java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.vector \
+    -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.WebLive \
+    "file://$ROOT/web/out-js/index.html?demo=input&probe=1" 4 > "$LOGS/input-web-probe.log" 2>&1 || true
+  input_result "$LOGS/input-web-probe.log" || return 1
+  timeout 60 java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.vector \
+    -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.WebInput \
+    "file://$ROOT/web/out-js/index.html?demo=input" > "$LOGS/input-web-events.log" 2>&1 || true
+  local got expected="focus=a focus=b click=b focus=a enter c focus=c click=c leave c"
+  got=$(grep -oE "^\[ui\] (focus=|click=|enter |leave ).*" "$LOGS/input-web-events.log" | sed "s/^\[ui\] //" | tr "\n" " " | sed "s/ $//")
+  [ "$got" = "$expected" ] || { echo "real events: got '$got', expected '$expected'"; return 1; }
+  echo "real events: $got"
+}
+
+input_desktop() {
+  command -v xvfb-run > /dev/null || { echo "xvfb-run not found"; return 1; }
+  timeout 20 xvfb-run -a -s "-screen 0 1280x720x24" \
+    java -Dprism.order=sw -cp "$(cat desktop/out/classpath.txt)" everyui.desktop.DesktopApp \
+    --size=1280x720 --demo=input --probe=1 > "$LOGS/input-desktop-console.log" 2>&1 || true
+  input_result "$LOGS/input-desktop-console.log"
+}
+
+# Android: the probe, then the D-pad and a tap through adb (no hover on a touch screen, so no enter/leave)
+input_android() {
+  local serial=${ANDROID_SERIAL:-$(adb devices | awk '$1 ~ /^emulator-/ && $2 == "device" { print $1; exit }')}
+  [ -n "$serial" ] || { echo "no Android emulator on adb"; return 1; }
+  adb -s "$serial" logcat -c
+  adb -s "$serial" shell am start -S -n com.outr.everyui/everyui.activity.MainActivity --es demo input --es probe 1 > /dev/null || return 1
+  $CHECKS android-wait "$serial" "$LOGS/input-android-probe.log" --pattern "input ok|uncaught|FATAL" --timeout 60
+  input_result "$LOGS/input-android-probe.log" || return 1
+  adb -s "$serial" logcat -c
+  adb -s "$serial" shell am start -S -n com.outr.everyui/everyui.activity.MainActivity --es demo input > /dev/null || return 1
+  sleep 4
+  for k in KEYCODE_DPAD_RIGHT KEYCODE_DPAD_CENTER KEYCODE_DPAD_LEFT KEYCODE_DPAD_DOWN; do adb -s "$serial" shell input keyevent $k; done
+  adb -s "$serial" shell input tap 630 160
+  sleep 2
+  adb -s "$serial" logcat -d -s everyui > "$LOGS/input-android-events.log"
+  adb -s "$serial" shell am force-stop com.outr.everyui
+  local got expected="focus=a focus=b click=b focus=a focus=c click=c"
+  got=$(grep -oE "\[ui\] (focus=|click=).*" "$LOGS/input-android-events.log" | sed "s/^\[ui\] //" | tr "\n" " " | sed "s/ $//")
+  [ "$got" = "$expected" ] || { echo "real events: got '$got', expected '$expected'"; return 1; }
+  echo "real events: $got"
+}
+
+input_tvos() {
+  EXTRA_ARGS="--demo=input --probe=1" LIVE_SECONDS=8 tools/tvos-run.sh --console > "$LOGS/input-tvos-run.log" 2>&1 || { tail -n 5 "$LOGS/input-tvos-run.log"; return 1; }
+  input_result target/tvos/console.log
+}
+
 # ── desktop, native image ────────────────────────────────────────────────────
 
 desktop_native() { tools/desktop-native.sh; }
@@ -296,6 +356,14 @@ else
   skip "desktop: AnimationExample frame" "build failed"
 fi
 
+if [ $BUILT = 1 ] && [ $WEB_BUILT = 1 ]; then
+  run "input: web (probe, then real DOM events)" input-web.log input_web
+  run "input: desktop (probe)" input-desktop.log input_desktop
+else
+  skip "input: web (probe, then real DOM events)" "build failed"
+  skip "input: desktop (probe)" "build failed"
+fi
+
 if [ $NATIVE = 1 ]; then
   run "desktop: native image builds, frame, frame rate" desktop-native.log desktop_native
 fi
@@ -315,6 +383,7 @@ if [ $ANDROID = 1 ]; then
   if run "Android: APK builds" android-build.log android_build; then
     run "Android: AnimationExample frame" android-frame.log android_frame
     run "Android: live frame rate and motion" android-live.log android_live
+    run "input: Android (probe, D-pad and a tap)" input-android.log input_android
     if [ $DURABLE_SERVER = 1 ]; then run "durable: Android emulator" durable-android.log durable_android; else skip "durable: Android emulator" "no server"; fi
   else
     skip "Android: AnimationExample frame" "APK did not build"

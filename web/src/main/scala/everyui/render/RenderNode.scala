@@ -71,6 +71,11 @@ class RenderNode(val el: html.Element):
   def setRadius(radius: Double): Unit = el.style.borderRadius = radius.toString + "px"
 
   /** CSS `position`; `""` is static. */
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click") with its viewport coordinates. */
+  def onPointer(kind: String, f: (Double, Double) => Unit): Unit =
+    val name = if kind == "click" then "click" else "pointer" + kind
+    el.addEventListener(name, (e: dom.MouseEvent) => f(e.clientX, e.clientY))
+
   def setPositionType(name: String): Unit = el.style.position = if name.isEmpty then "static" else name
 
   def setWhiteSpace(value: String): Unit = el.style.whiteSpace = value
@@ -195,6 +200,11 @@ object Platform:
     (if l.protocol == "https:" then "wss://" else "ws://") + l.host
 
   /** Called whenever the window changes size. */
+  /** Every key on the page, by its DOM name, pressed or released. */
+  def onKey(f: (String, Boolean) => Unit): Unit =
+    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => f(e.key, true))
+    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => f(e.key, false))
+
   def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())
 
   // The same four the Roku backend reaches through BrightScript intrinsics.

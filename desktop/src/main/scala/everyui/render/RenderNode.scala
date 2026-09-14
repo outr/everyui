@@ -3,6 +3,7 @@ package everyui.render
 import javafx.animation.AnimationTimer
 import javafx.geometry.VPos
 import javafx.scene.image.{Image, ImageView}
+import javafx.scene.input.{KeyCode, KeyEvent, MouseEvent}
 import javafx.scene.layout.{Background, BackgroundFill, Pane}
 import javafx.scene.paint.Color
 import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text}
@@ -135,6 +136,13 @@ class RenderNode(val fx: Node):
     case _ => ()
 
   /** Every node is placed by its layout position, so there is no position type to set. */
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click") with its scene coordinates. */
+  def onPointer(kind: String, f: (Double, Double) => Unit): Unit =
+    val kinds = Map("down" -> MouseEvent.MOUSE_PRESSED, "up" -> MouseEvent.MOUSE_RELEASED, "move" -> MouseEvent.MOUSE_MOVED,
+      "enter" -> MouseEvent.MOUSE_ENTERED, "leave" -> MouseEvent.MOUSE_EXITED, "click" -> MouseEvent.MOUSE_CLICKED)
+    fx.setPickOnBounds(true)   // a transparent Pane is not hit-tested unless told to be
+    fx.addEventHandler(kinds(kind), (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
+
   def setPositionType(name: String): Unit = ()
 
   /** Text nodes are single lines. */
@@ -172,6 +180,12 @@ object Host:
     new Font(name, size)
 
   def image(uri: String): Image = images.getOrElseUpdate(uri, new Image(uri))
+
+  /** A JavaFX key by the web's name: the remote's keys by their names, anything typed by its text. */
+  def keyName(e: KeyEvent): String =
+    val named = Map(KeyCode.ENTER -> "Enter", KeyCode.ESCAPE -> "Escape", KeyCode.UP -> "ArrowUp", KeyCode.DOWN -> "ArrowDown",
+      KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ")
+    named.getOrElse(e.getCode, if e.getText.nonEmpty then e.getText else e.getCode.getName)
 
   /** With `--screenshot`, save the frozen frame as a PNG and exit. Written by hand (no AWT/ImageIO), so the
     * desktop stays buildable as a GraalVM native image without the java.desktop module. */
@@ -309,6 +323,11 @@ object Platform:
   def frozen(): Unit = Host.frozen()
 
   /** Called whenever the window changes size. */
+  /** Every key in the window, by the web's name, pressed or released. */
+  def onKey(f: (String, Boolean) => Unit): Unit =
+    Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => f(Host.keyName(e), true))
+    Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => f(Host.keyName(e), false))
+
   def onResize(f: () => Unit): Unit =
     Host.scene.widthProperty.addListener((_: javafx.beans.Observable) => f())
     Host.scene.heightProperty.addListener((_: javafx.beans.Observable) => f())

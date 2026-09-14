@@ -446,3 +446,13 @@ function uiLocalDateTime(millis as float) as string
     dt.ToLocalTime()
     return Right("0" + dt.GetYear().ToStr(), 4) + "-" + Right("0" + dt.GetMonth().ToStr(), 2) + "-" + Right("0" + dt.GetDayOfMonth().ToStr(), 2) + " " + Right("0" + dt.GetHours().ToStr(), 2) + ":" + Right("0" + dt.GetMinutes().ToStr(), 2) + ":" + Right("0" + dt.GetSeconds().ToStr(), 2)
 end function
+
+' A Roku has no pointer: nothing ever fires.
+sub uiOnPointer(node as object, kind as string, f as dynamic)
+end sub
+
+' The key hook (everyui.focus.Focus); the generated runtime's RtKeyEvent feeds it from AppScene's onKeyEvent.
+sub uiOnKey(f as dynamic)
+    ga = GetGlobalAA()
+    ga.uiKey = f
+end sub

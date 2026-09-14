@@ -3,7 +3,7 @@ package everyui.activity
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
-import android.view.{ViewGroup, WindowInsets, WindowInsetsController, WindowManager}
+import android.view.{KeyEvent, ViewGroup, WindowInsets, WindowInsetsController, WindowManager}
 import everyui.render.{Host, NodeGroup}
 
 /** The Android entry point: a full-screen window whose content view is the render root, then the shared `main`.
@@ -44,6 +44,14 @@ class MainActivity extends Activity:
       insets.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
 
     everyui.app.main()
+
+  /** Every key to the shared layer's hook, by the web's name; Back is also left to Android, so it still leaves the app. */
+  override def dispatchKeyEvent(e: KeyEvent): Boolean =
+    val hook = Host.key
+    if hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE then super.dispatchKeyEvent(e)
+    else
+      hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN)
+      if e.getKeyCode == KeyEvent.KEYCODE_BACK then super.dispatchKeyEvent(e) else true
 
   /** The shared layer's singletons (`ui`, the app) live as long as the process, as they live as long as a page or a
     * channel, so leaving the app ends the process and the next launch starts fresh. */

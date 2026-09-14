@@ -112,3 +112,9 @@ class SGNode
 /** Milliseconds since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
 @native object uiLocalDateTime:
   def apply(millis: Double): String = native.value
+/** A pointer event of `kind` on the node, if the platform has a pointer. */
+@native object uiOnPointer:
+  def apply(node: SGNode, kind: String, f: (Double, Double) => Unit): Unit = native.value
+/** Every key, by the web's name, pressed or released. */
+@native object uiOnKey:
+  def apply(f: (String, Boolean) => Unit): Unit = native.value
