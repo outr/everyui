@@ -1,6 +1,7 @@
 package everyui.render
 
 import everyui.font.Faces
+import everyui.PlatformKind
 import everyui.tvos.*
 
 /** **The one invention.** The abstract render node, tvOS edition: a UIKit view behind a get/set/append surface
@@ -141,6 +142,13 @@ object Platform {
 
   /** A bundle-relative image path. */
   def imagePath(name: String): String = "/images/" + name
+
+  def kind: PlatformKind = PlatformKind.TvOS
+  /** A remote, and nothing else. */
+  def pointerSupport(): Boolean = false
+  def touchSupport(): Boolean = false
+  def remoteNavigation(): Boolean = true
+  def keyboardSupport(): Boolean = false
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false

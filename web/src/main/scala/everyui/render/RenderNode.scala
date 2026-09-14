@@ -3,6 +3,7 @@ package everyui.render
 import org.scalajs.dom
 import org.scalajs.dom.html
 import everyui.font.Faces
+import everyui.PlatformKind
 
 import scala.scalajs.js
 
@@ -197,6 +198,19 @@ object Platform {
 
   // The window's inner size, as youi's `ui` measures it. The root clips its
   // content, so no scrollbar ever takes space out of it.
+  def kind: PlatformKind = PlatformKind.Web
+  /** A TV browser (webOS, Tizen, a set-top box) is driven by a remote; anything else by a pointer, touch, or both. */
+  def remoteNavigation(): Boolean = {
+    val agent = dom.window.navigator.userAgent
+    agent.contains("Web0S") || agent.contains("Tizen") || agent.contains("SmartTV") || agent.contains("SMART-TV") || agent.contains("Roku")
+  }
+  def touchSupport(): Boolean = {
+    val points = dom.window.navigator.asInstanceOf[js.Dynamic].maxTouchPoints
+    !js.isUndefined(points) && points.asInstanceOf[Int] > 0
+  }
+  def pointerSupport(): Boolean = !remoteNavigation() && dom.window.matchMedia("(pointer: fine)").matches
+  def keyboardSupport(): Boolean = !remoteNavigation()
+
   /** The DOM scrolls a scrollable node itself. */
   def nativeScroll(): Boolean = true
   /** `url` in a new tab. */

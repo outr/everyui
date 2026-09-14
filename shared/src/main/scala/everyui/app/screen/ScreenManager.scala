@@ -1,7 +1,7 @@
 package everyui.app.screen
 
 import everyui.async.Task
-import everyui.component.Component
+import everyui.component.{Component, Container}
 import everyui.net.URLPath
 import everyui.render.Platform
 import everyui.task.TaskSupport
@@ -16,6 +16,8 @@ import reactify.*
   * that claims the new path. `run` starts on the screen claiming the page's path, or the first. */
 trait ScreenManager extends TaskSupport {
   val active: Var[Option[Screen]] = Var(None)
+  /** Where the screens go: `ui` itself, or a region of it under an app bar. */
+  def host: Container = ui
   private var screens: List[Screen] = Nil
   private var loaded: List[Screen] = Nil
 
@@ -27,13 +29,16 @@ trait ScreenManager extends TaskSupport {
     * on the Android launch intent, `--freeze=` on the desktop. */
   protected def freezeSeconds: Double = Platform.freezeSeconds()
 
+  /** Start on the screen claiming the page's path, or `screen`. Nothing is built until the bundled faces have
+    * loaded, so every node is measured with its real font and never a fallback the browser is still replacing. */
   def run(screen: Screen, others: Screen*): Unit = {
     screens = screen :: others.toList
     Platform.onPath(path => at(URLPath(path)).foreach(s => show(s, push = false).startUnit()))
-    load()
-      .flatMap(_ => show(at(URLPath(Platform.path())).getOrElse(screen), push = false))
-      .map(_ => if (freezeSeconds >= 0.0) freeze() else live())
-      .startUnit()
+    Platform.whenFontsReady(() =>
+      load()
+        .flatMap(_ => show(at(URLPath(Platform.path())).getOrElse(screen), push = false))
+        .map(_ => if (freezeSeconds >= 0.0) freeze() else live())
+        .startUnit())
   }
 
   /** The screen claiming `path`, if any. */
@@ -62,6 +67,7 @@ trait ScreenManager extends TaskSupport {
 
   override def update(delta: Double): Unit = {
     super.update(delta)
+    everyui.util.Clock.update(delta)
     ui.update(delta)
     active().foreach(_.update(delta))
   }

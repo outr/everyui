@@ -1,9 +1,7 @@
 # everyui — design & status
 
-> **Handoff doc.** This project was spun out of work done in the `sart` repo's
-> Claude Code session (which is namespaced to Sart). Everything needed to
-> continue lives here — this file is the source of truth. Memory does not cross
-> project boundaries, so start fresh conversations from this doc.
+> **Handoff doc.** This project was spun out of work begun in the `sart` repo. Everything needed to
+> continue lives here — this file is the source of truth.
 >
 > **Git:** everyui is a git repository (initialised 2026-09-12, branch
 > `master`, no remote yet). Build output is ignored — regenerate Roku channels
@@ -1269,6 +1267,37 @@ What the DataWrangler dashboard's port asked of the shared layer, each on every 
 The dashboard itself (datawrangler `ui/`) is the reference use: five screens, dialogs on a `Modal` sheet, tables,
 toggles, a run history that loads when opened, a log that follows, and every daemon action, all over the live
 channel. tools/check.sh is unchanged and green.
+
+## The widget layer, and the platform's identity (2026-09-14)
+
+The DataWrangler dashboard's port left a lot of widget code in the app that belongs in the framework. It moved
+into `shared/` — every backend compiles it, the Roku channel emits it with no gaps — and the dashboard went from
+1,518 lines to about 900, all of them about the dashboard.
+
+- **Icons.** `everyui.font.MaterialIcon`: every glyph of the bundled face, by name, generated from the font's own
+  codepoint table (`tools/MaterialIcons.scala`; `assets/fonts/MaterialIcons-Regular.codepoints`). The emitter's
+  reachability pass keeps only the icons an app names. `MaterialIconView(icon, size)` draws one, as youi has it.
+- **Theme.** `everyui.theme.Theme`: the palette the widgets default to, as `Var`s an app sets once.
+- **Widgets** in `everyui.component`, each a few lines over `Container` and the seam: `TextView(text, size,
+  colour)`, `TextView.bound(...)`, `TextView.wrapped(text, width)`; `Button`, `IconButton`, `Choice`, `Chip`,
+  `Checkbox`, `ProgressBar`, `Bars` (a trend or a sparkline), `Table[T]` with `Column`s, and `Dialog` on the
+  `Modal` sheet (youi's Modal: one at a time, a click on the sheet or Escape closes it; the body scrolls when
+  taller than the screen leaves room for).
+- **Screens.** `ScreenManager.host` is where the screens go (`ui`, or a region under an app bar);
+  `ScrollScreen` gives a screen a stacked, scrolling `body` and a reactive `heading`; `Tab` is a screen's name in
+  an app bar. `everyui.util.Clock` ticks once a second from the frame loop, so a bound duration counts;
+  `everyui.util.Format` has the time, span and count formats.
+- **The platform.** `Platform.kind` is a `PlatformKind` (Web, Desktop, Android, Roku, TvOS), and what the platform
+  can do is asked separately, since a TV browser is Web with a remote and a tablet is Android with touch:
+  `Platform.pointerSupport()`, `touchSupport()`, `remoteNavigation()`, `keyboardSupport()`. The web reads the
+  user agent, the touch points and the pointer media query; Android asks the UI mode, the touchscreen feature and
+  the keyboard configuration; a Roku and an Apple TV are a remote and nothing else.
+- A frozen frame (tools/check.sh) now waits for the faces to load before it measures, which the live path
+  already did in effect; the check was racing the icon font.
+
+DataWrangler's `ui/` is now a Scala.js module of its own sbt build (sbt 1.12 has sbt-scalajs; EveryUI's sbt 2
+build does not), taking EveryUI's and reactify's sources as source directories until they are published.
+`sbt ui/webBundle` writes `ui/out`, which `docker/stage.sh` ships.
 ## The network module — Spice as the core, on every backend (2026-09-13)
 
 The first release replaces Sart in DataWrangler's dashboard, and DataWrangler

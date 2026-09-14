@@ -1,6 +1,7 @@
 package everyui.render
 
 import everyui.font.Faces
+import everyui.PlatformKind
 import everyui.roku.*
 
 /** **The one invention.** The abstract render node, Roku edition: a SceneGraph
@@ -142,6 +143,13 @@ object Platform {
 
   /** Channel-package URI — Roku loads assets from `pkg:/`. */
   def imagePath(name: String): String = "pkg:/images/" + name
+
+  def kind: PlatformKind = PlatformKind.Roku
+  /** A remote, and nothing else. */
+  def pointerSupport(): Boolean = false
+  def touchSupport(): Boolean = false
+  def remoteNavigation(): Boolean = true
+  def keyboardSupport(): Boolean = false
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false

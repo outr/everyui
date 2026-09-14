@@ -24,6 +24,7 @@ object ExampleApp extends ScreenManager {
   lazy val appHeader: Header = new Header
 
   lazy val contentContainer: Container = new Container
+  override def host: Container = contentContainer
 
   override protected def load(): Task[Unit] = super.load().map { _ =>
     contentContainer.size.width := ui.size.width

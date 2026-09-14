@@ -7,6 +7,7 @@ import android.util.{Log, TypedValue}
 import android.view.{Choreographer, KeyEvent, MotionEvent, View, ViewGroup}
 import android.widget.{ImageView, TextView}
 import everyui.font.{Face, Faces}
+import everyui.PlatformKind
 
 import scala.collection.mutable
 
@@ -351,6 +352,14 @@ object Platform {
   def imagePath(name: String): String = "images/" + name
 
   /** The window, in pixels — or the viewport the launch asked for (`--es viewport 1920x1080`). */
+  def kind: PlatformKind = PlatformKind.Android
+  /** An Android TV is driven by its remote; a phone or tablet by touch. */
+  def remoteNavigation(): Boolean =
+    Host.activity.getSystemService(Context.UI_MODE_SERVICE).asInstanceOf[android.app.UiModeManager].getCurrentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+  def touchSupport(): Boolean = Host.activity.getPackageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
+  def pointerSupport(): Boolean = false
+  def keyboardSupport(): Boolean = Host.activity.getResources.getConfiguration.keyboard != android.content.res.Configuration.KEYBOARD_NOKEYS
+
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
   def openUrl(url: String): Unit =

@@ -11,6 +11,7 @@ import javafx.scene.paint.Color
 import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text}
 import javafx.scene.{Node, Scene}
 import everyui.font.{Face, Faces}
+import everyui.PlatformKind
 
 import java.io.File
 import scala.collection.mutable
@@ -345,6 +346,12 @@ object Platform {
   def imagePath(name: String): String = resolvePath("/images/" + name)
 
   /** The window's content size. */
+  def kind: PlatformKind = PlatformKind.Desktop
+  def pointerSupport(): Boolean = true
+  def touchSupport(): Boolean = false
+  def remoteNavigation(): Boolean = false
+  def keyboardSupport(): Boolean = true
+
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
   def openUrl(url: String): Unit = java.awt.Desktop.getDesktop.browse(new java.net.URI(url))
