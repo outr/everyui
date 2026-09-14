@@ -15,6 +15,13 @@ object Format {
     else (seconds / 3600L).toString + "h " + ((seconds % 3600L) / 60L).toString + "m"
   }
 
+  /** What is left of a span as m:ss ("4:07"); none left is "0:00". */
+  def countdown(millis: Long): String = {
+    val seconds = math.max(0L, millis) / 1000L
+    val s = seconds % 60L
+    (seconds / 60L).toString + ":" + (if (s < 10L) "0" else "") + s.toString
+  }
+
   /** Whole numbers with thousands separated; decimals only where the value has them. */
   def count(value: Double): String = {
     val rounded = math.round(value)

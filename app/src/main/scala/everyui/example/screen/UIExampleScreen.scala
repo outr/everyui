@@ -12,6 +12,9 @@ trait UIExampleScreen extends UIScreen {
   /** Shared app header (same for all example screens). */
   protected def header: Header = ExampleApp.appHeader
 
+  /** Nothing on an example screen takes the focus; it starts on the header, so the arrows start from the top. */
+  override def defaultFocus(): everyui.component.Component = header
+
   override protected def activate(): Task[Unit] = {
     ExampleApp.title @= title
     container.backgroundColor := ExampleApp.bgColor()

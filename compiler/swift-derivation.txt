@@ -29,9 +29,11 @@ class SwiftEmitter(
       case _           => false
     }
 
-    // BrightScript string literal: escape `"` by doubling; splice newlines.
+    // BrightScript string literal: escape `"` by doubling; splice newlines, carriage returns and tabs, which a device
+    // refuses inside a literal (brighterscript does not).
     def brStr(s: String): String = {
-      val esc = s.replace("\"", "\"\"").replace("\n", "\" + Chr(10) + \"")
+      val esc = s.replace("\"", "\"\"").replace("\n", "\" + Chr(10) + \"").replace("\r", "\" + Chr(13) + \"")
+        .replace("\t", "\" + Chr(9) + \"")
       "\"" + esc + "\""
     }
 

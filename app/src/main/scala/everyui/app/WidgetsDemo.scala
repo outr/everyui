@@ -20,7 +20,8 @@ object WidgetsDemo {
     val progress = ProgressBar(0.6, 240.0)
     val dialog = new Dialog("A dialog", 400.0)
     dialog.body.children ++= List(TextView.wrapped("Some words that are long enough to wrap onto a second line inside the dialog's body.", 400.0), new Checkbox("A choice", initial = true))
-    dialog.buttons.children ++= List(new Button("Cancel", () => dialog.close()), new Button("Do it", () => dialog.close(), style = ButtonStyle.Filled))
+    val cancel = new Button("Cancel", () => dialog.close())
+    dialog.buttons.children ++= List(cancel, new Button("Do it", () => dialog.close(), style = ButtonStyle.Filled))
     val table = new Table[(String, Int)](List(
       TableColumn("Name", 200.0, r => TextView(r._1)),
       TableColumn("Count", 120.0, r => TextView(r._2.toString)),
@@ -29,7 +30,7 @@ object WidgetsDemo {
     val page = Column(16.0, padding = 16.0)(
       Row(8.0, middle = true)(TextView("Widgets", 22.0), new Chip("live", Color.fromHex("1565c0")), new IconButton(MaterialIcon.Home, "Home")),
       Row(8.0)(new Choice("Name", true, () => ()), new Choice("Last run", false, () => ()), new Choice("Failures", false, () => ())),
-      Row(12.0, middle = true)(new Button("Open dialog", () => dialog.show(), style = ButtonStyle.Filled), new Button("Quiet"), progress),
+      Row(12.0, middle = true)(new Button("Open dialog", () => dialog.show(cancel), style = ButtonStyle.Filled), new Button("Quiet"), progress),
       Row(12.0, middle = true)(new TextInput("Name", width = 240.0), new TextInput("Password", secure = true, width = 240.0), new Button("Link", style = ButtonStyle.Text), new Button("Mail", style = ButtonStyle.Outlined, glyph = Some(MaterialIcon.MailOutline))),
       checked,
       new Bars(List(Bar(0.2, Color.fromHex("2e7d32"), "a"), Bar(1.0, Color.fromHex("c62828"), "b"), Bar(0.5, Color.fromHex("1565c0"), "c"))),
@@ -49,7 +50,7 @@ object WidgetsDemo {
     Platform.log((if (formatted == expected && messages.size == 2) "i18n ok " else "i18n FAIL ") + formatted.mkString(" | "))
 
     if (Platform.launchArg("probe") == "1") {
-      dialog.show()
+      dialog.show(cancel)
       Platform.log("dialog " + dialog.size.width().toInt.toString + "x" + dialog.size.height().toInt.toString)
       dialog.close()
     }

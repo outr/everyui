@@ -1,12 +1,17 @@
 package everyui.layout
 
 import everyui.component.{Component, Container}
+import everyui.event.Key
 import everyui.i18n.Direction
 
 /** Along the reading direction (right to left in a right-to-left language), wrapping to a new row when the next child
   * would pass the container's width. */
 case class FlowLayout(horizontalSpacing: Double = 0.0, verticalSpacing: Double = 0.0) extends Layout {
   override def fitsWidth(): Boolean = false
+
+  /** Along a row, and to the nearest item in the row above or below. */
+  override def neighbour(container: Container, children: Vector[Component], from: Component, direction: Key): Option[Component] =
+    Neighbours.rows(children, from, direction)
 
   override def layout(container: Container, children: Vector[Component]): Unit = {
     val pad = container.padding()

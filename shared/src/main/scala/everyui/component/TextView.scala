@@ -42,6 +42,17 @@ object TextView {
     view
   }
 
+  /** Words that follow what they read, wrapped to `width` and aligned in it: a paragraph, a note under a form. */
+  def paragraph(words: => String, width: Double, points: Double = 14.0, colour: => Color = Theme.text(),
+                side: TextAlign = TextAlign.Start): TextView = new TextView {
+    whiteSpace @= WhiteSpace.Normal
+    size.width @= width
+    font.size @= points
+    color := colour
+    align @= side
+    content := words
+  }
+
   /** Wrapped to `width`, as tall as it needs. */
   def wrapped(value: String, width: Double, points: Double = 14.0, colour: => Color = Theme.text()): TextView = new TextView {
     content @= value

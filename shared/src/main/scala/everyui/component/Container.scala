@@ -31,6 +31,19 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
 
   private var placing = false
   private val childSizes: Val[Double] = Val(children().map(c => c.size.width() + c.size.height()).sum)
+  private var exits: Map[everyui.event.Key, Option[Component]] = Map.empty
+
+  /** An arrow `direction`'s way that finds nothing inside this container goes to `target` (onto its focusable part
+    * nearest the focus): a header leading into a list, a panel handing back to a sidebar. */
+  def exitFocus(direction: everyui.event.Key, target: Component): Unit = exits = exits + (direction -> Some(target))
+
+  /** Arrows these ways stop at this container's edge instead of leaving it: a dialog, a keyboard, a menu. */
+  def stopFocus(directions: everyui.event.Key*): Unit = directions.foreach(d => exits = exits + (d -> None))
+
+  /** Where an arrow leaving this container `direction`'s way goes: a component, `Some(None)` to stop, `None` when the
+    * container does not say (its parent decides). */
+  def focusExit(direction: everyui.event.Key): Option[Option[Component]] = exits.get(direction)
+
   /** Place the children again, here and all the way down: the reading direction changed. */
   def relayout(): Unit = {
     place()

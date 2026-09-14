@@ -15,7 +15,8 @@ import reactify.*
   * through the app, `ui` and the active screen.
   *
   * Showing a screen puts the one it replaces on the history, and Back (`Key.Back`: a remote's back button, a TV
-  * browser's, a mouse's) returns to it, with the focus where it was; at the first screen Back is the platform's, which leaves the app. On the web
+  * browser's, a mouse's) returns to it, with the focus where it was (a screen shown afresh starts at its
+  * `defaultFocus`); at the first screen Back is the platform's, which leaves the app. On the web
   * the browser's own history is that history: showing a screen pushes its path, Back is the browser's back, and the
   * browser's back or forward shows the screen that claims the new path. `run` starts on the screen claiming the page's
   * path, or the first. */
@@ -27,6 +28,8 @@ trait ScreenManager extends TaskSupport {
   private var loaded: List[Screen] = Nil
   /** The screens Back returns to, the most recent first, each with what had the focus when it was left. */
   private var history: List[(Screen, Option[Component])] = Nil
+  /** A screen's default focus not on screen yet (behind a loading state): it takes the focus when it appears. */
+  private var pendingFocus: Option[(Screen, Component)] = None
 
   protected def load(): Task[Unit] = Task.unit
 
@@ -45,7 +48,7 @@ trait ScreenManager extends TaskSupport {
       history.headOption.filter(_._1 eq s) match {
         case Some((_, focus)) =>
           history = history.tail
-          swap(s, push = false).map(_ => restore(focus)).startUnit()
+          swap(s, push = false, focus).startUnit()
         case None =>
           remember(s)
           swap(s, push = false).startUnit()
@@ -77,7 +80,7 @@ trait ScreenManager extends TaskSupport {
     case (previous, focus) :: rest =>
       if (!Platform.historyBack()) {
         history = rest
-        swap(previous, push = false).map(_ => restore(focus)).startUnit()
+        swap(previous, push = false, focus).startUnit()
       }
       true
     case Nil => false
@@ -87,14 +90,11 @@ trait ScreenManager extends TaskSupport {
   private def remember(next: Screen): Unit =
     active().filterNot(_ eq next).foreach(current => history = (current, Focus.focused()) :: history)
 
-  /** The focus back where it was, if that component is still on screen. */
-  private def restore(focus: Option[Component]): Unit =
-    focus.foreach(c => if (Focus.candidates(ui).exists(_ eq c)) c.focus())
-
   /** Forget the history: what is shown now is where Back leaves the app (signing in, say). */
   def clearHistory(): Unit = history = Nil
 
-  private def swap(screen: Screen, push: Boolean): Task[Unit] =
+  /** Show `screen`, then focus `focus` if it is still on screen, else the screen's default. */
+  private def swap(screen: Screen, push: Boolean, focus: Option[Component] = None): Task[Unit] =
     active().filterNot(_ eq screen).map(Screen.deactivate).getOrElse(Task.unit)
       .flatMap { _ =>
         if (loaded.exists(_ eq screen)) Task.unit
@@ -107,6 +107,13 @@ trait ScreenManager extends TaskSupport {
       .map { _ =>
         active @= Some(screen)
         screen match {
+          case u: UIScreen =>
+            val target = focus.filter(Focus.showing).getOrElse(u.defaultFocus())
+            if (Focus.showing(target)) target.focus()
+            else pendingFocus = Some(screen -> target)
+          case _ => focus.filter(Focus.showing).foreach(_.focus())
+        }
+        screen match {
           case p: PathActivation if push => Platform.pushPath(p.path.value)
           case _ => ()
         }
@@ -116,6 +123,14 @@ trait ScreenManager extends TaskSupport {
     super.update(delta)
     everyui.util.Clock.update(delta)
     ui.update(delta)
+    pendingFocus.foreach { (screen, target) =>
+      if (!active().exists(_ eq screen)) pendingFocus = None
+      else if (Focus.showing(target)) {
+        // unless the person has already put the focus somewhere on this screen
+        if (Focus.focused().forall(f => !Focus.showing(f))) target.focus()
+        pendingFocus = None
+      }
+    }
     active().foreach(_.update(delta))
   }
 

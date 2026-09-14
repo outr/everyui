@@ -1420,6 +1420,52 @@ Not yet: the Roku and tvOS runtimes read no packaged text (`readText` returns no
 and align no labels; right-to-left in custom components that place children by hand is theirs to mirror; dates and
 numbers are not localised.
 
+### What moved up from NaboTV (2026-09-14)
+
+As with the dashboard, what the sign-in screens had built for themselves and any app would want went into the
+framework, so the app keeps only what is NaboTV's:
+
+- `FormScreen` (`everyui.app.screen`): a form on a card in the middle of the screen — header, fields, the error or
+  notice, actions, links, scrolling when short, `busy`, a notice carried from the previous screen, the first focus —
+  with `field`, `primary`, `secondary`, `link` and `note` whose words follow the language. NaboTV's `AuthScreen` is
+  the logo, "Please wait…", and asking its server.
+- `Centered(width)(child)`; `Notice(text, tone, width)`; `Button.bound(words, …)`, `TextInput.bound(label, value, …)`
+  and `TextView.paragraph(words, width, …)`, each following what it reads; `ImageView(source, height)` scaled to a
+  height; `Column(spacing, padding, center)`.
+- `Format.countdown(millis)`; `Language.best(tag, supported, fallback)` (script, region, then language, with Taiwan,
+  Hong Kong and Macau as Traditional Chinese); `Strings.remember` and `Strings.remembered`.
+- `Network.postJson[Request, Response](url, request, headers)`, failing with `HttpFailure(status, body)` for the app to
+  read its own error format from.
+
+## Focus, as a core contract (2026-09-14)
+
+NaboTV's Flutter app struggled with focus more than with anything else (its docs/ui-base-design.md: screens where
+nothing had the focus after loading, zones that swallowed the keys running the other way, one-way doors, focus lost
+on returning). EveryUI makes those shapes unwritable rather than patched per screen:
+
+- **Every screen and dialog names its default focus.** `UIScreen.defaultFocus()` is abstract, and `Dialog.show` takes
+  the component to focus, so a screen or dialog without one does not compile. The manager focuses it on every
+  activation; a default not on screen yet (behind a loading state) takes the focus when it appears, unless the person
+  has already moved it. Back returns to a screen with the focus where it was.
+- **Layouts decide where arrows go.** `Layout.neighbour(container, children, from, direction)`: a row answers Left and
+  Right (mirrored right to left), a column Up and Down, a flow or grid moves along a row and to the nearest item in the
+  next. Moving the focus walks up from the focused component to the first container whose layout has a neighbour that
+  way and enters it on its nearest line, most in line with where the focus was. A container without a layout looks
+  among its own children by position, anything in line before anything aside, measured edge to edge. A container can
+  state an exit (`exitFocus(direction, target)`) or stop the arrows at its edge (`stopFocus(directions*)`).
+- **A dialog keeps the focus.** `Focus.scope` is the open dialog while one is up, so arrows never reach what it covers,
+  and closing it returns the focus to where it was.
+
+The theme list on NaboTV's placeholder home was the case that showed the old centre-to-centre search was wrong: with
+buttons of different widths, the next button's centre could be farther than one a row up, so Right went up.
+
+**Roku, running the widgets demo on the device for the first time** (the checks only compile it): the emitter wrote
+carriage returns and tabs raw into string literals, which the device refuses (now spliced as `Chr(13)`, `Chr(9)`);
+`Map.getOrElse(key, default)` was emitted as Option's (now `_mapGetOrElse`, with a Swift twin); `Option.toList` is
+`.toList` on `invalid` (avoid it in shared code); a `def` nested in a method is not emitted. With those fixed the demo
+builds and `i18n ok` passes on the Roku, but **the self-sizing layouts do not place children there** — the page
+collapses into its corner — so the Roku's focus and layout behaviour is still to verify.
+
 ## The network module — Spice as the core, on every backend (2026-09-13)
 
 The first release replaces Sart in DataWrangler's dashboard, and DataWrangler

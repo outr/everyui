@@ -83,6 +83,18 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
 }
 
 object TextInput {
+  /** A field `width` wide whose label follows what it reads, bound both ways to `value`; Enter in it runs `submit`. */
+  def bound(label: => String, value: Var[String], secure: Boolean = false, width: Double = 320.0)
+           (submit: => Unit): TextInput = {
+    val input = new TextInput("", secure, width)
+    input.title := label
+    input.value @= value()
+    input.value.attach(v => if (value() != v) value @= v)
+    value.attach(v => if (input.value() != v) input.value @= v)
+    input.submitted.attach(_ => submit)
+    input
+  }
+
   /** `length` dots: a secret shown without being shown. */
   def mask(length: Int): String = {
     var dots = ""

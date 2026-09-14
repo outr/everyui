@@ -1,22 +1,31 @@
 package everyui.focus
 
-import everyui.component.Component
+import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent, Keys, PointerEvent, PointerKind}
 import everyui.render.Platform
 import everyui.ui
 import reactify.*
 
-/** Which component has the focus, and how the keys reach it. Every key goes to the focused component; Enter
-  * clicks it, Tab moves it on in tree order, an arrow moves the focus to the nearest focusable component that way, and
-  * Back goes to the newest back handler (`onBack`) — the same navigation for a remote, a keyboard and a TV browser, in
-  * one place rather than one per platform.
+/** Which component has the focus, and how the keys reach it — the same navigation for a remote, a keyboard and a TV
+  * browser, in one place rather than one per platform or per screen.
   *
-  * The candidates are the focusable components under `ui` at the time of the key, found by walking the tree: no
-  * registry to keep, so a list rebuilt under the focus or a screen swapped out needs no bookkeeping. With
-  * nothing focused, the first arrow focuses the first candidate; with the focused component gone from the tree,
-  * the arrow starts from the candidate nearest where it was. */
+  * Every key goes to the focused component first. Enter clicks it; Tab moves the focus on in tree order; Back goes to
+  * the newest back handler (`onBack`: an open dialog, then the screen history). An arrow is answered by the layouts:
+  * from the focused component up through its containers, the first whose layout has a neighbour that way (a row's next
+  * item, a column's next line, the nearest item in a flow's next row) takes the focus there, onto its focusable part
+  * nearest where the focus was. A container without a layout looks among its own children by where they are, preferring
+  * what is in line. A container can also state where an arrow leaving it goes (`Container.exitFocus`) or that it stops
+  * there (`Container.stopFocus`); an arrow nothing answers leaves the focus where it is. So there is no zone to wire
+  * by hand, and no way for a key to be swallowed by a container that runs the other way.
+  *
+  * The candidates are the focusable components under `ui` (or under an open dialog: `scope`) at the time of the key,
+  * found by walking the tree: no registry, so a list rebuilt under the focus needs no bookkeeping. With nothing
+  * focused, the first arrow focuses the first candidate; with the focused component gone, the nearest to where it was.
+  * Where the focus starts is each screen's `defaultFocus` and each dialog's. */
 object Focus {
   val focused: Var[Option[Component]] = Var(None)
+  /** Where the focus may go: under `ui`, or under an open dialog alone, so the arrows never reach what it covers. */
+  val scope: Var[Option[Component]] = Var(None)
 
   Platform.onKey((name, pressed) => key(name, pressed))
 
@@ -39,9 +48,8 @@ object Focus {
     taken
   }
 
-  /** A key by the web's name, pressed or released — what each backend's key hook reports. Whether the focus
-    * layer took it (Enter on, or an arrow or Tab moving, the focus), so the platform leaves it be. A key the focused
-    * component keeps (`keepsKey`) goes to it alone. */
+  /** A key by the web's name, pressed or released — what each backend's key hook reports. Whether the focus layer took
+    * it, so the platform leaves it be. A key the focused component keeps (`keepsKey`) goes to it alone. */
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
     focused().foreach { c =>
@@ -59,50 +67,131 @@ object Focus {
     else false
   }
 
-  /** Focus the nearest candidate in `direction` (an arrow). Whether anything was focused. */
+  /** Move the focus an arrow's way (see above). Whether it moved. */
   def move(direction: Key): Boolean = {
-    val all = candidates(ui)
+    val root = scope().getOrElse(ui)
+    val all = candidates(root)
     focused() match {
       case None =>
         all.headOption.foreach(_.focus())
         all.nonEmpty
+      case Some(was) if !within(was, root) =>
+        nearest(all, centerX(was), centerY(was)).foreach(_.focus())
+        all.nonEmpty
       case Some(was) =>
-        // still in the tree, or else the candidate nearest where it was
-        val from = if (all.exists(_ eq was)) Some(was) else nearest(all, centerX(was), centerY(was))
-        from.flatMap { f =>
-          val fx = centerX(f)
-          val fy = centerY(f)
-          var best: Option[Component] = None
-          var bestDistance = 0.0
-          all.filterNot(_ eq f).foreach { c =>
-            val dx = centerX(c) - fx
-            val dy = centerY(c) - fy
-            val ahead =
-              if (direction == Key.ArrowRight) dx > 1.0
-              else if (direction == Key.ArrowLeft) dx < -1.0
-              else if (direction == Key.ArrowDown) dy > 1.0
-              else dy < -1.0
-            // the distance along the way, plus twice the drift off it: a neighbour in line beats a nearer one aside
-            val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
-            val distance = (if (sideways) math.abs(dx) else math.abs(dy)) + (if (sideways) math.abs(dy) else math.abs(dx)) * 2.0
-            if (ahead && (best.isEmpty || distance < bestDistance)) {
-              best = Some(c)
-              bestDistance = distance
-            }
-          }
-          best.orElse(if (all.exists(_ eq was)) None else from)
-        } match {
+        travel(was, root, direction) match {
           case Some(next) =>
             next.focus()
             true
-          case None => false
+          case None => false   // left to the platform: a page scrolls, say
         }
     }
   }
 
+  /** From `was` up to `root`, the first container with somewhere to go `direction`'s way. */
+  private def travel(was: Component, root: Component, direction: Key): Option[Component] = {
+    var child: Component = was
+    var found: Option[Component] = None
+    var stopped = false
+    while (found.isEmpty && !stopped && !(child eq root) && child.parent().nonEmpty) {
+      val parent = child.parent().get
+      parent match {
+        case c: Container =>
+          found = c.layout() match {
+            case Some(layout) =>
+              var next = layout.neighbour(c, c.children(), child, direction)
+              var entered: Option[Component] = None
+              var steps = 0
+              // past a neighbour with nothing focusable in it, to the one beyond
+              while (entered.isEmpty && next.nonEmpty && steps <= c.children().length) {
+                entered = enter(next.get, was, direction)
+                if (entered.isEmpty) next = layout.neighbour(c, c.children(), next.get, direction)
+                steps += 1
+              }
+              entered
+            case None => spatial(candidates(c).filterNot(x => within(x, child)), was, direction)
+          }
+          // nothing inside this way: the container's own exit, if it states one
+          if (found.isEmpty) c.focusExit(direction) match {
+            case Some(Some(target)) => found = enter(target, was, direction)
+            case Some(None) => stopped = true
+            case None => ()
+          }
+        case _ => ()
+      }
+      child = parent
+    }
+    found
+  }
+
+  /** The part of `target` the focus lands on, arriving `direction`'s way from `from`: itself if it takes the focus,
+    * else, of its candidates, those on the line nearest that way (the bottom row, arriving from below), and of those
+    * the one most nearly in line with `from`. */
+  private def enter(target: Component, from: Component, direction: Key): Option[Component] =
+    if (target.focusable()) Some(target)
+    else {
+      val all = candidates(target)
+      val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
+      var nearestLine = 0.0
+      all.zipWithIndex.foreach { case (c, i) => if (i == 0 || depth(c, direction) < nearestLine) nearestLine = depth(c, direction) }
+      var best: Option[Component] = None
+      var bestDrift = 0.0
+      all.foreach { c =>
+        if (depth(c, direction) < nearestLine + 1.0) {
+          val drift = if (sideways) math.abs(centerY(c) - centerY(from)) else math.abs(centerX(c) - centerX(from))
+          if (best.isEmpty || drift < bestDrift) {
+            best = Some(c)
+            bestDrift = drift
+          }
+        }
+      }
+      best
+    }
+
+  /** How far `direction`'s way a component's near edge is: the line arrived at first has the least. */
+  private def depth(c: Component, direction: Key): Double =
+    if (direction == Key.ArrowDown) c.absoluteTop
+    else if (direction == Key.ArrowUp) -(c.absoluteTop + c.size.height())
+    else if (direction == Key.ArrowRight) c.absoluteLeft
+    else -(c.absoluteLeft + c.size.width())
+
+  /** Of `all`, the nearest ahead of `from` `direction`'s way by the gap between their edges: anything in line with it
+    * (overlapping it across the way) before anything aside, and less drift before more. */
+  private def spatial(all: Vector[Component], from: Component, direction: Key): Option[Component] = {
+    val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
+    var best: Option[Component] = None
+    var bestScore = 0.0
+    all.foreach { c =>
+      val dx = centerX(c) - centerX(from)
+      val dy = centerY(c) - centerY(from)
+      val ahead =
+        if (direction == Key.ArrowRight) dx > 1.0
+        else if (direction == Key.ArrowLeft) dx < -1.0
+        else if (direction == Key.ArrowDown) dy > 1.0
+        else dy < -1.0
+      if (ahead) {
+        val gap =
+          if (direction == Key.ArrowRight) c.absoluteLeft - (from.absoluteLeft + from.size.width())
+          else if (direction == Key.ArrowLeft) from.absoluteLeft - (c.absoluteLeft + c.size.width())
+          else if (direction == Key.ArrowDown) c.absoluteTop - (from.absoluteTop + from.size.height())
+          else from.absoluteTop - (c.absoluteTop + c.size.height())
+        val inLine =
+          if (sideways) c.absoluteTop < from.absoluteTop + from.size.height() && from.absoluteTop < c.absoluteTop + c.size.height()
+          else c.absoluteLeft < from.absoluteLeft + from.size.width() && from.absoluteLeft < c.absoluteLeft + c.size.width()
+        val drift = if (sideways) math.abs(dy) else math.abs(dx)
+        val score = (if (inLine) 0.0 else 1000000.0) + math.max(0.0, gap) + drift * 2.0
+        if (best.isEmpty || score < bestScore) {
+          best = Some(c)
+          bestScore = score
+        }
+      }
+    }
+    best
+  }
+
   /** Tab: the next candidate in tree order, round to the first after the last. Whether anything was focused. */
   def next(): Boolean = {
-    val all = candidates(ui)
+    val all = candidates(scope().getOrElse(ui))
     if (all.isEmpty) false
     else {
       var at = -1
@@ -111,6 +200,20 @@ object Focus {
       true
     }
   }
+
+  /** Whether `c` is `ancestor` or somewhere under it. */
+  def within(c: Component, ancestor: Component): Boolean = {
+    var at: Option[Component] = Some(c)
+    var found = false
+    while (!found && at.nonEmpty) {
+      if (at.exists(_ eq ancestor)) found = true
+      at = at.flatMap(_.parent())
+    }
+    found
+  }
+
+  /** Whether `c` is on screen: under `ui`, focusable or not. */
+  def showing(c: Component): Boolean = within(c, ui)
 
   /** The focusable components under `root`, in tree order. */
   def candidates(root: Component): Vector[Component] = {

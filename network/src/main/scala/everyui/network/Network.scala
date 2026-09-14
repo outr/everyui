@@ -1,6 +1,7 @@
 package everyui.network
 
 import fabric.*
+import fabric.io.{JsonFormatter, JsonParser}
 import fabric.rw.*
 import rapid.Task
 import spice.http.WebSocket
@@ -40,6 +41,14 @@ object Network {
   def http(call: HttpCall): Task[HttpResult] = NetworkBackend.http(call)
 
   def get(url: String): Task[HttpResult] = http(HttpCall("GET", url))
+
+  /** POST `request` as JSON and read the reply as a `Response`: the whole of a JSON-over-HTTP API call. A status that
+    * is not a success fails the task with an `HttpFailure` carrying the status and body, for the app to read its own
+    * error format from. */
+  def postJson[Request: RW, Response: RW](url: String, request: Request, headers: List[(String, String)] = Nil): Task[Response] =
+    http(HttpCall("POST", url, ("Accept" -> "application/json") :: headers, Some(JsonFormatter.Compact(request.json)))).map { result =>
+      if (result.ok) JsonParser(result.body).as[Response] else throw HttpFailure(result.status, result.body)
+    }
   def post(url: String, body: String, contentType: String = "application/json"): Task[HttpResult] =
     http(HttpCall("POST", url, Nil, Some(body), contentType))
 }

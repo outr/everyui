@@ -733,6 +733,10 @@ func _mapHas(_ m: V, _ k: V) -> V {
     if !_rtIsEntryMap(m) { return .vBool(rtHas(m, rtS(k))) }
     return .vBool(_mapFind(m, k) >= 0)
 }
+func _mapGetOrElse(_ m: V, _ k: V, _ d: V) -> V {
+    if case .vBool(true) = _mapHas(m, k) { return _mapGet(m, k) }
+    return d
+}
 func _mapPut(_ m0: V, _ k: V, _ v: V) -> V {
     let m: V
     if case .vNull = m0 { m = _mapEmpty() } else { m = m0 }

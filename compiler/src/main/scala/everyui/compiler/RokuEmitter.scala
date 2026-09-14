@@ -66,9 +66,11 @@ class RokuEmitter(
       case _           => false
     }
 
-    // BrightScript string literal: escape `"` by doubling; splice newlines.
+    // BrightScript string literal: escape `"` by doubling; splice newlines, carriage returns and tabs, which a device
+    // refuses inside a literal (brighterscript does not).
     def brStr(s: String): String = {
-      val esc = s.replace("\"", "\"\"").replace("\n", "\" + Chr(10) + \"")
+      val esc = s.replace("\"", "\"\"").replace("\n", "\" + Chr(10) + \"").replace("\r", "\" + Chr(13) + \"")
+        .replace("\t", "\" + Chr(9) + \"")
       "\"" + esc + "\""
     }
 
@@ -1417,6 +1419,9 @@ class RokuEmitter(
               s"_setHas(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "get" | "apply") if isMapTpe(recv.tpe) && args.size == 1 =>
               s"_mapGet(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // a Map's getOrElse takes the key and the default (an Option's takes only the default)
+            case Select(recv, "getOrElse") if isMapTpe(recv.tpe) && args.size == 2 =>
+              s"_mapGetOrElse(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
             case Select(recv, "contains") if isMapTpe(recv.tpe) =>
               s"_mapHas(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "+" | "updated") if isMapTpe(recv.tpe) =>
@@ -3586,6 +3591,10 @@ class RokuEmitter(
       |    i = _mapFind(m, k)
       |    if i < 0 then return invalid
       |    return m.entries[i].v
+      |end function
+      |function _mapGetOrElse(m as dynamic, k as dynamic, d as dynamic) as dynamic
+      |    if _mapHas(m, k) then return _mapGet(m, k)
+      |    return d
       |end function
       |function _mapHas(m as dynamic, k as dynamic) as boolean
       |    if m = invalid then return false

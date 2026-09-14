@@ -1,12 +1,17 @@
 package everyui.layout
 
 import everyui.component.{Component, Container}
+import everyui.event.Key
 import everyui.i18n.Direction
 
 /** Along the reading direction — left to right, or right to left in a right-to-left language; with `middle`, each
   * child's middle on the tallest child's. */
 case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) extends Layout {
   override def fitsWidth(): Boolean = true
+
+  /** Left and Right along the row as it reads; Up and Down leave it. */
+  override def neighbour(container: Container, children: Vector[Component], from: Component, direction: Key): Option[Component] =
+    if (direction == Key.ArrowLeft || direction == Key.ArrowRight) Neighbours.along(children, from, Neighbours.forward(direction)) else None
 
   override def layout(container: Container, children: Vector[Component]): Unit = {
     val pad = container.padding()

@@ -34,7 +34,10 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   }
   private val icon: Option[MaterialIconView] = glyph.map(g => new MaterialIconView(g, points * 1.4))
   icon.foreach(i => i.color := foreground())
-  private val line: Container = Row(points * 0.6, middle = true)((icon.toList :+ words)*)
+  private val line: Container = icon match {
+    case Some(i) => Row(points * 0.6, middle = true)(i, words)
+    case None => Row(points * 0.6, middle = true)(words)
+  }
 
   focusable @= true
   size.width := math.max(minWidth(), line.size.width() + points * 2.2)
@@ -55,5 +58,15 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   event.click.attach { e =>
     e.consume()
     if (enabled()) action()
+  }
+}
+
+object Button {
+  /** A button whose words follow what they read: a translation (`Tr.signIn`), a count. */
+  def bound(words: => String, action: () => Unit, style: ButtonStyle = ButtonStyle.Tonal, glyph: Option[MaterialIcon] = None,
+            points: Double = 13.0): Button = {
+    val button = new Button("", action, style, glyph, points)
+    button.label := words
+    button
   }
 }

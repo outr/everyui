@@ -34,6 +34,15 @@ object Strings {
     Direction.rtl @= next.rtl
   }
 
+  /** The language chosen on this device before, of `supported`, if one was (`remember`). */
+  def remembered(supported: List[Language]): Option[Language] = {
+    val code = Platform.setting("everyui.language")
+    supported.find(_.code == code)
+  }
+
+  /** Keep `language` as this device's choice. */
+  def remember(language: Language): Unit = Platform.saveSetting("everyui.language", language.code)
+
   def apply(key: String): String = table().getOrElse(key, template.getOrElse(key, key))
 
   /** A message with its arguments filled in (`{name}`, plurals, selects). */

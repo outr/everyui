@@ -2,7 +2,7 @@ package everyui.app.screen
 
 import reactify.*
 import everyui.async.Task
-import everyui.component.Container
+import everyui.component.{Component, Container}
 import everyui.component.types.PositionType
 
 /** A screen with a container the size of its host, filled by `createUI` once, on its first showing. */
@@ -28,6 +28,10 @@ trait UIScreen extends Screen with PathActivation {
     manager.host.children += container
     super.activate()
   }
+
+  /** What has the focus when the screen activates. Every screen names one, so a remote always has somewhere to
+    * start; returning to the screen with Back puts the focus back where it was instead. */
+  def defaultFocus(): Component
 
   def createUI(): Task[Unit]
 }

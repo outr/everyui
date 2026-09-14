@@ -1,10 +1,17 @@
 package everyui.layout
 
 import everyui.component.{Component, Container}
+import everyui.event.Key
 
 /** Top to bottom; with `center`, each child centred on the widest (or on the container's own width, when it has one). */
 case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extends Layout {
   override def fitsWidth(): Boolean = true
+
+  /** Up and Down along the column; Left and Right leave it. */
+  override def neighbour(container: Container, children: Vector[Component], from: Component, direction: Key): Option[Component] =
+    if (direction == Key.ArrowDown) Neighbours.along(children, from, 1)
+    else if (direction == Key.ArrowUp) Neighbours.along(children, from, -1)
+    else None
 
   override def layout(container: Container, children: Vector[Component]): Unit = {
     val pad = container.padding()

@@ -17,3 +17,17 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
 
   override def kind: String = "ImageView"
 }
+
+object ImageView {
+  /** The image at `source` (a site-absolute path or a URL), scaled to `height` pixels tall at its own proportions once
+    * it has loaded: a logo, say. */
+  def apply(source: String, height: Double): ImageView = {
+    val view = new ImageView
+    everyui.image.Image(source).map { loaded =>
+      view.image @= loaded
+      view.size.width @= (if (loaded.height > 0.0) loaded.width * height / loaded.height else 0.0)
+      view.size.height @= height
+    }.startUnit()
+    view
+  }
+}
