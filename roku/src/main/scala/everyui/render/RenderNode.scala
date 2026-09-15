@@ -28,6 +28,12 @@ class RenderNode(val sg: SGNode) {
   private var fontUri: String = ""
   private var fontSize: Double = 0.0
   private var lineHeight: Double = 0.0
+  // The text as last set, its weight and colour: text in a script the face has no glyphs for is drawn in runs
+  // (uiRichText), `richWidth` pixels wide, or -1 when the label draws the text itself.
+  private var textValue: String = ""
+  private var fontWeight: Int = 400
+  private var colorHex: String = ""
+  private var richWidth: Double = -1.0
   // The size last set, which the border follows; -1 until set.
   private var boxWidth: Double = -1.0
   private var boxHeight: Double = -1.0
@@ -45,8 +51,16 @@ class RenderNode(val sg: SGNode) {
     * drawn at its size on the screen instead of drawn small and enlarged. */
   private def px(units: Double): Double = units * uiScale()
 
-  def getText(): String = uiGetText(sg)
-  def setText(text: String): Unit = uiSetText(sg, text)
+  def getText(): String = textValue
+  def setText(text: String): Unit = {
+    textValue = text
+    drawText()
+  }
+
+  /** In the text's face, or in runs of faces that have its glyphs (Arabic, CJK) once a face is set. */
+  private def drawText(): Unit =
+    if (fontUri.isEmpty) uiSetText(sg, textValue)
+    else richWidth = uiRichText(sg, textValue, fontUri, fontWeight, px(fontSize), colorHex)
 
   def getX(): Double = left
   def setX(x: Double): Unit = {
@@ -68,7 +82,11 @@ class RenderNode(val sg: SGNode) {
   def setFontSize(size: Double): Unit = uiSetFontSize(sg, px(size))
 
   /** `"#rrggbb"`. */
-  def setColor(hex: String): Unit = uiSetColor(sg, hex)
+  def setColor(hex: String): Unit = {
+    colorHex = hex
+    uiSetColor(sg, hex)
+    if (richWidth >= 0.0) drawText()
+  }
 
   /** A bundled face (`assets/fonts/`, copied to `pkg:/fonts/`): family, CSS
     * weight, size in pixels. */
@@ -79,14 +97,19 @@ class RenderNode(val sg: SGNode) {
       fontUri = "pkg:/fonts/" + face.file
       fontSize = size
       lineHeight = face.lineHeight(size)
+      fontWeight = weight
       uiSetFontFile(sg, fontUri, px(size))
+      if (textValue.nonEmpty || richWidth >= 0.0) drawText()
     } else uiSetFont(sg, family, weight, px(size))
   }
 
   /** The laid-out size in pixels. Text is as wide as its face makes it at exactly its size (a `Label` draws at whole
     * pixel sizes, so its own bounding rect is a few pixels off) and one shared line (everyui.font.Face) tall;
     * anything else is SceneGraph's bounding rect. */
-  def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg) / uiScale()
+  def getWidth(): Double =
+    if (richWidth >= 0.0) richWidth / uiScale()
+    else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
+    else uiGetWidth(sg) / uiScale()
   def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg) / uiScale()
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
@@ -289,6 +312,8 @@ object Platform {
   def language(): String = uiLanguage()
   def fromCodePoint(codePoint: Int): String = uiChr(codePoint)
   def setDirection(rtl: Boolean): Unit = ()
+  /** The app's language: which CJK glyphs text takes (Traditional for zh_Hant). */
+  def setLanguage(code: String): Unit = uiSetLanguage(code)
 
   /** Kept in the registry, across launches. */
   def setting(name: String): String = uiSetting(name)

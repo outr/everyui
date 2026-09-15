@@ -24,6 +24,34 @@ object RokuChannel {
     out
   }
 
+  /** Faces for the scripts a Roku has no glyphs for: its system font has no Arabic or CJK, and a Label draws in one
+    * font, so the runtime draws such text in runs, each in a face that has its glyphs (`uiRichText`). Noto Sans Arabic
+    * whole, and Noto Sans CJK SC and TC cut down to the characters in `text` (an app's translations) and printable
+    * ASCII, as `fonts/fallback-<arabic|cjk-sc|cjk-tc>[-bold]`, regular and bold. Needs `hb-subset` (HarfBuzz) and the
+    * Noto fonts under `noto` (`noto/NotoSansArabic-*.ttf`, `noto-cjk/NotoSansCJK-*.ttc`). */
+  def fallbackFonts(log: String => Unit, out: File, text: String, fonts: File = file("/usr/share/fonts")): Unit = {
+    val dir = out / "fonts"
+    IO.createDirectory(dir)
+    Seq("Regular" -> "", "Bold" -> "-bold").foreach { case (weight, suffix) =>
+      val arabic = fonts / "noto" / s"NotoSansArabic-$weight.ttf"
+      if (!arabic.exists) sys.error(s"fallbackFonts: $arabic is missing (Noto Sans Arabic)")
+      IO.copyFile(arabic, dir / s"fallback-arabic$suffix.ttf")
+      val cjk = fonts / "noto-cjk" / s"NotoSansCJK-$weight.ttc"
+      if (!cjk.exists) sys.error(s"fallbackFonts: $cjk is missing (Noto Sans CJK)")
+      val characters = (text + (32 to 126).map(_.toChar).mkString).distinct
+      val list = IO.createTemporaryDirectory / "characters.txt"
+      IO.write(list, characters)
+      // the collection's faces: 2 is Simplified Chinese, 3 Traditional
+      Seq("sc" -> 2, "tc" -> 3).foreach { case (variant, face) =>
+        val target = dir / s"fallback-cjk-$variant$suffix.otf"
+        val rc = sys.process.Process(Seq("hb-subset", cjk.getAbsolutePath, s"--face-index=$face",
+          s"--text-file=${list.getAbsolutePath}", "-o", target.getAbsolutePath)).!
+        if (rc != 0) sys.error(s"fallbackFonts: hb-subset exited $rc for $target")
+      }
+    }
+    log(s"fallbackFonts: Arabic, and CJK for ${text.distinct.length} characters, in $dir")
+  }
+
   /** Rounded corners for the Roku runtime, which has none of its own (a SceneGraph Rectangle is square): white 9-patch
     * rounded rectangles the runtime draws as Posters tinted to the colour, `images/rr/fill-<r>.9.png` filled and
     * `images/rr/ring-<r>-<w>.9.png` an edge `w` wide, for every whole radius up to `maxRadius`. */

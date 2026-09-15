@@ -144,6 +144,14 @@ class SGNode
 @native object uiReadText {
   def apply(path: String): String = native.value
 }
+/** Draw `text` in `label`, in runs of faces that have its glyphs when its own has not: the width drawn, or -1. */
+@native object uiRichText {
+  def apply(label: SGNode, text: String, baseUri: String, weight: Int, size: Double, color: String): Double = native.value
+}
+/** The language the app is in (a code such as `zh_Hant`): which CJK glyphs text takes. */
+@native object uiSetLanguage {
+  def apply(code: String): Unit = native.value
+}
 /** The panel's UI pixels per design pixel (2/3 on a 720p UI): a 9-patch's corners are drawn in panel pixels. */
 @native object uiPanelScale {
   def apply(): Double = native.value

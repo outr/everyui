@@ -60,6 +60,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   }
 
   private def place(): Unit = LayoutPass.request(this)
+  override def requestLayout(): Unit = place()
   layout.attach { l =>
     l.foreach { lay =>
       if (!size.height.explicit) size.height := contentHeight()

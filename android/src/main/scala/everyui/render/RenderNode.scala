@@ -400,7 +400,11 @@ object Host {
           try {
             val in = new java.net.URL(uri).openStream()
             try BitmapFactory.decodeStream(in) finally in.close()
-          } catch { case _: Exception => null }
+          } catch {
+            case t: Exception =>
+              Platform.logError("Loading " + uri, t)
+              null
+          }
         activity.runOnUiThread(() => {
           if (b != null) bitmaps(uri) = b
           done(b)
@@ -532,6 +536,9 @@ object Platform {
 
   /** The device's language, as a BCP 47 tag (`en-US`). */
   def language(): String = java.util.Locale.getDefault.toLanguageTag
+
+  /** The app's language: the platform chooses its own faces for the script, so there is nothing to do. */
+  def setLanguage(code: String): Unit = ()
 
   /** The root's layout direction: text and fields start where the language reads from. */
   def setDirection(rtl: Boolean): Unit =

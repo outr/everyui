@@ -275,6 +275,300 @@ function uiCalibratedSize(uri as string, size as float) as integer
     return best
 end function
 
+' The language the app is in (Platform.setLanguage): which CJK glyphs a text takes, Traditional for zh_Hant.
+sub uiSetLanguage(code as string)
+    GetGlobalAA().uiLanguageCode = code
+end sub
+
+' The script a character is written in, for choosing a face: "arabic", "cjk", "latin" (a letter or a digit), or ""
+' for what belongs to whatever it stands beside (spaces and punctuation).
+function uiScriptOf(c as integer) as string
+    if c < 128
+        if (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) then return "latin"
+        return ""
+    end if
+    if (c >= &h0600 and c <= &h06FF) or (c >= &h0750 and c <= &h077F) or (c >= &h08A0 and c <= &h08FF) then return "arabic"
+    if (c >= &hFB50 and c <= &hFDFF) or (c >= &hFE70 and c <= &hFEFF) then return "arabic"
+    if (c >= &h2E80 and c <= &h9FFF) or (c >= &hF900 and c <= &hFAFF) or (c >= &hFF00 and c <= &hFFEF) then return "cjk"
+    if (c >= &h2000 and c <= &h206F) or (c >= &h00A0 and c <= &h00BF) then return ""
+    return "latin"
+end function
+
+' Arabic letters by code: how each joins its neighbours (D both sides, R only the letter before it, U neither) and its
+' presentation forms, isolated, final, initial and medial (0 where a letter has none).
+function uiArabicLetters() as object
+    ga = GetGlobalAA()
+    if ga.uiArabicLetters <> invalid then return ga.uiArabicLetters
+    rows = [
+        [&h0621, "U", &hFE80, 0, 0, 0], [&h0622, "R", &hFE81, &hFE82, 0, 0], [&h0623, "R", &hFE83, &hFE84, 0, 0],
+        [&h0624, "R", &hFE85, &hFE86, 0, 0], [&h0625, "R", &hFE87, &hFE88, 0, 0], [&h0626, "D", &hFE89, &hFE8A, &hFE8B, &hFE8C],
+        [&h0627, "R", &hFE8D, &hFE8E, 0, 0], [&h0628, "D", &hFE8F, &hFE90, &hFE91, &hFE92], [&h0629, "R", &hFE93, &hFE94, 0, 0],
+        [&h062A, "D", &hFE95, &hFE96, &hFE97, &hFE98], [&h062B, "D", &hFE99, &hFE9A, &hFE9B, &hFE9C],
+        [&h062C, "D", &hFE9D, &hFE9E, &hFE9F, &hFEA0], [&h062D, "D", &hFEA1, &hFEA2, &hFEA3, &hFEA4],
+        [&h062E, "D", &hFEA5, &hFEA6, &hFEA7, &hFEA8], [&h062F, "R", &hFEA9, &hFEAA, 0, 0], [&h0630, "R", &hFEAB, &hFEAC, 0, 0],
+        [&h0631, "R", &hFEAD, &hFEAE, 0, 0], [&h0632, "R", &hFEAF, &hFEB0, 0, 0], [&h0633, "D", &hFEB1, &hFEB2, &hFEB3, &hFEB4],
+        [&h0634, "D", &hFEB5, &hFEB6, &hFEB7, &hFEB8], [&h0635, "D", &hFEB9, &hFEBA, &hFEBB, &hFEBC],
+        [&h0636, "D", &hFEBD, &hFEBE, &hFEBF, &hFEC0], [&h0637, "D", &hFEC1, &hFEC2, &hFEC3, &hFEC4],
+        [&h0638, "D", &hFEC5, &hFEC6, &hFEC7, &hFEC8], [&h0639, "D", &hFEC9, &hFECA, &hFECB, &hFECC],
+        [&h063A, "D", &hFECD, &hFECE, &hFECF, &hFED0], [&h0640, "C", &h0640, &h0640, &h0640, &h0640],
+        [&h0641, "D", &hFED1, &hFED2, &hFED3, &hFED4], [&h0642, "D", &hFED5, &hFED6, &hFED7, &hFED8],
+        [&h0643, "D", &hFED9, &hFEDA, &hFEDB, &hFEDC], [&h0644, "D", &hFEDD, &hFEDE, &hFEDF, &hFEE0],
+        [&h0645, "D", &hFEE1, &hFEE2, &hFEE3, &hFEE4], [&h0646, "D", &hFEE5, &hFEE6, &hFEE7, &hFEE8],
+        [&h0647, "D", &hFEE9, &hFEEA, &hFEEB, &hFEEC], [&h0648, "R", &hFEED, &hFEEE, 0, 0], [&h0649, "R", &hFEEF, &hFEF0, 0, 0],
+        [&h064A, "D", &hFEF1, &hFEF2, &hFEF3, &hFEF4], [&h067E, "D", &hFB56, &hFB57, &hFB58, &hFB59],
+        [&h0686, "D", &hFB7A, &hFB7B, &hFB7C, &hFB7D], [&h0698, "R", &hFB8A, &hFB8B, 0, 0],
+        [&h06A9, "D", &hFB8E, &hFB8F, &hFB90, &hFB91], [&h06AF, "D", &hFB92, &hFB93, &hFB94, &hFB95],
+        [&h06CC, "D", &hFBFC, &hFBFD, &hFBFE, &hFBFF]
+    ]
+    table = {}
+    for each r in rows
+        table[r[0].ToStr()] = { join: r[1], forms: [r[2], r[3], r[4], r[5]] }
+    end for
+    ga.uiArabicLetters = table
+    return table
+end function
+
+' A combining mark (harakat, superscript alef, Quranic marks): it sits on the letter before it and joins nothing.
+function uiArabicMark(c as integer) as boolean
+    return (c >= &h064B and c <= &h065F) or c = &h0670 or (c >= &h06D6 and c <= &h06ED)
+end function
+
+' An Arabic run shaped and in the order it is drawn, left to right. A Roku Label joins Arabic letters but lays them
+' out left to right, so the text arrives here already in the letters' positional forms (the presentation forms, which
+' no shaper changes again), lam-alef as its ligature, and its letters, each with its marks, reversed; brackets turn
+' to face the way they read.
+function uiShapeArabic(text as string) as string
+    letters = uiArabicLetters()
+    codes = []
+    n = Len(text)
+    for i = 1 to n
+        codes.push(Asc(Mid(text, i, 1)))
+    end for
+    clusters = []
+    lastJoin = "U"
+    i = 0
+    while i < n
+        c = codes[i]
+        if uiArabicMark(c)
+            if clusters.count() = 0 then clusters.push("")
+            clusters[clusters.count() - 1] = clusters[clusters.count() - 1] + Chr(c)
+            i = i + 1
+        else
+            letter = letters[c.ToStr()]
+            if letter = invalid
+                mirrored = c
+                if c = 40 then mirrored = 41
+                if c = 41 then mirrored = 40
+                if c = 91 then mirrored = 93
+                if c = 93 then mirrored = 91
+                if c = 123 then mirrored = 125
+                if c = 125 then mirrored = 123
+                if c = &hAB then mirrored = &hBB
+                if c = &hBB then mirrored = &hAB
+                clusters.push(Chr(mirrored))
+                lastJoin = "U"
+                i = i + 1
+            else
+                j = i + 1
+                while j < n and uiArabicMark(codes[j])
+                    j = j + 1
+                end while
+                nextJoin = "U"
+                nextCode = 0
+                if j < n
+                    nextCode = codes[j]
+                    following = letters[nextCode.ToStr()]
+                    if following <> invalid then nextJoin = following.join
+                end if
+                joinsBefore = (lastJoin = "D" or lastJoin = "C") and letter.join <> "U"
+                if c = &h0644 and (nextCode = &h0622 or nextCode = &h0623 or nextCode = &h0625 or nextCode = &h0627)
+                    ligature = &hFEFB
+                    if nextCode = &h0622 then ligature = &hFEF5
+                    if nextCode = &h0623 then ligature = &hFEF7
+                    if nextCode = &h0625 then ligature = &hFEF9
+                    if joinsBefore then ligature = ligature + 1
+                    cluster = Chr(ligature)
+                    for k = i + 1 to j - 1
+                        cluster = cluster + Chr(codes[k])
+                    end for
+                    clusters.push(cluster)
+                    lastJoin = "R"
+                    i = j + 1
+                else
+                    joinsAfter = letter.join = "D" or letter.join = "C"
+                    joinsAfter = joinsAfter and (nextJoin = "D" or nextJoin = "R" or nextJoin = "C")
+                    form = 0
+                    if joinsBefore and joinsAfter
+                        form = 3
+                    else if joinsBefore
+                        form = 1
+                    else if joinsAfter
+                        form = 2
+                    end if
+                    glyph = letter.forms[form]
+                    if glyph = 0 then glyph = letter.forms[0]
+                    clusters.push(Chr(glyph))
+                    lastJoin = letter.join
+                    i = i + 1
+                end if
+            end if
+        end if
+    end while
+    clusters.Reverse()
+    ' Reversed, an alef that followed a lam now follows it on the page in the lam's place, where the font's own lam-alef
+    ' ligature would join the two: a zero-width non-joiner keeps them apart.
+    visual = ""
+    previousLam = false
+    for each cluster in clusters
+        code = Asc(cluster)
+        isAlef = (code >= &hFE81 and code <= &hFE88) or code = &hFE8D or code = &hFE8E
+        if previousLam and isAlef then visual = visual + Chr(&h200C)
+        visual = visual + cluster
+        previousLam = code >= &hFEDD and code <= &hFEE0
+    end for
+    return visual
+end function
+
+' The face for a script: the text's own for Latin; for Arabic and CJK the channel's fonts/fallback-* (bold at a weight
+' of 600 or more, when the channel has one), or "" when it ships none.
+function uiScriptFace(script as string, baseUri as string, weight as integer) as string
+    if script = "latin" or script = "" then return baseUri
+    ga = GetGlobalAA()
+    if ga.uiFaceFiles = invalid then ga.uiFaceFiles = {}
+    name = script
+    ext = ".ttf"
+    if script = "cjk"
+        name = "cjk-sc"
+        if ga.uiLanguageCode = "zh_Hant" then name = "cjk-tc"
+        ext = ".otf"
+    end if
+    key = name + "@" + weight.ToStr()
+    uri = ga.uiFaceFiles[key]
+    if uri = invalid
+        ' the fonts the channel ships, listed once (roFileSystem is not to be had on the render thread)
+        if ga.uiFontListing = invalid
+            ga.uiFontListing = {}
+            listing = ListDir("pkg:/fonts")
+            if listing <> invalid
+                for each entry in listing
+                    ga.uiFontListing[entry] = true
+                end for
+            end if
+        end if
+        uri = ""
+        if weight >= 600 and ga.uiFontListing.DoesExist("fallback-" + name + "-bold" + ext) then uri = "pkg:/fonts/fallback-" + name + "-bold" + ext
+        if uri = "" and ga.uiFontListing.DoesExist("fallback-" + name + ext) then uri = "pkg:/fonts/fallback-" + name + ext
+        ga.uiFaceFiles[key] = uri
+    end if
+    if uri = "" then return baseUri
+    return uri
+end function
+
+' A Font node for a face at a size in pixels, made once.
+function uiFontNode(uri as string, size as float) as object
+    ga = GetGlobalAA()
+    if ga.uiFontNodes = invalid then ga.uiFontNodes = {}
+    key = uri + "@" + Str(size)
+    f = ga.uiFontNodes[key]
+    if f = invalid
+        f = CreateObject("roSGNode", "Font")
+        f.uri = uri
+        f.size = uiCalibratedSize(uri, size)
+        ga.uiFontNodes[key] = f
+    end if
+    return f
+end function
+
+' How wide and tall `text` is in a face at a size in pixels.
+function uiMeasureText(text as string, uri as string, size as float) as object
+    ga = GetGlobalAA()
+    if ga.uiRunProbe = invalid then ga.uiRunProbe = CreateObject("roSGNode", "Label")
+    probe = ga.uiRunProbe
+    probe.font = uiFontNode(uri, size)
+    probe.text = text
+    rect = probe.boundingRect()
+    return { width: rect.width, height: rect.height }
+end function
+
+' Text a Roku Label cannot draw alone: in more than one script, or in one its face has no glyphs for. It is drawn as
+' runs of one script each, Labels inside `label`, each in a face that has its glyphs (uiScriptFace), in the order they
+' read on screen. An Arabic run is shaped and reversed (uiShapeArabic), and in a paragraph that begins right to left (its
+' first letter is Arabic) so is the order of the runs. Returns the width drawn in pixels, or -1 for text in the Latin
+' script alone, which the label draws itself.
+function uiRichText(label as object, text as string, baseUri as string, weight as integer, size as float, color as string) as float
+    if label = invalid then return -1.0
+    ' words, each with the script its letters are in ("" for a word of spaces-and-punctuation only)
+    words = []
+    complex = false
+    rtl = invalid
+    for each piece in text.Split(" ")
+        script = ""
+        n = Len(piece)
+        for i = 1 to n
+            s = uiScriptOf(Asc(Mid(piece, i, 1)))
+            if s = "arabic" or s = "cjk"
+                script = s
+                complex = true
+                exit for
+            else if s = "latin"
+                script = "latin"
+            end if
+        end for
+        if rtl = invalid and script <> "" then rtl = (script = "arabic")
+        words.push({ text: piece, script: script })
+    end for
+    children = label.getChildCount()
+    if not complex
+        if children > 0 then label.removeChildrenIndex(children, 0)
+        label.text = text
+        return -1.0
+    end if
+    label.text = ""
+    ' runs of consecutive words in one script; a word with no letters joins the run it follows
+    runs = []
+    for each w in words
+        last = invalid
+        if runs.count() > 0 then last = runs[runs.count() - 1]
+        if last <> invalid and (w.script = "" or w.script = last.script)
+            last.words.push(w.text)
+        else
+            script = w.script
+            if script = "" then script = "latin"
+            runs.push({ script: script, words: [w.text] })
+        end if
+    end for
+    if rtl = true then runs.Reverse()
+    tint = color
+    if color = "" then tint = label.color
+    base = uiMeasureText("Ag", baseUri, size)
+    space = uiMeasureText("A A", baseUri, size).width - uiMeasureText("AA", baseUri, size).width
+    x = 0.0
+    index = 0
+    for each segment in runs
+        runText = segment.words.Join(" ")
+        if segment.script = "arabic" then runText = uiShapeArabic(runText)
+        uri = uiScriptFace(segment.script, baseUri, weight)
+        node = invalid
+        if index < children then node = label.getChild(index)
+        if node = invalid
+            node = CreateObject("roSGNode", "Label")
+            label.appendChild(node)
+        end if
+        node.font = uiFontNode(uri, size)
+        node.text = runText
+        node.color = tint
+        measured = uiMeasureText(runText, uri, size)
+        own = uiMeasureText("Ag", uri, size)
+        ' the runs share a middle, whatever each face's line box
+        node.translation = [x, (base.height - own.height) / 2.0]
+        x = x + measured.width + space
+        index = index + 1
+    end for
+    count = label.getChildCount()
+    if count > index then label.removeChildrenIndex(count - index, index)
+    return x - space
+end function
+
 ' A face by its file (pkg:/fonts/<file>.ttf): the one the text is measured by, whatever its family.
 sub uiSetFontFile(node as object, uri as string, size as float)
     if node = invalid then return

@@ -14,6 +14,9 @@ class Component(val node: RenderNode) {
   /** For diagnostics (a tree dump): what this is, and what it contains. */
   def kind: String = "Component"
   def childComponents: Vector[Component] = Vector.empty
+  /** Ask for this to be laid out again: a container asks the layout pass (`LayoutPass`); anything else has nothing
+    * to lay out. */
+  def requestLayout(): Unit = ()
 
   lazy val measure: Trigger = Trigger()
   lazy val measured: MeasuredFeature = new MeasuredFeature(this)

@@ -1,13 +1,14 @@
 package everyui.app.screen
 
 import everyui.async.Task
-import everyui.component.{Component, Container}
+import everyui.component.{Backdrop, Component, Container}
 import everyui.event.Key
 import everyui.focus.Focus
 import everyui.layout.LayoutPass
 import everyui.net.URLPath
 import everyui.render.Platform
 import everyui.task.TaskSupport
+import everyui.theme.Theme
 import everyui.{scribe, ui}
 import reactify.*
 
@@ -25,6 +26,18 @@ trait ScreenManager extends TaskSupport {
   val active: Var[Option[Screen]] = Var(None)
   /** Where the screens go: `ui` itself, or a region of it under an app bar. */
   def host: Container = ui
+  /** Behind everything, the whole size of `ui`: the active screen's own `background`, else the theme's, so no screen
+    * shows an empty ground. */
+  lazy val backdrop: Backdrop = {
+    val b = new Backdrop
+    b.size.width := ui.size.width
+    b.size.height := ui.size.height
+    b.source := (active() match {
+      case Some(screen: UIScreen) => screen.background().getOrElse(Theme.backgroundImage())
+      case _ => Theme.backgroundImage()
+    })
+    b
+  }
   private var screens: List[Screen] = Nil
   private var loaded: List[Screen] = Nil
   /** The screens Back returns to, the most recent first, each with what had the focus when it was left. */
@@ -44,6 +57,11 @@ trait ScreenManager extends TaskSupport {
     * loaded, so every node is measured with its real font and never a fallback the browser is still replacing. */
   def run(screen: Screen, others: Screen*): Unit = {
     screens = screen :: others.toList
+    // behind anything an app put in `ui` before running
+    val before = ui.children()
+    ui.children.clear()
+    ui.children += backdrop
+    ui.children ++= before
     Platform.onPath(path => at(URLPath(path)).foreach { s =>
       // the browser went back to the screen before this one, or forward past it
       history.headOption.filter(_._1 eq s) match {

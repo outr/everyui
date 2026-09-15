@@ -513,6 +513,9 @@ object Platform {
   /** The system's language, as a BCP 47 tag (`en-US`); `--language=` on the launch tries another. */
   def language(): String = Host.args.getOrElse("language", java.util.Locale.getDefault.toLanguageTag)
 
+  /** The app's language: the platform chooses its own faces for the script, so there is nothing to do. */
+  def setLanguage(code: String): Unit = ()
+
   /** The window's reading direction: every text node and field re-aligns. */
   def setDirection(rtl: Boolean): Unit = {
     Host.rtl = rtl

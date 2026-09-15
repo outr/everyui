@@ -191,6 +191,9 @@ object Platform {
   def readText(path: String, done: String => Unit): Unit = done("")
   def language(): String = "en"
   def fromCodePoint(codePoint: Int): String = uiChr(codePoint)
+  /** The app's language: the platform chooses its own faces for the script, so there is nothing to do. */
+  def setLanguage(code: String): Unit = ()
+
   def setDirection(rtl: Boolean): Unit = ()
 
   /** Not kept yet: the registry is still to be wired to the runtime. */

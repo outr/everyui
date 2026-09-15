@@ -1,6 +1,7 @@
 package everyui.i18n
 
 import everyui.async.Task
+import everyui.layout.LayoutPass
 import everyui.render.Platform
 import reactify.*
 
@@ -29,10 +30,14 @@ object Strings {
     }
 
   /** Change language: load its messages, and every bound text follows. */
-  def use(next: Language): Task[Unit] = load(next.code).map { messages =>
-    table @= messages
-    language @= next
-    Direction.set(next.rtl)
+  def use(next: Language): Task[Unit] = load(next.code).flatMap { messages =>
+    // every bound text changes at once: laid out in one pass after, and drawn with the language's own glyphs
+    LayoutPass.batched(Task {
+      Platform.setLanguage(next.code)
+      table @= messages
+      language @= next
+      Direction.set(next.rtl)
+    })
   }
 
   /** The language chosen on this device before, of `supported`, if one was (`remember`). */

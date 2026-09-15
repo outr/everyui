@@ -308,6 +308,8 @@ object Platform {
 
   /** The page's reading direction: text, fields and alignment follow it. */
   def setDirection(rtl: Boolean): Unit = dom.document.documentElement.setAttribute("dir", if (rtl) "rtl" else "ltr")
+  /** The page's language (`zh-Hant`), which the browser chooses CJK faces by. */
+  def setLanguage(code: String): Unit = dom.document.documentElement.setAttribute("lang", code.replace("_", "-"))
 
   def later(f: () => Unit): Unit = dom.window.setTimeout(() => f(), 0)
 

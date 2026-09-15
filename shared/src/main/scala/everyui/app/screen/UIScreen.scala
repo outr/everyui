@@ -10,6 +10,8 @@ import everyui.layout.LayoutPass
 trait UIScreen extends Screen with PathActivation {
   /** The manager showing this screen; where its container goes. */
   def manager: ScreenManager
+  /** This screen's own background image (a site-absolute path or a URL), in place of the theme's: a title's artwork, say. */
+  val background: Var[Option[String]] = Var(None)
 
   protected lazy val container: Container = {
     val c = new Container
@@ -24,10 +26,9 @@ trait UIScreen extends Screen with PathActivation {
     LayoutPass.batched(createUI())
   }
 
-  /** Showing a screen swaps its container into the host. */
+  /** Showing a screen swaps its container into the host, in front of the backdrop when that shares the host. */
   override protected def activate(): Task[Unit] = {
-    manager.host.children.clear()
-    manager.host.children += container
+    manager.host.children @= manager.host.children().filter(_ eq manager.backdrop) :+ container
     super.activate()
   }
 

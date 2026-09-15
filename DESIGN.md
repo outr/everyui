@@ -1545,9 +1545,30 @@ screen look different on two TVs). It matches the Android TV build, after these 
 - **Long division.** `.toDouble` on a Long was emitted as nothing, and BrightScript keeps a LongInteger quotient
   whole, so the pairing countdown's fraction was 0 and its bar empty; it is `Cdbl` now.
 
-Still to do there: the Arabic and Chinese language names draw as boxes (the bundled Roboto has no such glyphs, and the
-Roku has no fallback), `Platform.editText` (the Roku keyboard) is not wired, and the gap meter's one `stepSize`
-(animation's `TaskInstance`, reachable, never run) remains.
+- **Arabic and Chinese.** A Roku's system font has neither, and a Label draws in one face. Text in those scripts is
+  drawn in runs (`uiRichText`): each a Label in a face that has its glyphs, Roboto for Latin and the channel's
+  `fonts/fallback-*` for the rest (`RokuChannel.fallbackFonts`: Noto Sans Arabic, and Noto Sans CJK SC and TC cut down
+  by hb-subset to the characters an app's translations use; `Platform.setLanguage` picks Traditional for zh_Hant). A
+  Roku Label joins Arabic letters but lays them out left to right, mirroring each word, so an Arabic run arrives
+  shaped (its letters in their presentation forms, lam-alef ligatures, marks kept with their letters, brackets
+  mirrored) and reversed, and a paragraph that begins in Arabic draws its runs right to left. The shaping follows
+  HarfBuzz's output for the NaboTV strings checked against it.
+- **Batches end on a turn of their own.** The outermost `LayoutPass.batched` lays out on `Platform.later` and then
+  completes (a screen change's focus still sees laid-out positions); flushed where it closed, at the bottom of a screen
+  change's callbacks, the first screen's layout sometimes overflowed the stack on a fresh launch. A language change
+  (`Strings.use`) is such a batch too.
+- **Type patterns.** `case c: Container =>` on a class that is not a case class matches anything on the Roku (only
+  case classes carry a tag to test), so the layout pass asks components by dispatch (`requestLayout`).
+- **Backgrounds.** No screen shows an empty ground: the screen manager keeps a `Backdrop` in `ui`, behind every screen
+  (a screen change swaps the screen in front of it and leaves it be), showing the active screen's own `background` or
+  else `Theme.backgroundImage`, the whole screen covered at the image's own proportions. NaboTV sets a theme's artwork
+  there; its build converts the WebP originals to JPEG (JavaFX draws no WebP), 1280 wide for the Roku. On Android an
+  image from `http://` needs cleartext allowed in the app's manifest, which NaboTV's had not: its QR never loaded, and
+  the loader now logs a failed load instead of dropping it.
+
+Still to do there: text on the Roku does not wrap (a paragraph is one line with an ellipsis), `Platform.editText`
+(the Roku keyboard) is not wired, and the gap meter's one `stepSize` (animation's `TaskInstance`, reachable, never
+run) remains.
 
 ## The network module — Spice as the core, on every backend (2026-09-13)
 

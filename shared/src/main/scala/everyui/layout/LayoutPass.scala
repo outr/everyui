@@ -2,6 +2,7 @@ package everyui.layout
 
 import everyui.async.Task
 import everyui.component.{Component, Container}
+import everyui.render.Platform
 
 /** When containers lay out. A change that moves a container's children (its children, its size, its padding, a child's
   * size) asks for the container to be laid out rather than laying it out there and then; the pass lays out what was
@@ -37,21 +38,32 @@ object LayoutPass {
     finally close()
   }
 
-  /** `task`, with layout held from its start until it completes (or, if it completes later, until its start returns). */
+  /** `task`, with layout held from its start until it completes (or, if it completes later, until its start returns).
+    * The outermost batch lays out what it asked for on a turn of its own (`Platform.later`), then completes: a batch
+    * ends at the bottom of a chain of callbacks, whose nesting a Roku's small stack cannot also carry a screen's
+    * layout under. */
   def batched[T](task: Task[T]): Task[T] = Task.async[T] { done =>
     var open = true
     batches += 1
     task.map { value =>
       if (open) {
         open = false
-        close()
-      }
-      done(value)
+        release(() => done(value))
+      } else done(value)
     }.start()
     if (open) {
       open = false
-      close()
+      release(() => ())
     }
+  }
+
+  private def release(next: () => Unit): Unit = {
+    batches -= 1
+    if (batches == 0) Platform.later(() => {
+      flush()
+      next()
+    })
+    else next()
   }
 
   /** Lay out every container asked for, the deepest first, until none is left. */
@@ -73,10 +85,8 @@ object LayoutPass {
     while (left.nonEmpty) {
       val c = left.head
       left = c.childComponents.toList ++ left.tail
-      c match {
-        case container: Container => request(container)
-        case _ => ()
-      }
+      // by dispatch, not a type test: the Roku compiler tests only case classes by type
+      c.requestLayout()
     }
   }
 

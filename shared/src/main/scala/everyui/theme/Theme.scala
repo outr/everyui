@@ -11,6 +11,9 @@ object Theme {
   /** The family text is set in unless it names its own: "" is the framework's (Open Sans), an app's is one it
     * registered (`Faces.register`). Set it before building anything: text takes it as it is made. */
   val family: Var[String] = Var("")
+  /** The image behind every screen that names none of its own (`UIScreen.background`): a site-absolute path or a
+    * URL. Empty leaves the palette's background colour on its own. */
+  val backgroundImage: Var[String] = Var("")
 
   def background(): Color = palette().background
   def surface(): Color = palette().surface
