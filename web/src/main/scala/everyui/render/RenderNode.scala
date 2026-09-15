@@ -289,6 +289,9 @@ object Platform {
     true
   }
 
+  /** An ARB file's messages (everyui.i18n.Arb). */
+  def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
+
   /** A text file served with the page (a translation), or "" if it cannot be had. */
   def readText(path: String, done: String => Unit): Unit = {
     val text: js.Function1[js.Dynamic, js.Any] = r => if (r.ok.asInstanceOf[Boolean]) r.text() else ""

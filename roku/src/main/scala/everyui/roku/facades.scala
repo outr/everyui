@@ -140,6 +140,50 @@ class SGNode
 @native object uiLaunchArg {
   def apply(name: String): String = native.value
 }
+/** A packaged text file by its `pkg:/` path, or "". */
+@native object uiReadText {
+  def apply(path: String): String = native.value
+}
+/** The panel's UI pixels per design pixel (2/3 on a 720p UI): a 9-patch's corners are drawn in panel pixels. */
+@native object uiPanelScale {
+  def apply(): Double = native.value
+}
+/** Layout units to pixels (2, or 1 for a sideload with `viewport.txt`). */
+@native object uiScale {
+  def apply(): Double = native.value
+}
+/** A tinted shape (a rounded fill or edge) behind `parent`'s children at `index`: `existing`, or a new one. */
+@native object uiShape {
+  def apply(parent: SGNode, existing: Option[SGNode], uri: String, hex: String, width: Double, height: Double, index: Int): SGNode = native.value
+}
+/** A font file (`pkg:/fonts/Roboto-Regular.ttf`) at `size` pixels. */
+@native object uiSetFontFile {
+  def apply(node: SGNode, uri: String, size: Double): Unit = native.value
+}
+/** Run `f` on a later turn of the event loop, on a fresh stack. */
+@native object uiLater {
+  def apply(f: () => Unit): Unit = native.value
+}
+/** An ARB file's messages as a string-keyed table (a Map to the runtime), parsed natively. */
+@native object uiArbMessages {
+  def apply(text: String): Map[String, String] = native.value
+}
+/** A saved setting (the registry), or "". */
+@native object uiSetting {
+  def apply(name: String): String = native.value
+}
+/** Keep a setting; "" forgets it. */
+@native object uiSaveSetting {
+  def apply(name: String, value: String): Unit = native.value
+}
+/** The device's language, as a BCP 47 tag. */
+@native object uiLanguage {
+  def apply(): String = native.value
+}
+/** What the person calls this device. */
+@native object uiDeviceName {
+  def apply(): String = native.value
+}
 /** Rounded corners; a SceneGraph Rectangle has none, so the Roku ignores it. */
 @native object uiSetRadius {
   def apply(node: SGNode, radius: Double): Unit = native.value

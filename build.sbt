@@ -12,6 +12,10 @@ ThisBuild / excludeDependencies += ExclusionRule("com.outr", "reactify_3")
 
 @transient val emitRoku = taskKey[File]("Compile this project, and the libraries it emits with, into a Roku channel")
 
+/** The compiler's runtime classpath, in `compiler/out/classpath.txt`: what an app's build outside this one reads to
+  * emit its own channel with RokuChannel.emit. */
+@transient val compilerClasspath = taskKey[File]("Compile the Roku compiler and write its runtime classpath to compiler/out/classpath.txt")
+
 // --- compiler: Scala 3 TASTy → Roku BrightScript + SceneGraph ----------------
 // `emitRoku` runs it as a forked `java` process over the TASTy of the project
 // being emitted (kept inspectable by -Yretain-trees).
@@ -27,7 +31,13 @@ lazy val compiler = (project in file("compiler"))
         baseDirectory.value / "src" / "main" / "scala" / "everyui" / "compiler" / "RokuEmitter.scala",
         baseDirectory.value / "swift-derivation.txt", out)
       Seq(out)
-    }.taskValue
+    }.taskValue,
+    compilerClasspath := {
+      val conv = fileConverter.value
+      val out = baseDirectory.value / "out" / "classpath.txt"
+      IO.write(out, (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toAbsolutePath.toString).mkString(java.io.File.pathSeparator))
+      out
+    }
   )
 
 // --- compiler-api: what user code shares with the compiler --------------------
@@ -42,25 +52,13 @@ lazy val compilerApi = (project in file("compiler-api"))
 /** Compile the current project, then run the Roku compiler over its TASTy plus
   * each of `libraries` (classes directories compiled through with it). */
 def emitRokuTask(outName: String, title: String, libraries: Def.Initialize[Task[Seq[File]]]) = Def.task {
-  val log = streams.value.log
   (Compile / compile).value
   val conv = fileConverter.value
-  val sep = java.io.File.pathSeparator
-  val classes = (Compile / classDirectory).value
-  val cp = (Compile / fullClasspath).value
-    .map(e => conv.toPath(e.data).toAbsolutePath.toString).mkString(sep)
-  val compilerCp = (compiler / Compile / fullClasspath).value
-    .map(e => conv.toPath(e.data).toAbsolutePath.toString).mkString(sep)
-  val libArgs = libraries.value.map(f => s"--library=${f.getAbsolutePath}")
-  val outDir = baseDirectory.value / outName
-  IO.delete(outDir); IO.createDirectory(outDir)
-  log.info(s"emitRoku: emitting a Roku channel into $outDir")
-  val rc = sys.process.Process(
-    Seq("java", "-cp", compilerCp, "everyui.compiler.Main") ++ libArgs ++
-      Seq(classes.getAbsolutePath, cp, outDir.getAbsolutePath, baseDirectory.value.getAbsolutePath, title)
-  ).!
-  if (rc != 0) sys.error(s"everyui.compiler.Main exited $rc")
-  outDir
+  RokuChannel.emit(streams.value.log.info(_),
+    (compiler / Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile),
+    (Compile / classDirectory).value,
+    (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile),
+    libraries.value, baseDirectory.value / outName, baseDirectory.value, title)
 }
 
 /** The Swift spike: the same program and libraries, emitted as `<out>/App.swift` for
@@ -167,40 +165,11 @@ lazy val roku = (project in file("roku"))
     libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
     emitRoku := {
       val outDir = emitRokuTask("out-roku", "EveryUI", networkLibraries).value
-      // the runtime, and the network module's Task nodes (a socket or an HTTP transfer cannot live on the render thread)
-      (baseDirectory.value / "runtime" * ("*.brs" | "*.xml")).get().foreach(f => IO.copyFile(f, outDir / "components" / f.getName))
-      // Shared image assets — the SAME files the web bundle serves, so the two
-      // backends are compared on identical pixels.
-      val images = (ThisBuild / baseDirectory).value / "assets" / "images"
-      if (images.isDirectory) IO.copyDirectory(images, outDir / "images")
-      // The channel's own icons and splash screens (roku/images, from tools/make-icons.py), declared in the manifest.
-      val channelImages = baseDirectory.value / "images"
-      if (channelImages.isDirectory) {
-        IO.copyDirectory(channelImages, outDir / "images")
-        val manifest = outDir / "manifest"
-        IO.write(manifest, IO.read(manifest) +
-          """mm_icon_focus_fhd=pkg:/images/icon-fhd.png
-            |mm_icon_focus_hd=pkg:/images/icon-hd.png
-            |mm_icon_focus_sd=pkg:/images/icon-sd.png
-            |splash_screen_fhd=pkg:/images/splash-fhd.png
-            |splash_screen_hd=pkg:/images/splash-hd.png
-            |splash_screen_sd=pkg:/images/splash-sd.png
-            |""".stripMargin)
-      }
-      // Bundled faces, loaded by SceneGraph Font nodes from pkg:/fonts/.
-      val fonts = (ThisBuild / baseDirectory).value / "assets" / "fonts"
-      (fonts * "*.ttf").get().foreach(f => IO.copyFile(f, outDir / "fonts" / f.getName))
-      // The scene is generated; add our runtime to its <script> list so the
-      // ui* globals resolve in the component's scope.
-      val scene = outDir / "components" / "AppScene.xml"
-      val patched = IO.read(scene).replace(
-        """<script type="text/brightscript" uri="pkg:/components/App.brs" />""",
-        """<script type="text/brightscript" uri="pkg:/components/UniversalRuntime.brs" />
-  <script type="text/brightscript" uri="pkg:/components/App.brs" />"""
-      )
-      if (patched == IO.read(scene)) sys.error("emitRoku: AppScene.xml no longer has the App.brs script line to patch")
-      IO.write(scene, patched)
-      outDir
+      // The shared image assets are the SAME files the web bundle serves, so the two backends are compared on
+      // identical pixels; the channel's own icons and splash screens are roku/images (tools/make-icons.py).
+      val root = (ThisBuild / baseDirectory).value
+      RokuChannel.assemble(outDir, root, Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"), Nil,
+        Some(baseDirectory.value / "images"))
     }
   )
 
@@ -417,20 +386,12 @@ lazy val root = (project in file("."))
 // `network/emitSwift` emit the same probe with spice's durable package compiled
 // through — the spike that sizes the emitter work.
 lazy val spiceDurableTasty = Def.task {
-  // Only the durable client's TASTy (and the WebSocket types it is written
-  // against) is compiled through — not all of spice-core. The full jar stays on
-  // the inspector's classpath for symbol resolution.
   val conv = fileConverter.value
   val jar = (Compile / dependencyClasspath).value
     .map(e => conv.toPath(e.data).toFile)
     .find(_.getName.startsWith("spice-core_3"))
     .getOrElse(sys.error("spice-core_3 jar not on the network classpath"))
-  val dir = target.value / "spice-tasty"
-  IO.delete(dir)
-  val keep = Set("spice/http/WebSocket.tasty", "spice/http/WebSocketChannels.tasty", "spice/http/ConnectionStatus.tasty",
-    "spice/http/BinaryData.tasty", "spice/http/ByteBufferData.tasty", "spice/http/CloseReason.tasty", "spice/http/BufferedWebSocketChannels.tasty")
-  IO.unzip(jar, dir, (name: String) => keep(name) || (name.startsWith("spice/http/durable/") && name.endsWith(".tasty")))
-  dir
+  RokuChannel.spiceTasty(jar, target.value / "spice-tasty")
 }
 
 lazy val networkLibraries = Def.task { reactiveLibrary.value :+ spiceDurableTasty.value }

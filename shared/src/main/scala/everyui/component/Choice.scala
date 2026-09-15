@@ -3,7 +3,8 @@ package everyui.component
 import everyui.theme.Theme
 import reactify.*
 
-/** One of a set of choices: the chosen one wears the accent, the rest are muted; a click, a tap or Enter chooses it. */
+/** One of a set of choices: the chosen one wears the accent, the rest are muted; a click, a tap or Enter chooses it.
+  * The focus shows as it does on a button: the chosen one turns to the text colour, the rest get a ring in the accent. */
 class Choice(label: String, chosen: Boolean, choose: () => Unit) extends Container {
   private val text = new TextView {
     content @= label
@@ -16,7 +17,13 @@ class Choice(label: String, chosen: Boolean, choose: () => Unit) extends Contain
   radius @= 11.0
   size.width := text.size.width + 20.0
   size.height := text.size.height + 8.0
-  backgroundColor := (if (chosen) Theme.accent() else if (focused() || event.pointer.over()) Theme.controlLit() else Theme.control())
+  backgroundColor := {
+    if (chosen) (if (focused()) Theme.text() else Theme.accent())
+    else if (focused() || event.pointer.over()) Theme.controlLit()
+    else Theme.control()
+  }
+  borderWidth := (if (focused() && !chosen) 2.5 else 0.0)
+  borderColor := Theme.accent()
   children += text
   event.click.attach { e =>
     e.consume()

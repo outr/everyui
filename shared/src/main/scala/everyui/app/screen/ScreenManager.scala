@@ -4,6 +4,7 @@ import everyui.async.Task
 import everyui.component.{Component, Container}
 import everyui.event.Key
 import everyui.focus.Focus
+import everyui.layout.LayoutPass
 import everyui.net.URLPath
 import everyui.render.Platform
 import everyui.task.TaskSupport
@@ -93,17 +94,24 @@ trait ScreenManager extends TaskSupport {
   /** Forget the history: what is shown now is where Back leaves the app (signing in, say). */
   def clearHistory(): Unit = history = Nil
 
-  /** Show `screen`, then focus `focus` if it is still on screen, else the screen's default. */
+  /** Show `screen`, then focus `focus` if it is still on screen, else the screen's default: on a turn of its own
+    * (`Platform.later`), since a change is asked for at the end of a chain (a key, the focus, a click, an action, a
+    * task) whose nesting a Roku's small stack cannot also carry a screen's build under. */
   private def swap(screen: Screen, push: Boolean, focus: Option[Component] = None): Task[Unit] =
-    active().filterNot(_ eq screen).map(Screen.deactivate).getOrElse(Task.unit)
-      .flatMap { _ =>
-        if (loaded.exists(_ eq screen)) Task.unit
-        else {
-          loaded = screen :: loaded
-          Screen.init(screen).flatMap(_ => Screen.load(screen))
+    Task.async[Unit](done => Platform.later(() => change(screen, push, focus).map(_ => done(())).startUnit()))
+
+  private def change(screen: Screen, push: Boolean, focus: Option[Component]): Task[Unit] =
+    // the leaving, the building and the arriving in one layout pass, before the focus looks for where things are
+    LayoutPass.batched(
+      active().filterNot(_ eq screen).map(Screen.deactivate).getOrElse(Task.unit)
+        .flatMap { _ =>
+          if (loaded.exists(_ eq screen)) Task.unit
+          else {
+            loaded = screen :: loaded
+            Screen.init(screen).flatMap(_ => Screen.load(screen))
+          }
         }
-      }
-      .flatMap(_ => Screen.activate(screen))
+        .flatMap(_ => Screen.activate(screen)))
       .map { _ =>
         active @= Some(screen)
         screen match {

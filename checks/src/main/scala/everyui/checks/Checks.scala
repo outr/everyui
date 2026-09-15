@@ -224,9 +224,9 @@ object Checks {
     val todos = """RtTodo\("([A-Za-z ]+)"\)""".r.findAllMatchIn(raw).map(_.group(1)).toList.groupBy(identity).view.mapValues(_.size).toMap
     val keywords = Set("if", "while", "for", "return", "print", "and", "or", "not", "then", "end", "sub", "function",
       "invalid", "true", "false", "stop", "each", "to", "step", "as", "throw", "createobject", "getglobalaa",
-      "getinterface", "type", "box", "chr", "val", "str", "int", "rnd", "sqr", "abs", "sgn", "cint", "fix", "log",
-      "exp", "atn", "sin", "cos", "tan", "asc", "left", "right", "mid", "len", "instr", "string", "stringi", "ucase",
-      "lcase", "strtoi", "formatjson", "parsejson", "wait", "eval", "line_num")
+      "getinterface", "type", "box", "chr", "val", "str", "int", "rnd", "sqr", "abs", "sgn", "cint", "cdbl", "csng",
+      "fix", "log", "exp", "atn", "sin", "cos", "tan", "asc", "left", "right", "mid", "len", "instr", "string",
+      "stringi", "ucase", "lcase", "strtoi", "formatjson", "parsejson", "wait", "eval", "line_num")
     val called = """(?<![.\w$])([A-Za-z_$][A-Za-z0-9_$]*)\s*\(""".r.findAllMatchIn(code).map(_.group(1)).toSet
     val dangling = called.filter(n => !defined(n.toLowerCase) && !keywords(n.toLowerCase)).toList.sorted
     val dupes = defsApp.groupBy(_.toLowerCase).collect { case (n, xs) if xs.size > 1 => n }.toList.sorted

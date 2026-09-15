@@ -16,10 +16,11 @@ object Language {
     val script = rest.find(p => p.length == 4).orElse(
       if (language == "zh" && rest.exists(r => r == "TW" || r == "HK" || r == "MO")) Some("Hant") else None)
     val region = rest.find(p => p.length == 2).map(_.toUpperCase)
-    def find(code: String): Option[Language] = supported.find(_.code == code)
-    script.flatMap(s => find(language + "_" + s))
-      .orElse(region.flatMap(r => find(language + "_" + r)))
-      .orElse(find(language))
+    script.flatMap(s => named(supported, language + "_" + s))
+      .orElse(region.flatMap(r => named(supported, language + "_" + r)))
+      .orElse(named(supported, language))
       .getOrElse(fallback)
   }
+
+  private def named(supported: List[Language], code: String): Option[Language] = supported.find(_.code == code)
 }

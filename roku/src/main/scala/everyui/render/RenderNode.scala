@@ -22,12 +22,28 @@ import everyui.roku.*
 class RenderNode(val sg: SGNode) {
   // Every position change goes through this node, so it keeps its own coordinates and writes SceneGraph's
   // `translation` in one step rather than reading the field back on every write.
-  private var left: Double = uiGetX(sg)
-  private var top: Double = uiGetY(sg)
+  private var left: Double = uiGetX(sg) / uiScale()
+  private var top: Double = uiGetY(sg) / uiScale()
   // A text node's face and size, once set: its box comes from them rather than from SceneGraph's bounding rect.
   private var fontUri: String = ""
   private var fontSize: Double = 0.0
   private var lineHeight: Double = 0.0
+  // The size last set, which the border follows; -1 until set.
+  private var boxWidth: Double = -1.0
+  private var boxHeight: Double = -1.0
+  // A square border: four thin rectangles along the edges, since a SceneGraph Rectangle draws none of its own.
+  private var edges: Vector[SGNode] = Vector.empty
+  private var edgeWidth: Double = 0.0
+  private var edgeHex: String = ""
+  private var fillHex: String = ""
+  private var cornerRadius: Double = 0.0
+  // Rounded, the fill and the edge are tinted 9-patch Posters instead (see `paint`).
+  private var fillShape: Option[SGNode] = None
+  private var edgeShape: Option[SGNode] = None
+
+  /** Layout units to pixels: the runtime's scale (2, a TV's density), applied here rather than to the root, so text is
+    * drawn at its size on the screen instead of drawn small and enlarged. */
+  private def px(units: Double): Double = units * uiScale()
 
   def getText(): String = uiGetText(sg)
   def setText(text: String): Unit = uiSetText(sg, text)
@@ -35,13 +51,13 @@ class RenderNode(val sg: SGNode) {
   def getX(): Double = left
   def setX(x: Double): Unit = {
     left = x
-    uiSetTranslation(sg, left, top)
+    uiSetTranslation(sg, px(left), px(top))
   }
 
   def getY(): Double = top
   def setY(y: Double): Unit = {
     top = y
-    uiSetTranslation(sg, left, top)
+    uiSetTranslation(sg, px(left), px(top))
   }
 
   /** Radians, clockwise, about the node's own centre — matching youi's
@@ -49,7 +65,7 @@ class RenderNode(val sg: SGNode) {
   def getRotation(): Double = uiGetRotation(sg)
   def setRotation(radians: Double): Unit = uiSetRotation(sg, radians)
 
-  def setFontSize(size: Double): Unit = uiSetFontSize(sg, size)
+  def setFontSize(size: Double): Unit = uiSetFontSize(sg, px(size))
 
   /** `"#rrggbb"`. */
   def setColor(hex: String): Unit = uiSetColor(sg, hex)
@@ -57,33 +73,48 @@ class RenderNode(val sg: SGNode) {
   /** A bundled face (`assets/fonts/`, copied to `pkg:/fonts/`): family, CSS
     * weight, size in pixels. */
   def setFont(family: String, weight: Int, size: Double): Unit = {
-    uiSetFont(sg, family, weight, size)
     if (family.nonEmpty) {
+      // drawn in the face it is measured by: the registered or bundled file every other backend draws with
       val face = Faces(family, weight)
       fontUri = "pkg:/fonts/" + face.file
       fontSize = size
       lineHeight = face.lineHeight(size)
-    }
+      uiSetFontFile(sg, fontUri, px(size))
+    } else uiSetFont(sg, family, weight, px(size))
   }
 
   /** The laid-out size in pixels. Text is as wide as its face makes it at exactly its size (a `Label` draws at whole
     * pixel sizes, so its own bounding rect is a few pixels off) and one shared line (everyui.font.Face) tall;
     * anything else is SceneGraph's bounding rect. */
-  def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
-  def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg)
+  def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg) / uiScale()
+  def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg) / uiScale()
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
 
   /** Detach from the parent, if attached. */
   def remove(): Unit = uiRemove(sg)
 
-  def setWidth(width: Double): Unit = uiSetWidth(sg, width)
-  def setHeight(height: Double): Unit = uiSetHeight(sg, height)
+  def setWidth(width: Double): Unit = {
+    boxWidth = width
+    uiSetWidth(sg, px(width))
+    if (cornerRadius >= 1.0 || edges.nonEmpty) paint()
+  }
+  def setHeight(height: Double): Unit = {
+    boxHeight = height
+    uiSetHeight(sg, px(height))
+    if (cornerRadius >= 1.0 || edges.nonEmpty) paint()
+  }
 
   /** `"#rrggbb"`, or `""` for transparent. */
-  def setBackgroundColor(hex: String): Unit = uiSetBackgroundColor(sg, hex)
-  def setRadius(radius: Double): Unit = uiSetRadius(sg, radius)
-
+  def setBackgroundColor(hex: String): Unit = {
+    fillHex = hex
+    paint()
+  }
+  /** Rounded corners, which a SceneGraph Rectangle does not have: see `paint`. */
+  def setRadius(radius: Double): Unit = {
+    cornerRadius = radius
+    paint()
+  }
   /** SceneGraph places every node by its translation, so there is no position type to set. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind.toString, f)
@@ -91,7 +122,7 @@ class RenderNode(val sg: SGNode) {
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean): Unit = ()
   def setScrollTop(y: Double): Unit = ()
-  def setClip(width: Double, height: Double): Unit = uiSetClip(sg, width, height)
+  def setClip(width: Double, height: Double): Unit = uiSetClip(sg, px(width), px(height))
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()
 
@@ -102,8 +133,72 @@ class RenderNode(val sg: SGNode) {
 
   def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
 
-  /** No edge: a SceneGraph Rectangle has none to draw. */
-  def setBorder(width: Double, hex: String): Unit = ()
+  /** An edge `width` pixels wide inside the node's box. A zero width or no colour takes it away. */
+  def setBorder(width: Double, hex: String): Unit = {
+    edgeWidth = width
+    edgeHex = hex
+    paint()
+  }
+
+  /** The fill and the edge, for the box as it is now, the same on the Roku as elsewhere. Square: the Rectangle's own
+    * colour, and four thin rectangles along the sides. Rounded: the Rectangle clear, and Posters behind the children, a
+    * filled 9-patch and an edge one, white and tinted to their colours (`images/rr`, made by the channel build, for
+    * whole radii up to 64 pixels and edges up to 8). */
+  private def paint(): Unit = {
+    val w = if (boxWidth >= 0.0) boxWidth else getWidth()
+    val h = if (boxHeight >= 0.0) boxHeight else getHeight()
+    val edged = edgeWidth > 0.0 && edgeHex.nonEmpty
+    // A corner image is chosen in the panel's pixels: SceneGraph draws a 9-patch's corners at the image's size, not
+    // scaled with the node (a 1080p design on a 720p panel would squeeze them into ellipses).
+    val panel = uiPanelScale()
+    val r = math.min(math.min(math.round(px(cornerRadius) * panel).toInt, math.floor(px(math.min(w, h)) * panel / 2.0).toInt), 64)
+    if (r >= 1) {
+      uiSetBackgroundColor(sg, "")
+      clearEdges()
+      if (fillHex.nonEmpty) fillShape = Some(uiShape(sg, fillShape, "pkg:/images/rr/fill-" + r.toString + ".9.png", fillHex, px(w), px(h), 0))
+      else fillShape = dropShape(fillShape)
+      if (edged) {
+        val stroke = math.max(1, math.min(8, math.round(px(edgeWidth) * panel).toInt))
+        val uri = "pkg:/images/rr/ring-" + math.max(r, stroke).toString + "-" + stroke.toString + ".9.png"
+        edgeShape = Some(uiShape(sg, edgeShape, uri, edgeHex, px(w), px(h), if (fillShape.nonEmpty) 1 else 0))
+      } else edgeShape = dropShape(edgeShape)
+    } else {
+      fillShape = dropShape(fillShape)
+      edgeShape = dropShape(edgeShape)
+      uiSetBackgroundColor(sg, fillHex)
+      if (edged) placeEdges(w, h) else clearEdges()
+    }
+  }
+
+  private def dropShape(shape: Option[SGNode]): Option[SGNode] = {
+    shape.foreach(s => uiRemove(s))
+    None
+  }
+
+  private def clearEdges(): Unit = {
+    edges.foreach(e => uiRemove(e))
+    edges = Vector.empty
+  }
+
+  private def placeEdges(w: Double, h: Double): Unit = {
+    while (edges.length < 4) {
+      val edge = uiContainer()
+      uiAppend(sg, edge)
+      edges = edges :+ edge
+    }
+    edges.foreach(e => uiSetBackgroundColor(e, edgeHex))
+    val b = math.min(edgeWidth, math.min(w, h) / 2.0)
+    placeEdge(edges(0), 0.0, 0.0, w, b)
+    placeEdge(edges(1), 0.0, h - b, w, b)
+    placeEdge(edges(2), 0.0, b, b, h - b * 2.0)
+    placeEdge(edges(3), w - b, b, b, h - b * 2.0)
+  }
+
+  private def placeEdge(edge: SGNode, x: Double, y: Double, width: Double, height: Double): Unit = {
+    uiSetTranslation(edge, px(x), px(y))
+    uiSetWidth(edge, px(width))
+    uiSetHeight(edge, px(height))
+  }
   /** Labels sit where they are placed. */
   def setTextAlign(align: String): Unit = ()
 
@@ -137,7 +232,7 @@ object Nodes {
   }
   /** An image node — a SceneGraph `Poster` loading from `pkg:/`. */
   def image(uri: String, width: Double, height: Double): RenderNode =
-    new RenderNode(uiImage(uri, width, height))
+    new RenderNode(uiImage(uri, width * uiScale(), height * uiScale()))
 }
 
 /** The handful of non-render platform services the slice needs. */
@@ -179,23 +274,28 @@ object Platform {
   def pushPath(path: String): Unit = ()
   def onPath(f: String => Unit): Unit = ()
 
-  /** One thread: `f` runs now. */
   /** No browser history here: the screen manager keeps its own. */
   def historyBack(): Boolean = false
 
-  def later(f: () => Unit): Unit = f()
+  /** On a later turn of the render thread, from a fresh stack (a Timer): what a JavaFX runLater or a browser's
+    * setTimeout gives, and what keeps a chain of callbacks from nesting into a Roku's small stack. */
+  def later(f: () => Unit): Unit = uiLater(f)
 
-  /** Not read yet: the runtime is still to open packaged text files, so translations fall back to their keys. */
-  def readText(path: String, done: String => Unit): Unit = done("")
-  def language(): String = "en"
+  /** A packaged file (`pkg:/l10n/app_en.arb`), read at once. */
+  def readText(path: String, done: String => Unit): Unit = done(uiReadText(path))
+  /** An ARB file's messages, parsed by the Roku's own JSON parser into a keyed table: a Scala parser and an entry-list
+    * Map take the Roku most of a minute over a translation file of a few thousand entries. */
+  def parseMessages(arb: String): Map[String, String] = uiArbMessages(arb)
+  def language(): String = uiLanguage()
   def fromCodePoint(codePoint: Int): String = uiChr(codePoint)
   def setDirection(rtl: Boolean): Unit = ()
 
-  /** Not kept yet: the registry is still to be wired to the runtime. */
-  def setting(name: String): String = ""
-  def saveSetting(name: String, value: String): Unit = ()
+  /** Kept in the registry, across launches. */
+  def setting(name: String): String = uiSetting(name)
+  /** Keep `value` under `name`; "" forgets it. */
+  def saveSetting(name: String, value: String): Unit = uiSaveSetting(name, value)
 
-  def deviceName(): String = "Roku"
+  def deviceName(): String = uiDeviceName()
 
   /** No text fields of its own. */
   def nativeInput(): Boolean = false

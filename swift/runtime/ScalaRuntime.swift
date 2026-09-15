@@ -382,8 +382,14 @@ func _rtArrStr(_ a: V) -> V { .vStr(rtArrString(a)) }
 
 /** String length in UTF-16 code units, as the JVM counts. */
 func rtLen(_ s: V) -> V { .vInt(rtS(s).utf16.count) }
+/// A Char argument arrives as its code: as a one-character string.
+func rtCharOrString(_ v: V) -> String {
+    if case .vInt(let c) = v, let scalar = Unicode.Scalar(UInt32(max(0, c))) { return String(Character(scalar)) }
+    return rtS(v)
+}
+func _strContains(_ s: V, _ sub: V) -> V { .vBool(rtDouble(rtIndexOf(s, sub)) >= 0) }
 func rtIndexOf(_ s: V, _ sub: V) -> V {
-    let hay = Array(rtS(s).utf16), needle = Array(rtS(sub).utf16)
+    let hay = Array(rtS(s).utf16), needle = Array(rtCharOrString(sub).utf16)
     if needle.isEmpty { return .vInt(0) }
     if needle.count > hay.count { return .vInt(-1) }
     for i in 0...(hay.count - needle.count) where Array(hay[i..<(i + needle.count)]) == needle { return .vInt(i) }
@@ -400,12 +406,14 @@ func _substr(_ s: V, _ a: V, _ b: V) -> V {
 func _substr1(_ s: V, _ a: V) -> V { _substr(s, a, rtLen(s)) }
 func _trim(_ s: V) -> V { .vStr(rtS(s).trimmingCharacters(in: .whitespaces)) }
 func _split(_ s: V, _ sep: V) -> V {
-    let str = rtS(s), by = rtS(sep)
+    let str = rtS(s), by = rtCharOrString(sep)
     if by.isEmpty { return rtArr(str.map { .vStr(String($0)) }) }
     return rtArr(str.components(separatedBy: by).filter { !$0.isEmpty }.map { .vStr($0) })
 }
 func _startsWith(_ s: V, _ p: V) -> V { .vBool(rtS(s).hasPrefix(rtS(p))) }
 func _endsWith(_ s: V, _ p: V) -> V { .vBool(rtS(s).hasSuffix(rtS(p))) }
+func _stripPrefix(_ s: V, _ p: V) -> V { let a = rtS(s), b = rtS(p); return .vStr(a.hasPrefix(b) ? String(a.dropFirst(b.count)) : a) }
+func _stripSuffix(_ s: V, _ p: V) -> V { let a = rtS(s), b = rtS(p); return .vStr(a.hasSuffix(b) ? String(a.dropLast(b.count)) : a) }
 func _replace(_ s: V, _ a: V, _ b: V) -> V { .vStr(rtS(s).replacingOccurrences(of: rtS(a), with: rtS(b))) }
 func _strInterp(_ parts: V, _ args: V) -> V {
     let ps = rtItems(parts), xs = rtItems(args)
@@ -610,6 +618,8 @@ func _arrFind(_ xs: V, _ cl: V) throws -> V {
     return .vNull
 }
 func _contains(_ xs: V, _ x: V) -> V { .vBool(rtItems(xs).contains { rtEq($0, x) }) }
+func _arrIndexOf(_ xs: V, _ x: V) -> V { .vInt(rtItems(xs).firstIndex { rtEq($0, x) } ?? -1) }
+func _optToList(_ o: V) -> V { if case .vNull = o { return rtArr([]) }; return rtArr([o]) }
 func _mkString(_ xs: V, _ sep: V) -> V { .vStr(rtItems(xs).map(rtS).joined(separator: rtS(sep))) }
 func _take(_ xs: V, _ n: V) -> V {
     guard case .vInt(let k) = n else { return rtArr([]) }
@@ -674,6 +684,11 @@ func _optFilter(_ o: V, _ cl: V) throws -> V {
     if case .vNull = o { return .vNull }
     return try RtInvoke(cl, rtArr([o])).rtTrue ? o : .vNull
 }
+func _optFilterNot(_ o: V, _ cl: V) throws -> V {
+    if case .vNull = o { return .vNull }
+    return try RtInvoke(cl, rtArr([o])).rtTrue ? .vNull : o
+}
+func _optForall(_ o: V, _ cl: V) throws -> V { if case .vNull = o { return .vBool(true) }; return try RtInvoke(cl, rtArr([o])) }
 func _optExists(_ o: V, _ cl: V) throws -> V { if case .vNull = o { return .vBool(false) }; return try RtInvoke(cl, rtArr([o])) }
 func _optFold(_ o: V, _ ifEmpty: V, _ cl: V) throws -> V { if case .vNull = o { return ifEmpty }; return try RtInvoke(cl, rtArr([o])) }
 func _optContains(_ o: V, _ x: V) -> V { if case .vNull = o { return .vBool(false) }; return _eq(o, x) }
@@ -684,6 +699,8 @@ func Success(_ v: V) -> V { rtObj(["_cls": .vStr("Success"), "value": v, "_field
 func Failure(_ e: V) -> V {
     rtObj(["_cls": .vStr("Failure"), "exception": e, "error": e, "_fields": rtArr([.vStr("exception")])])
 }
+func RtLeft(_ v: V) -> V { rtObj(["_cls": .vStr("Left"), "value": v, "_fields": rtArr([.vStr("value")])]) }
+func RtRight(_ v: V) -> V { rtObj(["_cls": .vStr("Right"), "value": v, "_fields": rtArr([.vStr("value")])]) }
 func rtIsRight(_ t: V) -> Bool { let c = rtS(t["_cls"]); return c == "Success" || c == "Right" }
 func _tryMap(_ t: V, _ cl: V) throws -> V {
     rtIsRight(t) ? rtObj(["_cls": t["_cls"], "value": try RtInvoke(cl, rtArr([t["value"]]))]) : t
@@ -872,6 +889,15 @@ func RapidTask_guarantee(_ t: V, _ thunk: V) -> V {
         })
     }
 }
+/// task.attempt: always succeeds, with the task's outcome as a Try.
+func RapidTask_attempt(_ t: V) -> V {
+    RtTask { cb in
+        try RapidTask_run(t, RtCb { ok, v in
+            try rtCall(cb, true, rtB(ok) ? Success(v) : Failure(v))
+            return .vNull
+        })
+    }
+}
 func RapidTask_timeout(_ t: V, _ d: V) -> V {
     let ms = rtDouble(RtDurationMs(d))
     return RtTask { cb in
@@ -992,6 +1018,14 @@ func _json_asArr(_ j: V) -> V { j }
 func _json_asObj(_ j: V) -> V { j }
 func _json_asMap(_ j: V) -> V { j }
 func _json_isNull(_ j: V) -> V { if case .vNull = j { return .vBool(true) }; return .vBool(false) }
+func _json_isObj(_ j: V) -> V { if case .vObj = j { return .vBool(true) }; return .vBool(false) }
+func _json_isArr(_ j: V) -> V { if case .vArr = j { return .vBool(true) }; return .vBool(false) }
+func _json_isStr(_ j: V) -> V { if case .vStr = j { return .vBool(true) }; return .vBool(false) }
+/// Json.value: an object's fields as a Scala Map; anything else is its own value.
+func _json_value(_ j: V) -> V {
+    guard case .vObj(let o) = j else { return j }
+    return o.fields.keys.sorted().reduce(_mapEmpty()) { _mapPut($0, .vStr($1), o.fields[$1] ?? .vNull) }
+}
 func _json_toString(_ j: V) -> V { _jsonFormat(j) }
 /// fabric.rw: codecs. A primitive, a String or a Json value is itself (`_rw(name)`); a case class reads and writes
 /// by its field names with a codec per field (`_rwGen`, the emitter's derivation of `RW.gen`); Option, List and

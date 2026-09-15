@@ -1459,12 +1459,95 @@ on returning). EveryUI makes those shapes unwritable rather than patched per scr
 The theme list on NaboTV's placeholder home was the case that showed the old centre-to-centre search was wrong: with
 buttons of different widths, the next button's centre could be farther than one a row up, so Right went up.
 
-**Roku, running the widgets demo on the device for the first time** (the checks only compile it): the emitter wrote
-carriage returns and tabs raw into string literals, which the device refuses (now spliced as `Chr(13)`, `Chr(9)`);
-`Map.getOrElse(key, default)` was emitted as Option's (now `_mapGetOrElse`, with a Swift twin); `Option.toList` is
-`.toList` on `invalid` (avoid it in shared code); a `def` nested in a method is not emitted. With those fixed the demo
-builds and `i18n ok` passes on the Roku, but **the self-sizing layouts do not place children there** — the page
-collapses into its corner — so the Roku's focus and layout behaviour is still to verify.
+**Roku, running the widgets demo on the device for the first time** (the checks only compile it). What it took:
+
+- **String literals.** The emitter wrote carriage returns and tabs raw into them, which the device refuses; they are
+  now spliced as `Chr(13)`, `Chr(9)`.
+- **`Map.getOrElse(key, default)`** was emitted as Option's; it is now `_mapGetOrElse`, with a Swift twin.
+- **Shared code avoids** `Option.toList` (it is `.toList` on `invalid`) and a `def` nested in a method (not emitted).
+- **The page collapsed into its corner** for two reasons. A `super` call forced its by-name argument, so every
+  `size := contentWidth()` that went through an override became a one-off value; super-call arguments are now emitted
+  against the super method's parameters. And `MaterialIconView(size)` overwrote `Component.size`, since a class is one
+  flat associative array there; the parameter is now `points`, and the gap meter reports any constructor parameter
+  that shadows an inherited member.
+- **Keys did nothing.** A statement in an object's body is never run, and `Focus` took the platform's keys in its
+  body. `ui` now calls `Focus.listen()`, and `Direction.set` replaced a body `attach`.
+- **The background stayed white.** The root is a Group, so `ui.backgroundColor` now colours the scene's full-screen
+  rectangle.
+- **The stack is about 130 frames.** A reactive hop costs a dozen of them, and reactify's `Val` stored the overflow
+  and rethrew it on a later read, so the failure surfaced far from its cause (now fixed in reactify). Opening a
+  dialog overflowed it, because measuring a container fired each child's `measure`, one trigger per level.
+  A container now refreshes everything under it in one loop, deepest first, and `Focus.candidates` walks with a
+  list rather than recursion. Keep tree walks iterative in shared code.
+- **No borders.** A SceneGraph Rectangle draws no edge, so every ring-style focus was invisible. The Roku
+  `RenderNode` now draws a square border as four edge rectangles that follow the node's size, and a rounded one as a
+  tinted 9-patch (see "NaboTV on the Roku").
+
+With those fixes the page lays out as on the desktop (677×593 against 682×597). Arrows follow the layouts, a dialog
+keeps the focus, and Back closes it and returns the focus. `i18n ok` passes.
+
+The focus looks needed two more fixes, on every platform. A checkbox showed focus as the `raised` colour, invisible on
+a dialog, so it now gets the accent ring. A chosen `Choice` did not change on focus at all, so it now turns to the
+text colour as a filled button does.
+
+### NaboTV on the Roku (2026-09-14)
+
+`sbt appRoku/emitRoku` in the NaboTV repo builds the channel with `project/RokuChannel.scala`, shared with this build
+the way `AndroidApk.scala` is; `compiler/compilerClasspath` hands an outside build the compiler. Getting NaboTV's own
+code through took these, all in EveryUI:
+
+- **Platform on the Roku:** packaged text (`ReadAsciiFile`), settings (the registry), the device's locale and name,
+  and `Platform.parseMessages`, which parses a translation natively into a keyed table. The Scala ARB parser and
+  entry-list Maps took the Roku past its launch watchdog on a 100 KB file.
+- **Compiler:** `toMap`, a list's `indexOf`, `String.contains`, `stripPrefix`/`stripSuffix`, rapid's `attempt`, fabric's
+  `isObj`/`isStr`/`value`, `Option.toList`/`filterNot`/`forall`. `Left`/`Right` are now `RtLeft`/`RtRight`, since
+  BrightScript's own `Left` and `Right` are string functions. A spliced `obj(pairs*)` passes the array itself. A
+  Char argument to `indexOf`/`split` is taken as its code. A facade returning a Map is no longer read as `Map(...)`.
+  A by-name constructor parameter read from a closure or an inner class is forced from its field. Each has its
+  Swift twin; the Swift side is not yet run on the Mac.
+- **Stack:** reactify's `fire` now propagates in one function (`propagate`: the status, the loop over reactions, the
+  stop rules), so a reactive hop is about 5 BrightScript frames rather than 7 to 9. `Platform.later` on the Roku runs
+  on a later turn of the event loop (a one-shot Timer), as `runLater` and `setTimeout` do, and the screen manager
+  makes every screen change on a turn of its own, so the chain that asked for it is not under it.
+- **Layout:** batched (`LayoutPass`). A change asks for its container to be laid out; the pass lays out the deepest
+  container asked for first, in a loop, so a child's layout that resizes it asks for the parent rather than laying the
+  parent out inside itself. Outside a batch the request is laid out at once; a screen's `createUI` is one batch. The
+  web and desktop golden frames are unchanged.
+- **Runtime loops:** BrightScript's `for each` keeps its place in the object it walks, so a callback that walked the
+  same array (a reaction reading a container's children while its flow layout placed them) ended the outer loop after
+  four tiles. The runtime's callback helpers (`foreach`, `map`, `filter`, …) loop by index.
+- **Screen changes:** each runs on a turn of its own (`Platform.later`), in one layout pass from leaving to arriving,
+  so a change asked for by a key (under the key handling, the focus, the click and the action) does not also carry
+  the new screen's build and layout on the Roku's stack; Back overflowed it before. A cons pattern on a List
+  (`case previous :: rest`, the screen history) tested for a linked-list cell, but a List here is an array.
+- **Patterns:** `case p: SomeCaseClass =>` can arrive as a plain `Typed` pattern, which matched anything; it is tested
+  by the case class's tag now. (A type pattern on a class that is not a case class still matches anything.)
+- **NaboTV:** translations load before the screens are constructed, so the first table fires nothing.
+
+**Where it is:** Link your TV runs on the Roku against the NaboTV server run locally (`server/`, port 8200), the same
+backend every platform is tested against (there is no stand-in API: one that invented its own codes made the same
+screen look different on two TVs). It matches the Android TV build, after these fixes in the Roku backend:
+
+- **Scale.** Android multiplies the layout by the display's density (2 on a Google TV Streamer, so 960x540 units).
+  The Roku now lays out in the same units: `uiScale()` is 2 (1 for a sideload with `viewport.txt`, the golden frame),
+  and the render node multiplies positions, sizes and font sizes by it. Scaling the root Group instead drew text at
+  half size and enlarged it, pixelated; the node scaling draws it at its size on the screen.
+- **Typeface.** Text was measured with its face's file but drawn in the Roku system font, since the runtime named
+  only three families; it is now drawn with the same file it is measured with (`uiSetFontFile`).
+- **Corners.** A SceneGraph Rectangle is square. A rounded fill or edge is now a Poster behind the node's children:
+  a white 9-patch tinted with `blendColor` (and `opacity` for alpha), generated by `RokuChannel.corners` for every
+  whole radius up to 64 pixels and edges up to 8. SceneGraph scales a node to the panel but draws a 9-patch's corners
+  at the image's own pixels, so the image is chosen in panel pixels (`uiPanelScale`, 2/3 on a 720p UI); chosen in
+  design pixels, a pill's ends came out as ellipses.
+- **Reachability.** A module's lazy val was emitted only when something named it, so `family` on the `Open Sans`
+  object, reached through its trait (`font.family`), was dropped and the example app failed on the device; an
+  override is now kept when what it overrides is reached.
+- **Long division.** `.toDouble` on a Long was emitted as nothing, and BrightScript keeps a LongInteger quotient
+  whole, so the pairing countdown's fraction was 0 and its bar empty; it is `Cdbl` now.
+
+Still to do there: the Arabic and Chinese language names draw as boxes (the bundled Roboto has no such glyphs, and the
+Roku has no fallback), `Platform.editText` (the Roku keyboard) is not wired, and the gap meter's one `stepSize`
+(animation's `TaskInstance`, reachable, never run) remains.
 
 ## The network module — Spice as the core, on every backend (2026-09-13)
 
@@ -1566,6 +1649,18 @@ What the devices found that brighterscript and the JVM could not (all fixed):
 - Android has no Loom: `rapid.Task.Virtual = false` before any Task runs; R8
   must keep enum `values()` (`EnumSet` reflects on it).
 - The native HTTP backends do not surface response headers yet.
+- **reactify: `Val.evaluate` caught around `Reactive.fire` as well as the evaluation**, so an exception in any
+  reaction (a stack overflow on the Roku, a bug in a binding) marked the value that was just set correctly as a
+  `Failure`, was swallowed, and was rethrown by whichever later read came first. Fixed in reactify (4.2.1-SNAPSHOT,
+  uncommitted there): only the value's own function is caught; a reaction's exception propagates to whoever set
+  the value. Two new `VarSpec` cases cover both; the reactify suite, the JVM golden and the Roku acceptance run pass.
+- **reactify: `fire` propagates in one function** (approved 2026-09-14, same snapshot): `fire` and a private
+  `propagate` in place of fire, fireNow, fireInternal and fireOne, with the same status and stopping rules, so a
+  change nested through many values costs a small stack (a Roku's) a fraction of the frames.
+- **reactify: `Reactions +=` inserts in one pass** (approved 2026-09-15, same snapshot): the reaction goes where a
+  stable sort of the list with it appended would put it, unless an equal one is there, instead of sorting and
+  de-duplicating the whole list on every attach. The Roku runtime's sort and distinct are quadratic, and a screen's
+  build attaches hundreds of reactions: NaboTV's sign-in screen went from 4.2 s to 0.9 s on the device.
 
 ## IMMEDIATE NEXT STEP
 

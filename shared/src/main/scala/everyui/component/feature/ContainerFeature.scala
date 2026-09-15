@@ -4,7 +4,7 @@ import reactify.{Priority, Val, Var}
 import everyui.component.Component
 
 /** youi's `ContainerFeature`: the children, as a reactify `Var`. Changing it adds and removes the children's
-  * nodes; measuring the container measures its children first. */
+  * nodes; measuring the container measures everything under it first. */
 class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty) {
   changes { (old, current) =>
     old.filterNot(c => current.exists(_ eq c)).foreach { c =>
@@ -35,7 +35,16 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   def nonEmpty: Boolean = get.nonEmpty
   def length: Int = get.length
 
+  // Measuring the container measures everything under it first, deepest first, in one walk rather than a trigger per
+  // level: a Roku runs out of stack a few levels into a chain of triggers (a dialog on its sheet is enough).
   component.measure.on({
-    get.foreach(_.measure.trigger())
+    var order: List[Component] = Nil
+    var pending: List[Component] = get.toList
+    while (pending.nonEmpty) {
+      val c = pending.head
+      order = c :: order
+      pending = c.childComponents.toList ++ pending.tail
+    }
+    order.foreach(_.measured.refresh())
   }, Priority.High)
 }

@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.component.feature.ContainerFeature
-import everyui.layout.Layout
+import everyui.layout.{Layout, LayoutPass}
 import everyui.render.{Nodes, RenderNode}
 import reactify.*
 
@@ -9,8 +9,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   lazy val children: ContainerFeature = new ContainerFeature(this)
 
   /** youi's `LayoutSupport`: the layout, if any, places the children again whenever they, the container's size or
-    * their sizes change. A container given a layout sizes itself to its content, unless a size was set: its height
-    * always, its width when the layout fits it (a column, a row; not a flow, which wraps to the width it is given). */
+    * their sizes change, through the layout pass (`LayoutPass`: the deepest container first, in a loop). A container
+    * given a layout sizes itself to its content, unless a size was set: its height always, its width when the layout
+    * fits it (a column, a row; not a flow, which wraps to the width it is given). */
   lazy val layout: Var[Option[Layout]] = Var(None)
   /** Space between the edges and the children, on every side. */
   lazy val padding: Var[Double] = Var(0.0)
@@ -29,7 +30,6 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     furthest
   }
 
-  private var placing = false
   private val childSizes: Val[Double] = Val(children().map(c => c.size.width() + c.size.height()).sum)
   private var exits: Map[everyui.event.Key, Option[Component]] = Map.empty
 
@@ -44,20 +44,22 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     * container does not say (its parent decides). */
   def focusExit(direction: everyui.event.Key): Option[Option[Component]] = exits.get(direction)
 
-  /** Place the children again, here and all the way down: the reading direction changed. */
-  def relayout(): Unit = {
-    place()
-    children().foreach {
-      case c: Container => c.relayout()
-      case _ => ()
-    }
-  }
+  /** Place the children again, here and all the way down, in one pass: the reading direction changed. */
+  def relayout(): Unit = LayoutPass.relayout(this)
 
-  private def place(): Unit = if (!placing) {
+  /** Whether the layout pass has this container waiting to be laid out. */
+  private[everyui] var layoutPending: Boolean = false
+  /** Whether the layout is placing the children now. */
+  private[everyui] var placing: Boolean = false
+
+  /** Run the layout (the layout pass calls it): where the children go, now. */
+  private[everyui] def placeNow(): Unit = if (!placing) {
     placing = true
     try layout().foreach(_.layout(this, children()))
     finally placing = false
   }
+
+  private def place(): Unit = LayoutPass.request(this)
   layout.attach { l =>
     l.foreach { lay =>
       if (!size.height.explicit) size.height := contentHeight()

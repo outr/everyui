@@ -4,6 +4,7 @@ import reactify.*
 import everyui.async.Task
 import everyui.component.{Component, Container}
 import everyui.component.types.PositionType
+import everyui.layout.LayoutPass
 
 /** A screen with a container the size of its host, filled by `createUI` once, on its first showing. */
 trait UIScreen extends Screen with PathActivation {
@@ -19,7 +20,8 @@ trait UIScreen extends Screen with PathActivation {
   override protected def init(): Task[Unit] = super.init().flatMap { _ =>
     container.size.width := manager.host.size.width
     container.size.height := manager.host.size.height
-    createUI()
+    // the whole UI laid out in one pass once it is built, rather than a container at a time as it is put together
+    LayoutPass.batched(createUI())
   }
 
   /** Showing a screen swaps its container into the host. */

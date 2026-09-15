@@ -184,6 +184,9 @@ object Platform {
 
   def later(f: () => Unit): Unit = f()
 
+  /** An ARB file's messages (everyui.i18n.Arb). */
+  def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
+
   /** Not read yet: the runtime is still to open packaged text files, so translations fall back to their keys. */
   def readText(path: String, done: String => Unit): Unit = done("")
   def language(): String = "en"

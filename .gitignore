@@ -13,6 +13,7 @@ out-js/
 out-apk/
 desktop/out/
 checks/out/
+compiler/out/
 webcheck/out/
 
 # IDE

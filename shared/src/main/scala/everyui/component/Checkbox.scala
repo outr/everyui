@@ -5,7 +5,8 @@ import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
 
-/** A box that is checked or not, its label beside it and a note under it; a click, a tap or Enter flips it. */
+/** A box that is checked or not, its label beside it and a note under it; a click, a tap or Enter flips it. The focus
+  * on it is a ring in the accent, which shows on a dialog as well as on the page. */
 class Checkbox(label: String, initial: Boolean = false, note: Option[String] = None, width: Double = 400.0) extends Container {
   val checked: Var[Boolean] = Var(initial)
   /** The label's colour; bind it to mark a choice worth noticing. */
@@ -35,7 +36,9 @@ class Checkbox(label: String, initial: Boolean = false, note: Option[String] = N
   radius @= 6.0
   size.width @= width
   size.height := 28.0 + detail.map(_.size.height() + 4.0).getOrElse(0.0)
-  backgroundColor := (if (focused() || event.pointer.over()) Theme.raised() else Color.Clear)
+  backgroundColor := (if (focused() || event.pointer.over()) Theme.controlLit() else Color.Clear)
+  borderWidth := (if (focused()) 2.5 else 0.0)
+  borderColor := Theme.accent()
   children ++= List(box, title)
   detail.foreach(d => children += d)
   event.click.attach { e =>

@@ -14,6 +14,32 @@ function uiRoot() as object
     return GetGlobalAA().appRoot
 end function
 
+' The panel's UI pixels per design pixel: 2/3 on a Roku whose UI is 720p, 1 at 1080p. SceneGraph scales a node's
+' size to the panel, but draws a 9-patch's fixed corners at the image's own pixels, so a corner image is chosen in
+' panel pixels or it is squeezed into an ellipse.
+function uiPanelScale() as float
+    ga = GetGlobalAA()
+    if ga.uiPanelScaleValue = invalid
+        ga.uiPanelScaleValue = 1.0
+        resolution = CreateObject("roDeviceInfo").GetUIResolution()
+        if resolution <> invalid and resolution.height <> invalid and resolution.height > 0 then ga.uiPanelScaleValue = resolution.height / 1080.0
+    end if
+    return ga.uiPanelScaleValue
+end function
+
+' Layout units to the channel's 1920x1080 design space: 2, so a Roku lays out in the 960x540 units an Android TV at
+' density 2 does and a screen comes out the same size on both. The render node multiplies positions, sizes and font
+' sizes by it (a scaled root would draw text small and enlarge it). A sideload with pkg:/viewport.txt lays out in the
+' design space itself (1): the frame tools/check.sh compares with the golden, pixel for pixel.
+function uiScale() as float
+    ga = GetGlobalAA()
+    if ga.uiScaleValue = invalid
+        ga.uiScaleValue = 2.0
+        if ReadAsciiFile("pkg:/viewport.txt") <> "" then ga.uiScaleValue = 1.0
+    end if
+    return ga.uiScaleValue
+end function
+
 ' A SceneGraph Label, sized for 1080p and visible against the generated
 ' scene's light background.
 function uiText() as object
@@ -102,15 +128,14 @@ sub uiSetFontSize(node as object, size as float)
     node.font = f
 end sub
 
-' The design resolution declared in the manifest (ui_resolutions=fhd), which is
-' the coordinate space SceneGraph lays out in regardless of the panel's own
-' resolution.
+' The screen in layout units: the manifest's design resolution (ui_resolutions=fhd), the space SceneGraph lays
+' out in whatever the panel, over the root's scale.
 function uiScreenWidth() as float
-    return 1920.0
+    return 1920.0 / uiScale()
 end function
 
 function uiScreenHeight() as float
-    return 1080.0
+    return 1080.0 / uiScale()
 end function
 
 sub uiAppend(parent as object, child as object)
@@ -148,6 +173,35 @@ end sub
 sub uiOnFrame()
     ga = GetGlobalAA()
     if ga.uiTick <> invalid then RtInvoke(ga.uiTick, [])
+end sub
+
+' Run `f` on a later turn of the render thread's event loop, on a fresh stack: a one-shot Timer drains the queue.
+sub uiLater(f as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiLaterQueue = invalid then ga.uiLaterQueue = []
+    ga.uiLaterQueue.push(f)
+    if ga.uiLaterTimer = invalid
+        t = CreateObject("roSGNode", "Timer")
+        t.repeat = false
+        t.duration = 0.001
+        ga.appScene.appendChild(t)
+        t.observeField("fire", "uiOnLater")
+        ga.uiLaterTimer = t
+    end if
+    if ga.uiLaterArmed <> true
+        ga.uiLaterArmed = true
+        ga.uiLaterTimer.control = "start"
+    end if
+end sub
+
+sub uiOnLater()
+    ga = GetGlobalAA()
+    ga.uiLaterArmed = false
+    queue = ga.uiLaterQueue
+    ga.uiLaterQueue = []
+    for each f in queue
+        RtInvoke(f, [])
+    end for
 end sub
 
 ' Math intrinsics for Platform.sqrt / pow / sin / cos.
@@ -220,6 +274,15 @@ function uiCalibratedSize(uri as string, size as float) as integer
     ga.uiFontSizes[key] = best
     return best
 end function
+
+' A face by its file (pkg:/fonts/<file>.ttf): the one the text is measured by, whatever its family.
+sub uiSetFontFile(node as object, uri as string, size as float)
+    if node = invalid then return
+    f = CreateObject("roSGNode", "Font")
+    f.uri = uri
+    f.size = uiCalibratedSize(uri, size)
+    node.font = f
+end sub
 
 sub uiSetFont(node as object, family as string, weight as integer, size as float)
     if node = invalid then return
@@ -295,11 +358,21 @@ end sub
 
 sub uiSetBackgroundColor(node as object, hex as string)
     if node = invalid then return
-    if node.subtype() <> "Rectangle" then return
-    if hex = ""
-        node.color = "0x00000000"
-    else
-        if Len(hex) = 9 then node.color = "0x" + UCase(Mid(hex, 2, 8)) else node.color = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
+    color = "0x00000000"
+    if hex <> ""
+        if Len(hex) = 9 then color = "0x" + UCase(Mid(hex, 2, 8)) else color = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
+    end if
+    if node.subtype() = "Rectangle"
+        node.color = color
+    else if node.isSameNode(GetGlobalAA().appRoot)
+        ' the render root is a Group: its background is the scene's full-screen "bg" rectangle (white when cleared)
+        scene = node.getScene()
+        if scene <> invalid
+            bg = scene.findNode("bg")
+            if bg <> invalid
+                if hex = "" then bg.color = "0xFFFFFFFF" else bg.color = color
+            end if
+        end if
     end if
 end sub
 
@@ -360,6 +433,54 @@ end function
 ' `pkg:/<name>.txt`, or "" — a test sideload adds it (Checks roku-install --add name.txt=value).
 function uiLaunchArg(name as string) as string
     return ReadAsciiFile("pkg:/" + name + ".txt")
+end function
+
+' A packaged text file by its pkg:/ path (a translation), or "".
+function uiReadText(path as string) as string
+    return ReadAsciiFile(path)
+end function
+
+' An ARB file's messages as a string-keyed assoc array, which the runtime reads as a Scala Map: parsed natively, with
+' its metadata (@key, @@locale) and anything that is not a string left out.
+function uiArbMessages(text as string) as object
+    messages = {}
+    messages.SetModeCaseSensitive()
+    if text = "" then return messages
+    json = ParseJson(text)
+    if type(json) <> "roAssociativeArray" then return messages
+    for each key in json
+        if Left(key, 1) <> "@"
+            value = json[key]
+            if GetInterface(value, "ifString") <> invalid then messages[key] = value
+        end if
+    end for
+    return messages
+end function
+
+' The channel's saved settings: one registry section, kept across launches.
+function uiSetting(name as string) as string
+    section = CreateObject("roRegistrySection", "everyui")
+    if section.Exists(name) then return section.Read(name)
+    return ""
+end function
+
+sub uiSaveSetting(name as string, value as string)
+    section = CreateObject("roRegistrySection", "everyui")
+    if value = "" then section.Delete(name) else section.Write(name, value)
+    section.Flush()
+end sub
+
+' The device's language as a BCP 47 tag ("en-US"; the Roku says "en_US").
+function uiLanguage() as string
+    return CreateObject("roDeviceInfo").GetCurrentLocale().Replace("_", "-")
+end function
+
+' What the person calls this Roku ("Living Room Roku"), else its model's name.
+function uiDeviceName() as string
+    info = CreateObject("roDeviceInfo")
+    name = info.GetFriendlyName()
+    if name = invalid or name = "" then name = info.GetModelDisplayName()
+    return name
 end function
 
 ' ── the network module (network/native): sockets and HTTP through Task nodes ──────
@@ -439,6 +560,24 @@ end sub
 ' A SceneGraph Rectangle has no corner radius.
 sub uiSetRadius(node as object, radius as float)
 end sub
+
+' A shape behind a node's children, tinted: a rounded fill or edge (a white 9-patch in images/rr, made by the channel
+' build), created the first time at `index` among the children, then updated. "#rrggbb" or "#rrggbbaa".
+function uiShape(parent as object, existing as dynamic, uri as string, hex as string, width as float, height as float, index as integer) as object
+    p = existing
+    if p = invalid
+        p = CreateObject("roSGNode", "Poster")
+        parent.insertChild(p, index)
+    end if
+    if p.uri <> uri then p.uri = uri
+    alpha = 255
+    if Len(hex) = 9 then alpha = Val(Mid(hex, 8, 2), 16)
+    p.blendColor = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
+    p.opacity = alpha / 255.0
+    p.width = width
+    p.height = height
+    return p
+end function
 
 ' Milliseconds since the epoch as local "yyyy-MM-dd HH:mm:ss".
 function uiLocalDateTime(millis as float) as string

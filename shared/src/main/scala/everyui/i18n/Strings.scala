@@ -10,7 +10,8 @@ import reactify.*
   * as itself.
   *
   * Translations are ARB files among the app's assets, found by `source(code)` (`/l10n/app_<code>.arb` unless the app
-  * says otherwise). `rtl` is whether the current language is written right to left (`Direction.rtl`): rows, text and fields follow it. */
+  * says otherwise). `rtl` is whether the current language is written right to left (`Direction.rtl`): rows, text and
+  * fields follow it. */
 object Strings {
   val language: Var[Language] = Var(Language("en", "English", "English"))
   /** Whether the current language reads right to left (`Direction.rtl`, which layouts and the platform follow). */
@@ -31,7 +32,7 @@ object Strings {
   def use(next: Language): Task[Unit] = load(next.code).map { messages =>
     table @= messages
     language @= next
-    Direction.rtl @= next.rtl
+    Direction.set(next.rtl)
   }
 
   /** The language chosen on this device before, of `supported`, if one was (`remember`). */
@@ -49,5 +50,5 @@ object Strings {
   def format(key: String, args: (String, String)*): String = Icu.format(apply(key), args.toMap)
 
   private def load(code: String): Task[Map[String, String]] =
-    Task.async[Map[String, String]](done => Platform.readText(Platform.resolvePath(source(code)), text => done(Arb.parse(text))))
+    Task.async[Map[String, String]](done => Platform.readText(Platform.resolvePath(source(code)), text => done(Platform.parseMessages(text))))
 }

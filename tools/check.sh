@@ -297,7 +297,7 @@ tvos_fps() { LIVE_SECONDS="${FPS_SECONDS:-60}" tools/tvos-run.sh; }
 acceptance() { tools/roku-acceptance.sh; }
 
 roku_frame() {
-  $CHECKS roku-install roku/out-roku --add "freeze.txt=$FREEZE" &&
+  $CHECKS roku-install roku/out-roku --add "freeze.txt=$FREEZE" --add "viewport.txt=1920x1080" &&
     $CHECKS roku-console 35 "$LOGS/roku-frame-console.log" &&
     frame roku "$LOGS/roku-frame-console.log"
 }

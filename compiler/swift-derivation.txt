@@ -555,7 +555,7 @@ class SwiftEmitter(
           // EVERY use (Scala re-evaluates it — reactify's dependency tracking
           // depends on exactly that)
           case Some(ref) =>
-            if (boxed) ref + ".v" else if (byName) s"RtForce($ref)" else ref
+            if (boxed) ref + ".v" else if (byNameField) s"RtForce(self.${fieldKey(sym)})" else if (byName) s"RtForce($ref)" else ref
           case None =>
             if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
             else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
@@ -567,7 +567,7 @@ class SwiftEmitter(
           // EVERY use (Scala re-evaluates it — reactify's dependency tracking
           // depends on exactly that)
           case Some(ref) =>
-            if (boxed) field(ref, "v") else if (byName) s"RtForce($ref)" else ref
+            if (boxed) field(ref, "v") else if (byNameField) s"RtForce(${field("this", fieldKey(sym))})" else if (byName) s"RtForce($ref)" else ref
           case None =>
             if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
             else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
@@ -713,8 +713,9 @@ class SwiftEmitter(
             case Select(recv, m) if isFabricJson(fn) => shimCall(s"_json_$m", Some(recv), explicitArgs(fn.symbol, args))
             case _ if isFabricBuilder(fn) =>
               fn.symbol.name match {
-                case "obj" => s"_jsonObj([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
-                case "arr" => s"[${flattenVarargs(args).map(emitArgVal).mkString(", ")}]"
+                // a spliced list (`obj(pairs*)`) is the array itself
+                case "obj" => s"_jsonObj(${varargsArray(args)})"
+                case "arr" => varargsArray(args)
                 case _     => emitArgVal(args.head)
               }
             case _ if fnIs(fn, "fabric.io.JsonParser", "apply") => s"_jsonParse(${emitArgVal(args.head)})"
@@ -722,8 +723,9 @@ class SwiftEmitter(
             case Select(recv, m) if isFabricJson(fn) => shimCall(s"_json_$m", Some(recv), explicitArgs(fn.symbol, args))
             case _ if isFabricBuilder(fn) =>
               fn.symbol.name match {
-                case "obj" => s"_jsonObj(${rtArr(flattenVarargs(args).map(emitArgVal))})"
-                case "arr" => rtArr(flattenVarargs(args).map(emitArgVal))
+                // a spliced list (`obj(pairs*)`) is the array itself
+                case "obj" => s"_jsonObj(${varargsArray(args)})"
+                case "arr" => varargsArray(args)
                 case _     => emitArgVal(args.head)
               }
             case _ if fnIs(fn, "fabric.io.JsonParser", "apply") => s"_jsonParse(${emitArgVal(args.head)})"
@@ -762,17 +764,17 @@ class SwiftEmitter(
 @@ old
               if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
               else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) =>
+            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_distinct([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
-            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) =>
+            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_mapFromPairs(${varargsArray(args)})"
             case _ if ownerIs(fn, "scala.math.package") && mathNames.contains(fn.symbol.name) =>
 @@ new
               if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
               else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) =>
+            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_distinct(${rtArr(flattenVarargs(args).map(emitArgVal))})"
-            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) =>
+            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_mapFromPairs(${varargsArray(args)})"
             case _ if ownerIs(fn, "scala.math.package") && mathNames.contains(fn.symbol.name) =>
 @@ old
@@ -783,7 +785,7 @@ class SwiftEmitter(
             case Select(recv, "isEmpty") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
               s"(Len(${emitTerm(recv)}) = 0)"
             case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
-              s"(Instr(1, ${emitTerm(recv)}, ${emitArgVal(args.head)}) - 1)"
+              s"_strIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
               s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
@@ -922,6 +924,10 @@ class SwiftEmitter(
 @@ old
             case Select(recv, "exists") if isOptionType(recv) =>
               s"_optExists(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "filterNot") if isOptionType(recv) =>
+              s"_optFilterNot(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "forall") if isOptionType(recv) =>
+              s"_optForall(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "contains") if isOptionType(recv) =>
               s"(${emitTerm(recv)} = ${emitArgVal(args.head)})"
             // ── Try / Either ops ──
@@ -930,6 +936,10 @@ class SwiftEmitter(
 @@ new
             case Select(recv, "exists") if isOptionType(recv) =>
               s"_optExists(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "filterNot") if isOptionType(recv) =>
+              s"_optFilterNot(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "forall") if isOptionType(recv) =>
+              s"_optForall(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "contains") if isOptionType(recv) =>
               s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             // ── Try / Either ops ──
@@ -1009,7 +1019,7 @@ class SwiftEmitter(
         case Apply(f0, sargs) if superSel(f0).isDefined =>
           val ss = superSel(f0).get.symbol
           if (ss.exists && userTypeDefs.contains(ss.owner))
-            s"${modelImplName(ss)}(self${emitArgList(sargs).map(", " + _).mkString})"
+            s"${modelImplName(ss)}(self${emitArgList(sargs, ss).map(", " + _).mkString})"
           else "invalid"
         case sel @ Select(spr, _) if isSuper(spr) =>
           val ss = sel.symbol
@@ -1023,7 +1033,7 @@ class SwiftEmitter(
         case Apply(f0, sargs) if superSel(f0).isDefined =>
           val ss = superSel(f0).get.symbol
           if (ss.exists && userTypeDefs.contains(ss.owner))
-            s"${modelImplName(ss)}(this${emitArgList(sargs).map(", " + _).mkString})"
+            s"${modelImplName(ss)}(this${emitArgList(sargs, ss).map(", " + _).mkString})"
           else NULL
         case sel @ Select(spr, _) if isSuper(spr) =>
           val ss = sel.symbol
@@ -1063,6 +1073,7 @@ class SwiftEmitter(
         case Select(q, "isDefined" | "nonEmpty") if isOptionType(q) => s"(${emitTerm(q)} <> invalid)"
         case Select(q, "isEmpty") if isOptionType(q)               => s"(${emitTerm(q)} = invalid)"
         case Select(q, "get" | "orNull") if isOptionType(q)        => emitTerm(q)
+        case Select(q, "toList" | "toSeq" | "toVector") if isOptionType(q) => s"_optToList(${emitTerm(q)})"
         case Select(q, "toOption") if isTryType(q) || isEitherType(q) => s"_tryToOption(${emitTerm(q)})"
         case Select(q, "toList" | "toSeq" | "toArray" | "toVector" | "toIndexedSeq") if isCollType(q) => emitTerm(q)
         // Paren-less collection getters → runtime helpers.
@@ -1102,6 +1113,7 @@ class SwiftEmitter(
         case Select(q, "isDefined" | "nonEmpty") if isOptionType(q) => s"(${emitTerm(q)} != $NULL)"
         case Select(q, "isEmpty") if isOptionType(q)               => s"(${emitTerm(q)} == $NULL)"
         case Select(q, "get" | "orNull") if isOptionType(q)        => emitTerm(q)
+        case Select(q, "toList" | "toSeq" | "toVector") if isOptionType(q) => s"_optToList(${emitTerm(q)})"
         case Select(q, "toOption") if isTryType(q) || isEitherType(q) => s"_tryToOption(${emitTerm(q)})"
         case Select(q, "toList" | "toSeq" | "toArray" | "toVector" | "toIndexedSeq") if isCollType(q) => emitTerm(q)
         // Paren-less collection getters → runtime helpers.
@@ -1115,6 +1127,9 @@ class SwiftEmitter(
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
+        // an integral value made floating: BrightScript keeps a LongInteger quotient whole
+        case Select(q, "toDouble" | "toFloat") if Set("scala.Long", "scala.Int", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(q.tpe)) =>
+          s"Cdbl(${emitTerm(q)})"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
@@ -1170,6 +1185,8 @@ class SwiftEmitter(
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `self.getter` only holds the function ref, so call it.
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
+              // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
+              case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${emitTerm(q)}.${brSafe(name)})"
               case None                  => s"${emitTerm(q)}.${brSafe(name)}"
             }
           }
@@ -1184,6 +1201,8 @@ class SwiftEmitter(
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `this.getter` only holds the function ref, so call it.
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
+              // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
+              case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${field(emitTerm(q), brSafe(name))})"
               case None                  => field(emitTerm(q), brSafe(name))
             }
           }
@@ -1235,7 +1254,15 @@ class SwiftEmitter(
         val ts = ps.map(x => patternTest(x, subj))
         ("(" + ts.map(_._1).mkString(" or ") + ")", ts.flatMap(_._2))
       case Literal(c)        => (s"($subj = ${emitConst(c)})", Nil)
-      case Typed(inner, _)   => patternTest(inner, subj)
+      // `case p: PairStartResponse =>` can arrive as a plain Typed pattern: a case class is tested by its tag all the same
+      case Typed(inner, tpt) =>
+        val ts = tpt.tpe.typeSymbol
+        val tag =
+          if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
+            s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
+          else "true"
+        val (it, ib) = patternTest(inner, subj)
+        (if (it == "true") tag else if (tag == "true") it else s"$tag and $it", ib)
       case TypedOrTest(inner, tpt) =>
         val ts = tpt.tpe.typeSymbol
 @@ new
@@ -1244,7 +1271,15 @@ class SwiftEmitter(
         val ts = ps.map(x => patternTest(x, subj))
         ("(" + ts.map(_._1).mkString(" || ") + ")", ts.flatMap(_._2))
       case Literal(c)        => (s"($subj == ${emitConst(c)})", Nil)
-      case Typed(inner, _)   => patternTest(inner, subj)
+      // `case p: PairStartResponse =>` can arrive as a plain Typed pattern: a case class is tested by its tag all the same
+      case Typed(inner, tpt) =>
+        val ts = tpt.tpe.typeSymbol
+        val tag =
+          if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
+            s"($subj != $NULL && ${field(subj, "_cls")} == ${brStr(ts.name)})"
+          else "true"
+        val (it, ib) = patternTest(inner, subj)
+        (if (it == "true") tag else if (tag == "true") it else s"$tag && $it", ib)
       case TypedOrTest(inner, tpt) =>
         val ts = tpt.tpe.typeSymbol
 @@ old
@@ -1263,6 +1298,11 @@ class SwiftEmitter(
           if subs.size == 1 && { val c = patternClass(u); c.exists && c.fullName == "scala.Some" } =>
         val (it, ib) = patternTest(subs.head, subj)
         (if (it == "true") s"($subj <> invalid)" else s"($subj <> invalid) and $it", ib)
+      // `h :: t` on a List, which is an array here (not a chain of cells): non-empty, its first element, the rest
+      case u @ Unapply(_, _, List(hp, tp)) if { val c = patternClass(u); c.exists && c.fullName == "scala.collection.immutable.::" } =>
+        val (ht, hb) = patternTest(hp, s"$subj[0]")
+        val (tt, tb) = patternTest(tp, s"_drop($subj, 1)")
+        ((s"($subj <> invalid and $subj.count() > 0)" :: List(ht, tt)).filter(_ != "true").mkString(" and "), hb ++ tb)
       case u @ Unapply(_, _, subs) =>
         val cls = patternClass(u)
         val fields = if (cls.exists) cls.caseFields.map(_.name) else Nil
@@ -1292,6 +1332,11 @@ class SwiftEmitter(
           if subs.size == 1 && { val c = patternClass(u); c.exists && c.fullName == "scala.Some" } =>
         val (it, ib) = patternTest(subs.head, subj)
         (if (it == "true") s"($subj != $NULL)" else s"($subj != $NULL) && $it", ib)
+      // `h :: t` on a List, which is an array here (not a chain of cells): non-empty, its first element, the rest
+      case u @ Unapply(_, _, List(hp, tp)) if { val c = patternClass(u); c.exists && c.fullName == "scala.collection.immutable.::" } =>
+        val (ht, hb) = patternTest(hp, s"$subj[${vInt(0)}]")
+        val (tt, tb) = patternTest(tp, s"_drop($subj, ${vInt(1)})")
+        ((s"($subj != $NULL && rtCount($subj) > ${vInt(0)})" :: List(ht, tt)).filter(_ != "true").mkString(" && "), hb ++ tb)
       case u @ Unapply(_, _, subs) =>
         val cls = patternClass(u)
         val fields = if (cls.exists) cls.caseFields.map(_.name) else Nil
@@ -1764,6 +1809,13 @@ class SwiftEmitter(
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
           sb.append(s"  self.${fieldKey(vd.symbol)} = ${brSafe(vd.name)}\n")
+          // an object is one flat table, so a parameter kept under the name of a member the class inherits overwrites it
+          // (`size: Double` on a component replaced its `size` feature, and every layout touching it failed quietly):
+          // a gap, so the checks stop it rather than a device
+          shadowedBy(vd.symbol).foreach { base =>
+            todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name}"
+            sb.append(s"  RtTodo(${brStr("parameter " + vd.name + " of " + sym.name + " overwrites " + base.name + " " + vd.name)})\n")
+          }
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
           rhsOpt match {
             case Some(r) if !isWildcardInit(r) => sb.append(emitInto(r, s"self.${fieldKey(vd.symbol)}")).append("\n")
@@ -1816,6 +1868,7 @@ class SwiftEmitter(
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
           sb.append(s"  ${field("this", fieldKey(vd.symbol))} = ${brSafe(vd.name)}\n")
+          shadowedBy(vd.symbol).foreach(base => todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name}")
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
           rhsOpt match {
             case Some(r) if !isWildcardInit(r) => sb.append(emitInto(r, field("this", fieldKey(vd.symbol)))).append("\n")

@@ -27,7 +27,9 @@ object Focus {
   /** Where the focus may go: under `ui`, or under an open dialog alone, so the arrows never reach what it covers. */
   val scope: Var[Option[Component]] = Var(None)
 
-  Platform.onKey((name, pressed) => key(name, pressed))
+  /** Take the platform's keys: `ui` calls it as it starts, since the Roku compiler runs no statement in an object's
+    * body. */
+  def listen(): Unit = Platform.onKey((name, pressed) => key(name, pressed))
 
   private var backs: List[Key => Boolean] = Nil
 
@@ -215,11 +217,16 @@ object Focus {
   /** Whether `c` is on screen: under `ui`, focusable or not. */
   def showing(c: Component): Boolean = within(c, ui)
 
-  /** The focusable components under `root`, in tree order. */
+  /** The focusable components under `root`, in tree order. Walked with a list rather than by recursion: a Roku's
+    * stack is small, and every level of a deep tree (a dialog on its sheet) costs it several frames. */
   def candidates(root: Component): Vector[Component] = {
     var found: Vector[Component] = Vector.empty
-    if (root.focusable()) found = found :+ root
-    root.childComponents.foreach(child => found = found ++ candidates(child))
+    var pending: List[Component] = List(root)
+    while (pending.nonEmpty) {
+      val c = pending.head
+      pending = c.childComponents.toList ++ pending.tail
+      if (c.focusable()) found = found :+ c
+    }
     found
   }
 

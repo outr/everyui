@@ -499,6 +499,9 @@ object Platform {
   def pushPath(path: String): Unit = Host.path = path
   def onPath(f: String => Unit): Unit = ()
 
+  /** An ARB file's messages (everyui.i18n.Arb). */
+  def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
+
   /** A text file under the assets (a translation), by the URI `resolvePath` makes, or "" if it is not there. */
   def readText(path: String, done: String => Unit): Unit = done(
     try java.nio.file.Files.readString(java.nio.file.Paths.get(new java.net.URI(path)))

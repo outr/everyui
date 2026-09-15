@@ -129,9 +129,10 @@ class RokuEmitter(
     var pruning = false
     def keepClass(s: Symbol): Boolean = !pruning || reachableClasses.contains(s)
     def keepMember(s: Symbol): Boolean = !pruning || reachableMembers.contains(s)
-    /** A module's lazy val is emitted only when something names it (an icon table has thousands); a class's
-      * always, since a trait slot may reach it. */
-    def liveLazy(s: Symbol): Boolean = !s.owner.flags.is(Flags.Module) || keepMember(s)
+    /** A module's lazy val is emitted only when something names it (an icon table has thousands), or names what it
+      * overrides (`font.family` on a trait an object implements); a class's always, since a trait slot may reach it. */
+    def liveLazy(s: Symbol): Boolean =
+      !s.owner.flags.is(Flags.Module) || keepMember(s) || s.allOverriddenSymbols.exists(keepMember)
     val aaIfaceMethods = Set("addreplace", "lookup", "lookupci", "doesexist", "delete", "clear",
       "keys", "items", "setmodecasesensitive", "append", "count", "reset", "next", "isnext", "isempty")
     val primitiveFqns = Set("scala.Int", "scala.Long", "scala.Double", "scala.Float", "scala.Short",
@@ -553,6 +554,13 @@ class RokuEmitter(
     def isVirtualField(s: Symbol): Boolean =
       s.exists && !s.isDefDef && s.owner.exists && isModel(s.owner) && !s.flags.is(Flags.Lazy)
         && overriddenUser(s).exists(_.isDefDef)
+    /** The user base class that declares a member named like the constructor parameter `p` (other than a parameter it
+      * passes on, which holds the same value, or a member it overrides), if any. */
+    def shadowedBy(p: Symbol): Option[Symbol] =
+      try p.owner.typeRef.baseClasses.drop(1).find { b =>
+        userTypeDefs.contains(b) && b.declarations.exists(d => d.name == p.name && !d.flags.is(Flags.ParamAccessor))
+      }.filter(_ => p.allOverriddenSymbols.isEmpty && !p.flags.is(Flags.Override))
+      catch case _: Throwable => None
     def fieldKey(s: Symbol): String =
       if (isVirtualField(s)) "__v_" + brSafe(s.name) else brSafe(s.name)
     def isModelMember(s: Symbol): Boolean =
@@ -1114,13 +1122,16 @@ class RokuEmitter(
       else {
         val boxed = boxedVars.contains(sym)
         val byName = isByNameParam(sym)
+        // a by-name constructor parameter read from a method or closure of its class: the field it was kept in
+        val byNameField = byName && anonCaptureRef(sym).isEmpty && !inParentArgs && sym.flags.is(Flags.ParamAccessor) &&
+          currentClass.exists && inCurrentClass(sym.owner)
         val local = anonCaptureRef(sym).orElse(if (boxed || byName) Some(brSafe(name)) else None)
         local match {
           // a captured box reads its cell; a by-name parameter is forced on
           // EVERY use (Scala re-evaluates it — reactify's dependency tracking
           // depends on exactly that)
           case Some(ref) =>
-            if (boxed) ref + ".v" else if (byName) s"RtForce($ref)" else ref
+            if (boxed) ref + ".v" else if (byNameField) s"RtForce(self.${fieldKey(sym)})" else if (byName) s"RtForce($ref)" else ref
           case None =>
             if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
             else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
@@ -1324,8 +1335,9 @@ class RokuEmitter(
             case Select(recv, m) if isFabricJson(fn) => shimCall(s"_json_$m", Some(recv), explicitArgs(fn.symbol, args))
             case _ if isFabricBuilder(fn) =>
               fn.symbol.name match {
-                case "obj" => s"_jsonObj([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
-                case "arr" => s"[${flattenVarargs(args).map(emitArgVal).mkString(", ")}]"
+                // a spliced list (`obj(pairs*)`) is the array itself
+                case "obj" => s"_jsonObj(${varargsArray(args)})"
+                case "arr" => varargsArray(args)
                 case _     => emitArgVal(args.head)
               }
             case _ if fnIs(fn, "fabric.io.JsonParser", "apply") => s"_jsonParse(${emitArgVal(args.head)})"
@@ -1391,9 +1403,9 @@ class RokuEmitter(
             case Select(recv, "contains") if isOptionType(recv) =>
               if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
               else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) =>
+            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_distinct([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
-            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) =>
+            case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_mapFromPairs(${varargsArray(args)})"
             case _ if ownerIs(fn, "scala.math.package") && mathNames.contains(fn.symbol.name) =>
               emitMath(fn.symbol.name, args)
@@ -1406,7 +1418,7 @@ class RokuEmitter(
             case Select(recv, "isEmpty") if fqnOf(recv.tpe) == "java.lang.String" && args.isEmpty =>
               s"(Len(${emitTerm(recv)}) = 0)"
             case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
-              s"(Instr(1, ${emitTerm(recv)}, ${emitArgVal(args.head)}) - 1)"
+              s"_strIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
               s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
@@ -1523,6 +1535,8 @@ class RokuEmitter(
             case Select(recv, "split")       => s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "startsWith")  => s"_startsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "endsWith")    => s"_endsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "stripPrefix") if args.size == 1 => s"_stripPrefix(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "stripSuffix") if args.size == 1 => s"_stripSuffix(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "replace") if args.length == 2 =>
               s"_replace(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
             // FiniteDuration arithmetic and ordering, on the runtime's millisecond representation
@@ -1552,6 +1566,10 @@ class RokuEmitter(
               s"_optFilter(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "exists") if isOptionType(recv) =>
               s"_optExists(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "filterNot") if isOptionType(recv) =>
+              s"_optFilterNot(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "forall") if isOptionType(recv) =>
+              s"_optForall(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "contains") if isOptionType(recv) =>
               s"(${emitTerm(recv)} = ${emitArgVal(args.head)})"
             // ── Try / Either ops ──
@@ -1580,6 +1598,13 @@ class RokuEmitter(
               s"_arrForall(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "find") =>
               s"_arrFind(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "indexOf") if isCollType(recv) && args.size == 1 =>
+              s"_arrIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // pairs to a Map (the argument is the `<:<` evidence)
+            case Select(recv, "toMap") if isCollType(recv) && args.size == 1 =>
+              s"_mapFromPairs(${emitTerm(recv)})"
+            case Select(recv, "contains") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
+              s"_strContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "contains") =>
               s"_contains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "mkString") if args.length == 1 =>
@@ -1600,6 +1625,9 @@ class RokuEmitter(
               s"_until(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "to") if args.length == 1 =>
               s"_toIncl(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            // Either's constructors: BrightScript's own Left and Right are string functions, so the runtime's are named apart
+            case Select(_, "apply") if ownerIs(fn, "scala.util.Left") && args.size == 1 => s"RtLeft(${emitArgVal(args.head)})"
+            case Select(_, "apply") if ownerIs(fn, "scala.util.Right") && args.size == 1 => s"RtRight(${emitArgVal(args.head)})"
             case Select(recv, "apply") if isFacadeCall(fn) =>
               s"${emitTerm(recv)}(${emitFacadeArgs(args)})"
             case _ if isFacadeCall(fn) => s"${emitTerm(fn)}(${emitFacadeArgs(args)})"
@@ -1674,10 +1702,12 @@ class RokuEmitter(
           s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, ctor.symbol)})"
         // super.m(...) — a user base resolves statically to the implementation
         // TASTy names; into a @native base (State.initState etc.) it is a no-op.
+        // Its arguments are emitted against the super method's parameters, so a by-name value forwarded to a
+        // by-name parameter (`super.:=(value)`) stays a thunk rather than being evaluated once.
         case Apply(f0, sargs) if superSel(f0).isDefined =>
           val ss = superSel(f0).get.symbol
           if (ss.exists && userTypeDefs.contains(ss.owner))
-            s"${modelImplName(ss)}(self${emitArgList(sargs).map(", " + _).mkString})"
+            s"${modelImplName(ss)}(self${emitArgList(sargs, ss).map(", " + _).mkString})"
           else "invalid"
         case sel @ Select(spr, _) if isSuper(spr) =>
           val ss = sel.symbol
@@ -1734,6 +1764,7 @@ class RokuEmitter(
         case Select(q, "isDefined" | "nonEmpty") if isOptionType(q) => s"(${emitTerm(q)} <> invalid)"
         case Select(q, "isEmpty") if isOptionType(q)               => s"(${emitTerm(q)} = invalid)"
         case Select(q, "get" | "orNull") if isOptionType(q)        => emitTerm(q)
+        case Select(q, "toList" | "toSeq" | "toVector") if isOptionType(q) => s"_optToList(${emitTerm(q)})"
         case Select(q, "toOption") if isTryType(q) || isEitherType(q) => s"_tryToOption(${emitTerm(q)})"
         case Select(q, "toList" | "toSeq" | "toArray" | "toVector" | "toIndexedSeq") if isCollType(q) => emitTerm(q)
         // Paren-less collection getters → runtime helpers.
@@ -1749,6 +1780,9 @@ class RokuEmitter(
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
+        // an integral value made floating: BrightScript keeps a LongInteger quotient whole
+        case Select(q, "toDouble" | "toFloat") if Set("scala.Long", "scala.Int", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(q.tpe)) =>
+          s"Cdbl(${emitTerm(q)})"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
@@ -1790,6 +1824,8 @@ class RokuEmitter(
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `self.getter` only holds the function ref, so call it.
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
+              // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
+              case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${emitTerm(q)}.${brSafe(name)})"
               case None                  => s"${emitTerm(q)}.${brSafe(name)}"
             }
           }
@@ -1858,7 +1894,15 @@ class RokuEmitter(
         val ts = ps.map(x => patternTest(x, subj))
         ("(" + ts.map(_._1).mkString(" or ") + ")", ts.flatMap(_._2))
       case Literal(c)        => (s"($subj = ${emitConst(c)})", Nil)
-      case Typed(inner, _)   => patternTest(inner, subj)
+      // `case p: PairStartResponse =>` can arrive as a plain Typed pattern: a case class is tested by its tag all the same
+      case Typed(inner, tpt) =>
+        val ts = tpt.tpe.typeSymbol
+        val tag =
+          if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
+            s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
+          else "true"
+        val (it, ib) = patternTest(inner, subj)
+        (if (it == "true") tag else if (tag == "true") it else s"$tag and $it", ib)
       case TypedOrTest(inner, tpt) =>
         val ts = tpt.tpe.typeSymbol
         val innerTests = inner match {
@@ -1879,6 +1923,11 @@ class RokuEmitter(
           if subs.size == 1 && { val c = patternClass(u); c.exists && c.fullName == "scala.Some" } =>
         val (it, ib) = patternTest(subs.head, subj)
         (if (it == "true") s"($subj <> invalid)" else s"($subj <> invalid) and $it", ib)
+      // `h :: t` on a List, which is an array here (not a chain of cells): non-empty, its first element, the rest
+      case u @ Unapply(_, _, List(hp, tp)) if { val c = patternClass(u); c.exists && c.fullName == "scala.collection.immutable.::" } =>
+        val (ht, hb) = patternTest(hp, s"$subj[0]")
+        val (tt, tb) = patternTest(tp, s"_drop($subj, 1)")
+        ((s"($subj <> invalid and $subj.count() > 0)" :: List(ht, tt)).filter(_ != "true").mkString(" and "), hb ++ tb)
       case u @ Unapply(_, _, subs) =>
         val cls = patternClass(u)
         val fields = if (cls.exists) cls.caseFields.map(_.name) else Nil
@@ -2370,6 +2419,13 @@ class RokuEmitter(
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
           sb.append(s"  self.${fieldKey(vd.symbol)} = ${brSafe(vd.name)}\n")
+          // an object is one flat table, so a parameter kept under the name of a member the class inherits overwrites it
+          // (`size: Double` on a component replaced its `size` feature, and every layout touching it failed quietly):
+          // a gap, so the checks stop it rather than a device
+          shadowedBy(vd.symbol).foreach { base =>
+            todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name}"
+            sb.append(s"  RtTodo(${brStr("parameter " + vd.name + " of " + sym.name + " overwrites " + base.name + " " + vd.name)})\n")
+          }
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
           rhsOpt match {
             case Some(r) if !isWildcardInit(r) => sb.append(emitInto(r, s"self.${fieldKey(vd.symbol)}")).append("\n")
@@ -2872,10 +2928,25 @@ class RokuEmitter(
       |' ── collection ops (roArray has no map/filter/…; these are the runtime) ──
       |' NOTE: BrightScript has no single-line for loops — every for..end for spans
       |' multiple lines, and a block `if` never uses a trailing `then`.
-      |function _arrMap(xs as object, cl as dynamic) as object
+      |' The elements to loop over by index. BrightScript's for each keeps its place in the object it walks, so a loop
+      |' whose callback walks the same array (a reaction reading a container's children while its layout places them)
+      |' ends the outer loop early; anything that is not an array is copied first.
+      |function _rtItems(xs as dynamic) as object
+      |    if type(xs) = "roArray" then return xs
       |    r = []
       |    if xs <> invalid
       |        for each e in xs
+      |            r.push(e)
+      |        end for
+      |    end if
+      |    return r
+      |end function
+      |function _arrMap(xs as object, cl as dynamic) as object
+      |    r = []
+      |    if xs <> invalid
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            r.push(RtInvoke(cl, [e]))
       |        end for
       |    end if
@@ -2884,7 +2955,9 @@ class RokuEmitter(
       |function _arrFlatMap(xs as object, cl as dynamic) as object
       |    r = []
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            sublist = RtInvoke(cl, [e])
       |            if sublist <> invalid and GetInterface(sublist, "ifArray") <> invalid
       |                for each s in sublist
@@ -2900,7 +2973,9 @@ class RokuEmitter(
       |function _arrFilter(xs as object, cl as dynamic) as object
       |    r = []
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            if RtInvoke(cl, [e]) then r.push(e)
       |        end for
       |    end if
@@ -2909,7 +2984,9 @@ class RokuEmitter(
       |function _arrFilterNot(xs as object, cl as dynamic) as object
       |    r = []
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            if not RtInvoke(cl, [e]) then r.push(e)
       |        end for
       |    end if
@@ -2917,14 +2994,17 @@ class RokuEmitter(
       |end function
       |sub _arrForeach(xs as object, cl as dynamic)
       |    if xs <> invalid
-      |        for each e in xs
-      |            RtInvoke(cl, [e])
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            RtInvoke(cl, [items[ii]])
       |        end for
       |    end if
       |end sub
       |function _arrExists(xs as object, cl as dynamic) as boolean
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            if RtInvoke(cl, [e]) then return true
       |        end for
       |    end if
@@ -2932,7 +3012,9 @@ class RokuEmitter(
       |end function
       |function _arrForall(xs as object, cl as dynamic) as boolean
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            if not RtInvoke(cl, [e]) then return false
       |        end for
       |    end if
@@ -2940,7 +3022,9 @@ class RokuEmitter(
       |end function
       |function _arrFind(xs as object, cl as dynamic) as dynamic
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            if RtInvoke(cl, [e]) then return e
       |        end for
       |    end if
@@ -2948,7 +3032,9 @@ class RokuEmitter(
       |end function
       |function _contains(xs as object, x as dynamic) as boolean
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            if _eq(e, x) then return true
       |        end for
       |    end if
@@ -2988,7 +3074,9 @@ class RokuEmitter(
       |    ' decorate-sort-undecorate; keys must be sortable (num/string)
       |    keyed = []
       |    if xs <> invalid
-      |        for each e in xs
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
       |            keyed.push({ k: RtInvoke(cl, [e]), v: e })
       |        end for
       |    end if
@@ -3097,10 +3185,21 @@ class RokuEmitter(
       |    t = _str(s)
       |    return t.Trim()
       |end function
+      |' a Char separator arrives as its code
       |function _split(s as dynamic, sep as dynamic) as object
       |    t = _str(s)
+      |    if _rtKind(sep) = "n" then sep = Chr(sep)
       |    if _str(sep) = "" then return t.Split("")
       |    return t.Tokenize(_str(sep))
+      |end function
+      |' s.contains(sub), or a Char
+      |function _strContains(s as dynamic, x as dynamic) as boolean
+      |    return _strIndexOf(s, x) >= 0
+      |end function
+      |' s.indexOf(sub), or of a Char (its code, as Java's indexOf(int) takes)
+      |function _strIndexOf(s as dynamic, x as dynamic) as integer
+      |    if _rtKind(x) = "n" then x = Chr(x)
+      |    return Instr(1, _str(s), _str(x)) - 1
       |end function
       |function _startsWith(s as dynamic, pre as dynamic) as boolean
       |    a = _str(s) : b = _str(pre)
@@ -3111,6 +3210,29 @@ class RokuEmitter(
       |    a = _str(s) : b = _str(suf)
       |    if Len(b) > Len(a) then return false
       |    return Right(a, Len(b)) = b
+      |end function
+      |function _stripPrefix(s as dynamic, pre as dynamic) as string
+      |    a = _str(s)
+      |    if _startsWith(a, pre) then return Mid(a, Len(_str(pre)) + 1)
+      |    return a
+      |end function
+      |function _stripSuffix(s as dynamic, suf as dynamic) as string
+      |    a = _str(s)
+      |    if _endsWith(a, suf) then return Left(a, Len(a) - Len(_str(suf)))
+      |    return a
+      |end function
+      |' xs.indexOf(x): the first index of an equal element, or -1
+      |function _arrIndexOf(xs as object, x as dynamic) as integer
+      |    i = 0
+      |    if xs <> invalid
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            e = items[ii]
+      |            if _eq(e, x) then return i
+      |            i = i + 1
+      |        end for
+      |    end if
+      |    return -1
       |end function
       |function _replace(s as dynamic, a as dynamic, b as dynamic) as string
       |    t = _str(s)
@@ -3132,6 +3254,15 @@ class RokuEmitter(
       |    if o = invalid then return invalid
       |    if RtInvoke(cl, [o]) then return o
       |    return invalid
+      |end function
+      |function _optFilterNot(o as dynamic, cl as dynamic) as dynamic
+      |    if o = invalid then return invalid
+      |    if RtInvoke(cl, [o]) then return invalid
+      |    return o
+      |end function
+      |function _optForall(o as dynamic, cl as dynamic) as boolean
+      |    if o = invalid then return true
+      |    return RtInvoke(cl, [o])
       |end function
       |function _optExists(o as dynamic, cl as dynamic) as boolean
       |    if o = invalid then return false
@@ -3227,6 +3358,11 @@ class RokuEmitter(
       |        if i < args.count() then r = r + _str(args[i])
       |    end for
       |    return r
+      |end function
+      |' option.toList: nothing, or the one value
+      |function _optToList(o as dynamic) as object
+      |    if o = invalid then return []
+      |    return [o]
       |end function
       |' Map(k -> v, ...) and map.toList
       |function _mapFromPairs(pairs as object) as object
@@ -3509,6 +3645,13 @@ class RokuEmitter(
       |end function
       |function Failure(e as dynamic) as object
       |    return { _cls: "Failure", exception: e, error: e, _fields: ["exception"] }
+      |end function
+      |' Either: BrightScript's Left and Right are its string functions
+      |function RtLeft(v as dynamic) as object
+      |    return { _cls: "Left", value: v, _fields: ["value"] }
+      |end function
+      |function RtRight(v as dynamic) as object
+      |    return { _cls: "Right", value: v, _fields: ["value"] }
       |end function
       |
       |' ── immutable Set (array-backed, `_eq` membership) ─────────────────────────
@@ -3851,6 +3994,22 @@ class RokuEmitter(
       |function RapidTask_guarantee(t as dynamic, thunk as dynamic) as object
       |    return RtTask(RtTaskGuaranteeRun, { t: t, thunk: thunk })
       |end function
+      |' task.attempt: always succeeds, with the task's outcome as a Try
+      |function RapidTask_attempt(t as dynamic) as object
+      |    return RtTask(RtTaskAttemptRun, { t: t })
+      |end function
+      |function RtTaskAttemptRun(env as object, args as object) as dynamic
+      |    RapidTask_run(env.t, RtCb(RtTaskAttemptCb, { cb: args[0] }))
+      |    return invalid
+      |end function
+      |function RtTaskAttemptCb(env as object, args as object) as dynamic
+      |    if args[0]
+      |        RtInvoke(env.cb, [true, Success(args[1])])
+      |    else
+      |        RtInvoke(env.cb, [true, Failure(args[1])])
+      |    end if
+      |    return invalid
+      |end function
       |function RtTaskGuaranteeRun(env as object, args as object) as dynamic
       |    RapidTask_run(env.t, RtCb(RtTaskGuaranteeCb, { thunk: env.thunk, cb: args[0] }))
       |    return invalid
@@ -4008,6 +4167,24 @@ class RokuEmitter(
       |end function
       |function _json_isNull(j as dynamic) as boolean
       |    return j = invalid
+      |end function
+      |function _json_isObj(j as dynamic) as boolean
+      |    return type(j) = "roAssociativeArray"
+      |end function
+      |function _json_isArr(j as dynamic) as boolean
+      |    return type(j) = "roArray"
+      |end function
+      |function _json_isStr(j as dynamic) as boolean
+      |    return _rtKind(j) = "s"
+      |end function
+      |' Json.value: an object's fields as a Scala Map; anything else is its own value
+      |function _json_value(j as dynamic) as dynamic
+      |    if type(j) <> "roAssociativeArray" then return j
+      |    m = _mapEmpty()
+      |    for each k in j
+      |        m = _mapPut(m, k, j[k])
+      |    end for
+      |    return m
       |end function
       |function _json_toString(j as dynamic) as string
       |    return FormatJson(j)
@@ -4172,7 +4349,7 @@ class RokuEmitter(
       |    return invalid
       |end function
       |function ConcurrentHashMap_forEach(self as object, f as dynamic) as dynamic
-      |    for each key in self.m
+      |    for each key in self.m.Keys()
       |        RtInvoke(f, [key, self.m[key]])
       |    end for
       |    return invalid
@@ -4352,10 +4529,11 @@ class RokuEmitter(
       |    if p.done then RtThrow({ _cls: "IllegalStateException", message: "Promise already completed." })
       |    p.done = true
       |    p.value = v
-      |    for each cb in p.callbacks
+      |    callbacks = p.callbacks
+      |    p.callbacks = []
+      |    for each cb in callbacks
       |        RtInvoke(cb, [v])
       |    end for
-      |    p.callbacks = []
       |    return p
       |end function
       |function _futureOnSuccess(f as object, cb as dynamic) as dynamic

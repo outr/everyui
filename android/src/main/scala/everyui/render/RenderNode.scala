@@ -517,6 +517,9 @@ object Platform {
   /** No browser history here: the screen manager keeps its own. */
   def historyBack(): Boolean = false
 
+  /** An ARB file's messages (everyui.i18n.Arb). */
+  def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
+
   /** A text file among the APK's assets (a translation), or "" if it is not there. */
   def readText(path: String, done: String => Unit): Unit = done(
     try {
