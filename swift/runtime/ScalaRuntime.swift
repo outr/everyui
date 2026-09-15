@@ -1085,6 +1085,10 @@ func RtEnum(_ cls: V, _ name: V, _ ordinal: V) -> V {
     return e
 }
 
+// MARK: - java.lang.Object: `new Object` is a lock (a synchronized block is just the block), so any distinct value does
+
+func Object_new() -> V { rtObj(["_cls": .vStr("Object")]) }
+
 // MARK: - java.util.concurrent.ConcurrentHashMap, AtomicLong / AtomicInteger, UUID, System, scribe
 
 func ConcurrentHashMap_new() -> V { rtObj(["_cls": .vStr("ConcurrentHashMap"), "m": rtObj([:])]) }

@@ -178,7 +178,7 @@ lazy val roku = (project in file("roku"))
 // example server used it too), so the backend is part of the system rather than
 // a dev-only prop — where API endpoints, WebSocket hot-reload or OpenAPI go
 // when the framework needs them. Consumed from ~/.ivy2/local.
-lazy val spiceVersion = "1.10.9-SNAPSHOT2"
+lazy val spiceVersion = "1.10.9-SNAPSHOT3"
 
 @transient val serverClasspath = taskKey[File]("Compile the server and write its runtime classpath to server/out/classpath.txt")
 

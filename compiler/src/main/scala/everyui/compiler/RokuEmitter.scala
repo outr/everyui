@@ -4293,6 +4293,11 @@ class RokuEmitter(
       |    return self._enum
       |end function
       |
+      |' ── java.lang.Object: `new Object` is a lock (a synchronized block is just the block), so any distinct value does ──
+      |function Object_new() as object
+      |    return { _cls: "Object" }
+      |end function
+      |
       |' ── java.util.concurrent.ConcurrentHashMap, AtomicLong / AtomicInteger, UUID, System, scribe ──
       |function ConcurrentHashMap_new() as object
       |    m = {}
