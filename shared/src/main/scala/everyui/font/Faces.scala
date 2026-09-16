@@ -23,7 +23,10 @@ object Faces {
     var distance = 0
     registered.foreach { f =>
       val d = math.abs(f.weight - weight)
-      if (f.family == family && (nearest.isEmpty || d < distance)) {
+      // as CSS and Flutter choose: nearest wins, and between two as near, a weight above 500 takes the heavier
+      // face and one below the lighter — so a semibold 600 in a family of 500 and 700 is drawn bold
+      val better = nearest.forall(n => d < distance || (d == distance && (if (weight > 500) f.weight > n.weight else f.weight < n.weight)))
+      if (f.family == family && better) {
         nearest = Some(f)
         distance = d
       }
