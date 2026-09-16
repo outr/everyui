@@ -215,7 +215,16 @@ class RenderNode(val view: View) {
   def setTextGradient(angle: Double, stops: String): Unit =
     everyui.Gradient.decode(stops).headOption.foreach { case (hex, _) => setColor(hex) }
   /** No shadow is drawn. */
-  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** A View's own shadow, which the platform draws from its outline: the colour is the glow's, and the blur its
+    * elevation. A raised node also draws above its neighbours, which is what a card growing under the focus wants. */
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
+    if (hex.isEmpty) view.setElevation(0f)
+    else {
+      val colour = android.graphics.Color.parseColor(hex)
+      view.setOutlineSpotShadowColor(colour)
+      view.setOutlineAmbientShadowColor(colour)
+      view.setElevation((blur / 2.0).toFloat)
+    }
   /** Lines of wrapped text keep the face's own spacing here. */
   def setLineHeight(px: Double): Unit = ()
   /** A link is followed by its click; there is no address to show. */
