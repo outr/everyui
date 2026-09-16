@@ -281,7 +281,8 @@ class RokuEmitter(
 
     def isCollType(t: Term): Boolean = {
       val s = t.tpe.dealias.typeSymbol
-      s.exists && s.fullName.startsWith("scala.collection.")
+      // an Array is a BrightScript array as a List is, and reads the same way (`parts(1)`, `parts.length`)
+      s.exists && (s.fullName.startsWith("scala.collection.") || s.fullName == "scala.Array")
     }
 
     // A function VALUE (`T => R`, i.e. scala.FunctionN). Such values are
@@ -335,9 +336,11 @@ class RokuEmitter(
     }
     def isCaseCtor(fn: Term, resultTpe: TypeRepr): Boolean = fn match {
       case Select(New(_), _) => true
+      // only the companion's own generated apply: one the class declares beside it (Gradient's `apply(angle,
+      // colors*)`) is a method with a body of its own, and emitted as the constructor it read its arguments as fields
       case Select(q, "apply") =>
         val comp = resultTpe.typeSymbol.companionModule
-        comp.exists && q.symbol.exists && q.symbol == comp
+        comp.exists && q.symbol.exists && q.symbol == comp && fn.symbol.flags.is(Flags.Synthetic)
       case _ => false
     }
 
@@ -431,7 +434,12 @@ class RokuEmitter(
     def emitThunk(body0: Term): String = {
       val body = unwrap(body0)
       body match {
-        case id: Ident if isByNameParam(id.symbol) && anonCaptureRef(id.symbol).isEmpty => brSafe(id.name)
+        // a by-name parameter handed on as it is passes its own thunk; a class's by-name parameter is a field, so
+        // inside one of its methods the thunk is the field's (a bare name there is an undeclared local)
+        case id: Ident if isByNameParam(id.symbol) && anonCaptureRef(id.symbol).isEmpty =>
+          val field = !inParentArgs && id.symbol.flags.is(Flags.ParamAccessor) && currentClass.exists &&
+            inCurrentClass(id.symbol.owner)
+          if (field) s"self.${fieldKey(id.symbol)}" else brSafe(id.name)
         case _ =>
           val n = closureCounter; closureCounter += 1
           val name = s"closure$n"
@@ -1016,7 +1024,17 @@ class RokuEmitter(
       val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
       val rwsL   = types.map(t => rwFor(t, depth))
       val ctor = if (isModel(cls)) s"${typeName(cls)}_new" else "invalid"
-      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor)"
+      // a field the JSON leaves out takes its default, as fabric reads it on the JVM
+      val defaultsL = fields.indices.map(i => caseDefault(cls, i))
+      val defs = defaultsL.map(_.getOrElse("invalid")).mkString(", ")
+      val has = defaultsL.map(d => if (d.isDefined) "true" else "false").mkString(", ")
+      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor, [$defs], [$has])"
+    }
+    /** The default of a case class's `i`th field (from 0), emitted, if it has one. */
+    def caseDefault(cls: Symbol, i: Int): Option[String] = {
+      val comp = cls.companionModule
+      val getter = if (comp.exists) comp.methodMember("$lessinit$greater$default$" + (i + 1)).headOption else None
+      getter.flatMap(defaultRhsOf).map(emitArgVal)
     }
 
     /** A default argument's value: the getter's right-hand side, from its tree or from the companion's ClassDef. */
@@ -1108,6 +1126,13 @@ class RokuEmitter(
     // Scala `==` is structural for case classes and collections, not identity;
     // BrightScript `=` on two objects is a runtime type error. Primitives,
     // strings and facade values keep `=`; anything else goes through `_eq`.
+    /** A String, or a String seen through Scala's StringOps (`"12".toIntOption`). */
+    def isStringLike(tp: TypeRepr): Boolean = Set("java.lang.String", "scala.collection.StringOps").contains(fqnOf(tp))
+
+    /** Whether a value of this type is a whole number, which BrightScript divides and truncates differently. */
+    def isIntegral(tp: TypeRepr): Boolean =
+      Set("scala.Int", "scala.Long", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(tp))
+
     def isPrimLike(t: Term): Boolean = {
       val sy = t.tpe.widen.dealias.typeSymbol
       sy.exists && (primitiveFqns.contains(sy.fullName) || hasNative(sy))
@@ -1422,6 +1447,8 @@ class RokuEmitter(
               s"(Len(${emitTerm(recv)}) = 0)"
             case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
               s"_strIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "lastIndexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
+              s"_strLastIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
               s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
@@ -1555,6 +1582,9 @@ class RokuEmitter(
                 case _                     => "<="
               }
               s"(RtDurationMs(${emitTerm(recv)}) $o RtDurationMs(${emitArgVal(args.head)}))"
+            // an integral quotient is whole, as the JVM keeps it: BrightScript's `/` gives a fraction, `\\` does not
+            case Select(recv, "/" | "$div") if args.length == 1 && isIntegral(recv.tpe) && isIntegral(args.head.tpe) =>
+              s"(${emitTerm(recv)} \\ ${emitTerm(args.head)})"
             case Select(recv, op) if binOps.contains(op) && args.length == 1 =>
               s"(${emitTerm(recv)} ${binOps(op)} ${emitTerm(args.head)})"
             // ── Option ops → invalid-checks (Option lowers to a nullable). Must
@@ -1589,6 +1619,11 @@ class RokuEmitter(
               s"_arrMap(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "flatMap") =>
               s"_arrFlatMap(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // a String's characters kept or dropped: a String again, not an array of its characters
+            case Select(recv, "filter") if isStringLike(recv.tpe) =>
+              s"_strFilter(${emitTerm(recv)}, ${emitArgVal(args.head)}, true)"
+            case Select(recv, "filterNot") if isStringLike(recv.tpe) =>
+              s"_strFilter(${emitTerm(recv)}, ${emitArgVal(args.head)}, false)"
             case Select(recv, "filter" | "withFilter") =>
               s"_arrFilter(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "filterNot") =>
@@ -1783,9 +1818,19 @@ class RokuEmitter(
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
-        // an integral value made floating: BrightScript keeps a LongInteger quotient whole
-        case Select(q, "toDouble" | "toFloat") if Set("scala.Long", "scala.Int", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(q.tpe)) =>
+        // an integral value made floating: BrightScript keeps a LongInteger quotient whole. A Long is promoted by
+        // arithmetic, since Cdbl goes through a 32-bit Integer and loses the top of one (a time in milliseconds)
+        case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Long" => s"(${emitTerm(q)} + 0#)"
+        case Select(q, "toDouble" | "toFloat") if Set("scala.Int", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(q.tpe)) =>
           s"Cdbl(${emitTerm(q)})"
+        // a String read as a number: the whole of it, or (the Option forms) nothing when it is not one
+        case Select(q, "toInt" | "toLong") if isStringLike(q.tpe) => s"_strToInt(${emitTerm(q)})"
+        case Select(q, "toDouble" | "toFloat") if isStringLike(q.tpe) => s"_strToDouble(${emitTerm(q)})"
+        case Select(q, "toIntOption" | "toLongOption") if isStringLike(q.tpe) => s"_strToIntOpt(${emitTerm(q)})"
+        case Select(q, "toDoubleOption" | "toFloatOption") if isStringLike(q.tpe) => s"_strToDoubleOpt(${emitTerm(q)})"
+        // a fraction made whole is truncated toward zero, as the JVM does (BrightScript's Int() floors)
+        case Select(q, "toInt" | "toLong") if !isIntegral(q.tpe) && Set("scala.Double", "scala.Float").contains(fqnOf(q.tpe)) =>
+          s"Fix(${emitTerm(q)})"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
@@ -2522,6 +2567,8 @@ class RokuEmitter(
           }
         }
         cd.body.foreach(bd => trav.traverseTree(bd)(sym))
+        // and what the parent's constructor is given (`new MaterialIconView(icon, 14.0) { … }` reads `icon`)
+        cd.parents.foreach(p => trav.traverseTree(p)(sym))
         anonCaptures(sym) = caps.toList
         userTypeDefs(sym) = cd
         objectModelTypes += sym
@@ -3204,6 +3251,25 @@ class RokuEmitter(
       |    if _rtKind(x) = "n" then x = Chr(x)
       |    return Instr(1, _str(s), _str(x)) - 1
       |end function
+      |function _strFilter(s as dynamic, cl as dynamic, keep as boolean) as string
+      |    t = _str(s) : r = ""
+      |    for i = 1 to Len(t)
+      |        c = Mid(t, i, 1)
+      |        if RtInvoke(cl, [c]) = keep then r = r + c
+      |    end for
+      |    return r
+      |end function
+      |function _strLastIndexOf(s as dynamic, x as dynamic) as integer
+      |    if _rtKind(x) = "n" then x = Chr(x)
+      |    t = _str(s) : f = _str(x)
+      |    if f = "" then return Len(t)
+      |    at = -1 : i = Instr(1, t, f)
+      |    while i > 0
+      |        at = i - 1
+      |        i = Instr(i + 1, t, f)
+      |    end while
+      |    return at
+      |end function
       |function _startsWith(s as dynamic, pre as dynamic) as boolean
       |    a = _str(s) : b = _str(pre)
       |    if Len(b) > Len(a) then return false
@@ -3236,6 +3302,27 @@ class RokuEmitter(
       |        end for
       |    end if
       |    return -1
+      |end function
+      |' ── String → number, as Scala reads one: the whole string or nothing (the Option forms give invalid) ──
+      |function _strToIntOpt(s as dynamic) as dynamic
+      |    t = _str(s).Trim()
+      |    if not CreateObject("roRegex", "^[+-]?[0-9]+$", "").IsMatch(t) then return invalid
+      |    return t.ToInt()
+      |end function
+      |function _strToDoubleOpt(s as dynamic) as dynamic
+      |    t = _str(s).Trim()
+      |    if not CreateObject("roRegex", "^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$", "").IsMatch(t) then return invalid
+      |    return Cdbl(Val(t))
+      |end function
+      |function _strToInt(s as dynamic) as dynamic
+      |    n = _strToIntOpt(s)
+      |    if n = invalid then RtThrow({ _cls: "NumberFormatException", message: "For input string: " + Chr(34) + _str(s) + Chr(34) })
+      |    return n
+      |end function
+      |function _strToDouble(s as dynamic) as dynamic
+      |    n = _strToDoubleOpt(s)
+      |    if n = invalid then RtThrow({ _cls: "NumberFormatException", message: "For input string: " + Chr(34) + _str(s) + Chr(34) })
+      |    return n
       |end function
       |function _replace(s as dynamic, a as dynamic, b as dynamic) as string
       |    t = _str(s)
@@ -3334,6 +3421,8 @@ class RokuEmitter(
       |function Map(o = invalid as dynamic) as object : return _iif(o = invalid, {}, o) : end function
       |function Set(o = invalid as dynamic) as object : return _iif(o = invalid, [], o) : end function
       |function Tuple2(a = invalid as dynamic, b = invalid as dynamic) as object : return { _1: a, _2: b } : end function
+      |function Tuple3(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic) as object : return { _1: a, _2: b, _3: c } : end function
+      |function Tuple4(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic, d = invalid as dynamic) as object : return { _1: a, _2: b, _3: c, _4: d } : end function
       |function wrapRefArray(a = invalid as dynamic) as dynamic : return a : end function
       |function intWrapper(x = invalid as dynamic) as dynamic : return x : end function
       |' -- Scala stdlib shims added for everyui's component model --
@@ -4198,8 +4287,8 @@ class RokuEmitter(
       |function _rw(name as string) as object
       |    return { _cls: "RW", name: name }
       |end function
-      |function _rwGen(cls as string, keys as object, slots as object, rws as object, ctor as dynamic) as object
-      |    return { _cls: "RW", kind: "case", cls: cls, keys: keys, slots: slots, rws: rws, ctor: ctor }
+      |function _rwGen(cls as string, keys as object, slots as object, rws as object, ctor as dynamic, defs = invalid as dynamic, has = invalid as dynamic) as object
+      |    return { _cls: "RW", kind: "case", cls: cls, keys: keys, slots: slots, rws: rws, ctor: ctor, defs: defs, has: has }
       |end function
       |function _rwOpt(inner as object) as object
       |    return { _cls: "RW", kind: "opt", inner: inner }
@@ -4231,7 +4320,12 @@ class RokuEmitter(
       |    n = rw.keys.count()
       |    args = []
       |    for i = 0 to n - 1
-      |        args.push(_rwRead(rw.rws[i], j[rw.keys[i]]))
+      |        ' a field the JSON leaves out takes the case class's default, where it has one
+      |        if rw.has <> invalid and rw.has[i] = true and not j.DoesExist(rw.keys[i])
+      |            args.push(rw.defs[i])
+      |        else
+      |            args.push(_rwRead(rw.rws[i], j[rw.keys[i]]))
+      |        end if
       |    end for
       |    if rw.ctor <> invalid then return RtCallArgs(rw.ctor, args)
       |    o = { _cls: rw.cls, _fields: rw.slots }
@@ -4279,7 +4373,31 @@ class RokuEmitter(
       |    if n = 6 then return f(args[0], args[1], args[2], args[3], args[4], args[5])
       |    if n = 7 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
       |    if n = 8 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7])
-      |    RtThrow("RtCallArgs: more than 8 arguments")
+      |    if n = 9 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8])
+      |    if n = 10 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9])
+      |    if n = 11 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10])
+      |    if n = 12 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11])
+      |    if n = 13 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12])
+      |    if n = 14 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13])
+      |    if n = 15 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14])
+      |    if n = 16 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15])
+      |    if n = 17 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16])
+      |    if n = 18 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17])
+      |    if n = 19 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18])
+      |    if n = 20 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19])
+      |    if n = 21 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20])
+      |    if n = 22 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21])
+      |    if n = 23 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22])
+      |    if n = 24 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23])
+      |    if n = 25 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24])
+      |    if n = 26 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24], args[25])
+      |    if n = 27 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24], args[25], args[26])
+      |    if n = 28 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24], args[25], args[26], args[27])
+      |    if n = 29 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24], args[25], args[26], args[27], args[28])
+      |    if n = 30 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24], args[25], args[26], args[27], args[28], args[29])
+      |    if n = 31 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24], args[25], args[26], args[27], args[28], args[29], args[30])
+      |    if n = 32 then return f(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[17], args[18], args[19], args[20], args[21], args[22], args[23], args[24], args[25], args[26], args[27], args[28], args[29], args[30], args[31])
+      |    RtThrow("RtCallArgs: more than 32 arguments, which is as many as a BrightScript function takes")
       |    return invalid
       |end function
       |' A Scala 3 enum's simple case: one singleton per (enum, case), named by `toString`, ordered by `ordinal`.

@@ -881,7 +881,7 @@ function uiShape(parent as object, existing as dynamic, uri as string, hex as st
 end function
 
 ' Milliseconds since the epoch as local "yyyy-MM-dd HH:mm:ss".
-function uiLocalDateTime(millis as float) as string
+function uiLocalDateTime(millis as dynamic) as string
     dt = CreateObject("roDateTime")
     dt.FromSeconds(Int(millis / 1000.0))
     dt.ToLocalTime()
@@ -902,6 +902,19 @@ end sub
 sub uiSetClip(node as object, width as float, height as float)
     if node = invalid then return
     node.clippingRect = [0, 0, width, height]
+end sub
+
+' The pixels between a Label's lines, rather than the theme's.
+sub uiSetLineSpacing(node as object, spacing as float)
+    if node = invalid or not node.hasField("lineSpacing") then return
+    node.lineSpacing = spacing
+end sub
+
+' A Label wraps its words at its width (and draws every line), or keeps one line and cuts it short.
+sub uiSetWrap(node as object, wrap as boolean)
+    if node = invalid or not node.hasField("wrap") then return
+    node.wrap = wrap
+    if wrap then node.maxLines = 0
 end sub
 
 ' Whether a node and everything under it is drawn: what a scroll has out of sight costs a Roku nothing.

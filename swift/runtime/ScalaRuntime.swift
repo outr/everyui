@@ -395,6 +395,13 @@ func rtIndexOf(_ s: V, _ sub: V) -> V {
     for i in 0...(hay.count - needle.count) where Array(hay[i..<(i + needle.count)]) == needle { return .vInt(i) }
     return .vInt(-1)
 }
+func rtLastIndexOf(_ s: V, _ sub: V) -> V {
+    let hay = Array(rtS(s).utf16), needle = Array(rtCharOrString(sub).utf16)
+    if needle.isEmpty { return .vInt(hay.count) }
+    if needle.count > hay.count { return .vInt(-1) }
+    for i in stride(from: hay.count - needle.count, through: 0, by: -1) where Array(hay[i..<(i + needle.count)]) == needle { return .vInt(i) }
+    return .vInt(-1)
+}
 func rtLower(_ s: V) -> V { .vStr(rtS(s).lowercased()) }
 func rtUpper(_ s: V) -> V { .vStr(rtS(s).uppercased()) }
 
@@ -669,6 +676,8 @@ func _sortedOrdered(_ xs: V) throws -> V {
     rtArr(try rtStableSort(rtItems(xs)) { a, b in try rtCompare(a["compare"](a, b), .vInt(0)) < 0 })
 }
 func Tuple2(_ a: V = .vNull, _ b: V = .vNull) -> V { rtObj(["_1": a, "_2": b]) }
+func Tuple3(_ a: V = .vNull, _ b: V = .vNull, _ c: V = .vNull) -> V { rtObj(["_1": a, "_2": b, "_3": c]) }
+func Tuple4(_ a: V = .vNull, _ b: V = .vNull, _ c: V = .vNull, _ d: V = .vNull) -> V { rtObj(["_1": a, "_2": b, "_3": c, "_4": d]) }
 func wrapRefArray(_ a: V = .vNull) -> V { a }
 func intWrapper(_ x: V = .vNull) -> V { x }
 
@@ -1031,8 +1040,9 @@ func _json_toString(_ j: V) -> V { _jsonFormat(j) }
 /// by its field names with a codec per field (`_rwGen`, the emitter's derivation of `RW.gen`); Option, List and
 /// Map wrap their element's codec.
 func _rw(_ name: V) -> V { rtObj(["_cls": .vStr("RW"), "name": name]) }
-func _rwGen(_ cls: V, _ keys: V, _ slots: V, _ rws: V, _ ctor: V) -> V {
-    rtObj(["_cls": .vStr("RW"), "kind": .vStr("case"), "cls": cls, "keys": keys, "slots": slots, "rws": rws, "ctor": ctor])
+func _rwGen(_ cls: V, _ keys: V, _ slots: V, _ rws: V, _ ctor: V, _ defs: V = .vNull, _ has: V = .vNull) -> V {
+    rtObj(["_cls": .vStr("RW"), "kind": .vStr("case"), "cls": cls, "keys": keys, "slots": slots, "rws": rws, "ctor": ctor,
+           "defs": defs, "has": has])
 }
 func _rwOpt(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("opt"), "inner": inner]) }
 func _rwList(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("list"), "inner": inner]) }

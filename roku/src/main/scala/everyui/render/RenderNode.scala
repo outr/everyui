@@ -34,6 +34,10 @@ class RenderNode(val sg: SGNode) {
   private var fontWeight: Int = 400
   private var colorHex: String = ""
   private var richWidth: Double = -1.0
+  // Whether the text wraps at its width (`setWhiteSpace`), so its height is its lines rather than one
+  private var wrapping: Boolean = false
+  // How far apart its lines are asked to be, in units (`setLineHeight`), or 0 for the face's own spacing
+  private var lineAdvance: Double = 0.0
   // The size last set, which the border follows; -1 until set.
   private var boxWidth: Double = -1.0
   private var boxHeight: Double = -1.0
@@ -100,6 +104,7 @@ class RenderNode(val sg: SGNode) {
       fontUri = "pkg:/fonts/" + face.file
       fontSize = size
       lineHeight = face.lineHeight(size)
+      spaceLines()
       fontWeight = weight
       uiSetFontFile(sg, fontUri, px(size))
       if (textValue.nonEmpty || richWidth >= 0.0) drawText()
@@ -113,7 +118,17 @@ class RenderNode(val sg: SGNode) {
     if (richWidth >= 0.0) richWidth / uiScale()
     else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
     else uiGetWidth(sg) / uiScale()
-  def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg) / uiScale()
+  def getHeight(): Double =
+    if (wrapping && boxWidth > 0.0 && lineHeight > 0.0) {
+      // as many lines as the Label wrapped its words into, at the width it was given: n lines are n faces tall with
+      // n - 1 gaps between them
+      val advance = if (lineAdvance > lineHeight) lineAdvance else lineHeight
+      val gap = advance - lineHeight
+      val drawn = uiGetHeight(sg) / uiScale()
+      val lines = math.max(1.0, math.round((drawn + gap) / advance).toDouble)
+      lines * advance
+    }
+    else if (lineHeight > 0.0) lineHeight else uiGetHeight(sg) / uiScale()
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
 
@@ -159,8 +174,12 @@ class RenderNode(val sg: SGNode) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** A Label is a single line unless told to wrap. */
-  def setWhiteSpace(value: String): Unit = ()
+  /** A Label is a single line, cut short with an ellipsis, unless told to wrap: `"normal"` wraps it at its width. */
+  def setWhiteSpace(value: String): Unit = {
+    wrapping = value == "normal"
+    uiSetWrap(sg, wrapping)
+    spaceLines()
+  }
 
   def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
 
@@ -185,8 +204,16 @@ class RenderNode(val sg: SGNode) {
   def setTextGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setColor(RenderNode.firstStop(stops))
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
-  /** Lines of wrapped text keep the face's own spacing here. */
-  def setLineHeight(px: Double): Unit = ()
+  /** Each line of wrapped text `advance` units below the last: the Label's own spacing, to what the face leaves. */
+  def setLineHeight(advance: Double): Unit = {
+    lineAdvance = advance
+    spaceLines()
+  }
+
+  /** The Label's spacing between lines, set for the advance asked for at its current face and size. */
+  private def spaceLines(): Unit =
+    // (with no advance asked for, the face's own: the theme's spacing is far looser than any other backend's)
+    if (wrapping && lineHeight > 0.0) uiSetLineSpacing(sg, px(math.max(0.0, lineAdvance - lineHeight)))
   /** A link is followed by its select; there is no address to show. */
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */

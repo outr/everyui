@@ -70,7 +70,13 @@ class Component(val node: RenderNode) {
   lazy val event: Events = new Events(this)
   /** Whether the focus can land here: by a click, `focus()`, or the arrows from a neighbour (everyui.focus.Focus). */
   lazy val focusable: Var[Boolean] = Var(false)
-  lazy val focused: Val[Boolean] = Val(Focus.focused().exists(_ eq this))
+  /** Whether the focus is here: set by the focus layer as it moves (`Focus.listen`). */
+  lazy val focused: Val[Boolean] = focusedNow
+  private[everyui] lazy val focusedNow: Var[Boolean] = {
+    val here = Var(false)
+    here @= Focus.focused.get.exists(_ eq this) // read once, untracked: it follows the focus layer, not the focus
+    here
+  }
   def focus(): Unit = Focus.focused @= Some(this)
 
   /** Whether this handles `key` itself while focused, so the focus layer leaves it be: a text field keeps Enter and

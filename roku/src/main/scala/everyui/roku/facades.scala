@@ -216,6 +216,14 @@ class SGNode
 @native object uiSetClip {
   def apply(node: SGNode, width: Double, height: Double): Unit = native.value
 }
+/** The pixels between a Label's lines. */
+@native object uiSetLineSpacing {
+  def apply(node: SGNode, spacing: Double): Unit = native.value
+}
+/** Whether a Label wraps its words at its width. */
+@native object uiSetWrap {
+  def apply(node: SGNode, wrap: Boolean): Unit = native.value
+}
 /** Whether the node and everything under it is drawn. */
 @native object uiSetVisible {
   def apply(node: SGNode, visible: Boolean): Unit = native.value

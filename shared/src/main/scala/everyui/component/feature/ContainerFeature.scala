@@ -32,13 +32,15 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     source.attachAndFire { all =>
       // a value still in the list keeps the component it already had: a list that grows an entry at a time would
       // otherwise build every entry again, and lose everything each had loaded (a rail of artwork) with it
+      // (a find and a filter rather than `span`, which the Roku's runtime has no form of)
       var spare = previous
       val rendered = all.map { value =>
-        spare.span(_._1 != value) match {
-          case (before, (_, component) :: after) =>
-            spare = before ::: after
+        spare.find(_._1 == value) match {
+          case Some(kept) =>
+            val component = kept._2
+            spare = spare.filterNot(_._2 eq component)
             value -> component
-          case _ => value -> render(value)
+          case None => value -> render(value)
         }
       }
       previous = rendered

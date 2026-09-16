@@ -29,7 +29,15 @@ object Focus {
 
   /** Take the platform's keys: `ui` calls it as it starts, since the Roku compiler runs no statement in an object's
     * body. */
-  def listen(): Unit = Platform.onKey((name, pressed) => key(name, pressed))
+  def listen(): Unit = {
+    Platform.onKey((name, pressed) => key(name, pressed))
+    // only the component the focus leaves and the one it lands on hear of it, rather than every component on the
+    // screen working out for itself whether it is the one (a home screen of rails is a hundred and more)
+    focused.changes { (was, now) =>
+      was.foreach(_.focusedNow @= false)
+      now.foreach(_.focusedNow @= true)
+    }
+  }
 
   private var backs: List[Key => Boolean] = Nil
 

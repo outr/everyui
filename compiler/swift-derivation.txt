@@ -500,19 +500,22 @@ class SwiftEmitter(
       val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
       val rwsL   = types.map(t => rwFor(t, depth))
       val ctor = if (isModel(cls)) s"${typeName(cls)}_new" else "invalid"
-      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor)"
+      // a field the JSON leaves out takes its default, as fabric reads it on the JVM
+      val defaultsL = fields.indices.map(i => caseDefault(cls, i))
+      val defs = defaultsL.map(_.getOrElse("invalid")).mkString(", ")
+      val has = defaultsL.map(d => if (d.isDefined) "true" else "false").mkString(", ")
+      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor, [$defs], [$has])"
     }
-
-    /** A default argument's value: the getter's right-hand side, from its tree or from the companion's ClassDef. */
 @@ new
       val keysL  = fields.map(f => brStr(f.name))
       val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
       val rwsL   = types.map(t => rwFor(t, depth))
       val ctor = if (isModel(cls)) s"rtFn(${typeName(cls)}_new)" else NULL
-      s"_rwGen(${brStr(cls.name)}, ${rtArr(keysL)}, ${rtArr(slotsL)}, ${rtArr(rwsL)}, $ctor)"
+      val defaultsL = fields.indices.map(i => caseDefault(cls, i))
+      val defs = rtArr(defaultsL.map(_.getOrElse(NULL)).toList)
+      val has = rtArr(defaultsL.map(d => if (d.isDefined) ".vBool(true)" else ".vBool(false)").toList)
+      s"_rwGen(${brStr(cls.name)}, ${rtArr(keysL)}, ${rtArr(slotsL)}, ${rtArr(rwsL)}, $ctor, $defs, $has)"
     }
-
-    /** A default argument's value: the getter's right-hand side, from its tree or from the companion's ClassDef. */
 @@ old
       val overrides = cls.caseFields.zip(flattenVarargs(args)).collect {
         case (f, arg) if !isDefaultArg(arg) =>
@@ -786,6 +789,8 @@ class SwiftEmitter(
               s"(Len(${emitTerm(recv)}) = 0)"
             case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
               s"_strIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "lastIndexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
+              s"_strLastIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
               s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
@@ -798,6 +803,8 @@ class SwiftEmitter(
               s"(rtLen(${emitTerm(recv)}) == ${vInt(0)})"
             case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
               s"rtIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "lastIndexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
+              s"rtLastIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "+" | "incl") if isSetTpe(recv.tpe) && args.size == 1 =>
               s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
@@ -1124,12 +1131,26 @@ class SwiftEmitter(
         case Select(q, "headOption") if isCollType(q) => s"_headOption(${emitTerm(q)})"
         case Select(q, "lastOption") if isCollType(q) => s"_lastOption(${emitTerm(q)})"
 @@ old
+              s"(${emitTerm(recv)} \\ ${emitTerm(args.head)})"
+@@ new
+              s"(${emitTerm(recv)} / ${emitTerm(args.head)})"
+@@ old
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
-        // an integral value made floating: BrightScript keeps a LongInteger quotient whole
-        case Select(q, "toDouble" | "toFloat") if Set("scala.Long", "scala.Int", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(q.tpe)) =>
+        // an integral value made floating: BrightScript keeps a LongInteger quotient whole. A Long is promoted by
+        // arithmetic, since Cdbl goes through a 32-bit Integer and loses the top of one (a time in milliseconds)
+        case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Long" => s"(${emitTerm(q)} + 0#)"
+        case Select(q, "toDouble" | "toFloat") if Set("scala.Int", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(q.tpe)) =>
           s"Cdbl(${emitTerm(q)})"
+        // a String read as a number: the whole of it, or (the Option forms) nothing when it is not one
+        case Select(q, "toInt" | "toLong") if isStringLike(q.tpe) => s"_strToInt(${emitTerm(q)})"
+        case Select(q, "toDouble" | "toFloat") if isStringLike(q.tpe) => s"_strToDouble(${emitTerm(q)})"
+        case Select(q, "toIntOption" | "toLongOption") if isStringLike(q.tpe) => s"_strToIntOpt(${emitTerm(q)})"
+        case Select(q, "toDoubleOption" | "toFloatOption") if isStringLike(q.tpe) => s"_strToDoubleOpt(${emitTerm(q)})"
+        // a fraction made whole is truncated toward zero, as the JVM does (BrightScript's Int() floors)
+        case Select(q, "toInt" | "toLong") if !isIntegral(q.tpe) && Set("scala.Double", "scala.Float").contains(fqnOf(q.tpe)) =>
+          s"Fix(${emitTerm(q)})"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)

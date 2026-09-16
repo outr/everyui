@@ -72,6 +72,7 @@ class RenderNode(val view: View) {
     case t: TextView =>
       fontSize = size
       t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size.toFloat)
+      spaceLines(t)
       placeY()
     case _ => ()
   }
@@ -89,6 +90,7 @@ class RenderNode(val view: View) {
       fontSize = size
       t.setTypeface(if (family.nonEmpty) Host.typeface(face) else Typeface.create(Typeface.DEFAULT, weight, false))
       t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size.toFloat)
+      spaceLines(t)
       placeY()
     case _ => ()
   }
@@ -143,7 +145,7 @@ class RenderNode(val view: View) {
       laidOutHeight =
         if (wrapping) {
           android.text.StaticLayout.Builder.obtain(text, 0, text.length, paint, at).setIncludePad(false)
-            .build().getHeight.toDouble
+            .setLineSpacing(t.getLineSpacingExtra, t.getLineSpacingMultiplier).build().getHeight.toDouble
         } else 0.0
     }
   }
@@ -225,8 +227,22 @@ class RenderNode(val view: View) {
       view.setOutlineAmbientShadowColor(colour)
       view.setElevation((blur / 2.0).toFloat)
     }
-  /** Lines of wrapped text keep the face's own spacing here. */
-  def setLineHeight(px: Double): Unit = ()
+  /** Each line of wrapped text `advance` pixels below the last: the gap the face leaves, opened or closed to that. */
+  def setLineHeight(advance: Double): Unit = view match {
+    case t: TextView =>
+      lineAdvance = advance
+      spaceLines(t)
+    case _ => ()
+  }
+
+  private var lineAdvance: Double = 0.0
+
+  /** The TextView's own line spacing, to the advance asked for at its current face and size (which it depends on). */
+  private def spaceLines(t: TextView): Unit = if (lineAdvance > 0.0) {
+    val metrics = t.getPaint.getFontMetrics
+    t.setLineSpacing((lineAdvance - (metrics.descent - metrics.ascent)).toFloat, 1.0f)
+    laidOutAt = -1 // the words take a different height now
+  }
   /** A link is followed by its click; there is no address to show. */
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
