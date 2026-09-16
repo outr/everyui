@@ -144,6 +144,8 @@ class RenderNode(val sg: SGNode) {
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean): Unit = ()
+  /** The shared ScrollContainer draws no scrollbar here. */
+  def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
   def setClip(width: Double, height: Double): Unit = uiSetClip(sg, px(width), px(height))
   /** No pointer to rest. */
@@ -167,7 +169,27 @@ class RenderNode(val sg: SGNode) {
     * colour, and four thin rectangles along the sides. Rounded: the Rectangle clear, and Posters behind the children, a
     * filled 9-patch and an edge one, white and tinted to their colours (`images/rr`, made by the channel build, for
     * whole radii up to 64 pixels and edges up to 8). */
+  private var gradientHex: String = ""
+  /** A gradient is its first colour here: SceneGraph draws none. */
+  def setGradient(angle: Double, stops: String): Unit = {
+    gradientHex = RenderNode.firstStop(stops)
+    paint()
+  }
+  /** The letters in the gradient's first colour. */
+  def setTextGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setColor(RenderNode.firstStop(stops))
+  /** No shadow is drawn. */
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** Lines of wrapped text keep the face's own spacing here. */
+  def setLineHeight(px: Double): Unit = ()
+  /** A link is followed by its select; there is no address to show. */
+  def setHref(href: String, newTab: Boolean): Unit = ()
+  /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
+  def setOptions(labels: List[String]): Unit = ()
+  /** Styled runs are drawn as the paragraph's own style, their words run together. */
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(r => r.text).mkString)
+
   private def paint(): Unit = {
+    val fill = if (gradientHex.nonEmpty) gradientHex else fillHex
     val w = if (boxWidth >= 0.0) boxWidth else getWidth()
     val h = if (boxHeight >= 0.0) boxHeight else getHeight()
     val edged = edgeWidth > 0.0 && edgeHex.nonEmpty
@@ -178,7 +200,7 @@ class RenderNode(val sg: SGNode) {
     if (r >= 1) {
       uiSetBackgroundColor(sg, "")
       clearEdges()
-      if (fillHex.nonEmpty) fillShape = Some(uiShape(sg, fillShape, "pkg:/images/rr/fill-" + r.toString + ".9.png", fillHex, px(w), px(h), 0))
+      if (fill.nonEmpty) fillShape = Some(uiShape(sg, fillShape, "pkg:/images/rr/fill-" + r.toString + ".9.png", fill, px(w), px(h), 0))
       else fillShape = dropShape(fillShape)
       if (edged) {
         val stroke = math.max(1, math.min(8, math.round(px(edgeWidth) * panel).toInt))
@@ -188,7 +210,7 @@ class RenderNode(val sg: SGNode) {
     } else {
       fillShape = dropShape(fillShape)
       edgeShape = dropShape(edgeShape)
-      uiSetBackgroundColor(sg, fillHex)
+      uiSetBackgroundColor(sg, fill)
       if (edged) placeEdges(w, h) else clearEdges()
     }
   }
@@ -236,6 +258,15 @@ class RenderNode(val sg: SGNode) {
 }
 
 /** Backend node factories. */
+object RenderNode {
+  /** The first colour of `everyui.Gradient`'s encoding, as the seam takes a colour. */
+  def firstStop(stops: String): String = {
+    val space = stops.indexOf(' ')
+    val hex = if (space < 0) stops else stops.substring(0, space)
+    if (hex.length == 9 && hex.toLowerCase.endsWith("ff")) hex.substring(0, 7) else hex
+  }
+}
+
 object Nodes {
   /** The channel's root Group, created by the generated `AppScene`. */
   def root(): RenderNode = new RenderNode(uiRoot())
@@ -245,6 +276,12 @@ object Nodes {
   def container(): RenderNode = new RenderNode(uiContainer())
   /** No text field: a line of text, which TextInput fills from the keyboard. */
   def input(secure: Boolean): RenderNode = new RenderNode(uiText())
+  /** A box of lines is a field like any other: the Roku keyboard edits it. */
+  def textArea(): RenderNode = new RenderNode(uiText())
+  /** A link: a container; its select follows it. */
+  def link(): RenderNode = container()
+  /** A drop-down draws itself here: its node is a line of text. */
+  def select(): RenderNode = text()
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
   def icon(glyph: String, size: Double): RenderNode = {
@@ -290,6 +327,10 @@ object Platform {
   def nativeScroll(): Boolean = false
   /** No browser, no clipboard. */
   def openUrl(url: String): Unit = ()
+  /** A channel has no browser to go to. */
+  def navigate(url: String): Unit = ()
+  /** A channel has no title bar. */
+  def setTitle(title: String): Unit = ()
   def copyText(text: String): Unit = ()
 
   /** No address bar: no path to show, push or follow. */

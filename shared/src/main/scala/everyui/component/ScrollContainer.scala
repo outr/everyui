@@ -2,7 +2,10 @@ package everyui.component
 
 import everyui.event.{Key, PointerEvent}
 import everyui.focus.Focus
+import everyui.Color
+import everyui.component.types.Prop
 import everyui.render.Platform
+import everyui.theme.Theme
 import reactify.*
 
 /** A viewport over `content`, which may be taller than it: what fits shows, and the wheel, a drag, the arrows and
@@ -19,7 +22,11 @@ class ScrollContainer extends Container {
   val offset: Var[Double] = Var(0.0)
   private val furthest: Val[Double] = Val(math.max(0.0, content.contentHeight() - size.height()))
 
+  /** The scrollbar's colour, where the platform draws one (the web: a thin one, on a clear track). */
+  lazy val scrollbar: Prop[Color] = new Prop[Color](Theme.border(), c => node.setScrollbarColor(Component.css(c)))
+
   node.setScrollable(true)
+  node.setScrollbarColor(Component.css(scrollbar()))
   content.size.width := size.width
   children += content
 

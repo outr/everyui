@@ -157,9 +157,35 @@ class RenderNode(val view: View) {
     borderColor = if (hex.isEmpty) 0 else RenderNode.color(hex)
     paintBackground()
   }
+  private var gradient: Array[Int] = Array.empty
+  private var orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+  /** A linear gradient over the box (`everyui.Gradient`'s encoding, its stops evenly spaced here), or none for `""`. */
+  def setGradient(angle: Double, stops: String): Unit = {
+    gradient = everyui.Gradient.decode(stops).map { case (hex, _) => RenderNode.color(hex) }.toArray
+    orientation = RenderNode.orientation(angle)
+    paintBackground()
+  }
+  /** The letters in the gradient's first colour. */
+  def setTextGradient(angle: Double, stops: String): Unit =
+    everyui.Gradient.decode(stops).headOption.foreach { case (hex, _) => setColor(hex) }
+  /** No shadow is drawn. */
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** Lines of wrapped text keep the face's own spacing here. */
+  def setLineHeight(px: Double): Unit = ()
+  /** A link is followed by its click; there is no address to show. */
+  def setHref(href: String, newTab: Boolean): Unit = ()
+  /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
+  def setOptions(labels: List[String]): Unit = ()
+  /** Styled runs are drawn as the paragraph's own style, their words run together. */
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(_.text).mkString)
+
   private def paintBackground(): Unit = {
     val drawable = new android.graphics.drawable.GradientDrawable()
-    drawable.setColor(background)
+    if (gradient.length >= 2) {
+      drawable.setOrientation(orientation)
+      drawable.setColors(gradient)
+    }
+    else drawable.setColor(if (gradient.length == 1) gradient(0) else background)
     drawable.setCornerRadius(radius)
     if (borderWidth > 0) drawable.setStroke(borderWidth, borderColor)
     view.setBackground(drawable)
@@ -210,6 +236,8 @@ class RenderNode(val view: View) {
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean): Unit = ()
+  /** The shared ScrollContainer draws no scrollbar here. */
+  def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
   def setClip(width: Double, height: Double): Unit = view match {
     case g: ViewGroup => g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)
@@ -311,6 +339,14 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** The nearest of a `GradientDrawable`'s eight directions to a CSS angle (0 runs bottom to top, 90 left to right). */
+  def orientation(angle: Double): android.graphics.drawable.GradientDrawable.Orientation = {
+    import android.graphics.drawable.GradientDrawable.Orientation
+    val all = Array(Orientation.BOTTOM_TOP, Orientation.BL_TR, Orientation.LEFT_RIGHT, Orientation.TL_BR, Orientation.TOP_BOTTOM,
+      Orientation.TR_BL, Orientation.RIGHT_LEFT, Orientation.BR_TL)
+    all((((math.round(angle / 45.0) % 8) + 8) % 8).toInt)
+  }
+
   /** The seam's `"#rrggbb"` or `"#rrggbbaa"` as Android's ARGB. */
   def color(hex: String): Int =
     if (hex.length == 9) android.graphics.Color.parseColor("#" + hex.substring(7) + hex.substring(1, 7)) else android.graphics.Color.parseColor(hex)
@@ -466,6 +502,25 @@ object Nodes {
     new RenderNode(e)
   }
 
+  /** A link: a container; its click follows it. */
+  def link(): RenderNode = container()
+
+  /** A drop-down draws itself here: its node is a line of text. */
+  def select(): RenderNode = text()
+
+  /** A box of lines to type in — a multi-line `EditText` — with no box or padding of its own. */
+  def textArea(): RenderNode = {
+    val node = input(false)
+    node.view match {
+      case e: EditText =>
+        e.setSingleLine(false)
+        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE)
+        e.setGravity(android.view.Gravity.TOP | android.view.Gravity.START)
+      case _ => ()
+    }
+    node
+  }
+
   /** An image node — an `ImageView` stretched to its box. */
   def image(uri: String, width: Double, height: Double): RenderNode = {
     val i = new ImageView(Host.activity)
@@ -507,6 +562,10 @@ object Platform {
   def nativeScroll(): Boolean = false
   def openUrl(url: String): Unit =
     Host.activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+  /** An app has no page to leave: the browser opens `url`. */
+  def navigate(url: String): Unit = openUrl(url)
+  /** The activity's title (what the recents screen calls it). */
+  def setTitle(title: String): Unit = Host.activity.setTitle(title)
   def copyText(text: String): Unit = {
     val manager = Host.activity.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[android.content.ClipboardManager]
     manager.setPrimaryClip(android.content.ClipData.newPlainText("everyui", text))

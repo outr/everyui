@@ -1,7 +1,7 @@
 package everyui.component
 
 import reactify.*
-import everyui.Color
+import everyui.{Color, Gradient, Shadow}
 import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
 import everyui.component.types.{Prop, WhiteSpace}
 import everyui.event.{Events, Key}
@@ -25,6 +25,17 @@ class Component(val node: RenderNode) {
 
   lazy val color: Prop[Color] = new Prop[Color](Color.Black, c => node.setColor(c.toHex))
   lazy val backgroundColor: Prop[Color] = new Prop[Color](Color.Clear, c => node.setBackgroundColor(Component.css(c)))
+  /** A gradient over the whole box, on top of the background colour; a backend that draws none fills with its first
+    * stop. */
+  lazy val gradient: Prop[Option[Gradient]] = new Prop[Option[Gradient]](None, g => g match {
+    case Some(value) => node.setGradient(value.angle, value.encoded)
+    case None => node.setGradient(0.0, "")
+  })
+  /** A soft shadow under the box (the web and the desktop). */
+  lazy val shadow: Prop[Option[Shadow]] = new Prop[Option[Shadow]](None, s => s match {
+    case Some(value) => node.setShadow(value.x, value.y, value.blur, Component.css(value.color))
+    case None => node.setShadow(0.0, 0.0, 0.0, "")
+  })
   /** An edge `borderWidth` pixels wide in `borderColor`, drawn inside the box and following its corners, so a border
     * never changes a size. (A Roku Rectangle has no edge to draw.) */
   lazy val borderColor: Prop[Color] = new Prop[Color](Color.Clear, c => node.setBorder(borderWidth(), Component.css(c)))

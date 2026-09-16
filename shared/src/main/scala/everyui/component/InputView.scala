@@ -7,8 +7,10 @@ import reactify.*
 
 /** The platform's own text field as a component — an `<input>`, a JavaFX `TextField`, an Android `EditText` — so
   * typing, the caret, selection, the clipboard, autofill and an input method are the platform's. `text` is what it
-  * holds, both ways. A `secure` one hides what is typed. [[TextInput]] is the field a form uses. */
-class InputView(secure: Boolean = false) extends Component(Nodes.input(secure)) {
+  * holds, both ways. A `secure` one hides what is typed; a `multiline` one is a box of lines (a `<textarea>`, where the
+  * platform has one). [[TextInput]] is the field a form uses. */
+class InputView(secure: Boolean = false, multiline: Boolean = false)
+  extends Component(if (multiline) Nodes.textArea() else Nodes.input(secure)) {
   val text: Var[String] = Var("")
   val font: FontFeature = new FontFeature(this)
   /** What it says while empty. */

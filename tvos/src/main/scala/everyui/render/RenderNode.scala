@@ -89,6 +89,8 @@ class RenderNode(val sg: SGNode) {
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean): Unit = ()
+  /** The shared ScrollContainer draws no scrollbar here. */
+  def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
   def setClip(width: Double, height: Double): Unit = uiSetClip(sg, width, height)
   /** No pointer to rest. */
@@ -103,6 +105,20 @@ class RenderNode(val sg: SGNode) {
 
   /** No edge: a SceneGraph Rectangle has none to draw. */
   def setBorder(width: Double, hex: String): Unit = ()
+  /** A gradient is its first colour here. */
+  def setGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setBackgroundColor(Nodes.firstStop(stops))
+  /** The letters in the gradient's first colour. */
+  def setTextGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setColor(Nodes.firstStop(stops))
+  /** No shadow is drawn. */
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** Lines keep the face's own spacing. */
+  def setLineHeight(px: Double): Unit = ()
+  /** A link is followed by its select; there is no address to show. */
+  def setHref(href: String, newTab: Boolean): Unit = ()
+  /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
+  def setOptions(labels: List[String]): Unit = ()
+  /** Styled runs are drawn as the label's own style, their words run together. */
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(r => r.text).mkString)
   /** Labels sit where they are placed. */
   def setTextAlign(align: String): Unit = ()
 
@@ -126,6 +142,19 @@ object Nodes {
   def container(): RenderNode = new RenderNode(uiContainer())
   /** No text field: a line of text, which TextInput fills from the keyboard. */
   def input(secure: Boolean): RenderNode = new RenderNode(uiText())
+  /** A box of lines is a field like any other. */
+  def textArea(): RenderNode = new RenderNode(uiText())
+  /** A link: a container; its select follows it. */
+  def link(): RenderNode = container()
+  /** A drop-down draws itself here: its node is a line of text. */
+  def select(): RenderNode = text()
+
+  /** The first colour of `everyui.Gradient`'s encoding, as the seam takes a colour. */
+  def firstStop(stops: String): String = {
+    val space = stops.indexOf(' ')
+    val hex = if (space < 0) stops else stops.substring(0, space)
+    if (hex.length == 9 && hex.toLowerCase.endsWith("ff")) hex.substring(0, 7) else hex
+  }
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
   def icon(glyph: String, size: Double): RenderNode = {
@@ -171,6 +200,10 @@ object Platform {
   def nativeScroll(): Boolean = false
   /** No browser, no clipboard. */
   def openUrl(url: String): Unit = ()
+  /** An Apple TV app has no browser to go to. */
+  def navigate(url: String): Unit = ()
+  /** An Apple TV app has no title bar. */
+  def setTitle(title: String): Unit = ()
   def copyText(text: String): Unit = ()
 
   /** No address bar: no path to show, push or follow. */

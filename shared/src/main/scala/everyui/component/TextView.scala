@@ -1,6 +1,6 @@
 package everyui.component
 
-import everyui.Color
+import everyui.{Color, Gradient}
 import everyui.component.feature.FontFeature
 import everyui.component.types.{Prop, TextAlign, WhiteSpace}
 import everyui.render.{Nodes, RenderNode}
@@ -12,6 +12,14 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** Where the text sits in its box, by the reading direction: it matters once the box is wider than the words
     * (wrapped, or given a width). */
   lazy val align: Prop[TextAlign] = new Prop[TextAlign](TextAlign.Start, a => node.setTextAlign(TextView.side(a)))
+  /** The letters painted with a gradient instead of `color` (the web; elsewhere its first stop). */
+  lazy val fill: Prop[Option[Gradient]] = new Prop[Option[Gradient]](None, g => g match {
+    case Some(value) => node.setTextGradient(value.angle, value.encoded)
+    case None => node.setTextGradient(0.0, "")
+  })
+
+  // wrapped to a width that changes, the words take a different number of lines
+  size.width.attach(_ => if (size.width.explicit && whiteSpace() != WhiteSpace.NoWrap) measure.trigger())
 
   override def kind: String = "TextView(" + content() + ")"
 }

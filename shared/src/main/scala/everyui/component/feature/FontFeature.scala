@@ -16,8 +16,14 @@ class FontFeature(component: Component) {
   }, () => component.measure.trigger())
 
   lazy val size: Prop[Double] = new Prop[Double](16.0, _ => applyFont(), () => component.measure.trigger())
+  /** The height of a line as a multiple of the size (a paragraph's 1.7, say); 0 is the face's own line box. Only the
+    * web spaces lines by it so far. */
+  lazy val lineHeight: Prop[Double] = new Prop[Double](0.0, _ => applyFont(), () => component.measure.trigger())
 
-  private def applyFont(): Unit = component.node.setFont(family(), weight().value, size())
+  private def applyFont(): Unit = {
+    component.node.setFont(family(), weight().value, size())
+    if (lineHeight() > 0.0) component.node.setLineHeight(lineHeight() * size())
+  }
 
   // The defaults reach the node too, so a text view that never sets a font still lays out by the shared line box.
   applyFont()

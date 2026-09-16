@@ -43,7 +43,10 @@ class RenderNode(val el: html.Element) {
   def setFontSize(size: Double): Unit = el.style.fontSize = size.toString + "px"
 
   /** `"#rrggbb"`. */
-  def setColor(hex: String): Unit = el.style.color = hex
+  def setColor(hex: String): Unit = {
+    textColor = hex
+    if (!textFilled) el.style.color = hex
+  }
 
   /** A bundled face (index.html's `@font-face` rules): family, CSS weight,
     * size in pixels. The line box is the shared one (everyui.font.Face), not
@@ -75,8 +78,89 @@ class RenderNode(val el: html.Element) {
   def setRadius(radius: Double): Unit = el.style.borderRadius = radius.toString + "px"
 
   /** An edge `width` pixels wide, inside the box (an inset shadow follows the corners and changes no size). */
-  def setBorder(width: Double, hex: String): Unit =
-    el.style.setProperty("box-shadow", if (hex.isEmpty || width <= 0.0) "none" else "inset 0 0 0 " + width.toString + "px " + hex)
+  def setBorder(width: Double, hex: String): Unit = {
+    edge = if (hex.isEmpty || width <= 0.0) "" else "inset 0 0 0 " + width.toString + "px " + hex
+    paintShadows()
+  }
+
+  /** A linear gradient over the box (`everyui.Gradient`'s encoding), or none for `""`. */
+  def setGradient(angle: Double, stops: String): Unit =
+    el.style.backgroundImage = if (stops.isEmpty) "none" else RenderNode.linearGradient(angle, stops)
+
+  /** The letters painted with a gradient: the box's background, clipped to the text. */
+  def setTextGradient(angle: Double, stops: String): Unit = {
+    textFilled = stops.nonEmpty
+    el.style.backgroundImage = if (textFilled) RenderNode.linearGradient(angle, stops) else "none"
+    el.style.setProperty("-webkit-background-clip", if (textFilled) "text" else "border-box")
+    el.style.setProperty("background-clip", if (textFilled) "text" else "border-box")
+    el.style.color = if (textFilled) "transparent" else textColor
+  }
+
+  /** A soft shadow under the box, or none for `""`. */
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
+    drop = if (hex.isEmpty) "" else x.toString + "px " + y.toString + "px " + blur.toString + "px " + hex
+    paintShadows()
+  }
+
+  /** The edge and the drop shadow are both box shadows, so each keeps the other. */
+  private def paintShadows(): Unit = {
+    val all = List(edge, drop).filter(_.nonEmpty)
+    el.style.setProperty("box-shadow", if (all.isEmpty) "none" else all.mkString(", "))
+  }
+
+  /** The distance between lines of wrapped text, in pixels. */
+  def setLineHeight(px: Double): Unit = el.style.lineHeight = px.toString + "px"
+
+  /** Where a link goes (the node is an `<a>`, `Nodes.link`), in a new tab with `newTab`. */
+  def setHref(href: String, newTab: Boolean): Unit = {
+    el.setAttribute("href", href)
+    if (newTab) {
+      el.setAttribute("target", "_blank")
+      el.setAttribute("rel", "noopener")
+    }
+    else {
+      el.removeAttribute("target")
+      el.removeAttribute("rel")
+    }
+  }
+
+  /** The text as styled runs: spans, and `<a>`s for links. A click on a link to a path on this site is `follow`ed in
+    * place; any other link, or one clicked with a modifier, is the browser's (a new tab). */
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
+    el.textContent = ""
+    runs.foreach { run =>
+      val span = dom.document.createElement(if (run.href.nonEmpty) "a" else "span").asInstanceOf[html.Element]
+      span.textContent = run.text
+      if (run.family.nonEmpty) span.style.fontFamily = "'" + run.family + "'"
+      if (run.weight > 0) span.style.fontWeight = run.weight.toString
+      if (run.italic) span.style.fontStyle = "italic"
+      if (run.size > 0.0) span.style.fontSize = run.size.toString + "px"
+      if (run.color.nonEmpty) span.style.color = run.color
+      if (run.strike) span.style.textDecoration = "line-through"
+      if (run.background.nonEmpty) {
+        span.style.backgroundColor = run.background
+        span.style.padding = "0.08em 0.35em"
+        span.style.borderRadius = "5px"
+      }
+      if (run.href.nonEmpty) {
+        span.setAttribute("href", run.href)
+        span.className = "everyui-link"
+        val inApp = run.href.startsWith("/") && !run.href.startsWith("//")
+        if (!inApp) {
+          span.setAttribute("target", "_blank")
+          span.setAttribute("rel", "noopener")
+        }
+        span.addEventListener("click", (e: dom.MouseEvent) => {
+          e.stopPropagation()
+          if (inApp && !RenderNode.modified(e)) {
+            e.preventDefault()
+            follow(run.href)
+          }
+        })
+      }
+      el.appendChild(span)
+    }
+  }
 
   /** CSS `position`; `""` is static. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
@@ -97,7 +181,10 @@ class RenderNode(val el: html.Element) {
   def setScrollable(vertical: Boolean): Unit = {
     el.style.overflowY = if (vertical) "auto" else "hidden"
     el.style.overflowX = "hidden"
+    el.style.setProperty("scrollbar-width", "thin")
   }
+  /** The scrollbar's thumb colour, on a clear track. */
+  def setScrollbarColor(hex: String): Unit = el.style.setProperty("scrollbar-color", if (hex.isEmpty) "auto" else hex + " transparent")
   def setScrollTop(y: Double): Unit = el.scrollTop = y
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
@@ -115,11 +202,27 @@ class RenderNode(val el: html.Element) {
   /** An `<input>`'s contents. */
   def getValue(): String = el match {
     case i: html.Input => i.value
+    case t: html.TextArea => t.value
+    case s: html.Select => s.value
     case _ => ""
   }
   def setValue(value: String): Unit = el match {
     case i: html.Input => i.value = value
+    case t: html.TextArea => t.value = value
+    case s: html.Select => s.value = value
     case _ => ()
+  }
+  /** A drop-down's choices (`Nodes.select`), each answering with its index as its value. */
+  def setOptions(labels: List[String]): Unit = {
+    val chosen = getValue()
+    el.textContent = ""
+    labels.zipWithIndex.foreach { case (label, i) =>
+      val option = dom.document.createElement("option").asInstanceOf[html.Option]
+      option.value = i.toString
+      option.textContent = label
+      el.appendChild(option)
+    }
+    setValue(chosen)
   }
   def setPlaceholder(text: String): Unit = el.setAttribute("placeholder", text)
   /** Every edit, with the new contents. */
@@ -134,9 +237,23 @@ class RenderNode(val el: html.Element) {
     else if (!on && dom.document.activeElement == el) el.blur()
 
   private var rotation: Double = 0.0
+  private var edge: String = ""
+  private var drop: String = ""
+  private var textColor: String = ""
+  private var textFilled: Boolean = false
 
   private def px(value: String): Double =
     value.stripSuffix("px").toDoubleOption.getOrElse(0.0)
+}
+
+object RenderNode {
+  /** CSS for `everyui.Gradient`'s encoding. */
+  def linearGradient(angle: Double, stops: String): String =
+    "linear-gradient(" + angle.toString + "deg, " +
+      everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
+
+  /** A click the browser should keep: another button, or a modifier asking for a new tab or window. */
+  def modified(e: dom.MouseEvent): Boolean = e.button != 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
 }
 
 /** Backend node factories. */
@@ -163,6 +280,10 @@ object Nodes {
     app.style.overflow = "hidden"
     app.style.width = "100%"
     app.style.height = "100%"
+    // a link in running text shows it is one under the pointer
+    val style = dom.document.createElement("style")
+    style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }"
+    dom.document.head.appendChild(style)
     new RenderNode(app)
   }
 
@@ -172,6 +293,54 @@ object Nodes {
     el.style.position = "absolute"
     el.style.left = "0px"
     el.style.top = "0px"
+    new RenderNode(el)
+  }
+
+  /** A link — an absolutely positioned `<a>` holding other nodes. A plain click is the app's (`Link` follows it); one
+    * with a modifier, another button, or on a link to a new tab is the browser's, and the app never hears of it. */
+  def link(): RenderNode = {
+    val el = dom.document.createElement("a").asInstanceOf[html.Element]
+    el.style.position = "absolute"
+    el.style.left = "0px"
+    el.style.top = "0px"
+    el.style.display = "block"
+    el.style.color = "inherit"
+    el.style.textDecoration = "none"
+    el.addEventListener("click", (e: dom.MouseEvent) => {
+      if (RenderNode.modified(e) || el.getAttribute("target") == "_blank") e.stopImmediatePropagation()
+      else e.preventDefault()
+    })
+    new RenderNode(el)
+  }
+
+  /** A drop-down — a `<select>` — with no box of its own, its words in the node's own font and colour. */
+  def select(): RenderNode = {
+    val el = dom.document.createElement("select").asInstanceOf[html.Element]
+    el.style.position = "absolute"
+    el.style.left = "0px"
+    el.style.top = "0px"
+    el.style.border = "none"
+    el.style.outline = "none"
+    el.style.margin = "0px"
+    el.style.background = "transparent"
+    el.style.setProperty("box-sizing", "border-box")
+    el.style.cursor = "pointer"
+    new RenderNode(el)
+  }
+
+  /** A box of lines to type in — a `<textarea>` — with no box of its own. */
+  def textArea(): RenderNode = {
+    val el = dom.document.createElement("textarea").asInstanceOf[html.Element]
+    el.style.position = "absolute"
+    el.style.left = "0px"
+    el.style.top = "0px"
+    el.style.border = "none"
+    el.style.outline = "none"
+    el.style.padding = "0px"
+    el.style.margin = "0px"
+    el.style.background = "transparent"
+    el.style.setProperty("resize", "none")
+    el.style.setProperty("box-sizing", "border-box")
     new RenderNode(el)
   }
 
@@ -260,6 +429,10 @@ object Platform {
   def nativeScroll(): Boolean = true
   /** `url` in a new tab. */
   def openUrl(url: String): Unit = dom.window.open(url, "_blank")
+  /** Leave for `url`, in this tab. */
+  def navigate(url: String): Unit = dom.window.location.assign(url)
+  /** What the tab is called. */
+  def setTitle(title: String): Unit = dom.document.title = title
   /** `text` onto the clipboard: the async clipboard where the page is a secure context, else the selection command. */
   def copyText(text: String): Unit = {
     val clipboard = dom.window.navigator.asInstanceOf[js.Dynamic].clipboard

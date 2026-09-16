@@ -57,6 +57,7 @@ trait ScreenManager extends TaskSupport {
     * loaded, so every node is measured with its real font and never a fallback the browser is still replacing. */
   def run(screen: Screen, others: Screen*): Unit = {
     screens = screen :: others.toList
+    ScreenManager.running = Some(this)
     // behind anything an app put in `ui` before running
     val before = ui.children()
     ui.children.clear()
@@ -92,6 +93,17 @@ trait ScreenManager extends TaskSupport {
   def show(screen: Screen, push: Boolean = true): Task[Unit] = {
     if (push) remember(screen)
     swap(screen, push)
+  }
+
+  /** Show the screen claiming `path`, as a link to it does: the path goes to the address bar first, so a screen with
+    * parameters reads them from it. Whether a screen claimed it. */
+  def go(path: String): Boolean = at(URLPath(path)) match {
+    case Some(screen) =>
+      remember(screen)
+      Platform.pushPath(path)
+      swap(screen, push = false).startUnit()
+      true
+    case None => false
   }
 
   /** Back to the screen before this one: whether there was one (at the first, Back is left to the platform). */
@@ -198,4 +210,12 @@ trait ScreenManager extends TaskSupport {
       }
     })
   }
+}
+
+object ScreenManager {
+  /** The app's screen manager, once it runs: where a [[everyui.component.Link]] to a path looks for its screen. */
+  var running: Option[ScreenManager] = None
+
+  /** Show `path`'s screen in the running app. Whether there was one. */
+  def navigate(path: String): Boolean = running.exists(_.go(path))
 }

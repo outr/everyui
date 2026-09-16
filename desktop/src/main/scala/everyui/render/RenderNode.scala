@@ -4,11 +4,11 @@ import javafx.animation.AnimationTimer
 import javafx.geometry.{NodeOrientation, Pos, VPos}
 import javafx.scene.image.{Image, ImageView}
 import javafx.beans.value.{ChangeListener, ObservableValue}
-import javafx.scene.control.{PasswordField, TextField, TextInputControl, Tooltip}
+import javafx.scene.control.{PasswordField, TextArea, TextField, TextInputControl, Tooltip}
 import javafx.scene.input.{Clipboard, ClipboardContent, KeyCode, KeyEvent, MouseEvent, ScrollEvent}
 import javafx.scene.shape.Rectangle
 import javafx.scene.layout.{Background, BackgroundFill, Border, BorderStroke, BorderStrokeStyle, BorderWidths, CornerRadii, Pane, Region}
-import javafx.scene.paint.Color
+import javafx.scene.paint.{Color, CycleMethod, LinearGradient, Paint, Stop}
 import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text, TextAlignment}
 import javafx.scene.{Node, Scene}
 import everyui.font.{Face, Faces}
@@ -175,10 +175,39 @@ class RenderNode(val fx: Node) {
     borderColor = hex
     paintBackground()
   }
+  private var gradient: Option[Paint] = None
+  /** A linear gradient over the box (`everyui.Gradient`'s encoding), or none for `""`. */
+  def setGradient(angle: Double, stops: String): Unit = {
+    gradient = RenderNode.linearGradient(angle, stops)
+    paintBackground()
+  }
+  /** The letters painted with a gradient. */
+  def setTextGradient(angle: Double, stops: String): Unit = fx match {
+    case t: Text => RenderNode.linearGradient(angle, stops).foreach(t.setFill)
+    case _ => ()
+  }
+  /** A soft shadow under the box, or none for `""`. */
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
+    fx.setEffect(if (hex.isEmpty) null else {
+      val shadow = new javafx.scene.effect.DropShadow(blur, x, y, Color.web(hex))
+      shadow
+    })
+  /** Lines of wrapped text keep the face's own spacing here. */
+  def setLineHeight(px: Double): Unit = ()
+  /** A link is followed by its click; there is no address to show. */
+  def setHref(href: String, newTab: Boolean): Unit = ()
+  /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
+  def setOptions(labels: List[String]): Unit = ()
+  /** Styled runs are drawn as the paragraph's own style, their words run together. */
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(_.text).mkString)
+
   private def paintBackground(): Unit = fx match {
     case p: Pane =>
       val corners = if (radius > 0.0) new CornerRadii(radius) else null
-      p.setBackground(if (background.isEmpty) null else new Background(new BackgroundFill(Color.web(background), corners, null)))
+      val fills = List(
+        Option.when(background.nonEmpty)(new BackgroundFill(Color.web(background), corners, null)),
+        gradient.map(g => new BackgroundFill(g, corners, null))).flatten
+      p.setBackground(if (fills.isEmpty) null else new Background(fills*))
       p.setBorder(if (borderColor.isEmpty || borderWidth <= 0.0) null
         else new Border(new BorderStroke(Color.web(borderColor), BorderStrokeStyle.SOLID, corners, new BorderWidths(borderWidth))))
     case _ => ()
@@ -198,6 +227,8 @@ class RenderNode(val fx: Node) {
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean): Unit = ()
+  /** The shared ScrollContainer draws no scrollbar here. */
+  def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
@@ -292,6 +323,15 @@ class RenderNode(val fx: Node) {
 }
 
 object RenderNode {
+  /** A JavaFX paint for `everyui.Gradient`'s encoding, across the box by a CSS angle; none for `""`. */
+  def linearGradient(angle: Double, stops: String): Option[Paint] = if (stops.isEmpty) None else {
+    val radians = math.toRadians(angle)
+    val dx = math.sin(radians) / 2.0
+    val dy = -math.cos(radians) / 2.0
+    val list = everyui.Gradient.decode(stops).map { case (hex, at) => new Stop(at, Color.web(hex)) }
+    Some(new LinearGradient(0.5 - dx, 0.5 - dy, 0.5 + dx, 0.5 + dy, true, CycleMethod.NO_CYCLE, list*))
+  }
+
   /** A text field drawn by the component around it: no box of its own, the caret and the words in `hex`. */
   def fieldStyle(hex: String): String =
     "-fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; -fx-text-fill: " + hex +
@@ -450,6 +490,24 @@ object Nodes {
     node
   }
 
+  /** A link: a container; its click follows it. */
+  def link(): RenderNode = container()
+
+  /** A drop-down draws itself here: its node is a line of text. */
+  def select(): RenderNode = text()
+
+  /** A box of lines to type in — a JavaFX `TextArea` — with no box of its own. */
+  def textArea(): RenderNode = {
+    val a = new TextArea()
+    a.setWrapText(true)
+    a.setStyle(RenderNode.fieldStyle("#1c1b1f"))
+    a.setFocusTraversable(false)
+    val node = new RenderNode(a)
+    Host.aligned.add(node)
+    node.applyAlign()
+    node
+  }
+
   /** An image node — an `ImageView` stretched to its box. */
   def image(uri: String, width: Double, height: Double): RenderNode = {
     val i = new ImageView()
@@ -488,6 +546,13 @@ object Platform {
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
   def openUrl(url: String): Unit = java.awt.Desktop.getDesktop.browse(new java.net.URI(url))
+  /** A window has no page to leave: the browser opens `url`. */
+  def navigate(url: String): Unit = openUrl(url)
+  /** The window's title. */
+  def setTitle(title: String): Unit = Option(Host.scene).flatMap(s => Option(s.getWindow)).foreach {
+    case stage: javafx.stage.Stage => stage.setTitle(title)
+    case _ => ()
+  }
   def copyText(text: String): Unit = {
     val content = new ClipboardContent()
     content.putString(text)
