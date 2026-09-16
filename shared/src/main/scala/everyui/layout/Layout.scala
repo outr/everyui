@@ -16,3 +16,9 @@ trait Layout {
   /** The child next to `from` in the arrow `direction`'s way, if the arrow stays inside the container. */
   def neighbour(container: Container, children: Vector[Component], from: Component, direction: Key): Option[Component]
 }
+
+object Layout {
+  /** Whether a child takes any room: one with neither width nor height is left out of the spacing, so something a
+    * screen has nothing to say about leaves no gap where it would have been. */
+  def shows(child: Component): Boolean = child.size.width() > 0.0 || child.size.height() > 0.0
+}

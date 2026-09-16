@@ -50,6 +50,9 @@ class RenderNode(val sg: SGNode) {
   def getRotation(): Double = uiGetRotation(sg)
   def setRotation(radians: Double): Unit = uiSetRotation(sg, radians)
 
+  /** Drawn larger or smaller about its own centre. */
+  def setScale(factor: Double): Unit = uiSetScale(sg, factor)
+
   def setFontSize(size: Double): Unit = uiSetFontSize(sg, size)
 
   /** `"#rrggbb"`. */
@@ -88,10 +91,13 @@ class RenderNode(val sg: SGNode) {
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind.toString, f)
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
-  def setScrollable(vertical: Boolean): Unit = ()
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = ()
+  def setScrollLeft(x: Double): Unit = ()
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
+  /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
+  def setVisible(visible: Boolean): Unit = uiSetVisible(sg, visible)
   def setClip(width: Double, height: Double): Unit = uiSetClip(sg, width, height)
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()

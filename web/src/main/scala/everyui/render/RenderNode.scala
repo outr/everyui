@@ -37,8 +37,18 @@ class RenderNode(val el: html.Element) {
   def getRotation(): Double = rotation
   def setRotation(radians: Double): Unit = {
     rotation = radians
-    el.style.transform = "rotate(" + radians.toString + "rad)"
+    transform()
   }
+
+  /** Drawn larger or smaller about its own centre, which is what the browser scales about by default. */
+  def setScale(factor: Double): Unit = {
+    scaled = factor
+    transform()
+  }
+
+  private var scaled: Double = 1.0
+  private def transform(): Unit =
+    el.style.transform = "rotate(" + rotation.toString + "rad) scale(" + scaled.toString + ")"
 
   def setFontSize(size: Double): Unit = el.style.fontSize = size.toString + "px"
 
@@ -178,14 +188,18 @@ class RenderNode(val el: html.Element) {
     }
 
   /** The node scrolls its own overflow: the browser's scrollbar, wheel, touch and keys. */
-  def setScrollable(vertical: Boolean): Unit = {
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = {
     el.style.overflowY = if (vertical) "auto" else "hidden"
-    el.style.overflowX = "hidden"
+    el.style.overflowX = if (horizontal) "auto" else "hidden"
     el.style.setProperty("scrollbar-width", "thin")
   }
   /** The scrollbar's thumb colour, on a clear track. */
   def setScrollbarColor(hex: String): Unit = el.style.setProperty("scrollbar-color", if (hex.isEmpty) "auto" else hex + " transparent")
   def setScrollTop(y: Double): Unit = el.scrollTop = y
+  def setScrollLeft(x: Double): Unit = el.scrollLeft = x
+  /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
+  def setVisible(visible: Boolean): Unit = el.style.display = if (visible) "" else "none"
+
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
   def setTooltip(text: String): Unit = el.title = text

@@ -29,7 +29,8 @@ case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) exte
     children.foreach { child =>
       child.position.left @= (if (rtl) width - x - child.size.width() else x)
       child.position.top @= (if (middle) pad + (tallest - child.size.height()) / 2.0 else pad)
-      x = x + child.size.width() + spacing
+      // a child with no size takes no room and no gap: what a row has nothing to show is left out of it
+      if (Layout.shows(child)) x = x + child.size.width() + spacing
     }
   }
 }

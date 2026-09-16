@@ -28,7 +28,22 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     * measurements dependencies, and the list rebuilds itself forever. */
   def bind[T](values: => List[T])(render: T => Component): Unit = {
     val source: Val[List[T]] = Val(values)
-    source.attachAndFire(all => static(all.map(render).toVector))
+    var previous: List[(T, Component)] = Nil
+    source.attachAndFire { all =>
+      // a value still in the list keeps the component it already had: a list that grows an entry at a time would
+      // otherwise build every entry again, and lose everything each had loaded (a rail of artwork) with it
+      var spare = previous
+      val rendered = all.map { value =>
+        spare.span(_._1 != value) match {
+          case (before, (_, component) :: after) =>
+            spare = before ::: after
+            value -> component
+          case _ => value -> render(value)
+        }
+      }
+      previous = rendered
+      static(rendered.map(_._2).toVector)
+    }
   }
 
   def isEmpty: Boolean = get.isEmpty
@@ -48,3 +63,4 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     order.foreach(_.measured.refresh())
   }, Priority.High)
 }
+

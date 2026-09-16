@@ -49,6 +49,10 @@ class SGNode
 @native object uiSetRotation {
   def apply(node: SGNode, radians: Double): Unit = native.value
 }
+/** Drawn larger or smaller about the node's own centre. */
+@native object uiSetScale {
+  def apply(node: SGNode, factor: Double): Unit = native.value
+}
 @native object uiSetFontSize {
   def apply(node: SGNode, size: Double): Unit = native.value
 }
@@ -163,6 +167,10 @@ class SGNode
 /** Clip the node to `width` by `height`. */
 @native object uiSetClip {
   def apply(node: SGNode, width: Double, height: Double): Unit = native.value
+}
+/** Whether the node and everything under it is drawn. */
+@native object uiSetVisible {
+  def apply(node: SGNode, visible: Boolean): Unit = native.value
 }
 /** The character at a Unicode code point, as a string. */
 @native object uiChr {

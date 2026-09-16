@@ -23,7 +23,8 @@ case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extend
     children.foreach { child =>
       child.position.left @= (if (center) pad + (inner - child.size.width()) / 2.0 else pad)
       child.position.top @= y
-      y = y + child.size.height() + spacing
+      // a child with no size takes no room and no gap: an optional line is left out of the column entirely
+      if (Layout.shows(child)) y = y + child.size.height() + spacing
     }
   }
 }

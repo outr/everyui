@@ -8,6 +8,8 @@ import reactify.*
 class ProgressBar(width: Double, height: Double = 6.0) extends Container {
   val fraction: Var[Double] = Var(0.0)
   val fill: Var[Color] = Var(Theme.accent())
+  /** What shows where the bar is not filled. */
+  val track: Var[Color] = Var(Theme.controlLit())
 
   private val done = new Container {
     size.width := ProgressBar.this.size.width() * math.max(0.0, math.min(1.0, fraction()))
@@ -17,7 +19,7 @@ class ProgressBar(width: Double, height: Double = 6.0) extends Container {
   }
   size.width @= width
   size.height @= height
-  backgroundColor := Theme.controlLit()
+  backgroundColor := track()
   radius @= height / 2.0
   children += done
 }

@@ -23,6 +23,14 @@ class Component(val node: RenderNode) {
   val size: SizeFeature = new SizeFeature(this)
   lazy val position: PositionFeature = new PositionFeature(this)
 
+  /** Whether the platform draws this at all. A component that is not shown keeps its place and its size: it is out of
+    * sight, not out of the layout. */
+  lazy val visible: Prop[Boolean] = new Prop[Boolean](true, v => node.setVisible(v))
+
+  /** Drawn larger or smaller about its own centre, its place and its size unchanged — what a card does under the
+    * focus. 1.0 is its own size. */
+  lazy val scale: Prop[Double] = new Prop[Double](1.0, s => node.setScale(s))
+
   lazy val color: Prop[Color] = new Prop[Color](Color.Black, c => node.setColor(c.toHex))
   lazy val backgroundColor: Prop[Color] = new Prop[Color](Color.Clear, c => node.setBackgroundColor(Component.css(c)))
   /** A gradient over the whole box, on top of the background colour; a backend that draws none fills with its first

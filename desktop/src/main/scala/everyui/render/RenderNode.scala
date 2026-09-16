@@ -67,6 +67,12 @@ class RenderNode(val fx: Node) {
     fx.setRotate(math.toDegrees(radians))
   }
 
+  /** Drawn larger or smaller about its own centre, which is what JavaFX scales about. */
+  def setScale(factor: Double): Unit = {
+    fx.setScaleX(factor)
+    fx.setScaleY(factor)
+  }
+
   def setFontSize(size: Double): Unit = fx match {
     case t: Text =>
       fontSize = size
@@ -226,10 +232,14 @@ class RenderNode(val fx: Node) {
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
-  def setScrollable(vertical: Boolean): Unit = ()
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = ()
+  def setScrollLeft(x: Double): Unit = ()
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
+  /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
+  def setVisible(visible: Boolean): Unit = fx.setVisible(visible)
+
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
 

@@ -5,9 +5,13 @@ import everyui.component.feature.FontFeature
 import everyui.component.types.{Prop, TextAlign, WhiteSpace}
 import everyui.render.{Nodes, RenderNode}
 import everyui.theme.Theme
+import reactify.Var
 
 class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
-  lazy val content: Prop[String] = new Prop[String](node.getText(), node.setText, () => measure.trigger())
+  lazy val content: Prop[String] = new Prop[String](node.getText(), _ => fit(), () => measure.trigger())
+  /** The widest these words may be drawn on one line: what will not fit is cut short with an ellipsis, as a title
+    * beside a chip is, so whatever sits after them keeps its place. 0 for no limit. */
+  lazy val maxWidth: Var[Double] = Var(0.0)
   val font: FontFeature = new FontFeature(this)
   /** Where the text sits in its box, by the reading direction: it matters once the box is wider than the words
     * (wrapped, or given a width). */
@@ -20,6 +24,27 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
 
   // wrapped to a width that changes, the words take a different number of lines
   size.width.attach(_ => if (size.width.explicit && whiteSpace() != WhiteSpace.NoWrap) measure.trigger())
+  maxWidth.attach(_ => fit())
+
+  /** Draw the words, or as many of them as `maxWidth` leaves room for with an ellipsis after. The platform measures
+    * each try, so the cut is the one the words really take, and not a guess at how wide a letter is. */
+  private def fit(): Unit = {
+    val wanted = content()
+    val limit = maxWidth()
+    node.setText(wanted)
+    if (limit > 0.0 && node.getWidth() > limit) {
+      var fewest = 0
+      var most = wanted.length
+      while (fewest < most) {
+        val half = (fewest + most + 1) / 2
+        node.setText(wanted.substring(0, half) + "…")
+        if (node.getWidth() <= limit) fewest = half else most = half - 1
+      }
+      node.setText(wanted.substring(0, fewest) + "…")
+    }
+    // what is drawn decides the width: a cut that came from a narrower `maxWidth` changes nothing else
+    measure.trigger()
+  }
 
   override def kind: String = "TextView(" + content() + ")"
 }

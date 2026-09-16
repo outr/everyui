@@ -62,6 +62,12 @@ class RenderNode(val view: View) {
     view.setRotation(math.toDegrees(radians).toFloat)
   }
 
+  /** Drawn larger or smaller about its own centre, which is what a View pivots on unless told otherwise. */
+  def setScale(factor: Double): Unit = {
+    view.setScaleX(factor.toFloat)
+    view.setScaleY(factor.toFloat)
+  }
+
   def setFontSize(size: Double): Unit = view match {
     case t: TextView =>
       fontSize = size
@@ -94,10 +100,9 @@ class RenderNode(val view: View) {
     if (explicitWidth >= 0.0) explicitWidth
     else view match {
       case _: EditText => 0.0
-      case t: TextView if wrapping => t.getPaint.measureText(t.getText.toString).toDouble
       case t: TextView =>
-        val text = t.getText.toString
-        t.getPaint.getRunAdvance(text, 0, text.length, 0, text.length, false, text.length).toDouble
+        measure(t)
+        laidOutWidth
       case _ => 0.0
     }
 
@@ -105,12 +110,53 @@ class RenderNode(val view: View) {
     if (explicitHeight >= 0.0) explicitHeight
     else view match {
       case t: TextView if wrapping =>
-        val text = t.getText
-        val width = math.max(1, math.round(explicitWidth).toInt)
-        android.text.StaticLayout.Builder.obtain(text, 0, text.length, t.getPaint, width).setIncludePad(false).build().getHeight.toDouble
+        measure(t)
+        laidOutHeight
       case _: TextView => face.lineHeight(fontSize)
       case _ => 0.0
     }
+
+  private var laidOutText: String = null
+  private var laidOutAt: Int = -1
+  private var laidOutSize: Float = -1.0f
+  private var laidOutFace: Typeface = null
+  private var laidOutWidth: Double = 0.0
+  private var laidOutHeight: Double = 0.0
+
+  /** What the words come to: measured once, and again only when they, the face or the width they wrap at change.
+    * Laying text out is the costliest measurement there is, and a screen of cards asks for it thousands of times a
+    * second while it loads. */
+  private def measure(t: TextView): Unit = {
+    val text = t.getText
+    val paint = t.getPaint
+    val at = if (wrapping) math.max(1, math.round(explicitWidth).toInt) else 0
+    if (at != laidOutAt || paint.getTextSize != laidOutSize || (paint.getTypeface ne laidOutFace) ||
+      !sameText(text, laidOutText)) {
+      val whole = text.toString
+      laidOutText = whole
+      laidOutAt = at
+      laidOutSize = paint.getTextSize
+      laidOutFace = paint.getTypeface
+      laidOutWidth =
+        if (wrapping) paint.measureText(whole).toDouble
+        else paint.getRunAdvance(whole, 0, whole.length, 0, whole.length, false, whole.length).toDouble
+      laidOutHeight =
+        if (wrapping) {
+          android.text.StaticLayout.Builder.obtain(text, 0, text.length, paint, at).setIncludePad(false)
+            .build().getHeight.toDouble
+        } else 0.0
+    }
+  }
+
+  private def sameText(text: CharSequence, was: String): Boolean = was != null && text.length == was.length && {
+    var i = 0
+    var same = true
+    while (same && i < text.length) {
+      if (text.charAt(i) != was.charAt(i)) same = false
+      i += 1
+    }
+    same
+  }
 
   def append(child: RenderNode): Unit = view match {
     case g: ViewGroup => g.addView(child.view)
@@ -235,10 +281,16 @@ class RenderNode(val view: View) {
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
-  def setScrollable(vertical: Boolean): Unit = ()
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = ()
+  def setScrollLeft(x: Double): Unit = ()
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
+  /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. Its place and its size are
+    * kept (INVISIBLE, not GONE), since the layout is ours and not the view system's. */
+  def setVisible(visible: Boolean): Unit =
+    view.setVisibility(if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE)
+
   def setClip(width: Double, height: Double): Unit = view match {
     case g: ViewGroup => g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)
     case _ => ()
@@ -426,26 +478,46 @@ object Host {
     try BitmapFactory.decodeStream(in) finally in.close()
   })
 
-  /** A bitmap by URI, then `done` on the main thread: at once from the APK or the cache, after a download on its own
-    * thread from the network (`null` if it cannot be had). */
+  /** A few threads fetch and decode every image between them, and never every core: a screen of artwork (a TV's rails:
+    * a hundred posters at once) started a thread apiece, and the interface had nothing left to draw with. */
+  private lazy val loaders: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newFixedThreadPool(math.max(2, Runtime.getRuntime.availableProcessors - 1), r => {
+      val thread = new Thread(r, "everyui-images")
+      thread.setDaemon(true)
+      thread.setPriority(Thread.MIN_PRIORITY)
+      thread
+    })
+
+  /** What is on its way, and everyone waiting on it. */
+  private val pending = mutable.Map.empty[String, List[Bitmap => Unit]]
+
+  /** A bitmap by URI, then `done` on the main thread: at once from the APK or the cache, after a download on one of
+    * the loading threads (`null` if it cannot be had). */
   def bitmapThen(uri: String)(done: Bitmap => Unit): Unit = bitmaps.get(uri) match {
     case Some(b) => done(b)
     case None if uri.startsWith("http") =>
-      new Thread(() => {
-        val b =
-          try {
-            val in = new java.net.URL(uri).openStream()
-            try BitmapFactory.decodeStream(in) finally in.close()
-          } catch {
-            case t: Exception =>
-              Platform.logError("Loading " + uri, t)
-              null
-          }
-        activity.runOnUiThread(() => {
-          if (b != null) bitmaps(uri) = b
-          done(b)
-        })
-      }).start()
+      // one fetch per address, however many ask for it: a rail shows the same artwork more than once, and each
+      // picture asks twice over (its natural size, then its pixels)
+      pending.get(uri) match {
+        case Some(waiting) => pending(uri) = done :: waiting
+        case None =>
+          pending(uri) = List(done)
+          loaders.execute(() => {
+            val b =
+              try {
+                val in = new java.net.URL(uri).openStream()
+                try BitmapFactory.decodeStream(in) finally in.close()
+              } catch {
+                case t: Exception =>
+                  Platform.logError("Loading " + uri, t)
+                  null
+              }
+            activity.runOnUiThread(() => {
+              if (b != null) bitmaps(uri) = b
+              pending.remove(uri).getOrElse(Nil).reverse.foreach(_(b))
+            })
+          })
+      }
     case None => done(bitmap(uri))
   }
 

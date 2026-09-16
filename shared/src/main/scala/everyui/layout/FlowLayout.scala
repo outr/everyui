@@ -30,8 +30,11 @@ case class FlowLayout(horizontalSpacing: Double = 0.0, verticalSpacing: Double =
       }
       child.position.left @= (if (rtl) full - x - w else x)
       child.position.top @= y
-      x = x + w + horizontalSpacing
-      if (child.size.height() > rowHeight) rowHeight = child.size.height()
+      // a child with no size takes no room and no gap: what a row has nothing to show is left out of it
+      if (Layout.shows(child)) {
+        x = x + w + horizontalSpacing
+        if (child.size.height() > rowHeight) rowHeight = child.size.height()
+      }
     }
   }
 }

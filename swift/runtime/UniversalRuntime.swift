@@ -35,7 +35,7 @@ enum UI {
 }
 
 /// Every node's absolute geometry: its top-left, size and rotation in the parent's coordinates.
-struct Geo { var x = 0.0, y = 0.0, w = 0.0, h = 0.0, rot = 0.0 }
+struct Geo { var x = 0.0, y = 0.0, w = 0.0, h = 0.0, rot = 0.0, scale = 1.0 }
 var geoTable: [ObjectIdentifier: Geo] = [:]
 
 func geo(_ v: UIView) -> Geo { geoTable[ObjectIdentifier(v)] ?? Geo() }
@@ -56,7 +56,7 @@ func place(_ v: UIView, _ g: Geo) {
     }
     v.bounds = CGRect(x: 0, y: 0, width: w, height: h)
     v.center = CGPoint(x: g.x + w / 2.0, y: g.y + h / 2.0)
-    v.transform = g.rot == 0.0 ? .identity : CGAffineTransform(rotationAngle: g.rot)
+    v.transform = CGAffineTransform(rotationAngle: g.rot).scaledBy(x: g.scale, y: g.scale)
 }
 
 func view(_ v: V) -> UIView? {
@@ -156,6 +156,13 @@ func uiGetRotation(_ node: V) -> V { guard let v = view(node) else { return .vDb
 func uiSetRotation(_ node: V, _ radians: V) -> V {
     guard let v = view(node) else { return .vNull }
     var g = geo(v); g.rot = dbl(radians); place(v, g)
+    return .vNull
+}
+
+/// Drawn larger or smaller about its own centre, which is where the transform is applied.
+func uiSetScale(_ node: V, _ factor: V) -> V {
+    guard let v = view(node) else { return .vNull }
+    var g = geo(v); g.scale = dbl(factor); place(v, g)
     return .vNull
 }
 
@@ -505,5 +512,11 @@ func uiKeyEvent(_ press: UIPress, _ pressed: Bool) -> Bool {
 /// Clip a view to width by height (a scroll viewport).
 func uiSetClip(_ node: V, _ width: V, _ height: V) -> V {
     view(node)?.clipsToBounds = true
+    return .vNull
+}
+
+/// Whether a view and everything under it is drawn: what a scroll has out of sight costs nothing.
+func uiSetVisible(_ node: V, _ visible: V) -> V {
+    if case .vBool(let shown) = visible { view(node)?.isHidden = !shown }
     return .vNull
 }

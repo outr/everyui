@@ -120,6 +120,13 @@ sub uiSetRotation(node as object, radians as float)
     if node <> invalid then node.rotation = -radians
 end sub
 
+' Larger or smaller about the node's own centre, which uiSetWidth and uiSetHeight keep as its pivot,
+' so a focused card grows where the DOM and the view systems grow it.
+sub uiSetScale(node as object, factor as float)
+    if node = invalid then return
+    node.scale = [factor, factor]
+end sub
+
 sub uiSetFontSize(node as object, size as float)
     if node = invalid then return
     f = CreateObject("roSGNode", "Font")
@@ -640,14 +647,14 @@ sub uiSetWidth(node as object, width as float)
     if node = invalid then return
     if not node.hasField("width") then return
     node.width = width
-    if node.subtype() = "Poster" then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
+    if node.hasField("scaleRotateCenter") then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
 end sub
 
 sub uiSetHeight(node as object, height as float)
     if node = invalid then return
     if not node.hasField("height") then return
     node.height = height
-    if node.subtype() = "Poster" then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
+    if node.hasField("scaleRotateCenter") then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
 end sub
 
 sub uiSetBackgroundColor(node as object, hex as string)
@@ -895,6 +902,12 @@ end sub
 sub uiSetClip(node as object, width as float, height as float)
     if node = invalid then return
     node.clippingRect = [0, 0, width, height]
+end sub
+
+' Whether a node and everything under it is drawn: what a scroll has out of sight costs a Roku nothing.
+sub uiSetVisible(node as object, visible as boolean)
+    if node = invalid then return
+    node.visible = visible
 end sub
 
 ' The character at a Unicode code point, as a string.
