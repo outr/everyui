@@ -904,6 +904,73 @@ sub uiSetClip(node as object, width as float, height as float)
     node.clippingRect = [0, 0, width, height]
 end sub
 
+' Cut a node's children to a rounded rectangle, which a SceneGraph clip cannot: the children are moved into a
+' MaskGroup (made once, `existing` after) whose mask is a white rounded rectangle of exactly this size. A mask is
+' stretched to its maskSize, never 9-patched, so it is drawn for each size, in panel pixels as maskSize is, and kept.
+function uiRoundClip(node as object, existing as dynamic, width as float, height as float, radius as float) as object
+    group = existing
+    if group = invalid
+        group = CreateObject("roSGNode", "MaskGroup")
+        kids = []
+        for i = 0 to node.getChildCount() - 1
+            kids.push(node.getChild(i))
+        end for
+        for each kid in kids
+            group.appendChild(kid)
+        end for
+        node.appendChild(group)
+    end if
+    ps = uiPanelScale()
+    w = Int(width * ps + 0.5)
+    h = Int(height * ps + 0.5)
+    r = Int(radius * ps + 0.5)
+    if w < 1 or h < 1 then return group
+    uri = uiRoundMask(w, h, r)
+    if uri <> "" and group.maskUri <> uri
+        group.maskUri = uri
+        group.maskSize = [w, h]
+    end if
+    return group
+end function
+
+' A white rounded rectangle, w by h with corners of radius r, as a PNG in tmp:/ (made the first time it is asked for).
+' The corners are antialiased: each pixel is as opaque as the share of it inside the circle.
+function uiRoundMask(w as integer, h as integer, r as integer) as string
+    ga = GetGlobalAA()
+    if ga.uiMasks = invalid then ga.uiMasks = {}
+    key = w.ToStr() + "x" + h.ToStr() + "r" + r.ToStr()
+    if ga.uiMasks[key] <> invalid then return ga.uiMasks[key]
+    path = "tmp:/everyui-mask-" + key + ".png"
+    if r > w / 2 then r = Int(w / 2)
+    if r > h / 2 then r = Int(h / 2)
+    b = CreateObject("roBitmap", { width: w, height: h, AlphaEnable: false })
+    if b = invalid then return ""
+    b.Clear(&h00000000)
+    b.DrawRect(r, 0, w - 2 * r, h, &hFFFFFFFF)
+    b.DrawRect(0, r, w, h - 2 * r, &hFFFFFFFF)
+    for y = 0 to r - 1
+        for x = 0 to r - 1
+            dx = r - x - 0.5
+            dy = r - y - 0.5
+            a = r - Sqr(dx * dx + dy * dy) + 0.5
+            if a > 0
+                if a > 1 then a = 1
+                c = &hFFFFFF00 + Int(a * 255)
+                b.DrawRect(x, y, 1, 1, c)
+                b.DrawRect(w - 1 - x, y, 1, 1, c)
+                b.DrawRect(x, h - 1 - y, 1, 1, c)
+                b.DrawRect(w - 1 - x, h - 1 - y, 1, 1, c)
+            end if
+        end for
+    end for
+    b.Finish()
+    png = b.GetPng(0, 0, w, h)
+    if png = invalid then return ""
+    if not png.WriteFile(path) then return ""
+    ga.uiMasks[key] = path
+    return path
+end function
+
 ' The pixels between a Label's lines, rather than the theme's.
 sub uiSetLineSpacing(node as object, spacing as float)
     if node = invalid or not node.hasField("lineSpacing") then return

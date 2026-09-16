@@ -216,6 +216,10 @@ class SGNode
 @native object uiSetClip {
   def apply(node: SGNode, width: Double, height: Double): Unit = native.value
 }
+/** Cut `node`'s children to a rounded rectangle: `existing`, or a new MaskGroup they are moved into. */
+@native object uiRoundClip {
+  def apply(node: SGNode, existing: Option[SGNode], width: Double, height: Double, radius: Double): SGNode = native.value
+}
 /** The pixels between a Label's lines. */
 @native object uiSetLineSpacing {
   def apply(node: SGNode, spacing: Double): Unit = native.value

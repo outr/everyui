@@ -36,6 +36,10 @@ class RenderNode(val sg: SGNode) {
   private var richWidth: Double = -1.0
   // Whether the text wraps at its width (`setWhiteSpace`), so its height is its lines rather than one
   private var wrapping: Boolean = false
+  // The clip last set, and the MaskGroup its children are in when its corners are rounded too
+  private var clipWidth: Double = 0.0
+  private var clipHeight: Double = 0.0
+  private var masked: Option[SGNode] = None
   // How far apart its lines are asked to be, in units (`setLineHeight`), or 0 for the face's own spacing
   private var lineAdvance: Double = 0.0
   // The size last set, which the border follows; -1 until set.
@@ -130,7 +134,8 @@ class RenderNode(val sg: SGNode) {
     }
     else if (lineHeight > 0.0) lineHeight else uiGetHeight(sg) / uiScale()
 
-  def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
+  // (into the rounded clip, when there is one: see `roundClip`)
+  def append(child: RenderNode): Unit = uiAppend(masked.getOrElse(sg), child.sg)
 
   /** Detach from the parent, if attached. */
   def remove(): Unit = uiRemove(sg)
@@ -155,6 +160,7 @@ class RenderNode(val sg: SGNode) {
   def setRadius(radius: Double): Unit = {
     cornerRadius = radius
     paint()
+    roundClip()
   }
   /** SceneGraph places every node by its translation, so there is no position type to set. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
@@ -168,7 +174,18 @@ class RenderNode(val sg: SGNode) {
   def setScrollTop(y: Double): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = uiSetVisible(sg, visible)
-  def setClip(width: Double, height: Double): Unit = uiSetClip(sg, px(width), px(height))
+  def setClip(width: Double, height: Double): Unit = {
+    clipWidth = width
+    clipHeight = height
+    uiSetClip(sg, px(width), px(height))
+    roundClip()
+  }
+
+  /** A clip with rounded corners (a poster's): SceneGraph clips only to a rectangle, so the children go into a MaskGroup
+    * whose mask is a rounded rectangle of exactly this size, drawn on the device once for each size and kept. */
+  private def roundClip(): Unit =
+    if (clipWidth > 0.0 && clipHeight > 0.0 && cornerRadius >= 1.0)
+      masked = Some(uiRoundClip(sg, masked, px(clipWidth), px(clipHeight), px(cornerRadius)))
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()
 
