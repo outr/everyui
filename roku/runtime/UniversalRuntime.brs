@@ -45,10 +45,13 @@ end function
 function uiText() as object
     n = CreateObject("roSGNode", "Label")
     n.color = "0x1C1B1FFF"
-    f = CreateObject("roSGNode", "Font")
-    f.uri = "font:BoldSystemFontFile"
-    f.size = 48
-    n.font = f
+    ga = GetGlobalAA()
+    if ga.uiDefaultFont = invalid
+        ga.uiDefaultFont = CreateObject("roSGNode", "Font")
+        ga.uiDefaultFont.uri = "font:BoldSystemFontFile"
+        ga.uiDefaultFont.size = 48
+    end if
+    n.font = ga.uiDefaultFont
     n.translation = [0.0, 0.0]
     return n
 end function
@@ -579,19 +582,15 @@ end function
 ' A face by its file (pkg:/fonts/<file>.ttf): the one the text is measured by, whatever its family.
 sub uiSetFontFile(node as object, uri as string, size as float)
     if node = invalid then return
-    f = CreateObject("roSGNode", "Font")
-    f.uri = uri
-    f.size = uiCalibratedSize(uri, size)
-    node.font = f
+    node.font = uiFontNode(uri, size)
 end sub
 
 sub uiSetFont(node as object, family as string, weight as integer, size as float)
     if node = invalid then return
-    f = CreateObject("roSGNode", "Font")
-    f.uri = uiFontUri(family, weight)
-    f.size = uiCalibratedSize(f.uri, size)
-    node.font = f
+    uri = uiFontUri(family, weight)
+    node.font = uiFontNode(uri, size)
 end sub
+
 
 function uiGetWidth(node as object) as float
     if node = invalid then return 0.0
@@ -646,16 +645,23 @@ end function
 sub uiSetWidth(node as object, width as float)
     if node = invalid then return
     if not node.hasField("width") then return
-    node.width = width
+    node.width = uiPosterSide(node, width)
     if node.hasField("scaleRotateCenter") then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
 end sub
 
 sub uiSetHeight(node as object, height as float)
     if node = invalid then return
     if not node.hasField("height") then return
-    node.height = height
+    node.height = uiPosterSide(node, height)
     if node.hasField("scaleRotateCenter") then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
 end sub
+
+' A side as a node takes it. A Poster given 0 draws its bitmap at the bitmap's own size, where an image sized to nothing
+' (a rating a title does not have) is meant to draw nothing: a sliver instead.
+function uiPosterSide(node as object, side as float) as float
+    if side <= 0 and node.subtype() = "Poster" then return 0.001
+    return side
+end function
 
 sub uiSetBackgroundColor(node as object, hex as string)
     if node = invalid then return
@@ -786,8 +792,8 @@ end function
 
 ' ── the network module (network/native): sockets and HTTP through Task nodes ──────
 ' The render thread cannot own an roStreamSocket or an roUrlTransfer, so each socket is an EveryUISocketTask node
-' and each request an EveryUIHttpTask node (roku/runtime/*Task.brs): their fields carry the traffic, and the
-' callbacks run here, on the render thread, like every other facade.
+' and each request goes to one of a few EveryUIHttpTask workers (roku/runtime/*Task.brs): their fields carry the
+' traffic, and the callbacks run here, on the render thread, like every other facade.
 function uiSocketOpen(url as string, onOpen as dynamic, onText as dynamic, onClose as dynamic) as object
     ga = GetGlobalAA()
     if ga.uiSockets = invalid
@@ -828,34 +834,59 @@ sub uiSocketClose(t as object)
     t.command = "close"
 end sub
 
+' Requests wait in a queue for one of a few EveryUIHttpTask workers (uiHttpWorkers), which keep their connections.
 sub uiHttp(method as string, url as string, headersJson as string, body as string, hasBody as boolean, done as dynamic)
     ga = GetGlobalAA()
     if ga.uiHttps = invalid
         ga.uiHttps = {}
         ga.uiHttpSeq = 0
+        ga.uiHttpQueue = []
+        ga.uiHttpIdle = []
+        ga.uiHttpPool = []
+        for i = 1 to uiHttpWorkers()
+            t = CreateObject("roSGNode", "EveryUIHttpTask")
+            t.observeField("result", "uiOnHttpResult")
+            t.observeField("ready", "uiOnHttpReady")
+            t.control = "RUN"
+            ga.uiHttpPool.Push(t)
+        end for
     end if
     ga.uiHttpSeq = ga.uiHttpSeq + 1
-    t = CreateObject("roSGNode", "EveryUIHttpTask")
-    t.id = "uiHttp" + ga.uiHttpSeq.ToStr()
-    ga.uiHttps[t.id] = { done: done, node: t }
-    t.observeField("result", "uiOnHttpResult")
-    t.url = url
-    t.method = method
+    id = "uiHttp" + ga.uiHttpSeq.ToStr()
+    ga.uiHttps[id] = done
     headers = ParseJson(headersJson)
     if headers = invalid then headers = {}
-    t.headers = headers
-    t.body = body
-    t.control = "RUN"
+    ga.uiHttpQueue.Push({ id: id, url: url, method: method, headers: headers, body: body })
+    uiHttpNext()
+end sub
+
+function uiHttpWorkers() as integer
+    return 4
+end function
+
+' Hand the oldest waiting request to an idle worker, if both there are.
+sub uiHttpNext()
+    ga = GetGlobalAA()
+    if ga.uiHttpQueue.Count() = 0 or ga.uiHttpIdle.Count() = 0 then return
+    t = ga.uiHttpIdle.Pop()
+    t.request = ga.uiHttpQueue.Shift()
+end sub
+
+' A worker is only idle once it is listening: a request set before then would never be seen.
+sub uiOnHttpReady(event as object)
+    ga = GetGlobalAA()
+    ga.uiHttpIdle.Push(event.getRoSGNode())
+    uiHttpNext()
 end sub
 
 sub uiOnHttpResult(event as object)
     ga = GetGlobalAA()
-    t = event.getRoSGNode()
-    e = ga.uiHttps[t.id]
-    if e = invalid then return
-    ga.uiHttps.Delete(t.id)
+    ga.uiHttpIdle.Push(event.getRoSGNode())
     r = event.getData()
-    RtInvoke(e.done, [r.status, r.headers, r.body])
+    done = ga.uiHttps[r.id]
+    ga.uiHttps.Delete(r.id)
+    uiHttpNext()
+    if done <> invalid then RtInvoke(done, [r.status, r.headers, r.body])
 end sub
 
 ' A SceneGraph Rectangle has no corner radius.
@@ -904,6 +935,82 @@ sub uiSetClip(node as object, width as float, height as float)
     if node = invalid then return
     node.clippingRect = [0, 0, width, height]
 end sub
+
+' A linear gradient behind a node's children, which SceneGraph cannot draw: a strip of it, 256 pixels along the
+' gradient and one across, drawn on the device the first time it is asked for and stretched over the box. `angle` is
+' CSS's (0 bottom to top, 90 left to right), taken to the nearest side; `stops` is "#rrggbbaa at,#rrggbbaa at".
+function uiGradient(parent as object, existing as dynamic, angle as float, stops as string, width as float, height as float) as object
+    p = existing
+    if p = invalid
+        p = CreateObject("roSGNode", "Poster")
+        p.loadDisplayMode = "scaleToFill"
+        parent.insertChild(p, 0)
+    end if
+    a = angle mod 360
+    if a < 0 then a = a + 360
+    side = Int((a + 45) / 90) mod 4
+    uri = uiGradientStrip(stops, side)
+    if p.uri <> uri then p.uri = uri
+    p.width = width
+    p.height = height
+    return p
+end function
+
+' The strip for `stops` running toward `side` (0 up, 1 right, 2 down, 3 left), as a PNG in tmp:/, kept by its key.
+function uiGradientStrip(stops as string, side as integer) as string
+    ga = GetGlobalAA()
+    if ga.uiGradients = invalid then ga.uiGradients = {}
+    key = side.ToStr() + ":" + stops
+    if ga.uiGradients[key] <> invalid then return ga.uiGradients[key]
+    colors = []
+    ats = []
+    for each entry in stops.Split(",")
+        parts = entry.Trim().Split(" ")
+        hex = Mid(parts[0], 2)
+        if Len(hex) = 6 then hex = hex + "FF"
+        colors.push([Val(Mid(hex, 1, 2), 16), Val(Mid(hex, 3, 2), 16), Val(Mid(hex, 5, 2), 16), Val(Mid(hex, 7, 2), 16)])
+        at = 0.0
+        if parts.count() > 1 then at = Val(parts[1])
+        ats.push(at)
+    end for
+    if colors.count() = 0 then return ""
+    n = 256
+    horizontal = side = 1 or side = 3
+    w = 1 : h = n
+    if horizontal then w = n : h = 1
+    b = CreateObject("roBitmap", { width: w, height: h, AlphaEnable: false })
+    if b = invalid then return ""
+    for i = 0 to n - 1
+        t = (i + 0.5) / n
+        ' along the gradient: from the left for "right", from the top for "down", reversed for the other two
+        if side = 0 or side = 3 then t = 1 - t
+        c = colors[colors.count() - 1]
+        if t <= ats[0] then c = colors[0]
+        for k = 0 to colors.count() - 2
+            if t > ats[k] and t <= ats[k + 1]
+                span = ats[k + 1] - ats[k]
+                f = 0.0
+                if span > 0 then f = (t - ats[k]) / span
+                c = []
+                for ch = 0 to 3
+                    c.push(Int(colors[k][ch] + (colors[k + 1][ch] - colors[k][ch]) * f + 0.5))
+                end for
+            end if
+        end for
+        ' &hRRGGBBAA as the signed 32-bit Integer it is, so a red of 128 or more does not overflow on the way
+        red = c[0]
+        if red >= 128 then red = red - 256
+        rgba = red * 16777216 + c[1] * 65536 + c[2] * 256 + c[3]
+        if horizontal then b.DrawRect(i, 0, 1, 1, rgba) else b.DrawRect(0, i, 1, 1, rgba)
+    end for
+    b.Finish()
+    png = b.GetPng(0, 0, w, h)
+    if png = invalid then return ""
+    path = "tmp:/everyui-gradient-" + ga.uiGradients.Count().ToStr() + ".png"
+    if not png.WriteFile(path) then return ""
+    ga.uiGradients[key] = path
+    return path
+end function
 
 ' Cut a node's children to a rounded rectangle, which a SceneGraph clip cannot: the children are moved into a
 ' MaskGroup (made once, `existing` after) whose mask is a white rounded rectangle of exactly this size. A mask is

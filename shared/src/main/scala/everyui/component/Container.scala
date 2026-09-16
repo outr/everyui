@@ -30,7 +30,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     furthest
   }
 
-  private val childSizes: Val[Double] = Val(children().map(c => c.size.width() + c.size.height()).sum)
+  private lazy val childSizes: Val[Double] = Val(children().map(c => c.size.width() + c.size.height()).sum)
   private var exits: Map[everyui.event.Key, Option[Component]] = Map.empty
 
   /** An arrow `direction`'s way that finds nothing inside this container goes to `target` (onto its focusable part
@@ -63,6 +63,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   override def requestLayout(): Unit = place()
   layout.attach { l =>
     l.foreach { lay =>
+      follow()
       if (!size.height.explicit) size.height := contentHeight()
       if (lay.fitsWidth() && !size.width.explicit) {
         widthFollowsContent = true
@@ -71,11 +72,17 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     }
     place()
   }
-  padding.attach(_ => place())
-  children.attach(_ => place())
-  size.width.attach(_ => place())
-  size.height.attach(_ => place())
-  childSizes.attach(_ => place())
+  // What moves the children is followed once there is a layout to move them: most containers never have one (a card, a
+  // badge), and following every child's size for each of them is time a screen of them waits for on a Roku.
+  private var following: Boolean = false
+  private def follow(): Unit = if (!following) {
+    following = true
+    padding.attach(_ => place())
+    children.attach(_ => place())
+    size.width.attach(_ => place())
+    size.height.attach(_ => place())
+    childSizes.attach(_ => place())
+  }
 
   override def kind: String = "Container"
   override def childComponents: Vector[Component] = children()

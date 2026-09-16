@@ -11,11 +11,15 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       c.node.remove()
       c.parent @= None
     }
-    current.filterNot(c => old.exists(_ eq c)).foreach { c =>
+    val added = current.filterNot(c => old.exists(_ eq c))
+    added.foreach { c =>
       component.node.append(c.node)
       c.parent @= Some(component)
     }
-    component.measure.trigger()
+    // only what was added is measured again, and then the container: those already here have their sizes, and
+    // measuring a rail of cards again for each card added to it took a Roku seconds
+    ContainerFeature.measureUnder(added.toList)
+    component.measured.refresh()
   }
 
   def +=(child: Component): Unit = static(get :+ child)
@@ -35,7 +39,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       // (a find and a filter rather than `span`, which the Roku's runtime has no form of)
       var spare = previous
       val rendered = all.map { value =>
-        spare.find(_._1 == value) match {
+        spare.find(kept => ContainerFeature.same(kept._1, value)) match {
           case Some(kept) =>
             val component = kept._2
             spare = spare.filterNot(_._2 eq component)
@@ -54,15 +58,24 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
 
   // Measuring the container measures everything under it first, deepest first, in one walk rather than a trigger per
   // level: a Roku runs out of stack a few levels into a chain of triggers (a dialog on its sheet is enough).
-  component.measure.on({
+  component.measure.on(ContainerFeature.measureUnder(get.toList), Priority.High)
+}
+
+object ContainerFeature {
+  /** The same value: the very one first, which is all a list kept from one change to the next needs, before `==`, which
+    * on a Roku compares a value of pages of titles field by field. */
+  def same[T](a: T, b: T): Boolean = (a.asInstanceOf[AnyRef] eq b.asInstanceOf[AnyRef]) || a == b
+
+  /** Measure `roots` and everything under them, deepest first. */
+  def measureUnder(roots: List[Component]): Unit = {
     var order: List[Component] = Nil
-    var pending: List[Component] = get.toList
+    var pending: List[Component] = roots
     while (pending.nonEmpty) {
       val c = pending.head
       order = c :: order
       pending = c.childComponents.toList ++ pending.tail
     }
     order.foreach(_.measured.refresh())
-  }, Priority.High)
+  }
 }
 

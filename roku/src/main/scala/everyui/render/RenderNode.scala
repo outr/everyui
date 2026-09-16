@@ -143,12 +143,12 @@ class RenderNode(val sg: SGNode) {
   def setWidth(width: Double): Unit = {
     boxWidth = width
     uiSetWidth(sg, px(width))
-    if (cornerRadius >= 1.0 || edges.nonEmpty) paint()
+    if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty) paint()
   }
   def setHeight(height: Double): Unit = {
     boxHeight = height
     uiSetHeight(sg, px(height))
-    if (cornerRadius >= 1.0 || edges.nonEmpty) paint()
+    if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty) paint()
   }
 
   /** `"#rrggbb"`, or `""` for transparent. */
@@ -212,9 +212,15 @@ class RenderNode(val sg: SGNode) {
     * filled 9-patch and an edge one, white and tinted to their colours (`images/rr`, made by the channel build, for
     * whole radii up to 64 pixels and edges up to 8). */
   private var gradientHex: String = ""
-  /** A gradient is its first colour here: SceneGraph draws none. */
+  // The gradient as the seam gave it, and the Poster that draws it (a box with square corners)
+  private var gradientStops: String = ""
+  private var gradientAngle: Double = 0.0
+  private var gradientShape: Option[SGNode] = None
+  /** A gradient: drawn as a strip behind a square box, and as its first colour in a rounded one (see `paint`). */
   def setGradient(angle: Double, stops: String): Unit = {
     gradientHex = RenderNode.firstStop(stops)
+    gradientStops = stops
+    gradientAngle = angle
     paint()
   }
   /** The letters in the gradient's first colour. */
@@ -250,6 +256,8 @@ class RenderNode(val sg: SGNode) {
     if (r >= 1) {
       uiSetBackgroundColor(sg, "")
       clearEdges()
+      // (a rounded box is filled with the gradient's first colour: the strip below has square corners)
+      gradientShape = dropShape(gradientShape)
       if (fill.nonEmpty) fillShape = Some(uiShape(sg, fillShape, "pkg:/images/rr/fill-" + r.toString + ".9.png", fill, px(w), px(h), 0))
       else fillShape = dropShape(fillShape)
       if (edged) {
@@ -260,7 +268,14 @@ class RenderNode(val sg: SGNode) {
     } else {
       fillShape = dropShape(fillShape)
       edgeShape = dropShape(edgeShape)
-      uiSetBackgroundColor(sg, fill)
+      if (gradientStops.nonEmpty && w > 0.0 && h > 0.0) {
+        // SceneGraph draws no gradient: a strip of it, drawn on the device once, stretched behind the children
+        uiSetBackgroundColor(sg, "")
+        gradientShape = Some(uiGradient(sg, gradientShape, gradientAngle, gradientStops, px(w), px(h)))
+      } else {
+        gradientShape = dropShape(gradientShape)
+        uiSetBackgroundColor(sg, fill)
+      }
       if (edged) placeEdges(w, h) else clearEdges()
     }
   }

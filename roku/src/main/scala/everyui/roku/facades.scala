@@ -216,6 +216,11 @@ class SGNode
 @native object uiSetClip {
   def apply(node: SGNode, width: Double, height: Double): Unit = native.value
 }
+/** A gradient (`angle` as CSS has it, `stops` in the seam's encoding) drawn behind `parent`'s children: `existing`, or a new
+  * Poster. */
+@native object uiGradient {
+  def apply(parent: SGNode, existing: Option[SGNode], angle: Double, stops: String, width: Double, height: Double): SGNode = native.value
+}
 /** Cut `node`'s children to a rounded rectangle: `existing`, or a new MaskGroup they are moved into. */
 @native object uiRoundClip {
   def apply(node: SGNode, existing: Option[SGNode], width: Double, height: Double, radius: Double): SGNode = native.value
