@@ -77,6 +77,10 @@ class SGNode
   def apply(tick: () => Unit): Unit = native.value
 }
 /** The math intrinsics, through the runtime. */
+/** A number from 0 up to 1, at random. */
+@native object uiRandom {
+  def apply(): Double = native.value
+}
 @native object uiSqrt {
   def apply(x: Double): Double = native.value
 }

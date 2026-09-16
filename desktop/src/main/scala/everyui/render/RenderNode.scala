@@ -192,6 +192,38 @@ class RenderNode(val fx: Node) {
     case t: Text => RenderNode.linearGradient(angle, stops).foreach(t.setFill)
     case _ => ()
   }
+  /** JavaFX's cached bitmap of the node. */
+  def setCached(cached: Boolean): Unit = fx.setCache(cached)
+
+  private var timelines: List[javafx.animation.Timeline] = Nil
+
+  /** Each track a timeline of the node's own properties, repeating: a position is its translation, on top of the
+    * layout position it is placed by. */
+  def setMotion(tracks: List[everyui.motion.Track]): Unit = {
+    import javafx.animation.{Animation, Interpolator, KeyFrame, KeyValue, Timeline}
+    import javafx.util.Duration
+    import everyui.motion.Track
+    timelines.foreach(_.stop())
+    timelines = tracks.map { track =>
+      val frames = track.keys.map { k =>
+        val at = Duration.seconds(k.at * track.seconds)
+        def value(p: javafx.beans.value.WritableValue[Number], v: Double) = new KeyValue(p, Double.box(v), Interpolator.LINEAR)
+        val values = track.property match {
+          case Track.Position => List(value(fx.translateXProperty(), k.a), value(fx.translateYProperty(), k.b))
+          case Track.Rotation => List(value(fx.rotateProperty(), math.toDegrees(k.a)))
+          case Track.Opacity => List(value(fx.opacityProperty(), k.a))
+          case _ => List(value(fx.scaleXProperty(), k.a), value(fx.scaleYProperty(), k.b))
+        }
+        new KeyFrame(at, values*)
+      }
+      val timeline = new Timeline(frames*)
+      timeline.setCycleCount(Animation.INDEFINITE)
+      timeline.setDelay(Duration.seconds(track.delay))
+      timeline.play()
+      timeline
+    }
+  }
+
   /** A soft shadow under the box, or none for `""`. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
     fx.setEffect(if (hex.isEmpty) null else {
@@ -602,6 +634,12 @@ object Platform {
   def historyBack(): Boolean = false
 
   def later(f: () => Unit): Unit = javafx.application.Platform.runLater(() => f())
+  /** `f` on the FX thread once `seconds` have passed. */
+  def after(seconds: Double, f: () => Unit): Unit = {
+    val pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(seconds))
+    pause.setOnFinished(_ => f())
+    pause.play()
+  }
 
   /** A value kept across launches (the user's preferences store), or "" when there is none. */
   def setting(name: String): String = Host.settings.get(name, "")
@@ -666,6 +704,8 @@ object Platform {
     Host.scene.heightProperty.addListener((_: javafx.beans.Observable) => f())
   }
 
+  /** A number from 0 up to 1, at random. */
+  def random(): Double = math.random()
   def sqrt(x: Double): Double = math.sqrt(x)
   def pow(x: Double, y: Double): Double = math.pow(x, y)
   def sin(x: Double): Double = math.sin(x)

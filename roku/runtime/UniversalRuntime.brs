@@ -204,6 +204,30 @@ sub uiLater(f as dynamic)
     end if
 end sub
 
+' Run `f` once `seconds` have passed: a one-shot Timer of its own, forgotten when it fires.
+sub uiAfter(seconds as float, f as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiAfters = invalid then ga.uiAfters = {}
+    t = CreateObject("roSGNode", "Timer")
+    t.id = "uiAfter" + RtNextId().ToStr()
+    t.repeat = false
+    t.duration = seconds
+    ga.uiAfters[t.id] = { f: f, node: t }
+    ga.appScene.appendChild(t)
+    t.observeField("fire", "uiOnAfter")
+    t.control = "start"
+end sub
+
+sub uiOnAfter(event as object)
+    ga = GetGlobalAA()
+    t = event.getRoSGNode()
+    entry = ga.uiAfters[t.id]
+    if entry = invalid then return
+    ga.uiAfters.Delete(t.id)
+    ga.appScene.removeChild(t)
+    RtInvoke(entry.f, [])
+end sub
+
 sub uiOnLater()
     ga = GetGlobalAA()
     ga.uiLaterArmed = false
@@ -215,6 +239,11 @@ sub uiOnLater()
 end sub
 
 ' Math intrinsics for Platform.sqrt / pow / sin / cos.
+' A number from 0 up to 1, at random.
+function uiRandom() as float
+    return Rnd(0)
+end function
+
 function uiSqrt(x as dynamic) as dynamic
     return Sqr(x)
 end function
@@ -1102,3 +1131,44 @@ end sub
 function uiChr(codePoint as integer) as string
     return Chr(codePoint)
 end function
+
+' A field of `node` moving through keyframes, over and over (Track, everyui.motion): an Animation node with one
+' interpolator, a child of the node itself. Positions and scales are pairs (`a`, `b`); a rotation is already
+' SceneGraph's way round.
+function uiMotion(node as object, property as string, seconds as float, delay as float, fractions as object, a as object, b as object) as object
+    if node.id = "" then node.id = "uiMotion" + RtNextId().ToStr()
+    anim = CreateObject("roSGNode", "Animation")
+    anim.duration = seconds
+    anim.delay = delay
+    anim.repeat = true
+    anim.easeFunction = "linear"
+    values = []
+    if property = "position" or property = "scale"
+        interp = CreateObject("roSGNode", "Vector2DFieldInterpolator")
+        for i = 0 to a.Count() - 1
+            values.Push([a[i], b[i]])
+        end for
+        field = "scale"
+        if property = "position" then field = "translation"
+    else
+        interp = CreateObject("roSGNode", "FloatFieldInterpolator")
+        for each value in a
+            values.Push(value)
+        end for
+        field = "opacity"
+        if property = "rotation" then field = "rotation"
+    end if
+    interp.key = fractions
+    interp.keyValue = values
+    interp.fieldToInterp = node.id + "." + field
+    anim.appendChild(interp)
+    node.appendChild(anim)
+    anim.control = "start"
+    return anim
+end function
+
+sub uiStopMotion(anim as object)
+    if anim = invalid then return
+    anim.control = "stop"
+    uiRemove(anim)
+end sub

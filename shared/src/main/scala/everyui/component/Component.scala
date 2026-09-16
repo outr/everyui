@@ -6,6 +6,7 @@ import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
 import everyui.component.types.{Prop, WhiteSpace}
 import everyui.event.{Events, Key}
 import everyui.focus.Focus
+import everyui.motion.Track
 import everyui.render.RenderNode
 
 /** youi's `Component`, with the DOM element replaced by a [[RenderNode]] — which each backend supplies — so the
@@ -30,6 +31,14 @@ class Component(val node: RenderNode) {
   /** Drawn larger or smaller about its own centre, its place and its size unchanged — what a card does under the
     * focus. 1.0 is its own size. */
   lazy val scale: Prop[Double] = new Prop[Double](1.0, s => node.setScale(s))
+
+  /** Drawn once into a picture of its own and reused while it does not change: what sits over something that moves
+    * (particles) is then not drawn again every frame. Where the platform keeps no such pictures, nothing changes. */
+  lazy val cached: Prop[Boolean] = new Prop[Boolean](false, c => node.setCached(c))
+
+  /** Properties moving on their own, run by the platform (see everyui.motion.Track): setting them replaces what was
+    * moving, and Nil stops it. */
+  lazy val motion: Prop[List[Track]] = new Prop[List[Track]](Nil, t => node.setMotion(t))
 
   lazy val color: Prop[Color] = new Prop[Color](Color.Black, c => node.setColor(c.toHex))
   lazy val backgroundColor: Prop[Color] = new Prop[Color](Color.Clear, c => node.setBackgroundColor(Component.css(c)))

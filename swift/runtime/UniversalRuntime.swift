@@ -331,6 +331,7 @@ func uiAnimate(_ tick: V) -> V {
     return .vNull
 }
 
+func uiRandom() -> V { .vDbl(Double.random(in: 0..<1)) }
 func uiSqrt(_ x: V) -> V { rtSqrt(x) }
 func uiPow(_ x: V, _ y: V) -> V { rtPow(x, y) }
 func uiSin(_ x: V) -> V { rtSin(x) }

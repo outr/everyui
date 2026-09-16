@@ -46,12 +46,14 @@ class RenderNode(val view: View) {
   def setX(x: Double): Unit = {
     left = x
     view.setTranslationX(x.toFloat)
+    if (tracks.nonEmpty) animate()
   }
 
   def getY(): Double = top
   def setY(y: Double): Unit = {
     top = y
     placeY()
+    if (tracks.nonEmpty) animate()
   }
 
   /** Radians, clockwise, about the node's own centre — a View's rotation is degrees, clockwise, and pivots on its
@@ -209,7 +211,10 @@ class RenderNode(val view: View) {
   private var orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
   /** A linear gradient over the box (`everyui.Gradient`'s encoding, its stops evenly spaced here), or none for `""`. */
   def setGradient(angle: Double, stops: String): Unit = {
-    gradient = everyui.Gradient.decode(stops).map { case (hex, _) => RenderNode.color(hex) }.toArray
+    val decoded = everyui.Gradient.decode(stops)
+    gradient = decoded.map { case (hex, _) => RenderNode.color(hex) }.toArray
+    gradientAt = decoded.map(_._2).toArray
+    gradientAngle = angle
     orientation = RenderNode.orientation(angle)
     paintBackground()
   }
@@ -227,6 +232,43 @@ class RenderNode(val view: View) {
       view.setOutlineAmbientShadowColor(colour)
       view.setElevation((blur / 2.0).toFloat)
     }
+  /** A hardware layer: the view is drawn into a texture once, and again only when it changes. */
+  def setCached(cached: Boolean): Unit =
+    view.setLayerType(if (cached) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, null)
+
+  private var tracks: List[everyui.motion.Track] = Nil
+  private var animators: List[android.animation.Animator] = Nil
+
+  /** Each track an animator of the view's own properties, repeating: a position moves the translation the node is
+    * placed by, from where it is placed. */
+  def setMotion(motion: List[everyui.motion.Track]): Unit = {
+    tracks = motion
+    animate()
+  }
+
+  private def animate(): Unit = {
+    import android.animation.{Keyframe, ObjectAnimator, PropertyValuesHolder, ValueAnimator}
+    import everyui.motion.Track
+    animators.foreach(_.cancel())
+    animators = tracks.map { track =>
+      def holder(name: String, value: everyui.motion.Keyframe => Double): PropertyValuesHolder =
+        PropertyValuesHolder.ofKeyframe(name, track.keys.map(k => Keyframe.ofFloat(k.at.toFloat, value(k).toFloat))*)
+      val holders = track.property match {
+        case Track.Position => List(holder("translationX", k => left + k.a), holder("translationY", k => restY + k.b))
+        case Track.Rotation => List(holder("rotation", k => math.toDegrees(k.a)))
+        case Track.Opacity => List(holder("alpha", k => k.a))
+        case _ => List(holder("scaleX", k => k.a), holder("scaleY", k => k.b))
+      }
+      val animator = ObjectAnimator.ofPropertyValuesHolder(view, holders*)
+      animator.setDuration((track.seconds * 1000.0).toLong)
+      animator.setStartDelay((track.delay * 1000.0).toLong)
+      animator.setRepeatCount(ValueAnimator.INFINITE)
+      animator.setInterpolator(new android.view.animation.LinearInterpolator)
+      animator.start()
+      animator
+    }
+  }
+
   /** Each line of wrapped text `advance` pixels below the last: the gap the face leaves, opened or closed to that. */
   def setLineHeight(advance: Double): Unit = view match {
     case t: TextView =>
@@ -250,7 +292,19 @@ class RenderNode(val view: View) {
   /** Styled runs are drawn as the paragraph's own style, their words run together. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(_.text).mkString)
 
+  private var gradientAt: Array[Double] = Array.empty
+  private var gradientAngle: Double = 0.0
+
   private def paintBackground(): Unit = {
+    val quarter = ((math.round(gradientAngle / 90.0) % 4 + 4) % 4).toInt
+    if (gradient.length >= 2 && radius == 0f && borderWidth == 0 && math.abs(gradientAngle / 90.0 - math.round(gradientAngle / 90.0)) < 0.01)
+      view.setBackground(RenderNode.strip(gradient, gradientAt, quarter))
+    else paintShape()
+  }
+
+  // A square gradient is a strip of it stretched over the box: a weak TV GPU drew three full-screen gradient shapes at
+  // a tenth of the frame rate it draws the same three bitmaps
+  private def paintShape(): Unit = {
     val drawable = new android.graphics.drawable.GradientDrawable()
     if (gradient.length >= 2) {
       drawable.setOrientation(orientation)
@@ -406,12 +460,13 @@ class RenderNode(val view: View) {
 
   /** A `TextView` draws its baseline `-ascent` (whole pixels) below its top: shift it so the baseline lands where the
     * shared line box puts it. */
-  private def placeY(): Unit = view match {
-    case _: EditText => view.setTranslationY(top.toFloat)
-    case t: TextView =>
-      val ascent = -t.getPaint.getFontMetricsInt.ascent
-      view.setTranslationY((top + face.baseline(fontSize) - ascent).toFloat)
-    case _ => view.setTranslationY(top.toFloat)
+  private def placeY(): Unit = view.setTranslationY(restY.toFloat)
+
+  // Where the view sits down its parent: a line of text by its baseline
+  private def restY: Double = view match {
+    case _: EditText => top
+    case t: TextView => top + face.baseline(fontSize) + t.getPaint.getFontMetricsInt.ascent
+    case _ => top
   }
 }
 
@@ -422,6 +477,31 @@ object RenderNode {
     val all = Array(Orientation.BOTTOM_TOP, Orientation.BL_TR, Orientation.LEFT_RIGHT, Orientation.TL_BR, Orientation.TOP_BOTTOM,
       Orientation.TR_BL, Orientation.RIGHT_LEFT, Orientation.BR_TL)
     all((((math.round(angle / 45.0) % 8) + 8) % 8).toInt)
+  }
+
+  /** A gradient along one axis as a 256-pixel strip of it, stretched over the box: `quarter` turns from bottom-to-top
+    * (CSS's 0deg), the stops at `at` (0 to 1) in `colors`. */
+  def strip(colors: Array[Int], at: Array[Double], quarter: Int): android.graphics.drawable.Drawable = {
+    val n = 256
+    val pixels = Array.tabulate(n) { i =>
+      val p = (i + 0.5) / n
+      val k = math.max(0, math.min(at.length - 2, at.lastIndexWhere(_ <= p)))
+      val span = at(k + 1) - at(k)
+      val f = if (span <= 0.0) 0.0 else math.max(0.0, math.min(1.0, (p - at(k)) / span))
+      def mix(shift: Int): Int = {
+        val a = (colors(k) >>> shift) & 255
+        val b = (colors(k + 1) >>> shift) & 255
+        math.round(a + (b - a) * f).toInt
+      }
+      (mix(24) << 24) | (mix(16) << 16) | (mix(8) << 8) | mix(0)
+    }
+    // along the strip in the gradient's direction: bottom to top, left to right, top to bottom, right to left
+    val ordered = if (quarter == 0 || quarter == 3) pixels.reverse else pixels
+    val across = quarter == 1 || quarter == 3
+    val bitmap = android.graphics.Bitmap.createBitmap(ordered, if (across) n else 1, if (across) 1 else n, Bitmap.Config.ARGB_8888)
+    val drawable = new android.graphics.drawable.BitmapDrawable(Host.activity.getResources, bitmap)
+    drawable.setFilterBitmap(true)
+    drawable
   }
 
   /** The seam's `"#rrggbb"` or `"#rrggbbaa"` as Android's ARGB. */
@@ -701,6 +781,9 @@ object Platform {
     Host.root.setLayoutDirection(if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
 
   def later(f: () => Unit): Unit = new android.os.Handler(android.os.Looper.getMainLooper).post(() => f())
+  /** `f` on the UI thread once `seconds` have passed. */
+  def after(seconds: Double, f: () => Unit): Unit =
+    new android.os.Handler(android.os.Looper.getMainLooper).postDelayed(() => f(), math.max(0L, (seconds * 1000.0).toLong))
 
   /** A value kept across launches (the app's shared preferences), or "" when there is none. */
   def setting(name: String): String = Host.settings.getString(name, "")
@@ -762,6 +845,8 @@ object Platform {
       if (r - l != oldR - oldL || b - t != oldB - oldT) f()
     )
 
+  /** A number from 0 up to 1, at random. */
+  def random(): Double = math.random()
   def sqrt(x: Double): Double = math.sqrt(x)
   def pow(x: Double, y: Double): Double = math.pow(x, y)
   def sin(x: Double): Double = math.sin(x)

@@ -77,6 +77,10 @@ class SGNode
   def apply(tick: () => Unit): Unit = native.value
 }
 /** BrightScript's math intrinsics (`Sqr`, `^`, `Sin`, `Cos`). */
+/** A number from 0 up to 1, at random. */
+@native object uiRandom {
+  def apply(): Double = native.value
+}
 @native object uiSqrt {
   def apply(x: Double): Double = native.value
 }
@@ -240,4 +244,17 @@ class SGNode
 /** The character at a Unicode code point, as a string. */
 @native object uiChr {
   def apply(codePoint: Int): String = native.value
+}
+/** A field of `node` moving through keyframes (`fractions`, with values `a`, and `b` for a translation or a scale) over
+  * `seconds`, repeating, after `delay`: the Animation node that runs it. */
+@native object uiMotion {
+  def apply(node: SGNode, property: String, seconds: Double, delay: Double, fractions: List[Double], a: List[Double], b: List[Double]): SGNode = native.value
+}
+/** Stop an Animation from uiMotion and take it away. */
+@native object uiStopMotion {
+  def apply(animation: SGNode): Unit = native.value
+}
+/** Run `f` once `seconds` have passed, from a one-shot Timer. */
+@native object uiAfter {
+  def apply(seconds: Double, f: () => Unit): Unit = native.value
 }

@@ -115,6 +115,10 @@ class RenderNode(val sg: SGNode) {
   def setGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setBackgroundColor(Nodes.firstStop(stops))
   /** The letters in the gradient's first colour. */
   def setTextGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setColor(Nodes.firstStop(stops))
+  /** SceneGraph keeps no pictures of its own to ask for. */
+  def setCached(cached: Boolean): Unit = ()
+  /** Nothing moves on its own here yet. */
+  def setMotion(tracks: List[everyui.motion.Track]): Unit = ()
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
   /** Lines keep the face's own spacing. */
@@ -222,6 +226,8 @@ object Platform {
   def historyBack(): Boolean = false
 
   def later(f: () => Unit): Unit = f()
+  /** Nothing waits here yet, so nothing comes of it. */
+  def after(seconds: Double, f: () => Unit): Unit = ()
 
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
@@ -278,6 +284,8 @@ object Platform {
   def onResize(f: () => Unit): Unit = ()
 
   // Through the runtime, as the Roku backend has them.
+  /** A number from 0 up to 1, at random. */
+  def random(): Double = uiRandom()
   def sqrt(x: Double): Double = uiSqrt(x)
   def pow(x: Double, y: Double): Double = uiPow(x, y)
   def sin(x: Double): Double = uiSin(x)

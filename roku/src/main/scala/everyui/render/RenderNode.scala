@@ -74,12 +74,14 @@ class RenderNode(val sg: SGNode) {
   def setX(x: Double): Unit = {
     left = x
     uiSetTranslation(sg, px(left), px(top))
+    if (tracks.nonEmpty) animate()
   }
 
   def getY(): Double = top
   def setY(y: Double): Unit = {
     top = y
     uiSetTranslation(sg, px(left), px(top))
+    if (tracks.nonEmpty) animate()
   }
 
   /** Radians, clockwise, about the node's own centre — matching youi's
@@ -225,6 +227,28 @@ class RenderNode(val sg: SGNode) {
   }
   /** The letters in the gradient's first colour. */
   def setTextGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setColor(RenderNode.firstStop(stops))
+  /** SceneGraph keeps no pictures of its own to ask for. */
+  def setCached(cached: Boolean): Unit = ()
+
+  private var tracks: List[everyui.motion.Track] = Nil
+  private var animations: List[SGNode] = Nil
+
+  /** Each track an Animation node over one of the node's own fields, repeating: SceneGraph runs it, with no script
+    * per frame. A position is the node's translation, from where it is placed. */
+  def setMotion(motion: List[everyui.motion.Track]): Unit = {
+    tracks = motion
+    animate()
+  }
+
+  private def animate(): Unit = {
+    animations.foreach(a => uiStopMotion(a))
+    animations = tracks.map { t =>
+      val position = t.property == everyui.motion.Track.Position
+      val a = t.keys.map(k => if (position) px(left + k.a) else if (t.property == everyui.motion.Track.Rotation) -k.a else k.a)
+      val b = t.keys.map(k => if (position) px(top + k.b) else k.b)
+      uiMotion(sg, t.property, t.seconds, t.delay, t.keys.map(k => k.at), a, b)
+    }
+  }
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
   /** Each line of wrapped text `advance` units below the last: the Label's own spacing, to what the face leaves. */
@@ -409,6 +433,8 @@ object Platform {
   /** On a later turn of the render thread, from a fresh stack (a Timer): what a JavaFX runLater or a browser's
     * setTimeout gives, and what keeps a chain of callbacks from nesting into a Roku's small stack. */
   def later(f: () => Unit): Unit = uiLater(f)
+  /** `f` once `seconds` have passed, from a Timer of its own. */
+  def after(seconds: Double, f: () => Unit): Unit = uiAfter(seconds, f)
 
   /** A packaged file (`pkg:/l10n/app_en.arb`), read at once. */
   def readText(path: String, done: String => Unit): Unit = done(uiReadText(path))
@@ -466,6 +492,8 @@ object Platform {
 
   // BrightScript intrinsics, through everyui's runtime. The web backend
   // supplies the same four from the real Scala stdlib.
+  /** A number from 0 up to 1, at random. */
+  def random(): Double = uiRandom()
   def sqrt(x: Double): Double = uiSqrt(x)
   def pow(x: Double, y: Double): Double = uiPow(x, y)
   def sin(x: Double): Double = uiSin(x)

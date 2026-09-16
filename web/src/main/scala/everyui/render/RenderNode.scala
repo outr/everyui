@@ -106,6 +106,33 @@ class RenderNode(val el: html.Element) {
     el.style.color = if (textFilled) "transparent" else textColor
   }
 
+  /** A layer of its own for the compositor. */
+  def setCached(cached: Boolean): Unit = el.style.setProperty("will-change", if (cached) "transform" else "auto")
+
+  private var animations: List[js.Dynamic] = Nil
+
+  /** Each track an animation of one of the element's own transform properties (`translate`, `rotate`, `scale`), which
+    * the browser applies before `transform` and runs off the page's thread, or of its opacity. */
+  def setMotion(tracks: List[everyui.motion.Track]): Unit = {
+    import everyui.motion.Track
+    animations.foreach(_.cancel())
+    animations = tracks.map { track =>
+      val frames = track.keys.map { k =>
+        val frame = js.Dynamic.literal(offset = k.at)
+        track.property match {
+          case Track.Position => frame.updateDynamic("translate")(k.a.toString + "px " + k.b.toString + "px")
+          case Track.Rotation => frame.updateDynamic("rotate")(k.a.toString + "rad")
+          case Track.Opacity => frame.updateDynamic("opacity")(k.a)
+          case _ => frame.updateDynamic("scale")(k.a.toString + " " + k.b.toString)
+        }
+        frame
+      }
+      val timing = js.Dynamic.literal(duration = track.seconds * 1000.0, delay = track.delay * 1000.0,
+        iterations = Double.PositiveInfinity, easing = "linear")
+      el.asInstanceOf[js.Dynamic].animate(js.Array(frames*), timing)
+    }
+  }
+
   /** A soft shadow under the box, or none for `""`. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
     drop = if (hex.isEmpty) "" else x.toString + "px " + y.toString + "px " + blur.toString + "px " + hex
@@ -499,6 +526,8 @@ object Platform {
   def setLanguage(code: String): Unit = dom.document.documentElement.setAttribute("lang", code.replace("_", "-"))
 
   def later(f: () => Unit): Unit = dom.window.setTimeout(() => f(), 0)
+  /** `f` once `seconds` have passed. */
+  def after(seconds: Double, f: () => Unit): Unit = dom.window.setTimeout(() => f(), seconds * 1000.0)
 
   /** A value kept across visits (`localStorage`), or "" when there is none. */
   def setting(name: String): String = {
@@ -577,6 +606,8 @@ object Platform {
   def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())
 
   // The same four the Roku backend reaches through BrightScript intrinsics.
+  /** A number from 0 up to 1, at random. */
+  def random(): Double = math.random()
   def sqrt(x: Double): Double = math.sqrt(x)
   def pow(x: Double, y: Double): Double = math.pow(x, y)
   def sin(x: Double): Double = math.sin(x)
