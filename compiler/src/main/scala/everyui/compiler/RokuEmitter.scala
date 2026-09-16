@@ -1129,6 +1129,18 @@ class RokuEmitter(
     /** A String, or a String seen through Scala's StringOps (`"12".toIntOption`). */
     def isStringLike(tp: TypeRepr): Boolean = Set("java.lang.String", "scala.collection.StringOps").contains(fqnOf(tp))
 
+    /** A Scala library method on a collection, a String or an Option that nothing above translated. Emitted as it is, it
+      * is a member the BrightScript value does not have, found only when the device reaches it; as a tracked RtTodo it
+      * is found by the build. */
+    def isLibraryGap(recv: Term, sym: Symbol): Boolean =
+      sym.exists && sym.isDefDef && ownerFqn(sym).startsWith("scala.") &&
+        (isCollType(recv) || isStringLike(recv.tpe) || isOptionType(recv))
+    def libraryGap(recv: Term, name: String): String = {
+      val label = name + " on " + fqnOf(recv.tpe)
+      todos += s"unsupported: $label"
+      s"RtTodo(${brStr(label)})"
+    }
+
     /** Whether a value of this type is a whole number, which BrightScript divides and truncates differently. */
     def isIntegral(tp: TypeRepr): Boolean =
       Set("scala.Int", "scala.Long", "scala.Short", "scala.Byte", "scala.Char").contains(fqnOf(tp))
@@ -1700,6 +1712,7 @@ class RokuEmitter(
                    && isUserClassSym(fn.symbol.owner) && !isFacade(fn.symbol) =>
               val a = emitArgs(args, fn.symbol)
               s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}${if (a.isEmpty) "" else ", " + a})"
+            case Select(recv, name) if isLibraryGap(recv, fn.symbol) => libraryGap(recv, name)
             case _ =>
               val fe = emitTerm(fn)
               // `throw e` is a keyword in BrightScript, not a call → runtime helper.
@@ -1814,6 +1827,9 @@ class RokuEmitter(
         case Select(q, "lastOption") if isCollType(q) => s"_lastOption(${emitTerm(q)})"
         case Select(q, "reverse") if isCollType(q)   => s"_reverse(${emitTerm(q)})"
         case Select(q, "distinct") if isCollType(q)  => s"_distinct(${emitTerm(q)})"
+        // a Set is an array of distinct values here, so a collection made one is its distinct values
+        case Select(q, "toSet") if isCollType(q) => s"_distinct(${emitTerm(q)})"
+        case TypeApply(Select(q, "toSet"), _) if isCollType(q) => s"_distinct(${emitTerm(q)})"
         case Select(q, "sum") if isCollType(q)       => s"_sum(${emitTerm(q)})"
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
@@ -1874,6 +1890,7 @@ class RokuEmitter(
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
               case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${emitTerm(q)}.${brSafe(name)})"
+              case None if isLibraryGap(q, s) => libraryGap(q, name)
               case None                  => s"${emitTerm(q)}.${brSafe(name)}"
             }
           }

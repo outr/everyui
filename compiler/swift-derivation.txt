@@ -990,6 +990,7 @@ class SwiftEmitter(
             // Owner_method(recv, args), NOT recv.m(args) — a field-call passes no
 @@ old
               s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}${if (a.isEmpty) "" else ", " + a})"
+            case Select(recv, name) if isLibraryGap(recv, fn.symbol) => libraryGap(recv, name)
             case _ =>
               val fe = emitTerm(fn)
               // `throw e` is a keyword in BrightScript, not a call → runtime helper.
@@ -999,6 +1000,7 @@ class SwiftEmitter(
         case _ => emitTerm(t)
 @@ new
               s"${typeName(fn.symbol.owner)}_${memberName(fn.symbol, name)}(${emitTerm(recv)}${if (a.isEmpty) "" else ", " + a})"
+            case Select(recv, name) if isLibraryGap(recv, fn.symbol) => libraryGap(recv, name)
             case _ =>
               val fe = emitTerm(fn)
               // `throw e` is a statement in Swift, not an expression → runtime helper.
@@ -1208,6 +1210,7 @@ class SwiftEmitter(
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
               case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${emitTerm(q)}.${brSafe(name)})"
+              case None if isLibraryGap(q, s) => libraryGap(q, name)
               case None                  => s"${emitTerm(q)}.${brSafe(name)}"
             }
           }
@@ -1224,6 +1227,7 @@ class SwiftEmitter(
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
               case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${field(emitTerm(q), brSafe(name))})"
+              case None if isLibraryGap(q, s) => libraryGap(q, name)
               case None                  => field(emitTerm(q), brSafe(name))
             }
           }

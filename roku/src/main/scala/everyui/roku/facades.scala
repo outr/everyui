@@ -202,7 +202,7 @@ class SGNode
 }
 /** Milliseconds since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
 @native object uiLocalDateTime {
-  def apply(millis: Double): String = native.value
+  def apply(millis: Long): String = native.value
 }
 /** A pointer event of `kind` on the node, if the platform has a pointer. */
 @native object uiOnPointer {

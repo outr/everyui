@@ -435,7 +435,7 @@ object Platform {
   def launchArg(name: String): String = uiLaunchArg(name)
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
-  def localDateTime(millis: Long): String = uiLocalDateTime(millis.toDouble)
+  def localDateTime(millis: Long): String = uiLocalDateTime(millis)
 
   /** No page to be served from: an app names its server. */
   def webSocketOrigin(): String = ""

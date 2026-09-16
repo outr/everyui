@@ -883,7 +883,8 @@ end function
 ' Milliseconds since the epoch as local "yyyy-MM-dd HH:mm:ss".
 function uiLocalDateTime(millis as dynamic) as string
     dt = CreateObject("roDateTime")
-    dt.FromSeconds(Int(millis / 1000.0))
+    ' whole seconds by integer division: Int() takes a Float, whose steps at today's date are two minutes long
+    dt.FromSeconds(millis \ 1000)
     dt.ToLocalTime()
     return Right("0" + dt.GetYear().ToStr(), 4) + "-" + Right("0" + dt.GetMonth().ToStr(), 2) + "-" + Right("0" + dt.GetDayOfMonth().ToStr(), 2) + " " + Right("0" + dt.GetHours().ToStr(), 2) + ":" + Right("0" + dt.GetMinutes().ToStr(), 2) + ":" + Right("0" + dt.GetSeconds().ToStr(), 2)
 end function
