@@ -199,9 +199,12 @@ class RokuEmitter(
       case _                   => f
     }
 
+    /** A sequence written out in full — `List(a, b)`, and the others that mean the same thing here, since every one
+      * of them is a BrightScript array once emitted. */
+    val seqNames = Set("List", "Seq", "Vector", "IndexedSeq")
     def isListApply(fn: Term): Boolean = fn match {
       case Select(q, "apply") =>
-        q.symbol.name == "List" || (q match { case Ident("List") => true; case _ => false })
+        seqNames.contains(q.symbol.name) || (q match { case Ident(n) => seqNames.contains(n); case _ => false })
       case _ => false
     }
 
