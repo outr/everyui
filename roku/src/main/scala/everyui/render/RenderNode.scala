@@ -145,6 +145,19 @@ class RenderNode(val sg: SGNode) {
   /** Detach from the parent, if attached. */
   def remove(): Unit = uiRemove(sg)
 
+  // ---- a Video or an Audio node (`Nodes.video`, `Nodes.audio`); SceneGraph has no volume for either, and a video
+  // letterboxes rather than filling its box ----
+  def setMediaSource(url: String): Unit = uiSetMediaSource(sg, url)
+  def setMediaPlaying(playing: Boolean): Unit = uiSetMediaPlaying(sg, playing)
+  def setMediaLoop(loop: Boolean): Unit = uiSetMediaLoop(sg, loop)
+  def setMediaMuted(muted: Boolean): Unit = uiSetMediaMuted(sg, muted)
+  def setMediaVolume(volume: Double): Unit = ()
+  def setMediaCover(cover: Boolean): Unit = ()
+  def getMediaPosition(): Double = uiGetMediaPosition(sg)
+  def seekMedia(seconds: Double): Unit = uiSeekMedia(sg, seconds)
+  def onMediaEvent(f: String => Unit): Unit = uiOnMediaEvent(sg, f)
+  def releaseMedia(): Unit = uiReleaseMedia(sg)
+
   def setWidth(width: Double): Unit = {
     boxWidth = width
     uiSetWidth(sg, px(width))
@@ -387,6 +400,10 @@ object Nodes {
     node.setText(glyph)
     node
   }
+  /** A video — a SceneGraph `Video` with no controls of its own. */
+  def video(): RenderNode = new RenderNode(uiVideo())
+  /** Sound — a SceneGraph `Audio`. */
+  def audio(): RenderNode = new RenderNode(uiAudio())
   /** An image node — a SceneGraph `Poster` loading from `pkg:/`. */
   def image(uri: String, width: Double, height: Double): RenderNode =
     new RenderNode(uiImage(uri, width * uiScale(), height * uiScale()))

@@ -28,6 +28,8 @@ class RenderNode(val view: View) {
   private var face: Face = Faces.OpenSansRegular
   private var fontSize: Double = 32.0
   private var wrapping: Boolean = false
+  // what a video or an audio node plays (`Nodes.video`, `Nodes.audio`)
+  private[render] var media: Option[AndroidMedia] = None
 
   if (view.getLayoutParams == null)
     view.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -168,6 +170,17 @@ class RenderNode(val view: View) {
   }
 
   /** Detach from the parent, if attached. */
+  def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
+  def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
+  def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))
+  def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
+  def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
+  def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
+  def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))
+  def onMediaEvent(f: String => Unit): Unit = media.foreach(_.onEvent(f))
+  def releaseMedia(): Unit = media.foreach(_.release())
+
   def remove(): Unit = view.getParent match {
     case g: ViewGroup => g.removeView(view)
     case _ => ()
@@ -674,6 +687,21 @@ object Host {
 object Nodes {
   /** The Activity's content view. */
   def root(): RenderNode = new RenderNode(Host.root)
+
+  /** A video: a `TextureView` the player draws into. */
+  def video(): RenderNode = {
+    val texture = new android.view.TextureView(Host.activity)
+    val node = new RenderNode(texture)
+    node.media = Some(new AndroidMedia(Some(texture)))
+    node
+  }
+
+  /** Sound: an empty view, with nothing to draw. */
+  def audio(): RenderNode = {
+    val node = new RenderNode(new View(Host.activity))
+    node.media = Some(new AndroidMedia(None))
+    node
+  }
 
   /** A container — a [[NodeGroup]] other nodes are appended to. */
   def container(): RenderNode = new RenderNode(new NodeGroup(Host.activity))

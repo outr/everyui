@@ -36,6 +36,8 @@ class RenderNode(val fx: Node) {
   private var wrapping: Boolean = false
   private var textColor: String = "#1c1b1f"
   private var align: String = "start"
+  // what a video or an audio node plays (`Nodes.video`, `Nodes.audio`)
+  private[render] var media: Option[DesktopMedia] = None
 
   def getText(): String = fx match {
     case t: Text => t.getText
@@ -377,6 +379,17 @@ class RenderNode(val fx: Node) {
     case _ => ()
   }
 
+  def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
+  def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
+  def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))
+  def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
+  def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
+  def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
+  def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))
+  def onMediaEvent(f: String => Unit): Unit = media.foreach(_.onEvent(f))
+  def releaseMedia(): Unit = media.foreach(_.release())
+
   /** A `Text` is placed by its baseline: put that where the shared line box has it. */
   private def placeY(): Unit = fx match {
     case _: Text => fx.setLayoutY(top + face.baseline(fontSize))
@@ -510,6 +523,20 @@ object Png {
 object Nodes {
   /** The scene's root pane. */
   def root(): RenderNode = new RenderNode(Host.root)
+
+  /** A video: a container whose pane holds the player's view, clipped to it. */
+  def video(): RenderNode = {
+    val node = container()
+    node.media = Some(new DesktopMedia(Some(node.fx.asInstanceOf[Pane])))
+    node
+  }
+
+  /** Sound: a container with nothing to draw. */
+  def audio(): RenderNode = {
+    val node = container()
+    node.media = Some(new DesktopMedia(None))
+    node
+  }
 
   /** A container — a `Pane` other nodes are appended to, sized 0x0 until given a size (a `div`'s default). */
   def container(): RenderNode = {

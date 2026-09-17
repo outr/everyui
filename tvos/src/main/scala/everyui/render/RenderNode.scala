@@ -79,6 +79,18 @@ class RenderNode(val sg: SGNode) {
   /** Detach from the parent, if attached. */
   def remove(): Unit = uiRemove(sg)
 
+  // media is not played on tvOS yet (an AVPlayer layer is to come): a video or an audio node is an empty view
+  def setMediaSource(url: String): Unit = ()
+  def setMediaPlaying(playing: Boolean): Unit = ()
+  def setMediaLoop(loop: Boolean): Unit = ()
+  def setMediaMuted(muted: Boolean): Unit = ()
+  def setMediaVolume(volume: Double): Unit = ()
+  def setMediaCover(cover: Boolean): Unit = ()
+  def getMediaPosition(): Double = 0.0
+  def seekMedia(seconds: Double): Unit = ()
+  def onMediaEvent(f: String => Unit): Unit = ()
+  def releaseMedia(): Unit = ()
+
   def setWidth(width: Double): Unit = uiSetWidth(sg, width)
   def setHeight(height: Double): Unit = uiSetHeight(sg, height)
 
@@ -178,6 +190,11 @@ object Nodes {
     node.setText(glyph)
     node
   }
+  /** A video: an empty view until tvOS plays media. */
+  def video(): RenderNode = container()
+  /** Sound: an empty view until tvOS plays media. */
+  def audio(): RenderNode = container()
+
   /** An image node — a `UIImageView` loading from the app bundle. */
   def image(uri: String, width: Double, height: Double): RenderNode =
     new RenderNode(uiImage(uri, width, height))

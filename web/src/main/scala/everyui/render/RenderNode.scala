@@ -240,6 +240,42 @@ class RenderNode(val el: html.Element) {
 
   def setImageSource(uri: String): Unit = el.setAttribute("src", uri)
 
+  // ---- a `video` or `audio` element (`Nodes.video`, `Nodes.audio`); on any other node these do nothing ----
+  private def media: Option[js.Dynamic] =
+    if (el.tagName == "VIDEO" || el.tagName == "AUDIO") Some(el.asInstanceOf[js.Dynamic]) else None
+  private var mediaPlaying = true
+
+  def setMediaSource(url: String): Unit = media.foreach { m =>
+    if (url.isEmpty) {
+      m.pause()
+      el.removeAttribute("src")
+      m.load()
+    }
+    else if (el.getAttribute("src") != url) {
+      el.setAttribute("src", url)
+      if (mediaPlaying) m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
+    }
+  }
+  def setMediaPlaying(playing: Boolean): Unit = {
+    mediaPlaying = playing
+    media.foreach { m =>
+      if (!playing) m.pause()
+      else if (el.getAttribute("src") != null) m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
+    }
+  }
+  def setMediaLoop(loop: Boolean): Unit = media.foreach(_.loop = loop)
+  def setMediaMuted(muted: Boolean): Unit = media.foreach(_.muted = muted)
+  def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = volume)
+  def setMediaCover(cover: Boolean): Unit = el.style.setProperty("object-fit", if (cover) "cover" else "contain")
+  def getMediaPosition(): Double = media.map(_.currentTime.asInstanceOf[Double]).getOrElse(0.0)
+  def seekMedia(seconds: Double): Unit = media.foreach(_.currentTime = seconds)
+  def onMediaEvent(f: String => Unit): Unit = if (media.nonEmpty) {
+    el.addEventListener("playing", (_: dom.Event) => f("ready"))
+    el.addEventListener("ended", (_: dom.Event) => f("ended"))
+    el.addEventListener("error", (_: dom.Event) => f("error"))
+  }
+  def releaseMedia(): Unit = setMediaSource("")
+
   /** The picture in one colour, its transparency kept: the box painted the colour through the picture as a mask, and
     * the picture itself drawn out of sight. */
   def setTint(hex: String): Unit = {
@@ -341,6 +377,24 @@ object Nodes {
     style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }"
     dom.document.head.appendChild(style)
     new RenderNode(app)
+  }
+
+  /** A video: an absolutely positioned `<video>`, filling its box, playing inline without controls. A browser starts
+    * one with sound by itself only once the page has been used; a muted one it always starts. */
+  def video(): RenderNode = media("video")
+
+  /** Sound: an `<audio>` with nothing to draw. */
+  def audio(): RenderNode = media("audio")
+
+  private def media(tag: String): RenderNode = {
+    val el = dom.document.createElement(tag).asInstanceOf[html.Element]
+    el.style.position = "absolute"
+    el.style.left = "0px"
+    el.style.top = "0px"
+    el.style.setProperty("object-fit", "cover")
+    el.setAttribute("playsinline", "")
+    el.setAttribute("preload", "auto")
+    new RenderNode(el)
   }
 
   /** A container — an absolutely positioned `<div>` other nodes are appended to. */

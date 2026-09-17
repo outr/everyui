@@ -1248,3 +1248,117 @@ sub uiStopMotion(anim as object)
     anim.control = "stop"
     uiRemove(anim)
 end sub
+
+' ---- media: a Video node (a video) or an Audio node (sound) ----
+' Each carries what it was last asked (uiPlaying, uiLoop) so a source set later still starts and loops as
+' asked, and an id its state listener is found by. SceneGraph's Video letterboxes: it has no cover mode.
+
+function uiVideo() as object
+    n = CreateObject("roSGNode", "Video")
+    n.enableUI = false
+    n.translation = [0.0, 0.0]
+    uiMediaFields(n)
+    return n
+end function
+
+function uiAudio() as object
+    n = CreateObject("roSGNode", "Audio")
+    uiMediaFields(n)
+    return n
+end function
+
+sub uiMediaFields(n as object)
+    ga = GetGlobalAA()
+    if ga.uiMediaSeq = invalid then ga.uiMediaSeq = 0
+    ga.uiMediaSeq = ga.uiMediaSeq + 1
+    n.id = "uiMedia" + ga.uiMediaSeq.ToStr()
+    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false })
+end sub
+
+sub uiSetMediaSource(node as object, url as string)
+    if node = invalid then return
+    node.control = "stop"
+    node.uiReady = false
+    if url = "" then return
+    c = CreateObject("roSGNode", "ContentNode")
+    c.url = url
+    lower = LCase(url)
+    if Instr(1, lower, ".m3u8") > 0
+        c.streamFormat = "hls"
+    else if Instr(1, lower, ".mp3") > 0
+        c.streamFormat = "mp3"
+    else if Instr(1, lower, ".mp4") > 0
+        c.streamFormat = "mp4"
+    end if
+    node.content = c
+    node.loop = node.uiLoop
+    if node.uiPlaying then node.control = "play"
+end sub
+
+sub uiSetMediaPlaying(node as object, playing as boolean)
+    if node = invalid then return
+    node.uiPlaying = playing
+    if node.content = invalid then return
+    if playing
+        if node.state = "paused"
+            node.control = "resume"
+        else if node.state <> "playing" and node.state <> "buffering"
+            node.control = "play"
+        end if
+    else if node.state = "playing" or node.state = "buffering"
+        node.control = "pause"
+    end if
+end sub
+
+sub uiSetMediaLoop(node as object, loop as boolean)
+    if node = invalid then return
+    node.uiLoop = loop
+    node.loop = loop
+end sub
+
+sub uiSetMediaMuted(node as object, muted as boolean)
+    if node <> invalid and node.hasField("mute") then node.mute = muted
+end sub
+
+function uiGetMediaPosition(node as object) as float
+    if node = invalid then return 0.0
+    return node.position
+end function
+
+sub uiSeekMedia(node as object, seconds as float)
+    if node <> invalid then node.seek = seconds
+end sub
+
+' `f` hears "ready" (first playing), "ended" and "error".
+sub uiOnMediaEvent(node as object, f as dynamic)
+    if node = invalid then return
+    ga = GetGlobalAA()
+    if ga.uiMediaListeners = invalid then ga.uiMediaListeners = {}
+    ga.uiMediaListeners[node.id] = f
+    node.observeField("state", "uiOnMediaState")
+end sub
+
+sub uiOnMediaState(event as object)
+    state = event.getData()
+    n = event.getRoSGNode()
+    ga = GetGlobalAA()
+    if ga.uiMediaListeners = invalid then return
+    f = ga.uiMediaListeners[n.id]
+    if f = invalid then return
+    if state = "playing" and not n.uiReady
+        n.uiReady = true
+        RtInvoke(f, ["ready"])
+    else if state = "finished"
+        RtInvoke(f, ["ended"])
+    else if state = "error"
+        RtInvoke(f, ["error"])
+    end if
+end sub
+
+sub uiReleaseMedia(node as object)
+    if node = invalid then return
+    node.control = "stop"
+    node.unobserveField("state")
+    ga = GetGlobalAA()
+    if ga.uiMediaListeners <> invalid then ga.uiMediaListeners.Delete(node.id)
+end sub

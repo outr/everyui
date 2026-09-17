@@ -274,3 +274,36 @@ class SGNode
 @native object uiSetTint {
   def apply(node: SGNode, hex: String): Unit = native.value
 }
+/** A SceneGraph `Video` with no UI of its own. */
+@native object uiVideo {
+  def apply(): SGNode = native.value
+}
+/** A SceneGraph `Audio`. */
+@native object uiAudio {
+  def apply(): SGNode = native.value
+}
+@native object uiSetMediaSource {
+  def apply(node: SGNode, url: String): Unit = native.value
+}
+@native object uiSetMediaPlaying {
+  def apply(node: SGNode, playing: Boolean): Unit = native.value
+}
+@native object uiSetMediaLoop {
+  def apply(node: SGNode, loop: Boolean): Unit = native.value
+}
+@native object uiSetMediaMuted {
+  def apply(node: SGNode, muted: Boolean): Unit = native.value
+}
+@native object uiGetMediaPosition {
+  def apply(node: SGNode): Double = native.value
+}
+@native object uiSeekMedia {
+  def apply(node: SGNode, seconds: Double): Unit = native.value
+}
+/** `f` hears `ready`, `ended` and `error`. */
+@native object uiOnMediaEvent {
+  def apply(node: SGNode, f: String => Unit): Unit = native.value
+}
+@native object uiReleaseMedia {
+  def apply(node: SGNode): Unit = native.value
+}
