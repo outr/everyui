@@ -624,6 +624,19 @@ func _arrFind(_ xs: V, _ cl: V) throws -> V {
     for e in rtItems(xs) where try RtInvoke(cl, rtArr([e])).rtTrue { return e }
     return .vNull
 }
+func _arrSet(_ xs: V, _ i: V, _ v: V) -> V {
+    if case .vArr(let a) = xs, case .vInt(let k) = i, k >= 0, k < a.items.count { a.items[k] = v }
+    return .vNull
+}
+func _arrCount(_ xs: V, _ cl: V) throws -> V {
+    var n = 0
+    for e in rtItems(xs) where try RtInvoke(cl, rtArr([e])).rtTrue { n += 1 }
+    return .vInt(n)
+}
+func _arrIndexWhere(_ xs: V, _ cl: V) throws -> V {
+    for (i, e) in rtItems(xs).enumerated() where try RtInvoke(cl, rtArr([e])).rtTrue { return .vInt(i) }
+    return .vInt(-1)
+}
 func _contains(_ xs: V, _ x: V) -> V { .vBool(rtItems(xs).contains { rtEq($0, x) }) }
 func _arrIndexOf(_ xs: V, _ x: V) -> V { .vInt(rtItems(xs).firstIndex { rtEq($0, x) } ?? -1) }
 func _optToList(_ o: V) -> V { if case .vNull = o { return rtArr([]) }; return rtArr([o]) }
@@ -679,6 +692,10 @@ func Tuple2(_ a: V = .vNull, _ b: V = .vNull) -> V { rtObj(["_1": a, "_2": b]) }
 func Tuple3(_ a: V = .vNull, _ b: V = .vNull, _ c: V = .vNull) -> V { rtObj(["_1": a, "_2": b, "_3": c]) }
 func Tuple4(_ a: V = .vNull, _ b: V = .vNull, _ c: V = .vNull, _ d: V = .vNull) -> V { rtObj(["_1": a, "_2": b, "_3": c, "_4": d]) }
 func wrapRefArray(_ a: V = .vNull) -> V { a }
+func wrapIntArray(_ a: V = .vNull) -> V { a }
+func wrapLongArray(_ a: V = .vNull) -> V { a }
+func wrapDoubleArray(_ a: V = .vNull) -> V { a }
+func wrapBooleanArray(_ a: V = .vNull) -> V { a }
 func intWrapper(_ x: V = .vNull) -> V { x }
 
 // MARK: - Option (a nullable: Some(x) is x, None is null)

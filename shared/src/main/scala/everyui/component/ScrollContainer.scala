@@ -34,7 +34,16 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
 
   node.setScrollable(!horizontal, horizontal)
   node.setScrollbarColor(Component.css(scrollbar()))
-  if (horizontal) content.size.height := size.height else content.size.width := size.width
+  // across, the content is the viewport's size; along, as long as what it holds reaches, unless it is given a length (a
+  // content with no length draws nothing on Android, which clips a view to its box)
+  if (horizontal) {
+    content.size.height := size.height
+    content.size.width := content.contentWidth()
+  }
+  else {
+    content.size.width := size.width
+    content.size.height := content.contentHeight()
+  }
   children += content
 
   if (!Platform.nativeScroll()) {

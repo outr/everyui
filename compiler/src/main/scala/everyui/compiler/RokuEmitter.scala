@@ -1648,6 +1648,15 @@ class RokuEmitter(
               s"_arrForall(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "find") =>
               s"_arrFind(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // an Array written in place (`xs(i) = v`): a BrightScript array is a reference, as a JVM one is
+            case Select(recv, "update") if fqnOf(recv.tpe) == "scala.Array" && args.size == 2 =>
+              s"_arrSet(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
+            // an Array from a collection (the argument is the ClassTag): a BrightScript array either way
+            case Select(recv, "toArray") if isCollType(recv) && args.size == 1 => emitTerm(recv)
+            case Select(recv, "count") if isCollType(recv) && args.size == 1 =>
+              s"_arrCount(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "indexWhere") if isCollType(recv) && args.size == 1 =>
+              s"_arrIndexWhere(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "indexOf") if isCollType(recv) && args.size == 1 =>
               s"_arrIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             // pairs to a Map (the argument is the `<:<` evidence)
@@ -3124,6 +3133,29 @@ class RokuEmitter(
       |    end if
       |    return invalid
       |end function
+      |function _arrSet(xs as object, i as dynamic, v as dynamic) as dynamic
+      |    xs[i] = v
+      |    return invalid
+      |end function
+      |function _arrCount(xs as object, cl as dynamic) as integer
+      |    n = 0
+      |    if xs <> invalid
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            if RtInvoke(cl, [items[ii]]) then n = n + 1
+      |        end for
+      |    end if
+      |    return n
+      |end function
+      |function _arrIndexWhere(xs as object, cl as dynamic) as integer
+      |    if xs <> invalid
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            if RtInvoke(cl, [items[ii]]) then return ii
+      |        end for
+      |    end if
+      |    return -1
+      |end function
       |function _contains(xs as object, x as dynamic) as boolean
       |    if xs <> invalid
       |        items = _rtItems(xs)
@@ -3468,6 +3500,10 @@ class RokuEmitter(
       |function Tuple3(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic) as object : return { _1: a, _2: b, _3: c } : end function
       |function Tuple4(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic, d = invalid as dynamic) as object : return { _1: a, _2: b, _3: c, _4: d } : end function
       |function wrapRefArray(a = invalid as dynamic) as dynamic : return a : end function
+      |function wrapIntArray(a = invalid as dynamic) as dynamic : return a : end function
+      |function wrapLongArray(a = invalid as dynamic) as dynamic : return a : end function
+      |function wrapDoubleArray(a = invalid as dynamic) as dynamic : return a : end function
+      |function wrapBooleanArray(a = invalid as dynamic) as dynamic : return a : end function
       |function intWrapper(x = invalid as dynamic) as dynamic : return x : end function
       |' -- Scala stdlib shims added for everyui's component model --
       |function RtMin(a as dynamic, b as dynamic) as dynamic

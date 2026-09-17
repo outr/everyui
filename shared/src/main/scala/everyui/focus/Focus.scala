@@ -62,12 +62,17 @@ object Focus {
     * it, so the platform leaves it be. A key the focused component keeps (`keepsKey`) goes to it alone. */
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
-    focused().foreach { c =>
+    // what had the focus when the key came: a component that moves the focus as it handles its own key is still the one
+    // that kept it, and the key does not travel on from wherever the focus went
+    val target = focused()
+    // asked before it hears the key, which may change its mind (a scroll that reaches its end)
+    val kept = pressed && target.exists(_.keepsKey(key))
+    target.foreach { c =>
       if (pressed) c.event.key.down @= KeyEvent(key, name) else c.event.key.up @= KeyEvent(key, name)
     }
     if (!pressed) false
-    else if (focused().exists(_.keepsKey(key))) false
-    else if (key == Key.Enter) focused().map { c =>
+    else if (kept) false
+    else if (key == Key.Enter) target.map { c =>
       c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
       true
     }.getOrElse(false)
