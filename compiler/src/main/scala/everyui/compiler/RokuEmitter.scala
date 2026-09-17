@@ -943,6 +943,8 @@ class RokuEmitter(
     def isFabricBuilder(fn: Term): Boolean =
       fn.symbol.exists && ownerFqn(fn.symbol).startsWith("fabric.") && !ownerFqn(fn.symbol).startsWith("fabric.rw")
         && Set("obj", "arr", "str", "num", "bool").contains(fn.symbol.name)
+    def isFabricNull(s: Symbol): Boolean =
+      s.exists && s.name == "Null" && (try s.owner.fullName == "fabric" catch case _: Throwable => false)
     def isFabricRW(s: Symbol): Boolean =
       s.exists && s.isTerm && s.name.endsWith("RW")
         && (try s.owner.fullName.startsWith("fabric.rw") catch case _: Throwable => false)
@@ -1812,6 +1814,9 @@ class RokuEmitter(
         case Select(Apply(aug, List(s)), "r") if aug.symbol.exists && aug.symbol.name == "augmentString" => s"_regex(${emitTerm(s)})"
         // a fabric Json accessor without parentheses (`json("type").asString`): the runtime's (see "library shims")
         case sel @ Select(q, m) if isFabricJson(sel) => s"_json_$m(${emitTerm(q)})"
+        // fabric's JSON null: BrightScript's own (`invalid`, which FormatJson writes as null)
+        case id: Ident if isFabricNull(id.symbol)   => "invalid"
+        case sel: Select if isFabricNull(sel.symbol) => "invalid"
         // a fabric RW instance (`stringRW`, `valueRW`): the runtime's codec of that name
         case id @ Ident(n) if isFabricRW(id.symbol)       => s"_rw(${brStr(n)})"
         case sel @ Select(_, n) if isFabricRW(sel.symbol) => s"_rw(${brStr(n)})"
