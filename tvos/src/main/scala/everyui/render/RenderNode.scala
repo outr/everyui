@@ -98,6 +98,7 @@ class RenderNode(val sg: SGNode) {
   def setScrollTop(y: Double): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = uiSetVisible(sg, visible)
+  def setOpacity(opacity: Double): Unit = uiSetOpacity(sg, opacity)
   def setClip(width: Double, height: Double): Unit = uiSetClip(sg, width, height)
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()

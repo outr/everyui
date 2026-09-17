@@ -1198,6 +1198,11 @@ sub uiSetVisible(node as object, visible as boolean)
     node.visible = visible
 end sub
 
+sub uiSetOpacity(node as object, opacity as float)
+    if node = invalid then return
+    node.opacity = opacity
+end sub
+
 ' The character at a Unicode code point, as a string.
 function uiChr(codePoint as integer) as string
     return Chr(codePoint)

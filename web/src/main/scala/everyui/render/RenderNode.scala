@@ -226,6 +226,7 @@ class RenderNode(val el: html.Element) {
   def setScrollLeft(x: Double): Unit = el.scrollLeft = x
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = el.style.display = if (visible) "" else "none"
+  def setOpacity(opacity: Double): Unit = el.style.opacity = opacity.toString
 
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"

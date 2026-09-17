@@ -2781,11 +2781,38 @@ class RokuEmitter(
                 if (cc.exists && cc.flags.is(Flags.Case)) markClass(cc)
               }
             }
+      // A derived codec constructs its case class, and every case class in its fields, from the JSON it reads: one that
+      // is only ever read (a server's answer) is live through its codec alone.
+      val read = mutable.Set[Symbol]()
+      def markRead(tp: TypeRepr, depth: Int): Unit = if (depth < 6) {
+        (try tp.typeArgs catch case _: Throwable => Nil).foreach(a => markRead(a, depth))
+        val sym = tp.typeSymbol
+        if (sym.exists && sym.flags.is(Flags.Case) && !isBuiltin(sym) && allClassDefs.contains(sym) && read.add(sym)) {
+          markClass(sym)
+          (try sym.caseFields catch case _: Throwable => Nil).foreach { f =>
+            try f.tree match {
+              case vd: ValDef => markRead(vd.tpt.tpe, depth + 1)
+              case _ => ()
+            } catch case _: Throwable => ()
+          }
+        }
+      }
       val walker = new TreeTraverser {
         override def traverseTree(t: Tree)(owner: Symbol): Unit = {
           t match {
             case New(tpt)             => try markClass(tpt.tpe.typeSymbol) catch case _: Throwable => ()
-            case _: Ident | _: Select => try markRef(t.symbol) catch case _: Throwable => ()
+            case _: Ident | _: Select =>
+              try markRef(t.symbol) catch case _: Throwable => ()
+              // a codec named (a context bound's `rw`) reads its case class
+              try {
+                t match {
+                  case term: Term =>
+                    val w = term.tpe.widen
+                    if (fqnOf(w).startsWith("fabric.rw.")) w.typeArgs.foreach(a => markRead(a, 0))
+                  case _ => ()
+                }
+              } catch case _: Throwable => ()
+            case Inlined(Some(call), _, _) => rwGenType(call).foreach(tp => markRead(tp, 0))
             case _                    => ()
           }
           super.traverseTree(t)(owner)

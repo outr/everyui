@@ -369,6 +369,7 @@ class RenderNode(val view: View) {
     * kept (INVISIBLE, not GONE), since the layout is ours and not the view system's. */
   def setVisible(visible: Boolean): Unit =
     view.setVisibility(if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE)
+  def setOpacity(opacity: Double): Unit = view.setAlpha(opacity.toFloat)
 
   def setClip(width: Double, height: Double): Unit = view match {
     case g: ViewGroup => g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)

@@ -271,6 +271,7 @@ class RenderNode(val fx: Node) {
   def setScrollTop(y: Double): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = fx.setVisible(visible)
+  def setOpacity(opacity: Double): Unit = fx.setOpacity(opacity)
 
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)

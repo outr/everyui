@@ -521,3 +521,8 @@ func uiSetVisible(_ node: V, _ visible: V) -> V {
     if case .vBool(let shown) = visible { view(node)?.isHidden = !shown }
     return .vNull
 }
+
+func uiSetOpacity(_ node: V, _ opacity: V) -> V {
+    view(node)?.alpha = CGFloat(dbl(opacity))
+    return .vNull
+}

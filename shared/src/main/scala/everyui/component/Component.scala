@@ -28,6 +28,9 @@ class Component(val node: RenderNode) {
     * sight, not out of the layout. */
   lazy val visible: Prop[Boolean] = new Prop[Boolean](true, v => node.setVisible(v))
 
+  /** How opaque it is drawn, with all it holds: 1.0 is solid, 0.0 unseen (but still there, unlike `visible`). */
+  lazy val opacity: Prop[Double] = new Prop[Double](1.0, o => node.setOpacity(o))
+
   /** Drawn larger or smaller about its own centre, its place and its size unchanged — what a card does under the
     * focus. 1.0 is its own size. */
   lazy val scale: Prop[Double] = new Prop[Double](1.0, s => node.setScale(s))

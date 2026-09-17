@@ -121,6 +121,14 @@ trait ScreenManager extends TaskSupport {
   private def remember(next: Screen): Unit =
     active().filterNot(_ eq next).foreach(current => history = (current, Focus.focused()) :: history)
 
+  /** Show `screen` with only `under` behind it, whatever came before: Back returns to `under`, at its default focus. A
+    * section of an app's shell, which Back leaves for the shell's first screen. `under` itself is shown with nothing
+    * behind it. */
+  def showOver(screen: Screen, under: Screen): Task[Unit] = {
+    history = if (screen eq under) Nil else List((under, None))
+    swap(screen, push = true)
+  }
+
   /** Forget the history: what is shown now is where Back leaves the app (signing in, say). */
   def clearHistory(): Unit = history = Nil
 
@@ -144,6 +152,8 @@ trait ScreenManager extends TaskSupport {
         .flatMap(_ => Screen.activate(screen)))
       .map { _ =>
         active @= Some(screen)
+        // a screen made for one showing (a title's page) is let go once nothing can return to it
+        loaded = loaded.filter(s => (s eq screen) || screens.exists(_ eq s) || history.exists(_._1 eq s))
         screen match {
           case u: UIScreen =>
             val target = focus.filter(Focus.showing).getOrElse(u.defaultFocus())

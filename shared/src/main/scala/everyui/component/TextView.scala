@@ -12,6 +12,9 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** The widest these words may be drawn on one line: what will not fit is cut short with an ellipsis, as a title
     * beside a chip is, so whatever sits after them keeps its place. 0 for no limit. */
   lazy val maxWidth: Var[Double] = Var(0.0)
+  /** The most lines wrapped words may take: what will not fit is cut short at a word with an ellipsis, as a synopsis
+    * under an episode's name is. 0 for no limit. */
+  lazy val maxLines: Var[Int] = Var(0)
   val font: FontFeature = new FontFeature(this)
   /** Where the text sits in its box, by the reading direction: it matters once the box is wider than the words
     * (wrapped, or given a width). */
@@ -23,11 +26,15 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   })
 
   // wrapped to a width that changes, the words take a different number of lines
-  size.width.attach(_ => if (size.width.explicit && whiteSpace() != WhiteSpace.NoWrap) measure.trigger())
+  size.width.attach(_ => if (size.width.explicit && whiteSpace() != WhiteSpace.NoWrap) {
+    if (maxLines() > 0) fit() else measure.trigger()
+  })
   maxWidth.attach(_ => fit())
+  maxLines.attach(_ => fit())
 
-  /** Draw the words, or as many of them as `maxWidth` leaves room for with an ellipsis after. The platform measures
-    * each try, so the cut is the one the words really take, and not a guess at how wide a letter is. */
+  /** Draw the words, or as many of them as `maxWidth` or `maxLines` leaves room for with an ellipsis after. The
+    * platform measures each try, so the cut is the one the words really take, and not a guess at how wide a letter
+    * is. */
   private def fit(): Unit = {
     val wanted = content()
     val limit = maxWidth()
@@ -41,6 +48,27 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
         if (node.getWidth() <= limit) fewest = half else most = half - 1
       }
       node.setText(wanted.substring(0, fewest) + "…")
+    }
+    val lines = maxLines()
+    if (lines > 0 && whiteSpace() != WhiteSpace.NoWrap && wanted.nonEmpty) {
+      // a line's height, from one letter: n lines are no taller than n of them, give or take half of one
+      node.setText(wanted.substring(0, 1))
+      val one = node.getHeight()
+      val tallest = one * lines + one / 2.0
+      node.setText(wanted)
+      if (one > 0.0 && node.getHeight() > tallest) {
+        var fewest = 0
+        var most = wanted.length
+        while (fewest < most) {
+          val half = (fewest + most + 1) / 2
+          node.setText(wanted.substring(0, half) + "…")
+          if (node.getHeight() <= tallest) fewest = half else most = half - 1
+        }
+        // back to the last whole word, where there is one
+        val space = wanted.substring(0, fewest).lastIndexOf(' ')
+        val cut = if (space > fewest / 2) space else fewest
+        node.setText(wanted.substring(0, cut).trim + "…")
+      }
     }
     // what is drawn decides the width: a cut that came from a narrower `maxWidth` changes nothing else
     measure.trigger()

@@ -249,6 +249,10 @@ class SGNode
 @native object uiSetVisible {
   def apply(node: SGNode, visible: Boolean): Unit = native.value
 }
+/** How opaque the node and all it holds are drawn, 0 to 1. */
+@native object uiSetOpacity {
+  def apply(node: SGNode, opacity: Double): Unit = native.value
+}
 /** The character at a Unicode code point, as a string. */
 @native object uiChr {
   def apply(codePoint: Int): String = native.value
