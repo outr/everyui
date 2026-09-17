@@ -672,6 +672,14 @@ func _distinct(_ xs: V) -> V {
 func _sum(_ xs: V) -> V { rtItems(xs).reduce(.vInt(0), +) }
 func _minList(_ xs: V) -> V { rtItems(xs).min { rtCompare($0, $1) < 0 } ?? .vNull }
 func _maxList(_ xs: V) -> V { rtItems(xs).max { rtCompare($0, $1) < 0 } ?? .vNull }
+func _arrFoldLeft(_ xs: V, _ z: V, _ cl: V) throws -> V {
+    var acc = z
+    for e in rtItems(xs) { acc = try RtInvoke(cl, rtArr([acc, e])) }
+    return acc
+}
+func _zip(_ xs: V, _ ys: V) -> V {
+    rtArr(zip(rtItems(xs), rtItems(ys)).map { rtObj(["_1": $0.0, "_2": $0.1]) })
+}
 func _zipWithIndex(_ xs: V) -> V {
     rtArr(rtItems(xs).enumerated().map { rtObj(["_1": $0.element, "_2": .vInt($0.offset)]) })
 }

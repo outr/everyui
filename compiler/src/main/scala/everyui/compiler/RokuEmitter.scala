@@ -1694,6 +1694,11 @@ class RokuEmitter(
               s"_drop(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "sortBy") =>
               s"_sortBy(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // `xs.foldLeft(z)(op)`, uncurried to its two arguments
+            case Select(recv, "foldLeft") if isCollType(recv) && args.size == 2 =>
+              s"_arrFoldLeft(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
+            case Select(recv, "zip") if isCollType(recv) && args.size == 1 =>
+              s"_zip(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             // `.sum` / `.min` / `.max` carry their Numeric / Ordering as the one argument
             case Select(recv, "sum") if isCollType(recv) => s"_sum(${emitTerm(recv)})"
             case Select(recv, "min") if isCollType(recv) => s"_minList(${emitTerm(recv)})"
@@ -1863,6 +1868,7 @@ class RokuEmitter(
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
+        case Select(q, "mkString") if isCollType(q) => s"_mkString(${emitTerm(q)}, ${brStr("")})"
         // an integral value made floating: BrightScript keeps a LongInteger quotient whole. A Long is promoted by
         // arithmetic, since Cdbl goes through a 32-bit Integer and loses the top of one (a time in milliseconds)
         case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Long" => s"(${emitTerm(q)} + 0#)"
@@ -3303,6 +3309,28 @@ class RokuEmitter(
       |        if e > mv then mv = e
       |    end for
       |    return mv
+      |end function
+      |function _arrFoldLeft(xs as object, z as dynamic, cl as dynamic) as dynamic
+      |    acc = z
+      |    if xs <> invalid
+      |        items = _rtItems(xs)
+      |        for ii = 0 to items.count() - 1
+      |            acc = RtInvoke(cl, [acc, items[ii]])
+      |        end for
+      |    end if
+      |    return acc
+      |end function
+      |function _zip(xs as object, ys as object) as object
+      |    r = []
+      |    if xs <> invalid and ys <> invalid
+      |        a = _rtItems(xs) : b = _rtItems(ys)
+      |        n = a.count()
+      |        if b.count() < n then n = b.count()
+      |        for ii = 0 to n - 1
+      |            r.push({ _1: a[ii], _2: b[ii] })
+      |        end for
+      |    end if
+      |    return r
       |end function
       |function _zipWithIndex(xs as object) as object
       |    r = [] : i = 0

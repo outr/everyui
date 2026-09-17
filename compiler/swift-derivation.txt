@@ -1140,6 +1140,7 @@ class SwiftEmitter(
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
+        case Select(q, "mkString") if isCollType(q) => s"_mkString(${emitTerm(q)}, ${brStr("")})"
         // an integral value made floating: BrightScript keeps a LongInteger quotient whole. A Long is promoted by
         // arithmetic, since Cdbl goes through a 32-bit Integer and loses the top of one (a time in milliseconds)
         case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Long" => s"(${emitTerm(q)} + 0#)"
@@ -1169,6 +1170,7 @@ class SwiftEmitter(
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
+        case Select(q, "mkString") if isCollType(q) => s"_mkString(${emitTerm(q)}, ${brStr("")})"
         case Select(q, "toDouble" | "toFloat") => s"rtToDbl(${emitTerm(q)})"
         case Select(q, "toInt" | "toLong")     => s"rtToInt(${emitTerm(q)})"
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, ${vInt(1)})"

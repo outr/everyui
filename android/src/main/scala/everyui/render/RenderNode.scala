@@ -289,8 +289,31 @@ class RenderNode(val view: View) {
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
   def setOptions(labels: List[String]): Unit = ()
-  /** Styled runs are drawn as the paragraph's own style, their words run together. */
-  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(_.text).mkString)
+  /** Styled runs as spans of one text: each run's colour, marking, weight, slant, size and strike (a link is drawn,
+    * not followed; its family is the paragraph's). */
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = view match {
+    case t: TextView =>
+      val text = new android.text.SpannableStringBuilder()
+      val span: (Any, Int, Int) => Unit = (what, from, to) =>
+        text.setSpan(what, from, to, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      runs.foreach { run =>
+        val from = text.length
+        text.append(run.text)
+        val to = text.length
+        if (to > from) {
+          if (run.color.nonEmpty) span(new android.text.style.ForegroundColorSpan(RenderNode.color(run.color)), from, to)
+          if (run.background.nonEmpty)
+            span(new android.text.style.BackgroundColorSpan(RenderNode.color(run.background)), from, to)
+          val bold = run.weight >= 600
+          if (bold || run.italic) span(new android.text.style.StyleSpan(
+            if (bold && run.italic) Typeface.BOLD_ITALIC else if (bold) Typeface.BOLD else Typeface.ITALIC), from, to)
+          if (run.size > 0.0) span(new android.text.style.AbsoluteSizeSpan(math.round(run.size).toInt), from, to)
+          if (run.strike) span(new android.text.style.StrikethroughSpan(), from, to)
+        }
+      }
+      t.setText(text)
+    case _ => ()
+  }
 
   private var gradientAt: Array[Double] = Array.empty
   private var gradientAngle: Double = 0.0
