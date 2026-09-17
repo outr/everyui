@@ -22,8 +22,9 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   val content: Container = new Container
   /** How far the content is scrolled, in pixels. */
   val offset: Var[Double] = Var(0.0)
+  // as far as the content's length, which is what it holds unless it is given more (room left at its end)
   private val furthest: Val[Double] =
-    Val(math.max(0.0, (if (horizontal) content.contentWidth() - size.width() else content.contentHeight() - size.height())))
+    Val(math.max(0.0, (if (horizontal) content.size.width() - size.width() else content.size.height() - size.height())))
 
   /** How much room `reveal` leaves around what it brings into view: enough for whatever sits beside it and should be
     * seen with it (a rail's name, above its titles). */
