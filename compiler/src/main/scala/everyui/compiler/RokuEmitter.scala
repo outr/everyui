@@ -2894,10 +2894,20 @@ class RokuEmitter(
     val title = if (projectName.trim.nonEmpty) projectName else "App"
     write("manifest", manifest(title))
     write("source/Main.brs", mainBrs)
-    write("components/AppScene.xml", sceneXml)
     write("components/AppScene.brs", sceneBrs)
     val appCode = out.toString + "\n' ── defunctionalised closures ──\n" + closures.toString
-    write("components/App.brs", appBrsHeader + injectGa(appCode))
+    val parts = RokuEmitter.split(appBrsHeader + injectGa(appCode), RokuEmitter.partBytes)
+    // a part from a larger build before this one would still be listed nowhere, but it would ship
+    val components = outDir.resolve("components")
+    if (Files.isDirectory(components)) {
+      val listing = Files.list(components)
+      try listing.toArray.toList.map(_.asInstanceOf[Path])
+        .filter(p => p.getFileName.toString.matches("App[0-9]+\\.brs")).foreach(p => Files.delete(p))
+      finally listing.close()
+    }
+    parts.zipWithIndex.foreach { case (code, i) => write("components/" + RokuEmitter.partName(i), code) }
+    write("components/AppScene.xml", sceneXml.replace(RokuEmitter.appScript(0),
+      parts.indices.map(RokuEmitter.appScript).mkString("\n  ")))
     write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs)
   }
 
@@ -4907,3 +4917,35 @@ class RokuEmitter(
       |    return "List(" + parts.Join(", ") + ")"
       |end function
       |""".stripMargin}
+
+object RokuEmitter {
+  /** How large one file of the program may grow. A Roku refuses to load a script much over 2 MB ("Error loading
+    * file", compile error &hb9, seen on Roku OS 14.10 with a 2.16 MB file), and a refused install takes the channel's
+    * registry with it; the program goes out in parts well under that. */
+  val partBytes: Int = 1000000
+
+  /** The program's files: `App.brs`, then `App2.brs`, `App3.brs` and on. */
+  def partName(i: Int): String = if (i == 0) "App.brs" else "App" + (i + 1) + ".brs"
+
+  /** The scene's line loading part `i`. */
+  def appScript(i: Int): String = s"""<script type="text/brightscript" uri="pkg:/components/${partName(i)}" />"""
+
+  /** `code` cut before a top-level function or sub once a part has passed `limit` bytes (a function is never cut, so a
+    * part is over the limit by at most the function that ends it). The parts share the scene's scope. */
+  def split(code: String, limit: Int): List[String] = {
+    val parts = mutable.ListBuffer[String]()
+    val part = new StringBuilder
+    var bytes = 0
+    code.split("\n", -1).foreach { line =>
+      if (bytes > limit && (line.startsWith("function ") || line.startsWith("sub "))) {
+        parts += part.toString
+        part.clear()
+        bytes = 0
+      }
+      part.append(line).append('\n')
+      bytes += line.getBytes(StandardCharsets.UTF_8).length + 1
+    }
+    parts += part.toString
+    parts.toList
+  }
+}

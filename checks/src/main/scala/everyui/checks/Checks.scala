@@ -213,7 +213,11 @@ object Checks {
     * BrightScript interface method nor a vtable slot. It proves the output self-consistent, not correct. */
   def gaps(dir: String): Int = {
     def read(name: String) = new String(Files.readAllBytes(Paths.get(dir, name)), StandardCharsets.UTF_8)
-    val raw = read("App.brs")
+    // the program, in however many parts the emitter wrote it (App.brs, App2.brs, …)
+    val parts = Option(new File(dir).list()).map(_.toList).getOrElse(Nil)
+      .filter(_.matches("App[0-9]*\\.brs"))
+      .sortBy(n => { val d = n.stripPrefix("App").stripSuffix(".brs"); if (d.isEmpty) 1 else d.toInt })
+    val raw = parts.map(read).mkString("\n")
     val extra = new File(dir, "UniversalRuntime.brs")
     val runtime = read("ScalaRuntime.brs") + (if (extra.exists) read("UniversalRuntime.brs") else "")
     // code only: a string literal such as "Var(" is not a call
