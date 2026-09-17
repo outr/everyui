@@ -79,13 +79,22 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
     else offset @= math.max(0.0, math.min(furthest(), to))
   }
 
-  /** Scroll the least that shows all of `c` (a component under `content`), with a margin. */
+  /** Where `reveal` puts what it brings into view, as a share of the room the viewport has around it: 0 at the start,
+    * 0.5 in the middle (as a television's focus is followed), 1 at the end. None scrolls the least that shows it. */
+  val revealAlign: Var[Option[Double]] = Var(None)
+
+  /** Bring `c` (a component under `content`) into view: where `revealAlign` says, else by the least that shows all of
+    * it, with a margin. */
   def reveal(c: Component): Unit = {
     val start = if (horizontal) c.absoluteLeft - content.absoluteLeft else c.absoluteTop - content.absoluteTop
-    val end = start + (if (horizontal) c.size.width() else c.size.height())
+    val length = if (horizontal) c.size.width() else c.size.height()
     val along = if (horizontal) size.width() else size.height()
-    if (start < offset() + revealMargin()) scrollTo(start - revealMargin())
-    else if (end > offset() + along) scrollTo(end - along + 16.0)
+    revealAlign() match {
+      case Some(share) => scrollTo(start - (along - length) * share)
+      case None =>
+        if (start < offset() + revealMargin()) scrollTo(start - revealMargin())
+        else if (start + length > offset() + along) scrollTo(start + length - along + 16.0)
+    }
   }
 
   /** What is out of sight is not drawn: a rail of a hundred cards would otherwise be a hundred nodes for the platform

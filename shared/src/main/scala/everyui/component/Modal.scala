@@ -12,10 +12,12 @@ object Modal {
   private var open: Option[Container] = None
   private var release: () => Unit = () => ()
   private var before: Option[Component] = None
+  private var closed: () => Unit = () => ()
 
-  /** Put `panel` up, with the focus on `focus`. */
-  def show(panel: Container, focus: Component): Unit = {
+  /** Put `panel` up, with the focus on `focus`; `after` hears it close, however it closes, once the focus is back. */
+  def show(panel: Container, focus: Component, after: () => Unit = () => ()): Unit = {
     close()
+    closed = after
     val sheet = new Container {
       size.width := ui.size.width
       size.height := ui.size.height
@@ -46,5 +48,8 @@ object Modal {
     val previous = before
     before = None
     previous.foreach(c => if (Focus.showing(c)) c.focus() else Focus.focused @= None)
+    val heard = closed
+    closed = () => ()
+    heard()
   }
 }
