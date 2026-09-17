@@ -26,6 +26,7 @@ object RichText {
   /** Whether `href` is a path on this site rather than somewhere else. */
   def inApp(href: String): Boolean = href.startsWith("/") && !href.startsWith("//")
 
+  /** `runs` wrapped to `width` at `points`, a line `lineHeight` times the size tall (0 for the face's own). */
   def apply(runs: List[TextRun], width: Double, points: Double = 16.0, lineHeight: Double = 0.0): RichText = {
     val text = new RichText
     text.font.size @= points
