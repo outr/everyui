@@ -80,8 +80,9 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   }
 
   /** What is out of sight is not drawn: a rail of a hundred cards would otherwise be a hundred nodes for the platform
-    * to draw every frame, which a television has no time for. A child keeps its place and its size either way, and a
-    * screen's worth of slack on each side means one is always drawn before it can be seen.
+    * to draw every frame, which a television has no time for. A child keeps its place and its size either way, and
+    * half a screen of slack on each side means one is drawn before it can be seen (a whole screen each way was two
+    * more screens of cards for a Roku to draw).
     *
     * The web scrolls the node itself, and a browser already draws only what shows. */
   private def cull(c: Component): Unit = if (!culling.contains(c)) {
@@ -90,7 +91,7 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
       val along = if (horizontal) size.width() else size.height()
       val start = if (horizontal) c.position.left() else c.position.top()
       val end = start + (if (horizontal) c.size.width() else c.size.height())
-      end > offset() - along && start < offset() + along * 2.0
+      end > offset() - along * 0.5 && start < offset() + along * 1.5
     }
   }
 

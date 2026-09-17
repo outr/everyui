@@ -53,6 +53,8 @@ class RenderNode(val sg: SGNode) {
   private var cornerRadius: Double = 0.0
   // Rounded, the fill and the edge are tinted 9-patch Posters instead (see `paint`).
   private var fillShape: Option[SGNode] = None
+  // Square, the fill is a Rectangle behind the children: a container is a Group, which draws nothing (uiFill)
+  private var fillRect: Option[SGNode] = None
   private var edgeShape: Option[SGNode] = None
 
   /** Layout units to pixels: the runtime's scale (2, a TV's density), applied here rather than to the root, so text is
@@ -123,7 +125,7 @@ class RenderNode(val sg: SGNode) {
   def getWidth(): Double =
     if (richWidth >= 0.0) richWidth / uiScale()
     else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
-    else uiGetWidth(sg) / uiScale()
+    else math.max(if (boxWidth >= 0.0) boxWidth else 0.0, uiGetWidth(sg) / uiScale()) // (a Group is only its children)
   def getHeight(): Double =
     if (wrapping && boxWidth > 0.0 && lineHeight > 0.0) {
       // as many lines as the Label wrapped its words into, at the width it was given: n lines are n faces tall with
@@ -134,7 +136,8 @@ class RenderNode(val sg: SGNode) {
       val lines = math.max(1.0, math.round((drawn + gap) / advance).toDouble)
       lines * advance
     }
-    else if (lineHeight > 0.0) lineHeight else uiGetHeight(sg) / uiScale()
+    else if (lineHeight > 0.0) lineHeight
+    else math.max(if (boxHeight >= 0.0) boxHeight else 0.0, uiGetHeight(sg) / uiScale())
 
   // (into the rounded clip, when there is one: see `roundClip`)
   def append(child: RenderNode): Unit = uiAppend(masked.getOrElse(sg), child.sg)
@@ -145,12 +148,12 @@ class RenderNode(val sg: SGNode) {
   def setWidth(width: Double): Unit = {
     boxWidth = width
     uiSetWidth(sg, px(width))
-    if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty) paint()
+    if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty || fillRect.nonEmpty) paint()
   }
   def setHeight(height: Double): Unit = {
     boxHeight = height
     uiSetHeight(sg, px(height))
-    if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty) paint()
+    if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty || fillRect.nonEmpty) paint()
   }
 
   /** `"#rrggbb"`, or `""` for transparent. */
@@ -278,7 +281,7 @@ class RenderNode(val sg: SGNode) {
     val panel = uiPanelScale()
     val r = math.min(math.min(math.round(px(cornerRadius) * panel).toInt, math.floor(px(math.min(w, h)) * panel / 2.0).toInt), 64)
     if (r >= 1) {
-      uiSetBackgroundColor(sg, "")
+      fillRect = uiFill(sg, fillRect, "", 0.0, 0.0)
       clearEdges()
       // (a rounded box is filled with the gradient's first colour: the strip below has square corners)
       gradientShape = dropShape(gradientShape)
@@ -294,11 +297,11 @@ class RenderNode(val sg: SGNode) {
       edgeShape = dropShape(edgeShape)
       if (gradientStops.nonEmpty && w > 0.0 && h > 0.0) {
         // SceneGraph draws no gradient: a strip of it, drawn on the device once, stretched behind the children
-        uiSetBackgroundColor(sg, "")
+        fillRect = uiFill(sg, fillRect, "", 0.0, 0.0)
         gradientShape = Some(uiGradient(sg, gradientShape, gradientAngle, gradientStops, px(w), px(h)))
       } else {
         gradientShape = dropShape(gradientShape)
-        uiSetBackgroundColor(sg, fill)
+        fillRect = uiFill(sg, fillRect, fill, px(w), px(h))
       }
       if (edged) placeEdges(w, h) else clearEdges()
     }
@@ -316,7 +319,7 @@ class RenderNode(val sg: SGNode) {
 
   private def placeEdges(w: Double, h: Double): Unit = {
     while (edges.length < 4) {
-      val edge = uiContainer()
+      val edge = uiRect()
       uiAppend(sg, edge)
       edges = edges :+ edge
     }

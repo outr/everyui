@@ -112,9 +112,17 @@ class SGNode
 @native object uiTextWidth {
   def apply(node: SGNode, uri: String, size: Double): Double = native.value
 }
-/** A transparent `Rectangle`: a group that can also paint a background. */
+/** A `Group`, which draws nothing of its own (see uiFill). */
 @native object uiContainer {
   def apply(): SGNode = native.value
+}
+/** A transparent `Rectangle`, to be given a colour and a size: a square edge. */
+@native object uiRect {
+  def apply(): SGNode = native.value
+}
+/** A container's colour, `width` by `height` behind its children: `existing`, a new Rectangle, or none for `""`. */
+@native object uiFill {
+  def apply(node: SGNode, existing: Option[SGNode], hex: String, width: Double, height: Double): Option[SGNode] = native.value
 }
 @native object uiSetWidth {
   def apply(node: SGNode, width: Double): Unit = native.value

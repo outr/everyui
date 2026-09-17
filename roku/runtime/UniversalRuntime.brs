@@ -679,8 +679,17 @@ function uiTextWidth(node as object, uri as string, size as float) as float
     return probe.boundingRect().width * size / big
 end function
 
-' A container: a Rectangle is a Group that can also paint a background.
+' A container: a Group, which draws nothing. A Rectangle can paint a background, but SceneGraph fills even a
+' transparent one, and a screen of them (rails a few thousand pixels long) held a Roku to 30 frames a second; a
+' container with a colour has a Rectangle behind its children instead (uiFill).
 function uiContainer() as object
+    n = CreateObject("roSGNode", "Group")
+    n.translation = [0.0, 0.0]
+    return n
+end function
+
+' A transparent Rectangle, to be given a colour and a size (a square edge).
+function uiRect() as object
     n = CreateObject("roSGNode", "Rectangle")
     n.color = "0x00000000"
     n.width = 0
@@ -689,17 +698,53 @@ function uiContainer() as object
     return n
 end function
 
+' A container's colour: a Rectangle `width` by `height` behind its children (`existing`, or a new one), or none for
+' "". Anything else (the render root, a Rectangle) takes the colour itself.
+function uiFill(node as object, existing as dynamic, hex as string, width as float, height as float) as dynamic
+    if node = invalid then return invalid
+    if node.subtype() <> "Group" or node.isSameNode(GetGlobalAA().appRoot)
+        uiSetBackgroundColor(node, hex)
+        return invalid
+    end if
+    if hex = ""
+        if existing <> invalid then uiRemove(existing)
+        return invalid
+    end if
+    fill = existing
+    if fill = invalid
+        fill = uiRect()
+        node.insertChild(fill, 0)
+    end if
+    uiSetBackgroundColor(fill, hex)
+    fill.width = width
+    fill.height = height
+    return fill
+end function
+
 ' Posters keep rotating about their centre as their size changes.
 sub uiSetWidth(node as object, width as float)
     if node = invalid then return
-    if not node.hasField("width") then return
+    if not node.hasField("width")
+        ' a Group has no size of its own, but grows about its middle all the same
+        if node.hasField("scaleRotateCenter")
+            pivot = node.scaleRotateCenter
+            node.scaleRotateCenter = [width / 2.0, pivot[1]]
+        end if
+        return
+    end if
     node.width = uiPosterSide(node, width)
     if node.hasField("scaleRotateCenter") then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
 end sub
 
 sub uiSetHeight(node as object, height as float)
     if node = invalid then return
-    if not node.hasField("height") then return
+    if not node.hasField("height")
+        if node.hasField("scaleRotateCenter")
+            pivot = node.scaleRotateCenter
+            node.scaleRotateCenter = [pivot[0], height / 2.0]
+        end if
+        return
+    end if
     node.height = uiPosterSide(node, height)
     if node.hasField("scaleRotateCenter") then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
 end sub
