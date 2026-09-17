@@ -1356,6 +1356,15 @@ class RokuEmitter(
             case _ if pruning && fn.symbol.exists && fn.symbol.isDefDef && !fn.symbol.isClassConstructor
                 && allClassDefs.contains(fn.symbol.owner) && !keepClass(fn.symbol.owner) =>
               s"RtDead(${brStr(fn.symbol.owner.name.stripSuffix("$") + "." + fn.symbol.name)})"
+            // ── a fabric codec made of others (`optionRW(intRW)`, given to `.json`): the runtime's wrapper of them ──
+            case _ if isFabricRW(fn.symbol) && args.nonEmpty =>
+              val inner = args.map(emitArgVal)
+              fn.symbol.name match {
+                case "optionRW"                                   => s"_rwOpt(${inner.head})"
+                case "listRW" | "vectorRW" | "setRW" | "arrayRW" => s"_rwList(${inner.head})"
+                case "mapRW"                                      => s"_rwMap(${inner.last})"
+                case n                                            => s"_rw(${brStr(n)})"
+              }
             // ── rapid.Task (see "library shims") ──
             case Select(q, m) if isTaskModule(q) =>   // `Task.unit`, `Task.sleep` … inherited by the companion too
               val ea = explicitArgs(fn.symbol, args)
