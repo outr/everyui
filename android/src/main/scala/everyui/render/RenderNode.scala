@@ -664,6 +664,10 @@ object Host {
               try {
                 val connection = new java.net.URL(uri).openConnection()
                 if (agent.nonEmpty) connection.setRequestProperty("User-Agent", agent)
+                // a network gone away leaves a read waiting for ever otherwise, and the loading threads with it: no
+                // picture loads again until the app is restarted
+                connection.setConnectTimeout(10000)
+                connection.setReadTimeout(20000)
                 val in = connection.getInputStream
                 try BitmapFactory.decodeStream(in) finally in.close()
               } catch {
