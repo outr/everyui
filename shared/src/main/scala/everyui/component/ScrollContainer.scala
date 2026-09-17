@@ -91,7 +91,8 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
     val length = if (horizontal) c.size.width() else c.size.height()
     val along = if (horizontal) size.width() else size.height()
     revealAlign() match {
-      case Some(share) => scrollTo(start - (along - length) * share)
+      // the margin is left at the start whatever the alignment: at 0, what sits above it (a rail's name) shows too
+      case Some(share) => scrollTo(start - revealMargin() - (along - length - revealMargin()) * share)
       case None =>
         if (start < offset() + revealMargin()) scrollTo(start - revealMargin())
         else if (start + length > offset() + along) scrollTo(start + length - along + 16.0)
@@ -106,6 +107,8 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
     * The web scrolls the node itself, and a browser already draws only what shows. */
   private def cull(c: Component): Unit = if (!culling.contains(c)) {
     culling = culling + c
+    // and what is out of sight lets its pictures go until it comes back
+    c.visible.attach(on => ImageView.showing(c, on))
     c.visible := {
       val along = if (horizontal) size.width() else size.height()
       val start = if (horizontal) c.position.left() else c.position.top()
@@ -129,3 +132,4 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
 
   private def clip(): Unit = node.setClip(size.width(), size.height())
 }
+

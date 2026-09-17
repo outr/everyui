@@ -374,8 +374,9 @@ class RenderNode(val fx: Node) {
     else new javafx.scene.effect.Blend(javafx.scene.effect.BlendMode.SRC_ATOP, null,
       new javafx.scene.effect.ColorInput(0, 0, 8192, 8192, Color.web(hex))))
 
+  /** The picture the view draws, or none (which lets the one it was drawing go). */
   def setImageSource(uri: String): Unit = fx match {
-    case i: ImageView => if (uri.nonEmpty) i.setImage(Host.image(uri))
+    case i: ImageView => i.setImage(if (uri.isEmpty) null else Host.image(uri))
     case _ => ()
   }
 
@@ -432,7 +433,10 @@ object Host {
   var args: Map[String, String] = Map.empty
 
   private val fontNames = mutable.Map.empty[String, String]
-  private val images = mutable.Map.empty[String, Image]
+  /** The pictures loaded so far, the ones wanted longest ago first, and how much they take between them. */
+  private val images = mutable.LinkedHashMap.empty[String, Image]
+  private var imageBytes = 0L
+  private val imageBudget = 192L * 1024L * 1024L
 
   /** A bundled face at `size`. JavaFX registers a font file by loading it once; after that it is found by name. */
   def font(face: Face, size: Double): Font = {
@@ -444,8 +448,27 @@ object Host {
     new Font(name, size)
   }
 
-  /** An image by URI, cached; one from the network loads in the background. */
-  def image(uri: String): Image = images.getOrElseUpdate(uri, new Image(uri, uri.startsWith("http")))
+  /** An image by URI, cached (the longest-unwanted let go of once they come to more than the budget: an app that
+    * shows thousands of them over an evening kept every one), and one from the network loads in the background. What
+    * a view is drawing stays whole — letting go here only drops this hold on it. */
+  def image(uri: String): Image = images.remove(uri) match {
+    case Some(had) =>
+      images.put(uri, had)
+      had
+    case None =>
+      val loaded = new Image(uri, uri.startsWith("http"))
+      images.put(uri, loaded)
+      imageBytes += bytesOf(loaded)
+      while (imageBytes > imageBudget && images.size > 1) {
+        val oldest = images.head
+        images.remove(oldest._1)
+        imageBytes -= bytesOf(oldest._2)
+      }
+      loaded
+  }
+
+  // as it will be held once it has loaded (nothing yet while it is on its way)
+  private def bytesOf(image: Image): Long = math.round(image.getWidth * image.getHeight * 4.0)
 
   lazy val settings: java.util.prefs.Preferences = java.util.prefs.Preferences.userRoot().node("everyui/" + app)
 

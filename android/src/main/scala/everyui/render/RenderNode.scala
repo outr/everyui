@@ -503,8 +503,11 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
+  /** The picture the view draws, or none (which lets the one it was drawing go). */
   def setImageSource(uri: String): Unit = view match {
-    case i: ImageView => if (uri.nonEmpty) Host.bitmapThen(uri)(b => if (b != null) i.setImageBitmap(b))
+    case i: ImageView =>
+      if (uri.isEmpty) i.setImageDrawable(null)
+      else Host.bitmapThen(uri)(b => if (b != null) i.setImageBitmap(b))
     case _ => ()
   }
 
@@ -624,16 +627,47 @@ object Host {
   }
 
   private val typefaces = mutable.Map.empty[String, Typeface]
-  private val bitmaps = mutable.Map.empty[String, Bitmap]
+  /** The pictures decoded so far, the ones wanted longest ago first. */
+  private val bitmaps = mutable.LinkedHashMap.empty[String, Bitmap]
+  private var bitmapBytes = 0L
 
-  def typeface(face: Face): Typeface =
+  /** How much of the device's memory the pictures may hold between them. A television goes through hundreds of them
+    * (a screen of rails is a hundred at once), and keeping every one for the life of the app was most of what it
+    * took. What a view is drawing stays whole: letting a picture go here only drops this hold on it. */
+  private lazy val bitmapBudget: Long = {
+    val manager = activity.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[android.app.ActivityManager]
+    val memory = new android.app.ActivityManager.MemoryInfo
+    manager.getMemoryInfo(memory)
+    math.max(32L * 1024L * 1024L, math.min(64L * 1024L * 1024L, memory.totalMem / 32L))
+  }
+
+    def typeface(face: Face): Typeface =
     typefaces.getOrElseUpdate(face.file, Typeface.createFromAsset(activity.getAssets, "fonts/" + face.file))
 
   /** An APK asset, decoded at its own pixel size (assets are never density-scaled). */
-  def bitmap(uri: String): Bitmap = bitmaps.getOrElseUpdate(uri, {
+  def bitmap(uri: String): Bitmap = held(uri).getOrElse {
     val in = activity.getAssets.open(uri)
-    try BitmapFactory.decodeStream(in) finally in.close()
-  })
+    val decoded = try BitmapFactory.decodeStream(in) finally in.close()
+    keep(uri, decoded)
+    decoded
+  }
+
+  /** The picture at `uri`, now the most recently wanted. */
+  private def held(uri: String): Option[Bitmap] = bitmaps.remove(uri).map { b =>
+    bitmaps.put(uri, b)
+    b
+  }
+
+  /** Keep `b` under `uri`, letting the longest-unwanted go until the rest fit the budget. */
+  private def keep(uri: String, b: Bitmap): Unit = if (b != null && !bitmaps.contains(uri)) {
+    bitmaps.put(uri, b)
+    bitmapBytes += b.getAllocationByteCount.toLong
+    while (bitmapBytes > bitmapBudget && bitmaps.size > 1) {
+      val oldest = bitmaps.head
+      bitmaps.remove(oldest._1)
+      bitmapBytes -= oldest._2.getAllocationByteCount.toLong
+    }
+  }
 
   /** A few threads fetch and decode every image between them, and never every core: a screen of artwork (a TV's rails:
     * a hundred posters at once) started a thread apiece, and the interface had nothing left to draw with. */
@@ -650,7 +684,7 @@ object Host {
 
   /** A bitmap by URI, then `done` on the main thread: at once from the APK or the cache, after a download on one of
     * the loading threads (`null` if it cannot be had). */
-  def bitmapThen(uri: String)(done: Bitmap => Unit): Unit = bitmaps.get(uri) match {
+  def bitmapThen(uri: String)(done: Bitmap => Unit): Unit = held(uri) match {
     case Some(b) => done(b)
     case None if uri.startsWith("http") =>
       // one fetch per address, however many ask for it: a rail shows the same artwork more than once, and each
@@ -676,7 +710,7 @@ object Host {
                   null
               }
             activity.runOnUiThread(() => {
-              if (b != null) bitmaps(uri) = b
+              keep(uri, b)
               pending.remove(uri).getOrElse(Nil).reverse.foreach(_(b))
             })
           })

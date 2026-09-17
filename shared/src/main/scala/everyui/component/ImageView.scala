@@ -9,10 +9,19 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
   lazy val image: Var[Image] = {
     val v = Var[Image](Image.empty)
     v.attach { i =>
-      node.setImageSource(i.source)
+      if (holding()) node.setImageSource(i.source)
       size.width @= i.width
       size.height @= i.height
     }
+    v
+  }
+
+  /** Whether the picture is drawn at all. A view out of sight lets its picture go (a rail scrolled far past keeps a
+    * poster apiece otherwise, which on a television is most of the memory the app takes) and takes it up again as it
+    * comes back: what it shows is remembered either way. */
+  private[everyui] lazy val holding: Var[Boolean] = {
+    val v = Var(true)
+    v.attach(on => node.setImageSource(if (on) image().source else ""))
     v
   }
 
@@ -25,6 +34,21 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
 }
 
 object ImageView {
+  /** Whether what is under `c` (and `c` itself) draws its pictures: off while it is out of sight, so a rail scrolled
+    * away keeps no poster, and on again as it comes back. Walked with a list rather than by recursion (a Roku's stack
+    * is small). */
+  def showing(c: Component, on: Boolean): Unit = {
+    var pending: List[Component] = List(c)
+    while (pending.nonEmpty) {
+      val at = pending.head
+      pending = at.childComponents.toList ::: pending.tail
+      at match {
+        case i: ImageView => i.holding @= on
+        case _ => ()
+      }
+    }
+  }
+
   /** The image at `source` (a site-absolute path or a URL), scaled to `height` pixels tall at its own proportions once
     * it has loaded: a logo, say. */
   def apply(source: String, height: Double): ImageView = {
