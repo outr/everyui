@@ -239,6 +239,8 @@ object Platform {
   def copyText(text: String): Unit = ()
   /** The device keeps its own screen timing here. */
   def keepAwake(on: Boolean): Unit = ()
+  /** The device names itself to the servers its pictures come from. */
+  def identify(app: String): Unit = ()
 
   /** No address bar: no path to show, push or follow. */
   def path(): String = ""

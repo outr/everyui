@@ -41,7 +41,7 @@ trait ScreenManager extends TaskSupport {
   private var screens: List[Screen] = Nil
   private var loaded: List[Screen] = Nil
   /** The screens Back returns to, the most recent first, each with what had the focus when it was left. */
-  private var history: List[(Screen, Option[Component])] = Nil
+  private var backStack: List[(Screen, Option[Component])] = Nil
   /** A screen's default focus not on screen yet (behind a loading state): it takes the focus when it appears. */
   private var pendingFocus: Option[(Screen, Component)] = None
 
@@ -65,9 +65,9 @@ trait ScreenManager extends TaskSupport {
     ui.children ++= before
     Platform.onPath(path => at(URLPath(path)).foreach { s =>
       // the browser went back to the screen before this one, or forward past it
-      history.headOption.filter(_._1 eq s) match {
+      backStack.headOption.filter(_._1 eq s) match {
         case Some((_, focus)) =>
-          history = history.tail
+          backStack = backStack.tail
           swap(s, push = false, focus).startUnit()
         case None =>
           remember(s)
@@ -107,10 +107,10 @@ trait ScreenManager extends TaskSupport {
   }
 
   /** Back to the screen before this one: whether there was one (at the first, Back is left to the platform). */
-  def back(): Boolean = history match {
+  def back(): Boolean = backStack match {
     case (previous, focus) :: rest =>
       if (!Platform.historyBack()) {
-        history = rest
+        backStack = rest
         swap(previous, push = false, focus).startUnit()
       }
       true
@@ -119,18 +119,18 @@ trait ScreenManager extends TaskSupport {
 
   /** The screen being left for `next` goes on the history, with its focus. */
   private def remember(next: Screen): Unit =
-    active().filterNot(_ eq next).foreach(current => history = (current, Focus.focused()) :: history)
+    active().filterNot(_ eq next).foreach(current => backStack = (current, Focus.focused()) :: backStack)
 
   /** Show `screen` with only `under` behind it, whatever came before: Back returns to `under`, at its default focus. A
     * section of an app's shell, which Back leaves for the shell's first screen. `under` itself is shown with nothing
     * behind it. */
   def showOver(screen: Screen, under: Screen): Task[Unit] = {
-    history = if (screen eq under) Nil else List((under, None))
+    backStack = if (screen eq under) Nil else List((under, None))
     swap(screen, push = true)
   }
 
   /** Forget the history: what is shown now is where Back leaves the app (signing in, say). */
-  def clearHistory(): Unit = history = Nil
+  def clearHistory(): Unit = backStack = Nil
 
   /** Show `screen`, then focus `focus` if it is still on screen, else the screen's default: on a turn of its own
     * (`Platform.later`), since a change is asked for at the end of a chain (a key, the focus, a click, an action, a
@@ -153,7 +153,7 @@ trait ScreenManager extends TaskSupport {
       .map { _ =>
         active @= Some(screen)
         // a screen made for one showing (a title's page) is let go once nothing can return to it
-        loaded = loaded.filter(s => (s eq screen) || screens.exists(_ eq s) || history.exists(_._1 eq s))
+        loaded = loaded.filter(s => (s eq screen) || screens.exists(_ eq s) || backStack.exists(_._1 eq s))
         screen match {
           case u: UIScreen =>
             val target = focus.filter(Focus.showing).getOrElse(u.defaultFocus())

@@ -596,6 +596,8 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
 /** What the Activity hands the backend: itself, the render root, and how it was launched. */
 object Host {
   var activity: Activity = null
+  /** The User-Agent pictures are fetched with (Platform.identify); the platform's own when empty. */
+  var agent: String = ""
   var root: NodeGroup = null
   var freeze: Double = -1.0
   var viewportWidth: Double = -1.0
@@ -660,7 +662,9 @@ object Host {
           loaders.execute(() => {
             val b =
               try {
-                val in = new java.net.URL(uri).openStream()
+                val connection = new java.net.URL(uri).openConnection()
+                if (agent.nonEmpty) connection.setRequestProperty("User-Agent", agent)
+                val in = connection.getInputStream
                 try BitmapFactory.decodeStream(in) finally in.close()
               } catch {
                 case t: Exception =>
@@ -808,6 +812,9 @@ object Platform {
   def navigate(url: String): Unit = openUrl(url)
   /** The activity's title (what the recents screen calls it). */
   def setTitle(title: String): Unit = Host.activity.setTitle(title)
+  /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
+    * server refuses the platform's own `Dalvik/…`. */
+  def identify(app: String): Unit = Host.agent = app
   /** The screen kept on (while something is shown that is meant to be watched without a touch), or let sleep. */
   def keepAwake(on: Boolean): Unit = {
     val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON

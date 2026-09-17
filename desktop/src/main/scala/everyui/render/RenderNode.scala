@@ -644,6 +644,9 @@ object Platform {
   }
   /** A desktop keeps its own screen timing. */
   def keepAwake(on: Boolean): Unit = ()
+  /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
+    * server refuses a bare `Java/21`. Before the first picture loads (the JDK reads it once). */
+  def identify(app: String): Unit = System.setProperty("http.agent", app)
 
   def copyText(text: String): Unit = {
     val content = new ClipboardContent()

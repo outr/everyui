@@ -137,10 +137,12 @@ class AndroidMedia(texture: Option[TextureView]) {
   }
 
   // A TextureView stretches the picture over the whole view; the transform undoes that, scaling it to fill the view
-  // (cover, the view's bounds cutting the rest) or to fit whole inside it, about the centre.
+  // (cover, the view's bounds cutting the rest) or to fit whole inside it, about the centre. The view does not cut
+  // what the transform puts past its edges, so its bounds are set as its clip.
   private def fit(): Unit = texture.foreach { t =>
     val w = t.getWidth.toDouble
     val h = t.getHeight.toDouble
+    t.setClipBounds(new android.graphics.Rect(0, 0, t.getWidth, t.getHeight))
     if (w > 0 && h > 0 && videoWidth > 0 && videoHeight > 0) {
       val scale = if (cover) math.max(w / videoWidth, h / videoHeight) else math.min(w / videoWidth, h / videoHeight)
       val m = new Matrix()

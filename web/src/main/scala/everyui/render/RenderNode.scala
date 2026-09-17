@@ -543,6 +543,8 @@ object Platform {
   def navigate(url: String): Unit = dom.window.location.assign(url)
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
+  /** The browser names itself (and sends the page as the referrer), as a tile server asks. */
+  def identify(app: String): Unit = ()
   /** `text` onto the clipboard: the async clipboard where the page is a secure context, else the selection command. */
   /** The screen kept on through the browser's wake lock, where it has one (and the page is showing), or let sleep. */
   def keepAwake(on: Boolean): Unit = {

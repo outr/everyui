@@ -35,11 +35,16 @@ object Focus {
     Platform.onKey((name, pressed) => key(name, pressed))
     // only the component the focus leaves and the one it lands on hear of it, rather than every component on the
     // screen working out for itself whether it is the one (a home screen of rails is a hundred and more)
-    focused.changes { (was, now) =>
-      was.foreach(_.focusedNow @= false)
+    // (the one it left kept here, rather than reactify's `changes`: its previous value is an Option of this Option,
+    // which a Roku holds flattened, so the first focus of all, from none, went unheard there)
+    focused.attach { now =>
+      marked.foreach(_.focusedNow @= false)
       now.foreach(_.focusedNow @= true)
+      marked = now
     }
   }
+
+  private var marked: Option[Component] = None
 
   private var backs: List[Key => Boolean] = Nil
 
