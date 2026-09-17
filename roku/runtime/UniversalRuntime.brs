@@ -164,16 +164,19 @@ function uiTicks() as float
     return ga.uiClock.TotalMilliseconds()
 end function
 
-' Drive `tick` (a defunctionalised Scala closure) once per render frame. A
-' SceneGraph Timer with duration 0 fires on every frame the renderer draws,
-' which is what makes this a real frame-rate measurement rather than a
-' setInterval count.
+' Drive `tick` (a defunctionalised Scala closure) once per render frame. A SceneGraph Timer of duration 0 fires on
+' every frame the renderer draws, which is what makes this a real frame rate; but with nothing to draw, it fires as
+' fast as the thread can turn (5,000 times a second on a Roku TV), taking the thread from everything else. So when
+' it fires three times running within a few milliseconds of the last, nothing is being drawn, and it waits a frame
+' between fires, trying 0 again every quarter second in case something is. (A Timer of a frame all the time beats
+' against the display's, and skips some.)
 sub uiAnimate(tick as dynamic)
     ga = GetGlobalAA()
     ga.uiTick = tick
+    ga.uiFast = 0
     t = CreateObject("roSGNode", "Timer")
     t.repeat = true
-    t.duration = 0.0
+    t.duration = 0
     ga.appScene.appendChild(t)
     ga.uiTimer = t
     t.observeField("fire", "uiOnFrame")
@@ -182,6 +185,22 @@ end sub
 
 sub uiOnFrame()
     ga = GetGlobalAA()
+    now = uiTicks()
+    t = ga.uiTimer
+    if ga.uiFrameAt = invalid then ga.uiFrameAt = now
+    if t.duration = 0
+        if now - ga.uiFrameAt < 4 then ga.uiFast = ga.uiFast + 1 else ga.uiFast = 0
+        if ga.uiFast >= 3
+            ga.uiIdleSince = now
+            t.duration = 1.0 / 60.0
+            t.control = "start"
+        end if
+    else if now - ga.uiIdleSince >= 250
+        ga.uiFast = 0
+        t.duration = 0
+        t.control = "start"
+    end if
+    ga.uiFrameAt = now
     if ga.uiTick <> invalid then RtInvoke(ga.uiTick, [])
 end sub
 
