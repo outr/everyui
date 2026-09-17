@@ -1642,7 +1642,8 @@ class SwiftEmitter(
         case dd @ DefDef(name, pcs, _, Some(rhs))
             if userMember(dd.symbol) && name != "<init>" && !name.endsWith("_=") && keepMember(dd.symbol) =>
           val ps = termParams(pcs)
-          out.append(s"function ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
+          out.append(s"function ${base}_${memberName(dd.symbol, name)}(${packParams(ps).map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
+          out.append(unpackParams(ps))
           out.append(emitBody(rhs, true)).append("\n")
           out.append("end function\n\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
@@ -1720,7 +1721,8 @@ class SwiftEmitter(
       val ctorParams = termParams(cd.constructor.paramss)
 
       // constructor
-      out.append(s"function ${cn}_new(${ctorParams.map(p => s"$p as dynamic").mkString(", ")}) as object\n")
+      out.append(s"function ${cn}_new(${packParams(ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
+      out.append(unpackParams(ctorParams))
       out.append("  self = {}\n")
       out.append(s"  self._cls = ${brStr(cn)}\n")
       cd.body.foreach {
@@ -1758,8 +1760,10 @@ class SwiftEmitter(
       // methods
       cd.body.foreach {
         case dd @ DefDef(name, pcs, ret, Some(rhs)) if emittableMethod(dd) =>
-          val ps = "self as object" :: termParams(pcs).map(p => s"$p as dynamic")
+          val own = termParams(pcs)
+          val ps = "self as object" :: packParams(own).map(p => s"$p as dynamic")
           out.append(s"function ${cn}_${memberName(dd.symbol, name)}(${ps.mkString(", ")}) as dynamic\n")
+          out.append(unpackParams(own))
           val wantRet = !(ret.tpe =:= TypeRepr.of[Unit])
           out.append(emitBody(rhs, wantRet)).append("\n")
           out.append("  return invalid\n")
@@ -1793,8 +1797,10 @@ class SwiftEmitter(
       // member implementations
       cd.body.foreach {
         case dd: DefDef if emittableMethod(dd) =>
-          val ps = "self as object" :: termParams(dd.paramss).map(p => s"$p as dynamic")
+          val own = termParams(dd.paramss)
+          val ps = "self as object" :: packParams(own).map(p => s"$p as dynamic")
           sb.append(s"function ${modelImplName(dd.symbol)}(${ps.mkString(", ")}) as dynamic\n")
+          sb.append(unpackParams(own))
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
@@ -1816,7 +1822,8 @@ class SwiftEmitter(
 
       // init: super -> mixins -> own fields and statements, guarded for diamonds
       val guard = brStr("__i_" + cn)
-      sb.append(s"function ${cn}__init(self as object${ctorParams.map(p => s", $p as dynamic").mkString}) as dynamic\n")
+      sb.append(s"function ${cn}__init(self as object${packParams(ctorParams).map(p => s", $p as dynamic").mkString}) as dynamic\n")
+      sb.append(unpackParams(ctorParams))
       sb.append(s"  if self.DoesExist($guard) then return invalid\n")
       sb.append(s"  self[$guard] = true\n")
       cd.parents.foreach { p =>
@@ -1910,7 +1917,8 @@ class SwiftEmitter(
       // secondary constructors: `def this(...) = { this(...); stats }`
       secondaryCtors(sym).zipWithIndex.foreach { case (dd, k) =>
         val ps = termParams(dd.paramss)
-        sb.append(s"function ${cn}__init__${k + 1}(self as object${ps.map(p => s", $p as dynamic").mkString}) as dynamic\n")
+        sb.append(s"function ${cn}__init__${k + 1}(self as object${packParams(ps).map(p => s", $p as dynamic").mkString}) as dynamic\n")
+        sb.append(unpackParams(ps))
         val stats = unwrap(dd.rhs.get) match {
           case Block(ss, e) => ss :+ e
           case other        => List(other)
@@ -1945,7 +1953,7 @@ class SwiftEmitter(
       }
       // constructor: allocate, captures, runtime-parent slots, vtable, init
       else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
-        sb.append(s"function ${cn}_new(${(extraParams ++ ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
+        sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
@@ -1955,7 +1963,7 @@ class SwiftEmitter(
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
         vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
-        sb.append(s"  ${cn}__init(self${ctorParams.map(p => ", " + p).mkString})\n")
+        sb.append(s"  ${cn}__init(self${packParams(ctorParams).map(p => ", " + p).mkString})\n")
         sb.append("  return self\nend function\n\n")
       }
       currentClass = savedClass
@@ -2063,6 +2071,11 @@ class SwiftEmitter(
     out.append(s"  return $NULL\n}\n")
   }
 
+@@ old
+    val Packed = 30
+@@ new
+    // Swift takes any number of parameters: nothing is packed
+    val Packed = 1000000
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {

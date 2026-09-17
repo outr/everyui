@@ -351,6 +351,14 @@ object ReactifySuite {
 
   /** Runs LAST: a Transaction whose body throws is never closed, so the
     * thread stays in it (and every later `set` is recorded). */
+  // a call wider than a BrightScript function: the parameters past the 30th travel as one array
+  def wideCalls(ok: Box, total: Box): Unit = {
+    val w = Wide(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2)
+    check(ok, total, "emit.wide.last", w.a33.toString, "2")
+    check(ok, total, "emit.wide.method", w.weigh(3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4).toString, "4030201")
+    check(ok, total, "emit.wide.copy", w.copy(a33 = 5).a33.toString, "5")
+  }
+
   def transactionThrow(ok: Box, total: Box): Unit = {
     val lv = Var(1)
     try Transaction {
@@ -387,5 +395,6 @@ class TxnRef(var t: Transaction)
   ReactifySuite.failures(ok, total)
   ReactifySuite.hotPathEdges(ok, total)
   ReactifySuite.transactionThrow(ok, total)
+  ReactifySuite.wideCalls(ok, total)
   println("RX DONE " + ok.n.toString + "/" + total.n.toString)
 }

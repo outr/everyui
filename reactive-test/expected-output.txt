@@ -62,4 +62,7 @@ RX PASS edge.txn.inactive.after = false
 RX PASS edge.txn.revert = 1
 RX PASS edge.txn.throw.stays.active = true
 RX PASS edge.txn.throw.records = 1
-RX DONE 64/64
+RX PASS emit.wide.last = 2
+RX PASS emit.wide.method = 4030201
+RX PASS emit.wide.copy = 5
+RX DONE 67/67

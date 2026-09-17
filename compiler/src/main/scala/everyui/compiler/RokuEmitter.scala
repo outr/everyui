@@ -270,6 +270,17 @@ class RokuEmitter(
 
     def termParams(pcs: List[ParamClause]): List[String] =
       pcs.collect { case c: TermParamClause => c }.flatMap(_.params).map(p => brSafe(p.name))
+
+    // A BrightScript function takes at most 32 parameters. Past `Packed` the rest travel as one array, `__more`, on both
+    // sides alike (a definition and every call count the same arguments, defaults included), so a case class of sixty
+    // fields is still one call. Counted without the `self` a method adds.
+    val Packed = 30
+    def packed(ps: List[String]): Boolean = ps.size > Packed + 1
+    def packParams(ps: List[String]): List[String] = if (packed(ps)) ps.take(Packed) :+ "__more" else ps
+    def unpackParams(ps: List[String]): String =
+      if (packed(ps)) ps.drop(Packed).zipWithIndex.map((p, i) => s"  $p = __more[$i]\n").mkString else ""
+    def packArgs(as: List[String]): List[String] =
+      if (packed(as)) as.take(Packed) :+ as.drop(Packed).mkString("[", ", ", "]") else as
     def hasTermClause(pcs: List[ParamClause]): Boolean =
       pcs.exists { case _: TermParamClause => true; case _ => false }
 
@@ -468,7 +479,7 @@ class RokuEmitter(
     // arguments to an emitted function (BrightScript checks arity), so they
     // are emitted — not dropped as they are for facade constructor options.
     def emitArgList(args: List[Term], callee: Symbol = Symbol.noSymbol): List[String] =
-      emitOrdered(argParts(args, callee)).filter(_ != dropArg)
+      packArgs(emitOrdered(argParts(args, callee)).filter(_ != dropArg))
     def emitArgs(args: List[Term], callee: Symbol = Symbol.noSymbol): String =
       emitArgList(args, callee).mkString(", ")
 
@@ -611,7 +622,7 @@ class RokuEmitter(
       }
       val all = emitOrdered(recvPart :: argParts(args, sy)).filter(_ != dropArg)
       val recvStr = all.head
-      val argList = all.tail
+      val argList = packArgs(all.tail)
       val tail = argList.map(", " + _).mkString
       if (isStaticModelMember(sy)) s"${modelImplName(sy)}($recvStr$tail)"
       else {
@@ -2314,7 +2325,8 @@ class RokuEmitter(
         case dd @ DefDef(name, pcs, _, Some(rhs))
             if userMember(dd.symbol) && name != "<init>" && !name.endsWith("_=") && keepMember(dd.symbol) =>
           val ps = termParams(pcs)
-          out.append(s"function ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
+          out.append(s"function ${base}_${memberName(dd.symbol, name)}(${packParams(ps).map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
+          out.append(unpackParams(ps))
           out.append(emitBody(rhs, true)).append("\n")
           out.append("end function\n\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
@@ -2360,7 +2372,8 @@ class RokuEmitter(
       val ctorParams = termParams(cd.constructor.paramss)
 
       // constructor
-      out.append(s"function ${cn}_new(${ctorParams.map(p => s"$p as dynamic").mkString(", ")}) as object\n")
+      out.append(s"function ${cn}_new(${packParams(ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
+      out.append(unpackParams(ctorParams))
       out.append("  self = {}\n")
       out.append(s"  self._cls = ${brStr(cn)}\n")
       cd.body.foreach {
@@ -2388,8 +2401,10 @@ class RokuEmitter(
       // methods
       cd.body.foreach {
         case dd @ DefDef(name, pcs, ret, Some(rhs)) if emittableMethod(dd) =>
-          val ps = "self as object" :: termParams(pcs).map(p => s"$p as dynamic")
+          val own = termParams(pcs)
+          val ps = "self as object" :: packParams(own).map(p => s"$p as dynamic")
           out.append(s"function ${cn}_${memberName(dd.symbol, name)}(${ps.mkString(", ")}) as dynamic\n")
+          out.append(unpackParams(own))
           val wantRet = !(ret.tpe =:= TypeRepr.of[Unit])
           out.append(emitBody(rhs, wantRet)).append("\n")
           out.append("  return invalid\n")
@@ -2452,8 +2467,10 @@ class RokuEmitter(
       // member implementations
       cd.body.foreach {
         case dd: DefDef if emittableMethod(dd) =>
-          val ps = "self as object" :: termParams(dd.paramss).map(p => s"$p as dynamic")
+          val own = termParams(dd.paramss)
+          val ps = "self as object" :: packParams(own).map(p => s"$p as dynamic")
           sb.append(s"function ${modelImplName(dd.symbol)}(${ps.mkString(", ")}) as dynamic\n")
+          sb.append(unpackParams(own))
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
           sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
@@ -2475,7 +2492,8 @@ class RokuEmitter(
 
       // init: super -> mixins -> own fields and statements, guarded for diamonds
       val guard = brStr("__i_" + cn)
-      sb.append(s"function ${cn}__init(self as object${ctorParams.map(p => s", $p as dynamic").mkString}) as dynamic\n")
+      sb.append(s"function ${cn}__init(self as object${packParams(ctorParams).map(p => s", $p as dynamic").mkString}) as dynamic\n")
+      sb.append(unpackParams(ctorParams))
       sb.append(s"  if self.DoesExist($guard) then return invalid\n")
       sb.append(s"  self[$guard] = true\n")
       cd.parents.foreach { p =>
@@ -2516,7 +2534,8 @@ class RokuEmitter(
       // secondary constructors: `def this(...) = { this(...); stats }`
       secondaryCtors(sym).zipWithIndex.foreach { case (dd, k) =>
         val ps = termParams(dd.paramss)
-        sb.append(s"function ${cn}__init__${k + 1}(self as object${ps.map(p => s", $p as dynamic").mkString}) as dynamic\n")
+        sb.append(s"function ${cn}__init__${k + 1}(self as object${packParams(ps).map(p => s", $p as dynamic").mkString}) as dynamic\n")
+        sb.append(unpackParams(ps))
         val stats = unwrap(dd.rhs.get) match {
           case Block(ss, e) => ss :+ e
           case other        => List(other)
@@ -2551,7 +2570,7 @@ class RokuEmitter(
       }
       // constructor: allocate, captures, runtime-parent slots, vtable, init
       else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
-        sb.append(s"function ${cn}_new(${(extraParams ++ ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
+        sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
@@ -2561,7 +2580,7 @@ class RokuEmitter(
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
         vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
-        sb.append(s"  ${cn}__init(self${ctorParams.map(p => ", " + p).mkString})\n")
+        sb.append(s"  ${cn}__init(self${packParams(ctorParams).map(p => ", " + p).mkString})\n")
         sb.append("  return self\nend function\n\n")
       }
       currentClass = savedClass
@@ -4444,6 +4463,16 @@ class RokuEmitter(
       |' a function reference applied to an argument list (BrightScript cannot spread one)
       |function RtCallArgs(f as function, args as object) as dynamic
       |    n = args.count()
+      |    ' past 31, the emitted function takes the rest as one array (see packParams)
+      |    if n > 31 then
+      |        packed = []
+      |        more = []
+      |        for i = 0 to n - 1
+      |            if i < 30 then packed.push(args[i]) else more.push(args[i])
+      |        end for
+      |        packed.push(more)
+      |        return RtCallArgs(f, packed)
+      |    end if
       |    if n = 0 then return f()
       |    if n = 1 then return f(args[0])
       |    if n = 2 then return f(args[0], args[1])
