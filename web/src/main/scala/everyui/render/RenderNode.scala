@@ -134,6 +134,8 @@ class RenderNode(val el: html.Element) {
   }
 
   /** A soft shadow under the box, or none for `""`. */
+  def setBlur(radius: Double): Unit =
+    el.style.setProperty("filter", if (radius <= 0.0) "" else "blur(" + radius.toString + "px)")
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
     drop = if (hex.isEmpty) "" else x.toString + "px " + y.toString + "px " + blur.toString + "px " + hex
     paintShadows()
@@ -488,6 +490,18 @@ object Platform {
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
   /** `text` onto the clipboard: the async clipboard where the page is a secure context, else the selection command. */
+  /** The screen kept on through the browser's wake lock, where it has one (and the page is showing), or let sleep. */
+  def keepAwake(on: Boolean): Unit = {
+    val wakeLock = dom.window.navigator.asInstanceOf[js.Dynamic].wakeLock
+    if (on && wakeSentinel.isEmpty && !js.isUndefined(wakeLock))
+      wakeLock.request("screen").asInstanceOf[js.Promise[js.Dynamic]].`then`[Unit](s => wakeSentinel = Some(s))
+    else if (!on) {
+      wakeSentinel.foreach(_.release())
+      wakeSentinel = None
+    }
+  }
+  private var wakeSentinel: Option[js.Dynamic] = None
+
   def copyText(text: String): Unit = {
     val clipboard = dom.window.navigator.asInstanceOf[js.Dynamic].clipboard
     if (!js.isUndefined(clipboard)) clipboard.writeText(text)

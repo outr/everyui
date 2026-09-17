@@ -225,11 +225,24 @@ class RenderNode(val fx: Node) {
   }
 
   /** A soft shadow under the box, or none for `""`. */
-  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
-    fx.setEffect(if (hex.isEmpty) null else {
-      val shadow = new javafx.scene.effect.DropShadow(blur, x, y, Color.web(hex))
-      shadow
-    })
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
+    dropShadow = if (hex.isEmpty) None else Some(new javafx.scene.effect.DropShadow(blur, x, y, Color.web(hex)))
+    paintEffect()
+  }
+  /** A gaussian blur, its kernel three times the spread wide (as far as JavaFX goes), over the shadow if there is one. */
+  def setBlur(radius: Double): Unit = {
+    blurRadius = radius
+    paintEffect()
+  }
+  private var dropShadow: Option[javafx.scene.effect.DropShadow] = None
+  private var blurRadius: Double = 0.0
+  private def paintEffect(): Unit =
+    if (blurRadius <= 0.0) fx.setEffect(dropShadow.orNull)
+    else {
+      val gaussian = new javafx.scene.effect.GaussianBlur(math.min(63.0, blurRadius * 3.0))
+      dropShadow.foreach(s => gaussian.setInput(s))
+      fx.setEffect(gaussian)
+    }
   /** Lines of wrapped text keep the face's own spacing here. */
   def setLineHeight(px: Double): Unit = ()
   /** A link is followed by its click; there is no address to show. */
@@ -602,6 +615,9 @@ object Platform {
     case stage: javafx.stage.Stage => stage.setTitle(title)
     case _ => ()
   }
+  /** A desktop keeps its own screen timing. */
+  def keepAwake(on: Boolean): Unit = ()
+
   def copyText(text: String): Unit = {
     val content = new ClipboardContent()
     content.putString(text)

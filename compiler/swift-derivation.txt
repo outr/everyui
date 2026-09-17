@@ -611,6 +611,7 @@ class SwiftEmitter(
         case "max"   => s"RtMax(${a(0)}, ${a(1)})"
         case "floor" => s"Int(${a(0)})"
         case "ceil"  => s"(-Int(-(${a(0)})))"
+        case "random" => "Rnd(0)"
         case _       => s"Int(${a(0)} + 0.5)"
       }
     }
@@ -632,6 +633,7 @@ class SwiftEmitter(
         case "max"   => s"RtMax(${a(0)}, ${a(1)})"
         case "floor" => s"rtFloor(${a(0)})"
         case "ceil"  => s"rtCeil(${a(0)})"
+        case "random" => "uiRandom()"
         case _       => s"rtRound(${a(0)})"
       }
     }

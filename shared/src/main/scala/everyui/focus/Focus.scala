@@ -26,6 +26,8 @@ object Focus {
   val focused: Var[Option[Component]] = Var(None)
   /** Where the focus may go: under `ui`, or under an open dialog alone, so the arrows never reach what it covers. */
   val scope: Var[Option[Component]] = Var(None)
+  /** How many keys have been pressed: what an app watches to know it is being used (a screensaver's idle time). */
+  val activity: Var[Long] = Var(0L)
 
   /** Take the platform's keys: `ui` calls it as it starts, since the Roku compiler runs no statement in an object's
     * body. */
@@ -62,6 +64,7 @@ object Focus {
     * it, so the platform leaves it be. A key the focused component keeps (`keepsKey`) goes to it alone. */
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
+    if (pressed) activity @= activity() + 1L
     // what had the focus when the key came: a component that moves the focus as it handles its own key is still the one
     // that kept it, and the key does not travel on from wherever the focus went
     val target = focused()

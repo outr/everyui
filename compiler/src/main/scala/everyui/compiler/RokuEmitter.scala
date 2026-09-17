@@ -1227,7 +1227,7 @@ class RokuEmitter(
     }
 
     def mathNames: Set[String] =
-      Set("sqrt", "pow", "sin", "cos", "tan", "atan", "exp", "log", "abs", "min", "max", "floor", "ceil", "round")
+      Set("sqrt", "pow", "sin", "cos", "tan", "atan", "exp", "log", "abs", "min", "max", "floor", "ceil", "round", "random")
     /** `scala.math` onto BrightScript's numeric builtins. */
     def emitMath(name: String, args: List[Term]): String = {
       val a = flattenVarargs(args).map(emitArgVal)
@@ -1245,6 +1245,7 @@ class RokuEmitter(
         case "max"   => s"RtMax(${a(0)}, ${a(1)})"
         case "floor" => s"Int(${a(0)})"
         case "ceil"  => s"(-Int(-(${a(0)})))"
+        case "random" => "Rnd(0)"
         case _       => s"Int(${a(0)} + 0.5)"
       }
     }

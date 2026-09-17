@@ -257,6 +257,8 @@ class RenderNode(val sg: SGNode) {
   }
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** A Roku draws nothing blurred. */
+  def setBlur(radius: Double): Unit = ()
   /** Each line of wrapped text `advance` units below the last: the Label's own spacing, to what the face leaves. */
   def setLineHeight(advance: Double): Unit = {
     lineAdvance = advance
@@ -427,6 +429,8 @@ object Platform {
   /** A channel has no title bar. */
   def setTitle(title: String): Unit = ()
   def copyText(text: String): Unit = ()
+  /** The device keeps its own screen timing here. */
+  def keepAwake(on: Boolean): Unit = ()
 
   /** No address bar: no path to show, push or follow. */
   def path(): String = ""

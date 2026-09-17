@@ -224,6 +224,11 @@ class RenderNode(val view: View) {
   /** No shadow is drawn. */
   /** A View's own shadow, which the platform draws from its outline: the colour is the glow's, and the blur its
     * elevation. A raised node also draws above its neighbours, which is what a card growing under the focus wants. */
+  /** A blur, on Android 12 and later (a RenderEffect); drawn sharp before. */
+  def setBlur(radius: Double): Unit = if (android.os.Build.VERSION.SDK_INT >= 31) {
+    view.setRenderEffect(if (radius <= 0.0) null
+    else android.graphics.RenderEffect.createBlurEffect(radius.toFloat, radius.toFloat, android.graphics.Shader.TileMode.CLAMP))
+  }
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
     if (hex.isEmpty) view.setElevation(0f)
     else {
@@ -775,6 +780,12 @@ object Platform {
   def navigate(url: String): Unit = openUrl(url)
   /** The activity's title (what the recents screen calls it). */
   def setTitle(title: String): Unit = Host.activity.setTitle(title)
+  /** The screen kept on (while something is shown that is meant to be watched without a touch), or let sleep. */
+  def keepAwake(on: Boolean): Unit = {
+    val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+    if (on) Host.activity.getWindow.addFlags(flag) else Host.activity.getWindow.clearFlags(flag)
+  }
+
   def copyText(text: String): Unit = {
     val manager = Host.activity.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[android.content.ClipboardManager]
     manager.setPrimaryClip(android.content.ClipData.newPlainText("everyui", text))

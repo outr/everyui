@@ -124,6 +124,8 @@ class RenderNode(val sg: SGNode) {
   def setMotion(tracks: List[everyui.motion.Track]): Unit = ()
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** Nothing is drawn blurred here. */
+  def setBlur(radius: Double): Unit = ()
   /** Lines keep the face's own spacing. */
   def setLineHeight(px: Double): Unit = ()
   /** A link is followed by its select; there is no address to show. */
@@ -218,6 +220,8 @@ object Platform {
   /** An Apple TV app has no title bar. */
   def setTitle(title: String): Unit = ()
   def copyText(text: String): Unit = ()
+  /** The device keeps its own screen timing here. */
+  def keepAwake(on: Boolean): Unit = ()
 
   /** No address bar: no path to show, push or follow. */
   def path(): String = ""

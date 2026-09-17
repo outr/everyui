@@ -51,6 +51,9 @@ class Component(val node: RenderNode) {
     case Some(value) => node.setGradient(value.angle, value.encoded)
     case None => node.setGradient(0.0, "")
   })
+  /** How far it is blurred, in pixels (the spread of the blur): 0 is sharp. The web, the desktop and Android 12 on draw
+    * it; elsewhere it is drawn sharp. */
+  lazy val blur: Prop[Double] = new Prop[Double](0.0, r => node.setBlur(r))
   /** A soft shadow under the box (the web and the desktop). */
   lazy val shadow: Prop[Option[Shadow]] = new Prop[Option[Shadow]](None, s => s match {
     case Some(value) => node.setShadow(value.x, value.y, value.blur, Component.css(value.color))
