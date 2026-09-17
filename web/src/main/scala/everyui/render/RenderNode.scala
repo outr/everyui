@@ -237,6 +237,18 @@ class RenderNode(val el: html.Element) {
 
   def setImageSource(uri: String): Unit = el.setAttribute("src", uri)
 
+  /** The picture in one colour, its transparency kept: the box painted the colour through the picture as a mask, and
+    * the picture itself drawn out of sight. */
+  def setTint(hex: String): Unit = {
+    val tinted = hex.nonEmpty
+    el.style.backgroundColor = if (tinted) hex else "transparent"
+    el.style.setProperty("object-position", if (tinted) "-100000px 0" else "")
+    List("mask", "-webkit-mask").foreach { p =>
+      el.style.setProperty(p + "-image", if (tinted) "url(\"" + el.getAttribute("src") + "\")" else "none")
+      el.style.setProperty(p + "-size", "100% 100%")
+    }
+  }
+
   /** "start", "center" or "end": CSS's own logical values, so the page's direction resolves them. */
   def setTextAlign(align: String): Unit = el.style.textAlign = align
 

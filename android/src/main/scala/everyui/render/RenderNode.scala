@@ -453,6 +453,14 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
+  /** The picture in one colour (`"#rrggbb"`), its transparency kept, or as it is for `""`. */
+  def setTint(hex: String): Unit = view match {
+    case i: ImageView =>
+      if (hex.isEmpty) i.clearColorFilter()
+      else i.setColorFilter(RenderNode.color(hex), android.graphics.PorterDuff.Mode.SRC_IN)
+    case _ => ()
+  }
+
   def setImageSource(uri: String): Unit = view match {
     case i: ImageView => if (uri.nonEmpty) Host.bitmapThen(uri)(b => if (b != null) i.setImageBitmap(b))
     case _ => ()

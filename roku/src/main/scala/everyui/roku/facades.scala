@@ -266,3 +266,7 @@ class SGNode
 @native object uiAfter {
   def apply(seconds: Double, f: () => Unit): Unit = native.value
 }
+/** A Poster's picture in one colour (`"#rrggbb"`, over a white picture), or as it is for `""`. */
+@native object uiSetTint {
+  def apply(node: SGNode, hex: String): Unit = native.value
+}

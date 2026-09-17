@@ -204,6 +204,8 @@ class RenderNode(val sg: SGNode) {
   }
 
   def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
+  /** The picture in one colour, its transparency kept (a Poster's blend colour on a white picture), or as it is. */
+  def setTint(hex: String): Unit = uiSetTint(sg, hex)
 
   /** An edge `width` pixels wide inside the node's box. A zero width or no colour takes it away. */
   def setBorder(width: Double, hex: String): Unit = {

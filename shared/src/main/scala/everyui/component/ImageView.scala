@@ -1,6 +1,7 @@
 package everyui.component
 
 import reactify.Var
+import everyui.component.types.Prop
 import everyui.image.Image
 import everyui.render.{Nodes, RenderNode}
 
@@ -14,6 +15,11 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
     }
     v
   }
+
+  /** The picture in one colour, its transparency kept: a white sprite in the theme's accent, say. None draws it as it
+    * is. */
+  lazy val tint: Prop[Option[everyui.Color]] =
+    new Prop[Option[everyui.Color]](None, t => node.setTint(t.map(c => c.toHex).getOrElse("")))
 
   override def kind: String = "ImageView"
 }

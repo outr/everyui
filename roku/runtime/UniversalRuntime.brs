@@ -776,6 +776,13 @@ sub uiSetBackgroundColor(node as object, hex as string)
     end if
 end sub
 
+' A Poster's picture in one colour: its blend colour, which multiplies a white picture into that colour and keeps
+' its transparency. "" draws it as it is.
+sub uiSetTint(node as object, hex as string)
+    if node = invalid or not node.hasField("blendColor") then return
+    if hex = "" then node.blendColor = "0xFFFFFFFF" else node.blendColor = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
+end sub
+
 sub uiSetImageSource(node as object, uri as string)
     if node = invalid then return
     if node.hasField("uri") then node.uri = uri

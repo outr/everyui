@@ -352,6 +352,12 @@ class RenderNode(val fx: Node) {
     case _ => ()
   }
 
+  /** The picture in one colour, its transparency kept (the colour blended over it, atop), or as it is for `""`. */
+  def setTint(hex: String): Unit = fx.setEffect(
+    if (hex.isEmpty) null
+    else new javafx.scene.effect.Blend(javafx.scene.effect.BlendMode.SRC_ATOP, null,
+      new javafx.scene.effect.ColorInput(0, 0, 8192, 8192, Color.web(hex))))
+
   def setImageSource(uri: String): Unit = fx match {
     case i: ImageView => if (uri.nonEmpty) i.setImage(Host.image(uri))
     case _ => ()

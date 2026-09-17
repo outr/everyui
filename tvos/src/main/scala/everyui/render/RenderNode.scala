@@ -108,6 +108,8 @@ class RenderNode(val sg: SGNode) {
   def setWhiteSpace(value: String): Unit = ()
 
   def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
+  /** The picture as it is: no tint here yet. */
+  def setTint(hex: String): Unit = ()
 
   /** No edge: a SceneGraph Rectangle has none to draw. */
   def setBorder(width: Double, hex: String): Unit = ()
