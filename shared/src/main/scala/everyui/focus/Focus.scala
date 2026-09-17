@@ -144,9 +144,11 @@ object Focus {
 
   /** The part of `target` the focus lands on, arriving `direction`'s way from `from`: itself if it takes the focus,
     * else, of its candidates, those on the line nearest that way (the bottom row, arriving from below), and of those
-    * the one most nearly in line with `from`. */
+    * the one most nearly in line with `from`. A container that names its entry (`Container.entryFocus`) is entered
+    * there. */
   private def enter(target: Component, from: Component, direction: Key): Option[Component] =
     if (target.focusable()) Some(target)
+    else if (entered(target).nonEmpty) entered(target).flatMap(e => enter(e, from, direction))
     else {
       val all = candidates(target)
       val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
@@ -165,6 +167,12 @@ object Focus {
       }
       best
     }
+
+  // the part a container says an arrival lands on, when it has one to take the focus
+  private def entered(target: Component): Option[Component] = target match {
+    case c: Container => c.focusEntry.filter(e => candidates(e).nonEmpty)
+    case _ => None
+  }
 
   /** How far `direction`'s way a component's near edge is: the line arrived at first has the least. */
   private def depth(c: Component, direction: Key): Double =

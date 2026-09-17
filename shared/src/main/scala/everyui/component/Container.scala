@@ -44,6 +44,15 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     * container does not say (its parent decides). */
   def focusExit(direction: everyui.event.Key): Option[Option[Component]] = exits.get(direction)
 
+  private var arrival: Option[Component] = None
+
+  /** An arrow arriving at this container from outside lands on `target` (onto its focusable part), wherever the focus
+    * came from: a row of buttons that is entered at its first. */
+  def entryFocus(target: Component): Unit = arrival = Some(target)
+
+  /** Where an arrow arriving at this container lands, when the container says. */
+  def focusEntry: Option[Component] = arrival
+
   /** Place the children again, here and all the way down, in one pass: the reading direction changed. */
   def relayout(): Unit = LayoutPass.relayout(this)
 
