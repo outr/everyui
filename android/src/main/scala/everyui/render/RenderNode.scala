@@ -148,8 +148,11 @@ class RenderNode(val view: View) {
         else paint.getRunAdvance(whole, 0, whole.length, 0, whole.length, false, whole.length).toDouble
       laidOutHeight =
         if (wrapping) {
-          android.text.StaticLayout.Builder.obtain(text, 0, text.length, paint, at).setIncludePad(false)
-            .setLineSpacing(t.getLineSpacingExtra, t.getLineSpacingMultiplier).build().getHeight.toDouble
+          // the view measures itself, rather than a StaticLayout built to look like it: a TextView breaks its lines
+          // its own way, and words a layout of ours put on two lines were drawn on three
+          t.measure(android.view.View.MeasureSpec.makeMeasureSpec(at, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+          t.getMeasuredHeight.toDouble
         } else 0.0
     }
   }
@@ -756,6 +759,10 @@ object Nodes {
     t.setPadding(0, 0, 0, 0)
     t.setMaxLines(1)
     t.setHorizontallyScrolling(true)
+    // wrapped the plain greedy way every other backend wraps, rather than by a TextView's own high-quality strategy,
+    // which breaks the same words somewhere else
+    t.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE)
+    t.setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE)
     t.setTextColor(android.graphics.Color.parseColor("#1c1b1f"))
     t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 32.0f)
     // fractional glyph advances, so text measures as it does in a browser rather than snapped to whole pixels
