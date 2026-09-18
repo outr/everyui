@@ -538,7 +538,7 @@ class SwiftEmitter(
     }
 @@ old
       val overrides = cls.caseFields.zip(flattenVarargs(args)).collect {
-        case (f, arg) if !isDefaultArg(arg) =>
+        case (f, arg) if !isCopyDefaultArg(arg) =>
           val v = arg match { case NamedArg(_, x) => x; case o => o }
           s"${fieldKey(f)}: ${emitArgVal(v)}"
       }
@@ -548,7 +548,7 @@ class SwiftEmitter(
     // `f(a)(b)` on a method with several term clauses is ONE call in the
 @@ new
       val overrides = cls.caseFields.zip(flattenVarargs(args)).collect {
-        case (f, arg) if !isDefaultArg(arg) =>
+        case (f, arg) if !isCopyDefaultArg(arg) =>
           val v = arg match { case NamedArg(_, x) => x; case o => o }
           s"${swStr(fieldKey(f))}: ${emitArgVal(v)}"
       }

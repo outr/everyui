@@ -416,8 +416,9 @@ object Platform {
   def ticks(): Double = uiTicks()
   def animate(tick: () => Unit): Unit = uiAnimate(tick)
 
-  /** Assets live in the channel package: `/images/icon.png` is `pkg:/images/icon.png`. */
-  def resolvePath(path: String): String = "pkg:" + path
+  /** Assets live in the channel package: `/images/icon.png` is `pkg:/images/icon.png`. A path already in the package
+    * is left as it is: `imagePath` hands one out, and resolving it again made `pkg:pkg:/…`, which nothing opens. */
+  def resolvePath(path: String): String = if (path.startsWith("pkg:")) path else "pkg:" + path
 
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = uiLoadImage(uri, loaded)
 

@@ -218,6 +218,25 @@ class RokuEmitter(
       case _ => false
     }
 
+    /** Whether the argument stands for a field `copy` was not given: a default getter, or — where the arguments had
+      * to be put in order first — a local val that was handed one. Only `copy` may leave such a field out; an
+      * ordinary call still passes every parameter it has. */
+    def isCopyDefaultArg(t: Term): Boolean = isDefaultArg(t) || (unwrap(t) match {
+      case id: Ident => fromDefaultGetter(id)
+      case _         => false
+    })
+
+    /** Whether `id` stands for a local val that was given a default getter's answer. */
+    def fromDefaultGetter(id: Ident): Boolean =
+      try id.symbol.tree match {
+        case vd: ValDef => vd.rhs.exists(r => r match {
+          case Select(_, n) => n.contains("$default$")
+          case _            => false
+        })
+        case _ => false
+      }
+      catch case _: Throwable => false
+
     def isDefaultArg(t: Term): Boolean = unwrap(t) match {
       case Select(_, n) if n.contains("$default$") => true
       case Ident(n) if n.contains("$default$")     => true
@@ -1100,7 +1119,7 @@ class RokuEmitter(
     def emitCaseCopy(recv: Term, args: List[Term]): String = {
       val cls = recv.tpe.widen.dealias.typeSymbol
       val overrides = cls.caseFields.zip(flattenVarargs(args)).collect {
-        case (f, arg) if !isDefaultArg(arg) =>
+        case (f, arg) if !isCopyDefaultArg(arg) =>
           val v = arg match { case NamedArg(_, x) => x; case o => o }
           s"${fieldKey(f)}: ${emitArgVal(v)}"
       }
@@ -2207,7 +2226,18 @@ class RokuEmitter(
     def emitBody(t: Term, wantRet: Boolean): String = emitInto(t, if (wantRet) skReturn else "")
     def emitTail(expr: Term, wantRet: Boolean): String = emitBody(expr, wantRet)
 
-    def iifSafe(a: Term, b: Term): Boolean = pureValue(a) && pureValue(b)
+    /** Whether both arms may go to `_iif`, which evaluates the two of them whichever the answer: a pure value that
+      * cannot fault. A division can (by zero), and the arm guarded against it is exactly where one is written, so an
+      * arm holding one is laid out as a statement instead. */
+    def iifSafe(a: Term, b: Term): Boolean =
+      pureValue(a) && pureValue(b) && !divides(a) && !divides(b)
+
+    /** Whether a division or a remainder is worked out anywhere in `t`. */
+    def divides(t: Term): Boolean = unwrap(t) match {
+      case Apply(Select(l, op), List(r)) => op == "/" || op == "%" || divides(l) || divides(r)
+      case Select(q, _)                  => divides(q)
+      case _                             => false
+    }
 
     def allValDefs(stats: List[Statement]): Boolean =
       stats.nonEmpty && stats.forall { case _: ValDef => true; case _ => false }
