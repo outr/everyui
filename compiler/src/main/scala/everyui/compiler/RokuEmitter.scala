@@ -2215,12 +2215,21 @@ class RokuEmitter(
       }
     }
 
+    /** A lambda that calls itself (`lazy val turn: () => Unit = () => … turn() …`) is captured into its own
+      * environment, and the value was read while it was still being made — a use of an uninitialized variable, which
+      * stops the thread. The environment is given the name once the closure exists instead. */
+    def selfCaptured(code: String, lhs: String): String = {
+      val capture = s", fv_$lhs: $lhs"
+      if (!code.contains(s"$lhs = { fn: ") || !code.contains(capture)) code
+      else code.replace(capture, "") + s"\n  $lhs.env.fv_$lhs = $lhs"
+    }
+
     def emitStat(st: Statement): String = st match {
       case vd @ ValDef(name, _, Some(rhs)) =>
         val lhs = brSafe(name)
         if (boxedVars.contains(vd.symbol))
           List(emitInto(rhs, lhs), s"  $lhs = { v: $lhs }").filter(_.trim.nonEmpty).mkString("\n")
-        else emitInto(rhs, lhs)
+        else selfCaptured(emitInto(rhs, lhs), lhs)
       case ValDef(_, _, None) => ""
       case Assign(lhs, rhs) if isModuleVar(lhs.symbol) =>
         val k = s"${modulePrefix(lhs.symbol.owner)}_${brSafe(lhs.symbol.name)}"

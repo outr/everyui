@@ -1474,7 +1474,7 @@ class SwiftEmitter(
         val lhs = brSafe(name)
         if (boxedVars.contains(vd.symbol))
           List(emitInto(rhs, lhs), s"  $lhs = { v: $lhs }").filter(_.trim.nonEmpty).mkString("\n")
-        else emitInto(rhs, lhs)
+        else selfCaptured(emitInto(rhs, lhs), lhs)
       case ValDef(_, _, None) => ""
       case Assign(lhs, rhs) if isModuleVar(lhs.symbol) =>
         val k = s"${modulePrefix(lhs.symbol.owner)}_${brSafe(lhs.symbol.name)}"
