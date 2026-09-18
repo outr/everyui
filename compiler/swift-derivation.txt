@@ -37,6 +37,16 @@ class SwiftEmitter(
       "\"" + esc + "\""
     }
 
+    /** What `case x: SomeClass` tests against: the class's own name and its ancestors', between bars, so a subclass
+      * answers to a parent's name. The universal ones are left out — everything is one of those. */
+    val universal: Set[String] = Set("Object", "Any", "AnyRef", "Matchable", "Serializable")
+
+    def isaTag(sym: Symbol): String = {
+      val names = (try sym.typeRef.baseClasses catch case _: Throwable => List(sym))
+        .filter(bc => bc.exists && !universal.contains(bc.name)).map(_.name).distinct
+      if (names.isEmpty) "" else names.mkString("|", "|", "|")
+    }
+
     def emitConst(c: Constant): String = c match {
       case IntConstant(i)     => i.toString
       case LongConstant(l)    => l.toString
@@ -87,6 +97,16 @@ class SwiftEmitter(
     def rtArr(items: List[String]): String = "rtArr([" + items.mkString(", ") + "])"
     def rtObj(pairs: List[String]): String = if (pairs.isEmpty) "rtObj([:])" else "rtObj([" + pairs.mkString(", ") + "])"
     def field(recv: String, name: String): String = s"$recv[${swStr(name)}]"
+
+    /** What `case x: SomeClass` tests against: the class's own name and its ancestors', between bars, so a subclass
+      * answers to a parent's name. The universal ones are left out — everything is one of those. */
+    val universal: Set[String] = Set("Object", "Any", "AnyRef", "Matchable", "Serializable")
+
+    def isaTag(sym: Symbol): String = {
+      val names = (try sym.typeRef.baseClasses catch case _: Throwable => List(sym))
+        .filter(bc => bc.exists && !universal.contains(bc.name)).map(_.name).distinct
+      if (names.isEmpty) "" else names.mkString("|", "|", "|")
+    }
 
     def emitConst(c: Constant): String = c match {
       case IntConstant(i)     => vInt(i)
@@ -1289,7 +1309,7 @@ class SwiftEmitter(
         val tag =
           if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
             s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
-          else "true"
+          else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         (if (it == "true") tag else if (tag == "true") it else s"$tag and $it", ib)
       case TypedOrTest(inner, tpt) =>
@@ -1306,7 +1326,7 @@ class SwiftEmitter(
         val tag =
           if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
             s"($subj != $NULL && ${field(subj, "_cls")} == ${brStr(ts.name)})"
-          else "true"
+          else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         (if (it == "true") tag else if (tag == "true") it else s"$tag && $it", ib)
       case TypedOrTest(inner, tpt) =>
@@ -1318,7 +1338,7 @@ class SwiftEmitter(
           else if (ts.fullName == "scala.Some" || ts.fullName == "scala.Option") s"($subj <> invalid)"
           else if (ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
             s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
-          else "true"
+          else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         val test = if (it == "true") tag else if (tag == "true") it else s"$tag and $it"
         (test, ib)
@@ -1352,7 +1372,7 @@ class SwiftEmitter(
           else if (ts.fullName == "scala.Some" || ts.fullName == "scala.Option") s"($subj != $NULL)"
           else if (ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
             s"($subj != $NULL && ${field(subj, "_cls")} == ${brStr(ts.name)})"
-          else "true"
+          else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         val test = if (it == "true") tag else if (tag == "true") it else s"$tag && $it"
         (test, ib)
@@ -1729,6 +1749,7 @@ class SwiftEmitter(
       out.append(unpackParams(ctorParams))
       out.append("  self = {}\n")
       out.append(s"  self._cls = ${brStr(cn)}\n")
+      { val tag = isaTag(sym); if (tag.nonEmpty) out.append(s"  self._isa = ${brStr(tag)}\n") }
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
           out.append(s"  self.${brSafe(vd.name)} = ${brSafe(vd.name)}\n")
@@ -1946,6 +1967,7 @@ class SwiftEmitter(
         sb.append("  if self <> invalid then return self\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
@@ -1960,6 +1982,7 @@ class SwiftEmitter(
         sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
         if (sym.flags.is(Flags.Case))
           sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
@@ -2080,6 +2103,18 @@ class SwiftEmitter(
 @@ new
     // Swift takes any number of parameters: nothing is packed
     val Packed = 1000000
+@@ old
+    /** `case x: SomeClass` where SomeClass is a class of this program's own and not a case class: it was read as
+      * "true" once, so `case i: ImageView` matched every component there was. Tested against `_isa` now. */
+    def classTest(ts: Symbol, subj: String): String =
+      if (!ts.exists || universal.contains(ts.name) || ts.flags.is(Flags.Module)) "true"
+      else if (ts.fullName.startsWith("scala.") || ts.fullName.startsWith("java.")) "true"
+      else if (!ts.isClassDef) "true"
+      else s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
+@@ new
+    /** `case x: SomeClass` for a class of this program's own. The spike's objects carry no ancestry yet, so this
+      * still answers "true" as the Roku backend did before `_isa`; narrowing it waits on the Swift runtime. */
+    def classTest(ts: Symbol, subj: String): String = "true"
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {

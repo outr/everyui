@@ -74,6 +74,16 @@ class RokuEmitter(
       "\"" + esc + "\""
     }
 
+    /** What `case x: SomeClass` tests against: the class's own name and its ancestors', between bars, so a subclass
+      * answers to a parent's name. The universal ones are left out — everything is one of those. */
+    val universal: Set[String] = Set("Object", "Any", "AnyRef", "Matchable", "Serializable")
+
+    def isaTag(sym: Symbol): String = {
+      val names = (try sym.typeRef.baseClasses catch case _: Throwable => List(sym))
+        .filter(bc => bc.exists && !universal.contains(bc.name)).map(_.name).distinct
+      if (names.isEmpty) "" else names.mkString("|", "|", "|")
+    }
+
     def emitConst(c: Constant): String = c match {
       case IntConstant(i)     => i.toString
       case LongConstant(l)    => l.toString
@@ -1988,6 +1998,14 @@ class RokuEmitter(
       case _                   => Symbol.noSymbol
     }
 
+    /** `case x: SomeClass` where SomeClass is a class of this program's own and not a case class: it was read as
+      * "true" once, so `case i: ImageView` matched every component there was. Tested against `_isa` now. */
+    def classTest(ts: Symbol, subj: String): String =
+      if (!ts.exists || universal.contains(ts.name) || ts.flags.is(Flags.Module)) "true"
+      else if (ts.fullName.startsWith("scala.") || ts.fullName.startsWith("java.")) "true"
+      else if (!ts.isClassDef) "true"
+      else s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
+
     // (testExpr, bindingStatements) for matching `subj` against pattern `p`.
     def patternTest(p: Tree, subj: String): (String, List[String]) = p match {
       case Wildcard()        => ("true", Nil)
@@ -2006,7 +2024,7 @@ class RokuEmitter(
         val tag =
           if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
             s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
-          else "true"
+          else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         (if (it == "true") tag else if (tag == "true") it else s"$tag and $it", ib)
       case TypedOrTest(inner, tpt) =>
@@ -2020,7 +2038,7 @@ class RokuEmitter(
           else if (ts.fullName == "scala.Some" || ts.fullName == "scala.Option") s"($subj <> invalid)"
           else if (ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
             s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
-          else "true"
+          else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         val test = if (it == "true") tag else if (tag == "true") it else s"$tag and $it"
         (test, ib)
@@ -2397,6 +2415,7 @@ class RokuEmitter(
       out.append(unpackParams(ctorParams))
       out.append("  self = {}\n")
       out.append(s"  self._cls = ${brStr(cn)}\n")
+      { val tag = isaTag(sym); if (tag.nonEmpty) out.append(s"  self._isa = ${brStr(tag)}\n") }
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
           out.append(s"  self.${brSafe(vd.name)} = ${brSafe(vd.name)}\n")
@@ -2580,6 +2599,7 @@ class RokuEmitter(
         sb.append("  if self <> invalid then return self\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
@@ -2594,6 +2614,7 @@ class RokuEmitter(
         sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
         if (sym.flags.is(Flags.Case))
           sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
@@ -3687,6 +3708,19 @@ class RokuEmitter(
       |        if _rtKind(aa[k]) = "fn" then return true
       |    end for
       |    return false
+      |end function
+      |
+      |' `case x: SomeClass` for a class that is not a case class. Every object this
+      |' compiler makes carries `_isa`, its own name and its ancestors' between bars,
+      |' so a subclass answers to its parent's name too. Anything with no `_isa` (a
+      |' string, a number, a record from the runtime) answers yes, as it did before
+      |' there was a test at all: the tag only narrows what it knows about.
+      |function RtIsA(v as dynamic, tag as string) as boolean
+      |    if v = invalid then return false
+      |    if type(v) <> "roAssociativeArray" then return true
+      |    s = v._isa
+      |    if s = invalid then return true
+      |    return Instr(1, s, tag) > 0
       |end function
       |
       |' Reference identity (Scala `eq`). BrightScript has no identity operator for
