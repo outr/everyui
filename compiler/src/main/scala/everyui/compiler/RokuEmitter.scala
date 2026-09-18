@@ -1646,6 +1646,15 @@ class RokuEmitter(
                 case _                     => "<="
               }
               s"(RtDurationMs(${emitTerm(recv)}) $o RtDurationMs(${emitArgVal(args.head)}))"
+            // Dividing by nothing: the JVM throws on whole numbers and answers Infinity or NaN on fractions, while a
+            // Roku stops the thread in its debugger and takes the channel with it — the guard written to prevent it
+            // is no help where the arm is worked out anyway. A divisor that is not plainly not zero goes through the
+            // runtime, which answers as the JVM does, so the fault is a Scala one and can be caught and reported.
+            case Select(recv, op @ ("/" | "$div" | "%" | "$percent"))
+                if args.length == 1 && !nonZeroLiteral(args.head) && isPrimLike(recv) && isPrimLike(args.head) =>
+              val whole = isIntegral(recv.tpe) && isIntegral(args.head.tpe)
+              val fn = if (op == "%" || op == "$percent") "_rem" else if (whole) "_quot" else "_div"
+              s"$fn(${emitTerm(recv)}, ${emitTerm(args.head)})"
             // an integral quotient is whole, as the JVM keeps it: BrightScript's `/` gives a fraction, `\\` does not
             case Select(recv, "/" | "$div") if args.length == 1 && isIntegral(recv.tpe) && isIntegral(args.head.tpe) =>
               s"(${emitTerm(recv)} \\ ${emitTerm(args.head)})"
@@ -2231,6 +2240,16 @@ class RokuEmitter(
       * arm holding one is laid out as a statement instead. */
     def iifSafe(a: Term, b: Term): Boolean =
       pureValue(a) && pureValue(b) && !divides(a) && !divides(b)
+
+    /** Whether `t` is a number written down that is not zero — a divisor that needs no guarding. Most division in a
+      * layout is by one of these (`/ 2.0`), and they are left to divide inline. */
+    def nonZeroLiteral(t: Term): Boolean = unwrap(t) match {
+      case Literal(IntConstant(i))    => i != 0
+      case Literal(LongConstant(l))   => l != 0L
+      case Literal(DoubleConstant(d)) => d != 0.0
+      case Literal(FloatConstant(f))  => f != 0.0f
+      case _                          => false
+    }
 
     /** Whether a division or a remainder is worked out anywhere in `t`. */
     def divides(t: Term): Boolean = unwrap(t) match {
@@ -3522,6 +3541,27 @@ class RokuEmitter(
       |    n = _strToDoubleOpt(s)
       |    if n = invalid then RtThrow({ _cls: "NumberFormatException", message: "For input string: " + Chr(34) + _str(s) + Chr(34) })
       |    return n
+      |end function
+      |' ── dividing, where the divisor may be zero ──
+      |' BrightScript stops the thread on a division by zero, wherever it happens; the JVM throws on whole numbers
+      |' and answers with an infinity or a NaN on fractions. Whole numbers throw the same here, so the fault can be
+      |' caught and read. A fraction cannot: BrightScript has no way to write an infinity down, so the answer is the
+      |' largest number it can hold, with the sign the IEEE one would have (and zero for 0/0). That is a divergence,
+      |' and a deliberate one: the arithmetic that follows (a `min`, a clamp) then lands where infinity would put it,
+      |' rather than taking the channel down.
+      |function _quot(a as dynamic, b as dynamic) as dynamic
+      |    if b = 0 then RtThrow({ _cls: "ArithmeticException", message: "/ by zero" })
+      |    return a \ b
+      |end function
+      |function _rem(a as dynamic, b as dynamic) as dynamic
+      |    if b = 0 then RtThrow({ _cls: "ArithmeticException", message: "/ by zero" })
+      |    return a mod b
+      |end function
+      |function _div(a as dynamic, b as dynamic) as dynamic
+      |    if b <> 0 then return a / b
+      |    if a = 0 then return 0.0
+      |    if a > 0 then return 3.4e38
+      |    return -3.4e38
       |end function
       |function _replace(s as dynamic, a as dynamic, b as dynamic) as string
       |    t = _str(s)
