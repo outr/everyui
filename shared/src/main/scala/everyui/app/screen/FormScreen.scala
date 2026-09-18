@@ -18,8 +18,12 @@ import reactify.*
   * left in `arriving`. */
 trait FormScreen extends UIScreen {
   def heading: Val[String]
-  /** How wide the card's content is. */
-  protected def width: Double = 364.0
+  /** How wide the card's content would be with room for it. */
+  protected def wanted: Double = 364.0
+  /** How wide the card's content is: what the screen asks for, or what fits where that is wider than the screen (a
+    * phone), the card keeping a margin either side. */
+  protected def width: Double =
+    math.min(wanted, everyui.ui.size.width() - 32.0 - (if (framed) 56.0 else 0.0))
   /** A card; a screen that is its own layout goes without. */
   protected def framed: Boolean = true
   /** What the primary action says while `busy`. */
