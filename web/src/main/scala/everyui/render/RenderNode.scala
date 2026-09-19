@@ -268,6 +268,13 @@ class RenderNode(val el: html.Element) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = volume)
   def setMediaRate(rate: Double): Unit = media.foreach(_.playbackRate = rate)
   def mediaRates(): Boolean = true
+  // only a video element carries a frame size; an audio one answers nothing
+  def mediaSize(): (Double, Double) = media.map(_.asInstanceOf[js.Dynamic]).map { m =>
+    val w = m.selectDynamic("videoWidth")
+    val h = m.selectDynamic("videoHeight")
+    if (js.isUndefined(w) || js.isUndefined(h)) (0.0, 0.0)
+    else (w.asInstanceOf[Double], h.asInstanceOf[Double])
+  }.getOrElse((0.0, 0.0))
   // the browser lists the tracks a file carries; `audioTracks` is not in every engine, so a missing list is no list
   def mediaTracks(): List[everyui.component.MediaTrack] = media.toList.flatMap { e =>
     val m = e.asInstanceOf[js.Dynamic]

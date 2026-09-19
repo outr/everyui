@@ -22,6 +22,13 @@ trait MediaSupport { self: Component =>
   /** Whether this platform can play at a rate other than 1. */
   def rates: Boolean = node.mediaRates()
 
+  /** How large the picture actually is, from the decoder — what is on the screen, rather than what was asked for.
+    * None until it is ready, and on a platform that does not say. */
+  def videoSize: Option[(Double, Double)] = {
+    val size = node.mediaSize()
+    if (size._1 > 0.0 && size._2 > 0.0) Some(size) else None
+  }
+
   /** The tracks the thing playing carries — the languages it can be heard in, and read in. Empty until it is ready
     * (the `ready` event), and empty for good on a platform that does not tell. */
   def tracks: List[MediaTrack] = node.mediaTracks()

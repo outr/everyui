@@ -108,6 +108,10 @@ class DesktopMedia(pane: Option[Pane]) {
     fit()
   }
 
+  /** How large the picture is, as the media reports it. */
+  def size(): (Double, Double) =
+    player.map(p => (p.getMedia.getWidth.toDouble, p.getMedia.getHeight.toDouble)).getOrElse((0.0, 0.0))
+
   def position(): Double = player.map(_.getCurrentTime.toSeconds).getOrElse(0.0)
 
   def seek(seconds: Double): Unit = player.foreach(_.seek(Duration.seconds(seconds)))

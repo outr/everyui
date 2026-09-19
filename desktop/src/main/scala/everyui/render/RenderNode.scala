@@ -387,6 +387,7 @@ class RenderNode(val fx: Node) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
   def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
   def mediaRates(): Boolean = true
+  def mediaSize(): (Double, Double) = media.map(_.size()).getOrElse((0.0, 0.0))
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
   // JavaFX lists its tracks but will not switch between them
   def selectMediaTrack(kind: String, id: String): Unit = ()

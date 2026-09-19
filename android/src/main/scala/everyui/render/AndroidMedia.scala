@@ -149,6 +149,9 @@ class AndroidMedia(texture: Option[TextureView]) {
     catch { case t: Throwable => Platform.logError("media: track " + kind + " " + id, t) }
   }
 
+  /** How large the picture is, as the decoder reports it. */
+  def size(): (Double, Double) = (videoWidth.toDouble, videoHeight.toDouble)
+
   def position(): Double = if (prepared) player.map(_.getCurrentPosition / 1000.0).getOrElse(0.0) else 0.0
 
   def seek(seconds: Double): Unit = if (prepared) player.foreach(_.seekTo(math.round(seconds * 1000.0).toInt))
