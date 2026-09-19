@@ -629,7 +629,13 @@ object Host {
     else if (code == KeyEvent.KEYCODE_DPAD_DOWN) "ArrowDown"
     else if (code == KeyEvent.KEYCODE_DPAD_LEFT) "ArrowLeft"
     else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) "ArrowRight"
+    // a remote's transport keys: a television's own play/pause button, and the four a media remote adds
     else if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) "MediaPlayPause"
+    else if (code == KeyEvent.KEYCODE_MEDIA_PLAY) "MediaPlay"
+    else if (code == KeyEvent.KEYCODE_MEDIA_PAUSE) "MediaPause"
+    else if (code == KeyEvent.KEYCODE_MEDIA_STOP) "MediaStop"
+    else if (code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) "MediaFastForward"
+    else if (code == KeyEvent.KEYCODE_MEDIA_REWIND) "MediaRewind"
     else if (e.getUnicodeChar > 0) e.getUnicodeChar.toChar.toString
     else KeyEvent.keyCodeToString(code)
   }

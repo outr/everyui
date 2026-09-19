@@ -18,7 +18,10 @@ object Keys {
     else if (name == "Tab") Tab
     else if (name == "Backspace") Backspace
     else if (name == " ") Space
+    else if (name == "MediaPlay") MediaPlay
+    else if (name == "MediaPause") MediaPause
     else if (name == "MediaPlayPause") MediaPlayPause
+    else if (name == "MediaStop") MediaStop
     else if (name == "MediaRewind") MediaRewind
     else if (name == "MediaFastForward") MediaFastForward
     else if (name == "MediaReplay") MediaReplay
@@ -26,4 +29,9 @@ object Keys {
     else Other
 
   def isArrow(key: Key): Boolean = key == ArrowUp || key == ArrowDown || key == ArrowLeft || key == ArrowRight
+
+  /** A remote's own transport keys, which mean what they say wherever the focus happens to be: Play plays, even
+    * with a button under the focus and a menu open over it. */
+  def isMedia(key: Key): Boolean = key == MediaPlay || key == MediaPause || key == MediaPlayPause ||
+    key == MediaStop || key == MediaRewind || key == MediaFastForward || key == MediaReplay
 }

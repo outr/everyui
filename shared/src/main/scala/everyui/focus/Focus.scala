@@ -55,6 +55,26 @@ object Focus {
     () => backs = backs.filterNot(_ eq handler)
   }
 
+  private var hooks: List[Key => Boolean] = Nil
+
+  /** Handle a key the focused component did not take, before the focus layer makes its own use of it: a player's
+    * transport keys, which mean what they say wherever the focus happens to be. The newest handler wins, and the
+    * returned function unregisters it. Arrows and Enter reach a hook only where nothing focused wanted them. */
+  def onKey(handler: Key => Boolean): () => Unit = {
+    hooks = handler :: hooks
+    () => hooks = hooks.filterNot(_ eq handler)
+  }
+
+  private def hooked(key: Key): Boolean = {
+    var taken = false
+    var left = hooks
+    while (!taken && left.nonEmpty) {
+      taken = left.head(key)
+      left = left.tail
+    }
+    taken
+  }
+
   private def goBack(key: Key): Boolean = {
     var taken = false
     var left = backs
@@ -80,6 +100,8 @@ object Focus {
     }
     if (!pressed) false
     else if (kept) false
+    // what the screen itself claims, before the focus layer makes its own use of the key
+    else if (hooked(key)) true
     else if (key == Key.Enter) target.map { c =>
       c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
       true

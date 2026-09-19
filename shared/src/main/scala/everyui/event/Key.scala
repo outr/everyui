@@ -6,5 +6,5 @@ package everyui.event
   * still carries the platform's name. */
 enum Key {
   case Enter, Escape, Back, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Tab, Backspace, Space,
-    MediaPlayPause, MediaRewind, MediaFastForward, MediaReplay, ContextMenu, Other
+    MediaPlay, MediaPause, MediaPlayPause, MediaStop, MediaRewind, MediaFastForward, MediaReplay, ContextMenu, Other
 }
