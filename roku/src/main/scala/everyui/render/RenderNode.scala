@@ -152,6 +152,10 @@ class RenderNode(val sg: SGNode) {
   def setMediaLoop(loop: Boolean): Unit = uiSetMediaLoop(sg, loop)
   def setMediaMuted(muted: Boolean): Unit = uiSetMediaMuted(sg, muted)
   def setMediaVolume(volume: Double): Unit = ()
+  def setMediaRate(rate: Double): Unit = ()
+  def mediaRates(): Boolean = false
+  def mediaTracks(): List[everyui.component.MediaTrack] = Nil
+  def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()
   def getMediaPosition(): Double = uiGetMediaPosition(sg)
   def seekMedia(seconds: Double): Unit = uiSeekMedia(sg, seconds)

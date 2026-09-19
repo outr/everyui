@@ -4,6 +4,7 @@ import android.graphics.{Matrix, SurfaceTexture}
 import android.media.{AudioAttributes, MediaPlayer}
 import android.net.Uri
 import android.view.{Surface, TextureView}
+import everyui.component.MediaTrack
 
 /** What a video or an audio node plays, Android edition: a `MediaPlayer`, drawing (for a video) into the node's
   * `TextureView`, which a transform fits to the box, filling it or whole inside it. The player is made again for each
@@ -18,6 +19,7 @@ class AndroidMedia(texture: Option[TextureView]) {
   private var muted = false
   private var volume = 1.0
   private var cover = true
+  private var rate = 1.0
   private var videoWidth = 0
   private var videoHeight = 0
   private var listener: String => Unit = _ => ()
@@ -56,6 +58,7 @@ class AndroidMedia(texture: Option[TextureView]) {
           prepared = true
           made.setLooping(looping)
           loudness()
+          if (rate != 1.0) try made.setPlaybackParams(made.getPlaybackParams.setSpeed(rate.toFloat)) catch { case _: Throwable => () }
           if (playing) made.start()
           if (texture.isEmpty) listener("ready")
         })
@@ -107,6 +110,43 @@ class AndroidMedia(texture: Option[TextureView]) {
   def setCover(on: Boolean): Unit = {
     cover = on
     fit()
+  }
+
+  /** How fast it runs. `setPlaybackParams` starts a player that was paused, so a rate set while paused is kept and
+    * given to it when it plays again. */
+  def setRate(r: Double): Unit = {
+    rate = r
+    if (prepared && playing) player.foreach { p =>
+      try p.setPlaybackParams(p.getPlaybackParams.setSpeed(r.toFloat))
+      catch { case t: Throwable => Platform.logError("media: rate " + r.toString, t) }
+    }
+  }
+
+  /** The languages it can be heard and read in, as the file carries them. The index is the id: it is what
+    * `selectTrack` takes. */
+  def tracks(): List[MediaTrack] = if (!prepared) Nil else player.toList.flatMap { p =>
+    try p.getTrackInfo.toList.zipWithIndex.flatMap { case (info, i) =>
+      val kind = info.getTrackType match {
+        case MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_AUDIO    => MediaTrack.Audio
+        case MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_SUBTITLE => MediaTrack.Text
+        case MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_TIMEDTEXT => MediaTrack.Text
+        case _                                               => ""
+      }
+      val language = Option(info.getLanguage).map(_.trim).filterNot(l => l.isEmpty || l == "und").getOrElse("")
+      if (kind.isEmpty) Nil else List(MediaTrack(i.toString, kind, language))
+    }
+    catch { case t: Throwable => Platform.logError("media: tracks", t); Nil }
+  }
+
+  /** Hear or read a track, by the index it was given out under. An empty id leaves the file's own choice alone,
+    * except for text, where it means none: a subtitle is deselected rather than reverted. */
+  def selectTrack(kind: String, id: String): Unit = if (prepared) player.foreach { p =>
+    try {
+      if (id.nonEmpty) id.toIntOption.foreach(p.selectTrack)
+      else if (kind == MediaTrack.Text) tracks().filter(_.kind == MediaTrack.Text)
+        .flatMap(_.id.toIntOption).foreach(i => try p.deselectTrack(i) catch { case _: Throwable => () })
+    }
+    catch { case t: Throwable => Platform.logError("media: track " + kind + " " + id, t) }
   }
 
   def position(): Double = if (prepared) player.map(_.getCurrentPosition / 1000.0).getOrElse(0.0) else 0.0

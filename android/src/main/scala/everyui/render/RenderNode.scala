@@ -178,6 +178,10 @@ class RenderNode(val view: View) {
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
+  def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
+  def mediaRates(): Boolean = true
+  def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
+  def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))

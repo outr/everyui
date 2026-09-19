@@ -2,6 +2,7 @@ package everyui.render
 
 import javafx.scene.layout.Pane
 import javafx.scene.media.{Media, MediaPlayer, MediaView}
+import everyui.component.MediaTrack
 import javafx.scene.shape.Rectangle
 import javafx.util.Duration
 
@@ -15,6 +16,7 @@ class DesktopMedia(pane: Option[Pane]) {
   private var looping = false
   private var muted = false
   private var volume = 1.0
+  private var rate = 1.0
   private var cover = true
   private var listener: String => Unit = _ => ()
 
@@ -76,6 +78,29 @@ class DesktopMedia(pane: Option[Pane]) {
   def setVolume(v: Double): Unit = {
     volume = v
     player.foreach(_.setVolume(v))
+  }
+
+  /** How fast it runs: JavaFX takes a rate on the player itself. */
+  def setRate(r: Double): Unit = {
+    rate = r
+    player.foreach(_.setRate(r))
+  }
+
+  /** What the file carries. JavaFX names its tracks but gives no way to choose between them, so they are listed
+    * and choosing one does nothing — better a list that says what is there than a menu that lies about it. */
+  def tracks(): List[MediaTrack] = player.toList.flatMap { p =>
+    val all = p.getMedia.getTracks
+    (0 until all.size()).toList.flatMap { i =>
+      val t = all.get(i)
+      val kind = t match {
+        case _: javafx.scene.media.AudioTrack    => MediaTrack.Audio
+        case _: javafx.scene.media.SubtitleTrack => MediaTrack.Text
+        case _                                   => ""
+      }
+      val language = Option(t.getLocale).map(_.getLanguage).getOrElse("")
+      val label = Option(t.getName).getOrElse("")
+      if (kind.isEmpty) Nil else List(MediaTrack(i.toString, kind, language, label))
+    }
   }
 
   def setCover(on: Boolean): Unit = {

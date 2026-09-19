@@ -266,6 +266,41 @@ class RenderNode(val el: html.Element) {
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.loop = loop)
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.muted = muted)
   def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = volume)
+  def setMediaRate(rate: Double): Unit = media.foreach(_.playbackRate = rate)
+  def mediaRates(): Boolean = true
+  // the browser lists the tracks a file carries; `audioTracks` is not in every engine, so a missing list is no list
+  def mediaTracks(): List[everyui.component.MediaTrack] = media.toList.flatMap { e =>
+    val m = e.asInstanceOf[js.Dynamic]
+    val audio = tracksOf(m, "audioTracks", everyui.component.MediaTrack.Audio)
+    val text = tracksOf(m, "textTracks", everyui.component.MediaTrack.Text)
+    audio ++ text
+  }
+  private def tracksOf(m: js.Dynamic, field: String, kind: String): List[everyui.component.MediaTrack] = {
+    val list = m.selectDynamic(field)
+    if (js.isUndefined(list) || list == null) Nil
+    else {
+      val count = list.length.asInstanceOf[Int]
+      (0 until count).toList.map { i =>
+        val t = list.applyDynamic("item")(i)
+        val language = Option(t.language.asInstanceOf[String]).getOrElse("")
+        val label = Option(t.label.asInstanceOf[String]).getOrElse("")
+        everyui.component.MediaTrack(i.toString, kind, language, label)
+      }
+    }
+  }
+  def selectMediaTrack(kind: String, id: String): Unit = media.foreach { m =>
+    val field = if (kind == everyui.component.MediaTrack.Audio) "audioTracks" else "textTracks"
+    val list = m.asInstanceOf[js.Dynamic].selectDynamic(field)
+    if (!js.isUndefined(list) && list != null) {
+      val count = list.length.asInstanceOf[Int]
+      (0 until count).foreach { i =>
+        val t = list.applyDynamic("item")(i)
+        val on = id == i.toString
+        if (kind == everyui.component.MediaTrack.Audio) t.enabled = on
+        else t.mode = if (on) "showing" else "disabled"
+      }
+    }
+  }
   def setMediaCover(cover: Boolean): Unit = el.style.setProperty("object-fit", if (cover) "cover" else "contain")
   def getMediaPosition(): Double = media.map(_.currentTime.asInstanceOf[Double]).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.currentTime = seconds)

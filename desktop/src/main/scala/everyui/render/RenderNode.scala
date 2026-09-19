@@ -385,6 +385,11 @@ class RenderNode(val fx: Node) {
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
+  def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
+  def mediaRates(): Boolean = true
+  def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
+  // JavaFX lists its tracks but will not switch between them
+  def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))

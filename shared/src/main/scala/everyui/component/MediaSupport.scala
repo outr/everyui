@@ -15,6 +15,27 @@ trait MediaSupport { self: Component =>
   lazy val muted: Prop[Boolean] = new Prop[Boolean](false, m => node.setMediaMuted(m))
   /** 0 to 1. */
   lazy val volume: Prop[Double] = new Prop[Double](1.0, v => node.setMediaVolume(math.max(0.0, math.min(1.0, v))))
+  /** How fast it runs: 1 is as it was recorded, 2 twice as quick, 0.5 half. A platform that cannot vary the rate
+    * keeps playing at 1 and says so through [[rates]]. */
+  lazy val rate: Prop[Double] = new Prop[Double](1.0, r => node.setMediaRate(math.max(0.1, math.min(4.0, r))))
+
+  /** Whether this platform can play at a rate other than 1. */
+  def rates: Boolean = node.mediaRates()
+
+  /** The tracks the thing playing carries — the languages it can be heard in, and read in. Empty until it is ready
+    * (the `ready` event), and empty for good on a platform that does not tell. */
+  def tracks: List[MediaTrack] = node.mediaTracks()
+
+  def audioTracks: List[MediaTrack] = tracks.filter(_.kind == MediaTrack.Audio)
+  def textTracks: List[MediaTrack] = tracks.filter(_.kind == MediaTrack.Text)
+
+  /** The track being heard, by its id; None leaves the file's own choice alone. */
+  lazy val audioTrack: Prop[Option[String]] =
+    new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Audio, t.getOrElse("")))
+
+  /** The track being read, by its id; None shows none. */
+  lazy val textTrack: Prop[Option[String]] =
+    new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Text, t.getOrElse("")))
 
   private var listeners: List[String => Unit] = Nil
   private var seated = false
