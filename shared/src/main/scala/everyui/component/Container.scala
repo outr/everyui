@@ -40,6 +40,17 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Arrows these ways stop at this container's edge instead of leaving it: a dialog, a keyboard, a menu. */
   def stopFocus(directions: everyui.event.Key*): Unit = directions.foreach(d => exits = exits + (d -> None))
 
+  private var exitActions: Map[everyui.event.Key, () => Unit] = Map.empty
+
+  /** An arrow `direction`'s way that finds nothing inside this container runs `action` instead of moving the focus:
+    * a row of buttons that raises a panel when pressed on past, rather than handing off to whatever lies that way.
+    * The arrow goes no further once it has run. */
+  def exitAction(direction: everyui.event.Key, action: () => Unit): Unit =
+    exitActions = exitActions + (direction -> action)
+
+  /** What an arrow leaving this container `direction`'s way does instead of moving, when the container says. */
+  def focusAction(direction: everyui.event.Key): Option[() => Unit] = exitActions.get(direction)
+
   /** Where an arrow leaving this container `direction`'s way goes: a component, `Some(None)` to stop, `None` when the
     * container does not say (its parent decides). */
   def focusExit(direction: everyui.event.Key): Option[Option[Component]] = exits.get(direction)

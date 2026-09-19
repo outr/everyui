@@ -134,8 +134,13 @@ object Focus {
               entered
             case None => spatial(candidates(c).filterNot(x => within(x, child)), was, direction)
           }
+          // nothing inside this way: something the container does instead of moving, where it says so
+          if (found.isEmpty) c.focusAction(direction).foreach { action =>
+            action()
+            stopped = true
+          }
           // nothing inside this way: the container's own exit, if it states one
-          if (found.isEmpty) c.focusExit(direction) match {
+          if (found.isEmpty && !stopped) c.focusExit(direction) match {
             case Some(Some(target)) => found = enter(target, was, direction)
             case Some(None) => stopped = true
             case None => ()
