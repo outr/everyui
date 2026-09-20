@@ -31,6 +31,14 @@ trait MediaSupport { self: Component =>
   /** Whether this platform can play at a rate other than 1. */
   def rates: Boolean = node.mediaRates()
 
+  /** What the connection has been carrying, in bits a second, as the player has measured it while playing — 0 where
+    * it has measured nothing, and on a platform whose player does not count.
+    *
+    * It is worth asking at the moment something fails: what to try instead is a fraction of what the link has been
+    * seen to manage, where a number chosen in advance is equally wrong for a link managing thirty megabits and one
+    * managing two. */
+  def bandwidth: Long = node.mediaBandwidth()
+
   /** How large the picture actually is, from the decoder — what is on the screen, rather than what was asked for.
     * None until it is ready, and on a platform that does not say. */
   def videoSize: Option[(Double, Double)] = {

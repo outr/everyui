@@ -181,6 +181,7 @@ class RenderNode(val view: View) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
   def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
   def mediaRates(): Boolean = true
+  def mediaBandwidth(): Long = media.map(_.bandwidth()).getOrElse(0L)
   def mediaSize(): (Double, Double) = media.map(_.size()).getOrElse((0.0, 0.0))
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
   def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
