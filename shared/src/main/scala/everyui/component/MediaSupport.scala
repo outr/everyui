@@ -28,6 +28,15 @@ trait MediaSupport { self: Component =>
     * keeps playing at 1 and says so through [[rates]]. */
   lazy val rate: Prop[Double] = new Prop[Double](1.0, r => node.setMediaRate(math.max(0.1, math.min(4.0, r))))
 
+  /** How much to hold before playing, how long to wait for bytes, and how much patience a stall is given: one of
+    * `responsive`, `balanced` (what an unset value means) and `slow`.
+    *
+    * It is one choice rather than a handful of millisecond fields because the parts only make sense together: a
+    * deeper buffer is worth nothing if the reads time out before it can be filled, and patience is worth nothing if
+    * there is nowhere to put what arrives. Set it BEFORE [[source]] — a player holds what it was built with — and a
+    * platform whose player cannot be told ignores it. */
+  lazy val buffering: Prop[String] = new Prop[String]("balanced", b => node.setMediaBuffering(b))
+
   /** Whether this platform can play at a rate other than 1. */
   def rates: Boolean = node.mediaRates()
 

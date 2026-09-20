@@ -11,6 +11,20 @@ import sbt.io.IO
   * separate questions, and sbt may ask them at the same moment) the second answer comes from what the first left
   * behind, rather than the two of them tearing up the same directory. */
 object Aars {
+  /** Where opened archives are kept: one place for the machine, rather than one inside each build that wants them.
+    *
+    * They cannot live under a build's own target. sbt 2 shares its cache between builds, and a classpath assembled
+    * out of these jars hashes to the same key wherever it is assembled, because the jars are byte for byte the same
+    * in every build. What comes back out of that cache is the path the first build wrote, relative to ITS out
+    * directory — so the second build is handed `${OUT}/jvm/…/other-android/aar/media3-common-1.9.2.jar`, resolves
+    * it against its own out directory, finds nothing, and cannot see a library it declared perfectly correctly.
+    * The symptom is `value media3 is not a member of androidx` in whichever build compiled second, and no amount of
+    * cleaning that build fixes it. An absolute path outside every build means the same thing in all of them.
+    *
+    * Two builds opening at once is safe: each unpacks into a room of its own and the finished jar is moved into
+    * place, so neither can be read half-written. */
+  val room: File = file(sys.props("user.home")) / ".cache" / "everyui" / "aar"
+
   /** The classes jar of each archive, and the shrinker rules any of them ship, unpacked under `into`.
     *
     * Resources are NOT merged, and an archive that has any is named in the log rather than passed over in silence.
@@ -27,17 +41,18 @@ object Aars {
       val rules = into / s"$name.pro"
       if (!jar.isFile || jar.lastModified() < aar.lastModified()) {
         opened += 1
-        val room = into / s"$name.opening"
-        IO.delete(room)
-        IO.unzip(aar, room)
-        val resources = room / "res"
+        val bench = into / s"$name.opening-${java.util.UUID.randomUUID().toString.take(8)}"
+        IO.delete(bench)
+        IO.unzip(aar, bench)
+        val resources = bench / "res"
         if (resources.isDirectory && resources.listFiles().nonEmpty)
           log(s"Aars: $name carries resources, which are not merged — whatever reads them must be shrunk away")
-        val classes = room / "classes.jar"
-        if (classes.isFile) IO.copyFile(classes, jar)
-        val shipped = room / "proguard.txt"
-        if (shipped.isFile) IO.copyFile(shipped, rules) else IO.delete(rules)
-        IO.delete(room)
+        val classes = bench / "classes.jar"
+        // moved rather than copied: a jar appears at its name whole, never as far as somebody else's read got
+        if (classes.isFile) IO.move(classes, jar)
+        val shipped = bench / "proguard.txt"
+        if (shipped.isFile) IO.move(shipped, rules) else IO.delete(rules)
+        IO.delete(bench)
       }
       (jar, rules)
     }

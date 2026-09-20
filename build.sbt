@@ -307,9 +307,9 @@ lazy val android = (project in file("android"))
       "androidx.annotation" % "annotation-jvm" % "1.9.1",
       "com.google.guava" % "guava" % "33.4.0-android"),
     androidAars := Aars.open(streams.value.log.info(_),
-      update.value.select(artifact = artifactFilter(extension = "aar")), target.value / "aar")._1,
+      update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     androidAarRules := Aars.open(streams.value.log.info(_),
-      update.value.select(artifact = artifactFilter(extension = "aar")), target.value / "aar")._2,
+      update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._2,
     Compile / unmanagedJars ++= androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),

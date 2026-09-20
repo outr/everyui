@@ -8,6 +8,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.{DefaultLoadControl, DefaultRenderersFactory, ExoPlayer}
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import everyui.component.MediaTrack
 
 /** What a video or an audio node plays, Android edition: an ExoPlayer, drawing (for a video) into the node's
@@ -36,6 +37,14 @@ class ExoMedia(texture: Option[TextureView]) {
   private var listener: String => Unit = _ => ()
   private var sending: Map[String, String] = Map.empty
   private var holding: Buffering = Buffering.Balanced
+  /** The factory the loads come out of, so what a read is given can change between them. */
+  private var reading: Option[DefaultHttpDataSource.Factory] = None
+  /** Whether reads are currently on the short leash a lifted pause puts them on. */
+  private var sharp = false
+  /** How far the buffer had reached when it was last seen growing, and when that was. */
+  private var reached = 0L
+  private var grew = 0.0
+  private var watching = 0
 
   texture.foreach { t =>
     t.setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
@@ -73,6 +82,7 @@ class ExoMedia(texture: Option[TextureView]) {
           .setAllowCrossProtocolRedirects(true)
           .setConnectTimeoutMs(holding.connectMs)
           .setReadTimeoutMs(holding.readMs)
+        reading = Some(http)
         if (sending.nonEmpty) {
           val map = new java.util.HashMap[String, String]()
           sending.foreach(h => map.put(h._1, h._2))
@@ -85,7 +95,13 @@ class ExoMedia(texture: Option[TextureView]) {
           .setRenderersFactory(new DefaultRenderersFactory(Host.activity)
             .setEnableDecoderFallback(true))
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
-          .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
+          // how long one load may go on failing before it is lost is the profile's patience, and the number of
+          // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter
+          .setMediaSourceFactory(new DefaultMediaSourceFactory(http)
+            .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy {
+              override def getMinimumLoadableRetryCount(dataType: Int): Int =
+                math.max(3, holding.patienceMs / math.max(1000, holding.readMs))
+            }))
           .setLoadControl(load)
           .build()
         made.setAudioAttributes(new AudioAttributes.Builder()
@@ -120,6 +136,7 @@ class ExoMedia(texture: Option[TextureView]) {
         made.prepare()
         made.setPlayWhenReady(playing)
         player = Some(made)
+        watch()
       } catch {
         case t: Throwable =>
           Platform.logError("media: " + url, t)
@@ -129,8 +146,20 @@ class ExoMedia(texture: Option[TextureView]) {
   }
 
   def setPlaying(on: Boolean): Unit = {
+    // a pause being lifted is the one moment a short read timeout is the right instrument: a connection nobody has
+    // asked anything of for a while may have been dropped by the server or by whatever sits in front of it, with
+    // nothing said either way, and the only way to find out is to ask and not wait long. It is the wrong instrument
+    // for every other moment, which is why it goes back to the profile's own patience as soon as bytes arrive
+    if (on && !playing && said) leash(true)
     playing = on
     player.foreach(_.setPlayWhenReady(on))
+    if (on) watch()
+  }
+
+  /** Reads on the short leash of a lifted pause, or back on the profile's own. */
+  private def leash(short: Boolean): Unit = if (short != sharp) {
+    sharp = short
+    reading.foreach(_.setReadTimeoutMs(if (short) holding.idleMs else holding.readMs))
   }
 
   def setLoop(on: Boolean): Unit = {
@@ -234,6 +263,45 @@ class ExoMedia(texture: Option[TextureView]) {
 
   private def loudness(): Unit = player.foreach(_.setVolume(if (muted) 0f else volume.toFloat))
 
+  /** The watch on whether anything is still arriving, once a second while there is a player.
+    *
+    * What it measures is PROGRESS, never elapsed time: the deadline moves forward every time the buffer grows, so a
+    * load that is slow but working is never cut off, however long it takes. Only a stream that has stopped arriving
+    * altogether runs its budget out — a short one once there has been a picture, a far longer one before there ever
+    * was, since a first load may be waiting on a transcode starting up at the far end.
+    *
+    * Media3 raises no error for this on its own: a source that connects and then goes quiet leaves the player
+    * buffering indefinitely, which is what a viewer describes as "it just sat there". Saying `error` hands it to
+    * whatever chose the address, which has somewhere else to try. */
+  private def watch(): Unit = {
+    watching += 1
+    grew = Platform.ticks()
+    beat(watching)
+  }
+
+  private def beat(mine: Int): Unit = Platform.after(1.0, () => player match {
+    case Some(p) if mine == watching =>
+      val buffered = try p.getBufferedPosition catch { case _: Throwable => reached }
+      val waiting = playing && p.getPlaybackState == Player.STATE_BUFFERING
+      if (buffered > reached) {
+        reached = buffered
+        grew = Platform.ticks()
+        // bytes are arriving again, so a read gets the patience the profile asked for rather than the short leash
+        leash(false)
+      }
+      else if (waiting) {
+        val budget = if (said) holding.stallMs else holding.startupMs
+        if (Platform.ticks() - grew > budget) {
+          watching += 1
+          Platform.log("media: " + source + " stopped arriving (" + (budget / 1000).toString + "s without progress)")
+          listener("error")
+        }
+      }
+      else grew = Platform.ticks()
+      if (mine == watching) beat(mine)
+    case _ => ()
+  })
+
   private def close(): Unit = {
     player.foreach { p =>
       try p.stop() catch { case _: Throwable => () }
@@ -241,6 +309,10 @@ class ExoMedia(texture: Option[TextureView]) {
     }
     player = None
     said = false
+    reading = None
+    sharp = false
+    reached = 0L
+    watching += 1
     videoWidth = 0
     videoHeight = 0
   }

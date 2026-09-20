@@ -389,6 +389,8 @@ class RenderNode(val fx: Node) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
   def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
   def mediaRates(): Boolean = true
+  // neither what it holds nor what it waits for can be told here
+  def setMediaBuffering(named: String): Unit = ()
   // nothing here counts what the link is carrying
   def mediaBandwidth(): Long = 0L
   def mediaSize(): (Double, Double) = media.map(_.size()).getOrElse((0.0, 0.0))

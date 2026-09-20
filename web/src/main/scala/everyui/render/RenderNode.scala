@@ -273,6 +273,8 @@ class RenderNode(val el: html.Element) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = volume)
   def setMediaRate(rate: Double): Unit = media.foreach(_.playbackRate = rate)
   def mediaRates(): Boolean = true
+  // neither what it holds nor what it waits for can be told here
+  def setMediaBuffering(named: String): Unit = ()
   // nothing here counts what the link is carrying
   def mediaBandwidth(): Long = 0L
   // only a video element carries a frame size; an audio one answers nothing

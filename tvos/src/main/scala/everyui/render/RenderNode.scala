@@ -88,6 +88,8 @@ class RenderNode(val sg: SGNode) {
   def setMediaVolume(volume: Double): Unit = ()
   def setMediaRate(rate: Double): Unit = ()
   def mediaRates(): Boolean = false
+  // neither what it holds nor what it waits for can be told here
+  def setMediaBuffering(named: String): Unit = ()
   // nothing here counts what the link is carrying
   def mediaBandwidth(): Long = 0L
   def mediaSize(): (Double, Double) = (0.0, 0.0)
