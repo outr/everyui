@@ -243,6 +243,9 @@ class ExoMedia(texture: Option[TextureView]) {
   /** How large the picture is, as the decoder reports it. */
   def size(): (Double, Double) = (videoWidth.toDouble, videoHeight.toDouble)
 
+  /** Whether the player is waiting for something to play rather than playing. */
+  def buffering(): Boolean = player.exists(_.getPlaybackState == Player.STATE_BUFFERING)
+
   /** What the link has been carrying, in bits a second, as the player has measured it — or 0 where it has not
     * measured anything yet. What a retry should ask for is a fraction of this, rather than a number chosen in
     * advance and equally wrong for a link managing thirty megabits and one managing two. */

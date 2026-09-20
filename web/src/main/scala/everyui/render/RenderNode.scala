@@ -275,6 +275,8 @@ class RenderNode(val el: html.Element) {
   def mediaRates(): Boolean = true
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
+  // it does not say whether it is waiting; the playhead standing still is what tells a viewer
+  def mediaBuffering(): Boolean = false
   // nothing here counts what the link is carrying
   def mediaBandwidth(): Long = 0L
   // only a video element carries a frame size; an audio one answers nothing

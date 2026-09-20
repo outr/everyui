@@ -90,6 +90,8 @@ class RenderNode(val sg: SGNode) {
   def mediaRates(): Boolean = false
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
+  // it does not say whether it is waiting; the playhead standing still is what tells a viewer
+  def mediaBuffering(): Boolean = false
   // nothing here counts what the link is carrying
   def mediaBandwidth(): Long = 0L
   def mediaSize(): (Double, Double) = (0.0, 0.0)

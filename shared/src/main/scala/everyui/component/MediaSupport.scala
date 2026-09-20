@@ -37,6 +37,13 @@ trait MediaSupport { self: Component =>
     * platform whose player cannot be told ignores it. */
   lazy val buffering: Prop[String] = new Prop[String]("balanced", b => node.setMediaBuffering(b))
 
+  /** Whether it is waiting for something to play rather than playing: the pause a viewer knows as the picture
+    * freezing with nothing said about it.
+    *
+    * Not every platform will say, and one that does may say it late — so what is shown to a viewer is best decided
+    * from this AND from whether the playhead is moving, which is true everywhere and needs nothing of the player. */
+  def waiting: Boolean = node.mediaBuffering()
+
   /** Whether this platform can play at a rate other than 1. */
   def rates: Boolean = node.mediaRates()
 

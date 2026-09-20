@@ -391,6 +391,8 @@ class RenderNode(val fx: Node) {
   def mediaRates(): Boolean = true
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
+  // it does not say whether it is waiting; the playhead standing still is what tells a viewer
+  def mediaBuffering(): Boolean = false
   // nothing here counts what the link is carrying
   def mediaBandwidth(): Long = 0L
   def mediaSize(): (Double, Double) = media.map(_.size()).getOrElse((0.0, 0.0))
