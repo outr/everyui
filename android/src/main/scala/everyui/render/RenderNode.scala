@@ -29,7 +29,7 @@ class RenderNode(val view: View) {
   private var fontSize: Double = 32.0
   private var wrapping: Boolean = false
   // what a video or an audio node plays (`Nodes.video`, `Nodes.audio`)
-  private[render] var media: Option[AndroidMedia] = None
+  private[render] var media: Option[ExoMedia] = None
 
   if (view.getLayoutParams == null)
     view.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -749,14 +749,14 @@ object Nodes {
   def video(): RenderNode = {
     val texture = new android.view.TextureView(Host.activity)
     val node = new RenderNode(texture)
-    node.media = Some(new AndroidMedia(Some(texture)))
+    node.media = Some(new ExoMedia(Some(texture)))
     node
   }
 
   /** Sound: an empty view, with nothing to draw. */
   def audio(): RenderNode = {
     val node = new RenderNode(new View(Host.activity))
-    node.media = Some(new AndroidMedia(None))
+    node.media = Some(new ExoMedia(None))
     node
   }
 

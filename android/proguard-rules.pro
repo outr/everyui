@@ -49,3 +49,11 @@
 -dontwarn com.fasterxml.jackson.**
 # java.util.EnumSet reaches a Java enum's `values()` by reflection (Enum.enumValues); R8 must keep it.
 -keepclassmembers enum * { public static **[] values(); public static ** valueOf(java.lang.String); }
+
+# Media3 reaches for two things no player here does. Its image handling reads EXIF orientation, which only
+# matters for the picture formats it can show as media; nothing in this backend asks it to decode a bitmap.
+# Its download service shows notifications, whose strings live in resources that are not merged (project/Aars.scala),
+# so it must be removed rather than kept — which it is, since nothing reaches it.
+-dontwarn androidx.exifinterface.**
+-dontwarn androidx.media3.exoplayer.offline.**
+-dontwarn androidx.media3.exoplayer.scheduler.**

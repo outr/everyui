@@ -282,6 +282,12 @@ lazy val androidBuildTools = "37.0.0"
 lazy val androidMinSdk = "30"
 lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
 @transient val packageApk = taskKey[File]("Compile the Android backend and package it as a debug-signed APK in android/out-apk/")
+@transient val androidAars = taskKey[Seq[File]]("Open the Android archives the backend depends on: their classes, as jars")
+@transient val androidAarRules = taskKey[Seq[File]]("The shrinker rules those archives ship")
+
+lazy val media3Version = "1.9.2"
+lazy val media3Modules = Seq("media3-common", "media3-container", "media3-database", "media3-datasource",
+  "media3-decoder", "media3-extractor", "media3-exoplayer", "media3-exoplayer-hls")
 
 lazy val android = (project in file("android"))
   .dependsOn(reactive)
@@ -291,6 +297,21 @@ lazy val android = (project in file("android"))
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true),
     Compile / unmanagedSourceDirectories += (file("app") / "android" / "src" / "main" / "scala").getAbsoluteFile,   // the example's activity
     libraryDependencies += "com.outr" %% "spice-client-okhttp" % spiceVersion,
+    resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
+    // Media3 (ExoPlayer): what a television needs from a player and `MediaPlayer` has no answer to — its own
+    // timeouts, a buffer that can be chosen, and a measurement of what the link is carrying. It ships as Android
+    // archives, so the classes are opened out of them (project/Aars.scala) before anything compiles against them.
+    libraryDependencies ++= media3Modules.map(m =>
+      ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
+    libraryDependencies ++= Seq(
+      "androidx.annotation" % "annotation-jvm" % "1.9.1",
+      "com.google.guava" % "guava" % "33.4.0-android"),
+    androidAars := Aars.open(streams.value.log.info(_),
+      update.value.select(artifact = artifactFilter(extension = "aar")), target.value / "aar")._1,
+    androidAarRules := Aars.open(streams.value.log.info(_),
+      update.value.select(artifact = artifactFilter(extension = "aar")), target.value / "aar")._2,
+    Compile / unmanagedJars ++= androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     Compile / scalacOptions ++= Seq("-release", "17"),
     packageApk := {
@@ -301,7 +322,8 @@ lazy val android = (project in file("android"))
       IO.copyDirectory(buildRoot / "assets" / "images", assets / "images")
       (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
       AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
-        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile),
+        // the archives themselves are not dexable: what was opened out of them stands in their place
+        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
         baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
         Seq(baseDirectory.value / "proguard-rules.pro"), target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         version.value)
