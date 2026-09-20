@@ -424,6 +424,19 @@ object Nodes {
 
 /** The handful of non-render platform services the slice needs. */
 object Platform {
+  /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
+  def corners(): Boolean = false
+
+  def toCorner(): Boolean = false
+
+  /** What to do when the app is at the front again after being away. Nothing here says so yet, so nothing is ever
+    * called: a caller must not depend on it as its only way of noticing somebody is back. */
+  def onResume(f: () => Unit): Unit = resumers = resumers :+ f
+
+  def resumed(): Unit = resumers.foreach(f => f())
+
+  private var resumers: List[() => Unit] = Nil
+
   def log(message: String): Unit = uiLog(message)
   def logError(message: String, t: Throwable): Unit = uiLog("ERROR " + message + ": " + t.getMessage)
   def ticks(): Double = uiTicks()

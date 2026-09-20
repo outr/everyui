@@ -876,6 +876,29 @@ object Platform {
     * server refuses the platform's own `Dalvik/…`. */
   def identify(app: String): Unit = Host.agent = app
   /** The screen kept on (while something is shown that is meant to be watched without a touch), or let sleep. */
+  /** Whether this device can go on playing in a corner of whatever the viewer does next. */
+  def corners(): Boolean =
+    Host.activity.getPackageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+  /** Put what is playing into that corner. True when the platform took it. */
+  def toCorner(): Boolean =
+    try Host.activity.enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build())
+    catch {
+      case t: Throwable =>
+        log("corner: " + t.getMessage)
+        false
+    }
+
+  /** What to do when the app is at the front again after being away — another app had the screen, or the device
+    * came back from sleep. An app that was left showing something it only shows when nobody is there (a
+    * screensaver) wants to know, because somebody is there now. */
+  def onResume(f: () => Unit): Unit = resumers = resumers :+ f
+
+  /** Said by the platform when it happens. */
+  def resumed(): Unit = resumers.foreach(f => f())
+
+  private var resumers: List[() => Unit] = Nil
+
   def keepAwake(on: Boolean): Unit = {
     val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
     if (on) Host.activity.getWindow.addFlags(flag) else Host.activity.getWindow.clearFlags(flag)

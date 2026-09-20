@@ -82,6 +82,12 @@ abstract class EveryUIActivity extends Activity {
     else hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN) || super.dispatchKeyEvent(e)
   }
 
+  /** Somebody is in front of it again: the app was away and is back, which is a sign of use like any key. */
+  override def onResume(): Unit = {
+    super.onResume()
+    everyui.render.Platform.resumed()
+  }
+
   /** The shared layer's singletons (`ui`, the app) live as long as the process, as they live as long as a page or a
     * channel, so leaving the app ends the process and the next launch starts fresh. */
   override def onDestroy(): Unit = {
