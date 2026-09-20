@@ -42,6 +42,12 @@ class AndroidMedia(texture: Option[TextureView]) {
     })
   }
 
+  /** What to send with the request. Kept until the next source is set: a `MediaPlayer` is given its headers with
+    * its address and cannot be told afterwards. */
+  def setHeaders(headers: Map[String, String]): Unit = sending = headers
+
+  private var sending: Map[String, String] = Map.empty
+
   def setSource(url: String): Unit = if (url != source) {
     source = url
     close()
@@ -52,7 +58,14 @@ class AndroidMedia(texture: Option[TextureView]) {
           .setUsage(AudioAttributes.USAGE_MEDIA)
           .setContentType(if (texture.nonEmpty) AudioAttributes.CONTENT_TYPE_MOVIE else AudioAttributes.CONTENT_TYPE_MUSIC)
           .build())
-        made.setDataSource(Host.activity, Uri.parse(url))
+        // with the headers where there are any: a playlist fetched this way passes them on to its own segments and
+        // keys, which is what an HLS transcode behind an authenticating server needs
+        if (sending.isEmpty) made.setDataSource(Host.activity, Uri.parse(url))
+        else {
+          val map = new java.util.HashMap[String, String]()
+          sending.foreach(h => map.put(h._1, h._2))
+          made.setDataSource(Host.activity, Uri.parse(url), map)
+        }
         surface.foreach(made.setSurface)
         made.setOnPreparedListener(_ => {
           prepared = true

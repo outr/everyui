@@ -147,6 +147,8 @@ class RenderNode(val sg: SGNode) {
 
   // ---- a Video or an Audio node (`Nodes.video`, `Nodes.audio`); SceneGraph has no volume for either, and a video
   // letterboxes rather than filling its box ----
+  // a Roku video takes its headers on the content node it is given; nothing sends any yet
+  def setMediaHeaders(headers: Map[String, String]): Unit = ()
   def setMediaSource(url: String): Unit = uiSetMediaSource(sg, url)
   def setMediaPlaying(playing: Boolean): Unit = uiSetMediaPlaying(sg, playing)
   def setMediaLoop(loop: Boolean): Unit = uiSetMediaLoop(sg, loop)

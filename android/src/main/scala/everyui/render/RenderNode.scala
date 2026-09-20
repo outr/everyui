@@ -173,6 +173,7 @@ class RenderNode(val view: View) {
   }
 
   /** Detach from the parent, if attached. */
+  def setMediaHeaders(headers: Map[String, String]): Unit = media.foreach(_.setHeaders(headers))
   def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
   def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))

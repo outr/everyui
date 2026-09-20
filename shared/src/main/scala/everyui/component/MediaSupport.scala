@@ -8,6 +8,15 @@ import everyui.render.Platform
   * at its end, how loud, and what happened to it. It lets its player go once it has been on the screen and is no
   * longer (a scene taken down with it inside), so nothing plays on out of sight. */
 trait MediaSupport { self: Component =>
+  /** What to send with the request for the media, and with every request that comes out of it — an HLS playlist's
+    * segments and keys as much as the playlist itself. A server that will not take its token in the address has no
+    * other way to know who is asking.
+    *
+    * Set these BEFORE [[source]]: they are read when the request is made, and a source already playing does not go
+    * back and ask again. A platform that cannot send headers with its media says so by ignoring them. */
+  lazy val headers: Prop[Map[String, String]] =
+    new Prop[Map[String, String]](Map.empty, h => node.setMediaHeaders(h))
+
   /** A URL: a file, or an HLS stream (`.m3u8`). Empty stops it. */
   lazy val source: Prop[String] = new Prop[String]("", s => node.setMediaSource(s))
   lazy val playing: Prop[Boolean] = new Prop[Boolean](true, p => node.setMediaPlaying(p))
