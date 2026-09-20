@@ -245,6 +245,11 @@ class RenderNode(val el: html.Element) {
     if (el.tagName == "VIDEO" || el.tagName == "AUDIO") Some(el.asInstanceOf[js.Dynamic]) else None
   private var mediaPlaying = true
 
+  /** A `<video>` fetches its own source and takes no headers with it: there is no way to add one short of fetching
+    * the media ourselves and feeding it through a media source, which is a different player. Whatever a token has
+    * to say must ride in the address here. */
+  def setMediaHeaders(headers: Map[String, String]): Unit = ()
+
   def setMediaSource(url: String): Unit = media.foreach { m =>
     if (url.isEmpty) {
       m.pause()
