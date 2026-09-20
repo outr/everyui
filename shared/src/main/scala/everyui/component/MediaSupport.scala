@@ -74,6 +74,8 @@ trait MediaSupport { self: Component =>
   private var seated = false
   private var unseen = 0
   private var released = false
+  /** Where it had reached when it was last put away, and what it was playing. */
+  private var asleep: Option[(String, Double)] = None
 
   node.onMediaEvent(e => listeners.foreach(_(e)))
   watch()
@@ -86,16 +88,55 @@ trait MediaSupport { self: Component =>
 
   def seek(seconds: Double): Unit = node.seekMedia(seconds)
 
-  /** Stop it and let its player go: it plays no more. */
+  /** Stop it and let its player go for good: it plays no more, and being shown again will not bring it back. For a
+    * screen that is finished with what it was playing. */
   def release(): Unit = if (!released) {
     released = true
+    asleep = None
     node.releaseMedia()
   }
 
-  // twice a second: on the screen, or taken off it for good (or never shown in ten minutes)
+  // twice a second: on the screen, or off it — taken down with a scene, or a page left behind
   private def watch(): Unit = Platform.after(0.5, () => if (!released) {
     val up = Focus.showing(self)
-    if (up) seated = true else unseen += 1
-    if ((seated && !up) || (!seated && unseen > 1200)) release() else watch()
+    if (up) {
+      seated = true
+      unseen = 0
+      asleep.foreach(was => wake(was._1, was._2))
+    }
+    else {
+      unseen += 1
+      // off the screen after having been on it, or built and never shown in ten minutes
+      if (asleep.isEmpty && (seated || unseen > 1200)) sleep()
+    }
+    watch()
   })
+
+  /** Out of sight: the player goes, and where it had reached is kept.
+    *
+    * A player is the expensive thing a platform hands out — a decoder, a surface, a socket — and nothing should hold
+    * one for a page nobody is looking at, least of all go on playing into it. But letting it go used to be the end
+    * of it: a page built once and come back to (a weather screen, a title's page) set its source the first time and
+    * had nothing to say the second, so the second visit was a black rectangle. Sleeping is the same saving with the
+    * page none the wiser. */
+  private def sleep(): Unit = {
+    asleep = Some((source(), playhead()))
+    node.releaseMedia()
+  }
+
+  /** Back in sight: the same thing playing, from where it left off. */
+  private def wake(url: String, at: Double): Unit = {
+    asleep = None
+    if (url.nonEmpty) {
+      node.setMediaHeaders(headers())
+      node.setMediaBuffering(buffering())
+      node.setMediaSource(url)
+      node.setMediaLoop(loop())
+      node.setMediaMuted(muted())
+      node.setMediaVolume(volume())
+      node.setMediaRate(rate())
+      node.setMediaPlaying(playing())
+      if (at > 0.0) Platform.after(0.5, () => node.seekMedia(at))
+    }
+  }
 }
