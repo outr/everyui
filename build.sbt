@@ -287,6 +287,8 @@ lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
 
 lazy val media3Version = "1.9.2"
 lazy val media3Modules = Seq("media3-common", "media3-container", "media3-database", "media3-datasource",
+  // the OkHttp data source, which is what actually fetches the media: see ExoMedia for why it is not the default one
+  "media3-datasource-okhttp",
   "media3-decoder", "media3-extractor", "media3-exoplayer", "media3-exoplayer-hls")
 
 lazy val android = (project in file("android"))

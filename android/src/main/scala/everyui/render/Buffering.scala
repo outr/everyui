@@ -32,15 +32,21 @@ object Buffering {
   val Responsive: Buffering =
     new Buffering("responsive", 50000, 50000, 2500, 5000, 8000, 8000, 3000, 30000, 20000, 120000)
 
-  /** Two minutes held, five seconds before it starts. What most links want, and what is chosen when nothing else
-    * is. */
+  /** Two minutes held, and — this is the part worth noticing — the SAME wait before it starts as the player's own
+    * defaults.
+    *
+    * The shape is taken from the Jellyfin television client's own "Large" setting, which raises how much is held
+    * without touching how long the viewer waits at the start or after a seek. Holding more costs nothing until
+    * something goes wrong, while starting later costs a second of every single play; an earlier version of this
+    * traded five seconds of start-up for cushion nobody had asked for. Only [[Slow]] makes that trade. */
   val Balanced: Buffering =
-    new Buffering("balanced", 120000, 120000, 5000, 10000, 8000, 15000, 3000, 60000, 20000, 120000)
+    new Buffering("balanced", 50000, 120000, 2500, 5000, 8000, 15000, 3000, 60000, 20000, 120000)
 
-  /** For a link that buffers: five minutes held, fifteen seconds before it starts, half a minute after it stalls,
-    * and long enough on a read that being slow is not mistaken for being broken. */
+  /** For a link that buffers: four minutes held, and now it IS worth waiting five seconds to start, because the
+    * alternative is stopping again thirty seconds in. The Jellyfin client's "Extra Large", with longer patience on
+    * a read so that being slow is not mistaken for being broken. */
   val Slow: Buffering =
-    new Buffering("slow", 300000, 300000, 15000, 30000, 15000, 30000, 5000, 120000, 60000, 180000)
+    new Buffering("slow", 80000, 240000, 5000, 10000, 15000, 30000, 5000, 120000, 60000, 180000)
 
   def of(name: String): Buffering = name.trim.toLowerCase match {
     case "responsive" => Responsive

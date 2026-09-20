@@ -4,7 +4,6 @@ import android.graphics.{Matrix, SurfaceTexture}
 import android.net.Uri
 import android.view.{Surface, TextureView}
 import androidx.media3.common.{AudioAttributes, C, MediaItem, PlaybackParameters, Player, TrackSelectionOverride, Tracks, VideoSize}
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.{DefaultLoadControl, DefaultRenderersFactory, ExoPlayer}
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -37,10 +36,6 @@ class ExoMedia(texture: Option[TextureView]) {
   private var listener: String => Unit = _ => ()
   private var sending: Map[String, String] = Map.empty
   private var holding: Buffering = Buffering.Balanced
-  /** The factory the loads come out of, so what a read is given can change between them. */
-  private var reading: Option[DefaultHttpDataSource.Factory] = None
-  /** Whether reads are currently on the short leash a lifted pause puts them on. */
-  private var sharp = false
   /** How far the buffer had reached when it was last seen growing, and when that was. */
   private var reached = 0L
   private var grew = 0.0
@@ -78,11 +73,20 @@ class ExoMedia(texture: Option[TextureView]) {
     close()
     if (url.nonEmpty) {
       try {
-        val http = new DefaultHttpDataSource.Factory()
-          .setAllowCrossProtocolRedirects(true)
-          .setConnectTimeoutMs(holding.connectMs)
-          .setReadTimeoutMs(holding.readMs)
-        reading = Some(http)
+        // OkHttp fetches the media, not Media3's own data source, and the difference is not academic: the default
+        // one is HttpURLConnection, which opens a fresh connection for every ranged request and has no pool to
+        // reuse. A home server that pauses for a few seconds then gets a torn-down connection and an immediate
+        // reconnect from a client that has just given up on it — which is slower to produce bytes than waiting
+        // would have been, so each failure feeds the next. That is the "plays a second, buffers, plays a few
+        // seconds" report, measured on 2026-09-20 against a Jellyfin library where the SAME file played cleanly in
+        // another client on the same device, network and server. What that client did differently was OkHttp with
+        // its pool, its keep-alive and no short read timeout.
+        val client = new okhttp3.OkHttpClient.Builder()
+          .connectTimeout(holding.connectMs.toLong, java.util.concurrent.TimeUnit.MILLISECONDS)
+          .readTimeout(holding.readMs.toLong, java.util.concurrent.TimeUnit.MILLISECONDS)
+          .retryOnConnectionFailure(true)
+          .build()
+        val http = new androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(client)
         if (sending.nonEmpty) {
           val map = new java.util.HashMap[String, String]()
           sending.foreach(h => map.put(h._1, h._2))
@@ -146,20 +150,9 @@ class ExoMedia(texture: Option[TextureView]) {
   }
 
   def setPlaying(on: Boolean): Unit = {
-    // a pause being lifted is the one moment a short read timeout is the right instrument: a connection nobody has
-    // asked anything of for a while may have been dropped by the server or by whatever sits in front of it, with
-    // nothing said either way, and the only way to find out is to ask and not wait long. It is the wrong instrument
-    // for every other moment, which is why it goes back to the profile's own patience as soon as bytes arrive
-    if (on && !playing && said) leash(true)
     playing = on
     player.foreach(_.setPlayWhenReady(on))
     if (on) watch()
-  }
-
-  /** Reads on the short leash of a lifted pause, or back on the profile's own. */
-  private def leash(short: Boolean): Unit = if (short != sharp) {
-    sharp = short
-    reading.foreach(_.setReadTimeoutMs(if (short) holding.idleMs else holding.readMs))
   }
 
   def setLoop(on: Boolean): Unit = {
@@ -289,8 +282,6 @@ class ExoMedia(texture: Option[TextureView]) {
       if (buffered > reached) {
         reached = buffered
         grew = Platform.ticks()
-        // bytes are arriving again, so a read gets the patience the profile asked for rather than the short leash
-        leash(false)
       }
       else if (waiting) {
         val budget = if (said) holding.stallMs else holding.startupMs
@@ -312,8 +303,6 @@ class ExoMedia(texture: Option[TextureView]) {
     }
     player = None
     said = false
-    reading = None
-    sharp = false
     reached = 0L
     watching += 1
     videoWidth = 0
