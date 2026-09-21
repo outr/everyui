@@ -925,7 +925,18 @@ object Platform {
   def readText(path: String, done: String => Unit): Unit = done(
     try {
       val in = Host.activity.getAssets.open(path)
-      try new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8) finally in.close()
+      // not InputStream.readAllBytes: Android has no such method before API 33, and the televisions this runs
+      // on are older than that
+      try {
+        val out = new java.io.ByteArrayOutputStream()
+        val buffer = new Array[Byte](8192)
+        var read = in.read(buffer)
+        while (read != -1) {
+          out.write(buffer, 0, read)
+          read = in.read(buffer)
+        }
+        new String(out.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
+      } finally in.close()
     } catch { case _: Exception => "" })
 
   /** The character at a Unicode code point, as a string. */

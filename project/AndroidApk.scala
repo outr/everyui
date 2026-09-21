@@ -31,6 +31,15 @@ object AndroidApk {
     // what the rules matched, and what R8 removed — the record when a shrunk build misbehaves
     val diagnostics = work / "diagnostics.pro"
     IO.write(diagnostics, s"-printseeds ${work / "seeds.txt"}\n-printusage ${work / "usage.txt"}\n")
+    // R8, not D8: the rules keep what reflection reaches, and the shrinking is what keeps the dex under the
+    // method limit without a second file.
+    //
+    // A note for whoever meets an APK that runs on one television and not another: R8 is not usually the
+    // culprit. On 2026-09-20 a build that ran perfectly on a Google TV Streamer (API 34) died on an NVIDIA
+    // SHIELD (API 30) before its first frame, and R8 was blamed for an afternoon. The real cause was the
+    // Scala 3 standard library, whose lazy vals are held in a java.lang.invoke.VarHandle: that method is
+    // signature-polymorphic, Android has no such thing before API 33, and the verifier throws out every class
+    // holding one. The app's build swaps the 2.13 library in for dexing; see `androidClasspath` there.
     log(s"AndroidApk: R8 over ${inputs.size} inputs")
     exec(Seq("java", "-cp", (tools / "lib" / "d8.jar").toString, "com.android.tools.r8.R8",
       "--release", "--min-api", minSdk, "--lib", androidJar.toString) ++ rules.flatMap(r => Seq("--pg-conf", r.toString)) ++
