@@ -40,7 +40,16 @@ class RenderNode(val view: View) {
   }
 
   def setText(text: String): Unit = view match {
-    case t: TextView => t.setText(text)
+    case t: TextView =>
+      t.setText(text)
+      // a string written as several lines is drawn as several lines, wrapping or not. Not wrapping means "do not
+      // break these words for me", not "throw away everything after the first newline", which is what a fixed
+      // maxLines of 1 did: a two-line subtitle drew its first line inside a box measured for both.
+      if (!wrapping) {
+        val lines = RenderNode.lineCount(text)
+        t.setHorizontallyScrolling(lines <= 1)
+        t.setMaxLines(lines)
+      }
     case _ => ()
   }
 
@@ -118,7 +127,7 @@ class RenderNode(val view: View) {
       case t: TextView if wrapping =>
         measure(t)
         laidOutHeight
-      case _: TextView => face.lineHeight(fontSize)
+      case t: TextView => face.lineHeight(fontSize) * RenderNode.lineCount(t.getText).toDouble
       case _ => 0.0
     }
 
@@ -145,7 +154,7 @@ class RenderNode(val view: View) {
       laidOutFace = paint.getTypeface
       laidOutWidth =
         if (wrapping) paint.measureText(whole).toDouble
-        else paint.getRunAdvance(whole, 0, whole.length, 0, whole.length, false, whole.length).toDouble
+        else RenderNode.widest(paint, whole)
       laidOutHeight =
         if (wrapping) {
           // the view measures itself, rather than a StaticLayout built to look like it: a TextView breaks its lines
@@ -436,13 +445,20 @@ class RenderNode(val view: View) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** `"normal"` wraps a text node at its width; anything else keeps it on one line. */
+  /** `"normal"` wraps a text node at its width; anything else breaks it only where the words themselves do. */
   def setWhiteSpace(value: String): Unit = view match {
     case _: EditText => ()
     case t: TextView =>
       wrapping = value == "normal"
-      t.setMaxLines(if (wrapping) Integer.MAX_VALUE else 1)
-      t.setHorizontallyScrolling(!wrapping)
+      if (wrapping) {
+        t.setMaxLines(Integer.MAX_VALUE)
+        t.setHorizontallyScrolling(false)
+      } else {
+        // not wrapping still means as many lines as the words were written with (see setText)
+        val lines = RenderNode.lineCount(t.getText)
+        t.setHorizontallyScrolling(lines <= 1)
+        t.setMaxLines(lines)
+      }
     case _ => ()
   }
 
@@ -540,6 +556,39 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** How many lines a string is written as: one, plus a line for every newline in it. */
+  def lineCount(text: CharSequence): Int = {
+    var lines = 1
+    var i = 0
+    while (i < text.length) {
+      if (text.charAt(i) == '\n') lines += 1
+      i += 1
+    }
+    lines
+  }
+
+  /** The widest of the lines a string is written as.
+    *
+    * Measured line by line rather than as one run: a run advance over the whole string walks straight past the
+    * newlines and answers with every line laid end to end, which is a box wide enough for all of them and a
+    * subtitle sitting in the left third of it.
+    */
+  def widest(paint: Paint, whole: String): Double = {
+    var best = 0.0
+    var from = 0
+    var more = true
+    while (more) {
+      val at = whole.indexOf('\n', from)
+      val end = if (at < 0) whole.length else at
+      if (end > from) {
+        val run = paint.getRunAdvance(whole, from, end, from, end, false, end).toDouble
+        if (run > best) best = run
+      }
+      if (at < 0) more = false else from = at + 1
+    }
+    best
+  }
+
   /** The nearest of a `GradientDrawable`'s eight directions to a CSS angle (0 runs bottom to top, 90 left to right). */
   def orientation(angle: Double): android.graphics.drawable.GradientDrawable.Orientation = {
     import android.graphics.drawable.GradientDrawable.Orientation
