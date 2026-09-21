@@ -517,7 +517,9 @@ class SwiftEmitter(
       q.symbol.exists && q.symbol.flags.is(Flags.Module) && q.symbol.fullName.stripSuffix("$") == "rapid.Task"
 @@ old
       val keysL  = fields.map(f => brStr(f.name))
-      val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
+      // the slot is the field name as the code READS it, which brSafe escapes for a reserved word (`type` → `type_`);
+      // a plain `f.name` here left a non-model case class's `type` decoded under a key its own field access never read
+      val slotsL = fields.map(f => brStr(fieldKey(f)))
       val rwsL   = types.map(t => rwFor(t, depth))
       val ctor = if (isModel(cls)) s"${typeName(cls)}_new" else "invalid"
       // a field the JSON leaves out takes its default, as fabric reads it on the JVM
@@ -528,7 +530,9 @@ class SwiftEmitter(
     }
 @@ new
       val keysL  = fields.map(f => brStr(f.name))
-      val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
+      // the slot is the field name as the code READS it, which brSafe escapes for a reserved word (`type` → `type_`);
+      // a plain `f.name` here left a non-model case class's `type` decoded under a key its own field access never read
+      val slotsL = fields.map(f => brStr(fieldKey(f)))
       val rwsL   = types.map(t => rwFor(t, depth))
       val ctor = if (isModel(cls)) s"rtFn(${typeName(cls)}_new)" else NULL
       val defaultsL = fields.indices.map(i => caseDefault(cls, i))

@@ -1063,7 +1063,9 @@ class RokuEmitter(
       val fields = try cls.caseFields catch case _: Throwable => Nil
       val types  = fields.map(f => try f.tree match { case vd: ValDef => vd.tpt.tpe; case _ => TypeRepr.of[Any] } catch case _: Throwable => TypeRepr.of[Any])
       val keysL  = fields.map(f => brStr(f.name))
-      val slotsL = fields.map(f => brStr(if (isModel(cls)) fieldKey(f) else f.name))
+      // the slot is the field name as the code READS it, which brSafe escapes for a reserved word (`type` → `type_`);
+      // a plain `f.name` here left a non-model case class's `type` decoded under a key its own field access never read
+      val slotsL = fields.map(f => brStr(fieldKey(f)))
       val rwsL   = types.map(t => rwFor(t, depth))
       val ctor = if (isModel(cls)) s"${typeName(cls)}_new" else "invalid"
       // a field the JSON leaves out takes its default, as fabric reads it on the JVM
@@ -1661,6 +1663,10 @@ class RokuEmitter(
             // an integral quotient is whole, as the JVM keeps it: BrightScript's `/` gives a fraction, `\\` does not
             case Select(recv, "/" | "$div") if args.length == 1 && isIntegral(recv.tpe) && isIntegral(args.head.tpe) =>
               s"(${emitTerm(recv)} \\ ${emitTerm(args.head)})"
+            // string concatenation coerces its right side, as the JVM does: BrightScript's `+` refuses a string
+            // and a number, so `"n=" + count` (or a `.toString` joined to a bare Int) faults without this
+            case Select(recv, "+") if isStringLike(recv.tpe) && args.length == 1 =>
+              s"(${emitTerm(recv)} + _str(${emitTerm(args.head)}))"
             case Select(recv, op) if binOps.contains(op) && args.length == 1 =>
               s"(${emitTerm(recv)} ${binOps(op)} ${emitTerm(args.head)})"
             // ── Option ops → invalid-checks (Option lowers to a nullable). Must
@@ -4593,8 +4599,8 @@ class RokuEmitter(
       |    n = rw.keys.count()
       |    args = []
       |    for i = 0 to n - 1
-      |        ' a field the JSON leaves out takes the case class's default, where it has one
-      |        if rw.has <> invalid and rw.has[i] = true and not j.DoesExist(rw.keys[i])
+      |        ' a field the JSON leaves out, or sends as null, takes the case class's default, where it has one
+      |        if rw.has <> invalid and rw.has[i] = true and (not j.DoesExist(rw.keys[i]) or j[rw.keys[i]] = invalid)
       |            args.push(rw.defs[i])
       |        else
       |            args.push(_rwRead(rw.rws[i], j[rw.keys[i]]))
