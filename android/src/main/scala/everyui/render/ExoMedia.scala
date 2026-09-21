@@ -33,6 +33,8 @@ class ExoMedia(texture: Option[TextureView]) {
   private var videoWidth = 0
   private var videoHeight = 0
   private var said = false
+  /** What the text track is saying right now: media3 decodes it, and the app draws it (see onCues). */
+  private var cueText: String = ""
   private var listener: String => Unit = _ => ()
   private var sending: Map[String, String] = Map.empty
   private var holding: Buffering = Buffering.Balanced
@@ -130,6 +132,27 @@ class ExoMedia(texture: Option[TextureView]) {
             videoWidth = size.width
             videoHeight = size.height
             fit()
+          }
+          // The subtitles themselves. Media3 decodes the text and hands it over, but nothing draws it: that is
+          // media3-ui's SubtitleView, and this build merges no Android resources. The words go up to the app
+          // instead, which already draws text on every platform and can put them where this player wants them.
+          override def onCues(group: androidx.media3.common.text.CueGroup): Unit = {
+            val list = group.cues
+            val words = new StringBuilder
+            var i = 0
+            while (i < list.size()) {
+              val text = Option(list.get(i).text).map(_.toString.trim).getOrElse("")
+              if (text.nonEmpty) {
+                if (words.nonEmpty) words.append('\n')
+                words.append(text)
+              }
+              i += 1
+            }
+            val now = words.toString
+            if (now != cueText) {
+              cueText = now
+              listener("cues")
+            }
           }
           override def onPlayerError(error: androidx.media3.common.PlaybackException): Unit = {
             Platform.log("media: " + url + " failed (" + error.getErrorCodeName + ")")
@@ -232,6 +255,9 @@ class ExoMedia(texture: Option[TextureView]) {
     }
     catch { case t: Throwable => Platform.logError("media: track " + kind + " " + id, t) }
   }
+
+  /** What is being said on screen at this moment, as the text track has it, or "" while nothing is. */
+  def cues(): String = cueText
 
   /** How large the picture is, as the decoder reports it. */
   def size(): (Double, Double) = (videoWidth.toDouble, videoHeight.toDouble)

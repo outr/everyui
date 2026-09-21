@@ -3,6 +3,7 @@ package everyui.component
 import everyui.component.types.Prop
 import everyui.focus.Focus
 import everyui.render.Platform
+import reactify.Var
 
 /** What plays over time, as a [[VideoView]] and an [[AudioPlayer]] share it: where from, whether it is playing, again
   * at its end, how loud, and what happened to it. It lets its player go once it has been on the screen and is no
@@ -66,6 +67,12 @@ trait MediaSupport { self: Component =>
     * (the `ready` event), and empty for good on a platform that does not tell. */
   def tracks: List[MediaTrack] = node.mediaTracks()
 
+  /** What is being said on screen at this moment, as the chosen text track has it, and "" while nothing is.
+    *
+    * Only where the platform hands the words over instead of drawing them: Android decodes the text and draws
+    * none of it, so the app must. A browser and a Roku paint their own, and answer "" here. */
+  def cues: String = node.mediaCues()
+
   def audioTracks: List[MediaTrack] = tracks.filter(_.kind == MediaTrack.Audio)
   def textTracks: List[MediaTrack] = tracks.filter(_.kind == MediaTrack.Text)
 
@@ -84,7 +91,14 @@ trait MediaSupport { self: Component =>
   /** Where it had reached when it was last put away, and what it was playing. */
   private var asleep: Option[(String, Double)] = None
 
-  node.onMediaEvent(e => listeners.foreach(_(e)))
+  /** The words on screen, as they change. Pushed rather than polled: half a second of lag is nothing on a
+    * playhead and plainly wrong on a subtitle, which has to appear with the line being spoken. */
+  val said: Var[String] = Var("")
+
+  node.onMediaEvent { e =>
+    if (e == "cues") said @= node.mediaCues()
+    listeners.foreach(_(e))
+  }
   watch()
 
   /** Hear `ready` (it is showing, or sounding), `ended` (it reached its end, and does not loop) and `error`. */

@@ -185,6 +185,10 @@ class RenderNode(val view: View) {
   def mediaBandwidth(): Long = media.map(_.bandwidth()).getOrElse(0L)
   def mediaBuffering(): Boolean = media.exists(_.buffering())
   def mediaSize(): (Double, Double) = media.map(_.size()).getOrElse((0.0, 0.0))
+  /** What is being said on screen at this moment, where this platform hands the words over rather than drawing
+    * them itself: on Android nothing draws them, since that is media3-ui and this build merges no resources. */
+  def mediaCues(): String = media.map(_.cues()).getOrElse("")
+
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
   def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))

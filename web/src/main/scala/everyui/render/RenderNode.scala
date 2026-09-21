@@ -287,6 +287,9 @@ class RenderNode(val el: html.Element) {
     else (w.asInstanceOf[Double], h.asInstanceOf[Double])
   }.getOrElse((0.0, 0.0))
   // the browser lists the tracks a file carries; `audioTracks` is not in every engine, so a missing list is no list
+  /** The words on screen: "" here, where the browser draws the showing text track itself. */
+  def mediaCues(): String = ""
+
   def mediaTracks(): List[everyui.component.MediaTrack] = media.toList.flatMap { e =>
     val m = e.asInstanceOf[js.Dynamic]
     val audio = tracksOf(m, "audioTracks", everyui.component.MediaTrack.Audio)

@@ -95,6 +95,9 @@ class RenderNode(val sg: SGNode) {
   // nothing here counts what the link is carrying
   def mediaBandwidth(): Long = 0L
   def mediaSize(): (Double, Double) = (0.0, 0.0)
+  /** The words on screen: "" here, where the platform draws its own subtitles. */
+  def mediaCues(): String = ""
+
   def mediaTracks(): List[everyui.component.MediaTrack] = Nil
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()
