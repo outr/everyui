@@ -528,6 +528,10 @@ object Platform {
   /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
   def deviceModel(): String = deviceName()
 
+  def launchesApps(): Boolean = false
+  def localAddress(): String = uiLocalAddress()
+  def deviceSerial(): String = uiDeviceSerial()
+
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
   def appVersion(): Int = 0

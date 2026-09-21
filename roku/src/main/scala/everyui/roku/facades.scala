@@ -208,6 +208,14 @@ class SGNode
 @native object uiDeviceName {
   def apply(): String = native.value
 }
+/** This device's own address on its network. */
+@native object uiLocalAddress {
+  def apply(): String = native.value
+}
+/** This device's own stable id. */
+@native object uiDeviceSerial {
+  def apply(): String = native.value
+}
 /** Rounded corners; a SceneGraph Rectangle has none, so the Roku ignores it. */
 @native object uiSetRadius {
   def apply(node: SGNode, radius: Double): Unit = native.value

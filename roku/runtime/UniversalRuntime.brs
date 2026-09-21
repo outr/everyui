@@ -882,6 +882,25 @@ function uiLanguage() as string
     return CreateObject("roDeviceInfo").GetCurrentLocale().Replace("_", "-")
 end function
 
+' This device's own IPv4 on its network, for a request to be answered back on the same network. First interface
+' with an address; "" if the box is somehow offline.
+function uiLocalAddress() as string
+    addrs = CreateObject("roDeviceInfo").GetIPAddrs()
+    if addrs <> invalid
+        for each iface in addrs
+            ip = addrs[iface]
+            if ip <> invalid and ip <> "" then return ip
+        end for
+    end if
+    return ""
+end function
+
+' A stable id for this box, the same one it answers with when asked over its control port, so a request meant
+' for it can be told apart from one that reached a different box at the same address later.
+function uiDeviceSerial() as string
+    return CreateObject("roDeviceInfo").GetChannelClientId()
+end function
+
 ' What the person calls this Roku ("Living Room Roku"), else its model's name.
 function uiDeviceName() as string
     info = CreateObject("roDeviceInfo")

@@ -1063,6 +1063,13 @@ object Platform {
   /** What it is, as its maker names it ("NVIDIA SHIELD Android TV"). */
   def deviceModel(): String = (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).trim
 
+  /** Whether this device opens a streaming service's own app itself, rather than needing another to do it. */
+  def launchesApps(): Boolean = true
+
+  /** Where this device can be reached on its own network, for another to play to; "" where it has no such need. */
+  def localAddress(): String = ""
+  def deviceSerial(): String = ""
+
   /** Where the app came from (a store's package name), and which build it is. */
   def installStore(): String =
     try Option(Host.activity.getPackageManager.getInstallerPackageName(Host.activity.getPackageName))
