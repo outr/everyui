@@ -290,6 +290,9 @@ class RenderNode(val el: html.Element) {
   /** The words on screen: "" here, where the browser draws the showing text track itself. */
   def mediaCues(): String = ""
 
+  /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
+  def setMediaLanguages(audio: String, text: String): Unit = ()
+
   def mediaTracks(): List[everyui.component.MediaTrack] = media.toList.flatMap { e =>
     val m = e.asInstanceOf[js.Dynamic]
     val audio = tracksOf(m, "audioTracks", everyui.component.MediaTrack.Audio)

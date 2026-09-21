@@ -198,6 +198,10 @@ class RenderNode(val view: View) {
     * them itself: on Android nothing draws them, since that is media3-ui and this build merges no resources. */
   def mediaCues(): String = media.map(_.cues()).getOrElse("")
 
+  /** What to hear and read this in, where the file carries a choice. Said before the source, so the selector picks
+    * with it rather than picking the file's own default and switching afterwards. */
+  def setMediaLanguages(audio: String, text: String): Unit = media.foreach(_.languages(audio, text))
+
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
   def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))

@@ -73,6 +73,10 @@ trait MediaSupport { self: Component =>
     * none of it, so the app must. A browser and a Roku paint their own, and answer "" here. */
   def cues: String = node.mediaCues()
 
+  /** What to hear and read this in, where the file carries a choice: a language tag each, or "" for the file's
+    * own. Said before the source is set, so the choice is made with it rather than corrected after it. */
+  def languages(audio: String, text: String): Unit = node.setMediaLanguages(audio, text)
+
   def audioTracks: List[MediaTrack] = tracks.filter(_.kind == MediaTrack.Audio)
   def textTracks: List[MediaTrack] = tracks.filter(_.kind == MediaTrack.Text)
 

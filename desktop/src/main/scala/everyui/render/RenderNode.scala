@@ -399,6 +399,9 @@ class RenderNode(val fx: Node) {
   /** The words on screen: "" here, where the platform has no text to hand over. */
   def mediaCues(): String = ""
 
+  /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
+  def setMediaLanguages(audio: String, text: String): Unit = ()
+
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
   // JavaFX lists its tracks but will not switch between them
   def selectMediaTrack(kind: String, id: String): Unit = ()

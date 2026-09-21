@@ -166,6 +166,9 @@ class RenderNode(val sg: SGNode) {
   /** The words on screen: "" here, where the platform draws its own subtitles. */
   def mediaCues(): String = ""
 
+  /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
+  def setMediaLanguages(audio: String, text: String): Unit = ()
+
   def mediaTracks(): List[everyui.component.MediaTrack] = Nil
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()

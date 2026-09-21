@@ -256,6 +256,21 @@ class ExoMedia(texture: Option[TextureView]) {
     catch { case t: Throwable => Platform.logError("media: track " + kind + " " + id, t) }
   }
 
+  /** What to hear and read this in, where the file carries a choice.
+    *
+    * Said to the selector rather than acted on once the tracks are known: a preference applied after the fact lets
+    * the file's own default track start first and then switches, which is a moment of the wrong language out loud.
+    * An empty language clears the preference rather than asking for a track that has none. */
+  def languages(audio: String, text: String): Unit = player.foreach { p =>
+    try {
+      val from = p.getTrackSelectionParameters.buildUpon()
+      if (audio.trim.isEmpty) from.setPreferredAudioLanguages() else from.setPreferredAudioLanguage(audio.trim)
+      if (text.trim.isEmpty) from.setPreferredTextLanguages() else from.setPreferredTextLanguage(text.trim)
+      p.setTrackSelectionParameters(from.build())
+    }
+    catch { case t: Throwable => Platform.logError("media: languages", t) }
+  }
+
   /** What is being said on screen at this moment, as the text track has it, or "" while nothing is. */
   def cues(): String = cueText
 
