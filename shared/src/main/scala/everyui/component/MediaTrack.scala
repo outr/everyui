@@ -30,6 +30,17 @@ object MediaTrack {
     "he" -> "Hebrew", "heb" -> "Hebrew", "hi" -> "Hindi", "hin" -> "Hindi",
     "th" -> "Thai", "tha" -> "Thai", "el" -> "Greek", "ell" -> "Greek", "gre" -> "Greek")
 
+  /** The two-letter form of a language tag, where this knows one: a file may carry "eng" where the rest of the app
+    * speaks in "en", and a preference saved from a track should be in the form everything else reads. */
+  def languageTag(tag: String): String = {
+    val key = tag.trim.toLowerCase.split("[-_]").headOption.getOrElse("")
+    if (key.length == 2) key
+    else named.get(key).flatMap(name => short.get(name)).getOrElse(key)
+  }
+
+  /** Each language this knows by name, back to its two-letter tag. */
+  private val short: Map[String, String] = named.filter(_._1.length == 2).map(e => e._2 -> e._1)
+
   /** The language in words, where it is one this knows; else the tag it was given. */
   def languageName(tag: String): String = {
     val key = tag.trim.toLowerCase.split("[-_]").headOption.getOrElse("")
