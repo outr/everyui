@@ -1455,7 +1455,10 @@ class RokuEmitter(
             case _ if fnIs(fn, "java.util.UUID", "randomUUID")           => "_uuid()"
             case _ if fnIs(fn, "java.lang.System", "currentTimeMillis")  => "_nowMillis()"
             case _ if fn.symbol.exists && ownerFqn(fn.symbol) == "java.lang.Math" => emitMath(fn.symbol.name, args)
-            case Select(Apply(wrap, List(x)), m @ ("min" | "max" | "abs")) if isRichNumWrapper(wrap) => emitMath(m, x :: args)
+            case Select(Apply(wrap, List(x)), m @ ("min" | "max" | "abs" | "round" | "floor" | "ceil")) if isRichNumWrapper(wrap) => emitMath(m, x :: args)
+            // RichChar predicates (charWrapper is in the rich-number set): a Char is a one-character string here
+            case Select(Apply(wrap, List(x)), m @ ("isDigit" | "isLetter" | "isLetterOrDigit" | "isWhitespace" | "isSpaceChar" | "isUpper" | "isLower")) if isRichNumWrapper(wrap) =>
+              s"_ch_$m(${emitTerm(x)})"
             case _ if fn.symbol.exists && primitiveCompanions.contains(ownerFqn(fn.symbol))
                 && fn.symbol.name.matches("[a-z]+2[a-z]+") && args.size == 1 => emitTerm(args.head)
             case _ if fn.symbol.exists && fn.symbol.name == "augmentString" && args.size == 1 => emitTerm(args.head)
@@ -1903,6 +1906,11 @@ class RokuEmitter(
         case Select(q, "last") if isCollType(q)      => s"_last(${emitTerm(q)})"
         case Select(q, "headOption") if isCollType(q) => s"_headOption(${emitTerm(q)})"
         case Select(q, "lastOption") if isCollType(q) => s"_lastOption(${emitTerm(q)})"
+        // RichDouble/RichInt nullary rounding: doubleWrapper(x).round / .floor / .ceil (min/max, which take an
+        // argument, are Applys handled where the calls are); and RichChar predicates, on a Char that is a one-char
+        // string here. Placed after the collection getters so it is outside the Swift-derivation block above.
+        case Select(Apply(wrap, List(x)), m @ ("round" | "floor" | "ceil" | "abs")) if isRichNumWrapper(wrap) => emitMath(m, List(x))
+        case Select(Apply(wrap, List(x)), m @ ("isDigit" | "isLetter" | "isLetterOrDigit" | "isWhitespace" | "isSpaceChar" | "isUpper" | "isLower")) if isRichNumWrapper(wrap) => s"_ch_$m(${emitTerm(x)})"
         case Select(q, "reverse") if isCollType(q)   => s"_reverse(${emitTerm(q)})"
         case Select(q, "distinct") if isCollType(q)  => s"_distinct(${emitTerm(q)})"
         // a Set is an array of distinct values here, so a collection made one is its distinct values
@@ -5028,6 +5036,57 @@ class RokuEmitter(
       |        parts.push(_str(e))
       |    end for
       |    return "List(" + parts.Join(", ") + ")"
+      |end function
+      |' ── Scala stdlib implicits the emitter emits by name ──
+      |' Predef.refArrayOps wraps an Array only to give it operations a BrightScript roArray already has, so it is
+      |' the array itself.
+      |function refArrayOps(a as object) as object
+      |    return a
+      |end function
+      |' Option.option2Iterable, for an Option used where a collection is wanted (a for-comprehension, a flatMap):
+      |' None is invalid here as everywhere, Some is its value, and the iterable is empty or the one element.
+      |function option2Iterable(o as dynamic) as object
+      |    if o = invalid then return []
+      |    return [o]
+      |end function
+      |' RichChar predicates. A Char is a one-character string in this runtime, so these test its code point.
+      |function _ch_isDigit(c as dynamic) as boolean
+      |    if c = invalid or Len(c) = 0 then return false
+      |    n = Asc(c)
+      |    return n >= 48 and n <= 57
+      |end function
+      |function _ch_isLetter(c as dynamic) as boolean
+      |    if c = invalid or Len(c) = 0 then return false
+      |    n = Asc(c)
+      |    return (n >= 65 and n <= 90) or (n >= 97 and n <= 122)
+      |end function
+      |function _ch_isLetterOrDigit(c as dynamic) as boolean
+      |    return _ch_isLetter(c) or _ch_isDigit(c)
+      |end function
+      |function _ch_isWhitespace(c as dynamic) as boolean
+      |    if c = invalid or Len(c) = 0 then return false
+      |    n = Asc(c)
+      |    return n = 32 or n = 9 or n = 10 or n = 13 or n = 12 or n = 11
+      |end function
+      |function _ch_isSpaceChar(c as dynamic) as boolean
+      |    return c = " "
+      |end function
+      |function _ch_isUpper(c as dynamic) as boolean
+      |    if c = invalid or Len(c) = 0 then return false
+      |    n = Asc(c)
+      |    return n >= 65 and n <= 90
+      |end function
+      |function _ch_isLower(c as dynamic) as boolean
+      |    if c = invalid or Len(c) = 0 then return false
+      |    n = Asc(c)
+      |    return n >= 97 and n <= 122
+      |end function
+      |' Json.isNum / Json.isBoolean, the siblings of _json_isStr the family was missing.
+      |function _json_isNum(j as dynamic) as boolean
+      |    return _rtKind(j) = "n"
+      |end function
+      |function _json_isBoolean(j as dynamic) as boolean
+      |    return _rtKind(j) = "b"
       |end function
       |""".stripMargin}
 
