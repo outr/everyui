@@ -290,6 +290,11 @@ class RenderNode(val el: html.Element) {
   /** The words on screen: "" here, where the browser draws the showing text track itself. */
   def mediaCues(): String = ""
 
+  // ---- a page of the web ----
+  def setWebSource(url: String): Unit = ()
+  def runWebScript(script: String): Unit = ()
+  def onWebMessage(f: String => Unit): Unit = ()
+
   /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
@@ -409,6 +414,9 @@ object RenderNode {
 
 /** Backend node factories. */
 object Nodes {
+  /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
+  def web(bridge: String): RenderNode = container()
+
   /** The page's mount point. */
   def root(): RenderNode = {
     val existing = dom.document.getElementById("app")
@@ -567,6 +575,9 @@ object Nodes {
 /** The handful of non-render platform services the slice needs. */
 object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
+  /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
+  def webViews(): Boolean = false
+
   def corners(): Boolean = false
 
   def toCorner(): Boolean = false

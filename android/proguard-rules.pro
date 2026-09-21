@@ -57,3 +57,10 @@
 -dontwarn androidx.exifinterface.**
 -dontwarn androidx.media3.exoplayer.offline.**
 -dontwarn androidx.media3.exoplayer.scheduler.**
+
+# A page of the web calls back into the app by REFLECTION, on a name the page itself knows: the method has to keep
+# its own name or the call finds nothing, and the failure is silent -- the video plays and the app never hears that
+# it started, ended, or moved.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}

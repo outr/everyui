@@ -198,6 +198,27 @@ class RenderNode(val view: View) {
     * them itself: on Android nothing draws them, since that is media3-ui and this build merges no resources. */
   def mediaCues(): String = media.map(_.cues()).getOrElse("")
 
+  // ---- a page of the web ----
+
+  /** Show this address. */
+  def setWebSource(url: String): Unit = view match {
+    case w: android.webkit.WebView => if (url.trim.nonEmpty) w.loadUrl(url.trim)
+    case _ => ()
+  }
+
+  /** Say something to the page, in its own language. */
+  def runWebScript(script: String): Unit = view match {
+    case w: android.webkit.WebView => w.evaluateJavascript(script, null)
+    case _ => ()
+  }
+
+  /** Hear what the page says back. */
+  def onWebMessage(f: String => Unit): Unit = webListener = f
+
+  private[render] var webListener: String => Unit = _ => ()
+
+  private[render] def webSaid(message: String): Unit = webListener(message)
+
   /** What to hear and read this in, where the file carries a choice. Said before the source, so the selector picks
     * with it rather than picking the file's own default and switching afterwards. */
   def setMediaLanguages(audio: String, text: String): Unit = media.foreach(_.languages(audio, text))
@@ -801,6 +822,20 @@ object Host {
 }
 
 /** Backend node factories. */
+
+/** What a page calls to say something back to the app.
+  *
+  * A class of its own rather than an anonymous one: `addJavascriptInterface` finds the method by reflection, which
+  * means the name has to survive the shrinker (see the keep rule in proguard-rules.pro), and a named class is what
+  * a rule can name. The page is on its own thread; the app is not, so what it says is handed to the one that draws.
+  */
+class WebBridge(node: RenderNode) {
+  @android.webkit.JavascriptInterface
+  def postMessage(message: String): Unit =
+    Host.activity.runOnUiThread(new Runnable {
+      override def run(): Unit = node.webSaid(message)
+    })
+}
 object Nodes {
   /** The Activity's content view. */
   def root(): RenderNode = new RenderNode(Host.root)
@@ -810,6 +845,27 @@ object Nodes {
     val texture = new android.view.TextureView(Host.activity)
     val node = new RenderNode(texture)
     node.media = Some(new ExoMedia(Some(texture)))
+    node
+  }
+
+  /** A page of the web, drawn in place.
+    *
+    * `bridge` is the name of an object the page can call to say things back: `<bridge>.postMessage("...")`. It is
+    * named by whoever builds the view rather than fixed here, since the page and the app have to agree on it and
+    * neither of them is this layer. */
+  def web(bridge: String): RenderNode = {
+    val view = new android.webkit.WebView(Host.activity)
+    val settings = view.getSettings
+    settings.setJavaScriptEnabled(true)
+    settings.setDomStorageEnabled(true)
+    // an embed that will not start until it is touched is an embed that never starts on a television
+    settings.setMediaPlaybackRequiresUserGesture(false)
+    view.setBackgroundColor(android.graphics.Color.BLACK)
+    // the keys are the app's: a page that took them would swallow the remote
+    view.setFocusable(false)
+    view.setFocusableInTouchMode(false)
+    val node = new RenderNode(view)
+    view.addJavascriptInterface(new WebBridge(node), bridge)
     node
   }
 
@@ -934,6 +990,10 @@ object Platform {
   def identify(app: String): Unit = Host.agent = app
   /** The screen kept on (while something is shown that is meant to be watched without a touch), or let sleep. */
   /** Whether this device can go on playing in a corner of whatever the viewer does next. */
+  /** Whether this platform has a browser engine to lend a page (Nodes.web). Only what is actually implemented
+    * says yes: a platform that answered yes and drew nothing would leave a viewer on a black screen. */
+  def webViews(): Boolean = true
+
   def corners(): Boolean =
     Host.activity.getPackageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
 
