@@ -514,6 +514,13 @@ object Platform {
   /** Keep `value` under `name`; "" forgets it. */
   def saveSetting(name: String, value: String): Unit = uiSaveSetting(name, value)
 
+  /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
+  def deviceModel(): String = deviceName()
+
+  /** Where the app came from, and which build it is: nothing this platform can say. */
+  def installStore(): String = ""
+  def appVersion(): Int = 0
+
   def deviceName(): String = uiDeviceName()
 
   /** No text fields of its own. */

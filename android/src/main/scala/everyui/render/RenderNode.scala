@@ -1000,6 +1000,19 @@ object Platform {
   def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))
 
   /** The device's language, as a BCP 47 tag (`en-US`). */
+  /** What it is, as its maker names it ("NVIDIA SHIELD Android TV"). */
+  def deviceModel(): String = (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).trim
+
+  /** Where the app came from (a store's package name), and which build it is. */
+  def installStore(): String =
+    try Option(Host.activity.getPackageManager.getInstallerPackageName(Host.activity.getPackageName))
+      .getOrElse("")
+    catch { case _: Throwable => "" }
+
+  def appVersion(): Int =
+    try Host.activity.getPackageManager.getPackageInfo(Host.activity.getPackageName, 0).versionCode
+    catch { case _: Throwable => 0 }
+
   def language(): String = java.util.Locale.getDefault.toLanguageTag
 
   /** The app's language: the platform chooses its own faces for the script, so there is nothing to do. */
@@ -1023,8 +1036,15 @@ object Platform {
     edit.apply()
   }
 
-  /** The device's model name. */
-  def deviceName(): String = android.os.Build.MODEL
+  /** What this device calls itself: the name its owner gave it ("Bedroom TV") where there is one, and what it is
+    * otherwise. The name is what a person picking a television out of a list is looking for. */
+  def deviceName(): String = {
+    val named =
+      try Option(android.provider.Settings.Global.getString(Host.activity.getContentResolver, "device_name"))
+        .map(_.trim).getOrElse("")
+      catch { case _: Throwable => "" }
+    if (named.nonEmpty) named else android.os.Build.MODEL
+  }
 
   /** Android has text fields of its own. */
   def nativeInput(): Boolean = true

@@ -302,6 +302,13 @@ object Platform {
   def setting(name: String): String = ""
   def saveSetting(name: String, value: String): Unit = ()
 
+  /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
+  def deviceModel(): String = deviceName()
+
+  /** Where the app came from, and which build it is: nothing this platform can say. */
+  def installStore(): String = ""
+  def appVersion(): Int = 0
+
   def deviceName(): String = "Apple TV"
 
   /** No text fields of its own. */

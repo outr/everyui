@@ -694,6 +694,13 @@ object Platform {
     if (value.isEmpty) dom.window.localStorage.removeItem(name) else dom.window.localStorage.setItem(name, value)
 
   /** The browser and the system it runs on, as its user agent says them. */
+  /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
+  def deviceModel(): String = deviceName()
+
+  /** Where the app came from, and which build it is: nothing this platform can say. */
+  def installStore(): String = ""
+  def appVersion(): Int = 0
+
   def deviceName(): String = {
     val agent = dom.window.navigator.userAgent
     val browser = if (agent.contains("Edg/")) "Edge" else if (agent.contains("Chrome/")) "Chrome" else if (agent.contains("Firefox/")) "Firefox" else if (agent.contains("Safari/")) "Safari" else "Browser"
