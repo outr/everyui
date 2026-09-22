@@ -332,6 +332,9 @@ class RenderNode(val el: html.Element) {
   }
   def setMediaCover(cover: Boolean): Unit = el.style.setProperty("object-fit", if (cover) "cover" else "contain")
   def getMediaPosition(): Double = media.map(_.currentTime.asInstanceOf[Double]).getOrElse(0.0)
+  // a browser answers NaN until the metadata is in, and Infinity for a live stream: neither is a length
+  def getMediaDuration(): Double =
+    media.map(_.duration.asInstanceOf[Double]).filter(d => !d.isNaN && !d.isInfinite && d > 0.0).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.currentTime = seconds)
   def onMediaEvent(f: String => Unit): Unit = if (media.nonEmpty) {
     el.addEventListener("playing", (_: dom.Event) => f("ready"))

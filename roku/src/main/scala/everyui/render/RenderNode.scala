@@ -178,6 +178,7 @@ class RenderNode(val sg: SGNode) {
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()
   def getMediaPosition(): Double = uiGetMediaPosition(sg)
+  def getMediaDuration(): Double = uiGetMediaDuration(sg)
   def seekMedia(seconds: Double): Unit = uiSeekMedia(sg, seconds)
   def onMediaEvent(f: String => Unit): Unit = uiOnMediaEvent(sg, f)
   def releaseMedia(): Unit = uiReleaseMedia(sg)

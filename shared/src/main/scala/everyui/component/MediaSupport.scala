@@ -111,6 +111,11 @@ trait MediaSupport { self: Component =>
   /** Seconds in. */
   def playhead(): Double = node.getMediaPosition()
 
+  /** How many seconds long, or 0 where the player cannot say — a stream still opening, a format that carries no
+    * length, or a platform with nothing to ask. A caller showing progress must treat 0 as "not yet known" rather
+    * than as an empty clip, since it becomes known a moment after playing starts. */
+  def duration(): Double = node.getMediaDuration()
+
   def seek(seconds: Double): Unit = node.seekMedia(seconds)
 
   /** Stop it and let its player go for good: it plays no more, and being shown again will not bring it back. For a

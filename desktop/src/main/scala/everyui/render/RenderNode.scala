@@ -412,6 +412,7 @@ class RenderNode(val fx: Node) {
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
+  def getMediaDuration(): Double = media.map(_.duration()).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))
   def onMediaEvent(f: String => Unit): Unit = media.foreach(_.onEvent(f))
   def releaseMedia(): Unit = media.foreach(_.release())

@@ -1404,6 +1404,15 @@ function uiGetMediaPosition(node as object) as float
     return node.position
 end function
 
+' How long the content runs. A Video node has it once the stream is open; before that it is invalid or 0, which
+' means "not known yet" rather than "empty".
+function uiGetMediaDuration(node as object) as float
+    if node = invalid then return 0.0
+    d = node.duration
+    if d = invalid then return 0.0
+    return d
+end function
+
 sub uiSeekMedia(node as object, seconds as float)
     if node <> invalid then node.seek = seconds
 end sub

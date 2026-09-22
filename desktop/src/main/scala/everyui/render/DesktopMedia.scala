@@ -113,6 +113,8 @@ class DesktopMedia(pane: Option[Pane]) {
     player.map(p => (p.getMedia.getWidth.toDouble, p.getMedia.getHeight.toDouble)).getOrElse((0.0, 0.0))
 
   def position(): Double = player.map(_.getCurrentTime.toSeconds).getOrElse(0.0)
+  /** How long it is, or 0 where it is not known yet (JavaFX answers an UNKNOWN duration as NaN). */
+  def duration(): Double = player.map(_.getTotalDuration.toSeconds).filter(d => d > 0.0 && !d.isNaN).getOrElse(0.0)
 
   def seek(seconds: Double): Unit = player.foreach(_.seek(Duration.seconds(seconds)))
 

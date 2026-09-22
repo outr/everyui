@@ -288,6 +288,8 @@ class ExoMedia(texture: Option[TextureView]) {
     catch { case _: Throwable => 0L }
 
   def position(): Double = player.map(_.getCurrentPosition / 1000.0).getOrElse(0.0)
+  /** How long it is, or 0 where the player does not know yet (ExoPlayer says TIME_UNSET, a large negative). */
+  def duration(): Double = player.map(_.getDuration / 1000.0).filter(_ > 0.0).getOrElse(0.0)
 
   def seek(seconds: Double): Unit = player.foreach(_.seekTo(math.round(seconds * 1000.0)))
 

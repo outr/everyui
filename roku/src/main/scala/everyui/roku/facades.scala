@@ -326,6 +326,10 @@ class SGNode
 @native object uiGetMediaPosition {
   def apply(node: SGNode): Double = native.value
 }
+/** How long what it is playing runs, or 0 where it cannot say yet. */
+@native object uiGetMediaDuration {
+  def apply(node: SGNode): Double = native.value
+}
 @native object uiSeekMedia {
   def apply(node: SGNode, seconds: Double): Unit = native.value
 }
