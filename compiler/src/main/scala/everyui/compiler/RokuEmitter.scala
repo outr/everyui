@@ -1636,6 +1636,10 @@ class RokuEmitter(
             case Select(recv, "endsWith")    => s"_endsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "stripPrefix") if args.size == 1 => s"_stripPrefix(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "stripSuffix") if args.size == 1 => s"_stripSuffix(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            // String ordering: BrightScript strings have no `.compareTo` member, so lower it to a three-way
+            // helper. The app compares `yyyy-MM-dd` dates this way (Dates.past, TheaterGuide.events).
+            case Select(recv, "compareTo") if isStringLike(recv.tpe) && args.length == 1 =>
+              s"_strCompare(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "replace") if args.length == 2 =>
               s"_replace(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
             // FiniteDuration arithmetic and ordering, on the runtime's millisecond representation
@@ -3530,6 +3534,13 @@ class RokuEmitter(
       |    a = _str(s)
       |    if _endsWith(a, suf) then return Left(a, Len(a) - Len(_str(suf)))
       |    return a
+      |end function
+      |' String.compareTo: a three-way lexicographic compare (roString has no such member); < 0, 0, > 0
+      |function _strCompare(s as dynamic, o as dynamic) as integer
+      |    a = _str(s) : b = _str(o)
+      |    if a < b then return -1
+      |    if a > b then return 1
+      |    return 0
       |end function
       |' xs.indexOf(x): the first index of an equal element, or -1
       |function _arrIndexOf(xs as object, x as dynamic) as integer
