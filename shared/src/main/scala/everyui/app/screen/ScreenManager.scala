@@ -138,7 +138,8 @@ trait ScreenManager extends TaskSupport {
   private def swap(screen: Screen, push: Boolean, focus: Option[Component] = None): Task[Unit] =
     Task.async[Unit](done => Platform.later(() => change(screen, push, focus).map(_ => done(())).startUnit()))
 
-  private def change(screen: Screen, push: Boolean, focus: Option[Component]): Task[Unit] =
+  private def change(screen: Screen, push: Boolean, focus: Option[Component]): Task[Unit] = {
+    val started = Platform.ticks()
     // the leaving, the building and the arriving in one layout pass, before the focus looks for where things are
     LayoutPass.batched(
       active().filterNot(_ eq screen).map(Screen.deactivate).getOrElse(Task.unit)
@@ -165,7 +166,13 @@ trait ScreenManager extends TaskSupport {
           case p: PathActivation if push => Platform.pushPath(p.path.value)
           case _ => ()
         }
+        // how long the screen took to leave the last, build (the first time), lay out and arrive; a slow one is
+        // logged loud enough to forward, so a sluggish page in the wild shows up centrally and not only here
+        val ms = Platform.ticks() - started
+        val note = "screen " + screen.getClass.getSimpleName + " shown in " + ms.toInt.toString + "ms"
+        if (ms >= 1200.0) scribe.warn(note) else scribe.info(note)
       }
+  }
 
   override def update(delta: Double): Unit = {
     super.update(delta)
