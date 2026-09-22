@@ -17,11 +17,14 @@ case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) exte
     val pad = container.padding()
     var tallest = 0.0
     var run = 0.0
+    var inRow = 0
     children.foreach { child =>
       if (child.size.height() > tallest) tallest = child.size.height()
-      run = run + child.size.width()
+      // a zero-WIDTH child takes no horizontal room and books no gap, whatever its height: an empty leading icon
+      // must not push a label off-centre. The run must count the same children the positioning pass below advances for.
+      if (child.size.width() > 0.0) { run = run + child.size.width(); inRow += 1 }
     }
-    if (children.nonEmpty) run = run + spacing * (children.length - 1)
+    if (inRow > 0) run = run + spacing * (inRow - 1)
     // mirrored within the run the children make when the container follows them, else within its own width
     val width = if (container.widthFollowsContent || !container.size.width.explicit) run + pad * 2.0 else container.size.width()
     val rtl = Direction.rtl()
@@ -29,8 +32,8 @@ case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) exte
     children.foreach { child =>
       child.position.left @= (if (rtl) width - x - child.size.width() else x)
       child.position.top @= (if (middle) pad + (tallest - child.size.height()) / 2.0 else pad)
-      // a child with no size takes no room and no gap: what a row has nothing to show is left out of it
-      if (Layout.shows(child)) x = x + child.size.width() + spacing
+      // a child with no width takes no room and no gap: what a row has nothing to show is left out of it
+      if (child.size.width() > 0.0) x = x + child.size.width() + spacing
     }
   }
 }
