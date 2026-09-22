@@ -328,7 +328,8 @@ lazy val android = (project in file("android"))
         (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
         baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
         Seq(baseDirectory.value / "proguard-rules.pro"), target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
-        version.value)
+        // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
+        version.value, 1, AndroidApk.debug)
     }
   )
 
