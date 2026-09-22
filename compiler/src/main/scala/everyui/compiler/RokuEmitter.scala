@@ -1182,7 +1182,17 @@ class RokuEmitter(
     def libraryGap(recv: Term, name: String): String = {
       val label = name + " on " + fqnOf(recv.tpe)
       todos += s"unsupported: $label"
-      s"RtTodo(${brStr(label)})"
+      // A gap stands in a VALUE position, so it must degrade into something of roughly the shape the caller expects.
+      // `RtTodo` answers with a Label node, which is right where a gap is a thing to draw and catastrophic anywhere
+      // else: the next thing to iterate it dies, and the fault surfaces in a handler far from the method that is
+      // actually missing. That cost a black screensaver and a Home that stopped asking for rails, both of them
+      // compiling perfectly quietly. An empty list, an empty string and None are wrong answers too, but they are
+      // wrong the way missing data is wrong, and they say so on the console as they go by.
+      // a String asked before a collection: `scala.collection.StringOps` begins with `scala.collection.`, so a String
+      // seen through it answers to isCollType as well, and would otherwise stand in as an empty list
+      if (isStringLike(recv.tpe)) s"RtTodoStr(${brStr(label)})"
+      else if (isCollType(recv)) s"RtTodoList(${brStr(label)})"
+      else s"RtTodoOpt(${brStr(label)})"
     }
 
     /** Whether a value of this type is a whole number, which BrightScript divides and truncates differently. */
@@ -1746,6 +1756,25 @@ class RokuEmitter(
               s"_take(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "drop") =>
               s"_drop(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "slice") if isCollType(recv) && args.size == 2 =>
+              s"_slice(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
+            case Select(recv, "dropRight") if isCollType(recv) && args.size == 1 =>
+              s"_dropRight(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            // a String's takeWhile/dropWhile answer with a String; a collection's with a collection
+            case Select(recv, "takeWhile") if isStringLike(recv.tpe) && args.size == 1 =>
+              s"_strTakeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, true)"
+            case Select(recv, "dropWhile") if isStringLike(recv.tpe) && args.size == 1 =>
+              s"_strTakeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, false)"
+            case Select(recv, "takeWhile") if isCollType(recv) && args.size == 1 =>
+              s"_takeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, true)"
+            case Select(recv, "dropWhile") if isCollType(recv) && args.size == 1 =>
+              s"_takeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, false)"
+            case Select(recv, "lastIndexWhere") if isCollType(recv) && args.size == 1 =>
+              s"_arrLastIndexWhere(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // an empty collection has no least or greatest, which is None — `invalid` here
+            case Select(recv, "minOption") if isCollType(recv) => s"_minOption(${emitTerm(recv)}, true)"
+            case Select(recv, "maxOption") if isCollType(recv) => s"_minOption(${emitTerm(recv)}, false)"
+            case Select(recv, "capitalize") if isStringLike(recv.tpe) => s"_strCapitalize(${emitTerm(recv)})"
             case Select(recv, "sortBy") =>
               s"_sortBy(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             // `xs.foldLeft(z)(op)`, uncurried to its two arguments
@@ -3333,6 +3362,78 @@ class RokuEmitter(
       |    end if
       |    return r
       |end function
+      |function _slice(xs as object, from as integer, until as integer) as object
+      |    r = [] : i = 0
+      |    if xs <> invalid
+      |        for each e in xs
+      |            if i >= from and i < until then r.push(e)
+      |            i = i + 1
+      |        end for
+      |    end if
+      |    return r
+      |end function
+      |function _dropRight(xs as object, n as integer) as object
+      |    items = _rtItems(xs)
+      |    keep = items.count() - n
+      |    r = []
+      |    for i = 0 to keep - 1
+      |        r.push(items[i])
+      |    end for
+      |    return r
+      |end function
+      |' `keeping` true takes the run that satisfies the test, false drops it and keeps the rest.
+      |function _takeWhile(xs as object, cl as dynamic, keeping as boolean) as object
+      |    items = _rtItems(xs)
+      |    at = items.count()
+      |    for i = 0 to items.count() - 1
+      |        if not RtInvoke(cl, [items[i]])
+      |            at = i
+      |            exit for
+      |        end if
+      |    end for
+      |    r = []
+      |    if keeping
+      |        for i = 0 to at - 1
+      |            r.push(items[i])
+      |        end for
+      |    else
+      |        for i = at to items.count() - 1
+      |            r.push(items[i])
+      |        end for
+      |    end if
+      |    return r
+      |end function
+      |function _arrLastIndexWhere(xs as object, cl as dynamic) as integer
+      |    items = _rtItems(xs)
+      |    found = -1
+      |    for i = 0 to items.count() - 1
+      |        if RtInvoke(cl, [items[i]]) then found = i
+      |    end for
+      |    return found
+      |end function
+      |' The least (or greatest) of them, or invalid where there are none: Option is the value itself here.
+      |function _minOption(xs as object, least as boolean) as dynamic
+      |    items = _rtItems(xs)
+      |    if items.count() = 0 then return invalid
+      |    if least then return _minList(items)
+      |    return _maxList(items)
+      |end function
+      |function _strTakeWhile(s as dynamic, cl as dynamic, keeping as boolean) as string
+      |    if s = invalid then return ""
+      |    at = Len(s)
+      |    for i = 1 to Len(s)
+      |        if not RtInvoke(cl, [Mid(s, i, 1)])
+      |            at = i - 1
+      |            exit for
+      |        end if
+      |    end for
+      |    if keeping then return Left(s, at)
+      |    return Mid(s, at + 1)
+      |end function
+      |function _strCapitalize(s as dynamic) as string
+      |    if s = invalid or Len(s) = 0 then return ""
+      |    return UCase(Left(s, 1)) + Mid(s, 2)
+      |end function
       |function _drop(xs as object, n as integer) as object
       |    r = [] : i = 0
       |    if xs <> invalid
@@ -3683,6 +3784,29 @@ class RokuEmitter(
       |    n.text = "[todo: " + label + "]"
       |    n.color = "0x49454FFF"
       |    return n
+      |end function
+      |' A gap standing in a value position, answering in the shape its caller expects rather than with a node: an
+      |' empty list can be iterated, an empty string can be joined, and None is what an Option already is here. Each
+      |' says so once on the console, so a method nothing translates is findable on the device as well as in the build.
+      |function RtTodoSay(label as string) as void
+      |    ga = GetGlobalAA()
+      |    if ga.rtTodoSaid = invalid then ga.rtTodoSaid = {}
+      |    if ga.rtTodoSaid[label] = invalid
+      |        ga.rtTodoSaid[label] = true
+      |        print "[todo] no translation for "; label
+      |    end if
+      |end function
+      |function RtTodoList(label as string) as object
+      |    RtTodoSay(label)
+      |    return []
+      |end function
+      |function RtTodoStr(label as string) as string
+      |    RtTodoSay(label)
+      |    return ""
+      |end function
+      |function RtTodoOpt(label as string) as dynamic
+      |    RtTodoSay(label)
+      |    return invalid
       |end function
       |' A call into a type nothing constructs (the emitter's reachability analysis): it cannot run.
       |function RtDead(what as string) as dynamic
