@@ -99,7 +99,10 @@ object Focus {
       if (pressed) c.event.key.down @= KeyEvent(key, name) else c.event.key.up @= KeyEvent(key, name)
     }
     if (!pressed) false
-    else if (kept) false
+    // A kept key was consumed by the component it went to, so the platform must leave it alone. Saying otherwise
+    // let both act on the same press: Back in the screensaver went to the screensaver, which returned to Home, AND
+    // on to the Roku, which closed the channel — one press, two answers, and the app was gone.
+    else if (kept) true
     // what the screen itself claims, before the focus layer makes its own use of the key
     else if (hooked(key)) true
     else if (key == Key.Enter) target.map { c =>
