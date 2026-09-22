@@ -704,6 +704,48 @@ object Platform {
   def saveSetting(name: String, value: String): Unit =
     if (value.isEmpty) dom.window.localStorage.removeItem(name) else dom.window.localStorage.setItem(name, value)
 
+  /** The device's own store of documents (see [[everyui.store.Store]]).
+    *
+    * `localStorage` for now, which is the reason the surface above is written in callbacks rather than returns:
+    * this is the backend that will not stay synchronous. A browser gives `localStorage` a few megabytes and hands
+    * it over as strings, which is enough to cache a screen but not a library — IndexedDB is where this goes (via
+    * LightDB, which speaks it), and the callback is already shaped to answer later when it does. Nothing above
+    * changes when it moves; only these five bodies. */
+  private def storeKey(space: String, key: String): String = "everyui-store:" + space + ":" + key
+
+  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = {
+    val value = dom.window.localStorage.getItem(storeKey(space, key))
+    got(if (value == null || value.isEmpty) None else Some(value))
+  }
+
+  def storePut(space: String, key: String, value: String, done: () => Unit): Unit = {
+    // a browser refuses a write once its quota is met, and a cache that cannot be written is still a working app
+    try dom.window.localStorage.setItem(storeKey(space, key), value) catch { case _: Throwable => () }
+    done()
+  }
+
+  def storeDelete(space: String, key: String, done: () => Unit): Unit = {
+    dom.window.localStorage.removeItem(storeKey(space, key))
+    done()
+  }
+
+  def storeKeys(space: String, got: List[String] => Unit): Unit = {
+    val prefix = storeKey(space, "")
+    var found: List[String] = Nil
+    var i = 0
+    while (i < dom.window.localStorage.length) {
+      val name = dom.window.localStorage.key(i)
+      if (name != null && name.startsWith(prefix)) found = name.substring(prefix.length) :: found
+      i += 1
+    }
+    got(found)
+  }
+
+  def storeClear(space: String, done: () => Unit): Unit = {
+    storeKeys(space, keys => keys.foreach(k => dom.window.localStorage.removeItem(storeKey(space, k))))
+    done()
+  }
+
   /** The browser and the system it runs on, as its user agent says them. */
   /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
   def deviceModel(): String = deviceName()

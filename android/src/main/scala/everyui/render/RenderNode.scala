@@ -1103,6 +1103,50 @@ object Platform {
     edit.apply()
   }
 
+  /** The device's own store of documents (see [[everyui.store.Store]]). Files under the app's cache directory
+    * rather than the settings, which hold a handful of small values and read the whole of themselves to do it.
+    * Android empties a cache directory when it wants the room back, which is what a cache is for. */
+  private def storeSafe(name: String): String =
+    name.map(c => if (c.isLetterOrDigit || c == '.' || c == '-') c else '_')
+  private def storeDir(space: String): java.io.File = {
+    val dir = new java.io.File(Host.activity.getCacheDir, "everyui-store/" + storeSafe(space))
+    dir.mkdirs()
+    dir
+  }
+  private def storeFile(space: String, key: String): java.io.File =
+    new java.io.File(storeDir(space), storeSafe(key) + ".json")
+
+  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = got(
+    try {
+      val file = storeFile(space, key)
+      if (!file.isFile) None
+      else {
+        val text = new String(java.nio.file.Files.readAllBytes(file.toPath), "UTF-8")
+        if (text.isEmpty) None else Some(text)
+      }
+    } catch { case _: Throwable => None })
+
+  def storePut(space: String, key: String, value: String, done: () => Unit): Unit = {
+    try java.nio.file.Files.write(storeFile(space, key).toPath, value.getBytes("UTF-8"))
+    catch { case _: Throwable => () }
+    done()
+  }
+
+  def storeDelete(space: String, key: String, done: () => Unit): Unit = {
+    try storeFile(space, key).delete() catch { case _: Throwable => () }
+    done()
+  }
+
+  def storeKeys(space: String, got: List[String] => Unit): Unit = got(
+    Option(storeDir(space).listFiles()).getOrElse(Array.empty[java.io.File]).toList
+      .map(_.getName).filter(_.endsWith(".json")).map(n => n.substring(0, n.length - 5)))
+
+  def storeClear(space: String, done: () => Unit): Unit = {
+    Option(storeDir(space).listFiles()).getOrElse(Array.empty[java.io.File])
+      .foreach(f => try f.delete() catch { case _: Throwable => () })
+    done()
+  }
+
   /** What this device calls itself: the name its owner gave it ("Bedroom TV") where there is one, and what it is
     * otherwise. The name is what a person picking a television out of a list is looking for. */
   def deviceName(): String = {

@@ -200,6 +200,27 @@ class SGNode
 @native object uiSaveSetting {
   def apply(name: String, value: String): Unit = native.value
 }
+/** A document the device kept between launches (`cachefs:`), or "" where there is none — which a cleared cache and
+  * a document never written are both allowed to be. */
+@native object uiStoreGet {
+  def apply(space: String, key: String): String = native.value
+}
+/** Keep a document under a key within a space. */
+@native object uiStorePut {
+  def apply(space: String, key: String, value: String): Unit = native.value
+}
+/** Forget one document. */
+@native object uiStoreDelete {
+  def apply(space: String, key: String): Unit = native.value
+}
+/** The keys a space holds. */
+@native object uiStoreKeys {
+  def apply(space: String): List[String] = native.value
+}
+/** Forget every document in a space. */
+@native object uiStoreClear {
+  def apply(space: String): Unit = native.value
+}
 /** The device's language, as a BCP 47 tag. */
 @native object uiLanguage {
   def apply(): String = native.value

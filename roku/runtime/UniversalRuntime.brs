@@ -877,6 +877,66 @@ sub uiSaveSetting(name as string, value as string)
     section.Flush()
 end sub
 
+' Documents kept on the device between launches, in named spaces: what the app caches so a screen can be drawn
+' before the server has answered. The registry above is the wrong home for this -- it holds a few small values and
+' a cache of rails would not fit -- so these go to `cachefs:`, which survives a channel restart where `tmp:` does
+' not. The box may clear it whenever it likes, so a read can always come back empty and NOTHING may depend on a
+' document still being there: every caller must draw the same screen from the server when it is gone.
+'
+' One file per key, flat, rather than a directory per space: the Roku need only read the one document it is about
+' to draw, instead of parsing a whole cache to find it. A key is expected to be a plain identifier (a rail id, say);
+' anything outside [A-Za-z0-9.-] is folded to "_", so two keys differing only in punctuation would land in one file.
+function uiStoreSafe(name as string) as string
+    out = ""
+    for i = 1 to Len(name)
+        ch = Mid(name, i, 1)
+        ok = (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or (ch >= "0" and ch <= "9") or ch = "." or ch = "-"
+        if ok then out = out + ch else out = out + "_"
+    end for
+    return out
+end function
+
+function uiStorePrefix(space as string) as string
+    return "everyui-" + uiStoreSafe(space) + "-"
+end function
+
+function uiStorePath(space as string, key as string) as string
+    return "cachefs:/" + uiStorePrefix(space) + uiStoreSafe(key) + ".json"
+end function
+
+' "" for a document that is not there, which is also what an empty one reads as: a caller storing "" is storing
+' nothing, and asking for it back gets nothing.
+function uiStoreGet(space as string, key as string) as string
+    return ReadAsciiFile(uiStorePath(space, key))
+end function
+
+sub uiStorePut(space as string, key as string, value as string)
+    WriteAsciiFile(uiStorePath(space, key), value)
+end sub
+
+sub uiStoreDelete(space as string, key as string)
+    DeleteFile(uiStorePath(space, key))
+end sub
+
+' The keys a space holds, as the file names say them -- so a key folded by uiStoreSafe comes back folded.
+function uiStoreKeys(space as string) as object
+    prefix = uiStorePrefix(space)
+    found = CreateObject("roArray", 0, true)
+    for each name in ListDir("cachefs:/")
+        if Len(name) > Len(prefix) + 5 and Left(name, Len(prefix)) = prefix and Right(name, 5) = ".json"
+            found.Push(Mid(name, Len(prefix) + 1, Len(name) - Len(prefix) - 5))
+        end if
+    end for
+    return found
+end function
+
+sub uiStoreClear(space as string)
+    prefix = uiStorePrefix(space)
+    for each name in ListDir("cachefs:/")
+        if Left(name, Len(prefix)) = prefix then DeleteFile("cachefs:/" + name)
+    end for
+end sub
+
 ' The device's language as a BCP 47 tag ("en-US"; the Roku says "en_US").
 function uiLanguage() as string
     return CreateObject("roDeviceInfo").GetCurrentLocale().Replace("_", "-")

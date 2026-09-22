@@ -769,6 +769,50 @@ object Platform {
     Host.settings.flush()
   }
 
+  /** The device's own store of documents (see [[everyui.store.Store]]). Files beside the app's own directory in
+    * the home folder, rather than the preferences, which are meant for small values and have a limit on each. */
+  private def storeSafe(name: String): String =
+    name.map(c => if (c.isLetterOrDigit || c == '.' || c == '-') c else '_')
+  private def storeDir(space: String): java.io.File = {
+    val home = new java.io.File(System.getProperty("user.home"), "." + Host.app.toLowerCase)
+    val dir = new java.io.File(new java.io.File(home, "store"), storeSafe(space))
+    dir.mkdirs()
+    dir
+  }
+  private def storeFile(space: String, key: String): java.io.File =
+    new java.io.File(storeDir(space), storeSafe(key) + ".json")
+
+  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = got(
+    try {
+      val file = storeFile(space, key)
+      if (!file.isFile) None
+      else {
+        val text = new String(java.nio.file.Files.readAllBytes(file.toPath), "UTF-8")
+        if (text.isEmpty) None else Some(text)
+      }
+    } catch { case _: Throwable => None })
+
+  def storePut(space: String, key: String, value: String, done: () => Unit): Unit = {
+    try java.nio.file.Files.write(storeFile(space, key).toPath, value.getBytes("UTF-8"))
+    catch { case _: Throwable => () }
+    done()
+  }
+
+  def storeDelete(space: String, key: String, done: () => Unit): Unit = {
+    try storeFile(space, key).delete() catch { case _: Throwable => () }
+    done()
+  }
+
+  def storeKeys(space: String, got: List[String] => Unit): Unit = got(
+    Option(storeDir(space).listFiles()).getOrElse(Array.empty[java.io.File]).toList
+      .map(_.getName).filter(_.endsWith(".json")).map(n => n.substring(0, n.length - 5)))
+
+  def storeClear(space: String, done: () => Unit): Unit = {
+    Option(storeDir(space).listFiles()).getOrElse(Array.empty[java.io.File])
+      .foreach(f => try f.delete() catch { case _: Throwable => () })
+    done()
+  }
+
   /** What this machine calls itself. */
   /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
   def deviceModel(): String = deviceName()

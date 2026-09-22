@@ -313,6 +313,15 @@ object Platform {
   def setting(name: String): String = ""
   def saveSetting(name: String, value: String): Unit = ()
 
+  /** The device's own store of documents (see [[everyui.store.Store]]). Nothing is kept here yet, as nothing is
+    * kept by `setting` either — an Apple television would write these under Application Support, and until this
+    * target is built out it answers the way an empty cache answers, which every caller already has to handle. */
+  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = got(None)
+  def storePut(space: String, key: String, value: String, done: () => Unit): Unit = done()
+  def storeDelete(space: String, key: String, done: () => Unit): Unit = done()
+  def storeKeys(space: String, got: List[String] => Unit): Unit = got(Nil)
+  def storeClear(space: String, done: () => Unit): Unit = done()
+
   /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
   def deviceModel(): String = deviceName()
 
