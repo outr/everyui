@@ -36,9 +36,22 @@ object Network {
       info = info
     )
 
+  /** Notified after each request settles: the call, its outcome (a result, or the error that failed the task) and
+    * how long it took in milliseconds. The app installs this to ship request timing and failures to a server — it
+    * is where a call that took 15s reveals itself. It must never throw (a throw here is swallowed) and must not
+    * itself log through a path that loops back. Default: nothing. */
+  var observe: (HttpCall, Either[Throwable, HttpResult], Long) => Unit = (_, _, _) => ()
+
   /** Basic HTTP: one request, the whole response as text. Spice's HttpClient where it runs; the platform's stack
-    * (roUrlTransfer, URLSession) elsewhere. */
-  def http(call: HttpCall): Task[HttpResult] = NetworkBackend.http(call)
+    * (roUrlTransfer, URLSession) elsewhere. Each request is timed and its outcome handed to [[observe]]. */
+  def http(call: HttpCall): Task[HttpResult] = {
+    val started = System.currentTimeMillis()
+    NetworkBackend.http(call).attempt.map { result =>
+      val outcome: Either[Throwable, HttpResult] = result.fold(t => Left(t), value => Right(value))
+      try observe(call, outcome, System.currentTimeMillis() - started) catch { case _: Throwable => () }
+      result.fold(t => throw t, value => value)
+    }
+  }
 
   def get(url: String): Task[HttpResult] = http(HttpCall("GET", url))
 
