@@ -84,8 +84,13 @@ object RokuChannel {
     }
     g.fill(shape)
     g.dispose()
+    // All FOUR markers. The top and left ones say which pixel may be stretched; the right and bottom ones say where
+    // the content sits, and they are not optional here — left off, SceneGraph derives the insets itself and gets the
+    // far corner wrong, which showed as a small wedge hanging off the bottom-right of every rounded badge on a Roku.
     image.setRGB(1 + r, 0, 0xFF000000)
     image.setRGB(0, 1 + r, 0xFF000000)
+    image.setRGB(1 + r, inner + 1, 0xFF000000)
+    image.setRGB(inner + 1, 1 + r, 0xFF000000)
     javax.imageio.ImageIO.write(image, "png", file)
   }
 
