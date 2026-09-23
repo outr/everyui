@@ -176,8 +176,16 @@ class RenderNode(val view: View) {
     same
   }
 
+  /** Add `child` at the end, MOVING it here if it is somewhere else — as a browser's appendChild, JavaFX and a Roku's
+    * SceneGraph all do. Android alone throws for a view that already has a parent, and on a television that throw
+    * was the app gone: a component put back into a panel built again (a search's results, reopened) did exactly that. */
   def append(child: RenderNode): Unit = view match {
-    case g: ViewGroup => g.addView(child.view)
+    case g: ViewGroup =>
+      child.view.getParent match {
+        case old: ViewGroup => old.removeView(child.view)
+        case _ => ()
+      }
+      g.addView(child.view)
     case _ => ()
   }
 
