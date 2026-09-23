@@ -51,6 +51,18 @@ object Focus {
   /** Whether Enter is down and has already clicked: its repeats, until it is let go, are the same press. */
   private var enterHeld = false
 
+  /** What OK went down on, where it waits for the release (`Events.hold`); whether the hold has fired; and which
+    * press is which, so a late timer from an earlier one does nothing. */
+  private var holding: Option[Component] = None
+  private var held = false
+  private var holds = 0
+  private var heldFrom = 0.0
+
+  private def hold(c: Component): Unit = {
+    held = true
+    c.event.hold @= (())
+  }
+
   private var backs: List[Key => Boolean] = Nil
 
   /** Handle Back (or Escape) before anything registered earlier: the newest handler that takes it wins. A dialog
@@ -104,7 +116,16 @@ object Focus {
     target.foreach { c =>
       if (pressed) c.event.key.down @= KeyEvent(key, name) else c.event.key.up @= KeyEvent(key, name)
     }
-    if (!pressed) false
+    // OK let go on what it went down on, which is waiting for the release to know whether it was a press or a hold: a
+    // press, unless the hold already fired. Only there — a release whose press went somewhere else is nobody's press.
+    if (!pressed && key == Key.Enter && holding.nonEmpty) {
+      val was = holding
+      holding = None
+      if (!held) was.filter(c => target.exists(_ eq c)).foreach(c =>
+        c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c)))
+      true
+    }
+    else if (!pressed) false
     // A kept key was consumed by the component it went to, so the platform must leave it alone. Saying otherwise
     // let both act on the same press: Back in the screensaver went to the screensaver, which returned to Home, AND
     // on to the Roku, which closed the channel — one press, two answers, and the app was gone.
@@ -114,7 +135,22 @@ object Focus {
     // one press, one click: a held OK is a single press however long it is held, where the remote's own repeat made
     // it a click every fiftieth of a second — and once the first had opened the next screen, the rest landed on
     // whatever had the focus there, which is usually Play. Held arrows still repeat; that is how a rail is run along.
-    else if (key == Key.Enter && enterHeld) true
+    else if (key == Key.Enter && enterHeld) {
+      // the remote's own repeat, well into a hold, is the hold as surely as the timer is: whichever comes first
+      holding.filter(_ => !held && Platform.ticks() - heldFrom >= 400.0).foreach(hold)
+      true
+    }
+    // something with a context menu waits to see how long OK is held (`Events.hold`)
+    else if (key == Key.Enter && target.exists(_.event.holdable)) target.map { c =>
+      enterHeld = true
+      holding = Some(c)
+      held = false
+      heldFrom = Platform.ticks()
+      holds += 1
+      val mine = holds
+      Platform.after(0.5, () => if (mine == holds && !held && holding.exists(_ eq c)) hold(c))
+      true
+    }.getOrElse(false)
     else if (key == Key.Enter) target.map { c =>
       enterHeld = true
       c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))

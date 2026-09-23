@@ -14,4 +14,15 @@ class Events(component: Component) {
     channel.attach(_ => if (component.focusable()) component.focus())
     channel
   }
+
+  /** OK held down on it, for half a second: what a remote has for a long press, where a context menu is. A
+    * component that listens for it is activated when OK is RELEASED rather than pressed — a short press clicks as
+    * it lets go, a long one holds and clicks nothing — while everything else keeps clicking on the press. */
+  lazy val hold: Channel[Unit] = {
+    holdable = true
+    Channel[Unit]
+  }
+
+  /** Whether anything listens for `hold`. */
+  var holdable: Boolean = false
 }
