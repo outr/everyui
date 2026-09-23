@@ -46,6 +46,10 @@ abstract class EveryUIActivity extends Activity {
       root.setScaleY(Host.scale.toFloat)
     }
 
+    // what has been downloaded is kept on disk, as the image servers' own headers allow: a cold start shows the rails'
+    // posters from the device rather than fetching every one of them again
+    try android.net.http.HttpResponseCache.install(new java.io.File(getCacheDir, "http"), 64L * 1024L * 1024L)
+    catch { case t: java.io.IOException => android.util.Log.w("everyui", "no disk cache: " + t.getMessage) }
     val window = getWindow
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     window.setDecorFitsSystemWindows(false)
