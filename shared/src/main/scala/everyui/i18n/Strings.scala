@@ -54,6 +54,9 @@ object Strings {
   /** A message with its arguments filled in (`{name}`, plurals, selects). */
   def format(key: String, args: (String, String)*): String = Icu.format(apply(key), args.toMap)
 
+  /** A language's messages, with `\\n` read as the line break it means: an ARB writes one that way, and Flutter's
+    * generated strings turn it into a break, so a message written for both apps breaks its lines in both. */
   private def load(code: String): Task[Map[String, String]] =
-    Task.async[Map[String, String]](done => Platform.readText(Platform.resolvePath(source(code)), text => done(Platform.parseMessages(text))))
+    Task.async[Map[String, String]](done => Platform.readText(Platform.resolvePath(source(code)), text =>
+      done(Platform.parseMessages(text).map { case (key, message) => key -> message.replace("\\n", "\n") })))
 }
