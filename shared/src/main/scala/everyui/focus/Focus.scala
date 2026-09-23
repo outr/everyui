@@ -15,8 +15,10 @@ import reactify.*
   * item, a column's next line, the nearest item in a flow's next row) takes the focus there, onto its focusable part
   * nearest where the focus was. A container without a layout looks among its own children by where they are, preferring
   * what is in line. A container can also state where an arrow leaving it goes (`Container.exitFocus`) or that it stops
-  * there (`Container.stopFocus`); an arrow nothing answers leaves the focus where it is. So there is no zone to wire
-  * by hand, and no way for a key to be swallowed by a container that runs the other way.
+  * there (`Container.stopFocus`), and where an arrow arriving from outside it lands (`Container.entryFocus`: the
+  * selected tab, the card last left), however the arrow found its way in; an arrow nothing answers leaves the focus
+  * where it is. So there is no zone to wire by hand, and no way for a key to be swallowed by a container that runs
+  * the other way.
   *
   * The candidates are the focusable components under `ui` (or under an open dialog: `scope`) at the time of the key,
   * found by walking the tree: no registry, so a list rebuilt under the focus needs no bookkeeping. With nothing
@@ -167,6 +169,7 @@ object Focus {
               }
               entered
             case None => spatial(candidates(c).filterNot(x => within(x, child)), was, direction)
+              .map(x => arrive(x, was, direction))
           }
           // nothing inside this way: something the container does instead of moving, where it says so
           if (found.isEmpty) c.focusAction(direction).foreach { action =>
@@ -191,8 +194,34 @@ object Focus {
     * the one most nearly in line with `from`. A container that names its entry (`Container.entryFocus`) is entered
     * there. */
   private def enter(target: Component, from: Component, direction: Key): Option[Component] =
+    pick(target, from, direction).map(c => arrive(c, from, direction))
+
+  /** Where the focus lands, having picked `c` coming from `from`: `c` itself, unless it sits inside a container that
+    * names its entry and the focus is arriving there from outside it — then that entry, whichever part of the
+    * container happened to be nearest. The outermost such container decides, since it is the one being entered.
+    *
+    * Picking by distance alone meant that a container's entry held only when the container was itself the neighbour
+    * a layout stepped to; one nested a level down (a row of tabs in a holder), or reached by the spatial search, was
+    * entered at whatever was closest — a tab bar at the wrong tab, which a tab that shows itself on focus turns into
+    * the wrong page. */
+  private def arrive(c: Component, from: Component, direction: Key): Component = {
+    val root = scope().getOrElse(ui)
+    var at: Option[Component] = Some(c)
+    var entry: Option[Component] = None
+    while (at.nonEmpty && !at.exists(_ eq root)) {
+      at.get match {
+        case box: Container if !within(from, box) =>
+          box.focusEntry.filter(e => showing(e) && candidates(e).nonEmpty).foreach(e => entry = Some(e))
+        case _ => ()
+      }
+      at = at.flatMap(_.parent())
+    }
+    entry.flatMap(e => pick(e, from, direction)).getOrElse(c)
+  }
+
+  private def pick(target: Component, from: Component, direction: Key): Option[Component] =
     if (target.focusable()) Some(target)
-    else if (entered(target).nonEmpty) entered(target).flatMap(e => enter(e, from, direction))
+    else if (entered(target).nonEmpty) entered(target).flatMap(e => pick(e, from, direction))
     else {
       val all = candidates(target)
       val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
