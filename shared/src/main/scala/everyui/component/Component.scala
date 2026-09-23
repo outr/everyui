@@ -92,7 +92,9 @@ class Component(val node: RenderNode) {
     here @= Focus.focused.get.exists(_ eq this) // read once, untracked: it follows the focus layer, not the focus
     here
   }
-  def focus(): Unit = Focus.focused @= Some(this)
+  /** Take the focus — unless a dialog is up and this is not in it: a screen that finishes loading behind a dialog, or
+    * a reply that lands late, must not pull the focus out from under the question being asked. */
+  def focus(): Unit = if (Focus.scope().forall(s => Focus.within(this, s))) Focus.focused @= Some(this)
 
   /** Whether this handles `key` itself while focused, so the focus layer leaves it be: a text field keeps Enter and
     * the arrows along its line. */

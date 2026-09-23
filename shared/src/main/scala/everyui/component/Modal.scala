@@ -5,52 +5,53 @@ import everyui.theme.Theme
 import everyui.ui
 import reactify.*
 
-/** youi's `Modal`: one dialog at a time over everything, on a sheet that dims the page. Showing one focuses the
+/** youi's `Modal`: dialogs over everything, each on a sheet that dims what is under it. Showing one focuses the
   * component it names and keeps the focus inside it; a click on the sheet, Escape or Back closes it (before Back does
-  * anything else), and the focus goes back to where it was. */
+  * anything else), and the focus goes back to where it was.
+  *
+  * They stack. `show` puts a dialog up IN PLACE of the one on top, which is what most dialogs mean by opening;
+  * `over` puts one up ON TOP of it — a confirmation over a picker, a word that something is under way over the dialog
+  * that started it — and closing that one is back to the one under it, focus and all. A dialog that is not
+  * `dismissible` ignores Back and the sheet (something is being written, and leaving now would act on a screen that
+  * is about to change); only the code that put it up takes it down, by `remove`. */
 object Modal {
-  private var open: Option[Container] = None
-  private var release: () => Unit = () => ()
-  private var before: Option[Component] = None
-  private var closed: () => Unit = () => ()
-  /** What the dialog wants focused, kept so it can be given the focus again when it comes back out from under. */
-  private var inside: Option[Component] = None
+  /** The dialogs up, the top one first. */
+  private var layers: List[ModalLayer] = Nil
 
   /** Whether something covering the WHOLE screen on its own account is over the top of it — a screensaver.
     *
     * A dialog is drawn over everything, which is right for a dialog and wrong against a screensaver: the screensaver
     * is a screen like any other and so goes UNDER it, leaving a question hanging over a picture nobody is there to
     * read, and holding the focus and Back as well — so the press meant to put the screensaver away answered the
-    * dialog instead. Covered, the dialog stays exactly where it is but is not drawn, does not hold the focus and
-    * does not take Back. Uncovered, it is there again with the focus where it was, which is what somebody coming
+    * dialog instead. Covered, the dialogs stay exactly where they are but are not drawn, do not hold the focus and
+    * do not take Back. Uncovered, they are there again with the focus where it was, which is what somebody coming
     * back to the television expects to find. */
   val covered: Var[Boolean] = Var(false)
 
-  covered.attach(now => open.foreach { sheet =>
-    sheet.visible @= !now
+  covered.attach(now => if (layers.nonEmpty) {
+    layers.foreach(_.sheet.visible @= !now)
     if (now) {
       Focus.scope @= None
-      release()
-      release = () => ()
       Focus.focused @= None
     }
     else {
-      release = Focus.onBack(_ => {
-        close()
-        true
-      })
-      Focus.scope @= Some(sheet)
-      inside.foreach(_.focus())
+      Focus.scope @= layers.headOption.map(_.sheet)
+      layers.headOption.foreach(_.inside.focus())
     }
   })
 
   /** Whether a dialog is up at all, covered or not. */
-  def showing: Boolean = open.nonEmpty
+  def showing: Boolean = layers.nonEmpty
 
-  /** Put `panel` up, with the focus on `focus`; `after` hears it close, however it closes, once the focus is back. */
-  def show(panel: Container, focus: Component, after: () => Unit = () => ()): Unit = {
+  /** Put `panel` up in place of the dialog on top, if there is one, with the focus on `focus`; `after` hears it close,
+    * however it closes, once the focus is back. */
+  def show(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true): Unit = {
     close()
-    closed = after
+    over(panel, focus, after, dismissible)
+  }
+
+  /** Put `panel` up on top of whatever dialog is up, which is there again when it closes. */
+  def over(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true): Unit = {
     val sheet = new Container {
       size.width := ui.size.width
       size.height := ui.size.height
@@ -58,38 +59,53 @@ object Modal {
       panel.position.center := size.center
       panel.position.middle := size.middle
       children += panel
-      event.click.attach(_ => close())
     }
+    val layer = new ModalLayer(sheet, panel, Focus.focused(), after, focus, dismissible)
+    sheet.event.click.attach(_ => if (layer.dismissible && layers.headOption.exists(_ eq layer)) take(layer))
     panel.event.click.attach(_.consume())
-    before = Focus.focused()
-    open = Some(sheet)
-    inside = Some(focus)
+    // Back is this dialog's while it is on top and in view: it closes it, or — where it cannot be dismissed — does
+    // nothing at all, rather than reaching whatever is under it
+    layer.release = Focus.onBack(_ =>
+      if (covered() || !layers.headOption.exists(_ eq layer)) false
+      else {
+        if (layer.dismissible) take(layer)
+        true
+      })
+    layers = layer :: layers
     ui.children += sheet
     // Put up under a cover, it waits there rather than appearing over it: a dialog raised while the screensaver is
     // running is one the viewer is not present for, and it belongs to the screen they left, not to the picture.
     if (covered()) sheet.visible @= false
     else {
-      release = Focus.onBack(_ => {
-        close()
-        true
-      })
       Focus.scope @= Some(sheet)
       focus.focus()
     }
   }
 
-  def close(): Unit = open.foreach { sheet =>
-    ui.children -= sheet
-    open = None
-    inside = None
-    Focus.scope @= None
-    release()
-    release = () => ()
-    val previous = before
-    before = None
-    previous.foreach(c => if (Focus.showing(c)) c.focus() else Focus.focused @= None)
-    val heard = closed
-    closed = () => ()
-    heard()
+  /** Take down the dialog on top: the one a button in it closes. */
+  def close(): Unit = layers.headOption.foreach(take)
+
+  /** Take down the dialog that is `panel`, wherever it is in the stack — what put up a dialog that cannot be
+    * dismissed takes it down this way, without closing whatever may have been put up over it since. */
+  def remove(panel: Container): Unit = layers.find(_.panel eq panel).foreach(take)
+
+  private def take(layer: ModalLayer): Unit = {
+    val top = layers.headOption.exists(_ eq layer)
+    // the one directly above it, if any, now goes back to where this one would have
+    var above: Option[ModalLayer] = None
+    var rest = layers
+    while (rest.nonEmpty && !(rest.head eq layer)) {
+      above = Some(rest.head)
+      rest = rest.tail
+    }
+    above.foreach(_.before = layer.before)
+    layers = layers.filterNot(_ eq layer)
+    layer.release()
+    ui.children -= layer.sheet
+    if (top) {
+      Focus.scope @= (if (covered()) None else layers.headOption.map(_.sheet))
+      layer.before.foreach(c => if (Focus.showing(c)) c.focus() else Focus.focused @= None)
+    }
+    layer.after()
   }
 }
