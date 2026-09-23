@@ -82,15 +82,24 @@ abstract class EveryUIActivity extends Activity {
     else hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN) || super.dispatchKeyEvent(e)
   }
 
-  /** Somebody is in front of it again: the app was away and is back, which is a sign of use like any key. */
+  /** Somebody is in front of it again: the app was away and is back, which is a sign of use like any key. Not the
+    * first time it is in front, which Android also calls resuming: a launch is not a return, and an app that read
+    * everything again on its way back read it all twice on the way in. */
   override def onResume(): Unit = {
     super.onResume()
-    everyui.render.Platform.resumed()
+    if (stopped) {
+      stopped = false
+      everyui.render.Platform.resumed()
+    }
   }
+
+  /** Whether it has been out of sight since it was last in front. */
+  private var stopped = false
 
   /** Nobody can see it now — another app has the screen, or the device is going to sleep. Stop rather than pause,
     * which a picture-in-picture or a dialog over the top also brings, and neither means nobody is watching. */
   override def onStop(): Unit = {
+    stopped = true
     everyui.render.Platform.away()
     super.onStop()
   }
