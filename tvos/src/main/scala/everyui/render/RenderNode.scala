@@ -82,6 +82,7 @@ class RenderNode(val sg: SGNode) {
   // media is not played on tvOS yet (an AVPlayer layer is to come): a video or an audio node is an empty view
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
   def setMediaSource(url: String): Unit = ()
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = ()
   def setMediaLoop(loop: Boolean): Unit = ()
   def setMediaMuted(muted: Boolean): Unit = ()

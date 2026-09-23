@@ -17,6 +17,10 @@ trait MediaSupport { self: Component =>
     * back and ask again. A platform that cannot send headers with its media says so by ignoring them. */
   lazy val headers: Prop[Map[String, String]] =
     new Prop[Map[String, String]](Map.empty, h => node.setMediaHeaders(h))
+  /** Subtitle files to offer beside the file's own tracks, set before `source`: they go in with the source. Where the
+    * platform cannot take them, nothing. */
+  lazy val sidecars: Prop[List[MediaSidecar]] =
+    new Prop[List[MediaSidecar]](Nil, s => node.setMediaSidecars(s))
 
   /** A URL: a file, or an HLS stream (`.m3u8`). Empty stops it. */
   lazy val source: Prop[String] = new Prop[String]("", s => node.setMediaSource(s))

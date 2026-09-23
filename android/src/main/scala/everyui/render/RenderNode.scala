@@ -192,6 +192,7 @@ class RenderNode(val view: View) {
   /** Detach from the parent, if attached. */
   def setMediaHeaders(headers: Map[String, String]): Unit = media.foreach(_.setHeaders(headers))
   def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = media.foreach(_.setSidecars(sidecars))
   def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))

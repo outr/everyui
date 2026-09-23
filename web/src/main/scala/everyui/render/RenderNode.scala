@@ -261,6 +261,8 @@ class RenderNode(val el: html.Element) {
       if (mediaPlaying) m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
     }
   }
+  // a page could add a <track> for each; not yet
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = {
     mediaPlaying = playing
     media.foreach { m =>

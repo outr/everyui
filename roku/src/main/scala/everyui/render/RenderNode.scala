@@ -150,6 +150,7 @@ class RenderNode(val sg: SGNode) {
   // a Roku video takes its headers on the content node it is given; nothing sends any yet
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
   def setMediaSource(url: String): Unit = uiSetMediaSource(sg, url)
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = uiSetMediaPlaying(sg, playing)
   def setMediaLoop(loop: Boolean): Unit = uiSetMediaLoop(sg, loop)
   def setMediaMuted(muted: Boolean): Unit = uiSetMediaMuted(sg, muted)

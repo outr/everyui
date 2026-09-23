@@ -383,6 +383,7 @@ class RenderNode(val fx: Node) {
   // JavaFX Media takes no request headers: what it is given is an address and nothing else
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
   def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))

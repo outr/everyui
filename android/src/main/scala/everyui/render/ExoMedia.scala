@@ -8,7 +8,7 @@ import androidx.media3.exoplayer.{DefaultLoadControl, DefaultRenderersFactory, E
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
-import everyui.component.MediaTrack
+import everyui.component.{MediaSidecar, MediaTrack}
 
 /** What a video or an audio node plays, Android edition: an ExoPlayer, drawing (for a video) into the node's
   * `TextureView`, which a transform fits to the box, filling it or whole inside it.
@@ -67,6 +67,28 @@ class ExoMedia(texture: Option[TextureView]) {
     * are fetched by the same factory, so they carry it too. Kept for the next source: the factory is built with the
     * player. */
   def setHeaders(headers: Map[String, String]): Unit = sending = headers
+
+  /** Subtitle files to offer beside the file's own tracks. Kept for the next source: they go in with it. */
+  def setSidecars(files: List[MediaSidecar]): Unit = sidecars = files
+  private var sidecars: List[MediaSidecar] = Nil
+
+  /** What to play, with the subtitle files beside it, each with its URL as its id — as the Flutter player builds it
+    * — and read as what its name says: WebVTT, SubStation, else SubRip. */
+  private def item(url: String): MediaItem = {
+    val subs = new java.util.ArrayList[MediaItem.SubtitleConfiguration]()
+    sidecars.foreach { s =>
+      val lower = s.url.toLowerCase
+      val mime =
+        if (lower.endsWith(".vtt")) androidx.media3.common.MimeTypes.TEXT_VTT
+        else if (lower.endsWith(".ass") || lower.endsWith(".ssa")) androidx.media3.common.MimeTypes.TEXT_SSA
+        else androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+      subs.add(new MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url)).setMimeType(mime)
+        .setLanguage(if (s.language.isEmpty) null else s.language)
+        .setLabel(if (s.label.nonEmpty) s.label else if (s.language.nonEmpty) s.language else "Subtitles")
+        .setId(s.url).build())
+    }
+    new MediaItem.Builder().setUri(Uri.parse(url)).setSubtitleConfigurations(subs).build()
+  }
 
   /** How much to hold before playing, and how long to wait for bytes: see [[Buffering]]. Takes effect on the next
     * source, since a load control belongs to the player it was built with. */
@@ -167,7 +189,7 @@ class ExoMedia(texture: Option[TextureView]) {
             listener("error")
           }
         })
-        made.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+        made.setMediaItem(item(url))
         made.prepare()
         made.setPlayWhenReady(playing)
         player = Some(made)
