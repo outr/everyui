@@ -76,8 +76,8 @@ class DesktopMedia(pane: Option[Pane]) {
   }
 
   def setVolume(v: Double): Unit = {
-    volume = v
-    player.foreach(_.setVolume(v))
+    volume = math.min(1.0, v) // JavaFX cannot boost
+    player.foreach(_.setVolume(volume))
   }
 
   /** How fast it runs: JavaFX takes a rate on the player itself. */

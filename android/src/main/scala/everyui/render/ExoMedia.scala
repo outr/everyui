@@ -118,7 +118,7 @@ class ExoMedia(texture: Option[TextureView]) {
           .build(), false)
         surface.foreach(made.setVideoSurface)
         made.setRepeatMode(if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF)
-        made.setVolume(if (muted) 0f else volume.toFloat)
+        made.setVolume(if (muted) 0f else math.min(1.0, volume).toFloat)
         if (rate != 1.0) made.setPlaybackParameters(new PlaybackParameters(rate.toFloat))
         // the languages are usually said before there is a player to say them to, so each one is told as it is made
         prefer(made)
@@ -171,6 +171,8 @@ class ExoMedia(texture: Option[TextureView]) {
         made.prepare()
         made.setPlayWhenReady(playing)
         player = Some(made)
+        // a boost asked for before there was a player to boost
+        if (volume > 1.0) loudness()
         watch()
       } catch {
         case t: Throwable =>
@@ -317,7 +319,24 @@ class ExoMedia(texture: Option[TextureView]) {
     close()
   }
 
-  private def loudness(): Unit = player.foreach(_.setVolume(if (muted) 0f else volume.toFloat))
+  /** The volume, and past full volume a boost: the player's own volume stops at 1, so what is asked for beyond it is
+    * made up by a loudness enhancer on the player's audio session, in the millibels it wants (a gain of 2 is +6 dB),
+    * as the Flutter app's player does it. */
+  private def loudness(): Unit = player.foreach { p =>
+    p.setVolume(if (muted) 0f else math.min(1.0, volume).toFloat)
+    if (volume > 1.0 && !muted) {
+      if (enhancer.isEmpty) enhancer =
+        try Some(new android.media.audiofx.LoudnessEnhancer(p.getAudioSessionId))
+        catch { case t: Throwable => Platform.logError("media: no loudness enhancer", t); None }
+      enhancer.foreach { e =>
+        e.setTargetGain((2000.0 * math.log10(volume)).toInt)
+        e.setEnabled(true)
+      }
+    }
+    else enhancer.foreach(_.setEnabled(false))
+  }
+
+  private var enhancer: Option[android.media.audiofx.LoudnessEnhancer] = None
 
   /** The watch on whether anything is still arriving, once a second while there is a player.
     *
@@ -359,6 +378,8 @@ class ExoMedia(texture: Option[TextureView]) {
   private def close(): Unit = {
     hooks.foreach(release => release())
     hooks = Nil
+    enhancer.foreach(e => try e.release() catch { case _: Throwable => () })
+    enhancer = None
     player.foreach { p =>
       try p.stop() catch { case _: Throwable => () }
       p.release()

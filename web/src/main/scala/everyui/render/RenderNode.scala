@@ -270,7 +270,7 @@ class RenderNode(val el: html.Element) {
   }
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.loop = loop)
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.muted = muted)
-  def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = volume)
+  def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = math.min(1.0, volume)) // a page cannot boost
   def setMediaRate(rate: Double): Unit = media.foreach(_.playbackRate = rate)
   def mediaRates(): Boolean = true
   // neither what it holds nor what it waits for can be told here

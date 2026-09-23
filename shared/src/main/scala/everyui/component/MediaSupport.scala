@@ -23,8 +23,9 @@ trait MediaSupport { self: Component =>
   lazy val playing: Prop[Boolean] = new Prop[Boolean](true, p => node.setMediaPlaying(p))
   lazy val loop: Prop[Boolean] = new Prop[Boolean](false, l => node.setMediaLoop(l))
   lazy val muted: Prop[Boolean] = new Prop[Boolean](false, m => node.setMediaMuted(m))
-  /** 0 to 1. */
-  lazy val volume: Prop[Double] = new Prop[Double](1.0, v => node.setMediaVolume(math.max(0.0, math.min(1.0, v))))
+  /** 0 to 1, and past 1 a boost up to 4 — as loud as the platform can make it, where it can make something louder
+    * than it was mixed at all (Android's loudness enhancer); elsewhere anything past 1 is simply full volume. */
+  lazy val volume: Prop[Double] = new Prop[Double](1.0, v => node.setMediaVolume(math.max(0.0, math.min(4.0, v))))
   /** How fast it runs: 1 is as it was recorded, 2 twice as quick, 0.5 half. A platform that cannot vary the rate
     * keeps playing at 1 and says so through [[rates]]. */
   lazy val rate: Prop[Double] = new Prop[Double](1.0, r => node.setMediaRate(math.max(0.1, math.min(4.0, r))))
