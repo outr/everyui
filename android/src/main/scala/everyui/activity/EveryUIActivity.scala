@@ -32,7 +32,9 @@ abstract class EveryUIActivity extends Activity {
     val root = new NodeGroup(this)
     // The render root is a viewport: content past its edges is clipped, as on every other backend.
     root.setClipChildren(true)
-    root.setBackgroundColor(Color.WHITE)
+    // see-through until the app paints its own ground, so the window's launch background (an app's splash) shows
+    // from the moment the process starts rather than a white view over it
+    root.setBackgroundColor(Color.TRANSPARENT)
     def extent(size: Double): Int = if (size > 0.0) size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
     setContentView(root, new ViewGroup.LayoutParams(extent(Host.viewportWidth), extent(Host.viewportHeight)))
     Host.root = root
