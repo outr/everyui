@@ -46,6 +46,9 @@ object Focus {
 
   private var marked: Option[Component] = None
 
+  /** Whether Enter is down and has already clicked: its repeats, until it is let go, are the same press. */
+  private var enterHeld = false
+
   private var backs: List[Key => Boolean] = Nil
 
   /** Handle Back (or Escape) before anything registered earlier: the newest handler that takes it wins. A dialog
@@ -90,6 +93,7 @@ object Focus {
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
     if (pressed) activity @= activity() + 1L
+    if (key == Key.Enter && !pressed) enterHeld = false
     // what had the focus when the key came: a component that moves the focus as it handles its own key is still the one
     // that kept it, and the key does not travel on from wherever the focus went
     val target = focused()
@@ -105,7 +109,12 @@ object Focus {
     else if (kept) true
     // what the screen itself claims, before the focus layer makes its own use of the key
     else if (hooked(key)) true
+    // one press, one click: a held OK is a single press however long it is held, where the remote's own repeat made
+    // it a click every fiftieth of a second — and once the first had opened the next screen, the rest landed on
+    // whatever had the focus there, which is usually Play. Held arrows still repeat; that is how a rail is run along.
+    else if (key == Key.Enter && enterHeld) true
     else if (key == Key.Enter) target.map { c =>
+      enterHeld = true
       c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
       true
     }.getOrElse(false)
