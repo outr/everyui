@@ -6,7 +6,10 @@ import everyui.Color
 import everyui.component.types.Prop
 import everyui.render.Platform
 import everyui.theme.Theme
+import everyui.task.*
 import reactify.*
+
+import scala.concurrent.duration.*
 
 /** A viewport over `content`, which may be larger than it: what fits shows, and the wheel, a drag, the arrows and
   * the page keys (while focused) bring the rest into view, and the focus moving onto something out of view scrolls to
@@ -65,12 +68,24 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
     content.children.attach(_.foreach(cull))
     event.key.down.attach { k =>
       val along = if (horizontal) size.width() else size.height()
-      if (k.key == (if (horizontal) Key.ArrowRight else Key.ArrowDown)) scrollBy(40.0)
-      else if (k.key == (if (horizontal) Key.ArrowLeft else Key.ArrowUp)) scrollBy(-40.0)
+      if (k.key == (if (horizontal) Key.ArrowRight else Key.ArrowDown)) stride(step())
+      else if (k.key == (if (horizontal) Key.ArrowLeft else Key.ArrowUp)) stride(-step())
       else if (k.key == Key.PageDown) scrollBy(along * 0.9)
       else if (k.key == Key.PageUp) scrollBy(-along * 0.9)
     }
   }
+
+  /** How far an arrow moves it, and over how long, in seconds (0: at once). A page of text read with a remote wants a
+    * long stride that glides, so the eye can follow where the words went. */
+  val step: Var[Double] = Var(40.0)
+  val glide: Var[Double] = Var(0.0)
+
+  private def stride(delta: Double): Unit =
+    if (glide() <= 0.0 || Platform.nativeScroll()) scrollBy(delta)
+    else {
+      val to = math.max(0.0, math.min(furthest(), offset() + delta))
+      offset.to(to).in((glide() * 1000.0).toLong.millis).start()
+    }
 
   def scrollBy(delta: Double): Unit = scrollTo(offset() + delta)
   def scrollTo(to: Double): Unit = {
