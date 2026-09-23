@@ -100,6 +100,7 @@ class RenderNode(val sg: SGNode) {
 
   // ---- a page of the web ----
   def setWebSource(url: String): Unit = ()
+  def setWebAgent(agent: String): Unit = ()
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
 

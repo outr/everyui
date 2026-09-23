@@ -18,6 +18,11 @@ class WebView(bridge: String, node: RenderNode = null)
   /** The address showing. Setting it again goes there again. */
   lazy val source: Prop[String] = new Prop[String]("", url => this.node.setWebSource(url))
 
+  /** Who the page is told is asking, where the engine lets it be said: set before `source`, since it goes with the
+    * loads that follow. A television's engine calls itself a television, and some pages treat one differently —
+    * YouTube's embed refuses to play for one at all. Empty is the engine's own. */
+  lazy val agent: Prop[String] = new Prop[String]("", a => this.node.setWebAgent(a))
+
   /** Say something to the page. It is script, and it runs in the page's world, not this one's. */
   def run(script: String): Unit = node.runWebScript(script)
 

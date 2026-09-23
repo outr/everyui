@@ -206,6 +206,12 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
+  /** Who the page is told is asking, for the loads after this one; empty is the engine's own. */
+  def setWebAgent(agent: String): Unit = view match {
+    case w: android.webkit.WebView => w.getSettings.setUserAgentString(if (agent.trim.isEmpty) null else agent)
+    case _ => ()
+  }
+
   /** Say something to the page, in its own language. */
   def runWebScript(script: String): Unit = view match {
     case w: android.webkit.WebView => w.evaluateJavascript(script, null)

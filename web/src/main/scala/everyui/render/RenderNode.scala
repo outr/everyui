@@ -292,6 +292,7 @@ class RenderNode(val el: html.Element) {
 
   // ---- a page of the web ----
   def setWebSource(url: String): Unit = ()
+  def setWebAgent(agent: String): Unit = ()
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
 
