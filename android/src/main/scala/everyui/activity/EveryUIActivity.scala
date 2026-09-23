@@ -88,6 +88,13 @@ abstract class EveryUIActivity extends Activity {
     everyui.render.Platform.resumed()
   }
 
+  /** Nobody can see it now — another app has the screen, or the device is going to sleep. Stop rather than pause,
+    * which a picture-in-picture or a dialog over the top also brings, and neither means nobody is watching. */
+  override def onStop(): Unit = {
+    everyui.render.Platform.away()
+    super.onStop()
+  }
+
   /** The shared layer's singletons (`ui`, the app) live as long as the process, as they live as long as a page or a
     * channel, so leaving the app ends the process and the next launch starts fresh. */
   override def onDestroy(): Unit = {

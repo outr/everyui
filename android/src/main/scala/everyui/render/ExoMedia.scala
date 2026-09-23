@@ -42,6 +42,8 @@ class ExoMedia(texture: Option[TextureView]) {
   private var reached = 0L
   private var grew = 0.0
   private var watching = 0
+  /** What stops the player hearing that the app has gone away and come back. */
+  private var hooks: List[() => Unit] = Nil
 
   texture.foreach { t =>
     t.setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
@@ -118,6 +120,12 @@ class ExoMedia(texture: Option[TextureView]) {
         made.setRepeatMode(if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF)
         made.setVolume(if (muted) 0f else volume.toFloat)
         if (rate != 1.0) made.setPlaybackParameters(new PlaybackParameters(rate.toFloat))
+        // the languages are usually said before there is a player to say them to, so each one is told as it is made
+        prefer(made)
+        // nobody is watching a player behind another app, or a sleeping screen: it holds while the app is away and
+        // carries on as it was asked to when it is back — where what it was asked was to play
+        hooks = List(Platform.onAway(() => made.setPlayWhenReady(false)),
+          Platform.onResume(() => made.setPlayWhenReady(playing)))
         made.addListener(new Player.Listener {
           override def onPlaybackStateChanged(state: Int): Unit = {
             // READY is the first moment there is a picture to show, and the only one worth saying: it is said once,
@@ -261,15 +269,24 @@ class ExoMedia(texture: Option[TextureView]) {
     * Said to the selector rather than acted on once the tracks are known: a preference applied after the fact lets
     * the file's own default track start first and then switches, which is a moment of the wrong language out loud.
     * An empty language clears the preference rather than asking for a track that has none. */
-  def languages(audio: String, text: String): Unit = player.foreach { p =>
+  def languages(audio: String, text: String): Unit = {
+    hear = audio.trim
+    read = text.trim
+    player.foreach(prefer)
+  }
+
+  /** The languages last asked for, kept for every player made after: a source is a new player. */
+  private var hear = ""
+  private var read = ""
+
+  private def prefer(p: ExoPlayer): Unit =
     try {
       val from = p.getTrackSelectionParameters.buildUpon()
-      if (audio.trim.isEmpty) from.setPreferredAudioLanguages() else from.setPreferredAudioLanguage(audio.trim)
-      if (text.trim.isEmpty) from.setPreferredTextLanguages() else from.setPreferredTextLanguage(text.trim)
+      if (hear.isEmpty) from.setPreferredAudioLanguages() else from.setPreferredAudioLanguage(hear)
+      if (read.isEmpty) from.setPreferredTextLanguages() else from.setPreferredTextLanguage(read)
       p.setTrackSelectionParameters(from.build())
     }
     catch { case t: Throwable => Platform.logError("media: languages", t) }
-  }
 
   /** What is being said on screen at this moment, as the text track has it, or "" while nothing is. */
   def cues(): String = cueText
@@ -340,6 +357,8 @@ class ExoMedia(texture: Option[TextureView]) {
   })
 
   private def close(): Unit = {
+    hooks.foreach(release => release())
+    hooks = Nil
     player.foreach { p =>
       try p.stop() catch { case _: Throwable => () }
       p.release()

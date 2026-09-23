@@ -1010,12 +1010,27 @@ object Platform {
   /** What to do when the app is at the front again after being away — another app had the screen, or the device
     * came back from sleep. An app that was left showing something it only shows when nobody is there (a
     * screensaver) wants to know, because somebody is there now. */
-  def onResume(f: () => Unit): Unit = resumers = resumers :+ f
+  def onResume(f: () => Unit): () => Unit = {
+    resumers = resumers :+ f
+    () => resumers = resumers.filterNot(_ eq f)
+  }
 
   /** Said by the platform when it happens. */
   def resumed(): Unit = resumers.foreach(f => f())
 
   private var resumers: List[() => Unit] = Nil
+
+  /** What to do when the app goes away from the front: another app has the screen, or the device is going to sleep.
+    * A player wants to know, because nobody is watching it now. Returns what stops it being told. */
+  def onAway(f: () => Unit): () => Unit = {
+    aways = aways :+ f
+    () => aways = aways.filterNot(_ eq f)
+  }
+
+  /** Said by the platform when it happens. */
+  def away(): Unit = aways.foreach(f => f())
+
+  private var aways: List[() => Unit] = Nil
 
   def keepAwake(on: Boolean): Unit = {
     val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON

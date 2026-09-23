@@ -674,11 +674,26 @@ object Platform {
 
   /** What to do when the app is at the front again after being away. Nothing here says so yet, so nothing is ever
     * called: a caller must not depend on it as its only way of noticing somebody is back. */
-  def onResume(f: () => Unit): Unit = resumers = resumers :+ f
+  def onResume(f: () => Unit): () => Unit = {
+    resumers = resumers :+ f
+    () => resumers = resumers.filterNot(_ eq f)
+  }
 
   def resumed(): Unit = resumers.foreach(f => f())
 
   private var resumers: List[() => Unit] = Nil
+
+  /** What to do when the app goes away from the front: another app has the screen, or the device is going to sleep.
+    * A player wants to know, because nobody is watching it now. Returns what stops it being told. */
+  def onAway(f: () => Unit): () => Unit = {
+    aways = aways :+ f
+    () => aways = aways.filterNot(_ eq f)
+  }
+
+  /** Said by the platform when it happens. */
+  def away(): Unit = aways.foreach(f => f())
+
+  private var aways: List[() => Unit] = Nil
 
   def log(message: String): Unit = println("[ui] " + message)
 
