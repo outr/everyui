@@ -722,6 +722,7 @@ object Host {
     if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) "Enter"
     else if (code == KeyEvent.KEYCODE_BACK) "Back"
     else if (code == KeyEvent.KEYCODE_ESCAPE) "Escape"
+    else if (code == KeyEvent.KEYCODE_DEL) "Backspace"
     else if (code == KeyEvent.KEYCODE_DPAD_UP) "ArrowUp"
     else if (code == KeyEvent.KEYCODE_DPAD_DOWN) "ArrowDown"
     else if (code == KeyEvent.KEYCODE_DPAD_LEFT) "ArrowLeft"
