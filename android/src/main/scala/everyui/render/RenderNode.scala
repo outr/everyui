@@ -595,6 +595,30 @@ class RenderNode(val view: View) {
 
   def setAlt(text: String): Unit = view.setContentDescription(if (text.isEmpty) null else text)
 
+  /** The focus landed here (the app's own focus, which Android's does not follow). With a screen reader on, this is
+    * where TalkBack's focus goes: read out by its label, or else by the words inside it, as a button that its double
+    * tap (or OK) presses. Without one, nothing is done: the checks and the delegate cost nothing on an ordinary run. */
+  def accessibleFocus(click: () => Unit): Unit = if (RenderNode.reading) {
+    view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES)
+    if (android.os.Build.VERSION.SDK_INT >= 28) view.setScreenReaderFocusable(true)
+    view.setAccessibilityDelegate(new View.AccessibilityDelegate {
+      override def onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo): Unit = {
+        super.onInitializeAccessibilityNodeInfo(host, info)
+        info.setClassName("android.widget.Button")
+        info.setFocusable(true)
+        info.setClickable(true)
+        info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
+      }
+      override def performAccessibilityAction(host: View, action: Int, args: android.os.Bundle): Boolean =
+        if (action == android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) {
+          click()
+          true
+        }
+        else super.performAccessibilityAction(host, action, args)
+    })
+    view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null)
+  }
+
   def setTextAlign(align: String): Unit = view match {
     case t: TextView => t.setTextAlignment(
       if (align == "center") View.TEXT_ALIGNMENT_CENTER else if (align == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
@@ -630,6 +654,14 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** Whether a screen reader (TalkBack, or any service that reads the screen) is on now. */
+  def reading: Boolean = {
+    val manager = Host.activity.getSystemService(Context.ACCESSIBILITY_SERVICE).asInstanceOf[android.view.accessibility.AccessibilityManager]
+    // on a television there is no touch to explore, so a service that speaks counts as well
+    manager != null && manager.isEnabled && (manager.isTouchExplorationEnabled ||
+      !manager.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_SPOKEN).isEmpty)
+  }
+
   /** How many lines a string is written as: one, plus a line for every newline in it. */
   def lineCount(text: CharSequence): Int = {
     var lines = 1

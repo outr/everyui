@@ -306,6 +306,8 @@ class RenderNode(val fx: Node) {
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
   // no reader of roles or descriptions reaches this platform's nodes
   def setSemantics(role: String, level: Int, label: String): Unit = ()
+  /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */
+  def accessibleFocus(click: () => Unit): Unit = ()
   def setAlt(text: String): Unit = ()
 
   def setTextAlign(value: String): Unit = {

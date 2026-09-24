@@ -374,6 +374,10 @@ class RenderNode(val el: html.Element) {
     attribute("aria-label", label)
   }
 
+  /** The focus landed here. The page keeps its own focus rather than the browser's, and says what things are by
+    * their roles and labels (setSemantics), so there is nothing more to do. */
+  def accessibleFocus(click: () => Unit): Unit = ()
+
   /** An `<img>`'s words for what it shows; empty marks it decoration. */
   def setAlt(text: String): Unit = el.setAttribute("alt", text)
 

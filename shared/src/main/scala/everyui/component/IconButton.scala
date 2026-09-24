@@ -1,6 +1,7 @@
 package everyui.component
 
 import everyui.Color
+import everyui.component.types.Semantics
 import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
@@ -17,6 +18,8 @@ class IconButton(glyph: MaterialIcon, tip: String, action: () => Unit = () => ()
   focusable @= true
   radius @= 16.0
   tooltip @= tip
+  // a glyph says nothing to a screen reader: what it does does
+  semantics @= Semantics.button(tip)
   size.width @= 32.0
   size.height @= 32.0
   // its own hover, lighter than the card it may sit on, and the glyph brightens with it

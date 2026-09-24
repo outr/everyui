@@ -48,6 +48,8 @@ object Focus {
       now.foreach(_.focusedNow @= true)
       marked = now
       now.foreach(place)
+      // a screen reader (TalkBack) reads out where the focus has landed, and can press it
+      now.foreach(c => c.node.accessibleFocus(() => c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))))
     }
     if (Platform.remoteNavigation()) Platform.after(WatchSeconds, () => watch())
   }

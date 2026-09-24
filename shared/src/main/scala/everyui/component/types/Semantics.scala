@@ -26,4 +26,7 @@ object Semantics {
   val listItem: Semantics = Semantics("listitem")
   /** A picture made of other components, named `label`. */
   def image(label: String): Semantics = Semantics("img", label = label)
+  /** Something pressed to act, named `label` where what it shows does not say (an icon); empty, it is read by its
+    * words. */
+  def button(label: String = ""): Semantics = Semantics("button", label = label)
 }
