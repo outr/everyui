@@ -512,8 +512,8 @@ object Platform {
   /** A channel has no browser to go to. */
   def navigate(url: String): Unit = ()
   /** A channel has no title bar. */
-  /** A page's description of itself (`everyui.seo.PageMeta`): a channel has no title bar. */
-  def setPageMeta(meta: everyui.seo.PageMeta): Unit = ()
+  /** A page's description of itself (`everyui.seo.SEO`): a channel has no title bar. */
+  def setSEO(meta: everyui.seo.SEO): Unit = ()
   /** The first screen is drawn: nothing was standing in for it. */
   def drawn(): Unit = ()
 

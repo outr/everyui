@@ -670,10 +670,10 @@ object Platform {
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
 
-  /** The page's head says what the page now shown is (`everyui.seo.PageMeta`): its title, description, canonical
+  /** The page's head says what the page now shown is (`everyui.seo.SEO`): its title, description, canonical
     * address, preview, other forms and structured data, replacing what the page before it said. What the server wrote
     * into the page first is replaced the same way, so the head never holds two of anything. */
-  def setPageMeta(meta: everyui.seo.PageMeta): Unit = {
+  def setSEO(meta: everyui.seo.SEO): Unit = {
     val head = dom.document.head
     val written = head.querySelectorAll("[data-everyui-meta]")
     (0 until written.length).map(written(_)).foreach(e => head.removeChild(e))

@@ -2,7 +2,7 @@ package everyui.seo
 
 import scala.collection.immutable.ListMap
 
-/** Structured data (schema.org, as JSON-LD) for `PageMeta.jsonLd`: what search engines show as rich results and what
+/** Structured data (schema.org, as JSON-LD) for `SEO.jsonLd`: what search engines show as rich results and what
   * answer engines take as fact — who wrote a page, when, what it is part of, what it answers.
   *
   * A value is written as JSON by what it is: a `ListMap` an object (in its order; an entry whose value is `None`,
@@ -10,7 +10,7 @@ import scala.collection.immutable.ListMap
 object JsonLd {
   private val context = "https://schema.org"
 
-  /** A schema.org thing of `kind` with `fields`, as the JSON text `PageMeta.jsonLd` holds. */
+  /** A schema.org thing of `kind` with `fields`, as the JSON text `SEO.jsonLd` holds. */
   def apply(kind: String, fields: (String, Any)*): String = write(node(kind, fields*), top = true)
 
   /** The same, as a value to nest inside another. */

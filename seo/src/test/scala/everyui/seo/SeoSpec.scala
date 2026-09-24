@@ -53,7 +53,7 @@ class SeoSpec extends AnyWordSpec with Matchers {
 
   "PageHead" should {
     "write every tag the app later replaces, and escape what goes in them" in {
-      val head = PageHead.render(PageMeta("A \"title\" & more", "Says <this>", canonical = "/post/", image = "/i.png",
+      val head = PageHead.render(SEO("A \"title\" & more", "Says <this>", canonical = "/post/", image = "/i.png",
         kind = "article", siteName = "Site", jsonLd = List(JsonLd.person("Me", "https://example.com/")),
         alternates = List(Alternate("/post/index.md", "text/markdown", "Markdown"))), absolute)
       head should startWith("<title>A \"title\" &amp; more</title>")
@@ -66,7 +66,7 @@ class SeoSpec extends AnyWordSpec with Matchers {
       head should not include "robots"
     }
     "keep a page out of search results when asked" in {
-      PageHead.render(PageMeta("Admin", noindex = true), absolute) should include("<meta name=\"robots\" content=\"noindex\" data-everyui-meta>")
+      PageHead.render(SEO("Admin", noindex = true), absolute) should include("<meta name=\"robots\" content=\"noindex\" data-everyui-meta>")
     }
   }
 

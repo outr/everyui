@@ -1021,8 +1021,8 @@ object Platform {
   /** An app has no page to leave: the browser opens `url`. */
   def navigate(url: String): Unit = openUrl(url)
   /** The activity's title (what the recents screen calls it). */
-  /** A page's description of itself (`everyui.seo.PageMeta`): only its title has a place here. */
-  def setPageMeta(meta: everyui.seo.PageMeta): Unit = setTitle(meta.title)
+  /** A page's description of itself (`everyui.seo.SEO`): only its title has a place here. */
+  def setSEO(meta: everyui.seo.SEO): Unit = setTitle(meta.title)
   /** The first screen is drawn: nothing was standing in for it. */
   def drawn(): Unit = ()
 

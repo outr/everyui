@@ -1,11 +1,11 @@
 package everyui.seo
 
-/** A `PageMeta` as the tags of a page's `<head>`, as the server writes it: title, description, canonical address,
+/** An `SEO` as the tags of a page's `<head>`, as the server writes it: title, description, canonical address,
   * robots, Open Graph and Twitter previews, other forms (a feed, the Markdown copy) and JSON-LD. Every tag but the title
-  * is marked `data-everyui-meta`, so the app, setting its own as it moves from page to page (`Platform.setPageMeta`),
+  * is marked `data-everyui-meta`, so the app, setting its own as it moves from page to page (`Platform.setSEO`),
   * replaces them rather than adding a second of each. `absolute` makes a site path a whole URL. */
 object PageHead {
-  def render(meta: PageMeta, absolute: String => String): String = {
+  def render(meta: SEO, absolute: String => String): String = {
     def tag(name: String, attributes: (String, String)*): String =
       "<" + name + attributes.map { case (k, v) => " " + k + "=\"" + Escape.attribute(v) + "\"" }.mkString +
         " data-everyui-meta>"

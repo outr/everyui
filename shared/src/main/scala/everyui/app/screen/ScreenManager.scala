@@ -7,6 +7,7 @@ import everyui.focus.Focus
 import everyui.layout.LayoutPass
 import everyui.net.URLPath
 import everyui.render.Platform
+import everyui.seo.SEO
 import everyui.task.TaskSupport
 import everyui.theme.Theme
 import everyui.{scribe, ui}
@@ -24,6 +25,9 @@ import reactify.*
   * path, or the first. */
 trait ScreenManager extends TaskSupport {
   val active: Var[Option[Screen]] = Var(None)
+  /** What the shown screen says about itself (`Screen.seo`), followed as it changes: the screen changing, or what the
+    * screen built it from arriving. */
+  private lazy val shownSEO: Val[Option[SEO]] = Val(active().flatMap(Screen.seo))
   /** Where the screens go: `ui` itself, or a region of it under an app bar. */
   def host: Container = ui
   /** Behind everything, the whole size of `ui`: the active screen's own `background`, else the theme's, so no screen
@@ -75,6 +79,8 @@ trait ScreenManager extends TaskSupport {
       }
     })
     Focus.onBack(key => key == Key.Back && back())
+    // the page's head follows the shown screen's SEO; a screen with none leaves it as it is
+    shownSEO.attachAndFire(_.foreach(Platform.setSEO))
     Platform.whenFontsReady(() =>
       load()
         .flatMap(_ => show(at(URLPath(Platform.path())).getOrElse(screen), push = false))
