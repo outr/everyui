@@ -62,6 +62,12 @@ trait ScreenManager extends TaskSupport {
   def run(screen: Screen, others: Screen*): Unit = {
     screens = screen :: others.toList
     ScreenManager.running = Some(this)
+    // everything on the page waits for it to have been painted once: what the server wrote into it (the page as plain
+    // HTML) is on the screen first, rather than covered before it was ever drawn (`Platform.afterFirstPaint`)
+    Platform.afterFirstPaint(() => start(screen))
+  }
+
+  private def start(screen: Screen): Unit = {
     // behind anything an app put in `ui` before running
     val before = ui.children()
     ui.children.clear()

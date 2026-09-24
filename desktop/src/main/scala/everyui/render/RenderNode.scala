@@ -737,6 +737,8 @@ object Platform {
     * here it is read at once. */
   def measuresInBatches: Boolean = false
   def beforePaint(f: () => Unit): Unit = f()
+  /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
+  def afterFirstPaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = Option(Host.scene).flatMap(s => Option(s.getWindow)).foreach {
     case stage: javafx.stage.Stage => stage.setTitle(title)

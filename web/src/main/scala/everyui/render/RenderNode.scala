@@ -712,6 +712,20 @@ object Platform {
     * together at the end of its turn, before the browser draws, so the page is laid out once for all of them rather than
     * once for each read that follows a change. Nothing is drawn in between, so nothing shows the difference. */
   def measuresInBatches: Boolean = true
+  /** `f` once the page has been painted at least once: after the next frame the browser draws. What the server wrote
+    * into the page (its content, as plain HTML) is then on the screen before the app starts building over it, and a
+    * page's first and largest paints are that content's, not the app's; an app with nothing written in waits one frame.
+    * A tab opened in the background draws no frames until it is shown, so a moment later it starts regardless. */
+  def afterFirstPaint(f: () => Unit): Unit = {
+    var started = false
+    val go: js.Function0[Unit] = () => if (!started) {
+      started = true
+      f()
+    }
+    dom.window.requestAnimationFrame(_ => dom.window.setTimeout(go, 0))
+    dom.window.setTimeout(go, 100)
+  }
+
   /** `f` at the end of the script's turn, before the browser draws: a microtask. */
   def beforePaint(f: () => Unit): Unit = {
     val task: js.Function0[Unit] = () => f()

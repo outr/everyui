@@ -1029,6 +1029,8 @@ object Platform {
     * here it is read at once. */
   def measuresInBatches: Boolean = false
   def beforePaint(f: () => Unit): Unit = f()
+  /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
+  def afterFirstPaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = Host.activity.setTitle(title)
   /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
