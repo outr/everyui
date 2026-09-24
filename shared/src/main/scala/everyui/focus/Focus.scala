@@ -43,7 +43,55 @@ object Focus {
       marked.foreach(_.focusedNow @= false)
       now.foreach(_.focusedNow @= true)
       marked = now
+      now.foreach(place)
     }
+    if (Platform.remoteNavigation()) Platform.after(WatchSeconds, () => watch())
+  }
+
+  // How often the focus is checked for, on a platform with only a remote to move it; and whether the last check
+  // found it lost, since a screen that has just taken its rows down to build them again puts its own focus back a
+  // moment later, and is not to be raced to it.
+  private val WatchSeconds = 0.25
+  private var lost = false
+  // Where the focus last was, on the screen: what it comes back nearest to when what held it goes.
+  private var lastX = 0.0
+  private var lastY = 0.0
+
+  private def place(c: Component): Unit = {
+    lastX = centerX(c)
+    lastY = centerY(c)
+  }
+
+  /** On a platform navigated by a remote, something always has the focus: with nothing focused, nobody can see where
+    * a press would go, and the only way back is a guess at an arrow. So the focus is watched, and when it has been on
+    * nothing — or on something taken off the screen, a card replaced in a rebuilt row — for two checks in a row, it
+    * goes to what is showing nearest where it was, under an open dialog when there is one. */
+  private def watch(): Unit = {
+    if (focused().forall(c => !showing(c))) {
+      if (lost) {
+        recover()
+        lost = false
+      }
+      else lost = true
+    }
+    else lost = false
+    Platform.after(WatchSeconds, () => watch())
+  }
+
+  private def recover(): Unit = {
+    val root = scope().filter(showing).getOrElse(ui)
+    nearest(candidates(root).filter(shown), lastX, lastY).foreach(c => focused @= Some(c))
+  }
+
+  /** Whether `c` is on the screen to be seen: under `ui`, and neither it nor anything it is inside hidden. */
+  private def shown(c: Component): Boolean = {
+    var at: Option[Component] = Some(c)
+    var seen = true
+    while (seen && at.nonEmpty) {
+      if (!at.get.visible()) seen = false
+      at = at.flatMap(_.parent())
+    }
+    seen && showing(c) && c.size.width() > 0.0 && c.size.height() > 0.0
   }
 
   private var marked: Option[Component] = None
