@@ -112,8 +112,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
           .setBufferDurationsMs(holding.minMs, holding.maxMs, holding.startMs, holding.resumeMs)
           .build()
         val made = new ExoPlayer.Builder(Host.activity)
-          .setRenderersFactory(new DefaultRenderersFactory(Host.activity)
-            .setEnableDecoderFallback(true))
+          .setRenderersFactory(renderers(url).setEnableDecoderFallback(true))
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
           // how long one load may go on failing before it is lost is the profile's patience, and the number of
           // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter
@@ -124,10 +123,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
             }))
           .setLoadControl(load)
           .build()
-        made.setAudioAttributes(new AudioAttributes.Builder()
-          .setUsage(C.USAGE_MEDIA)
-          .setContentType(if (frame.nonEmpty) C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC)
-          .build(), false)
+        sounding(made)
         attach(made)
         made.setRepeatMode(if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF)
         made.setVolume(if (muted) 0f else math.min(1.0, volume).toFloat)
@@ -148,6 +144,17 @@ class ExoMedia(frame: Option[VideoFrame]) {
             }
             else if (state == Player.STATE_ENDED && !looping) listener("ended")
           }
+          override def onIsPlayingChanged(on: Boolean): Unit = session.foreach(_.state(on))
+          override def onPositionDiscontinuity(was: Player.PositionInfo, now: Player.PositionInfo, reason: Int): Unit =
+            session.foreach(_.state(made.isPlaying))
+          // held or let go by Android rather than the app — another app took the sound, or gave it back — which the
+          // app is told, so what it shows as playing is what is
+          override def onPlayWhenReadyChanged(on: Boolean, reason: Int): Unit =
+            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS ||
+              reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
+              playing = on
+              listener(if (on) "resumed" else "paused")
+            }
           override def onVideoSizeChanged(size: VideoSize): Unit = {
             videoWidth = size.width
             videoHeight = size.height
@@ -187,6 +194,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
         made.prepare()
         made.setPlayWhenReady(playing)
         player = Some(made)
+        announce()
         // a boost asked for before there was a player to boost
         if (volume > 1.0) loudness()
         watch()
@@ -202,6 +210,65 @@ class ExoMedia(frame: Option[VideoFrame]) {
     playing = on
     player.foreach(_.setPlayWhenReady(on))
     if (on) watch()
+  }
+
+  /** What is playing, for Android's now-playing ([[NowPlayingSession]]): a session while there is a player and a
+    * name to give it, and the sound's focus with it. */
+  def setNowPlaying(what: everyui.component.NowPlaying): Unit = {
+    about = what
+    player.foreach(sounding)
+    announce()
+  }
+  private var about = everyui.component.NowPlaying()
+  private var session: Option[NowPlayingSession] = None
+
+  /** Whether to listen to the sound for its spectrum ([[SpectrumTap]]). Takes effect on the next source: the tap is
+    * built into the player's audio path. */
+  def setSpectrum(on: Boolean): Unit = listening = on
+  private var listening = false
+  private var heard: List[Double] = Nil
+
+  /** The spectrum last heard, or nothing. */
+  def bands(): List[Double] = heard
+
+  /** The player's renderers, with the spectrum tap in its audio path where it was asked for. What it hears is handed
+    * over on the main thread, and only while it is still this source playing. */
+  private def renderers(url: String): DefaultRenderersFactory =
+    if (!listening) new DefaultRenderersFactory(Host.activity)
+    else {
+      val tap = new SpectrumTap(levels => Host.activity.runOnUiThread(() => if (source == url && player.nonEmpty) {
+        heard = levels.toList
+        listener("bands")
+      }))
+      new DefaultRenderersFactory(Host.activity) {
+        override protected def buildAudioSink(context: android.content.Context, float: Boolean,
+                                              params: Boolean): androidx.media3.exoplayer.audio.AudioSink =
+          new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+            .setAudioProcessors(Array[androidx.media3.common.audio.AudioProcessor](tap))
+            .build()
+      }
+    }
+
+  /** What the sound is, said to Android: a film or music, and whether it takes the sound over from other apps —
+    * only what is playing as the point of the screen (it has a now-playing), never sound under something else. */
+  private def sounding(p: ExoPlayer): Unit = p.setAudioAttributes(new AudioAttributes.Builder()
+    .setUsage(C.USAGE_MEDIA)
+    .setContentType(if (frame.nonEmpty) C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC)
+    .build(), about.title.nonEmpty)
+
+  /** The session, made, told what is playing, or let go, to match. */
+  private def announce(): Unit = player match {
+    case Some(p) if about.title.nonEmpty =>
+      val s = session.getOrElse {
+        val made = new NowPlayingSession(() => position(), at => seek(at))
+        session = Some(made)
+        made
+      }
+      s.describe(about)
+      s.state(p.isPlaying)
+    case _ =>
+      session.foreach(_.release())
+      session = None
   }
 
   def setLoop(on: Boolean): Unit = {
@@ -401,6 +468,9 @@ class ExoMedia(frame: Option[VideoFrame]) {
       p.release()
     }
     player = None
+    heard = Nil
+    // the session outlives one source for the next (a queue's tracks), and goes with the last
+    if (source.isEmpty) announce()
     said = false
     reached = 0L
     watching += 1

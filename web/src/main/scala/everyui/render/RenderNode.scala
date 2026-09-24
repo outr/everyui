@@ -291,6 +291,10 @@ class RenderNode(val el: html.Element) {
   // the browser lists the tracks a file carries; `audioTracks` is not in every engine, so a missing list is no list
   /** The words on screen: "" here, where the browser draws the showing text track itself. */
   def mediaCues(): String = ""
+  // nothing here shows what is playing, or hears it
+  def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
+  def setMediaSpectrum(on: Boolean): Unit = ()
+  def mediaBands(): List[Double] = Nil
 
   // ---- a page of the web ----
   def setWebSource(url: String): Unit = ()

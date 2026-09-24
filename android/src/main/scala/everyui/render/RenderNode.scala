@@ -206,6 +206,11 @@ class RenderNode(val view: View) {
   /** What is being said on screen at this moment, where this platform hands the words over rather than drawing
     * them itself: on Android nothing draws them, since that is media3-ui and this build merges no resources. */
   def mediaCues(): String = media.map(_.cues()).getOrElse("")
+  /** What is playing, for Android's own now-playing: a media session, with the sound's focus (NowPlayingSession). */
+  def setNowPlaying(about: everyui.component.NowPlaying): Unit = media.foreach(_.setNowPlaying(about))
+  /** Hear the sound as it plays, for a visualizer: a tap on the decoded audio (SpectrumTap). */
+  def setMediaSpectrum(on: Boolean): Unit = media.foreach(_.setSpectrum(on))
+  def mediaBands(): List[Double] = media.map(_.bands()).getOrElse(Nil)
 
   // ---- a page of the web ----
 

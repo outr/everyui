@@ -43,6 +43,22 @@ trait MediaSupport { self: Component =>
     * platform whose player cannot be told ignores it. */
   lazy val buffering: Prop[String] = new Prop[String]("balanced", b => node.setMediaBuffering(b))
 
+  /** What is playing, for the platform's own now-playing: a television's playing card and its assistant, a phone's
+    * lock screen, the transport keys of whatever else is listening. Set on the one thing a screen is FOR — the track,
+    * the book, the film — and never on sound under something else (a game's music, a clip to name): it also takes
+    * the sound over from other apps while it plays, and gives it back when they take it. The platform's own Play,
+    * Pause, Next and Previous arrive as the keys of those names, so a screen hears them where it hears the remote.
+    * A title of "" is none; a platform with no now-playing of its own ignores it. */
+  lazy val nowPlaying: Prop[NowPlaying] = new Prop[NowPlaying](NowPlaying(), n => node.setNowPlaying(n))
+
+  /** Listen to the sound as well as play it: [[bands]] follows its spectrum, for a visualizer. Set it BEFORE
+    * [[source]]; a platform that cannot hear its own output leaves `bands` empty, and a visualizer draws without. */
+  lazy val spectrum: Prop[Boolean] = new Prop[Boolean](false, s => node.setMediaSpectrum(s))
+
+  /** The sound's spectrum as it plays, where [[spectrum]] asked for it: levels 0 to 1, low to high, about thirty times
+    * a second. Empty until it is heard, and on a platform that cannot hear it. */
+  val bands: Var[List[Double]] = Var(Nil)
+
   /** Whether it is waiting for something to play rather than playing: the pause a viewer knows as the picture
     * freezing with nothing said about it.
     *
@@ -106,11 +122,14 @@ trait MediaSupport { self: Component =>
 
   node.onMediaEvent { e =>
     if (e == "cues") said @= node.mediaCues()
-    listeners.foreach(_(e))
+    if (e == "bands") bands @= node.mediaBands()
+    else listeners.foreach(_(e))
   }
   watch()
 
-  /** Hear `ready` (it is showing, or sounding), `ended` (it reached its end, and does not loop) and `error`. */
+  /** Hear `ready` (it is showing, or sounding), `ended` (it reached its end, and does not loop) and `error` — and,
+    * with [[nowPlaying]] set, `paused` and `resumed` where the platform stopped or restarted it itself (another app
+    * took the sound, then gave it back), so what the screen shows can follow. */
   def events(f: String => Unit): Unit = listeners = listeners :+ f
 
   /** Seconds in. */
@@ -165,6 +184,8 @@ trait MediaSupport { self: Component =>
     if (url.nonEmpty) {
       node.setMediaHeaders(headers())
       node.setMediaBuffering(buffering())
+      node.setMediaSpectrum(spectrum())
+      node.setNowPlaying(nowPlaying())
       node.setMediaSource(url)
       node.setMediaLoop(loop())
       node.setMediaMuted(muted())

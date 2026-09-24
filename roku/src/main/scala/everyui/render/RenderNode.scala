@@ -166,6 +166,10 @@ class RenderNode(val sg: SGNode) {
   def mediaSize(): (Double, Double) = (0.0, 0.0)
   /** The words on screen: "" here, where the platform draws its own subtitles. */
   def mediaCues(): String = ""
+  // a Roku's own now-playing is the channel's, and SceneGraph hands a channel none of its sound
+  def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
+  def setMediaSpectrum(on: Boolean): Unit = ()
+  def mediaBands(): List[Double] = Nil
 
   // ---- a page of the web ----
   def setWebSource(url: String): Unit = ()
