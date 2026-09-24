@@ -762,7 +762,7 @@ object Platform {
   def tint(red: Double, green: Double, blue: Double): Boolean = {
     val app = dom.document.getElementById("app").asInstanceOf[html.Element]
     if (app != null) {
-      if (red >= 0.999 && green >= 0.999 && blue >= 0.999) app.style.filter = ""
+      if (red >= 0.999 && green >= 0.999 && blue >= 0.999) app.style.removeProperty("filter")
       else {
         var svg = dom.document.getElementById("everyui-tint")
         if (svg == null) {
@@ -776,7 +776,7 @@ object Platform {
         svg.innerHTML = "<filter id=\"everyui-tint-matrix\" color-interpolation-filters=\"sRGB\"><feColorMatrix " +
           "type=\"matrix\" values=\"" + red.toString + " 0 0 0 0 0 " + green.toString + " 0 0 0 0 0 " + blue.toString +
           " 0 0 0 0 0 1 0\"/></filter>"
-        app.style.filter = "url(#everyui-tint-matrix)"
+        app.style.setProperty("filter", "url(#everyui-tint-matrix)")
       }
     }
     true
