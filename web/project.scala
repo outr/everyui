@@ -7,7 +7,7 @@
 //> using dep com.outr::spice-client::1.10.9-SNAPSHOT3
 // spice-core_sjs1 as published locally lists its dependencies by their JVM names, so the Scala.js builds of them
 // are named here until spice publishes them right (reactify comes from source, below)
-//> using dep org.typelevel::fabric-io::1.30.0
+//> using dep org.typelevel::fabric-io::1.30.2-SNAPSHOT
 //> using dep com.outr::rapid-core::2.9.9
 //> using dep com.outr::scribe::3.19.1-SNAPSHOT
 //> using dep com.outr::profig::3.7.1
