@@ -277,6 +277,20 @@ class RokuEmitter(
       if (brReserved(s.toLowerCase)) s + "_" else s
     }
 
+    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`). A
+      * member keeps its `brSafe` name, which the runtime and dispatch reach by string. */
+    def brLocal(name: String): String = {
+      val s = brSafe(name)
+      if (runtimeFnNames(s.toLowerCase)) s + "_" else s
+    }
+    /** A term that lives in a method or a val's initialiser (a local, a parameter), not in a class. */
+    def isLocalSym(s: Symbol): Boolean =
+      s.exists && s.isTerm && s.owner.exists && !s.owner.isClassDef && !s.owner.isPackageDef
+    /** A `def` inside a block. It is emitted as a closure held in a local of its name (see `emitStats`), and called
+      * through it, so it reads what it captures as a lambda does. */
+    def isLocalDef(s: Symbol): Boolean =
+      s.exists && s.isDefDef && s.name != "$anonfun" && s.owner.exists && !s.owner.isClassDef
+        && (s.owner.flags.is(Flags.Method) || s.owner.isValDef)
 
     /** BrightScript has ONE name per function, Scala allows overloads
      *  (`Transaction.commit()` and `Transaction.commit(v)`). Overloaded members
@@ -298,7 +312,7 @@ class RokuEmitter(
 
 
     def termParams(pcs: List[ParamClause]): List[String] =
-      pcs.collect { case c: TermParamClause => c }.flatMap(_.params).map(p => brSafe(p.name))
+      pcs.collect { case c: TermParamClause => c }.flatMap(_.params).map(p => brLocal(p.name))
 
     // A BrightScript function takes at most 32 parameters. Past `Packed` the rest travel as one array, `__more`, on both
     // sides alike (a definition and every call count the same arguments, defaults included), so a case class of sixty
@@ -408,6 +422,17 @@ class RokuEmitter(
     // modules/facades). BrightScript can't capture, so these ride in the env.
     def freeVarsIn(body: Tree, ownParams: Set[Symbol]): List[(String, Symbol)] = {
       val bound = mutable.Set[Symbol]() ++ ownParams
+      // a local def inside the body is its own, wherever in its block it is named from
+      val defined = new TreeTraverser {
+        override def traverseTree(t: Tree)(owner: Symbol): Unit = {
+          t match {
+            case dd: DefDef => bound += dd.symbol
+            case _ =>
+          }
+          super.traverseTree(t)(owner)
+        }
+      }
+      defined.traverseTree(body)(Symbol.noSymbol)
       val found = mutable.LinkedHashMap[Symbol, String]()
       val trav = new TreeTraverser {
         override def traverseTree(t: Tree)(owner: Symbol): Unit = {
@@ -418,15 +443,15 @@ class RokuEmitter(
             case id: Ident =>
               val s = id.symbol
               val parentParam = inParentArgs && s.exists && s.flags.is(Flags.ParamAccessor) && currentClass.exists && s.owner == currentClass
-              if (parentParam && !bound.contains(s)) found.getOrElseUpdate(s, brSafe(id.name))
-              else if (s.exists && s.isTerm && !s.isDefDef && !bound.contains(s)
+              if (parentParam && !bound.contains(s)) found.getOrElseUpdate(s, brLocal(id.name))
+              else if (s.exists && s.isTerm && (!s.isDefDef || isLocalDef(s)) && !bound.contains(s)
                  && !isFacade(s) && !moduleSyms.contains(s.owner)
                  && s.owner.exists && !s.owner.isClassDef && (s.owner.flags.is(Flags.Method) || s.owner.isValDef)
                  && anonCaptureRef(s).isEmpty)
-              found.getOrElseUpdate(s, brSafe(id.name))
+              found.getOrElseUpdate(s, brLocal(id.name))
             case sel @ Select(q: This, n) if inParentArgs && sel.symbol.exists && sel.symbol.flags.is(Flags.ParamAccessor)
                 && currentClass.exists && sel.symbol.owner == currentClass && !bound.contains(sel.symbol) =>
-              found.getOrElseUpdate(sel.symbol, brSafe(n))
+              found.getOrElseUpdate(sel.symbol, brLocal(n))
             case _ =>
           }
           super.traverseTree(t)(owner)
@@ -441,7 +466,9 @@ class RokuEmitter(
       dd.rhs.map(r => freeVarsIn(r, own)).getOrElse(Nil)
     }
 
-    def emitClosure(dd: DefDef): String = {
+    /** `omit`: captures left out of the environment for now — a local def not yet made, the closure itself — which
+      * `emitStats` puts in once they exist. */
+    def emitClosure(dd: DefDef, omit: Set[Symbol] = Set.empty): String = {
       val n = closureCounter; closureCounter += 1
       val name = s"closure$n"
       val params = termParams(dd.paramss)
@@ -464,7 +491,7 @@ class RokuEmitter(
       closures.append("end function\n\n")
       val envSelf = if (currentClass.exists) "self" else "invalid"
       // A captured box / thunk travels as itself (raw name), never unboxed.
-      val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
+      val envFvs = fvs.filterNot((_, s) => omit.contains(s)).map { case (nm, _) => s", fv_$nm: $nm" }.mkString
       s"{ fn: $name, env: { self: $envSelf$envFvs } }"
     }
 
@@ -479,7 +506,7 @@ class RokuEmitter(
         case id: Ident if isByNameParam(id.symbol) && anonCaptureRef(id.symbol).isEmpty =>
           val field = !inParentArgs && id.symbol.flags.is(Flags.ParamAccessor) && currentClass.exists &&
             inCurrentClass(id.symbol.owner)
-          if (field) s"self.${fieldKey(id.symbol)}" else brSafe(id.name)
+          if (field) s"self.${fieldKey(id.symbol)}" else brLocal(id.name)
         case _ =>
           val n = closureCounter; closureCounter += 1
           val name = s"closure$n"
@@ -731,7 +758,8 @@ class RokuEmitter(
 
     def argParts(args: List[Term], callee: Symbol): List[() => String] = {
       val params =
-        if (userEmittedCallee(callee) && callee.isDefDef) callee.paramSymss.filter(isTermClause).flatten else Nil
+        if ((userEmittedCallee(callee) || isLocalDef(callee)) && callee.isDefDef) callee.paramSymss.filter(isTermClause).flatten
+        else Nil
       val repeatedAt = {
         val byParam = params.indexWhere(isRepeatedParam)
         if (byParam >= 0) byParam
@@ -753,7 +781,8 @@ class RokuEmitter(
         if (isDefaultArg(arg)) {
           val gs = unwrap(inner).symbol
           val owner = if (gs.exists && gs.owner.exists) gs.owner else Symbol.noSymbol
-          if (!isUserDefaultOwner(owner)) dropArg
+          // a local def's default is a local def beside it, called as one
+          if (!isUserDefaultOwner(owner) && !isLocalDef(gs)) dropArg
           else {
             val term = if (owner.flags.is(Flags.Module)) defaultGetterRhs(gs).getOrElse(inner) else inner
             if (byName) emitThunk(term) else emitArgVal(term)
@@ -827,7 +856,7 @@ class RokuEmitter(
       }
       found
     }
-    def captureValue(sy: Symbol): String = anonCaptureRef(sy).getOrElse(brSafe(sy.name))
+    def captureValue(sy: Symbol): String = anonCaptureRef(sy).getOrElse(brLocal(sy.name))
     def isOwnedWithin(sy: Symbol, cls: Symbol): Boolean =
       try {
         var o = sy.owner
@@ -1213,13 +1242,15 @@ class RokuEmitter(
       // A symbol with no denotation (some local/synthetic Idents) has no owner —
       // `sym.owner` would throw NoDenotation.owner — so emit the bare safe name.
       else if (!sym.exists || !sym.owner.exists) brSafe(name)
+      // a local def without parameters (`def now = …`), named: a call of the closure it is held in
+      else if (isLocalDef(sym)) localDefCall(sym, Nil)
       else {
         val boxed = boxedVars.contains(sym)
         val byName = isByNameParam(sym)
         // a by-name constructor parameter read from a method or closure of its class: the field it was kept in
         val byNameField = byName && anonCaptureRef(sym).isEmpty && !inParentArgs && sym.flags.is(Flags.ParamAccessor) &&
           currentClass.exists && inCurrentClass(sym.owner)
-        val local = anonCaptureRef(sym).orElse(if (boxed || byName) Some(brSafe(name)) else None)
+        val local = anonCaptureRef(sym).orElse(if (boxed || byName) Some(brLocal(name)) else None)
         local match {
           // a captured box reads its cell; a by-name parameter is forced on
           // EVERY use (Scala re-evaluates it — reactify's dependency tracking
@@ -1227,15 +1258,22 @@ class RokuEmitter(
           case Some(ref) =>
             if (boxed) ref + ".v" else if (byNameField) s"RtForce(self.${fieldKey(sym)})" else if (byName) s"RtForce($ref)" else ref
           case None =>
-            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
+            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brLocal(name)
             else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
             else if (inCurrentClass(sym.owner)) s"self.${fieldKey(sym)}"
             else moduleSyms.get(sym.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(sym, name)}()"
-              case None         => brSafe(name)
+              case None         => if (isLocalSym(sym)) brLocal(name) else brSafe(name)
             }
         }
       }
+
+    /** A call of a local def: the closure held in its local (or, from inside a local class, the one it captured). */
+    def localDefCall(sym: Symbol, args: List[Term]): String = {
+      val r = anonCaptureRef(sym).getOrElse(brLocal(sym.name))
+      val a = emitOrdered(argParts(args, sym)).filter(_ != dropArg)
+      s"$r.fn($r.env, [${a.mkString(", ")}])"
+    }
 
     def rep(t: Term): List[Term] = unwrap(t) match {
       case Repeated(es, _) => es
@@ -1396,6 +1434,8 @@ class RokuEmitter(
             case _ =>
           }
           fn match {
+            // ── a local def, called through the closure it is held in (see `emitStats`) ──
+            case Ident(_) if isLocalDef(fn.symbol) => localDefCall(fn.symbol, args)
             // ── a call into a type nothing ever constructs: dead at runtime (see "reachability") ──
             case _ if pruning && fn.symbol.exists && fn.symbol.isDefDef && !fn.symbol.isClassConstructor
                 && allClassDefs.contains(fn.symbol.owner) && !keepClass(fn.symbol.owner) =>
@@ -1906,6 +1946,9 @@ class RokuEmitter(
         case id @ Ident(n) => emitRef(id.symbol, n)
         case Select(q, "toString")             => s"_str(${emitTerm(q)})"
         case Apply(Select(q, "toString"), Nil) => s"_str(${emitTerm(q)})"
+        // `Duration.Zero`: the runtime's FiniteDuration of no milliseconds (the module is nothing a Roku has)
+        case z @ Select(_, "Zero") if ownerFqn(z.symbol) == "scala.concurrent.duration.Duration" =>
+          s"RtDuration(${emitConst(IntConstant(0))})"
         case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Double" =>
           if (n == "MaxValue") "RtDoubleMax()" else "RtDoubleMin()"
         case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if ownerFqn(sel.symbol) == "scala.Int" =>
@@ -1978,7 +2021,7 @@ class RokuEmitter(
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
         case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
         case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
-          if (isByNameParam(sel.symbol)) s"RtForce(${brSafe(n)})" else brSafe(n)
+          if (isByNameParam(sel.symbol)) s"RtForce(${brLocal(n)})" else brLocal(n)
         case sel @ Select(q, _) if isModelMember(sel.symbol) && !isFacade(sel.symbol) && !isSuper(q) =>
           emitModelCall(Some(q), sel.symbol, Nil)
         case Select(q, "unary_$bang" | "unary_!") => s"(not ${emitTerm(q)})"
@@ -2087,7 +2130,7 @@ class RokuEmitter(
       case Ident("_")        => ("true", Nil)
       case Bind(name, inner) =>
         val (t, b) = patternTest(inner, subj)
-        (t, s"${brSafe(name)} = $subj" :: b)
+        (t, s"${brLocal(name)} = $subj" :: b)
       // `"a" | "b"` inside a pattern: any of them
       case Alternatives(ps) =>
         val ts = ps.map(x => patternTest(x, subj))
@@ -2186,8 +2229,7 @@ class RokuEmitter(
     def hoistBlock(bl: Block): String =
       if (pendingStack.isEmpty) todo(bl)
       else {
-        bl.statements.foreach { st =>
-          val e = emitStat(st)
+        emitStats(bl.statements).foreach { e =>
           if (e.trim.nonEmpty) pendingStack.top += e
         }
         emitTerm(bl.expr)
@@ -2213,7 +2255,7 @@ class RokuEmitter(
       case Block(stats, e) if allValDefs(stats) && isTempVals(stats) && dropsDefaults(e) =>
         withStatement(sinkLine(sk, emitTempValBlock(stats.collect { case v: ValDef => v }, e)))
       case Block(stats, e) =>
-        (stats.map(emitStat) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
+        (emitStats(stats) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
       case If(c, a, b) =>
         val head = withStatement(s"  if ${emitTerm(c)} then")
         val thenPart = emitInto(a, sk)
@@ -2273,7 +2315,7 @@ class RokuEmitter(
 
     def emitStat(st: Statement): String = st match {
       case vd @ ValDef(name, _, Some(rhs)) =>
-        val lhs = brSafe(name)
+        val lhs = brLocal(name)
         if (boxedVars.contains(vd.symbol))
           List(emitInto(rhs, lhs), s"  $lhs = { v: $lhs }").filter(_.trim.nonEmpty).mkString("\n")
         else selfCaptured(emitInto(rhs, lhs), lhs)
@@ -2286,6 +2328,30 @@ class RokuEmitter(
       case _: DefDef | _: ClassDef | _: TypeDef => ""
       case term: Term => emitInto(term, "")
       case _ => ""
+    }
+
+    /** A block's statements. A local def becomes a closure held in a local of its name, made where the def stands
+      * (by then everything it may read is: Scala lets a def name no later val). One that names itself, or a def of the
+      * block not made yet, has that capture put in its environment once the closure named exists. */
+    def emitStats(stats: List[Statement]): List[String] = {
+      val defs = stats.collect { case dd: DefDef if isLocalDef(dd.symbol) => dd.symbol }.toSet
+      if (defs.isEmpty) stats.map(emitStat)
+      else {
+        val made = mutable.Set[Symbol]()
+        val waiting = mutable.ListBuffer[(String, Symbol)]()   // (the closure's local, the def it waits for)
+        stats.map {
+          case dd: DefDef if defs.contains(dd.symbol) =>
+            val nm = brLocal(dd.name)
+            val later = freeVars(dd).map(_._2).filter(s => defs.contains(s) && !made.contains(s)).toSet
+            val line = withStatement(s"  $nm = ${emitClosure(dd, later)}")
+            made += dd.symbol
+            later.foreach(s => waiting += ((nm, s)))
+            val ready = waiting.filter((_, s) => made.contains(s)).toList
+            waiting --= ready
+            (line :: ready.map((h, s) => s"  $h.env.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
+          case st => emitStat(st)
+        }
+      }
     }
 
     def emitBody(t: Term, wantRet: Boolean): String = emitInto(t, if (wantRet) skReturn else "")
@@ -2440,16 +2506,16 @@ class RokuEmitter(
       val (defaultVals, realVals) =
         if (dropsDefaults(expr)) vals.partition(_.rhs.exists(isDefaultArg)) else (Nil, vals)
       var res = emitTerm(expr)
-      // Refs to these temp vals were emitted through brSafe (`title$1` →
-      // `title_1`), so substitute the brSafe'd name, not the raw Scala one.
-      for (vd <- defaultVals) res = sub(res, brSafe(vd.name), marker)
+      // Refs to these temp vals were emitted through brLocal (`title$1` →
+      // `title_1`), so substitute the brLocal'd name, not the raw Scala one.
+      for (vd <- defaultVals) res = sub(res, brLocal(vd.name), marker)
       // No extra parens: emitTerm already wraps binary ops, and an inlined temp
       // sits in a delimited slot (assoc `key: value` / arg). Wrapping a receiver
       // as `(self.player).setSource(…)` is a BrightScript syntax error (a
       // statement can't start with `(`, and `(expr).method()` isn't allowed).
       for (vd <- realVals.reverse) {
         val rhs = vd.rhs.get
-        res = sub(res, brSafe(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
+        res = sub(res, brLocal(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
       }
       val id = "[A-Za-z_$][A-Za-z0-9_$]*"
       res
@@ -2523,7 +2589,7 @@ class RokuEmitter(
       { val tag = isaTag(sym); if (tag.nonEmpty) out.append(s"  self._isa = ${brStr(tag)}\n") }
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
-          out.append(s"  self.${brSafe(vd.name)} = ${brSafe(vd.name)}\n")
+          out.append(s"  self.${brSafe(vd.name)} = ${brLocal(vd.name)}\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) =>
           out.append(emitInto(rhs, s"self.${brSafe(name)}")).append("\n")
         // A constructor STATEMENT (`register(this)` in a class body) runs at
@@ -2655,7 +2721,7 @@ class RokuEmitter(
       }
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
-          sb.append(s"  self.${fieldKey(vd.symbol)} = ${brSafe(vd.name)}\n")
+          sb.append(s"  self.${fieldKey(vd.symbol)} = ${brLocal(vd.name)}\n")
           // an object is one flat table, so a parameter kept under the name of a member the class inherits overwrites it
           // (`size: Double` on a component replaced its `size` feature, and every layout touching it failed quietly):
           // a gap, so the checks stop it rather than a device
@@ -2749,7 +2815,7 @@ class RokuEmitter(
             t match {
               case id: Ident =>
                 val sy = id.symbol
-                if (sy.exists && sy.isTerm && !sy.isDefDef && !isFacade(sy) && !moduleSyms.contains(sy.owner)
+                if (sy.exists && sy.isTerm && (!sy.isDefDef || isLocalDef(sy)) && !isFacade(sy) && !moduleSyms.contains(sy.owner)
                    && sy.owner.exists && !sy.owner.isClassDef && (sy.owner.flags.is(Flags.Method) || sy.owner.isValDef)
                    && !isOwnedWithin(sy, sym))
                 caps += sy
@@ -2788,6 +2854,11 @@ class RokuEmitter(
           case id: Ident =>
             if (nested > 0 && candidates.contains(id.symbol)) boxedVars += id.symbol
           case Block(List(_: DefDef), _: Closure) =>
+            nested += 1
+            super.traverseTree(t)(owner)
+            nested -= 1
+          // a local def is a closure too (see `emitStats`)
+          case dd: DefDef if isLocalDef(dd.symbol) =>
             nested += 1
             super.traverseTree(t)(owner)
             nested -= 1
@@ -3133,6 +3204,15 @@ class RokuEmitter(
 
   private val appBrsHeader: String =
     "' Generated by everyui's Roku compiler — the translated example app.\n\n"
+
+  /** Every function the runtime defines, lower-cased (BrightScript names are case-insensitive). A local or a parameter
+    * named like one (`set` beside `Set`, `failure` beside `Failure`) shadows it in that function, which brighterscript
+    * refuses (BS1104), so such a local is written with a trailing `_` (see `brLocal`). The platform runtime
+    * (UniversalRuntime.brs) is copied in after the emitter runs, and its functions are all `ui`/`_`/`Rt` names no
+    * Scala local takes. */
+  private lazy val runtimeFnNames: Set[String] =
+    "(?im)^\\s*(?:function|sub)\\s+([A-Za-z_][A-Za-z0-9_]*)".r
+      .findAllMatchIn(runtimeBrs + "\n" + shimsBrs).map(_.group(1).toLowerCase).toSet
 
   /** The core of the Scala runtime: string conversion, collection, String,
    *  Option and Try/Either operations, closure invocation (`RtInvoke`) and the
@@ -3752,10 +3832,12 @@ class RokuEmitter(
       |end function
       |function _tryFold(t as dynamic, fa as dynamic, fb as dynamic) as dynamic
       |    if t <> invalid and (t._cls = "Failure" or t._cls = "Left")
-      |        arg = t.error : if arg = invalid then arg = t.value
+      |        arg = t.error
+      |        if arg = invalid then arg = t.value
       |        return RtInvoke(fa, [arg])
       |    end if
-      |    v = invalid : if t <> invalid then v = t.value
+      |    v = invalid
+      |    if t <> invalid then v = t.value
       |    return RtInvoke(fb, [v])
       |end function
       |function _tryGetOrElse(t as dynamic, default as dynamic) as dynamic

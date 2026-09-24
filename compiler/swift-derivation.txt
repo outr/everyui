@@ -176,6 +176,25 @@ class SwiftEmitter(
 
 
 @@ old
+    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`). A
+      * member keeps its `brSafe` name, which the runtime and dispatch reach by string. */
+    def brLocal(name: String): String = {
+      val s = brSafe(name)
+      if (runtimeFnNames(s.toLowerCase)) s + "_" else s
+    }
+@@ new
+    /** A local's or a parameter's name. Swift names are case-sensitive, so no runtime function is shadowed by one. */
+    def brLocal(name: String): String = brSafe(name)
+@@ old
+    /** A `def` inside a block. It is emitted as a closure held in a local of its name (see `emitStats`), and called
+      * through it, so it reads what it captures as a lambda does. */
+    def isLocalDef(s: Symbol): Boolean =
+      s.exists && s.isDefDef && s.name != "$anonfun" && s.owner.exists && !s.owner.isClassDef
+        && (s.owner.flags.is(Flags.Method) || s.owner.isValDef)
+@@ new
+    /** A `def` inside a block: made a closure on the Roku (see `emitStats`); not yet here, where it is left out. */
+    def isLocalDef(s: Symbol): Boolean = false
+@@ old
       pcs.exists { case _: TermParamClause => true; case _ => false }
 
     val binOps = Map(
@@ -213,7 +232,7 @@ class SwiftEmitter(
       closures.append("end function\n\n")
       val envSelf = if (currentClass.exists) "self" else "invalid"
       // A captured box / thunk travels as itself (raw name), never unboxed.
-      val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
+      val envFvs = fvs.filterNot((_, s) => omit.contains(s)).map { case (nm, _) => s", fv_$nm: $nm" }.mkString
       s"{ fn: $name, env: { self: $envSelf$envFvs } }"
     }
 
@@ -236,7 +255,7 @@ class SwiftEmitter(
       closures.append("}\n\n")
       val envSelf = if (currentClass.exists) "this" else NULL
       // A captured box / thunk travels as itself (raw name), never unboxed.
-      val envFvs = fvs.map { case (nm, _) => s"${swStr("fv_" + nm)}: $nm" }
+      val envFvs = fvs.filterNot((_, s) => omit.contains(s)).map { case (nm, _) => s"${swStr("fv_" + nm)}: $nm" }
       s"rtClosure($name, ${rtObj(s"${swStr("self")}: $envSelf" :: envFvs)})"
     }
 
@@ -584,24 +603,24 @@ class SwiftEmitter(
           case Some(ref) =>
             if (boxed) ref + ".v" else if (byNameField) s"RtForce(self.${fieldKey(sym)})" else if (byName) s"RtForce($ref)" else ref
           case None =>
-            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
+            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brLocal(name)
             else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
             else if (inCurrentClass(sym.owner)) s"self.${fieldKey(sym)}"
             else moduleSyms.get(sym.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(sym, name)}()"
-              case None         => brSafe(name)
+              case None         => if (isLocalSym(sym)) brLocal(name) else brSafe(name)
 @@ new
           // EVERY use (Scala re-evaluates it — reactify's dependency tracking
           // depends on exactly that)
           case Some(ref) =>
             if (boxed) field(ref, "v") else if (byNameField) s"RtForce(${field("this", fieldKey(sym))})" else if (byName) s"RtForce($ref)" else ref
           case None =>
-            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brSafe(name)
+            if (inParentArgs && sym.flags.is(Flags.ParamAccessor) && currentClass.exists && sym.owner == currentClass) brLocal(name)
             else if (isModelMember(sym) && inCurrentClass(sym.owner)) emitModelCall(None, sym, Nil)
             else if (inCurrentClass(sym.owner)) field("this", fieldKey(sym))
             else moduleSyms.get(sym.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(sym, name)}()"
-              case None         => brSafe(name)
+              case None         => if (isLocalSym(sym)) brLocal(name) else brSafe(name)
 @@ old
               pieces += s"_str(${emitTerm(args(i))})"
             }
@@ -1185,7 +1204,7 @@ class SwiftEmitter(
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
         case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
         case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
-          if (isByNameParam(sel.symbol)) s"RtForce(${brSafe(n)})" else brSafe(n)
+          if (isByNameParam(sel.symbol)) s"RtForce(${brLocal(n)})" else brLocal(n)
         case sel @ Select(q, _) if isModelMember(sel.symbol) && !isFacade(sel.symbol) && !isSuper(q) =>
           emitModelCall(Some(q), sel.symbol, Nil)
         case Select(q, "unary_$bang" | "unary_!") => s"(not ${emitTerm(q)})"
@@ -1203,7 +1222,7 @@ class SwiftEmitter(
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
         case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
         case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
-          if (isByNameParam(sel.symbol)) s"RtForce(${brSafe(n)})" else brSafe(n)
+          if (isByNameParam(sel.symbol)) s"RtForce(${brLocal(n)})" else brLocal(n)
         case sel @ Select(q, _) if isModelMember(sel.symbol) && !isFacade(sel.symbol) && !isSuper(q) =>
           emitModelCall(Some(q), sel.symbol, Nil)
         case Select(q, "unary_$bang" | "unary_!") => s"(!${emitTerm(q)})"
@@ -1443,7 +1462,7 @@ class SwiftEmitter(
     def withStatement(f: => String): String = {
 @@ old
       case Block(stats, e) =>
-        (stats.map(emitStat) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
+        (emitStats(stats) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
       case If(c, a, b) =>
         val head = withStatement(s"  if ${emitTerm(c)} then")
         val thenPart = emitInto(a, sk)
@@ -1459,7 +1478,7 @@ class SwiftEmitter(
       case e if isUnit(e) => sinkUnit(sk)
 @@ new
       case Block(stats, e) =>
-        (stats.map(emitStat) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
+        (emitStats(stats) :+ emitInto(e, sk)).filter(_.trim.nonEmpty).mkString("\n")
       case If(c, a, b) =>
         val head = withStatement(s"  if (try ${emitTerm(c)}).rtTrue {")
         val thenPart = emitInto(a, sk)
@@ -1475,7 +1494,7 @@ class SwiftEmitter(
       case e if isUnit(e) => sinkUnit(sk)
 @@ old
       case vd @ ValDef(name, _, Some(rhs)) =>
-        val lhs = brSafe(name)
+        val lhs = brLocal(name)
         if (boxedVars.contains(vd.symbol))
           List(emitInto(rhs, lhs), s"  $lhs = { v: $lhs }").filter(_.trim.nonEmpty).mkString("\n")
         else selfCaptured(emitInto(rhs, lhs), lhs)
@@ -1489,7 +1508,7 @@ class SwiftEmitter(
       case term: Term => emitInto(term, "")
 @@ new
       case vd @ ValDef(name, _, Some(rhs)) =>
-        val lhs = brSafe(name)
+        val lhs = brLocal(name)
         if (boxedVars.contains(vd.symbol))
           List(emitInto(rhs, lhs), s"  $lhs = ${rtObj(List(s"${swStr("v")}: $lhs"))}").filter(_.trim.nonEmpty).mkString("\n")
         else emitInto(rhs, lhs)
@@ -1636,7 +1655,7 @@ class SwiftEmitter(
 
 @@ old
         val rhs = vd.rhs.get
-        res = sub(res, brSafe(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
+        res = sub(res, brLocal(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
       }
       val id = "[A-Za-z_$][A-Za-z0-9_$]*"
       res
@@ -1644,7 +1663,7 @@ class SwiftEmitter(
         .replaceAll(", " + id + ": " + marker, "")
 @@ new
         val rhs = vd.rhs.get
-        res = sub(res, brSafe(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
+        res = sub(res, brLocal(vd.name), if (isDefaultArg(rhs)) emitDefaultArg(rhs) else emitTerm(rhs))
       }
       val id = "\"[A-Za-z_$][A-Za-z0-9_$]*\""
       res
@@ -1756,7 +1775,7 @@ class SwiftEmitter(
       { val tag = isaTag(sym); if (tag.nonEmpty) out.append(s"  self._isa = ${brStr(tag)}\n") }
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
-          out.append(s"  self.${brSafe(vd.name)} = ${brSafe(vd.name)}\n")
+          out.append(s"  self.${brSafe(vd.name)} = ${brLocal(vd.name)}\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) =>
           out.append(emitInto(rhs, s"self.${brSafe(name)}")).append("\n")
         // A constructor STATEMENT (`register(this)` in a class body) runs at
@@ -1770,7 +1789,7 @@ class SwiftEmitter(
       out.append(s"  let this: V = rtNew(${swStr(cn)})\n")
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
-          out.append(s"  ${field("this", brSafe(vd.name))} = ${brSafe(vd.name)}\n")
+          out.append(s"  ${field("this", brSafe(vd.name))} = ${brLocal(vd.name)}\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) =>
           out.append(emitInto(rhs, field("this", brSafe(name)))).append("\n")
         // A constructor STATEMENT (`register(this)` in a class body) runs at
@@ -1869,7 +1888,7 @@ class SwiftEmitter(
       }
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
-          sb.append(s"  self.${fieldKey(vd.symbol)} = ${brSafe(vd.name)}\n")
+          sb.append(s"  self.${fieldKey(vd.symbol)} = ${brLocal(vd.name)}\n")
           // an object is one flat table, so a parameter kept under the name of a member the class inherits overwrites it
           // (`size: Double` on a component replaced its `size` feature, and every layout touching it failed quietly):
           // a gap, so the checks stop it rather than a device
@@ -1928,7 +1947,7 @@ class SwiftEmitter(
       }
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
-          sb.append(s"  ${field("this", fieldKey(vd.symbol))} = ${brSafe(vd.name)}\n")
+          sb.append(s"  ${field("this", fieldKey(vd.symbol))} = ${brLocal(vd.name)}\n")
           shadowedBy(vd.symbol).foreach(base => todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name}")
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
           rhsOpt match {
