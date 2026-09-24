@@ -878,7 +878,7 @@ object Host {
     * the loading threads (`null` if it cannot be had). */
   def bitmapThen(uri: String)(done: Bitmap => Unit): Unit = held(uri) match {
     case Some(b) => done(b)
-    case None if uri.startsWith("http") =>
+    case None if uri.startsWith("http") || uri.startsWith("file:") =>
       // one fetch per address, however many ask for it: a rail shows the same artwork more than once, and each
       // picture asks twice over (its natural size, then its pixels)
       pending.get(uri) match {

@@ -58,17 +58,21 @@ object Network {
   /** POST `request` as JSON and read the reply as a `Response`: the whole of a JSON-over-HTTP API call. A status that
     * is not a success fails the task with an `HttpFailure` carrying the status and body, for the app to read its own
     * error format from. */
-  def postJson[Request: RW, Response: RW](url: String, request: Request, headers: List[(String, String)] = Nil): Task[Response] =
-    http(HttpCall("POST", url, ("Accept" -> "application/json") :: headers, Some(JsonFormatter.Compact(request.json)))).map { result =>
+  def postJson[Request: RW, Response: RW](url: String, request: Request, headers: List[(String, String)] = Nil,
+                                          timeout: Double = 0.0): Task[Response] =
+    http(HttpCall("POST", url, ("Accept" -> "application/json") :: headers, Some(JsonFormatter.Compact(request.json)),
+      timeout = timeout)).map { result =>
       if (result.ok) JsonParser(result.body).as[Response] else throw HttpFailure(result.status, result.body)
     }
   def post(url: String, body: String, contentType: String = "application/json"): Task[HttpResult] =
     http(HttpCall("POST", url, Nil, Some(body), contentType))
 }
 
-/** An HTTP request: a method, a URL, headers, and a text body with its content type. */
+/** An HTTP request: a method, a URL, headers, and a text body with its content type. `timeout` is how many seconds it
+  * may take, where a request is known to be slow (a server writing something new); 0 is the backend's own limit. Only
+  * the backends on Spice's client honour it: a Roku's and tvOS's requests keep their own. */
 case class HttpCall(method: String, url: String, headers: List[(String, String)] = Nil, body: Option[String] = None,
-                    contentType: String = "application/json")
+                    contentType: String = "application/json", timeout: Double = 0.0)
 
 /** An HTTP response: the status, the headers (as the backend surfaces them) and the body as text. */
 case class HttpResult(status: Int, headers: List[(String, String)], body: String) {

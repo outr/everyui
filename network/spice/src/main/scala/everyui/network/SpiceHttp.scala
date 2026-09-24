@@ -42,6 +42,7 @@ object SpiceHttp {
 
   def call(client: HttpClient, call: HttpCall): Task[HttpResult] = {
     var c = client.url(URL.parse(call.url)).method(HttpMethod(call.method))
+    if (call.timeout > 0.0) c = c.timeout((call.timeout * 1000.0).toLong.millis)
     call.headers.foreach((k, v) => c = c.header(k, v))
     call.body.foreach(b => c = c.content(StringContent(b, ContentType.parse(call.contentType))))
     c.send().flatMap { response =>
