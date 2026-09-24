@@ -3,7 +3,7 @@ package everyui.component
 import reactify.*
 import everyui.{Color, Gradient, Shadow}
 import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
-import everyui.component.types.{Prop, WhiteSpace}
+import everyui.component.types.{Prop, Semantics, WhiteSpace}
 import everyui.event.{Events, Key}
 import everyui.focus.Focus
 import everyui.motion.Track
@@ -81,6 +81,11 @@ class Component(val node: RenderNode) {
 
   /** What a pointer resting here says; nothing where there is no pointer. */
   lazy val tooltip: Prop[String] = new Prop[String]("", t => node.setTooltip(t))
+  /** What this is to whatever reads the page rather than looking at it (`Semantics`): a heading, the main content, a
+    * set of links. On the web it is the element's ARIA role, level and label; elsewhere, where the platform has one, its
+    * accessibility role. */
+  lazy val semantics: Prop[Semantics] =
+    new Prop[Semantics](Semantics.Plain, s => node.setSemantics(s.role, s.level, s.label))
 
   lazy val event: Events = new Events(this)
   /** Whether the focus can land here: by a click, `focus()`, or the arrows from a neighbour (everyui.focus.Focus). */

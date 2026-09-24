@@ -180,6 +180,18 @@ lazy val roku = (project in file("roku"))
 // when the framework needs them. Consumed from ~/.ivy2/local.
 lazy val spiceVersion = "1.10.9-SNAPSHOT3"
 
+// --- seo: what a page says to search and answer engines, written by an app's server -------------------------
+// Plain Scala over the shared PageMeta and Alternate (every backend has those); the rest (the page's content as HTML
+// and Markdown, JSON-LD, sitemap.xml, robots.txt, llms.txt) is the server's alone, kept out of shared so no device
+// build carries it. An app's server compiles these two source directories in.
+lazy val seo = (project in file("seo"))
+  .settings(
+    name := "everyui-seo",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories += sharedSources / "everyui" / "seo",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test
+  )
+
 @transient val serverClasspath = taskKey[File]("Compile the server and write its runtime classpath to server/out/classpath.txt")
 
 lazy val server = (project in file("server"))
@@ -388,7 +400,7 @@ lazy val checks = (project in file("checks"))
 @transient val makeIcons = taskKey[Unit]("Render every platform's icons from work/logo/svg (needs rsvg-convert)")
 
 lazy val root = (project in file("."))
-  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server)
+  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo)
   .settings(
     name := "everyui",
     publish / skip := true,

@@ -573,6 +573,15 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
+  /** Read out by TalkBack: a label as the view's description, and a heading as a heading, where the platform knows
+    * one (Android 9 on). */
+  def setSemantics(role: String, level: Int, label: String): Unit = {
+    view.setContentDescription(if (label.isEmpty) null else label)
+    if (android.os.Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(role == "heading")
+  }
+
+  def setAlt(text: String): Unit = view.setContentDescription(if (text.isEmpty) null else text)
+
   def setTextAlign(align: String): Unit = view match {
     case t: TextView => t.setTextAlignment(
       if (align == "center") View.TEXT_ALIGNMENT_CENTER else if (align == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
@@ -1012,6 +1021,11 @@ object Platform {
   /** An app has no page to leave: the browser opens `url`. */
   def navigate(url: String): Unit = openUrl(url)
   /** The activity's title (what the recents screen calls it). */
+  /** A page's description of itself (`everyui.seo.PageMeta`): only its title has a place here. */
+  def setPageMeta(meta: everyui.seo.PageMeta): Unit = setTitle(meta.title)
+  /** The first screen is drawn: nothing was standing in for it. */
+  def drawn(): Unit = ()
+
   def setTitle(title: String): Unit = Host.activity.setTitle(title)
   /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
     * server refuses the platform's own `Dalvik/…`. */

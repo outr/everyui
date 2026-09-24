@@ -10,6 +10,8 @@ class Backdrop extends Container {
   override def kind: String = "Backdrop"
 
   val source: Var[String] = Var("")
+  /** What the picture shows, in words (`ImageView.alt`). */
+  def alt: Var[String] = view.alt
 
   private val view = new ImageView
   private var shown: Image = Image.empty

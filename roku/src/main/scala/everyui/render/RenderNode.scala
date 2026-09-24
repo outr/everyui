@@ -384,6 +384,9 @@ class RenderNode(val sg: SGNode) {
   /** Labels sit where they are placed. */
   /** A shadow behind the letters: not drawn here. */
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  // no reader of roles or descriptions reaches this platform's nodes
+  def setSemantics(role: String, level: Int, label: String): Unit = ()
+  def setAlt(text: String): Unit = ()
 
   def setTextAlign(align: String): Unit = ()
 
@@ -509,6 +512,11 @@ object Platform {
   /** A channel has no browser to go to. */
   def navigate(url: String): Unit = ()
   /** A channel has no title bar. */
+  /** A page's description of itself (`everyui.seo.PageMeta`): a channel has no title bar. */
+  def setPageMeta(meta: everyui.seo.PageMeta): Unit = ()
+  /** The first screen is drawn: nothing was standing in for it. */
+  def drawn(): Unit = ()
+
   def setTitle(title: String): Unit = ()
   def copyText(text: String): Unit = ()
   /** The device keeps its own screen timing here. */

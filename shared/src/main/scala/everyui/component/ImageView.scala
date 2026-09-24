@@ -25,6 +25,10 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
     v
   }
 
+  /** What the picture shows, in words, for whatever cannot see it: a screen reader, a search engine. Empty says it is
+    * only decoration. */
+  lazy val alt: Prop[String] = new Prop[String]("", a => node.setAlt(a))
+
   /** The picture in one colour, its transparency kept: a white sprite in the theme's accent, say. None draws it as it
     * is. */
   lazy val tint: Prop[Option[everyui.Color]] =

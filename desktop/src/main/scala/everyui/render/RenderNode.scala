@@ -304,6 +304,9 @@ class RenderNode(val fx: Node) {
   /** "start", "center" or "end", resolved against the window's direction (`Platform.setDirection`). */
   /** A shadow behind the letters: not drawn here. */
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  // no reader of roles or descriptions reaches this platform's nodes
+  def setSemantics(role: String, level: Int, label: String): Unit = ()
+  def setAlt(text: String): Unit = ()
 
   def setTextAlign(value: String): Unit = {
     align = value
@@ -726,6 +729,11 @@ object Platform {
   /** A window has no page to leave: the browser opens `url`. */
   def navigate(url: String): Unit = openUrl(url)
   /** The window's title. */
+  /** A page's description of itself (`everyui.seo.PageMeta`): only its title has a place here. */
+  def setPageMeta(meta: everyui.seo.PageMeta): Unit = setTitle(meta.title)
+  /** The first screen is drawn: nothing was standing in for it. */
+  def drawn(): Unit = ()
+
   def setTitle(title: String): Unit = Option(Host.scene).flatMap(s => Option(s.getWindow)).foreach {
     case stage: javafx.stage.Stage => stage.setTitle(title)
     case _ => ()

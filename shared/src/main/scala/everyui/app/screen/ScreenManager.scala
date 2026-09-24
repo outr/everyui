@@ -78,7 +78,11 @@ trait ScreenManager extends TaskSupport {
     Platform.whenFontsReady(() =>
       load()
         .flatMap(_ => show(at(URLPath(Platform.path())).getOrElse(screen), push = false))
-        .map(_ => if (freezeSeconds >= 0.0) freeze() else live())
+        .map { _ =>
+          // drawn: whatever the page held in its place until now (a server's plain HTML of it) goes
+          Platform.drawn()
+          if (freezeSeconds >= 0.0) freeze() else live()
+        }
         .startUnit())
   }
 

@@ -358,6 +358,18 @@ class RenderNode(val el: html.Element) {
     }
   }
 
+  /** What the element is to a screen reader or a crawler: its ARIA role, a heading's level, its name. */
+  def setSemantics(role: String, level: Int, label: String): Unit = {
+    def attribute(name: String, value: String): Unit =
+      if (value.isEmpty) el.removeAttribute(name) else el.setAttribute(name, value)
+    attribute("role", role)
+    attribute("aria-level", if (role == "heading" && level > 0) level.toString else "")
+    attribute("aria-label", label)
+  }
+
+  /** An `<img>`'s words for what it shows; empty marks it decoration. */
+  def setAlt(text: String): Unit = el.setAttribute("alt", text)
+
   /** "start", "center" or "end": CSS's own logical values, so the page's direction resolves them. */
   /** A shadow behind the letters, as CSS draws one; an empty colour, none. */
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
@@ -573,6 +585,8 @@ object Nodes {
   def image(uri: String, width: Double, height: Double): RenderNode = {
     val el = dom.document.createElement("img").asInstanceOf[html.Image]
     el.src = uri
+    // decoration until the app says what it shows (`ImageView.alt`): a picture with no alt at all is read out by its file name
+    el.setAttribute("alt", "")
     el.style.position = "absolute"
     el.style.left = "0px"
     el.style.top = "0px"
@@ -655,6 +669,51 @@ object Platform {
   def navigate(url: String): Unit = dom.window.location.assign(url)
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
+
+  /** The page's head says what the page now shown is (`everyui.seo.PageMeta`): its title, description, canonical
+    * address, preview, other forms and structured data, replacing what the page before it said. What the server wrote
+    * into the page first is replaced the same way, so the head never holds two of anything. */
+  def setPageMeta(meta: everyui.seo.PageMeta): Unit = {
+    val head = dom.document.head
+    val written = head.querySelectorAll("[data-everyui-meta]")
+    (0 until written.length).map(written(_)).foreach(e => head.removeChild(e))
+    def add(tag: String, attributes: (String, String)*): Unit = {
+      val e = dom.document.createElement(tag)
+      attributes.foreach { case (k, v) => e.setAttribute(k, v) }
+      e.setAttribute("data-everyui-meta", "")
+      head.appendChild(e)
+    }
+    def absolute(url: String): String =
+      if (url.isEmpty || url.contains("://")) url else dom.window.location.origin + (if (url.startsWith("/")) url else "/" + url)
+    setTitle(meta.title)
+    if (meta.description.nonEmpty) add("meta", "name" -> "description", "content" -> meta.description)
+    if (meta.canonical.nonEmpty) add("link", "rel" -> "canonical", "href" -> absolute(meta.canonical))
+    if (meta.noindex) add("meta", "name" -> "robots", "content" -> "noindex")
+    if (meta.siteName.nonEmpty) add("meta", "property" -> "og:site_name", "content" -> meta.siteName)
+    add("meta", "property" -> "og:title", "content" -> meta.title)
+    if (meta.description.nonEmpty) add("meta", "property" -> "og:description", "content" -> meta.description)
+    add("meta", "property" -> "og:type", "content" -> meta.kind)
+    if (meta.canonical.nonEmpty) add("meta", "property" -> "og:url", "content" -> absolute(meta.canonical))
+    if (meta.image.nonEmpty) add("meta", "property" -> "og:image", "content" -> absolute(meta.image))
+    add("meta", "name" -> "twitter:card", "content" -> (if (meta.image.nonEmpty) "summary_large_image" else "summary"))
+    meta.alternates.foreach { a =>
+      add("link", "rel" -> "alternate", "type" -> a.contentType, "href" -> a.href, "title" -> a.title)
+    }
+    meta.jsonLd.foreach { json =>
+      val script = dom.document.createElement("script")
+      script.setAttribute("type", "application/ld+json")
+      script.setAttribute("data-everyui-meta", "")
+      script.textContent = json
+      head.appendChild(script)
+    }
+  }
+
+  /** The first screen is drawn: what the server wrote into the page to stand in for it until then (the page's content
+    * as plain HTML, for whatever reads the page without running it) goes. */
+  def drawn(): Unit = {
+    val snapshot = dom.document.getElementById("everyui-snapshot")
+    if (snapshot != null && snapshot.parentNode != null) snapshot.parentNode.removeChild(snapshot)
+  }
   /** The browser names itself (and sends the page as the referrer), as a tile server asks. */
   def identify(app: String): Unit = ()
   /** `text` onto the clipboard: the async clipboard where the page is a secure context, else the selection command. */
