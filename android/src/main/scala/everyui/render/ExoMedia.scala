@@ -84,6 +84,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
     * source, since a load control belongs to the player it was built with. */
   def setBuffering(named: String): Unit = holding = Buffering.of(named)
 
+  /** Whether what is fetched is kept on the device and read from there next time ([[ClipCache]]). Takes effect on
+    * the next source, whose reads are what go through the store. */
+  def setCached(on: Boolean): Unit = keeping = on
+  private var keeping = false
+
   def setSource(url: String): Unit = if (url != source) {
     source = url
     close()
@@ -117,7 +122,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
           // how long one load may go on failing before it is lost is the profile's patience, and the number of
           // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter
-          .setMediaSourceFactory(new DefaultMediaSourceFactory(http)
+          .setMediaSourceFactory(new DefaultMediaSourceFactory(if (keeping) ClipCache.around(http) else http)
             .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy {
               override def getMinimumLoadableRetryCount(dataType: Int): Int =
                 math.max(3, holding.patienceMs / math.max(1000, holding.readMs))
