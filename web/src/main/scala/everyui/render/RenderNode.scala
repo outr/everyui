@@ -871,10 +871,12 @@ object Platform {
   /** Only a platform without text fields asks its keyboard for a value. */
   def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
 
-  /** An app's face, served beside the bundled ones in `fonts/`, added to the page's fonts. */
+  /** An app's face, served beside the bundled ones in `fonts/`, added to the page's fonts. Where the page preloads it
+    * (`<link rel="preload" as="font">`), from that very address, versioned or not, so the preloaded download is the one
+    * used rather than a second. */
   def registerFont(face: Face): Unit = {
     val options = js.Dynamic.literal(weight = face.weight.toString)
-    val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, "url(fonts/" + face.file + ")", options)
+    val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, "url(" + fontAddress(face.file) + ")", options)
     dom.document.asInstanceOf[js.Dynamic].fonts.add(font)
     registered.push(font)
     // fetched from now, not when the first screen waits on it: an app registers its faces as it starts, and whatever
@@ -882,6 +884,14 @@ object Platform {
     font.load()
   }
   private val registered = js.Array[js.Dynamic]()
+
+  // the page's preload of `file`, as it wrote it (a version after it, say), else the bundled faces' own place
+  private def fontAddress(file: String): String = {
+    val links = dom.document.querySelectorAll("link[rel=preload][as=font]")
+    (0 until links.length).map(links(_).getAttribute("href")).find { href =>
+      href != null && href.takeWhile(_ != '?').endsWith("/fonts/" + file)
+    }.getOrElse("fonts/" + file)
+  }
 
   def screenWidth(): Double = dom.window.innerWidth.toDouble
   def screenHeight(): Double = dom.window.innerHeight.toDouble
