@@ -13,8 +13,8 @@ import everyui.render.{Nodes, RenderNode}
   *
   * `bridge` is the name of the object the page calls to say something back: `<bridge>.postMessage("…")`. The page
   * and the app have to agree on it, and neither of them is this layer, so it is named by whoever builds the view. */
-class WebView(bridge: String, node: RenderNode = null)
-  extends Component(if (node != null) node else Nodes.web(bridge)) {
+class WebView(bridge: String, supplied: RenderNode = null)
+  extends Component(if (supplied != null) supplied else Nodes.web(bridge)) {
   /** The address showing. Setting it again goes there again. */
   lazy val source: Prop[String] = new Prop[String]("", url => this.node.setWebSource(url))
 
@@ -24,10 +24,10 @@ class WebView(bridge: String, node: RenderNode = null)
   lazy val agent: Prop[String] = new Prop[String]("", a => this.node.setWebAgent(a))
 
   /** Say something to the page. It is script, and it runs in the page's world, not this one's. */
-  def run(script: String): Unit = node.runWebScript(script)
+  def run(script: String): Unit = this.node.runWebScript(script)
 
   /** Hear what the page says back through its bridge. One listener: the page has one thing to talk to. */
-  def hear(f: String => Unit): Unit = node.onWebMessage(f)
+  def hear(f: String => Unit): Unit = this.node.onWebMessage(f)
 
   override def kind: String = "WebView"
 }
