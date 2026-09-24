@@ -370,6 +370,12 @@ object Platform {
   def launchesApps(): Boolean = true
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   def decodes(codec: String): Boolean = true
+  // nothing here turns speech into words
+  def dictation(): Boolean = false
+  def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {
+    ended()
+    () => ()
+  }
   def localAddress(): String = ""
   def deviceSerial(): String = ""
 

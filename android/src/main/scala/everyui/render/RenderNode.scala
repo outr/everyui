@@ -1142,6 +1142,13 @@ object Platform {
     * the sound through: see [[Codecs]]. */
   def decodes(codec: String): Boolean = Codecs.plays(codec)
 
+  /** Whether it can listen: a speech recognizer to turn what is said into words ([[Dictation]]). */
+  def dictation(): Boolean = Dictation.available
+
+  /** One utterance, as words: `heard` hears them as they come (each time the whole of what is heard so far) and
+    * whether they are settled, `ended` that it is over. What comes back stops it. */
+  def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = Dictation.listen(heard, ended)
+
   /** Where this device can be reached on its own network, for another to play to; "" where it has no such need. */
   def localAddress(): String = ""
   def deviceSerial(): String = ""

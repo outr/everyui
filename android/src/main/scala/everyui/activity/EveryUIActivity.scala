@@ -88,6 +88,13 @@ abstract class EveryUIActivity extends Activity {
     else hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN) || super.dispatchKeyEvent(e)
   }
 
+  // the system's answer to a permission asked for (Permissions.ask)
+  override def onRequestPermissionsResult(code: Int, permissions: Array[String], results: Array[Int]): Unit = {
+    super.onRequestPermissionsResult(code, permissions, results)
+    everyui.render.Permissions.answered(code,
+      results.nonEmpty && results.forall(_ == android.content.pm.PackageManager.PERMISSION_GRANTED))
+  }
+
   /** Somebody is in front of it again: the app was away and is back, which is a sign of use like any key. Not the
     * first time it is in front, which Android also calls resuming: a launch is not a return, and an app that read
     * everything again on its way back read it all twice on the way in. */
