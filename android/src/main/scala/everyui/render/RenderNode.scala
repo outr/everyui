@@ -41,7 +41,8 @@ class RenderNode(val view: View) {
 
   def setText(text: String): Unit = view match {
     case t: TextView =>
-      t.setText(text)
+      // what the face has nothing for (an emoji newer than the device's own fonts) in the app's fallback face
+      t.setText(FaceSpan.fallen(text, t.getPaint))
       // a string written as several lines is drawn as several lines, wrapping or not. Not wrapping means "do not
       // break these words for me", not "throw away everything after the first newline", which is what a fixed
       // maxLines of 1 did: a two-line subtitle drew its first line inside a box measured for both.
@@ -396,13 +397,18 @@ class RenderNode(val view: View) {
           if (run.background.nonEmpty)
             span(new android.text.style.BackgroundColorSpan(RenderNode.color(run.background)), from, to)
           val bold = run.weight >= 600
-          if (bold || run.italic) span(new android.text.style.StyleSpan(
-            if (bold && run.italic) Typeface.BOLD_ITALIC else if (bold) Typeface.BOLD else Typeface.ITALIC), from, to)
+          // the family's own italic where it has one, rather than its upright letters slanted
+          val slanted =
+            if (run.italic) everyui.font.Faces.italic(face.family, if (run.weight > 0) run.weight else face.weight) else None
+          slanted.foreach(f => span(new FaceSpan(Host.typeface(f)), from, to))
+          if (bold || (run.italic && slanted.isEmpty)) span(new android.text.style.StyleSpan(
+            if (bold && run.italic && slanted.isEmpty) Typeface.BOLD_ITALIC else if (bold) Typeface.BOLD
+            else Typeface.ITALIC), from, to)
           if (run.size > 0.0) span(new android.text.style.AbsoluteSizeSpan(math.round(run.size).toInt), from, to)
           if (run.strike) span(new android.text.style.StrikethroughSpan(), from, to)
         }
       }
-      t.setText(text)
+      t.setText(FaceSpan.fallen(text, t.getPaint))
     case _ => ()
   }
 
@@ -655,6 +661,18 @@ object RenderNode {
       if (at < 0) more = false else from = at + 1
     }
     best
+  /** The maker and the model as one name, the maker left off where the model already starts with it ("Google Streamer",
+    * not "Google Google Streamer"). `named` is for what a device calls itself: the maker capitalised, and a name even
+    * when there is no model. */
+  def maker(manufacturer: String, model: String, named: Boolean): String = {
+    val m = Option(manufacturer).map(_.trim).getOrElse("")
+    val maker = if (named && m.nonEmpty) m.substring(0, 1).toUpperCase + m.substring(1) else m
+    val kind = Option(model).map(_.trim).getOrElse("")
+    if (kind.isEmpty) { if (maker.nonEmpty) maker else if (named) "Android device" else "" }
+    else if (maker.isEmpty || kind.toLowerCase.startsWith(maker.toLowerCase)) kind
+    else maker + " " + kind
+  }
+
   }
 
   /** The nearest of a `GradientDrawable`'s eight directions to a CSS angle (0 runs bottom to top, 90 left to right). */
@@ -1018,7 +1036,8 @@ object Platform {
   def kind: PlatformKind = PlatformKind.Android
   /** An Android TV is driven by its remote; a phone or tablet by touch. */
   def remoteNavigation(): Boolean =
-    Host.activity.getSystemService(Context.UI_MODE_SERVICE).asInstanceOf[android.app.UiModeManager].getCurrentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    Host.activity.getSystemService(Context.UI_MODE_SERVICE).asInstanceOf[android.app.UiModeManager].getCurrentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
+      Host.activity.getPackageManager.hasSystemFeature("android.software.leanback")
   def touchSupport(): Boolean = Host.activity.getPackageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
   def pointerSupport(): Boolean = false
   def keyboardSupport(): Boolean = Host.activity.getResources.getConfiguration.keyboard != android.content.res.Configuration.KEYBOARD_NOKEYS
@@ -1026,7 +1045,8 @@ object Platform {
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
   def openUrl(url: String): Unit =
-    Host.activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+    try Host.activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+    catch { case t: Throwable => log("openUrl: nothing opens " + url + " (" + t.toString + ")") }
   /** An app has no page to leave: the browser opens `url`. */
   def navigate(url: String): Unit = openUrl(url)
   /** The activity's title (what the recents screen calls it). */
@@ -1056,6 +1076,8 @@ object Platform {
 
   /** Put what is playing into that corner. True when the platform took it. */
   def toCorner(): Boolean =
+  // a box that is a television by its features (leanback) though its UI mode says otherwise counts as one too, as
+  // Flutter's probe has it
     try Host.activity.enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build())
     catch {
       case t: Throwable =>
@@ -1064,6 +1086,9 @@ object Platform {
     }
 
   /** What to do when the app is at the front again after being away — another app had the screen, or the device
+  /** The browser (or the app that owns the address) at `url`. A television may have no browser at all, and then there
+    * is nothing to open it with: nothing happens, as a link that cannot open does nothing elsewhere, rather than the
+    * app coming down. */
     * came back from sleep. An app that was left showing something it only shows when nobody is there (a
     * screensaver) wants to know, because somebody is there now. */
   def onResume(f: () => Unit): () => Unit = {
@@ -1127,13 +1152,27 @@ object Platform {
         new String(out.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
       } finally in.close()
     } catch { case _: Exception => "" })
+  /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): a picture dimmed, or its blue
+    * pulled down for the night, the video with it. A colour matrix on the root's layer, which the video's TextureView
+    * is drawn into like everything else; left off entirely when there is nothing to scale, a layer costing a pass. */
+  def tint(red: Double, green: Double, blue: Double): Boolean = {
+    if (red >= 0.999 && green >= 0.999 && blue >= 0.999) Host.root.setLayerType(View.LAYER_TYPE_NONE, null)
+    else {
+      val paint = new Paint()
+      paint.setColorFilter(new android.graphics.ColorMatrixColorFilter(Array[Float](red.toFloat, 0f, 0f, 0f, 0f,
+        0f, green.toFloat, 0f, 0f, 0f, 0f, 0f, blue.toFloat, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
+      Host.root.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+    }
+    true
+  }
+
 
   /** The character at a Unicode code point, as a string. */
   def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))
 
   /** The device's language, as a BCP 47 tag (`en-US`). */
   /** What it is, as its maker names it ("NVIDIA SHIELD Android TV"). */
-  def deviceModel(): String = (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).trim
+  def deviceModel(): String = RenderNode.maker(android.os.Build.MANUFACTURER, android.os.Build.MODEL, false)
 
   /** Whether this device opens a streaming service's own app itself, rather than needing another to do it. */
   def launchesApps(): Boolean = true
@@ -1175,6 +1214,29 @@ object Platform {
       val edge = style.edgeType match {
         case 1 => "outline"
         case 2 => "shadow"
+  /** The hardware facts a performance report cannot be read without, each as a name and a value: the processor's
+    * instruction set (a 32-bit stick and a 64-bit box can share a name), the Android release, the memory there is,
+    * what is free, what this process may use, whether the device says it is short, and the display's refresh rate.
+    * Whatever the platform will not say is left out. */
+  def deviceProfile(): List[(String, String)] = {
+    var facts: List[(String, String)] = Nil
+    try Option(android.os.Build.SUPPORTED_ABIS).flatMap(_.headOption).foreach(a => facts = facts :+ ("abi" -> a))
+    catch { case _: Throwable => () }
+    facts = facts :+ ("sdk" -> android.os.Build.VERSION.SDK_INT.toString)
+    Option(android.os.Build.VERSION.RELEASE).foreach(r => facts = facts :+ ("release" -> r))
+    try {
+      val manager = Host.activity.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[android.app.ActivityManager]
+      val memory = new android.app.ActivityManager.MemoryInfo
+      manager.getMemoryInfo(memory)
+      facts = facts ++ List("ramMb" -> (memory.totalMem / (1024L * 1024L)).toString,
+        "availMb" -> (memory.availMem / (1024L * 1024L)).toString, "lowMem" -> memory.lowMemory.toString,
+        "heapMb" -> manager.getMemoryClass.toString)
+    } catch { case _: Throwable => () }
+    try facts = facts :+ ("refreshHz" -> math.round(Host.activity.getWindowManager.getDefaultDisplay.getRefreshRate).toString)
+    catch { case _: Throwable => () }
+    facts
+  }
+
         case 3 => "raised"
         case 4 => "depressed"
         case _ => "none"
@@ -1258,7 +1320,7 @@ object Platform {
       try Option(android.provider.Settings.Global.getString(Host.activity.getContentResolver, "device_name"))
         .map(_.trim).getOrElse("")
       catch { case _: Throwable => "" }
-    if (named.nonEmpty) named else android.os.Build.MODEL
+    if (named.nonEmpty) named else RenderNode.maker(android.os.Build.MANUFACTURER, android.os.Build.MODEL, true)
   }
 
   /** Android has text fields of its own. */

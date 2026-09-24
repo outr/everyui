@@ -63,7 +63,7 @@ class RenderNode(val el: html.Element) {
     * the browser's `line-height: normal`, so text is the same height on every
     * backend. */
   def setFont(family: String, weight: Int, size: Double): Unit = {
-    if (family.nonEmpty) el.style.fontFamily = "'" + family + "'"
+    if (family.nonEmpty) el.style.fontFamily = RenderNode.families(family)
     el.style.fontWeight = weight.toString
     el.style.fontSize = size.toString + "px"
     el.style.lineHeight = Faces(family, weight).lineHeight(size).toString + "px"
@@ -170,7 +170,7 @@ class RenderNode(val el: html.Element) {
     runs.foreach { run =>
       val span = dom.document.createElement(if (run.href.nonEmpty) "a" else "span").asInstanceOf[html.Element]
       span.textContent = run.text
-      if (run.family.nonEmpty) span.style.fontFamily = "'" + run.family + "'"
+      if (run.family.nonEmpty) span.style.fontFamily = RenderNode.families(run.family)
       if (run.weight > 0) span.style.fontWeight = run.weight.toString
       if (run.italic) span.style.fontStyle = "italic"
       if (run.size > 0.0) span.style.fontSize = run.size.toString + "px"
@@ -436,6 +436,11 @@ object RenderNode {
   def linearGradient(angle: Double, stops: String): String =
     "linear-gradient(" + angle.toString + "deg, " +
       everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
+  /** A CSS font-family for `family`: it, then the fallback faces (`Faces.fallbackFaces`), for what it has nothing to
+    * draw with. */
+  def families(family: String): String =
+    ("'" + family + "'" :: everyui.font.Faces.fallbackFaces().toList.map(f => "'" + f.family + "'")).mkString(", ")
+
 
   /** A click the browser should keep: another button, or a modifier asking for a new tab or window. */
   def modified(e: dom.MouseEvent): Boolean = e.button != 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
@@ -752,6 +757,31 @@ object Platform {
   def keepAwake(on: Boolean): Unit = {
     val wakeLock = dom.window.navigator.asInstanceOf[js.Dynamic].wakeLock
     if (on && wakeSentinel.isEmpty && !js.isUndefined(wakeLock))
+  /** Every colour on the page scaled, channel by channel (1 each leaves it as it is): an SVG colour matrix the page's
+    * root is filtered through, or no filter. */
+  def tint(red: Double, green: Double, blue: Double): Boolean = {
+    val app = dom.document.getElementById("app").asInstanceOf[html.Element]
+    if (app != null) {
+      if (red >= 0.999 && green >= 0.999 && blue >= 0.999) app.style.filter = ""
+      else {
+        var svg = dom.document.getElementById("everyui-tint")
+        if (svg == null) {
+          svg = dom.document.createElementNS("http://www.w3.org/2000/svg", "svg")
+          svg.setAttribute("id", "everyui-tint")
+          svg.setAttribute("width", "0")
+          svg.setAttribute("height", "0")
+          svg.setAttribute("style", "position:absolute")
+          dom.document.body.appendChild(svg)
+        }
+        svg.innerHTML = "<filter id=\"everyui-tint-matrix\" color-interpolation-filters=\"sRGB\"><feColorMatrix " +
+          "type=\"matrix\" values=\"" + red.toString + " 0 0 0 0 0 " + green.toString + " 0 0 0 0 0 " + blue.toString +
+          " 0 0 0 0 0 1 0\"/></filter>"
+        app.style.filter = "url(#everyui-tint-matrix)"
+      }
+    }
+    true
+  }
+
       wakeLock.request("screen").asInstanceOf[js.Promise[js.Dynamic]].`then`[Unit](s => wakeSentinel = Some(s))
     else if (!on) {
       wakeSentinel.foreach(_.release())
@@ -873,6 +903,9 @@ object Platform {
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   def decodes(codec: String): Boolean = true
   // nothing here turns speech into words
+  /** The hardware facts a performance report is read with: none this platform will say. */
+  def deviceProfile(): List[(String, String)] = Nil
+
   def dictation(): Boolean = false
   def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {
     ended()
@@ -904,7 +937,8 @@ object Platform {
     * (`<link rel="preload" as="font">`), from that very address, versioned or not, so the preloaded download is the one
     * used rather than a second. */
   def registerFont(face: Face): Unit = {
-    val options = js.Dynamic.literal(weight = face.weight.toString)
+    // an italic face answers for its family's italic runs; a fallback is a family of its own, named after the others
+    val options = js.Dynamic.literal(weight = face.weight.toString, style = if (face.italic) "italic" else "normal")
     val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, "url(" + fontAddress(face.file) + ")", options)
     dom.document.asInstanceOf[js.Dynamic].fonts.add(font)
     registered.push(font)

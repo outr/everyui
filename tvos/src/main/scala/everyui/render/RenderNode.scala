@@ -325,6 +325,8 @@ object Platform {
   def keepAwake(on: Boolean): Unit = ()
   /** The device names itself to the servers its pictures come from. */
   def identify(app: String): Unit = ()
+  /** Nothing here can scale the screen's colours: an app that wants it dimmed does it itself. */
+  def tint(red: Double, green: Double, blue: Double): Boolean = false
 
   /** No address bar: no path to show, push or follow. */
   def path(): String = ""
@@ -369,6 +371,9 @@ object Platform {
 
   def launchesApps(): Boolean = true
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
+  /** The hardware facts a performance report is read with: none this platform will say. */
+  def deviceProfile(): List[(String, String)] = Nil
+
   def decodes(codec: String): Boolean = true
   // nothing here turns speech into words
   def dictation(): Boolean = false

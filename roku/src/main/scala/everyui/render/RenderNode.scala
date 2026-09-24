@@ -548,6 +548,8 @@ object Platform {
   /** On a later turn of the render thread, from a fresh stack (a Timer): what a JavaFX runLater or a browser's
     * setTimeout gives, and what keeps a chain of callbacks from nesting into a Roku's small stack. */
   def later(f: () => Unit): Unit = uiLater(f)
+  /** Nothing here can scale the screen's colours: an app that wants it dimmed does it itself. */
+  def tint(red: Double, green: Double, blue: Double): Boolean = false
   /** `f` once `seconds` have passed, from a Timer of its own. */
   def after(seconds: Double, f: () => Unit): Unit = uiAfter(seconds, f)
 
@@ -606,6 +608,9 @@ object Platform {
 
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
+  /** The hardware facts a performance report is read with: none this platform will say. */
+  def deviceProfile(): List[(String, String)] = Nil
+
   def appVersion(): Int = 0
 
   /** The device's own caption settings, where it has any: not here. */

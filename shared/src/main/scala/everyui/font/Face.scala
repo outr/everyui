@@ -6,9 +6,12 @@ package everyui.font
   * Each platform's own idea of a line's height differs — a browser's `line-height: normal`, a SceneGraph `Label`'s
   * bounding rect, an Android `TextView`, a JavaFX `Text` — so no backend asks its platform. They all take the box
   * from here, and the geometry is identical everywhere. The numbers are the fonts' own (`unitsPerEm`, and the
-  * ascender and descender a browser uses); `tools/check.sh` fails if they drift from the files. */
+  * ascender and descender a browser uses); `tools/check.sh` fails if they drift from the files.
+  *
+  * An `italic` face is the family's slanted one, drawn for text marked italic (a styled run) where a platform can;
+  * a family is never answered with it otherwise. */
 class Face(val family: String, val weight: Int, val file: String, val unitsPerEm: Double, val ascender: Double,
-           val descender: Double) {
+           val descender: Double, val italic: Boolean = false) {
   /** The height of one line at `size` pixels: ascent plus descent, rounded to whole pixels. */
   def lineHeight(size: Double): Double = ((ascender + descender) * size / unitsPerEm + 0.5).toInt.toDouble
 

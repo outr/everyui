@@ -757,6 +757,16 @@ object Platform {
   def keepAwake(on: Boolean): Unit = ()
   /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
     * server refuses a bare `Java/21`. Before the first picture loads (the JDK reads it once). */
+  /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): the root multiplied by a flat
+    * colour of the three, or left alone. */
+  def tint(red: Double, green: Double, blue: Double): Boolean = {
+    if (Host.root != null) Host.root.setEffect(
+      if (red >= 0.999 && green >= 0.999 && blue >= 0.999) null
+      else new javafx.scene.effect.Blend(javafx.scene.effect.BlendMode.MULTIPLY, null,
+        new javafx.scene.effect.ColorInput(0.0, 0.0, 16384.0, 16384.0, javafx.scene.paint.Color.color(
+          math.max(0.0, math.min(1.0, red)), math.max(0.0, math.min(1.0, green)), math.max(0.0, math.min(1.0, blue))))))
+    true
+  }
   def identify(app: String): Unit = System.setProperty("http.agent", app)
 
   def copyText(text: String): Unit = {
@@ -863,6 +873,9 @@ object Platform {
 
   def launchesApps(): Boolean = false
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
+  /** The hardware facts a performance report is read with: none this platform will say. */
+  def deviceProfile(): List[(String, String)] = Nil
+
   def decodes(codec: String): Boolean = true
   // nothing here turns speech into words
   def dictation(): Boolean = false

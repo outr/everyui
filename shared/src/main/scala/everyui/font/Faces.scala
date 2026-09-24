@@ -26,7 +26,7 @@ object Faces {
       // as CSS and Flutter choose: nearest wins, and between two as near, a weight above 500 takes the heavier
       // face and one below the lighter — so a semibold 600 in a family of 500 and 700 is drawn bold
       val better = nearest.forall(n => d < distance || (d == distance && (if (weight > 500) f.weight > n.weight else f.weight < n.weight)))
-      if (f.family == family && better) {
+      if (f.family == family && !f.italic && better) {
         nearest = Some(f)
         distance = d
       }
@@ -41,4 +41,28 @@ object Faces {
 
   /** Every registered face, for a backend that loads them up front. */
   def all(): Vector[Face] = registered
+
+  /** The family's italic face nearest `weight`, where one is registered: what a platform that can draws a run marked
+    * italic in, rather than slanting the upright letters itself. */
+  def italic(family: String, weight: Int): Option[Face] = {
+    var nearest: Option[Face] = None
+    registered.foreach { f =>
+      if (f.family == family && f.italic && nearest.forall(n => math.abs(f.weight - weight) < math.abs(n.weight - weight)))
+        nearest = Some(f)
+    }
+    nearest
+  }
+
+  private var fallbacks: Vector[Face] = Vector.empty
+
+  /** A face for what the others have nothing to draw with: colour emoji, which a television's own fonts may be years
+    * out of date for (a Fire TV drew a dozen trivia emoji and two awards as empty boxes). Where a platform can, a
+    * character none of an app's faces has is drawn in it; the line keeps its own face's height. */
+  def fallback(face: Face): Unit = {
+    fallbacks = fallbacks :+ face
+    Platform.registerFont(face)
+  }
+
+  /** The fallback faces, first first. */
+  def fallbackFaces(): Vector[Face] = fallbacks
 }
