@@ -985,7 +985,9 @@ object Platform {
     val fonts = dom.document.asInstanceOf[js.Dynamic].fonts
     val loads = js.Array("400 24px 'Open Sans'", "600 24px 'Open Sans'", "400 24px 'Material Icons'")
       .map(face => fonts.load(face)) ++ registered.map(font => font.load())
-    val done: js.Function1[js.Any, Unit] = _ => f()
+    // and then a frame drawn with them: what the server wrote into the page is painted in its own faces (a headline
+    // that waited for its face) before the app, built at once, draws over it
+    val done: js.Function1[js.Any, Unit] = _ => afterFirstPaint(f)
     js.Dynamic.global.Promise.all(loads).applyDynamic("then")(done, done)
   }
 
