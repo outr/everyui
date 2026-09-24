@@ -111,6 +111,7 @@ class RenderNode(val sg: SGNode) {
   def mediaTracks(): List[everyui.component.MediaTrack] = Nil
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()
+  def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = 0.0
   def getMediaDuration(): Double = 0.0
   def seekMedia(seconds: Double): Unit = ()

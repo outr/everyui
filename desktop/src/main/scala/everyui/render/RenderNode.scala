@@ -419,6 +419,7 @@ class RenderNode(val fx: Node) {
   // JavaFX lists its tracks but will not switch between them
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
+  def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
   def getMediaDuration(): Double = media.map(_.duration()).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))

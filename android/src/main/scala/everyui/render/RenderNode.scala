@@ -241,6 +241,7 @@ class RenderNode(val view: View) {
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
   def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
+  def setMediaDirect(direct: Boolean): Unit = media.foreach(_.setDirect(direct))
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
   def getMediaDuration(): Double = media.map(_.duration()).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))
@@ -877,11 +878,11 @@ object Nodes {
   /** The Activity's content view. */
   def root(): RenderNode = new RenderNode(Host.root)
 
-  /** A video: a `TextureView` the player draws into. */
+  /** A video: a [[VideoFrame]], holding the view the player draws into. */
   def video(): RenderNode = {
-    val texture = new android.view.TextureView(Host.activity)
-    val node = new RenderNode(texture)
-    node.media = Some(new ExoMedia(Some(texture)))
+    val frame = new VideoFrame(Host.activity)
+    val node = new RenderNode(frame)
+    node.media = Some(new ExoMedia(Some(frame)))
     node
   }
 

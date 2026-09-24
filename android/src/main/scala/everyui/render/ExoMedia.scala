@@ -1,8 +1,7 @@
 package everyui.render
 
-import android.graphics.{Matrix, SurfaceTexture}
 import android.net.Uri
-import android.view.{Surface, TextureView}
+import android.view.{SurfaceView, TextureView, View}
 import androidx.media3.common.{AudioAttributes, C, MediaItem, PlaybackParameters, Player, TrackSelectionOverride, Tracks, VideoSize}
 import androidx.media3.exoplayer.{DefaultLoadControl, DefaultRenderersFactory, ExoPlayer}
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -10,8 +9,14 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import everyui.component.{MediaSidecar, MediaTrack}
 
-/** What a video or an audio node plays, Android edition: an ExoPlayer, drawing (for a video) into the node's
-  * `TextureView`, which a transform fits to the box, filling it or whole inside it.
+/** What a video or an audio node plays, Android edition: an ExoPlayer, drawing (for a video) into a view in the node's
+  * [[VideoFrame]], which lays that view out at the picture's shape.
+  *
+  * The view is a `TextureView` unless the video is `direct`: then it is a `SurfaceView`, whose picture never passes
+  * through the app's drawing at all. The display composes it on its own plane at the file's own resolution, so a 4K
+  * file is shown in 4K rather than scaled into a 1080p window, HDR and Dolby Vision reach the television, and a SHIELD
+  * upscales it with its own processor. What it cannot do is what a picture in the app's layers can: fade, turn, or be
+  * cut by a rounded box. A film wants the first; a picture behind a screen wants the second.
   *
   * It replaces `MediaPlayer`, which plays a file well enough and answers none of the questions a television asks of a
   * home network. Four things are only reachable here: what to send with the request, how long to wait for an answer,
@@ -20,9 +25,10 @@ import everyui.component.{MediaSidecar, MediaTrack}
   * which a player that cannot measure has to guess at, and guesses wrong in the direction of "failed".
   *
   * Everything runs on the main thread, as the player's callbacks do. */
-class ExoMedia(texture: Option[TextureView]) {
+class ExoMedia(frame: Option[VideoFrame]) {
   private var player: Option[ExoPlayer] = None
-  private var surface: Option[Surface] = None
+  private var direct = false
+  private var picture: Option[View] = None
   private var source = ""
   private var playing = true
   private var looping = false
@@ -45,23 +51,7 @@ class ExoMedia(texture: Option[TextureView]) {
   /** What stops the player hearing that the app has gone away and come back. */
   private var hooks: List[() => Unit] = Nil
 
-  texture.foreach { t =>
-    t.setSurfaceTextureListener(new TextureView.SurfaceTextureListener {
-      override def onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int): Unit = {
-        surface = Some(new Surface(st))
-        player.foreach(_.setVideoSurface(surface.get))
-        fit()
-      }
-      override def onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int): Unit = fit()
-      override def onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean = {
-        player.foreach(_.setVideoSurface(null))
-        surface.foreach(_.release())
-        surface = None
-        true
-      }
-      override def onSurfaceTextureUpdated(st: SurfaceTexture): Unit = ()
-    })
-  }
+  frame.foreach(_ => show())
 
   /** What to send with the request, and with every request that comes out of it: an HLS playlist's segments and keys
     * are fetched by the same factory, so they carry it too. Kept for the next source: the factory is built with the
@@ -136,9 +126,9 @@ class ExoMedia(texture: Option[TextureView]) {
           .build()
         made.setAudioAttributes(new AudioAttributes.Builder()
           .setUsage(C.USAGE_MEDIA)
-          .setContentType(if (texture.nonEmpty) C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC)
+          .setContentType(if (frame.nonEmpty) C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC)
           .build(), false)
-        surface.foreach(made.setVideoSurface)
+        attach(made)
         made.setRepeatMode(if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF)
         made.setVolume(if (muted) 0f else math.min(1.0, volume).toFloat)
         if (rate != 1.0) made.setPlaybackParameters(new PlaybackParameters(rate.toFloat))
@@ -161,6 +151,7 @@ class ExoMedia(texture: Option[TextureView]) {
           override def onVideoSizeChanged(size: VideoSize): Unit = {
             videoWidth = size.width
             videoHeight = size.height
+            aspect = if (size.pixelWidthHeightRatio > 0f) size.pixelWidthHeightRatio.toDouble else 1.0
             fit()
           }
           // The subtitles themselves. Media3 decodes the text and hands it over, but nothing draws it: that is
@@ -412,20 +403,51 @@ class ExoMedia(texture: Option[TextureView]) {
     watching += 1
     videoWidth = 0
     videoHeight = 0
+    aspect = 1.0
   }
 
-  // A TextureView stretches the picture over the whole view; the transform undoes that, scaling it to fill the view
-  // (cover, the view's bounds cutting the rest) or to fit whole inside it, about the centre. The view does not cut
-  // what the transform puts past its edges, so its bounds are set as its clip.
-  private def fit(): Unit = texture.foreach { t =>
-    val w = t.getWidth.toDouble
-    val h = t.getHeight.toDouble
-    t.setClipBounds(new android.graphics.Rect(0, 0, t.getWidth, t.getHeight))
-    if (w > 0 && h > 0 && videoWidth > 0 && videoHeight > 0) {
-      val scale = if (cover) math.max(w / videoWidth, h / videoHeight) else math.min(w / videoWidth, h / videoHeight)
-      val m = new Matrix()
-      m.setScale((videoWidth * scale / w).toFloat, (videoHeight * scale / h).toFloat, (w / 2).toFloat, (h / 2).toFloat)
-      t.setTransform(m)
+  /** Drawn by the display itself (a `SurfaceView`) or in the app's layers (a `TextureView`). A player keeps playing
+    * across the change: it is only told where to draw next. */
+  def setDirect(on: Boolean): Unit = if (on != direct) {
+    direct = on
+    if (frame.nonEmpty) show()
+  }
+
+  /** The view the picture goes into, made for how it is drawn, in place of the one before. */
+  private def show(): Unit = frame.foreach { f =>
+    player.foreach(detach)
+    f.removeAllViews()
+    val made: View = if (direct) new SurfaceView(Host.activity) else new TextureView(Host.activity)
+    f.addView(made)
+    picture = Some(made)
+    player.foreach(attach)
+    fit()
+  }
+
+  private def attach(p: ExoPlayer): Unit = picture.foreach {
+    case s: SurfaceView => p.setVideoSurfaceView(s)
+    case t: TextureView => p.setVideoTextureView(t)
+    case _ => ()
+  }
+
+  private def detach(p: ExoPlayer): Unit = picture.foreach {
+    case s: SurfaceView => p.clearVideoSurfaceView(s)
+    case t: TextureView => p.clearVideoTextureView(t)
+    case _ => ()
+  }
+
+  /** How wide one of the file's pixels is for its height: 1 but for an anamorphic file, whose pixels are wider. */
+  private var aspect = 1.0
+
+  /** The picture at its own shape in the box. A `SurfaceView`'s buffer is also held at the file's own size, which is
+    * what lets the display, not the app, scale it to the screen. */
+  private def fit(): Unit = frame.foreach { f =>
+    f.fit(videoWidth * aspect, videoHeight.toDouble, cover)
+    picture.foreach {
+      case s: SurfaceView =>
+        if (videoWidth > 0 && videoHeight > 0) s.getHolder.setFixedSize(videoWidth, videoHeight)
+        else s.getHolder.setSizeFromLayout()
+      case _ => ()
     }
   }
 }
