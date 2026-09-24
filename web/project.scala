@@ -9,7 +9,7 @@
 // are named here until spice publishes them right (reactify comes from source, below)
 //> using dep org.typelevel::fabric-io::1.30.0
 //> using dep com.outr::rapid-core::2.9.9
-//> using dep com.outr::scribe::3.19.0
+//> using dep com.outr::scribe::3.19.1-SNAPSHOT
 //> using dep com.outr::profig::3.7.1
 // UUID.randomUUID (the durable client id) needs SecureRandom, which Scala.js keeps in its own library
 //> using dep org.scala-js:scalajs-java-securerandom_sjs1_2.13:1.0.0
