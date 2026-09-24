@@ -1269,6 +1269,12 @@ object Platform {
     edit.apply()
   }
 
+  /** A value that must not be readable off the device (a session'"'"'s token), kept across launches encrypted under a
+    * keystore key ([[Secrets]]), or "" when there is none. */
+  def secret(name: String): String = Secrets.get(name)
+  /** Keep `value` under `name`, sealed; "" forgets it. */
+  def saveSecret(name: String, value: String): Unit = Secrets.put(name, value)
+
   /** The device's own store of documents (see [[everyui.store.Store]]). Files under the app's cache directory
     * rather than the settings, which hold a handful of small values and read the whole of themselves to do it.
     * Android empties a cache directory when it wants the room back, which is what a cache is for. */

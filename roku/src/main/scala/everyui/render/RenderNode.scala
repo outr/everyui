@@ -567,6 +567,10 @@ object Platform {
   /** Kept in the registry, across launches. */
   def setting(name: String): String = uiSetting(name)
   /** Keep `value` under `name`; "" forgets it. */
+  // nowhere safer than the settings to keep a secret here
+  def secret(name: String): String = setting(name)
+  def saveSecret(name: String, value: String): Unit = saveSetting(name, value)
+
   def saveSetting(name: String, value: String): Unit = uiSaveSetting(name, value)
 
   /** The device's own store of documents (see [[everyui.store.Store]]). `cachefs:` here: it outlives a channel

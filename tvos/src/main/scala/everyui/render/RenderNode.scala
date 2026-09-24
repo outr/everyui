@@ -355,6 +355,10 @@ object Platform {
 
   /** Not kept yet: the registry is still to be wired to the runtime. */
   def setting(name: String): String = ""
+  // nowhere safer than the settings to keep a secret here
+  def secret(name: String): String = setting(name)
+  def saveSecret(name: String, value: String): Unit = saveSetting(name, value)
+
   def saveSetting(name: String, value: String): Unit = ()
 
   /** The device's own store of documents (see [[everyui.store.Store]]). Nothing is kept here yet, as nothing is

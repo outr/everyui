@@ -850,6 +850,10 @@ object Platform {
     if (v == null) "" else v
   }
   /** Keep `value` under `name`; "" forgets it. */
+  // nowhere safer than the settings to keep a secret here
+  def secret(name: String): String = setting(name)
+  def saveSecret(name: String, value: String): Unit = saveSetting(name, value)
+
   def saveSetting(name: String, value: String): Unit =
     if (value.isEmpty) dom.window.localStorage.removeItem(name) else dom.window.localStorage.setItem(name, value)
 

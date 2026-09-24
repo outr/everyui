@@ -818,6 +818,10 @@ object Platform {
   /** A value kept across launches (the user's preferences store), or "" when there is none. */
   def setting(name: String): String = Host.settings.get(name, "")
   /** Keep `value` under `name`; "" forgets it. */
+  // nowhere safer than the settings to keep a secret here
+  def secret(name: String): String = setting(name)
+  def saveSecret(name: String, value: String): Unit = saveSetting(name, value)
+
   def saveSetting(name: String, value: String): Unit = {
     if (value.isEmpty) Host.settings.remove(name) else Host.settings.put(name, value)
     Host.settings.flush()
