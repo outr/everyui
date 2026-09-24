@@ -277,8 +277,6 @@ class RenderNode(val el: html.Element) {
   def mediaRates(): Boolean = true
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
-  // the browser keeps what its own cache allows, and a page has no other store for a clip
-  def setMediaCached(cached: Boolean): Unit = ()
   // it does not say whether it is waiting; the playhead standing still is what tells a viewer
   def mediaBuffering(): Boolean = false
   // nothing here counts what the link is carrying
@@ -866,6 +864,8 @@ object Platform {
   def deviceModel(): String = deviceName()
 
   def launchesApps(): Boolean = false
+  // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
+  def decodes(codec: String): Boolean = true
   def localAddress(): String = ""
   def deviceSerial(): String = ""
 
@@ -912,9 +912,6 @@ object Platform {
 
   def screenWidth(): Double = dom.window.innerWidth.toDouble
   def screenHeight(): Double = dom.window.innerHeight.toDouble
-  /** Screen pixels to a layout unit: the browser's device pixel ratio (2 on a HiDPI screen, often 1.5 or 2 on a
-    * television whose page is laid out smaller than its panel). */
-  def pixelRatio(): Double = if (dom.window.devicePixelRatio > 0.0) dom.window.devicePixelRatio else 1.0
 
   /** `?freeze=<seconds>` in the page URL: step the animation that far on a virtual clock and stop (tools/check.sh).
     * Negative when absent. */

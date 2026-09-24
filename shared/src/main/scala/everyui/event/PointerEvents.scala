@@ -23,13 +23,8 @@ class PointerEvents(component: Component) {
 
   def channel(kind: PointerKind): Channel[PointerEvent] = {
     val channel = Channel[PointerEvent]
-    // a hand on the pointer is somebody using the app as surely as a key is: a finger scrolling a list on a phone,
-    // or a mouse moving over a desktop window, holds a screensaver off just as a remote does
-    val use = kind == PointerKind.Down || kind == PointerKind.Move || kind == PointerKind.Wheel ||
-      kind == PointerKind.Click
     component.node.onPointer(kind, (x, y) => {
       val event = PointerEvent(kind, x, y)
-      if (use) everyui.focus.Focus.used()
       if (!Pointer.consumed.contains(event)) channel @= event
     })
     channel

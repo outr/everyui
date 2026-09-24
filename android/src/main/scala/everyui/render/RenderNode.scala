@@ -199,7 +199,6 @@ class RenderNode(val view: View) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
   def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
   def setMediaBuffering(named: String): Unit = media.foreach(_.setBuffering(named))
-  def setMediaCached(cached: Boolean): Unit = media.foreach(_.setCached(cached))
   def mediaRates(): Boolean = true
   def mediaBandwidth(): Long = media.map(_.bandwidth()).getOrElse(0L)
   def mediaBuffering(): Boolean = media.exists(_.buffering())
@@ -750,15 +749,13 @@ object Host {
     else if (code == KeyEvent.KEYCODE_DPAD_DOWN) "ArrowDown"
     else if (code == KeyEvent.KEYCODE_DPAD_LEFT) "ArrowLeft"
     else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) "ArrowRight"
-    // a remote's transport keys: a television's own play/pause button, and the ones a media remote adds
+    // a remote's transport keys: a television's own play/pause button, and the four a media remote adds
     else if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) "MediaPlayPause"
     else if (code == KeyEvent.KEYCODE_MEDIA_PLAY) "MediaPlay"
     else if (code == KeyEvent.KEYCODE_MEDIA_PAUSE) "MediaPause"
     else if (code == KeyEvent.KEYCODE_MEDIA_STOP) "MediaStop"
     else if (code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) "MediaFastForward"
     else if (code == KeyEvent.KEYCODE_MEDIA_REWIND) "MediaRewind"
-    else if (code == KeyEvent.KEYCODE_MEDIA_NEXT) "MediaTrackNext"
-    else if (code == KeyEvent.KEYCODE_MEDIA_PREVIOUS) "MediaTrackPrevious"
     else if (e.getUnicodeChar > 0) e.getUnicodeChar.toChar.toString
     else KeyEvent.keyCodeToString(code)
   }
@@ -1133,6 +1130,10 @@ object Platform {
   /** Whether this device opens a streaming service's own app itself, rather than needing another to do it. */
   def launchesApps(): Boolean = true
 
+  /** Whether it can play `codec` (a media server's name for it: "hevc", "ac3"), with a decoder of its own or by passing
+    * the sound through: see [[Codecs]]. */
+  def decodes(codec: String): Boolean = Codecs.plays(codec)
+
   /** Where this device can be reached on its own network, for another to play to; "" where it has no such need. */
   def localAddress(): String = ""
   def deviceSerial(): String = ""
@@ -1259,13 +1260,6 @@ object Platform {
   def screenHeight(): Double =
     if (Host.viewportHeight > 0.0) Host.viewportHeight
     else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.height.toDouble / Host.scale
-
-  /** Screen pixels to a layout unit: the window's real width over the width it is laid out in — the display's density,
-    * or whatever a `--es viewport` launch set the layout to. */
-  def pixelRatio(): Double = {
-    val laid = screenWidth()
-    if (laid > 0.0) Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.width.toDouble / laid else 1.0
-  }
 
   /** `--es freeze <seconds>` on the launch intent: step the animation that far on a virtual clock and stop
     * (tools/check.sh). Negative when absent. */

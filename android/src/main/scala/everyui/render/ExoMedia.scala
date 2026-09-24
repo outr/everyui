@@ -84,11 +84,6 @@ class ExoMedia(frame: Option[VideoFrame]) {
     * source, since a load control belongs to the player it was built with. */
   def setBuffering(named: String): Unit = holding = Buffering.of(named)
 
-  /** Whether what is fetched is kept on the device and read from there next time ([[ClipCache]]). Takes effect on
-    * the next source, whose reads are what go through the store. */
-  def setCached(on: Boolean): Unit = keeping = on
-  private var keeping = false
-
   def setSource(url: String): Unit = if (url != source) {
     source = url
     close()
@@ -122,7 +117,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
           // how long one load may go on failing before it is lost is the profile's patience, and the number of
           // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter
-          .setMediaSourceFactory(new DefaultMediaSourceFactory(if (keeping) ClipCache.around(http) else http)
+          .setMediaSourceFactory(new DefaultMediaSourceFactory(http)
             .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy {
               override def getMinimumLoadableRetryCount(dataType: Int): Int =
                 math.max(3, holding.patienceMs / math.max(1000, holding.readMs))
@@ -164,6 +159,9 @@ class ExoMedia(frame: Option[VideoFrame]) {
           // instead, which already draws text on every platform and can put them where this player wants them.
           override def onCues(group: androidx.media3.common.text.CueGroup): Unit = {
             val list = group.cues
+            // the subtitles that are pictures (PGS, VobSub) are drawn here, over the picture: there are no words in them
+            // for the app to draw
+            frame.foreach(_.cues((0 until list.size()).toList.map(i => list.get(i))))
             val words = new StringBuilder
             var i = 0
             while (i < list.size()) {
@@ -409,6 +407,8 @@ class ExoMedia(frame: Option[VideoFrame]) {
     videoWidth = 0
     videoHeight = 0
     aspect = 1.0
+    cueText = ""
+    frame.foreach(_.cues(Nil))
   }
 
   /** Drawn by the display itself (a `SurfaceView`) or in the app's layers (a `TextureView`). A player keeps playing
@@ -421,9 +421,8 @@ class ExoMedia(frame: Option[VideoFrame]) {
   /** The view the picture goes into, made for how it is drawn, in place of the one before. */
   private def show(): Unit = frame.foreach { f =>
     player.foreach(detach)
-    f.removeAllViews()
     val made: View = if (direct) new SurfaceView(Host.activity) else new TextureView(Host.activity)
-    f.addView(made)
+    f.hold(made)
     picture = Some(made)
     player.foreach(attach)
     fit()

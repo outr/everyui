@@ -2,17 +2,33 @@ package everyui.render
 
 import android.content.Context
 import android.view.{View, ViewGroup}
+import android.widget.ImageView
+import androidx.media3.common.text.Cue
 
 /** The box a video is drawn in: one view the picture goes into (a `TextureView` or a `SurfaceView`, see
   * [[ExoMedia]]), laid out at the picture's own shape, about the box's centre — the whole of it inside the box, or
   * filling it with the box cutting the rest. Neither view keeps a picture's shape on its own: each stretches it over
-  * whatever it is given. */
+  * whatever it is given.
+  *
+  * Over the picture go the subtitles that are pictures themselves (a Blu-ray's PGS, a DVD's VobSub): each where the
+  * file puts it, as a share of the picture, as media3's own painter places them. Text subtitles are the app's to draw;
+  * these have nothing in them to draw but the image. */
 final class VideoFrame(context: Context) extends ViewGroup(context) {
   private var pictureWidth = 0.0
   private var pictureHeight = 0.0
   private var cover = true
+  private var picture: Option[View] = None
+  private var bitmaps: List[(Cue, ImageView)] = Nil
 
   setClipChildren(true)
+
+  /** The view the picture is drawn into, in place of the one before. */
+  def hold(view: View): Unit = {
+    picture.foreach(removeView)
+    picture = Some(view)
+    // under the subtitles, whatever came first
+    addView(view, 0)
+  }
 
   /** The picture's shape as it is shown (its pixels by their aspect), and whether it fills the box. */
   def fit(width: Double, height: Double, cover: Boolean): Unit =
@@ -22,6 +38,19 @@ final class VideoFrame(context: Context) extends ViewGroup(context) {
       this.cover = cover
       requestLayout()
     }
+
+  /** The subtitles that are pictures, as they are now: those of `cues` with a bitmap, the rest being text. */
+  def cues(cues: List[Cue]): Unit = {
+    bitmaps.foreach(b => removeView(b._2))
+    bitmaps = cues.filter(_.bitmap != null).map { cue =>
+      val view = new ImageView(context)
+      view.setScaleType(ImageView.ScaleType.FIT_XY)
+      view.setImageBitmap(cue.bitmap)
+      addView(view)
+      (cue, view)
+    }
+    requestLayout()
+  }
 
   /** Where the picture goes in a box `w` by `h`: its left, top, width and height. The whole box until its shape is
     * known. */
@@ -36,25 +65,53 @@ final class VideoFrame(context: Context) extends ViewGroup(context) {
       ((w - pw) / 2, (h - ph) / 2, pw, ph)
     }
 
+  /** Where a picture subtitle goes over a picture at `x`, `y`, `pw` by `ph`: its position and line are shares of the
+    * picture, its size a share of the width, its height a share of the height or else the image's own shape; each
+    * anchored at its start, middle or end. */
+  private def spot(cue: Cue, x: Int, y: Int, pw: Int, ph: Int): (Int, Int, Int, Int) = {
+    val across = if (cue.position == Cue.DIMEN_UNSET) 0.5f else cue.position
+    val down = if (cue.line == Cue.DIMEN_UNSET) 0.9f else cue.line
+    val w = math.round(pw * (if (cue.size == Cue.DIMEN_UNSET) 1.0f else cue.size))
+    val h =
+      if (cue.bitmapHeight != Cue.DIMEN_UNSET) math.round(ph * cue.bitmapHeight)
+      else math.round(w * cue.bitmap.getHeight.toFloat / math.max(1, cue.bitmap.getWidth))
+    val ax = x + pw * across
+    val ay = y + ph * down
+    val left = cue.positionAnchor match {
+      case Cue.ANCHOR_TYPE_END => ax - w
+      case Cue.ANCHOR_TYPE_MIDDLE => ax - w / 2
+      case _ => ax
+    }
+    val top = cue.lineAnchor match {
+      case Cue.ANCHOR_TYPE_END => ay - h
+      case Cue.ANCHOR_TYPE_MIDDLE => ay - h / 2
+      case _ => ay
+    }
+    (math.round(left), math.round(top), w, h)
+  }
+
   override def onMeasure(widthSpec: Int, heightSpec: Int): Unit = {
     val w = View.getDefaultSize(0, widthSpec)
     val h = View.getDefaultSize(0, heightSpec)
-    val (_, _, pw, ph) = place(w, h)
-    var i = 0
-    while (i < getChildCount) {
-      getChildAt(i).measure(View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.EXACTLY),
-        View.MeasureSpec.makeMeasureSpec(ph, View.MeasureSpec.EXACTLY))
-      i += 1
+    val (x, y, pw, ph) = place(w, h)
+    picture.foreach(exactly(_, pw, ph))
+    bitmaps.foreach { case (cue, view) =>
+      val (_, _, cw, ch) = spot(cue, x, y, pw, ph)
+      exactly(view, cw, ch)
     }
     setMeasuredDimension(w, h)
   }
 
   override def onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int): Unit = {
     val (x, y, pw, ph) = place(r - l, b - t)
-    var i = 0
-    while (i < getChildCount) {
-      getChildAt(i).layout(x, y, x + pw, y + ph)
-      i += 1
+    picture.foreach(_.layout(x, y, x + pw, y + ph))
+    bitmaps.foreach { case (cue, view) =>
+      val (cx, cy, cw, ch) = spot(cue, x, y, pw, ph)
+      view.layout(cx, cy, cx + cw, cy + ch)
     }
   }
+
+  private def exactly(view: View, w: Int, h: Int): Unit =
+    view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+      View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
 }
