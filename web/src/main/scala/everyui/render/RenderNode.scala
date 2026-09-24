@@ -708,6 +708,16 @@ object Platform {
     }
   }
 
+  /** A component's size is read in a batch (`MeasuredFeature`): every size asked for while the script runs is read
+    * together at the end of its turn, before the browser draws, so the page is laid out once for all of them rather than
+    * once for each read that follows a change. Nothing is drawn in between, so nothing shows the difference. */
+  def measuresInBatches: Boolean = true
+  /** `f` at the end of the script's turn, before the browser draws: a microtask. */
+  def beforePaint(f: () => Unit): Unit = {
+    val task: js.Function0[Unit] = () => f()
+    js.Dynamic.global.queueMicrotask(task)
+  }
+
   /** The first screen is drawn: what the server wrote into the page to stand in for it until then (the page's content
     * as plain HTML, for whatever reads the page without running it) goes. */
   def drawn(): Unit = {

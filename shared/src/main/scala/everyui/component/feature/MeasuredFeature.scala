@@ -2,21 +2,78 @@ package everyui.component.feature
 
 import reactify.{Val, Var}
 import everyui.component.Component
+import everyui.render.Platform
 
 /** youi's `MeasuredFeature`: the node's laid-out size, refreshed whenever the component's `measure` fires (and, for a
-  * component inside a container, whenever the container's does: see `ContainerFeature`). */
+  * component inside a container, whenever the container's does: see `ContainerFeature`).
+  *
+  * Where the platform reads sizes in batches (the web: `Platform.measuresInBatches`), a refresh is queued and every one
+  * asked for in a turn is read together before the frame is drawn — all the reads, then all the sizes set — rather
+  * than each read forcing the browser to lay the page out again after the change before it. */
 class MeasuredFeature(component: Component) {
   private val w: Var[Double] = Var(0.0)
   private val h: Var[Double] = Var(0.0)
+  // queued for the turn's batch, and the size its read found, until the batch sets it
+  private[feature] var queued: Boolean = false
+  private[feature] var readWidth: Double = 0.0
+  private[feature] var readHeight: Double = 0.0
 
   val width: Val[Double] = w
   val height: Val[Double] = h
 
-  /** Read the node's size now. */
-  def refresh(): Unit = {
-    w @= component.node.getWidth()
-    h @= component.node.getHeight()
+  /** Read the node's size: now, or with the rest of the turn's where the platform batches them. */
+  def refresh(): Unit = if (Platform.measuresInBatches) MeasuredFeature.enqueue(this) else {
+    read()
+    set()
+  }
+
+  private[feature] def read(): Unit = {
+    readWidth = component.node.getWidth()
+    readHeight = component.node.getHeight()
+  }
+
+  private[feature] def set(): Unit = {
+    w @= readWidth
+    h @= readHeight
   }
 
   component.measure.on(refresh())
+}
+
+object MeasuredFeature {
+  // the refreshes asked for this turn, newest first, and whether their batch is scheduled
+  private var pending: List[MeasuredFeature] = Nil
+  private var scheduled: Boolean = false
+  // rounds in one batch before the rest waits for the next: sizes that go on changing each other do not hold the page
+  private val MaxRounds = 64
+
+  private def enqueue(m: MeasuredFeature): Unit = if (!m.queued) {
+    m.queued = true
+    pending = m :: pending
+    if (!scheduled) {
+      scheduled = true
+      Platform.beforePaint(() => flush())
+    }
+  }
+
+  /** Read every queued size, then set them, in the order they were asked for; what setting them asks to be measured
+    * again is the next round, in the same batch. */
+  private def flush(): Unit = {
+    var rounds = 0
+    while (pending.nonEmpty && rounds < MaxRounds) {
+      val round = pending.reverse
+      pending = Nil
+      round.foreach { m =>
+        m.queued = false
+        m.read()
+      }
+      round.foreach(_.set())
+      rounds += 1
+    }
+    scheduled = false
+    if (pending.nonEmpty) {
+      scheduled = true
+      Platform.beforePaint(() => flush())
+    }
+  }
 }

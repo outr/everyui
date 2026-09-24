@@ -516,6 +516,10 @@ object Platform {
   def setSEO(meta: everyui.seo.SEO): Unit = ()
   /** The first screen is drawn: nothing was standing in for it. */
   def drawn(): Unit = ()
+  /** Whether a component's size is read in a batch before the frame is drawn (`MeasuredFeature`) rather than at once:
+    * here it is read at once. */
+  def measuresInBatches: Boolean = false
+  def beforePaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = ()
   def copyText(text: String): Unit = ()

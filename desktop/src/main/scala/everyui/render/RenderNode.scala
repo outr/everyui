@@ -733,6 +733,10 @@ object Platform {
   def setSEO(meta: everyui.seo.SEO): Unit = setTitle(meta.title)
   /** The first screen is drawn: nothing was standing in for it. */
   def drawn(): Unit = ()
+  /** Whether a component's size is read in a batch before the frame is drawn (`MeasuredFeature`) rather than at once:
+    * here it is read at once. */
+  def measuresInBatches: Boolean = false
+  def beforePaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = Option(Host.scene).flatMap(s => Option(s.getWindow)).foreach {
     case stage: javafx.stage.Stage => stage.setTitle(title)
