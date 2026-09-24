@@ -1181,6 +1181,15 @@ object Platform {
     * the sound through: see [[Codecs]]. */
   def decodes(codec: String): Boolean = Codecs.plays(codec)
 
+  /** Whether this copy may install a newer build of itself ([[AppInstaller]]): the viewer'"'"'s "install unknown apps". */
+  def canInstallApps(): Boolean = AppInstaller.allowed
+  /** Where that is given. */
+  def openInstallSettings(): Unit = AppInstaller.openSettings()
+  /** The APK at `url`, fetched and handed to the system'"'"'s installer, which asks the viewer; `done` hears nothing when it
+    * has it, or what went wrong. */
+  def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
+    AppInstaller.install(url, progress, done)
+
   /** Whether it can listen: a speech recognizer to turn what is said into words ([[Dictation]]). */
   def dictation(): Boolean = Dictation.available
 

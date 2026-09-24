@@ -601,6 +601,11 @@ object Platform {
   def launchesApps(): Boolean = false
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   def decodes(codec: String): Boolean = true
+  // an app here is updated by whatever put it here, never by itself
+  def canInstallApps(): Boolean = false
+  def openInstallSettings(): Unit = ()
+  def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
+    done(Some("Updates install only on Android"))
   // nothing here turns speech into words
   def dictation(): Boolean = false
   def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {
