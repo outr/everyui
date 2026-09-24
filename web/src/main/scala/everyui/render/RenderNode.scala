@@ -359,6 +359,10 @@ class RenderNode(val el: html.Element) {
   }
 
   /** "start", "center" or "end": CSS's own logical values, so the page's direction resolves them. */
+  /** A shadow behind the letters, as CSS draws one; an empty colour, none. */
+  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
+    el.style.setProperty("text-shadow", if (hex.isEmpty) "none" else s"${x}px ${y}px ${blur}px $hex")
+
   def setTextAlign(align: String): Unit = el.style.textAlign = align
 
   /** An `<input>`'s contents. */
@@ -782,6 +786,9 @@ object Platform {
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
   def appVersion(): Int = 0
+
+  /** The device's own caption settings, where it has any: not here. */
+  def captionStyle(): Option[everyui.text.CaptionStyle] = None
 
   def deviceName(): String = {
     val agent = dom.window.navigator.userAgent

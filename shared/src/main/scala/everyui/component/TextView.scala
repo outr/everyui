@@ -15,6 +15,12 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** The most lines wrapped words may take: what will not fit is cut short at a word with an ellipsis, as a synopsis
     * under an episode's name is. 0 for no limit. */
   lazy val maxLines: Var[Int] = Var(0)
+  /** A shadow behind the letters themselves, not the box: an edge that keeps words readable over a picture. */
+  lazy val textShadow: types.Prop[Option[everyui.Shadow]] = new types.Prop[Option[everyui.Shadow]](None, s =>
+    s match {
+      case Some(sh) => node.setTextShadow(sh.x, sh.y, sh.blur, Component.css(sh.color))
+      case None => node.setTextShadow(0.0, 0.0, 0.0, "")
+    })
   val font: FontFeature = new FontFeature(this)
   /** Where the text sits in its box, by the reading direction: it matters once the box is wider than the words
     * (wrapped, or given a width). */

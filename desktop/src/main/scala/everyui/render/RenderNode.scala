@@ -302,6 +302,9 @@ class RenderNode(val fx: Node) {
   }
 
   /** "start", "center" or "end", resolved against the window's direction (`Platform.setDirection`). */
+  /** A shadow behind the letters: not drawn here. */
+  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+
   def setTextAlign(value: String): Unit = {
     align = value
     applyAlign()
@@ -842,6 +845,9 @@ object Platform {
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
   def appVersion(): Int = 0
+
+  /** The device's own caption settings, where it has any: not here. */
+  def captionStyle(): Option[everyui.text.CaptionStyle] = None
 
   def deviceName(): String =
     try java.net.InetAddress.getLocalHost.getHostName

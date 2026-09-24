@@ -382,6 +382,9 @@ class RenderNode(val sg: SGNode) {
     uiSetHeight(edge, px(height))
   }
   /** Labels sit where they are placed. */
+  /** A shadow behind the letters: not drawn here. */
+  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+
   def setTextAlign(align: String): Unit = ()
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
@@ -575,6 +578,9 @@ object Platform {
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
   def appVersion(): Int = 0
+
+  /** The device's own caption settings, where it has any: not here. */
+  def captionStyle(): Option[everyui.text.CaptionStyle] = None
 
   def deviceName(): String = uiDeviceName()
 

@@ -562,6 +562,17 @@ class RenderNode(val view: View) {
   }
 
   /** "start", "center" or "end", resolved against the root's layout direction. */
+  /** A shadow behind the letters (a subtitle's edge, as a device's caption settings ask for one); an empty colour, none. */
+  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = view match {
+    case t: TextView =>
+      if (hex.isEmpty) t.setShadowLayer(0f, 0f, 0f, 0)
+      else t.setShadowLayer(math.max(0.01, blur * Host.scale).toFloat, (x * Host.scale).toFloat, (y * Host.scale).toFloat,
+        android.graphics.Color.parseColor(
+          // Android reads a translucent colour alpha first, where the CSS form this comes in puts it last
+          if (hex.length == 9) "#" + hex.substring(7) + hex.substring(1, 7) else hex))
+    case _ => ()
+  }
+
   def setTextAlign(align: String): Unit = view match {
     case t: TextView => t.setTextAlignment(
       if (align == "center") View.TEXT_ALIGNMENT_CENTER else if (align == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
@@ -1111,6 +1122,27 @@ object Platform {
   def appVersion(): Int =
     try Host.activity.getPackageManager.getPackageInfo(Host.activity.getPackageName, 0).versionCode
     catch { case _: Throwable => 0 }
+
+  /** The device's own caption settings (Settings → Accessibility → Captions): its colours, the edge round the letters and the
+    * size, as the system's own players draw subtitles. */
+  def captionStyle(): Option[everyui.text.CaptionStyle] =
+    try {
+      val manager = Host.activity.getSystemService(android.content.Context.CAPTIONING_SERVICE)
+        .asInstanceOf[android.view.accessibility.CaptioningManager]
+      val style = manager.getUserStyle
+      def colour(argb: Int): everyui.Color =
+        new everyui.Color((argb >> 16) & 0xff, (argb >> 8) & 0xff, argb & 0xff, (argb >>> 24) & 0xff)
+      val edge = style.edgeType match {
+        case 1 => "outline"
+        case 2 => "shadow"
+        case 3 => "raised"
+        case 4 => "depressed"
+        case _ => "none"
+      }
+      Some(everyui.text.CaptionStyle(colour(style.foregroundColor), colour(style.backgroundColor),
+        colour(style.windowColor), edge, colour(style.edgeColor), manager.getFontScale.toDouble))
+    }
+    catch { case _: Throwable => None }
 
   def language(): String = java.util.Locale.getDefault.toLanguageTag
 
