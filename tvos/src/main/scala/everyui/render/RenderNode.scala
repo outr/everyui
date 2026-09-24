@@ -91,6 +91,8 @@ class RenderNode(val sg: SGNode) {
   def mediaRates(): Boolean = false
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
+  // nowhere of its own to keep a clip: every one is fetched as it plays
+  def setMediaCached(cached: Boolean): Unit = ()
   // it does not say whether it is waiting; the playhead standing still is what tells a viewer
   def mediaBuffering(): Boolean = false
   // nothing here counts what the link is carrying
@@ -390,6 +392,8 @@ object Platform {
 
   def screenWidth(): Double = uiScreenWidth()
   def screenHeight(): Double = uiScreenHeight()
+  /** Screen pixels to a layout unit: a point is taken as a pixel, the screen's own scale not yet being asked for. */
+  def pixelRatio(): Double = 1.0
 
   /** `--freeze=<seconds>` on the launch (tools/tvos-run.sh --freeze): step the animation that far on a virtual
     * clock and stop. Negative when absent. */

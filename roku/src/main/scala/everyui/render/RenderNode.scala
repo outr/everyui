@@ -159,6 +159,8 @@ class RenderNode(val sg: SGNode) {
   def mediaRates(): Boolean = false
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
+  // nowhere of its own to keep a clip: every one is fetched as it plays
+  def setMediaCached(cached: Boolean): Unit = ()
   // it does not say whether it is waiting; the playhead standing still is what tells a viewer
   def mediaBuffering(): Boolean = false
   // nothing here counts what the link is carrying
@@ -615,6 +617,9 @@ object Platform {
 
   def screenWidth(): Double = uiScreenWidth()
   def screenHeight(): Double = uiScreenHeight()
+  /** Screen pixels to a layout unit. A Roku lays out at 1920 by 1080 whatever its panel, and says nothing here of a
+    * 4K one: one pixel to a unit. */
+  def pixelRatio(): Double = 1.0
 
   /** `pkg:/freeze.txt` in the channel (added by tools/check.sh to a test sideload): step the animation that far on
     * a virtual clock and stop. Negative when absent. */

@@ -25,6 +25,8 @@ object Keys {
     else if (name == "MediaRewind") MediaRewind
     else if (name == "MediaFastForward") MediaFastForward
     else if (name == "MediaReplay") MediaReplay
+    else if (name == "MediaTrackNext") MediaTrackNext
+    else if (name == "MediaTrackPrevious") MediaTrackPrevious
     else if (name == "ContextMenu") ContextMenu
     else Other
 

@@ -43,6 +43,13 @@ trait MediaSupport { self: Component =>
     * platform whose player cannot be told ignores it. */
   lazy val buffering: Prop[String] = new Prop[String]("balanced", b => node.setMediaBuffering(b))
 
+  /** Kept on the device once fetched, and played from there every time after: for a short clip that comes round
+    * again and again (a weather scene's loop), which would otherwise be downloaded afresh at each showing. Set it
+    * BEFORE [[source]], and only for something small that is shown repeatedly: a long film or a live stream has
+    * nothing to gain and a great deal of room to take. A platform with no store of its own for media (a browser,
+    * which keeps what its own cache allows) ignores it. */
+  lazy val keepClip: Prop[Boolean] = new Prop[Boolean](false, c => node.setMediaCached(c))
+
   /** What is playing, for the platform's own now-playing: a television's playing card and its assistant, a phone's
     * lock screen, the transport keys of whatever else is listening. Set on the one thing a screen is FOR — the track,
     * the book, the film — and never on sound under something else (a game's music, a clip to name): it also takes
@@ -184,6 +191,7 @@ trait MediaSupport { self: Component =>
     if (url.nonEmpty) {
       node.setMediaHeaders(headers())
       node.setMediaBuffering(buffering())
+      node.setMediaCached(keepClip())
       node.setMediaSpectrum(spectrum())
       node.setNowPlaying(nowPlaying())
       node.setMediaSource(url)

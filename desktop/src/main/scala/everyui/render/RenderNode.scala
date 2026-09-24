@@ -398,6 +398,8 @@ class RenderNode(val fx: Node) {
   def mediaRates(): Boolean = true
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
+  // nowhere of its own to keep a clip: every one is fetched as it plays
+  def setMediaCached(cached: Boolean): Unit = ()
   // it does not say whether it is waiting; the playhead standing still is what tells a viewer
   def mediaBuffering(): Boolean = false
   // nothing here counts what the link is carrying
@@ -515,7 +517,9 @@ object Host {
     * by its text. */
   def keyName(e: KeyEvent): String = {
     val named = Map(KeyCode.ENTER -> "Enter", KeyCode.ESCAPE -> "Escape", KeyCode.UP -> "ArrowUp", KeyCode.DOWN -> "ArrowDown",
-      KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ")
+      KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ",
+      KeyCode.FAST_FWD -> "MediaFastForward", KeyCode.REWIND -> "MediaRewind", KeyCode.TRACK_NEXT -> "MediaTrackNext",
+      KeyCode.TRACK_PREV -> "MediaTrackPrevious")
     if (e.isAltDown && e.getCode == KeyCode.LEFT) "BrowserBack"
     else named.getOrElse(e.getCode, if (e.getText.nonEmpty) e.getText else e.getCode.getName)
   }
@@ -884,6 +888,9 @@ object Platform {
 
   def screenWidth(): Double = Host.scene.getWidth
   def screenHeight(): Double = Host.scene.getHeight
+  /** Screen pixels to a layout unit: the output scale of the screen the window is on (2 on a HiDPI display). */
+  def pixelRatio(): Double =
+    Option(Host.scene.getWindow).map(_.getOutputScaleX).filter(_ > 0.0).getOrElse(1.0)
 
   /** `--freeze=<seconds>`: step the animation that far on a virtual clock and stop (tools/check.sh). Negative when
     * absent. */
