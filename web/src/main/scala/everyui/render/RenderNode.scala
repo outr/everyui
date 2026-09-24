@@ -757,10 +757,6 @@ object Platform {
   /** The browser names itself (and sends the page as the referrer), as a tile server asks. */
   def identify(app: String): Unit = ()
   /** `text` onto the clipboard: the async clipboard where the page is a secure context, else the selection command. */
-  /** The screen kept on through the browser's wake lock, where it has one (and the page is showing), or let sleep. */
-  def keepAwake(on: Boolean): Unit = {
-    val wakeLock = dom.window.navigator.asInstanceOf[js.Dynamic].wakeLock
-    if (on && wakeSentinel.isEmpty && !js.isUndefined(wakeLock))
   /** Every colour on the page scaled, channel by channel (1 each leaves it as it is): an SVG colour matrix the page's
     * root is filtered through, or no filter. */
   def tint(red: Double, green: Double, blue: Double): Boolean = {
@@ -786,6 +782,10 @@ object Platform {
     true
   }
 
+  /** The screen kept on through the browser's wake lock, where it has one (and the page is showing), or let sleep. */
+  def keepAwake(on: Boolean): Unit = {
+    val wakeLock = dom.window.navigator.asInstanceOf[js.Dynamic].wakeLock
+    if (on && wakeSentinel.isEmpty && !js.isUndefined(wakeLock))
       wakeLock.request("screen").asInstanceOf[js.Promise[js.Dynamic]].`then`[Unit](s => wakeSentinel = Some(s))
     else if (!on) {
       wakeSentinel.foreach(_.release())
@@ -915,10 +915,10 @@ object Platform {
   def openInstallSettings(): Unit = ()
   def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
     done(Some("Updates install only on Android"))
-  // nothing here turns speech into words
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  // nothing here turns speech into words
   def dictation(): Boolean = false
   def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {
     ended()

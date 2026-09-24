@@ -757,8 +757,6 @@ object Platform {
   }
   /** A desktop keeps its own screen timing. */
   def keepAwake(on: Boolean): Unit = ()
-  /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
-    * server refuses a bare `Java/21`. Before the first picture loads (the JDK reads it once). */
   /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): the root multiplied by a flat
     * colour of the three, or left alone. */
   def tint(red: Double, green: Double, blue: Double): Boolean = {
@@ -769,6 +767,8 @@ object Platform {
           math.max(0.0, math.min(1.0, red)), math.max(0.0, math.min(1.0, green)), math.max(0.0, math.min(1.0, blue))))))
     true
   }
+  /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
+    * server refuses a bare `Java/21`. Before the first picture loads (the JDK reads it once). */
   def identify(app: String): Unit = System.setProperty("http.agent", app)
 
   def copyText(text: String): Unit = {
@@ -878,10 +878,10 @@ object Platform {
   def deviceModel(): String = deviceName()
 
   def launchesApps(): Boolean = false
-  // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   def decodes(codec: String): Boolean = true
   // an app here is updated by whatever put it here, never by itself
   def canInstallApps(): Boolean = false

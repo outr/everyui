@@ -654,6 +654,18 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** The maker and the model as one name, the maker left off where the model already starts with it ("Google Streamer",
+    * not "Google Google Streamer"). `named` is for what a device calls itself: the maker capitalised, and a name even
+    * when there is no model. */
+  def maker(manufacturer: String, model: String, named: Boolean): String = {
+    val m = Option(manufacturer).map(_.trim).getOrElse("")
+    val maker = if (named && m.nonEmpty) m.substring(0, 1).toUpperCase + m.substring(1) else m
+    val kind = Option(model).map(_.trim).getOrElse("")
+    if (kind.isEmpty) { if (maker.nonEmpty) maker else if (named) "Android device" else "" }
+    else if (maker.isEmpty || kind.toLowerCase.startsWith(maker.toLowerCase)) kind
+    else maker + " " + kind
+  }
+
   /** Whether a screen reader (TalkBack, or any service that reads the screen) is on now. */
   def reading: Boolean = {
     val manager = Host.activity.getSystemService(Context.ACCESSIBILITY_SERVICE).asInstanceOf[android.view.accessibility.AccessibilityManager]
@@ -693,18 +705,6 @@ object RenderNode {
       if (at < 0) more = false else from = at + 1
     }
     best
-  /** The maker and the model as one name, the maker left off where the model already starts with it ("Google Streamer",
-    * not "Google Google Streamer"). `named` is for what a device calls itself: the maker capitalised, and a name even
-    * when there is no model. */
-  def maker(manufacturer: String, model: String, named: Boolean): String = {
-    val m = Option(manufacturer).map(_.trim).getOrElse("")
-    val maker = if (named && m.nonEmpty) m.substring(0, 1).toUpperCase + m.substring(1) else m
-    val kind = Option(model).map(_.trim).getOrElse("")
-    if (kind.isEmpty) { if (maker.nonEmpty) maker else if (named) "Android device" else "" }
-    else if (maker.isEmpty || kind.toLowerCase.startsWith(maker.toLowerCase)) kind
-    else maker + " " + kind
-  }
-
   }
 
   /** The nearest of a `GradientDrawable`'s eight directions to a CSS angle (0 runs bottom to top, 90 left to right). */
@@ -1067,6 +1067,8 @@ object Platform {
   /** The window, in pixels — or the viewport the launch asked for (`--es viewport 1920x1080`). */
   def kind: PlatformKind = PlatformKind.Android
   /** An Android TV is driven by its remote; a phone or tablet by touch. */
+  // a box that is a television by its features (leanback) though its UI mode says otherwise counts as one too, as
+  // Flutter's probe has it
   def remoteNavigation(): Boolean =
     Host.activity.getSystemService(Context.UI_MODE_SERVICE).asInstanceOf[android.app.UiModeManager].getCurrentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
       Host.activity.getPackageManager.hasSystemFeature("android.software.leanback")
@@ -1076,6 +1078,9 @@ object Platform {
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
+  /** The browser (or the app that owns the address) at `url`. A television may have no browser at all, and then there
+    * is nothing to open it with: nothing happens, as a link that cannot open does nothing elsewhere, rather than the
+    * app coming down. */
   def openUrl(url: String): Unit =
     try Host.activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
     catch { case t: Throwable => log("openUrl: nothing opens " + url + " (" + t.toString + ")") }
@@ -1108,8 +1113,6 @@ object Platform {
 
   /** Put what is playing into that corner. True when the platform took it. */
   def toCorner(): Boolean =
-  // a box that is a television by its features (leanback) though its UI mode says otherwise counts as one too, as
-  // Flutter's probe has it
     try Host.activity.enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build())
     catch {
       case t: Throwable =>
@@ -1118,9 +1121,6 @@ object Platform {
     }
 
   /** What to do when the app is at the front again after being away — another app had the screen, or the device
-  /** The browser (or the app that owns the address) at `url`. A television may have no browser at all, and then there
-    * is nothing to open it with: nothing happens, as a link that cannot open does nothing elsewhere, rather than the
-    * app coming down. */
     * came back from sleep. An app that was left showing something it only shows when nobody is there (a
     * screensaver) wants to know, because somebody is there now. */
   def onResume(f: () => Unit): () => Unit = {
@@ -1206,6 +1206,29 @@ object Platform {
   /** What it is, as its maker names it ("NVIDIA SHIELD Android TV"). */
   def deviceModel(): String = RenderNode.maker(android.os.Build.MANUFACTURER, android.os.Build.MODEL, false)
 
+  /** The hardware facts a performance report cannot be read without, each as a name and a value: the processor's
+    * instruction set (a 32-bit stick and a 64-bit box can share a name), the Android release, the memory there is,
+    * what is free, what this process may use, whether the device says it is short, and the display's refresh rate.
+    * Whatever the platform will not say is left out. */
+  def deviceProfile(): List[(String, String)] = {
+    var facts: List[(String, String)] = Nil
+    try Option(android.os.Build.SUPPORTED_ABIS).flatMap(_.headOption).foreach(a => facts = facts :+ ("abi" -> a))
+    catch { case _: Throwable => () }
+    facts = facts :+ ("sdk" -> android.os.Build.VERSION.SDK_INT.toString)
+    Option(android.os.Build.VERSION.RELEASE).foreach(r => facts = facts :+ ("release" -> r))
+    try {
+      val manager = Host.activity.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[android.app.ActivityManager]
+      val memory = new android.app.ActivityManager.MemoryInfo
+      manager.getMemoryInfo(memory)
+      facts = facts ++ List("ramMb" -> (memory.totalMem / (1024L * 1024L)).toString,
+        "availMb" -> (memory.availMem / (1024L * 1024L)).toString, "lowMem" -> memory.lowMemory.toString,
+        "heapMb" -> manager.getMemoryClass.toString)
+    } catch { case _: Throwable => () }
+    try facts = facts :+ ("refreshHz" -> math.round(Host.activity.getWindowManager.getDefaultDisplay.getRefreshRate).toString)
+    catch { case _: Throwable => () }
+    facts
+  }
+
   /** Whether this device opens a streaming service's own app itself, rather than needing another to do it. */
   def launchesApps(): Boolean = true
 
@@ -1255,29 +1278,6 @@ object Platform {
       val edge = style.edgeType match {
         case 1 => "outline"
         case 2 => "shadow"
-  /** The hardware facts a performance report cannot be read without, each as a name and a value: the processor's
-    * instruction set (a 32-bit stick and a 64-bit box can share a name), the Android release, the memory there is,
-    * what is free, what this process may use, whether the device says it is short, and the display's refresh rate.
-    * Whatever the platform will not say is left out. */
-  def deviceProfile(): List[(String, String)] = {
-    var facts: List[(String, String)] = Nil
-    try Option(android.os.Build.SUPPORTED_ABIS).flatMap(_.headOption).foreach(a => facts = facts :+ ("abi" -> a))
-    catch { case _: Throwable => () }
-    facts = facts :+ ("sdk" -> android.os.Build.VERSION.SDK_INT.toString)
-    Option(android.os.Build.VERSION.RELEASE).foreach(r => facts = facts :+ ("release" -> r))
-    try {
-      val manager = Host.activity.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[android.app.ActivityManager]
-      val memory = new android.app.ActivityManager.MemoryInfo
-      manager.getMemoryInfo(memory)
-      facts = facts ++ List("ramMb" -> (memory.totalMem / (1024L * 1024L)).toString,
-        "availMb" -> (memory.availMem / (1024L * 1024L)).toString, "lowMem" -> memory.lowMemory.toString,
-        "heapMb" -> manager.getMemoryClass.toString)
-    } catch { case _: Throwable => () }
-    try facts = facts :+ ("refreshHz" -> math.round(Host.activity.getWindowManager.getDefaultDisplay.getRefreshRate).toString)
-    catch { case _: Throwable => () }
-    facts
-  }
-
         case 3 => "raised"
         case 4 => "depressed"
         case _ => "none"
