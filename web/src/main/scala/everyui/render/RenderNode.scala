@@ -808,6 +808,9 @@ object Platform {
     val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, "url(fonts/" + face.file + ")", options)
     dom.document.asInstanceOf[js.Dynamic].fonts.add(font)
     registered.push(font)
+    // fetched from now, not when the first screen waits on it: an app registers its faces as it starts, and whatever
+    // it does before its first screen (asking its server for something) no longer holds the download back
+    font.load()
   }
   private val registered = js.Array[js.Dynamic]()
 
