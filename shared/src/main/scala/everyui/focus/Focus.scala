@@ -257,6 +257,21 @@ object Focus {
     var child: Component = was
     var found: Option[Component] = None
     var stopped = false
+    // what the focused part states for itself comes first: a button that says where Down goes means it, though it holds
+    // nothing to move among
+    was match {
+      case own: Container =>
+        own.focusAction(direction).foreach { action =>
+          if (!dry) action()
+          stopped = true
+        }
+        if (!stopped) own.focusExit(direction) match {
+          case Some(Some(target)) => found = enter(target, was)
+          case Some(None) => stopped = true
+          case None => ()
+        }
+      case _ => ()
+    }
     while (found.isEmpty && !stopped && !(child eq root) && child.parent().nonEmpty) {
       val parent = child.parent().get
       parent match {
