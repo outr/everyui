@@ -908,6 +908,9 @@ object Platform {
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  /** What the app is showing, as a PNG in base64: nothing here can take one. */
+  def screenshot(): String = ""
+
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   def decodes(codec: String): Boolean = true
   // an app here is updated by whatever put it here, never by itself

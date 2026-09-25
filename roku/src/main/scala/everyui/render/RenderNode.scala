@@ -635,6 +635,9 @@ object Platform {
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  /** What the app is showing, as a PNG in base64: nothing here can take one. */
+  def screenshot(): String = ""
+
   def appVersion(): Int = 0
 
   /** The device's own caption settings, where it has any: not here. */

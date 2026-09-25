@@ -952,6 +952,9 @@ object Platform {
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  /** What the app is showing, as a PNG in base64: nothing here can take one. */
+  def screenshot(): String = ""
+
   // nothing here turns speech into words
   def dictation(): Boolean = false
   def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {

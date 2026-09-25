@@ -1294,6 +1294,27 @@ object Platform {
     facts
   }
 
+  /** What the app is showing, as a PNG in base64, no more than 1920 across; "" where it cannot be had. The app's own
+    * drawing: a video on the display's own plane never passes through it, and a TextureView's draws nothing into a
+    * canvas of the app's, so the picture is not in it (as a Flutter app's platform views are not in its shot). */
+  def screenshot(): String =
+    try {
+      val root = Host.root
+      if (root.getWidth <= 0 || root.getHeight <= 0) ""
+      else {
+        val scale = math.min(1.0, 1920.0 / root.getWidth)
+        val bitmap = Bitmap.createBitmap(math.max(1, (root.getWidth * scale).toInt),
+          math.max(1, (root.getHeight * scale).toInt), Bitmap.Config.ARGB_8888)
+        val canvas = new android.graphics.Canvas(bitmap)
+        canvas.scale(scale.toFloat, scale.toFloat)
+        root.draw(canvas)
+        val out = new java.io.ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        bitmap.recycle()
+        android.util.Base64.encodeToString(out.toByteArray, android.util.Base64.NO_WRAP)
+      }
+    } catch { case t: Throwable => logError("screenshot: could not draw the app", t); "" }
+
   /** Whether this device opens a streaming service's own app itself, rather than needing another to do it. */
   def launchesApps(): Boolean = true
 
