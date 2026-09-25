@@ -1066,10 +1066,13 @@ object Platform {
     * it is served. */
   def resolvePath(path: String): String = path.stripPrefix("/")
 
-  /** Load `uri` and report its natural size. */
+  /** Load `uri` and report its natural size (0 x 0 if it cannot). */
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
     val img = dom.document.createElement("img").asInstanceOf[html.Image]
     img.addEventListener("load", (_: dom.Event) => loaded(img.naturalWidth.toDouble, img.naturalHeight.toDouble))
+    // one that will not load says so, as 0 x 0, as the other backends do: left unanswered, a picture that failed could
+    // not be told from one still coming
+    img.addEventListener("error", (_: dom.Event) => loaded(0.0, 0.0))
     img.src = uri
   }
 

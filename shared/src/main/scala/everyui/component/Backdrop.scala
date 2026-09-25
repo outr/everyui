@@ -29,6 +29,9 @@ class Backdrop extends Container {
   val fallbackSource: Var[String] = Var("")
   /** Whether a change of picture cross-fades rather than cutting. */
   val crossfade: Var[Boolean] = Var(false)
+  /** Whether the picture asked for could not be had (nor its fallback): something else can stand in for it then, as a
+    * film mark does for a poster that will not load. False again as soon as another is asked for. */
+  val failed: Var[Boolean] = Var(false)
 
   private val view = new ImageView
   private var shown: Image = Image.empty
@@ -37,6 +40,7 @@ class Backdrop extends Container {
 
   children += view
   source.attach { requested =>
+    failed @= false
     if (crossfade() && requested.nonEmpty) fadeTo(0.0, Backdrop.fadeOut)
     load(requested, requested)
   }
@@ -55,8 +59,11 @@ class Backdrop extends Container {
         else if (target == requested && fallbackSource().nonEmpty && fallbackSource() != requested)
           load(requested, fallbackSource())
         // not to be had: fading, the picture that was showing comes back up rather than leaving the box faded out
-        else if (crossfade()) fadeTo(1.0, Backdrop.fadeIn)
-        else show(loaded)
+        else {
+          failed @= true
+          if (crossfade()) fadeTo(1.0, Backdrop.fadeIn)
+          else show(loaded)
+        }
       }
     }.startUnit()
 

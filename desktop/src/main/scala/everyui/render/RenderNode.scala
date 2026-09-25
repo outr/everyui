@@ -1006,13 +1006,30 @@ object Platform {
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
     val image = Host.image(uri)
     if (image.getProgress >= 1.0 || image.isError) loaded(image.getWidth, image.getHeight)
-    else image.progressProperty.addListener(new ChangeListener[Number] {
-      override def changed(o: ObservableValue[? <: Number], was: Number, now: Number): Unit =
-        if (now.doubleValue >= 1.0) {
-          o.removeListener(this)
-          loaded(image.getWidth, image.getHeight)
-        }
-    })
+    else {
+      // answered once, whichever comes first: the whole of it, or an error (which a download failing part-way through
+      // raises without the progress ever reaching the end)
+      var answered = false
+      val answer: () => Unit = () => if (!answered) {
+        answered = true
+        if (image.isError) loaded(0.0, 0.0) else loaded(image.getWidth, image.getHeight)
+      }
+      image.progressProperty.addListener(new ChangeListener[Number] {
+        override def changed(o: ObservableValue[? <: Number], was: Number, now: Number): Unit =
+          if (now.doubleValue >= 1.0) {
+            o.removeListener(this)
+            answer()
+          }
+      })
+      image.errorProperty.addListener(new ChangeListener[java.lang.Boolean] {
+        override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean,
+                             now: java.lang.Boolean): Unit =
+          if (now) {
+            o.removeListener(this)
+            answer()
+          }
+      })
+    }
   }
 
   /** Bundled faces load synchronously from the assets directory. */
