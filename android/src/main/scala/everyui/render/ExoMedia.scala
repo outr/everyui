@@ -58,8 +58,19 @@ class ExoMedia(frame: Option[VideoFrame]) {
     * player. */
   def setHeaders(headers: Map[String, String]): Unit = sending = headers
 
-  /** Subtitle files to offer beside the file's own tracks. Kept for the next source: they go in with it. */
-  def setSidecars(files: List[MediaSidecar]): Unit = sidecars = files
+  /** Subtitle files to offer beside the file's own tracks. They go in with the next source; a changed list for the
+    * source that is playing (a track made or re-timed while it plays) loads it again with them, from where it is.
+    * That waits a turn: a new source said straight after its sidecars replaces the player anyway. */
+  def setSidecars(files: List[MediaSidecar]): Unit = if (files != sidecars) {
+    sidecars = files
+    val now = source
+    new android.os.Handler(android.os.Looper.getMainLooper).post(() => if (source == now && now.nonEmpty) {
+      player.foreach { p =>
+        p.setMediaItem(item(now), p.getCurrentPosition)
+        p.prepare()
+      }
+    })
+  }
   private var sidecars: List[MediaSidecar] = Nil
 
   /** What to play, with the subtitle files beside it, each with its URL as its id — as the Flutter player builds it
