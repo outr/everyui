@@ -12,22 +12,25 @@ import reactify.*
   * Every key goes to the focused component first. Enter clicks it; Tab moves the focus on in tree order; Back goes to
   * the newest back handler (`onBack`: an open dialog, then the screen history). An arrow is answered by the layouts:
   * from the focused component up through its containers, the first whose layout has a neighbour that way (a row's next
-  * item, a column's next line, the nearest item in a flow's next row) takes the focus there, onto its focusable part
-  * nearest where the focus was. A container without a layout looks among its own children by where they are, preferring
-  * what is in line. A container can also state where an arrow leaving it goes (`Container.exitFocus`) or that it stops
+  * item, a column's next line, the next row of a flow) takes the focus there. Nothing is found by where things are on the
+  * screen: a move is always one somebody decided, by a layout's order or by what a container states, never whatever
+  * happens to sit nearest (which changes with the layout, and on a remote reads as random). A container without a
+  * layout moves nothing by itself. A container can also state where an arrow leaving it goes (`Container.exitFocus`) or that it stops
   * there (`Container.stopFocus`), and where an arrow arriving from outside it lands (`Container.entryFocus`: the
   * selected tab, the card last left), however the arrow found its way in; an arrow nothing answers leaves the focus
   * where it is. So there is no zone to wire by hand, and no way for a key to be swallowed by a container that runs
   * the other way.
   *
   * The candidates are the focusable components under `ui` (or under an open dialog: `scope`) at the time of the key,
-  * found by walking the tree: no registry, so a list rebuilt under the focus needs no bookkeeping. With nothing
-  * focused, the first arrow focuses the first candidate; with the focused component gone, the nearest to where it was.
-  * Where the focus starts is each screen's `defaultFocus` and each dialog's. */
+  * found by walking the tree: no registry, so a list rebuilt under the focus needs no bookkeeping. A container arrived at
+  * is entered at its stated entry, else the part of it that last had the focus, else its first. With nothing focused,
+  * or the focused component gone, the focus goes to the screen's `defaultFocus` ([[home]]), or a dialog's first. */
 object Focus {
   val focused: Var[Option[Component]] = Var(None)
   /** Where the focus may go: under `ui`, or under an open dialog alone, so the arrows never reach what it covers. */
   val scope: Var[Option[Component]] = Var(None)
+  /** Where the focus goes when it has nowhere else: the showing screen's `defaultFocus`, as the screen manager says. */
+  val home: Var[() => Option[Component]] = Var(() => None)
   /** How many times the app has been used — a key pressed, a pointer put down, moved or scrolled: what an app watches
     * to know somebody is there (a screensaver's idle time). */
   val activity: Var[Long] = Var(0L)
@@ -47,7 +50,7 @@ object Focus {
       marked.foreach(_.focusedNow @= false)
       now.foreach(_.focusedNow @= true)
       marked = now
-      now.foreach(place)
+      now.foreach(remember)
       // a screen reader (TalkBack) reads out where the focus has landed, and can press it
       now.foreach(c => c.node.accessibleFocus(() => c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))))
     }
@@ -59,19 +62,23 @@ object Focus {
   // moment later, and is not to be raced to it.
   private val WatchSeconds = 0.25
   private var lost = false
-  // Where the focus last was, on the screen: what it comes back nearest to when what held it goes.
-  private var lastX = 0.0
-  private var lastY = 0.0
-
-  private def place(c: Component): Unit = {
-    lastX = centerX(c)
-    lastY = centerY(c)
+  // Each container the focus is in keeps the part of it that had the focus last, which is where an arrow coming back
+  // into it lands (a row returned to at the card it was left on) when it states no entry of its own.
+  private def remember(c: Component): Unit = {
+    var at = c.parent()
+    while (at.nonEmpty) {
+      at.get match {
+        case box: Container => box.remembered = Some(c)
+        case _ => ()
+      }
+      at = at.flatMap(_.parent())
+    }
   }
 
   /** On a platform navigated by a remote, something always has the focus: with nothing focused, nobody can see where
     * a press would go, and the only way back is a guess at an arrow. So the focus is watched, and when it has been on
     * nothing — or on something taken off the screen, a card replaced in a rebuilt row — for two checks in a row, it
-    * goes to what is showing nearest where it was, under an open dialog when there is one. */
+    * goes to the open dialog's entry, or else the screen's `defaultFocus`. */
   private def watch(): Unit = {
     if (focused().forall(c => !showing(c))) {
       if (lost) {
@@ -84,9 +91,13 @@ object Focus {
     Platform.after(WatchSeconds, () => watch())
   }
 
-  private def recover(): Unit = {
-    val root = scope().filter(showing).getOrElse(ui)
-    nearest(candidates(root).filter(shown), lastX, lastY).foreach(c => focused @= Some(c))
+  private def recover(): Unit = start().filter(shown).foreach(c => focused @= Some(c))
+
+  /** Where the focus starts over: an open dialog's entry or its first, else the screen's `defaultFocus`, else the
+    * first of all. */
+  private def start(): Option[Component] = scope().filter(showing) match {
+    case Some(dialog) => pick(dialog)
+    case None => home()().filter(c => showing(c) && candidates(c).nonEmpty).flatMap(pick).orElse(pick(ui))
   }
 
   /** Whether `c` is on the screen to be seen: under `ui`, and neither it nor anything it is inside hidden. */
@@ -222,17 +233,21 @@ object Focus {
     val all = candidates(root)
     focused() match {
       case None =>
-        all.headOption.foreach(_.focus())
+        start().foreach(_.focus())
         all.nonEmpty
       case Some(was) if !within(was, root) =>
-        nearest(all, centerX(was), centerY(was)).foreach(_.focus())
+        start().foreach(_.focus())
         all.nonEmpty
       case Some(was) =>
         travel(was, root, direction) match {
           case Some(next) =>
             next.focus()
             true
-          case None => false   // left to the platform: a page scrolls, say
+          case None =>
+            // said, so a hand-off nobody has stated yet is found by using the app rather than by a viewer stuck
+            Platform.log("[focus] no way " + (if (direction == Key.ArrowUp) "up" else if (direction == Key.ArrowDown) "down"
+              else if (direction == Key.ArrowLeft) "left" else "right") + " from " + was.kind)
+            false   // left to the platform: a page scrolls, say
         }
     }
   }
@@ -253,13 +268,13 @@ object Focus {
               var steps = 0
               // past a neighbour with nothing focusable in it, to the one beyond
               while (entered.isEmpty && next.nonEmpty && steps <= c.children().length) {
-                entered = enter(next.get, was, direction)
+                entered = enter(next.get, was)
                 if (entered.isEmpty) next = layout.neighbour(c, c.children(), next.get, direction)
                 steps += 1
               }
               entered
-            case None => spatial(candidates(c).filterNot(x => within(x, child)), was, direction)
-              .map(x => arrive(x, was, direction))
+            // a container without a layout moves nothing by itself: what lies which way is for it to state
+            case None => None
           }
           // nothing inside this way: something the container does instead of moving, where it says so
           if (found.isEmpty) c.focusAction(direction).foreach { action =>
@@ -268,7 +283,7 @@ object Focus {
           }
           // nothing inside this way: the container's own exit, if it states one
           if (found.isEmpty && !stopped) c.focusExit(direction) match {
-            case Some(Some(target)) => found = enter(target, was, direction)
+            case Some(Some(target)) => found = enter(target, was)
             case Some(None) => stopped = true
             case None => ()
           }
@@ -279,22 +294,14 @@ object Focus {
     found
   }
 
-  /** The part of `target` the focus lands on, arriving `direction`'s way from `from`: itself if it takes the focus,
-    * else, of its candidates, those on the line nearest that way (the bottom row, arriving from below), and of those
-    * the one most nearly in line with `from`. A container that names its entry (`Container.entryFocus`) is entered
-    * there. */
-  private def enter(target: Component, from: Component, direction: Key): Option[Component] =
-    pick(target, from, direction).map(c => arrive(c, from, direction))
+  /** The part of `target` the focus lands on, arriving from `from` (see [[pick]]). A container around it that states its
+    * entry, being entered from outside, decides first: the outermost of them, since it is the one being entered. */
+  private def enter(target: Component, from: Component): Option[Component] = pick(target).map(c => arrive(c, from))
 
   /** Where the focus lands, having picked `c` coming from `from`: `c` itself, unless it sits inside a container that
-    * names its entry and the focus is arriving there from outside it — then that entry, whichever part of the
-    * container happened to be nearest. The outermost such container decides, since it is the one being entered.
-    *
-    * Picking by distance alone meant that a container's entry held only when the container was itself the neighbour
-    * a layout stepped to; one nested a level down (a row of tabs in a holder), or reached by the spatial search, was
-    * entered at whatever was closest — a tab bar at the wrong tab, which a tab that shows itself on focus turns into
-    * the wrong page. */
-  private def arrive(c: Component, from: Component, direction: Key): Component = {
+    * names its entry and the focus is arriving there from outside it — then that entry. A tab bar entered a level down
+    * is entered at its selected tab, not at whichever of its tabs the move happened to reach. */
+  private def arrive(c: Component, from: Component): Component = {
     val root = scope().getOrElse(ui)
     var at: Option[Component] = Some(c)
     var entry: Option[Component] = None
@@ -306,76 +313,26 @@ object Focus {
       }
       at = at.flatMap(_.parent())
     }
-    entry.flatMap(e => pick(e, from, direction)).getOrElse(c)
+    entry.flatMap(e => pick(e)).getOrElse(c)
   }
 
-  private def pick(target: Component, from: Component, direction: Key): Option[Component] =
+  /** Where the focus lands in `target`: itself if it takes the focus; else the entry it states; else the part of it
+    * that last had the focus; else its first. Never by where anything is on the screen. */
+  private def pick(target: Component): Option[Component] =
     if (target.focusable()) Some(target)
-    else if (entered(target).nonEmpty) entered(target).flatMap(e => pick(e, from, direction))
+    else if (entered(target).nonEmpty) entered(target).flatMap(e => pick(e))
     else {
       val all = candidates(target)
-      val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
-      var nearestLine = 0.0
-      all.zipWithIndex.foreach { case (c, i) => if (i == 0 || depth(c, direction) < nearestLine) nearestLine = depth(c, direction) }
-      var best: Option[Component] = None
-      var bestDrift = 0.0
-      all.foreach { c =>
-        if (depth(c, direction) < nearestLine + 1.0) {
-          val drift = if (sideways) math.abs(centerY(c) - centerY(from)) else math.abs(centerX(c) - centerX(from))
-          if (best.isEmpty || drift < bestDrift) {
-            best = Some(c)
-            bestDrift = drift
-          }
-        }
+      target match {
+        case box: Container => box.remembered.filter(r => all.exists(_ eq r)).orElse(all.headOption)
+        case _ => all.headOption
       }
-      best
     }
 
   // the part a container says an arrival lands on, when it has one to take the focus
   private def entered(target: Component): Option[Component] = target match {
     case c: Container => c.focusEntry.filter(e => candidates(e).nonEmpty)
     case _ => None
-  }
-
-  /** How far `direction`'s way a component's near edge is: the line arrived at first has the least. */
-  private def depth(c: Component, direction: Key): Double =
-    if (direction == Key.ArrowDown) c.absoluteTop
-    else if (direction == Key.ArrowUp) -(c.absoluteTop + c.size.height())
-    else if (direction == Key.ArrowRight) c.absoluteLeft
-    else -(c.absoluteLeft + c.size.width())
-
-  /** Of `all`, the nearest ahead of `from` `direction`'s way by the gap between their edges: anything in line with it
-    * (overlapping it across the way) before anything aside, and less drift before more. */
-  private def spatial(all: Vector[Component], from: Component, direction: Key): Option[Component] = {
-    val sideways = direction == Key.ArrowLeft || direction == Key.ArrowRight
-    var best: Option[Component] = None
-    var bestScore = 0.0
-    all.foreach { c =>
-      val dx = centerX(c) - centerX(from)
-      val dy = centerY(c) - centerY(from)
-      val ahead =
-        if (direction == Key.ArrowRight) dx > 1.0
-        else if (direction == Key.ArrowLeft) dx < -1.0
-        else if (direction == Key.ArrowDown) dy > 1.0
-        else dy < -1.0
-      if (ahead) {
-        val gap =
-          if (direction == Key.ArrowRight) c.absoluteLeft - (from.absoluteLeft + from.size.width())
-          else if (direction == Key.ArrowLeft) from.absoluteLeft - (c.absoluteLeft + c.size.width())
-          else if (direction == Key.ArrowDown) c.absoluteTop - (from.absoluteTop + from.size.height())
-          else from.absoluteTop - (c.absoluteTop + c.size.height())
-        val inLine =
-          if (sideways) c.absoluteTop < from.absoluteTop + from.size.height() && from.absoluteTop < c.absoluteTop + c.size.height()
-          else c.absoluteLeft < from.absoluteLeft + from.size.width() && from.absoluteLeft < c.absoluteLeft + c.size.width()
-        val drift = if (sideways) math.abs(dy) else math.abs(dx)
-        val score = (if (inLine) 0.0 else 1000000.0) + math.max(0.0, gap) + drift * 2.0
-        if (best.isEmpty || score < bestScore) {
-          best = Some(c)
-          bestScore = score
-        }
-      }
-    }
-    best
   }
 
   /** Tab: the next candidate in tree order, round to the first after the last. Whether anything was focused. */
@@ -401,6 +358,34 @@ object Focus {
     found
   }
 
+  /** Where an arrow may have no stated way between parts of `root`: each container without a layout that holds more
+    * than one part taking the focus and states no exit of its own, described. A tool for finding the hand-offs a screen
+    * has not stated (the app run with `focusAudit`), not something the app acts on. */
+  def unstated(root: Component): List[String] = {
+    var found: List[String] = Nil
+    var pending: List[Component] = List(root)
+    while (pending.nonEmpty) {
+      val c = pending.head
+      pending = c.childComponents.toList ++ pending.tail
+      c match {
+        case box: Container if box.layout().isEmpty =>
+          val parts = box.children().filter(child => candidates(child).nonEmpty)
+          def states(c: Component): Boolean = c match {
+            case b: Container => List(Key.ArrowUp, Key.ArrowDown, Key.ArrowLeft, Key.ArrowRight)
+              .exists(d => b.focusExit(d).nonEmpty || b.focusAction(d).nonEmpty)
+            case _ => false
+          }
+          // each part by what takes the focus in it first, and whether it says where its arrows go
+          def said(part: Component): String =
+            candidates(part).headOption.map(_.kind).getOrElse(part.kind) + (if (states(part)) " (states exits)" else "")
+          if (parts.length > 1 && !states(box))
+            found = found :+ (box.kind + " holds " + parts.map(said).mkString(" | "))
+        case _ => ()
+      }
+    }
+    found
+  }
+
   /** Whether `c` is on screen: under `ui`, focusable or not. */
   def showing(c: Component): Boolean = within(c, ui)
 
@@ -415,19 +400,6 @@ object Focus {
       if (c.focusable()) found = found :+ c
     }
     found
-  }
-
-  private def nearest(all: Vector[Component], x: Double, y: Double): Option[Component] = {
-    var best: Option[Component] = None
-    var bestDistance = 0.0
-    all.foreach { c =>
-      val distance = math.abs(centerX(c) - x) + math.abs(centerY(c) - y)
-      if (best.isEmpty || distance < bestDistance) {
-        best = Some(c)
-        bestDistance = distance
-      }
-    }
-    best
   }
 
   private def centerX(c: Component): Double = c.absoluteLeft + c.size.center()

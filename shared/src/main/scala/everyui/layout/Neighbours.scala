@@ -20,46 +20,27 @@ object Neighbours {
     if (Direction.rtl()) -right else right
   }
 
-  /** Children laid out in rows (a flow, a grid): Left and Right move along `from`'s row, and Up and Down to the nearest
-    * row that way, onto the child most nearly above or below. */
+  /** Children laid out in rows (a flow, a grid), as the layout placed them: a row is a run of children on one line.
+    * Left and Right move along the row in the reading direction; Up and Down to the row before or after, at the same
+    * place in it (the last, where that row is shorter). By the rows' order, never by what sits nearest. */
   def rows(children: Vector[Component], from: Component, direction: Key): Option[Component] = {
-    val top = from.position.top()
-    if (direction == Key.ArrowLeft || direction == Key.ArrowRight) {
-      // the nearest in the row that way, by where it is: right is right whichever way the row reads
-      val right = direction == Key.ArrowRight
-      val left = from.position.left()
-      var best: Option[Component] = None
-      children.foreach { c =>
-        val l = c.position.left()
-        val sameRow = math.abs(c.position.top() - top) < 1.0
-        val ahead = if (right) l > left + 1.0 else l < left - 1.0
-        if (sameRow && ahead && best.forall(b => if (right) l < b.position.left() else l > b.position.left())) best = Some(c)
-      }
-      best
+    val shown = children.filter(c => Layout.shows(c) || (c eq from))
+    var lines: Vector[Vector[Component]] = Vector.empty
+    shown.foreach { c =>
+      if (lines.nonEmpty && math.abs(lines.last.head.position.top() - c.position.top()) < 1.0) lines = lines.init :+ (lines.last :+ c)
+      else lines = lines :+ Vector(c)
+    }
+    var row = -1
+    var at = -1
+    lines.zipWithIndex.foreach { case (line, r) => line.zipWithIndex.foreach { case (c, i) => if (c eq from) { row = r; at = i } } }
+    if (row < 0) None
+    else if (direction == Key.ArrowLeft || direction == Key.ArrowRight) {
+      val next = at + forward(direction)
+      if (next < 0 || next >= lines(row).length) None else Some(lines(row)(next))
     }
     else {
-      val down = direction == Key.ArrowDown
-      var rowTop: Option[Double] = None
-      children.foreach { c =>
-        val t = c.position.top()
-        val ahead = if (down) t > top + 1.0 else t < top - 1.0
-        if (ahead && rowTop.forall(r => if (down) t < r else t > r)) rowTop = Some(t)
-      }
-      rowTop.flatMap { r =>
-        val centre = from.position.left() + from.size.width() / 2.0
-        var best: Option[Component] = None
-        var gap = 0.0
-        children.foreach { c =>
-          if (math.abs(c.position.top() - r) < 1.0) {
-            val d = math.abs(c.position.left() + c.size.width() / 2.0 - centre)
-            if (best.isEmpty || d < gap) {
-              best = Some(c)
-              gap = d
-            }
-          }
-        }
-        best
-      }
+      val r = if (direction == Key.ArrowDown) row + 1 else row - 1
+      if (r < 0 || r >= lines.length) None else Some(lines(r)(math.min(at, lines(r).length - 1)))
     }
   }
 }

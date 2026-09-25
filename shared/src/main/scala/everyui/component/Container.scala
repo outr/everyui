@@ -55,6 +55,10 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     * container does not say (its parent decides). */
   def focusExit(direction: everyui.event.Key): Option[Option[Component]] = exits.get(direction)
 
+  /** The part of this container that had the focus last: where an arrow coming back into it lands, when it states no
+    * entry. Kept by [[everyui.focus.Focus]]. */
+  private[everyui] var remembered: Option[Component] = None
+
   private var arrival: Option[Component] = None
 
   /** An arrow arriving at this container from outside lands on `target` (onto its focusable part), wherever the focus

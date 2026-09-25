@@ -143,6 +143,11 @@ trait ScreenManager extends TaskSupport {
       }
     })
     Focus.onBack(key => key == Key.Back && back())
+    // where the focus goes when it has nowhere else: the showing screen's own default
+    Focus.home @= (() => active() match {
+      case Some(u: UIScreen) => Some(u.defaultFocus())
+      case _ => None
+    })
     // the page's head follows the shown screen's SEO; a screen with none leaves it as it is
     shownSEO.attachAndFire(_.foreach(Platform.setSEO))
     Platform.whenFontsReady(() =>
@@ -236,6 +241,9 @@ trait ScreenManager extends TaskSupport {
             else pendingFocus = Some(screen -> target)
           case _ => focus.filter(Focus.showing).foreach(_.focus())
         }
+        // run with `focusAudit`, each screen says where an arrow may have no stated way between its parts
+        if (Platform.launchArg("focusAudit").nonEmpty) Platform.after(2.0, () =>
+          Focus.unstated(ui).foreach(line => Platform.log("[focus-audit] " + screen.getClass.getSimpleName + ": " + line)))
         screen match {
           case p: PathActivation if push => Platform.pushPath(p.path.value)
           case _ => ()
