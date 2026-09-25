@@ -51,6 +51,8 @@ abstract class EveryUIActivity extends Activity {
       insets.hide(WindowInsets.Type.systemBars())
       insets.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
     }
+    // the frames it draws, measured again for this window where the app is listening (FrameTimings)
+    everyui.render.FrameTimings.attach(this)
 
     if (!adopted) run()
   }

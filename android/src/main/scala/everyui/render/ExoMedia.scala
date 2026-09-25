@@ -111,6 +111,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
   def setSource(url: String): Unit = if (url != source) {
     source = url
     close()
+    failure = ""
     if (url.nonEmpty) {
       val from = math.round(starting * 1000.0)
       starting = 0.0
@@ -227,6 +228,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
               .map(c => Option(c.getMessage).getOrElse(c.getClass.getSimpleName)).mkString(" <- ")
             Platform.log("media: " + url + " failed (" + error.getErrorCodeName + ")" +
               (if (causes.isEmpty) "" else ": " + causes))
+            failure = error.getErrorCodeName + (if (causes.isEmpty) "" else ": " + causes)
             listener("error")
           }
         })
@@ -443,6 +445,31 @@ class ExoMedia(frame: Option[VideoFrame]) {
   def retry(): Option[MediaRetry] = retried
   private var retried: Option[MediaRetry] = None
   private var failures = 0
+
+  /** What was decoded, and the last error on this source: the formats the renderers took, the audio tracks with the
+    * one chosen, as the Flutter player reports them once it is ready. */
+  def diagnostics(): everyui.component.MediaDiagnostics = player match {
+    case Some(p) =>
+      try {
+        val audio = Option(p.getAudioFormat).map(f => Option(f.sampleMimeType).getOrElse("?") + " ch=" +
+          f.channelCount.toString + " hz=" + f.sampleRate.toString + " br=" + f.bitrate.toString).getOrElse("none")
+        val video = Option(p.getVideoFormat).map(f => Option(f.sampleMimeType).getOrElse("?") + " " +
+          f.width.toString + "x" + f.height.toString).getOrElse("none")
+        val groups = p.getCurrentTracks.getGroups
+        val tracks = (0 until groups.size()).toList.map(g => groups.get(g)).filter(_.getType == C.TRACK_TYPE_AUDIO)
+          .flatMap(group => (0 until group.length).toList.map { t =>
+            val format = group.getTrackFormat(t)
+            Option(format.language).filter(_.nonEmpty).getOrElse("und") +
+              (if (group.isTrackSelected(t)) "*" else "") +
+              Option(format.label).filter(_.nonEmpty).map("(" + _ + ")").getOrElse("") +
+              (if (group.isTrackSupported(t)) "" else "!unsupported")
+          })
+        everyui.component.MediaDiagnostics(audio, video, tracks.mkString(","), failure)
+      }
+      catch { case _: Throwable => everyui.component.MediaDiagnostics(failure = failure) }
+    case None => everyui.component.MediaDiagnostics(failure = failure)
+  }
+  private var failure = ""
   /** Whether the picture has drawn a frame on this source, and whether it has been started again for want of one. */
   private var framed = false
   private var relit = false

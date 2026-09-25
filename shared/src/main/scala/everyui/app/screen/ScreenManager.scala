@@ -293,13 +293,23 @@ trait ScreenManager extends TaskSupport {
     component.childComponents.foreach(child => dump(child, indent + "  "))
   }
 
+  /** Each frame as it went, for an app that reports where the time goes on a real device: `ms` from the start of the
+    * frame before to the start of this one, and how much of that the app's own work took (the update: what changed,
+    * laid out). The rest is the platform's, drawing it, and anything else the thread was held up by. Called on the
+    * thread that draws, every frame, so what overrides it must be cheap. Nothing by default. */
+  protected def frame(ms: Double, updateMs: Double): Unit = ()
+
   private def live(): Unit = {
     var last = -1.0
     var frames = 0.0
     var reported = Platform.ticks()
+    var worked = 0.0
     Platform.animate(() => {
       val now = Platform.ticks()
+      // the frame that has just ended, with the work it began with
+      if (last >= 0.0) frame(now - last, worked)
       update(if (last < 0.0) 0.0 else (now - last) / 1000.0)
+      worked = Platform.ticks() - now
       last = now
       frames = frames + 1.0
       if (now - reported >= 1000.0) {

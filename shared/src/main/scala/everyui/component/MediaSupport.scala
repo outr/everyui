@@ -105,6 +105,10 @@ trait MediaSupport { self: Component =>
     * (the `ready` event), and empty for good on a platform that does not tell. */
   def tracks: List[MediaTrack] = node.mediaTracks()
 
+  /** What the player decoded, and the last error it met ([[MediaDiagnostics]]): once it is ready, for a report of
+    * what played; after an `error`, for what went wrong. Empty on a platform that does not say. */
+  def diagnostics: MediaDiagnostics = node.mediaDiagnostics()
+
   /** What is being said on screen at this moment, as the chosen text track has it, and "" while nothing is.
     *
     * Only where the platform hands the words over instead of drawing them: Android decodes the text and draws

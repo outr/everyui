@@ -331,6 +331,9 @@ class RenderNode(val el: html.Element) {
   /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
+  /** What was decoded: nothing a page is told. */
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
+
   def mediaTracks(): List[everyui.component.MediaTrack] = media.toList.flatMap { e =>
     val m = e.asInstanceOf[js.Dynamic]
     val audio = tracksOf(m, "audioTracks", everyui.component.MediaTrack.Audio)
@@ -969,6 +972,7 @@ object Platform {
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
   def appVersion(): Int = 0
+  def appVersionName(): String = ""
 
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
@@ -1098,6 +1102,8 @@ object Platform {
     js.Dynamic.global.Promise.all(loads).applyDynamic("then")(done, done)
   }
 
+  /** Frames as the platform measured them: not here, where the app times its own frames instead. */
+  def frameTimings(f: (Double, Double) => Unit): Boolean = false
   def animate(tick: () => Unit): Unit = {
     lazy val frame: Double => Unit = _ =>
       tick()

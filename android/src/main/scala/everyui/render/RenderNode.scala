@@ -266,6 +266,8 @@ class RenderNode(val view: View) {
   def setMediaLanguages(audio: String, text: String): Unit = media.foreach(_.languages(audio, text))
 
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics =
+    media.map(_.diagnostics()).getOrElse(everyui.component.MediaDiagnostics())
   def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
   def setMediaDirect(direct: Boolean): Unit = media.foreach(_.setDirect(direct))
@@ -1127,6 +1129,10 @@ object Platform {
 
   def ticks(): Double = System.nanoTime() / 1.0e6
 
+  /** Hear each frame drawn as Android measured it, `f(ms, buildMs)`, on a thread of its own ([[FrameTimings]]); false
+    * before Android 7, where the app times its own frames instead. */
+  def frameTimings(f: (Double, Double) => Unit): Boolean = FrameTimings.watch(f)
+
   /** Packaged as APK assets. */
   def imagePath(name: String): String = "images/" + name
 
@@ -1352,6 +1358,11 @@ object Platform {
   def appVersion(): Int =
     try Host.activity.getPackageManager.getPackageInfo(Host.activity.getPackageName, 0).versionCode
     catch { case _: Throwable => 0 }
+
+  /** The release the build says it is (the manifest's versionName, "2.0.0"), or "" where it cannot be read. */
+  def appVersionName(): String =
+    try Option(Host.activity.getPackageManager.getPackageInfo(Host.activity.getPackageName, 0).versionName).getOrElse("")
+    catch { case _: Throwable => "" }
 
   /** The device's own caption settings (Settings → Accessibility → Captions): its colours, the edge round the letters and the
     * size, as the system's own players draw subtitles. */

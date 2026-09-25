@@ -458,6 +458,8 @@ class RenderNode(val fx: Node) {
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
+  /** What was decoded: nothing this player says. */
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
   // JavaFX lists its tracks but will not switch between them
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
@@ -937,6 +939,7 @@ object Platform {
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
   def appVersion(): Int = 0
+  def appVersionName(): String = ""
 
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
@@ -1048,6 +1051,8 @@ object Platform {
   def whenFontsReady(f: () => Unit): Unit = f()
 
   /** Run `tick` once per JavaFX pulse. */
+  /** Frames as the platform measured them: not here, where the app times its own frames instead. */
+  def frameTimings(f: (Double, Double) => Unit): Boolean = false
   def animate(tick: () => Unit): Unit = {
     val timer = new AnimationTimer {
       override def handle(now: Long): Unit = tick()

@@ -120,6 +120,8 @@ class RenderNode(val sg: SGNode) {
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
   def mediaTracks(): List[everyui.component.MediaTrack] = Nil
+  /** What was decoded: nothing this player says. */
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()
   def setMediaDirect(direct: Boolean): Unit = ()
@@ -292,6 +294,8 @@ object Platform {
   def log(message: String): Unit = uiLog(message)
   def logError(message: String, t: Throwable): Unit = uiLog("ERROR " + message + ": " + t.getMessage)
   def ticks(): Double = uiTicks()
+  /** Frames as the platform measured them: not here, where the app times its own frames instead. */
+  def frameTimings(f: (Double, Double) => Unit): Boolean = false
   def animate(tick: () => Unit): Unit = uiAnimate(tick)
 
   /** Assets live in the app bundle; the runtime resolves a site-absolute path against it. */
@@ -413,6 +417,7 @@ object Platform {
   /** Where the app came from, and which build it is: nothing this platform can say. */
   def installStore(): String = ""
   def appVersion(): Int = 0
+  def appVersionName(): String = ""
 
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
