@@ -22,7 +22,9 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
         c.parent @= Some(component)
         placed = placed.patch(i, Vector(c), 0)
       }
-      else if (!(placed(i) eq c)) {
+      // (only where the list and the nodes can be matched place for place: a list holding one component twice has more
+      // places than nodes, and indexing past them took the app down on returning to the games lobby)
+      else if (i < placed.size && !(placed(i) eq c)) {
         component.node.insert(c.node, i)
         placed = placed.filterNot(_ eq c).patch(i, Vector(c), 0)
       }

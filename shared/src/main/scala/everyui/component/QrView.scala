@@ -14,8 +14,11 @@ class QrView(text: String, across: Double, quiet: Int = 4) extends Container {
   size.height @= across
   backgroundColor @= Color.White
   QrCode.encode(text).foreach { code =>
-    val module = math.floor(across / (code.size + quiet * 2))
-    val offset = math.floor((across - module * code.size) / 2.0)
+    // each module a whole number of the screen's own pixels, not of layout units: on a small code (a 46-point join code,
+    // 25 modules) a whole unit rounded down to 1 and drew the code at half its square, the rest white
+    val ratio = math.max(1.0, everyui.render.Platform.pixelRatio())
+    val module = math.max(1.0, math.floor(across * ratio / (code.size + quiet * 2))) / ratio
+    val offset = math.floor((across - module * code.size) / 2.0 * ratio) / ratio
     val runs = (0 until code.size).toList.flatMap { y =>
       var found: List[(Int, Int)] = Nil
       var start = -1
