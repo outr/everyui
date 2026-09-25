@@ -15,6 +15,11 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   val font: FontFeature = new FontFeature(this)
   /** What it says while empty. */
   lazy val placeholder: Prop[String] = new Prop[String]("", p => node.setPlaceholder(p))
+  /** What the keyboard's enter key says it does, where the keyboard says: "done", "search", "next", "go" or "send". */
+  lazy val action: Prop[String] = new Prop[String]("done", a => node.setInputAction(a))
+
+  /** Choose all of what it holds, so what is typed next replaces it (a value being changed rather than added to). */
+  def selectAll(): Unit = node.selectAllInput()
 
   text.attach(v => if (node.getValue() != v) node.setValue(v))
   node.onValue(v => if (text() != v) text @= v)

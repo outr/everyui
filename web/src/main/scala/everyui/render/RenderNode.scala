@@ -441,12 +441,19 @@ class RenderNode(val el: html.Element) {
     setValue(chosen)
   }
   def setPlaceholder(text: String): Unit = el.setAttribute("placeholder", text)
+  /** What the keyboard's enter key says it does ("done", "search", "next", "go", "send"). */
+  def setInputAction(action: String): Unit = el.setAttribute("enterkeyhint", action)
   /** Every edit, with the new contents. */
   def onValue(f: String => Unit): Unit = el.addEventListener("input", (_: dom.Event) => f(getValue()))
   /** The field taking the keyboard itself (a click, a tap, the browser's own Tab). */
   def onInputFocus(f: () => Unit): Unit = el.addEventListener("focus", (_: dom.Event) => f())
   /** The field losing the keyboard. */
   def onInputDone(f: () => Unit): Unit = el.addEventListener("blur", (_: dom.Event) => f())
+  /** Enter in the field, its keyboard's action key. */
+  def onInputAction(f: () => Unit): Unit =
+    el.addEventListener("keydown", (e: dom.KeyboardEvent) => if (e.key == "Enter" && !e.shiftKey) f())
+  /** All of what the field holds chosen, so what is typed next replaces it. */
+  def selectAllInput(): Unit = el.asInstanceOf[js.Dynamic].select()
   /** Give the field the keyboard, or take it away. */
   def focusInput(on: Boolean): Unit =
     if (on && dom.document.activeElement != el) el.focus()

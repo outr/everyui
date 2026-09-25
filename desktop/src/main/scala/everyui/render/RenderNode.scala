@@ -358,6 +358,8 @@ class RenderNode(val fx: Node) {
     case f: TextInputControl => f.setPromptText(text)
     case _ => ()
   }
+  // a desktop keyboard's Enter says nothing of what it does
+  def setInputAction(action: String): Unit = ()
   /** Every edit of a text field, with its new contents. */
   def onValue(f: String => Unit): Unit = fx match {
     case field: TextInputControl => field.textProperty.addListener(new ChangeListener[String] {
@@ -377,6 +379,16 @@ class RenderNode(val fx: Node) {
     case field: TextInputControl => field.focusedProperty.addListener(new ChangeListener[java.lang.Boolean] {
       override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean, now: java.lang.Boolean): Unit = if (!now) f()
     })
+    case _ => ()
+  }
+  /** Enter in a text field. */
+  def onInputAction(f: () => Unit): Unit = fx match {
+    case field: TextField => field.addEventHandler(javafx.event.ActionEvent.ACTION, (_: javafx.event.ActionEvent) => f())
+    case _ => ()
+  }
+  /** All of what a text field holds chosen, so what is typed next replaces it. */
+  def selectAllInput(): Unit = fx match {
+    case field: TextInputControl => field.selectAll()
     case _ => ()
   }
   /** Give a text field the keyboard, or take it back to the window. */

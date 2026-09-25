@@ -560,6 +560,17 @@ class RenderNode(val view: View) {
     case e: EditText => e.setHint(text)
     case _ => ()
   }
+  /** What the keyboard's action key says it does ("done", "search", "next", "go", "send"): the key a TV's full-screen
+    * keyboard shows beside its letters. */
+  def setInputAction(action: String): Unit = view match {
+    case e: EditText =>
+      import android.view.inputmethod.EditorInfo
+      val code = if (action == "search") EditorInfo.IME_ACTION_SEARCH else if (action == "next") EditorInfo.IME_ACTION_NEXT
+        else if (action == "go") EditorInfo.IME_ACTION_GO else if (action == "send") EditorInfo.IME_ACTION_SEND
+        else EditorInfo.IME_ACTION_DONE
+      e.setImeOptions(code | EditorInfo.IME_FLAG_NO_EXTRACT_UI)
+    case _ => ()
+  }
   /** Every edit, with the new contents. */
   def onValue(f: String => Unit): Unit = view match {
     case e: EditText => e.addTextChangedListener(new android.text.TextWatcher {
@@ -578,10 +589,19 @@ class RenderNode(val view: View) {
   def onInputDone(f: () => Unit): Unit = view match {
     case e: FieldView =>
       e.done = f
-      e.setOnEditorActionListener((_, _, _) => {
-        f()
-        true
-      })
+      RenderNode.acting(e)
+    case _ => ()
+  }
+  /** The keyboard's action key (Done, Search, Next), after `onInputDone` has heard the keyboard put away. */
+  def onInputAction(f: () => Unit): Unit = view match {
+    case e: FieldView =>
+      e.action = f
+      RenderNode.acting(e)
+    case _ => ()
+  }
+  /** All of what the field holds chosen, so what is typed next replaces it. */
+  def selectAllInput(): Unit = view match {
+    case e: EditText => e.selectAll()
     case _ => ()
   }
   /** Give the field the keyboard (and the soft keyboard where there is no other), or take both away. */
@@ -692,6 +712,13 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** A field's action key: the keyboard put away, then the action. */
+  def acting(e: FieldView): Unit = e.setOnEditorActionListener((_, _, _) => {
+    e.done()
+    e.action()
+    true
+  })
+
   /** The maker and the model as one name, the maker left off where the model already starts with it ("Google Streamer",
     * not "Google Google Streamer"). `named` is for what a device calls itself: the maker capitalised, and a name even
     * when there is no model. */

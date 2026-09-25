@@ -10,6 +10,8 @@ import android.widget.EditText
   * its on-screen keyboard is put away with Back, which the keyboard takes before the activity ever sees it. */
 final class FieldView(context: Context) extends EditText(context) {
   var done: () => Unit = () => ()
+  // its action key pressed (Done, Search, Next), which also puts the keyboard away
+  var action: () => Unit = () => ()
   private var editing = false
 
   setFocusable(false)

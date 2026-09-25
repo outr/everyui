@@ -413,9 +413,12 @@ class RenderNode(val sg: SGNode) {
   def getValue(): String = uiGetText(sg)
   def setValue(value: String): Unit = uiSetText(sg, value)
   def setPlaceholder(text: String): Unit = ()
+  def setInputAction(action: String): Unit = ()
   def onValue(f: String => Unit): Unit = ()
   def onInputFocus(f: () => Unit): Unit = ()
   def onInputDone(f: () => Unit): Unit = ()
+  def onInputAction(f: () => Unit): Unit = ()
+  def selectAllInput(): Unit = ()
   def focusInput(on: Boolean): Unit = ()
 }
 
