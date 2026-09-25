@@ -36,6 +36,20 @@ object Network {
       info = info
     )
 
+  /** The same, under a `clientId` of the app's choosing rather than a fresh one: what the server knows this client
+    * by across reconnects. An app that signs different accounts in on one device names the account in it, so a new
+    * sign-in is never taken for the old one's connection coming back. */
+  def durableAs[Event: RW, Info: RW](url: String, channel: String, info: Info, config: DurableSocketConfig,
+                                     clientId: String): DurableSocketClient[String, Event, Info] =
+    new DurableSocketClient[String, Event, Info](
+      createWebSocket = () => webSocket(url),
+      config = config,
+      outboundLog = new InMemoryEventLog[String, Event],
+      initialChannelId = channel,
+      info = info,
+      clientId = clientId
+    )
+
   /** Notified after each request settles: the call, its outcome (a result, or the error that failed the task) and
     * how long it took in milliseconds. The app installs this to ship request timing and failures to a server — it
     * is where a call that took 15s reveals itself. It must never throw (a throw here is swallowed) and must not
