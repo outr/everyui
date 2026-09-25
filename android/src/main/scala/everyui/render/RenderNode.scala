@@ -449,6 +449,15 @@ class RenderNode(val view: View) {
     if (gradient.length >= 2 && radius == 0f && borderWidth == 0 && math.abs(gradientAngle / 90.0 - math.round(gradientAngle / 90.0)) < 0.01)
       view.setBackground(RenderNode.strip(gradient, gradientAt, quarter))
     else paintShape()
+    // the app's own ground, opaque, over the whole window: the window's launch background under it is never seen
+    // again, and drawing it anyway was a whole screen's worth of the GPU's time in every frame. With the washes kept
+    // in a layer (ScreenManager.washes), a Google TV Streamer's GPU went from 12ms a frame to 8 or 9
+    if ((view eq Host.root) && Host.activity != null) {
+      val opaque =
+        if (gradient.length >= 2) gradient.forall(c => android.graphics.Color.alpha(c) == 255)
+        else android.graphics.Color.alpha(if (gradient.length == 1) gradient(0) else background) == 255
+      if (opaque && radius == 0f) Host.activity.getWindow.setBackgroundDrawable(null)
+    }
   }
 
   // A square gradient is a strip of it stretched over the box: a weak TV GPU drew three full-screen gradient shapes at

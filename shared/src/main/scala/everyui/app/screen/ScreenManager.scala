@@ -76,6 +76,9 @@ trait ScreenManager extends TaskSupport {
     val c = new Container
     c.size.width := ui.size.width
     c.size.height := ui.size.height
+    // drawn once into a layer of its own, and again only while a blend changes it: every wash is the whole screen, and
+    // drawing all three again under every frame of anything else was a good part of a television's GPU time per frame
+    c.cached @= true
     // nothing to blend when what is showing is already what is wanted: an app with no treatments at all, say
     wantedTreatment.attach(next => if (blendTo() != next) {
       blendFrom = shownTreatment()
