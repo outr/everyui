@@ -21,6 +21,13 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       case Some(sh) => node.setTextShadow(sh.x, sh.y, sh.blur, Component.css(sh.color))
       case None => node.setTextShadow(0.0, 0.0, 0.0, "")
     })
+  /** A hard edge round the letters, where a shadow would only blur: words kept readable over bright footage, as the
+    * Flutter screensaver edges them. Where a platform draws no outline, the words are drawn without one. */
+  lazy val textOutline: types.Prop[Option[everyui.TextOutline]] = new types.Prop[Option[everyui.TextOutline]](None, o =>
+    o match {
+      case Some(line) => node.setTextOutline(line.width, Component.css(line.color))
+      case None => node.setTextOutline(0.0, "")
+    })
   val font: FontFeature = new FontFeature(this)
   /** Where the text sits in its box, by the reading direction: it matters once the box is wider than the words
     * (wrapped, or given a width). */

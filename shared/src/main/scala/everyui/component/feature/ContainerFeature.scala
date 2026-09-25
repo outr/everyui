@@ -12,9 +12,20 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       c.parent @= None
     }
     val added = current.filterNot(c => old.exists(_ eq c))
-    added.foreach { c =>
-      component.node.append(c.node)
-      c.parent @= Some(component)
+    // the nodes in the list's order, which is the order they are drawn in: one added anywhere but the end goes in at its
+    // place (a clip parked under the one playing was appended on top of it, and showed its first frame, stopped,
+    // through the rest of the clip it was parked under), and one moved in the list is moved among the nodes
+    var placed = old.filter(c => current.exists(_ eq c))
+    current.zipWithIndex.foreach { case (c, i) =>
+      if (added.exists(_ eq c)) {
+        if (i >= placed.size) component.node.append(c.node) else component.node.insert(c.node, i)
+        c.parent @= Some(component)
+        placed = placed.patch(i, Vector(c), 0)
+      }
+      else if (!(placed(i) eq c)) {
+        component.node.insert(c.node, i)
+        placed = placed.filterNot(_ eq c).patch(i, Vector(c), 0)
+      }
     }
     // only what was added is measured again, and then the container: those already here have their sizes, and
     // measuring a rail of cards again for each card added to it took a Roku seconds

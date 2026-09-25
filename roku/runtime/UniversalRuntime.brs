@@ -152,6 +152,14 @@ sub uiAppend(parent as object, child as object)
     if parent <> invalid and child <> invalid then parent.appendChild(child)
 end sub
 
+sub uiInsert(parent as object, child as object, index as integer)
+    if parent <> invalid and child <> invalid then
+        old = child.getParent()
+        if old <> invalid then old.removeChild(child)
+        parent.insertChild(child, index)
+    end if
+end sub
+
 sub uiLog(message as dynamic)
     print "[ui] "; message
 end sub

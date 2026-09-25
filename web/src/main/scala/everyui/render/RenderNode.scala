@@ -74,6 +74,10 @@ class RenderNode(val el: html.Element) {
   def getHeight(): Double = el.getBoundingClientRect().height
 
   def append(child: RenderNode): Unit = el.appendChild(child.el)
+  def insert(child: RenderNode, index: Int): Unit = {
+    val before = if (index >= 0 && index < el.children.length) el.children(index) else null
+    if (before eq child.el) () else el.insertBefore(child.el, before)
+  }
 
   /** Detach from the parent, if attached. */
   def remove(): Unit = if (el.parentNode != null) el.parentNode.removeChild(el)
@@ -383,6 +387,11 @@ class RenderNode(val el: html.Element) {
 
   /** "start", "center" or "end": CSS's own logical values, so the page's direction resolves them. */
   /** A shadow behind the letters, as CSS draws one; an empty colour, none. */
+  // an edge as the Flutter screensaver draws one: eight hard copies of the letters about them, no blur
+  def setTextOutline(width: Double, hex: String): Unit =
+    el.style.setProperty("text-shadow", if (hex.isEmpty) "none" else List((-0.8, -0.8), (0.8, -0.8), (-0.8, 0.8), (0.8, 0.8),
+      (0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)).map(p => s"${p._1 * width}px ${p._2 * width}px 0 $hex").mkString(", "))
+
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
     el.style.setProperty("text-shadow", if (hex.isEmpty) "none" else s"${x}px ${y}px ${blur}px $hex")
 

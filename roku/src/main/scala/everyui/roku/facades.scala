@@ -65,6 +65,10 @@ class SGNode
 @native object uiAppend {
   def apply(parent: SGNode, child: SGNode): Unit = native.value
 }
+/** `child` at `index` among `parent`'s children (SceneGraph's `insertChild`). */
+@native object uiInsert {
+  def apply(parent: SGNode, child: SGNode, index: Int): Unit = native.value
+}
 @native object uiLog {
   def apply(message: String): Unit = native.value
 }

@@ -133,6 +133,13 @@ class RenderNode(val fx: Node) {
     case _ => ()
   }
 
+  def insert(child: RenderNode, index: Int): Unit = fx match {
+    case p: Pane =>
+      p.getChildren.remove(child.fx)
+      p.getChildren.add(math.max(0, math.min(index, p.getChildren.size)), child.fx)
+    case _ => ()
+  }
+
   /** Detach from the parent, if attached. */
   def remove(): Unit = fx.getParent match {
     case p: Pane => p.getChildren.remove(fx)
@@ -304,6 +311,7 @@ class RenderNode(val fx: Node) {
   /** "start", "center" or "end", resolved against the window's direction (`Platform.setDirection`). */
   /** A shadow behind the letters: not drawn here. */
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  def setTextOutline(width: Double, hex: String): Unit = ()
   // no reader of roles or descriptions reaches this platform's nodes
   def setSemantics(role: String, level: Int, label: String): Unit = ()
   /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */

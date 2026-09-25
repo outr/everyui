@@ -190,6 +190,17 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
+  /** `child` at `index` among this node's children, drawn over those before it and under those after. */
+  def insert(child: RenderNode, index: Int): Unit = view match {
+    case g: ViewGroup =>
+      child.view.getParent match {
+        case old: ViewGroup => old.removeView(child.view)
+        case _ => ()
+      }
+      g.addView(child.view, math.max(0, math.min(index, g.getChildCount)))
+    case _ => ()
+  }
+
   /** Detach from the parent, if attached. */
   def setMediaHeaders(headers: Map[String, String]): Unit = media.foreach(_.setHeaders(headers))
   def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
@@ -576,6 +587,15 @@ class RenderNode(val view: View) {
 
   /** "start", "center" or "end", resolved against the root's layout direction. */
   /** A shadow behind the letters (a subtitle's edge, as a device's caption settings ask for one); an empty colour, none. */
+  /** An edge round the letters, `width` each side, or none for "" ([[OutlinedText]]). */
+  def setTextOutline(width: Double, hex: String): Unit = view match {
+    case t: OutlinedText =>
+      if (hex.isEmpty) t.outline(0f, 0)
+      else t.outline((width * Host.scale).toFloat, android.graphics.Color.parseColor(
+        if (hex.length == 9) "#" + hex.substring(7) + hex.substring(1, 7) else hex))
+    case _ => ()
+  }
+
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = view match {
     case t: TextView =>
       if (hex.isEmpty) t.setShadowLayer(0f, 0f, 0f, 0)
@@ -977,7 +997,7 @@ object Nodes {
 
   /** A text node — a single-line `TextView` with no padding of its own. */
   def text(): RenderNode = {
-    val t = new TextView(Host.activity)
+    val t = new OutlinedText(Host.activity)
     t.setIncludeFontPadding(false)
     t.setFallbackLineSpacing(false)
     t.setPadding(0, 0, 0, 0)

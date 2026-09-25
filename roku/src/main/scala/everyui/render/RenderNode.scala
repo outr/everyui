@@ -141,6 +141,7 @@ class RenderNode(val sg: SGNode) {
 
   // (into the rounded clip, when there is one: see `roundClip`)
   def append(child: RenderNode): Unit = uiAppend(masked.getOrElse(sg), child.sg)
+  def insert(child: RenderNode, index: Int): Unit = uiInsert(masked.getOrElse(sg), child.sg, index)
 
   /** Detach from the parent, if attached. */
   def remove(): Unit = uiRemove(sg)
@@ -391,6 +392,7 @@ class RenderNode(val sg: SGNode) {
   /** Labels sit where they are placed. */
   /** A shadow behind the letters: not drawn here. */
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  def setTextOutline(width: Double, hex: String): Unit = ()
   // no reader of roles or descriptions reaches this platform's nodes
   def setSemantics(role: String, level: Int, label: String): Unit = ()
   /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */
