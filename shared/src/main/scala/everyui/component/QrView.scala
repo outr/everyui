@@ -4,17 +4,17 @@ import everyui.Color
 import everyui.image.QrCode
 import reactify.*
 
-/** A QR code for `text`, `across` pixels square with its quiet zone, dark on white whatever the theme (a camera reads
-  * nothing else). Each row's dark modules are drawn as runs, so a code is a few hundred boxes rather than thousands. */
-class QrView(text: String, across: Double) extends Container {
+/** A QR code for `text`, `across` pixels square with its quiet zone (`quiet` modules of white about it: four, the
+  * standard, unless it sits in white of its own), dark on white whatever the theme (a camera reads nothing else).
+  * Each row's dark modules are drawn as runs, so a code is a few hundred boxes rather than thousands. */
+class QrView(text: String, across: Double, quiet: Int = 4) extends Container {
   override def kind: String = "QrView"
 
   size.width @= across
   size.height @= across
   backgroundColor @= Color.White
   QrCode.encode(text).foreach { code =>
-    // a quiet zone of four modules about the code
-    val module = math.floor(across / (code.size + 8))
+    val module = math.floor(across / (code.size + quiet * 2))
     val offset = math.floor((across - module * code.size) / 2.0)
     val runs = (0 until code.size).toList.flatMap { y =>
       var found: List[(Int, Int)] = Nil
