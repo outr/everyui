@@ -7,7 +7,7 @@ import androidx.media3.exoplayer.{DefaultLoadControl, DefaultRenderersFactory, E
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
-import everyui.component.{MediaSidecar, MediaTrack}
+import everyui.component.{MediaCue, MediaRetry, MediaSidecar, MediaTrack}
 
 /** What a video or an audio node plays, Android edition: an ExoPlayer, drawing (for a video) into a view in the node's
   * [[VideoFrame]], which lays that view out at the picture's shape.
@@ -64,7 +64,9 @@ class ExoMedia(frame: Option[VideoFrame]) {
   def setSidecars(files: List[MediaSidecar]): Unit = if (files != sidecars) {
     sidecars = files
     val now = source
-    new android.os.Handler(android.os.Looper.getMainLooper).post(() => if (source == now && now.nonEmpty) {
+    val was = player
+    // only the player that was playing when they changed: one made since took them in with its source
+    new android.os.Handler(android.os.Looper.getMainLooper).post(() => if (source == now && now.nonEmpty && player == was) {
       player.foreach { p =>
         p.setMediaItem(item(now), p.getCurrentPosition)
         p.prepare()
@@ -100,10 +102,18 @@ class ExoMedia(frame: Option[VideoFrame]) {
   def setCached(on: Boolean): Unit = keeping = on
   private var keeping = false
 
+  /** Where the next source starts, in seconds: given to the player with the source, before it is prepared, so the
+    * first request is for that part of the file (a resume, a retry from where the picture stopped) rather than the
+    * start of it and then a seek. Used once. */
+  def setStart(seconds: Double): Unit = starting = seconds
+  private var starting = 0.0
+
   def setSource(url: String): Unit = if (url != source) {
     source = url
     close()
     if (url.nonEmpty) {
+      val from = math.round(starting * 1000.0)
+      starting = 0.0
       try {
         // OkHttp fetches the media, not Media3's own data source, and the difference is not academic: the default
         // one is HttpURLConnection, which opens a fresh connection for every ranged request and has no pool to
@@ -131,7 +141,9 @@ class ExoMedia(frame: Option[VideoFrame]) {
           .setRenderersFactory(renderers(url).setEnableDecoderFallback(true))
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
           // how long one load may go on failing before it is lost is the profile's patience, and the number of
-          // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter
+          // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter. Never
+          // fewer than the Flutter player's six, with Media3's own backoff between them: a server that is merely
+          // slow looks, from here, exactly like one that has gone
           // through the default source, which reads a file, an asset or a content address itself and hands only the
           // network ones to OkHttp: OkHttp alone calls a file: address a malformed URL, and a clip kept on the device
           // (a game's music) never played
@@ -139,7 +151,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
             Host.activity, if (keeping) ClipCache.around(http) else http))
             .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy {
               override def getMinimumLoadableRetryCount(dataType: Int): Int =
-                math.max(3, holding.patienceMs / math.max(1000, holding.readMs))
+                math.max(6, holding.patienceMs / math.max(1000, holding.readMs))
             }))
           .setLoadControl(load)
           .build()
@@ -161,9 +173,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
             if (state == Player.STATE_READY && !said) {
               said = true
               listener("ready")
+              darkWatch(made)
             }
             else if (state == Player.STATE_ENDED && !looping) listener("ended")
           }
+          override def onRenderedFirstFrame(): Unit = framed = true
           override def onIsPlayingChanged(on: Boolean): Unit = session.foreach(_.state(on))
           override def onPositionDiscontinuity(was: Player.PositionInfo, now: Player.PositionInfo, reason: Int): Unit =
             session.foreach(_.state(made.isPlaying))
@@ -200,17 +214,39 @@ class ExoMedia(frame: Option[VideoFrame]) {
               i += 1
             }
             val now = words.toString
-            if (now != cueText) {
+            val placed = (0 until list.size()).toList.flatMap(i => ExoMedia.cue(list.get(i)))
+            if (now != cueText || placed != placedCues) {
               cueText = now
+              placedCues = placed
               listener("cues")
             }
           }
           override def onPlayerError(error: androidx.media3.common.PlaybackException): Unit = {
-            Platform.log("media: " + url + " failed (" + error.getErrorCodeName + ")")
+            // the code and every cause under it: "AudioTrack init failed" under a decoder error is the whole diagnosis
+            val causes = Iterator.iterate(error.getCause)(_.getCause).takeWhile(_ != null)
+              .map(c => Option(c.getMessage).getOrElse(c.getClass.getSimpleName)).mkString(" <- ")
+            Platform.log("media: " + url + " failed (" + error.getErrorCodeName + ")" +
+              (if (causes.isEmpty) "" else ": " + causes))
             listener("error")
           }
         })
-        made.setMediaItem(item(url))
+        // every load the player retries on its own, as it happens: a route that keeps timing out is otherwise a
+        // minute of nothing on the screen and nothing in the log until the final error
+        made.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener {
+          override def onLoadError(time: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                                   load: androidx.media3.exoplayer.source.LoadEventInfo,
+                                   data: androidx.media3.exoplayer.source.MediaLoadData,
+                                   error: java.io.IOException, cancelled: Boolean): Unit =
+            if (player.exists(_ eq made)) {
+              failures += 1
+              val host = Option(load.uri).flatMap(u => Option(u.getHost)).getOrElse("?")
+              val cause = error.getClass.getSimpleName + ": " + Option(error.getMessage).getOrElse("")
+              Platform.log("media: load error #" + failures.toString + " from " + host + ": " + cause)
+              retried = Some(MediaRetry(failures, host, cause))
+              listener("retry")
+            }
+        })
+        if (from > 0L) made.setMediaItem(item(url), from) else made.setMediaItem(item(url))
         made.prepare()
         made.setPlayWhenReady(playing)
         player = Some(made)
@@ -336,7 +372,10 @@ class ExoMedia(frame: Option[VideoFrame]) {
             val format = group.getTrackFormat(t)
             val language = Option(format.language).map(_.trim).filterNot(l => l.isEmpty || l == "und").getOrElse("")
             val label = Option(format.label).map(_.trim).getOrElse("")
-            List(MediaTrack(g.toString + ":" + t.toString, kind, language, label))
+            // a text track says what it is written in, as the Flutter menu names it: two English tracks, one SRT
+            // and one PGS, are otherwise the same line twice
+            val written = if (kind == MediaTrack.Text) ExoMedia.written(format.sampleMimeType) else ""
+            List(MediaTrack(g.toString + ":" + t.toString, kind, language, label, written))
           }
         }
       }
@@ -395,6 +434,39 @@ class ExoMedia(frame: Option[VideoFrame]) {
 
   /** What is being said on screen at this moment, as the text track has it, or "" while nothing is. */
   def cues(): String = cueText
+
+  /** The same, as the file places and styles each one: picture subtitles are drawn here and are not among them. */
+  def cueList(): List[MediaCue] = placedCues
+  private var placedCues: List[MediaCue] = Nil
+
+  /** The last load retried on this source, if one has been. */
+  def retry(): Option[MediaRetry] = retried
+  private var retried: Option[MediaRetry] = None
+  private var failures = 0
+  /** Whether the picture has drawn a frame on this source, and whether it has been started again for want of one. */
+  private var framed = false
+  private var relit = false
+
+  /** A picture that never comes, as the Flutter player guards against it: a load error during the first opening
+    * (a connection reset on the first read of a Plex stream) can reach READY with the renderers dark — the playhead
+    * runs and the subtitles draw over a black, silent screen, where a fresh open plays. READY and playing with no
+    * frame after two and a half seconds is exactly that and never a healthy open, so the player is prepared again
+    * from where it is, once, which rebuilds what a clean open builds. */
+  private def darkWatch(made: ExoPlayer): Unit = if (frame.nonEmpty && made.getVideoFormat != null && !relit)
+    Platform.after(2.5, () => if (player.exists(_ eq made) && !framed && !relit && made.getPlayWhenReady &&
+      made.getPlaybackState == Player.STATE_READY) {
+      relit = true
+      val at = made.getCurrentPosition
+      Platform.log("media: " + source + " is playing with no picture after 2.5s (load errors " + failures.toString +
+        "); preparing it again at " + at.toString + "ms")
+      failures += 1
+      retried = Some(MediaRetry(failures, "recovery", "dark open - reinitializing the player"))
+      listener("retry")
+      made.stop()
+      made.prepare()
+      made.seekTo(at)
+      made.setPlayWhenReady(true)
+    })
 
   /** How large the picture is, as the decoder reports it. */
   def size(): (Double, Double) = (videoWidth.toDouble, videoHeight.toDouble)
@@ -498,6 +570,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
     videoHeight = 0
     aspect = 1.0
     cueText = ""
+    placedCues = Nil
+    retried = None
+    failures = 0
+    framed = false
+    relit = false
     frame.foreach(_.cues(Nil))
   }
 
@@ -543,5 +620,93 @@ class ExoMedia(frame: Option[VideoFrame]) {
         else s.getHolder.setSizeFromLayout()
       case _ => ()
     }
+  }
+}
+
+object ExoMedia {
+  /** What a text track is written in, from its sample type, as the Flutter menu names it; "" for anything else. */
+  def written(mime: String): String = {
+    import androidx.media3.common.MimeTypes
+    if (mime == null) ""
+    else if (mime == MimeTypes.APPLICATION_SUBRIP) "SRT"
+    else if (mime == MimeTypes.TEXT_VTT || mime == MimeTypes.APPLICATION_MP4VTT) "VTT"
+    else if (mime == MimeTypes.TEXT_SSA) "SSA"
+    else if (mime == MimeTypes.APPLICATION_TTML) "TTML"
+    else if (mime == MimeTypes.APPLICATION_PGS) "PGS"
+    else if (mime == MimeTypes.APPLICATION_VOBSUB) "VobSub"
+    else if (mime == MimeTypes.APPLICATION_DVBSUBS) "DVB"
+    else if (mime == MimeTypes.APPLICATION_CEA608 || mime == MimeTypes.APPLICATION_CEA708) "CC"
+    else ""
+  }
+
+  /** One of media3's text cues as the app is handed it: its words as styled runs, and where the file puts it. A cue
+    * that is a picture, or has nothing to say, is none. */
+  def cue(c: androidx.media3.common.text.Cue): Option[MediaCue] = {
+    import androidx.media3.common.text.Cue
+    val text = c.text
+    if (text == null || text.toString.trim.isEmpty) None
+    else {
+      val anchor: Int => String = a =>
+        if (a == Cue.ANCHOR_TYPE_MIDDLE) MediaCue.Middle else if (a == Cue.ANCHOR_TYPE_END) MediaCue.End else MediaCue.Start
+      // a line number is a row of text rather than a share: about fifteen of them to a picture, counted down from the
+      // top, or up from the foot where it is negative
+      val (line, lineAnchor) =
+        if (c.line == Cue.DIMEN_UNSET) (-1.0, MediaCue.End)
+        else if (c.lineType == Cue.LINE_TYPE_NUMBER) {
+          if (c.line >= 0f) (math.min(1.0, c.line / 15.0), MediaCue.Start)
+          else (math.max(0.0, 1.0 + (c.line + 1.0) / 15.0), MediaCue.End)
+        }
+        else (c.line.toDouble, if (c.lineAnchor == Cue.TYPE_UNSET) MediaCue.Start else anchor(c.lineAnchor))
+      val align = Option(c.textAlignment).map { a =>
+        if (a == android.text.Layout.Alignment.ALIGN_NORMAL) MediaCue.Start
+        else if (a == android.text.Layout.Alignment.ALIGN_OPPOSITE) MediaCue.End
+        else MediaCue.Middle
+      }.getOrElse(MediaCue.Middle)
+      Some(MediaCue(runs(text), line, lineAnchor,
+        if (c.position == Cue.DIMEN_UNSET) -1.0 else c.position.toDouble,
+        if (c.positionAnchor == Cue.TYPE_UNSET) MediaCue.Middle else anchor(c.positionAnchor),
+        align,
+        if (c.size == Cue.DIMEN_UNSET) -1.0 else c.size.toDouble,
+        if (c.textSize == Cue.DIMEN_UNSET || c.textSizeType == Cue.TEXT_SIZE_TYPE_ABSOLUTE) -1.0 else c.textSize.toDouble,
+        if (c.windowColorSet) hex(c.windowColor) else ""))
+    }
+  }
+
+  /** The words as runs, one for each stretch the file styles alike: its italics and bold (a SubRip `<i>`, a
+    * SubStation style), its colours, a box behind the letters, a line through them. */
+  private def runs(text: CharSequence): List[everyui.text.TextRun] = text match {
+    case s: android.text.Spanned =>
+      var out: List[everyui.text.TextRun] = Nil
+      var i = 0
+      while (i < s.length) {
+        val next = math.max(i + 1, s.nextSpanTransition(i, s.length, classOf[Object]))
+        val over = s.getSpans(i, next, classOf[Object]).filter(sp => s.getSpanStart(sp) <= i && s.getSpanEnd(sp) >= next)
+        var run = everyui.text.TextRun(s.subSequence(i, next).toString)
+        over.foreach {
+          case st: android.text.style.StyleSpan =>
+            val style = st.getStyle
+            if ((style & android.graphics.Typeface.BOLD) != 0) run = run.copy(weight = 700)
+            if ((style & android.graphics.Typeface.ITALIC) != 0) run = run.copy(italic = true)
+          case fg: android.text.style.ForegroundColorSpan => run = run.copy(color = hex(fg.getForegroundColor))
+          case bg: android.text.style.BackgroundColorSpan => run = run.copy(background = hex(bg.getBackgroundColor))
+          case _: android.text.style.StrikethroughSpan => run = run.copy(strike = true)
+          case _ => ()
+        }
+        // alike with the run before it: one run, not two
+        out = out match {
+          case last :: rest if last.copy(text = "") == run.copy(text = "") => last.copy(text = last.text + run.text) :: rest
+          case _ => run :: out
+        }
+        i = next
+      }
+      out.reverse
+    case plain => List(everyui.text.TextRun(plain.toString))
+  }
+
+  /** An Android colour as the seam writes one: `#rrggbb`, or `#rrggbbaa` where it is not opaque. */
+  private def hex(argb: Int): String = {
+    val rgb = f"#${argb & 0xffffff}%06x"
+    val alpha = (argb >>> 24) & 0xff
+    if (alpha == 255) rgb else rgb + f"$alpha%02x"
   }
 }

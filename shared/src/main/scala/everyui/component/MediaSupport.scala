@@ -24,6 +24,16 @@ trait MediaSupport { self: Component =>
 
   /** A URL: a file, or an HLS stream (`.m3u8`). Empty stops it. */
   lazy val source: Prop[String] = new Prop[String]("", s => node.setMediaSource(s))
+
+  /** `url` opened afresh, `from` seconds in: where it starts is said with it, so the player's first request is for
+    * that part of the file, rather than the start of it followed by a seek that races the opening. The same address
+    * as the one playing is opened again all the same — a retry of what failed is a new start, not nothing. */
+  def open(url: String, from: Double): Unit = {
+    if (source() == url) source @= ""
+    retrying @= None
+    node.setMediaStart(math.max(0.0, from))
+    source @= url
+  }
   lazy val playing: Prop[Boolean] = new Prop[Boolean](true, p => node.setMediaPlaying(p))
   lazy val loop: Prop[Boolean] = new Prop[Boolean](false, l => node.setMediaLoop(l))
   lazy val muted: Prop[Boolean] = new Prop[Boolean](false, m => node.setMediaMuted(m))
@@ -101,6 +111,15 @@ trait MediaSupport { self: Component =>
     * none of it, so the app must. A browser and a Roku paint their own, and answer "" here. */
   def cues: String = node.mediaCues()
 
+  /** The subtitles on screen at this moment as the file places and styles them ([[MediaCue]]): where the platform
+    * hands them over (Android), and Nil while nothing is said and wherever the platform paints its own. Pushed, as
+    * [[said]] is. */
+  val spoken: Var[List[MediaCue]] = Var(Nil)
+
+  /** The last load the player is retrying on its own, while it is still trying: what a slow opening is actually
+    * waiting on. None until one fails, and on a platform whose player does not say. */
+  val retrying: Var[Option[MediaRetry]] = Var(None)
+
   /** What to hear and read this in, where the file carries a choice: a language tag each, or "" for the file's
     * own. Said before the source is set, so the choice is made with it rather than corrected after it. */
   def languages(audio: String, text: String): Unit = node.setMediaLanguages(audio, text)
@@ -128,9 +147,14 @@ trait MediaSupport { self: Component =>
   val said: Var[String] = Var("")
 
   node.onMediaEvent { e =>
-    if (e == "cues") said @= node.mediaCues()
+    if (e == "cues") {
+      said @= node.mediaCues()
+      spoken @= node.mediaCueList()
+    }
+    if (e == "retry") retrying @= node.mediaRetry()
+    else if (e == "ready") retrying @= None
     if (e == "bands") bands @= node.mediaBands()
-    else listeners.foreach(_(e))
+    else if (e != "retry") listeners.foreach(_(e))
   }
   watch()
 
@@ -194,13 +218,14 @@ trait MediaSupport { self: Component =>
       node.setMediaCached(keepClip())
       node.setMediaSpectrum(spectrum())
       node.setNowPlaying(nowPlaying())
+      // from where it was, said with the source rather than sought to after it
+      node.setMediaStart(at)
       node.setMediaSource(url)
       node.setMediaLoop(loop())
       node.setMediaMuted(muted())
       node.setMediaVolume(volume())
       node.setMediaRate(rate())
       node.setMediaPlaying(playing())
-      if (at > 0.0) Platform.after(0.5, () => node.seekMedia(at))
     }
   }
 }

@@ -399,6 +399,7 @@ class RenderNode(val fx: Node) {
   // JavaFX Media takes no request headers: what it is given is an address and nothing else
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
   def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  def setMediaStart(seconds: Double): Unit = media.foreach(_.setStart(seconds))
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
@@ -417,6 +418,9 @@ class RenderNode(val fx: Node) {
   def mediaSize(): (Double, Double) = media.map(_.size()).getOrElse((0.0, 0.0))
   /** The words on screen: "" here, where the platform has no text to hand over. */
   def mediaCues(): String = ""
+  def mediaCueList(): List[everyui.component.MediaCue] = Nil
+  // JavaFX retries nothing it will say
+  def mediaRetry(): Option[everyui.component.MediaRetry] = None
   // nothing here shows what is playing, or hears it
   def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
   def setMediaSpectrum(on: Boolean): Unit = ()

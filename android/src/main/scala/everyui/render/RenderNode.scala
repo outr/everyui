@@ -155,6 +155,9 @@ class RenderNode(val view: View) {
       laidOutFace = paint.getTypeface
       laidOutWidth =
         if (wrapping) paint.measureText(whole).toDouble
+        // styled runs are measured with their styles: an italic or a bold line is wider than its plain letters
+        else if (text.isInstanceOf[android.text.Spanned])
+          math.max(RenderNode.widest(paint, whole), android.text.Layout.getDesiredWidth(text, paint).toDouble)
         else RenderNode.widest(paint, whole)
       laidOutHeight =
         if (wrapping) {
@@ -204,6 +207,8 @@ class RenderNode(val view: View) {
   /** Detach from the parent, if attached. */
   def setMediaHeaders(headers: Map[String, String]): Unit = media.foreach(_.setHeaders(headers))
   def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  /** Where the next source starts, in seconds: handed to the player with it, before it is prepared. */
+  def setMediaStart(seconds: Double): Unit = media.foreach(_.setStart(seconds))
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = media.foreach(_.setSidecars(sidecars))
   def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
@@ -219,6 +224,10 @@ class RenderNode(val view: View) {
   /** What is being said on screen at this moment, where this platform hands the words over rather than drawing
     * them itself: on Android nothing draws them, since that is media3-ui and this build merges no resources. */
   def mediaCues(): String = media.map(_.cues()).getOrElse("")
+  /** The same, as the file places and styles each one. */
+  def mediaCueList(): List[everyui.component.MediaCue] = media.map(_.cueList()).getOrElse(Nil)
+  /** The last load the player retried on its own. */
+  def mediaRetry(): Option[everyui.component.MediaRetry] = media.flatMap(_.retry())
   /** What is playing, for Android's own now-playing: a media session, with the sound's focus (NowPlayingSession). */
   def setNowPlaying(about: everyui.component.NowPlaying): Unit = media.foreach(_.setNowPlaying(about))
   /** Hear the sound as it plays, for a visualizer: a tap on the decoded audio (SpectrumTap). */
@@ -420,6 +429,12 @@ class RenderNode(val view: View) {
         }
       }
       t.setText(FaceSpan.fallen(text, t.getPaint))
+      // as many lines as the runs are written as, where they are not wrapped (see setText)
+      if (!wrapping) {
+        val lines = RenderNode.lineCount(text)
+        t.setHorizontallyScrolling(lines <= 1)
+        t.setMaxLines(lines)
+      }
     case _ => ()
   }
 

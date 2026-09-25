@@ -318,6 +318,10 @@ class SGNode
 @native object uiSetMediaSource {
   def apply(node: SGNode, url: String): Unit = native.value
 }
+/** Where the next source starts, in seconds: its content node's PlayStart. */
+@native object uiSetMediaStart {
+  def apply(node: SGNode, seconds: Double): Unit = native.value
+}
 @native object uiSetMediaPlaying {
   def apply(node: SGNode, playing: Boolean): Unit = native.value
 }

@@ -3,13 +3,18 @@ package everyui.component
 /** One track of what is playing: a language to hear it in, or a language to read it in. `id` is the platform's own
   * name for it (an index, a handle) and is only meaningful to the platform that gave it out; `kind` is "audio" or
   * "text"; `language` is the tag the file carries where it carries one ("en", "fr"), and `label` is what a person
-  * should be shown. */
-case class MediaTrack(id: String, kind: String, language: String = "", label: String = "") {
-  /** What to call it in a list: what the file said, else the language, else its place. */
-  def name: String =
-    if (label.nonEmpty) label
-    else if (language.nonEmpty) MediaTrack.languageName(language)
+  * should be shown. `format` is what a text track is written in ("SRT", "PGS"), where the platform can say: two
+  * English tracks are told apart by it, and a picture subtitle known for what it is. */
+case class MediaTrack(id: String, kind: String, language: String = "", label: String = "", format: String = "") {
+  /** What to call it in a list: what the file said, else the language, else its place — with its format after it
+    * where that is known and not already said ("English (SRT)", "Subtitles (PGS)"). */
+  def name: String = {
+    val written = if (format.isEmpty) "" else " (" + format + ")"
+    if (label.nonEmpty) { if (label.toLowerCase.contains(format.toLowerCase)) label else label + written }
+    else if (language.nonEmpty) MediaTrack.languageName(language) + written
+    else if (format.nonEmpty) "Subtitles" + written
     else kind.capitalize + " " + id
+  }
 }
 
 object MediaTrack {

@@ -1359,7 +1359,7 @@ sub uiMediaFields(n as object)
     if ga.uiMediaSeq = invalid then ga.uiMediaSeq = 0
     ga.uiMediaSeq = ga.uiMediaSeq + 1
     n.id = "uiMedia" + ga.uiMediaSeq.ToStr()
-    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false })
+    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false, uiStart: 0.0 })
 end sub
 
 sub uiSetMediaSource(node as object, url as string)
@@ -1369,6 +1369,9 @@ sub uiSetMediaSource(node as object, url as string)
     if url = "" then return
     c = CreateObject("roSGNode", "ContentNode")
     c.url = url
+    ' where it starts, said with the content so the stream opens there rather than seeking after it; once
+    if node.uiStart > 0 then c.PlayStart = Int(node.uiStart)
+    node.uiStart = 0.0
     lower = LCase(url)
     if Instr(1, lower, ".m3u8") > 0
         c.streamFormat = "hls"
@@ -1380,6 +1383,11 @@ sub uiSetMediaSource(node as object, url as string)
     node.content = c
     node.loop = node.uiLoop
     if node.uiPlaying then node.control = "play"
+end sub
+
+' Where the next source starts, in seconds.
+sub uiSetMediaStart(node as object, seconds as float)
+    if node <> invalid then node.uiStart = seconds
 end sub
 
 sub uiSetMediaPlaying(node as object, playing as boolean)

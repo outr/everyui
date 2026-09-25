@@ -151,6 +151,8 @@ class RenderNode(val sg: SGNode) {
   // a Roku video takes its headers on the content node it is given; nothing sends any yet
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
   def setMediaSource(url: String): Unit = uiSetMediaSource(sg, url)
+  /** Where the next source starts, in seconds: its content node's PlayStart, so the stream opens there. */
+  def setMediaStart(seconds: Double): Unit = uiSetMediaStart(sg, seconds)
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = uiSetMediaPlaying(sg, playing)
   def setMediaLoop(loop: Boolean): Unit = uiSetMediaLoop(sg, loop)
@@ -169,6 +171,9 @@ class RenderNode(val sg: SGNode) {
   def mediaSize(): (Double, Double) = (0.0, 0.0)
   /** The words on screen: "" here, where the platform draws its own subtitles. */
   def mediaCues(): String = ""
+  def mediaCueList(): List[everyui.component.MediaCue] = Nil
+  // the Video node retries on its own and says nothing until it gives up
+  def mediaRetry(): Option[everyui.component.MediaRetry] = None
   // a Roku's own now-playing is the channel's, and SceneGraph hands a channel none of its sound
   def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
   def setMediaSpectrum(on: Boolean): Unit = ()

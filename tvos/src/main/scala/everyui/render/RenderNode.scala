@@ -84,6 +84,7 @@ class RenderNode(val sg: SGNode) {
   // media is not played on tvOS yet (an AVPlayer layer is to come): a video or an audio node is an empty view
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
   def setMediaSource(url: String): Unit = ()
+  def setMediaStart(seconds: Double): Unit = ()
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = ()
   def setMediaLoop(loop: Boolean): Unit = ()
@@ -102,6 +103,8 @@ class RenderNode(val sg: SGNode) {
   def mediaSize(): (Double, Double) = (0.0, 0.0)
   /** The words on screen: "" here, where the platform draws its own subtitles. */
   def mediaCues(): String = ""
+  def mediaCueList(): List[everyui.component.MediaCue] = Nil
+  def mediaRetry(): Option[everyui.component.MediaRetry] = None
   // nothing here shows what is playing, or hears it
   def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
   def setMediaSpectrum(on: Boolean): Unit = ()

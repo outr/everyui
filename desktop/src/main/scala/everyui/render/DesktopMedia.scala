@@ -29,17 +29,24 @@ class DesktopMedia(pane: Option[Pane]) {
     p.heightProperty.addListener((_, _, _) => fit())
   }
 
+  /** Where the next source starts, in seconds: sought to as it is ready, before it plays. */
+  def setStart(seconds: Double): Unit = start = seconds
+  private var start = 0.0
+
   def setSource(url: String): Unit = if (url != source) {
     source = url
     close()
     if (url.nonEmpty) {
       try {
+        val from = start
+        start = 0.0
         val made = new MediaPlayer(new Media(url))
         made.setCycleCount(if (looping) MediaPlayer.INDEFINITE else 1)
         made.setMute(muted)
         made.setVolume(volume)
         made.setOnReady(() => {
           fit()
+          if (from > 0.0) made.seek(Duration.seconds(from))
           if (playing) made.play()
           listener("ready")
         })

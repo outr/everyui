@@ -262,9 +262,16 @@ class RenderNode(val el: html.Element) {
     }
     else if (el.getAttribute("src") != url) {
       el.setAttribute("src", url)
+      // before the file has said anything, a time set is where it starts once it has (its default playback start
+      // position), rather than a seek after it
+      if (mediaStart > 0.0) m.currentTime = mediaStart
+      mediaStart = 0.0
       if (mediaPlaying) m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
     }
   }
+  /** Where the next source starts, in seconds. */
+  def setMediaStart(seconds: Double): Unit = mediaStart = seconds
+  private var mediaStart = 0.0
   // a page could add a <track> for each; not yet
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = {
@@ -297,6 +304,9 @@ class RenderNode(val el: html.Element) {
   // the browser lists the tracks a file carries; `audioTracks` is not in every engine, so a missing list is no list
   /** The words on screen: "" here, where the browser draws the showing text track itself. */
   def mediaCues(): String = ""
+  def mediaCueList(): List[everyui.component.MediaCue] = Nil
+  // a `video` retries by itself and says nothing of it
+  def mediaRetry(): Option[everyui.component.MediaRetry] = None
   // nothing here shows what is playing, or hears it
   def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
   def setMediaSpectrum(on: Boolean): Unit = ()
