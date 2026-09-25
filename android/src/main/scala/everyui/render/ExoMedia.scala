@@ -121,7 +121,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
           // how long one load may go on failing before it is lost is the profile's patience, and the number of
           // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter
-          .setMediaSourceFactory(new DefaultMediaSourceFactory(if (keeping) ClipCache.around(http) else http)
+          // through the default source, which reads a file, an asset or a content address itself and hands only the
+          // network ones to OkHttp: OkHttp alone calls a file: address a malformed URL, and a clip kept on the device
+          // (a game's music) never played
+          .setMediaSourceFactory(new DefaultMediaSourceFactory(new androidx.media3.datasource.DefaultDataSource.Factory(
+            Host.activity, if (keeping) ClipCache.around(http) else http))
             .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy {
               override def getMinimumLoadableRetryCount(dataType: Int): Int =
                 math.max(3, holding.patienceMs / math.max(1000, holding.readMs))
