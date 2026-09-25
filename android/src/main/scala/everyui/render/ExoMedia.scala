@@ -673,7 +673,8 @@ object ExoMedia {
   }
 
   /** The words as runs, one for each stretch the file styles alike: its italics and bold (a SubRip `<i>`, a
-    * SubStation style), its colours, a box behind the letters, a line through them. */
+    * SubStation style), its colours, a box behind the letters, a line through or under them
+    * (a SubRip `<u>`). */
   private def runs(text: CharSequence): List[everyui.text.TextRun] = text match {
     case s: android.text.Spanned =>
       var out: List[everyui.text.TextRun] = Nil
@@ -690,6 +691,7 @@ object ExoMedia {
           case fg: android.text.style.ForegroundColorSpan => run = run.copy(color = hex(fg.getForegroundColor))
           case bg: android.text.style.BackgroundColorSpan => run = run.copy(background = hex(bg.getBackgroundColor))
           case _: android.text.style.StrikethroughSpan => run = run.copy(strike = true)
+          case _: android.text.style.UnderlineSpan => run = run.copy(underline = true)
           case _ => ()
         }
         // alike with the run before it: one run, not two

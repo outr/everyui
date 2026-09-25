@@ -401,8 +401,8 @@ class RenderNode(val view: View) {
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
   def setOptions(labels: List[String]): Unit = ()
-  /** Styled runs as spans of one text: each run's colour, marking, weight, slant, size and strike (a link is drawn,
-    * not followed; its family is the paragraph's). */
+  /** Styled runs as spans of one text: each run's colour, marking, weight, slant, size, strike and underline (a link
+    * is drawn, not followed; its family is the paragraph's). */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = view match {
     case t: TextView =>
       val text = new android.text.SpannableStringBuilder()
@@ -426,6 +426,7 @@ class RenderNode(val view: View) {
             else Typeface.ITALIC), from, to)
           if (run.size > 0.0) span(new android.text.style.AbsoluteSizeSpan(math.round(run.size).toInt), from, to)
           if (run.strike) span(new android.text.style.StrikethroughSpan(), from, to)
+          if (run.underline) span(new android.text.style.UnderlineSpan(), from, to)
         }
       }
       t.setText(FaceSpan.fallen(text, t.getPaint))

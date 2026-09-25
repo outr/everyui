@@ -179,7 +179,9 @@ class RenderNode(val el: html.Element) {
       if (run.italic) span.style.fontStyle = "italic"
       if (run.size > 0.0) span.style.fontSize = run.size.toString + "px"
       if (run.color.nonEmpty) span.style.color = run.color
-      if (run.strike) span.style.textDecoration = "line-through"
+      if (run.strike || run.underline)
+        span.style.textDecoration = List(Option.when(run.underline)("underline"), Option.when(run.strike)("line-through"))
+          .flatten.mkString(" ")
       if (run.background.nonEmpty) {
         span.style.backgroundColor = run.background
         span.style.padding = "0.08em 0.35em"

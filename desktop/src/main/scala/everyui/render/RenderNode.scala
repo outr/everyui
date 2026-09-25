@@ -258,8 +258,15 @@ class RenderNode(val fx: Node) {
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
   def setOptions(labels: List[String]): Unit = ()
-  /** Styled runs are drawn as the paragraph's own style, their words run together. */
-  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(_.text).mkString)
+  /** Styled runs are drawn as the paragraph's own style, their words run together: one `Text` is one style. It is
+    * underlined where every word of it is (a subtitle underlined whole), since a line under part of it cannot be. */
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
+    setText(runs.map(_.text).mkString)
+    fx match {
+      case t: Text => t.setUnderline(runs.exists(_.text.nonEmpty) && runs.forall(r => r.underline || r.text.isEmpty))
+      case _ => ()
+    }
+  }
 
   private def paintBackground(): Unit = fx match {
     case p: Pane =>
