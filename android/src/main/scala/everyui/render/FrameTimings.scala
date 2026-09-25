@@ -46,7 +46,14 @@ object FrameTimings {
       if (!first) {
         val building = ms(FrameMetrics.UNKNOWN_DELAY_DURATION) + ms(FrameMetrics.INPUT_HANDLING_DURATION) +
           ms(FrameMetrics.ANIMATION_DURATION) + ms(FrameMetrics.LAYOUT_MEASURE_DURATION) + ms(FrameMetrics.DRAW_DURATION)
-        sink.foreach(f => try f(ms(FrameMetrics.TOTAL_DURATION), building) catch { case _: Throwable => () })
+        // to the end of the render thread's own work, its swap, as Flutter's raster ends: from Android 12 the total
+        // runs on until the GPU has finished the frame, which it does while the next is already being made, and on a
+        // Google TV Streamer that added a steady 8 to 14ms to every frame Flutter's own measure never counted
+        val total =
+          if (android.os.Build.VERSION.SDK_INT < 31) ms(FrameMetrics.TOTAL_DURATION)
+          else math.min(ms(FrameMetrics.TOTAL_DURATION),
+            ms(FrameMetrics.TOTAL_DURATION) - ms(FrameMetrics.GPU_DURATION) + ms(FrameMetrics.SWAP_BUFFERS_DURATION))
+        sink.foreach(f => try f(total, building) catch { case _: Throwable => () })
       }
     }
   }
