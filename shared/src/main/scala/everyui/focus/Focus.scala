@@ -253,7 +253,7 @@ object Focus {
   }
 
   /** From `was` up to `root`, the first container with somewhere to go `direction`'s way. */
-  private def travel(was: Component, root: Component, direction: Key): Option[Component] = {
+  private def travel(was: Component, root: Component, direction: Key, dry: Boolean = false): Option[Component] = {
     var child: Component = was
     var found: Option[Component] = None
     var stopped = false
@@ -278,7 +278,7 @@ object Focus {
           }
           // nothing inside this way: something the container does instead of moving, where it says so
           if (found.isEmpty) c.focusAction(direction).foreach { action =>
-            action()
+            if (!dry) action()
             stopped = true
           }
           // nothing inside this way: the container's own exit, if it states one
@@ -382,6 +382,71 @@ object Focus {
             found = found :+ (box.kind + " holds " + parts.map(said).mkString(" | "))
         case _ => ()
       }
+    }
+    found
+  }
+
+  /** What no arrow reaches: each focusable under `root` that the moves from where the screen starts never land on,
+    * following every arrow from everything reached, as a viewer with a remote would. An arrow a container turns into
+    * an action counts as going nowhere, since running it is not looking. Each is named by its kind and the first
+    * words in it. */
+  def unreached(root: Component): List[String] = {
+    val all = candidates(root)
+    var seen: Vector[Component] = start().filter(s => within(s, root)).orElse(all.headOption).toVector
+    var pending: List[Component] = seen.toList
+    while (pending.nonEmpty) {
+      val at = pending.head
+      pending = pending.tail
+      List(Key.ArrowUp, Key.ArrowDown, Key.ArrowLeft, Key.ArrowRight).foreach { d =>
+        travel(at, root, d, dry = true).foreach { next =>
+          if (!seen.exists(_ eq next)) {
+            seen = seen :+ next
+            pending = pending :+ next
+          }
+        }
+      }
+    }
+    all.filterNot(c => seen.exists(_ eq c)).filter(c => inView(c)).map(c => named(c)).toList
+  }
+
+  // on the screen, or in something that scrolls it there: a part parked off the edge (a bar waiting to slide in) is
+  // not one a viewer is missing
+  private def inView(c: Component): Boolean = {
+    val across = c.absoluteLeft + c.size.width() > 0.0 && c.absoluteLeft < ui.size.width()
+    val down = c.absoluteTop + c.size.height() > 0.0 && c.absoluteTop < ui.size.height()
+    var scrolled = false
+    var at = c.parent()
+    while (!scrolled && at.nonEmpty) {
+      if (at.get.kind == "ScrollContainer") scrolled = true
+      at = at.get.parent()
+    }
+    (across && down) || scrolled
+  }
+
+  // a component as a person would point at it: the first words or icon shown in it, else the nearest ones around it
+  private def named(c: Component): String = {
+    val own = shownIn(c)
+    if (own.nonEmpty) c.kind + " " + own
+    else {
+      var near = ""
+      var at = c.parent()
+      while (near.isEmpty && at.nonEmpty) {
+        near = shownIn(at.get)
+        at = at.get.parent()
+      }
+      c.kind + (if (near.isEmpty) "" else " near " + near)
+    }
+  }
+
+  private def shownIn(c: Component): String = {
+    var found = ""
+    var pending: List[Component] = List(c)
+    while (found.isEmpty && pending.nonEmpty) {
+      val at = pending.head
+      pending = at.childComponents.toList ++ pending.tail
+      val k = at.kind
+      if (k.startsWith("TextView(") && k.length > 11) found = "\"" + k.substring(9, k.length - 1).take(40) + "\""
+      else if (k.startsWith("MaterialIconView(")) found = "[" + k.substring(17, k.length - 1) + "]"
     }
     found
   }

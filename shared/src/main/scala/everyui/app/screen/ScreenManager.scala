@@ -241,9 +241,9 @@ trait ScreenManager extends TaskSupport {
             else pendingFocus = Some(screen -> target)
           case _ => focus.filter(Focus.showing).foreach(_.focus())
         }
-        // run with `focusAudit`, each screen says where an arrow may have no stated way between its parts
+        // run with `focusAudit`, each screen names what no arrow can reach from where it starts
         if (Platform.launchArg("focusAudit").nonEmpty) Platform.after(2.0, () =>
-          Focus.unstated(ui).foreach(line => Platform.log("[focus-audit] " + screen.getClass.getSimpleName + ": " + line)))
+          Focus.unreached(ui).foreach(line => Platform.log("[focus-audit] " + screen.getClass.getSimpleName + ": " + line)))
         screen match {
           case p: PathActivation if push => Platform.pushPath(p.path.value)
           case _ => ()
