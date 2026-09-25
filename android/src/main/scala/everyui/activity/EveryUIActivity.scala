@@ -29,22 +29,12 @@ abstract class EveryUIActivity extends Activity {
       case _ => ()
     }
 
-    val root = new NodeGroup(this)
-    // The render root is a viewport: content past its edges is clipped, as on every other backend.
-    root.setClipChildren(true)
-    // see-through until the app paints its own ground, so the window's launch background (an app's splash) shows
-    // from the moment the process starts rather than a white view over it
-    root.setBackgroundColor(Color.TRANSPARENT)
-    def extent(size: Double): Int = if (size > 0.0) size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
-    setContentView(root, new ViewGroup.LayoutParams(extent(Host.viewportWidth), extent(Host.viewportHeight)))
-    Host.root = root
-    if (Host.viewportWidth <= 0.0) {
-      Host.scale = getResources.getDisplayMetrics.density.toDouble
-      root.setPivotX(0f)
-      root.setPivotY(0f)
-      root.setScaleX(Host.scale.toFloat)
-      root.setScaleY(Host.scale.toFloat)
-    }
+    // The process can outlive its activity: Android takes an activity away to make room (a 4K film in another app, on a
+    // SHIELD) and makes a new one when the app is returned to, in the same process, with the app still running and its
+    // screens built. The new activity takes over the view the app is drawing into. Starting the app a second time into
+    // an empty one left nothing but the launch logo on the screen, while the first went on drawing where nobody saw it.
+    val adopted = Host.root != null
+    if (adopted) adopt() else build()
 
     // what has been downloaded is kept on disk, as the image servers' own headers allow: a cold start shows the rails'
     // posters from the device rather than fetching every one of them again
@@ -62,7 +52,37 @@ abstract class EveryUIActivity extends Activity {
       insets.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
     }
 
-    run()
+    if (!adopted) run()
+  }
+
+  /** The render root, made. */
+  private def build(): Unit = {
+    val root = new NodeGroup(this)
+    // The render root is a viewport: content past its edges is clipped, as on every other backend.
+    root.setClipChildren(true)
+    // see-through until the app paints its own ground, so the window's launch background (an app's splash) shows
+    // from the moment the process starts rather than a white view over it
+    root.setBackgroundColor(Color.TRANSPARENT)
+    def extent(size: Double): Int = if (size > 0.0) size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
+    setContentView(root, new ViewGroup.LayoutParams(extent(Host.viewportWidth), extent(Host.viewportHeight)))
+    Host.root = root
+    if (Host.viewportWidth <= 0.0) {
+      Host.scale = getResources.getDisplayMetrics.density.toDouble
+      root.setPivotX(0f)
+      root.setPivotY(0f)
+      root.setScaleX(Host.scale.toFloat)
+      root.setScaleY(Host.scale.toFloat)
+    }
+  }
+
+  /** The render root a previous activity of this process made, moved into this one, as it is. */
+  private def adopt(): Unit = {
+    val root = Host.root
+    root.getParent match {
+      case parent: ViewGroup => parent.removeView(root)
+      case _ => ()
+    }
+    setContentView(root, root.getLayoutParams)
   }
 
   /** Whether the app took the Back being held, so its release is the app's too. */
