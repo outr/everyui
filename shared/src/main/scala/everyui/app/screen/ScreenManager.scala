@@ -118,7 +118,8 @@ trait ScreenManager extends TaskSupport {
   /** Start on the screen claiming the page's path, or `screen`. Nothing is built until the bundled faces have
     * loaded, so every node is measured with its real font and never a fallback the browser is still replacing. */
   def run(screen: Screen, others: Screen*): Unit = {
-    screens = screen :: others.toList
+    // with any already kept (`keep`), which an app may have made on its way to choosing the first
+    screens = (screen :: others.toList) ++ screens.filterNot(s => (s eq screen) || others.exists(_ eq s))
     ScreenManager.running = Some(this)
     // everything on the page waits for it to have been painted once: what the server wrote into it (the page as plain
     // HTML) is on the screen first, rather than covered before it was ever drawn (`Platform.afterFirstPaint`)
@@ -160,6 +161,11 @@ trait ScreenManager extends TaskSupport {
         }
         .startUnit())
   }
+
+  /** Keep `screen` as the screens given to `run` are kept: built once, and answering its path from now on. For a screen
+    * an app makes the first time it is wanted rather than at launch, where making every one of them up front is time
+    * the first screen waits for. */
+  protected def keep(screen: Screen): Unit = if (!screens.exists(_ eq screen)) screens = screens :+ screen
 
   /** The screen claiming `path`, if any. */
   def at(path: URLPath): Option[Screen] = screens.find {
