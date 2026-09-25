@@ -18,6 +18,9 @@ final class OutlinedText(context: Context) extends TextView(context) {
   def outline(width: Float, colour: Int): Unit = {
     stroke = width
     edge = colour
+    // a TextView clips what it draws to its own box, widened only for a shadow: an edge reaching past the first and
+    // last letters was cut off there. A shadow as wide as the edge, and clear, widens the box without drawing a thing
+    if (getShadowColor == 0 || getShadowRadius <= 0f) setShadowLayer(if (width > 0f) width + 1f else 0f, 0f, 0f, 0)
     invalidate()
   }
 
