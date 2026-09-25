@@ -1,7 +1,8 @@
 package everyui.app.screen
 
 import everyui.async.Task
-import everyui.component.{Backdrop, Component, Container}
+import everyui.component.{Backdrop, Component, Container, Treatment}
+import everyui.task.*
 import everyui.event.Key
 import everyui.focus.Focus
 import everyui.layout.LayoutPass
@@ -12,6 +13,8 @@ import everyui.task.TaskSupport
 import everyui.theme.Theme
 import everyui.{scribe, ui}
 import reactify.*
+
+import scala.concurrent.duration.*
 
 /** youi's `ScreenManager`: load the app, then show one screen at a time — each is init'd and loaded once, on its
   * first showing, and activated on every showing after the last one is deactivated. Every frame's delta goes
@@ -40,7 +43,62 @@ trait ScreenManager extends TaskSupport {
       case Some(screen: UIScreen) => screen.background().getOrElse(Theme.backgroundImage())
       case _ => Theme.backgroundImage()
     })
+    b.fallbackSource := (active() match {
+      case Some(screen: UIScreen) => screen.backgroundFallback().getOrElse("")
+      case _ => ""
+    })
+    // where the picture sits as it is cropped follows the treatment as it blends from one screen's to the next
+    b.alignX := shownTreatment().alignX
+    b.alignY := shownTreatment().alignY
     b
+  }
+
+  /** What the active screen asks to have over the backdrop (`UIScreen.treatment`). */
+  private lazy val wantedTreatment: Val[Treatment] = Val(active() match {
+    case Some(screen: UIScreen) => screen.treatment()
+    case _ => Treatment.none
+  })
+  /** How far the blend into the wanted treatment has got (0 to 1), and the treatment it is blending from: what was
+    * showing when the wanted one last changed, part-blended itself if a change came mid-way. */
+  private lazy val blended: Var[Double] = Var(1.0)
+  private var blendFrom: Treatment = Treatment.none
+  private var blending: Option[everyui.task.TaskInstance] = None
+  /** The treatment being blended into: the wanted one, taken as it changes, so the blend is started before the
+    * treatment shown hears of it. */
+  private lazy val blendTo: Var[Treatment] = Var(Treatment.none)
+  private lazy val shownTreatment: Val[Treatment] = Val(Treatment.lerp(blendFrom, blendTo(), blended()))
+
+  /** Over the backdrop and under every screen, the washes the active screen's treatment lays over the artwork. A
+    * change of treatment (another screen, or another theme's colours) moves across over
+    * [[ScreenManager.treatmentSeconds]] rather than snapping: every wash and the picture's place blend together, as
+    * the Flutter app's background does, instead of the washes jumping between two frames while the picture changes. */
+  lazy val washes: Container = {
+    val c = new Container
+    c.size.width := ui.size.width
+    c.size.height := ui.size.height
+    // nothing to blend when what is showing is already what is wanted: an app with no treatments at all, say
+    wantedTreatment.attach(next => if (blendTo() != next) {
+      blendFrom = shownTreatment()
+      blending.foreach(_.cancel())
+      blended @= 0.0
+      blendTo @= next
+      blending = Some(blended.to(1.0).in(ScreenManager.treatmentSeconds)
+        .easing(everyui.easing.Easing.cubicInOut).start())
+    })
+    shownTreatment.attach(t => lay(c, t))
+    lay(c, shownTreatment())
+    c
+  }
+
+  /** One layer the size of the screen for each wash, each drawn in its gradient. */
+  private def lay(c: Container, t: Treatment): Unit = {
+    if (c.children().size != t.washes.size) c.children @= t.washes.toVector.map { _ =>
+      val layer = new Container
+      layer.size.width := c.size.width()
+      layer.size.height := c.size.height()
+      layer
+    }
+    c.children().zip(t.washes).foreach { case (layer, wash) => layer.gradient @= Some(wash) }
   }
   private var screens: List[Screen] = Nil
   private var loaded: List[Screen] = Nil
@@ -71,7 +129,7 @@ trait ScreenManager extends TaskSupport {
     // behind anything an app put in `ui` before running
     val before = ui.children()
     ui.children.clear()
-    ui.children += backdrop
+    ui.children ++= List(backdrop, washes)
     ui.children ++= before
     Platform.onPath(path => at(URLPath(path)).foreach { s =>
       // the browser went back to the screen before this one, or forward past it
@@ -251,4 +309,7 @@ object ScreenManager {
 
   /** Show `path`'s screen in the running app. Whether there was one. */
   def navigate(path: String): Boolean = running.exists(_.go(path))
+
+  /** How long one screen's treatment of the backdrop takes to blend into the next's. */
+  val treatmentSeconds: FiniteDuration = 400.millis
 }

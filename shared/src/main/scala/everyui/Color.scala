@@ -18,6 +18,11 @@ final class Color(val redInt: Int, val greenInt: Int, val blueInt: Int, val alph
   def withBlue(blue: Double): Color = new Color(redInt, greenInt, Color.channel(blue), alphaInt)
   def withAlpha(alpha: Double): Color = new Color(redInt, greenInt, blueInt, Color.channel(alpha))
 
+  /** Part of the way to `other`, channel by channel and alpha too: 0 is this, 1 is `other`. */
+  def blend(other: Color, t: Double): Color =
+    new Color(Color.mix(redInt, other.redInt, t), Color.mix(greenInt, other.greenInt, t),
+      Color.mix(blueInt, other.blueInt, t), Color.mix(alphaInt, other.alphaInt, t))
+
   /** `#rrggbb`. */
   def toHex: String = "#" + redHex + greenHex + blueHex
   /** `#rrggbbaa`. */
@@ -59,6 +64,9 @@ final class Color(val redInt: Int, val greenInt: Int, val blueInt: Int, val alph
 
 object Color {
   private val Digits: String = "0123456789abcdef"
+
+  /** One channel part of the way from `a` to `b`. */
+  private def mix(a: Int, b: Int, t: Double): Int = math.max(0, math.min(255, math.round(a + (b - a) * t).toInt))
 
   lazy val Clear: Color = fromHex("00000000")
   lazy val AliceBlue: Color = fromHex("F0F8FFFF")
