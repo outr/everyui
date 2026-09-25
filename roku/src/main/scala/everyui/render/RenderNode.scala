@@ -564,6 +564,10 @@ object Platform {
   /** No browser history here: the screen manager keeps its own. */
   def historyBack(): Boolean = false
 
+  /** A channel's interface has the render thread alone: the work is done at once, and what it hands back by `later`
+    * comes on a turn after. */
+  def offThread(f: () => Unit): Unit = f()
+
   /** On a later turn of the render thread, from a fresh stack (a Timer): what a JavaFX runLater or a browser's
     * setTimeout gives, and what keeps a chain of callbacks from nesting into a Roku's small stack. */
   def later(f: () => Unit): Unit = uiLater(f)

@@ -56,7 +56,16 @@ object Strings {
 
   /** A language's messages, with `\\n` read as the line break it means: an ARB writes one that way, and Flutter's
     * generated strings turn it into a break, so a message written for both apps breaks its lines in both. */
+  // parsed off the thread that draws, where there is another: an app's messages are thousands of lines, and parsing
+  // them held up a television's first frame by a sixth of a second
   private def load(code: String): Task[Map[String, String]] =
-    Task.async[Map[String, String]](done => Platform.readText(Platform.resolvePath(source(code)), text =>
-      done(Platform.parseMessages(text).map { case (key, message) => key -> message.replace("\\n", "\n") })))
+    Task.async[String](done => Platform.readText(Platform.resolvePath(source(code)), done)).flatMap(text =>
+      Task.off(
+        try Platform.parseMessages(text).map { case (key, message) => key -> message.replace("\\n", "\n") }
+        catch {
+          // a table that will not parse is no table, rather than a start that never finishes
+          case t: Throwable =>
+            Platform.log("strings: " + code + " would not parse: " + t.toString)
+            Map.empty[String, String]
+        }))
 }

@@ -24,4 +24,13 @@ object Task {
 
   /** Completes when `run` calls the callback it is handed. */
   def async[T](run: (T => Unit) => Unit): Task[T] = new Task[T](run)
+
+  /** `f` worked out on a thread that does not draw, where the platform has one (a JVM's), and completed back on the
+    * one that does, on a turn of its own; where there is no other thread, worked out at once. For work a frame should
+    * not wait on — a large document parsed or written — and never for anything that touches a component. A failure
+    * is logged and the task never completes, so `f` catches what it expects to fail. */
+  def off[T](f: => T): Task[T] = new Task[T](done => everyui.render.Platform.offThread(() => {
+    val value = f
+    everyui.render.Platform.later(() => done(value))
+  }))
 }

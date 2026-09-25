@@ -883,6 +883,9 @@ object Platform {
   /** The page's language (`zh-Hant`), which the browser chooses CJK faces by. */
   def setLanguage(code: String): Unit = dom.document.documentElement.setAttribute("lang", code.replace("_", "-"))
 
+  /** A page has one thread: the work is done at once, and what it hands back by `later` comes on a turn after. */
+  def offThread(f: () => Unit): Unit = f()
+
   def later(f: () => Unit): Unit = dom.window.setTimeout(() => f(), 0)
   /** `f` once `seconds` have passed. */
   def after(seconds: Double, f: () => Unit): Unit = dom.window.setTimeout(() => f(), seconds * 1000.0)

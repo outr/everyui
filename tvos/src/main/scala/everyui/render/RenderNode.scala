@@ -355,6 +355,9 @@ object Platform {
   /** No browser history here: the screen manager keeps its own. */
   def historyBack(): Boolean = false
 
+  /** Nothing runs beside the interface here yet: the work is done at once. */
+  def offThread(f: () => Unit): Unit = f()
+
   def later(f: () => Unit): Unit = f()
   /** Nothing waits here yet, so nothing comes of it. */
   def after(seconds: Double, f: () => Unit): Unit = ()

@@ -478,6 +478,14 @@ class RenderNode(val fx: Node) {
 }
 
 object RenderNode {
+  /** The one thread that does [[Platform.offThread]]'s work, so what it does never holds up the FX thread. */
+  lazy val work: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor(r => {
+      val thread = new Thread(r, "everyui-work")
+      thread.setDaemon(true)
+      thread
+    })
+
   /** A JavaFX paint for `everyui.Gradient`'s encoding, across the box by a CSS angle; none for `""`. */
   def linearGradient(angle: Double, stops: String): Option[Paint] = if (stops.isEmpty) None else {
     val radians = math.toRadians(angle)
@@ -844,6 +852,11 @@ object Platform {
   /** Run `f` on the JavaFX thread, soon: how a reply from another thread reaches the components. */
   /** No browser history here: the screen manager keeps its own. */
   def historyBack(): Boolean = false
+
+  /** `f` on a thread that does not draw, for work a frame should not wait on (a large document parsed or written);
+    * whatever it hands back goes by `later`. A failure is logged and goes no further. */
+  def offThread(f: () => Unit): Unit = RenderNode.work.execute(() =>
+    try f() catch { case t: Throwable => logError("Off the FX thread", t) })
 
   def later(f: () => Unit): Unit = javafx.application.Platform.runLater(() => f())
   /** `f` on the FX thread once `seconds` have passed. */

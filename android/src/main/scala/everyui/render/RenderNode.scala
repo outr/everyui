@@ -939,6 +939,18 @@ object Host {
       thread
     })
 
+  /** The one thread that does [[Platform.offThread]]'s work, at a background priority, so what it does never takes
+    * the time the interface draws with. */
+  lazy val work: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor(r => {
+      val thread = new Thread(() => {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+        r.run()
+      }, "everyui-work")
+      thread.setDaemon(true)
+      thread
+    })
+
   /** What is on its way, and everyone waiting on it. */
   private val pending = mutable.Map.empty[String, List[Bitmap => Unit]]
 
@@ -1393,6 +1405,11 @@ object Platform {
   /** The root's layout direction: text and fields start where the language reads from. */
   def setDirection(rtl: Boolean): Unit =
     Host.root.setLayoutDirection(if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
+
+  /** `f` on a thread that does not draw, for work a frame should not wait on (a large document parsed or written);
+    * whatever it hands back goes by `later`. A failure is logged and goes no further: it must not take the app down. */
+  def offThread(f: () => Unit): Unit = Host.work.execute(() =>
+    try f() catch { case t: Throwable => logError("Off the UI thread", t) })
 
   def later(f: () => Unit): Unit = new android.os.Handler(android.os.Looper.getMainLooper).post(() => f())
   /** `f` on the UI thread once `seconds` have passed. */
