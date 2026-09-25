@@ -724,6 +724,9 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** Whether a picture's address is one that is fetched (a download or a file), rather than one of the APK's own. */
+  def fetched(uri: String): Boolean = uri.startsWith("http") || uri.startsWith("file:")
+
   /** A field's action key: the keyboard put away, then the action. */
   def acting(e: FieldView): Unit = e.setOnEditorActionListener((_, _, _) => {
     e.done()
@@ -932,7 +935,9 @@ object Host {
     bitmaps.put(uri, b)
     bitmapBytes += b.getAllocationByteCount.toLong
     while (bitmapBytes > bitmapBudget && bitmaps.size > 1) {
-      val oldest = bitmaps.head
+      // a downloaded picture goes before one of the APK's own: those are decoded on the thread that draws, and a
+      // theme's backdrop let go under a rail of posters was decoded again, a frame lost each time, as Home was walked
+      val oldest = bitmaps.find(b => RenderNode.fetched(b._1)).getOrElse(bitmaps.head)
       bitmaps.remove(oldest._1)
       bitmapBytes -= oldest._2.getAllocationByteCount.toLong
     }
