@@ -511,6 +511,9 @@ class RenderNode(val view: View) {
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()
+  /** How far the node has scrolled its own overflow: never, here, where the ScrollContainer shifts the content. */
+  def scrolled(horizontal: Boolean): Double = 0.0
+  def scrollSmoothly(to: Double, horizontal: Boolean): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. Its place and its size are
     * kept (INVISIBLE, not GONE), since the layout is ours and not the view system's. */
   def setVisible(visible: Boolean): Unit =

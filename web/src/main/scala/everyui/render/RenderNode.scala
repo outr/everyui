@@ -230,6 +230,14 @@ class RenderNode(val el: html.Element) {
   def setScrollbarColor(hex: String): Unit = el.style.setProperty("scrollbar-color", if (hex.isEmpty) "auto" else hex + " transparent")
   def setScrollTop(y: Double): Unit = el.scrollTop = y
   def setScrollLeft(x: Double): Unit = el.scrollLeft = x
+  /** How far the node has scrolled its own overflow. */
+  def scrolled(horizontal: Boolean): Double = if (horizontal) el.scrollLeft else el.scrollTop
+  /** Scroll its overflow to `to` as the browser glides a smooth scroll, which a newer one takes over mid-way. */
+  def scrollSmoothly(to: Double, horizontal: Boolean): Unit = {
+    val options = js.Dynamic.literal(behavior = "smooth")
+    if (horizontal) options.left = to else options.top = to
+    el.asInstanceOf[js.Dynamic].scrollTo(options)
+  }
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = el.style.display = if (visible) "" else "none"
   def setOpacity(opacity: Double): Unit = el.style.opacity = opacity.toString

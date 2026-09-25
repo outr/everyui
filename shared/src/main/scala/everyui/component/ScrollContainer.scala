@@ -1,5 +1,6 @@
 package everyui.component
 
+import everyui.easing.Easing
 import everyui.event.{Key, PointerEvent}
 import everyui.focus.Focus
 import everyui.Color
@@ -28,6 +29,11 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   // as far as the content's length, which is what it holds unless it is given more (room left at its end)
   private val furthest: Val[Double] =
     Val(math.max(0.0, (if (horizontal) content.size.width() - size.width() else content.size.height() - size.height())))
+  // the glide under way, and where it is headed: a second press while one glides goes on from where the first was
+  // going, not from where it has got to, so pressing quickly never comes up short
+  private var glideRun: Option[TaskInstance] = None
+  private var glideAim: Double = 0.0
+  private var glideAt: Double = 0.0
 
   /** How much room `reveal` leaves around what it brings into view: enough for whatever sits beside it and should be
     * seen with it (a rail's name, above its titles). */
@@ -50,11 +56,18 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   }
   children += content
 
+  // the web scrolls to the focus itself only where a remote drives it (a TV's browser): under a pointer the focus lands
+  // where it was clicked, which is already in view
+  if (!Platform.nativeScroll() || Platform.remoteNavigation()) {
+    Focus.focused.attach(_.foreach(c => if (holds(c)) reveal(c)))
+  }
   if (!Platform.nativeScroll()) {
     size.width.attach(_ => clip())
     size.height.attach(_ => clip())
     if (horizontal) content.position.left := -offset() else content.position.top := -offset()
     furthest.attach(most => if (offset() > most) offset @= most)
+    // anything else setting the offset takes over from a glide
+    offset.attach(at => if (glideRun.nonEmpty && at != glideAt) stopGlide())
     event.pointer.wheel.attach(e => scrollBy(if (horizontal && e.x != 0.0) e.x else e.y))
     var dragFrom: Option[Double] = None
     var dragOffset = 0.0
@@ -64,7 +77,6 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
     }
     event.pointer.move.attach(e => dragFrom.foreach(from => scrollTo(dragOffset + from - (if (horizontal) e.x else e.y))))
     event.pointer.up.attach(_ => dragFrom = None)
-    Focus.focused.attach(_.foreach(c => if (holds(c)) reveal(c)))
     content.children.attach(_.foreach(cull))
     event.key.down.attach { k =>
       val along = if (horizontal) size.width() else size.height()
@@ -80,38 +92,72 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   val step: Var[Double] = Var(40.0)
   val glide: Var[Double] = Var(0.0)
 
-  private def stride(delta: Double): Unit =
-    if (glide() <= 0.0 || Platform.nativeScroll()) scrollBy(delta)
-    else {
-      val to = math.max(0.0, math.min(furthest(), offset() + delta))
-      offset.to(to).in((glide() * 1000.0).toLong.millis).start()
-    }
+  private def stride(delta: Double): Unit = glideTo((if (glideRun.nonEmpty) glideAim else offset()) + delta, glide())
 
   def scrollBy(delta: Double): Unit = scrollTo(offset() + delta)
   def scrollTo(to: Double): Unit = {
     if (Platform.nativeScroll()) {
       if (horizontal) node.setScrollLeft(to) else node.setScrollTop(to)
     }
-    else offset @= math.max(0.0, math.min(furthest(), to))
+    else {
+      stopGlide()
+      offset @= math.max(0.0, math.min(furthest(), to))
+    }
+  }
+
+  /** Scroll to `to` over `seconds`, easing out as it arrives (0: at once). The web glides as its browser does. */
+  def glideTo(to: Double, seconds: Double): Unit =
+    if (seconds <= 0.0) scrollTo(to)
+    else if (Platform.nativeScroll()) node.scrollSmoothly(to, horizontal)
+    else {
+      stopGlide()
+      val aim = math.max(0.0, math.min(furthest(), to))
+      if (math.abs(aim - offset()) >= 0.5) {
+        glideAim = aim
+        val move = PartialAnimate(() => offset(), (d: Double) => { glideAt = d; offset @= d }, () => aim)
+          .in((seconds * 1000.0).toLong.millis).easing(Easing.cubicOut)
+        glideRun = Some(sequential(move, synchronous { glideRun = None }).start())
+      }
+      else offset @= aim
+    }
+
+  private def stopGlide(): Unit = {
+    glideRun.foreach(_.cancel())
+    glideRun = None
   }
 
   /** Where `reveal` puts what it brings into view, as a share of the room the viewport has around it: 0 at the start,
-    * 0.5 in the middle (as a television's focus is followed), 1 at the end. None scrolls the least that shows it. */
-  val revealAlign: Var[Option[Double]] = Var(None)
+    * 0.5 in the middle (as a television's focus is followed), 1 at the end. None scrolls the least that shows it.
+    * Unless set, what `ScrollContainer.revealAlignDefault` says. */
+  val revealAlign: Var[Option[Double]] = Var(ScrollContainer.revealAlignDefault())
+
+  /** How long `reveal` glides for, in seconds (0: it jumps). Unless set, what `ScrollContainer.revealGlideDefault`
+    * says. */
+  val revealGlide: Var[Double] = Var(ScrollContainer.revealGlideDefault())
 
   /** Bring `c` (a component under `content`) into view: where `revealAlign` says, else by the least that shows all of
-    * it, with a margin. */
+    * it, with a margin. Either way no further than the content goes, so the first and the last are shown at the ends
+    * rather than in the middle, and something longer than the viewport shows from its start.
+    *
+    * It glides for `revealGlide`, unless the way is more than twice the viewport: a glide that long is a blur of what
+    * is passed (and on a television, a great deal to draw), so it jumps. */
   def reveal(c: Component): Unit = {
     val start = if (horizontal) c.absoluteLeft - content.absoluteLeft else c.absoluteTop - content.absoluteTop
     val length = if (horizontal) c.size.width() else c.size.height()
     val along = if (horizontal) size.width() else size.height()
-    revealAlign() match {
+    val at = if (Platform.nativeScroll()) node.scrolled(horizontal) else if (glideRun.nonEmpty) glideAim else offset()
+    val margin = revealMargin()
+    val to = revealAlign() match {
       // the margin is left at the start whatever the alignment: at 0, what sits above it (a rail's name) shows too
-      case Some(share) => scrollTo(start - revealMargin() - (along - length - revealMargin()) * share)
+      case Some(share) if length + margin < along => start - margin - (along - length - margin) * share
+      case Some(_) => start - margin
       case None =>
-        if (start < offset() + revealMargin()) scrollTo(start - revealMargin())
-        else if (start + length > offset() + along) scrollTo(start + length - along + 16.0)
+        if (start < at + margin || length + margin >= along) start - margin
+        else if (start + length > at + along) start + length - along + 16.0
+        else at
     }
+    val far = math.abs(to - at) > along * 2.0
+    if (math.abs(to - at) >= 0.5) glideTo(to, if (far) 0.0 else revealGlide())
   }
 
   /** What is out of sight is not drawn: a rail of a hundred cards would otherwise be a hundred nodes for the platform
@@ -148,3 +194,11 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   private def clip(): Unit = node.setClip(size.width(), size.height())
 }
 
+object ScrollContainer {
+  /** Where a ScrollContainer's `reveal` puts the focus unless it says otherwise, for an app to set once before it
+    * builds any: a television's wants 0.5, the focus followed down the middle of the screen. */
+  val revealAlignDefault: Var[Option[Double]] = Var(None)
+
+  /** How long a ScrollContainer's `reveal` glides unless it says otherwise, in seconds (0: it jumps). */
+  val revealGlideDefault: Var[Double] = Var(0.0)
+}
