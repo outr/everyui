@@ -2043,6 +2043,10 @@ class RokuEmitter(
         case Select(q, "toSet") if isCollType(q) => s"_distinct(${emitTerm(q)})"
         case TypeApply(Select(q, "toSet"), _) if isCollType(q) => s"_distinct(${emitTerm(q)})"
         case Select(q, "sum") if isCollType(q)       => s"_sum(${emitTerm(q)})"
+        // a Char made a number is its code: a Char is a one-character string here, and a hash over a name's letters
+        // (31 * h + c.toInt) added the letter itself
+        case Select(q, "toInt" | "toLong") if fqnOf(q.tpe) == "scala.Char" => s"_chCode(${emitTerm(q)})"
+        case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Char" => s"Cdbl(_chCode(${emitTerm(q)}))"
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
