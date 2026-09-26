@@ -353,8 +353,10 @@ class RokuEmitter(
     // (map/flatMap/fold/getOrElse/…) become invalid-checks via runtime helpers.
     def isOptionType(t: Term): Boolean = {
       val s = t.tpe.widen.dealias.typeSymbol
+      // and an Option's WithFilter, which a guard in a for-comprehension over Options makes (`if` then `map`): read as a
+      // collection it was filtered and mapped as one, and came out an array that the next step took apart as a pair
       s.exists && (s.fullName == "scala.Option"
-        || s.fullName.endsWith(".Some") || s.fullName.endsWith(".None"))
+        || s.fullName.endsWith(".Some") || s.fullName.endsWith(".None") || s.fullName == "scala.Option.WithFilter")
     }
     def isTryType(t: Term): Boolean = {
       val s = t.tpe.widen.dealias.typeSymbol
@@ -1769,7 +1771,7 @@ class RokuEmitter(
               s"_optForeach(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "getOrElse") if isOptionType(recv) =>
               s"_getOrElse(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(recv, "filter") if isOptionType(recv) =>
+            case Select(recv, "filter" | "withFilter") if isOptionType(recv) =>
               s"_optFilter(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "exists") if isOptionType(recv) =>
               s"_optExists(${emitTerm(recv)}, ${emitArgVal(args.head)})"
