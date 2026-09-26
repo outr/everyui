@@ -16,7 +16,16 @@ sub runTask()
         if type(msg) = "roSGNodeEvent" and msg.getField() = "request"
             req = msg.getData()
             if u = invalid then u = newTransfer(req.url)
-            m.top.result = fetch(u, req)
+            r = fetch(u, req)
+            ' a transfer that will not start is one still busy with something it lost track of (the channel held in the
+            ' debugger through a long poll, say): it is let go and the request made once more on a new one, rather than
+            ' every request after it failing on the same busy transfer
+            if r.status = -1 and r.body = "request not started"
+                u.AsyncCancel()
+                u = newTransfer(req.url)
+                r = fetch(u, req)
+            end if
+            m.top.result = r
         end if
     end while
 end sub

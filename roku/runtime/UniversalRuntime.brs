@@ -1219,7 +1219,9 @@ sub uiHttp(method as string, url as string, headersJson as string, body as strin
 end sub
 
 function uiHttpWorkers() as integer
-    return 4
+    ' one more than the four a screen's calls want, since the line's long poll (nabo's WirePoll) holds one for most of a
+    ' minute at a time
+    return 5
 end function
 
 ' Hand the oldest waiting request to an idle worker, if both there are.
