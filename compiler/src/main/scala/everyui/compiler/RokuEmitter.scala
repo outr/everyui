@@ -1590,6 +1590,18 @@ class RokuEmitter(
               else s"_mapPut(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
             case Select(recv, "-" | "removed") if isMapTpe(recv.tpe) && args.size == 1 =>
               s"_mapRemove(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // a Map walked as its entries, as pairs: going over the map itself went over an assoc array's keys alone. A
+            // map, flatMap or filter that answers with a Map is made one again from the pairs
+            case Select(recv, op @ ("map" | "flatMap" | "filter" | "filterNot" | "foreach" | "exists" | "forall" | "find" | "count"))
+                if isMapTpe(recv.tpe) && args.size == 1 =>
+              val helper = op match {
+                case "flatMap" => "_arrFlatMap"
+                case "filterNot" => "_arrFilterNot"
+                case "count" => "_arrCount"
+                case other => "_arr" + other.capitalize
+              }
+              val walked = s"$helper(_mapToList(${emitTerm(recv)}), ${emitArgVal(args.head)})"
+              if (isMapTpe(t.tpe)) s"_mapOfPairs($walked)" else walked
             case Select(recv, "sorted") if isCollType(recv) =>
               if (elemIsUserType(recv)) s"_sortedOrdered(${emitTerm(recv)})" else s"_sortedPrim(${emitTerm(recv)})"
             case Select(recv, "copy") if { val c = recv.tpe.widen.dealias.typeSymbol; c.exists && c.flags.is(Flags.Case) && !isBuiltin(c) } =>
@@ -1727,6 +1739,10 @@ class RokuEmitter(
             // precede the collection ops, since some names (map/filter/…) overlap. ──
             case Select(recv, "map" | "flatMap") if isOptionType(recv) =>
               s"_optMap(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // an Option of an Option is one Option here already (Some(None) is None), so flattening it is nothing to do
+            case Select(recv, "flatten") if isOptionType(recv) => emitTerm(recv)
+            // a collection of collections, or of Options (an empty one is nothing here), made one
+            case Select(recv, "flatten") if isCollType(recv) => s"_flatten(${emitTerm(recv)})"
             case Select(recv, "foreach") if isOptionType(recv) =>
               s"_optForeach(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "getOrElse") if isOptionType(recv) =>
@@ -1798,6 +1814,9 @@ class RokuEmitter(
               s"_drop(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "slice") if isCollType(recv) && args.size == 2 =>
               s"_slice(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
+            // xs.patch(from, other, replaced): `replaced` of xs from `from` given up for other's elements
+            case Select(recv, "patch") if isCollType(recv) && args.size == 3 =>
+              s"_patch(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))}, ${emitTerm(args(2))})"
             case Select(recv, "dropRight") if isCollType(recv) && args.size == 1 =>
               s"_dropRight(${emitTerm(recv)}, ${emitTerm(args.head)})"
             // a String's takeWhile/dropWhile answer with a String; a collection's with a collection
@@ -1993,6 +2012,7 @@ class RokuEmitter(
         // string here. Placed after the collection getters so it is outside the Swift-derivation block above.
         case Select(Apply(wrap, List(x)), m @ ("round" | "floor" | "ceil" | "abs")) if isRichNumWrapper(wrap) => emitMath(m, List(x))
         case Select(Apply(wrap, List(x)), m @ ("isDigit" | "isLetter" | "isLetterOrDigit" | "isWhitespace" | "isSpaceChar" | "isUpper" | "isLower")) if isRichNumWrapper(wrap) => s"_ch_$m(${emitTerm(x)})"
+        case Select(q, "indices") if isCollType(q) => s"_until(0, ${emitTerm(q)}.count())"
         case Select(q, "reverse") if isCollType(q)   => s"_reverse(${emitTerm(q)})"
         case Select(q, "distinct") if isCollType(q)  => s"_distinct(${emitTerm(q)})"
         // a Set is an array of distinct values here, so a collection made one is its distinct values
@@ -3241,6 +3261,10 @@ class RokuEmitter(
       |    if k = "fn" then return "<function>"
       |    return v.toStr()
       |end function
+      |function _rtIsStr(v as dynamic) as boolean
+      |    t = type(v)
+      |    return t = "roString" or t = "String"
+      |end function
       |function _iif(c as dynamic, a as dynamic, b as dynamic) as dynamic
       |    if c then return a
       |    return b
@@ -3432,7 +3456,9 @@ class RokuEmitter(
       |    end if
       |    return s
       |end function
-      |function _take(xs as object, n as integer) as object
+      |' a String's take and drop (StringOps) come here too, and answer with a String
+      |function _take(xs as dynamic, n as integer) as dynamic
+      |    if _rtIsStr(xs) then return Left(xs, _iif(n < 0, 0, n))
       |    r = [] : i = 0
       |    if xs <> invalid
       |        for each e in xs
@@ -3452,7 +3478,39 @@ class RokuEmitter(
       |    end if
       |    return r
       |end function
-      |function _dropRight(xs as object, n as integer) as object
+      |' xs.patch(from, other, replaced): xs up to `from`, then other, then xs after the `replaced` elements from there
+      |function _patch(xs as object, from as integer, other as dynamic, replaced as integer) as object
+      |    r = [] : i = 0 : put = false
+      |    if from < 0 then from = 0
+      |    if xs <> invalid
+      |        for each e in xs
+      |            if i = from and not put
+      |                r.Append(_rtItems(other))
+      |                put = true
+      |            end if
+      |            if i < from or i >= from + replaced then r.push(e)
+      |            i = i + 1
+      |        end for
+      |    end if
+      |    if not put then r.Append(_rtItems(other))
+      |    return r
+      |end function
+      |' xs.flatten: each element that is a collection given up for its elements, an empty Option (invalid) left out
+      |function _flatten(xs as dynamic) as object
+      |    r = []
+      |    if xs <> invalid
+      |        for each e in xs
+      |            if type(e) = "roArray"
+      |                r.Append(e)
+      |            else if e <> invalid
+      |                r.push(e)
+      |            end if
+      |        end for
+      |    end if
+      |    return r
+      |end function
+      |function _dropRight(xs as dynamic, n as integer) as dynamic
+      |    if _rtIsStr(xs) then return Left(xs, _iif(Len(xs) - n < 0, 0, Len(xs) - n))
       |    items = _rtItems(xs)
       |    keep = items.count() - n
       |    r = []
@@ -3514,7 +3572,8 @@ class RokuEmitter(
       |    if s = invalid or Len(s) = 0 then return ""
       |    return UCase(Left(s, 1)) + Mid(s, 2)
       |end function
-      |function _drop(xs as object, n as integer) as object
+      |function _drop(xs as dynamic, n as integer) as dynamic
+      |    if _rtIsStr(xs) then return Mid(xs, _iif(n < 0, 0, n) + 1)
       |    r = [] : i = 0
       |    if xs <> invalid
       |        for each e in xs
@@ -3662,11 +3721,30 @@ class RokuEmitter(
       |    return t.Trim()
       |end function
       |' a Char separator arrives as its code
+      |' s.split(sep) as Java splits on a plain separator: an empty piece between two separators or before the first is
+      |' kept, the empty ones at the end are dropped, and a string with no separator in it is itself. (Tokenize dropped
+      |' every empty piece and split on each character of the separator: "?q=1".split('?')(0) came out "q=1", and "" gave
+      |' nothing at all to take the first of.)
       |function _split(s as dynamic, sep as dynamic) as object
       |    t = _str(s)
       |    if _rtKind(sep) = "n" then sep = Chr(sep)
-      |    if _str(sep) = "" then return t.Split("")
-      |    return t.Tokenize(_str(sep))
+      |    d = _str(sep)
+      |    if d = "" then return t.Split("")
+      |    if t = "" then return [""]
+      |    r = []
+      |    n = Len(d)
+      |    start = 1
+      |    i = Instr(start, t, d)
+      |    while i > 0
+      |        r.Push(Mid(t, start, i - start))
+      |        start = i + n
+      |        i = Instr(start, t, d)
+      |    end while
+      |    r.Push(Mid(t, start))
+      |    while r.Count() > 0 and r[r.Count() - 1] = ""
+      |        r.Pop()
+      |    end while
+      |    return r
       |end function
       |' s.contains(sub), or a Char
       |function _strContains(s as dynamic, x as dynamic) as boolean
@@ -3938,6 +4016,21 @@ class RokuEmitter(
       |function _optToList(o as dynamic) as object
       |    if o = invalid then return []
       |    return [o]
+      |end function
+      |' A Map again from the pairs a map was walked into: a keyed assoc array when every key is a String, which a table of
+      |' thousands (an app's messages) is built into at once, where the entry list copies itself for every pair it takes
+      |function _mapOfPairs(pairs as object) as object
+      |    keyed = true
+      |    for each t in pairs
+      |        if not _rtIsStr(t._1) then keyed = false
+      |    end for
+      |    if not keyed then return _mapFromPairs(pairs)
+      |    m = {}
+      |    m.SetModeCaseSensitive()
+      |    for each t in pairs
+      |        m[t._1] = t._2
+      |    end for
+      |    return m
       |end function
       |' Map(k -> v, ...) and map.toList
       |function _mapFromPairs(pairs as object) as object
