@@ -3348,7 +3348,7 @@ class RokuEmitter(
       |    names = { back: "Back", up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", OK: "Enter", play: "MediaPlayPause", rewind: "MediaRewind", fastforward: "MediaFastForward", replay: "MediaReplay", options: "ContextMenu" }
       |    name = names[key]
       |    if name = invalid then name = key
-      |    taken = RtInvoke(ga.uiKey, [name, press])
+      |    taken = RtGuard(ga.uiKey, [name, press])
       |    return taken = true
       |end function
       |function _str(v as dynamic) as string
@@ -4892,6 +4892,49 @@ class RokuEmitter(
       |    t.control = "start"
       |    return invalid
       |end function
+      |' `cl(args)`, for the handlers the platform calls (a timer, a frame, a key, a download, a picture, a player, the socket):
+      |' an error it throws goes to the app's error hook (UniversalRuntime's uiOnError sets it) and the console, and the
+      |' channel goes on, where it would otherwise stop (a sideloaded channel in the debugger, one from the store closing)
+      |' with nothing told to anyone.
+      |function RtGuard(cl as dynamic, args as object) as dynamic
+      |    try
+      |        return RtInvoke(cl, args)
+      |    catch e
+      |        RtReportError(e)
+      |    end try
+      |    return invalid
+      |end function
+      |
+      |sub RtReportError(e as dynamic)
+      |    ga = GetGlobalAA()
+      |    message = ""
+      |    stack = ""
+      |    if type(e) = "roAssociativeArray"
+      |        if e.message <> invalid then message = _str(e.message)
+      |        if message = "" and e._cls <> invalid then message = _str(e)
+      |        if e.number <> invalid then message = message + " (&h" + StrI(e.number, 16) + ")"
+      |        if e.backtrace <> invalid
+      |            lines = []
+      |            for each frame in e.backtrace
+      |                lines.push(_str(frame["function"]) + " " + _str(frame.filename) + ":" + _str(frame.line_number))
+      |            end for
+      |            lines.Reverse()
+      |            stack = lines.Join(Chr(10))
+      |        end if
+      |    else
+      |        message = _str(e)
+      |    end if
+      |    print "[error] "; message
+      |    if stack <> "" then print stack
+      |    if ga.uiErrorHook = invalid or ga.uiReporting = true then return
+      |    ga.uiReporting = true
+      |    try
+      |        RtInvoke(ga.uiErrorHook, [message, stack])
+      |    catch again
+      |        print "[error] the error hook failed too"
+      |    end try
+      |    ga.uiReporting = false
+      |end sub
       |sub RtOnTimer(event as object)
       |    ga = GetGlobalAA()
       |    n = event.getRoSGNode()
