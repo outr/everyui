@@ -139,4 +139,48 @@ object RokuChannel {
     IO.write(scene, patched)
     out
   }
+
+  /** Set the channel's version in its manifest from a release's `major.minor.build` (`2.0.0`): Roku keeps the three as
+    * numbers of their own, and a store update has to be higher than what it replaces. `code` is the build's number as
+    * the app's other platforms count them (Android's versionCode), kept as `app_version_code` for Platform.appVersion. */
+  def version(out: File, release: String, code: Int = 0): File = {
+    val parts = release.takeWhile(c => c.isDigit || c == '.').split('.').filter(_.nonEmpty).map(_.toInt) ++ Array(0, 0, 0)
+    val manifest = out / "manifest"
+    val keys = Map("major_version" -> parts(0), "minor_version" -> parts(1), "build_version" -> parts(2))
+    val lines = IO.readLines(manifest).filterNot(_.startsWith("app_version_code=")).map { line =>
+      keys.collectFirst { case (k, v) if line.startsWith(k + "=") => k + "=" + v }.getOrElse(line)
+    } ++ (if (code > 0) List("app_version_code=" + code) else Nil)
+    IO.writeLines(manifest, lines)
+    manifest
+  }
+
+  /** A signed package of the channel in `out`, for the channel store, made the only way Roku makes one: on a device
+    * keyed with the developer's signing key (its `genkey`, once, or a rekey from an earlier package of the same key).
+    * The channel is sideloaded to `ip` (its developer password `devPassword`), packaged there with the key's password,
+    * and the package downloaded to `to`. The device's dev channel is replaced by it, as any sideload replaces it. */
+  def packageChannel(log: String => Unit, out: File, ip: String, devPassword: String, keyPassword: String,
+                     name: String, to: File): File = {
+    import scala.sys.process.*
+    val work = IO.createTemporaryDirectory
+    val zip = work / "channel.zip"
+    IO.zip(Path.allSubpaths(out).filterNot(_._1.isDirectory), zip, None)
+    def post(fields: Seq[String]): String =
+      (Seq("curl", "-s", "--digest", "-u", s"rokudev:$devPassword") ++ fields.flatMap(f => Seq("-F", f)) :+
+        s"http://$ip/plugin_install").!!
+    val installed = post(Seq("mysubmit=Install", s"archive=@$zip"))
+    if (!installed.contains("Install Success") && !installed.contains("Identical"))
+      sys.error("packageChannel: the Roku would not install the channel (a compile error?)")
+    log(s"packageChannel: installed on $ip, packaging")
+    val packaged = Seq("curl", "-s", "--digest", "-u", s"rokudev:$devPassword", "-F", "mysubmit=Package",
+      "-F", s"app_name=$name", "-F", s"passwd=$keyPassword", "-F", s"pkg_time=${System.currentTimeMillis}",
+      s"http://$ip/plugin_package").!!
+    val link = "pkgs//?[A-Za-z0-9_.-]+\\.pkg".r.findFirstIn(packaged)
+      .getOrElse(sys.error("packageChannel: no package came back (is the device keyed, and the key's password right?)"))
+    IO.createDirectory(to.getParentFile)
+    val rc = Seq("curl", "-s", "--digest", "-u", s"rokudev:$devPassword", "-o", to.getAbsolutePath,
+      s"http://$ip/" + link.replace("//", "/")).!
+    if (rc != 0 || !to.exists || to.length == 0) sys.error("packageChannel: the package would not download")
+    log(s"packageChannel: $to (${to.length / 1024} KB)")
+    to
+  }
 }

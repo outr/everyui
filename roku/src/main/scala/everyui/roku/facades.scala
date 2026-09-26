@@ -352,3 +352,25 @@ class SGNode
 @native object uiReleaseMedia {
   def apply(node: SGNode): Unit = native.value
 }
+/** Each deep link, as its contentId and mediaType: the launch's, and those sent while the channel runs or resumes. */
+@native object uiOnDeepLink {
+  def apply(f: (String, String) => Unit): Unit = native.value
+}
+/** What to call when the channel comes back to the front, and when it goes behind another (Instant Resume). */
+@native object uiOnLifecycle {
+  def apply(resumed: () => Unit, away: () => Unit): Unit = native.value
+}
+/** Roku's AppLaunchComplete beacon, once. */
+@native object uiLaunchComplete {
+  def apply(): Unit = native.value
+}
+/** The build's number (the manifest's app_version_code), its release, and where it was installed from. */
+@native object uiAppVersion {
+  def apply(): Int = native.value
+}
+@native object uiAppVersionName {
+  def apply(): String = native.value
+}
+@native object uiInstallStore {
+  def apply(): String = native.value
+}

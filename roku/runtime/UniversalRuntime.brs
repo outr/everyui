@@ -920,15 +920,91 @@ end sub
 ' tools/check.sh adds pkg:/freeze.txt to a test sideload: how many seconds of
 ' animation to step before freezing the frame. -1 (run live) when absent.
 function uiFreezeSeconds() as float
-    text = ReadAsciiFile("pkg:/freeze.txt")
+    text = uiLaunchArg("freeze")
     if text = "" then return -1.0
     return Val(text)
 end function
 
-' `pkg:/<name>.txt`, or "" — a test sideload adds it (Checks roku-install --add name.txt=value).
+' What the channel was launched with — `/launch/dev?name=value` over ECP, a deep link's contentId — or else
+' `pkg:/<name>.txt`, which a test sideload adds (Checks roku-install --add name.txt=value): Main gathers both. ""
+' when neither has it.
 function uiLaunchArg(name as string) as string
-    return ReadAsciiFile("pkg:/" + name + ".txt")
+    params = GetGlobalAA().uiLaunchParams
+    if params = invalid or not params.DoesExist(name) then return ""
+    v = params[name]
+    if type(v) = "roString" or type(v) = "String" then return v
+    if v = invalid then return ""
+    return v.ToStr()
 end function
+
+' ── the channel's life: deep links, leaving and coming back ──
+
+' `f(contentId, mediaType)` for each deep link: the one the channel was launched with (once, a turn after asking, so
+' the app has finished starting), one sent to it while it runs (roInputEvent) and one it is resumed with.
+sub uiOnDeepLink(f as dynamic)
+    ga = GetGlobalAA()
+    ga.uiDeepLink = f
+    params = ga.uiLaunchParams
+    if params <> invalid and params.contentId <> invalid and ga.uiLaunchLinked <> true
+        ga.uiLaunchLinked = true
+        uiLater({ fn: uiDeliverLaunchLink, env: {} })
+    end if
+end sub
+
+' Hands the launch's deep link over, from uiOnDeepLink's later turn.
+function uiDeliverLaunchLink(env as object, args as object) as dynamic
+    uiLinked(GetGlobalAA().uiLaunchParams)
+    return invalid
+end function
+
+sub uiLinked(params as dynamic)
+    ga = GetGlobalAA()
+    if params = invalid or ga.uiDeepLink = invalid then return
+    contentId = params.contentId
+    if contentId = invalid or contentId = "" then return
+    mediaType = params.mediaType
+    if mediaType = invalid then mediaType = ""
+    print "[launch] deep link "; contentId; " ("; mediaType; ")"
+    RtInvoke(ga.uiDeepLink, [contentId, mediaType])
+end sub
+
+' A deep link while the channel is up (the scene's inputArgs, from Main's roInputEvent).
+sub uiLaunched(params as dynamic)
+    uiLinked(params)
+end sub
+
+' `resumed()` when the channel is in front again, and `away()` when it goes behind another or the device's
+' screensaver (Instant Resume's suspend and resume handlers).
+sub uiOnLifecycle(resumed as dynamic, away as dynamic)
+    ga = GetGlobalAA()
+    ga.uiResumeHook = resumed
+    ga.uiAwayHook = away
+end sub
+
+sub uiSuspended()
+    ga = GetGlobalAA()
+    print "[launch] suspended"
+    if ga.uiAwayHook <> invalid then RtInvoke(ga.uiAwayHook, [])
+end sub
+
+sub uiResumed(args as dynamic)
+    ga = GetGlobalAA()
+    reason = ""
+    if args <> invalid and args.lastSuspendOrResumeReason <> invalid then reason = args.lastSuspendOrResumeReason
+    print "[launch] resumed ("; reason; ")"
+    if ga.uiResumeHook <> invalid then RtInvoke(ga.uiResumeHook, [])
+    if args <> invalid then uiLinked(args.launchParams)
+    ' Instant Resume asks for this once the scene is back up; it is up already, never having been taken down
+    ga.appScene.signalBeacon("AppResumeComplete")
+end sub
+
+' The first screen is up and can be used: Roku's launch beacon, which certification requires and times the launch by.
+sub uiLaunchComplete()
+    ga = GetGlobalAA()
+    if ga.uiLaunchBeaconed = true then return
+    ga.uiLaunchBeaconed = true
+    ga.appScene.signalBeacon("AppLaunchComplete")
+end sub
 
 ' A packaged text file by its pkg:/ path (a translation), or "".
 function uiReadText(path as string) as string
@@ -1551,3 +1627,24 @@ sub uiReleaseMedia(node as object)
     ga = GetGlobalAA()
     if ga.uiMediaListeners <> invalid then ga.uiMediaListeners.Delete(node.id)
 end sub
+
+' ── which build this is ──
+
+' The build's number as the app's other platforms count it (the manifest's app_version_code, which the build writes),
+' or 0 where the manifest has none.
+function uiAppVersion() as integer
+    code = CreateObject("roAppInfo").GetValue("app_version_code")
+    if code = invalid or code = "" then return 0
+    return code.ToInt()
+end function
+
+' The release, as the manifest has it (major.minor.build).
+function uiAppVersionName() as string
+    return CreateObject("roAppInfo").GetVersion()
+end function
+
+' "dev" for a sideloaded channel, "roku" for one the channel store installed.
+function uiInstallStore() as string
+    if CreateObject("roAppInfo").IsDev() then return "dev"
+    return "roku"
+end function

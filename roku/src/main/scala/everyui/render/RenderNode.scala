@@ -491,12 +491,20 @@ object Platform {
 
   def toCorner(): Boolean = false
 
-  /** What to do when the app is at the front again after being away. Nothing here says so yet, so nothing is ever
-    * called: a caller must not depend on it as its only way of noticing somebody is back. */
+  /** What to do when the app is at the front again after being away: Instant Resume brings a channel back from
+    * behind another (or from the device's screensaver) and calls the scene's resume handler, which says so here. */
   def onResume(f: () => Unit): () => Unit = {
+    uiOnLifecycle(() => resumed(), () => away())
     resumers = resumers :+ f
     () => resumers = resumers.filterNot(_ eq f)
   }
+
+  /** Each deep link the channel is given, as Roku's deep linking has it (`contentId`, `mediaType`): the one it was
+    * launched with, a turn after this is asked, and any sent to it while it runs or as it is resumed. */
+  def onDeepLink(f: (String, String) => Unit): Unit = uiOnDeepLink(f)
+
+  /** The first screen is up and can be used: the launch beacon a certified channel sends. */
+  def launchComplete(): Unit = uiLaunchComplete()
 
   def resumed(): Unit = resumers.foreach(f => f())
 
@@ -505,6 +513,7 @@ object Platform {
   /** What to do when the app goes away from the front: another app has the screen, or the device is going to sleep.
     * A player wants to know, because nobody is watching it now. Returns what stops it being told. */
   def onAway(f: () => Unit): () => Unit = {
+    uiOnLifecycle(() => resumed(), () => away())
     aways = aways :+ f
     () => aways = aways.filterNot(_ eq f)
   }
@@ -565,6 +574,8 @@ object Platform {
   def copyText(text: String): Unit = ()
   /** The device keeps its own screen timing here. */
   def keepAwake(on: Boolean): Unit = ()
+  /** Nothing here can scale the screen's colours: an app that wants it dimmed does it itself. */
+  def tint(red: Double, green: Double, blue: Double): Boolean = false
   /** The device names itself to the servers its pictures come from. */
   def identify(app: String): Unit = ()
 
@@ -583,8 +594,6 @@ object Platform {
   /** On a later turn of the render thread, from a fresh stack (a Timer): what a JavaFX runLater or a browser's
     * setTimeout gives, and what keeps a chain of callbacks from nesting into a Roku's small stack. */
   def later(f: () => Unit): Unit = uiLater(f)
-  /** Nothing here can scale the screen's colours: an app that wants it dimmed does it itself. */
-  def tint(red: Double, green: Double, blue: Double): Boolean = false
   /** `f` once `seconds` have passed, from a Timer of its own. */
   def after(seconds: Double, f: () => Unit): Unit = uiAfter(seconds, f)
 
@@ -633,6 +642,12 @@ object Platform {
   /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
   def deviceModel(): String = deviceName()
 
+  /** The hardware facts a performance report is read with: none this platform will say. */
+  def deviceProfile(): List[(String, String)] = Nil
+
+  /** What the app is showing, as a PNG in base64: nothing here can take one. */
+  def screenshot(): String = ""
+
   def launchesApps(): Boolean = false
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   def decodes(codec: String): Boolean = true
@@ -650,16 +665,11 @@ object Platform {
   def localAddress(): String = uiLocalAddress()
   def deviceSerial(): String = uiDeviceSerial()
 
-  /** Where the app came from, and which build it is: nothing this platform can say. */
-  def installStore(): String = ""
-  /** The hardware facts a performance report is read with: none this platform will say. */
-  def deviceProfile(): List[(String, String)] = Nil
-
-  /** What the app is showing, as a PNG in base64: nothing here can take one. */
-  def screenshot(): String = ""
-
-  def appVersion(): Int = 0
-  def appVersionName(): String = ""
+  /** Where the app came from ("roku", the channel store, or "dev", sideloaded), and which build it is: the release in
+    * the manifest, and the build's number as the app's other platforms count it, which the build writes there too. */
+  def installStore(): String = uiInstallStore()
+  def appVersion(): Int = uiAppVersion()
+  def appVersionName(): String = uiAppVersionName()
 
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
@@ -687,7 +697,8 @@ object Platform {
   /** The frozen frame is complete. (tools/check.sh reads it off the debug console.) */
   def frozen(): Unit = ()
 
-  /** `pkg:/<name>.txt` in the channel (a test sideload adds it, `roku-install --add name=value`), or "". */
+  /** What the channel was launched with (`/launch/dev?name=value` over ECP), else `pkg:/<name>.txt` in the channel (a test
+    * sideload adds it, `roku-install --add name=value`), or "". */
   def launchArg(name: String): String = uiLaunchArg(name)
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
