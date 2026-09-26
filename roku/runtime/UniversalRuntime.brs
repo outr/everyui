@@ -820,7 +820,8 @@ sub uiSetImageSized(node as object, uri as string, width as float, height as flo
     h = Int(height + 0.5)
     sized = w >= 1 and h >= 1 and node.hasField("loadDisplayMode")
     if sized and (node.loadWidth <> w or node.loadHeight <> h)
-        node.loadDisplayMode = "scaleToFit"
+        ' no larger than it is drawn, and never enlarged: a picture smaller than its box keeps its own pixels
+        node.loadDisplayMode = "limitSize"
         node.loadWidth = w
         node.loadHeight = h
         ' the load size has to be in place BEFORE the uri, or the picture is already on its way at its own size
@@ -891,6 +892,11 @@ sub uiImageStart(job as object)
     p = CreateObject("roSGNode", "Poster")
     p.id = "uiImageLoad" + ga.uiImageSeq.ToStr()
     p.visible = false
+    ' read no larger than the screen it is for: a photo from a library came at 2560 by 2590, forty megabytes of texture
+    ' to learn a size, and the size it reports is the same shape at most the screen's
+    p.loadDisplayMode = "limitSize"
+    p.loadWidth = 1920
+    p.loadHeight = 1080
     ga.uiImageLoads[p.id] = { poster: p, loaded: job.loaded, uri: job.uri, tries: job.tries, local: job.local }
     ga.appScene.appendChild(p)
     p.observeField("loadStatus", "uiOnImageLoadStatus")
@@ -1537,6 +1543,7 @@ end sub
 
 sub uiSetMediaSource(node as object, url as string)
     if node = invalid then return
+    print "[video] "; node.id; " source "; Left(url, 120)
     node.control = "stop"
     node.uiReady = false
     if url = "" then return
@@ -1617,6 +1624,9 @@ end sub
 sub uiOnMediaState(event as object)
     state = event.getData()
     n = event.getRoSGNode()
+    ' what a player does is otherwise invisible, and a picture of the screen shows no video to tell by
+    print "[video] "; n.id; " "; state
+    if state = "error" then print "[video] "; n.id; " failed: "; n.errorCode; " "; n.errorMsg; " "; n.errorStr
     ga = GetGlobalAA()
     if ga.uiMediaListeners = invalid then return
     f = ga.uiMediaListeners[n.id]
@@ -1840,3 +1850,26 @@ sub uiOnError(f as dynamic)
     GetGlobalAA().uiErrorHook = f
 end sub
 
+
+' ── the cycle collector ──
+
+' Run BrightScript's cycle collector two seconds after the last call: a screen or a scene let go refers to itself and is
+' freed only by it, and a run costs half a second, so it waits for things to go quiet.
+sub uiCollect()
+    ga = GetGlobalAA()
+    if ga.uiCollector = invalid
+        t = CreateObject("roSGNode", "Timer")
+        t.repeat = false
+        t.duration = 2
+        t.observeField("fire", "uiOnCollect")
+        ga.appScene.appendChild(t)
+        ga.uiCollector = t
+    end if
+    ga.uiCollector.control = "stop"
+    ga.uiCollector.control = "start"
+end sub
+
+sub uiOnCollect()
+    freed = RunGarbageCollector()
+    if freed <> invalid and freed.ORPHANED <> invalid then print "[gc] freed "; freed.ORPHANED; " of "; freed.COUNT
+end sub

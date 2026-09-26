@@ -1439,6 +1439,10 @@ object Platform {
   def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
     AppInstaller.install(url, progress, done)
 
+  /** Something large was let go: nothing to do where the runtime collects on its own. */
+  def collect(): Unit = ()
+  /** Whether `blur` is drawn: it is. */
+  def blurs(): Boolean = true
   /** Whether text can hold emoji: yes, where the app ships an emoji face for what the television's own fonts lack. */
   def emoji(): Boolean = true
   /** Whether it can listen: a speech recognizer to turn what is said into words ([[Dictation]]). */

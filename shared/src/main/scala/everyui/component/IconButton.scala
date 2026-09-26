@@ -9,7 +9,7 @@ import reactify.*
 /** A glyph that does something, with what it does as its tooltip. */
 class IconButton(glyph: MaterialIcon, tip: String, action: () => Unit = () => (), colour: Option[Color] = None) extends Container {
   /** The glyph's colour at rest: the theme's muted colour, following the theme, unless `colour` names one. */
-  val tint: Var[Color] = Var(Theme.muted())
+  val tint: Var[Color] = own(Var(Theme.muted()))
   colour.foreach(c => tint @= c)
   val icon: MaterialIconView = new MaterialIconView(glyph, 22.0) {
     position.left @= 5.0

@@ -13,17 +13,17 @@ class RichText(node: everyui.render.RenderNode = Nodes.text()) extends Component
   override def kind: String = "RichText(" + runs().map(_.text).mkString + ")"
 
   val font: FontFeature = new FontFeature(this)
-  lazy val runs: Prop[List[TextRun]] = new Prop[List[TextRun]](Nil,
-    r => node.setRuns(r, href => Link.follow(href, newTab = !RichText.inApp(href))), () => measure.trigger())
+  lazy val runs: Prop[List[TextRun]] = own(new Prop[List[TextRun]](Nil,
+    r => node.setRuns(r, href => Link.follow(href, newTab = !RichText.inApp(href))), () => measure.trigger()))
 
   /** A shadow behind the letters, as [[TextView.textShadow]] has it: a subtitle's edge over a picture. */
-  lazy val textShadow: Prop[Option[everyui.Shadow]] = new Prop[Option[everyui.Shadow]](None, s => s match {
+  lazy val textShadow: Prop[Option[everyui.Shadow]] = own(new Prop[Option[everyui.Shadow]](None, s => s match {
     case Some(sh) => node.setTextShadow(sh.x, sh.y, sh.blur, Component.css(sh.color))
     case None => node.setTextShadow(0.0, 0.0, 0.0, "")
-  })
+  }))
   /** Where each line sits in the box, as [[TextView.align]] has it: it matters once the lines differ in width. */
-  lazy val align: Prop[everyui.component.types.TextAlign] = new Prop[everyui.component.types.TextAlign](
-    everyui.component.types.TextAlign.Start, a => node.setTextAlign(TextView.side(a)))
+  lazy val align: Prop[everyui.component.types.TextAlign] = own(new Prop[everyui.component.types.TextAlign](
+    everyui.component.types.TextAlign.Start, a => node.setTextAlign(TextView.side(a))))
 
   whiteSpace @= WhiteSpace.Normal
   color := Theme.text()

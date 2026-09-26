@@ -12,8 +12,8 @@ import reactify.*
 class Select(options: => List[String]) extends Container {
   override def kind: String = "Select"
 
-  val selected: Var[Int] = Var(0)
-  private val choices: Val[List[String]] = Val(options)
+  val selected: Var[Int] = own(Var(0))
+  private val choices: Val[List[String]] = own(Val(options))
   private val native = Platform.kind == PlatformKind.Web
   private val field: Component = if (native) new Component(Nodes.select()) else new TextView
   /** The words' font; their colour is `color`. */

@@ -8,7 +8,7 @@ import reactify.*
 /** Rows of `T` under a header, each column at its width. A row brightens under the pointer or the focus and
   * reports a click. */
 class Table[T](columns: List[TableColumn[T]], onRow: T => Unit = (_: T) => ()) extends Container {
-  val rows: Var[List[T]] = Var(Nil)
+  val rows: Var[List[T]] = own(Var(Nil))
 
   private val header = new Container {
     size.height @= 36.0

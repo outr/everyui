@@ -8,20 +8,27 @@ import reactify.*
 class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   lazy val children: ContainerFeature = new ContainerFeature(this)
 
+  override def dispose(): Unit = {
+    val held = children()
+    children.clear()
+    held.foreach(c => c.dispose())
+    super.dispose()
+  }
+
   /** youi's `LayoutSupport`: the layout, if any, places the children again whenever they, the container's size or
     * their sizes change, through the layout pass (`LayoutPass`: the deepest container first, in a loop). A container
     * given a layout sizes itself to its content, unless a size was set: its height always, its width when the layout
     * fits it (a column, a row; not a flow, which wraps to the width it is given). */
-  lazy val layout: Var[Option[Layout]] = Var(None)
+  lazy val layout: Var[Option[Layout]] = own(Var(None))
   /** Space between the edges and the children, on every side. */
-  lazy val padding: Var[Double] = Var(0.0)
+  lazy val padding: Var[Double] = own(Var(0.0))
   /** Whether the width follows the children (a row or a column given no width): a mirrored row then spans its own run,
     * not the width its last placement made. */
   var widthFollowsContent: Boolean = false
 
   /** How far the children reach, plus the padding beyond them. */
-  lazy val contentWidth: Val[Double] = Val(extent(c => c.position.left() + c.size.width()) + padding())
-  lazy val contentHeight: Val[Double] = Val(extent(c => c.position.top() + c.size.height()) + padding())
+  lazy val contentWidth: Val[Double] = own(Val(extent(c => c.position.left() + c.size.width()) + padding()))
+  lazy val contentHeight: Val[Double] = own(Val(extent(c => c.position.top() + c.size.height()) + padding()))
 
   /** The furthest any child reaches, by `edge`; 0 with no children. */
   private def extent(edge: Component => Double): Double = {
@@ -30,7 +37,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     furthest
   }
 
-  private lazy val childSizes: Val[Double] = Val(children().map(c => c.size.width() + c.size.height()).sum)
+  private lazy val childSizes: Val[Double] = own(Val(children().map(c => c.size.width() + c.size.height()).sum))
   private var exits: Map[everyui.event.Key, Option[Component]] = Map.empty
 
   /** An arrow `direction`'s way that finds nothing inside this container goes to `target` (onto its focusable part

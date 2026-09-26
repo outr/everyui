@@ -25,7 +25,7 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
 
   val content: Container = new Container
   /** How far the content is scrolled, in pixels. */
-  val offset: Var[Double] = Var(0.0)
+  val offset: Var[Double] = own(Var(0.0))
   // as far as the content's length, which is what it holds unless it is given more (room left at its end)
   private val furthest: Val[Double] =
     Val(math.max(0.0, (if (horizontal) content.size.width() - size.width() else content.size.height() - size.height())))
@@ -37,10 +37,10 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
 
   /** How much room `reveal` leaves around what it brings into view: enough for whatever sits beside it and should be
     * seen with it (a rail's name, above its titles). */
-  val revealMargin: Var[Double] = Var(16.0)
+  val revealMargin: Var[Double] = own(Var(16.0))
 
   /** The scrollbar's colour, where the platform draws one (the web: a thin one, on a clear track). */
-  lazy val scrollbar: Prop[Color] = new Prop[Color](Theme.border(), c => node.setScrollbarColor(Component.css(c)))
+  lazy val scrollbar: Prop[Color] = own(new Prop[Color](Theme.border(), c => node.setScrollbarColor(Component.css(c))))
 
   node.setScrollable(!horizontal, horizontal)
   node.setScrollbarColor(Component.css(scrollbar()))
@@ -59,7 +59,7 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   // the web scrolls to the focus itself only where a remote drives it (a TV's browser): under a pointer the focus lands
   // where it was clicked, which is already in view
   if (!Platform.nativeScroll() || Platform.remoteNavigation()) {
-    Focus.focused.attach(_.foreach(c => if (holds(c)) reveal(c)))
+    follow(Focus.focused, (f: Option[Component]) => f.foreach(c => if (holds(c)) reveal(c)))
   }
   if (!Platform.nativeScroll()) {
     size.width.attach(_ => clip())
@@ -89,8 +89,8 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
 
   /** How far an arrow moves it, and over how long, in seconds (0: at once). A page of text read with a remote wants a
     * long stride that glides, so the eye can follow where the words went. */
-  val step: Var[Double] = Var(40.0)
-  val glide: Var[Double] = Var(0.0)
+  val step: Var[Double] = own(Var(40.0))
+  val glide: Var[Double] = own(Var(0.0))
 
   private def stride(delta: Double): Unit = glideTo((if (glideRun.nonEmpty) glideAim else offset()) + delta, glide())
 
@@ -129,11 +129,11 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   /** Where `reveal` puts what it brings into view, as a share of the room the viewport has around it: 0 at the start,
     * 0.5 in the middle (as a television's focus is followed), 1 at the end. None scrolls the least that shows it.
     * Unless set, what `ScrollContainer.revealAlignDefault` says. */
-  val revealAlign: Var[Option[Double]] = Var(ScrollContainer.revealAlignDefault())
+  val revealAlign: Var[Option[Double]] = own(Var(ScrollContainer.revealAlignDefault()))
 
   /** How long `reveal` glides for, in seconds (0: it jumps). Unless set, what `ScrollContainer.revealGlideDefault`
     * says. */
-  val revealGlide: Var[Double] = Var(ScrollContainer.revealGlideDefault())
+  val revealGlide: Var[Double] = own(Var(ScrollContainer.revealGlideDefault()))
 
   /** Bring `c` (a component under `content`) into view: where `revealAlign` says, else by the least that shows all of
     * it, with a margin. Either way no further than the content goes, so the first and the last are shown at the ends

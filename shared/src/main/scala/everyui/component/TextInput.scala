@@ -15,12 +15,12 @@ import reactify.*
   * never opens it; the keyboard's Done or Back ends it. Where it has none (a Roku, an Apple TV) the field shows its
   * value, and Enter or a click asks the platform's keyboard for a new one (`Platform.editText`). */
 class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) extends Container {
-  val value: Var[String] = Var("")
+  val value: Var[String] = own(Var(""))
   /** What the label says; bind it to change it (a language change, say). */
-  val title: Var[String] = Var(label)
+  val title: Var[String] = own(Var(label))
   val submitted: Channel[String] = Channel[String]
   /** Whether the caret is in it. */
-  val editing: Var[Boolean] = Var(false)
+  val editing: Var[Boolean] = own(Var(false))
 
   private val native = Platform.nativeInput()
   /** A keyboard at hand: the focus is the caret. */

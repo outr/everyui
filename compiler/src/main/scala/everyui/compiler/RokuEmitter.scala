@@ -494,7 +494,9 @@ class RokuEmitter(
       if (body.nonEmpty) closures.append(body).append("\n")
       if (!wantRet) closures.append("  return invalid\n")
       closures.append("end function\n\n")
-      val envSelf = if (currentClass.exists) "self" else "invalid"
+      // `self` only where the body uses it: a closure that carried it regardless held the object it was written in for as
+      // long as the closure lived, so a binding to a theme's colour kept a whole screensaver scene, pictures and all
+      val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
       // A captured box / thunk travels as itself (raw name), never unboxed.
       val envFvs = fvs.filterNot((_, s) => omit.contains(s)).map { case (nm, _) => s", fv_$nm: $nm" }.mkString
       s"{ fn: $name, env: { self: $envSelf$envFvs } }"
@@ -525,7 +527,7 @@ class RokuEmitter(
           if (code.trim.nonEmpty) closures.append(code).append("\n")
           closures.append("  return invalid\n")
           closures.append("end function\n\n")
-          val envSelf = if (currentClass.exists) "self" else "invalid"
+          val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(code)) "self" else "invalid"
           val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
           s"{ fn: $name, env: { self: $envSelf$envFvs } }"
       }
@@ -5583,6 +5585,9 @@ class RokuEmitter(
       |""".stripMargin}
 
 object RokuEmitter {
+  /** Whether emitted code refers to `self`, the object a closure was written in. */
+  def usesSelf(code: String): Boolean = "\\bself\\b".r.findFirstIn(code).nonEmpty
+
   /** How large one file of the program may grow. A Roku refuses to load a script much over 2 MB ("Error loading
     * file", compile error &hb9, seen on Roku OS 14.10 with a 2.16 MB file), and a refused install takes the channel's
     * registry with it; the program goes out in parts well under that. */

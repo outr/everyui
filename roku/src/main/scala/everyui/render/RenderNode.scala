@@ -687,6 +687,13 @@ object Platform {
   def openInstallSettings(): Unit = ()
   def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
     done(Some("Updates install only on Android"))
+  /** Something large was let go (a screen, a scene): free it. BrightScript frees what nothing refers to at once, but a
+    * component refers to itself (its features point back at it), and only the cycle collector frees that; it costs
+    * half a second on a television, so it is run once things go quiet rather than on a clock. */
+  def collect(): Unit = uiCollect()
+  /** Whether `blur` is drawn: not here, where a picture is drawn sharp. An app that wants a blurred picture draws a tiny
+    * copy stretched over its box, which the scaling blurs. */
+  def blurs(): Boolean = false
   /** Whether text can hold emoji: not here, where the box's own font has none. The runtime draws the ones a Material icon
     * means the same as, and leaves out the rest (uiEmojiText); an app puts a word where one carried it. */
   def emoji(): Boolean = false

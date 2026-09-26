@@ -965,6 +965,10 @@ object Platform {
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 
+  /** Something large was let go: nothing to do where the runtime collects on its own. */
+  def collect(): Unit = ()
+  /** Whether `blur` is drawn: it is. */
+  def blurs(): Boolean = true
   /** Whether text can hold emoji: the system's fonts draw them. */
   def emoji(): Boolean = true
   // nothing here turns speech into words

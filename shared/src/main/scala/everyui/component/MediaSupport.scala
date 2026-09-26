@@ -16,14 +16,14 @@ trait MediaSupport { self: Component =>
     * Set these BEFORE [[source]]: they are read when the request is made, and a source already playing does not go
     * back and ask again. A platform that cannot send headers with its media says so by ignoring them. */
   lazy val headers: Prop[Map[String, String]] =
-    new Prop[Map[String, String]](Map.empty, h => node.setMediaHeaders(h))
+    own(new Prop[Map[String, String]](Map.empty, h => node.setMediaHeaders(h)))
   /** Subtitle files to offer beside the file's own tracks, set before `source`: they go in with the source. Where the
     * platform cannot take them, nothing. */
   lazy val sidecars: Prop[List[MediaSidecar]] =
-    new Prop[List[MediaSidecar]](Nil, s => node.setMediaSidecars(s))
+    own(new Prop[List[MediaSidecar]](Nil, s => node.setMediaSidecars(s)))
 
   /** A URL: a file, or an HLS stream (`.m3u8`). Empty stops it. */
-  lazy val source: Prop[String] = new Prop[String]("", s => node.setMediaSource(s))
+  lazy val source: Prop[String] = own(new Prop[String]("", s => node.setMediaSource(s)))
 
   /** `url` opened afresh, `from` seconds in: where it starts is said with it, so the player's first request is for
     * that part of the file, rather than the start of it followed by a seek that races the opening. The same address
@@ -34,15 +34,15 @@ trait MediaSupport { self: Component =>
     node.setMediaStart(math.max(0.0, from))
     source @= url
   }
-  lazy val playing: Prop[Boolean] = new Prop[Boolean](true, p => node.setMediaPlaying(p))
-  lazy val loop: Prop[Boolean] = new Prop[Boolean](false, l => node.setMediaLoop(l))
-  lazy val muted: Prop[Boolean] = new Prop[Boolean](false, m => node.setMediaMuted(m))
+  lazy val playing: Prop[Boolean] = own(new Prop[Boolean](true, p => node.setMediaPlaying(p)))
+  lazy val loop: Prop[Boolean] = own(new Prop[Boolean](false, l => node.setMediaLoop(l)))
+  lazy val muted: Prop[Boolean] = own(new Prop[Boolean](false, m => node.setMediaMuted(m)))
   /** 0 to 1, and past 1 a boost up to 4 — as loud as the platform can make it, where it can make something louder
     * than it was mixed at all (Android's loudness enhancer); elsewhere anything past 1 is simply full volume. */
-  lazy val volume: Prop[Double] = new Prop[Double](1.0, v => node.setMediaVolume(math.max(0.0, math.min(4.0, v))))
+  lazy val volume: Prop[Double] = own(new Prop[Double](1.0, v => node.setMediaVolume(math.max(0.0, math.min(4.0, v)))))
   /** How fast it runs: 1 is as it was recorded, 2 twice as quick, 0.5 half. A platform that cannot vary the rate
     * keeps playing at 1 and says so through [[rates]]. */
-  lazy val rate: Prop[Double] = new Prop[Double](1.0, r => node.setMediaRate(math.max(0.1, math.min(4.0, r))))
+  lazy val rate: Prop[Double] = own(new Prop[Double](1.0, r => node.setMediaRate(math.max(0.1, math.min(4.0, r)))))
 
   /** How much to hold before playing, how long to wait for bytes, and how much patience a stall is given: one of
     * `responsive`, `balanced` (what an unset value means) and `slow`.
@@ -51,14 +51,14 @@ trait MediaSupport { self: Component =>
     * deeper buffer is worth nothing if the reads time out before it can be filled, and patience is worth nothing if
     * there is nowhere to put what arrives. Set it BEFORE [[source]] — a player holds what it was built with — and a
     * platform whose player cannot be told ignores it. */
-  lazy val buffering: Prop[String] = new Prop[String]("balanced", b => node.setMediaBuffering(b))
+  lazy val buffering: Prop[String] = own(new Prop[String]("balanced", b => node.setMediaBuffering(b)))
 
   /** Kept on the device once fetched, and played from there every time after: for a short clip that comes round
     * again and again (a weather scene's loop), which would otherwise be downloaded afresh at each showing. Set it
     * BEFORE [[source]], and only for something small that is shown repeatedly: a long film or a live stream has
     * nothing to gain and a great deal of room to take. A platform with no store of its own for media (a browser,
     * which keeps what its own cache allows) ignores it. */
-  lazy val keepClip: Prop[Boolean] = new Prop[Boolean](false, c => node.setMediaCached(c))
+  lazy val keepClip: Prop[Boolean] = own(new Prop[Boolean](false, c => node.setMediaCached(c)))
 
   /** What is playing, for the platform's own now-playing: a television's playing card and its assistant, a phone's
     * lock screen, the transport keys of whatever else is listening. Set on the one thing a screen is FOR — the track,
@@ -66,11 +66,11 @@ trait MediaSupport { self: Component =>
     * the sound over from other apps while it plays, and gives it back when they take it. The platform's own Play,
     * Pause, Next and Previous arrive as the keys of those names, so a screen hears them where it hears the remote.
     * A title of "" is none; a platform with no now-playing of its own ignores it. */
-  lazy val nowPlaying: Prop[NowPlaying] = new Prop[NowPlaying](NowPlaying(), n => node.setNowPlaying(n))
+  lazy val nowPlaying: Prop[NowPlaying] = own(new Prop[NowPlaying](NowPlaying(), n => node.setNowPlaying(n)))
 
   /** Listen to the sound as well as play it: [[bands]] follows its spectrum, for a visualizer. Set it BEFORE
     * [[source]]; a platform that cannot hear its own output leaves `bands` empty, and a visualizer draws without. */
-  lazy val spectrum: Prop[Boolean] = new Prop[Boolean](false, s => node.setMediaSpectrum(s))
+  lazy val spectrum: Prop[Boolean] = own(new Prop[Boolean](false, s => node.setMediaSpectrum(s)))
 
   /** The sound's spectrum as it plays, where [[spectrum]] asked for it: levels 0 to 1, low to high, about thirty times
     * a second. Empty until it is heard, and on a platform that cannot hear it. */
@@ -133,11 +133,11 @@ trait MediaSupport { self: Component =>
 
   /** The track being heard, by its id; None leaves the file's own choice alone. */
   lazy val audioTrack: Prop[Option[String]] =
-    new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Audio, t.getOrElse("")))
+    own(new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Audio, t.getOrElse(""))))
 
   /** The track being read, by its id; None shows none. */
   lazy val textTrack: Prop[Option[String]] =
-    new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Text, t.getOrElse("")))
+    own(new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Text, t.getOrElse(""))))
 
   private var listeners: List[String => Unit] = Nil
   private var seated = false

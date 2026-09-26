@@ -17,6 +17,12 @@ trait Screen extends TaskSupport {
   protected def load(): Task[Unit] = Task.unit
   protected def activate(): Task[Unit] = Task.unit
   protected def deactivate(): Task[Unit] = Task.unit
+
+  /** Whether this screen is made for one showing (a title's page, a player), and so is taken apart (`dispose`) once
+    * nothing can return to it. A screen an app keeps and shows again (a section of its shell) says no, the default. */
+  def oneShowing: Boolean = false
+  /** Take the screen apart: it will not be shown again. */
+  protected def dispose(): Unit = ()
 }
 
 object Screen {
@@ -25,4 +31,5 @@ object Screen {
   def activate(screen: Screen): Task[Unit] = screen.activate()
   def deactivate(screen: Screen): Task[Unit] = screen.deactivate()
   def seo(screen: Screen): Option[SEO] = screen.seo
+  def dispose(screen: Screen): Unit = screen.dispose()
 }

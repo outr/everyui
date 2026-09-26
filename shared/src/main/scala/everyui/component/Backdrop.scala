@@ -21,18 +21,18 @@ import scala.concurrent.duration.*
 class Backdrop extends Container {
   override def kind: String = "Backdrop"
 
-  val source: Var[String] = Var("")
+  val source: Var[String] = own(Var(""))
   /** What the picture shows, in words (`ImageView.alt`). */
   def alt: Var[String] = view.alt
-  val alignX: Var[Double] = Var(0.0)
-  val alignY: Var[Double] = Var(0.0)
+  val alignX: Var[Double] = own(Var(0.0))
+  val alignY: Var[Double] = own(Var(0.0))
   /** Shown in place of `source` when that cannot be loaded; empty for none. */
-  val fallbackSource: Var[String] = Var("")
+  val fallbackSource: Var[String] = own(Var(""))
   /** Whether a change of picture cross-fades rather than cutting. */
-  val crossfade: Var[Boolean] = Var(false)
+  val crossfade: Var[Boolean] = own(Var(false))
   /** Whether the picture asked for could not be had (nor its fallback): something else can stand in for it then, as a
     * film mark does for a poster that will not load. False again as soon as another is asked for. */
-  val failed: Var[Boolean] = Var(false)
+  val failed: Var[Boolean] = own(Var(false))
 
   private val view = new ImageView
   private var shown: Image = Image.empty
@@ -45,6 +45,12 @@ class Backdrop extends Container {
     if (crossfade() && requested.nonEmpty) fadeTo(0.0, Backdrop.fadeOut)
     load(requested, requested, 0)
   }
+  /** No picture asked for any more, so a load or a retry still on its way shows nothing, and then taken apart. */
+  override def dispose(): Unit = {
+    source @= ""
+    super.dispose()
+  }
+
   size.width.attach(_ => place())
   size.height.attach(_ => place())
   alignX.attach(_ => place())

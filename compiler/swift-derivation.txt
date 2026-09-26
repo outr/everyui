@@ -230,7 +230,9 @@ class SwiftEmitter(
       if (body.nonEmpty) closures.append(body).append("\n")
       if (!wantRet) closures.append("  return invalid\n")
       closures.append("end function\n\n")
-      val envSelf = if (currentClass.exists) "self" else "invalid"
+      // `self` only where the body uses it: a closure that carried it regardless held the object it was written in for as
+      // long as the closure lived, so a binding to a theme's colour kept a whole screensaver scene, pictures and all
+      val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
       // A captured box / thunk travels as itself (raw name), never unboxed.
       val envFvs = fvs.filterNot((_, s) => omit.contains(s)).map { case (nm, _) => s", fv_$nm: $nm" }.mkString
       s"{ fn: $name, env: { self: $envSelf$envFvs } }"
@@ -273,7 +275,7 @@ class SwiftEmitter(
           if (code.trim.nonEmpty) closures.append(code).append("\n")
           closures.append("  return invalid\n")
           closures.append("end function\n\n")
-          val envSelf = if (currentClass.exists) "self" else "invalid"
+          val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(code)) "self" else "invalid"
           val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
           s"{ fn: $name, env: { self: $envSelf$envFvs } }"
       }

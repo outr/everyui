@@ -410,6 +410,11 @@ object Platform {
   def openInstallSettings(): Unit = ()
   def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
     done(Some("Updates install only on Android"))
+  /** Something large was let go: nothing to do where the runtime collects on its own. */
+  def collect(): Unit = ()
+  /** Whether `blur` is drawn: not here, where a picture is drawn sharp. An app that wants a blurred picture draws a tiny
+    * copy stretched over its box, which the scaling blurs. */
+  def blurs(): Boolean = false
   /** Whether text can hold emoji: the system draws them. */
   def emoji(): Boolean = true
   // nothing here turns speech into words

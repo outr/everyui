@@ -179,6 +179,8 @@ trait ScreenManager extends TaskSupport {
   /** Show `screen`. With `push` (the default) the screen it replaces goes on the history and its path to the address
     * bar; without, it replaces the screen in place. */
   def show(screen: Screen, push: Boolean = true): Task[Unit] = {
+    // whatever made `screen` is done making it: what is made from here on is not the screen's (UIScreen.made)
+    everyui.component.Component.making @= None
     if (push) remember(screen)
     swap(screen, push)
   }
@@ -187,6 +189,7 @@ trait ScreenManager extends TaskSupport {
     * parameters reads them from it. Whether a screen claimed it. */
   def go(path: String): Boolean = at(URLPath(path)) match {
     case Some(screen) =>
+      everyui.component.Component.making @= None
       remember(screen)
       Platform.pushPath(path)
       swap(screen, push = false).startUnit()
@@ -213,6 +216,7 @@ trait ScreenManager extends TaskSupport {
     * section of an app's shell, which Back leaves for the shell's first screen. `under` itself is shown with nothing
     * behind it. */
   def showOver(screen: Screen, under: Screen): Task[Unit] = {
+    everyui.component.Component.making @= None
     backStack = if (screen eq under) Nil else List((under, None))
     swap(screen, push = true)
   }
@@ -241,8 +245,14 @@ trait ScreenManager extends TaskSupport {
         .flatMap(_ => Screen.activate(screen)))
       .map { _ =>
         active @= Some(screen)
-        // a screen made for one showing (a title's page) is let go once nothing can return to it
-        loaded = loaded.filter(s => (s eq screen) || screens.exists(_ eq s) || backStack.exists(_._1 eq s))
+        // a screen made for one showing (a title's page) is let go once nothing can return to it, and taken apart a
+        // moment later, once it is out of sight: left whole, whatever in it was bound to something that lives on (a
+        // theme's colour, the host's size) held all of it, and a Roku ran out of memory a few dozen title pages later
+        val kept = loaded.filter(s => (s eq screen) || screens.exists(_ eq s) || backStack.exists(_._1 eq s))
+        val dropped = loaded.filterNot(s => kept.exists(_ eq s))
+        loaded = kept
+        dropped.filter(s => s.oneShowing).foreach(s => Platform.after(1.0, () =>
+          if (!loaded.exists(_ eq s) && !active().exists(_ eq s) && !backStack.exists(_._1 eq s)) Screen.dispose(s)))
         screen match {
           case u: UIScreen =>
             val target = focus.filter(Focus.showing).getOrElse(u.defaultFocus())

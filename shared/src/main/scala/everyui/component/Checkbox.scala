@@ -8,9 +8,9 @@ import reactify.*
 /** A box that is checked or not, its label beside it and a note under it; a click, a tap or Enter flips it. The focus
   * on it is a ring in the accent, which shows on a dialog as well as on the page. */
 class Checkbox(label: String, initial: Boolean = false, note: Option[String] = None, width: Double = 400.0) extends Container {
-  val checked: Var[Boolean] = Var(initial)
+  val checked: Var[Boolean] = own(Var(initial))
   /** The label's colour; bind it to mark a choice worth noticing. */
-  val labelColor: Var[Color] = Var(Theme.text())
+  val labelColor: Var[Color] = own(Var(Theme.text()))
 
   private val box = new MaterialIconView(MaterialIcon.CheckBoxOutlineBlank, 20.0) {
     icon := (if (checked()) MaterialIcon.CheckBox else MaterialIcon.CheckBoxOutlineBlank)

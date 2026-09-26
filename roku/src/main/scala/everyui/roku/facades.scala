@@ -405,3 +405,7 @@ class SGNode
 @native object uiOnError {
   def apply(f: (String, String) => Unit): Unit = native.value
 }
+/** The cycle collector, run once the channel has been quiet for a moment. */
+@native object uiCollect {
+  def apply(): Unit = native.value
+}

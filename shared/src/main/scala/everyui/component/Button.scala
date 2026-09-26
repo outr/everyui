@@ -12,21 +12,21 @@ import reactify.*
 class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = ButtonStyle.Tonal,
              glyph: Option[MaterialIcon] = None, points: Double = 13.0) extends Container {
   /** What it says; bind it to change it. */
-  val label: Var[String] = Var(name)
-  val enabled: Var[Boolean] = Var(true)
+  val label: Var[String] = own(Var(name))
+  val enabled: Var[Boolean] = own(Var(true))
   /** At least this wide, its content centred: a button as wide as the form it ends. */
-  val minWidth: Var[Double] = Var(0.0)
+  val minWidth: Var[Double] = own(Var(0.0))
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.
-  private val lit: Val[Boolean] = Val(enabled() && (focused() || event.pointer.over()))
-  private val ringed: Val[Boolean] = Val(focused() && style != ButtonStyle.Filled)
-  private val foreground: Val[Color] = Val(
+  private val lit: Val[Boolean] = own(Val(enabled() && (focused() || event.pointer.over())))
+  private val ringed: Val[Boolean] = own(Val(focused() && style != ButtonStyle.Filled))
+  private val foreground: Val[Color] = own(Val(
     if (!enabled()) Theme.muted()
     else if (style == ButtonStyle.Filled) Theme.onAccent()
     else if (style == ButtonStyle.Tonal) Theme.text()
     else if (lit() && style == ButtonStyle.Text) Theme.text()
-    else Theme.accent())
+    else Theme.accent()))
   private val words: TextView = new TextView {
     content := label()
     font.size @= points

@@ -11,7 +11,7 @@ import everyui.component.types.Prop
 class Link(target: String = "", newTab: Boolean = false) extends Container(Nodes.link()) {
   override def kind: String = "Link(" + href() + ")"
 
-  lazy val href: Prop[String] = new Prop[String](target, h => node.setHref(h, newTab))
+  lazy val href: Prop[String] = own(new Prop[String](target, h => node.setHref(h, newTab)))
   // a Prop writes only what changes, and the first address is where the link was made to go: without it here a
   // link made with its address had none on the page, and a crawler, a middle click or "copy link" had nowhere to go
   node.setHref(href(), newTab)

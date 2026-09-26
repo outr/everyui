@@ -8,17 +8,20 @@ import everyui.theme.Theme
   * sets the family too. */
 class FontFeature(component: Component) {
   /** The theme's family (`Theme.family`, as it is when the text is made) until this names its own. */
-  lazy val family: Prop[String] = new Prop[String](Theme.family(), _ => applyFont(), () => component.measure.trigger())
+  lazy val family: Prop[String] = component.own(
+    new Prop[String](Theme.family(), _ => applyFont(), () => component.measure.trigger()))
 
-  lazy val weight: Prop[FontWeight] = new Prop[FontWeight](FontWeight.Normal, w => {
+  lazy val weight: Prop[FontWeight] = component.own(new Prop[FontWeight](FontWeight.Normal, w => {
     if (w.family.nonEmpty) family @= w.family
     applyFont()
-  }, () => component.measure.trigger())
+  }, () => component.measure.trigger()))
 
-  lazy val size: Prop[Double] = new Prop[Double](16.0, _ => applyFont(), () => component.measure.trigger())
+  lazy val size: Prop[Double] = component.own(
+    new Prop[Double](16.0, _ => applyFont(), () => component.measure.trigger()))
   /** The height of a line as a multiple of the size (a paragraph's 1.7, say); 0 is the face's own line box. Only the
     * web spaces lines by it so far. */
-  lazy val lineHeight: Prop[Double] = new Prop[Double](0.0, _ => applyFont(), () => component.measure.trigger())
+  lazy val lineHeight: Prop[Double] = component.own(
+    new Prop[Double](0.0, _ => applyFont(), () => component.measure.trigger()))
 
   private def applyFont(): Unit = {
     component.node.setFont(family(), weight().value, size())

@@ -43,7 +43,13 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   /** The children follow `values`: whenever what it reads changes, each value is rendered again. `values` is data —
     * construct components only in `render`, since a component built inside the tracked expression makes its own
     * measurements dependencies, and the list rebuilds itself forever. */
-  def bind[T](values: => List[T])(render: T => Component): Unit = {
+  def bind[T](values: => List[T])(render: T => Component): Unit = bindAll(values, render, false)
+
+  /** `bind`, where `render` makes each component afresh: one whose value has left the list is taken apart
+    * (Component.dispose), never to be shown again. Not for a list that hands back components it keeps (`c => c`). */
+  def bindMaking[T](values: => List[T])(render: T => Component): Unit = bindAll(values, render, true)
+
+  private def bindAll[T](values: => List[T], render: T => Component, making: Boolean): Unit = {
     val source: Val[List[T]] = Val(values)
     var previous: List[(T, Component)] = Nil
     source.attachAndFire { all =>
@@ -62,6 +68,10 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       }
       previous = rendered
       static(rendered.map(_._2).toVector)
+      if (making && spare.nonEmpty) {
+        spare.foreach(gone => gone._2.dispose())
+        everyui.render.Platform.collect()
+      }
     }
   }
 
