@@ -209,7 +209,7 @@ sub uiOnFrame()
         t.control = "start"
     end if
     ga.uiFrameAt = now
-    if ga.uiTick <> invalid then RtInvoke(ga.uiTick, [])
+    if ga.uiTick <> invalid then RtGuard(ga.uiTick, [])
 end sub
 
 ' Run `f` on a later turn of the render thread's event loop, on a fresh stack: a one-shot Timer drains the queue.
@@ -252,7 +252,7 @@ sub uiOnAfter(event as object)
     if entry = invalid then return
     ga.uiAfters.Delete(t.id)
     ga.appScene.removeChild(t)
-    RtInvoke(entry.f, [])
+    RtGuard(entry.f, [])
 end sub
 
 sub uiOnLater()
@@ -261,7 +261,7 @@ sub uiOnLater()
     queue = ga.uiLaterQueue
     ga.uiLaterQueue = []
     for each f in queue
-        RtInvoke(f, [])
+        RtGuard(f, [])
     end for
 end sub
 
@@ -920,7 +920,7 @@ sub uiOnImageLoadStatus(event as object)
     ' bitmapWidth/Height come back scaled from the device's UI resolution to the channel's 1080p design space; report
     ' the image's own pixels, as a browser does.
     scale = CreateObject("roDeviceInfo").GetUIResolution().height / 1080.0
-    RtInvoke(entry.loaded, [p.bitmapWidth * scale, p.bitmapHeight * scale])
+    RtGuard(entry.loaded, [p.bitmapWidth * scale, p.bitmapHeight * scale])
 end sub
 
 sub uiSetTranslation(node as object, x as float, y as float)
@@ -1175,12 +1175,12 @@ sub uiOnSocketEvent(event as object)
     if h = invalid then return
     ev = event.getData()
     if ev.kind = "open"
-        RtInvoke(h.onOpen, [])
+        RtGuard(h.onOpen, [])
     else if ev.kind = "text"
-        RtInvoke(h.onText, [ev.data])
+        RtGuard(h.onText, [ev.data])
     else if ev.kind = "close"
         ga.uiSockets.Delete(t.id)
-        RtInvoke(h.onClose, [ev.code, ev.reason])
+        RtGuard(h.onClose, [ev.code, ev.reason])
     end if
 end sub
 
@@ -1244,7 +1244,7 @@ sub uiOnHttpResult(event as object)
     done = ga.uiHttps[r.id]
     ga.uiHttps.Delete(r.id)
     uiHttpNext()
-    if done <> invalid then RtInvoke(done, [r.status, r.headers, r.body])
+    if done <> invalid then RtGuard(done, [r.status, r.headers, r.body])
 end sub
 
 ' A SceneGraph Rectangle has no corner radius.
@@ -1621,11 +1621,11 @@ sub uiOnMediaState(event as object)
     if f = invalid then return
     if state = "playing" and not n.uiReady
         n.uiReady = true
-        RtInvoke(f, ["ready"])
+        RtGuard(f, ["ready"])
     else if state = "finished"
-        RtInvoke(f, ["ended"])
+        RtGuard(f, ["ended"])
     else if state = "error"
-        RtInvoke(f, ["error"])
+        RtGuard(f, ["error"])
     end if
 end sub
 
@@ -1830,3 +1830,11 @@ function uiMediaSize(node as object) as object
     if seg = invalid or seg.width = invalid or seg.height = invalid then return [0.0, 0.0]
     return [seg.width * 1.0, seg.height * 1.0]
 end function
+
+' ── errors nothing caught ──
+
+' `f(message, stack)` for every error a handler the platform calls throws (RtGuard, in the Scala runtime).
+sub uiOnError(f as dynamic)
+    GetGlobalAA().uiErrorHook = f
+end sub
+

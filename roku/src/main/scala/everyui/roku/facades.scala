@@ -401,3 +401,7 @@ class SGNode
 @native object uiMediaSize {
   def apply(node: SGNode): List[Double] = native.value
 }
+/** What to call with each error a platform callback throws: its message and backtrace. */
+@native object uiOnError {
+  def apply(f: (String, String) => Unit): Unit = native.value
+}

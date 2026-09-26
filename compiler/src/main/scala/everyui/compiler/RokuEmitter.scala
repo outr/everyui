@@ -4899,7 +4899,7 @@ class RokuEmitter(
       |    if cb = invalid then return
       |    ga.__rtTimers.Delete(n.id)
       |    ga.appScene.removeChild(n)
-      |    RtInvoke(cb, [])
+      |    RtGuard(cb, [])
       |end sub
       |
       |' ── fabric.Json (the network module): the native JSON values — an assoc array, an array, a string, a number,

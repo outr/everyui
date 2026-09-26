@@ -528,6 +528,10 @@ object Platform {
     * launched with, a turn after this is asked, and any sent to it while it runs or as it is resumed. */
   def onDeepLink(f: (String, String) => Unit): Unit = uiOnDeepLink(f)
 
+  /** Every error the app throws from a handler the device calls (a timer, a key, a download…) and nothing caught: the
+    * message and the backtrace. The channel goes on rather than stopping. */
+  def onError(f: (String, String) => Unit): Unit = uiOnError(f)
+
   /** The first screen is up and can be used: the launch beacon a certified channel sends. */
   def launchComplete(): Unit = uiLaunchComplete()
 
