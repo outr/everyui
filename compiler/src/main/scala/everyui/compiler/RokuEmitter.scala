@@ -106,6 +106,9 @@ class RokuEmitter(
     // Class-emission context (mirrors JsEmitter): the class whose method we're
     // emitting; members resolve through the `self` param.
     var currentClass: Symbol = Symbol.noSymbol
+    // The method whose body is being emitted: a `return` from it is a BrightScript `return`. (A return out of a
+    // lambda to the method around it is deprecated in Scala 3 and not written here, so a `return` is the method's own.)
+    var returnTarget: Symbol = Symbol.noSymbol
     def inCurrentClass(owner: Symbol): Boolean =
       currentClass.exists && owner.exists && currentClass.typeRef.baseClasses.contains(owner)
 
@@ -1550,7 +1553,9 @@ class RokuEmitter(
             case Select(recv, "contains") if isOptionType(recv) =>
               if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
               else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
+            // (the module by its type: `Set` is Predef's alias for it, a val, whose own symbol is no module)
+            case Select(q, "apply") if isSetTpe(t.tpe) && (q.symbol.exists && q.symbol.flags.is(Flags.Module) ||
+                q.tpe.widen.typeSymbol.flags.is(Flags.Module)) && !isFacadeCall(fn) =>
               s"_distinct([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
             case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_mapFromPairs(${varargsArray(args)})"
@@ -1602,6 +1607,12 @@ class RokuEmitter(
               }
               val walked = s"$helper(_mapToList(${emitTerm(recv)}), ${emitArgVal(args.head)})"
               if (isMapTpe(t.tpe)) s"_mapOfPairs($walked)" else walked
+            // a String's character at an index (a Char is a one-character string here), and the next place of a
+            // character or a string at or after an index
+            case Select(recv, "charAt") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
+              s"Mid(${emitTerm(recv)}, ${emitArgVal(args.head)} + 1, 1)"
+            case Select(recv, "indexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 2 =>
+              s"_strIndexFrom(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
             case Select(recv, "sorted") if isCollType(recv) =>
               if (elemIsUserType(recv)) s"_sortedOrdered(${emitTerm(recv)})" else s"_sortedPrim(${emitTerm(recv)})"
             case Select(recv, "copy") if { val c = recv.tpe.widen.dealias.typeSymbol; c.exists && c.flags.is(Flags.Case) && !isBuiltin(c) } =>
@@ -1717,6 +1728,17 @@ class RokuEmitter(
                 case _                     => "<="
               }
               s"(RtDurationMs(${emitTerm(recv)}) $o RtDurationMs(${emitArgVal(args.head)}))"
+            // arithmetic on a Char is on its code, as the JVM widens it to an Int: a Char is a one-character string
+            // here, which BrightScript will not subtract (`iso.charAt(0) - 'A'`, a flag from a country code)
+            case Select(recv, op @ ("+" | "-" | "*" | "$plus" | "$minus" | "$times")) if args.length == 1 &&
+                (fqnOf(recv.tpe) == "scala.Char" || fqnOf(args.head.tpe) == "scala.Char") &&
+                isPrimLike(recv) && isPrimLike(args.head) && !isStringLike(recv.tpe) && !isStringLike(args.head.tpe) =>
+              val o = op match {
+                case "+" | "$plus" => "+"
+                case "-" | "$minus" => "-"
+                case _ => "*"
+              }
+              s"(_chCode(${emitTerm(recv)}) $o _chCode(${emitTerm(args.head)}))"
             // Dividing by nothing: the JVM throws on whole numbers and answers Infinity or NaN on fractions, while a
             // Roku stops the thread in its debugger and takes the channel with it — the guard written to prevent it
             // is no help where the arm is worked out anyway. A divisor that is not plainly not zero goes through the
@@ -2288,6 +2310,10 @@ class RokuEmitter(
         List(head, emitInto(body, ""), "  end while", sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
       case asg: Assign =>
         List(emitStat(asg), sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
+      // a `return` out of the method being written (see returnTarget), whatever sink the code around it had
+      case Return(expr, from) if returnTarget.exists && from == returnTarget =>
+        if (expr.tpe.widen =:= TypeRepr.of[Unit]) List(emitInto(expr, ""), sinkUnit(skReturn)).filter(_.trim.nonEmpty).mkString("\n")
+        else emitInto(expr, skReturn)
       case e if isUnit(e) => sinkUnit(sk)
       case e => withStatement(sinkLine(sk, emitTerm(e)))
     }
@@ -2376,6 +2402,12 @@ class RokuEmitter(
 
     def emitBody(t: Term, wantRet: Boolean): String = emitInto(t, if (wantRet) skReturn else "")
     def emitTail(expr: Term, wantRet: Boolean): String = emitBody(expr, wantRet)
+    // a method's body, its `return`s written as returns (see returnTarget)
+    def emitMethodBody(method: Symbol, rhs: Term, wantRet: Boolean): String = {
+      val saved = returnTarget
+      returnTarget = method
+      try emitBody(rhs, wantRet) finally returnTarget = saved
+    }
 
     /** Whether both arms may go to `_iif`, which evaluates the two of them whichever the answer: a pure value that
       * cannot fault. A division can (by zero), and the arm guarded against it is exactly where one is written, so an
@@ -2557,7 +2589,7 @@ class RokuEmitter(
           val ps = termParams(pcs)
           out.append(s"function ${base}_${memberName(dd.symbol, name)}(${packParams(ps).map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
           out.append(unpackParams(ps))
-          out.append(emitBody(rhs, true)).append("\n")
+          out.append(emitMethodBody(dd.symbol, rhs, true)).append("\n")
           out.append("end function\n\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
@@ -2637,7 +2669,7 @@ class RokuEmitter(
           out.append(s"function ${cn}_${memberName(dd.symbol, name)}(${ps.mkString(", ")}) as dynamic\n")
           out.append(unpackParams(own))
           val wantRet = !(ret.tpe =:= TypeRepr.of[Unit])
-          out.append(emitBody(rhs, wantRet)).append("\n")
+          out.append(emitMethodBody(dd.symbol, rhs, wantRet)).append("\n")
           out.append("  return invalid\n")
           out.append("end function\n\n")
         case _ => ()
@@ -2703,7 +2735,7 @@ class RokuEmitter(
           sb.append(s"function ${modelImplName(dd.symbol)}(${ps.mkString(", ")}) as dynamic\n")
           sb.append(unpackParams(own))
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
-          sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
+          sb.append(emitMethodBody(dd.symbol, dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
         case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
           val k = brSafe(vd.name)
@@ -3317,6 +3349,13 @@ class RokuEmitter(
       |function _rtItems(xs as dynamic) as object
       |    if type(xs) = "roArray" then return xs
       |    r = []
+      |    ' a String walked as a collection (StringOps: exists, forall, count, foreach…) is its characters
+      |    if _rtIsStr(xs)
+      |        for i = 1 to Len(xs)
+      |            r.push(Mid(xs, i, 1))
+      |        end for
+      |        return r
+      |    end if
       |    if xs <> invalid
       |        for each e in xs
       |            r.push(e)
@@ -3754,6 +3793,14 @@ class RokuEmitter(
       |function _strIndexOf(s as dynamic, x as dynamic) as integer
       |    if _rtKind(x) = "n" then x = Chr(x)
       |    return Instr(1, _str(s), _str(x)) - 1
+      |end function
+      |' s.indexOf(x, from): from `from` on (at the start for a negative one), -1 where it is not there
+      |function _strIndexFrom(s as dynamic, x as dynamic, from as integer) as integer
+      |    if _rtKind(x) = "n" then x = Chr(x)
+      |    t = _str(s)
+      |    if from < 0 then from = 0
+      |    if from >= Len(t) then return -1
+      |    return Instr(from + 1, t, _str(x)) - 1
       |end function
       |function _strFilter(s as dynamic, cl as dynamic, keep as boolean) as string
       |    t = _str(s) : r = ""
@@ -5366,6 +5413,11 @@ class RokuEmitter(
       |    return [o]
       |end function
       |' RichChar predicates. A Char is a one-character string in this runtime, so these test its code point.
+      |' A Char's code, for arithmetic on it: a one-character string here, or already a number (a Char literal passed on)
+      |function _chCode(c as dynamic) as dynamic
+      |    if _rtIsStr(c) then return Asc(c)
+      |    return c
+      |end function
       |function _ch_isDigit(c as dynamic) as boolean
       |    if c = invalid or Len(c) = 0 then return false
       |    n = Asc(c)

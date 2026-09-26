@@ -812,7 +812,9 @@ class SwiftEmitter(
 @@ old
               if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
               else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
+            // (the module by its type: `Set` is Predef's alias for it, a val, whose own symbol is no module)
+            case Select(q, "apply") if isSetTpe(t.tpe) && (q.symbol.exists && q.symbol.flags.is(Flags.Module) ||
+                q.tpe.widen.typeSymbol.flags.is(Flags.Module)) && !isFacadeCall(fn) =>
               s"_distinct([${flattenVarargs(args).map(emitArgVal).mkString(", ")}])"
             case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_mapFromPairs(${varargsArray(args)})"
@@ -820,7 +822,9 @@ class SwiftEmitter(
 @@ new
               if (isModuleOperand(args.head)) s"RtIdentity(${emitTerm(recv)}, ${emitArgVal(args.head)})"
               else s"_optContains(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(q, "apply") if isSetTpe(t.tpe) && q.symbol.exists && q.symbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
+            // (the module by its type: `Set` is Predef's alias for it, a val, whose own symbol is no module)
+            case Select(q, "apply") if isSetTpe(t.tpe) && (q.symbol.exists && q.symbol.flags.is(Flags.Module) ||
+                q.tpe.widen.typeSymbol.flags.is(Flags.Module)) && !isFacadeCall(fn) =>
               s"_distinct(${rtArr(flattenVarargs(args).map(emitArgVal))})"
             case Select(q, "apply") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && !isFacadeCall(fn) =>
               s"_mapFromPairs(${varargsArray(args)})"
@@ -1475,6 +1479,10 @@ class SwiftEmitter(
         List(head, emitInto(body, ""), "  end while", sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
       case asg: Assign =>
         List(emitStat(asg), sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
+      // a `return` out of the method being written (see returnTarget), whatever sink the code around it had
+      case Return(expr, from) if returnTarget.exists && from == returnTarget =>
+        if (expr.tpe.widen =:= TypeRepr.of[Unit]) List(emitInto(expr, ""), sinkUnit(skReturn)).filter(_.trim.nonEmpty).mkString("\n")
+        else emitInto(expr, skReturn)
       case e if isUnit(e) => sinkUnit(sk)
 @@ new
       case Block(stats, e) =>
@@ -1491,6 +1499,10 @@ class SwiftEmitter(
         List(head, emitInto(body, ""), "  }", sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
       case asg: Assign =>
         List(emitStat(asg), sinkUnit(sk)).filter(_.trim.nonEmpty).mkString("\n")
+      // a `return` out of the method being written (see returnTarget), whatever sink the code around it had
+      case Return(expr, from) if returnTarget.exists && from == returnTarget =>
+        if (expr.tpe.widen =:= TypeRepr.of[Unit]) List(emitInto(expr, ""), sinkUnit(skReturn)).filter(_.trim.nonEmpty).mkString("\n")
+        else emitInto(expr, skReturn)
       case e if isUnit(e) => sinkUnit(sk)
 @@ old
       case vd @ ValDef(name, _, Some(rhs)) =>
@@ -1691,7 +1703,7 @@ class SwiftEmitter(
           val ps = termParams(pcs)
           out.append(s"function ${base}_${memberName(dd.symbol, name)}(${packParams(ps).map(p => s"$p as dynamic").mkString(", ")}) as dynamic\n")
           out.append(unpackParams(ps))
-          out.append(emitBody(rhs, true)).append("\n")
+          out.append(emitMethodBody(dd.symbol, rhs, true)).append("\n")
           out.append("end function\n\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
@@ -1731,7 +1743,7 @@ class SwiftEmitter(
             if userMember(dd.symbol) && name != "<init>" && !name.endsWith("_=") && keepMember(dd.symbol) =>
           val ps = termParams(pcs)
           out.append(s"func ${base}_${memberName(dd.symbol, name)}(${ps.map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
-          out.append(emitBody(rhs, true)).append("\n")
+          out.append(emitMethodBody(dd.symbol, rhs, true)).append("\n")
           out.append(s"  return $NULL\n}\n\n")
         case vd @ ValDef(name, _, Some(rhs)) if userMember(vd.symbol) && modelModuleOf(vd.symbol).isEmpty && liveLazy(vd.symbol) =>
           val mutable = vd.symbol.flags.is(Flags.Mutable)
@@ -1813,7 +1825,7 @@ class SwiftEmitter(
           out.append(s"function ${cn}_${memberName(dd.symbol, name)}(${ps.mkString(", ")}) as dynamic\n")
           out.append(unpackParams(own))
           val wantRet = !(ret.tpe =:= TypeRepr.of[Unit])
-          out.append(emitBody(rhs, wantRet)).append("\n")
+          out.append(emitMethodBody(dd.symbol, rhs, wantRet)).append("\n")
           out.append("  return invalid\n")
           out.append("end function\n\n")
         case _ => ()
@@ -1835,7 +1847,7 @@ class SwiftEmitter(
           val ps = "_ this: V" :: termParams(pcs).map(p => s"_ $p: V")
           out.append(s"func ${cn}_${memberName(dd.symbol, name)}(${ps.mkString(", ")}) throws -> V {\n")
           val wantRet = !(ret.tpe =:= TypeRepr.of[Unit])
-          out.append(emitBody(rhs, wantRet)).append("\n")
+          out.append(emitMethodBody(dd.symbol, rhs, wantRet)).append("\n")
           out.append(s"  return $NULL\n")
           out.append("}\n\n")
         case _ => ()
@@ -1850,7 +1862,7 @@ class SwiftEmitter(
           sb.append(s"function ${modelImplName(dd.symbol)}(${ps.mkString(", ")}) as dynamic\n")
           sb.append(unpackParams(own))
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
-          sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
+          sb.append(emitMethodBody(dd.symbol, dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
         case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
           val k = brSafe(vd.name)
@@ -1910,7 +1922,7 @@ class SwiftEmitter(
           val ps = "_ this: V" :: termParams(dd.paramss).map(p => s"_ $p: V")
           sb.append(s"func ${modelImplName(dd.symbol)}(${ps.mkString(", ")}) throws -> V {\n")
           val wantRet = !(dd.returnTpt.tpe =:= TypeRepr.of[Unit])
-          sb.append(emitBody(dd.rhs.get, wantRet)).append("\n")
+          sb.append(emitMethodBody(dd.symbol, dd.rhs.get, wantRet)).append("\n")
           sb.append(s"  return $NULL\n}\n\n")
         case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
           val k = brSafe(vd.name)
