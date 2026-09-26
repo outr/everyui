@@ -1369,6 +1369,24 @@ class SwiftEmitter(
         val (it, ib) = patternTest(inner, subj)
         val test = if (it == "true") tag else if (tag == "true") it else s"$tag and $it"
         (test, ib)
+      // `List(a, b)`, `Seq(x, rest*)` (a collection's unapplySeq) on what is an array here: as many elements as there
+      // are patterns (at least as many, with a trailing `rest*`), each matched in its place. Read as a case class it
+      // was tested for a tag no array has, so it never matched, and a pattern that should have did not.
+      case Unapply(fun, _, subs) if fun.symbol.exists && fun.symbol.name == "unapplySeq" &&
+          fun.symbol.owner.fullName.startsWith("scala.collection") =>
+        def starred(p: Tree): Boolean = p match {
+          case Bind(_, inner) => starred(inner)
+          case Typed(_, tpt) => tpt.tpe.typeSymbol.name == "<repeated>" || tpt.tpe.show.endsWith("*")
+          case _ => false
+        }
+        val star = subs.lastOption.exists(starred)
+        val fixed = if (star) subs.init else subs
+        val size = if (star) s"$subj.count() >= ${fixed.size}" else s"$subj.count() = ${fixed.size}"
+        val elems = fixed.zipWithIndex.map { case (sp, i) => patternTest(sp, s"$subj[$i]") }
+        val rest = subs.lastOption.filter(_ => star).toList.collect { case Bind(name, _) =>
+          s"${brLocal(name)} = _drop($subj, ${fixed.size})" }
+        ((s"(type($subj) = \"roArray\")" :: s"($size)" :: elems.map(_._1)).filter(_ != "true").mkString(" and "),
+          elems.flatMap(_._2) ++ rest)
       // Option lowers to a nullable: `Some(x)` is any non-invalid value, bound as-is.
       case u @ Unapply(fun, _, subs)
           if subs.size == 1 && { val c = patternClass(u); c.exists && c.fullName == "scala.Some" } =>
