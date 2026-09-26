@@ -935,8 +935,9 @@ object Host {
     bitmaps.put(uri, b)
     bitmapBytes += b.getAllocationByteCount.toLong
     while (bitmapBytes > bitmapBudget && bitmaps.size > 1) {
-      // a downloaded picture goes before one of the APK's own: those are decoded on the thread that draws, and a
-      // theme's backdrop let go under a rail of posters was decoded again, a frame lost each time, as Home was walked
+      // a downloaded picture goes before one of the APK's own: those are decoded again whenever they are wanted, the
+      // smaller ones on the thread that draws, and a theme's backdrop let go under a rail of posters was decoded again
+      // each time Home was walked
       val oldest = bitmaps.find(b => RenderNode.fetched(b._1)).getOrElse(bitmaps.head)
       bitmaps.remove(oldest._1)
       bitmapBytes -= oldest._2.getAllocationByteCount.toLong
@@ -968,41 +969,71 @@ object Host {
   /** What is on its way, and everyone waiting on it. */
   private val pending = mutable.Map.empty[String, List[Bitmap => Unit]]
 
-  /** A bitmap by URI, then `done` on the main thread: at once from the APK or the cache, after a download on one of
-    * the loading threads (`null` if it cannot be had). */
+  /** A bitmap by URI, then `done` on the main thread: at once from the cache or, for a small one, the APK; after a
+    * download, or the decoding of a large one of the APK's own, on one of the loading threads (`null` if it cannot be
+    * had). */
   def bitmapThen(uri: String)(done: Bitmap => Unit): Unit = held(uri) match {
     case Some(b) => done(b)
     case None if uri.startsWith("http") || uri.startsWith("file:") =>
-      // one fetch per address, however many ask for it: a rail shows the same artwork more than once, and each
-      // picture asks twice over (its natural size, then its pixels)
-      pending.get(uri) match {
-        case Some(waiting) => pending(uri) = done :: waiting
-        case None =>
-          pending(uri) = List(done)
-          loaders.execute(() => {
-            val b =
-              try {
-                val connection = new java.net.URL(uri).openConnection()
-                if (agent.nonEmpty) connection.setRequestProperty("User-Agent", agent)
-                // a network gone away leaves a read waiting for ever otherwise, and the loading threads with it: no
-                // picture loads again until the app is restarted
-                connection.setConnectTimeout(10000)
-                connection.setReadTimeout(20000)
-                val in = connection.getInputStream
-                try BitmapFactory.decodeStream(in) finally in.close()
-              } catch {
-                case t: Exception =>
-                  Platform.logError("Loading " + uri, t)
-                  null
-              }
-            activity.runOnUiThread(() => {
-              keep(uri, b)
-              pending.remove(uri).getOrElse(Nil).reverse.foreach(_(b))
-            })
-          })
+      elsewhere(uri, done) {
+        val connection = new java.net.URL(uri).openConnection()
+        if (agent.nonEmpty) connection.setRequestProperty("User-Agent", agent)
+        // a network gone away leaves a read waiting for ever otherwise, and the loading threads with it: no
+        // picture loads again until the app is restarted
+        connection.setConnectTimeout(10000)
+        connection.setReadTimeout(20000)
+        val in = connection.getInputStream
+        try BitmapFactory.decodeStream(in) finally in.close()
       }
-    case None => done(bitmap(uri))
+    case None if pixels(uri) <= decodedHere => done(bitmap(uri))
+    case None =>
+      elsewhere(uri, done) {
+        val in = activity.getAssets.open(uri)
+        try BitmapFactory.decodeStream(in) finally in.close()
+      }
   }
+
+  /** `load` on one of the loading threads, then everyone waiting on `uri` on the main thread: one load per address,
+    * however many ask for it, since a rail shows the same artwork more than once, and each picture asks twice over
+    * (its natural size, then its pixels). */
+  private def elsewhere(uri: String, done: Bitmap => Unit)(load: => Bitmap): Unit = pending.get(uri) match {
+    case Some(waiting) => pending(uri) = done :: waiting
+    case None =>
+      pending(uri) = List(done)
+      loaders.execute(() => {
+        val b =
+          try load
+          catch {
+            case t: Exception =>
+              Platform.logError("Loading " + uri, t)
+              null
+          }
+        activity.runOnUiThread(() => {
+          keep(uri, b)
+          pending.remove(uri).getOrElse(Nil).reverse.foreach(_(b))
+        })
+      })
+  }
+
+  /** The most pixels one of the APK's own pictures may have and still be decoded on the thread that asked for it: an
+    * icon, a mark or a weather glyph is, so it is drawn along with whatever asked for it. A picture the size of the
+    * screen (a theme's backdrop, 1920 by 1080) is decoded on a loading thread as a download is: decoding it on the
+    * thread that draws held a television's frame for 40ms, and what shows one keeps what it had until it has come. */
+  private val decodedHere: Long = 1000L * 1000L
+
+  /** Each asset's size in pixels, read once from its header. */
+  private val assetPixels = mutable.Map.empty[String, Long]
+
+  private def pixels(uri: String): Long = assetPixels.getOrElseUpdate(uri,
+    try {
+      val in = activity.getAssets.open(uri)
+      try {
+        val bounds = new BitmapFactory.Options
+        bounds.inJustDecodeBounds = true
+        BitmapFactory.decodeStream(in, null, bounds)
+        bounds.outWidth.toLong * bounds.outHeight.toLong
+      } finally in.close()
+    } catch { case _: java.io.IOException => 0L })
 
   /** Layout units to screen pixels: the display's density, so a TV or a phone is laid out in the same units its own
     * apps are (1 on a launch that pins a viewport, whose frame is compared pixel for pixel). */
