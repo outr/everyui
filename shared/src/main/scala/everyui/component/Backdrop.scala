@@ -2,6 +2,7 @@ package everyui.component
 
 import everyui.easing.Easing
 import everyui.image.Image
+import everyui.render.Platform
 import everyui.task.*
 import reactify.*
 
@@ -42,27 +43,32 @@ class Backdrop extends Container {
   source.attach { requested =>
     failed @= false
     if (crossfade() && requested.nonEmpty) fadeTo(0.0, Backdrop.fadeOut)
-    load(requested, requested)
+    load(requested, requested, 0)
   }
   size.width.attach(_ => place())
   size.height.attach(_ => place())
   alignX.attach(_ => place())
   alignY.attach(_ => place())
 
-  /** Load `target` for the source `requested` and, once it has arrived and nothing newer has been asked for, show it.
-    * An image that comes back with no size did not load: the `fallbackSource` is tried then, where there is one. */
-  private def load(requested: String, target: String): Unit =
+  /** Load `target` for the source `requested` and, once it has arrived, show it. An image that comes back with no size
+    * did not load: the `fallbackSource` is tried then, where there is one; otherwise it is asked for again, a beat later
+    * and a few times over, since on a Roku the loader saturates when a screen builds many pictures at once (a cast
+    * montage) and some time out. Re-requesting also sets the view loading afresh, so a display that dropped its own
+    * load is started again; and a spurious empty never overwrites a picture already shown. */
+  private def load(requested: String, target: String, attempt: Int): Unit =
     if (target.isEmpty) show(Image.empty)
     else Image(target).map { loaded =>
       if (source() == requested) {
         if (loaded.width > 0.0 && loaded.height > 0.0) show(loaded)
         else if (target == requested && fallbackSource().nonEmpty && fallbackSource() != requested)
-          load(requested, fallbackSource())
-        // not to be had: fading, the picture that was showing comes back up rather than leaving the box faded out
+          load(requested, fallbackSource(), 0)
+        else if (attempt < Backdrop.retries)
+          Platform.after(Backdrop.retryDelay * (attempt + 1),
+            () => if (source() == requested) load(requested, target, attempt + 1))
+        // given up on: the picture that was showing comes back up rather than leaving the box faded out
         else {
           failed @= true
           if (crossfade()) fadeTo(1.0, Backdrop.fadeIn)
-          else show(loaded)
         }
       }
     }.startUnit()
@@ -94,6 +100,10 @@ class Backdrop extends Container {
 }
 
 object Backdrop {
+  /** How many times a picture that came back empty is asked for again before it is let go. */
+  private val retries: Int = 3
+  /** The wait before the next try, times the try's number, so it lengthens while the loader stays busy. */
+  private val retryDelay: Double = 0.6
   /** How long what is showing takes to fade out once another picture is asked for, and the new one to fade up. */
   private val fadeOut: FiniteDuration = 200.millis
   private val fadeIn: FiniteDuration = 380.millis

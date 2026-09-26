@@ -796,15 +796,84 @@ sub uiSetImageSource(node as object, uri as string)
     if node.hasField("uri") then node.uri = uri
 end sub
 
+' Decode a picture at the size it is actually drawn, so the resampling is the DECODER's. Left to itself the
+' renderer shrinks the full-size bitmap instead, and its scaler is the crude one: the wordmark on the loading
+' screen is a 654 pixel image drawn at about 260 on a 720p panel, and came out stepped and harsh beside the
+' splash, which the firmware blits at its own size and never scales at all.
+sub uiSetImageSized(node as object, uri as string, width as float, height as float)
+    if node = invalid then return
+    if not node.hasField("uri") then return
+    ' the size SceneGraph composes at, NOT the panel's: the scene is laid out in the 1920x1080 design space and the
+    ' box scales the finished frame to the panel afterwards. Decoding at panel pixels handed the renderer a picture
+    ' two thirds the size it needed and it enlarged it again, which turned every poster soft.
+    w = Int(width + 0.5)
+    h = Int(height + 0.5)
+    sized = w >= 1 and h >= 1 and node.hasField("loadDisplayMode")
+    if sized and (node.loadWidth <> w or node.loadHeight <> h)
+        node.loadDisplayMode = "scaleToFit"
+        node.loadWidth = w
+        node.loadHeight = h
+        ' the load size has to be in place BEFORE the uri, or the picture is already on its way at its own size
+        if node.uri <> "" then node.uri = ""
+        node.uri = uri
+    else if node.uri <> uri
+        node.uri = uri
+    end if
+end sub
+
 sub uiRemove(node as object)
     if node = invalid then return
     p = node.getParent()
     if p <> invalid then p.removeChild(node)
 end sub
 
-' Load an image off-screen to learn its natural size, then call `loaded(width,
-' height)`. SceneGraph reports it through the Poster's loadStatus field.
+' Load an image off-screen to learn its natural size, then call `loaded(width, height)`. SceneGraph reports it
+' through the Poster's loadStatus field.
+'
+' The loads are throttled: at most uiImageConcurrency() measuring Posters load at once, the rest waiting in a queue
+' that starts the next one as each in flight reaches ready or failed. A screen that builds many pictures in one frame
+' (a cast montage fires a Poster apiece) otherwise saturates the loader, and the ones that lose the race time out and
+' come back a zero size — an empty circle, for good, with nothing to draw. Spreading the burst over time, the way a
+' scrolling rail does, is what keeps them from failing at all; a bounded re-queue on failure is the safety net for a
+' genuinely transient one, and by going to the back of the queue it lands after the burst has drained rather than
+' beating against a loader that is still busy.
+'
+' A picture in the package is read from the box itself, at once, and never waits in the queue: a weather scene's forty
+' icons, queued with the rest, held a screensaver's cast faces and its next backdrop behind them long enough for that
+' backdrop's wait to run out, and the rotation stood still on the cast with no faces in it.
 sub uiLoadImage(uri as string, loaded as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiImageQueue = invalid then ga.uiImageQueue = []
+    job = { uri: uri, loaded: loaded, tries: 0, local: LCase(Left(uri, 4)) = "pkg:" }
+    if job.local
+        uiImageStart(job)
+    else
+        ga.uiImageQueue.Push(job)
+        uiImagePump()
+    end if
+end sub
+
+' At most this many measuring Posters loading over the network at once. Three kept a cast montage from saturating the
+' loader, but left a screen that wanted twenty pictures seconds behind; six keeps the burst spread without the wait.
+function uiImageConcurrency() as integer
+    return 6
+end function
+
+' Start as many waiting loads as the concurrency limit allows.
+sub uiImagePump()
+    ga = GetGlobalAA()
+    if ga.uiImageLoads = invalid then ga.uiImageLoads = {}
+    if ga.uiImageActive = invalid then ga.uiImageActive = 0
+    if ga.uiImageSeq = invalid then ga.uiImageSeq = 0
+    while ga.uiImageActive < uiImageConcurrency() and ga.uiImageQueue.Count() > 0
+        job = ga.uiImageQueue.Shift()
+        ga.uiImageActive = ga.uiImageActive + 1
+        uiImageStart(job)
+    end while
+end sub
+
+' A measuring Poster for `job`, loading.
+sub uiImageStart(job as object)
     ga = GetGlobalAA()
     if ga.uiImageLoads = invalid then ga.uiImageLoads = {}
     if ga.uiImageSeq = invalid then ga.uiImageSeq = 0
@@ -812,10 +881,10 @@ sub uiLoadImage(uri as string, loaded as dynamic)
     p = CreateObject("roSGNode", "Poster")
     p.id = "uiImageLoad" + ga.uiImageSeq.ToStr()
     p.visible = false
-    ga.uiImageLoads[p.id] = { poster: p, loaded: loaded }
+    ga.uiImageLoads[p.id] = { poster: p, loaded: job.loaded, uri: job.uri, tries: job.tries, local: job.local }
     ga.appScene.appendChild(p)
     p.observeField("loadStatus", "uiOnImageLoadStatus")
-    p.uri = uri
+    p.uri = job.uri
 end sub
 
 sub uiOnImageLoadStatus(event as object)
@@ -827,8 +896,19 @@ sub uiOnImageLoadStatus(event as object)
     if entry = invalid then return
     ga.uiImageLoads.Delete(p.id)
     ga.appScene.removeChild(p)
-    ' bitmapWidth/Height come back scaled from the device's UI resolution to the
-    ' channel's 1080p design space; report the image's own pixels, as a browser does.
+    if not entry.local then ga.uiImageActive = ga.uiImageActive - 1
+    ' a picture that would not load is said, with where it was, since what it was is otherwise lost with it
+    if status = "failed" then print "[image] failed (try "; entry.tries; ") "; entry.uri
+    ' a failure once the loader is no longer saturated is more likely a genuinely transient one: send it to the back
+    ' of the queue to try again, a few times over, before giving up
+    if status = "failed" and entry.tries < 4 and not entry.local
+        ga.uiImageQueue.Push({ uri: entry.uri, loaded: entry.loaded, tries: entry.tries + 1, local: false })
+        uiImagePump()
+        return
+    end if
+    uiImagePump()
+    ' bitmapWidth/Height come back scaled from the device's UI resolution to the channel's 1080p design space; report
+    ' the image's own pixels, as a browser does.
     scale = CreateObject("roDeviceInfo").GetUIResolution().height / 1080.0
     RtInvoke(entry.loaded, [p.bitmapWidth * scale, p.bitmapHeight * scale])
 end sub
@@ -915,11 +995,16 @@ end function
 ' "" for a document that is not there, which is also what an empty one reads as: a caller storing "" is storing
 ' nothing, and asking for it back gets nothing.
 function uiStoreGet(space as string, key as string) as string
-    return ReadAsciiFile(uiStorePath(space, key))
+    text = ReadAsciiFile(uiStorePath(space, key))
+    ' a missing file reads as invalid on some boxes and "" on others; both mean there is nothing kept here, and
+    ' handing invalid up as though it were a document is how it reaches ParseJSON and takes the app down with it
+    if text = invalid then return ""
+    return text
 end function
 
 sub uiStorePut(space as string, key as string, value as string)
-    WriteAsciiFile(uiStorePath(space, key), value)
+    ok = WriteAsciiFile(uiStorePath(space, key), value)
+    if not ok then print "[store] WRITE FAILED "; key; " ("; Len(value); " bytes)"
 end sub
 
 sub uiStoreDelete(space as string, key as string)

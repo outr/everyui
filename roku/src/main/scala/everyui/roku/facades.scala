@@ -141,6 +141,10 @@ class SGNode
 @native object uiSetImageSource {
   def apply(node: SGNode, uri: String): Unit = native.value
 }
+/** The picture, decoded at the size it is drawn. */
+@native object uiSetImageSized {
+  def apply(node: SGNode, uri: String, width: Double, height: Double): Unit = native.value
+}
 @native object uiRemove {
   def apply(node: SGNode): Unit = native.value
 }

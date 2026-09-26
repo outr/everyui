@@ -56,6 +56,9 @@ class RenderNode(val sg: SGNode) {
   // Square, the fill is a Rectangle behind the children: a container is a Group, which draws nothing (uiFill)
   private var fillRect: Option[SGNode] = None
   private var edgeShape: Option[SGNode] = None
+  // The picture this node shows, if it is an image: kept because a picture is set BEFORE its size (an ImageView
+  // learns the size FROM the picture), so the load can be told the size as soon as the box is known.
+  private var imageUri: String = ""
 
   /** Layout units to pixels: the runtime's scale (2, a TV's density), applied here rather than to the root, so text is
     * drawn at its size on the screen instead of drawn small and enlarged. */
@@ -203,11 +206,13 @@ class RenderNode(val sg: SGNode) {
   def setWidth(width: Double): Unit = {
     boxWidth = width
     uiSetWidth(sg, px(width))
+    if (imageUri.nonEmpty) drawImage()
     if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty || fillRect.nonEmpty) paint()
   }
   def setHeight(height: Double): Unit = {
     boxHeight = height
     uiSetHeight(sg, px(height))
+    if (imageUri.nonEmpty) drawImage()
     if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty || fillRect.nonEmpty) paint()
   }
 
@@ -262,7 +267,14 @@ class RenderNode(val sg: SGNode) {
     spaceLines()
   }
 
-  def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
+  def setImageSource(uri: String): Unit = {
+    imageUri = uri
+    drawImage()
+  }
+  private def drawImage(): Unit =
+    if (imageUri.isEmpty) uiSetImageSource(sg, "")
+    else if (boxWidth > 0.0 && boxHeight > 0.0) uiSetImageSized(sg, imageUri, px(boxWidth), px(boxHeight))
+    else uiSetImageSource(sg, imageUri)
   /** The picture in one colour, its transparency kept (a Poster's blend colour on a white picture), or as it is. */
   def setTint(hex: String): Unit = uiSetTint(sg, hex)
 
