@@ -1321,6 +1321,8 @@ object Platform {
     if (on) Host.activity.getWindow.addFlags(flag) else Host.activity.getWindow.clearFlags(flag)
   }
 
+  /** Whether copyText reaches a clipboard: it does. */
+  def clipboard(): Boolean = true
   def copyText(text: String): Unit = {
     val manager = Host.activity.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[android.content.ClipboardManager]
     manager.setPrimaryClip(android.content.ClipData.newPlainText("everyui", text))

@@ -815,6 +815,8 @@ object Platform {
     * server refuses a bare `Java/21`. Before the first picture loads (the JDK reads it once). */
   def identify(app: String): Unit = System.setProperty("http.agent", app)
 
+  /** Whether copyText reaches a clipboard: it does. */
+  def clipboard(): Boolean = true
   def copyText(text: String): Unit = {
     val content = new ClipboardContent()
     content.putString(text)

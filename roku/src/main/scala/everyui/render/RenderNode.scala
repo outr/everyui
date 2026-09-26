@@ -600,6 +600,8 @@ object Platform {
   def afterFirstPaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = ()
+  /** Whether copyText reaches a clipboard: a channel has none, so a caller offers something else or nothing. */
+  def clipboard(): Boolean = false
   def copyText(text: String): Unit = ()
   /** The device keeps its own screen timing here. */
   def keepAwake(on: Boolean): Unit = ()

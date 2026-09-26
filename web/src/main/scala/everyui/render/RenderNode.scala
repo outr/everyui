@@ -833,6 +833,8 @@ object Platform {
   }
   private var wakeSentinel: Option[js.Dynamic] = None
 
+  /** Whether copyText reaches a clipboard: it does. */
+  def clipboard(): Boolean = true
   def copyText(text: String): Unit = {
     val clipboard = dom.window.navigator.asInstanceOf[js.Dynamic].clipboard
     if (!js.isUndefined(clipboard)) clipboard.writeText(text)
