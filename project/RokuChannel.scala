@@ -157,6 +157,14 @@ object RokuChannel {
     manifest
   }
 
+  /** The manifest's build number set on its own: a store upload has to be a higher version than the one before it, and
+    * a release uploaded again (a fix to its package) keeps its major and minor. */
+  def build(out: File, number: Int): File = {
+    val manifest = out / "manifest"
+    IO.writeLines(manifest, IO.readLines(manifest).map(l => if (l.startsWith("build_version=")) "build_version=" + number else l))
+    manifest
+  }
+
   /** A signed package of the channel in `out`, for the channel store, made the only way Roku makes one: on a device
     * keyed with the developer's signing key (its `genkey`, once, or a rekey from an earlier package of the same key).
     * The channel is sideloaded to `ip` (its developer password `devPassword`), packaged there with the key's password,
