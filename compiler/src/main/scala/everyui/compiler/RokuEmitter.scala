@@ -3261,10 +3261,20 @@ class RokuEmitter(
       |    screen.show()
       |    input = CreateObject("roInput")
       |    input.setMessagePort(port)
+      |    ' how much of its memory the channel is using, said on the console every half minute and when the box warns
+      |    ' of it: a channel over its limit is closed by the box with nothing but EXIT_CHANNEL_MEM_LIMIT_FG to show for it
+      |    memory = CreateObject("roAppMemoryMonitor")
+      |    memory.setMessagePort(port)
+      |    memory.EnableMemoryWarningEvent(true)
+      |    print "[memory] limit "; memory.GetChannelMemoryLimit(); " KB"
       |    while true
-      |        msg = wait(0, port)
+      |        msg = wait(30000, port)
       |        kind = type(msg)
-      |        if kind = "roSGScreenEvent"
+      |        if msg = invalid
+      |            print "[memory] "; memory.GetMemoryLimitPercent(); "% of the limit, "; memory.GetChannelAvailableMemory(); " KB free"
+      |        else if kind = "roAppMemoryNotificationEvent"
+      |            print "[memory] WARNING "; FormatJson(msg.GetInfo())
+      |        else if kind = "roSGScreenEvent"
       |            if msg.isScreenClosed() then return
       |        else if kind = "roInputEvent"
       |            if msg.isInput()
