@@ -149,14 +149,16 @@ class RenderNode(val sg: SGNode) {
   /** Detach from the parent, if attached. */
   def remove(): Unit = uiRemove(sg)
 
-  // ---- a Video or an Audio node (`Nodes.video`, `Nodes.audio`); SceneGraph has no volume for either, and a video
-  // letterboxes rather than filling its box ----
-  // a Roku video takes its headers on the content node it is given; nothing sends any yet
-  def setMediaHeaders(headers: Map[String, String]): Unit = ()
+  // ---- a Video or an Audio node (`Nodes.video`, `Nodes.audio`); SceneGraph has no volume for either and no rate, and a
+  // video letterboxes rather than filling its box ----
+  // the headers go on the content node the source is given, and with every request the player makes for it
+  def setMediaHeaders(headers: Map[String, String]): Unit =
+    uiSetMediaHeaders(sg, headers.toList.map(h => h._1 + ":" + h._2))
   def setMediaSource(url: String): Unit = uiSetMediaSource(sg, url)
   /** Where the next source starts, in seconds: its content node's PlayStart, so the stream opens there. */
   def setMediaStart(seconds: Double): Unit = uiSetMediaStart(sg, seconds)
-  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit =
+    uiSetMediaSidecars(sg, sidecars.map(s => List(s.url, s.label, s.language)))
   def setMediaPlaying(playing: Boolean): Unit = uiSetMediaPlaying(sg, playing)
   def setMediaLoop(loop: Boolean): Unit = uiSetMediaLoop(sg, loop)
   def setMediaMuted(muted: Boolean): Unit = uiSetMediaMuted(sg, muted)
@@ -167,11 +169,13 @@ class RenderNode(val sg: SGNode) {
   def setMediaBuffering(named: String): Unit = ()
   // nowhere of its own to keep a clip: every one is fetched as it plays
   def setMediaCached(cached: Boolean): Unit = ()
-  // it does not say whether it is waiting; the playhead standing still is what tells a viewer
-  def mediaBuffering(): Boolean = false
-  // nothing here counts what the link is carrying
-  def mediaBandwidth(): Long = 0L
-  def mediaSize(): (Double, Double) = (0.0, 0.0)
+  def mediaBuffering(): Boolean = uiMediaBuffering(sg)
+  // what the link was measured carrying when the stream was chosen
+  def mediaBandwidth(): Long = uiMediaBandwidth(sg)
+  def mediaSize(): (Double, Double) = {
+    val size = uiMediaSize(sg)
+    (size.head, size(1))
+  }
   /** The words on screen: "" here, where the platform draws its own subtitles. */
   def mediaCues(): String = ""
   def mediaCueList(): List[everyui.component.MediaCue] = Nil
@@ -188,19 +192,40 @@ class RenderNode(val sg: SGNode) {
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
 
-  /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
-  def setMediaLanguages(audio: String, text: String): Unit = ()
+  /** What to hear and read this in: chosen from its tracks once it is playing, where it has one in that language. */
+  def setMediaLanguages(audio: String, text: String): Unit = {
+    wantAudio = audio
+    wantText = text
+  }
+  private var wantAudio = ""
+  private var wantText = ""
 
-  def mediaTracks(): List[everyui.component.MediaTrack] = Nil
+  def mediaTracks(): List[everyui.component.MediaTrack] = uiMediaTracks(sg).map { line =>
+    val p = line.split('|')
+    everyui.component.MediaTrack(if (p.length > 1) p(1) else "", p(0), if (p.length > 2) p(2) else "",
+      if (p.length > 3) p(3) else "")
+  }
+  // the languages asked for, from the tracks it turned out to have
+  private def chooseLanguages(): Unit = {
+    val tracks = mediaTracks()
+    List(("audio", wantAudio), ("text", wantText)).filter(w => w._2.nonEmpty).foreach { w =>
+      val tag = everyui.component.MediaTrack.languageTag(w._2)
+      tracks.find(t => t.kind == w._1 && everyui.component.MediaTrack.languageTag(t.language) == tag)
+        .foreach(t => selectMediaTrack(t.kind, t.id))
+    }
+  }
   /** What was decoded: nothing this player says. */
   def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
-  def selectMediaTrack(kind: String, id: String): Unit = ()
+  def selectMediaTrack(kind: String, id: String): Unit = uiSelectMediaTrack(sg, kind, id)
   def setMediaCover(cover: Boolean): Unit = ()
   def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = uiGetMediaPosition(sg)
   def getMediaDuration(): Double = uiGetMediaDuration(sg)
   def seekMedia(seconds: Double): Unit = uiSeekMedia(sg, seconds)
-  def onMediaEvent(f: String => Unit): Unit = uiOnMediaEvent(sg, f)
+  def onMediaEvent(f: String => Unit): Unit = uiOnMediaEvent(sg, e => {
+    if (e == "ready") chooseLanguages()
+    f(e)
+  })
   def releaseMedia(): Unit = uiReleaseMedia(sg)
 
   def setWidth(width: Double): Unit = {

@@ -374,3 +374,30 @@ class SGNode
 @native object uiInstallStore {
   def apply(): String = native.value
 }
+/** A player's headers ("Name:Value"), subtitle files ([url, label, language]) and languages, for its next source. */
+@native object uiSetMediaHeaders {
+  def apply(node: SGNode, headers: List[String]): Unit = native.value
+}
+@native object uiSetMediaSidecars {
+  def apply(node: SGNode, sidecars: List[List[String]]): Unit = native.value
+}
+@native object uiSetMediaLanguages {
+  def apply(node: SGNode, audio: String, text: String): Unit = native.value
+}
+/** Its tracks, each "kind|id|language|label", and one chosen. */
+@native object uiMediaTracks {
+  def apply(node: SGNode): List[String] = native.value
+}
+@native object uiSelectMediaTrack {
+  def apply(node: SGNode, kind: String, id: String): Unit = native.value
+}
+/** Whether it is waiting, what the link carries (bits a second), and the picture's size ([width, height]). */
+@native object uiMediaBuffering {
+  def apply(node: SGNode): Boolean = native.value
+}
+@native object uiMediaBandwidth {
+  def apply(node: SGNode): Long = native.value
+}
+@native object uiMediaSize {
+  def apply(node: SGNode): List[Double] = native.value
+}

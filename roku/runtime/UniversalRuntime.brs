@@ -1530,7 +1530,7 @@ sub uiMediaFields(n as object)
     if ga.uiMediaSeq = invalid then ga.uiMediaSeq = 0
     ga.uiMediaSeq = ga.uiMediaSeq + 1
     n.id = "uiMedia" + ga.uiMediaSeq.ToStr()
-    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false, uiStart: 0.0 })
+    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false, uiStart: 0.0, uiHeaders: [], uiSidecars: [], uiAudioLanguage: "", uiTextLanguage: "" })
 end sub
 
 sub uiSetMediaSource(node as object, url as string)
@@ -1543,14 +1543,13 @@ sub uiSetMediaSource(node as object, url as string)
     ' where it starts, said with the content so the stream opens there rather than seeking after it; once
     if node.uiStart > 0 then c.PlayStart = Int(node.uiStart)
     node.uiStart = 0.0
-    lower = LCase(url)
-    if Instr(1, lower, ".m3u8") > 0
-        c.streamFormat = "hls"
-    else if Instr(1, lower, ".mp3") > 0
-        c.streamFormat = "mp3"
-    else if Instr(1, lower, ".mp4") > 0
-        c.streamFormat = "mp4"
-    end if
+    format = uiStreamFormat(url)
+    if format <> "" then c.streamFormat = format
+    ' the headers go with every request the player makes for it, an HLS playlist's segments and keys as much as the
+    ' playlist (a Jellyfin or Audiobookshelf stream that takes its token no other way)
+    if node.uiHeaders.Count() > 0 then c.HttpHeaders = node.uiHeaders
+    ' and subtitle files that are not inside it, offered beside its own tracks
+    if node.uiSidecars.Count() > 0 then c.SubtitleTracks = node.uiSidecars
     node.content = c
     node.loop = node.uiLoop
     if node.uiPlaying then node.control = "play"
@@ -1726,4 +1725,108 @@ function uiEmojiText(text as string) as string
         end if
     end for
     return out.Trim()
+end function
+
+' ── what a player is told before its source, and what it says once playing ──
+
+' What a stream is, from its address: an HLS playlist wherever its path or query says so (Jellyfin's master.m3u8,
+' Audiobookshelf's /hls/, a transcoder's format=hls), DASH, or a file by its extension; "" leaves it to the player.
+function uiStreamFormat(url as string) as string
+    lower = LCase(url)
+    q = Instr(1, lower, "?")
+    path = lower
+    if q > 0 then path = Left(lower, q - 1)
+    if Instr(1, lower, ".m3u8") > 0 or Instr(1, path, "/hls/") > 0 or Instr(1, lower, "format=hls") > 0 or Instr(1, lower, "protocol=hls") > 0 or Instr(1, lower, "container=m3u8") > 0 then return "hls"
+    if Instr(1, lower, ".mpd") > 0 or Instr(1, lower, "format=dash") > 0 then return "dash"
+    if Right(path, 4) = ".mp3" then return "mp3"
+    if Right(path, 4) = ".mp4" or Right(path, 4) = ".m4v" or Right(path, 4) = ".mov" then return "mp4"
+    if Right(path, 4) = ".m4a" or Right(path, 4) = ".m4b" then return "mp4"
+    if Right(path, 4) = ".mkv" then return "mkv"
+    if Right(path, 5) = ".flac" then return "flac"
+    return ""
+end function
+
+' The headers for the next source, as "Name:Value" lines.
+sub uiSetMediaHeaders(node as object, headers as object)
+    if node <> invalid then node.uiHeaders = headers
+end sub
+
+' Subtitle files for the next source: each [url, label, language].
+sub uiSetMediaSidecars(node as object, sidecars as object)
+    if node = invalid then return
+    tracks = []
+    for each s in sidecars
+        tracks.push({ TrackName: s[0], Description: s[1], Language: s[2] })
+    end for
+    node.uiSidecars = tracks
+end sub
+
+' The languages to hear and read it in, chosen from its tracks once it is playing (uiMediaLanguages); "" for its own.
+sub uiSetMediaLanguages(node as object, audio as string, text as string)
+    if node = invalid then return
+    node.uiAudioLanguage = audio
+    node.uiTextLanguage = text
+end sub
+
+' Its tracks, each "kind|id|language|label": the audio a Video node lists, and its subtitles.
+function uiMediaTracks(node as object) as object
+    out = []
+    if node = invalid or not node.hasField("availableAudioTracks") then return out
+    audio = node.availableAudioTracks
+    if audio <> invalid
+        for each t in audio
+            out.push("audio|" + uiStrOf(t.Track) + "|" + uiStrOf(t.Language) + "|" + uiStrOf(t.Name))
+        end for
+    end if
+    text = node.availableSubtitleTracks
+    if text <> invalid
+        for each t in text
+            out.push("text|" + uiStrOf(t.TrackName) + "|" + uiStrOf(t.Language) + "|" + uiStrOf(t.Description))
+        end for
+    end if
+    return out
+end function
+
+function uiStrOf(v as dynamic) as string
+    if v = invalid then return ""
+    if type(v) = "roString" or type(v) = "String" then return v.Replace("|", "/")
+    return v.ToStr()
+end function
+
+' A track to hear or read by its id; text "" shows none. Captions are the device's to show, so turning a track on or
+' off is its caption mode, as Roku's own caption setting does.
+sub uiSelectMediaTrack(node as object, kind as string, id as string)
+    if node = invalid or not node.hasField("availableAudioTracks") then return
+    if kind = "audio"
+        if id <> "" then node.audioTrack = id
+    else if id = ""
+        node.globalCaptionMode = "Off"
+    else
+        node.subtitleTrack = id
+        node.globalCaptionMode = "On"
+    end if
+end sub
+
+' Whether it is waiting for more of the stream rather than playing.
+function uiMediaBuffering(node as object) as boolean
+    if node = invalid then return false
+    return node.state = "buffering"
+end function
+
+' What the link was measured carrying when the stream was chosen, in bits a second; 0 where it has not said.
+function uiMediaBandwidth(node as object) as dynamic
+    if node = invalid or not node.hasField("streamInfo") then return 0
+    info = node.streamInfo
+    if info = invalid then return 0
+    b = info.measuredBitrate
+    if b = invalid then return 0
+    return b
+end function
+
+' The picture's size as the segment playing has it: [width, height], or [0, 0].
+function uiMediaSize(node as object) as object
+    if node = invalid or not node.hasField("streamingSegment") then return [0.0, 0.0]
+    seg = node.streamingSegment
+    if seg = invalid or seg.width = invalid or seg.height = invalid then return [0.0, 0.0]
+    return [seg.width * 1.0, seg.height * 1.0]
 end function
