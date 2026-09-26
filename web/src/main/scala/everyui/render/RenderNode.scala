@@ -963,6 +963,8 @@ object Platform {
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 
+  /** Whether text can hold emoji: the system's fonts draw them. */
+  def emoji(): Boolean = true
   // nothing here turns speech into words
   def dictation(): Boolean = false
   def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {

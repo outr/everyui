@@ -408,6 +408,8 @@ object Platform {
   def openInstallSettings(): Unit = ()
   def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
     done(Some("Updates install only on Android"))
+  /** Whether text can hold emoji: the system draws them. */
+  def emoji(): Boolean = true
   // nothing here turns speech into words
   def dictation(): Boolean = false
   def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {

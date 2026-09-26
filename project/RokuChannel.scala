@@ -38,7 +38,10 @@ object RokuChannel {
       IO.copyFile(arabic, dir / s"fallback-arabic$suffix.ttf")
       val cjk = fonts / "noto-cjk" / s"NotoSansCJK-$weight.ttc"
       if (!cjk.exists) sys.error(s"fallbackFonts: $cjk is missing (Noto Sans CJK)")
-      val characters = (text + (32 to 126).map(_.toChar).mkString).distinct
+      // and the symbols the runtime draws in this face where the box's own has none (uiScriptOf): suits, stars, the sun, a tick
+      val symbols = "\u2600\u2601\u2602\u2603\u2605\u2606\u2660\u2661\u2662\u2663\u2664\u2665\u2666\u2667\u2668\u2669" +
+        "\u266A\u266B\u266C\u266D\u266E\u266F\u2713"
+      val characters = (text + (32 to 126).map(_.toChar).mkString + symbols).distinct
       val list = IO.createTemporaryDirectory / "characters.txt"
       IO.write(list, characters)
       // the collection's faces: 2 is Simplified Chinese, 3 Traditional

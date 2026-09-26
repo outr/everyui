@@ -1437,6 +1437,8 @@ object Platform {
   def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
     AppInstaller.install(url, progress, done)
 
+  /** Whether text can hold emoji: yes, where the app ships an emoji face for what the television's own fonts lack. */
+  def emoji(): Boolean = true
   /** Whether it can listen: a speech recognizer to turn what is said into words ([[Dictation]]). */
   def dictation(): Boolean = Dictation.available
 

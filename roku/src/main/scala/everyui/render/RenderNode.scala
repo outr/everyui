@@ -656,6 +656,9 @@ object Platform {
   def openInstallSettings(): Unit = ()
   def installApp(url: String, progress: Double => Unit, done: Option[String] => Unit): Unit =
     done(Some("Updates install only on Android"))
+  /** Whether text can hold emoji: not here, where the box's own font has none. The runtime draws the ones a Material icon
+    * means the same as, and leaves out the rest (uiEmojiText); an app puts a word where one carried it. */
+  def emoji(): Boolean = false
   // nothing here turns speech into words
   def dictation(): Boolean = false
   def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {

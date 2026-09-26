@@ -353,6 +353,12 @@ function uiScriptOf(c as integer) as string
         if (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) then return "latin"
         return ""
     end if
+    if c >= &hE000 and c <= &hF8FF then return "icon"
+    if c >= &h2000
+        ' the symbols the CJK face carries (RokuChannel.fallbackFonts adds them to its cut): suits, check marks, sun, stars
+        if (c >= &h2600 and c <= &h2603) or c = &h2605 or c = &h2606 or (c >= &h2660 and c <= &h266F) or c = &h2713 then return "cjk"
+        if uiEmojiIcon(c) <> 0 or uiEmojiDropped(c) then return "emoji"
+    end if
     if (c >= &h0600 and c <= &h06FF) or (c >= &h0750 and c <= &h077F) or (c >= &h08A0 and c <= &h08FF) then return "arabic"
     if (c >= &hFB50 and c <= &hFDFF) or (c >= &hFE70 and c <= &hFEFF) then return "arabic"
     if (c >= &h2E80 and c <= &h9FFF) or (c >= &hF900 and c <= &hFAFF) or (c >= &hFF00 and c <= &hFFEF) then return "cjk"
@@ -499,6 +505,7 @@ end function
 ' of 600 or more, when the channel has one), or "" when it ships none.
 function uiScriptFace(script as string, baseUri as string, weight as integer) as string
     if script = "latin" or script = "" then return baseUri
+    if script = "icon" then return "pkg:/fonts/MaterialIcons-Regular.ttf"
     ga = GetGlobalAA()
     if ga.uiFaceFiles = invalid then ga.uiFaceFiles = {}
     name = script
@@ -572,7 +579,10 @@ function uiRichText(label as object, text as string, baseUri as string, weight a
         n = Len(piece)
         for i = 1 to n
             s = uiScriptOf(Asc(Mid(piece, i, 1)))
-            if s = "arabic" or s = "cjk"
+            if s = "emoji"
+                ' a character the box has no glyph for: the text is drawn again without it (uiEmojiText)
+                return uiRichText(label, uiEmojiText(text), baseUri, weight, size, color)
+            else if s = "arabic" or s = "cjk" or s = "icon"
                 script = s
                 complex = true
                 exit for
@@ -1647,4 +1657,73 @@ end function
 function uiInstallStore() as string
     if CreateObject("roAppInfo").IsDev() then return "dev"
     return "roku"
+end function
+
+' ── emoji, which a Roku has no face for ──
+' Its own font draws a star and a dot and nothing else of the emoji an app writes (a date's calendar, a streak's fire, a
+' country's flag), each as an empty box. What has a Material icon of the same meaning is drawn as that icon, in the
+' text's colour (uiEmojiIcon); the rest is left out, with the space it leaves (uiEmojiDropped). Platform.emoji says so,
+' for an app to put a word where the emoji carried one (a country's code for its flag).
+
+' The Material Icons glyph an emoji is drawn as, or 0.
+function uiEmojiIcon(c as integer) as integer
+    ga = GetGlobalAA()
+    if ga.uiEmojiIcons = invalid
+        m = {}
+        m["128197"] = &hE878 ' calendar: event
+        m["128198"] = &hE878
+        m["128172"] = &hE0B7 ' speech balloon: chat
+        m["127942"] = &hEA23 ' trophy: emoji_events
+        m["128293"] = &hEF55 ' fire: local_fire_department
+        m["9889"] = &hEA0B ' high voltage: bolt
+        m["10052"] = &hEB3B ' snowflake: ac_unit
+        m["127769"] = &hE51C ' crescent moon: dark_mode
+        m["127937"] = &hF06E ' chequered flag: sports_score
+        m["128200"] = &hE8E5 ' chart increasing: trending_up
+        m["127922"] = &hEB40 ' die: casino
+        m["127919"] = &hE1B3 ' direct hit: gps_fixed
+        m["128337"] = &hE8B5 ' clock face: schedule
+        ga.uiEmojiIcons = m
+    end if
+    icon = ga.uiEmojiIcons[c.ToStr()]
+    if icon = invalid then return 0
+    return icon
+end function
+
+' Whether `c` is an emoji, or a part of one (a variation selector, a joiner, a skin tone, a flag's letters), with no
+' glyph here.
+function uiEmojiDropped(c as integer) as boolean
+    if c >= &h1F000 and c <= &h1FAFF then return true
+    if c >= &h2600 and c <= &h27BF then return true
+    if c >= &h2B00 and c <= &h2BFF then return true
+    if c = &hFE0F or c = &h200D or c = &h20E3 then return true
+    return c >= &hE0020 and c <= &hE007F
+end function
+
+' `text` with each emoji drawn as its icon, apart from the words beside it, or left out; a space the emoji leaves
+' twice over is one, and none is left at either end.
+function uiEmojiText(text as string) as string
+    out = ""
+    n = Len(text)
+    for i = 1 to n
+        ch = Mid(text, i, 1)
+        c = Asc(ch)
+        icon = 0
+        dropped = false
+        if c >= &h2000 and not ((c >= &h2600 and c <= &h2603) or c = &h2605 or c = &h2606 or (c >= &h2660 and c <= &h266F) or c = &h2713)
+            icon = uiEmojiIcon(c)
+            if icon = 0 then dropped = uiEmojiDropped(c)
+        end if
+        if icon <> 0
+            if out <> "" and Right(out, 1) <> " " then out = out + " "
+            out = out + Chr(icon) + " "
+        else if dropped
+            ' nothing
+        else if ch = " " and (out = "" or Right(out, 1) = " ")
+            ' a space the emoji left behind
+        else
+            out = out + ch
+        end if
+    end for
+    return out.Trim()
 end function
