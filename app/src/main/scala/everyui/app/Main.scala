@@ -16,6 +16,7 @@ import everyui.render.Platform
   *   hello      the original seam proof plus the frame-rate probe
   *   bench      reactify's per-operation cost
   *   easings    every easing curve as numbers
+  *   blur       blur as the screensaver draws it: a photo over its blurred copy, and a blur coming clear
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
@@ -26,5 +27,6 @@ import everyui.render.Platform
   else if (demo == "durable") DurableDemo.run()
   else if (demo == "input") InputDemo.run()
   else if (demo == "widgets") WidgetsDemo.run()
+  else if (demo == "blur") BlurDemo.run()
   else ExampleApp.main()
 }

@@ -333,11 +333,19 @@ class RenderNode(val view: View) {
   /** No shadow is drawn. */
   /** A View's own shadow, which the platform draws from its outline: the colour is the glow's, and the blur its
     * elevation. A raised node also draws above its neighbours, which is what a card growing under the focus wants. */
-  /** A blur, on Android 12 and later (a RenderEffect); drawn sharp before. */
-  def setBlur(radius: Double): Unit = if (android.os.Build.VERSION.SDK_INT >= 31) {
-    view.setRenderEffect(if (radius <= 0.0) null
-    else android.graphics.RenderEffect.createBlurEffect(radius.toFloat, radius.toFloat, android.graphics.Shader.TileMode.CLAMP))
-  }
+  /** A gaussian blur of deviation `radius` (the web's `filter: blur()`): a RenderEffect on Android 12 and later, and
+    * before it a container or a picture blurred by hand (SoftBlur); anything else is drawn sharp there. */
+  def setBlur(radius: Double): Unit =
+    if (android.os.Build.VERSION.SDK_INT >= 31) {
+      val r = SoftBlur.radius(radius).toFloat
+      view.setRenderEffect(if (radius <= 0.0) null
+      else android.graphics.RenderEffect.createBlurEffect(r, r, android.graphics.Shader.TileMode.CLAMP))
+    }
+    else view match {
+      case g: NodeGroup => g.blur(radius)
+      case p: PictureView => p.blur(radius)
+      case _ => ()
+    }
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
     if (hex.isEmpty) view.setElevation(0f)
     else {
@@ -854,6 +862,40 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
 
   override def shouldDelayChildPressedState(): Boolean = false
 
+  /** A blur drawn by hand before Android 12 (SoftBlur), made when one is first asked for. */
+  private var soft: SoftBlur = null
+
+  def blur(sigma: Double): Unit = {
+    if (soft == null) soft = new SoftBlur(this, c => drawSharp(c))
+    soft.set(sigma)
+  }
+
+  private def drawSharp(canvas: android.graphics.Canvas): Unit = super.dispatchDraw(canvas)
+
+  override def dispatchDraw(canvas: android.graphics.Canvas): Unit =
+    if (soft != null && soft.on) soft.draw(canvas) else super.dispatchDraw(canvas)
+
+  // what is inside changing means the blurred picture of it has to be taken again: Android 8 on says so here, and
+  // draws only the child again unless the group asks to be drawn again too
+  override def onDescendantInvalidated(child: View, target: View): Unit = {
+    super.onDescendantInvalidated(child, target)
+    if (soft != null && soft.on) {
+      soft.changed()
+      invalidate()
+    }
+  }
+
+  // before Android 8 it is said here, on the way up, and every group on the way is drawn again anyway
+  override def invalidateChildInParent(location: Array[Int], dirty: android.graphics.Rect): android.view.ViewParent = {
+    if (soft != null && soft.on) soft.changed()
+    super.invalidateChildInParent(location, dirty)
+  }
+
+  override def onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int): Unit = {
+    super.onSizeChanged(w, h, oldw, oldh)
+    if (soft != null) soft.changed()
+  }
+
   private def spec(size: Int): Int =
     if (size >= 0) View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY)
     else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
@@ -1163,7 +1205,7 @@ object Nodes {
 
   /** An image node — an `ImageView` stretched to its box. */
   def image(uri: String, width: Double, height: Double): RenderNode = {
-    val i = new ImageView(Host.activity)
+    val i = new PictureView(Host.activity)
     i.setScaleType(ImageView.ScaleType.FIT_XY)
     val node = new RenderNode(i)
     node.setWidth(width)
