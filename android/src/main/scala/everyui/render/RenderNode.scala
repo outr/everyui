@@ -1624,6 +1624,11 @@ object Platform {
     }
   }
 
+  /** The Jellyfin, Emby and Plex servers on the local network that answer within `seconds` ([[MediaServerSearch]]),
+    * heard by `found` on the UI thread. */
+  def findMediaServers(seconds: Double, found: List[everyui.MediaServer] => Unit): Unit =
+    MediaServerSearch.find(seconds, found)
+
   /** Finish the activity (a demo that is done); the process follows (EveryUIActivity.onDestroy). */
   def quit(): Unit = Host.activity.finish()
 

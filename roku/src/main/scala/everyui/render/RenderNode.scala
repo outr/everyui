@@ -746,6 +746,11 @@ object Platform {
   def installedApps(ids: List[String]): List[String] =
     if (ids.isEmpty) Nil else uiAppsInstalled(ids.mkString(",")).split(',').toList.filter(_.nonEmpty)
 
+  /** None yet. A Roku can ask: an roDatagramSocket with SetBroadcast(true) sends the Jellyfin and Emby questions to
+    * 255.255.255.255:7359 and the Plex GDM M-SEARCH to 239.0.0.250:32414, and hears the unicast answers on an
+    * roMessagePort within the time given. */
+  def findMediaServers(seconds: Double, found: List[everyui.MediaServer] => Unit): Unit = later(() => found(Nil))
+
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
   def localDateTime(millis: Long): String = uiLocalDateTime(millis)
 

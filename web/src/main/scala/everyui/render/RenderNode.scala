@@ -1039,10 +1039,13 @@ object Platform {
   /** The frozen frame is complete. (tools/check.sh screenshots the page itself.) */
   def frozen(): Unit = ()
 
-  /** `?name=value` in the page URL, or "" — how a launch chooses a demo (`demo`) and hands it a URL (`socket`). */
   /** No other apps to know of here. */
   def installedApps(ids: List[String]): List[String] = Nil
 
+  /** No media servers to find from a page: a browser can send no UDP. */
+  def findMediaServers(seconds: Double, found: List[everyui.MediaServer] => Unit): Unit = later(() => found(Nil))
+
+  /** `?name=value` in the page URL, or "" — how a launch chooses a demo (`demo`) and hands it a URL (`socket`). */
   def launchArg(name: String): String = {
     val value = new dom.URLSearchParams(dom.window.location.search).get(name)
     if (value == null) "" else value

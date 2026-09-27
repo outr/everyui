@@ -987,10 +987,13 @@ object Platform {
     * absent. */
   def freezeSeconds(): Double = Host.freeze
 
-  /** `--name=value` on the launch, or "". */
   /** No other apps to know of here. */
   def installedApps(ids: List[String]): List[String] = Nil
 
+  /** No media servers to find from here (the JVM could ask as Android does, but nothing here wants it yet). */
+  def findMediaServers(seconds: Double, found: List[everyui.MediaServer] => Unit): Unit = later(() => found(Nil))
+
+  /** `--name=value` on the launch, or "". */
   def launchArg(name: String): String = Host.args.getOrElse(name, "")
 
   /** Exit the process (a demo that is done). */

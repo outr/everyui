@@ -456,10 +456,15 @@ object Platform {
   /** The frozen frame is complete. (tools/tvos-run.sh reads it off the app's console.) */
   def frozen(): Unit = ()
 
-  /** `--name=value` on the launch, or "". */
   /** No other apps to know of here. */
   def installedApps(ids: List[String]): List[String] = Nil
 
+  /** None yet. tvOS can ask, but only with the com.apple.developer.networking.multicast entitlement (granted by
+    * Apple on request) and an NSLocalNetworkUsageDescription, and the system asks the viewer for the local network
+    * the first time. */
+  def findMediaServers(seconds: Double, found: List[everyui.MediaServer] => Unit): Unit = later(() => found(Nil))
+
+  /** `--name=value` on the launch, or "". */
   def launchArg(name: String): String = uiLaunchArg(name)
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
