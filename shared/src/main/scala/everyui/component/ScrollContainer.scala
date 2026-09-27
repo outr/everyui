@@ -49,6 +49,9 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   if (horizontal) {
     content.size.height := size.height
     content.size.width := content.contentWidth()
+    // and a row laid out in it runs the length of what it holds: mirrored for a right-to-left language within its
+    // width instead, which is itself the reach of the children just mirrored, it shrank to its first child
+    content.widthFollowsContent = true
   }
   else {
     content.size.width := size.width
