@@ -65,10 +65,25 @@ object RokuChannel {
       ninePatch(dir / s"fill-$r.9.png", r, 0)
       (1 to math.min(maxStroke, r)).foreach(w => ninePatch(dir / s"ring-$r-$w.9.png", r, w))
     }
+    circle(dir / "circle.png", 512)
   }
 
   /** A rounded rectangle of radius `r` (filled, or an edge `stroke` wide), with the 9-patch markers on its top row and
     * left column: the middle row and column stretch, the corners do not. */
+  /** A white disc on clear, `size` across: the mask a round picture is cut with, which a MaskGroup stretches to any size
+    * (the runtime's own masks, drawn a pixel at a time on the device, came out empty for a large round one). */
+  private def circle(file: File, size: Int): Unit = {
+    import java.awt.image.BufferedImage
+    import java.awt.{Color, RenderingHints}
+    val image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+    val g = image.createGraphics()
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    g.setColor(Color.WHITE)
+    g.fill(new java.awt.geom.Ellipse2D.Double(0.0, 0.0, size.toDouble, size.toDouble))
+    g.dispose()
+    javax.imageio.ImageIO.write(image, "png", file)
+  }
+
   private def ninePatch(file: File, r: Int, stroke: Int): Unit = {
     import java.awt.geom.{Area, RoundRectangle2D}
     import java.awt.image.BufferedImage

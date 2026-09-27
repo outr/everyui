@@ -35,7 +35,7 @@ function uiScale() as float
     ga = GetGlobalAA()
     if ga.uiScaleValue = invalid
         ga.uiScaleValue = 2.0
-        if ReadAsciiFile("pkg:/viewport.txt") <> "" then ga.uiScaleValue = 1.0
+        if uiLaunchArg("viewport") <> "" then ga.uiScaleValue = 1.0
     end if
     return ga.uiScaleValue
 end function
@@ -1086,7 +1086,11 @@ end function
 
 ' "" for a document that is not there, which is also what an empty one reads as: a caller storing "" is storing
 ' nothing, and asking for it back gets nothing.
+' Only a document the store holds is read: asking for one it does not (most of a cache's questions, the first time)
+' failed a read on the thread that draws and said so on the console, ten times over as a page came up.
 function uiStoreGet(space as string, key as string) as string
+    held = uiStoreHeld()
+    if not held.DoesExist(uiStorePrefix(space) + uiStoreSafe(key) + ".json") then return ""
     text = ReadAsciiFile(uiStorePath(space, key))
     ' a missing file reads as invalid on some boxes and "" on others; both mean there is nothing kept here, and
     ' handing invalid up as though it were a document is how it reaches ParseJSON and takes the app down with it
@@ -1096,12 +1100,30 @@ end function
 
 sub uiStorePut(space as string, key as string, value as string)
     ok = WriteAsciiFile(uiStorePath(space, key), value)
+    held = uiStoreHeld()
+    if ok then held[uiStorePrefix(space) + uiStoreSafe(key) + ".json"] = true
     if not ok then print "[store] WRITE FAILED "; key; " ("; Len(value); " bytes)"
 end sub
 
 sub uiStoreDelete(space as string, key as string)
     DeleteFile(uiStorePath(space, key))
+    held = uiStoreHeld()
+    held.Delete(uiStorePrefix(space) + uiStoreSafe(key) + ".json")
 end sub
+
+' The store's file names, listed once and kept up to date as documents are written and deleted.
+function uiStoreHeld() as object
+    ga = GetGlobalAA()
+    if ga.uiStoreFiles = invalid
+        files = {}
+        files.SetModeCaseSensitive()
+        for each name in ListDir("cachefs:/")
+            files[name] = true
+        end for
+        ga.uiStoreFiles = files
+    end if
+    return ga.uiStoreFiles
+end function
 
 ' The keys a space holds, as the file names say them -- so a key folded by uiStoreSafe comes back folded.
 function uiStoreKeys(space as string) as object
@@ -1120,6 +1142,8 @@ sub uiStoreClear(space as string)
     for each name in ListDir("cachefs:/")
         if Left(name, Len(prefix)) = prefix then DeleteFile("cachefs:/" + name)
     end for
+    ga = GetGlobalAA()
+    ga.uiStoreFiles = invalid
 end sub
 
 ' The device's language as a BCP 47 tag ("en-US"; the Roku says "en_US").
@@ -1399,7 +1423,12 @@ function uiRoundClip(node as object, existing as dynamic, width as float, height
     h = Int(height * ps + 0.5)
     r = Int(radius * ps + 0.5)
     if w < 1 or h < 1 then return group
-    uri = uiRoundMask(w, h, r)
+    ' a round one (a face) is cut by the package's disc, stretched to it: one drawn here came out empty
+    if w = h and r * 2 >= w - 1
+        uri = "pkg:/images/rr/circle.png"
+    else
+        uri = uiRoundMask(w, h, r)
+    end if
     if uri <> "" and group.maskUri <> uri
         group.maskUri = uri
         group.maskSize = [w, h]
