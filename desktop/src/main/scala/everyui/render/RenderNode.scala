@@ -988,6 +988,9 @@ object Platform {
   def freezeSeconds(): Double = Host.freeze
 
   /** `--name=value` on the launch, or "". */
+  /** No other apps to know of here. */
+  def installedApps(ids: List[String]): List[String] = Nil
+
   def launchArg(name: String): String = Host.args.getOrElse(name, "")
 
   /** Exit the process (a demo that is done). */

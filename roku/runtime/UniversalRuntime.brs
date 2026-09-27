@@ -953,6 +953,17 @@ function uiLaunchArg(name as string) as string
     return v.ToStr()
 end function
 
+' Which of `ids` (channel ids, comma-separated) are installed on this Roku, comma-separated.
+function uiAppsInstalled(ids as string) as string
+    am = CreateObject("roAppManager")
+    if am = invalid then return ""
+    found = []
+    for each id in ids.Split(",")
+        if id <> "" and am.IsAppInstalled(id, "") then found.Push(id)
+    end for
+    return found.Join(",")
+end function
+
 ' ── the channel's life: deep links, leaving and coming back ──
 
 ' `f(contentId, mediaType)` for each deep link: the one the channel was launched with (once, a turn after asking, so

@@ -164,6 +164,10 @@ class SGNode
 @native object uiLaunchArg {
   def apply(name: String): String = native.value
 }
+/** Which of the channel ids (comma-separated) are installed on this Roku, comma-separated. */
+@native object uiAppsInstalled {
+  def apply(ids: String): String = native.value
+}
 /** A packaged text file by its `pkg:/` path, or "". */
 @native object uiReadText {
   def apply(path: String): String = native.value

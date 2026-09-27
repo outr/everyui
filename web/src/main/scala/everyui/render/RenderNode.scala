@@ -1040,6 +1040,9 @@ object Platform {
   def frozen(): Unit = ()
 
   /** `?name=value` in the page URL, or "" — how a launch chooses a demo (`demo`) and hands it a URL (`socket`). */
+  /** No other apps to know of here. */
+  def installedApps(ids: List[String]): List[String] = Nil
+
   def launchArg(name: String): String = {
     val value = new dom.URLSearchParams(dom.window.location.search).get(name)
     if (value == null) "" else value

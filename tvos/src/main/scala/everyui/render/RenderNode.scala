@@ -457,6 +457,9 @@ object Platform {
   def frozen(): Unit = ()
 
   /** `--name=value` on the launch, or "". */
+  /** No other apps to know of here. */
+  def installedApps(ids: List[String]): List[String] = Nil
+
   def launchArg(name: String): String = uiLaunchArg(name)
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */

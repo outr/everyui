@@ -1612,6 +1612,18 @@ object Platform {
     if (value == null) "" else value
   }
 
+  /** Which of `ids`, Android package names, are installed here: only those the app's manifest names in its
+    * `<queries>` can be seen from Android 11 on, the rest read as absent. */
+  def installedApps(ids: List[String]): List[String] = ids.filter { id =>
+    try {
+      Host.activity.getPackageManager.getApplicationInfo(id, 0)
+      true
+    }
+    catch {
+      case _: Throwable => false
+    }
+  }
+
   /** Finish the activity (a demo that is done); the process follows (EveryUIActivity.onDestroy). */
   def quit(): Unit = Host.activity.finish()
 

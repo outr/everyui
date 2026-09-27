@@ -742,6 +742,10 @@ object Platform {
     * sideload adds it, `roku-install --add name=value`), or "". */
   def launchArg(name: String): String = uiLaunchArg(name)
 
+  /** Which of `ids`, Roku channel ids, are installed on this Roku. */
+  def installedApps(ids: List[String]): List[String] =
+    if (ids.isEmpty) Nil else uiAppsInstalled(ids.mkString(",")).split(',').toList.filter(_.nonEmpty)
+
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
   def localDateTime(millis: Long): String = uiLocalDateTime(millis)
 
