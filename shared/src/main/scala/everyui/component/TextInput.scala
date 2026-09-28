@@ -1,5 +1,6 @@
 package everyui.component
 
+import everyui.component.types.{Autofill, Semantics}
 import everyui.event.Key
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -21,6 +22,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   val submitted: Channel[String] = Channel[String]
   /** Whether the caret is in it. */
   val editing: Var[Boolean] = own(Var(false))
+  /** What it asks for, so the platform's autofill and a password manager can fill it (`Autofill`); None says nothing. */
+  val autofill: Var[Option[Autofill]] = own(Var(None))
 
   private val native = Platform.nativeInput()
   /** A keyboard at hand: the focus is the caret. */
@@ -52,6 +55,9 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
       size.width := TextInput.this.size.width() - 28.0
       size.height @= 22.0
     }
+    input.autofill := autofill()
+    // named by its label, which is drawn beside it rather than being its own
+    input.semantics := Semantics(label = title())
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)

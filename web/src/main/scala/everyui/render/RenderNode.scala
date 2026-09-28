@@ -56,6 +56,8 @@ class RenderNode(val el: html.Element) {
   def setColor(hex: String): Unit = {
     textColor = hex
     if (!textFilled) el.style.color = hex
+    // a field keeps its colour through the browser's autofill look, which would paint its words in its own
+    if (el.isInstanceOf[html.Input] || el.isInstanceOf[html.TextArea]) el.style.setProperty("--everyui-fill", hex)
   }
 
   /** A bundled face (index.html's `@font-face` rules): family, CSS weight,
@@ -522,8 +524,35 @@ class RenderNode(val el: html.Element) {
   def setPlaceholder(text: String): Unit = el.setAttribute("placeholder", text)
   /** What the keyboard's enter key says it does ("done", "search", "next", "go", "send"). */
   def setInputAction(action: String): Unit = el.setAttribute("enterkeyhint", action)
-  /** Every edit, with the new contents. */
-  def onValue(f: String => Unit): Unit = el.addEventListener("input", (_: dom.Event) => f(getValue()))
+  /** What the field asks for, by its `autocomplete` token (`everyui.component.types.Autofill.token`): the browser's
+    * autofill and a password manager go by it, by the `name` and `id` that match it, and by the keyboard it brings up
+    * on a phone. "off" keeps them all out (a search box, notes); "" says nothing. */
+  def setAutofill(token: String): Unit = {
+    def attribute(name: String, value: String): Unit =
+      if (value.isEmpty) el.removeAttribute(name) else el.setAttribute(name, value)
+    val off = token == "off"
+    attribute("autocomplete", token)
+    if (!off && token.nonEmpty && el.getAttribute("name") == null) el.setAttribute("name", token)
+    if (!off && token.nonEmpty && el.id.isEmpty) el.id = RenderNode.fieldId(token)
+    // the keyboard a phone shows; the type stays text, which keeps the caret and the selection the page's to set
+    attribute("inputmode", token match {
+      case "email" => "email"
+      case "tel" => "tel"
+      case "url" => "url"
+      case "one-time-code" | "postal-code" => "numeric"
+      case _ => ""
+    })
+    List("data-1p-ignore", "data-lpignore", "data-bwignore").foreach(a => attribute(a, if (off) "true" else ""))
+  }
+  /** Every edit, with the new contents: typed (`input`), or filled by the browser or a password manager, which say
+    * so with `input` and `change`, or only by Chrome's autofill look (the `everyui-autofill` animation starting); and
+    * read again as the field is left, for a value set with no word at all. */
+  def onValue(f: String => Unit): Unit = {
+    val changed: js.Function1[dom.Event, Unit] = (_: dom.Event) => f(getValue())
+    List("input", "change", "blur").foreach(name => el.addEventListener(name, changed))
+    el.addEventListener("animationstart", (e: dom.Event) =>
+      if (e.asInstanceOf[js.Dynamic].animationName.asInstanceOf[String] == "everyui-autofill") f(getValue()))
+  }
   /** The field taking the keyboard itself (a click, a tap, the browser's own Tab). */
   def onInputFocus(f: () => Unit): Unit = el.addEventListener("focus", (_: dom.Event) => f())
   /** The field losing the keyboard. */
@@ -598,23 +627,54 @@ object RenderNode {
 
   /** The embed keys at `el` (the page's focused element) belong to, "" for none: the name given by the nearest element
     * marked `data-everyui-embed` (an editor or other page embedded in the app; "embed" when it gives none), else
-    * "field" for a field, text area or editable element the app did not make (outside `#app`). The focus layer leaves
-    * such a key to it (`Platform.keyEmbed`), rather than moving the focus on an arrow or keeping Tab from it. */
+    * "field" for anything the app did not make (outside `#app`): a field, a frame, a password manager's menu. The focus
+    * layer leaves such a key to it (`Platform.keyEmbed`), rather than moving the focus on an arrow or keeping Tab from it. */
   def embedOf(el: dom.Element): String =
-    if (el == null || (el eq dom.document.body)) ""
+    if (el == null || (el eq dom.document.body) || (el eq dom.document.documentElement)) ""
     else {
       val embed = el.closest("[data-everyui-embed]")
-      val tag = el.tagName.toLowerCase
-      val editable = tag == "input" || tag == "textarea" || tag == "select" ||
-        el.asInstanceOf[html.Element].isContentEditable
       val app = dom.document.getElementById("app")
       if (embed != null) {
         val name = embed.getAttribute("data-everyui-embed")
         if (name == null || name.isEmpty) "embed" else name
       }
-      else if (editable && (app == null || !app.contains(el))) "field"
+      else if (app == null || !app.contains(el)) "field"
       else ""
     }
+
+  /** Whether `el` takes typing itself: a field, a box of lines, a drop-down or an editable element. */
+  def editable(el: dom.Element): Boolean = el != null && {
+    val tag = el.tagName.toLowerCase
+    tag == "input" || tag == "textarea" || tag == "select" || el.asInstanceOf[html.Element].isContentEditable
+  }
+
+  /** Whether `e` is a key the page's focused field types or edits with (a character, Backspace, Delete, the caret's
+    * keys along the line), which the browser must be left to act on whatever the app made of it: kept from the field,
+    * nothing could be typed. Enter, Escape, Tab and the up and down arrows stay the app's to take. AltGr is Ctrl+Alt. */
+  def fieldKey(e: dom.KeyboardEvent): Boolean = editable(dom.document.activeElement) && {
+    val character = e.key.codePointCount(0, e.key.length) == 1 && !e.metaKey && (!e.ctrlKey || e.altKey)
+    character || fieldKeys.contains(e.key)
+  }
+  private val fieldKeys = Set("Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End")
+
+  private var fields = Map.empty[String, Int]
+
+  /** An id for a field that asks for `token`: the token itself for the first, then "email-2" and on, so a page with
+    * two keeps them apart. */
+  def fieldId(token: String): String = {
+    val n = fields.getOrElse(token, 0) + 1
+    fields += token -> n
+    if (n == 1) token else token + "-" + n.toString
+  }
+
+  /** The page's rules for its fields under the browser's autofill: the words keep the field's colour (`--everyui-fill`)
+    * and the box keeps its own, where the browser would paint both, and the `everyui-autofill` animation starts, so a
+    * value filled without a word to the page is heard (`onValue`). */
+  val autofillStyle: String =
+    " @keyframes everyui-autofill { from { opacity: 1; } to { opacity: 1; } }" +
+      List("autofill", "-webkit-autofill").map(s =>
+        s" #app input:$s, #app textarea:$s { animation: everyui-autofill 1ms; -webkit-text-fill-color: var(--everyui-fill, currentColor);" +
+          " caret-color: var(--everyui-fill, auto); transition: background-color 0s 86400s, color 0s 86400s; }").mkString
 
   /** A click the browser should keep: another button, or a modifier asking for a new tab or window. */
   def modified(e: dom.MouseEvent): Boolean = e.button != 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
@@ -664,7 +724,7 @@ object Nodes {
     app.style.height = "100%"
     // a link in running text shows it is one under the pointer
     val style = dom.document.createElement("style")
-    style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }"
+    style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }" + RenderNode.autofillStyle
     dom.document.head.appendChild(style)
     new RenderNode(app)
   }
@@ -755,6 +815,7 @@ object Nodes {
     el.style.background = "transparent"
     el.style.setProperty("resize", "none")
     el.style.setProperty("box-sizing", "border-box")
+    el.style.setProperty("user-select", "text")
     new RenderNode(el)
   }
 
@@ -793,6 +854,7 @@ object Nodes {
     el.style.margin = "0px"
     el.style.background = "transparent"
     el.style.setProperty("box-sizing", "border-box")
+    el.style.setProperty("user-select", "text")
     new RenderNode(el)
   }
 
@@ -1239,7 +1301,8 @@ object Platform {
     def hear(e: dom.KeyboardEvent, pressed: Boolean): Unit = {
       held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
       embedded = RenderNode.embedOf(dom.document.activeElement)
-      if (f(e.key, pressed)) e.preventDefault()
+      // what a field of the app's types, or moves its caret by, is the field's whatever the app made of it
+      if (f(e.key, pressed) && !RenderNode.fieldKey(e)) e.preventDefault()
     }
     dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => hear(e, true))
     dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => hear(e, false))

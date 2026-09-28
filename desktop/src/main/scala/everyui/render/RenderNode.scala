@@ -431,6 +431,8 @@ class RenderNode(val fx: Node) {
   }
   // a desktop keyboard's Enter says nothing of what it does
   def setInputAction(action: String): Unit = ()
+  // what a field asks for (`Autofill.token`): nothing here fills fields yet
+  def setAutofill(token: String): Unit = ()
   /** Every edit of a text field, with its new contents. */
   def onValue(f: String => Unit): Unit = fx match {
     case field: TextInputControl => field.textProperty.addListener(new ChangeListener[String] {

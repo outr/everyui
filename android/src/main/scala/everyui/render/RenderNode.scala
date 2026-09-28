@@ -660,6 +660,8 @@ class RenderNode(val view: View) {
   }
   /** What the keyboard's action key says it does ("done", "search", "next", "go", "send"): the key a TV's full-screen
     * keyboard shows beside its letters. */
+  // what a field asks for (`Autofill.token`): its autofillHints are to come
+  def setAutofill(token: String): Unit = ()
   def setInputAction(action: String): Unit = view match {
     case e: EditText =>
       import android.view.inputmethod.EditorInfo

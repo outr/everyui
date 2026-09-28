@@ -1,7 +1,7 @@
 package everyui.text
 
 import everyui.component.*
-import everyui.component.types.WhiteSpace
+import everyui.component.types.{Autofill, WhiteSpace}
 import everyui.event.{Key, KeyEvent}
 import everyui.keymap.Chord
 import everyui.render.Platform
@@ -33,6 +33,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   val editing: Var[Boolean] = own(Var(false))
   /** What it says while empty; bind it to change it. */
   val hint: Var[String] = own(Var(placeholder))
+  /** What it asks for, so the platform's autofill and a password manager can fill it (`Autofill`); None says nothing. */
+  val autofill: Var[Option[Autofill]] = own(Var(None))
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
@@ -66,6 +68,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
       size.height := TextArea.this.size.height() - pad * 2.0
       this.placeholder := hint()
     }
+    input.autofill := autofill()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)

@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.component.feature.FontFeature
-import everyui.component.types.Prop
+import everyui.component.types.{Autofill, Prop}
 import everyui.render.Nodes
 import reactify.*
 
@@ -17,6 +17,10 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   lazy val placeholder: Prop[String] = own(new Prop[String]("", p => node.setPlaceholder(p)))
   /** What the keyboard's enter key says it does, where the keyboard says: "done", "search", "next", "go" or "send". */
   lazy val action: Prop[String] = own(new Prop[String]("done", a => node.setInputAction(a)))
+  /** What it asks for (`Autofill`: a name, an email address, a phone number, a password), so the platform's autofill
+    * and a password manager know to fill it; None, the default, says nothing. */
+  lazy val autofill: Prop[Option[Autofill]] =
+    own(new Prop[Option[Autofill]](None, a => node.setAutofill(a.map(Autofill.token).getOrElse(""))))
 
   /** Choose all of what it holds, so what is typed next replaces it (a value being changed rather than added to). */
   def selectAll(): Unit = node.selectAllInput()

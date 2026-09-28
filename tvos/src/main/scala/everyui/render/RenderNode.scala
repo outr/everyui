@@ -236,6 +236,8 @@ class RenderNode(val sg: SGNode) {
   def setValue(value: String): Unit = uiSetText(sg, value)
   def setPlaceholder(text: String): Unit = ()
   def setInputAction(action: String): Unit = ()
+  // what a field asks for (`Autofill.token`): nothing here fills fields yet
+  def setAutofill(token: String): Unit = ()
   def onValue(f: String => Unit): Unit = ()
   def onInputFocus(f: () => Unit): Unit = ()
   def onInputDone(f: () => Unit): Unit = ()
