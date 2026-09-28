@@ -91,6 +91,27 @@ object App extends ScreenManager
 
 Check `UIScreen` for the members a screen overrides. The example app in `app/src/main/scala` shows more.
 
+### Don't build components inside `:=`
+
+A `:=` binding depends on every `Var` its expression reads, and building a component reads plenty (a `TextView`
+measures its words as it is made). So a binding that makes components depends on the ones it just made, fires again,
+makes new ones, and the page hangs:
+
+```scala
+refs.children := item().toVector.flatMap(_.refs).map(r => new Tag(r.name))   // never ends
+```
+
+Bind the data and make the components outside the tracked expression. For children made from a list, use
+`bindMaking`: `values` is tracked, `render` is not, a value still in the list keeps its component, and one that has
+left it is disposed:
+
+```scala
+refs.children.bindMaking(item().toList.flatMap(_.refs))(r => new Tag(r.name))
+```
+
+`bind` is the same for components that are kept and handed back rather than made. Anything else built from a value
+belongs in a listener: `item.attach(i => panel.children @= …)`. A `:=` is for values: words, sizes, colours, icons.
+
 ## The page
 
 The bundle expects an element with the id `app` (it makes one if there is none) and the bundled faces in `fonts/`
@@ -765,7 +786,7 @@ import everyui.table.{GridCell, GridColumn, VirtualTable}
 class SubjectCell extends GridCell[Commit] {
   private val refs = new Container {
     layout @= Some(HorizontalLayout(4.0, middle = true))
-    children := item().toVector.flatMap(_.refs).map(r => new Tag(r.name, Tag.tone(r.kind), soft = true))
+    children.bindMaking(item().toList.flatMap(_.refs))(r => new Tag(r.name, Tag.tone(r.kind), soft = true))
   }
   private val subject = TextView.bound(item().map(_.subject).getOrElse(""), 13.0)
   subject.position.left := refs.size.width() + 8.0

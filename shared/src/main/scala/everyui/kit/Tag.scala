@@ -14,7 +14,7 @@ import reactify.*
   *   new Tag("main", Theme.accent())
   *   new Tag(ref.name, Tag.tone("success"), soft = true)
   *   val refs = new Container { layout @= Some(HorizontalLayout(4.0, middle = true)) }
-  *   refs.children := commit().refs.map(r => new Tag(r, Tag.tone(r.kind), soft = true)).toVector
+  *   refs.children.bindMaking(commit().refs)(r => new Tag(r.name, Tag.tone(r.kind), soft = true))
   * }}} */
 class Tag(label: => String, colour: => Color, soft: Boolean = false, points: Double = 11.0) extends Container {
   private val words = new TextView {

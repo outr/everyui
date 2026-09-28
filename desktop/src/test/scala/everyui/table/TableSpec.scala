@@ -19,7 +19,7 @@ class TableSpec extends FxSpec {
   class SubjectCell extends GridCell[Commit] {
     val refs: Container = new Container {
       layout @= Some(HorizontalLayout(4.0, middle = true))
-      children := item().toVector.flatMap(_.refs).map(r => new Tag(r, Tag.tone("success"), soft = true))
+      children.bindMaking(item().toList.flatMap(_.refs))(r => new Tag(r, Tag.tone("success"), soft = true))
       position.top @= 6.0
     }
     val subject: everyui.component.TextView = everyui.component.TextView.bound(item().map(_.subject).getOrElse(""), 13.0)
