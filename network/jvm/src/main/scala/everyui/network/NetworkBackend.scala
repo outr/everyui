@@ -6,6 +6,8 @@ import spice.http.client.{HttpClient, JVMHttpClientImplementation}
 
 /** The desktop: Spice's client over the JDK's `java.net.http` (HTTP/2, WebSocket, TLS). */
 object NetworkBackend {
+  /** Where relative URLs go when the app names nowhere (`Network.origin`): nowhere, off the web. */
+  def origin(): String = ""
   // a native image has no resources for moduload to scan, so the implementation is named (a no-op where it already is)
   SpiceHttp.use(JVMHttpClientImplementation)
   private lazy val client: HttpClient = SpiceHttp.client(JVMHttpClientImplementation)

@@ -37,6 +37,8 @@ class PlatformWebSocket(url: String) extends WebSocket {
 
 /** Roku and tvOS: the platform's socket and HTTP stack behind the module's API. */
 object NetworkBackend {
+  /** Where relative URLs go when the app names nowhere (`Network.origin`): nowhere, off the web. */
+  def origin(): String = ""
   def webSocket(url: String): WebSocket = new PlatformWebSocket(url)
 
   def http(call: HttpCall): Task[HttpResult] = {

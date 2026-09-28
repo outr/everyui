@@ -6,6 +6,8 @@ import spice.http.client.{HttpClient, OkHttpClientImplementation}
 
 /** Android: Spice's client over OkHttp (the platform has no `java.net.http`). */
 object NetworkBackend {
+  /** Where relative URLs go when the app names nowhere (`Network.origin`): nowhere, off the web. */
+  def origin(): String = ""
   // Android's runtime has no virtual threads (Loom): rapid runs its fibers on a thread pool instead.
   rapid.Task.Virtual = false
   // An APK carries no `moduload.list` resource for Spice to find its client by, so it is named here.

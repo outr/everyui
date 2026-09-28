@@ -21,8 +21,35 @@ import spice.http.durable.{DurableSocketClient, DurableSocketConfig, InMemoryEve
   * Optional: nothing in `shared/` depends on it. The example app's `DurableDemo` is its check on every backend.
   */
 object Network {
-  /** A WebSocket to `url` — `ws://` or `wss://` where the platform has TLS; the Roku's `roStreamSocket` has none. */
-  def webSocket(url: String): WebSocket = NetworkBackend.webSocket(url)
+  /** Where this app's server is (`"https://example.com"`), which a relative URL is resolved against; "" is the
+    * platform's own: the page's origin on the web, and none elsewhere, where an app talking to its server by relative
+    * URLs sets it first (`Network.origin = Platform.origin()`, which reads the setting "everyui.origin"). A relative
+    * URL with no origin to go on throws as it is asked for. */
+  var origin: String = ""
+
+  /** `url` as it is requested: one with a scheme as it is; `//host/path` in the origin's scheme; `/path` on the
+    * origin; and any other path under the origin's root (`api/x` is `<origin>/api/x`: never under the page's own
+    * path). A relative URL with no origin to go on throws. */
+  def resolve(url: String): String = if (url.indexOf("://") >= 0) url else {
+    val named = if (origin.nonEmpty) origin else NetworkBackend.origin()
+    val base = if (named.endsWith("/")) named.substring(0, named.length - 1) else named
+    if (base.isEmpty)
+      throw new IllegalArgumentException("A relative URL (" + url + ") with no origin to go on: set Network.origin")
+    if (url.startsWith("//")) base.substring(0, math.max(0, base.indexOf(":"))) + ":" + url
+    else if (url.startsWith("/")) base + url
+    else base + "/" + url
+  }
+
+  /** A WebSocket to `url` — `ws://` or `wss://` where the platform has TLS; the Roku's `roStreamSocket` has none. A
+    * relative `url` is on the origin (`resolve`), `http` made `ws` and `https` `wss`. */
+  def webSocket(url: String): WebSocket = NetworkBackend.webSocket(socket(url))
+
+  private def socket(url: String): String = {
+    val full = resolve(url)
+    if (full.startsWith("https://")) "wss://" + full.substring(8)
+    else if (full.startsWith("http://")) "ws://" + full.substring(7)
+    else full
+  }
 
   /** A durable client to `url` on `channel`: `Event`s sequenced and replayed across a dropped connection, typed RPC
     * (`ask[Request, Response]`), reconnect per `config`. `info` identifies this client to the server. The types are
@@ -56,11 +83,11 @@ object Network {
     * itself log through a path that loops back. Default: nothing. */
   var observe: (HttpCall, Either[Throwable, HttpResult], Long) => Unit = (_, _, _) => ()
 
-  /** Basic HTTP: one request, the whole response as text. Spice's HttpClient where it runs; the platform's stack
+  /** Basic HTTP: one request, the whole response as text; a relative URL is on the origin (`resolve`). Spice's HttpClient where it runs; the platform's stack
     * (roUrlTransfer, URLSession) elsewhere. Each request is timed and its outcome handed to [[observe]]. */
   def http(call: HttpCall): Task[HttpResult] = {
     val started = System.currentTimeMillis()
-    NetworkBackend.http(call).attempt.map { result =>
+    NetworkBackend.http(call.copy(url = resolve(call.url))).attempt.map { result =>
       val outcome: Either[Throwable, HttpResult] = result.fold(t => Left(t), value => Right(value))
       try observe(call, outcome, System.currentTimeMillis() - started) catch { case _: Throwable => () }
       result.fold(t => throw t, value => value)

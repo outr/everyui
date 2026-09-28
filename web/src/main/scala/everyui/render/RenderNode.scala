@@ -1179,6 +1179,9 @@ object Platform {
   }
 
   /** The WebSocket origin of the page itself (`ws://host:port`), so an app served by its own server needs no address. */
+  /** Where this app's server is, to resolve its relative URLs against: the page's origin ("https://example.com"). */
+  def origin(): String = dom.window.location.origin
+
   def webSocketOrigin(): String = {
     val l = dom.window.location
     (if (l.protocol == "https:") "wss://" else "ws://") + l.host

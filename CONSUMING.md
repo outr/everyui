@@ -388,6 +388,33 @@ OK brings up the platform's keyboard. A component that wraps a platform field sa
 `Component.typesEvent`; those keys reach its `event.key.down` and then the platform, untouched. `TextInput` now does
 this too. Before, it kept Backspace, Space and the arrows from its own field while it was being edited.
 
+### Smaller pieces
+
+- `new SplitPane(..., collapsible = Some(SplitSide.First), startCollapsed = true)` is folded from the first frame, so
+  a sidebar restored folded never shows open first.
+- `new Checkbox("Wrap lines", compact = true)` is 24 pixels tall with a smaller box and words, as wide as its label
+  unless given a `width`, for dense tool windows. Its focus ring stays clear of the box and the words.
+
+## Relative URLs and the origin
+
+`Network.http` and `Network.webSocket` take relative URLs and resolve them against `Network.origin`:
+
+- a URL with a scheme (`https://…`) is used as it is;
+- `//host/path` takes the origin's scheme;
+- `/path` goes on the origin;
+- any other path (`api/x`) goes under the origin's root, never under the current page's path;
+- for a socket, `http` becomes `ws` and `https` becomes `wss`.
+
+`Network.origin` is `""` by default, which means the platform's own. On the web that is the page's origin. Elsewhere
+there is none, and a relative URL throws. An app off the web sets it once at start:
+
+```scala
+Network.origin = Platform.origin()     // "https://example.com"
+```
+
+`Platform.origin()` is the page's origin on the web. On every other platform it is the setting `"everyui.origin"`,
+which the app saves with `Platform.saveSetting("everyui.origin", url)` or its build ships, and `""` without one.
+
 ## An installable web app
 
 An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,

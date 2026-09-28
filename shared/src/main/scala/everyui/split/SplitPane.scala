@@ -17,8 +17,9 @@ import reactify.*
   * `collapsible` side folds away (`collapsed`, or `toggle()`) when the handle is double-clicked, or dragged most of the
   * way past its minimum, and comes back at the ratio it had. `grow()` and `shrink()` move the handle by `step`, for an
   * app's commands; a focused handle (`handle.focusable @= true`) moves with the arrows along it and folds with Enter.
-  * A split can be a side of another. Split across, the first side is at the start of the reading direction: on the
-  * right in a right-to-left language, where dragging and the arrows are mirrored with it.
+  * `startCollapsed` makes it with that side folded from the first frame: a folded sidebar restored from a saved
+  * layout never shows open first. A split can be a side of another. Split across, the first side is at the start of
+  * the reading direction: on the right in a right-to-left language, where dragging and the arrows are mirrored with it.
   *
   * The arrows cross from one side to the other (Right from the first, Left from the second; Down and Up split
   * vertically), landing where the focus last was on that side, and not onto a folded side.
@@ -31,11 +32,12 @@ import reactify.*
   *   Keymap.global.add("sidebar.toggle", "Toggle sidebar", Chord("B", primary = true)) { split.toggle() }
   * }}} */
 class SplitPane(val first: Component, val second: Component, val vertical: Boolean = false,
-                val ratio: Var[Double] = Var(0.5), val collapsible: Option[SplitSide] = None) extends Container {
+                val ratio: Var[Double] = Var(0.5), val collapsible: Option[SplitSide] = None,
+                startCollapsed: Boolean = false) extends Container {
   val minFirst: Var[Double] = own(Var(SplitPane.minimum))
   val minSecond: Var[Double] = own(Var(SplitPane.minimum))
   /** Whether the collapsible side is folded away. */
-  val collapsed: Var[Boolean] = own(Var(false))
+  val collapsed: Var[Boolean] = own(Var(startCollapsed && collapsible.nonEmpty))
   /** How far `grow` and `shrink` move the handle, in pixels. */
   val step: Var[Double] = own(Var(24.0))
   /** How thick the handle is, which is the room a pointer has to take hold of it. */

@@ -793,6 +793,9 @@ object Platform {
 
   /** No page to be served from: an app names its server. */
   def webSocketOrigin(): String = ""
+  /** Where this app's server is, to resolve its relative URLs against: nothing here comes from a server, so what the app
+    * set as the setting "everyui.origin" ("https://example.com"), else "". */
+  def origin(): String = setting("everyui.origin")
 
   /** A channel cannot exit itself from the render thread; a demo that is done just stops. */
   def quit(): Unit = ()
