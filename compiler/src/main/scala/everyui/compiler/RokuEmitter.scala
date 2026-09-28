@@ -986,6 +986,11 @@ class RokuEmitter(
       sy.exists && Set("doubleWrapper", "intWrapper", "longWrapper", "floatWrapper", "shortWrapper",
         "byteWrapper", "charWrapper").contains(sy.name)
     }
+    /** `Iterator.iterate(z)(f)`: its start and its step. */
+    def iterateCall(t: Term): Option[(Term, Term)] = unwrap(t) match {
+      case Apply(Apply(fn, List(z)), List(f)) if fnIs(stripTypeApply(fn), "scala.collection.Iterator", "iterate") => Some((z, f))
+      case _ => None
+    }
     def isArrowAssoc(arrow: Term): Boolean = {
       val sy = stripTypeApply(arrow).symbol
       sy.exists && sy.name == "ArrowAssoc"
@@ -1513,6 +1518,10 @@ class RokuEmitter(
               shimCall(s"AtomicLong_$m", Some(recv), args)
             case _ if fnIs(fn, "java.util.UUID", "randomUUID")           => "_uuid()"
             case _ if fnIs(fn, "java.lang.System", "currentTimeMillis")  => "_nowMillis()"
+            case _ if fnIs(fn, "java.lang.System", "identityHashCode") && args.size == 1 => s"_identityHash(${emitArgVal(args.head)})"
+            // a string here is read by character, never by UTF-16 unit, so no character is half of a surrogate pair
+            case _ if (fnIs(fn, "java.lang.Character", "isHighSurrogate") || fnIs(fn, "java.lang.Character", "isLowSurrogate"))
+                && args.size == 1 => "false"
             case _ if fn.symbol.exists && ownerFqn(fn.symbol) == "java.lang.Math" => emitMath(fn.symbol.name, args)
             case Select(Apply(wrap, List(x)), m @ ("min" | "max" | "abs" | "round" | "floor" | "ceil")) if isRichNumWrapper(wrap) => emitMath(m, x :: args)
             // RichChar predicates (charWrapper is in the rich-number set): a Char is a one-character string here
@@ -1526,6 +1535,8 @@ class RokuEmitter(
               s"_clsName(${emitTerm(getClassRecv(recv).get)})"
             // ── stdlib the emitter models directly (runtime shims) ──
             case _ if fnIs(fn, "scala.Option", "apply") && args.size == 1 => emitArgVal(args.head)
+            // `Try(body)`: the body run under a try, answering a Success or a Failure as the runtime's Try ops read them
+            case _ if fnIs(fn, "scala.util.Try", "apply") && args.size == 1 => s"_tryApply(${emitThunk(args.head)})"
             case _ if fnIs(fn, "scala.concurrent.Promise", "apply") => "Promise_new()"
             case Select(recv, "success") if ownerIs(fn, "scala.concurrent.Promise") =>
               s"_promiseSuccess(${emitTerm(recv)}, ${emitArgVal(args.head)})"
@@ -1850,6 +1861,11 @@ class RokuEmitter(
               s"_strTakeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, true)"
             case Select(recv, "dropWhile") if isStringLike(recv.tpe) && args.size == 1 =>
               s"_strTakeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, false)"
+            // `Iterator.iterate(z)(f).takeWhile(p)`: the values from z on while p holds, gathered at once, since an
+            // iterator here is the array it would have given
+            case Select(recv, "takeWhile") if iterateCall(recv).isDefined && args.size == 1 =>
+              val (z, f) = iterateCall(recv).get
+              s"_iterateWhile(${emitArgVal(z)}, ${emitArgVal(f)}, ${emitArgVal(args.head)})"
             case Select(recv, "takeWhile") if isCollType(recv) && args.size == 1 =>
               s"_takeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, true)"
             case Select(recv, "dropWhile") if isCollType(recv) && args.size == 1 =>
@@ -1949,6 +1965,16 @@ class RokuEmitter(
           s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
         case Apply(TypeApply(Select(New(tpt), _), _), args) if hasNative(tpt.tpe.typeSymbol) =>
           s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
+        // `new Array[T](n)`: n slots holding what the JVM starts them at, a zero for a number, false for a flag and null
+        // (invalid) for anything else, so its length is n from the start
+        case Apply(TypeApply(Select(New(tpt), _), _), List(n)) if fqnOf(tpt.tpe) == "scala.Array" =>
+          val zero = tpt.tpe.dealias.typeArgs.headOption.map(fqnOf).getOrElse("") match {
+            case "scala.Boolean" => "false"
+            case "scala.Double" | "scala.Float" => "0.0"
+            case "scala.Int" | "scala.Long" | "scala.Short" | "scala.Byte" => "0"
+            case _ => "invalid"
+          }
+          s"_arrNew(${emitTerm(n)}, $zero)"
         case Apply(ctor @ Select(New(tpt), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
           s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, ctor.symbol)})"
         case Apply(TypeApply(ctor @ Select(New(tpt), _), _), args) if isUserClassSym(tpt.tpe.typeSymbol) =>
@@ -2037,6 +2063,7 @@ class RokuEmitter(
         // argument, are Applys handled where the calls are); and RichChar predicates, on a Char that is a one-char
         // string here. Placed after the collection getters so it is outside the Swift-derivation block above.
         case Select(Apply(wrap, List(x)), m @ ("round" | "floor" | "ceil" | "abs")) if isRichNumWrapper(wrap) => emitMath(m, List(x))
+        case Select(Apply(wrap, List(x)), "toHexString") if isRichNumWrapper(wrap) => s"_toHex(${emitTerm(x)})"
         case Select(Apply(wrap, List(x)), m @ ("isDigit" | "isLetter" | "isLetterOrDigit" | "isWhitespace" | "isSpaceChar" | "isUpper" | "isLower")) if isRichNumWrapper(wrap) => s"_ch_$m(${emitTerm(x)})"
         case Select(q, "indices") if isCollType(q) => s"_until(0, ${emitTerm(q)}.count())"
         case Select(q, "reverse") if isCollType(q)   => s"_reverse(${emitTerm(q)})"
@@ -5324,6 +5351,48 @@ class RokuEmitter(
       |function _nowMillis() as dynamic
       |    dt = CreateObject("roDateTime")
       |    return dt.AsSecondsLong() * 1000 + dt.GetMilliseconds()
+      |end function
+      |' System.identityHashCode: a number an object keeps for its life, given it when first asked
+      |function _identityHash(o as dynamic) as integer
+      |    if type(o) <> "roAssociativeArray" then return 0
+      |    if o.__identityHash = invalid
+      |        ga = GetGlobalAA()
+      |        if ga.__identityHashes = invalid then ga.__identityHashes = 0
+      |        ga.__identityHashes = ga.__identityHashes + 1
+      |        o.__identityHash = ga.__identityHashes
+      |    end if
+      |    return o.__identityHash
+      |end function
+      |function _toHex(n as dynamic) as string
+      |    return LCase(StrI(n, 16))
+      |end function
+      |' new Array[T](n): n slots holding z
+      |function _arrNew(n as dynamic, z as dynamic) as object
+      |    xs = CreateObject("roArray", n, true)
+      |    for i = 1 to n
+      |        xs.Push(z)
+      |    end for
+      |    return xs
+      |end function
+      |' Iterator.iterate(z)(f).takeWhile(p), gathered
+      |function _iterateWhile(z as dynamic, f as dynamic, p as dynamic) as object
+      |    xs = []
+      |    x = z
+      |    while RtInvoke(p, [x])
+      |        xs.Push(x)
+      |        x = RtInvoke(f, [x])
+      |    end while
+      |    return xs
+      |end function
+      |' Try(body): a Success of what the body answered, or a Failure of what it threw
+      |function _tryApply(thunk as dynamic) as object
+      |    r = invalid
+      |    try
+      |        r = Success(RtForce(thunk))
+      |    catch e
+      |        r = Failure(e)
+      |    end try
+      |    return r
       |end function
       |function Scribe_log(level as string, msgs as object) as dynamic
       |    s = ""
