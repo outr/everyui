@@ -688,3 +688,43 @@ tree.checkToggled.attach(t => println(t.keys.toString + " " + t.checked))
 tree.checked.attach(keys => commitButton.enabled @= keys.exists(isFile))
 tree.checkState("Changes/src")                        // Checked, Unchecked or Mixed
 ```
+
+### VirtualTable (`everyui.table`)
+
+A table of any length on a `VirtualList`: headings over a row per item and a cell per column. Each row's cells are
+made once (`GridColumn.cell`, a `GridCell` bound to its `item`) and reused as the rows scroll. `widths` (by column key)
+changes as a pointer drags a heading's edge and can be kept and given back; `hidden` hides columns. A column with a
+`sort` ordering is sorted by a click on its heading (up, down, then not at all) with an arrow on it; `sort` says which,
+and with `sortsItself @= false` the app sorts `items` itself. Wider than the table, the columns scroll sideways (a
+sideways wheel, the bar at the foot, Left and Right). Rows are chosen as a list's are (`selection`, multi optional), and
+the whole table mirrors right to left.
+
+```scala
+import everyui.table.{GridCell, GridColumn, VirtualTable}
+
+class SubjectCell extends GridCell[Commit] {
+  private val refs = new Container {
+    layout @= Some(HorizontalLayout(4.0, middle = true))
+    children := item().toVector.flatMap(_.refs).map(r => new Tag(r.name, Tag.tone(r.kind), soft = true))
+  }
+  private val subject = TextView.bound(item().map(_.subject).getOrElse(""), 13.0)
+  subject.position.left := refs.size.width() + 8.0
+  children ++= List(refs, subject)
+}
+
+val log = new VirtualTable[Commit](commits, _.hash, _.subject, Vector(
+  GridColumn[Commit]("graph", "", 80.0, () => new GraphCell),
+  GridColumn[Commit]("subject", "Subject", 420.0, () => new SubjectCell),
+  GridColumn.text[Commit]("author", "Author", 160.0, sorts = true)(_.author),
+  GridColumn.text[Commit]("date", "Date", 140.0, sortBy = Some(Ordering.by(_.time)))(c => dateText(c.time))))
+log.widths @= saved
+log.widths.attach(save)
+log.activated.attach(showCommit)
+```
+
+### Tag (`everyui.kit`)
+
+A word in a small coloured pill, for a cell or a row: solid (`new Tag("main", Theme.accent())`, the word white or near
+black to read on it) or `soft` (a wash of the colour with an edge and the word in it). `Tag.tone("success")` names a
+colour of the theme (accent, success, warning, danger, info, muted, text, or a palette extra). It takes no room while
+its word is empty. `everyui.component.Chip` is the older fixed pill, which stays as it is.
