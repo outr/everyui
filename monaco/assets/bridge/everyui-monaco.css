@@ -7,3 +7,8 @@
 .everyui-monaco-blame::after, .everyui-monaco-blame::before { color: rgba(128, 128, 128, 0.75); font-style: italic; padding-left: 2em; }
 .everyui-monaco-info-glyph::before { content: ''; display: block; width: 10px; height: 10px; margin: 4px 0 0 4px; border-radius: 50%; background: #58a6ff; }
 .everyui-monaco-error-glyph::before { content: ''; display: block; width: 10px; height: 10px; margin: 4px 0 0 4px; border-radius: 50%; background: #f85149; }
+/* the diff editor's checkboxes (MonacoDiffController.showChecks) */
+.everyui-check { cursor: pointer; }
+.everyui-check::before { content: ''; display: block; box-sizing: border-box; width: 12px; height: 12px; margin: 3px 0 0 3px; border-radius: 2px; border: 1.5px solid rgba(160, 160, 160, 0.9); }
+.everyui-check-on::before { background: #3794ff; border-color: #3794ff; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85); }
+.everyui-check-on::before { content: '\2713'; color: #ffffff; font: bold 10px/9px sans-serif; text-align: center; box-shadow: none; }

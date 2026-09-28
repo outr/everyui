@@ -414,7 +414,19 @@ MonacoThemes.followPalette()                                    // the app's pal
 MonacoLanguages.registerDefinitionProvider("scala", MonacoDefinitionProvider(p => lookUp(p.value, p.position)))
 ```
 
-`MonacoDiffEditor` / `MonacoDiffController` are the diff editor. Every call answers as a `Future`; themes and
+`MonacoDiffEditor` / `MonacoDiffController` are the diff editor. `changes` (and `onDidUpdateDiff`) are its changed regions as
+`MonacoLineChange`s, with their character changes; `checks` puts checkboxes in the modified gutter, a change's or a
+line's, ticked as the app says, and `onGutterClick` hears a click on one with the change it belongs to;
+`revertChange` and `acceptChange` put one side's lines of a change over the other's as one edit that can be undone:
+
+```scala
+val diff = MonacoDiffController(head, working, "scala")
+diff.changes.attach(cs => diff.checks @= MonacoDiffCheck.forChanges(cs, c => !skipped(c), lines = true))
+diff.onGutterClick.attach(click => click.change.foreach(toggle))
+diff.revertChange(diff.changes().head)                          // roll one change back
+```
+
+What a tick means (a partial commit, say) is the app's. Every call answers as a `Future`; themes and
 providers are global and reach every editor, including ones made later.
 
 **Serving it (web).** Copy the jar's `everyui-monaco/` directory next to the page (the gallery's `galleryBundle` task

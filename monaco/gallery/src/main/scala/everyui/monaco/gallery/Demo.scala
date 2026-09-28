@@ -22,6 +22,8 @@ object Demo {
       MaterialIcon.Palette, ThemesDemo(_)),
     Demo("Custom Background", "The editor over the app's own ground, with a clear theme.", MaterialIcon.Wallpaper,
       BackgroundDemo(_)),
+    Demo("Partial Commit", "Checkboxes on each change and line of a diff, and a change rolled back.", MaterialIcon.Checklist,
+      PartialCommitDemo(_)),
     Demo("Files & Navigation", "A model per open file, dirty state and Save, definitions, references, symbols, blame.",
       MaterialIcon.FolderOpen, NavigationDemo(_)))
 }

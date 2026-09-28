@@ -576,8 +576,15 @@
                   modifiedSide: { disposers: [], external: false, eol: null, commands: {}, actions: {} } };
     wireEditor(entry.originalSide, diff.getOriginalEditor(), 'diff.original.', { diffId: diffId });
     wireEditor(entry.modifiedSide, diff.getModifiedEditor(), 'diff.modified.', { diffId: diffId });
+    // a click in the modified side's gutter, on a checkbox the app put there (diff.setChecks)
+    entry.disposers.push(diff.getModifiedEditor().onMouseDown(function (m) {
+      var t = m.target, types = monaco.editor.MouseTargetType;
+      if (!t.position || (t.type !== types.GUTTER_GLYPH_MARGIN && t.type !== types.GUTTER_LINE_DECORATIONS)) return;
+      bridge.emit('diff.gutterClick', { diffId: diffId, line: t.position.lineNumber,
+        kind: t.type === types.GUTTER_GLYPH_MARGIN ? 'change' : 'line' });
+    }));
     entry.disposers.push(diff.onDidUpdateDiff(function () {
-      bridge.emit('diff.updated', { diffId: diffId, changes: (diff.getLineChanges() || []).length });
+      bridge.emit('diff.updated', { diffId: diffId, changes: lineChanges(diff) });
     }));
     bridge._diffs[diffId] = entry;
     if (a.width > 0 && a.height > 0 && !window.everyuiEmbed.hosted) diff.layout({ width: a.width, height: a.height });
@@ -626,12 +633,78 @@
     if (typeof diff.goToDiff === 'function') diff.goToDiff(a.target === 'previous' ? 'previous' : 'next');
     return null;
   };
-  handlers['diff.lineChanges'] = function (a) {
-    return (diffEntry(a.diffId).diff.getLineChanges() || []).map(function (c) {
-      return { originalStartLine: c.originalStartLineNumber, originalEndLine: c.originalEndLineNumber,
-               modifiedStartLine: c.modifiedStartLineNumber, modifiedEndLine: c.modifiedEndLineNumber };
+  handlers['diff.lineChanges'] = function (a) { return lineChanges(diffEntry(a.diffId).diff); };
+
+  // The changed regions, each with its character changes where Monaco worked them out. A region added has no original
+  // lines (originalEndLine 0, placed after originalStartLine); one deleted, no modified lines (likewise).
+  function lineChanges(diff) {
+    return (diff.getLineChanges() || []).map(function (c) {
+      return {
+        originalStartLine: c.originalStartLineNumber, originalEndLine: c.originalEndLineNumber,
+        modifiedStartLine: c.modifiedStartLineNumber, modifiedEndLine: c.modifiedEndLineNumber,
+        charChanges: (c.charChanges || []).map(function (x) {
+          return {
+            originalRange: { startLine: x.originalStartLineNumber, startColumn: x.originalStartColumn,
+                             endLine: x.originalEndLineNumber, endColumn: x.originalEndColumn },
+            modifiedRange: { startLine: x.modifiedStartLineNumber, startColumn: x.modifiedStartColumn,
+                             endLine: x.modifiedEndLineNumber, endColumn: x.modifiedEndColumn }
+          };
+        })
+      };
     });
+  }
+
+  // One side's lines of a change put in place of the other side's, as one edit that can be undone: `from` "original"
+  // reverts the modified side's hunk, "modified" accepts it into the original.
+  handlers['diff.applyChange'] = function (a) {
+    var e = diffEntry(a.diffId), c = a.change;
+    var fromOriginal = a.from !== 'modified';
+    var source = fromOriginal ? e.original : e.modified, target = fromOriginal ? e.modified : e.original;
+    var sStart = fromOriginal ? c.originalStartLine : c.modifiedStartLine, sEnd = fromOriginal ? c.originalEndLine : c.modifiedEndLine;
+    var tStart = fromOriginal ? c.modifiedStartLine : c.originalStartLine, tEnd = fromOriginal ? c.modifiedEndLine : c.originalEndLine;
+    var eol = target.getEOL();
+    var text = sEnd > 0 ? source.getValueInRange(new monaco.Range(sStart, 1, sEnd, source.getLineMaxColumn(sEnd))) : null;
+    var range, insert;
+    if (tEnd > 0 && text !== null) {
+      // lines replaced by lines
+      range = new monaco.Range(tStart, 1, tEnd, target.getLineMaxColumn(tEnd));
+      insert = text;
+    } else if (tEnd > 0) {
+      // lines the other side does not have: taken out with their line ends
+      range = tEnd < target.getLineCount() ? new monaco.Range(tStart, 1, tEnd + 1, 1)
+        : (tStart > 1 ? new monaco.Range(tStart - 1, target.getLineMaxColumn(tStart - 1), tEnd, target.getLineMaxColumn(tEnd))
+                      : new monaco.Range(1, 1, tEnd, target.getLineMaxColumn(tEnd)));
+      insert = '';
+    } else {
+      // lines this side does not have: put in after line tStart (0 for the top)
+      if (tStart === 0) { range = new monaco.Range(1, 1, 1, 1); insert = text + eol; }
+      else { var end = target.getLineMaxColumn(tStart); range = new monaco.Range(tStart, end, tStart, end); insert = eol + text; }
+    }
+    target.pushStackElement();
+    target.pushEditOperations([], [{ range: range, text: insert }], function () { return null; });
+    target.pushStackElement();
+    return null;
   };
+
+  // Checkboxes in the modified side's gutter: a change's in the glyph margin, a line's in the line decorations
+  // column, each lit or not as the app says. A click on either is told to the app, which decides what it means.
+  handlers['diff.setChecks'] = function (a) {
+    var e = diffEntry(a.diffId), editor = e.diff.getModifiedEditor();
+    // the line boxes stand where the + and - marks would: those give way to them
+    if ((a.checks || []).some(function (c) { return c.kind === 'line'; })) e.diff.updateOptions({ renderIndicators: false });
+    editor.updateOptions({ glyphMargin: true, lineDecorationsWidth: (a.checks || []).some(function (c) { return c.kind === 'line'; }) ? 18 : 10 });
+    var decorations = (a.checks || []).map(function (c) {
+      var options = { isWholeLine: true };
+      var cls = 'everyui-check ' + (c.checked ? 'everyui-check-on' : 'everyui-check-off');
+      if (c.kind === 'line') options.linesDecorationsClassName = cls; else options.glyphMarginClassName = cls;
+      if (c.hover) { if (c.kind === 'line') options.hoverMessage = { value: c.hover }; else options.glyphMarginHoverMessage = { value: c.hover }; }
+      var line = Math.max(1, Math.min(c.line, e.modified.getLineCount()));
+      return { range: new monaco.Range(line, 1, line, 1), options: options };
+    });
+    e.checks = editor.deltaDecorations(e.checks || [], decorations);
+    return null;
+  };
+
   handlers['diff.dispose'] = function (a) {
     var e = bridge._diffs[a.diffId];
     if (!e) return null;

@@ -1,6 +1,7 @@
 package everyui.monaco
 
 import fabric.*
+import fabric.rw.*
 import reactify.*
 
 import scala.concurrent.{Future, Promise}
@@ -30,8 +31,15 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
   /** The user changed a side (not the app, through `setOriginalValue` or `setModifiedValue`): its new text. */
   val onOriginalChange: Channel[String] = Channel[String]
   val onModifiedChange: Channel[String] = Channel[String]
-  /** The differences were worked out again: how many changed regions there are. */
-  val onDidUpdateDiff: Channel[Int] = Channel[Int]
+  private val regions = Var[List[MonacoLineChange]](Nil)
+  /** The changed regions, as Monaco last worked them out. */
+  val changes: Val[List[MonacoLineChange]] = regions
+  /** The differences were worked out again (after an edit to either side): the changed regions. */
+  val onDidUpdateDiff: Channel[List[MonacoLineChange]] = Channel[List[MonacoLineChange]]
+  /** The checkboxes in the modified side's gutter (MonacoDiffCheck), as the app sets them: none by default. */
+  val checks: Var[List[MonacoDiffCheck]] = Var(Nil)
+  /** A checkbox in the gutter was clicked: the line, which kind, and the change there. */
+  val onGutterClick: Channel[MonacoDiffClick] = Channel[MonacoDiffClick]
   val onHandBack: Channel[(String, Boolean)] = Channel[(String, Boolean)]
 
   private var bridge: Option[MonacoBridge] = None
@@ -88,11 +96,20 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
   /** To the next difference, or the previous. */
   def goToDiff(next: Boolean = true): Future[Unit] =
     whenReady("diff.goToDiff", obj("target" -> str(if (next) "next" else "previous"))).map(_ => ())
-  /** The changed regions: (original start, original end, modified start, modified end) lines. */
-  def lineChanges(): Future[List[(Int, Int, Int, Int)]] = whenReady("diff.lineChanges").map { j =>
-    if (!j.isArr) Nil else j.asVector.toList.map(c => (Wire.int(c, "originalStartLine"), Wire.int(c, "originalEndLine"),
-      Wire.int(c, "modifiedStartLine"), Wire.int(c, "modifiedEndLine")))
-  }
+  /** The changed regions as Monaco has them now, with their character changes. */
+  def lineChanges(): Future[List[MonacoLineChange]] = whenReady("diff.lineChanges").map(MonacoDiffController.changes)
+
+  /** The change holding `line` of the modified side (a deletion, the line it sits on), as last worked out. */
+  def changeAt(line: Int): Option[MonacoLineChange] = regions().find(_.holds(line))
+
+  /** `change` rolled back: the original's lines put in place of the modified's, as one edit that can be undone. */
+  def revertChange(change: MonacoLineChange): Future[Unit] =
+    whenReady("diff.applyChange", obj("from" -> str("original"), "change" -> change.json)).map(_ => ())
+
+  /** `change` taken into the original: the modified's lines put in place of the original's, as one edit that can be
+    * undone. */
+  def acceptChange(change: MonacoLineChange): Future[Unit] =
+    whenReady("diff.applyChange", obj("from" -> str("modified"), "change" -> change.json)).map(_ => ())
   def focus(): Future[Unit] = whenReady("diff.focus").map(_ => ())
   def blur(): Future[Unit] = if (!isAttached) Future.unit else invoke("diff.blur", obj()).map(_ => ())
 
@@ -118,6 +135,7 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
     leftMirror = new TextMirror(left(), 1)
     rightMirror = new TextMirror(right(), 1)
     stopListening = to.listen(event => if (event.diffId == diffId) heard(event))
+    if (checks().nonEmpty) sendChecks()
     live @= true
     attachedOnce.trySuccess(())
   }
@@ -139,11 +157,22 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
       val change = MonacoContentChange.fromJson(event.payload)
       right @= rightMirror(change)
       if (!change.external) onModifiedChange @= right()
-    case "diff.updated" => onDidUpdateDiff @= Wire.int(event.payload, "changes")
+    case "diff.updated" =>
+      regions @= MonacoDiffController.changes(event.payload.get("changes").getOrElse(arr()))
+      onDidUpdateDiff @= regions()
+    case "diff.gutterClick" =>
+      val line = Wire.int(event.payload, "line")
+      val isLine = Wire.string(event.payload, "kind") == "line"
+      // a change's box sits on its anchor, which is how a deletion is found
+      val at = if (isLine) changeAt(line) else regions().find(_.anchorLine == line).orElse(changeAt(line))
+      onGutterClick @= MonacoDiffClick(line, isLine, at)
     case "diff.original.handBack" | "diff.modified.handBack" =>
       onHandBack @= (Wire.string(event.payload, "key") -> Wire.bool(event.payload, "shift"))
     case _ => ()
   }
+
+  private def sendChecks(): Unit = invoke("diff.setChecks", obj("checks" -> arr(checks().map(_.toJson)*)))
+  checks.attach(_ => if (isAttached) sendChecks())
 
   private def invoke(method: String, args: Json): Future[Json] = bridge match {
     case Some(b) => b.call(method, Wire.merge(args, obj("diffId" -> str(diffId))))
@@ -159,6 +188,9 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
 }
 
 object MonacoDiffController {
+  private[monaco] def changes(json: Json): List[MonacoLineChange] =
+    if (json.isArr) json.asVector.toList.map(_.as[MonacoLineChange]) else Nil
+
   /** A controller, named as flutter_monaco_editor's is made. */
   def apply(originalValue: String = "", modifiedValue: String = "", language: String = "plaintext", theme: String = "vs-dark",
             renderSideBySide: Boolean = true, readOnly: Boolean = false, ignoreTrimWhitespace: Boolean = false): MonacoDiffController =
