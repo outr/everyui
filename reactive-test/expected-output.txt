@@ -65,4 +65,39 @@ RX PASS edge.txn.throw.records = 1
 RX PASS emit.wide.last = 2
 RX PASS emit.wide.method = 4030201
 RX PASS emit.wide.copy = 5
-RX DONE 67/67
+RX PASS emit.map.concat.map = done 1
+RX PASS emit.map.concat.list = a=9,b=2
+RX PASS emit.map.concat.vector = a=1,c=3
+RX PASS emit.map.concat.some = a=1,d=4
+RX PASS emit.map.concat.none = a=1
+RX PASS emit.map.concat.method = a=1,f=6
+RX PASS emit.map.concat.empty = a=1
+RX PASS emit.map.concat.lookup = 7
+RX PASS emit.map.plus.pairs = a=1,h=8,i=9
+RX PASS emit.map.minus.keys = b=2
+RX PASS emit.map.minus.many = 
+RX PASS emit.map.from = a=1,b=2
+RX PASS emit.map.tomap.concat = a=1,b=2,c=3
+RX PASS emit.map.tomap.map = a=1,b=2
+RX PASS emit.map.toset = a1
+RX PASS emit.map.prepend = z,a
+RX PASS emit.map.concat.keyed = A=2,a=1!
+RX PASS emit.map.concat.intkeys = two
+RX PASS emit.set.concat.set = 1,2,3
+RX PASS emit.set.concat.list = 1,2,3,4
+RX PASS emit.set.concat.some = 1,2,5
+RX PASS emit.set.union.bar = 1,2,6
+RX PASS emit.set.union = 1,2,7
+RX PASS emit.set.plus.many = 1,2,8,9
+RX PASS emit.set.minus.list = 1,3
+RX PASS emit.set.minus.many = 1,4
+RX PASS emit.set.diff.bar = 2,3
+RX PASS emit.set.intersect = 2,3
+RX PASS emit.set.concat.map.keys = 1,2,5
+RX PASS emit.set.prepend = 1,2,10
+RX PASS emit.set.from = 4,5
+RX PASS emit.list.concat = 1,2,3
+RX PASS emit.list.concat.option = 1,2,4
+RX PASS emit.list.prepend = 0,1,2
+RX PASS emit.list.appendall = 1,2,5
+RX DONE 102/102

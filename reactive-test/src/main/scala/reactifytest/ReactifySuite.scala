@@ -396,5 +396,8 @@ class TxnRef(var t: Transaction)
   ReactifySuite.hotPathEdges(ok, total)
   ReactifySuite.transactionThrow(ok, total)
   ReactifySuite.wideCalls(ok, total)
+  Collections.maps(ok, total, true)
+  Collections.sets(ok, total)
+  Collections.lists(ok, total)
   println("RX DONE " + ok.n.toString + "/" + total.n.toString)
 }

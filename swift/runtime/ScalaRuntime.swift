@@ -766,6 +766,7 @@ func _setUnion(_ a: V, _ b: V) -> V {
     for e in rtItems(b) where !r.contains(where: { rtEq($0, e) }) { r.append(e) }
     return rtArr(r)
 }
+func _setIntersect(_ a: V, _ b: V) -> V { rtArr(rtItems(a).filter { _setHas(b, $0).rtTrue }) }
 
 // MARK: - immutable Map with object keys (an entry list)
 
@@ -809,6 +810,8 @@ func _mapKeys(_ m: V) -> V { rtArr(rtItems(m["entries"]).map { $0["k"] }) }
 func _mapValues(_ m: V) -> V { rtArr(rtItems(m["entries"]).map { $0["v"] }) }
 func _mapToList(_ m: V) -> V { rtArr(rtItems(m["entries"]).map { Tuple2($0["k"], $0["v"]) }) }
 func _mapFromPairs(_ pairs: V) -> V { rtItems(pairs).reduce(_mapEmpty()) { _mapPut($0, $1["_1"], $1["_2"]) } }
+func _mapConcat(_ m: V, _ pairs: V) -> V { rtItems(pairs).reduce(m) { _mapPut($0, $1["_1"], $1["_2"]) } }
+func _mapRemoveAll(_ m: V, _ keys: V) -> V { rtItems(keys).reduce(m) { _mapRemove($0, $1) } }
 func _mapEq(_ a: V, _ b: V) -> V {
     let ae = rtItems(a["entries"]), be = rtItems(b["entries"])
     if ae.count != be.count { return .vBool(false) }

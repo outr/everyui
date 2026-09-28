@@ -953,6 +953,12 @@ class RokuEmitter(
       f.startsWith("scala.collection.immutable.Map") || f == "scala.collection.Map"
         || f.startsWith("scala.collection.immutable.HashMap") || f.startsWith("scala.collection.immutable.ListMap")
     }
+    /** What a collection operator takes in, as the runtime's array: a Map's pairs, an Option's value or nothing, and
+      * any other collection as it is (walked as an array, a Map gave its keys alone and an Option its value's fields). */
+    def emitElems(t: Term): String =
+      if (isMapTpe(t.tpe)) s"_mapToList(${emitTerm(t)})"
+      else if (isOptionType(t)) s"_optToList(${emitTerm(t)})"
+      else emitTerm(t)
     def isListTpe(tp: TypeRepr): Boolean = {
       val f = fqnOf(tp)
       f == "scala.collection.immutable.List" || f == "scala.collection.immutable.Seq"
@@ -1592,10 +1598,35 @@ class RokuEmitter(
               s"_setAdd(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "-" | "excl") if isSetTpe(recv.tpe) && args.size == 1 =>
               s"_setRemove(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(recv, "++" | "union" | "concat") if isSetTpe(recv.tpe) =>
-              s"_setUnion(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            case Select(recv, "diff" | "--") if isSetTpe(recv.tpe) =>
-              s"_setDiff(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // s + (a, b, cs*) and s - (a, b, cs*)
+            case Select(recv, "+") if isSetTpe(recv.tpe) => s"_setUnion(${emitTerm(recv)}, ${varargsArray(args)})"
+            case Select(recv, "-") if isSetTpe(recv.tpe) => s"_setDiff(${emitTerm(recv)}, ${varargsArray(args)})"
+            case Select(recv, "++" | "union" | "concat" | "|") if isSetTpe(recv.tpe) =>
+              s"_setUnion(${emitTerm(recv)}, ${emitElems(args.head)})"
+            case Select(recv, "diff" | "--" | "&~" | "removedAll") if isSetTpe(recv.tpe) =>
+              s"_setDiff(${emitTerm(recv)}, ${emitElems(args.head)})"
+            case Select(recv, "intersect" | "&") if isSetTpe(recv.tpe) =>
+              s"_setIntersect(${emitTerm(recv)}, ${emitElems(args.head)})"
+            case Select(q, "from") if isSetTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && args.size == 1 =>
+              s"_distinct(${emitElems(args.head)})"
+            // A Map joined with a Map, or with pairs from anything, is a Map: joined as arrays it was an array, and the
+            // next lookup in it failed (a Map ++ a Map came out a list of the one's entries and the other's)
+            case Select(recv, "++" | "concat") if isMapTpe(recv.tpe) && isMapTpe(t.tpe) && args.size == 1 =>
+              s"_mapConcat(${emitTerm(recv)}, ${emitElems(args.head)})"
+            case Select(recv, "+") if isMapTpe(recv.tpe) && args.size > 1 =>   // m + (p1, p2, ps*)
+              s"_mapConcat(${emitTerm(recv)}, ${varargsArray(args)})"
+            case Select(recv, "--" | "removedAll") if isMapTpe(recv.tpe) && args.size == 1 =>
+              s"_mapRemoveAll(${emitTerm(recv)}, ${emitElems(args.head)})"
+            case Select(recv, "-") if isMapTpe(recv.tpe) && args.size > 1 =>   // m - (k1, k2, ks*)
+              s"_mapRemoveAll(${emitTerm(recv)}, ${varargsArray(args)})"
+            case Select(q, "from") if isMapTpe(t.tpe) && q.tpe.widen.typeSymbol.flags.is(Flags.Module) && args.size == 1 =>
+              s"_mapConcat(_mapEmpty(), ${emitElems(args.head)})"
+            // `xs ++: ys` is `ys.++:(xs)`: the argument's elements first, then the receiver's, as the receiver's kind
+            case Select(recv, "++:" | "$plus$plus$colon" | "prependedAll") if isCollType(recv) && args.size == 1 =>
+              val joined = s"_concat(${emitElems(args.head)}, ${emitElems(recv)})"
+              if (isMapTpe(t.tpe)) s"_mapConcat(_mapEmpty(), $joined)"
+              else if (isSetTpe(t.tpe)) s"_distinct($joined)"
+              else joined
             case Select(recv, "contains") if isSetTpe(recv.tpe) =>
               s"_setHas(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "get" | "apply") if isMapTpe(recv.tpe) && args.size == 1 =>
@@ -1710,7 +1741,9 @@ class RokuEmitter(
             case Select(recv, ":::") =>
               s"_concat(${emitTerm(args.head)}, ${emitTerm(recv)})"
             case Select(recv, "++") =>  // xs ++ ys (left-associative)
-              s"_concat(${emitTerm(recv)}, ${emitTerm(args.head)})"
+              s"_concat(${emitElems(recv)}, ${emitElems(args.head)})"
+            case Select(recv, "concat" | ":++" | "$colon$plus$plus" | "appendedAll") if isCollType(recv) && args.size == 1 =>
+              s"_concat(${emitElems(recv)}, ${emitElems(args.head)})"
             // ── String methods → BrightScript string builtins/helpers ──
             case Select(recv, "substring") if args.length == 2 =>
               s"_substr(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
@@ -1836,7 +1869,9 @@ class RokuEmitter(
               s"_arrIndexWhere(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "indexOf") if isCollType(recv) && args.size == 1 =>
               s"_arrIndexOf(${emitTerm(recv)}, ${emitArgVal(args.head)})"
-            // pairs to a Map (the argument is the `<:<` evidence)
+            // pairs to a Map (the argument is the `<:<` evidence); a Map is one already, and walked as an array it
+            // gave its keys alone
+            case Select(recv, "toMap") if isMapTpe(recv.tpe) && args.size == 1 => emitTerm(recv)
             case Select(recv, "toMap") if isCollType(recv) && args.size == 1 =>
               s"_mapFromPairs(${emitTerm(recv)})"
             case Select(recv, "contains") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 1 =>
@@ -2068,7 +2103,9 @@ class RokuEmitter(
         case Select(q, "indices") if isCollType(q) => s"_until(0, ${emitTerm(q)}.count())"
         case Select(q, "reverse") if isCollType(q)   => s"_reverse(${emitTerm(q)})"
         case Select(q, "distinct") if isCollType(q)  => s"_distinct(${emitTerm(q)})"
-        // a Set is an array of distinct values here, so a collection made one is its distinct values
+        // a Set is an array of distinct values here, so a collection made one is its distinct values (a Map's, its pairs)
+        case Select(q, "toSet") if isMapTpe(q.tpe) => s"_mapToList(${emitTerm(q)})"
+        case TypeApply(Select(q, "toSet"), _) if isMapTpe(q.tpe) => s"_mapToList(${emitTerm(q)})"
         case Select(q, "toSet") if isCollType(q) => s"_distinct(${emitTerm(q)})"
         case TypeApply(Select(q, "toSet"), _) if isCollType(q) => s"_distinct(${emitTerm(q)})"
         case Select(q, "sum") if isCollType(q)       => s"_sum(${emitTerm(q)})"
@@ -3210,7 +3247,7 @@ class RokuEmitter(
     parts.zipWithIndex.foreach { case (code, i) => write("components/" + RokuEmitter.partName(i), code) }
     write("components/AppScene.xml", sceneXml.replace(RokuEmitter.appScript(0),
       parts.indices.map(RokuEmitter.appScript).mkString("\n  ")))
-    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs)
+    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs + collectionShimsBrs)
   }
 
   // Facade access is emitted as `ga.<Module>.<member>` (see the Select case).
@@ -3374,7 +3411,7 @@ class RokuEmitter(
     * Scala local takes. */
   private lazy val runtimeFnNames: Set[String] =
     "(?im)^\\s*(?:function|sub)\\s+([A-Za-z_][A-Za-z0-9_]*)".r
-      .findAllMatchIn(runtimeBrs + "\n" + shimsBrs).map(_.group(1).toLowerCase).toSet
+      .findAllMatchIn(runtimeBrs + "\n" + shimsBrs + collectionShimsBrs).map(_.group(1).toLowerCase).toSet
 
   /** The core of the Scala runtime: string conversion, collection, String,
    *  Option and Try/Either operations, closure invocation (`RtInvoke`) and the
@@ -4492,165 +4529,6 @@ class RokuEmitter(
       |    return { _cls: "Right", value: v, _fields: ["value"] }
       |end function
       |
-      |' ── immutable Set (array-backed, `_eq` membership) ─────────────────────────
-      |
-      |function _setAdd(s as object, x as dynamic) as object
-      |    r = []
-      |    found = false
-      |    for each e in s
-      |        r.push(e)
-      |        if not found
-      |            if _eq(e, x) then found = true
-      |        end if
-      |    end for
-      |    if not found then r.push(x)
-      |    return r
-      |end function
-      |function _setRemove(s as object, x as dynamic) as object
-      |    r = []
-      |    for each e in s
-      |        if not _eq(e, x) then r.push(e)
-      |    end for
-      |    return r
-      |end function
-      |function _setDiff(a as object, b as object) as object
-      |    if a.count() = 0 then return a
-      |    if b.count() = 0 then return a
-      |    r = []
-      |    for each e in a
-      |        if not _setHas(b, e) then r.push(e)
-      |    end for
-      |    return r
-      |end function
-      |function _setUnion(a as object, b as object) as object
-      |    r = []
-      |    for each e in a
-      |        r.push(e)
-      |    end for
-      |    for each e in b
-      |        if not _setHas(r, e) then r.push(e)
-      |    end for
-      |    return r
-      |end function
-      |function _setHas(s as object, x as dynamic) as boolean
-      |    for each e in s
-      |        if _eq(e, x) then return true
-      |    end for
-      |    return false
-      |end function
-      |
-      |' ── immutable Map with OBJECT keys (an entry list; AA keys are strings) ────
-      |
-      |function _mapEmpty() as object
-      |    return { _map: true, entries: [] }
-      |end function
-      |' A Scala Map is an entry list (object keys, `_eq` lookup). A Map built by the
-      |' runtime's `Map(...)` is a plain string-keyed assoc array; every map
-      |' helper accepts both.
-      |function _rtIsEntryMap(m as dynamic) as boolean
-      |    if _rtKind(m) <> "aa" then return false
-      |    return m.DoesExist("_map")
-      |end function
-      |function _mapSize(m as dynamic) as integer
-      |    if m = invalid then return 0
-      |    if _rtIsEntryMap(m) then return m.entries.count()
-      |    return m.count()
-      |end function
-      |function _mapPutT(m as dynamic, t as object) as object
-      |    return _mapPut(m, t._1, t._2)
-      |end function
-      |function _mapFind(m as object, k as dynamic) as integer
-      |    n = m.entries.count()
-      |    for i = 0 to n - 1
-      |        if _eq(m.entries[i].k, k) then return i
-      |    end for
-      |    return -1
-      |end function
-      |function _mapGet(m as dynamic, k as dynamic) as dynamic
-      |    if m = invalid then return invalid
-      |    if not _rtIsEntryMap(m) then return m[_str(k)]
-      |    i = _mapFind(m, k)
-      |    if i < 0 then return invalid
-      |    return m.entries[i].v
-      |end function
-      |function _mapGetOrElse(m as dynamic, k as dynamic, d as dynamic) as dynamic
-      |    if _mapHas(m, k) then return _mapGet(m, k)
-      |    return d
-      |end function
-      |function _mapHas(m as dynamic, k as dynamic) as boolean
-      |    if m = invalid then return false
-      |    if not _rtIsEntryMap(m) then return m.DoesExist(_str(k))
-      |    return _mapFind(m, k) >= 0
-      |end function
-      |function _mapPut(m as dynamic, k as dynamic, v as dynamic) as object
-      |    if m = invalid then m = _mapEmpty()
-      |    if not _rtIsEntryMap(m)
-      |        c = {}
-      |        c.Append(m)
-      |        c[_str(k)] = v
-      |        return c
-      |    end if
-      |    r = { _map: true, entries: [] }
-      |    replaced = false
-      |    for each e in m.entries
-      |        if not replaced and _eq(e.k, k)
-      |            r.entries.push({ k: k, v: v })
-      |            replaced = true
-      |        else
-      |            r.entries.push(e)
-      |        end if
-      |    end for
-      |    if not replaced then r.entries.push({ k: k, v: v })
-      |    return r
-      |end function
-      |function _mapRemove(m as dynamic, k as dynamic) as object
-      |    if m = invalid then return _mapEmpty()
-      |    if not _rtIsEntryMap(m)
-      |        c = {}
-      |        c.Append(m)
-      |        c.Delete(_str(k))
-      |        return c
-      |    end if
-      |    r = { _map: true, entries: [] }
-      |    for each e in m.entries
-      |        if not _eq(e.k, k) then r.entries.push(e)
-      |    end for
-      |    return r
-      |end function
-      |function _mapKeys(m as dynamic) as object
-      |    if m = invalid then return []
-      |    if not _rtIsEntryMap(m) then return m.Keys()
-      |    r = []
-      |    for each e in m.entries
-      |        r.push(e.k)
-      |    end for
-      |    return r
-      |end function
-      |function _mapValues(m as dynamic) as object
-      |    if m = invalid then return []
-      |    if not _rtIsEntryMap(m)
-      |        vs = []
-      |        for each k in m
-      |            vs.push(m[k])
-      |        end for
-      |        return vs
-      |    end if
-      |    r = []
-      |    for each e in m.entries
-      |        r.push(e.v)
-      |    end for
-      |    return r
-      |end function
-      |function _mapEq(a as object, b as object) as boolean
-      |    if a.entries.count() <> b.entries.count() then return false
-      |    for each e in a.entries
-      |        i = _mapFind(b, e.k)
-      |        if i < 0 then return false
-      |        if not _eq(b.entries[i].v, e.v) then return false
-      |    end for
-      |    return true
-      |end function
-      |
       |' ── java.util.concurrent.atomic.AtomicBoolean ─────────────────────────────
       |
       |function AtomicBoolean_new(v = false as dynamic) as object
@@ -5651,6 +5529,206 @@ class RokuEmitter(
       |function _json_isBoolean(j as dynamic) as boolean
       |    return _rtKind(j) = "b"
       |end function
+      |""".stripMargin
+
+  /** The immutable Set and Map of the runtime: a constant of their own, as `shimsBrs` is one, under the JVM's cap. */
+  private val collectionShimsBrs: String =
+    """
+      |' ── immutable Set (array-backed, `_eq` membership) ─────────────────────────
+      |
+      |function _setAdd(s as object, x as dynamic) as object
+      |    r = []
+      |    found = false
+      |    for each e in s
+      |        r.push(e)
+      |        if not found
+      |            if _eq(e, x) then found = true
+      |        end if
+      |    end for
+      |    if not found then r.push(x)
+      |    return r
+      |end function
+      |function _setRemove(s as object, x as dynamic) as object
+      |    r = []
+      |    for each e in s
+      |        if not _eq(e, x) then r.push(e)
+      |    end for
+      |    return r
+      |end function
+      |function _setDiff(a as object, b as object) as object
+      |    if a.count() = 0 then return a
+      |    if b.count() = 0 then return a
+      |    r = []
+      |    for each e in a
+      |        if not _setHas(b, e) then r.push(e)
+      |    end for
+      |    return r
+      |end function
+      |function _setUnion(a as object, b as object) as object
+      |    r = []
+      |    for each e in a
+      |        r.push(e)
+      |    end for
+      |    for each e in b
+      |        if not _setHas(r, e) then r.push(e)
+      |    end for
+      |    return r
+      |end function
+      |function _setIntersect(a as object, b as object) as object
+      |    r = []
+      |    for each e in a
+      |        if _setHas(b, e) then r.push(e)
+      |    end for
+      |    return r
+      |end function
+      |function _setHas(s as object, x as dynamic) as boolean
+      |    for each e in s
+      |        if _eq(e, x) then return true
+      |    end for
+      |    return false
+      |end function
+      |
+      |' ── immutable Map with OBJECT keys (an entry list; AA keys are strings) ────
+      |
+      |function _mapEmpty() as object
+      |    return { _map: true, entries: [] }
+      |end function
+      |' A Scala Map is an entry list (object keys, `_eq` lookup). A Map built by the
+      |' runtime's `Map(...)` is a plain string-keyed assoc array; every map
+      |' helper accepts both.
+      |function _rtIsEntryMap(m as dynamic) as boolean
+      |    if _rtKind(m) <> "aa" then return false
+      |    return m.DoesExist("_map")
+      |end function
+      |function _mapSize(m as dynamic) as integer
+      |    if m = invalid then return 0
+      |    if _rtIsEntryMap(m) then return m.entries.count()
+      |    return m.count()
+      |end function
+      |function _mapPutT(m as dynamic, t as object) as object
+      |    return _mapPut(m, t._1, t._2)
+      |end function
+      |function _mapFind(m as object, k as dynamic) as integer
+      |    n = m.entries.count()
+      |    for i = 0 to n - 1
+      |        if _eq(m.entries[i].k, k) then return i
+      |    end for
+      |    return -1
+      |end function
+      |function _mapGet(m as dynamic, k as dynamic) as dynamic
+      |    if m = invalid then return invalid
+      |    if not _rtIsEntryMap(m) then return m[_str(k)]
+      |    i = _mapFind(m, k)
+      |    if i < 0 then return invalid
+      |    return m.entries[i].v
+      |end function
+      |function _mapGetOrElse(m as dynamic, k as dynamic, d as dynamic) as dynamic
+      |    if _mapHas(m, k) then return _mapGet(m, k)
+      |    return d
+      |end function
+      |function _mapHas(m as dynamic, k as dynamic) as boolean
+      |    if m = invalid then return false
+      |    if not _rtIsEntryMap(m) then return m.DoesExist(_str(k))
+      |    return _mapFind(m, k) >= 0
+      |end function
+      |function _mapPut(m as dynamic, k as dynamic, v as dynamic) as object
+      |    if m = invalid then m = _mapEmpty()
+      |    if not _rtIsEntryMap(m)
+      |        c = {}
+      |        c.Append(m)
+      |        c[_str(k)] = v
+      |        return c
+      |    end if
+      |    r = { _map: true, entries: [] }
+      |    replaced = false
+      |    for each e in m.entries
+      |        if not replaced and _eq(e.k, k)
+      |            r.entries.push({ k: k, v: v })
+      |            replaced = true
+      |        else
+      |            r.entries.push(e)
+      |        end if
+      |    end for
+      |    if not replaced then r.entries.push({ k: k, v: v })
+      |    return r
+      |end function
+      |function _mapRemove(m as dynamic, k as dynamic) as object
+      |    if m = invalid then return _mapEmpty()
+      |    if not _rtIsEntryMap(m)
+      |        c = {}
+      |        c.Append(m)
+      |        c.Delete(_str(k))
+      |        return c
+      |    end if
+      |    r = { _map: true, entries: [] }
+      |    for each e in m.entries
+      |        if not _eq(e.k, k) then r.entries.push(e)
+      |    end for
+      |    return r
+      |end function
+      |' map ++ pairs (a Map's, a List's, an Option's): a copy of the map with each pair put in it, the later winning
+      |function _mapConcat(a as dynamic, pairs as object) as object
+      |    if a = invalid then a = _mapEmpty()
+      |    if pairs.count() = 0 then return a
+      |    if not _rtIsEntryMap(a)
+      |        r = {}
+      |        r.SetModeCaseSensitive()
+      |        r.Append(a)
+      |        for each t in pairs
+      |            r[_str(t._1)] = t._2
+      |        end for
+      |        return r
+      |    end if
+      |    r = { _map: true, entries: [] }
+      |    r.entries.Append(a.entries)
+      |    for each t in pairs
+      |        i = _mapFind(r, t._1)
+      |        if i < 0 then r.entries.push({ k: t._1, v: t._2 }) else r.entries[i] = { k: t._1, v: t._2 }
+      |    end for
+      |    return r
+      |end function
+      |' map -- keys
+      |function _mapRemoveAll(a as dynamic, keys as object) as object
+      |    r = a
+      |    for each k in keys
+      |        r = _mapRemove(r, k)
+      |    end for
+      |    return r
+      |end function
+      |function _mapKeys(m as dynamic) as object
+      |    if m = invalid then return []
+      |    if not _rtIsEntryMap(m) then return m.Keys()
+      |    r = []
+      |    for each e in m.entries
+      |        r.push(e.k)
+      |    end for
+      |    return r
+      |end function
+      |function _mapValues(m as dynamic) as object
+      |    if m = invalid then return []
+      |    if not _rtIsEntryMap(m)
+      |        vs = []
+      |        for each k in m
+      |            vs.push(m[k])
+      |        end for
+      |        return vs
+      |    end if
+      |    r = []
+      |    for each e in m.entries
+      |        r.push(e.v)
+      |    end for
+      |    return r
+      |end function
+      |function _mapEq(a as object, b as object) as boolean
+      |    if a.entries.count() <> b.entries.count() then return false
+      |    for each e in a.entries
+      |        i = _mapFind(b, e.k)
+      |        if i < 0 then return false
+      |        if not _eq(b.entries[i].v, e.v) then return false
+      |    end for
+      |    return true
+      |end function
+      |
       |""".stripMargin}
 
 object RokuEmitter {
