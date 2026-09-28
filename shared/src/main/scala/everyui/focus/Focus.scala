@@ -305,6 +305,8 @@ object Focus {
     val target = focused()
     // asked before it hears the key, which may change its mind (a scroll that reaches its end)
     val kept = pressed && target.exists(_.keepsEvent(event))
+    // and one the platform's own field types with or moves its caret by: heard, and then left to the platform
+    val typed = pressed && !kept && target.exists(_.typesEvent(event))
     target.foreach { c =>
       if (pressed) c.event.key.down @= event else c.event.key.up @= event
     }
@@ -322,6 +324,8 @@ object Focus {
     // let both act on the same press: Back in the screensaver went to the screensaver, which returned to Home, AND
     // on to the Roku, which closed the channel — one press, two answers, and the app was gone.
     else if (kept) true
+    // a key typed into a field is the field's: the platform types it, and the focus layer makes no use of it
+    else if (typed) false
     // what the screen itself claims, before the focus layer makes its own use of the key
     else if (hooked(key)) true
     // one press, one click: a held OK is a single press however long it is held, where the remote's own repeat made

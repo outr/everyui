@@ -167,6 +167,11 @@ class Component(val node: RenderNode) {
   /** `keepsKey` with the whole press to go on: the platform's name for the key (Home, End, a letter) and the modifiers
     * held with it, as a list needs for Shift+Down or Ctrl+A. Asked just before the press reaches `event.key.down`. */
   def keepsEvent(e: KeyEvent): Boolean = keepsKey(e.key)
+
+  /** Whether `e` is a key the platform's own field under this types with or moves its caret by (Enter in a box of
+    * lines, the arrows, Backspace), while it is being edited: it reaches `event.key.down` and then the platform, untouched,
+    * and the focus layer makes no use of it. Where `keepsEvent` keeps a key, the platform never sees it. */
+  def typesEvent(e: KeyEvent): Boolean = false
 }
 
 object Component {

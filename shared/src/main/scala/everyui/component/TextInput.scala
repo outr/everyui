@@ -76,10 +76,12 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     children ++= List(caption, shown)
   }
 
-  /** A field being edited keeps Enter and the keys that move along its line; the rest still move the focus. One that
-    * is only focused keeps nothing, so Enter clicks it, which starts editing. */
-  override def keepsKey(key: Key): Boolean =
-    native && editing() && (key == Key.Enter || key == Key.ArrowLeft || key == Key.ArrowRight || key == Key.Space || key == Key.Backspace)
+  /** A field being edited types Enter and the keys that move along its line, which go on to the platform's field (kept
+    * from it, as they were, Backspace deleted nothing and the arrows moved no caret); the rest still move the focus. One
+    * that is only focused types nothing, so Enter clicks it, which starts editing. */
+  override def typesEvent(e: everyui.event.KeyEvent): Boolean =
+    native && editing() && (e.key == Key.Enter || e.key == Key.ArrowLeft || e.key == Key.ArrowRight || e.key == Key.Space ||
+      e.key == Key.Backspace)
 }
 
 object TextInput {

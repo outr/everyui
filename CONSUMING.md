@@ -366,6 +366,28 @@ val commit = new SplitButton("Commit", () => commit(),
   moreLabel = "More commit actions")
 ```
 
+### TextArea (`everyui.text`)
+
+A box of lines to type in: a commit message, a note. It wraps, scrolls when its lines outgrow it, and shows its
+`placeholder` while empty. `value` is what it holds, both ways. Enter starts a new line, and Primary+Enter (Ctrl, or
+Cmd on a Mac) is heard on `submitted`. With `grow = true` it is as tall as its lines, from `minHeight` to `maxHeight`,
+and scrolls past that.
+
+```scala
+import everyui.text.TextArea
+
+val message = new TextArea(placeholder = "Commit message", width = 360.0, grow = true, maxHeight = 200.0)
+message.value @= draft()
+message.submitted.attach(text => commit(text))
+```
+
+While it is being edited, the keys it types with (Enter, the arrows, the page keys, Backspace) go on to the
+platform's own field and the focus layer makes no other use of them. Tab and Escape still move the focus and go back,
+and the app's commands still run first. On a television it works as `TextInput` does: the focus only lights it, and
+OK brings up the platform's keyboard. A component that wraps a platform field says which keys are its typing with
+`Component.typesEvent`; those keys reach its `event.key.down` and then the platform, untouched. `TextInput` now does
+this too. Before, it kept Backspace, Space and the arrows from its own field while it was being edited.
+
 ## An installable web app
 
 An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,
