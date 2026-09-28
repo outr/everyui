@@ -2,7 +2,7 @@ package everyui.monaco.gallery
 
 import everyui.component.{Button, ButtonStyle}
 import everyui.monaco.*
-import everyui.monaco.Monaco.ui
+import everyui.monaco.Monaco.uiThread
 
 import scala.concurrent.Future
 

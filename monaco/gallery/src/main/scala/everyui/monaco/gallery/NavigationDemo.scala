@@ -3,7 +3,7 @@ package everyui.monaco.gallery
 import everyui.component.{Button, ButtonStyle, Container, TextView}
 import everyui.keymap.Chord
 import everyui.monaco.*
-import everyui.monaco.Monaco.ui
+import everyui.monaco.Monaco.uiThread
 import everyui.theme.Theme
 import reactify.*
 
@@ -126,7 +126,8 @@ object NavigationDemo {
       log.say("saved " + name(open()))
     }
     val reveal = new Button("Reveal line 7", () => controller.revealAndHighlight(MonacoRange(7, 1, 7, 40), lines = true), ButtonStyle.Tonal)
-    val outline = new Button("Outline", () => controller.trigger("editor.action.quickOutline"), ButtonStyle.Tonal)
+    // the outline opens in the editor, which needs the focus back from the button
+    val outline = new Button("Outline", () => controller.focus().foreach(_ => controller.trigger("editor.action.quickOutline")), ButtonStyle.Tonal)
 
     val editor = new MonacoEditor(controller)
     val body = new Container {

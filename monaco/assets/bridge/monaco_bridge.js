@@ -188,6 +188,22 @@
       'editorTextFocus && editorReadonly');
     editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Tab, function () { emit('handBack', { key: 'Tab', shift: true }); },
       'editorTextFocus && editorReadonly');
+    // where the engine has no asynchronous clipboard (JavaFX's WebKit), Monaco's copy and cut reach nothing: they go to
+    // the app, which puts the text on the system's clipboard itself (Platform.copyText)
+    if (window.everyuiEmbed.hosted && !(navigator.clipboard && navigator.clipboard.writeText)) {
+      var copy = function (cut) {
+        var model = editor.getModel();
+        var sel = editor.getSelections() || [];
+        var text = sel.map(function (s) { return s.isEmpty() ? model.getLineContent(s.startLineNumber) + model.getEOL() : model.getValueInRange(s); }).join(model.getEOL());
+        bridge.emit('clipboard.copy', { text: text });
+        if (cut && !editor.getOption(monaco.editor.EditorOption.readOnly))
+          editor.executeEdits('cut', sel.map(function (s) {
+            return { range: s.isEmpty() ? new monaco.Range(s.startLineNumber, 1, s.startLineNumber + 1, 1) : s, text: '' };
+          }));
+      };
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, function () { copy(false); }, 'editorTextFocus');
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, function () { copy(true); }, 'editorTextFocus');
+    }
     entry.eol = editor.getModel() ? editor.getModel().getEOL() : null;
   }
 
@@ -288,8 +304,13 @@
   };
 
   handlers['editor.deltaDecorations'] = function (a) {
-    var decorations = (a.newDecorations || []).map(function (d) { return { range: range(d.range), options: d.options || {} }; });
-    return editorEntry(a.editorId).editor.deltaDecorations(a.oldIds || [], decorations);
+    var editor = editorEntry(a.editorId).editor;
+    var model = editor.getModel();
+    // clamped to the text, so a range to the end of a line (a blame note after it) can say so with a large column
+    var decorations = (a.newDecorations || []).map(function (d) {
+      return { range: model ? model.validateRange(range(d.range)) : range(d.range), options: injected(d.options || {}) };
+    });
+    return editor.deltaDecorations(a.oldIds || [], decorations);
   };
 
   handlers['markers.set'] = function (a) {
@@ -655,6 +676,26 @@
     if (item.filterText != null) out.filterText = item.filterText;
     if (item.preselect != null) out.preselect = item.preselect;
     if (item.commitCharacters != null) out.commitCharacters = item.commitCharacters;
+    return out;
+  }
+
+  // Words before or after a range (`before`, `after`): the standalone editor draws no injected text, so they become
+  // generated content on a class of their own, the one given styling them too.
+  var injectedRules = Object.create(null), injectedCount = 0;
+  function injected(options) {
+    var out = Object.assign({}, options);
+    [['after', 'afterContentClassName'], ['before', 'beforeContentClassName']].forEach(function (p) {
+      var words = out[p[0]];
+      if (!words || typeof words.content !== 'string') return;
+      var rule = JSON.stringify(words.content);
+      var cls = injectedRules[rule];
+      if (!cls) {
+        cls = injectedRules[rule] = 'everyui-injected-' + (++injectedCount);
+        handlers['bridge.addStyles']({ id: cls, css: '.' + cls + '::' + p[0] + ' { content: ' + rule + '; }' });
+      }
+      out[p[1]] = cls + (words.inlineClassName ? ' ' + words.inlineClassName : '');
+      delete out[p[0]];
+    });
     return out;
   }
 

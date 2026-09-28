@@ -22,7 +22,7 @@ object MonacoLanguages {
   def registerCompletionProvider(languageId: String, provider: MonacoCompletionProvider): Future[MonacoDisposable] =
     register(languageId, "languages.registerCompletionProvider",
       obj("triggerCharacters" -> arr(provider.triggerCharacters.map(c => str(c))*)), (_, payload, p) => {
-        import Monaco.ui
+        import Monaco.uiThread
         val context = payload.get("context").getOrElse(obj())
         val params = MonacoCompletionParams(p.uri, p.languageId, p.value, p.position, MonacoCompletionContext(
           MonacoCompletionTriggerKind.fromWire(Wire.int(context, "triggerKind")),
@@ -33,7 +33,7 @@ object MonacoLanguages {
 
   def registerHoverProvider(languageId: String, provider: MonacoHoverProvider): Future[MonacoDisposable] =
     register(languageId, "languages.registerHoverProvider", obj(), (_, _, p) => {
-      import Monaco.ui
+      import Monaco.uiThread
       provider.provideHover(p).map(_.map(_.toJson).getOrElse(Null))
     })
 
@@ -41,7 +41,7 @@ object MonacoLanguages {
     register(languageId, "languages.registerSignatureHelpProvider",
       obj("triggerCharacters" -> arr(provider.triggerCharacters.map(c => str(c))*),
         "retriggerCharacters" -> arr(provider.retriggerCharacters.map(c => str(c))*)), (_, payload, p) => {
-        import Monaco.ui
+        import Monaco.uiThread
         val context = payload.get("context").getOrElse(obj())
         val params = MonacoSignatureHelpParams(p.uri, p.languageId, p.value, p.position, MonacoSignatureHelpContext(
           MonacoSignatureHelpTriggerKind.fromWire(Wire.int(context, "triggerKind")),
@@ -51,13 +51,13 @@ object MonacoLanguages {
 
   def registerDefinitionProvider(languageId: String, provider: MonacoDefinitionProvider): Future[MonacoDisposable] =
     register(languageId, "languages.registerDefinitionProvider", obj(), (_, _, p) => {
-      import Monaco.ui
+      import Monaco.uiThread
       provider.provideDefinition(p).map(list => if (list.isEmpty) Null else arr(list.map(_.toJson)*))
     })
 
   def registerReferenceProvider(languageId: String, provider: MonacoReferenceProvider): Future[MonacoDisposable] =
     register(languageId, "languages.registerReferenceProvider", obj(), (_, payload, p) => {
-      import Monaco.ui
+      import Monaco.uiThread
       val context = payload.get("context").getOrElse(obj())
       provider.provideReferences(MonacoReferenceParams(p.uri, p.languageId, p.value, p.position,
         Wire.bool(context, "includeDeclaration"))).map(list => arr(list.map(_.toJson)*))
@@ -68,13 +68,13 @@ object MonacoLanguages {
                                      displayName: String = ""): Future[MonacoDisposable] =
     register(languageId, "languages.registerDocumentSymbolProvider",
       if (displayName.isEmpty) obj() else obj("displayName" -> str(displayName)), (_, _, p) => {
-        import Monaco.ui
+        import Monaco.uiThread
         provider.provideDocumentSymbols(p).map(list => arr(list.map(_.toJson)*))
       })
 
   private def register(languageId: String, method: String, args: Json,
                        answer: (String, Json, MonacoProviderParams) => Future[Json]): Future[MonacoDisposable] = {
-    import Monaco.ui
+    import Monaco.uiThread
     next += 1
     val id = next
     val entry = Entry(languageId, method, args, answer)
@@ -97,7 +97,7 @@ object MonacoLanguages {
   /** Monaco asking a provider: the answer, or the failure, sent back (`languages.respond`). A provider gone since
     * answers nothing, so Monaco is not left waiting. */
   private[monaco] def answer(bridge: MonacoBridge, kind: String, payload: Json): Unit = {
-    import Monaco.ui
+    import Monaco.uiThread
     val requestId = Wire.string(payload, "requestId")
     val uri = Wire.string(payload, "uri")
     val version = Wire.int(payload, "versionId")

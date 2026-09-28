@@ -3,7 +3,7 @@ package everyui.monaco.gallery
 import everyui.{Color, Gradient}
 import everyui.component.Container
 import everyui.monaco.*
-import everyui.monaco.Monaco.ui
+import everyui.monaco.Monaco.uiThread
 import reactify.*
 
 /** The editor over the app's own ground: a clear theme on a clear embed shows the gradient behind it. */

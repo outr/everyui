@@ -525,6 +525,7 @@ lazy val network = (project in file("network"))
 //   sbt monacoGallery/galleryBundle      the example gallery for the web, in monaco/gallery/out-web
 //   sbt monacoDesktop/run                the gallery on the desktop (JavaFX's web view)
 //   sbt monacoDesktop/test               the bridge protocol and controller specs, and Monaco loaded in a web view
+//   sbt monacoAndroid/packageApk         the gallery for Android, in monaco/android/out-apk/everyui-monaco.apk
 lazy val fabricVersion = "1.30.2-SNAPSHOT"
 lazy val monacoSources = (file("monaco") / "src" / "main" / "scala").getAbsoluteFile
 lazy val monacoGallerySources = (file("monaco") / "gallery" / "src" / "main" / "scala").getAbsoluteFile
@@ -591,4 +592,43 @@ lazy val monacoDesktop = (project in file("monaco/desktop"))
     Test / fork := true,
     Test / parallelExecution := false,
     Test / baseDirectory := (ThisBuild / baseDirectory).value
+  )
+
+lazy val monacoAndroid = (project in file("monaco/android"))
+  .dependsOn(reactive)
+  .settings(
+    name := "everyui-monaco-android",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true) ++ Seq(
+      (file("android") / "src" / "main" / "scala").getAbsoluteFile, monacoSources, monacoGallerySources,
+      (file("monaco") / "gallery" / "android" / "src" / "main" / "scala").getAbsoluteFile),
+    libraryDependencies += "com.outr" %% "spice-client-okhttp" % spiceVersion,
+    libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
+    resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
+    libraryDependencies ++= media3Modules.map(m =>
+      ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
+    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
+    androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
+    Compile / unmanagedJars ++= androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
+    Compile / scalacOptions ++= Seq("-release", "17"),
+    packageApk := {
+      val conv = fileConverter.value
+      val buildRoot = (ThisBuild / baseDirectory).value
+      val assets = target.value / "apk-assets"
+      IO.delete(assets)
+      IO.copyDirectory(buildRoot / "assets" / "images", assets / "images")
+      (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
+      // Monaco's files, as the web views ask for them (EmbedClient)
+      val staged = target.value / "monaco-assets"
+      MonacoAssets.generate(streams.value.log.info(_), buildRoot / "monaco" / "assets", staged)
+      IO.copyDirectory(staged, assets)
+      AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
+        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
+        baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
+        Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
+        baseDirectory.value / "out-apk" / "everyui-monaco.apk",
+        version.value, 1, AndroidApk.debug)
+    }
   )

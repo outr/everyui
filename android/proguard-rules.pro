@@ -64,3 +64,6 @@
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
+# and the web view finds those methods by their annotation, at run time: shrunk away with the other annotations, the
+# object reaches the page with no methods at all (an embed's guest could not answer, a page's bridge heard nothing)
+-keepattributes RuntimeVisibleAnnotations

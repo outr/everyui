@@ -14,7 +14,7 @@ import scala.util.{Failure, Success}
   * modified text shows read-only. */
 class MonacoDiffEditor(val controller: MonacoDiffController = MonacoDiffController(), owned: Boolean = false)
   extends Embed("monaco", Monaco.site, new CodeView(controller.modified())) {
-  import Monaco.ui
+  import Monaco.uiThread
 
   private var bridge: Option[MonacoBridge] = None
   private var diffId = ""

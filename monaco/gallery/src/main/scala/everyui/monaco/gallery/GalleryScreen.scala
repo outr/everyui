@@ -2,10 +2,12 @@ package everyui.monaco.gallery
 
 import everyui.app.screen.{ScreenManager, UIScreen}
 import everyui.async.Task
-import everyui.component.{Component, Container, MaterialIconView, TextView}
+import everyui.component.{Column, Component, Container, Embed, MaterialIconView, TextView}
+import everyui.event.Key
 import everyui.font.MaterialIcon
 import everyui.monaco.Monaco
 import everyui.net.URLPath
+import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
 
@@ -43,13 +45,9 @@ object GalleryScreen extends UIScreen {
     private val version = TextView("Monaco " + Monaco.version + "  •  gallery", 11.0, Theme.muted())
     version.position.left @= 20.0
     version.position.top @= 58.0
-    children ++= List(mark, title, version)
-    var y = 90.0
-    entries.foreach { e =>
-      e.position.top @= y
-      y += e.size.height() + 2.0
-      children += e
-    }
+    private val list = Column(2.0)(entries*)
+    list.position.top @= 90.0
+    children ++= List(mark, title, version, list)
   }
 
   private lazy val content: Container = new Container
@@ -77,6 +75,9 @@ object GalleryScreen extends UIScreen {
     }
   }
 
+  /** The demo at `i` in the list shown, once the screen is. */
+  def choose(i: Int): Unit = Platform.after(0.5, () => show(i))
+
   private def show(i: Int): Unit = {
     chosen @= i
     page.foreach { p =>
@@ -88,6 +89,15 @@ object GalleryScreen extends UIScreen {
     next.size.height := content.size.height()
     content.children += next
     page = Some(next)
+    // Escape out of an editor (with nothing of its own to close) comes back to the demo's entry in the list
+    embeds(next).foreach(_.exit @= Some(entries(i)))
+    // and right from the list goes into its editor
+    sidebar.exitFocus(Key.ArrowRight, embeds(next).headOption.getOrElse(next))
+  }
+
+  private def embeds(c: Component): List[Embed] = c match {
+    case e: Embed => List(e)
+    case _ => c.childComponents.toList.flatMap(embeds)
   }
 
   override def defaultFocus(): Component = entries.head

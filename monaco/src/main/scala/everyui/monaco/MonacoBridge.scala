@@ -82,7 +82,7 @@ class MonacoBridge(val runtime: String) {
 
   private def start(): Unit = {
     started = true
-    import Monaco.ui
+    import Monaco.uiThread
     send("bridge.init", obj("base" -> str(Monaco.site.root), "version" -> str(Monaco.version)), Monaco.loadTimeout)
       .flatMap(_ => Future.sequence(MonacoThemes.replay(this) ++ MonacoLanguages.replay(this)))
       .onComplete { result =>
@@ -133,6 +133,8 @@ class MonacoBridge(val runtime: String) {
         }
       }
       else if (kind.startsWith("language.") && kind.endsWith(".request")) MonacoLanguages.answer(this, kind, payload)
+      // a copy the engine could not make itself (see the bridge): the system's clipboard, through the platform
+      else if (kind == "clipboard.copy") Platform.copyText(Wire.string(payload, "text"))
       else {
         val event = BridgeEvent(kind, payload)
         listeners.foreach(f => f(event))

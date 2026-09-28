@@ -2,7 +2,7 @@ package everyui.monaco.gallery
 
 import everyui.component.Container
 import everyui.monaco.*
-import everyui.monaco.Monaco.ui
+import everyui.monaco.Monaco.uiThread
 
 /** Actions with keybindings and context-menu entries, and a bare command, each saying in the log when it runs. */
 object ActionsDemo {

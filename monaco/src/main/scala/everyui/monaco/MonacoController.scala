@@ -18,7 +18,7 @@ import scala.concurrent.{Future, Promise}
   * (`onDidChangeContent.attach(...)`). The text is kept here edit by edit, so reading it costs nothing. */
 class MonacoController(initialValue: String = "", initialLanguage: String = "plaintext", initialTheme: String = "vs-dark",
                        initialReadOnly: Boolean = false, initialOptions: MonacoEditorOptions = MonacoEditorOptions()) {
-  import Monaco.ui
+  import Monaco.uiThread
 
   private val text = Var(initialValue)
   private val lang = Var(initialLanguage)

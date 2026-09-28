@@ -2,7 +2,7 @@ package everyui.monaco.gallery
 
 import everyui.component.{Column, Container, TextView}
 import everyui.monaco.*
-import everyui.monaco.Monaco.ui
+import everyui.monaco.Monaco.uiThread
 import everyui.theme.{Palette, Theme}
 
 import scala.concurrent.Future

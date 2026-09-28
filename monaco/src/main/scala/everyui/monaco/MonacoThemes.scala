@@ -33,7 +33,7 @@ object MonacoThemes {
   def followPalette(tokens: Boolean = false, clear: Boolean = false): Future[Unit] = {
     stopFollowing()
     def apply(p: Palette): Future[Unit] = {
-      import Monaco.ui
+      import Monaco.uiThread
       defineTheme(MonacoTheme.PaletteName, MonacoTheme.fromPalette(p, tokens, clear))
         .flatMap(_ => setTheme(MonacoTheme.PaletteName))
     }
@@ -63,7 +63,7 @@ object MonacoThemes {
     } ++ shown.toList.map(name => bridge.send("editor.setTheme", obj("theme" -> str(name)), Monaco.callTimeout))
 
   private def everywhere(f: MonacoBridge => Future[Json]): Future[Unit] = {
-    import Monaco.ui
+    import Monaco.uiThread
     Future.sequence(Monaco.live.map(f)).map(_ => ())
   }
 }

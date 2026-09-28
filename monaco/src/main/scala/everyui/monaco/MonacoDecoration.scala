@@ -29,7 +29,7 @@ object MonacoDecoration {
 
   /** A note after the end of `line`, not part of the text (who changed it last, and when), with a hover in Markdown. */
   def blame(line: Int, note: String, hover: Option[String] = None): MonacoDecoration =
-    MonacoDecoration(MonacoRange(line, Int.MaxValue, line, Int.MaxValue), MonacoDecorationOptions(
+    MonacoDecoration(MonacoRange(line, 1, line, Int.MaxValue), MonacoDecorationOptions(
       after = Some(MonacoInjectedText(note, Some("everyui-monaco-blame"))), hoverMessage = hover,
       stickiness = Some(MonacoDecorationStickiness.NeverGrowsWhenTypingAtEdges)))
 

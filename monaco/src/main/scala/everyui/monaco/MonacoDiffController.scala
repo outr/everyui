@@ -11,7 +11,7 @@ import scala.concurrent.{Future, Promise}
 class MonacoDiffController(originalValue: String = "", modifiedValue: String = "", initialLanguage: String = "plaintext",
                            initialTheme: String = "vs-dark", initialOptions: MonacoDiffOptions = MonacoDiffOptions(),
                            editorOptions: MonacoEditorOptions = MonacoEditorOptions()) {
-  import Monaco.ui
+  import Monaco.uiThread
 
   private val left = Var(originalValue)
   private val right = Var(modifiedValue)

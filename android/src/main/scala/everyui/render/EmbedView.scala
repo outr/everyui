@@ -27,6 +27,9 @@ class EmbedView(context: Context, val name: String, site: EmbedSite) extends Web
   private val bridge = new EmbedBridge(this)
 
   locally {
+    // a debug build's guest can be inspected from a desktop browser (chrome://inspect)
+    if ((context.getApplicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0)
+      WebView.setWebContentsDebuggingEnabled(true)
     val settings = getSettings
     settings.setJavaScriptEnabled(true)
     settings.setDomStorageEnabled(true)

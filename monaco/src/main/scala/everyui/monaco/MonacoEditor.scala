@@ -29,7 +29,7 @@ import scala.util.{Failure, Success}
 class MonacoEditor(val controller: MonacoController = MonacoController(), transparent: Boolean = false,
                    onChanged: String => Unit = null, owned: Boolean = false)
   extends Embed("monaco", Monaco.site, new CodeView(controller.value())) {
-  import Monaco.ui
+  import Monaco.uiThread
 
   private var bridge: Option[MonacoBridge] = None
   private var editorId = ""

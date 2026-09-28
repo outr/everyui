@@ -8,7 +8,7 @@ import scala.concurrent.ExecutionContext
   *
   * {{{
   *   import everyui.monaco.*
-  *   import everyui.monaco.Monaco.ui
+  *   import everyui.monaco.Monaco.uiThread
   *
   *   val code = new MonacoController(initialValue = "object Hello", language = "scala")
   *   val editor = new MonacoEditor(code)
@@ -20,7 +20,7 @@ import scala.concurrent.ExecutionContext
   * (everyui.component.Embed), from the files of `site`. Where no web engine can run it (a Roku, an Apple TV) it shows
   * its text read-only (everyui.kit.CodeView).
   *
-  * Every call to the editor answers as a Future, completed on the UI thread; `ui` runs what follows it there too.
+  * Every call to the editor answers as a Future, completed on the UI thread; `uiThread` runs what follows it there too.
   * Themes (`MonacoThemes`) and language providers (`MonacoLanguages`) are global: given once, they reach every editor,
   * including ones made later. */
 object Monaco {
@@ -37,7 +37,7 @@ object Monaco {
   var loadTimeout: Double = 120.0
 
   /** Runs what follows a call's Future where the call completed: on the UI thread. */
-  given ui: ExecutionContext = ExecutionContext.parasitic
+  given uiThread: ExecutionContext = ExecutionContext.parasitic
 
   private val bridges = scala.collection.mutable.LinkedHashMap.empty[String, MonacoBridge]
   private var calls = 0L

@@ -400,7 +400,7 @@ flutter_monaco_editor with the same API in Scala. It brings Monaco 0.57.0's file
 
 ```scala
 import everyui.monaco.*
-import everyui.monaco.Monaco.ui          // runs what follows a call where it completed, on the UI thread
+import everyui.monaco.Monaco.uiThread    // runs what follows a call where it completed, on the UI thread
 
 val code = MonacoController(initialValue = source, language = "scala",
   options = MonacoEditorOptions(fontSize = Some(14.0), minimap = Some(MonacoMinimapOptions(enabled = Some(false)))))

@@ -23,6 +23,9 @@ class DemoPage(demo: Demo, body: Component, actions: List[Component] = Nil, clea
   title.position.top @= 12.0
   blurb.position.left @= 58.0
   blurb.position.top @= 36.0
+  // cut short before the actions rather than running under them
+  blurb.maxWidth := math.max(0.0, tools.position.left() - 58.0 - 16.0)
+  title.maxWidth := math.max(0.0, tools.position.left() - 58.0 - 16.0)
   tools.position.left := size.width() - tools.size.width() - 20.0
   tools.position.top := (headerHeight - tools.size.height()) / 2.0
   rule.position.top @= headerHeight
