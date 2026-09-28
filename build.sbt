@@ -65,6 +65,7 @@ def emitRokuTask(outName: String, title: String, libraries: Def.Initialize[Task[
 /** The Swift spike: the same program and libraries, emitted as `<out>/App.swift` for
   * `swift/runtime/ScalaRuntime.swift` (see tools/swift-spike.sh). */
 @transient val emitSwift = taskKey[File]("Compile this project and emit it, with the libraries it emits with, as Swift")
+@transient val appleInfoPlist = settingKey[File]("The Info.plist the Apple app is packaged with: EveryUI's own template unless an app gives its own")
 
 def emitSwiftTask(outName: String, libraries: Def.Initialize[Task[Seq[File]]]) = Def.task {
   val log = streams.value.log
@@ -284,6 +285,7 @@ lazy val tvos = (project in file("tvos"))
   .settings(
     name := "everyui-tvos",
     publish / skip := true,
+    appleInfoPlist := (ThisBuild / baseDirectory).value / "swift" / "app" / "Info.plist",
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / unmanagedSourceDirectories ++= backendSources("native", spice = false),
     libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
@@ -293,7 +295,7 @@ lazy val tvos = (project in file("tvos"))
       IO.copyFile(swift / "runtime" / "ScalaRuntime.swift", outDir / "ScalaRuntime.swift")
       IO.copyFile(swift / "runtime" / "UniversalRuntime.swift", outDir / "UniversalRuntime.swift")
       IO.copyFile(swift / "app" / "main.swift", outDir / "main.swift")
-      IO.copyFile(swift / "app" / "Info.plist", outDir / "Info.plist")
+      IO.copyFile(appleInfoPlist.value, outDir / "Info.plist")
       IO.copyDirectory(swift / "app" / "Assets.xcassets", outDir / "Assets.xcassets")   // app icons (tools/make-icons.py)
       val assets = (ThisBuild / baseDirectory).value / "assets"
       IO.copyDirectory(assets / "images", outDir / "images")
