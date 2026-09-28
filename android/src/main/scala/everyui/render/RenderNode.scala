@@ -787,12 +787,27 @@ object RenderNode {
       val at = whole.indexOf('\n', from)
       val end = if (at < 0) whole.length else at
       if (end > from) {
-        val run = paint.getRunAdvance(whole, from, end, from, end, false, end).toDouble
+        // a right-to-left run measured as left-to-right comes out short of what is drawn: Arabic words overran their
+        // box by a letter or two, off the end of a line placed by its width
+        val run = paint.getRunAdvance(whole, from, end, from, end, RenderNode.rightToLeft(whole, from, end), end).toDouble
         if (run > best) best = run
       }
       if (at < 0) more = false else from = at + 1
     }
     best
+  }
+
+  /** Whether the first letter with a direction in `from` to `end` reads right to left, as a TextView takes the line. */
+  def rightToLeft(whole: String, from: Int, end: Int): Boolean = {
+    var i = from
+    var found = 0
+    while (found == 0 && i < end) {
+      val d = Character.getDirectionality(whole.charAt(i))
+      if (d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC) found = 2
+      else if (d == Character.DIRECTIONALITY_LEFT_TO_RIGHT) found = 1
+      i += 1
+    }
+    found == 2
   }
 
   /** The nearest of a `GradientDrawable`'s eight directions to a CSS angle (0 runs bottom to top, 90 left to right). */
