@@ -2,8 +2,11 @@ package everyui.layout
 
 import everyui.component.{Component, Container}
 import everyui.event.Key
+import everyui.i18n.Direction
 
-/** Top to bottom; with `center`, each child centred on the widest (or on the container's own width, when it has one). */
+/** Top to bottom, each child at the start edge (the left, or the right in a right-to-left language); with `center`,
+  * each child centred on the widest (or on the container's own width, when it has one). A container given its
+  * width before its layout keeps it; one given its layout first follows its widest child. */
 case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extends Layout {
   override def fitsWidth(): Boolean = true
 
@@ -17,11 +20,15 @@ case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extend
     val pad = container.padding()
     var widest = 0.0
     children.foreach(child => if (child.size.width() > widest) widest = child.size.width())
-    // centred within the widest child when the container follows its children, else within its own width
+    // within the widest child when the container follows its children, else within its own width
     val inner = if (container.widthFollowsContent || !container.size.width.explicit) widest else container.size.width() - pad * 2.0
+    val rtl = Direction.rtl()
     var y = pad
     children.foreach { child =>
-      child.position.left @= (if (center) pad + (inner - child.size.width()) / 2.0 else pad)
+      child.position.left @= (
+        if (center) pad + (inner - child.size.width()) / 2.0
+        else if (rtl) pad + inner - child.size.width()
+        else pad)
       child.position.top @= y
       // a child with no size takes no room and no gap: an optional line is left out of the column entirely
       if (Layout.shows(child)) y = y + child.size.height() + spacing

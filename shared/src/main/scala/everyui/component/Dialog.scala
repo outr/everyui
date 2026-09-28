@@ -9,7 +9,10 @@ import reactify.*
   * and its `buttons` on the right. `show(defaultFocus)` puts it up on the modal sheet with the focus there, `close()`
   * takes it down. */
 class Dialog(title: String, width: Double = 440.0) extends Container {
-  val body: Container = Column(10.0)()
+  val body: Container = new Container {
+    size.width @= width
+    layout @= Some(VerticalLayout(10.0))
+  }
   val buttons: Container = Row(8.0)()
   private val scroll = new ScrollContainer {
     size.width @= width
@@ -26,7 +29,6 @@ class Dialog(title: String, width: Double = 440.0) extends Container {
     children += buttons
   }
 
-  body.size.width @= width
   layout @= Some(VerticalLayout(10.0))
   padding @= 24.0
   size.width @= width + 48.0

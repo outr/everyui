@@ -13,7 +13,6 @@ trait ScrollScreen extends UIScreen {
 
   protected val scroll: ScrollContainer = new ScrollContainer
   protected val body: Container = new Container {
-    layout @= Some(VerticalLayout(16.0))
     size.height := contentHeight
   }
 
@@ -23,6 +22,8 @@ trait ScrollScreen extends UIScreen {
     scroll.size.width := container.size.width
     scroll.size.height := container.size.height
     body.size.width := scroll.size.width() - inset * 2.0
+    // the width first: a column given its layout before its width follows its widest child
+    body.layout @= Some(VerticalLayout(16.0))
     scroll.content.size.height := body.contentHeight + inset * 2.0
     scroll.content.children += body
     container.children += scroll

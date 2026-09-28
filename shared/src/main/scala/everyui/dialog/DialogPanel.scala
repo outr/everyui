@@ -40,8 +40,8 @@ class DialogPanel(title: String, body: List[Component], actions: List[DialogActi
     maxWidth @= inner
   }
   private val stack = new Container {
-    layout @= Some(VerticalLayout(points * 0.7))
     size.width @= inner
+    layout @= Some(VerticalLayout(points * 0.7))
     children ++= body
   }
   private val plain = Focus.candidates(stack).isEmpty
