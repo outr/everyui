@@ -304,7 +304,7 @@ object Focus {
     // that kept it, and the key does not travel on from wherever the focus went
     val target = focused()
     // asked before it hears the key, which may change its mind (a scroll that reaches its end)
-    val kept = pressed && target.exists(_.keepsKey(key))
+    val kept = pressed && target.exists(_.keepsEvent(event))
     target.foreach { c =>
       if (pressed) c.event.key.down @= event else c.event.key.up @= event
     }

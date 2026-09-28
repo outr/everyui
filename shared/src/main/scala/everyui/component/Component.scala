@@ -4,7 +4,7 @@ import reactify.*
 import everyui.{Color, Gradient, Shadow}
 import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
 import everyui.component.types.{Prop, Semantics, WhiteSpace}
-import everyui.event.{Events, Key}
+import everyui.event.{Events, Key, KeyEvent}
 import everyui.focus.Focus
 import everyui.motion.Track
 import everyui.render.RenderNode
@@ -163,6 +163,10 @@ class Component(val node: RenderNode) {
   /** Whether this handles `key` itself while focused, so the focus layer leaves it be: a text field keeps Enter and
     * the arrows along its line. */
   def keepsKey(key: Key): Boolean = false
+
+  /** `keepsKey` with the whole press to go on: the platform's name for the key (Home, End, a letter) and the modifiers
+    * held with it, as a list needs for Shift+Down or Ctrl+A. Asked just before the press reaches `event.key.down`. */
+  def keepsEvent(e: KeyEvent): Boolean = keepsKey(e.key)
 }
 
 object Component {

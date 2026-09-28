@@ -300,3 +300,43 @@ editor is made.
 **Android and the desktop** compile it from source like the rest of their backends: add `monaco/src/main/scala`, fabric-io,
 and the resources (`MonacoAssets.generate` in `project/`); on Android put `everyui-monaco/<version>/` under the APK's
 assets. The desktop needs `javafx-web` and `desktop/web/src/main/scala` (FxWebGuest).
+
+## Collections
+
+Long lists and trees, in packages of their own (`everyui.list`, `everyui.tree`). Each takes the focus as one component
+with a cursor among its rows, so the arrows, a remote's d-pad and the pointer all move the same cursor. At either end an
+arrow leaves it as the focus layer says (`exitFocus` on a container around it).
+
+### VirtualList (`everyui.list`)
+
+Only the rows that show exist; as it scrolls, a row leaving one end is handed the item arriving at the other. The items
+are a `Var[Vector[T]]` the app keeps, each with a key: the cursor (`current`), the selection and the scroll are kept by
+key as items come and go. Rows are `rowHeight` tall, or `measured = true` for rows as tall as each draws itself.
+
+```scala
+import everyui.list.{Decoration, VirtualList}
+
+val files: Var[Vector[File]] = Var(Vector.empty)
+val list = VirtualList.text(files, (f: File) => f.path, (f: File) => f.name,
+  decorate = f => Decoration(icon = Some(MaterialIcon.Description), badge = f.status))
+list.size.width @= 320.0
+list.size.height := panel.size.height()
+list.activated.attach(f => open(f))               // Enter, a double click (a tap on a touch screen)
+list.menu.attach(p => showMenu(p.item, p.x, p.y))  // the menu key, Shift+F10, OK held
+list.scrollTo(list.indexOf(path), align = 0.5)
+list.selection.keys()                              // a Var[Set[String]] of keys, the app's to read and set
+```
+
+A row of its own extends `ListRow[T]` and binds what it shows to `item` (it is handed item after item):
+
+```scala
+val list = new VirtualList[Hit](hits, _.id, _.title, rowHeight = 44.0)(() => new ListRow[Hit] {
+  children += TextView.bound(item().map(_.title).getOrElse(""))
+})
+```
+
+Keys: Up, Down, Page Up, Page Down, Home and End move the cursor; with Shift they extend the selection, with the primary
+modifier (Ctrl, Cmd on a Mac) only the cursor moves and Primary+Space toggles its row; Primary+A picks every row; a
+letter jumps to the next row whose label starts with it. Clicks pick a row, Shift+click a range, Primary+click one more.
+Where a remote drives the app (`Platform.remoteNavigation`), `selection.multiple` is off: one row is chosen and it follows
+the cursor.
