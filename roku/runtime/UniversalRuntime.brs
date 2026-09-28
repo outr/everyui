@@ -53,6 +53,7 @@ function uiText() as object
     end if
     n.font = ga.uiDefaultFont
     n.translation = [0.0, 0.0]
+    uiApplyAlign(n)
     return n
 end function
 
@@ -642,6 +643,9 @@ function uiRichText(label as object, text as string, baseUri as string, weight a
     end for
     count = label.getChildCount()
     if count > index then label.removeChildrenIndex(count - index, index)
+    if not label.hasField("uiRunsWidth") then label.addField("uiRunsWidth", "float", false)
+    label.uiRunsWidth = x - space
+    uiAlignRuns(label)
     return x - space
 end function
 
@@ -752,6 +756,71 @@ sub uiSetWidth(node as object, width as float)
     end if
     node.width = uiPosterSide(node, width)
     if node.hasField("scaleRotateCenter") then node.scaleRotateCenter = [node.width / 2.0, node.height / 2.0]
+    if node.subtype() = "Label" then uiAlignRuns(node)
+end sub
+
+' Where a Label's lines sit in its width: "start", "center" or "end" by the reading direction (uiSetDirection), so a
+' Latin line in Arabic starts on the right as the Arabic lines do.
+sub uiSetTextAlign(node as object, align as string)
+    if node = invalid or node.subtype() <> "Label" then return
+    if not node.hasField("uiAlign") then node.addField("uiAlign", "string", false)
+    node.uiAlign = align
+    uiApplyAlign(node)
+end sub
+
+sub uiApplyAlign(label as object)
+    align = "start"
+    if label.hasField("uiAlign") then align = label.uiAlign
+    ga = GetGlobalAA()
+    rtl = ga.uiRtl <> invalid and ga.uiRtl
+    if align = "center"
+        label.horizAlign = "center"
+    else if (align = "end" and not rtl) or (align <> "end" and rtl)
+        label.horizAlign = "right"
+    else
+        label.horizAlign = "left"
+    end if
+    uiAlignRuns(label)
+end sub
+
+' Runs drawn by uiRichText, moved along to where the Label's alignment puts text of their width in its own.
+sub uiAlignRuns(label as object)
+    count = label.getChildCount()
+    if count = 0 or not label.hasField("uiRunsWidth") then return
+    room = label.width - label.uiRunsWidth
+    offset = 0.0
+    if room > 0.0 and label.horizAlign = "right" then offset = room
+    if room > 0.0 and label.horizAlign = "center" then offset = room / 2.0
+    shift = offset - label.getChild(0).translation[0]
+    if shift = 0.0 then return
+    for i = 0 to count - 1
+        child = label.getChild(i)
+        child.translation = [child.translation[0] + shift, child.translation[1]]
+    end for
+end sub
+
+' The reading direction: every Label under the root starts again on the side it reads from.
+sub uiSetDirection(rtl as boolean)
+    GetGlobalAA().uiRtl = rtl
+    uiRealign(uiRoot())
+end sub
+
+' Walked with a list rather than by recursion: a deep tree would run a Roku out of stack. A Label's own children are
+' its runs, which follow it.
+sub uiRealign(root as object)
+    pending = [root]
+    while pending.count() > 0
+        node = pending.pop()
+        if node <> invalid
+            if node.subtype() = "Label"
+                uiApplyAlign(node)
+            else
+                for i = 0 to node.getChildCount() - 1
+                    pending.push(node.getChild(i))
+                end for
+            end if
+        end if
+    end while
 end sub
 
 sub uiSetHeight(node as object, height as float)

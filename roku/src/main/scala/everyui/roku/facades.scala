@@ -286,6 +286,14 @@ class SGNode
 @native object uiSetWrap {
   def apply(node: SGNode, wrap: Boolean): Unit = native.value
 }
+/** Where a Label's lines sit in its width: "start", "center" or "end", by the reading direction. */
+@native object uiSetTextAlign {
+  def apply(node: SGNode, align: String): Unit = native.value
+}
+/** The reading direction, which every Label's start follows. */
+@native object uiSetDirection {
+  def apply(rtl: Boolean): Unit = native.value
+}
 /** Whether the node and everything under it is drawn. */
 @native object uiSetVisible {
   def apply(node: SGNode, visible: Boolean): Unit = native.value

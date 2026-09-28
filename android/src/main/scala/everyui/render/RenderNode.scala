@@ -28,6 +28,8 @@ class RenderNode(val view: View) {
   private var face: Face = Faces.OpenSansRegular
   private var fontSize: Double = 32.0
   private var wrapping: Boolean = false
+  // where its text sits, by the reading direction (`setTextAlign`)
+  private var textAlign: String = "start"
   // what a video or an audio node plays (`Nodes.video`, `Nodes.audio`)
   private[render] var media: Option[ExoMedia] = None
 
@@ -714,7 +716,6 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
-  /** "start", "center" or "end", resolved against the root's layout direction. */
   /** A shadow behind the letters (a subtitle's edge, as a device's caption settings ask for one); an empty colour, none. */
   /** An edge round the letters, `width` each side, or none for "" ([[OutlinedText]]). */
   def setTextOutline(width: Double, hex: String): Unit = view match {
@@ -768,9 +769,23 @@ class RenderNode(val view: View) {
     view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null)
   }
 
-  def setTextAlign(align: String): Unit = view match {
-    case t: TextView => t.setTextAlignment(
-      if (align == "center") View.TEXT_ALIGNMENT_CENTER else if (align == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
+  /** "start", "center" or "end", by the reading direction (`Direction`). */
+  def setTextAlign(align: String): Unit = {
+    textAlign = align
+    applyAlign()
+  }
+
+  /** Text on the side the app reads from, whatever script its words are in: a TextView's own start is where its
+    * first letter reads from, so a Latin line in Arabic sat on the left. A field is mirrored with the root already, so
+    * its start stays logical. */
+  private[render] def applyAlign(): Unit = view match {
+    case e: EditText => e.setTextAlignment(if (textAlign == "center") View.TEXT_ALIGNMENT_CENTER
+      else if (textAlign == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
+    case t: TextView =>
+      val side = if (textAlign == "center") android.view.Gravity.CENTER_HORIZONTAL
+        else if ((textAlign == "end") != Host.rtl) android.view.Gravity.RIGHT else android.view.Gravity.LEFT
+      t.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY)
+      t.setGravity(android.view.Gravity.TOP | side)
     case _ => ()
   }
 
@@ -1007,6 +1022,9 @@ object Host {
   var pointerButton: Int = 0
   /** The embed the key the activity is reporting is meant for (`Platform.keyEmbed`). */
   var embedded: String = ""
+  /** Whether the app reads right to left (`Platform.setDirection`), and the text nodes that follow it. */
+  var rtl: Boolean = false
+  val aligned: java.util.Set[RenderNode] = java.util.Collections.newSetFromMap(new java.util.WeakHashMap[RenderNode, java.lang.Boolean]())
 
   /** An Android key by the web's name: the remote's keys by their names, anything typed by its character. */
   def keyName(e: KeyEvent): String = {
@@ -1255,7 +1273,10 @@ object Nodes {
     t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 32.0f)
     // fractional glyph advances, so text measures as it does in a browser rather than snapped to whole pixels
     t.setPaintFlags(t.getPaintFlags | Paint.SUBPIXEL_TEXT_FLAG | Paint.LINEAR_TEXT_FLAG)
-    new RenderNode(t)
+    val node = new RenderNode(t)
+    Host.aligned.add(node)
+    node.applyAlign()
+    node
   }
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
@@ -1596,9 +1617,12 @@ object Platform {
   /** The app's language: the platform chooses its own faces for the script, so there is nothing to do. */
   def setLanguage(code: String): Unit = ()
 
-  /** The root's layout direction: text and fields start where the language reads from. */
-  def setDirection(rtl: Boolean): Unit =
+  /** The root's layout direction, which fields take, and the side every text starts on. */
+  def setDirection(rtl: Boolean): Unit = {
+    Host.rtl = rtl
     Host.root.setLayoutDirection(if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
+    Host.aligned.forEach(_.applyAlign())
+  }
 
   /** `f` on a thread that does not draw, for work a frame should not wait on (a large document parsed or written);
     * whatever it hands back goes by `later`. A failure is logged and goes no further: it must not take the app down. */

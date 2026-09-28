@@ -457,7 +457,8 @@ class RenderNode(val sg: SGNode) {
   def accessibleFocus(click: () => Unit): Unit = ()
   def setAlt(text: String): Unit = ()
 
-  def setTextAlign(align: String): Unit = ()
+  /** "start", "center" or "end", by the reading direction, whatever script the words are in. */
+  def setTextAlign(align: String): Unit = uiSetTextAlign(sg, align)
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
   def getValue(): String = uiGetText(sg)
@@ -651,7 +652,8 @@ object Platform {
   def parseMessages(arb: String): Map[String, String] = uiArbMessages(arb)
   def language(): String = uiLanguage()
   def fromCodePoint(codePoint: Int): String = uiChr(codePoint)
-  def setDirection(rtl: Boolean): Unit = ()
+  /** Every text starts on the side the language reads from. */
+  def setDirection(rtl: Boolean): Unit = uiSetDirection(rtl)
   /** The app's language: which CJK glyphs text takes (Traditional for zh_Hant). */
   def setLanguage(code: String): Unit = uiSetLanguage(code)
 
