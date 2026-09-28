@@ -33,6 +33,7 @@ object SpiceHttp {
     sessionManager = None,
     failOnHttpStatus = false,
     validateSSLCertificates = true,
+    followRedirects = true,
     proxy = None,
     failures = 0
   )
