@@ -467,7 +467,12 @@ diff.onGutterClick.attach(click => click.change.foreach(toggle))
 diff.revertChange(diff.changes().head)                          // roll one change back
 ```
 
-What a tick means (a partial commit, say) is the app's. Every call answers as a `Future`; themes and
+What a tick means (a partial commit, say) is the app's.
+
+Go to definition and a peek into another file need the app: `MonacoLanguages.registerModelResolver(uri => ...)` gives
+Monaco a file's text and language when it needs its model (the peek's lines), and
+`MonacoLanguages.registerEditorOpener((uri, range) => ...)` or the editor's `controller.onOpenLocation` opens the file
+the app's way (its tab, `switchToModel`, the range revealed); with neither, Monaco stays where it is. Every call answers as a `Future`; themes and
 providers are global and reach every editor, including ones made later.
 
 **Serving it (web).** Copy the jar's `everyui-monaco/` directory next to the page (the gallery's `galleryBundle` task

@@ -66,6 +66,10 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   /** A key the editor had and gave back (Escape with nothing to close, Tab where nothing can be typed), and whether
     * Shift was held: what MonacoEditor hands on to the app's focus. */
   val onHandBack: Channel[(String, Boolean)] = Channel[(String, Boolean)]
+  /** Go to definition, or a peek's "open", into a file this editor does not show, when no opener registered with
+    * MonacoLanguages took it: the app opens the file its own way (switchToModel, a tab of its own) and reveals the
+    * range. Listened to, it counts as handled; with nobody listening, Monaco does what it does by itself. */
+  val onOpenLocation: Channel[MonacoLocation] = Channel[MonacoLocation]
 
   private var bridge: Option[MonacoBridge] = None
   private var editorId: String = ""
@@ -229,7 +233,8 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   // ---- models ----
 
   /** A model of its own (an open file), shown by `switchToModel` and kept, with its undo and markers, until
-    * `disposeMonacoModel`. Given no `uri`, Monaco names it. Its uri. */
+    * `disposeMonacoModel`. Given no `uri`, Monaco names it; a model already made with that uri (by an earlier call, or
+    * for a peek by the model resolver) is the one, kept as it is, with its edits and undo. Its uri. */
   def createModel(value: String, language: String = "plaintext", uri: Option[String] = None): Future[String] =
     whenReady("models.create", obj("value" -> str(value), "language" -> str(language),
       "uri" -> uri.map(u => str(u)).getOrElse(Null))).map(j => Wire.string(j, "uri"))
@@ -268,6 +273,7 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     to.texts(model()) = mirror
     text @= mirror.value
     stopListening = to.listen(event => if (event.editorId == editorId) heard(event))
+    to.controllers(editorId) = this
     live @= true
     actions.values.foreach(a => invoke("editor.addAction", a.toJson))
     commands.keys.foreach(id => invoke("editor.addCommand", command(id)))
@@ -277,6 +283,7 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   /** Its editor gone: calls wait for the next one. */
   private[monaco] def detach(): Unit = if (isAttached) {
     stopListening()
+    bridge.foreach(_.controllers.remove(editorId))
     bridge.foreach(_.texts.remove(model()))
     bridge = None
     editorId = ""
@@ -320,6 +327,13 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
       case "editor.commandInvoked" => commands.get(Wire.string(p, "commandId")).foreach(_._3())
       case _ => ()
     }
+  }
+
+  /** A location to open: to whoever listens (onOpenLocation), and whether anyone did. */
+  private[monaco] def opened(location: MonacoLocation): Boolean = {
+    val listening = onOpenLocation.reactions().nonEmpty
+    if (listening) onOpenLocation @= location
+    listening
   }
 
   private def command(id: String): Json = {

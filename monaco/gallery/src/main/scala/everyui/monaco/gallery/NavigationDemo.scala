@@ -31,7 +31,7 @@ object NavigationDemo {
     "file:///demo/Main.scala" ->
       """package demo
         |
-        |/** Edit, then Ctrl+S (Cmd+S) to save: the tab's dot goes away. Ctrl+Shift+O lists the symbols. */
+        |/** Ctrl+S (Cmd+S) saves; Ctrl+Shift+O lists the symbols. F12 on Greeter or world opens Greeter.scala. */
         |object Main {
         |  def main(args: Array[String]): Unit = {
         |    val greeter = Greeter.world
@@ -72,13 +72,19 @@ object NavigationDemo {
     val providers = Future.sequence(List(
       MonacoLanguages.registerDefinitionProvider("scala", MonacoDefinitionProvider { p =>
         val word = IntelliSenseDemo.wordAt(p.value, p.position.line, p.position.column)
-        val found = declarations(p.value).filter(_._2 == word).map(d => MonacoLocation(p.uri, d._3))
-        log.say(s"definition of $word: ${found.size} found")
+        // here first, then in the other files: a definition elsewhere opens that file (onOpenLocation below)
+        val here = declarations(p.value).filter(_._2 == word).map(d => MonacoLocation(p.uri, d._3))
+        val found = if (here.nonEmpty) here else files.filterNot(_._1 == p.uri).flatMap { case (uri, text) =>
+          declarations(text).filter(_._2 == word).map(d => MonacoLocation(uri, d._3))
+        }
+        log.say(s"definition of $word: ${found.map(l => name(l.uri) + ":" + l.range.startLine).mkString(", ")}")
         Future.successful(found)
       }),
       MonacoLanguages.registerReferenceProvider("scala", MonacoReferenceProvider { p =>
         val word = IntelliSenseDemo.wordAt(p.value, p.position.line, p.position.column)
-        val found = uses(p.value, word).map(r => MonacoLocation(p.uri, r))
+        // in every file: the peek shows the other files' lines through the model resolver below
+        val found = uses(p.value, word).map(r => MonacoLocation(p.uri, r)) ++
+          files.filterNot(_._1 == p.uri).flatMap { case (uri, text) => uses(text, word).map(r => MonacoLocation(uri, r)) }
         log.say(s"usages of $word: ${found.size}")
         Future.successful(found)
       }),
@@ -93,7 +99,9 @@ object NavigationDemo {
           }
           MonacoDocumentSymbol(word, symbol, MonacoRange(at.startLine, 1, at.endLine, at.endColumn), Some(at))
         })
-      }, "demo")))
+      }, "demo"),
+      // a file no editor has shown yet, for the peek widget and go to definition: the app's own copy
+      MonacoLanguages.registerModelResolver(uri => Future.successful(files.find(_._1 == uri).map(f => MonacoModelSource(f._2, "scala"))))))
 
     // the compile errors, changed lines and blame of the file showing
     var marks: List[String] = Nil
@@ -109,16 +117,34 @@ object NavigationDemo {
     }
 
     controller.ready.foreach { _ =>
-      Future.sequence(files.map { case (uri, text) => controller.createModel(text, "scala", Some(uri)) }).foreach { _ =>
+      // the first file only: the other is made when it is first needed, by the resolver or its tab
+      controller.createModel(files.head._2, "scala", Some(files.head._1)).foreach { _ =>
         controller.switchToModel(open()).foreach(_ => decorate(open()))
       }
     }
 
-    val tabs = new Picker(files.map(f => name(f._1)), name(files.head._1))(file => {
+    lazy val tabs: Picker = new Picker(files.map(f => name(f._1)), name(files.head._1))(file => {
       val uri = files.find(f => name(f._1) == file).map(_._1).getOrElse(open())
-      open @= uri
-      controller.switchToModel(uri).foreach(_ => decorate(uri))
+      show(uri, None)
     })
+    // a file opened as a tab: made if it has not been, shown, and the range lit
+    def show(uri: String, at: Option[MonacoRange]): Unit = {
+      open @= uri
+      tabs.value @= name(uri)
+      val text = files.find(_._1 == uri).map(_._2).getOrElse("")
+      controller.createModel(text, "scala", Some(uri)).flatMap(_ => controller.switchToModel(uri)).foreach { _ =>
+        decorate(uri)
+        at.foreach { r =>
+          controller.setPosition(r.start)
+          controller.revealAndHighlight(r)
+        }
+      }
+    }
+    // go to definition into the other file: its tab
+    controller.onOpenLocation.attach { location =>
+      log.say("opened " + name(location.uri) + " at line " + location.range.startLine)
+      show(location.uri, Some(location.range))
+    }
     val dirty = TextView.bound(if (controller.dirty()) "● " + name(open()) + " has unsaved changes" else name(open()) + " saved",
       12.0, if (controller.dirty()) Theme.warning() else Theme.muted())
     val save = MonacoEditor.saveCommand(GalleryScreen.keymap, Chord("S", primary = true), "gallery.save", "Save") {

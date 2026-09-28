@@ -85,7 +85,7 @@ class MonacoBridgeSpec extends MonacoFxSpec {
       respond("result")("contents").asVector.head("value").asString shouldBe "**fetch** at 3"
       // a provider gone answers nothing, so Monaco is not left waiting
       fx(guest.calls.exists(c => c._1 == "languages.respond" && Wire.string(c._2, "requestId") == "r0")) shouldBe true
-      registration.value.get.get.dispose()
+      fx(registration.value.get.get.dispose())
       fx(bridge.close())
     }
   }

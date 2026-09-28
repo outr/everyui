@@ -27,6 +27,9 @@ class MonacoBridge(val runtime: String) {
   private var closed = false
   private val loaded = Promise[Unit]()
 
+  /** The controller of each editor made here, by its id: whom a request from that editor concerns. */
+  private[monaco] val controllers = scala.collection.mutable.Map.empty[String, MonacoController]
+
   /** The text of each model an attached editor shows, by its uri: what a provider is asked about. */
   private[monaco] val texts = scala.collection.mutable.Map.empty[String, TextMirror]
 
@@ -149,6 +152,8 @@ class MonacoBridge(val runtime: String) {
         }
       }
       else if (kind.startsWith("language.") && kind.endsWith(".request")) MonacoLanguages.answer(this, kind, payload)
+      else if (kind == "models.resolve.request") MonacoLanguages.resolve(this, payload)
+      else if (kind == "editor.open.request") MonacoLanguages.open(this, payload)
       // a copy the engine could not make itself (see the bridge): the system's clipboard, through the platform
       else if (kind == "clipboard.copy") Platform.copyText(Wire.string(payload, "text"))
       else {

@@ -95,6 +95,7 @@
           window.require.config({ paths: { vs: base + 'vs' } });
           window.require(['vs/editor/editor.main'], function (m) {
             if (!window.monaco) window.monaco = m;
+            installOpener();
             bridge._ready = true;
             resolve({ version: args.version || null });
             bridge.emit('bridge.ready', {});
@@ -404,9 +405,10 @@
 
   handlers['models.create'] = function (a) {
     var uri = a.uri ? monaco.Uri.parse(a.uri) : undefined;
+    // a model that already has the uri (made before, or for a peek by the resolver) is the one: kept as it is, its
+    // edits and undo with it, so opening a file twice never loses what was typed in it
     var existing = uri ? monaco.editor.getModel(uri) : null;
     var model = existing || monaco.editor.createModel(a.value || '', a.language || 'plaintext', uri);
-    if (existing) { model.setValue(a.value || ''); monaco.editor.setModelLanguage(model, a.language || 'plaintext'); }
     var key = model.uri.toString();
     bridge._models[key] = model;
     return { uri: key };
@@ -524,9 +526,7 @@
       provideDefinition: function (model, position) {
         return ask('language.definition.request', a.providerId, model, position).then(function (result) {
           if (!result) return null;
-          return (Array.isArray(result) ? result : [result]).map(function (l) {
-            return { uri: monaco.Uri.parse(l.uri), range: range(l.range) };
-          });
+          return located(Array.isArray(result) ? result : [result]);
         });
       }
     }));
@@ -537,9 +537,7 @@
       provideReferences: function (model, position, context) {
         return ask('language.references.request', a.providerId, model, position, {
           context: { includeDeclaration: !!(context && context.includeDeclaration) }
-        }).then(function (result) {
-          return (result || []).map(function (l) { return { uri: monaco.Uri.parse(l.uri), range: range(l.range) }; });
-        });
+        }).then(function (result) { return located(result || []); });
       }
     }));
   };
@@ -557,6 +555,86 @@
       }
     }));
   };
+
+  // ------------------------------------------------------------------------------------------------------------
+  // Other files: opening them (the app's tabs) and showing their lines (the peek widget)
+  // ------------------------------------------------------------------------------------------------------------
+
+  // Locations for Monaco, each file's model there first where the app can give it (models.resolve): the peek widget
+  // shows only lines it has a model for, and go to definition goes nowhere without one.
+  function located(list) {
+    var uris = [];
+    list.forEach(function (l) { if (uris.indexOf(l.uri) < 0) uris.push(l.uri); });
+    return Promise.all(uris.map(resolveModel)).then(function () {
+      return list.map(function (l) { return { uri: monaco.Uri.parse(l.uri), range: range(l.range) }; });
+    });
+  }
+
+  // Models made for the app's other files, oldest first: kept for the peek widget, the oldest no editor shows let go
+  // once there are more than bridge.resolvedLimit.
+  var resolved = [];
+  bridge.resolvedLimit = 20;
+  bridge._resolving = false;
+
+  handlers['models.setResolver'] = function (a) { bridge._resolving = !!a.enabled; return null; };
+
+  function resolveModel(uri) {
+    var parsed = monaco.Uri.parse(uri);
+    var existing = monaco.editor.getModel(parsed);
+    if (existing || !bridge._resolving) return Promise.resolve(existing);
+    return askApp('models.resolve.request', { uri: uri }).then(function (source) {
+      if (!source || monaco.editor.getModel(parsed)) return monaco.editor.getModel(parsed);
+      var model = monaco.editor.createModel(source.text || '', source.language || undefined, parsed);
+      resolved.push(model);
+      trimResolved();
+      return model;
+    }, function () { return null; });
+  }
+
+  function trimResolved() {
+    var shown = [];
+    for (var id in bridge._editors) { var m = bridge._editors[id].editor.getModel(); if (m) shown.push(m); }
+    for (var i = 0; resolved.length > bridge.resolvedLimit && i < resolved.length; ) {
+      var m = resolved[i];
+      if (m.isDisposed()) { resolved.splice(i, 1); continue; }
+      if (shown.indexOf(m) < 0 && !bridge._models[m.uri.toString()]) { resolved.splice(i, 1); m.dispose(); } else i++;
+    }
+  }
+
+  // A request of the app's that is not a provider's: answered through languages.respond like one.
+  function askApp(type, payload) {
+    var requestId = 'req-' + (bridge._nextRequest++);
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () {
+        if (bridge._pending[requestId]) { delete bridge._pending[requestId]; reject(new Error(type + ' timed out')); }
+      }, bridge.providerTimeoutMs);
+      bridge._pending[requestId] = { resolve: resolve, reject: reject, timer: timer };
+      bridge.emit(type, Object.assign({ requestId: requestId }, payload));
+    });
+  }
+
+  // Go to definition (and a peek's "open") into a file the editor does not show: asked of the app, which opens it
+  // its own way (a tab) and says whether it did; otherwise Monaco does what it does by itself. editor.setOpener turns
+  // the asking off.
+  bridge._opening = true;
+  handlers['editor.setOpener'] = function (a) { bridge._opening = !!a.enabled; return null; };
+  var openerInstalled = false;
+  function installOpener() {
+    if (openerInstalled || typeof monaco.editor.registerEditorOpener !== 'function') return;
+    openerInstalled = true;
+    monaco.editor.registerEditorOpener({
+      openCodeEditor: function (source, resource, where) {
+        if (!bridge._opening) return false;
+        var editorId = null;
+        for (var id in bridge._editors) if (bridge._editors[id].editor === source) editorId = id;
+        var at = null;
+        if (where && typeof where.startLineNumber === 'number') at = { startLine: where.startLineNumber, startColumn: where.startColumn, endLine: where.endLineNumber, endColumn: where.endColumn };
+        else if (where && typeof where.lineNumber === 'number') at = { startLine: where.lineNumber, startColumn: where.column, endLine: where.lineNumber, endColumn: where.column };
+        return askApp('editor.open.request', { editorId: editorId, uri: resource.toString(), range: at })
+          .then(function (handled) { return !!handled; }, function () { return false; });
+      }
+    });
+  }
 
   // ------------------------------------------------------------------------------------------------------------
   // Diff editors

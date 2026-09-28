@@ -72,6 +72,65 @@ object MonacoLanguages {
         provider.provideDocumentSymbols(p).map(list => arr(list.map(_.toJson)*))
       })
 
+  private var openers: List[(Int, (String, Option[MonacoRange]) => Boolean)] = Nil
+  private var resolver: Option[String => Future[Option[MonacoModelSource]]] = None
+
+  /** Go to definition, or a peek's "open", into a file no editor shows: `handler` is asked with its uri and the range
+    * to show, and opens it the app's own way (a tab of its own, revealing the range), saying whether it did. Handlers
+    * are asked newest first; the editor's own `MonacoController.onOpenLocation` after them. With none taking it,
+    * Monaco does what it does by itself (nothing, for a file its editor does not show). */
+  def registerEditorOpener(handler: (String, Option[MonacoRange]) => Boolean): Future[MonacoDisposable] = {
+    next += 1
+    val id = next
+    openers = (id -> handler) :: openers
+    Future.successful(new MonacoDisposable(() => {
+      openers = openers.filterNot(_._1 == id)
+      Future.unit
+    }))
+  }
+
+  /** Another file's text for a model Monaco needs and has not got: the lines a peek shows of a definition or a
+    * reference in another file, and the file go to definition goes to. `resolver` is asked by the file's uri, and
+    * gives its text and language, or none. Models made this way are kept, the oldest no editor shows let go past
+    * twenty. One resolver: a second replaces the first. */
+  def registerModelResolver(resolver: String => Future[Option[MonacoModelSource]]): Future[MonacoDisposable] = {
+    import Monaco.uiThread
+    this.resolver = Some(resolver)
+    Future.sequence(Monaco.live.map(_.call("models.setResolver", obj("enabled" -> bool(true))))).map { _ =>
+      new MonacoDisposable(() => {
+        if (this.resolver.contains(resolver)) this.resolver = None
+        Future.sequence(Monaco.live.map(_.call("models.setResolver", obj("enabled" -> bool(this.resolver.nonEmpty))))).map(_ => ())
+      })
+    }
+  }
+
+  /** The guest asking for a file's model (a resolver's answer, or none). */
+  private[monaco] def resolve(bridge: MonacoBridge, payload: Json): Unit = {
+    import Monaco.uiThread
+    val requestId = Wire.string(payload, "requestId")
+    val asked = resolver.map(r => r(Wire.string(payload, "uri"))).getOrElse(Future.successful(None))
+    asked.onComplete { result =>
+      val source = result.toOption.flatten
+      bridge.call("languages.respond", obj("requestId" -> str(requestId),
+        "result" -> source.map(s => obj("text" -> str(s.text), "language" -> (if (s.language.isEmpty) Null else str(s.language)))).getOrElse(Null)))
+    }
+  }
+
+  /** The guest asking to open another file: the openers, newest first, then the editor's own controller. */
+  private[monaco] def open(bridge: MonacoBridge, payload: Json): Unit = {
+    val uri = Wire.string(payload, "uri")
+    val range = payload.get("range").filter(_.isObj).map(_.as[MonacoRange])
+    val handled = openers.exists { case (_, handler) =>
+      try handler(uri, range) catch {
+        case t: Throwable =>
+          Platform.log("[monaco] an editor opener failed: " + t.getMessage)
+          false
+      }
+    } || bridge.controllers.get(Wire.string(payload, "editorId")).exists(_.opened(MonacoLocation(uri,
+      range.getOrElse(MonacoRange(1, 1, 1, 1)))))
+    bridge.call("languages.respond", obj("requestId" -> str(Wire.string(payload, "requestId")), "result" -> bool(handled)))
+  }
+
   private def register(languageId: String, method: String, args: Json,
                        answer: (String, Json, MonacoProviderParams) => Future[Json]): Future[MonacoDisposable] = {
     import Monaco.uiThread
@@ -92,7 +151,8 @@ object MonacoLanguages {
 
   /** What a copy of Monaco that has just loaded is given first. */
   private[monaco] def replay(bridge: MonacoBridge): List[Future[Json]] =
-    entries.toList.map { case (id, entry) => bridge.send(entry.method, registration(id, entry), Monaco.callTimeout) }
+    entries.toList.map { case (id, entry) => bridge.send(entry.method, registration(id, entry), Monaco.callTimeout) } ++
+      resolver.toList.map(_ => bridge.send("models.setResolver", obj("enabled" -> bool(true)), Monaco.callTimeout))
 
   /** Monaco asking a provider: the answer, or the failure, sent back (`languages.respond`). A provider gone since
     * answers nothing, so Monaco is not left waiting. */
