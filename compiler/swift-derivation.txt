@@ -2064,12 +2064,42 @@ class SwiftEmitter(
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
-        vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
+        if (vtableFor(sym).nonEmpty) sb.append(s"  self.Append(${cn}__vt())\n")
         sb.append(s"  ${cn}__init(self${packParams(ctorParams).map(p => ", " + p).mkString})\n")
         sb.append("  return self\nend function\n\n")
       }
+      // the method slots: one table for the class, made once and copied into each instance. Listed in every
+      // constructor they were a third of a large app's code (a component's fifty inherited slots, in each of its
+      // subclasses). A class's table is its superclass's with its own slots put in.
+      if (!isTrait && !sym.flags.is(Flags.Module) && vtableFor(sym).nonEmpty) {
+        val slots = vtableFor(sym)
+        val parent = vtParent(cd)
+        val inherited = parent.map(p => vtableFor(p).toMap).getOrElse(Map.empty[String, String])
+        // (a superclass slot this class has not, or two slots one name but for case: the table is written whole)
+        val whole = parent.isEmpty || !inherited.keySet.subsetOf(slots.map(_._1).toSet) ||
+          slots.map(_._1.toLowerCase).distinct.size != slots.size
+        val key = brStr("__vt_" + cn)
+        sb.append(s"function ${cn}__vt() as object\n")
+        sb.append("  ga = GetGlobalAA()\n")
+        sb.append(s"  vt = ga[$key]\n")
+        sb.append("  if vt <> invalid then return vt\n")
+        sb.append("  vt = {}\n")
+        if (!whole) sb.append(s"  vt.Append(${typeName(parent.get)}__vt())\n")
+        slots.foreach { case (slot, impl) =>
+          if (whole || !inherited.get(slot).contains(impl)) sb.append(s"  vt.$slot = $impl\n")
+        }
+        sb.append(s"  ga[$key] = vt\n")
+        sb.append("  return vt\nend function\n\n")
+      }
       currentClass = savedClass
     }
+
+    /** The superclass whose slot table a class's own starts from: a class of the program's object model, not a trait. */
+    def vtParent(cd: ClassDef): Option[Symbol] =
+      cd.parents.headOption.map(p => parentInfo(p)._1).filter { ps =>
+        ps.exists && ps != cd.symbol && !ps.flags.is(Flags.Trait) && !ps.flags.is(Flags.Module) && userTypeDefs.contains(ps) &&
+          isModel(ps) && keepClass(ps) && vtableFor(ps).nonEmpty
+      }
 @@ new
           if (e.trim.nonEmpty) sb.append(e).append("\n")
         case _ => ()

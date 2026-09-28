@@ -3009,12 +3009,42 @@ class RokuEmitter(
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
-        vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
+        if (vtableFor(sym).nonEmpty) sb.append(s"  self.Append(${cn}__vt())\n")
         sb.append(s"  ${cn}__init(self${packParams(ctorParams).map(p => ", " + p).mkString})\n")
         sb.append("  return self\nend function\n\n")
       }
+      // the method slots: one table for the class, made once and copied into each instance. Listed in every
+      // constructor they were a third of a large app's code (a component's fifty inherited slots, in each of its
+      // subclasses). A class's table is its superclass's with its own slots put in.
+      if (!isTrait && !sym.flags.is(Flags.Module) && vtableFor(sym).nonEmpty) {
+        val slots = vtableFor(sym)
+        val parent = vtParent(cd)
+        val inherited = parent.map(p => vtableFor(p).toMap).getOrElse(Map.empty[String, String])
+        // (a superclass slot this class has not, or two slots one name but for case: the table is written whole)
+        val whole = parent.isEmpty || !inherited.keySet.subsetOf(slots.map(_._1).toSet) ||
+          slots.map(_._1.toLowerCase).distinct.size != slots.size
+        val key = brStr("__vt_" + cn)
+        sb.append(s"function ${cn}__vt() as object\n")
+        sb.append("  ga = GetGlobalAA()\n")
+        sb.append(s"  vt = ga[$key]\n")
+        sb.append("  if vt <> invalid then return vt\n")
+        sb.append("  vt = {}\n")
+        if (!whole) sb.append(s"  vt.Append(${typeName(parent.get)}__vt())\n")
+        slots.foreach { case (slot, impl) =>
+          if (whole || !inherited.get(slot).contains(impl)) sb.append(s"  vt.$slot = $impl\n")
+        }
+        sb.append(s"  ga[$key] = vt\n")
+        sb.append("  return vt\nend function\n\n")
+      }
       currentClass = savedClass
     }
+
+    /** The superclass whose slot table a class's own starts from: a class of the program's object model, not a trait. */
+    def vtParent(cd: ClassDef): Option[Symbol] =
+      cd.parents.headOption.map(p => parentInfo(p)._1).filter { ps =>
+        ps.exists && ps != cd.symbol && !ps.flags.is(Flags.Trait) && !ps.flags.is(Flags.Module) && userTypeDefs.contains(ps) &&
+          isModel(ps) && keepClass(ps) && vtableFor(ps).nonEmpty
+      }
 
     /** `new T { … }` — an anonymous (or other local) class instance. The class
      *  is emitted out of line under a generated name, capturing the enclosing
@@ -3310,7 +3340,7 @@ class RokuEmitter(
     write("source/Main.brs", mainBrs)
     write("components/AppScene.brs", sceneBrs)
     val appCode = out.toString + "\n' ── defunctionalised closures ──\n" + closures.toString
-    val parts = RokuEmitter.split(appBrsHeader + injectGa(appCode), RokuEmitter.partBytes)
+    val parts = RokuEmitter.split(appBrsHeader + RokuEmitter.compact(injectGa(appCode)), RokuEmitter.partBytes)
     // a part from a larger build before this one would still be listed nowhere, but it would ship
     val components = outDir.resolve("components")
     if (Files.isDirectory(components)) {
@@ -5941,6 +5971,87 @@ object RokuEmitter {
     * file", compile error &hb9, seen on Roku OS 14.10 with a 2.16 MB file), and a refused install takes the channel's
     * registry with it; the program goes out in parts well under that. */
   val partBytes: Int = 1000000
+
+  /** The program as the Roku is given it, smaller: every byte of it is compiled at each launch (a large app's 12 MB took
+    * ten seconds), and most were ceremony. Each function's parameters lose `as dynamic` and `as object` (what an
+    * untyped one is, or less), and its answer `as dynamic`; a closure loses the `self` it never reads and the arguments
+    * it never reads (a warning apiece on the device); a `return invalid` after the function's last return goes; a
+    * closure's environment no longer carries `self: invalid` (a missing key reads as invalid); and closures written
+    * alike are one closure. */
+  def compact(code: String): String = {
+    val lines = code.replace("env: { self: invalid }", "env: {}").replace("env: { self: invalid, ", "env: { ").split("\n", -1)
+    val header = "^(function|sub) ([A-Za-z0-9_]+)\\((.*)\\)(.*)$".r
+    val argLine = "^\\s*([A-Za-z0-9_]+) = args\\[\\d+\\]$".r
+    val closureName = "closure[0-9]+"
+    def uses(body: Seq[String], name: String): Boolean = {
+      val re = ("(?i)(?<![A-Za-z0-9_.])" + java.util.regex.Pattern.quote(name) + "(?![A-Za-z0-9_])").r
+      body.exists(l => re.findFirstIn(l).nonEmpty)
+    }
+    def untyped(params: String): String = params.replace(" as dynamic", "").replace(" as object", "")
+    // the program as pieces: a function (header, body, end) or a line outside one
+    val pieces = mutable.ArrayBuffer[Either[String, (String, String, String, Vector[String], String)]]()
+    var i = 0
+    while (i < lines.length) {
+      lines(i) match {
+        case header(kind, name, params, rest) if !rest.contains(": end ") =>
+          var j = i + 1
+          while (j < lines.length && lines(j) != "end " + kind) j += 1
+          if (j >= lines.length) {
+            pieces += Left(lines(i))
+            i += 1
+          }
+          else {
+            pieces += Right((kind, name, params, lines.slice(i + 1, j).toVector, rest))
+            i = j + 1
+          }
+        case other =>
+          pieces += Left(other)
+          i += 1
+      }
+    }
+    val tidied = pieces.map {
+      case Left(l) => Left(l)
+      case Right((kind, name, params, body0, rest)) =>
+        var body = body0
+        if (name.matches(closureName)) {
+          body = body.filterNot(l => l.trim == "self = env.self" && !uses(body.filterNot(_ eq l), "self"))
+          body = body.filterNot {
+            case l @ argLine(v) => !uses(body.filterNot(_ eq l), v)
+            case _ => false
+          }
+        }
+        val kept = body.filterNot(_.trim.isEmpty)
+        if (kept.size >= 2 && kept.last.trim == "return invalid" && kept(kept.size - 2).trim.startsWith("return"))
+          body = body.take(body.lastIndexWhere(_.trim == "return invalid"))
+        val answer = if (rest.trim == "as dynamic") "" else rest
+        Right((kind, name, untyped(params), body, answer))
+    }
+    // closures alike are one: the first of each, and the others' names made its name
+    val first = mutable.HashMap[String, String]()
+    val alias = mutable.HashMap[String, String]()
+    tidied.foreach {
+      case Right((kind, name, params, body, rest)) if name.matches(closureName) =>
+        val key = kind + "(" + params + ")" + rest + "\n" + body.mkString("\n")
+        first.get(key) match {
+          case Some(f) => alias(name) = f
+          case None    => first(key) = name
+        }
+      case _ => ()
+    }
+    val sb = new StringBuilder
+    tidied.foreach {
+      case Left(l) => sb.append(l).append('\n')
+      case Right((kind, name, params, body, rest)) if !alias.contains(name) =>
+        sb.append(kind).append(' ').append(name).append('(').append(params).append(')').append(rest).append('\n')
+        body.foreach(l => sb.append(l).append('\n'))
+        sb.append("end ").append(kind).append('\n')
+      case _ => ()
+    }
+    if (sb.nonEmpty) sb.setLength(sb.length - 1)
+    val tidy = sb.toString
+    if (alias.isEmpty) tidy
+    else "\\bclosure[0-9]+\\b".r.replaceAllIn(tidy, m => java.util.regex.Matcher.quoteReplacement(alias.getOrElse(m.matched, m.matched)))
+  }
 
   /** The program's files: `App.brs`, then `App2.brs`, `App3.brs` and on. */
   def partName(i: Int): String = if (i == 0) "App.brs" else "App" + (i + 1) + ".brs"

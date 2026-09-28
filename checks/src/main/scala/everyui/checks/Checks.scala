@@ -239,7 +239,7 @@ object Checks {
       "items", "lookup", "doesexist", "setmodecasesensitive", "sortby", "sort", "reverse", "getfield", "setfield",
       "observefield", "callfunc", "findnode", "appendchild", "removechild", "getchild", "getchildcount", "createchild",
       "update", "isempty", "addreplace", "getentityencode", "subtype", "setfocus", "initialvalue", "closure_call")
-    val slots = """(?m)^\s*self\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[A-Za-z_][A-Za-z0-9_]*\s*$""".r.findAllMatchIn(code).map(_.group(1).toLowerCase).toSet
+    val slots = """(?m)^\s*(?:self|vt)\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[A-Za-z_][A-Za-z0-9_]*\s*$""".r.findAllMatchIn(code).map(_.group(1).toLowerCase).toSet
     // `ga.<Module>.<member>(…)` is a facade namespace the runtime installs; `cl.fn(cl.env, …)` a closure called in place
     val facadeFree = code
       .replaceAll("""\bga\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\s*\(""", "ga_facade(")
