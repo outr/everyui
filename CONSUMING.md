@@ -340,3 +340,45 @@ modifier (Ctrl, Cmd on a Mac) only the cursor moves and Primary+Space toggles it
 letter jumps to the next row whose label starts with it. Clicks pick a row, Shift+click a range, Primary+click one more.
 Where a remote drives the app (`Platform.remoteNavigation`), `selection.multiple` is off: one row is chosen and it follows
 the cursor.
+
+### Dialogs (`everyui.dialog`)
+
+Each helper puts its dialog up at once and answers as a `Task`, which completes once the dialog has closed and the
+focus is back where it was. Back, Escape or a click outside gives the answer that changes nothing. The labels are the
+app's; left out, they are EveryUI's own (`everyui.i18n.Words`).
+
+```scala
+import everyui.dialog.{DialogAction, DialogPanel, Dialogs, SaveChoice}
+
+Dialogs.confirm("Delete notes.txt?", "It cannot be undone.", Words.delete, danger = true)   // opens on Cancel
+  .map(yes => if (yes) delete()).start()
+
+Dialogs.saveChanges("Save notes.txt?", "Your changes are lost if you don't save them.").map {
+  case SaveChoice.Save => save()
+  case SaveChoice.Discard => closeTab()
+  case SaveChoice.Cancel => ()
+}.start()
+
+Dialogs.choose("Line endings", "", List("LF" -> "\n", "CRLF" -> "\r\n"), dismissed = current)   // any choice, as a T
+
+// checked when OK or Enter is pressed: OK spins while `validate` works, and what it says shows under the field
+Dialogs.prompt("Rename", file.name, label = "Name",
+  validate = name => api.exists(name).map(taken => if (taken) Some("Already taken") else None))
+  .map(_.foreach(rename)).start()
+
+// any body, scrolling when it is taller than the screen, with async buttons (a spinner, a failure toasted)
+Dialogs.show("Publish", List(summary), close => List(
+  DialogAction(Words.cancel, close),
+  DialogAction.async("Publish", default = true) { done =>
+    api.publish().map(ok => if (ok) { close(); done(Right(())) } else done(Left("Publishing failed"))).start()
+  })).start()
+```
+
+`DialogPanel` is the dialog those are made of, for a body the app builds (`new DialogPanel(title, body, actions).open()`).
+A body of words taller than its room takes the focus, and Up and Down read through it with a remote. `DialogPanel.textSize`
+and `Menu.textSize` are set once, larger, on a television.
+
+`Words` holds OK, Cancel, Close, Done, Yes, No, Save, Don't save, Delete, Try again, Search, No results, Loading and
+Back in English, German, Spanish, French, Italian, Dutch, Portuguese, Turkish, Arabic and Simplified and Traditional
+Chinese, following `Strings.language`. `Words.add(code, messages)` adds a language or the app's own wording (messages by
+key, as `Arb.parse` reads an ARB).
