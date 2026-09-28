@@ -412,3 +412,20 @@ tree.reveal("/src/deep/File.scala")   // opens what is above it and scrolls to i
 Keys: Up and Down move the cursor, Right opens a node or goes to its first child, Left closes it or goes to its parent
 (mirrored in a right-to-left language), Enter activates and opens or closes a folder. A click on the chevron opens or
 closes it. Multi-select is the list's (Shift and Primary with clicks and arrows, Primary+A).
+
+### Tooltip (`everyui.tooltip`)
+
+A tip beside a component while the pointer rests on it or the focus is on it: words, or a component the app makes. It
+comes after `Tooltip.delay` (0.6 s), goes as the pointer leaves or presses or the focus moves on, sits under the
+component (over it where under has no room) and never off the screen. One shows at a time.
+
+```scala
+import everyui.tooltip.Tooltip
+
+Tooltip(saveButton, "Save (" + Chord("S", primary = true).label + ")")
+Tooltip.rich(fileTab)(() => new FilePreview(file))     // made afresh each time it shows
+```
+
+On a platform driven by a remote (`Platform.remoteNavigation()`), tips do not follow the focus unless the app sets
+`Tooltip.onFocus @= true`: the focus moves with every press there, and a tip would cover the next thing along. A
+plain tip drawn by the platform itself is still `Component.tooltip`.
