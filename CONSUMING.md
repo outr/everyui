@@ -237,6 +237,135 @@ Menu.textSize @= 18.0                // set once, larger on a television
 `Modal.show` and `Modal.over` take `dim = false` (leave what is under the dialog as it is) and `centre = false` (the
 caller places the panel), which is how menus sit where they were opened.
 
+### Dialogs (`everyui.dialog`)
+
+Each helper puts its dialog up at once and answers as a `Task`, which completes once the dialog has closed and the
+focus is back where it was. Back, Escape or a click outside gives the answer that changes nothing. The labels are the
+app's; left out, they are EveryUI's own (`everyui.i18n.Words`).
+
+```scala
+import everyui.dialog.{DialogAction, DialogPanel, Dialogs, SaveChoice}
+
+Dialogs.confirm("Delete notes.txt?", "It cannot be undone.", Words.delete, danger = true)   // opens on Cancel
+  .map(yes => if (yes) delete()).start()
+
+Dialogs.saveChanges("Save notes.txt?", "Your changes are lost if you don't save them.").map {
+  case SaveChoice.Save => save()
+  case SaveChoice.Discard => closeTab()
+  case SaveChoice.Cancel => ()
+}.start()
+
+Dialogs.choose("Line endings", "", List("LF" -> "\n", "CRLF" -> "\r\n"), dismissed = current)   // any choice, as a T
+
+// checked when OK or Enter is pressed: OK spins while `validate` works, and what it says shows under the field
+Dialogs.prompt("Rename", file.name, label = "Name",
+  validate = name => api.exists(name).map(taken => if (taken) Some("Already taken") else None))
+  .map(_.foreach(rename)).start()
+
+// any body, scrolling when it is taller than the screen, with async buttons (a spinner, a failure toasted)
+Dialogs.show("Publish", List(summary), close => List(
+  DialogAction(Words.cancel, close),
+  DialogAction.async("Publish", default = true) { done =>
+    api.publish().map(ok => if (ok) { close(); done(Right(())) } else done(Left("Publishing failed"))).start()
+  })).start()
+```
+
+`DialogPanel` is the dialog those are made of, for a body the app builds (`new DialogPanel(title, body, actions).open()`).
+A body of words taller than its room takes the focus, and Up and Down read through it with a remote. `DialogPanel.textSize`
+and `Menu.textSize` are set once, larger, on a television.
+
+`Words` holds OK, Cancel, Close, Done, Yes, No, Save, Don't save, Delete, Try again, Search, No results, Loading and
+Back in English, German, Spanish, French, Italian, Dutch, Portuguese, Turkish, Arabic and Simplified and Traditional
+Chinese, following `Strings.language`. `Words.add(code, messages)` adds a language or the app's own wording (messages by
+key, as `Arb.parse` reads an ARB).
+
+### Tooltip (`everyui.tooltip`)
+
+A tip beside a component while the pointer rests on it or the focus is on it: words, or a component the app makes. It
+comes after `Tooltip.delay` (0.6 s), goes as the pointer leaves or presses or the focus moves on, sits under the
+component (over it where under has no room) and never off the screen. One shows at a time.
+
+```scala
+import everyui.tooltip.Tooltip
+
+Tooltip(saveButton, "Save (" + Chord("S", primary = true).label + ")")
+Tooltip.rich(fileTab)(() => new FilePreview(file))     // made afresh each time it shows
+```
+
+On a platform driven by a remote (`Platform.remoteNavigation()`), tips do not follow the focus unless the app sets
+`Tooltip.onFocus @= true`: the focus moves with every press there, and a tip would cover the next thing along. A
+plain tip drawn by the platform itself is still `Component.tooltip`.
+
+### FilterPicker (`everyui.picker`)
+
+A field over the list of what matches it: go to a file, a symbol, a command. Each change to the words asks the app's
+`query` once the typing pauses (`debounce`, 0.12 s), and an answer for words that have since changed is dropped. The
+list is an `everyui.list.VirtualList`, so it makes only the rows that show, however many matches there are. Up, Down
+and the page keys move through the matches from the field, Enter or a click chooses (the picker closes and `chosen`
+hears it), and Escape, Back or a click outside closes it.
+
+```scala
+import everyui.picker.{FilterPicker, HighlightRow, Match}
+
+FilterPicker.show[FileEntry](q => index.search(q), _.path, _.name, _.folder, placeholder = "Go to file") { f =>
+  open(f)
+}
+```
+
+By default a row is the item's label with what the query matched lit (`Match.spans(query, text)`: the query's letters in
+order, as early as they fall) and its detail after it, muted. An app with its own matching gives its own rows, handed
+the words in the field:
+
+```scala
+new FilterPicker[Symbol](q => symbols.find(q), _.id, _.name,
+  row = Some(words => new HighlightRow[Symbol](_.name, s => s.matched, _.kind))).open()
+```
+
+## An installable web app
+
+An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,
+and done by the app's build: `everyui.sbt.WebApp` (plain Scala in this repository's `sbt-support/`) writes a web app
+manifest and a small service worker next to the bundle and links them from its `index.html`.
+
+Add the sources to the app's build definition, in `project/everyui.sbt`:
+
+```scala
+Compile / unmanagedSourceDirectories += file("/path/to/everyui/sbt-support/src/main/scala")
+```
+
+and call it once the bundle is written (after `index.html` and `main.js`, as DataWrangler's `webBundle` writes them):
+
+```scala
+import everyui.sbt.{WebApp, WebAppIcon, WebAppManifest}
+
+webBundle := Def.uncached {
+  // ... index.html, main.js, fonts written to `out` as before
+  IO.copyDirectory(baseDirectory.value / "icons", out / "icons")
+  WebApp.write(out, WebAppManifest("Voidcraft", shortName = "Voidcraft", description = "Code browser",
+    themeColor = "#121212", backgroundColor = "#121212",
+    icons = Seq(
+      WebAppIcon("icons/icon-192.png", "192x192"),
+      WebAppIcon("icons/icon-512.png", "512x512"),
+      WebAppIcon("icons/maskable-512.png", "512x512", "maskable"))), version)
+  out
+}
+```
+
+It writes `manifest.webmanifest` (`display: standalone`, so the app opens in its own window), `sw.js` and `webapp.js`
+(which registers the worker from a file, so a Content-Security-Policy of `script-src 'self'` allows it), and adds to
+the page's head the manifest link, the theme colour and an Apple touch icon (the largest `any` icon). `version` names
+the worker's cache, so a new bundle starts a new cache (the script's content hash does). The worker answers from the
+network and keeps what it fetched, so the app still opens when the network is gone.
+
+**Icons.** PNG, square: **192×192** and **512×512** with purpose `any` are what browsers require to offer an install;
+add a **512×512 `maskable`** one (the picture within the middle 80%, the rest background) for Android's shaped icons.
+Apple devices use the touch icon (180×180 is their size; the 512 one is scaled).
+
+The page must be served over HTTPS (or from `localhost`). Chromium browsers then offer to install it from the address
+bar; Safari adds it with Add to Dock or Add to Home Screen. In its own window the browser keeps no tabs, so more of the
+chords a browser keeps for itself in a tab (Ctrl+T, Ctrl+N, Ctrl+Tab and others) reach the app's keymap; which ones is
+the browser's own choice and changes between browsers, so try the chords the app relies on in the installed window.
+
 ## Embeds
 
 `everyui.component.Embed` is something the app does not draw itself, in a box the app lays out: a raw element the
@@ -341,48 +470,6 @@ letter jumps to the next row whose label starts with it. Clicks pick a row, Shif
 Where a remote drives the app (`Platform.remoteNavigation`), `selection.multiple` is off: one row is chosen and it follows
 the cursor.
 
-### Dialogs (`everyui.dialog`)
-
-Each helper puts its dialog up at once and answers as a `Task`, which completes once the dialog has closed and the
-focus is back where it was. Back, Escape or a click outside gives the answer that changes nothing. The labels are the
-app's; left out, they are EveryUI's own (`everyui.i18n.Words`).
-
-```scala
-import everyui.dialog.{DialogAction, DialogPanel, Dialogs, SaveChoice}
-
-Dialogs.confirm("Delete notes.txt?", "It cannot be undone.", Words.delete, danger = true)   // opens on Cancel
-  .map(yes => if (yes) delete()).start()
-
-Dialogs.saveChanges("Save notes.txt?", "Your changes are lost if you don't save them.").map {
-  case SaveChoice.Save => save()
-  case SaveChoice.Discard => closeTab()
-  case SaveChoice.Cancel => ()
-}.start()
-
-Dialogs.choose("Line endings", "", List("LF" -> "\n", "CRLF" -> "\r\n"), dismissed = current)   // any choice, as a T
-
-// checked when OK or Enter is pressed: OK spins while `validate` works, and what it says shows under the field
-Dialogs.prompt("Rename", file.name, label = "Name",
-  validate = name => api.exists(name).map(taken => if (taken) Some("Already taken") else None))
-  .map(_.foreach(rename)).start()
-
-// any body, scrolling when it is taller than the screen, with async buttons (a spinner, a failure toasted)
-Dialogs.show("Publish", List(summary), close => List(
-  DialogAction(Words.cancel, close),
-  DialogAction.async("Publish", default = true) { done =>
-    api.publish().map(ok => if (ok) { close(); done(Right(())) } else done(Left("Publishing failed"))).start()
-  })).start()
-```
-
-`DialogPanel` is the dialog those are made of, for a body the app builds (`new DialogPanel(title, body, actions).open()`).
-A body of words taller than its room takes the focus, and Up and Down read through it with a remote. `DialogPanel.textSize`
-and `Menu.textSize` are set once, larger, on a television.
-
-`Words` holds OK, Cancel, Close, Done, Yes, No, Save, Don't save, Delete, Try again, Search, No results, Loading and
-Back in English, German, Spanish, French, Italian, Dutch, Portuguese, Turkish, Arabic and Simplified and Traditional
-Chinese, following `Strings.language`. `Words.add(code, messages)` adds a language or the app's own wording (messages by
-key, as `Arb.parse` reads an ARB).
-
 ### Tree (`everyui.tree`)
 
 A `TreeModel` holds the nodes by key and changes a node at a time; a `Tree` shows its open nodes as a `VirtualList`
@@ -413,23 +500,6 @@ Keys: Up and Down move the cursor, Right opens a node or goes to its first child
 (mirrored in a right-to-left language), Enter activates and opens or closes a folder. A click on the chevron opens or
 closes it. Multi-select is the list's (Shift and Primary with clicks and arrows, Primary+A).
 
-### Tooltip (`everyui.tooltip`)
-
-A tip beside a component while the pointer rests on it or the focus is on it: words, or a component the app makes. It
-comes after `Tooltip.delay` (0.6 s), goes as the pointer leaves or presses or the focus moves on, sits under the
-component (over it where under has no room) and never off the screen. One shows at a time.
-
-```scala
-import everyui.tooltip.Tooltip
-
-Tooltip(saveButton, "Save (" + Chord("S", primary = true).label + ")")
-Tooltip.rich(fileTab)(() => new FilePreview(file))     // made afresh each time it shows
-```
-
-On a platform driven by a remote (`Platform.remoteNavigation()`), tips do not follow the focus unless the app sets
-`Tooltip.onFocus @= true`: the focus moves with every press there, and a tip would cover the next thing along. A
-plain tip drawn by the platform itself is still `Component.tooltip`.
-
 ### Selection (lists and trees)
 
 `list.selection` (and `tree.selection`) is a `Selection`: `keys` is a `Var[Set[String]]` the app reads and sets,
@@ -446,48 +516,3 @@ list.selection.multiple @= false                             // one at a time, w
 
 Click picks a row, Shift+click the range from the anchor, Primary+click adds or removes one; Shift+arrows extend,
 Primary+arrows move the cursor alone and Primary+Space toggles its row; Primary+A picks every row.
-
-## An installable web app
-
-An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,
-and done by the app's build: `everyui.sbt.WebApp` (plain Scala in this repository's `sbt-support/`) writes a web app
-manifest and a small service worker next to the bundle and links them from its `index.html`.
-
-Add the sources to the app's build definition, in `project/everyui.sbt`:
-
-```scala
-Compile / unmanagedSourceDirectories += file("/path/to/everyui/sbt-support/src/main/scala")
-```
-
-and call it once the bundle is written (after `index.html` and `main.js`, as DataWrangler's `webBundle` writes them):
-
-```scala
-import everyui.sbt.{WebApp, WebAppIcon, WebAppManifest}
-
-webBundle := Def.uncached {
-  // ... index.html, main.js, fonts written to `out` as before
-  IO.copyDirectory(baseDirectory.value / "icons", out / "icons")
-  WebApp.write(out, WebAppManifest("Voidcraft", shortName = "Voidcraft", description = "Code browser",
-    themeColor = "#121212", backgroundColor = "#121212",
-    icons = Seq(
-      WebAppIcon("icons/icon-192.png", "192x192"),
-      WebAppIcon("icons/icon-512.png", "512x512"),
-      WebAppIcon("icons/maskable-512.png", "512x512", "maskable"))), version)
-  out
-}
-```
-
-It writes `manifest.webmanifest` (`display: standalone`, so the app opens in its own window), `sw.js` and `webapp.js`
-(which registers the worker from a file, so a Content-Security-Policy of `script-src 'self'` allows it), and adds to
-the page's head the manifest link, the theme colour and an Apple touch icon (the largest `any` icon). `version` names
-the worker's cache, so a new bundle starts a new cache (the script's content hash does). The worker answers from the
-network and keeps what it fetched, so the app still opens when the network is gone.
-
-**Icons.** PNG, square: **192×192** and **512×512** with purpose `any` are what browsers require to offer an install;
-add a **512×512 `maskable`** one (the picture within the middle 80%, the rest background) for Android's shaped icons.
-Apple devices use the touch icon (180×180 is their size; the 512 one is scaled).
-
-The page must be served over HTTPS (or from `localhost`). Chromium browsers then offer to install it from the address
-bar; Safari adds it with Add to Dock or Add to Home Screen. In its own window the browser keeps no tabs, so more of the
-chords a browser keeps for itself in a tab (Ctrl+T, Ctrl+N, Ctrl+Tab and others) reach the app's keymap; which ones is
-the browser's own choice and changes between browsers, so try the chords the app relies on in the installed window.
