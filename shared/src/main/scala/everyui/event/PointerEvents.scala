@@ -15,6 +15,18 @@ class PointerEvents(component: Component) {
   /** A context menu asked for where the pointer is: the secondary button (the page's own menu is not shown). */
   lazy val menu: Channel[PointerEvent] = channel(PointerKind.Menu)
 
+  /** A click with the middle button: down and up on the component (an app closes a tab with it). */
+  lazy val middle: Channel[PointerEvent] = {
+    val channel = Channel[PointerEvent]
+    var pressed = false
+    down.attach(e => pressed = e.button == PointerEvent.MiddleButton)
+    up.attach { e =>
+      if (pressed && e.button == PointerEvent.MiddleButton) channel @= e.copy(kind = PointerKind.Click)
+      pressed = false
+    }
+    channel
+  }
+
   /** Whether the pointer is over the component. */
   lazy val over: Val[Boolean] = {
     val state = Var(false)
@@ -30,7 +42,9 @@ class PointerEvents(component: Component) {
     val use = kind == PointerKind.Down || kind == PointerKind.Move || kind == PointerKind.Wheel ||
       kind == PointerKind.Click
     component.node.onPointer(kind, (x, y) => {
-      val event = PointerEvent(kind, x, y)
+      val held = everyui.render.Platform.modifiers()
+      val event = PointerEvent(kind, x, y, everyui.render.Platform.pointerButton(), held.ctrl, held.meta, held.alt,
+        held.shift)
       if (use) everyui.focus.Focus.used()
       if (!Pointer.consumed.contains(event)) channel @= event
     })

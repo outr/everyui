@@ -20,8 +20,8 @@ object DragDrop {
   val dragging: Var[Option[Dragged]] = Var(None)
   /** The rows cut, waiting to be pasted. */
   val held: Var[Option[Dragged]] = Var(None)
-  /** When the last drag ended, in `Platform.ticks`: the click it ends in is not a click. */
-  private[list] var endedAt: Double = -1000.0
+  /** Whether a drag has just ended: the click it ends in, heard before the next turn, is not a click. */
+  private[list] var justEnded: Boolean = false
 
   private var ghost: Option[Container] = None
   private var targets: Vector[VirtualList[?]] = Vector.empty
@@ -93,7 +93,10 @@ object DragDrop {
   private[list] def hovering(list: VirtualList[?]): Boolean = over.exists(_ eq list)
 
   private def finish(): Unit = {
-    if (dragging().nonEmpty) endedAt = Platform.ticks()
+    if (dragging().nonEmpty) {
+      justEnded = true
+      Platform.later(() => justEnded = false)
+    }
     over.foreach(_.leaveDrop())
     over = None
     targets = Vector.empty

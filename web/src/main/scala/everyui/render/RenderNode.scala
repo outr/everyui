@@ -211,15 +211,24 @@ class RenderNode(val el: html.Element) {
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * viewport coordinates. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit =
-    if (kind == PointerKind.Wheel) el.addEventListener("wheel", (e: dom.WheelEvent) => f(e.deltaX, e.deltaY))
+    if (kind == PointerKind.Wheel) el.addEventListener("wheel", (e: dom.WheelEvent) => {
+      Platform.pointed(e)
+      f(e.deltaX, e.deltaY)
+    })
     // the app's context menu in place of the browser's
     else if (kind == PointerKind.Menu) el.addEventListener("contextmenu", (e: dom.MouseEvent) => {
       e.preventDefault()
+      Platform.pointed(e)
       f(e.clientX, e.clientY)
     })
     else {
       val name = if (kind == PointerKind.Click) "click" else "pointer" + kind.toString.toLowerCase
-      el.addEventListener(name, (e: dom.MouseEvent) => f(e.clientX, e.clientY))
+      el.addEventListener(name, (e: dom.MouseEvent) => {
+        Platform.pointed(e)
+        // the middle button is the app's (a tab closed), not the browser's scrolling
+        if (kind == PointerKind.Down && e.button == 1) e.preventDefault()
+        f(e.clientX, e.clientY)
+      })
       // something that answers a click is clickable: the hand, and no text selection under it
       if (kind == PointerKind.Click) {
         el.style.cursor = "pointer"
@@ -1152,6 +1161,16 @@ object Platform {
   }
 
   private var held = everyui.event.Modifiers(false, false, false, false)
+  private var button = 0
+
+  /** The button of the pointer event being reported: 0 the primary, 1 the middle, 2 the secondary. */
+  def pointerButton(): Int = button
+
+  /** A pointer event about to be heard: its button and the modifiers held with it. */
+  private[render] def pointed(e: dom.MouseEvent): Unit = {
+    held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
+    button = if (e.button == 1 || e.button == 2) e.button else 0
+  }
   private var embedded = ""
 
   /** The modifiers held with the key being reported. */

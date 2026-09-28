@@ -5,7 +5,7 @@ import javafx.geometry.{NodeOrientation, Pos, VPos}
 import javafx.scene.image.{Image, ImageView}
 import javafx.beans.value.{ChangeListener, ObservableValue}
 import javafx.scene.control.{PasswordField, TextArea, TextField, TextInputControl, Tooltip}
-import javafx.scene.input.{Clipboard, ClipboardContent, KeyCode, KeyEvent, MouseEvent, ScrollEvent}
+import javafx.scene.input.{Clipboard, ClipboardContent, KeyCode, KeyEvent, MouseButton, MouseEvent, ScrollEvent}
 import javafx.scene.shape.{Rectangle, StrokeLineJoin, StrokeType}
 import javafx.scene.layout.{Background, BackgroundFill, Border, BorderStroke, BorderStrokeStyle, BorderWidths, CornerRadii, Pane, Region}
 import javafx.scene.paint.{Color, CycleMethod, LinearGradient, Paint, Stop}
@@ -284,20 +284,39 @@ class RenderNode(val fx: Node) {
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * scene coordinates. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = if (kind == PointerKind.Wheel)
-    fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => f(-e.getDeltaX, -e.getDeltaY))
+    fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => {
+      Platform.pointed(0, e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
+      f(-e.getDeltaX, -e.getDeltaY)
+    })
   else if (kind == PointerKind.Menu) {
     fx.setPickOnBounds(true)
     fx.addEventHandler(javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
-      (e: javafx.scene.input.ContextMenuEvent) => f(e.getSceneX, e.getSceneY))
+      (e: javafx.scene.input.ContextMenuEvent) => {
+        Platform.pointed(2, Platform.modifiers().ctrl, Platform.modifiers().meta, Platform.modifiers().alt,
+          Platform.modifiers().shift)
+        f(e.getSceneX, e.getSceneY)
+      })
   }
   else {
     val kinds = Map(PointerKind.Down -> MouseEvent.MOUSE_PRESSED, PointerKind.Up -> MouseEvent.MOUSE_RELEASED, PointerKind.Move -> MouseEvent.MOUSE_MOVED,
       PointerKind.Enter -> MouseEvent.MOUSE_ENTERED, PointerKind.Leave -> MouseEvent.MOUSE_EXITED, PointerKind.Click -> MouseEvent.MOUSE_CLICKED)
     fx.setPickOnBounds(true)   // a transparent Pane is not hit-tested unless told to be
-    fx.addEventHandler(kinds(kind), (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
+    // a click is the primary button's, as a browser's is: the others have their own uses (a menu, a tab closed)
+    fx.addEventHandler(kinds(kind), (e: MouseEvent) => if (kind != PointerKind.Click || e.getButton == MouseButton.PRIMARY) {
+      pointed(e)
+      f(e.getSceneX, e.getSceneY)
+    })
     // a pointer moving with a button held is a drag, which JavaFX sends only to the node it went down on: a move all
     // the same, as a browser's pointermove is, so a split's handle follows it
-    if (kind == PointerKind.Move) fx.addEventHandler(MouseEvent.MOUSE_DRAGGED, (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
+    if (kind == PointerKind.Move) fx.addEventHandler(MouseEvent.MOUSE_DRAGGED, (e: MouseEvent) => {
+      pointed(e)
+      f(e.getSceneX, e.getSceneY)
+    })
+  }
+
+  private def pointed(e: MouseEvent): Unit = {
+    val button = if (e.getButton == MouseButton.MIDDLE) 1 else if (e.getButton == MouseButton.SECONDARY) 2 else 0
+    Platform.pointed(button, e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
@@ -1108,6 +1127,16 @@ object Platform {
   }
 
   private var held = everyui.event.Modifiers(false, false, false, false)
+  private var button = 0
+
+  /** The button of the pointer event being reported: 0 the primary, 1 the middle, 2 the secondary. */
+  def pointerButton(): Int = button
+
+  /** A pointer event about to be heard: its button and the modifiers held with it. */
+  private[render] def pointed(pressed: Int, ctrl: Boolean, meta: Boolean, alt: Boolean, shift: Boolean): Unit = {
+    held = everyui.event.Modifiers(ctrl, meta, alt, shift)
+    button = pressed
+  }
   /** The modifiers held with the key being reported. */
   def modifiers(): everyui.event.Modifiers = held
   private var embedded = ""

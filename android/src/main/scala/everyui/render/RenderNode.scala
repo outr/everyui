@@ -528,6 +528,13 @@ class RenderNode(val view: View) {
   private val pointer = mutable.Map.empty[PointerKind, (Double, Double) => Unit]
   private var listening = false
   private def fire(kind: PointerKind, e: MotionEvent): Unit = {
+    // what the pointer holds, for the event about to be heard: a finger is the primary button; a mouse says its own
+    val buttons = e.getButtonState
+    Host.pointerButton = if ((buttons & MotionEvent.BUTTON_SECONDARY) != 0) 2 else if ((buttons & MotionEvent.BUTTON_TERTIARY) != 0) 1 else 0
+    val meta = e.getMetaState
+    Host.modifiers = everyui.event.Modifiers((meta & android.view.KeyEvent.META_CTRL_ON) != 0,
+      (meta & android.view.KeyEvent.META_META_ON) != 0, (meta & android.view.KeyEvent.META_ALT_ON) != 0,
+      (meta & android.view.KeyEvent.META_SHIFT_ON) != 0)
     val at = Array(0, 0)
     Host.root.getLocationOnScreen(at)
     pointer.get(kind).foreach(f => f((e.getRawX - at(0)) / Host.scale, (e.getRawY - at(1)) / Host.scale))
@@ -996,6 +1003,8 @@ object Host {
   var key: (String, Boolean) => Boolean = null
   /** The modifiers held with the key the activity is reporting (`Platform.modifiers`). */
   var modifiers: everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
+  /** The button of the pointer event being reported (`Platform.pointerButton`). */
+  var pointerButton: Int = 0
   /** The embed the key the activity is reporting is meant for (`Platform.keyEmbed`). */
   var embedded: String = ""
 
@@ -1772,6 +1781,8 @@ object Platform {
   def onKey(f: (String, Boolean) => Boolean): Unit = Host.key = f
   /** The modifiers held with the key being reported (a keyboard's; a remote holds none), as the activity reads them. */
   def modifiers(): everyui.event.Modifiers = Host.modifiers
+  /** The button of the pointer event being reported: 0 the primary (a finger), 1 the middle, 2 the secondary. */
+  def pointerButton(): Int = Host.pointerButton
   /** The embed the key being reported is meant for, "" for none: the one whose web view has the focus
     * (`Host.embedded`, as the activity reads it; never for Back, which is the app's). */
   def keyEmbed(): String = Host.embedded

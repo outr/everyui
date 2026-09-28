@@ -152,22 +152,18 @@ class TreeSpec extends FxSpec {
       def held(code: KeyCode, down: Boolean): Unit = fx(javafx.event.Event.fireEvent(window, new KeyEvent(
         if (down) KeyEvent.KEY_PRESSED else KeyEvent.KEY_RELEASED, "", "", code, code == KeyCode.SHIFT && down,
         code == KeyCode.CONTROL && down, false, false)))
-      def click(row: Int): Unit = fx {
+      def click(row: Int, shift: Boolean = false, ctrl: Boolean = false): Unit = fx {
         val x = tree.list.absoluteLeft + 60.0
         val y = tree.list.absoluteTop + row * 28.0 + 10.0
         javafx.event.Event.fireEvent(tree.list.node.fx, new MouseEvent(MouseEvent.MOUSE_CLICKED, x, y, x, y,
-          MouseButton.PRIMARY, 1, false, false, false, false, false, false, false, false, false, true, null))
+          MouseButton.PRIMARY, 1, shift, ctrl, false, false, true, false, false, false, false, true, null))
       }
       onScreen(tree) {
         fx(tree.expand("/a"))
         click(1)
-        held(KeyCode.SHIFT, true)
-        click(3)
-        held(KeyCode.SHIFT, false)
+        click(3, shift = true)
         fx(tree.selection.keys()) shouldBe Set("/a/1", "/a/2", "/b")
-        held(KeyCode.CONTROL, true)
-        click(0)
-        held(KeyCode.CONTROL, false)
+        click(0, ctrl = true)
         fx(tree.selectedItems.map(_.path)) shouldBe Vector("/a", "/a/1", "/a/2", "/b")
         fx(javafx.event.Event.fireEvent(window, new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.DOWN, true, false, false, false)))
         held(KeyCode.SHIFT, false)

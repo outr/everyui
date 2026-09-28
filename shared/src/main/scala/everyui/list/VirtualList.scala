@@ -318,7 +318,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   // (not the click a drag ends in)
-  event.click.attach(e => if (Platform.ticks() - DragDrop.endedAt > 250.0) clickAt(e.x, e.y, Platform.modifiers()))
+  event.click.attach(e => if (!DragDrop.justEnded) clickAt(e.x, e.y, e.modifiers))
   // the secondary button: the row under it chosen (unless it already is), and its menu asked for
   event.pointer.menu.attach { e =>
     val down = e.y - absoluteTop + offset()
@@ -336,13 +336,13 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val was = offset()
     Pointers.track(m => scrollTop(was + from - m.y), _ => ())
   }
-  thumb.event.pointer.down.attach { e =>
+  thumb.event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton) {
     e.consume()
     val from = e.y
     val was = offset()
     val room = math.max(1.0, size.height() - thumb.size.height())
     Pointers.track(m => scrollTop(was + (m.y - from) * furthest / room), _ => ())
-  }
+  })
   thumb.event.click.attach(_.consume())
 
   // ---- dragging and dropping ----
@@ -372,7 +372,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   event.pointer.down.attach { e =>
     val down = e.y - absoluteTop + offset()
-    if (draggable() && !Platform.remoteNavigation() && editing().isEmpty && down >= 0.0 && down < total) {
+    if (e.button == PointerEvent.PrimaryButton && draggable() && !Platform.remoteNavigation() && editing().isEmpty &&
+      down >= 0.0 && down < total) {
       pressedAt = Some((indexAt(down), e.x, e.y))
       Pointers.track(m => pressedAt.foreach { case (i, x, y) =>
         if (DragDrop.dragging().nonEmpty) DragDrop.move(m.x, m.y)

@@ -14,7 +14,7 @@ import reactify.*
   *
   * Around the label are slots an app fills: `icon` before it (a file's type), `marker` after it (an unsaved file's
   * dot, a count); and a closable tab ends in a close button, which asks the bar to close it (`TabBar.closing`) rather
-  * than showing it. */
+  * than showing it, as a click on it with the middle button does. */
 class TabItem(val key: String, title: String, current: Var[String], closable: Boolean = false,
               close: String => Unit = _ => (), showOnFocus: Boolean = true) extends Container {
   val label: Var[String] = Var(title)
@@ -59,6 +59,11 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   event.click.attach { e =>
     e.consume()
     current @= key
+  }
+  // the middle button closes a closable tab, as a browser's does
+  if (closable) event.pointer.middle.attach { e =>
+    e.consume()
+    close(key)
   }
 }
 
