@@ -29,7 +29,12 @@ class Component(val node: RenderNode) {
     owned.foreach(v => Component.unbind(v))
     Component.unbind(size.width)
     Component.unbind(size.height)
-    parent @= None
+    // taken off the screen as it is taken apart: a focus on it moves on to what is there in its place
+    parent().foreach { p =>
+      leaves(p, p.childComponents.indexWhere(_ eq this))
+      parent @= None
+      Focus.offScreen()
+    }
   }
 
   /** What to undo when this is disposed of: a reaction it put on something that lives on, above all. */
@@ -114,6 +119,16 @@ class Component(val node: RenderNode) {
 
   /** The container this is in, kept by ContainerFeature. */
   val parent: Var[Option[Component]] = own(Var(None))
+  /** The container this was last taken out of, and where in it: where the focus goes when it was on this as it went
+    * (`Focus.successor`), to what took its place. */
+  private[everyui] var leftParent: Option[Component] = None
+  private[everyui] var leftIndex: Int = -1
+
+  /** Taken out of `from`, where it was at `index`. */
+  private[everyui] def leaves(from: Component, index: Int): Unit = {
+    leftParent = Some(from)
+    leftIndex = index
+  }
   /** The position in the render root: the parents' positions added up. */
   def absoluteLeft: Double = position.left() + parent().map(_.absoluteLeft).getOrElse(0.0)
   def absoluteTop: Double = position.top() + parent().map(_.absoluteTop).getOrElse(0.0)
@@ -137,8 +152,10 @@ class Component(val node: RenderNode) {
     here
   }
   /** Take the focus — unless a dialog is up and this is not in it: a screen that finishes loading behind a dialog, or
-    * a reply that lands late, must not pull the focus out from under the question being asked. */
-  def focus(): Unit = if (Focus.scope().forall(s => Focus.within(this, s))) Focus.focused @= Some(this)
+    * a reply that lands late, must not pull the focus out from under the question being asked. Nor where this is in
+    * a dialog waiting under a cover (Modal.covered), which nobody can see. */
+  def focus(): Unit =
+    if (Focus.dialog().forall(s => Focus.within(this, s)) && !Modal.hides(this)) Focus.focused @= Some(this)
 
   /** Whether this handles `key` itself while focused, so the focus layer leaves it be: a text field keeps Enter and
     * the arrows along its line. */

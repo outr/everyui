@@ -41,7 +41,29 @@ object Modal {
   })
 
   /** Whether a dialog is up at all, covered or not. */
-  def showing: Boolean = layers.nonEmpty
+  def showing: Boolean = {
+    forget()
+    layers.nonEmpty
+  }
+
+  /** Whether a dialog is up where it can be seen, and so holds the focus and Back: one waiting under a cover does
+    * neither, and the screen it waits over answers Back as though it were not there. */
+  def inView: Boolean = showing && !covered()
+
+  /** Whether `c` is in a dialog waiting under a cover: not to be focused. A focus put there was on something nobody
+    * could see, and OK pressed at the screensaver answered the question hidden under it. */
+  def hides(c: Component): Boolean = covered() && layers.exists(layer => Focus.within(c, layer.sheet))
+
+  /** Let go of each dialog whose sheet something else took off the screen (a screen shown in its place, which puts
+    * nothing but itself in the host): left on the stack, it went on claiming Back, and keeping the screen under it from
+    * hearing it, with nothing on the screen to close. It is gone as though closed, without giving the focus back to
+    * what it covered, which has gone with it. */
+  private def forget(): Unit = layers.filterNot(layer => Focus.showing(layer.sheet)).foreach { layer =>
+    layers = layers.filterNot(_ eq layer)
+    layer.release()
+    if (Focus.scope().exists(_ eq layer.sheet)) Focus.scope @= (if (covered()) None else layers.headOption.map(_.sheet))
+    layer.after()
+  }
 
   /** Put `panel` up in place of the dialog on top, if there is one, with the focus on `focus`; `after` hears it close,
     * however it closes, once the focus is back. */
@@ -66,13 +88,18 @@ object Modal {
     // Back is this dialog's while it is on top and in view: it closes it, or — where it cannot be dismissed — does
     // nothing at all, rather than reaching whatever is under it
     layer.release = Focus.onBack(_ =>
-      if (covered() || !layers.headOption.exists(_ eq layer)) false
+      if (!Focus.showing(sheet)) {
+        forget()
+        false
+      }
+      else if (covered() || !layers.headOption.exists(_ eq layer)) false
       else {
         if (layer.dismissible) take(layer)
         true
       })
-    layers = layer :: layers
+    // on the screen before it is on the stack, which lets go of any dialog whose sheet is not
     ui.children += sheet
+    layers = layer :: layers
     // Put up under a cover, it waits there rather than appearing over it: a dialog raised while the screensaver is
     // running is one the viewer is not present for, and it belongs to the screen they left, not to the picture.
     if (covered()) sheet.visible @= false
@@ -104,7 +131,9 @@ object Modal {
     ui.children -= layer.sheet
     if (top) {
       Focus.scope @= (if (covered()) None else layers.headOption.map(_.sheet))
-      layer.before.foreach(c => if (Focus.showing(c)) c.focus() else Focus.focused @= None)
+      // back where it was; or, where that has left the screen meanwhile (a card taken off a row read again under the
+      // dialog), on what took its place, rather than on nothing. Not under a cover, whose own screen has the focus
+      if (!covered()) Focus.restore(layer.before)
     }
     layer.after()
   }

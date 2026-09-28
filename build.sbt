@@ -267,6 +267,9 @@ lazy val desktop = (project in file("desktop"))
     Compile / unmanagedSourceDirectories += (file("app") / "desktop" / "src" / "main" / "scala").getAbsoluteFile,   // the example's launcher
     libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
     libraryDependencies ++= Seq("base", "graphics", "controls", "media").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
+    // the focus layer checked against real nodes (FocusSpec), on a JavaFX thread of its own
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
+    Test / fork := true,
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,

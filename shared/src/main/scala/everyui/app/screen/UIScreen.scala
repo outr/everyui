@@ -25,6 +25,9 @@ trait UIScreen extends Screen with PathActivation {
     c
   }
 
+  /** What the screen shows, whole: where the focus stops looking for what took the place of something gone (Focus). */
+  def screenRoot: Component = container
+
   override protected def init(): Task[Unit] = super.init().flatMap { _ =>
     container.size.width := manager.host.size.width
     container.size.height := manager.host.size.height

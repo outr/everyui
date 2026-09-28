@@ -7,8 +7,11 @@ import everyui.component.Component
   * nodes; measuring the container measures everything under it first. */
 class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty) {
   changes { (old, current) =>
-    old.filterNot(c => current.exists(_ eq c)).foreach { c =>
+    val removed = old.filterNot(c => current.exists(_ eq c))
+    removed.foreach { c =>
       c.node.remove()
+      // where it was, so a focus on it (or inside it) goes to what takes its place
+      c.leaves(component, old.indexWhere(_ eq c))
       c.parent @= None
     }
     val added = current.filterNot(c => old.exists(_ eq c))
@@ -20,6 +23,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       if (added.exists(_ eq c)) {
         if (i >= placed.size) component.node.append(c.node) else component.node.insert(c.node, i)
         c.parent @= Some(component)
+        c.leftParent = None
         placed = placed.patch(i, Vector(c), 0)
       }
       // (only where the list and the nodes can be matched place for place: a list holding one component twice has more
@@ -33,6 +37,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     // measuring a rail of cards again for each card added to it took a Roku seconds
     ContainerFeature.measureUnder(added.toList)
     component.measured.refresh()
+    if (removed.nonEmpty) everyui.focus.Focus.offScreen()
   }
 
   def +=(child: Component): Unit = static(get :+ child)

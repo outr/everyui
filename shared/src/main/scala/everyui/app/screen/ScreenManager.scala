@@ -152,6 +152,10 @@ trait ScreenManager extends TaskSupport {
       case Some(u: UIScreen) => Some(u.defaultFocus())
       case _ => None
     })
+    Focus.page @= (() => active() match {
+      case Some(u: UIScreen) => Some(u.screenRoot)
+      case _ => None
+    })
     // the page's head follows the shown screen's SEO; a screen with none leaves it as it is
     shownSEO.attachAndFire(_.foreach(Platform.setSEO))
     Platform.whenFontsReady(() =>

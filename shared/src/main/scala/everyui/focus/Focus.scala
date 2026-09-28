@@ -23,14 +23,19 @@ import reactify.*
   *
   * The candidates are the focusable components under `ui` (or under an open dialog: `scope`) at the time of the key,
   * found by walking the tree: no registry, so a list rebuilt under the focus needs no bookkeeping. A container arrived at
-  * is entered at its stated entry, else the part of it that last had the focus, else its first. With nothing focused,
-  * or the focused component gone, the focus goes to the screen's `defaultFocus` ([[home]]), or a dialog's first. */
+  * is entered at its stated entry, else the part of it that last had the focus, else its first. The focused component
+  * taken off the screen (a card gone from a row read again, a list built over, a dialog's sheet) hands the focus to
+  * what took its place ([[successor]]); with nothing to take it, or nothing focused, it goes to the screen's
+  * `defaultFocus` ([[home]]), or a dialog's first. */
 object Focus {
   val focused: Var[Option[Component]] = Var(None)
   /** Where the focus may go: under `ui`, or under an open dialog alone, so the arrows never reach what it covers. */
   val scope: Var[Option[Component]] = Var(None)
   /** Where the focus goes when it has nowhere else: the showing screen's `defaultFocus`, as the screen manager says. */
   val home: Var[() => Option[Component]] = Var(() => None)
+  /** The showing screen's own container, as the screen manager says: a focus whose place is gone looks no further out
+    * than this for what took it, and goes to the screen's `defaultFocus` rather than to another part of the screen. */
+  val page: Var[() => Option[Component]] = Var(() => None)
   /** How many times the app has been used — a key pressed, a pointer put down, moved or scrolled: what an app watches
     * to know somebody is there (a screensaver's idle time). */
   val activity: Var[Long] = Var(0L)
@@ -76,9 +81,10 @@ object Focus {
   }
 
   /** On a platform navigated by a remote, something always has the focus: with nothing focused, nobody can see where
-    * a press would go, and the only way back is a guess at an arrow. So the focus is watched, and when it has been on
-    * nothing — or on something taken off the screen, a card replaced in a rebuilt row — for two checks in a row, it
-    * goes to the open dialog's entry, or else the screen's `defaultFocus`. */
+    * a press would go, and the only way back is a guess at an arrow. What takes the focus off the screen moves it on
+    * itself (`offScreen`); this watch is the net under that, for a focus lost some other way. When it has been on
+    * nothing, or on something no longer on the screen, for two checks in a row, it goes to what took the place of
+    * what it was on, else to where the screen starts. */
   private def watch(): Unit = {
     if (focused().forall(c => !showing(c))) {
       if (lost) {
@@ -91,12 +97,97 @@ object Focus {
     Platform.after(WatchSeconds, () => watch())
   }
 
-  private def recover(): Unit = start().filter(shown).foreach(c => focused @= Some(c))
+  /** The focus onto what took the place of what it was on, else where the screen starts, else the first part of the
+    * screen that can be seen: never left on nothing because the first choice happens to be out of sight. */
+  private def recover(): Unit = {
+    val was = focused()
+    val found = was.flatMap(successor).orElse(start().filter(shown)).orElse(candidates(area()).find(shown))
+    found.foreach { c =>
+      // said, so a focus lost where nothing moved it on is found by reading the log rather than by a viewer stuck
+      Platform.log("[focus] lost from " + was.map(_.kind).getOrElse("nothing") + ", now on " + c.kind)
+      focused @= Some(c)
+    }
+  }
+
+  /** The open dialog the focus is kept inside, while it is on the screen: a sheet taken off it by something else (a
+    * screen shown in its place) holds the focus nowhere. */
+  def dialog(): Option[Component] = scope().filter(showing)
+
+  /** Where the focus may go now: inside the open dialog, else anywhere under `ui`. */
+  def area(): Component = dialog().getOrElse(ui)
+
+  // whether a look at a focus taken off the screen is waiting for its turn
+  private val looking: Var[Boolean] = Var(false)
+
+  /** Something was taken off the screen. If the focus was on it, or inside it, the focus moves on to what took its
+    * place (`successor`). A turn later rather than at once: what is taken off is usually being replaced in the same
+    * turn (a row read again, a list built over), and what takes its place is only there once that is done — or the
+    * code doing it has put the focus back itself. With nothing in its place (a whole screen gone, the next on its
+    * way), whatever shows next says where the focus starts, and the watch is there should nothing say. */
+  def offScreen(): Unit = if (!looking() && focused().exists(c => !showing(c))) {
+    looking @= true
+    Platform.later(() => {
+      looking @= false
+      moveOn(false)
+    })
+  }
+
+  /** A focus on something no longer on the screen, moved on at once: to what took its place, or with `anywhere`,
+    * failing that, to where the screen starts. */
+  private def moveOn(anywhere: Boolean): Unit = focused().filterNot(showing).foreach { gone =>
+    successor(gone).orElse(if (anywhere) start() else None) match {
+      case Some(to) =>
+        Platform.log("[focus] " + gone.kind + " left the screen, the focus goes to " + to.kind)
+        focused @= Some(to)
+      case None => ()
+    }
+  }
+
+  /** The focus back on `to`, as a dialog closing gives it back: or, where `to` has left the screen since, on what took
+    * its place; or where the screen starts, with nothing to go back to. */
+  def restore(to: Option[Component]): Unit =
+    to.filter(showing).orElse(to.flatMap(successor)).orElse(start()).foreach(_.focus())
+
+  /** What the focus goes to when `gone` has left the screen with it: what took its place in the container it left —
+    * the part now where it was, else the next, else the one before (it was the last) — else that container's entry;
+    * and where the container left too, the same a level up. Decided by the tree alone, never by where anything is on
+    * the screen, and only ever within where the focus may go (an open dialog). None when nothing it was in is left
+    * short of the screen itself, which leaves it to where the screen starts. */
+  def successor(gone: Component): Option[Component] = {
+    val reach = area()
+    var child = gone
+    var found: Option[Component] = None
+    var steps = 0
+    // up through what went with it, then out from the first container still here, a level at a time
+    while (found.isEmpty && steps < 64) {
+      val box = child.parent().orElse(child.leftParent)
+      if (box.isEmpty) steps = 64
+      else {
+        val index = if (child.parent().nonEmpty) box.get.childComponents.indexWhere(_ eq child) else child.leftIndex
+        // at the top of where the focus may go (a screen, or the dialog), where it starts is the one to say, rather
+        // than whichever part of the screen sits next in its tree
+        if ((box.get eq reach) || page()().exists(_ eq box.get) || box.get.parent().exists(_ eq ui)) steps = 64
+        else if (showing(box.get) && within(box.get, reach)) found = around(box.get, index, child)
+        child = box.get
+      }
+      steps += 1
+    }
+    found
+  }
+
+  // In `box`, where `gone` was at `index`: the part now there, else the next, else the one before; or the entry the
+  // box states. Nothing when nothing in it takes the focus.
+  private def around(box: Component, index: Int, gone: Component): Option[Component] = {
+    val parts = box.childComponents.filterNot(_ eq gone)
+    val at = math.max(0, math.min(index, parts.length))
+    val order = parts.drop(at) ++ parts.take(at).reverse
+    order.find(p => candidates(p).nonEmpty).flatMap(pick).orElse(entered(box).flatMap(pick))
+  }
 
   /** Where the focus starts over: an open dialog's entry or its first, else the screen's `defaultFocus`, else the
     * first of all. */
-  private def start(): Option[Component] = scope().filter(showing) match {
-    case Some(dialog) => pick(dialog)
+  private def start(): Option[Component] = dialog() match {
+    case Some(sheet) => pick(sheet)
     case None => home()().filter(c => showing(c) && candidates(c).nonEmpty).flatMap(pick).orElse(pick(ui))
   }
 
@@ -164,6 +255,9 @@ object Focus {
       taken = left.head(key)
       left = left.tail
     }
+    // said, since a Back nothing on the screen answered is otherwise indistinguishable from a remote that did nothing
+    if (!taken && key == Key.Back) Platform.log("[focus] Back left to the platform, the focus on " +
+      focused().map(_.kind).getOrElse("nothing"))
     taken
   }
 
@@ -173,6 +267,8 @@ object Focus {
     val key = Keys.of(name)
     if (pressed) used()
     if (key == Key.Enter && !pressed) enterHeld = false
+    // a key never goes to something no longer on the screen: from there no arrow leads anywhere, and it answers nothing
+    if (pressed) moveOn(true)
     // what had the focus when the key came: a component that moves the focus as it handles its own key is still the one
     // that kept it, and the key does not travel on from wherever the focus went
     val target = focused()
@@ -229,7 +325,7 @@ object Focus {
 
   /** Move the focus an arrow's way (see above). Whether it moved. */
   def move(direction: Key): Boolean = {
-    val root = scope().getOrElse(ui)
+    val root = area()
     val all = candidates(root)
     focused() match {
       case None =>
@@ -317,7 +413,7 @@ object Focus {
     * names its entry and the focus is arriving there from outside it — then that entry. A tab bar entered a level down
     * is entered at its selected tab, not at whichever of its tabs the move happened to reach. */
   private def arrive(c: Component, from: Component): Component = {
-    val root = scope().getOrElse(ui)
+    val root = area()
     var at: Option[Component] = Some(c)
     var entry: Option[Component] = None
     while (at.nonEmpty && !at.exists(_ eq root)) {
@@ -352,7 +448,7 @@ object Focus {
 
   /** Tab: the next candidate in tree order, round to the first after the last. Whether anything was focused. */
   def next(): Boolean = {
-    val all = candidates(scope().getOrElse(ui))
+    val all = candidates(area())
     if (all.isEmpty) false
     else {
       var at = -1
