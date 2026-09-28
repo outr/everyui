@@ -94,6 +94,45 @@ class MenuSpec extends FxSpec {
       eventually(Focus.focused().collect { case r: MenuRow => r.item.label }.contains("Path")) shouldBe true
       fx(Menu.hoverDelay @= 0.3)
     }
+    "switch submenus, or close one, as the pointer moves over the menu under it, and close all on a click outside" in onScreen { _ =>
+      fx(Menu.hoverDelay @= 0.05)
+      var chose = ""
+      var dismissed = 0
+      val menu = fx(Menu.at(100.0, 100.0, List(MenuItem("Open", () => chose = "open"),
+        MenuItem.sub("Copy", List(MenuItem("Path"))), MenuItem.sub("Share", List(MenuItem("Mail")))), () => dismissed += 1))
+      def label: Option[String] = Focus.focused().collect { case r: MenuRow => r.item.label }
+      def sheet: Component = ui.children().last
+      def at(i: Int): (Double, Double) = (menu.absoluteLeft + 20.0, menu.rows(i).absoluteTop + menu.rows(i).size.height() / 2.0)
+      def move(i: Int): Unit = fx {
+        val (x, y) = at(i)
+        sheet.event.pointer.move @= PointerEvent(PointerKind.Move, x, y)
+      }
+      fx(menu.rows(1).event.pointer.enter @= PointerEvent(PointerKind.Enter, 0.0, 0.0))
+      eventually(label.contains("Path")) shouldBe true
+      move(2)
+      eventually(label.contains("Mail")) shouldBe true
+      fx(ui.children().size) shouldBe 3   // the card, the menu's sheet and one submenu's
+      move(0)
+      eventually(label.contains("Open")) shouldBe true
+      fx(ui.children().size) shouldBe 2
+      // a click through a submenu's sheet onto an entry chooses it
+      fx(menu.rows(1).event.pointer.enter @= PointerEvent(PointerKind.Enter, 0.0, 0.0))
+      eventually(label.contains("Path")) shouldBe true
+      fx {
+        val (x, y) = at(0)
+        sheet.event.click @= PointerEvent(PointerKind.Click, x, y)
+      }
+      chose shouldBe "open"
+      fx(Modal.showing) shouldBe false
+      // and one outside every menu closes them all
+      val again = fx(Menu.at(100.0, 100.0, List(MenuItem.sub("Copy", List(MenuItem("Path")))), () => dismissed += 1))
+      fx(again.rows(0).event.pointer.enter @= PointerEvent(PointerKind.Enter, 0.0, 0.0))
+      eventually(label.contains("Path")) shouldBe true
+      fx(sheet.event.click @= PointerEvent(PointerKind.Click, 1500.0, 900.0))
+      fx(Modal.showing) shouldBe false
+      eventually(dismissed == 1) shouldBe true
+      fx(Menu.hoverDelay @= 0.3)
+    }
     "open a submenu to the left, and in and out of it the other way, in a right-to-left language" in onScreen { _ =>
       fx(Direction.rtl @= true)
       try {

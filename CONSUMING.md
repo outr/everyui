@@ -215,8 +215,9 @@ in the middle of the screen under a title (`Menu.show`, what a remote wants). A 
 optional icon, a line of detail, a shortcut hint (a keymap `Chord`) or a note, and may be disabled, dangerous,
 checkable or a submenu; `MenuItem.separator` is a rule. Up and Down move round the entries that can be chosen, OK or a
 click chooses (every menu closes, then the action runs), Right opens a submenu (so does the pointer resting on its
-entry for `Menu.hoverDelay`) and Left, Back or Escape closes it, and the pointer resting on an entry focuses it. The
-focus goes back where it was. In a right-to-left language submenus open to the left, and Left and Right swap.
+entry for `Menu.hoverDelay`) and Left, Back or Escape closes it, and the pointer resting on an entry focuses it; over
+the menu under an open submenu, another entry switches submenus and a plain one closes it, and a click outside every
+menu closes them all. The focus goes back where it was. In a right-to-left language submenus open to the left, and Left and Right swap.
 `Menu.context` wires a component's secondary click (`event.pointer.menu`, the new `PointerKind.Menu`; a long press on
 Android), the menu key and OK held on a remote.
 

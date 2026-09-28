@@ -19,7 +19,8 @@ import reactify.*
   * every menu open and then does what the entry says. Right (or a click, or the pointer resting on it for
   * `Menu.hoverDelay`) opens a submenu beside its entry, and Left, Back or Escape closes it, back on that entry; Back or
   * a click outside closes a menu, and the focus goes back where it was. The pointer resting on an entry moves the focus
-  * to it. `dismissed` hears the menus closed with nothing chosen.
+  * to it, and over the menu a submenu opened from, another entry switches submenus and a plain one closes it; a click
+  * outside every menu closes them all. `dismissed` hears the menus closed with nothing chosen.
   *
   * {{{
   *   Menu.context(fileRow) {
@@ -84,13 +85,57 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
     if (row.item.submenu.nonEmpty) {
       row.chosen.attach(_ => open(row))
       row.opened.attach(_ => open(row))
-      // a pointer resting on it opens it, a moment on, as a desktop menu does
-      val over = row.event.pointer.over   // following the pointer from now, before it is asked
-      row.event.pointer.enter.attach(_ => if (Platform.pointerSupport()) Platform.after(Menu.hoverDelay(), () =>
-        if (over() && Focus.showing(row) && !opened.exists(m => Focus.showing(m))) open(row)))
     }
     else row.chosen.attach(_ => choose(row.item))
+    row.event.pointer.enter.attach(_ => pointedAt(row))
+    row.event.pointer.leave.attach(_ => if (pointed.exists(_ eq row)) pointed = None)
   }
+
+  // the row the pointer is on, and the one whose submenu is open
+  private var pointed: Option[MenuRow] = None
+  private var openedFrom: Option[MenuRow] = None
+
+  /** The pointer arrived on `row`: it takes the focus; a submenu open from another row closes; and a submenu of its own
+    * opens once the pointer has rested there `Menu.hoverDelay`, as a desktop menu does. */
+  private def pointedAt(row: MenuRow): Unit = if (!pointed.exists(_ eq row)) {
+    pointed = Some(row)
+    if (!openedFrom.exists(_ eq row)) closeOpened()
+    if (row.item.choosable) row.focus()
+    if (row.item.choosable && row.item.submenu.nonEmpty && Platform.pointerSupport())
+      Platform.after(Menu.hoverDelay(), () =>
+        if (pointed.exists(_ eq row) && Focus.showing(row) && !opened.exists(m => Focus.showing(m))) open(row))
+  }
+
+  /** The submenu open from here, and any it opened, closed. */
+  private def closeOpened(): Unit = {
+    opened.foreach { m =>
+      m.closeOpened()
+      Modal.remove(m)
+    }
+    opened = None
+    openedFrom = None
+  }
+
+  /** Whether `x`, `y` is inside this menu. */
+  private[menu] def holds(x: Double, y: Double): Boolean =
+    x >= absoluteLeft && x < absoluteLeft + size.width() && y >= absoluteTop && y < absoluteTop + size.height()
+
+  /** The pointer at `x`, `y` over the sheet of a submenu opened from here (which is over this menu): passed on to this
+    * menu where it is inside it, or to the menu this was opened from; a `click` chooses the row there. Whether a menu
+    * had it. */
+  private[menu] def pointer(x: Double, y: Double, click: Boolean): Boolean =
+    if (holds(x, y)) {
+      rows.find(r => r.item.choosable && y >= r.absoluteTop && y < r.absoluteTop + r.size.height()).foreach { row =>
+        if (click) {
+          closeOpened()
+          pointed = Some(row)
+          row.chosen @= (())
+        }
+        else pointedAt(row)
+      }
+      true
+    }
+    else under.exists(_.pointer(x, y, click))
 
   /** The entries that can be chosen, in order. */
   def choosable: List[MenuRow] = rows.filter(_.item.choosable)
@@ -117,7 +162,14 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
     }
     sub.position.top := Menu.fit(row.absoluteTop - inset, sub.size.height())
     opened = Some(sub)
+    openedFrom = Some(row)
     sub.up(over = true)
+    // the pointer over the menus under it reaches them through its sheet: another entry there switches submenus, a
+    // plain one closes it, and a click there chooses; a click outside every menu closes them all
+    sub.parent().foreach { sheet =>
+      sheet.event.pointer.move.attach(e => if (!sub.holds(e.x, e.y)) pointer(e.x, e.y, click = false))
+      sheet.event.click.attach(e => if (!pointer(e.x, e.y, click = true)) Menu.closeFrom(this))
+    }
   }
 
   /** Put it up, the focus on its first entry that can be chosen: over what is up with `over` (a submenu), `dim`
