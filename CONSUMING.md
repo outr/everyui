@@ -83,7 +83,7 @@ object App extends ScreenManager
 
 @main def main(): Unit = {
   Keymap.global.add("hello.reset", "Reset", Chord.parse("Primary+Shift+R")) {
-    everyui.render.Platform.log("reset")
+    everyui.kit.Toast.show("Reset")
   }
   App.run(Hello)
 }
@@ -144,6 +144,34 @@ Tab and Shift+Tab move the focus through the screen in tree order.
 The browser never hands some chords to a page: Ctrl+W, Ctrl+T, Ctrl+Tab and Ctrl+N in a normal tab. They work when
 the app runs as an installed app window. Choose defaults with that in mind.
 
-While the page's focus is inside an element marked `data-everyui-embed`, or in a field the app did not make, EveryUI
-leaves the keys to it. It does not move the focus and does not `preventDefault`. Only a command chord with Ctrl, Meta
-or Alt still runs.
+### Embeds
+
+An embed is something in the page that handles its own keys, such as a code editor. It is marked
+`data-everyui-embed="<name>"` on the web, or with the node property `Host.embedKey` on the desktop. A field that the
+app did not make counts as the embed `"field"`. While the page's focus is inside an embed, every key is the embed's,
+Escape included. EveryUI does not move the focus and does not `preventDefault`. Only two kinds of command still run:
+
+```scala
+Keymap.global("file.new").foreach(_.inEmbeds @= true)       // wins inside every embed
+Keymap.embed("editor", Chord("W", primary = true))           // the chords this embed leaves to the app
+```
+
+An embed gives back a key it did not want. For example, an editor's Escape with no popup to close becomes Back:
+`Focus.handBack("Escape")`.
+
+## General components
+
+Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:
+
+- `TabBar` and `TabItem`: a strip of tabs, fixed (`TabBar(List(key -> label), current, width)`) or open-ended
+  (`add`, `remove`, closable tabs, the `closing` channel), with `icon` and `marker` slots beside each label.
+- `Toast.show(words, seconds, top, margin)`: one short message at a time.
+- `AsyncPress`: a press that runs slow work, with a delayed spinner, and failures toasted.
+- `Spinner` and `Ring`: an indeterminate spinner and a determinate dial.
+- `LazyRows`: a long list made as it is scrolled toward.
+- `Turns`: work split over frames.
+- `TextView.line`: one line that closes up when it is empty.
+- `TextScroll`: text scrolled with the arrows.
+- `ImageViewer`: pictures shown full screen, one at a time.
+- `Mirror`: parts placed by hand, mirrored for right-to-left languages.
+- `TextOutline.overPicture` and `TextOutline.overPictureLight`: edges for text over pictures.

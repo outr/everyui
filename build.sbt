@@ -330,6 +330,8 @@ lazy val desktop = (project in file("desktop"))
     // the specs share one `ui` and one window, so they take turns
     Test / parallelExecution := false,
     Test / testForkedParallel := false,
+    // the bundled faces are found from the build's root, as the app finds them
+    Test / baseDirectory := (ThisBuild / baseDirectory).value,
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,

@@ -136,4 +136,26 @@ object TextView {
     size.width @= width
     measure.trigger()
   }
+
+  /** One bound line that takes no room at all while it has nothing to say, so a column or a row it is in closes up
+    * round it. The words are measured inside a box of their own (a size set on the words would be the size they are
+    * measured at): `widest` cuts them short with an ellipsis (0 for no limit), and `leading` makes the line that many
+    * times its size tall with the words in the middle of it (0 for the face's own). */
+  def line(words: => String, points: Double, colour: => Color, weight: everyui.component.types.FontWeight =
+             everyui.component.types.FontWeight.Normal, widest: => Double = 0.0, leading: Double = 0.0): Container = {
+    val text = new TextView {
+      content := words
+      font.size @= points
+      font.weight @= weight
+      color := colour
+      maxWidth := widest
+    }
+    val tall = points * leading
+    text.position.top := (if (text.size.height() < tall) (tall - text.size.height()) / 2.0 else 0.0)
+    new Container {
+      size.width := (if (text.content().isEmpty) 0.0 else text.size.width())
+      size.height := (if (text.content().isEmpty) 0.0 else math.max(tall, text.size.height()))
+      children += text
+    }
+  }
 }
