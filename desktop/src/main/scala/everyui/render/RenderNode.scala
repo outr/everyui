@@ -6,7 +6,7 @@ import javafx.scene.image.{Image, ImageView}
 import javafx.beans.value.{ChangeListener, ObservableValue}
 import javafx.scene.control.{PasswordField, TextArea, TextField, TextInputControl, Tooltip}
 import javafx.scene.input.{Clipboard, ClipboardContent, KeyCode, KeyEvent, MouseEvent, ScrollEvent}
-import javafx.scene.shape.Rectangle
+import javafx.scene.shape.{Rectangle, StrokeLineJoin, StrokeType}
 import javafx.scene.layout.{Background, BackgroundFill, Border, BorderStroke, BorderStrokeStyle, BorderWidths, CornerRadii, Pane, Region}
 import javafx.scene.paint.{Color, CycleMethod, LinearGradient, Paint, Stop}
 import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text, TextAlignment}
@@ -321,7 +321,19 @@ class RenderNode(val fx: Node) {
   /** "start", "center" or "end", resolved against the window's direction (`Platform.setDirection`). */
   /** A shadow behind the letters: not drawn here. */
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
-  def setTextOutline(width: Double, hex: String): Unit = ()
+  /** An edge round the letters, `width` each side, or none for "": the text's own stroke, laid outside the letters so
+    * it never eats into them, as Android's is. */
+  def setTextOutline(width: Double, hex: String): Unit = fx match {
+    case t: Text =>
+      if (hex.isEmpty) t.setStroke(null)
+      else {
+        t.setStroke(Color.web(hex))
+        t.setStrokeWidth(width)
+        t.setStrokeType(StrokeType.OUTSIDE)
+        t.setStrokeLineJoin(StrokeLineJoin.ROUND)
+      }
+    case _ => ()
+  }
   // no reader of roles or descriptions reaches this platform's nodes
   def setSemantics(role: String, level: Int, label: String): Unit = ()
   /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */

@@ -113,7 +113,7 @@ func font(_ family: String, _ weight: Int, _ size: Double) -> UIFont {
 func uiRoot() -> V { .vRef(UI.root) }
 
 func uiText() -> V {
-    let l = UILabel()
+    let l = OutlinedLabel()
     l.numberOfLines = 1
     l.lineBreakMode = .byClipping
     l.textColor = uiColor("#1c1b1f")
@@ -174,6 +174,16 @@ func uiSetFontSize(_ node: V, _ size: V) -> V {
 /// `"#rrggbb"` onto a label's text colour.
 func uiSetColor(_ node: V, _ hex: V) -> V {
     (view(node) as? UILabel)?.textColor = uiColor(rtS(hex))
+    return .vNull
+}
+
+/// An edge `width` points each side round a label's letters in `hex`, or none for "".
+func uiSetTextOutline(_ node: V, _ width: V, _ hex: V) -> V {
+    guard let l = view(node) as? OutlinedLabel else { return .vNull }
+    let colour = rtS(hex)
+    l.edgeWidth = colour.isEmpty ? 0 : CGFloat(dbl(width))
+    l.edgeColor = colour.isEmpty ? .clear : uiColor(colour)
+    l.setNeedsDisplay()
     return .vNull
 }
 
@@ -525,4 +535,32 @@ func uiSetVisible(_ node: V, _ visible: V) -> V {
 func uiSetOpacity(_ node: V, _ opacity: V) -> V {
     view(node)?.alpha = CGFloat(dbl(opacity))
     return .vNull
+}
+
+/// A label that can draw an edge round its letters (TextView.textOutline): the words drawn twice, as a stroke in the
+/// edge's colour and then filled in their own, so the edge is outside every letter rather than eating into it, as
+/// Android's OutlinedText draws it. UIKit's text has a shadow and no outline; this is the outline.
+final class OutlinedLabel: UILabel {
+    var edgeWidth: CGFloat = 0
+    var edgeColor: UIColor = .clear
+    // the colour is swapped for the edge's while the stroke is drawn, and a label redraws itself whenever its colour
+    // is set: that is held off for the one pass
+    private var drawing = false
+
+    override func setNeedsDisplay() { if !drawing { super.setNeedsDisplay() } }
+
+    override func drawText(in rect: CGRect) {
+        guard edgeWidth > 0, let context = UIGraphicsGetCurrentContext() else { super.drawText(in: rect); return }
+        drawing = true
+        let fill = textColor
+        context.setLineWidth(edgeWidth * 2)
+        context.setLineJoin(.round)
+        context.setTextDrawingMode(.stroke)
+        textColor = edgeColor
+        super.drawText(in: rect)
+        context.setTextDrawingMode(.fill)
+        textColor = fill
+        super.drawText(in: rect)
+        drawing = false
+    }
 }

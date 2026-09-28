@@ -97,6 +97,10 @@ class SGNode
 @native object uiSetColor {
   def apply(node: SGNode, hex: String): Unit = native.value
 }
+/** An edge `width` each side round a label's letters in `hex`, or none for "". */
+@native object uiSetTextOutline {
+  def apply(node: SGNode, width: Double, hex: String): Unit = native.value
+}
 /** A bundled face by family and CSS weight; size in points. */
 @native object uiSetFont {
   def apply(node: SGNode, family: String, weight: Int, size: Double): Unit = native.value
