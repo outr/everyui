@@ -188,3 +188,9 @@ class SGNode
 @native object uiChr {
   def apply(codePoint: Int): String = native.value
 }
+/** New words from the platform's keyboard: a text field in a dialog, headed `title`, holding `value`, hiding what is
+  * typed when `secure`, asking for `autofill` (an `autocomplete` token, as its `textContentType`); `done` hears the
+  * words when it is closed with Done. */
+@native object uiEditText {
+  def apply(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit = native.value
+}

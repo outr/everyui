@@ -658,10 +658,58 @@ class RenderNode(val view: View) {
     case e: EditText => e.setHint(text)
     case _ => ()
   }
+  /** What the field asks for, by its `autocomplete` token (`everyui.component.types.Autofill.token`), as the Autofill
+    * Framework hears it (Android 8 and later): its `autofillHints`, the keyboard for it (`inputType`: an email address,
+    * a phone number, digits, a password), and whether it is to be filled at all ("off" is not). Every autofill service
+    * the user picked (Google's, 1Password, LastPass, Bitwarden) goes by these. `section`, `name` and `passkey` are the
+    * web's; Android has nothing for them. */
+  def setAutofill(token: String, section: String, name: String, passkey: Boolean): Unit = view match {
+    case e: EditText if android.os.Build.VERSION.SDK_INT >= 26 =>
+      import android.text.InputType as T
+      if (token == "off") e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO)
+      else if (token.isEmpty) e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_AUTO)
+      else {
+        e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES)
+        val hint = RenderNode.autofillHint(token)
+        if (hint.nonEmpty) e.setAutofillHints(hint)
+      }
+      val lines = e.getInputType & T.TYPE_TEXT_FLAG_MULTI_LINE
+      val secret = (e.getInputType & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_PASSWORD ||
+        (e.getInputType & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_WEB_PASSWORD
+      val kind = token match {
+        case "current-password" | "new-password" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_PASSWORD
+        case _ if secret => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_PASSWORD
+        case "email" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        case "username" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
+        case "tel" => T.TYPE_CLASS_PHONE
+        case "url" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_URI
+        case "one-time-code" | "cc-number" | "cc-csc" => T.TYPE_CLASS_NUMBER
+        case "name" | "given-name" | "additional-name" | "family-name" | "nickname" | "cc-name" =>
+          T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_PERSON_NAME | T.TYPE_TEXT_FLAG_CAP_WORDS
+        case "street-address" | "address-line1" | "address-line2" | "address-level1" | "address-level2" | "country" =>
+          T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_POSTAL_ADDRESS | T.TYPE_TEXT_FLAG_CAP_WORDS
+        case _ => T.TYPE_CLASS_TEXT
+      }
+      if (e.getInputType != (kind | lines)) {
+        // a password's type would set its own face: the field keeps the one it was given
+        val face = e.getTypeface
+        e.setInputType(kind | lines)
+        e.setTypeface(face)
+      }
+    case _ => ()
+  }
+  /** A form (`everyui.form.Form`) is a container here, sent by the app alone. */
+  def onSubmit(f: () => Unit): Unit = ()
+  /** A form is done with: its autofill session is committed, when accepted, which is the service's cue to offer to
+    * save what was typed (in an app of one activity nothing else ends the session), or cancelled. */
+  def formDone(saved: Boolean): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) {
+    val manager = Host.activity.getSystemService(classOf[android.view.autofill.AutofillManager])
+    if (manager != null) { if (saved) manager.commit() else manager.cancel() }
+  }
+  // no hidden field here: the service saves against the username field it saw
+  def setHiddenUsername(username: String): Unit = ()
   /** What the keyboard's action key says it does ("done", "search", "next", "go", "send"): the key a TV's full-screen
     * keyboard shows beside its letters. */
-  // what a field asks for (`Autofill.token`): its autofillHints are to come
-  def setAutofill(token: String): Unit = ()
   def setInputAction(action: String): Unit = view match {
     case e: EditText =>
       import android.view.inputmethod.EditorInfo
@@ -825,6 +873,36 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** The Autofill Framework's hint for an `autocomplete` token: View's own constants where it has one, else androidx's
+    * `HintConstants` (the same strings, which every service knows); "" where neither names it. */
+  def autofillHint(token: String): String = token match {
+    case "username" => View.AUTOFILL_HINT_USERNAME
+    case "current-password" => View.AUTOFILL_HINT_PASSWORD
+    case "new-password" => "newPassword"
+    case "one-time-code" => "smsOTPCode"
+    case "email" => View.AUTOFILL_HINT_EMAIL_ADDRESS
+    case "tel" => View.AUTOFILL_HINT_PHONE
+    case "name" => View.AUTOFILL_HINT_NAME
+    case "given-name" => "personGivenName"
+    case "additional-name" => "personMiddleName"
+    case "family-name" => "personFamilyName"
+    case "street-address" => View.AUTOFILL_HINT_POSTAL_ADDRESS
+    case "address-line1" => "streetAddress"
+    case "address-line2" => "extendedAddress"
+    case "address-level2" => "addressLocality"
+    case "address-level1" => "addressRegion"
+    case "postal-code" => View.AUTOFILL_HINT_POSTAL_CODE
+    case "country" => "addressCountry"
+    case "cc-name" => "creditCardHolderName"
+    case "cc-number" => View.AUTOFILL_HINT_CREDIT_CARD_NUMBER
+    case "cc-exp" => View.AUTOFILL_HINT_CREDIT_CARD_EXPIRATION_DATE
+    case "cc-exp-month" => View.AUTOFILL_HINT_CREDIT_CARD_EXPIRATION_MONTH
+    case "cc-exp-year" => View.AUTOFILL_HINT_CREDIT_CARD_EXPIRATION_YEAR
+    case "cc-csc" => View.AUTOFILL_HINT_CREDIT_CARD_SECURITY_CODE
+    case "bday" => "birthDateFull"
+    case _ => ""
+  }
+
   /** Whether a picture's address is one that is fetched (a download or a file), rather than one of the APK's own. */
   def fetched(uri: String): Boolean = uri.startsWith("http") || uri.startsWith("file:")
 
@@ -1217,6 +1295,9 @@ class WebBridge(node: RenderNode) {
     })
 }
 object Nodes {
+  /** A form (`everyui.form.Form`): a container here. */
+  def form(kind: String): RenderNode = container()
+
   /** The Activity's content view. */
   def root(): RenderNode = new RenderNode(Host.root)
 
@@ -1737,6 +1818,9 @@ object Platform {
   def nativeInput(): Boolean = true
   /** Only a platform without text fields asks its keyboard for a value. */
   def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
+  /** `editText` for a field asking for `autofill` (`Autofill.token`), which says nothing more here. */
+  def editField(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit =
+    editText(title, value, secure, done)
 
   /** A registered face loads from the APK's `assets/fonts/` when first used. */
   def registerFont(face: Face): Unit = ()

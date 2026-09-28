@@ -83,10 +83,25 @@ class RenderNode(val el: html.Element) {
     if (r.width == 0.0 && r.height == 0.0 && RenderNode.reveal(el)) el.getBoundingClientRect() else r
   }
 
-  def append(child: RenderNode): Unit = el.appendChild(child.el)
+  // the first of the elements a node keeps after its children (a form's submit button), which children go before
+  private[render] var tail: dom.Element = null
+  def append(child: RenderNode): Unit = place(child.el, tail)
   def insert(child: RenderNode, index: Int): Unit = {
-    val before = if (index >= 0 && index < el.children.length) el.children(index) else null
-    if (before eq child.el) () else el.insertBefore(child.el, before)
+    val before = if (index >= 0 && index < el.children.length) el.children(index) else tail
+    if (before eq child.el) () else place(child.el, before)
+  }
+  // A node already on the page is moved where the browser has a move that keeps it as it is (`moveBefore`): a field
+  // moved by insertBefore loses the focus, and with it the menu a password manager had open under it.
+  private def place(child: dom.Element, before: dom.Element): Unit = {
+    val move = el.asInstanceOf[js.Dynamic].moveBefore
+    val moved = !js.isUndefined(move) && child.isConnected && el.isConnected &&
+      (try {
+        el.asInstanceOf[js.Dynamic].moveBefore(child, before)
+        true
+      } catch {
+        case _: Throwable => false
+      })
+    if (!moved) el.insertBefore(child, before)
   }
 
   /** Detach from the parent, if attached. */
@@ -524,25 +539,86 @@ class RenderNode(val el: html.Element) {
   def setPlaceholder(text: String): Unit = el.setAttribute("placeholder", text)
   /** What the keyboard's enter key says it does ("done", "search", "next", "go", "send"). */
   def setInputAction(action: String): Unit = el.setAttribute("enterkeyhint", action)
-  /** What the field asks for, by its `autocomplete` token (`everyui.component.types.Autofill.token`): the browser's
-    * autofill and a password manager go by it, by the `name` and `id` that match it, and by the keyboard it brings up
-    * on a phone. "off" keeps them all out (a search box, notes); "" says nothing. */
-  def setAutofill(token: String): Unit = {
-    def attribute(name: String, value: String): Unit =
-      if (value.isEmpty) el.removeAttribute(name) else el.setAttribute(name, value)
+  // whether the field was made for a secret: a password hint hides what is typed, and dropping the hint does not show it
+  private var madeSecret: Option[Boolean] = None
+
+  /** What the field asks for, by its `autocomplete` token (`everyui.component.types.Autofill.token`), in `section`
+    * ("shipping", "billing", or the app's own name for a group), named `name` (else by the token), and for a username
+    * whether it offers passkeys too (`webauthn`). The browser's autofill and a password manager go by the
+    * `autocomplete`, by the `name` and `id` that match it and by a password's type; a phone shows the keyboard for it
+    * (`inputmode`: the type otherwise stays text, which keeps the caret and the selection the page's to set). "off"
+    * keeps them all out (a search box, notes, a guest's name), with the markers 1Password, LastPass, Bitwarden and
+    * Dashlane go by; "" says nothing. */
+  def setAutofill(token: String, section: String, name: String, passkey: Boolean): Unit = {
+    def attribute(key: String, value: String): Unit =
+      if (value.isEmpty) el.removeAttribute(key) else el.setAttribute(key, value)
     val off = token == "off"
-    attribute("autocomplete", token)
-    if (!off && token.nonEmpty && el.getAttribute("name") == null) el.setAttribute("name", token)
-    if (!off && token.nonEmpty && el.id.isEmpty) el.id = RenderNode.fieldId(token)
-    // the keyboard a phone shows; the type stays text, which keeps the caret and the selection the page's to set
+    val known = token.nonEmpty && !off
+    val group = if (section.isEmpty || !known) "" else if (section == "shipping" || section == "billing") section + " "
+      else "section-" + section + " "
+    attribute("autocomplete", if (token.isEmpty) "" else group + token + (if (passkey && known) " webauthn" else ""))
+    val named = if (name.nonEmpty) name else if (known) token else ""
+    if (named.nonEmpty) {
+      el.setAttribute("name", named)
+      // an id kept once given, so a manager that saw the field knows it again; two asking the same are kept apart
+      if (name.nonEmpty) el.id = name else if (el.id.isEmpty) el.id = RenderNode.fieldId(token)
+    }
+    el match {
+      case i: html.Input =>
+        if (madeSecret.isEmpty) madeSecret = Some(i.`type` == "password")
+        i.`type` = if (madeSecret.contains(true) || token == "current-password" || token == "new-password") "password" else "text"
+      case _ => ()
+    }
     attribute("inputmode", token match {
       case "email" => "email"
       case "tel" => "tel"
       case "url" => "url"
-      case "one-time-code" | "postal-code" => "numeric"
+      case "one-time-code" | "cc-number" | "cc-csc" => "numeric"
       case _ => ""
     })
+    // what is typed as it is meant, not as the phone would correct it
+    val literal = Set("username", "email", "url", "current-password", "new-password", "one-time-code").contains(token)
+    attribute("spellcheck", if (literal) "false" else "")
+    attribute("autocapitalize", if (literal) "none" else "")
     List("data-1p-ignore", "data-lpignore", "data-bwignore").foreach(a => attribute(a, if (off) "true" else ""))
+    attribute("data-form-type", if (off) "other" else "")
+  }
+  /** A form's sending (`Nodes.form`): Enter in one of its fields, or a password manager clicking its submit button.
+    * The page is never sent anywhere; `f` is told instead. */
+  def onSubmit(f: () => Unit): Unit = el.addEventListener("submit", (e: dom.Event) => {
+    e.preventDefault()
+    f()
+  })
+  /** A form is done with (`everyui.form.Form`): accepted, its fields leave the page, which the browser and the password
+    * managers take as a sign-in done and offer to save; given up, nothing more is said. */
+  def formDone(saved: Boolean): Unit =
+    if (saved) el.querySelectorAll("input, textarea").foreach(f => if (f.parentNode != null) f.parentNode.removeChild(f))
+  /** The account a password-only step is for: a hidden username field in the form, which the managers save the
+    * password against. Empty takes it away. */
+  def setHiddenUsername(username: String): Unit = {
+    val existing = el.querySelector("input[data-everyui-username]")
+    if (username.isEmpty) {
+      if (existing != null) {
+        if (tail eq existing) tail = existing.nextElementSibling
+        el.removeChild(existing)
+      }
+    }
+    else {
+      val field = if (existing != null) existing.asInstanceOf[html.Input] else {
+        val made = dom.document.createElement("input").asInstanceOf[html.Input]
+        made.`type` = "text"
+        made.name = "username"
+        made.setAttribute("autocomplete", "username")
+        made.setAttribute("data-everyui-username", "")
+        made.setAttribute("aria-hidden", "true")
+        made.tabIndex = -1
+        made.style.display = "none"
+        el.insertBefore(made, tail)
+        tail = made
+        made
+      }
+      field.value = username
+    }
   }
   /** Every edit, with the new contents: typed (`input`), or filled by the browser or a password manager, which say
     * so with `input` and `change`, or only by Chrome's autofill look (the `everyui-autofill` animation starting); and
@@ -563,8 +639,10 @@ class RenderNode(val el: html.Element) {
   /** All of what the field holds chosen, so what is typed next replaces it. */
   def selectAllInput(): Unit = el.asInstanceOf[js.Dynamic].select()
   /** Give the field the keyboard, or take it away. */
+  // never taken back from something the app did not make (a password manager's menu, a frame) while the page's focus
+  // is in it
   def focusInput(on: Boolean): Unit =
-    if (on && dom.document.activeElement != el) el.focus()
+    if (on && dom.document.activeElement != el && RenderNode.embedOf(dom.document.activeElement) != "field") el.focus()
     else if (!on && dom.document.activeElement == el) el.blur()
 
   private var rotation: Double = 0.0
@@ -745,6 +823,28 @@ object Nodes {
     el.setAttribute("playsinline", "")
     el.setAttribute("preload", "auto")
     new RenderNode(el)
+  }
+
+  /** A form (`everyui.form.Form`), a real `<form>` placed as a container is, so the browser and password managers see
+    * its fields as one: it validates nothing itself, and holds a submit button out of sight, so Enter in a field and
+    * a manager's click both send it (`onSubmit`). `kind` ("signin", "signup", ...) is kept on it for them. */
+  def form(kind: String): RenderNode = {
+    val el = dom.document.createElement("form").asInstanceOf[html.Element]
+    el.setAttribute("novalidate", "")
+    el.setAttribute("data-everyui-form", kind)
+    el.style.position = "absolute"
+    el.style.left = "0px"
+    el.style.top = "0px"
+    el.style.margin = "0px"
+    val send = dom.document.createElement("button").asInstanceOf[html.Button]
+    send.`type` = "submit"
+    send.tabIndex = -1
+    send.setAttribute("aria-hidden", "true")
+    send.style.cssText = "position:absolute;left:0;top:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none"
+    el.appendChild(send)
+    val node = new RenderNode(el)
+    node.tail = send
+    node
   }
 
   /** A container — an absolutely positioned `<div>` other nodes are appended to. */
@@ -1223,6 +1323,8 @@ object Platform {
   def nativeInput(): Boolean = true
   /** Only a platform without text fields asks its keyboard for a value. */
   def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
+  /** `editText` for a field asking for `autofill` (`Autofill.token`): the same nothing here. */
+  def editField(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit = ()
 
   /** An app's face, served beside the bundled ones in `fonts/`, added to the page's fonts. Where the page preloads it
     * (`<link rel="preload" as="font">`), from that very address, versioned or not, so the preloaded download is the one

@@ -168,9 +168,10 @@ the app runs as an installed app window. Choose defaults with that in mind.
 ### Embeds
 
 An embed is something in the page that handles its own keys, such as a code editor. It is marked
-`data-everyui-embed="<name>"` on the web, or with the node property `Host.embedKey` on the desktop. A field that the
-app did not make counts as the embed `"field"`. While the page's focus is inside an embed, every key is the embed's,
-Escape included. EveryUI does not move the focus and does not `preventDefault`. Only two kinds of command still run:
+`data-everyui-embed="<name>"` on the web, or with the node property `Host.embedKey` on the desktop. Anything the app
+did not make (outside `#app`: a field, a frame, a password manager's menu) counts as the embed `"field"`. While
+the page's focus is inside an embed, every key is the embed's, Escape included. EveryUI does not move the focus and
+does not `preventDefault`. Only two kinds of command still run:
 
 ```scala
 Keymap.global("file.new").foreach(_.inEmbeds @= true)       // wins inside every embed
@@ -480,6 +481,119 @@ The page must be served over HTTPS (or from `localhost`). Chromium browsers then
 bar; Safari adds it with Add to Dock or Add to Home Screen. In its own window the browser keeps no tabs, so more of the
 chords a browser keeps for itself in a tab (Ctrl+T, Ctrl+N, Ctrl+Tab and others) reach the app's keymap; which ones is
 the browser's own choice and changes between browsers, so try the chords the app relies on in the installed window.
+
+## Sign-in, autofill and password managers
+
+Every text field (`TextInput`, `TextArea`, and `InputView` beneath them) says what it asks for with `autofill`, an
+`Autofill` from `everyui.component.types`. The browser's autofill, the platform's, and the password managers
+(1Password, LastPass, Bitwarden, Google's, Apple's) fill a field by it and offer to save what was typed into it:
+
+| `Autofill` | For |
+|---|---|
+| `Username`, `CurrentPassword`, `NewPassword`, `OneTimeCode` | signing in, signing up, changing a password, a code sent by text |
+| `Email`, `Tel`, `Url` | contact details |
+| `Name`, `GivenName`, `AdditionalName`, `FamilyName`, `Nickname`, `Organization` | a person |
+| `StreetAddress`, `AddressLine1`, `AddressLine2`, `Locality`, `Region`, `PostalCode`, `Country` | an address |
+| `CardName`, `CardNumber`, `CardExpiry`, `CardExpiryMonth`, `CardExpiryYear`, `CardCsc` | a payment card |
+| `Birthday` | a date of birth |
+| `Off` | none of these: a search box, notes, a message, a guest's name; the managers keep out of it |
+
+A password hint hides what is typed, as `secure` does. Three more settings are rarely needed: `passkey` (a username
+field that offers passkeys too), `section` (`"shipping"`, `"billing"`, or a name of the app's, when one form asks
+for two addresses) and `fieldName` (the field's name to the managers when its hint alone does not keep it apart).
+
+Put fields that belong together in an `everyui.form.Form`, with its `FormKind`, and tell it how it went:
+
+```scala
+import everyui.component.{Button, Column, Container, TextInput, TextView}
+import everyui.component.types.Autofill
+import everyui.form.{Form, FormKind}
+import reactify.*
+
+/** A sign-in: `signIn(email, password)(accepted)` asks the server, and `signedIn` shows what comes next. */
+class SignIn(signIn: (String, String) => (Boolean => Unit) => Unit, signedIn: () => Unit) extends Container {
+  private val error = Var("")
+  private val form = new Form(FormKind.SignIn)
+  private val email = new TextInput("Email") {
+    autofill @= Some(Autofill.Username)   // the account: a username field, though it holds an email address
+  }
+  private val password = new TextInput("Password") {
+    autofill @= Some(Autofill.CurrentPassword)
+  }
+  password.submitted.attach(_ => form.submit())
+  form.submitted.attach { _ =>
+    signIn(email.value(), password.value()) { accepted =>
+      if (accepted) {
+        form.succeeded()                  // the managers' cue to offer to save it
+        signedIn()
+      } else error @= "That email and password do not match"
+    }
+  }
+  form.children += Column(12.0)(email, password, TextView.bound(error(), 14.0),
+    new Button("Sign in", () => form.submit()))
+  children += form
+}
+```
+
+- **A sign-up** is `FormKind.SignUp` with `Autofill.Username` on the new account's email and `Autofill.NewPassword`
+  on its password, so the managers offer a strong password and save it.
+- **Changing a password** is `FormKind.ChangePassword`: `CurrentPassword`, then `NewPassword` (twice, for the
+  repeat). Set the form's `hiddenUsername` to the account, so the new password is saved against it.
+- **A password on a step of its own**, after the username on the step before: set `hiddenUsername` there too.
+- **A contact or booking form** is `FormKind.Contact`: `Name`, `Email` and `Tel` on the booker's fields, `Off` on the
+  message and on anyone else's details (a guest's name is not the user's).
+- `submit()` sends the form once however the press arrives (the button, a field's Enter, the page's own sending).
+  `abandoned()` says the user gave up; a form taken off the screen unsaid is abandoned.
+
+On each platform:
+
+- **Web.** The field's `autocomplete`, a `name` and an `id` to match, and the keyboard a phone shows (`inputmode`);
+  `Off` also sets the markers 1Password, LastPass, Bitwarden and Dashlane keep out by. A `TextInput`'s field is
+  named by its label (`aria-label`). A `Form` is a real `<form>`: Enter in a field, or a manager clicking its submit
+  button, sends it (`submitted`; the page itself never goes anywhere), and `succeeded()` takes its fields out of the
+  page, which the browser and the managers read as a sign-in done. A value a manager fills reaches the field's
+  `value` (on `input` and `change`, on the field being left, and on Chrome's silent fill), and the field keeps its
+  own colours under the autofill look. The keys a field types with are never kept from it, whatever the app makes of
+  them; with a keyboard at hand a field being edited keeps the up and down arrows too, which work the autofill menus
+  under it. Something the app did not make (a manager's menu, a frame) keeps its keys and its focus.
+- **Android.** The field's `autofillHints`, its keyboard (`inputType`) and whether it is filled at all (Android 8 and
+  later); `succeeded()` commits the autofill session, the save prompt, and `abandoned()` cancels it.
+- **Apple TV.** Where the platform has no text field of its own a `TextInput` asks the platform's keyboard: a dialog
+  whose field says what it asks for (`textContentType`), so a sign-in offers AutoFill from the Keychain and a nearby
+  iPhone can fill it.
+- **Desktop and Roku.** Nothing fills fields there. Sign in on another device (a code or a QR code), or hand the
+  sign-in to the system browser.
+
+### The site's side: web domains
+
+A password saved on the site is offered in the app, and one saved in the app on the site, once each says it is the
+other: Android's Digital Asset Links and Apple's associated domains. `everyui.sbt.AppDomains` (in `sbt-support/`)
+writes both sides from the app's build, and `everyui.seo.WellKnown` answers the site's side from its server:
+
+```scala
+// the app's build
+import everyui.sbt.AppDomains
+val domains = AppDomains(Seq("example.com"),
+  androidPackage = "com.example.app", androidFingerprints = Seq("AB:CD:..."),   // the store's signing key's SHA-256
+  appleAppIds = Seq("TEAMID.com.example.app"),
+  changePassword = "https://example.com/account/password")
+AppDomains.write(webOut, domains)   // webOut/.well-known/: assetlinks.json, apple-app-site-association, change-password
+IO.write(appleDir / "App.entitlements", domains.entitlements)   // webcredentials:example.com
+IO.write(androidRes / "values" / "asset_statements.xml", domains.assetStatementsXml)  // with androidManifestMeta
+```
+
+```scala
+// the app's server, before its other handlers
+WellKnown.answer(webRoot, path) match {
+  case Some(a) if a.location.nonEmpty => redirect(a.location)   // /.well-known/change-password
+  case Some(a) => respond(a.status, a.contentType, a.body)       // JSON, never a redirect
+  case None => ()                                               // on to the rest
+}
+```
+
+NaboTV would name `nabo.tv` with the Play signing key's fingerprint and the Apple app's id; a site with no app
+(matthicks.com) needs only `changePassword`, if it has such a page. Passkeys (WebAuthn on the web, Credential Manager
+on Android, `ASAuthorization` on Apple) are still to come: `passkey` on a username field is the web's half of it.
 
 ## Embeds
 

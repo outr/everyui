@@ -18,6 +18,7 @@ import everyui.render.Platform
   *   easings    every easing curve as numbers
   *   blur       blur as the screensaver draws it: a photo over its blurred copy, and a blur coming clear
   *   hidden     what is made or changed in a hidden panel has its size when the panel shows
+  *   autofill   a sign-in and a contact form as autofill and password managers see them
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
@@ -30,5 +31,6 @@ import everyui.render.Platform
   else if (demo == "widgets") WidgetsDemo.run()
   else if (demo == "blur") BlurDemo.run()
   else if (demo == "hidden") HiddenDemo.run()
+  else if (demo == "autofill") AutofillDemo.run()
   else ExampleApp.main()
 }

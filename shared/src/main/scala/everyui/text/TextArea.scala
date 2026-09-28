@@ -35,6 +35,10 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   val hint: Var[String] = own(Var(placeholder))
   /** What it asks for, so the platform's autofill and a password manager can fill it (`Autofill`); None says nothing. */
   val autofill: Var[Option[Autofill]] = own(Var(None))
+  /** Which of a form's groups it belongs to ("shipping", "billing": `InputView.section`). */
+  val section: Var[String] = own(Var(""))
+  /** Its name to autofill and password managers (`InputView.fieldName`); empty, it is named by its hint. */
+  val fieldName: Var[String] = own(Var(""))
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
@@ -69,6 +73,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
       this.placeholder := hint()
     }
     input.autofill := autofill()
+    input.section := section()
+    input.fieldName := fieldName()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)
@@ -93,7 +99,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     }
     node.setClip(width, minHeight)
     size.height.attach(h => node.setClip(size.width(), h))
-    event.click.attach(_ => Platform.editText(hint(), value(), false, v => value @= v))
+    event.click.attach(_ => Platform.editField(hint(), value(), false, autofill().map(Autofill.token).getOrElse(""), v => value @= v))
     children += shown
   }
   event.key.down.attach(k => if (editing() && TextArea.submit.matches(k)) submitted @= value())

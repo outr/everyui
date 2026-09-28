@@ -564,3 +564,71 @@ final class OutlinedLabel: UILabel {
         drawing = false
     }
 }
+
+// MARK: - text entry
+
+/// The `UITextContentType` for an `autocomplete` token (`Autofill.token`): what AutoFill offers for the field, and on
+/// an Apple TV what a nearby iPhone is asked for. nil where UIKit names nothing.
+func uiContentType(_ token: String) -> UITextContentType? {
+    switch token {
+    case "username": return .username
+    case "current-password": return .password
+    case "new-password": return .newPassword
+    case "one-time-code": return .oneTimeCode
+    case "email": return .emailAddress
+    case "tel": return .telephoneNumber
+    case "url": return .URL
+    case "name": return .name
+    case "given-name": return .givenName
+    case "additional-name": return .middleName
+    case "family-name": return .familyName
+    case "nickname": return .nickname
+    case "organization": return .organizationName
+    case "street-address": return .fullStreetAddress
+    case "address-line1": return .streetAddressLine1
+    case "address-line2": return .streetAddressLine2
+    case "address-level2": return .addressCity
+    case "address-level1": return .addressState
+    case "postal-code": return .postalCode
+    case "country": return .countryName
+    case "cc-number": return .creditCardNumber
+    default: return nil
+    }
+}
+
+/// Platform.editText: new words from the platform's keyboard, in a dialog over the app with one text field. The field
+/// says what it asks for (`textContentType`), so a sign-in offers AutoFill and the Continuity keyboard on a nearby
+/// iPhone; Done hands its words to `done`, Cancel nothing.
+func uiEditText(_ title: V, _ value: V, _ secure: V, _ autofill: V, _ done: V) -> V {
+    var hidden = false
+    if case .vBool(let s) = secure { hidden = s }
+    let token = rtS(autofill)
+    let alert = UIAlertController(title: rtS(title), message: nil, preferredStyle: .alert)
+    alert.addTextField { field in
+        field.text = rtS(value)
+        field.isSecureTextEntry = hidden || token == "current-password" || token == "new-password"
+        field.textContentType = uiContentType(token)
+        switch token {
+        case "email", "username": field.keyboardType = .emailAddress
+        case "tel": field.keyboardType = .phonePad
+        case "url": field.keyboardType = .URL
+        case "one-time-code", "cc-number": field.keyboardType = .numberPad
+        default: break
+        }
+        if field.isSecureTextEntry || token == "email" || token == "username" || token == "url" {
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+        }
+    }
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+    let ok = UIAlertAction(title: "Done", style: .default) { _ in
+        let words = alert.textFields?.first?.text ?? ""
+        _ = try? RtInvoke(done, rtArr([.vStr(words)]))
+    }
+    alert.addAction(ok)
+    alert.preferredAction = ok
+    var top = UI.root.window?.rootViewController
+    while let shown = top?.presentedViewController { top = shown }
+    top?.present(alert, animated: true)
+    return .vNull
+}

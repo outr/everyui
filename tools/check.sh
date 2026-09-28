@@ -225,6 +225,22 @@ input_web() {
   echo "real events: $got"
 }
 
+# the web's forms as autofill and password managers see them (tools/autofill-check.js in a real Chrome): each field's
+# autocomplete, a manager's fill and click reaching the app, a silent fill heard as the field is left, and a sign-in
+# that succeeded giving its fields up
+AUTOFILL_FIELDS="signin:email=username,current-password=current-password contact:name=name,contact-email=email,tel=tel,notes=off | signin fields left: 0"
+web_autofill() {
+  command -v Xvfb > /dev/null || { echo "Xvfb not found"; return 1; }
+  timeout 60 java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.vector \
+    -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.WebDrive \
+    "file://$ROOT/web/out-js/index.html?demo=autofill" tools/autofill-check.js > "$LOGS/web-autofill.log" 2>&1 || true
+  grep "\[webdrive\]" "$LOGS/web-autofill.log" | grep -qF "$AUTOFILL_FIELDS" ||
+    { echo "expected: $AUTOFILL_FIELDS"; grep '\[webdrive\]' "$LOGS/web-autofill.log"; return 1; }
+  grep -q "\[ui\] autofill signed in as ann@example.com" "$LOGS/web-autofill.log" || { echo "the sign-in was not heard"; return 1; }
+  grep -q "\[ui\] autofill tel=555-0100" "$LOGS/web-autofill.log" || { echo "the silent fill was not heard"; return 1; }
+  echo "$AUTOFILL_FIELDS; the fill, the send and the silent fill reached the app"
+}
+
 input_desktop() {
   command -v xvfb-run > /dev/null || { echo "xvfb-run not found"; return 1; }
   timeout 20 xvfb-run -a -s "-screen 0 1280x720x24" \
@@ -370,9 +386,11 @@ fi
 if [ $BUILT = 1 ] && [ $WEB_BUILT = 1 ]; then
   run "input: web (probe, then real DOM events)" input-web.log input_web
   run "input: desktop (probe)" input-desktop.log input_desktop
+  run "web: forms as autofill and password managers see them" web-autofill.log web_autofill
 else
   skip "input: web (probe, then real DOM events)" "build failed"
   skip "input: desktop (probe)" "build failed"
+  skip "web: forms as autofill and password managers see them" "build failed"
 fi
 
 if [ $NATIVE = 1 ]; then

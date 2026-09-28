@@ -24,7 +24,15 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   val editing: Var[Boolean] = own(Var(false))
   /** What it asks for, so the platform's autofill and a password manager can fill it (`Autofill`); None says nothing. */
   val autofill: Var[Option[Autofill]] = own(Var(None))
+  /** A username field that also offers the site's passkeys in its autofill (`InputView.passkey`). */
+  val passkey: Var[Boolean] = own(Var(false))
+  /** Which of a form's groups it belongs to ("shipping", "billing": `InputView.section`). */
+  val section: Var[String] = own(Var(""))
+  /** Its name to autofill and password managers (`InputView.fieldName`); empty, it is named by its hint. */
+  val fieldName: Var[String] = own(Var(""))
 
+  // a secret, or asked for as a password
+  private def hidden: Boolean = secure || autofill().exists(Autofill.secret)
   private val native = Platform.nativeInput()
   /** A keyboard at hand: the focus is the caret. */
   private val direct = Platform.keyboardSupport()
@@ -56,6 +64,9 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
       size.height @= 22.0
     }
     input.autofill := autofill()
+    input.passkey := passkey()
+    input.section := section()
+    input.fieldName := fieldName()
     // named by its label, which is drawn beside it rather than being its own
     input.semantics := Semantics(label = title())
     input.text.attach(v => if (value() != v) value @= v)
@@ -71,11 +82,11 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     event.key.down.attach(k => if (k.key == Key.Enter && editing()) submitted @= value())
     children ++= List(caption, input)
   } else {
-    val shown = TextView.bound(if (secure) TextInput.mask(value().length) else value(), 16.0)
+    val shown = TextView.bound(if (hidden) TextInput.mask(value().length) else value(), 16.0)
     shown.position.left @= 14.0
     shown.size.width := size.width() - 28.0
     shown.position.top @= 26.0
-    event.click.attach(_ => Platform.editText(title(), value(), secure, v => {
+    event.click.attach(_ => Platform.editField(title(), value(), hidden, autofill().map(Autofill.token).getOrElse(""), v => {
       value @= v
       submitted @= v
     }))
@@ -83,11 +94,13 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   }
 
   /** A field being edited types Enter and the keys that move along its line, which go on to the platform's field (kept
-    * from it, as they were, Backspace deleted nothing and the arrows moved no caret); the rest still move the focus. One
-    * that is only focused types nothing, so Enter clicks it, which starts editing. */
+    * from it, as they were, Backspace deleted nothing and the arrows moved no caret); the rest still move the focus. With
+    * a keyboard at hand (a browser, a desktop) the up and down arrows are the field's too, as they are in any text field
+    * there, and where the browser's or a password manager's autofill menu under the field is worked by them; Tab moves
+    * on. One that is only focused types nothing, so Enter clicks it, which starts editing. */
   override def typesEvent(e: everyui.event.KeyEvent): Boolean =
     native && editing() && (e.key == Key.Enter || e.key == Key.ArrowLeft || e.key == Key.ArrowRight || e.key == Key.Space ||
-      e.key == Key.Backspace)
+      e.key == Key.Backspace || (direct && (e.key == Key.ArrowUp || e.key == Key.ArrowDown)))
 }
 
 object TextInput {

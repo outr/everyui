@@ -250,6 +250,8 @@ lazy val seo = (project in file("seo"))
     name := "everyui-seo",
     publish / skip := false,
     Compile / unmanagedSourceDirectories += sharedSources / "everyui" / "seo",
+    // the build's side of the well-known files (sbt-support's AppDomains), checked against the server's
+    Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "sbt-support" / "src" / "main" / "scala",
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test
   )
 

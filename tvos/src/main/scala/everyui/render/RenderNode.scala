@@ -236,8 +236,12 @@ class RenderNode(val sg: SGNode) {
   def setValue(value: String): Unit = uiSetText(sg, value)
   def setPlaceholder(text: String): Unit = ()
   def setInputAction(action: String): Unit = ()
-  // what a field asks for (`Autofill.token`): nothing here fills fields yet
-  def setAutofill(token: String): Unit = ()
+  // what a field asks for (`Autofill.token`): nothing here fills fields
+  def setAutofill(token: String, section: String, name: String, passkey: Boolean): Unit = ()
+  // a form (`everyui.form.Form`) is a container here: nothing sends it but the app, and nothing offers to save it
+  def onSubmit(f: () => Unit): Unit = ()
+  def formDone(saved: Boolean): Unit = ()
+  def setHiddenUsername(username: String): Unit = ()
   def onValue(f: String => Unit): Unit = ()
   def onInputFocus(f: () => Unit): Unit = ()
   def onInputDone(f: () => Unit): Unit = ()
@@ -248,6 +252,9 @@ class RenderNode(val sg: SGNode) {
 
 /** Backend node factories. */
 object Nodes {
+  /** A form (`everyui.form.Form`): a container here. */
+  def form(kind: String): RenderNode = container()
+
   /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
   def web(bridge: String): RenderNode = container()
 
@@ -477,8 +484,15 @@ object Platform {
 
   /** No text fields of its own. */
   def nativeInput(): Boolean = false
-  /** The platform keyboard is still to be wired to the runtime, so no value comes back yet. */
-  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
+  /** New words from the platform's keyboard: a text field in a dialog over the app, headed `title`, holding `value`,
+    * hiding what is typed when `secure`; its Done hands the words to `done`, and Cancel hands nothing. */
+  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit =
+    editField(title, value, secure, "", done)
+  /** `editText` for a field asking for `autofill` (`Autofill.token`): the dialog's field says so (its
+    * `textContentType`), so a sign-in offers AutoFill from the Keychain and an iPhone nearby can fill it (the
+    * Continuity keyboard). */
+  def editField(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit =
+    uiEditText(title, value, secure, autofill, done)
 
   /** Faces are files the runtime opens by name. */
   def registerFont(face: Face): Unit = ()
