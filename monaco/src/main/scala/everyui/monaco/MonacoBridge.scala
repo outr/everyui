@@ -38,16 +38,32 @@ class MonacoBridge(val runtime: String) {
   /** An embed showing this copy of Monaco: it carries the calls, and the first of them hears the answers. */
   def attach(host: Embed): Unit = if (!closed) {
     hosts = hosts :+ host
-    voice = Some(host)
-    host.hear(text => if (hosts.headOption.exists(_ eq host)) receive(text))
+    if (shared) {
+      // the page's one copy outlives every editor that shows it, so it is heard through an embed of its own, never
+      // shown and never let go: a theme defined between one editor going and the next arriving still hears its answer
+      if (voice.isEmpty) {
+        val own = new Embed(host.name, host.site)
+        own.hear(text => receive(text))
+        voice = Some(own)
+      }
+    }
+    else {
+      voice = Some(host)
+      host.hear(text => if (hosts.headOption.exists(_ eq host)) receive(text))
+    }
     if (!started) start()
   }
+
+  // on the web every editor shares the page's Monaco; elsewhere each has its own
+  private def shared: Boolean = Platform.kind == PlatformKind.Web
 
   /** `host` gone. The last host gone closes the bridge, unless Monaco lives on in the page (the web). */
   def detach(host: Embed): Unit = {
     hosts = hosts.filterNot(_ eq host)
-    if (hosts.nonEmpty) voice = hosts.headOption
-    if (hosts.isEmpty && Platform.kind != PlatformKind.Web) close()
+    if (!shared) {
+      if (hosts.nonEmpty) voice = hosts.headOption
+      else close()
+    }
   }
 
   /** Call `method` with `args`; the answer, once Monaco has loaded and answered. */

@@ -4,7 +4,6 @@ import everyui.{Color, Gradient}
 import everyui.component.Container
 import everyui.monaco.*
 import everyui.monaco.Monaco.uiThread
-import reactify.*
 
 /** The editor over the app's own ground: a clear theme on a clear embed shows the gradient behind it. */
 object BackgroundDemo {
@@ -22,7 +21,6 @@ object BackgroundDemo {
   def apply(demo: Demo): DemoPage = {
     val controller = MonacoController(initialValue = code, language = "scala")
     val defined = MonacoThemes.defineTheme("demo-transparent", MonacoTheme.transparent())
-    val clear = Var(false)
     val toggle = new Toggle("Transparent", false)(on => defined.foreach(_ => controller.setTheme(if (on) "demo-transparent" else "vs-dark")))
     val editor = new MonacoEditor(controller, transparent = true)
     val body = new Container {
