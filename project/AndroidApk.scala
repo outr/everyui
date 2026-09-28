@@ -38,7 +38,7 @@ object AndroidApk {
   def build(log: String => Unit, sdk: File, platform: String, buildTools: String, minSdk: String, targetSdk: String,
             program: Seq[File], manifest: File, resources: File, assets: File, rules: Seq[File], work: File, apk: File,
             versionName: String, versionCode: Int, signing: Signing, desugar: Option[Desugar] = None,
-            bundletool: Option[File] = None): File = {
+            bundletool: Option[Seq[File]] = None): File = {
     val tools = sdk / "build-tools" / buildTools
     val androidJar = sdk / "platforms" / platform / "android.jar"
     IO.delete(work)
@@ -136,7 +136,8 @@ object AndroidApk {
           out.close()
         }
         IO.delete(apk)
-        exec(Seq("java", "-jar", tool.toString, "build-bundle", "--modules=" + module, "--output=" + apk))
+        exec(Seq("java", "-cp", tool.mkString(java.io.File.pathSeparator), "com.android.tools.build.bundletool.BundleToolMain",
+          "build-bundle", "--modules=" + module, "--output=" + apk))
         // a bundle is signed as a jar is, not as an APK: apksigner will not take one
         exec(Seq("jarsigner", "-keystore", signing.keystore.toString, "-storepass:env", "APK_KS_PASS",
           "-keypass:env", "APK_KEY_PASS", "-sigalg", "SHA256withRSA", "-digestalg", "SHA-256", apk.toString, signing.alias),
