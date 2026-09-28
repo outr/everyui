@@ -206,3 +206,33 @@ Keymap.global.add("sidebar.shrink", "Narrower sidebar", Chord.parse("Primary+Alt
 
 `split.handle.focusable @= true` puts the handle in the focus order too: the arrows along it move it, Enter folds.
 The first side is always the left (or top) one, in a right-to-left language too.
+
+### Menu (`everyui.menu`)
+
+A list of choices: a context menu at the pointer (`Menu.at`), a menu dropped from a button (`Menu.below`), or a panel
+in the middle of the screen under a title (`Menu.show`, what a remote wants). A `MenuItem` has a label, an action, an
+optional icon, a line of detail, a shortcut hint (a keymap `Chord`) or a note, and may be disabled, dangerous,
+checkable or a submenu; `MenuItem.separator` is a rule. Up and Down move round the entries that can be chosen, OK or a
+click chooses (every menu closes, then the action runs), Right opens a submenu and Left, Back or Escape closes it, and
+the pointer resting on an entry focuses it. The focus goes back where it was. `Menu.context` wires a component's
+secondary click (`event.pointer.menu`, the new `PointerKind.Menu`), the menu key and OK held on a remote.
+
+```scala
+import everyui.menu.{Menu, MenuItem}
+
+Menu.context(fileRow) {
+  List(
+    MenuItem("Open", () => open(file)),
+    MenuItem.command(Keymap.global("file.rename").get),      // its label and its chord as the hint
+    MenuItem.separator,
+    MenuItem.sub("Copy", List(MenuItem("Path", () => copy(file.path)), MenuItem("Name", () => copy(file.name)))),
+    MenuItem.check("Pinned", file.pinned, on => pin(file, on)),
+    MenuItem("Delete", () => delete(file), MaterialIcon.Delete, danger = true))
+}
+moreButton.event.click.attach(_ => Menu.below(moreButton, items))
+Menu.show(items, "Sort by")          // a television's menu
+Menu.textSize @= 18.0                // set once, larger on a television
+```
+
+`Modal.show` and `Modal.over` take `dim = false` (leave what is under the dialog as it is) and `centre = false` (the
+caller places the panel), which is how menus sit where they were opened.

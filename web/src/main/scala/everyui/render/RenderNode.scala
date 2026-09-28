@@ -212,6 +212,11 @@ class RenderNode(val el: html.Element) {
     * viewport coordinates. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit =
     if (kind == PointerKind.Wheel) el.addEventListener("wheel", (e: dom.WheelEvent) => f(e.deltaX, e.deltaY))
+    // the app's context menu in place of the browser's
+    else if (kind == PointerKind.Menu) el.addEventListener("contextmenu", (e: dom.MouseEvent) => {
+      e.preventDefault()
+      f(e.clientX, e.clientY)
+    })
     else {
       val name = if (kind == PointerKind.Click) "click" else "pointer" + kind.toString.toLowerCase
       el.addEventListener(name, (e: dom.MouseEvent) => f(e.clientX, e.clientY))

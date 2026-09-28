@@ -67,19 +67,25 @@ object Modal {
 
   /** Put `panel` up in place of the dialog on top, if there is one, with the focus on `focus`; `after` hears it close,
     * however it closes, once the focus is back. */
-  def show(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true): Unit = {
+  def show(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true,
+           dim: Boolean = true, centre: Boolean = true): Unit = {
     close()
-    over(panel, focus, after, dismissible)
+    over(panel, focus, after, dismissible, dim, centre)
   }
 
-  /** Put `panel` up on top of whatever dialog is up, which is there again when it closes. */
-  def over(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true): Unit = {
+  /** Put `panel` up on top of whatever dialog is up, which is there again when it closes. A sheet that does not `dim`
+    * leaves what it covers as it was (a menu over a page), and one that does not `centre` leaves the panel where the
+    * caller puts it. */
+  def over(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true,
+           dim: Boolean = true, centre: Boolean = true): Unit = {
     val sheet = new Container {
       size.width := ui.size.width
       size.height := ui.size.height
-      backgroundColor := Theme.backdrop()
-      panel.position.center := size.center
-      panel.position.middle := size.middle
+      if (dim) backgroundColor := Theme.backdrop()
+      if (centre) {
+        panel.position.center := size.center
+        panel.position.middle := size.middle
+      }
       children += panel
     }
     val layer = new ModalLayer(sheet, panel, Focus.focused(), after, focus, dismissible)

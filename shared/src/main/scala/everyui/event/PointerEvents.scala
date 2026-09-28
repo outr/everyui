@@ -12,6 +12,8 @@ class PointerEvents(component: Component) {
   lazy val leave: Channel[PointerEvent] = channel(PointerKind.Leave)
   /** The wheel: `x` and `y` are the deltas, in pixels. */
   lazy val wheel: Channel[PointerEvent] = channel(PointerKind.Wheel)
+  /** A context menu asked for where the pointer is: the secondary button (the page's own menu is not shown). */
+  lazy val menu: Channel[PointerEvent] = channel(PointerKind.Menu)
 
   /** Whether the pointer is over the component. */
   lazy val over: Val[Boolean] = {
