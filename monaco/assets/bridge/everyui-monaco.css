@@ -1,0 +1,9 @@
+/* everyui-monaco's own decoration classes (MonacoDecoration.highlight, MonacoDecoration.gutter, MonacoDecoration.blame). */
+.everyui-monaco-highlight { background: rgba(255, 213, 79, 0.22); }
+.everyui-monaco-highlight-inline { background: rgba(255, 213, 79, 0.35); border-radius: 2px; }
+.everyui-monaco-added { border-left: 3px solid #3fb950; margin-left: 3px; }
+.everyui-monaco-modified { border-left: 3px solid #58a6ff; margin-left: 3px; }
+.everyui-monaco-deleted { border-left: 3px solid #f85149; margin-left: 3px; height: 4px !important; }
+.everyui-monaco-blame { color: rgba(128, 128, 128, 0.75); font-style: italic; margin-left: 2em; }
+.everyui-monaco-info-glyph::before { content: ''; display: block; width: 10px; height: 10px; margin: 4px 0 0 4px; border-radius: 50%; background: #58a6ff; }
+.everyui-monaco-error-glyph::before { content: ''; display: block; width: 10px; height: 10px; margin: 4px 0 0 4px; border-radius: 50%; background: #f85149; }

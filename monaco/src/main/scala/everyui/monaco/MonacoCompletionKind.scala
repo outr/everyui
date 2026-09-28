@@ -1,0 +1,33 @@
+package everyui.monaco
+
+/** What a suggestion is, which picks its icon: Monaco's `CompletionItemKind`. */
+enum MonacoCompletionKind(val wire: Int) {
+  case Method extends MonacoCompletionKind(0)
+  case Function extends MonacoCompletionKind(1)
+  case Constructor extends MonacoCompletionKind(2)
+  case Field extends MonacoCompletionKind(3)
+  case Variable extends MonacoCompletionKind(4)
+  case Class extends MonacoCompletionKind(5)
+  case Struct extends MonacoCompletionKind(6)
+  case Interface extends MonacoCompletionKind(7)
+  case Module extends MonacoCompletionKind(8)
+  case Property extends MonacoCompletionKind(9)
+  case Event extends MonacoCompletionKind(10)
+  case Operator extends MonacoCompletionKind(11)
+  case Unit extends MonacoCompletionKind(12)
+  case Value extends MonacoCompletionKind(13)
+  case Constant extends MonacoCompletionKind(14)
+  case Enum extends MonacoCompletionKind(15)
+  case EnumMember extends MonacoCompletionKind(16)
+  case Keyword extends MonacoCompletionKind(17)
+  case Text extends MonacoCompletionKind(18)
+  case Color extends MonacoCompletionKind(19)
+  case File extends MonacoCompletionKind(20)
+  case Reference extends MonacoCompletionKind(21)
+  case Customcolor extends MonacoCompletionKind(22)
+  case Folder extends MonacoCompletionKind(23)
+  case TypeParameter extends MonacoCompletionKind(24)
+  case User extends MonacoCompletionKind(25)
+  case Issue extends MonacoCompletionKind(26)
+  case Snippet extends MonacoCompletionKind(27)
+}

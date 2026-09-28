@@ -20,3 +20,6 @@ webcheck/out/
 .idea/
 *.iml
 server/out/
+
+# the Monaco gallery bundle (monacoGallery/galleryBundle)
+out-web/

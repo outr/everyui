@@ -192,6 +192,15 @@ class RenderNode(val sg: SGNode) {
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
 
+  // ---- an embed (everyui.component.Embed): nothing runs one here, so its fallback shows ----
+  def embedId(): String = ""
+  def embedRuntime(): String = ""
+  def embedSend(message: String): Unit = ()
+  def onEmbedMessage(f: String => Unit): Unit = ()
+  def focusEmbed(on: Boolean): Unit = ()
+  def onEmbedFocus(f: Boolean => Unit): Unit = ()
+  def releaseEmbed(): Unit = ()
+
   /** What to hear and read this in: chosen from its tracks once it is playing, where it has one in that language. */
   def setMediaLanguages(audio: String, text: String): Unit = {
     wantAudio = audio
@@ -477,6 +486,9 @@ object Nodes {
   /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
   def web(bridge: String): RenderNode = container()
 
+  /** An embed's box (everyui.component.Embed): a plain group, which holds its fallback. */
+  def embed(name: String, site: everyui.component.EmbedSite): RenderNode = container()
+
   /** The channel's root Group, created by the generated `AppScene`. */
   def root(): RenderNode = new RenderNode(uiRoot())
   /** A text node — a SceneGraph `Label`. */
@@ -513,6 +525,8 @@ object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
   def webViews(): Boolean = false
+  /** Whether a web guest runs in an embed here: no engine to run one. */
+  def embeds(): Boolean = false
 
   def corners(): Boolean = false
 

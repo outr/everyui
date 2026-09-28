@@ -335,6 +335,33 @@ class RenderNode(val el: html.Element) {
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
 
+  // ---- an embed (everyui.component.Embed, Nodes.embed): the guest runs in this page, drawing into this element ----
+  private[render] var embedSite: everyui.component.EmbedSite = null
+  private var embedHearing: List[() => Unit] = Nil
+
+  def embedId(): String = el.id
+  /** Every embed of a site shares the page's one copy of its guest. */
+  def embedRuntime(): String = if (embedSite == null) el.id else "web:" + embedSite.name
+  def embedSend(message: String): Unit = if (embedSite != null) WebGuests.send(embedSite.name, message)
+  def onEmbedMessage(f: String => Unit): Unit =
+    if (embedSite != null) embedHearing = WebGuests.listen(embedSite.name, f) :: embedHearing
+  /** The page's focus taken out of the guest as the app's leaves it; the guest puts it in itself as it arrives. */
+  def focusEmbed(on: Boolean): Unit = {
+    val active = dom.document.activeElement
+    if (!on && active != null && el.contains(active)) active.asInstanceOf[html.Element].blur()
+  }
+  def onEmbedFocus(f: Boolean => Unit): Unit = {
+    el.addEventListener("focusin", (_: dom.FocusEvent) => f(true))
+    el.addEventListener("focusout", (e: dom.FocusEvent) => {
+      val to = e.relatedTarget
+      if (to == null || !el.contains(to.asInstanceOf[dom.Node])) f(false)
+    })
+  }
+  def releaseEmbed(): Unit = {
+    embedHearing.foreach(stop => stop())
+    embedHearing = Nil
+  }
+
   /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
@@ -521,6 +548,21 @@ object Nodes {
   /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
   def web(bridge: String): RenderNode = container()
 
+  /** An embed's box (everyui.component.Embed): a `<div>` marked `data-everyui-embed`, so the keys are the guest's while
+    * the page's focus is inside it, with an id of its own for the guest to find it by. A `site`'s scripts are loaded
+    * into the page the first time one of its embeds is made. */
+  def embed(name: String, site: everyui.component.EmbedSite): RenderNode = {
+    val node = container()
+    node.el.id = WebGuests.nextId()
+    node.el.setAttribute("data-everyui-embed", name)
+    node.el.style.overflow = "hidden"
+    if (site != null) {
+      node.embedSite = site
+      WebGuests.load(site)
+    }
+    node
+  }
+
   /** The page's mount point. */
   def root(): RenderNode = {
     val existing = dom.document.getElementById("app")
@@ -683,6 +725,8 @@ object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
   def webViews(): Boolean = false
+  /** Whether a web guest runs in an embed here: in this very page. */
+  def embeds(): Boolean = true
 
   def corners(): Boolean = false
 

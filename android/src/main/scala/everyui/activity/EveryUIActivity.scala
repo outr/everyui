@@ -89,6 +89,12 @@ abstract class EveryUIActivity extends Activity {
   override def dispatchKeyEvent(e: KeyEvent): Boolean = {
     val hook = Host.key
     Host.modifiers = everyui.event.Modifiers(e.isCtrlPressed, e.isMetaPressed, e.isAltPressed, e.isShiftPressed)
+    // a key is an embed's while its web view has the focus, but a remote's Back is always the app's: a web view does
+    // nothing with it, and passed on it would leave the app
+    Host.embedded = getCurrentFocus match {
+      case embed: everyui.render.EmbedView if e.getKeyCode != KeyEvent.KEYCODE_BACK => embed.name
+      case _ => ""
+    }
     if (hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE) super.dispatchKeyEvent(e)
     else if (e.getKeyCode == KeyEvent.KEYCODE_BACK) {
       if (e.getAction == KeyEvent.ACTION_DOWN) {

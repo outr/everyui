@@ -116,6 +116,16 @@ class RenderNode(val sg: SGNode) {
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
 
+  // ---- an embed (everyui.component.Embed): tvOS lends no web engine (WebKit is not public there), so its fallback
+  // shows ----
+  def embedId(): String = ""
+  def embedRuntime(): String = ""
+  def embedSend(message: String): Unit = ()
+  def onEmbedMessage(f: String => Unit): Unit = ()
+  def focusEmbed(on: Boolean): Unit = ()
+  def onEmbedFocus(f: Boolean => Unit): Unit = ()
+  def releaseEmbed(): Unit = ()
+
   /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
@@ -222,6 +232,9 @@ object Nodes {
   /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
   def web(bridge: String): RenderNode = container()
 
+  /** An embed's box (everyui.component.Embed): a plain view, which holds its fallback. */
+  def embed(name: String, site: everyui.component.EmbedSite): RenderNode = container()
+
   /** The root view controller's view. */
   def root(): RenderNode = new RenderNode(uiRoot())
   /** A text node — a `UILabel`. */
@@ -266,6 +279,8 @@ object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
   def webViews(): Boolean = false
+  /** Whether a web guest runs in an embed here: no engine to run one. */
+  def embeds(): Boolean = false
 
   def corners(): Boolean = false
 

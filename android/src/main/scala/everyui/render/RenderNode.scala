@@ -264,6 +264,19 @@ class RenderNode(val view: View) {
 
   private[render] def webSaid(message: String): Unit = webListener(message)
 
+  // ---- an embed (everyui.component.Embed, Nodes.embed): a web guest in an EmbedView of its own ----
+  private def embedView: Option[EmbedView] = view match {
+    case e: EmbedView => Some(e)
+    case _ => None
+  }
+  def embedId(): String = embedView.map(_.id).getOrElse("")
+  def embedRuntime(): String = embedView.map(_.id).getOrElse("")
+  def embedSend(message: String): Unit = embedView.foreach(_.send(message))
+  def onEmbedMessage(f: String => Unit): Unit = embedView.foreach(_.hear(f))
+  def focusEmbed(on: Boolean): Unit = embedView.foreach(_.focus(on))
+  def onEmbedFocus(f: Boolean => Unit): Unit = embedView.foreach(_.onFocus(f))
+  def releaseEmbed(): Unit = embedView.foreach(_.release())
+
   /** What to hear and read this in, where the file carries a choice. Said before the source, so the selector picks
     * with it rather than picking the file's own default and switching afterwards. */
   def setMediaLanguages(audio: String, text: String): Unit = media.foreach(_.languages(audio, text))
@@ -288,14 +301,14 @@ class RenderNode(val view: View) {
   def setWidth(width: Double): Unit = {
     explicitWidth = width
     val params = view.getLayoutParams
-    params.width = math.max(0L, math.round(width)).toInt
+    params.width = math.max(0L, math.round(width * EmbedView.scaleOf(view))).toInt
     view.setLayoutParams(params)
   }
 
   def setHeight(height: Double): Unit = {
     explicitHeight = height
     val params = view.getLayoutParams
-    params.height = math.max(0L, math.round(height)).toInt
+    params.height = math.max(0L, math.round(height * EmbedView.scaleOf(view))).toInt
     view.setLayoutParams(params)
   }
 
@@ -941,6 +954,8 @@ object Host {
   var key: (String, Boolean) => Boolean = null
   /** The modifiers held with the key the activity is reporting (`Platform.modifiers`). */
   var modifiers: everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
+  /** The embed the key the activity is reporting is meant for (`Platform.keyEmbed`). */
+  var embedded: String = ""
 
   /** An Android key by the web's name: the remote's keys by their names, anything typed by its character. */
   def keyName(e: KeyEvent): String = {
@@ -1158,6 +1173,11 @@ object Nodes {
     node
   }
 
+  /** An embed's box (everyui.component.Embed): for a `site`, an [[EmbedView]] running it; otherwise a plain group
+    * for the app to put a view of its own in. */
+  def embed(name: String, site: everyui.component.EmbedSite): RenderNode =
+    if (site == null) container() else new RenderNode(new EmbedView(Host.activity, name, site))
+
   /** Sound: an empty view, with nothing to draw. */
   def audio(): RenderNode = {
     val node = new RenderNode(new View(Host.activity))
@@ -1304,6 +1324,8 @@ object Platform {
   /** Whether this platform has a browser engine to lend a page (Nodes.web). Only what is actually implemented
     * says yes: a platform that answered yes and drew nothing would leave a viewer on a black screen. */
   def webViews(): Boolean = true
+  /** Whether a web guest runs in an embed here: in a web view of its own (EmbedView). */
+  def embeds(): Boolean = true
 
   def corners(): Boolean =
     Host.activity.getPackageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
@@ -1708,8 +1730,9 @@ object Platform {
   def onKey(f: (String, Boolean) => Boolean): Unit = Host.key = f
   /** The modifiers held with the key being reported (a keyboard's; a remote holds none), as the activity reads them. */
   def modifiers(): everyui.event.Modifiers = Host.modifiers
-  /** Every key is the focus layer's: nothing here handles its own. */
-  def keyEmbed(): String = ""
+  /** The embed the key being reported is meant for, "" for none: the one whose web view has the focus
+    * (`Host.embedded`, as the activity reads it; never for Back, which is the app's). */
+  def keyEmbed(): String = Host.embedded
   /** Shortcuts are made with Ctrl on Android. */
   def commandKey(): Boolean = false
 

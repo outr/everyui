@@ -236,3 +236,67 @@ Menu.textSize @= 18.0                // set once, larger on a television
 
 `Modal.show` and `Modal.over` take `dim = false` (leave what is under the dialog as it is) and `centre = false` (the
 caller places the panel), which is how menus sit where they were opened.
+
+## Embeds
+
+`everyui.component.Embed` is something the app does not draw itself, in a box the app lays out: a raw element the
+platform lends (on the web the element is `embed.node.el`), or, given an `EmbedSite`, a web guest (a code editor, a
+terminal) run from its files. On the web the guest runs in the app's own page; on Android and the desktop each embed is
+a web view of its own, served from a private origin; where nothing can run it (Roku, tvOS, a desktop built without
+javafx-web) the embed shows its `fallback` instead.
+
+```scala
+val site = EmbedSite("terminal", root = "xterm/5.5.0", page = "host.html", scripts = List("bridge.js"))
+val term = new Embed("terminal", site, fallback = new CodeView(log()))
+term.hear(text => handle(text))                  // what the guest says
+term.send("""{"write": "hello"}""")              // said to it; waits for it to load
+term.onSize((w, h) => term.send(s"""{"cols": ${(w / 9).toInt}}"""))
+term.guestFocus = on => if (on) term.send("""{"focus": true}""")
+term.exit @= Some(fileTree)                      // where Escape or a remote's Back hands the focus
+```
+
+The guest talks through `everyuiEmbed.channel(name)` (`send`, `onMessage`) and draws into
+`everyuiEmbed.container(id)`, the embed's `id`. While the page's focus is in the guest every key is its own but the
+chords the app keeps (`Keymap.embed(name, chords*)`); a key it does not want it gives back with `embed.handBack(key)`.
+
+## Monaco (everyui-monaco)
+
+`"com.outr" %% "everyui-monaco" % "0.1.0-SNAPSHOT"` (Scala.js) is Monaco, VS Code's editor, as components: a port of
+flutter_monaco_editor with the same API in Scala. It brings Monaco 0.57.0's files as resources under
+`everyui-monaco/0.57.0/`: fetched from npm with their integrity checked by the build, never committed.
+
+```scala
+import everyui.monaco.*
+import everyui.monaco.Monaco.ui          // runs what follows a call where it completed, on the UI thread
+
+val code = MonacoController(initialValue = source, language = "scala",
+  options = MonacoEditorOptions(fontSize = Some(14.0), minimap = Some(MonacoMinimapOptions(enabled = Some(false)))))
+val editor = new MonacoEditor(code)
+editor.exit @= Some(fileTree)
+code.onDidChangeContent.attach(text => changed(text))           // the user's edits; the text is kept here edit by edit
+code.ready.foreach(_ => code.revealAndHighlight(MonacoRange(40, 1, 44, 1), lines = true))
+code.setModelMarkers(List(MonacoMarker(MonacoRange(3, 5, 3, 9), MonacoMarkerSeverity.Error, "not found: value x")))
+MonacoEditor.saveCommand(keymap) { write(code.value()); code.markSaved() }   // Primary+S, even inside the editor
+MonacoThemes.followPalette()                                    // the app's palette, and follows Theme.palette
+MonacoLanguages.registerDefinitionProvider("scala", MonacoDefinitionProvider(p => lookUp(p.value, p.position)))
+```
+
+`MonacoDiffEditor` / `MonacoDiffController` are the diff editor. Every call answers as a `Future`; themes and
+providers are global and reach every editor, including ones made later.
+
+**Serving it (web).** Copy the jar's `everyui-monaco/` directory next to the page (the gallery's `galleryBundle` task
+in this build does it; `Monaco.site` points elsewhere, a CDN say). The bridge loads its own scripts with `<script src>`
+and its styles with `<link>`: nothing inline. Monaco starts its workers from blobs, so a Content-Security-Policy needs:
+
+```
+script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:
+```
+
+(`'unsafe-inline'` for styles because Monaco sets style attributes itself.) Monaco runs under require.js, an AMD loader,
+which defines the page's global `define` and `require`: a UMD library loaded after it registers itself as an AMD module
+instead of a global. Link the bundle as `ModuleKind.NoModule` (as above), and load such libraries before the first
+editor is made.
+
+**Android and the desktop** compile it from source like the rest of their backends: add `monaco/src/main/scala`, fabric-io,
+and the resources (`MonacoAssets.generate` in `project/`); on Android put `everyui-monaco/<version>/` under the APK's
+assets. The desktop needs `javafx-web` and `desktop/web/src/main/scala` (FxWebGuest).

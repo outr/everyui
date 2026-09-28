@@ -468,7 +468,7 @@ lazy val checks = (project in file("checks"))
 
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
-    web, networkJvm, networkJs)
+    web, networkJvm, networkJs, monaco)
   .settings(
     name := "everyui",
     publish / skip := true,
@@ -514,4 +514,81 @@ lazy val network = (project in file("network"))
     Compile / run / fork := true,
     emitRoku := emitRokuTask("out-roku", "NetworkProbe", networkLibraries).value,
     emitSwift := emitSwiftTask("out-swift", networkLibraries).value
+  )
+
+// --- monaco: everyui-monaco, Monaco (VS Code's editor) as EveryUI components -------------------------------------------
+// The shared Scala (monaco/src) over an Embed (everyui.component.Embed): in the page on the web, a web view of its own
+// on Android and the desktop. Monaco's own files are fetched from npm and checked (project/MonacoAssets.scala), and
+// ship as the module's resources under everyui-monaco/<version>/ with the bridge (monaco/assets).
+//
+//   sbt monaco/publishLocal              everyui-monaco (Scala.js)
+//   sbt monacoGallery/galleryBundle      the example gallery for the web, in monaco/gallery/out-web
+//   sbt monacoDesktop/run                the gallery on the desktop (JavaFX's web view)
+//   sbt monacoDesktop/test               the bridge protocol and controller specs, and Monaco loaded in a web view
+lazy val fabricVersion = "1.30.2-SNAPSHOT"
+lazy val monacoSources = (file("monaco") / "src" / "main" / "scala").getAbsoluteFile
+lazy val monacoGallerySources = (file("monaco") / "gallery" / "src" / "main" / "scala").getAbsoluteFile
+/** The desktop's web guest (FxWebGuest): only where javafx-web is on the classpath. */
+lazy val desktopWebSources = (file("desktop") / "web" / "src" / "main" / "scala").getAbsoluteFile
+lazy val monacoResources = Def.task {
+  MonacoAssets.generate(streams.value.log.info(_), (ThisBuild / baseDirectory).value / "monaco" / "assets",
+    (Compile / resourceManaged).value)
+}
+@transient val galleryBundle = taskKey[File]("Link the Monaco gallery and put it, its page and Monaco's files in monaco/gallery/out-web")
+
+lazy val monaco = (project in file("monaco"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(web)
+  .settings(published)
+  .settings(
+    name := "everyui-monaco",
+    libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
+    Compile / resourceGenerators += monacoResources.taskValue
+  )
+
+lazy val monacoGallery = (project in file("monaco/gallery"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(monaco)
+  .settings(
+    name := "everyui-monaco-gallery",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories += (file("monaco") / "gallery" / "web" / "src" / "main" / "scala").getAbsoluteFile,
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := Some("everyui.monaco.gallery.GalleryWeb"),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.NoModule)
+      .withESFeatures(_.withESVersion(org.scalajs.linker.interface.ESVersion.ES2021))),
+    galleryBundle := {
+      val root = (ThisBuild / baseDirectory).value
+      val out = baseDirectory.value / "out-web"
+      val linked = (Compile / fastLinkJS).value
+      val dir = (Compile / fastLinkJS / scalaJSLinkerOutputDirectory).value
+      IO.delete(out)
+      IO.copyFile(dir / "main.js", out / "main.js")
+      IO.copyFile(baseDirectory.value / "web" / "index.html", out / "index.html")
+      (root / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, out / "fonts" / f.getName))
+      val staged = (monaco / Compile / resourceManaged).value
+      (monaco / Compile / resources).value.filter(_.getPath.startsWith(staged.getPath))
+        .foreach(f => IO.copyFile(f, out / IO.relativize(staged, f).get))
+      out
+    }
+  )
+
+lazy val monacoDesktop = (project in file("monaco/desktop"))
+  .dependsOn(reactive)
+  .settings(
+    name := "everyui-monaco-desktop",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true) ++ Seq((file("desktop") / "src" / "main" / "scala").getAbsoluteFile, desktopWebSources, monacoSources,
+      monacoGallerySources, (file("monaco") / "gallery" / "desktop" / "src" / "main" / "scala").getAbsoluteFile),
+    libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
+    libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
+    libraryDependencies ++= Seq("base", "graphics", "controls", "media", "web").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
+    Compile / resourceGenerators += monacoResources.taskValue,
+    Compile / mainClass := Some("everyui.monaco.gallery.GalleryDesktop"),
+    Compile / run / fork := true,
+    run / baseDirectory := (ThisBuild / baseDirectory).value,
+    Test / fork := true,
+    Test / parallelExecution := false,
+    Test / baseDirectory := (ThisBuild / baseDirectory).value
   )

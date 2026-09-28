@@ -1,0 +1,31 @@
+package everyui.monaco
+
+/** What a document symbol is, which picks its icon in the outline: Monaco's `SymbolKind`. */
+enum MonacoSymbolKind(val wire: Int) {
+  case File extends MonacoSymbolKind(0)
+  case Module extends MonacoSymbolKind(1)
+  case Namespace extends MonacoSymbolKind(2)
+  case Package extends MonacoSymbolKind(3)
+  case Class extends MonacoSymbolKind(4)
+  case Method extends MonacoSymbolKind(5)
+  case Property extends MonacoSymbolKind(6)
+  case Field extends MonacoSymbolKind(7)
+  case Constructor extends MonacoSymbolKind(8)
+  case Enum extends MonacoSymbolKind(9)
+  case Interface extends MonacoSymbolKind(10)
+  case Function extends MonacoSymbolKind(11)
+  case Variable extends MonacoSymbolKind(12)
+  case Constant extends MonacoSymbolKind(13)
+  case String extends MonacoSymbolKind(14)
+  case Number extends MonacoSymbolKind(15)
+  case Boolean extends MonacoSymbolKind(16)
+  case Array extends MonacoSymbolKind(17)
+  case Object extends MonacoSymbolKind(18)
+  case Key extends MonacoSymbolKind(19)
+  case Null extends MonacoSymbolKind(20)
+  case EnumMember extends MonacoSymbolKind(21)
+  case Struct extends MonacoSymbolKind(22)
+  case Event extends MonacoSymbolKind(23)
+  case Operator extends MonacoSymbolKind(24)
+  case TypeParameter extends MonacoSymbolKind(25)
+}

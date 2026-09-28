@@ -483,6 +483,20 @@ class RenderNode(val fx: Node) {
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
 
+  // ---- an embed (everyui.component.Embed, Nodes.embed): a web guest in a web view of its own, where JavaFX's web
+  // view is on the classpath (WebGuest) ----
+  private[render] var guest: Option[WebGuest] = None
+  def embedId(): String = guest.map(_.id).getOrElse("")
+  def embedRuntime(): String = guest.map(_.id).getOrElse("")
+  def embedSend(message: String): Unit = guest.foreach(_.send(message))
+  def onEmbedMessage(f: String => Unit): Unit = guest.foreach(_.hear(f))
+  def focusEmbed(on: Boolean): Unit = guest.foreach(_.focus(on))
+  def onEmbedFocus(f: Boolean => Unit): Unit = guest.foreach(_.onFocus(f))
+  def releaseEmbed(): Unit = {
+    guest.foreach(_.release())
+    guest = None
+  }
+
   /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
@@ -685,6 +699,16 @@ object Nodes {
   /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
   def web(bridge: String): RenderNode = container()
 
+  /** An embed's box (everyui.component.Embed): a pane marked with `Host.embedKey`, so the keys are the guest's while
+    * the focus is inside it, and, for a `site`, holding a web view that runs it (WebGuest) where one can be had. */
+  def embed(name: String, site: everyui.component.EmbedSite): RenderNode = {
+    val node = container()
+    node.fx.getProperties.put(Host.embedKey, name)
+    node.fx.asInstanceOf[Pane].setPickOnBounds(true)
+    if (site != null) node.guest = WebGuest.make(node.fx.asInstanceOf[Pane], name, site)
+    node
+  }
+
   /** The scene's root pane. */
   def root(): RenderNode = new RenderNode(Host.root)
 
@@ -779,6 +803,8 @@ object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
   def webViews(): Boolean = false
+  /** Whether a web guest runs in an embed here: where the app was built with JavaFX's web view (WebGuest). */
+  def embeds(): Boolean = WebGuest.available
 
   def corners(): Boolean = false
 
