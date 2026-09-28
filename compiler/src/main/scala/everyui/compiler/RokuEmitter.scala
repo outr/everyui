@@ -4943,8 +4943,15 @@ class RokuEmitter(
       |
       |' ── fabric.Json (the network module): the native JSON values — an assoc array, an array, a string, a number,
       |' a boolean, invalid — and BrightScript's own parser and formatter ────────
+      |' Bad JSON throws, as fabric's parser does, where ParseJson answers invalid; and nothing, or only spaces, is
+      |' bad JSON asked of no parser, which logs "Data is empty" for every one
       |function _jsonParse(text as dynamic) as dynamic
-      |    return ParseJson(text)
+      |    if _rtKind(text) <> "s" then RtThrow(RuntimeException_new("no JSON to parse"))
+      |    body = text.Trim()
+      |    if body = "" then RtThrow(RuntimeException_new("no JSON to parse"))
+      |    j = ParseJson(body)
+      |    if j = invalid and body <> "null" then RtThrow(RuntimeException_new("not JSON: " + Left(body, 80)))
+      |    return j
       |end function
       |function _jsonFormat(j as dynamic) as string
       |    return FormatJson(j)

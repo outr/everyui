@@ -7,4 +7,9 @@ RX PASS push.seq = 1
 RX PASS server.received = hello
 RX PASS rpc.echo = ping
 RX PASS state.after.drop = Closed
+RX PASS json.parse = x
+RX PASS json.parse.null = parsed
+RX PASS json.parse.empty = threw
+RX PASS json.parse.blank = threw
+RX PASS json.parse.bad = threw
 RX DONE

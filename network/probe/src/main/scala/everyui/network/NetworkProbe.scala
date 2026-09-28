@@ -85,6 +85,13 @@ object NetworkProbe {
     if (got == expected) println("RX PASS " + name + " = " + got)
     else println("RX FAIL " + name + " got=" + got + " expected=" + expected)
 
+  private def parses(text: String): String =
+    try {
+      JsonParser(text)
+      "parsed"
+    }
+    catch { case _: Throwable => "threw" }
+
   def run(): Unit = {
     val log = new Log(Nil)
     var socket: LoopbackSocket = null
@@ -123,6 +130,14 @@ object NetworkProbe {
     // a dropped transport: the strategy is `none`, so the protocol closes
     socket.disconnect()
     check("state.after.drop", client.state().toString, "Closed")
+
+    // fabric's parser throws on nothing and on what is not JSON, and so does the Roku's (ParseJson answers invalid, and
+    // logs "Data is empty" for an empty body)
+    check("json.parse", JsonParser("{\"a\": \"x\"}")("a").asString, "x")
+    check("json.parse.null", parses("null"), "parsed")
+    check("json.parse.empty", parses(""), "threw")
+    check("json.parse.blank", parses("  "), "threw")
+    check("json.parse.bad", parses("{oops"), "threw")
     println("RX DONE")
   }
 }
