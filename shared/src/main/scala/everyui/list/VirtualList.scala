@@ -460,6 +460,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** The items again, as they are now, with the cursor, the selection and the scroll kept by key. */
   def reindex(): Unit = {
     val was = currentAt
+    val before = shown
     keepingPlace {
       val base = items()
       shown = placeholder match {
@@ -476,9 +477,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
     selection.keep(k => indexes.contains(k))
     current() match {
-      // the row under the cursor gone, the cursor goes to what took its place
+      // the row under the cursor gone, the cursor goes to what took its place: the first after it still here, else the
+      // last before it
       case Some(key) if !indexes.contains(key) =>
-        current @= (if (count == 0) None else Some(keyAt(math.max(0, math.min(was, count - 1)))))
+        val after = before.iterator.drop(math.max(0, was)).map(keyOf).find(indexes.contains)
+        val earlier = before.take(math.max(0, was)).reverseIterator.map(keyOf).find(indexes.contains)
+        current @= after.orElse(earlier).orElse(if (count == 0) None else Some(keyAt(math.max(0, math.min(was, count - 1)))))
         if (!selection.multiple()) current().foreach(k => selection.only(k))
       case _ => ()
     }

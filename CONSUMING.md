@@ -382,3 +382,33 @@ and `Menu.textSize` are set once, larger, on a television.
 Back in English, German, Spanish, French, Italian, Dutch, Portuguese, Turkish, Arabic and Simplified and Traditional
 Chinese, following `Strings.language`. `Words.add(code, messages)` adds a language or the app's own wording (messages by
 key, as `Arb.parse` reads an ARB).
+
+### Tree (`everyui.tree`)
+
+A `TreeModel` holds the nodes by key and changes a node at a time; a `Tree` shows its open nodes as a `VirtualList`
+and follows each change, keeping what is open (`expanded`), chosen (`selection`) and scrolled to. Changes made in
+`model.batch { ... }` are heard once.
+
+```scala
+import everyui.tree.{Tree, TreeModel}
+
+val model = new TreeModel[File](_.path)
+val tree = new Tree(model, (f: File) => f.name)
+tree.expandable @= (f => f.directory)
+tree.loader @= Some(dir => Task.async(done => server.list(dir.path)(done)))   // children fetched as a node first opens
+tree.decorate @= (f => Decoration(icon = Some(if (f.directory) MaterialIcon.Folder else MaterialIcon.Description),
+  color = f.status.map(statusColour), badge = f.status.getOrElse("")))
+tree.activated.attach(f => if (!f.directory) open(f))
+tree.menu.attach(p => showMenu(p.item, p.x, p.y))
+
+model.setChildren(None, roots)
+model.insert(Some("/src"), 0, File("/src/Main.scala"))
+model.update(file.copy(status = Some("M")))
+model.move("/src/Main.scala", Some("/app"), 0)
+model.remove("/tmp")
+tree.reveal("/src/deep/File.scala")   // opens what is above it and scrolls to it
+```
+
+Keys: Up and Down move the cursor, Right opens a node or goes to its first child, Left closes it or goes to its parent
+(mirrored in a right-to-left language), Enter activates and opens or closes a folder. A click on the chevron opens or
+closes it. Multi-select is the list's (Shift and Primary with clicks and arrows, Primary+A).
