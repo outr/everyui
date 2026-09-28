@@ -4,6 +4,8 @@ import everyui.component.*
 import everyui.component.types.FontWeight
 import everyui.event.Key
 import everyui.focus.Focus
+import everyui.i18n.Direction
+import everyui.kit.Mirror
 import everyui.layout.VerticalLayout
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -56,7 +58,7 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
 
   across := math.max(Menu.minWidth(), rows.map(_.natural()).foldLeft(0.0)(math.max) + inset * 2.0)
   heading.foreach { h =>
-    h.position.left @= points * 1.2
+    Mirror.place(h, () => size.width(), () => points * 1.2)
     h.position.top @= points
   }
   scroll.position.left @= inset
@@ -74,8 +76,9 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
   // round from one end to the other, and never out of the menu
   column.exitAction(Key.ArrowDown, () => choosable.headOption.foreach(_.focus()))
   column.exitAction(Key.ArrowUp, () => choosable.lastOption.foreach(_.focus()))
-  column.exitAction(Key.ArrowRight, () => ())
-  column.exitAction(Key.ArrowLeft, () => if (under.nonEmpty) Modal.remove(this))
+  // back out of a submenu the way the page reads back (Left, or Right in a right-to-left language)
+  column.exitAction(Key.ArrowRight, () => if (under.nonEmpty && Direction.rtl()) Modal.remove(this))
+  column.exitAction(Key.ArrowLeft, () => if (under.nonEmpty && !Direction.rtl()) Modal.remove(this))
 
   rows.foreach { row =>
     if (row.item.submenu.nonEmpty) {
@@ -101,12 +104,16 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
 
   private def root: Menu = under.map(_.root).getOrElse(this)
 
-  /** `row`'s submenu, beside it: on its right, or on its left where the right has no room. */
+  /** `row`'s submenu, beside it the way the page reads (on its right, or its left in a right-to-left language), or on
+    * the other side where that has no room. */
   private def open(row: MenuRow): Unit = {
     val sub = new Menu(row.item.submenu, "", Some(this))
     sub.position.left := {
       val right = absoluteLeft + size.width() - inset
-      if (right + sub.size.width() <= ui.size.width() - 8.0) right else math.max(8.0, absoluteLeft - sub.size.width() + inset)
+      val left = absoluteLeft - sub.size.width() + inset
+      val fitsRight = right + sub.size.width() <= ui.size.width() - 8.0
+      if (Direction.rtl()) (if (left >= 8.0 || !fitsRight) math.max(8.0, left) else right)
+      else if (fitsRight) right else math.max(8.0, left)
     }
     sub.position.top := Menu.fit(row.absoluteTop - inset, sub.size.height())
     opened = Some(sub)
@@ -144,7 +151,9 @@ object Menu {
   /** A context menu with its corner at `x`, `y` (where the pointer asked for it), kept on the screen. */
   def at(x: Double, y: Double, items: List[MenuItem], dismissed: () => Unit = () => ()): Menu = {
     val menu = new Menu(items)
-    menu.position.left := math.max(8.0, math.min(x, ui.size.width() - menu.size.width() - 8.0))
+    // reaching the way the page reads from the pointer: leftward in a right-to-left language
+    menu.position.left := math.max(8.0, math.min(if (Direction.rtl()) x - menu.size.width() else x,
+      ui.size.width() - menu.size.width() - 8.0))
     menu.position.top := fit(y, menu.size.height())
     menu.up(dismissed = dismissed)
     menu
@@ -155,7 +164,9 @@ object Menu {
     val menu = new Menu(items)
     val left = anchor.absoluteLeft
     val top = anchor.absoluteTop
-    menu.position.left := math.max(8.0, math.min(left, ui.size.width() - menu.size.width() - 8.0))
+    // lined up with the anchor's start: its right edge in a right-to-left language
+    menu.position.left := math.max(8.0, math.min(if (Direction.rtl()) left + anchor.size.width() - menu.size.width() else left,
+      ui.size.width() - menu.size.width() - 8.0))
     menu.position.top := {
       val under = top + anchor.size.height() + 4.0
       if (under + menu.size.height() <= ui.size.height() - 8.0) under

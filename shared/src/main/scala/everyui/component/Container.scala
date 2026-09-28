@@ -55,6 +55,13 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   def exitAction(direction: everyui.event.Key, action: () => Unit): Unit =
     exitActions = exitActions + (direction -> action)
 
+  /** Whatever this container said about an arrow leaving it `direction`'s way (`exitFocus`, `stopFocus`, `exitAction`)
+    * taken back: its parent decides again. */
+  def dropExit(direction: everyui.event.Key): Unit = {
+    exits = exits - direction
+    exitActions = exitActions - direction
+  }
+
   /** What an arrow leaving this container `direction`'s way does instead of moving, when the container says. */
   def focusAction(direction: everyui.event.Key): Option[() => Unit] = exitActions.get(direction)
 

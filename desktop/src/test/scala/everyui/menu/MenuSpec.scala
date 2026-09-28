@@ -3,6 +3,7 @@ package everyui.menu
 import everyui.component.*
 import everyui.event.{PointerEvent, PointerKind}
 import everyui.focus.Focus
+import everyui.i18n.Direction
 import everyui.keymap.{Chord, Command}
 import everyui.render.Nodes
 import everyui.{FxSpec, ui}
@@ -92,6 +93,23 @@ class MenuSpec extends FxSpec {
       focusedLabel shouldBe Some("Copy")
       eventually(Focus.focused().collect { case r: MenuRow => r.item.label }.contains("Path")) shouldBe true
       fx(Menu.hoverDelay @= 0.3)
+    }
+    "open a submenu to the left, and in and out of it the other way, in a right-to-left language" in onScreen { _ =>
+      fx(Direction.rtl @= true)
+      try {
+        val menu = fx(Menu.at(900.0, 100.0, List(MenuItem("Open"), MenuItem.sub("Copy", List(MenuItem("Path"))))))
+        fx(menu.position.left() + menu.size.width()) shouldBe 900.0 +- 0.5
+        press("ArrowDown")
+        press("ArrowRight")
+        focusedLabel shouldBe Some("Copy")
+        press("ArrowLeft")
+        focusedLabel shouldBe Some("Path")
+        val sub = fx(Focus.focused().get.parent().flatMap(_.parent()).flatMap(_.parent()).flatMap(_.parent()).get)
+        fx(sub.position.left() + sub.size.width()) should be < fx(menu.position.left() + 20.0)
+        press("ArrowRight")
+        focusedLabel shouldBe Some("Copy")
+      }
+      finally fx(Direction.rtl @= false)
     }
     "say it was closed with nothing chosen" in onScreen { card =>
       var dismissed = 0

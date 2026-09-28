@@ -5,6 +5,8 @@ import everyui.component.*
 import everyui.component.types.WhiteSpace
 import everyui.event.Key
 import everyui.font.MaterialIcon
+import everyui.i18n.Direction
+import everyui.kit.Mirror
 import everyui.theme.Theme
 import reactify.*
 
@@ -39,6 +41,7 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Cont
   private val words = Column(2.0)((label :: detail.toList)*)
   private val trail: Option[Component] =
     if (item.submenu.nonEmpty) Some(new MaterialIconView(MaterialIcon.ChevronRight, points * 1.15) {
+      icon := Mirror.onward
       color := ink()
     })
     else item.shortcut.map(_.label).orElse(Option(item.note).filter(_.nonEmpty)).map { hint =>
@@ -73,13 +76,13 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Cont
     radius @= points * 0.35
     lead.foreach { l =>
       l.color := ink()
-      l.position.left @= pad
+      Mirror.place(l, () => size.width(), () => pad)
       l.position.top := (size.height() - l.size.height()) / 2.0
     }
-    words.position.left @= pad + slot
+    Mirror.place(words, () => size.width(), () => pad + slot)
     words.position.top := (size.height() - words.size.height()) / 2.0
     trail.foreach { t =>
-      t.position.left := size.width() - pad - t.size.width()
+      Mirror.place(t, () => size.width(), () => size.width() - pad - t.size.width())
       t.position.top := (size.height() - t.size.height()) / 2.0
     }
     children ++= lead.toList ++ List(words) ++ trail.toList
@@ -89,12 +92,17 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Cont
         e.consume()
         chosen @= (())
       }
-      event.key.down.attach(k => if (k.key == Key.ArrowRight && item.submenu.nonEmpty) opened @= (()))
+      event.key.down.attach(k => if (k.key == MenuRow.inward && item.submenu.nonEmpty) opened @= (()))
     }
   }
 
   /** Right opens its submenu, where it has one. */
-  override def keepsKey(key: Key): Boolean = key == Key.ArrowRight && item.submenu.nonEmpty
+  override def keepsKey(key: Key): Boolean = key == MenuRow.inward && item.submenu.nonEmpty
 
   override def kind: String = "MenuRow(" + item.label + ")"
+}
+
+object MenuRow {
+  /** The arrow into a submenu: the way the page reads on (Right, or Left in a right-to-left language). */
+  def inward: Key = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
 }

@@ -3,6 +3,7 @@ package everyui.split
 import everyui.component.*
 import everyui.event.{PointerEvent, PointerKind}
 import everyui.focus.Focus
+import everyui.i18n.Direction
 import everyui.keymap.{Chord, Keymap}
 import everyui.render.Nodes
 import everyui.{FxSpec, ui}
@@ -116,6 +117,27 @@ class SplitPaneSpec extends FxSpec {
         fx(Focus.key("ArrowLeft", true))
         fx(Focus.focused()) shouldBe Some(a)
       }
+    }
+    "put its first side on the right in a right-to-left language, and mirror the drag and the arrows" in {
+      val (a, b) = fx((card(), card()))
+      val split = fx(new SplitPane(a, b, ratio = Var(0.3)))
+      fx(Direction.rtl @= true)
+      try onScreen(split) {
+        fx((a.parent().get.position.left(), split.handle.position.left(), b.parent().get.position.left())) shouldBe
+          (706.0, 700.0, 0.0)
+        fx {
+          pointer(split.handle, PointerKind.Down, 703.0, 10.0)
+          pointer(split.handle, PointerKind.Move, 603.0, 10.0)
+          pointer(split.handle, PointerKind.Up, 603.0, 10.0)
+        }
+        fx(a.size.width()) shouldBe 400.0 +- 0.01
+        fx(a.focus())
+        fx(Focus.key("ArrowLeft", true))
+        fx(Focus.focused()) shouldBe Some(b)
+        fx(Focus.key("ArrowRight", true))
+        fx(Focus.focused()) shouldBe Some(a)
+      }
+      finally fx(Direction.rtl @= false)
     }
     "hold another split, which follows its side" in {
       val (a, b, c) = fx((card(), card(), card()))
