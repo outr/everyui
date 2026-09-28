@@ -261,6 +261,25 @@ class RenderNode(val el: html.Element) {
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
   def setTooltip(text: String): Unit = el.title = text
+  /** A drawing's figures (everyui.draw.Drawing): a `<path>` each in its `<svg>`, the elements kept and only their
+    * attributes changed, so a row of a long list handed another item does no more than that. */
+  def setFigures(figures: List[everyui.draw.Figure]): Unit = {
+    val svg = el.firstElementChild
+    if (svg != null) {
+      while (svg.childElementCount > figures.size) svg.removeChild(svg.lastElementChild)
+      while (svg.childElementCount < figures.size) svg.appendChild(dom.document.createElementNS(RenderNode.svgNs, "path"))
+      var shape = svg.firstElementChild
+      figures.foreach { f =>
+        shape.setAttribute("d", f.path.svg)
+        shape.setAttribute("fill", f.fill.map(_.toHex).getOrElse("none"))
+        shape.setAttribute("fill-opacity", f.fill.map(_.alpha.toString).getOrElse("1"))
+        shape.setAttribute("stroke", f.stroke.map(_.toHex).getOrElse("none"))
+        shape.setAttribute("stroke-opacity", f.stroke.map(_.alpha.toString).getOrElse("1"))
+        shape.setAttribute("stroke-width", f.width.toString)
+        shape = shape.nextElementSibling
+      }
+    }
+  }
   /** The pointer's shape over it, by its CSS name ("col-resize", "text"); "" leaves the page's own. */
   def setCursor(name: String): Unit = el.style.cursor = name
 
@@ -518,6 +537,9 @@ class RenderNode(val el: html.Element) {
 }
 
 object RenderNode {
+  /** SVG's namespace, which its elements are made in. */
+  val svgNs: String = "http://www.w3.org/2000/svg"
+
   /** CSS for `everyui.Gradient`'s encoding. */
   def linearGradient(angle: Double, stops: String): String =
     "linear-gradient(" + angle.toString + "deg, " +
@@ -626,6 +648,20 @@ object Nodes {
     el.style.left = "0px"
     el.style.top = "0px"
     new RenderNode(el)
+  }
+
+  /** A drawing (everyui.draw.Drawing): a box holding an inline `<svg>` as large as it, whose paths are drawn by the
+    * browser and redrawn only when they change. */
+  def drawing(): RenderNode = {
+    val node = container()
+    val svg = dom.document.createElementNS(RenderNode.svgNs, "svg")
+    svg.setAttribute("width", "100%")
+    svg.setAttribute("height", "100%")
+    svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none")
+    svg.setAttribute("stroke-linecap", "round")
+    svg.setAttribute("stroke-linejoin", "round")
+    node.el.appendChild(svg)
+    node
   }
 
   /** A link — an absolutely positioned `<a>` holding other nodes. A plain click is the app's (`Link` follows it); one

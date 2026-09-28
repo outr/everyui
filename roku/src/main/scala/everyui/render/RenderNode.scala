@@ -302,6 +302,23 @@ class RenderNode(val sg: SGNode) {
   }
   /** No pointer to show. */
   def setCursor(name: String): Unit = ()
+  // what a drawing shows here, which draws no paths: its rectangles (everyui.draw.Block)
+  private var blocks: List[RenderNode] = Nil
+  /** A drawing's figures (everyui.draw.Drawing) as far as rectangles draw them: straight strokes across or down, and
+    * filled rectangles; diagonals and curves are left out (Block.of). */
+  def setFigures(figures: List[everyui.draw.Figure]): Unit = {
+    blocks.foreach(_.remove())
+    blocks = everyui.draw.Block.of(figures).map { b =>
+      val n = Nodes.container()
+      n.setX(b.x)
+      n.setY(b.y)
+      n.setWidth(b.width)
+      n.setHeight(b.height)
+      n.setBackgroundColor(everyui.component.Component.css(b.color))
+      append(n)
+      n
+    }
+  }
 
   def setImageSource(uri: String): Unit = {
     imageUri = uri
@@ -496,6 +513,8 @@ object Nodes {
   def text(): RenderNode = new RenderNode(uiText())
   /** A container — a transparent `Rectangle` other nodes are appended to. */
   def container(): RenderNode = new RenderNode(uiContainer())
+  /** A drawing (everyui.draw.Drawing): a container its rectangles go in, since nothing here draws paths. */
+  def drawing(): RenderNode = container()
   /** No text field: a line of text, which TextInput fills from the keyboard. */
   def input(secure: Boolean): RenderNode = new RenderNode(uiText())
   /** A box of lines is a field like any other: the Roku keyboard edits it. */

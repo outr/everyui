@@ -325,6 +325,34 @@ new FilterPicker[Symbol](q => symbols.find(q), _.id, _.name,
   row = Some(words => new HighlightRow[Symbol](_.name, s => s.matched, _.kind))).open()
 ```
 
+### Drawing (`everyui.draw`)
+
+`Drawing` is a plain component that draws paths in its own pixels: lines, cubic curves, arcs and circles, rectangles
+and filled shapes, each a `Figure(path, fill, stroke, width)`. Bind `figures` to what they depend on (the item of a
+list row or table cell, the theme's colours, the drawing's size) and it draws again only when that changes, so it is
+cheap in rows that are recycled as they scroll.
+
+```scala
+import everyui.draw.{Drawing, Figure, Path, Sparkline}
+
+// a commit graph's lanes, per row, from the row's commit
+val lanes = new Drawing
+lanes.size.width @= 72.0
+lanes.size.height := row.size.height()
+lanes.figures := row.item().toList.flatMap { c =>
+  c.lanes.map(l => Figure(Path.line(l.x, 0, l.x, lanes.size.height()), stroke = Some(l.color), width = 2)) :+
+    Figure(Path.circle(c.x, lanes.size.height() / 2, 4), fill = Some(Theme.accent()))
+}
+
+Path.empty.moveTo(0, 20).cubicTo(10, 20, 10, 4, 20, 4).arc(24, 4, 4, math.Pi, 2 * math.Pi)
+val trend = Sparkline(stats().map(_.count.toDouble), area = true)   // a line of values across its box
+```
+
+The web draws it as inline SVG (the elements kept and only their attributes changed), the desktop as JavaFX shapes
+and Android on a canvas of its own. A Roku and an Apple TV draw no paths: they show what rectangles can
+(`Block.of`): straight strokes across or down, like a commit graph's lanes, and filled rectangles. Diagonals, curves
+and circles are left out there.
+
 ## An installable web app
 
 An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,

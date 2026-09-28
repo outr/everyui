@@ -334,6 +334,22 @@ class RenderNode(val fx: Node) {
 
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
+  /** A drawing's figures (everyui.draw.Drawing): an SVGPath each, stroked and filled as it says. */
+  def setFigures(figures: List[everyui.draw.Figure]): Unit = fx match {
+    case p: Pane =>
+      p.getChildren.setAll(figures.map { f =>
+        val shape = new javafx.scene.shape.SVGPath()
+        shape.setContent(f.path.svg)
+        shape.setFill(f.fill.map(RenderNode.paintOf).orNull)
+        shape.setStroke(f.stroke.map(RenderNode.paintOf).orNull)
+        shape.setStrokeWidth(f.width)
+        shape.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND)
+        shape.setStrokeLineJoin(javafx.scene.shape.StrokeLineJoin.ROUND)
+        shape.setMouseTransparent(true)
+        shape: Node
+      }*)
+    case _ => ()
+  }
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"); "" for the default. */
   def setCursor(name: String): Unit = fx.setCursor(name match {
     case "col-resize" | "ew-resize" => javafx.scene.Cursor.H_RESIZE
@@ -540,6 +556,9 @@ class RenderNode(val fx: Node) {
 }
 
 object RenderNode {
+  /** An EveryUI colour as JavaFX paints with it. */
+  def paintOf(c: everyui.Color): Color = Color.rgb(c.redInt, c.greenInt, c.blueInt, c.alpha)
+
   /** The one thread that does [[Platform.offThread]]'s work, so what it does never holds up the FX thread. */
   lazy val work: java.util.concurrent.ExecutorService =
     java.util.concurrent.Executors.newSingleThreadExecutor(r => {
@@ -755,6 +774,9 @@ object Nodes {
     p.setPickOnBounds(false)
     new RenderNode(p)
   }
+
+  /** A drawing (everyui.draw.Drawing): a pane of shapes. */
+  def drawing(): RenderNode = container()
 
   /** A text node — a `Text`, positioned by its baseline. */
   def text(): RenderNode = {

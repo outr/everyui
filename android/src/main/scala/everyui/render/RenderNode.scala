@@ -616,6 +616,11 @@ class RenderNode(val view: View) {
   }
   def setTooltip(text: String): Unit =
     if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
+  /** A drawing's figures (everyui.draw.Drawing), where this is one. */
+  def setFigures(figures: List[everyui.draw.Figure]): Unit = view match {
+    case d: DrawingView => d.figures(figures)
+    case _ => ()
+  }
   /** A mouse on Android keeps its own arrow. */
   def setCursor(name: String): Unit = ()
 
@@ -1256,6 +1261,9 @@ object Nodes {
 
   /** A container — a [[NodeGroup]] other nodes are appended to. */
   def container(): RenderNode = new RenderNode(new NodeGroup(Host.activity))
+
+  /** A drawing (everyui.draw.Drawing): paths on a canvas of its own. */
+  def drawing(): RenderNode = new RenderNode(new DrawingView(Host.activity))
 
   /** A text node — a single-line `TextView` with no padding of its own. */
   def text(): RenderNode = {
