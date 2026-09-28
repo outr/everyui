@@ -50,6 +50,10 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
       }
       ui.size.width.get
       window = Host.scene
+      // no key left held by a spec before this one: a modifier is released as a keyboard releases it, which the
+      // backend reads the modifiers held from
+      javafx.event.Event.fireEvent(window, new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_RELEASED, "", "",
+        javafx.scene.input.KeyCode.SHIFT, false, false, false, false))
     }
   }
 }

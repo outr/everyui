@@ -1094,7 +1094,10 @@ object Platform {
     def hear(e: KeyEvent, pressed: Boolean): Unit = {
       held = everyui.event.Modifiers(e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
       embedded = Host.embedOf(e.getTarget)
-      if (f(Host.keyName(e), pressed)) e.consume()
+      try if (f(Host.keyName(e), pressed)) e.consume()
+      // the embed is the one this key was meant for, and no other: a key sent later from anywhere else (a key given
+      // back, one a test sends) is nobody's embed's
+      finally embedded = ""
     }
     Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => hear(e, true))
     Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => hear(e, false))
