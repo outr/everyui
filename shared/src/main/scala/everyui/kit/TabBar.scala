@@ -1,6 +1,7 @@
 package everyui.kit
 
 import everyui.component.*
+import everyui.i18n.Direction
 import everyui.layout.HorizontalLayout
 import everyui.theme.Theme
 import reactify.*
@@ -30,9 +31,10 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
     content.layout @= Some(HorizontalLayout(0.0))
     content.children := tabs().toVector
   }
-  // the rule runs as far as the tabs do
+  // the rule runs as far as the tabs do, from the right in a right-to-left language
   private val rule = new Container {
     size.width := math.min(width, scroll.content.size.width())
+    position.left := (if (Direction.rtl()) width - size.width() else 0.0)
     size.height @= 1.0
     position.top @= TabBar.height - 1.0
     backgroundColor := Theme.border()

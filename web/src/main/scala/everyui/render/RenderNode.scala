@@ -270,15 +270,26 @@ class RenderNode(val el: html.Element) {
   /** The scrollbar's thumb colour, on a clear track. */
   def setScrollbarColor(hex: String): Unit = el.style.setProperty("scrollbar-color", if (hex.isEmpty) "auto" else hex + " transparent")
   def setScrollTop(y: Double): Unit = el.scrollTop = y
-  def setScrollLeft(x: Double): Unit = el.scrollLeft = x
-  /** How far the node has scrolled its own overflow. */
-  def scrolled(horizontal: Boolean): Double = if (horizontal) el.scrollLeft else el.scrollTop
+  /** Scrolled `x` sideways from its start edge, which is the right in a right-to-left page. */
+  def setScrollLeft(x: Double): Unit = el.scrollLeft = fromStart(x)
+  /** How far the node has scrolled its own overflow, from its start edge. */
+  def scrolled(horizontal: Boolean): Double = if (horizontal) fromStart(el.scrollLeft) else el.scrollTop
   /** Scroll its overflow to `to` as the browser glides a smooth scroll, which a newer one takes over mid-way. */
   def scrollSmoothly(to: Double, horizontal: Boolean): Unit = {
     val options = js.Dynamic.literal(behavior = "smooth")
-    if (horizontal) options.left = to else options.top = to
+    if (horizontal) options.left = fromStart(to) else options.top = to
     el.asInstanceOf[js.Dynamic].scrollTo(options)
   }
+  // a sideways scroll from its start edge as the browser counts it, and back again: in a right-to-left page the start
+  // is the right, which a browser counts down from 0 (as the spec has it), up from 0 (the old Edge), or down from the
+  // far end (Chrome before 85, as on an older television)
+  private def fromStart(x: Double): Double =
+    if (dom.document.documentElement.getAttribute("dir") != "rtl") x
+    else RenderNode.rtlScroll match {
+      case RenderNode.Negative => -x
+      case RenderNode.Reverse => x
+      case _ => el.scrollWidth - el.clientWidth - x
+    }
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = {
     el.style.display = if (visible) "" else "none"
@@ -658,6 +669,26 @@ class RenderNode(val el: html.Element) {
 object RenderNode {
   /** SVG's namespace, which its elements are made in. */
   val svgNs: String = "http://www.w3.org/2000/svg"
+
+  private val Negative = -1
+  private val Reverse = 1
+  /** How this browser counts a right-to-left scroll: `Negative`, `Reverse`, or 0 (from the far left), found once on a
+    * small scroll of its own. */
+  private lazy val rtlScroll: Int = {
+    val outer = dom.document.createElement("div").asInstanceOf[html.Div]
+    outer.setAttribute("dir", "rtl")
+    outer.style.cssText = "position:absolute;top:-100px;width:4px;height:1px;overflow:hidden;visibility:hidden"
+    val inner = dom.document.createElement("div").asInstanceOf[html.Div]
+    inner.style.cssText = "width:8px;height:1px"
+    outer.appendChild(inner)
+    dom.document.body.appendChild(outer)
+    val kind = if (outer.scrollLeft > 0.0) 0 else {
+      outer.scrollLeft = 1.0
+      if (outer.scrollLeft < 0.5) Negative else Reverse
+    }
+    dom.document.body.removeChild(outer)
+    kind
+  }
 
   // what `reveal` has laid out, undrawn, until the end of the turn
   private var revealed: List[html.Element] = Nil

@@ -241,6 +241,20 @@ web_autofill() {
   echo "$AUTOFILL_FIELDS; the fill, the send and the silent fill reached the app"
 }
 
+# a rail in a right-to-left page as the browser's own scroll holds it (tools/rtl-scroll-check.js in a real Chrome):
+# its first card at its right end as it opens, narrows and grows, and a card revealed at its start
+RTL_SCROLL="open red=0 scrolls=true, narrowed red=0 scrolls=true, grown red=0 scrolls=true, revealed blue=0"
+web_rtl_scroll() {
+  command -v Xvfb > /dev/null || { echo "Xvfb not found"; return 1; }
+  timeout 60 java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.vector \
+    -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.WebDrive \
+    "file://$ROOT/web/out-js/index.html?demo=rtlscroll" tools/rtl-scroll-check.js > "$LOGS/web-rtl-scroll.log" 2>&1 || true
+  grep "\[webdrive\]" "$LOGS/web-rtl-scroll.log" | grep -qF "$RTL_SCROLL" ||
+    { echo "expected: $RTL_SCROLL"; grep '\[webdrive\]' "$LOGS/web-rtl-scroll.log"; return 1; }
+  grep -q "\[ui\] rtlscroll revealed at 500" "$LOGS/web-rtl-scroll.log" || { echo "the reveal was not 500 along"; return 1; }
+  echo "$RTL_SCROLL; revealed 500 along"
+}
+
 input_desktop() {
   command -v xvfb-run > /dev/null || { echo "xvfb-run not found"; return 1; }
   timeout 20 xvfb-run -a -s "-screen 0 1280x720x24" \
@@ -387,10 +401,12 @@ if [ $BUILT = 1 ] && [ $WEB_BUILT = 1 ]; then
   run "input: web (probe, then real DOM events)" input-web.log input_web
   run "input: desktop (probe)" input-desktop.log input_desktop
   run "web: forms as autofill and password managers see them" web-autofill.log web_autofill
+  run "web: a right-to-left rail in the browser's own scroll" web-rtl-scroll.log web_rtl_scroll
 else
   skip "input: web (probe, then real DOM events)" "build failed"
   skip "input: desktop (probe)" "build failed"
   skip "web: forms as autofill and password managers see them" "build failed"
+  skip "web: a right-to-left rail in the browser's own scroll" "build failed"
 fi
 
 if [ $NATIVE = 1 ]; then

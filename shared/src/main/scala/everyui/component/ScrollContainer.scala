@@ -3,6 +3,7 @@ package everyui.component
 import everyui.easing.Easing
 import everyui.event.{Key, PointerEvent}
 import everyui.focus.Focus
+import everyui.i18n.Direction
 import everyui.Color
 import everyui.component.types.Prop
 import everyui.render.Platform
@@ -16,7 +17,8 @@ import scala.concurrent.duration.*
   * the page keys (while focused) bring the rest into view, and the focus moving onto something out of view scrolls to
   * it (a remote has no other way to see it). Add to `content.children`, not to this.
   *
-  * Down the page by default; `horizontal` makes it a rail, scrolled along its length instead.
+  * Down the page by default; `horizontal` makes it a rail, scrolled along its length instead. A rail in a
+  * right-to-left language runs from the right: it opens at its right end, on its first items, and Left goes on along it.
   *
   * The web scrolls the node itself (its own scrollbar, momentum and keys); every other backend clips the node and
   * this shifts the content. */
@@ -24,8 +26,11 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   override def kind: String = "ScrollContainer"
 
   val content: Container = new Container
-  /** How far the content is scrolled, in pixels. */
+  /** How far the content is scrolled from its start, in pixels: a rail's start is its right end in a right-to-left
+    * language, so it stays on its first items at 0 however it grows or narrows. */
   val offset: Var[Double] = own(Var(0.0))
+  // a rail in a right-to-left language, which runs from the right
+  private val fromRight: Val[Boolean] = own(Val(horizontal && Direction.rtl()))
   // as far as the content's length, which is what it holds unless it is given more (room left at its end)
   private val furthest: Val[Double] =
     Val(math.max(0.0, (if (horizontal) content.size.width() - size.width() else content.size.height() - size.height())))
@@ -52,6 +57,16 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
     // and a row laid out in it runs the length of what it holds: mirrored for a right-to-left language within its
     // width instead, which is itself the reach of the children just mirrored, it shrank to its first child
     content.widthFollowsContent = true
+    // its start at the viewport's: in a right-to-left language the content's right end at the viewport's right, which
+    // is also where a browser's own scroll starts (content overhanging the right of a right-to-left page's scroll could
+    // not be scrolled to at all)
+    val shifted = !Platform.nativeScroll()
+    content.position.left := {
+      val by = if (shifted) offset() else 0.0
+      if (fromRight()) size.width() - content.size.width() + by else 0.0 - by
+    }
+    // and a change of direction starts it again at its start, as a browser does
+    follow(Direction.rtl, (_: Boolean) => scrollTo(0.0))
   }
   else {
     content.size.width := size.width
@@ -67,24 +82,32 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
   if (!Platform.nativeScroll()) {
     size.width.attach(_ => clip())
     size.height.attach(_ => clip())
-    if (horizontal) content.position.left := -offset() else content.position.top := -offset()
+    if (!horizontal) content.position.top := -offset()
     furthest.attach(most => if (offset() > most) offset @= most)
     // anything else setting the offset takes over from a glide
     offset.attach(at => if (glideRun.nonEmpty && at != glideAt) stopGlide())
-    event.pointer.wheel.attach(e => scrollBy(if (horizontal && e.x != 0.0) e.x else e.y))
+    // a sideways wheel and a drag move the content as they go, which is back along a rail from the right
+    event.pointer.wheel.attach(e => scrollBy(if (horizontal && e.x != 0.0) (if (fromRight()) -e.x else e.x) else e.y))
     var dragFrom: Option[Double] = None
     var dragOffset = 0.0
     event.pointer.down.attach { e =>
       dragFrom = Some(if (horizontal) e.x else e.y)
       dragOffset = offset()
     }
-    event.pointer.move.attach(e => dragFrom.foreach(from => scrollTo(dragOffset + from - (if (horizontal) e.x else e.y))))
+    event.pointer.move.attach { e =>
+      dragFrom.foreach { from =>
+        val moved = (if (horizontal) e.x else e.y) - from
+        scrollTo(dragOffset + (if (fromRight()) moved else -moved))
+      }
+    }
     event.pointer.up.attach(_ => dragFrom = None)
     content.children.attach(_.foreach(cull))
     event.key.down.attach { k =>
       val along = if (horizontal) size.width() else size.height()
-      if (k.key == (if (horizontal) Key.ArrowRight else Key.ArrowDown)) stride(step())
-      else if (k.key == (if (horizontal) Key.ArrowLeft else Key.ArrowUp)) stride(-step())
+      val on = if (fromRight()) Key.ArrowLeft else if (horizontal) Key.ArrowRight else Key.ArrowDown
+      val back = if (fromRight()) Key.ArrowRight else if (horizontal) Key.ArrowLeft else Key.ArrowUp
+      if (k.key == on) stride(step())
+      else if (k.key == back) stride(-step())
       else if (k.key == Key.PageDown) scrollBy(along * 0.9)
       else if (k.key == Key.PageUp) scrollBy(-along * 0.9)
     }
@@ -145,8 +168,13 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
     * It glides for `revealGlide`, unless the way is more than twice the viewport: a glide that long is a blur of what
     * is passed (and on a television, a great deal to draw), so it jumps. */
   def reveal(c: Component): Unit = {
-    val start = if (horizontal) c.absoluteLeft - content.absoluteLeft else c.absoluteTop - content.absoluteTop
     val length = if (horizontal) c.size.width() else c.size.height()
+    // from the content's start, which is its right end in a rail running from the right
+    val left = c.absoluteLeft - content.absoluteLeft
+    val start =
+      if (fromRight()) content.size.width() - left - length
+      else if (horizontal) left
+      else c.absoluteTop - content.absoluteTop
     val along = if (horizontal) size.width() else size.height()
     val at = if (Platform.nativeScroll()) node.scrolled(horizontal) else if (glideRun.nonEmpty) glideAim else offset()
     val margin = revealMargin()
@@ -177,7 +205,9 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
       val along = if (horizontal) size.width() else size.height()
       val start = if (horizontal) c.position.left() else c.position.top()
       val end = start + (if (horizontal) c.size.width() else c.size.height())
-      end > offset() - along * 0.5 && start < offset() + along * 1.5
+      // where the viewport is over the content, from its left in a rail running from the right
+      val at = if (fromRight()) content.size.width() - along - offset() else offset()
+      end > at - along * 0.5 && start < at + along * 1.5
     }
   }
 
