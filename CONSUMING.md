@@ -516,3 +516,32 @@ list.selection.multiple @= false                             // one at a time, w
 
 Click picks a row, Shift+click the range from the anchor, Primary+click adds or removes one; Shift+arrows extend,
 Primary+arrows move the cursor alone and Primary+Space toggles its row; Primary+A picks every row.
+
+### Naming in place (lists and trees)
+
+`edit(key)` puts a field over a row's label holding its name; `insertEditing` adds a row for a new item and puts the
+field in it. Enter commits, Escape cancels, and leaving the field (the focus going elsewhere, a click away) commits.
+The app's `commit` takes the name, changing its items or model to match, or refuses it with a message shown under the
+field, which stays open; it is a `Task`, so the answer can come from a server. Afterwards the focus is back on the list,
+on the renamed row or the new one. With `renames @= true`, F2 renames the row under the cursor. Where the platform has
+no field of its own (a Roku, an Apple TV) its keyboard asks for the name, and a refusal is toasted.
+
+```scala
+tree.commit @= { e =>
+  e.node match {
+    case Some(file) => server.rename(file.path, e.text).map {   // a rename
+      case Right(renamed) => model.remove(file.path); model.insert(e.parent, e.position, renamed); None
+      case Left(error) => Some(error)                           // shown under the field
+    }
+    case None => server.create(e.parent, e.text).map {          // a new node, named at e.position under e.parent
+      case Right(made) => model.insert(e.parent, e.position, made); None
+      case Left(error) => Some(error)
+    }
+  }
+}
+keymap.add("file.rename", "Rename", Chord("F2")) { tree.current().foreach(tree.edit) }
+keymap.add("file.new", "New file", Chord.parse("Primary+Alt+N")) { tree.insertEditing(tree.current().map(folderOf)) }
+
+list.commit @= (e => Task.pure { if (taken(e.text)) Some("Already there") else { rename(e.item, e.text); None } })
+list.insertEditing(3, File.blank)   // a stand-in for the new row until its name is typed; e.created is true
+```

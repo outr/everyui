@@ -222,6 +222,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       case Key.PageDown => Some(() => moveTo(math.min(count - 1, at + page), e.shift, keep))
       case Key.Enter if at >= 0 => Some(() => enterDown(e))
       case Key.Space if at >= 0 && keep && selection.multiple() => Some(() => selection.toggle(keyAt(at)))
+      case Key.Other if e.name == "F2" && renames() && at >= 0 => Some(() => edit(keyAt(at)))
       case Key.ContextMenu if at >= 0 => Some(() => menuAt(at))
       case Key.Other if e.name == "F10" && e.shift && at >= 0 => Some(() => menuAt(at))
       case Key.Other if e.name == "Home" => Some(() => moveTo(0, e.shift, keep))
@@ -412,7 +413,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       row.selected @= chosen.contains(key)
       row.current @= cursor.contains(key)
       row.active @= lit
-      row.editing @= editingKey.contains(key)
+      row.editing @= editing().contains(key)
       row.size.width @= width
       if (!measured) row.size.height @= rowHeight
       row.position.top @= top(i) - offset()
@@ -420,6 +421,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       i += 1
     }
     if (made.nonEmpty) children ++= made.reverse
+    placeEditor(width, height)
     // the thumb last, over the rows
     if (children().lastOption.forall(c => !(c eq thumb))) children @= children().filterNot(_ eq thumb) :+ thumb
     val all = total
@@ -452,8 +454,118 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     offset @= math.max(0.0, math.min(furthest, offset()))
   }
 
+
+  // ---- renaming in place ----
+
+  /** The key of the row being named, if one is. */
+  val editing: Var[Option[String]] = own(Var(None))
+  /** What the app does with a name typed in a row: `None` when it has taken it (and changed its items to match), or a
+    * message saying why not, shown under the field, which stays open. By default every name is taken, and nothing
+    * changes. */
+  val commit: Var[ListEdit[T] => everyui.async.Task[Option[String]]] =
+    own(Var((_: ListEdit[T]) => everyui.async.Task.pure(None: Option[String])))
+  /** Whether F2 renames the row under the cursor. */
+  val renames: Var[Boolean] = own(Var(false))
+  private var editor: Option[RowEditor] = None
+  private var editorAt = -1
+
+  /** Row `key`'s name typed in place: a field over its label, holding it, all chosen. Enter commits, Escape cancels,
+    * leaving the field commits; the app's `commit` takes the name or says why not. Where the platform has no field of
+    * its own (a Roku, an Apple TV), its keyboard asks for the name instead, and a refusal is toasted. */
+  def edit(key: String, text: Option[String] = None): Unit = {
+    val i = indexOf(key)
+    if (i >= 0) {
+      dropField()
+      val initial = text.getOrElse(if (placeholder.exists(p => keyOf(p._2) == key)) "" else labelOf(shown(i)))
+      current @= Some(key)
+      reveal(i)
+      if (!Platform.nativeInput()) Platform.editText("", initial, false, v => submit(None, v, false))
+      else {
+        val field = new RowEditor(initial)
+        field.submitted.attach(v => submit(Some(field), v, false))
+        field.left.attach(v => submit(Some(field), v, true))
+        field.cancelled.attach(_ => if (editor.exists(_ eq field)) closeEditor(true))
+        editor = Some(field)
+        editing @= Some(key)
+        children += field
+        refresh()
+        field.start()
+      }
+    }
+  }
+
+  /** A new row at `index`, `stand` standing in for the item until its name is typed (see `edit`): the app's `commit`
+    * hears it with `created`, and adds the item itself; cancelled, the row goes. */
+  def insertEditing(index: Int, stand: T): Unit = {
+    closeEditor(false)
+    placeholder = Some((index, stand))
+    reindex()
+    edit(keyOf(stand), Some(""))
+  }
+
+  /** The name being typed let go, unchanged. */
+  def cancelEdit(): Unit = closeEditor(focused() || editor.exists(_.focused()))
+
+  private var committing = false
+
+  private def submit(field: Option[RowEditor], text: String, left: Boolean): Unit =
+    if (!committing && field.forall(f => editor.exists(_ eq f))) {
+      val key = if (field.isEmpty) current() else editing()
+      key.map(indexOf).filter(_ >= 0).foreach { i =>
+        val created = placeholder.exists(p => keyOf(p._2) == keyAt(i))
+        committing = true
+        commit()(ListEdit(shown(i), keyAt(i), i, text, created)).map { verdict =>
+          committing = false
+          if (field.forall(f => editor.exists(_ eq f))) verdict match {
+            case None => closeEditor(!left)
+            case Some(message) => field match {
+              case Some(f) =>
+                f.error @= message
+                if (!left) f.start()
+              case None => everyui.kit.Toast.show(message)
+            }
+          }
+        }.start()
+      }
+    }
+
+  // the field taken away, and the row it was over shown again
+  private def dropField(): Unit = {
+    val field = editor
+    editor = None
+    field.foreach { f =>
+      f.stop()
+      children -= f
+      f.dispose()
+    }
+    if (editing().nonEmpty) editing @= None
+  }
+
+  private def closeEditor(refocus: Boolean): Unit = {
+    dropField()
+    if (placeholder.nonEmpty) {
+      placeholder = None
+      reindex()
+    }
+    if (refocus) focus()
+  }
+
+  private def placeEditor(width: Double, height: Double): Unit = editor.foreach { f =>
+    val i = editing().map(indexOf).getOrElse(-1)
+    if (i < 0) f.visible @= false
+    else {
+      val start = placed.get(i).map(_.editStart).getOrElse(ListRow.inset) - 6.0
+      val y = top(i) - offset()
+      f.visible @= y + heightAt(i) > 0.0 && y < height
+      f.position.left @= start
+      f.position.top @= y
+      f.size.width @= width - start - 4.0
+      f.size.height @= heightAt(i)
+      f.above @= y + heightAt(i) * 2.5 > height
+    }
+  }
+
   // ---- editing (see `edit`) ----
-  private[list] var editingKey: Option[String] = None
   // a row put in for a new item while its name is being typed: where, and what stands for it
   private[list] var placeholder: Option[(Int, T)] = None
 
@@ -480,9 +592,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       // the row under the cursor gone, the cursor goes to what took its place: the first after it still here, else the
       // last before it
       case Some(key) if !indexes.contains(key) =>
+        // (one new in its place, a row renamed, is what took it)
+        val had = if (was >= 0 && was < count) before.iterator.map(keyOf).toSet else Set.empty[String]
+        val renamed = if (was >= 0 && was < count && !had.contains(keyAt(was))) Some(keyAt(was)) else None
         val after = before.iterator.drop(math.max(0, was)).map(keyOf).find(indexes.contains)
         val earlier = before.take(math.max(0, was)).reverseIterator.map(keyOf).find(indexes.contains)
-        current @= after.orElse(earlier).orElse(if (count == 0) None else Some(keyAt(math.max(0, math.min(was, count - 1)))))
+        current @= renamed.orElse(after).orElse(earlier).orElse(if (count == 0) None else Some(keyAt(math.max(0, math.min(was, count - 1)))))
         if (!selection.multiple()) current().foreach(k => selection.only(k))
       case _ => ()
     }
@@ -490,6 +605,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     refresh()
   }
 
+  editing.attach(_ => refresh())
   current.attach { c =>
     currentAt = c.flatMap(indexes.get).getOrElse(-1)
     refresh()

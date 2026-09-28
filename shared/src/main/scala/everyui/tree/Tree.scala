@@ -4,7 +4,7 @@ import everyui.async.Task
 import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent}
 import everyui.i18n.Direction
-import everyui.list.{Decoration, ListPoint, Selection, VirtualList}
+import everyui.list.{Decoration, ListEdit, ListPoint, Selection, VirtualList}
 import reactify.*
 
 import scala.collection.mutable
@@ -144,6 +144,48 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
     kept = next
     lines @= out.result()
   }
+
+  // ---- naming in place ----
+
+  /** What the app does with a name typed in a row, a rename or a new node's (`TreeEdit.node` empty): `None` when it
+    * has taken it (and changed the model to match: a new node inserted where it was named), or a message saying why
+    * not, shown under the field, which stays open. */
+  val commit: Var[TreeEdit[T] => Task[Option[String]]] =
+    own(Var((_: TreeEdit[T]) => Task.pure(None: Option[String])))
+
+  /** Node `key`'s name typed in place (see `VirtualList.edit`). */
+  def edit(key: String): Unit = list.edit(key)
+
+  /** A new node named in place under `parent` (the roots for None), at `position` among its children (at the end, past
+    * the last): the parent is opened first, and its children loaded if they have to be. */
+  def insertEditing(parent: Option[String], position: Int = Int.MaxValue): Unit = {
+    parent.foreach(expand)
+    def begin(): Unit = {
+      pending = Some((parent, math.max(0, math.min(position, model.childKeys(parent).length))))
+      flatten()
+      list.edit(Tree.newKey, Some(""))
+    }
+    parent.filter(p => loading().contains(p)) match {
+      case Some(p) => loading.once(_ => begin(), busy => !busy.contains(p))
+      case None => begin()
+    }
+  }
+
+  list.commit @= { (e: ListEdit[TreeLine[T]]) =>
+    e.item.value match {
+      case Some(t) =>
+        val parent = model.parentOf(e.key)
+        commit()(TreeEdit(Some(t), parent, model.childKeys(parent).indexOf(e.key), e.text))
+      case None =>
+        val (parent, position) = pending.getOrElse((None, 0))
+        commit()(TreeEdit(None, parent, position, e.text))
+    }
+  }
+  // the new node's row goes once its name is taken or let go
+  list.editing.changes((was, now) => if (was.contains(Tree.newKey) && !now.contains(Tree.newKey) && pending.nonEmpty) {
+    pending = None
+    flatten()
+  })
 
   // ---- keys and clicks ----
 
