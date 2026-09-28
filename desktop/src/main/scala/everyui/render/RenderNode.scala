@@ -628,7 +628,8 @@ object Host {
     val named = Map(KeyCode.ENTER -> "Enter", KeyCode.ESCAPE -> "Escape", KeyCode.UP -> "ArrowUp", KeyCode.DOWN -> "ArrowDown",
       KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ",
       KeyCode.FAST_FWD -> "MediaFastForward", KeyCode.REWIND -> "MediaRewind", KeyCode.TRACK_NEXT -> "MediaTrackNext",
-      KeyCode.TRACK_PREV -> "MediaTrackPrevious")
+      KeyCode.TRACK_PREV -> "MediaTrackPrevious", KeyCode.PAGE_UP -> "PageUp", KeyCode.PAGE_DOWN -> "PageDown",
+      KeyCode.HOME -> "Home", KeyCode.END -> "End", KeyCode.CONTEXT_MENU -> "ContextMenu", KeyCode.DELETE -> "Delete")
     if (e.isAltDown && e.getCode == KeyCode.LEFT) "BrowserBack"
     else named.getOrElse(e.getCode, if (e.getText.nonEmpty) e.getText else e.getCode.getName)
   }
