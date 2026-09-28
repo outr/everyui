@@ -353,6 +353,17 @@ and Android on a canvas of its own. A Roku and an Apple TV draw no paths: they s
 (`Block.of`): straight strokes across or down, like a commit graph's lanes, and filled rectangles. Diagonals, curves
 and circles are left out there.
 
+### SplitButton (`everyui.menu`)
+
+A main action with an arrow beside it that drops a `Menu` of alternatives. The menu also opens on the menu key, on
+Down with a keyboard, and on OK held (a remote's long press).
+
+```scala
+val commit = new SplitButton("Commit", () => commit(),
+  List(MenuItem("Commit and Push…", () => commitAndPush()), MenuItem("Amend", () => amend())),
+  moreLabel = "More commit actions")
+```
+
 ## An installable web app
 
 An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,
