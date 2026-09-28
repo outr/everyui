@@ -4,7 +4,8 @@ import everyui.async.Task
 import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent}
 import everyui.i18n.Direction
-import everyui.list.{Decoration, ListEdit, ListPoint, Selection, VirtualList}
+import everyui.list.{Decoration, Drop, DropPosition, ListEdit, ListPoint, Selection, VirtualList}
+import everyui.render.Platform
 import reactify.*
 
 import scala.collection.mutable
@@ -187,6 +188,31 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
     flatten()
   })
 
+  // ---- dragging and dropping (see `VirtualList`'s) ----
+
+  /** Whether nodes can be dragged out of this tree with the pointer. */
+  def draggable: Var[Boolean] = list.draggable
+  /** Whether nodes may land where a drop says: the app's rule. `Drop.target` is a node's key, and `Into` a node that
+    * opens. */
+  def accepts: Var[Drop => Boolean] = list.accepts
+  /** Nodes dropped here, where `accepts` let them. */
+  def dropped: Channel[Drop] = list.dropped
+  /** The chosen nodes held to be pasted: the keyboard's drag. */
+  def cut(): Unit = list.cut()
+  /** The nodes cut put into the node under the cursor (where it opens) or after it; whether they went. */
+  def paste(position: Option[DropPosition] = None): Boolean = list.paste(position)
+
+  /** Whether `key` is one of `keys` or under one of them: where nodes being moved cannot go. */
+  def inside(key: String, keys: Seq[String]): Boolean = keys.contains(key) || model.ancestors(key).exists(keys.contains)
+
+  list.holds = (l: TreeLine[T]) => l.expandable
+  list.owner = this
+  // a closed folder held under a drag for a moment opens
+  list.dropHover.attach(_.filter(_.position == DropPosition.Into).flatMap(_.target).foreach { key =>
+    if (!expanded().contains(key)) Platform.after(Tree.openAfter, () =>
+      if (list.dropHover().exists(d => d.target.contains(key) && d.position == DropPosition.Into)) expand(key))
+  })
+
   // ---- keys and clicks ----
 
   list.keys = (e: KeyEvent) => {
@@ -245,4 +271,6 @@ object Tree {
   val chevron: Double = 18.0
   /** The key of the row a new node is named in. */
   val newKey: String = "\u0000new"
+  /** How long a closed node is held under a drag before it opens, in seconds. */
+  val openAfter: Double = 0.7
 }

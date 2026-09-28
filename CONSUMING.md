@@ -545,3 +545,33 @@ keymap.add("file.new", "New file", Chord.parse("Primary+Alt+N")) { tree.insertEd
 list.commit @= (e => Task.pure { if (taken(e.text)) Some("Already there") else { rename(e.item, e.text); None } })
 list.insertEditing(3, File.blank)   // a stand-in for the new row until its name is typed; e.created is true
 ```
+
+### Drag and drop (lists and trees)
+
+With `draggable @= true`, rows are dragged out with the pointer (a chosen row takes all the chosen rows with it) and a
+label follows the pointer. Over any list or tree, its `accepts` decides for each place whether they may land: `Before`
+or `After` a row, or `Into` one that holds rows (a tree's folders). A line or a lit row shows where; the rows scroll near
+an end; a closed folder held under the drag opens. Let go there, that list's `dropped` hears a `Drop` with where they came
+from (`from`: the list or tree), their keys, the target's key and the position. Escape lets go, dropping nothing. Never
+on a remote.
+
+```scala
+tree.draggable @= true
+tree.accepts @= (d => d.target.forall(t => !tree.inside(t, d.keys)))   // nothing into itself or under itself
+tree.dropped.attach { d =>
+  val (parent, index) = d.position match {
+    case DropPosition.Into => (d.target, Int.MaxValue)
+    case p => (d.target.flatMap(model.parentOf), placeOf(d.target) + (if (p == DropPosition.After) 1 else 0))
+  }
+  if (d.from eq tree) model.batch(d.keys.foreach(k => model.move(k, parent, index)))
+  else upload(d.keys, parent)
+}
+```
+
+From the keyboard, `cut()` holds the chosen rows and `paste()` puts them into the row under the cursor (where it holds
+rows) or after it, through the same `accepts` and `dropped`:
+
+```scala
+keymap.add("tree.cut", "Cut", Chord("X", primary = true)) { tree.cut() }
+keymap.add("tree.paste", "Paste", Chord("V", primary = true)) { tree.paste() }
+```

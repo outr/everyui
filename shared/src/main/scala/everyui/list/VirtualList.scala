@@ -317,7 +317,17 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
   }
 
-  event.click.attach(e => clickAt(e.x, e.y, Platform.modifiers()))
+  // (not the click a drag ends in)
+  event.click.attach(e => if (Platform.ticks() - DragDrop.endedAt > 250.0) clickAt(e.x, e.y, Platform.modifiers()))
+  // the secondary button: the row under it chosen (unless it already is), and its menu asked for
+  event.pointer.menu.attach { e =>
+    val down = e.y - absoluteTop + offset()
+    if (down >= 0.0 && down < total) {
+      val i = indexAt(down)
+      if (!selection.contains(keyAt(i))) moveTo(i) else current @= Some(keyAt(i))
+      menuAt(i, e.x, e.y)
+    }
+  }
   cursor @= "default"
   event.pointer.wheel.attach(e => scrollBy(e.y))
   // a finger drags the rows along where there is no mouse to wheel them
@@ -334,6 +344,136 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     Pointers.track(m => scrollTop(was + (m.y - from) * furthest / room), _ => ())
   }
   thumb.event.click.attach(_.consume())
+
+  // ---- dragging and dropping ----
+
+  /** Whether rows can be dragged out of this list with the pointer (never where a remote drives the app). */
+  val draggable: Var[Boolean] = own(Var(false))
+  /** Whether rows may land where a drop says: the app's rule, for each place the pointer passes. None may by default. */
+  val accepts: Var[Drop => Boolean] = own(Var((_: Drop) => false))
+  /** Rows dropped here, where `accepts` let them. */
+  val dropped: Channel[Drop] = Channel[Drop]
+  /** What a drag out of this list says it came from (`Drop.from`): a tree built on a list names itself. */
+  var owner: Component = this
+  /** Whether a row takes rows dropped into it (a folder), rather than only before or after it. */
+  var holds: T => Boolean = _ => false
+  /** How the rows being dragged are named beside the pointer. */
+  val dragLabel: Var[Vector[T] => String] = own(Var((rows: Vector[T]) =>
+    rows.headOption.map(labelOf).getOrElse("") + (if (rows.size > 1) "  +" + (rows.size - 1).toString else "")))
+  /** Where a drop over this list would land now, if it may: the row's key and the place against it. */
+  val dropHover: Var[Option[Drop]] = own(Var(None))
+
+  private val dropLine = new Container {
+    size.height @= 2.0
+    backgroundColor := Theme.accent()
+    visible @= false
+  }
+  private var pressedAt: Option[(Int, Double, Double)] = None
+
+  event.pointer.down.attach { e =>
+    val down = e.y - absoluteTop + offset()
+    if (draggable() && !Platform.remoteNavigation() && editing().isEmpty && down >= 0.0 && down < total) {
+      pressedAt = Some((indexAt(down), e.x, e.y))
+      Pointers.track(m => pressedAt.foreach { case (i, x, y) =>
+        if (DragDrop.dragging().nonEmpty) DragDrop.move(m.x, m.y)
+        else if (math.abs(m.x - x) + math.abs(m.y - y) > VirtualList.dragStart) startDrag(i, m.x, m.y)
+      }, u => {
+        pressedAt = None
+        DragDrop.end(u.x, u.y)
+      })
+    }
+  }
+
+  private def startDrag(index: Int, x: Double, y: Double): Unit = if (index < count) {
+    val key = keyAt(index)
+    if (!selection.contains(key)) moveTo(index)
+    val rows = if (selection.contains(key)) selectedItems else Vector(shown(index))
+    DragDrop.begin(Dragged(owner, rows.map(keyOf).toList), dragLabel()(rows), x, y)
+  }
+
+  /** Where rows dragged to `x`, `y` would land, if `accepts` lets them. */
+  private def dropFor(x: Double, y: Double, rows: Dragged): Option[Drop] = {
+    val down = y - absoluteTop + offset()
+    val drop = if (count == 0) Drop(rows.from, rows.keys, None, DropPosition.After)
+    else if (down >= total) Drop(rows.from, rows.keys, Some(keyAt(count - 1)), DropPosition.After)
+    else {
+      val i = indexAt(down)
+      val along = (down - top(i)) / math.max(1.0, heightAt(i))
+      val place = if (holds(shown(i))) {
+        if (along < 0.25) DropPosition.Before else if (along > 0.75) DropPosition.After else DropPosition.Into
+      } else if (along < 0.5) DropPosition.Before else DropPosition.After
+      Drop(rows.from, rows.keys, Some(keyAt(i)), place)
+    }
+    Some(drop).filter(d => accepts()(d))
+  }
+
+  private[list] def hoverDrop(x: Double, y: Double, rows: Dragged): Unit = {
+    val drop = dropFor(x, y, rows)
+    if (dropHover() != drop) dropHover @= drop
+    // near an end, the rows scroll under the pointer
+    val edge = math.min(VirtualList.scrollEdge, size.height() / 4.0)
+    val from = y - absoluteTop
+    scrolling = if (from < edge) -(edge - from) / 2.0 else if (from > size.height() - edge) (from - size.height() + edge) / 2.0 else 0.0
+    if (scrolling != 0.0 && !scrollRunning) {
+      scrollRunning = true
+      Platform.after(VirtualList.scrollTick, () => scrollOn())
+    }
+  }
+
+  private var scrolling = 0.0
+  private var scrollRunning = false
+
+  private def scrollOn(): Unit = if (scrolling != 0.0 && DragDrop.hovering(this)) {
+    scrollBy(scrolling)
+    DragDrop.again()
+    Platform.after(VirtualList.scrollTick, () => scrollOn())
+  } else scrollRunning = false
+
+  private[list] def leaveDrop(): Unit = {
+    scrolling = 0.0
+    if (dropHover().nonEmpty) dropHover @= None
+  }
+
+  private[list] def dropAt(x: Double, y: Double, rows: Dragged): Unit = {
+    val drop = dropFor(x, y, rows)
+    leaveDrop()
+    drop.foreach(d => dropped @= d)
+  }
+
+  /** The chosen rows (else the one under the cursor) held to be put somewhere with `paste`: the keyboard's drag. */
+  def cut(): Unit = {
+    val keys = if (selection.keys().nonEmpty) selectedItems.map(keyOf).toList else current().toList
+    DragDrop.held @= (if (keys.isEmpty) None else Some(Dragged(owner, keys)))
+  }
+
+  /** The rows `cut` (here or in another list) put against the row under the cursor: into it where it holds rows, else
+    * after it, or where `position` says; if `accepts` lets them. Whether they went. */
+  def paste(position: Option[DropPosition] = None): Boolean = DragDrop.held().exists { rows =>
+    val target = current().filter(indexes.contains)
+    val place = position.getOrElse(target.map(k => shown(indexes(k))) match {
+      case Some(t) if holds(t) => DropPosition.Into
+      case _ => DropPosition.After
+    })
+    val drop = Drop(rows.from, rows.keys, target, place)
+    val may = accepts()(drop)
+    if (may) {
+      DragDrop.held @= None
+      dropped @= drop
+    }
+    may
+  }
+
+  private def placeDropLine(width: Double): Unit = dropHover() match {
+    case Some(d) if d.position != DropPosition.Into =>
+      val i = d.target.map(indexOf).getOrElse(-1)
+      val y = if (i < 0) 0.0 else if (d.position == DropPosition.Before) top(i) else top(i) + heightAt(i)
+      val start = if (i < 0) ListRow.inset else placed.get(i).map(_.editStart).getOrElse(ListRow.inset)
+      dropLine.position.left @= start
+      dropLine.size.width @= math.max(0.0, width - start - 4.0)
+      dropLine.position.top @= y - offset() - 1.0
+      dropLine.visible @= true
+    case _ => dropLine.visible @= false
+  }
 
   // ---- the rows ----
 
@@ -414,6 +554,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       row.current @= cursor.contains(key)
       row.active @= lit
       row.editing @= editing().contains(key)
+      row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
       row.size.width @= width
       if (!measured) row.size.height @= rowHeight
       row.position.top @= top(i) - offset()
@@ -422,8 +563,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
     if (made.nonEmpty) children ++= made.reverse
     placeEditor(width, height)
-    // the thumb last, over the rows
-    if (children().lastOption.forall(c => !(c eq thumb))) children @= children().filterNot(_ eq thumb) :+ thumb
+    placeDropLine(width)
+    // the drop line and the thumb last, over the rows
+    if (children().lastOption.forall(c => !(c eq thumb)))
+      children @= children().filterNot(c => (c eq thumb) || (c eq dropLine)) :+ dropLine :+ thumb
     val all = total
     thumb.visible @= all > height + 0.5
     val length = math.max(24.0, height * height / math.max(1.0, all))
@@ -631,7 +774,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     refresh()
   }
 
-  children += thumb
+  children ++= List(dropLine, thumb)
+  dropHover.attach(_ => refresh())
   clip()
   reindex()
 }
@@ -643,6 +787,11 @@ object VirtualList {
   val holdSeconds: Double = 0.5
   /** How close two clicks come to be a double click, in seconds. */
   val doubleSeconds: Double = 0.45
+  /** How far the pointer moves, held down on a row, before it is dragging it. */
+  val dragStart: Double = 6.0
+  /** How near an end a drag scrolls the rows, and how often, in seconds. */
+  val scrollEdge: Double = 28.0
+  val scrollTick: Double = 0.03
 
   /** A list of text rows: each item's label, dressed as `decorate` says. */
   def text[T](items: Var[Vector[T]], key: T => String, label: T => String,

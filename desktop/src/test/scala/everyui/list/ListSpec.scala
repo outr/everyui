@@ -145,6 +145,10 @@ class ListSpec extends FxSpec {
         fx(list.activated.attach(_ => activated += 1))
         fx(javafx.event.Event.fireEvent(window, new KeyEvent(KeyEvent.KEY_RELEASED, "", "", KeyCode.ENTER, false, false, false, false)))
         activated shouldBe 0
+        // the secondary button over a row chooses it and asks for its menu there
+        fx(list.event.pointer.menu @= everyui.event.PointerEvent(everyui.event.PointerKind.Menu, 30.0, 28.0 * 5 + 3.0))
+        asked.last shouldBe "item 5"
+        fx(list.selection.keys()) shouldBe Set("item 5")
       }
     }
     "choose one row on a remote, following the cursor" in {
