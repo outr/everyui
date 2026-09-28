@@ -620,3 +620,20 @@ tab.event.pointer.middle.attach(_ => close())
 
 Lists, trees and grouped lists mirror in a right-to-left language (`Direction.set(true)`): indentation, chevrons,
 icons and badges from the right, the scrollbar on the left, and a match line still reading left to right.
+
+### Tick boxes on a tree
+
+`checkable` says which nodes have a box (none by default; a change list's root headers, say, have none). `checked` is
+a `Var[Set[String]]` of ticked keys the app reads and sets: ticking a folder ticks what is loaded under it, a folder is
+ticked when all its boxes below are and shows mixed when only some are, and a folder whose children are not loaded yet
+stands for them (they arrive ticked as it is). `checkToggled` hears what the person turned. Space turns the ticks of the
+chosen nodes (all on, unless all are on); a click on a box turns that one. On a remote `checkOnEnter` is on, so OK on a
+node with a box ticks it and Right still opens a folder.
+
+```scala
+tree.checkable @= (node => !node.isRoot)            // "Changes" and "Unversioned Files" have no box
+tree.checked @= initiallyIncluded
+tree.checkToggled.attach(t => println(t.keys.toString + " " + t.checked))
+tree.checked.attach(keys => commitButton.enabled @= keys.exists(isFile))
+tree.checkState("Changes/src")                        // Checked, Unchecked or Mixed
+```

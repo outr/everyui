@@ -80,7 +80,11 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
     if (!model.loaded(Some(key)) && !loading().contains(key)) {
       loading @= loading() + key
       fetch(t).map { found =>
-        model.setChildren(Some(key), found)
+        model.batch {
+          model.setChildren(Some(key), found)
+          // children arriving under a ticked node are ticked, as it was
+          if (checked().contains(key)) checked @= checked() ++ under(key).filter(k => model.get(k).exists(isCheckable))
+        }
         loading @= loading() - key
       }.start()
     }
@@ -128,10 +132,11 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
         model.entry(key).foreach { e =>
           val can = isExpandable(e.value)
           val opened = can && open.contains(key)
+          val tick = if (isCheckable(e.value)) Some(checkState(key)) else None
           val line = kept.get(key) match {
             case Some(l) if l.value.exists(_.asInstanceOf[AnyRef] eq e.value.asInstanceOf[AnyRef]) && l.depth == depth &&
-              l.expandable == can && l.expanded == opened && l.loading == busy.contains(key) => l
-            case _ => TreeLine[T](key, Some(e.value), depth, can, opened, busy.contains(key))
+              l.expandable == can && l.expanded == opened && l.loading == busy.contains(key) && l.check == tick => l
+            case _ => TreeLine[T](key, Some(e.value), depth, can, opened, busy.contains(key), tick)
           }
           next(key) = line
           out += line
@@ -145,6 +150,110 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
     kept = next
     lines @= out.result()
   }
+
+  // ---- ticks ----
+
+  /** Whether a node has a box to tick. None has by default; a list of changes might tick every file and folder but not
+    * its root headers. */
+  val checkable: Var[T => Boolean] = own(Var((_: T) => false))
+  /** The keys of the ticked nodes. A node with ticked children is ticked when all of them are, and shows mixed when
+    * only some are; one whose children are not loaded yet stands for them, and they arrive ticked as it is. The app
+    * reads and sets it; what it sets is made whole (a parent follows its children). */
+  val checked: Var[Set[String]] = own(Var(Set.empty))
+  /** Nodes ticked or unticked by the person: a click on a box, Space, or OK where `checkOnEnter`. */
+  val checkToggled: Channel[CheckToggle] = Channel[CheckToggle]
+  /** Whether OK (Enter) on a node with a box ticks it, rather than activating it or opening it: on a remote, where
+    * Space is not to hand, by default. Right still opens a folder. */
+  val checkOnEnter: Var[Boolean] = own(Var(Platform.remoteNavigation()))
+
+  // the nodes something under which is ticked: those that show mixed, unless ticked themselves
+  private var partly: Set[String] = Set.empty
+  // the nodes without a box of their own everything under which is ticked
+  private var covered: Set[String] = Set.empty
+
+  def isCheckable(t: T): Boolean = checkable()(t)
+
+  /** Node `key`'s tick. */
+  def checkState(key: String): CheckState =
+    if (checked().contains(key) || covered.contains(key)) CheckState.Checked
+    else if (partly.contains(key)) CheckState.Mixed
+    else CheckState.Unchecked
+
+  /** Nodes `keys` ticked (or unticked), with everything loaded under them, and what is above them following. */
+  def setChecked(keys: Iterable[String], on: Boolean): Unit = {
+    val affected = keys.iterator.flatMap(k => Iterator(k) ++ under(k).iterator)
+      .filter(k => model.get(k).exists(isCheckable)).toSet
+    checked @= (if (on) checked() ++ affected else checked() -- affected)
+  }
+
+  /** The ticks of `keys` (the chosen nodes, else the one under the cursor) turned: all on, unless all are on already. */
+  def toggleChecks(keys: Iterable[String] = Nil): Unit = {
+    val asked = (if (keys.nonEmpty) keys.toSet else if (selection.keys().nonEmpty) selection.keys() else current().toSet)
+      .filter(k => model.get(k).exists(isCheckable))
+    if (asked.nonEmpty) {
+      val on = !asked.forall(k => checked().contains(k))
+      setChecked(asked, on)
+      checkToggled @= CheckToggle(asked, on)
+    }
+  }
+
+  // every key loaded under `key`
+  private def under(key: String): Vector[String] = {
+    val out = Vector.newBuilder[String]
+    var pending = model.childKeys(Some(key)).toList
+    while (pending.nonEmpty) {
+      val k = pending.head
+      out += k
+      pending = model.childKeys(Some(k)).toList ++ pending.tail
+    }
+    out.result()
+  }
+
+  // what is ticked made whole: a node with ticked children ticked when all of them are, gone keys let go; and which
+  // nodes are partly ticked
+  private var settling = false
+  private def settle(): Unit = if (!settling) {
+    settling = true
+    try {
+      val was = checked()
+      val now = mutable.HashSet.empty[String]
+      val some = mutable.HashSet.empty[String]
+      val full = mutable.HashSet.empty[String]
+      // after its children, each node: whether all its boxes below are ticked, whether any is, and whether it or
+      // anything under it has a box at all
+      def visit(key: String): (Boolean, Boolean, Boolean) = {
+        val kids = model.childKeys(Some(key))
+        val self = model.get(key).exists(isCheckable)
+        var all = true
+        var any = false
+        var boxes = false
+        kids.foreach { k =>
+          val (a, n, boxed) = visit(k)
+          if (boxed) {
+            boxes = true
+            all = all && a
+            any = any || n
+          }
+        }
+        val on = if (boxes) all else self && was.contains(key)
+        if (on && self) now += key
+        if (on && !self && boxes) full += key
+        if (any && !on) some += key
+        (on, on || any, self || boxes)
+      }
+      model.childKeys(None).foreach(visit)
+      partly = some.toSet
+      covered = full.toSet
+      val whole = now.toSet
+      if (whole != was) checked @= whole
+    } finally settling = false
+  }
+
+  checked.attach { _ =>
+    settle()
+    flatten()
+  }
+  checkable.attach(_ => settle())
 
   // ---- naming in place ----
 
@@ -221,7 +330,10 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
       val line = list(at)
       val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
       val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
-      if (e.key == forward && line.expandable && !line.expanded) Some(() => expand(line.key))
+      val ticks = line.value.exists(isCheckable)
+      if (e.key == Key.Space && ticks) Some(() => toggleChecks())
+      else if (e.key == Key.Enter && ticks && checkOnEnter()) Some(() => toggleChecks(List(line.key)))
+      else if (e.key == forward && line.expandable && !line.expanded) Some(() => expand(line.key))
       else if (e.key == forward && line.expanded && at + 1 < list.count && list(at + 1).depth > line.depth)
         Some(() => list.moveTo(at + 1))
       else if (e.key == back && line.expanded) Some(() => collapse(line.key))
@@ -232,8 +344,14 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
   list.clicks = (i: Int, x: Double) => {
     val line = list(i)
     val from = everyui.list.ListRow.inset + line.depth * indent()
-    if (line.expandable && x >= from - 4.0 && x < from + Tree.chevron + 2.0) {
+    val box = from + Tree.chevron + 2.0
+    if (line.expandable && x >= from - 4.0 && x < box) {
       toggle(line.key)
+      true
+    }
+    else if (line.check.nonEmpty && x >= box && x < box + Tree.box + 2.0) {
+      toggleChecks(List(line.key))
+      list.current @= Some(line.key)
       true
     }
     else false
@@ -247,6 +365,7 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
   list.menu.attach(p => p.item.value.foreach(t => menu @= ListPoint(t, p.key, p.x, p.y)))
 
   model.changed.attach { _ =>
+    settle()
     val open = expanded().filter(model.contains)
     if (open.size != expanded().size) expanded @= open
     val busy = loading().filter(model.contains)
@@ -269,6 +388,8 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
 object Tree {
   /** The chevron's size. */
   val chevron: Double = 18.0
+  /** A tick box's size. */
+  val box: Double = 18.0
   /** The key of the row a new node is named in. */
   val newKey: String = "\u0000new"
   /** How long a closed node is held under a drag before it opens, in seconds. */
