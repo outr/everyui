@@ -24,6 +24,8 @@ class Component(val node: RenderNode) {
     val undo = cleanups
     cleanups = Nil
     undo.foreach(f => f())
+    // what moves on its own stops: a Roku runs it on the node, which is not coming back
+    if (ownMotion) node.setMotion(Nil)
     // each property bound to something (`color := Theme.text()`) stops listening to it, so what it is bound to no
     // longer holds it; and the size, which a screen binds to its host's
     owned.foreach(v => Component.unbind(v))
@@ -82,7 +84,11 @@ class Component(val node: RenderNode) {
 
   /** Properties moving on their own, run by the platform (see everyui.motion.Track): setting them replaces what was
     * moving, and Nil stops it. */
-  lazy val motion: Prop[List[Track]] = own(new Prop[List[Track]](Nil, t => node.setMotion(t)))
+  lazy val motion: Prop[List[Track]] = own(new Prop[List[Track]](Nil, t => {
+    ownMotion = t.nonEmpty
+    node.setMotion(t)
+  }))
+  private var ownMotion = false
 
   lazy val color: Prop[Color] = own(new Prop[Color](Color.Black, c => node.setColor(c.toHex)))
   lazy val backgroundColor: Prop[Color] =
