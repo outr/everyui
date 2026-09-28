@@ -575,3 +575,29 @@ rows) or after it, through the same `accepts` and `dropped`:
 keymap.add("tree.cut", "Cut", Chord("X", primary = true)) { tree.cut() }
 keymap.add("tree.paste", "Paste", Chord("V", primary = true)) { tree.paste() }
 ```
+
+### GroupedList (`everyui.list`)
+
+Results under collapsible headers, as a search finds them in files: each header shows its group's title and how many it
+holds, each result a line with what matched lit (spans are `(start, end)` pairs, end excluded) and a quieter lead before
+it (a line number). A long line starts a little before its first match. It is a `VirtualList` underneath (`list`), so
+tens of thousands of results scroll as easily as ten.
+
+```scala
+import everyui.list.{GroupedList, ResultGroup}
+
+case class Hit(file: String, row: Int, text: String, matches: Seq[(Int, Int)])
+
+val groups: Var[Vector[ResultGroup[Hit]]] = Var(Vector.empty)
+val results = new GroupedList[Hit](groups, h => h.file + ":" + h.row, _.text, _.matches, h => (h.row + 1).toString)
+groups @= hits.groupBy(_.file).toVector.map((file, found) =>
+  ResultGroup(file, file, found.toVector, icon = Some(MaterialIcon.Description)))
+results.activated.attach(hit => openAt(hit.file, hit.row))
+Keymap.global.add("search.next", "Next result", Chord("F4")) { results.nextResult().foreach(show) }
+Keymap.global.add("search.previous", "Previous result", Chord("F4", shift = true)) { results.previousResult().foreach(show) }
+```
+
+The arrows go through headers and results alike, across groups; Left on a result goes to its header and on an open
+header closes it; Right opens a header or goes to its first result; Enter or a click on a header opens or closes it;
+Enter or a double click on a result activates it. `collapsed` holds the closed groups' keys; `expandAll`,
+`collapseAll`.
