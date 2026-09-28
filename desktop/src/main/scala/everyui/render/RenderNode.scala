@@ -290,6 +290,9 @@ class RenderNode(val fx: Node) {
       PointerKind.Enter -> MouseEvent.MOUSE_ENTERED, PointerKind.Leave -> MouseEvent.MOUSE_EXITED, PointerKind.Click -> MouseEvent.MOUSE_CLICKED)
     fx.setPickOnBounds(true)   // a transparent Pane is not hit-tested unless told to be
     fx.addEventHandler(kinds(kind), (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
+    // a pointer moving with a button held is a drag, which JavaFX sends only to the node it went down on: a move all
+    // the same, as a browser's pointermove is, so a split's handle follows it
+    if (kind == PointerKind.Move) fx.addEventHandler(MouseEvent.MOUSE_DRAGGED, (e: MouseEvent) => f(e.getSceneX, e.getSceneY))
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
@@ -307,6 +310,15 @@ class RenderNode(val fx: Node) {
 
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
+  /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"); "" for the default. */
+  def setCursor(name: String): Unit = fx.setCursor(name match {
+    case "col-resize" | "ew-resize" => javafx.scene.Cursor.H_RESIZE
+    case "row-resize" | "ns-resize" => javafx.scene.Cursor.V_RESIZE
+    case "pointer" => javafx.scene.Cursor.HAND
+    case "text" => javafx.scene.Cursor.TEXT
+    case "move" => javafx.scene.Cursor.MOVE
+    case _ => null
+  })
 
   def setPositionType(name: String): Unit = ()
 

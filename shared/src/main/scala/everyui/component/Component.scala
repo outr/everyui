@@ -135,6 +135,9 @@ class Component(val node: RenderNode) {
 
   /** What a pointer resting here says; nothing where there is no pointer. */
   lazy val tooltip: Prop[String] = own(new Prop[String]("", t => node.setTooltip(t)))
+  /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"), where there is a
+    * pointer to shape; "" leaves the platform's own. */
+  lazy val cursor: Prop[String] = own(new Prop[String]("", c => node.setCursor(c)))
   /** What this is to whatever reads the page rather than looking at it (`Semantics`): a heading, the main content, a
     * set of links. On the web it is the element's ARIA role, level and label; elsewhere, where the platform has one, its
     * accessibility role. */

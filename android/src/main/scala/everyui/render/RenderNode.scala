@@ -565,6 +565,8 @@ class RenderNode(val view: View) {
         t.setHorizontallyScrolling(false)
       } else {
         // not wrapping still means as many lines as the words were written with (see setText)
+  /** A mouse on Android keeps its own arrow. */
+  def setCursor(name: String): Unit = ()
         val lines = RenderNode.lineCount(t.getText)
         t.setHorizontallyScrolling(lines <= 1)
         t.setMaxLines(lines)

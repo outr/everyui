@@ -167,6 +167,8 @@ class RenderNode(val sg: SGNode) {
   /** The picture as it is: no tint here yet. */
   def setTint(hex: String): Unit = ()
 
+  /** No pointer to show. */
+  def setCursor(name: String): Unit = ()
   /** No edge: a SceneGraph Rectangle has none to draw. */
   def setBorder(width: Double, hex: String): Unit = ()
   /** A gradient is its first colour here. */

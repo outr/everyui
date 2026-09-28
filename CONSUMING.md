@@ -175,3 +175,34 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
 - `ImageViewer`: pictures shown full screen, one at a time.
 - `Mirror`: parts placed by hand, mirrored for right-to-left languages.
 - `TextOutline.overPicture` and `TextOutline.overPictureLight`: edges for text over pictures.
+
+## App chrome
+
+Pieces most apps need around their content, each in a package of its own. They work with a pointer, a keyboard and a
+remote alike, and take their words from the app (or from `everyui.i18n.Words` for OK, Cancel and the like).
+
+### SplitPane (`everyui.split`)
+
+Two parts side by side, or one over the other with `vertical = true`, and a handle between them that a pointer drags.
+`ratio` is the first side's share (0 to 1): pass a Var the app keeps and saves. Each side keeps to its minimum
+(`minFirst`, `minSecond`) while there is room for both. The `collapsible` side folds away on a double-click on the
+handle, when dragged most of the way past its minimum, or by `toggle()`, and comes back at its ratio. The arrows cross
+from one side to the other, and a split can be a side of another.
+
+```scala
+import everyui.split.{SplitPane, SplitSide}
+
+val sidebar = Var(Platform.setting("sidebar").toDoubleOption.getOrElse(0.25))
+sidebar.attach(r => Platform.saveSetting("sidebar", r.toString))
+val split = new SplitPane(tree, new SplitPane(editor, console, vertical = true, ratio = Var(0.7)),
+  ratio = sidebar, collapsible = Some(SplitSide.First))
+split.size.width := ui.size.width()
+split.size.height := ui.size.height()
+
+Keymap.global.add("sidebar.toggle", "Toggle sidebar", Chord("B", primary = true)) { split.toggle() }
+Keymap.global.add("sidebar.grow", "Wider sidebar", Chord.parse("Primary+Alt+ArrowRight")) { split.grow() }
+Keymap.global.add("sidebar.shrink", "Narrower sidebar", Chord.parse("Primary+Alt+ArrowLeft")) { split.shrink() }
+```
+
+`split.handle.focusable @= true` puts the handle in the focus order too: the arrows along it move it, Enter folds.
+The first side is always the left (or top) one, in a right-to-left language too.

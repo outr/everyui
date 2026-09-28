@@ -247,6 +247,8 @@ class RenderNode(val el: html.Element) {
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
   def setTooltip(text: String): Unit = el.title = text
+  /** The pointer's shape over it, by its CSS name ("col-resize", "text"); "" leaves the page's own. */
+  def setCursor(name: String): Unit = el.style.cursor = name
 
   def setPositionType(name: String): Unit = el.style.position = if (name.isEmpty) "static" else name
 

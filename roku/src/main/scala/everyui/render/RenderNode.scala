@@ -291,6 +291,8 @@ class RenderNode(val sg: SGNode) {
     uiSetWrap(sg, wrapping)
     spaceLines()
   }
+  /** No pointer to show. */
+  def setCursor(name: String): Unit = ()
 
   def setImageSource(uri: String): Unit = {
     imageUri = uri
