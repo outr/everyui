@@ -60,9 +60,19 @@ class SwiftEmitter(
       case other              => brStr(other.value.toString)
     }
 
+    /** Where a tree is in the Scala sources, as ` (path:line)` (the path from the source root where it is under it), for
+      * the gaps the build lists. */
+    def where(t: Tree): String =
+      try {
+        val path = Path.of(t.pos.sourceFile.path)
+        val shown = sourceRoot.filter(r => path.startsWith(r)).map(r => r.relativize(path)).getOrElse(path)
+        s" ($shown:${t.pos.startLine + 1})"
+      }
+      catch { case _: Throwable => "" }
+
     def todo(t: Tree): String = {
       val label = t.getClass.getSimpleName
-      todos += s"unsupported: $label"
+      todos += s"unsupported: $label${where(t)}"
       s"RtTodo(${brStr(label)})"
     }
 
@@ -121,9 +131,19 @@ class SwiftEmitter(
       case other              => brStr(other.value.toString)
     }
 
+    /** Where a tree is in the Scala sources, as ` (path:line)` (the path from the source root where it is under it), for
+      * the gaps the build lists. */
+    def where(t: Tree): String =
+      try {
+        val path = Path.of(t.pos.sourceFile.path)
+        val shown = sourceRoot.filter(r => path.startsWith(r)).map(r => r.relativize(path)).getOrElse(path)
+        s" ($shown:${t.pos.startLine + 1})"
+      }
+      catch { case _: Throwable => "" }
+
     def todo(t: Tree): String = {
       val label = t.getClass.getSimpleName
-      todos += s"unsupported: $label"
+      todos += s"unsupported: $label${where(t)}"
       s"RtTodo(${swStr(label)})"
     }
 
@@ -731,7 +751,7 @@ class SwiftEmitter(
           val (fn0, args) = uncurry(fn00, args00)
           val fn = stripTypeApply(fn0)
           if (isListApply(fn))
-            return "[" + flattenVarargs(args).map(emitArgVal).mkString(", ") + "]"
+            return "[" + flattenVarargs(args).filterNot(a => fqnOf(a.tpe) == "scala.reflect.ClassTag").map(emitArgVal).mkString(", ") + "]"
           caseApply(t.tpe) match {
             case Some(_) if isCaseCtor(fn, t.tpe) && isModel(t.tpe.typeSymbol) =>
               return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
@@ -747,7 +767,7 @@ class SwiftEmitter(
           val (fn0, args) = uncurry(fn00, args00)
           val fn = stripTypeApply(fn0)
           if (isListApply(fn))
-            return rtArr(flattenVarargs(args).map(emitArgVal))
+            return rtArr(flattenVarargs(args).filterNot(a => fqnOf(a.tpe) == "scala.reflect.ClassTag").map(emitArgVal))
           caseApply(t.tpe) match {
             case Some(_) if isCaseCtor(fn, t.tpe) && isModel(t.tpe.typeSymbol) =>
               return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
@@ -1925,7 +1945,7 @@ class SwiftEmitter(
           // (`size: Double` on a component replaced its `size` feature, and every layout touching it failed quietly):
           // a gap, so the checks stop it rather than a device
           shadowedBy(vd.symbol).foreach { base =>
-            todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name}"
+            todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name} (rename it)${where(vd)}"
             sb.append(s"  RtTodo(${brStr("parameter " + vd.name + " of " + sym.name + " overwrites " + base.name + " " + vd.name)})\n")
           }
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
@@ -1980,7 +2000,7 @@ class SwiftEmitter(
       cd.body.foreach {
         case vd: ValDef if vd.symbol.flags.is(Flags.ParamAccessor) =>
           sb.append(s"  ${field("this", fieldKey(vd.symbol))} = ${brLocal(vd.name)}\n")
-          shadowedBy(vd.symbol).foreach(base => todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name}")
+          shadowedBy(vd.symbol).foreach(base => todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name} (rename it)${where(vd)}")
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
           rhsOpt match {
             case Some(r) if !isWildcardInit(r) => sb.append(emitInto(r, field("this", fieldKey(vd.symbol)))).append("\n")

@@ -100,4 +100,25 @@ RX PASS emit.list.concat = 1,2,3
 RX PASS emit.list.concat.option = 1,2,4
 RX PASS emit.list.prepend = 0,1,2
 RX PASS emit.list.appendall = 1,2,5
-RX DONE 102/102
+RX PASS emit.seq.indexwhere.array = 1 4
+RX PASS emit.seq.indexwhere.from = 2 -1
+RX PASS emit.seq.indexwhere.string = 2 3
+RX PASS emit.seq.lift = 6 true true 3
+RX PASS emit.seq.lift.value = 5
+RX PASS emit.seq.range = 0,1,2 0,3,6,9 2,3
+RX PASS emit.seq.prepend = 0,1,2,3 4,5,6,7
+RX PASS emit.seq.append = 1,2,3,4
+RX PASS emit.seq.partition = 2,4 1,3
+RX PASS emit.seq.sortwith = 3,2,1 a,b
+RX PASS emit.seq.sortwith.stable = a,d,bb,cc
+RX PASS emit.seq.reduce = 6 6
+RX PASS emit.seq.init = 1,2 5,6
+RX PASS emit.seq.updated = 1,9,3 1,6,7
+RX PASS emit.range.by = 1,4,7,10 10,7,4,1 0,5
+RX PASS emit.string.capitalize = Hello 
+RX PASS emit.seq.collect = 20,40
+RX PASS emit.seq.collectfirst = 2
+RX PASS emit.seq.array.ints = 1
+RX PASS emit.seq.fill = 1,2,3
+RX PASS emit.seq.tabulate = 0,1,4
+RX DONE 123/123

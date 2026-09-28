@@ -70,7 +70,7 @@ object Main {
     println(s"Wrote $target output to ${outDir.toAbsolutePath}")
 
     if (strict && emitter.unsupported.nonEmpty) {
-      System.err.println(s"--strict: ${emitter.unsupported.size} unsupported construct(s):")
+      System.err.println(s"The Roku compiler cannot translate ${emitter.unsupported.size} thing(s); emitted, each would do nothing on the device:")
       emitter.unsupported.foreach(g => System.err.println(s"  $g"))
       System.exit(3)
     }

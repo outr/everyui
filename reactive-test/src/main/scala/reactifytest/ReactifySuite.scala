@@ -399,5 +399,6 @@ class TxnRef(var t: Transaction)
   Collections.maps(ok, total, true)
   Collections.sets(ok, total)
   Collections.lists(ok, total)
+  Collections.seqs(ok, total)
   println("RX DONE " + ok.n.toString + "/" + total.n.toString)
 }

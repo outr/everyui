@@ -7,19 +7,27 @@ import sbt.*
   * EveryUI's `roku/emitRoku` calls it, and so does an app's build that includes this file in its meta-build. */
 object RokuChannel {
   /** Run the compiler (`compilerClasspath`, EveryUI's `compiler` project) over `classes`, resolving against
-    * `classpath`, into a fresh `out`. `sourceRoot` is where gaps are reported against; `title` names the channel. */
+    * `classpath`, into a fresh `out`. `sourceRoot` is where gaps are reported against; `title` names the channel.
+    *
+    * Anything the compiler cannot translate (a library method it does not know, a parameter that overwrites an
+    * inherited member) fails the build, each listed at its Scala source: emitted, it would compile, lint clean and do
+    * nothing on the device. `allowGaps` (or `-Deveryui.allowGaps=true`) lets such a channel through, for a look at
+    * one in progress. */
   def emit(log: String => Unit, compilerClasspath: Seq[File], classes: File, classpath: Seq[File], libraries: Seq[File],
-           out: File, sourceRoot: File, title: String): File = {
+           out: File, sourceRoot: File, title: String,
+           allowGaps: Boolean = sys.props.get("everyui.allowGaps").contains("true")): File = {
     val sep = java.io.File.pathSeparator
     IO.delete(out)
     IO.createDirectory(out)
     log(s"emitRoku: emitting a Roku channel into $out")
     val rc = sys.process.Process(
       Seq("java", "-cp", compilerClasspath.map(_.getAbsolutePath).mkString(sep), "everyui.compiler.Main") ++
+        (if (allowGaps) Nil else Seq("--strict")) ++
         libraries.map(f => s"--library=${f.getAbsolutePath}") ++
         Seq(classes.getAbsolutePath, classpath.map(_.getAbsolutePath).mkString(sep), out.getAbsolutePath,
           sourceRoot.getAbsolutePath, title)
     ).!
+    if (rc == 3) sys.error("emitRoku: the Roku compiler could not translate everything (listed above); -Deveryui.allowGaps=true emits the channel anyway")
     if (rc != 0) sys.error(s"everyui.compiler.Main exited $rc")
     out
   }

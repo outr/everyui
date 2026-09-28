@@ -97,9 +97,19 @@ class RokuEmitter(
       case other              => brStr(other.value.toString)
     }
 
+    /** Where a tree is in the Scala sources, as ` (path:line)` (the path from the source root where it is under it), for
+      * the gaps the build lists. */
+    def where(t: Tree): String =
+      try {
+        val path = Path.of(t.pos.sourceFile.path)
+        val shown = sourceRoot.filter(r => path.startsWith(r)).map(r => r.relativize(path)).getOrElse(path)
+        s" ($shown:${t.pos.startLine + 1})"
+      }
+      catch { case _: Throwable => "" }
+
     def todo(t: Tree): String = {
       val label = t.getClass.getSimpleName
-      todos += s"unsupported: $label"
+      todos += s"unsupported: $label${where(t)}"
       s"RtTodo(${brStr(label)})"
     }
 
@@ -214,7 +224,7 @@ class RokuEmitter(
 
     /** A sequence written out in full — `List(a, b)`, and the others that mean the same thing here, since every one
       * of them is a BrightScript array once emitted. */
-    val seqNames = Set("List", "Seq", "Vector", "IndexedSeq")
+    val seqNames = Set("List", "Seq", "Vector", "IndexedSeq", "Array")
     def isListApply(fn: Term): Boolean = fn match {
       case Select(q, "apply") =>
         seqNames.contains(q.symbol.name) || (q match { case Ident(n) => seqNames.contains(n); case _ => false })
@@ -959,6 +969,26 @@ class RokuEmitter(
       if (isMapTpe(t.tpe)) s"_mapToList(${emitTerm(t)})"
       else if (isOptionType(t)) s"_optToList(${emitTerm(t)})"
       else emitTerm(t)
+    /** A List, a Vector, a Seq or an Array seen through its ArrayOps (and a Set): an array here, which the sequence
+      * helpers take. */
+    def isSeqLike(recv: Term): Boolean = isCollType(recv) && !isMapTpe(recv.tpe) && !isStringLike(recv.tpe)
+    def isSeqTpe(tp: TypeRepr): Boolean =
+      isListTpe(tp) || Set("scala.collection.immutable.IndexedSeq", "scala.collection.IndexedSeq", "scala.Array").contains(fqnOf(tp))
+    def isModuleRef(q: Term): Boolean =
+      q.symbol.exists && q.symbol.flags.is(Flags.Module) || q.tpe.widen.typeSymbol.flags.is(Flags.Module)
+    /** An argument, or 0 where it is the parameter's default (`indexWhere(p, from = 0)`). */
+    def orZero(a: Term): String = {
+      val sy = unwrap(a).symbol
+      if (sy.exists && sy.name.contains("$default$")) "0" else emitArgVal(a)
+    }
+    /** `a to b` or `a until b`, in either shape (a RichInt's, or 3.10's extension in Int): its bounds, and whether it
+      * takes in the last. */
+    def rangeBounds(t: Term): Option[(Term, Term, Boolean)] = unwrap(t) match {
+      case Apply(Select(Apply(wrap, List(a)), op @ ("to" | "until")), List(b)) if isRichNumWrapper(wrap) => Some((a, b, op == "to"))
+      case Apply(Apply(f, List(a)), List(b)) if isPrimitiveExtension(stripTypeApply(f)) && Set("to", "until").contains(stripTypeApply(f).symbol.name) =>
+        Some((a, b, stripTypeApply(f).symbol.name == "to"))
+      case _ => None
+    }
     def isListTpe(tp: TypeRepr): Boolean = {
       val f = fqnOf(tp)
       f == "scala.collection.immutable.List" || f == "scala.collection.immutable.Seq"
@@ -973,7 +1003,8 @@ class RokuEmitter(
     // (`Int.until(0)(n)`, `Double.compare(a)(b)`, `Double.abs(a)`), and `k -> v` by a call of a top-level `->`.
     // Both shapes are recognised, so the emitter reads 3.9's and 3.10's TASTy alike.
     def primitiveCompanions: Set[String] = Set("scala.Int", "scala.Long", "scala.Double", "scala.Float", "scala.Short", "scala.Byte", "scala.Char")
-    def primitiveExtensionNames: Set[String] = Set("compare", "until", "to", "max", "min", "abs", "floor", "ceil", "round")
+    def primitiveExtensionNames: Set[String] = Set("compare", "until", "to", "max", "min", "abs", "floor", "ceil", "round",
+      "isDigit", "isLetter", "isLetterOrDigit", "isWhitespace", "isSpaceChar", "isUpper", "isLower")
     def isPrimitiveExtension(fn: Term): Boolean =
       fn.symbol.exists && fn.symbol.isDefDef && primitiveCompanions.contains(ownerFqn(fn.symbol))
         && primitiveExtensionNames.contains(fn.symbol.name)
@@ -985,6 +1016,9 @@ class RokuEmitter(
       case "to" if args.size == 2      => s"_toIncl(${emitTerm(args(0))}, ${emitTerm(args(1))})"
       case "max" | "min" if args.size == 2 => emitMath(name, args)
       case "abs" | "floor" | "ceil" | "round" if args.size == 1 => emitMath(name, args)
+      // a Char's tests (a Char is a one-character string here)
+      case "isDigit" | "isLetter" | "isLetterOrDigit" | "isWhitespace" | "isSpaceChar" | "isUpper" | "isLower" if args.size == 1 =>
+        s"_ch_$name(${emitTerm(args.head)})"
       case _ => todo(fn)
     }
     def isRichNumWrapper(wrap: Term): Boolean = {
@@ -1228,7 +1262,7 @@ class RokuEmitter(
         (isCollType(recv) || isStringLike(recv.tpe) || isOptionType(recv))
     def libraryGap(recv: Term, name: String): String = {
       val label = name + " on " + fqnOf(recv.tpe)
-      todos += s"unsupported: $label"
+      todos += s"unsupported: $label${where(recv)}"
       // A gap stands in a VALUE position, so it must degrade into something of roughly the shape the caller expects.
       // `RtTodo` answers with a Label node, which is right where a gap is a thing to draw and catastrophic anywhere
       // else: the next thing to iterate it dies, and the fault surfaces in a handler far from the method that is
@@ -1440,7 +1474,7 @@ class RokuEmitter(
           val (fn0, args) = uncurry(fn00, args00)
           val fn = stripTypeApply(fn0)
           if (isListApply(fn))
-            return "[" + flattenVarargs(args).map(emitArgVal).mkString(", ") + "]"
+            return "[" + flattenVarargs(args).filterNot(a => fqnOf(a.tpe) == "scala.reflect.ClassTag").map(emitArgVal).mkString(", ") + "]"
           caseApply(t.tpe) match {
             case Some(_) if isCaseCtor(fn, t.tpe) && isModel(t.tpe.typeSymbol) =>
               return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
@@ -1627,6 +1661,43 @@ class RokuEmitter(
               if (isMapTpe(t.tpe)) s"_mapConcat(_mapEmpty(), $joined)"
               else if (isSetTpe(t.tpe)) s"_distinct($joined)"
               else joined
+            // ── a sequence's library methods (List, Vector, Seq, an Array's ArrayOps; a String's characters where it
+            // answers with a number) ──
+            case Select(Select(recv, "lift"), "apply") if isSeqLike(recv) && args.size == 1 =>
+              s"_lift(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // (the start is a default argument where it is left out)
+            case Select(recv, "indexWhere") if (isSeqLike(recv) || isStringLike(recv.tpe)) && args.size == 2 =>
+              s"_arrIndexWhereFrom(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${orZero(args(1))})"
+            case Select(q, name @ ("range" | "fill" | "tabulate")) if isSeqTpe(t.tpe) && isModuleRef(q) =>
+              val passed = args.filterNot(a => fqnOf(a.tpe).startsWith("scala.math."))   // (a range's Integral)
+              name match {
+                case "range" if passed.size == 2 => s"_rangeBy(${emitTerm(passed(0))}, ${emitTerm(passed(1))}, 1, false)"
+                case "range" if passed.size == 3 =>
+                  s"_rangeBy(${emitTerm(passed(0))}, ${emitTerm(passed(1))}, ${emitTerm(passed(2))}, false)"
+                case "fill" if passed.size == 2 => s"_fill(${emitTerm(passed(0))}, ${emitThunk(passed(1))})"
+                case "tabulate" if passed.size == 2 => s"_tabulate(${emitTerm(passed(0))}, ${emitArgVal(passed(1))})"
+                case _ => libraryGap(q, name)
+              }
+            case Select(recv, "partition") if isSeqLike(recv) && args.size == 1 =>
+              s"_partition(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "sortWith") if isSeqLike(recv) && args.size == 1 =>
+              s"_sortWith(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "reduce" | "reduceLeft") if isSeqLike(recv) && args.size == 1 =>
+              s"_reduce(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            case Select(recv, "updated") if isSeqLike(recv) && args.size == 2 =>
+              s"_seqUpdated(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
+            // `xs.collect { case … }`: the cases as one function, an element none of them takes (its MatchError) left out
+            case Select(recv, "collect") if isSeqLike(recv) && args.size == 1 =>
+              s"_collect(${emitTerm(recv)}, ${emitArgVal(args.head)}, false)"
+            case Select(recv, "collectFirst") if isSeqLike(recv) && args.size == 1 =>
+              s"_collect(${emitTerm(recv)}, ${emitArgVal(args.head)}, true)"
+            // `a to b by s` and `a until b by s`: the bounds, since the range made first is already its values (and
+            // counting down it has none)
+            case Select(recv, "by") if fqnOf(recv.tpe).startsWith("scala.collection.immutable.Range") && args.size == 1 =>
+              rangeBounds(recv) match {
+                case Some((a, b, incl)) => s"_rangeBy(${emitTerm(a)}, ${emitTerm(b)}, ${emitTerm(args.head)}, $incl)"
+                case None => libraryGap(recv, "by")
+              }
             case Select(recv, "contains") if isSetTpe(recv.tpe) =>
               s"_setHas(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "get" | "apply") if isMapTpe(recv.tpe) && args.size == 1 =>
@@ -1731,7 +1802,7 @@ class RokuEmitter(
               s"${moduleSyms(fn.symbol.owner)}_${memberName(fn.symbol, fn.symbol.name)}(${emitArgs(args, fn.symbol)})"
             case Select(recv, ":+" | "$colon$plus") =>
               s"_append(${emitTerm(recv)}, ${emitTerm(args.head)})"
-            case Select(recv, "$plus$colon") =>  // x +: xs (prepend)
+            case Select(recv, "+:" | "$plus$colon") =>  // x +: xs (prepend)
               s"_prepend(${emitTerm(args.head)}, ${emitTerm(recv)})"
             case Select(recv, "::") =>  // x :: xs (cons/prepend); recv is xs
               s"_prepend(${emitTerm(args.head)}, ${emitTerm(recv)})"
@@ -2102,6 +2173,10 @@ class RokuEmitter(
         case Select(Apply(wrap, List(x)), m @ ("isDigit" | "isLetter" | "isLetterOrDigit" | "isWhitespace" | "isSpaceChar" | "isUpper" | "isLower")) if isRichNumWrapper(wrap) => s"_ch_$m(${emitTerm(x)})"
         case Select(q, "indices") if isCollType(q) => s"_until(0, ${emitTerm(q)}.count())"
         case Select(q, "reverse") if isCollType(q)   => s"_reverse(${emitTerm(q)})"
+        case Select(q, "init") if isSeqLike(q) => s"_dropRight(${emitTerm(q)}, 1)"
+        case Select(q, "capitalize") if isStringLike(q.tpe) => s"_strCapitalize(${emitTerm(q)})"
+        // `xs.lift` as a function of its own, where it is not applied at once (see `_lift`)
+        case Select(q, "lift") if isSeqLike(q) => s"{ fn: _liftCall, env: { xs: ${emitTerm(q)} } }"
         case Select(q, "distinct") if isCollType(q)  => s"_distinct(${emitTerm(q)})"
         // a Set is an array of distinct values here, so a collection made one is its distinct values (a Map's, its pairs)
         case Select(q, "toSet") if isMapTpe(q.tpe) => s"_mapToList(${emitTerm(q)})"
@@ -2868,7 +2943,7 @@ class RokuEmitter(
           // (`size: Double` on a component replaced its `size` feature, and every layout touching it failed quietly):
           // a gap, so the checks stop it rather than a device
           shadowedBy(vd.symbol).foreach { base =>
-            todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name}"
+            todos += s"parameter `${vd.name}` of ${sym.name} overwrites ${base.name}.${vd.name} (rename it)${where(vd)}"
             sb.append(s"  RtTodo(${brStr("parameter " + vd.name + " of " + sym.name + " overwrites " + base.name + " " + vd.name)})\n")
           }
         case vd @ ValDef(_, _, rhsOpt) if !vd.symbol.flags.is(Flags.Lazy) && userMember(vd.symbol) =>
@@ -5479,6 +5554,10 @@ class RokuEmitter(
       |function refArrayOps(a as object) as object
       |    return a
       |end function
+      |function intArrayOps(a as object) as object : return a : end function
+      |function longArrayOps(a as object) as object : return a : end function
+      |function doubleArrayOps(a as object) as object : return a : end function
+      |function booleanArrayOps(a as object) as object : return a : end function
       |' Option.option2Iterable, for an Option used where a collection is wanted (a for-comprehension, a flatMap):
       |' None is invalid here as everywhere, Some is its value, and the iterable is empty or the one element.
       |function option2Iterable(o as dynamic) as object
@@ -5729,6 +5808,122 @@ class RokuEmitter(
       |    return true
       |end function
       |
+      |' ── sequences (arrays here): the library methods past the core ones ───────────────────────────────────────
+      |
+      |' xs.lift(i): the element at i, or None (invalid) outside the sequence
+      |function _lift(xs as dynamic, i as dynamic) as dynamic
+      |    items = _rtItems(xs)
+      |    if i < 0 or i >= items.count() then return invalid
+      |    return items[i]
+      |end function
+      |function _liftCall(env as object, args as object) as dynamic
+      |    return _lift(env.xs, args[0])
+      |end function
+      |function _arrIndexWhereFrom(xs as dynamic, cl as dynamic, at as integer) as integer
+      |    items = _rtItems(xs)
+      |    if at < 0 then at = 0
+      |    for ii = at to items.count() - 1
+      |        if RtInvoke(cl, [items[ii]]) then return ii
+      |    end for
+      |    return -1
+      |end function
+      |' a to b by stride, a until b by stride, and List.range(a, b, stride)
+      |function _rangeBy(a as dynamic, b as dynamic, stride as dynamic, incl as boolean) as object
+      |    r = []
+      |    if stride = 0 then return r
+      |    v = a
+      |    if stride > 0
+      |        while v < b or (incl and v = b)
+      |            r.push(v)
+      |            v = v + stride
+      |        end while
+      |    else
+      |        while v > b or (incl and v = b)
+      |            r.push(v)
+      |            v = v + stride
+      |        end while
+      |    end if
+      |    return r
+      |end function
+      |' Seq.fill(n)(elem), the element made again for each; Seq.tabulate(n)(f)
+      |function _fill(n as integer, thunk as dynamic) as object
+      |    r = []
+      |    for i = 1 to n
+      |        r.push(RtForce(thunk))
+      |    end for
+      |    return r
+      |end function
+      |function _tabulate(n as integer, cl as dynamic) as object
+      |    r = []
+      |    for i = 0 to n - 1
+      |        r.push(RtInvoke(cl, [i]))
+      |    end for
+      |    return r
+      |end function
+      |function _partition(xs as dynamic, cl as dynamic) as object
+      |    yes = []
+      |    no = []
+      |    for each x in _rtItems(xs)
+      |        if RtInvoke(cl, [x]) then yes.push(x) else no.push(x)
+      |    end for
+      |    return Tuple2(yes, no)
+      |end function
+      |' xs.sortWith(lt), stable as Scala's: an element goes before an earlier one only if it is less
+      |function _sortWith(xs as dynamic, lt as dynamic) as object
+      |    r = []
+      |    for each x in _rtItems(xs)
+      |        i = r.count()
+      |        while i > 0
+      |            if not RtInvoke(lt, [x, r[i - 1]]) then exit while
+      |            i = i - 1
+      |        end while
+      |        r.push(x)
+      |        j = r.count() - 1
+      |        while j > i
+      |            r[j] = r[j - 1]
+      |            j = j - 1
+      |        end while
+      |        r[i] = x
+      |    end for
+      |    return r
+      |end function
+      |function _reduce(xs as dynamic, op as dynamic) as dynamic
+      |    items = _rtItems(xs)
+      |    if items.count() = 0 then RtThrow(RuntimeException_new("empty.reduceLeft"))
+      |    acc = items[0]
+      |    for ii = 1 to items.count() - 1
+      |        acc = RtInvoke(op, [acc, items[ii]])
+      |    end for
+      |    return acc
+      |end function
+      |function _seqUpdated(xs as dynamic, i as integer, x as dynamic) as object
+      |    items = _rtItems(xs)
+      |    if i < 0 or i >= items.count() then RtThrow(RuntimeException_new(_str(i) + " is out of bounds (0 until " + _str(items.count()) + ")"))
+      |    r = []
+      |    r.Append(items)
+      |    r[i] = x
+      |    return r
+      |end function
+      |' xs.collect { case … } (and collectFirst): the cases are one function, and an element none of them takes throws its
+      |' MatchError, which leaves it out
+      |function _collect(xs as dynamic, pf as dynamic, first as boolean) as dynamic
+      |    r = []
+      |    for each x in _rtItems(xs)
+      |        taken = false
+      |        try
+      |            v = RtInvoke(pf, [x])
+      |            taken = true
+      |        catch e
+      |            if e._cls <> "MatchError" then RtThrow(e)
+      |        end try
+      |        if taken
+      |            if first then return v
+      |            r.push(v)
+      |        end if
+      |    end for
+      |    if first then return invalid
+      |    return r
+      |end function
       |""".stripMargin}
 
 object RokuEmitter {
