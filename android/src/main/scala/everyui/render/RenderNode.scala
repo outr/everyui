@@ -565,6 +565,8 @@ class RenderNode(val view: View) {
   }
   def setTooltip(text: String): Unit =
     if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
+  /** A mouse on Android keeps its own arrow. */
+  def setCursor(name: String): Unit = ()
 
   def setPositionType(name: String): Unit = ()
 
@@ -578,8 +580,6 @@ class RenderNode(val view: View) {
         t.setHorizontallyScrolling(false)
       } else {
         // not wrapping still means as many lines as the words were written with (see setText)
-  /** A mouse on Android keeps its own arrow. */
-  def setCursor(name: String): Unit = ()
         val lines = RenderNode.lineCount(t.getText)
         t.setHorizontallyScrolling(lines <= 1)
         t.setMaxLines(lines)
