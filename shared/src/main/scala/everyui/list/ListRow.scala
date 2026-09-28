@@ -19,7 +19,7 @@ class ListRow[T] extends Container {
   val editing: Var[Boolean] = own(Var(false))
   val drop: Var[Option[DropPosition]] = own(Var(None))
 
-  /** Where an editor over this row starts, from its left edge: where the label does. */
+  /** Where an editor over this row starts, from its start edge (the right, right to left): where the label does. */
   def editStart: Double = ListRow.inset
 
   backgroundColor := ListRow.fill(selected(), current(), active(), drop().contains(DropPosition.Into))
@@ -30,6 +30,11 @@ class ListRow[T] extends Container {
 }
 
 object ListRow {
+  /** Where a piece `length` long that starts `start` from a row's start goes, from its left, in a row `width` wide:
+    * the same in a left-to-right language, from the right in a right-to-left one. */
+  def along(start: Double, length: Double, width: Double): Double =
+    if (everyui.i18n.Direction.rtl()) width - start - length else start
+
   /** Space before the label. */
   val inset: Double = 8.0
 

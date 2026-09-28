@@ -2,6 +2,7 @@ package everyui.list
 
 import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent, Modifiers, PointerEvent}
+import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
@@ -49,7 +50,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   /** Keys a list built on this one answers first (a tree's Left and Right): the action for a press, if it takes it. */
   var keys: KeyEvent => Option[() => Unit] = _ => None
-  /** A click at `x` (from the row's left) on row `index` that a list built on this one takes itself (a tree's chevron). */
+  /** A click at `x` (from the row's start edge: its right, right to left) on row `index` that a list built on this
+    * one takes itself (a tree's chevron). */
   var clicks: (Int, Double) => Boolean = (_, _) => false
 
   private var shown: Vector[T] = Vector.empty
@@ -290,7 +292,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val down = y - absoluteTop + offset()
     if (down >= 0.0 && down < total) {
       val i = indexAt(down)
-      if (!clicks(i, x - absoluteLeft)) press(i, held)
+      val along = if (Direction.rtl()) absoluteLeft + size.width() - x else x - absoluteLeft
+      if (!clicks(i, along)) press(i, held)
     }
   }
 
@@ -469,7 +472,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       val i = d.target.map(indexOf).getOrElse(-1)
       val y = if (i < 0) 0.0 else if (d.position == DropPosition.Before) top(i) else top(i) + heightAt(i)
       val start = if (i < 0) ListRow.inset else placed.get(i).map(_.editStart).getOrElse(ListRow.inset)
-      dropLine.position.left @= start
+      dropLine.position.left @= ListRow.along(start, math.max(0.0, width - start - 4.0), width)
       dropLine.size.width @= math.max(0.0, width - start - 4.0)
       dropLine.position.top @= y - offset() - 1.0
       dropLine.visible @= true
@@ -572,7 +575,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     thumb.visible @= all > height + 0.5
     val length = math.max(24.0, height * height / math.max(1.0, all))
     thumb.size.height @= length
-    thumb.position.left @= width - 8.0
+    thumb.position.left @= (if (Direction.rtl()) 2.0 else width - 8.0)
     thumb.position.top @= (if (furthest <= 0.0) 0.0 else offset() / furthest * (height - length))
   }
 
@@ -701,7 +704,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       val start = placed.get(i).map(_.editStart).getOrElse(ListRow.inset) - 6.0
       val y = top(i) - offset()
       f.visible @= y + heightAt(i) > 0.0 && y < height
-      f.position.left @= start
+      f.position.left @= ListRow.along(start, width - start - 4.0, width)
       f.position.top @= y
       f.size.width @= width - start - 4.0
       f.size.height @= heightAt(i)
@@ -763,6 +766,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     refresh()
   }
   items.attach(_ => reindex())
+  follow(Direction.rtl, (_: Boolean) => refresh())
   selection.keys.attach(_ => refresh())
   offset.attach(_ => refresh())
   size.width.attach(_ => clip())

@@ -604,3 +604,18 @@ The arrows go through headers and results alike, across groups; Left on a result
 header closes it; Right opens a header or goes to its first result; Enter or a click on a header opens or closes it;
 Enter or a double click on a result activates it. `collapsed` holds the closed groups' keys; `expandAll`,
 `collapseAll`.
+
+### Pointer buttons and modifiers
+
+A `PointerEvent` carries its `button` (`PointerEvent.PrimaryButton`, `MiddleButton`, `SecondaryButton`; a finger is the
+primary) and the modifiers held with it (`ctrl`, `meta`, `alt`, `shift`, and `primary` for the platform's shortcut
+modifier). `click` is the primary button's everywhere; `event.pointer.menu` is the secondary's; `event.pointer.middle` is
+a middle click, which closes a closable `TabItem`.
+
+```scala
+row.event.click.attach(e => if (e.shift) extend() else if (e.primary) toggle() else pick())
+tab.event.pointer.middle.attach(_ => close())
+```
+
+Lists, trees and grouped lists mirror in a right-to-left language (`Direction.set(true)`): indentation, chevrons,
+icons and badges from the right, the scrollbar on the left, and a match line still reading left to right.

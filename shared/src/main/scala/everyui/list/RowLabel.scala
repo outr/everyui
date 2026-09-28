@@ -13,6 +13,7 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
     icon := look.icon.getOrElse(MaterialIcon.Empty)
     color := look.iconColor.getOrElse(Theme.muted())
     visible := look.icon.nonEmpty
+    position.left := ListRow.along(0.0, points + 4.0, width)
     position.top := (height - (points + 4.0)) / 2.0
   }
   private val iconRoom: Val[Double] = own(Val(if (look.icon.nonEmpty) points + 10.0 else 0.0))
@@ -21,7 +22,7 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
     font.size @= points
     font.weight := look.weight
     color := look.color.getOrElse(Theme.text())
-    position.left := iconRoom()
+    position.left := ListRow.along(iconRoom(), size.width(), width)
     position.top := (height - size.height()) / 2.0
   }
   private val badge = new TextView {
@@ -29,7 +30,7 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
     font.size @= points - 2.0
     color := look.badgeColor.getOrElse(Theme.muted())
     visible := look.badge.nonEmpty
-    position.left := width - size.width() - 8.0
+    position.left := ListRow.along(width - size.width() - 8.0, size.width(), width)
     position.top := (height - size.height()) / 2.0
   }
 
@@ -41,6 +42,6 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
   node.setClip(size.width(), size.height())
   children ++= List(glyph, label, badge)
 
-  /** Where the text starts, from the left. */
+  /** Where the text starts, from the start edge. */
   def textStart: Double = iconRoom()
 }

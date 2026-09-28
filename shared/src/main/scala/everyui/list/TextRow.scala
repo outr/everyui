@@ -7,7 +7,7 @@ import reactify.*
 class TextRow[T](labelOf: T => String, decorate: T => Decoration = (_: T) => Decoration.plain) extends ListRow[T] {
   val label: RowLabel = new RowLabel(if (editing()) "" else item().map(labelOf).getOrElse(""),
     item().map(decorate).getOrElse(Decoration.plain), TextRow.this.size.width() - ListRow.inset, TextRow.this.size.height())
-  label.position.left @= ListRow.inset
+  label.position.left := ListRow.along(ListRow.inset, label.size.width(), size.width())
   children += label
 
   override def editStart: Double = ListRow.inset + label.textStart

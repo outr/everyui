@@ -2,7 +2,6 @@ package everyui.list
 
 import everyui.component.{Container, TextView}
 import everyui.component.types.WhiteSpace
-import everyui.layout.HorizontalLayout
 import everyui.theme.Theme
 import reactify.*
 
@@ -15,7 +14,7 @@ class MatchText(width: => Double, height: => Double, points: Double = 13.0) exte
   val lead: Var[String] = own(Var(""))
 
   private val run = new Container {
-    layout @= Some(HorizontalLayout(0.0))
+    position.left := ListRow.along(0.0, size.width(), MatchText.this.size.width())
     position.top := (height - size.height()) / 2.0
   }
   private var pool: Vector[TextView] = Vector.empty
@@ -44,6 +43,17 @@ class MatchText(width: => Double, height: => Double, points: Double = 13.0) exte
     val parts = MatchText.pieces(text(), spans())
     val lit = parts.zipWithIndex.map { case ((words, on), i) => piece(words, on, false, i + 1) }
     val views = (if (lead().isEmpty) Vector.empty else Vector(piece(lead() + " ", false, true, 0))) ++ lit
+    // one after another as the text reads, which is left to right whatever the app's language (code, a path): a
+    // layout would put them right to left in a right-to-left one
+    var before: Option[TextView] = None
+    views.foreach { v =>
+      val prior = before
+      v.position.left := prior.map(p => p.position.left() + p.size.width()).getOrElse(0.0)
+      before = Some(v)
+    }
+    val last = before
+    run.size.width := last.map(l => l.position.left() + l.size.width()).getOrElse(0.0)
+    run.size.height := views.map(_.size.height()).maxOption.getOrElse(0.0)
     run.children @= views
   }
 
