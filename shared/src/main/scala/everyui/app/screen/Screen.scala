@@ -1,6 +1,7 @@
 package everyui.app.screen
 
 import everyui.async.Task
+import everyui.keymap.Keymap
 import everyui.seo.SEO
 import everyui.task.TaskSupport
 
@@ -12,6 +13,10 @@ trait Screen extends TaskSupport {
     * (`everyui.seo.SEO`): the page's head follows it. It is read as a reactive value, so one built from what the screen
     * has loaded is written again when that arrives. None, the default, leaves the head as it is. */
   protected def seo: Option[SEO] = None
+
+  /** This screen's keyboard shortcuts, in force only while it is the one showing, and asked before the global ones
+    * (`everyui.keymap.Keymap`). */
+  lazy val keymap: Keymap = new Keymap
 
   protected def init(): Task[Unit] = Task.unit
   protected def load(): Task[Unit] = Task.unit

@@ -4,8 +4,9 @@
 // Roku has no Scala runtime, so `compiler/` — everyui's own Scala 3 TASTy →
 // BrightScript compiler — translates the same code into a SceneGraph channel.
 
-ThisBuild / scalaVersion := "3.10.0-RC2"
+ThisBuild / scalaVersion := "3.10.0-RC3"
 ThisBuild / organization := "com.outr"
+ThisBuild / version := "0.1.0-SNAPSHOT"
 // reactify is compiled from its source tree (the `reactive` project); the published jar Spice depends on must not
 // come along too (R8 refuses a class defined twice)
 ThisBuild / excludeDependencies += ExclusionRule("com.outr", "reactify_3")
@@ -141,18 +142,74 @@ def networkBackend(name: String): File = (file("network") / name / "src" / "main
 def backendSources(backend: String, spice: Boolean): Seq[File] =
   Seq(sharedSources, appSources, protocolSources, networkSources, networkBackend(backend)) ++ (if (spice) Seq(networkBackend("spice")) else Nil)
 
-// --- web: the DOM backend ------------------------------------------------
-// NOT an sbt project. The web backend is real Scala.js over the live DOM (see
-// web/src/.../RenderNode.scala for why), and Scala.js has no sbt 2 plugin —
-// only `sbt-scalajs_2.12_1.0` exists, so this build cannot host it. scala-cli
-// builds it instead, pulling in the same shared/ sources:
+// --- published: what an app outside this build depends on (CONSUMING.md) ----------------------------------------
+// `sbt publishLocal` publishes these, and only these:
+//
+//   everyui-web      (Scala.js)   the shared UI layer over the DOM backend
+//   everyui-network  (JVM and JS) HTTP and DurableSocket with Spice as the core, a backend for each
+//   everyui-seo      (JVM)        what an app's server writes for search and answer engines
+//
+// The shared layer names `everyui.render.RenderNode` and a backend supplies it at compile time, so it ships inside
+// each backend's artifact rather than as a core of its own. reactify comes as its published snapshot here (4.2.1,
+// what the `reactive` project compiles from source), which evicts the older release Spice depends on.
+lazy val reactifyVersion = "4.2.1-SNAPSHOT"
+lazy val published = Seq(publish / skip := false)
+
+// --- web: the DOM backend -----------------------------------------------------
+// Real Scala.js over the live DOM (see web/src/.../RenderNode.scala for why), with the shared layer compiled in. The
+// example app's bundle is still built by scala-cli (web/project.scala), which compiles the same sources with the app:
 //
 //   mkdir -p web/out-js && cp web/index.html web/out-js/ && cp -r assets/images assets/fonts web/out-js/
 //   scala-cli --power package web -o web/out-js/main.js -f   (add --js-mode release for Closure)
 //   sbt server/run                                           (serves web/out-js)
-//
-// Unifying this back into one build means either an sbt 2 Scala.js plugin
-// appearing, or moving the whole build to scala-cli / sbt 1.
+lazy val web = (project in file("web"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(published)
+  .settings(
+    name := "everyui-web",
+    sourcesInBase := false,   // web/project.scala is scala-cli's
+    Compile / unmanagedSourceDirectories += sharedSources,
+    libraryDependencies ++= Seq(
+      "org.scala-js" %% "scalajs-dom" % "2.8.1",
+      "com.outr" %% "reactify" % reactifyVersion
+    )
+  )
+
+// --- network, published: the module and its backend, for the JVM and the browser ------------------------------
+// (the `network` project below is the probe and the Roku/tvOS spike, over the same sources)
+lazy val networkJvm = (project in file("network/jvm"))
+  .settings(published)
+  .settings(
+    name := "everyui-network",
+    // the published reactify, not the source tree: nothing here needs excluding
+    excludeDependencies := Nil,
+    Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice")),
+    libraryDependencies ++= Seq(
+      "com.outr" %% "spice-core" % spiceVersion,
+      "com.outr" %% "spice-client-jvm" % spiceVersion,
+      "com.outr" %% "reactify" % reactifyVersion
+    )
+  )
+
+lazy val networkJs = (project in file("network/js"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(published)
+  .settings(
+    name := "everyui-network",
+    Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice")),
+    libraryDependencies ++= Seq(
+      "com.outr" %% "spice-client" % spiceVersion,
+      // spice-core_sjs1 as published locally lists its dependencies by their JVM names (reactify_3 is excluded
+      // build-wide, and so in this module's POM): the Scala.js builds of them are named here
+      "org.typelevel" %% "fabric-io" % "1.30.2-SNAPSHOT",
+      "com.outr" %% "rapid-core" % "2.9.9",
+      "com.outr" %% "scribe" % "3.19.1-SNAPSHOT",
+      "com.outr" %% "profig" % "3.7.1",
+      "com.outr" %% "reactify" % reactifyVersion,
+      // UUID.randomUUID (the durable client id) needs SecureRandom, which Scala.js keeps in its own library
+      ("org.scala-js" %% "scalajs-java-securerandom" % "1.0.0").cross(CrossVersion.for3Use2_13)
+    )
+  )
 
 // --- roku: the SceneGraph backend --------------------------------------------
 lazy val roku = (project in file("roku"))
@@ -187,7 +244,7 @@ lazy val spiceVersion = "1.10.9-SNAPSHOT3"
 lazy val seo = (project in file("seo"))
   .settings(
     name := "everyui-seo",
-    publish / skip := true,
+    publish / skip := false,
     Compile / unmanagedSourceDirectories += sharedSources / "everyui" / "seo",
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test
   )
@@ -270,6 +327,9 @@ lazy val desktop = (project in file("desktop"))
     // the focus layer checked against real nodes (FocusSpec), on a JavaFX thread of its own
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
     Test / fork := true,
+    // the specs share one `ui` and one window, so they take turns
+    Test / parallelExecution := false,
+    Test / testForkedParallel := false,
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,
@@ -403,7 +463,8 @@ lazy val checks = (project in file("checks"))
 @transient val makeIcons = taskKey[Unit]("Render every platform's icons from work/logo/svg (needs rsvg-convert)")
 
 lazy val root = (project in file("."))
-  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo)
+  .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
+    web, networkJvm, networkJs)
   .settings(
     name := "everyui",
     publish / skip := true,
@@ -439,7 +500,7 @@ lazy val networkLibraries = Def.task { reactiveLibrary.value :+ spiceDurableTast
 lazy val network = (project in file("network"))
   .dependsOn(reactive, compilerApi)
   .settings(
-    name := "everyui-network",
+    name := "everyui-network-probe",
     publish / skip := true,
     libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
     // the probe runs on the JVM with the desktop's backend; emitted, only what the probe reaches is kept

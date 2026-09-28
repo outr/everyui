@@ -480,6 +480,12 @@ object Platform {
   /** An Apple TV's screen never changes size. */
   /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released. */
   def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey(f)
+  /** A remote holds no modifiers. */
+  def modifiers(): everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
+  /** Every key is the focus layer's. */
+  def passThrough(): Boolean = false
+  /** No shortcuts are made on a remote. */
+  def commandKey(): Boolean = false
 
   def onResize(f: () => Unit): Unit = ()
 

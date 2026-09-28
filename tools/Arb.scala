@@ -1,4 +1,4 @@
-//> using scala 3.10.0-RC2
+//> using scala 3.10.0-RC3
 //> using dep org.typelevel::fabric-io:1.30.0
 
 import fabric.*

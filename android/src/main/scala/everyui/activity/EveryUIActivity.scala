@@ -94,6 +94,7 @@ abstract class EveryUIActivity extends Activity {
     * only when the app has nowhere to go back to; a Back the app took keeps its release, or Android would act on that. */
   override def dispatchKeyEvent(e: KeyEvent): Boolean = {
     val hook = Host.key
+    Host.modifiers = everyui.event.Modifiers(e.isCtrlPressed, e.isMetaPressed, e.isAltPressed, e.isShiftPressed)
     if (hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE) super.dispatchKeyEvent(e)
     else if (e.getKeyCode == KeyEvent.KEYCODE_BACK) {
       if (e.getAction == KeyEvent.ACTION_DOWN) {

@@ -5,6 +5,7 @@ import everyui.component.{Backdrop, Component, Container, Treatment}
 import everyui.task.*
 import everyui.event.Key
 import everyui.focus.Focus
+import everyui.keymap.Keymap
 import everyui.layout.LayoutPass
 import everyui.net.URLPath
 import everyui.render.Platform
@@ -156,6 +157,8 @@ trait ScreenManager extends TaskSupport {
       case Some(u: UIScreen) => Some(u.screenRoot)
       case _ => None
     })
+    // the showing screen's shortcuts are in force while it shows
+    Keymap.shown @= (() => active().map(_.keymap))
     // the page's head follows the shown screen's SEO; a screen with none leaves it as it is
     shownSEO.attachAndFire(_.foreach(Platform.setSEO))
     Platform.whenFontsReady(() =>

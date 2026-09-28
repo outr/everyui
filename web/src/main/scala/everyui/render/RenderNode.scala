@@ -485,6 +485,19 @@ object RenderNode {
     ("'" + family + "'" :: everyui.font.Faces.fallbackFaces().toList.map(f => "'" + f.family + "'")).mkString(", ")
 
 
+  /** Whether keys at `el` (the page's focused element) belong to something that handles its own: anything inside an
+    * element marked `data-everyui-embed` (an editor or other page embedded in the app), or a field, text area or
+    * editable element the app did not make (outside `#app`). The focus layer leaves such a key to it
+    * (`Platform.passThrough`), rather than moving the focus on an arrow or keeping Tab from it. */
+  def ownKeys(el: dom.Element): Boolean = el != null && !(el eq dom.document.body) && {
+    val embed = el.closest("[data-everyui-embed]") != null
+    val tag = el.tagName.toLowerCase
+    val editable = tag == "input" || tag == "textarea" || tag == "select" ||
+      el.asInstanceOf[html.Element].isContentEditable
+    val app = dom.document.getElementById("app")
+    embed || (editable && (app == null || !app.contains(el)))
+  }
+
   /** A click the browser should keep: another button, or a modifier asking for a new tab or window. */
   def modified(e: dom.MouseEvent): Boolean = e.button != 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
 }
@@ -1071,8 +1084,28 @@ object Platform {
   /** Called whenever the window changes size. */
   /** Every key on the page, by its DOM name, pressed or released; a key the hook takes is kept from the browser. */
   def onKey(f: (String, Boolean) => Boolean): Unit = {
-    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => if (f(e.key, true)) e.preventDefault())
-    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => if (f(e.key, false)) e.preventDefault())
+    def hear(e: dom.KeyboardEvent, pressed: Boolean): Unit = {
+      held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
+      embedded = RenderNode.ownKeys(dom.document.activeElement)
+      if (f(e.key, pressed)) e.preventDefault()
+    }
+    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => hear(e, true))
+    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => hear(e, false))
+  }
+
+  private var held = everyui.event.Modifiers(false, false, false, false)
+  private var embedded = false
+
+  /** The modifiers held with the key being reported. */
+  def modifiers(): everyui.event.Modifiers = held
+
+  /** Whether the key being reported is meant for something that handles its own keys (`RenderNode.ownKeys`). */
+  def passThrough(): Boolean = embedded
+
+  /** Whether shortcuts are made with Command rather than Ctrl here: a Mac, an iPhone or an iPad. */
+  def commandKey(): Boolean = {
+    val agent = dom.window.navigator.userAgent
+    agent.contains("Mac OS") || agent.contains("Macintosh") || agent.contains("iPhone") || agent.contains("iPad")
   }
 
   def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())

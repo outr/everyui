@@ -930,6 +930,8 @@ object Host {
 
   /** The key hook (Platform.onKey), fed by the activity. */
   var key: (String, Boolean) => Boolean = null
+  /** The modifiers held with the key the activity is reporting (`Platform.modifiers`). */
+  var modifiers: everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
 
   /** An Android key by the web's name: the remote's keys by their names, anything typed by its character. */
   def keyName(e: KeyEvent): String = {
@@ -1661,6 +1663,12 @@ object Platform {
   /** Called whenever the root changes size (a rotation, a resized window). */
   /** Every key the activity sees, by the web's name, pressed or released. */
   def onKey(f: (String, Boolean) => Boolean): Unit = Host.key = f
+  /** The modifiers held with the key being reported (a keyboard's; a remote holds none), as the activity reads them. */
+  def modifiers(): everyui.event.Modifiers = Host.modifiers
+  /** Every key is the focus layer's. */
+  def passThrough(): Boolean = false
+  /** Shortcuts are made with Ctrl on Android. */
+  def commandKey(): Boolean = false
 
   def onResize(f: () => Unit): Unit =
     Host.root.addOnLayoutChangeListener((_, l, t, r, b, oldL, oldT, oldR, oldB) =>

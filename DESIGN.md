@@ -194,8 +194,8 @@ backend, so nothing is lost and nothing pays for dispatch.
   `AppScene.xml`.
 - **Web** (`web/`): REAL Scala.js over the live DOM — the web tier's whole
   argument (browser form semantics, a11y, find-in-page) only holds if the web
-  backend genuinely IS the DOM. Built with **scala-cli**, because Scala.js has
-  no sbt 2 plugin (only `sbt-scalajs_2.12_1.0` exists on Central).
+  backend genuinely IS the DOM. Published by sbt (sbt-scalajs 1.22.0 runs on sbt 2)
+  as `everyui-web`; the example bundle is still built with **scala-cli**.
 
 **Verified on the physical Roku** (Hisense 4Series-40 / K213X, 720p UI,
 192.168.1.112): device screenshot shows the label rendered, and the debug
@@ -1077,9 +1077,9 @@ the frozen frame matches the golden (0.096 px) and it runs at 62 fps under Xvfb
 
 | | version |
 |---|---|
-| Scala | **3.10.0-RC2** (decided 2026-09-13: the RC now, the final when it lands) — 3.9 needed no change; 3.10 needed two emitter cases, below |
-| sbt | **2.0.8** (2.1 is at M1) |
-| Scala.js | **1.22.0** (3.9 emits IR 1.22; the linker had to follow) via scala-cli **1.17.0** |
+| Scala | **3.10.0-RC3** (decided 2026-09-13: the RC now, the final when it lands; RC3 on 2026-09-28) — 3.9 needed no change; 3.10 needed two emitter cases, below |
+| sbt | **2.0.9** (2.1 is at M3) |
+| Scala.js | **1.22.0** (3.9 emits IR 1.22; the linker had to follow): sbt-scalajs for the published `everyui-web` and `everyui-network`, scala-cli **1.17.0** for the example bundle |
 | JavaFX | **26.0.2** |
 | GraalVM | **25.3.4** (Oracle GraalVM, JDK 25.0.4.1; sdkman default) |
 | Android | build-tools **37.0.0** (R8 8.10), platform **android-37.0** (Android 17), target SDK 37, min 30 |
@@ -1723,9 +1723,9 @@ focus handling. Run `tools/check.sh --android --device` before each commit.
   `runtime/UniversalRuntime.brs`), `web/` (Scala.js DOM backend), `compiler/` +
   `compiler-api/` (the Roku compiler), `reactive/` (reactify's source, compiled
   for emission), `reactive-test/` (the acceptance suite), `server/` (Spice).
-- Build: `roku/emitRoku` → `roku/out-roku/`. Web is scala-cli, NOT sbt —
-  `scala-cli --power package web -o web/out-js/main.js -f` (see build.sbt's
-  web comment for why, and copy `web/index.html` into `web/out-js/` first).
+- Build: `roku/emitRoku` → `roku/out-roku/`. The example web bundle is scala-cli —
+  `scala-cli --power package web -o web/out-js/main.js -f` (copy `web/index.html` into `web/out-js/` first);
+  the published `everyui-web` is the sbt project `web` (`sbt publishLocal`, CONSUMING.md).
   Add `--js-mode release` for the Closure-optimized bundle.
 - Serve the web build: `sbt "server/run"` → http://localhost:8731/ (Spice +
   Undertow, reads `web/out-js` from disk so a rebuild needs no restart).

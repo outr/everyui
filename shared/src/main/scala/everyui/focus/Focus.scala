@@ -2,6 +2,7 @@ package everyui.focus
 
 import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent, Keys, PointerEvent, PointerKind}
+import everyui.keymap.Keymap
 import everyui.render.Platform
 import everyui.ui
 import reactify.*
@@ -9,7 +10,8 @@ import reactify.*
 /** Which component has the focus, and how the keys reach it — the same navigation for a remote, a keyboard and a TV
   * browser, in one place rather than one per platform or per screen.
   *
-  * Every key goes to the focused component first. Enter clicks it; Tab moves the focus on in tree order; Back goes to
+  * A key that runs a command (`everyui.keymap.Keymap`) is taken before anything else. Every other key goes to the
+  * focused component first. Enter clicks it; Tab moves the focus on in tree order, Shift+Tab back; Back goes to
   * the newest back handler (`onBack`: an open dialog, then the screen history). An arrow is answered by the layouts:
   * from the focused component up through its containers, the first whose layout has a neighbour that way (a row's next
   * item, a column's next line, the next row of a flow) takes the focus there. Nothing is found by where things are on the
@@ -261,11 +263,26 @@ object Focus {
     taken
   }
 
-  /** A key by the web's name, pressed or released — what each backend's key hook reports. Whether the focus layer took
-    * it, so the platform leaves it be. A key the focused component keeps (`keepsKey`) goes to it alone. */
+  /** A key by the web's name, pressed or released — what each backend's key hook reports, with the modifiers held
+    * (`Platform.modifiers`). Whether the focus layer took it, so the platform leaves it be.
+    *
+    * A key that runs a command (`everyui.keymap.Keymap`: the showing screen's shortcuts, then the global ones) is taken
+    * first, before the focused component hears of it. A key meant for something that handles its own keys
+    * (`Platform.passThrough`: an editor embedded in a web page) is left to it: only a command chord with Ctrl, Meta or
+    * Alt is taken from it, and the focus layer does nothing with the rest. Otherwise a key the focused component keeps
+    * (`keepsKey`) goes to it alone. */
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
+    val held = Platform.modifiers()
+    val event = KeyEvent(key, name, held.ctrl, held.meta, held.alt, held.shift)
     if (pressed) used()
+    if (Platform.passThrough()) pressed && (held.ctrl || held.meta || held.alt) && Keymap.run(event)
+    else if (pressed && Keymap.run(event)) true
+    else focusKey(key, event, pressed)
+  }
+
+  // A key for the focus layer: to the focused component, then the screen's hooks, then Enter, the arrows, Tab and Back.
+  private def focusKey(key: Key, event: KeyEvent, pressed: Boolean): Boolean = {
     if (key == Key.Enter && !pressed) enterHeld = false
     // a key never goes to something no longer on the screen: from there no arrow leads anywhere, and it answers nothing
     if (pressed) moveOn(true)
@@ -275,7 +292,7 @@ object Focus {
     // asked before it hears the key, which may change its mind (a scroll that reaches its end)
     val kept = pressed && target.exists(_.keepsKey(key))
     target.foreach { c =>
-      if (pressed) c.event.key.down @= KeyEvent(key, name) else c.event.key.up @= KeyEvent(key, name)
+      if (pressed) c.event.key.down @= event else c.event.key.up @= event
     }
     // OK let go on what it went down on, which is waiting for the release to know whether it was a press or a hold: a
     // press, unless the hold already fired. Only there — a release whose press went somewhere else is nobody's press.
@@ -318,6 +335,7 @@ object Focus {
       true
     }.getOrElse(false)
     else if (Keys.isArrow(key)) move(key)
+    else if (key == Key.Tab && event.shift) previous()
     else if (key == Key.Tab) next()
     else if (key == Key.Back || key == Key.Escape) goBack(key)
     else false
@@ -454,6 +472,19 @@ object Focus {
       var at = -1
       all.zipWithIndex.foreach { case (c, i) => if (focused().exists(_ eq c)) at = i }
       all((at + 1) % all.length).focus()
+      true
+    }
+  }
+
+  /** Shift+Tab: the candidate before in tree order, round to the last before the first. Whether anything was
+    * focused. */
+  def previous(): Boolean = {
+    val all = candidates(area())
+    if (all.isEmpty) false
+    else {
+      var at = all.length
+      all.zipWithIndex.foreach { case (c, i) => if (focused().exists(_ eq c)) at = i }
+      all((at - 1 + all.length) % all.length).focus()
       true
     }
   }

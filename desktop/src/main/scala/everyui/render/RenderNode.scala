@@ -1028,12 +1028,24 @@ object Platform {
   /** Called whenever the window changes size. */
   /** Every key in the window, by the web's name, pressed or released. */
   def onKey(f: (String, Boolean) => Boolean): Unit = {
-    Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => if (f(Host.keyName(e), true)) e.consume())
-    Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => if (f(Host.keyName(e), false)) e.consume())
+    def hear(e: KeyEvent, pressed: Boolean): Unit = {
+      held = everyui.event.Modifiers(e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
+      if (f(Host.keyName(e), pressed)) e.consume()
+    }
+    Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => hear(e, true))
+    Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => hear(e, false))
     // a mouse's back button is Back too
     Host.scene.addEventFilter(MouseEvent.MOUSE_PRESSED, (e: MouseEvent) => if (e.getButton == javafx.scene.input.MouseButton.BACK && f("BrowserBack", true)) e.consume())
     Host.scene.addEventFilter(MouseEvent.MOUSE_RELEASED, (e: MouseEvent) => if (e.getButton == javafx.scene.input.MouseButton.BACK && f("BrowserBack", false)) e.consume())
   }
+
+  private var held = everyui.event.Modifiers(false, false, false, false)
+  /** The modifiers held with the key being reported. */
+  def modifiers(): everyui.event.Modifiers = held
+  /** Nothing in a window handles its own keys yet: every key is the focus layer's. */
+  def passThrough(): Boolean = false
+  /** Whether shortcuts are made with Command rather than Ctrl here: on a Mac. */
+  def commandKey(): Boolean = sys.props("os.name").toLowerCase.contains("mac")
 
   def onResize(f: () => Unit): Unit = {
     Host.scene.widthProperty.addListener((_: javafx.beans.Observable) => f())
