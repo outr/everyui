@@ -47,19 +47,33 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   current.attach(entry)
   tabs.attach(_ => entry(current()))
 
-  /** A tab `label` for `key`, added at the end (or in place of the one it replaces). */
-  def add(key: String, label: String, closable: Boolean = false): TabItem = {
+  /** A tab `label` for `key`, added at `at` among the tabs (at the end, where it is past the last or not given), or in
+    * place of the one it replaces (moved to `at` where it is given). Neither the tab shown nor the focus moves: a tab
+    * the focus was on that is replaced hands it to the new one. */
+  def add(key: String, label: String, closable: Boolean = false, at: Int = -1): TabItem = {
     val tab = new TabItem(key, label, current, closable, k => closing @= k, showOnFocus)
     val replaced = apply(key)
-    tabs @= (if (replaced.isEmpty) tabs() :+ tab else tabs().map(t => if (t.key == key) tab else t))
+    val was = tabs().indexWhere(_.key == key)
+    val rest = tabs().filterNot(_.key == key)
+    val place = if (at >= 0) math.min(at, rest.length) else if (was >= 0) was else rest.length
+    tabs @= rest.patch(place, List(tab), 0)
     replaced.foreach(_.dispose())
     tab
   }
 
-  /** The tab for `key` taken off the strip. */
+  /** A tab added just after the tab for `after` (a diff opened beside the file it compares), else at the end. */
+  def addAfter(after: String, key: String, label: String, closable: Boolean = false): TabItem = {
+    val i = tabs().filterNot(_.key == key).indexWhere(_.key == after)
+    add(key, label, closable, if (i < 0) -1 else i + 1)
+  }
+
+  /** The tab for `key` taken off the strip. Where it was the one shown, the tab now in its place is shown, else the one
+    * before it; the focus on it goes the same way. */
   def remove(key: String): Unit = {
     val gone = apply(key)
+    val was = tabs().indexWhere(_.key == key)
     tabs @= tabs().filterNot(_.key == key)
+    if (current() == key && tabs().nonEmpty) current @= tabs()(math.min(math.max(0, was), tabs().length - 1)).key
     gone.foreach(_.dispose())
   }
 

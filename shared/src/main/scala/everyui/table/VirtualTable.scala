@@ -52,6 +52,10 @@ class VirtualTable[T](val items: Var[Vector[T]], val keyOf: T => String, val lab
   def menu: Channel[ListPoint[T]] = list.menu
   def selectedItems: Vector[T] = list.selectedItems
 
+  /** Row `key`'s cells made again from its item, for what they show from outside it (see `VirtualList.redecorate`). */
+  def redecorate(key: String): Unit = list.redecorate(key)
+  def redecorateAll(): Unit = list.redecorateAll()
+
   /** Column `key`'s width: 0 while it is hidden. */
   def widthOf(key: String): Double =
     if (hidden().contains(key)) 0.0

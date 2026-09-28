@@ -62,6 +62,37 @@ class KitSpec extends FxSpec {
     }
   }
 
+  "A tab added at a place" should {
+    "go where it is put, beside another, without moving what is shown, and a closed tab hand over" in {
+      val current = Var("a")
+      val bar = fx(new TabBar(current, 600.0, showOnFocus = false))
+      onScreen(bar) {
+        fx {
+          bar.add("a", "A.scala", closable = true)
+          bar.add("b", "B.scala", closable = true)
+          bar.addAfter("a", "diff:a", "A.scala (diff)", closable = true)
+          bar.add("first", "First", at = 0)
+        }
+        fx(bar.tabs().map(_.key)) shouldBe List("first", "a", "diff:a", "b")
+        current() shouldBe "a"
+        // opened again, a tab keeps its place unless told otherwise
+        fx(bar.add("diff:a", "A.scala (diff)", closable = true))
+        fx(bar.tabs().map(_.key)) shouldBe List("first", "a", "diff:a", "b")
+        fx(bar.add("b", "B.scala", closable = true, at = 1))
+        fx(bar.tabs().map(_.key)) shouldBe List("first", "b", "a", "diff:a")
+        // the tab shown closed: the one now in its place shows, else the one before
+        fx(current @= "diff:a")
+        fx(bar.remove("diff:a"))
+        current() shouldBe "a"
+        fx(current @= "b")
+        fx(bar("b").get.focus())
+        fx(bar.remove("b"))
+        current() shouldBe "a"
+        eventually(Focus.focused().exists(_ eq bar("a").get)) shouldBe true
+      }
+    }
+  }
+
   "A toast" should {
     "show one message at a time, and go" in onScreen() {
       val before = fx(ui.children().size)

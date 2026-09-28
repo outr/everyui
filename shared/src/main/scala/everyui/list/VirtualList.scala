@@ -484,6 +484,19 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** Every row made so far, those out of use among them (hidden). */
   def rows: Vector[ListRow[T]] = children().collect { case r: ListRow[T] @unchecked => r }
 
+  /** The row showing `key` made again from its item, now: for what it shows that comes from outside the item (a
+    * status the app keeps elsewhere). A change to the item itself (a new value in `items`) redraws its row anyway. */
+  def redecorate(key: String): Unit = placed.valuesIterator.filter(_.item().exists(t => keyOf(t) == key)).foreach(redraw)
+
+  /** Every row showing made again from its item (see `redecorate`). */
+  def redecorateAll(): Unit = placed.valuesIterator.foreach(redraw)
+
+  private def redraw(row: ListRow[T]): Unit = {
+    val was = row.item()
+    row.item @= None
+    row.item @= was
+  }
+
   /** The row showing `index`, if it is made. */
   def rowAt(index: Int): Option[ListRow[T]] = placed.get(index)
 

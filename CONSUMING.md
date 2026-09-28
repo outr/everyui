@@ -164,7 +164,9 @@ An embed gives back a key it did not want. For example, an editor's Escape with 
 Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:
 
 - `TabBar` and `TabItem`: a strip of tabs, fixed (`TabBar(List(key -> label), current, width)`) or open-ended
-  (`add`, `remove`, closable tabs, the `closing` channel), with `icon` and `marker` slots beside each label.
+  (`add`, `remove`, closable tabs, the `closing` channel), with `icon` and `marker` slots beside each label. `add(key, label, closable,
+  at = i)` puts a tab at a place and `addAfter(key0, key, label)` beside another (a diff by its file); closing the tab
+  shown shows the one now in its place, else the one before; a middle click closes a closable tab.
 - `Toast.show(words, seconds, top, margin)`: one short message at a time.
 - `AsyncPress`: a press that runs slow work, with a delayed spinner, and failures toasted.
 - `Spinner` and `Ring`: an indeterminate spinner and a determinate dial.
@@ -550,6 +552,10 @@ model.move("/src/Main.scala", Some("/app"), 0)
 model.remove("/tmp")
 tree.reveal("/src/deep/File.scala")   // opens what is above it and scrolls to it
 ```
+
+A node changed in the model (`model.update(entry.copy(status = "M"))`) is dressed again at once, on the row already
+showing. Where the look comes from outside the node (a status map the app keeps), `tree.redecorate(key)` or
+`tree.redecorateAll()` asks `decorate` again; lists and tables have the same.
 
 Keys: Up and Down move the cursor, Right opens a node or goes to its first child, Left closes it or goes to its parent
 (mirrored in a right-to-left language), Enter activates and opens or closes a folder. A click on the chevron opens or

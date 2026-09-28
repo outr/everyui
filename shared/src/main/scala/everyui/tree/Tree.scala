@@ -107,6 +107,12 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
     list.select(key)
   }
 
+  /** Node `key`'s row dressed again (`decorate` asked again), for a look that comes from outside the node. A node
+    * changed in the model (`model.update`) is dressed again as it changes. */
+  def redecorate(key: String): Unit = list.redecorate(key)
+  /** Every row showing dressed again. */
+  def redecorateAll(): Unit = list.redecorateAll()
+
   /** The line `key` shows as, if it shows. */
   def lineOf(key: String): Option[TreeLine[T]] = {
     val i = list.indexOf(key)
