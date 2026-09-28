@@ -502,8 +502,9 @@ class RenderNode(val view: View) {
   }
 
   /** Every node is placed by its translation, so there is no position type to set. */
-  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click") with its root coordinates. Touches
-    * drive down/move/up and a click on an up that stays on the view; a mouse or a hover drives enter/leave. */
+  /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", "menu") with its root coordinates.
+    * Touches drive down/move/up, a click on an up that stays on the view, and the menu on a long press or a mouse's
+    * secondary button; a mouse or a hover drives enter/leave. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = {
     pointer += kind -> f
     if (kind == PointerKind.Wheel) view.setOnGenericMotionListener { (_, e) =>
@@ -531,16 +532,57 @@ class RenderNode(val view: View) {
     Host.root.getLocationOnScreen(at)
     pointer.get(kind).foreach(f => f((e.getRawX - at(0)) / Host.scale, (e.getRawY - at(1)) / Host.scale))
   }
+  // A finger held still on a view that has a context menu (something listens for PointerKind.Menu) asks for it, as a
+  // long press does anywhere on Android: where it went down, after the platform's long-press time, unless it moved
+  // further than a tap may or was lifted first. What it asked for is not also a click as it lifts.
+  private var pressFrom: (Float, Float) = (0f, 0f)
+  private var pressHeld: Option[Runnable] = None
+  private var pressedLong = false
+  private def letGo(): Unit = {
+    pressHeld.foreach(r => view.removeCallbacks(r))
+    pressHeld = None
+  }
   private def touch(e: MotionEvent): Boolean = {
     val action = e.getActionMasked
-    if (action == MotionEvent.ACTION_DOWN) fire(PointerKind.Down, e)
-    else if (action == MotionEvent.ACTION_MOVE) fire(PointerKind.Move, e)
+    if (action == MotionEvent.ACTION_DOWN) {
+      fire(PointerKind.Down, e)
+      pressedLong = false
+      letGo()
+      if (pointer.contains(PointerKind.Menu)) {
+        // a mouse's secondary button asks at once
+        if ((e.getButtonState & MotionEvent.BUTTON_SECONDARY) != 0) {
+          pressedLong = true
+          fire(PointerKind.Menu, e)
+        }
+        else {
+          pressFrom = (e.getRawX, e.getRawY)
+          val held: Runnable = () => {
+            pressHeld = None
+            pressedLong = true
+            val at = Array(0, 0)
+            Host.root.getLocationOnScreen(at)
+            pointer.get(PointerKind.Menu).foreach(f => f((pressFrom._1 - at(0)) / Host.scale, (pressFrom._2 - at(1)) / Host.scale))
+          }
+          pressHeld = Some(held)
+          view.postDelayed(held, android.view.ViewConfiguration.getLongPressTimeout.toLong)
+        }
+      }
+    }
+    else if (action == MotionEvent.ACTION_MOVE) {
+      val slop = android.view.ViewConfiguration.get(view.getContext).getScaledTouchSlop
+      if (math.abs(e.getRawX - pressFrom._1) > slop || math.abs(e.getRawY - pressFrom._2) > slop) letGo()
+      fire(PointerKind.Move, e)
+    }
     else if (action == MotionEvent.ACTION_UP) {
+      letGo()
       fire(PointerKind.Up, e)
       val inside = e.getX >= 0 && e.getY >= 0 && e.getX <= view.getWidth && e.getY <= view.getHeight
-      if (inside) fire(PointerKind.Click, e)
+      if (inside && !pressedLong) fire(PointerKind.Click, e)
     }
-    else if (action == MotionEvent.ACTION_CANCEL) fire(PointerKind.Up, e)
+    else if (action == MotionEvent.ACTION_CANCEL) {
+      letGo()
+      fire(PointerKind.Up, e)
+    }
     true
   }
 
