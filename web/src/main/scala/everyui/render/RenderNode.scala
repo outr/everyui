@@ -272,6 +272,13 @@ class RenderNode(val el: html.Element) {
   def setScrollTop(y: Double): Unit = el.scrollTop = y
   /** Scrolled `x` sideways from its start edge, which is the right in a right-to-left page. */
   def setScrollLeft(x: Double): Unit = el.scrollLeft = fromStart(x)
+  /** A scroll that runs from its left in every language (a timeline): the browser counts it left to right, while what
+    * it holds still reads the page's way. */
+  def setLeftToRight(): Unit = {
+    leftToRight = true
+    el.classList.add("everyui-ltr")
+  }
+  private var leftToRight = false
   /** How far the node has scrolled its own overflow, from its start edge. */
   def scrolled(horizontal: Boolean): Double = if (horizontal) fromStart(el.scrollLeft) else el.scrollTop
   /** Scroll its overflow to `to` as the browser glides a smooth scroll, which a newer one takes over mid-way. */
@@ -284,7 +291,7 @@ class RenderNode(val el: html.Element) {
   // is the right, which a browser counts down from 0 (as the spec has it), up from 0 (the old Edge), or down from the
   // far end (Chrome before 85, as on an older television)
   private def fromStart(x: Double): Double =
-    if (dom.document.documentElement.getAttribute("dir") != "rtl") x
+    if (leftToRight || dom.document.documentElement.getAttribute("dir") != "rtl") x
     else RenderNode.rtlScroll match {
       case RenderNode.Negative => -x
       case RenderNode.Reverse => x
@@ -833,7 +840,9 @@ object Nodes {
     app.style.height = "100%"
     // a link in running text shows it is one under the pointer
     val style = dom.document.createElement("style")
-    style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }" + RenderNode.autofillStyle
+    style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }" +
+      // a scroll run from its left in every language, and what it holds in the page's direction
+      " .everyui-ltr { direction: ltr; } .everyui-ltr > * { direction: var(--everyui-dir, ltr); }" + RenderNode.autofillStyle
     dom.document.head.appendChild(style)
     new RenderNode(app)
   }
@@ -1236,7 +1245,12 @@ object Platform {
   def language(): String = dom.window.navigator.language
 
   /** The page's reading direction: text, fields and alignment follow it. */
-  def setDirection(rtl: Boolean): Unit = dom.document.documentElement.setAttribute("dir", if (rtl) "rtl" else "ltr")
+  def setDirection(rtl: Boolean): Unit = {
+    val dir = if (rtl) "rtl" else "ltr"
+    dom.document.documentElement.setAttribute("dir", dir)
+    // for what a scroll run from its left in every language holds (.everyui-ltr)
+    dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("--everyui-dir", dir)
+  }
   /** The page's language (`zh-Hant`), which the browser chooses CJK faces by. */
   def setLanguage(code: String): Unit = dom.document.documentElement.setAttribute("lang", code.replace("_", "-"))
 

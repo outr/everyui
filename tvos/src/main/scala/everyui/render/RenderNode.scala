@@ -155,6 +155,8 @@ class RenderNode(val sg: SGNode) {
   /** The shared ScrollContainer shifts the content; the node only clips. */
   def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = ()
   def setScrollLeft(x: Double): Unit = ()
+  /** A scroll that runs from its left in every language: the shared ScrollContainer counts it so here. */
+  def setLeftToRight(): Unit = ()
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
   def setScrollTop(y: Double): Unit = ()

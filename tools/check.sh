@@ -242,8 +242,10 @@ web_autofill() {
 }
 
 # a rail in a right-to-left page as the browser's own scroll holds it (tools/rtl-scroll-check.js in a real Chrome):
-# its first card at its right end as it opens, narrows and grows, and a card revealed at its start
-RTL_SCROLL="open red=0 scrolls=true, narrowed red=0 scrolls=true, grown red=0 scrolls=true, revealed blue=0"
+# its first card at its right end as it opens, narrows and grows, and a card revealed at its start; and a timeline run
+# from its left (followsDirection off), scrolled left to right, holding right-to-left words, kept in place as the
+# direction changes
+RTL_SCROLL="open red=0 scrolls=true, narrowed red=0 scrolls=true, grown red=0 scrolls=true, revealed blue=0, timeline yellow=0 scrolled=200 holds=rtl"
 web_rtl_scroll() {
   command -v Xvfb > /dev/null || { echo "Xvfb not found"; return 1; }
   timeout 60 java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.vector \
@@ -252,7 +254,8 @@ web_rtl_scroll() {
   grep "\[webdrive\]" "$LOGS/web-rtl-scroll.log" | grep -qF "$RTL_SCROLL" ||
     { echo "expected: $RTL_SCROLL"; grep '\[webdrive\]' "$LOGS/web-rtl-scroll.log"; return 1; }
   grep -q "\[ui\] rtlscroll revealed at 500" "$LOGS/web-rtl-scroll.log" || { echo "the reveal was not 500 along"; return 1; }
-  echo "$RTL_SCROLL; revealed 500 along"
+  grep -q "\[ui\] rtlscroll timeline at 200" "$LOGS/web-rtl-scroll.log" || { echo "the timeline moved with the direction"; return 1; }
+  echo "$RTL_SCROLL; revealed 500 along; the timeline kept its place"
 }
 
 input_desktop() {

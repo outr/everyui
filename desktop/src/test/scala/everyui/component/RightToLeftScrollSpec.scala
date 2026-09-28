@@ -115,6 +115,54 @@ class RightToLeftScrollSpec extends FxSpec {
     }
   }
 
+  "A rail run from its left in a right-to-left language" should {
+    "open, go on and reveal as it does left to right" in {
+      val (scroll, cards) = fx {
+        Direction.set(true)
+        val scroll = new ScrollContainer(horizontal = true, followsDirection = false) {
+          size.width @= 300.0
+          size.height @= 50.0
+          step @= 100.0
+          revealMargin @= 0.0
+          revealAlign @= Some(0.0)
+        }
+        // a timeline: placed by hand, left to right
+        val cards = Vector.tabulate(10) { i =>
+          val c = card()
+          c.position.left @= i * 100.0
+          c
+        }
+        scroll.content.children := cards
+        ui.children += scroll
+        (scroll, cards)
+      }
+      try {
+        fx(scroll.offset()) shouldBe 0.0
+        shown(scroll, cards.head) shouldBe 0.0
+        press(scroll, Key.ArrowRight)
+        fx(scroll.offset()) shouldBe 100.0
+        shown(scroll, cards.head) shouldBe -100.0
+        press(scroll, Key.ArrowLeft)
+        fx(scroll.offset()) shouldBe 0.0
+        fx(scroll.reveal(cards(5)))
+        fx(scroll.offset()) shouldBe 500.0
+        shown(scroll, cards(5)) shouldBe 0.0
+        fx(cards(5).visible()) shouldBe true
+        fx(cards.head.visible()) shouldBe false
+        // and a change of direction leaves it where it is
+        fx(Direction.set(false))
+        fx(scroll.offset()) shouldBe 500.0
+        fx(Direction.set(true))
+        fx(scroll.offset()) shouldBe 500.0
+        shown(scroll, cards(5)) shouldBe 0.0
+      }
+      finally fx {
+        ui.children.clear()
+        Direction.set(false)
+      }
+    }
+  }
+
   "A tab bar in a right-to-left language" should {
     "hold its tabs, and its rule, at its right" in {
       val bar = fx {

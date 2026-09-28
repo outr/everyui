@@ -11,9 +11,12 @@ import reactify.*
 /** A rail in a right-to-left language, as the web's own scroll holds it: ten cards 100 wide in a rail 300 wide, the
   * first red, the third green and the sixth blue. A page check (tools/rtl-scroll-check.js) clicks them: the green one
   * narrows the rail, the red one adds five more cards, and the blue one reveals itself at the rail's start, which logs
-  * how far along it is (500):
+  * how far along it is (500). Under it, a timeline run from its left in every language (`followsDirection` off): cards
+  * placed by hand, the first yellow and the third orange, which turns the direction to left-to-right and back again and
+  * logs how far along it still is:
   *
   *   [ui] rtlscroll revealed at 500
+  *   [ui] rtlscroll timeline at 200
   */
 object RtlScrollDemo {
   def run(): Unit = {
@@ -42,6 +45,24 @@ object RtlScrollDemo {
       Platform.log("rtlscroll revealed at " + rail.node.scrolled(true).round.toString)
     }
     rail.content.children := cards
-    ui.children += rail
+
+    val timeline = new ScrollContainer(horizontal = true, followsDirection = false) {
+      position.left @= 40.0
+      position.top @= 120.0
+      size.width @= 300.0
+      size.height @= 50.0
+    }
+    val slots = Vector.tabulate(10) { i =>
+      val c = card(if (i == 0) Color.Yellow else if (i == 2) Color.Orange else Color.Gray)
+      c.position.left @= i * 100.0
+      c
+    }
+    slots(2).event.click.attach { _ =>
+      Direction.set(false)
+      Direction.set(true)
+      Platform.log("rtlscroll timeline at " + timeline.node.scrolled(true).round.toString)
+    }
+    timeline.content.children := slots
+    ui.children ++= List(rail, timeline)
   }
 }

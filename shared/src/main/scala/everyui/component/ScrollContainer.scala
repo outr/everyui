@@ -19,18 +19,19 @@ import scala.concurrent.duration.*
   *
   * Down the page by default; `horizontal` makes it a rail, scrolled along its length instead. A rail in a
   * right-to-left language runs from the right: it opens at its right end, on its first items, and Left goes on along it.
+  * Without `followsDirection` it runs from its left in every language, as a timeline does.
   *
   * The web scrolls the node itself (its own scrollbar, momentum and keys); every other backend clips the node and
   * this shifts the content. */
-class ScrollContainer(val horizontal: Boolean = false) extends Container {
+class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boolean = true) extends Container {
   override def kind: String = "ScrollContainer"
 
   val content: Container = new Container
   /** How far the content is scrolled from its start, in pixels: a rail's start is its right end in a right-to-left
     * language, so it stays on its first items at 0 however it grows or narrows. */
   val offset: Var[Double] = own(Var(0.0))
-  // a rail in a right-to-left language, which runs from the right
-  private val fromRight: Val[Boolean] = own(Val(horizontal && Direction.rtl()))
+  // a rail in a right-to-left language, which runs from the right unless it runs from its left in every language
+  private val fromRight: Val[Boolean] = own(Val(horizontal && followsDirection && Direction.rtl()))
   // as far as the content's length, which is what it holds unless it is given more (room left at its end)
   private val furthest: Val[Double] =
     Val(math.max(0.0, (if (horizontal) content.size.width() - size.width() else content.size.height() - size.height())))
@@ -65,8 +66,10 @@ class ScrollContainer(val horizontal: Boolean = false) extends Container {
       val by = if (shifted) offset() else 0.0
       if (fromRight()) size.width() - content.size.width() + by else 0.0 - by
     }
-    // and a change of direction starts it again at its start, as a browser does
-    follow(Direction.rtl, (_: Boolean) => scrollTo(0.0))
+    // and a change of direction starts it again at its start, as a browser does; one run from its left stays put, and
+    // the browser counts it from its left too
+    if (followsDirection) follow(Direction.rtl, (_: Boolean) => scrollTo(0.0))
+    else node.setLeftToRight()
   }
   else {
     content.size.width := size.width

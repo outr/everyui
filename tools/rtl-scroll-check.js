@@ -3,9 +3,9 @@
 // against the rail's right edge, and whether the rail scrolls, as it opens, once it is narrowed (a click on the green
 // card) and once it has grown (a click on the red one); then the blue card, revealed (a click on it), at the rail's
 // right edge. The page logs how far along the reveal put it ("[ui] rtlscroll revealed at 500"). WebDrive runs it as
-// the body of a function.
-const rail = [...document.querySelectorAll('div')].find(d => d.style.overflowX === 'auto');
-const card = color => [...rail.querySelectorAll('div')].find(d => d.style.backgroundColor === color);
+// the body of a function. Then a timeline run from its left in every language (followsDirection off) below it.
+const [rail, timeline] = [...document.querySelectorAll('div')].filter(d => d.style.overflowX === 'auto');
+const card = (color, within = rail) => [...within.querySelectorAll('div')].find(d => d.style.backgroundColor === color);
 const red = card('rgb(255, 0, 0)'), green = card('rgb(0, 128, 0)'), blue = card('rgb(0, 0, 255)');
 const gap = c => Math.round(rail.getBoundingClientRect().right - c.getBoundingClientRect().right);
 const scrolls = () => { const was = rail.scrollLeft; rail.scrollLeft = -100; const moved = rail.scrollLeft !== was; rail.scrollLeft = was; return moved; };
@@ -17,4 +17,11 @@ red.click();
 seen.push(state('grown'));
 blue.click();
 seen.push('revealed blue=' + gap(blue));
+// the timeline, run from its left: its first (yellow) card at its left, scrolled as a left-to-right page counts, what it
+// holds still right to left, and where it was once the direction has changed and changed back (a click on orange)
+const yellow = card('rgb(255, 255, 0)', timeline), orange = card('rgb(255, 165, 0)', timeline);
+const from = Math.round(yellow.getBoundingClientRect().left - timeline.getBoundingClientRect().left);
+timeline.scrollLeft = 200;
+seen.push('timeline yellow=' + from + ' scrolled=' + timeline.scrollLeft + ' holds=' + getComputedStyle(timeline.firstElementChild).direction);
+orange.click();
 return seen.join(', ');
