@@ -267,18 +267,32 @@ object Focus {
     * (`Platform.modifiers`). Whether the focus layer took it, so the platform leaves it be.
     *
     * A key that runs a command (`everyui.keymap.Keymap`: the showing screen's shortcuts, then the global ones) is taken
-    * first, before the focused component hears of it. A key meant for something that handles its own keys
-    * (`Platform.passThrough`: an editor embedded in a web page) is left to it: only a command chord with Ctrl, Meta or
-    * Alt is taken from it, and the focus layer does nothing with the rest. Otherwise a key the focused component keeps
-    * (`keepsKey`) goes to it alone. */
+    * first, before the focused component hears of it. A key meant for an embed, something that handles its own keys
+    * (`Platform.keyEmbed`: an editor in a web page), is the embed's, untouched — Escape too — unless it runs a command
+    * made to win there or one on a chord the embed leaves to the app (`Keymap.embed`); the embed can give a key back
+    * (`handBack`). Otherwise a key the focused component keeps (`keepsKey`) goes to it alone. */
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
     val held = Platform.modifiers()
     val event = KeyEvent(key, name, held.ctrl, held.meta, held.alt, held.shift)
+    val embed = Platform.keyEmbed()
     if (pressed) used()
-    if (Platform.passThrough()) pressed && (held.ctrl || held.meta || held.alt) && Keymap.run(event)
+    if (embed.nonEmpty) pressed && Keymap.run(event, embed)
     else if (pressed && Keymap.run(event)) true
     else focusKey(key, event, pressed)
+  }
+
+  /** A key an embed had and gives back, pressed as though it had never been the embed's: an editor's Escape with no
+    * popup of its own to close, which is then Back (or a command's). `name` is the web's name for it. Whether
+    * anything took it. */
+  def handBack(name: String, ctrl: Boolean = false, meta: Boolean = false, alt: Boolean = false,
+               shift: Boolean = false): Boolean = {
+    val event = KeyEvent(Keys.of(name), name, ctrl, meta, alt, shift)
+    used()
+    val taken = Keymap.run(event) || focusKey(event.key, event, true)
+    // its release was the embed's: a press given back is a whole press
+    enterHeld = false
+    taken
   }
 
   // A key for the focus layer: to the focused component, then the screen's hooks, then Enter, the arrows, Tab and Back.

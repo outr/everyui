@@ -14,6 +14,7 @@ import reactify.*
   *   keymap.add("file.new", "New file", Chord.parse("Primary+Shift+N")) { newFile() }   // in a screen
   *   Keymap.global.rebind("tab.close", Chord("F4", ctrl = true))
   *   Keymap.listed.map(c => c.label + "  " + c.chords().map(_.label).mkString(", "))   // a shortcut help screen
+  *   Keymap.embed("editor", Chord("W", primary = true))   // inside the editor embed, only this chord stays the app's
   * }}} */
 class Keymap {
   val commands: Var[List[Command]] = Var(Nil)
@@ -55,19 +56,33 @@ object Keymap {
     all.filter(c => all.find(_.id == c.id).exists(_ eq c))
   }
 
-  /** The command `e` runs, the showing screen's before the global ones. */
-  def find(e: KeyEvent): Option[Command] = {
+  /** The chords each embed leaves to the app, by the embed's name (`embed`). */
+  val embeds: Var[Map[String, List[Chord]]] = Var(Map.empty)
+
+  /** While the keys are embed `name`'s (`Platform.keyEmbed`: an editor in the page), `chords` still run the app's
+    * commands; every other key is the embed's, untouched, Escape included (`Focus.handBack` gives one back). Said
+    * again, it replaces what the embed left before. */
+  def embed(name: String, chords: Chord*): Unit = embeds @= embeds() + (name -> chords.toList)
+
+  /** Whether `c` may take `e` while the keys are embed `embed`'s ("" for none): outside an embed any may; inside one,
+    * a command made to win there (`Command.inEmbeds`), or one on a chord the embed leaves to the app. */
+  def allowed(c: Command, e: KeyEvent, embed: String): Boolean =
+    embed.isEmpty || c.inEmbeds() || embeds().getOrElse(embed, Nil).exists(_.matches(e))
+
+  /** The command `e` runs, the showing screen's before the global ones; inside embed `embed`, only one it allows. */
+  def find(e: KeyEvent, embed: String = ""): Option[Command] = {
     var found: Option[Command] = None
     var left = active
     while (found.isEmpty && left.nonEmpty) {
-      found = left.head.find(e)
+      found = left.head.commands().find(c => c.runsOn(e) && allowed(c, e, embed))
       left = left.tail
     }
     found
   }
 
-  /** Run the command `e` is a chord of, if there is one: whether one ran, and so took the key. */
-  def run(e: KeyEvent): Boolean = find(e) match {
+  /** Run the command `e` is a chord of, if there is one (inside embed `embed`, one it allows): whether one ran, and
+    * so took the key. */
+  def run(e: KeyEvent, embed: String = ""): Boolean = find(e, embed) match {
     case Some(command) =>
       command.run()
       true

@@ -2,43 +2,12 @@ package everyui.focus
 
 import everyui.component.{Component, Container, Modal}
 import everyui.layout.{HorizontalLayout, VerticalLayout}
-import everyui.render.{Host, Nodes}
-import everyui.ui
-import javafx.scene.Scene
-import javafx.scene.layout.Pane
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.matchers.should.Matchers
-import org.scalatest.wordspec.AnyWordSpec
-
-import java.util.concurrent.{CountDownLatch, TimeUnit}
+import everyui.render.Nodes
+import everyui.{FxSpec, ui}
 
 /** The focus taken off the screen with what it was on: it goes to what took its place, never to nothing, and Back
   * still answers wherever it was. Run on the JavaFX thread, against the desktop backend's real nodes. */
-class FocusSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
-  /** `f` on the FX thread, waited for. What it posts for later (`Platform.later`) runs before the next `fx`. */
-  private def fx[T](f: => T): T = {
-    var result: Option[Either[Throwable, T]] = None
-    val done = new CountDownLatch(1)
-    javafx.application.Platform.runLater(() => {
-      result = Some(try Right(f) catch { case t: Throwable => Left(t) })
-      done.countDown()
-    })
-    done.await(10, TimeUnit.SECONDS) shouldBe true
-    result.get.fold(t => throw t, v => v)
-  }
-
-  override def beforeAll(): Unit = {
-    val started = new CountDownLatch(1)
-    try javafx.application.Platform.startup(() => started.countDown())
-    catch { case _: IllegalStateException => started.countDown() }
-    started.await(10, TimeUnit.SECONDS)
-    fx {
-      Host.root = new Pane()
-      Host.scene = new Scene(Host.root, 1920.0, 1080.0)
-      ui.size.width.get
-    }
-  }
-
+class FocusSpec extends FxSpec {
   private def card(): Component = {
     val c = new Component(Nodes.container())
     c.focusable @= true

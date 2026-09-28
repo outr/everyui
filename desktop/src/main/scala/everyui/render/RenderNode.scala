@@ -571,6 +571,26 @@ object Host {
 
   lazy val settings: java.util.prefs.Preferences = java.util.prefs.Preferences.userRoot().node("everyui/" + app)
 
+  /** The embed a key sent to `target` is meant for, "" for none: the name marked on it or the nearest node round it
+    * (`embedKey`). */
+  def embedOf(target: javafx.event.EventTarget): String = {
+    var at: javafx.scene.Node = target match {
+      case n: javafx.scene.Node => n
+      case _ => null
+    }
+    var name = ""
+    while (name.isEmpty && at != null) {
+      val marked = at.getProperties.get(Host.embedKey)
+      if (marked != null) name = marked.toString
+      at = at.getParent
+    }
+    name
+  }
+
+  /** The node property that marks an embed (a web view, an editor): its value is the embed's name, and keys the window
+    * sends to it or anything inside it are left to it (`Platform.keyEmbed`). */
+  val embedKey: String = "everyui-embed"
+
   /** A JavaFX key by the web's name: the remote's keys by their names, Alt+Left as the browser's back, anything typed
     * by its text. */
   def keyName(e: KeyEvent): String = {
@@ -1030,6 +1050,7 @@ object Platform {
   def onKey(f: (String, Boolean) => Boolean): Unit = {
     def hear(e: KeyEvent, pressed: Boolean): Unit = {
       held = everyui.event.Modifiers(e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
+      embedded = Host.embedOf(e.getTarget)
       if (f(Host.keyName(e), pressed)) e.consume()
     }
     Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => hear(e, true))
@@ -1042,8 +1063,9 @@ object Platform {
   private var held = everyui.event.Modifiers(false, false, false, false)
   /** The modifiers held with the key being reported. */
   def modifiers(): everyui.event.Modifiers = held
-  /** Nothing in a window handles its own keys yet: every key is the focus layer's. */
-  def passThrough(): Boolean = false
+  private var embedded = ""
+  /** The embed the key being reported is meant for, "" for none (`Host.embedOf`). */
+  def keyEmbed(): String = embedded
   /** Whether shortcuts are made with Command rather than Ctrl here: on a Mac. */
   def commandKey(): Boolean = sys.props("os.name").toLowerCase.contains("mac")
 

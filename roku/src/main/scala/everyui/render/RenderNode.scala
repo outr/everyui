@@ -765,8 +765,8 @@ object Platform {
   def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey(f)
   /** A remote holds no modifiers. */
   def modifiers(): everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
-  /** Every key is the focus layer's. */
-  def passThrough(): Boolean = false
+  /** Every key is the focus layer's: nothing here handles its own. */
+  def keyEmbed(): String = ""
   /** No shortcuts are made on a remote. */
   def commandKey(): Boolean = false
 

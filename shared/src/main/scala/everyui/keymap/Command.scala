@@ -8,6 +8,10 @@ import reactify.*
 class Command(val id: String, val label: String, val defaults: List[Chord], action: () => Unit) {
   val chords: Var[List[Chord]] = Var(defaults)
   val enabled: Var[Boolean] = Var(true)
+  /** Whether its chords run it even while the keys are an embed's (an editor in the page): an app's own Ctrl+Shift+N,
+    * say. Off, the default, it runs only outside embeds, and inside one only on a chord the embed leaves to the app
+    * (`Keymap.embed`). */
+  val inEmbeds: Var[Boolean] = Var(false)
 
   /** Run it, as its chord or a menu entry does. */
   def run(): Unit = action()

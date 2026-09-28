@@ -1665,8 +1665,8 @@ object Platform {
   def onKey(f: (String, Boolean) => Boolean): Unit = Host.key = f
   /** The modifiers held with the key being reported (a keyboard's; a remote holds none), as the activity reads them. */
   def modifiers(): everyui.event.Modifiers = Host.modifiers
-  /** Every key is the focus layer's. */
-  def passThrough(): Boolean = false
+  /** Every key is the focus layer's: nothing here handles its own. */
+  def keyEmbed(): String = ""
   /** Shortcuts are made with Ctrl on Android. */
   def commandKey(): Boolean = false
 

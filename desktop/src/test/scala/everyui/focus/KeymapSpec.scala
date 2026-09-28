@@ -5,51 +5,19 @@ import everyui.event.KeyEvent as UIKeyEvent
 import everyui.keymap.{Chord, Keymap}
 import everyui.layout.HorizontalLayout
 import everyui.render.{Host, Nodes}
-import everyui.ui
-import javafx.scene.Scene
+import everyui.{FxSpec, ui}
 import javafx.scene.input.{KeyCode, KeyEvent}
 import javafx.scene.layout.Pane
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.matchers.should.Matchers
-import org.scalatest.wordspec.AnyWordSpec
-
-import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 /** Chords, the keymaps they run in, Shift+Tab, and keys nobody takes left to the platform: real JavaFX key events
   * through the desktop backend's filter, on the JavaFX thread. */
-class KeymapSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
-  private def fx[T](f: => T): T = {
-    var result: Option[Either[Throwable, T]] = None
-    val done = new CountDownLatch(1)
-    javafx.application.Platform.runLater(() => {
-      result = Some(try Right(f) catch { case t: Throwable => Left(t) })
-      done.countDown()
-    })
-    done.await(10, TimeUnit.SECONDS) shouldBe true
-    result.get.fold(t => throw t, v => v)
-  }
-
-  /** The window the focus layer listens on: the first one made, whichever spec made it. */
-  private var window: Scene = null
-
+class KeymapSpec extends FxSpec {
   /** Keys that got past the focus layer to the window's own handlers: what the platform would have acted on. */
   private var reached: List[String] = Nil
 
   override def beforeAll(): Unit = {
-    val started = new CountDownLatch(1)
-    try javafx.application.Platform.startup(() => started.countDown())
-    catch { case _: IllegalStateException => started.countDown() }
-    started.await(10, TimeUnit.SECONDS)
-    fx {
-      // the focus layer listens on the first scene made (another spec's, where it ran first)
-      if (Host.scene == null) {
-        Host.root = new Pane()
-        Host.scene = new Scene(Host.root, 1920.0, 1080.0)
-      }
-      ui.size.width.get
-      window = Host.scene
-      window.addEventHandler(KeyEvent.KEY_PRESSED, (e: KeyEvent) => reached = reached :+ e.getCode.getName)
-    }
+    super.beforeAll()
+    fx(window.addEventHandler(KeyEvent.KEY_PRESSED, (e: KeyEvent) => reached = reached :+ e.getCode.getName))
   }
 
   /** `code` pressed and released in the window, with the modifiers given. */
@@ -82,6 +50,7 @@ class KeymapSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
     try test(cards) finally fx {
       Keymap.global.commands @= Nil
       Keymap.shown @= (() => None)
+      Keymap.embeds @= Map.empty
       ui.children.clear()
       Focus.focused @= None
     }
@@ -191,6 +160,62 @@ class KeymapSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
       press(KeyCode.RIGHT, ctrl = true)
       fx(Focus.focused()) shouldBe Some(cards(1))
       ran shouldBe 1
+    }
+  }
+  /** `code` pressed and released on an embed named `name` in the window, as the keys of an editor there come. */
+  private def pressIn(name: String, code: KeyCode, text: String = "", ctrl: Boolean = false, shift: Boolean = false): Unit = {
+    val editor = fx {
+      val r = new javafx.scene.layout.Region
+      r.getProperties.put(Host.embedKey, name)
+      window.getRoot.asInstanceOf[Pane].getChildren.add(r)
+      r
+    }
+    fx {
+      javafx.event.Event.fireEvent(editor, new KeyEvent(KeyEvent.KEY_PRESSED, text, text, code, shift, ctrl, false, false))
+      javafx.event.Event.fireEvent(editor, new KeyEvent(KeyEvent.KEY_RELEASED, text, text, code, shift, ctrl, false, false))
+      window.getRoot.asInstanceOf[Pane].getChildren.remove(editor)
+    }
+  }
+
+  "Keys in an embed" should {
+    "be left to it, but for the chords it leaves to the app and the commands that win there" in onScreen { cards =>
+      var ran: List[String] = Nil
+      fx {
+        Keymap.global.add("tab.close", "Close tab", Chord("W", primary = true)) { ran = ran :+ "close" }
+        Keymap.global.add("find", "Find", Chord("F", primary = true)) { ran = ran :+ "find" }
+        Keymap.global.add("file.new", "New file", Chord.parse("Primary+Shift+N")) { ran = ran :+ "new" }
+          .inEmbeds @= true
+        Keymap.embed("editor", Chord("W", primary = true))
+      }
+      pressIn("editor", KeyCode.F, "f", ctrl = true)
+      pressIn("editor", KeyCode.RIGHT)
+      pressIn("editor", KeyCode.TAB)
+      // what the embed kept got past the focus layer untouched, and the focus stayed where it was
+      reached shouldBe List("F", "Right", "Tab")
+      fx(Focus.focused()) shouldBe Some(cards(0))
+      pressIn("editor", KeyCode.W, "w", ctrl = true)
+      pressIn("editor", KeyCode.N, "N", ctrl = true, shift = true)
+      ran shouldBe List("close", "new")
+      reached shouldBe List("F", "Right", "Tab")
+      // another embed leaves it nothing but the command that wins everywhere
+      pressIn("viewer", KeyCode.W, "w", ctrl = true)
+      pressIn("viewer", KeyCode.N, "N", ctrl = true, shift = true)
+      ran shouldBe List("close", "new", "new")
+      // outside any embed, Find is the app's again
+      press(KeyCode.F, "f", ctrl = true)
+      ran shouldBe List("close", "new", "new", "find")
+    }
+    "have Escape, which the embed can give back to be Back" in onScreen { _ =>
+      var backs = 0
+      val off = fx(Focus.onBack(k => { if (k == everyui.event.Key.Escape) backs += 1; true }))
+      try {
+        pressIn("editor", KeyCode.ESCAPE)
+        backs shouldBe 0
+        reached shouldBe List("Esc")
+        fx(Focus.handBack("Escape")) shouldBe true
+        backs shouldBe 1
+      }
+      finally fx(off())
     }
   }
 }
