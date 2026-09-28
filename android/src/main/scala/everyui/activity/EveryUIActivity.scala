@@ -48,6 +48,9 @@ abstract class EveryUIActivity extends Activity {
     // the frames it draws, measured again for this window where the app is listening (FrameTimings)
     everyui.render.FrameTimings.attach(this)
 
+    // Back through the dispatcher, where the system sends it nowhere else
+    BackCallback.register(this)
+
     if (!adopted) run()
   }
 

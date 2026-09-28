@@ -2,7 +2,7 @@ package everyui.monaco.gallery
 
 import everyui.app.screen.{ScreenManager, UIScreen}
 import everyui.async.Task
-import everyui.component.{Column, Component, Container, Embed, MaterialIconView, TextView}
+import everyui.component.{Column, Component, Container, Embed, ScrollContainer, MaterialIconView, TextView}
 import everyui.event.Key
 import everyui.font.MaterialIcon
 import everyui.monaco.Monaco
@@ -45,8 +45,13 @@ object GalleryScreen extends UIScreen {
     private val version = TextView("Monaco " + Monaco.version + "  •  gallery", 11.0, Theme.muted())
     version.position.left @= 20.0
     version.position.top @= 58.0
-    private val list = Column(2.0)(entries*)
-    list.position.top @= 90.0
+    // scrolled, where the screen is too short for all of them (a television at 720 lines), following the focus
+    private val list = new ScrollContainer {
+      this.content.children += Column(2.0)(entries*)
+      position.top @= 90.0
+      size.width @= sidebarWidth
+    }
+    list.size.height := size.height() - 90.0
     children ++= List(mark, title, version, list)
   }
 

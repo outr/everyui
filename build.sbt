@@ -99,6 +99,9 @@ lazy val reactiveLibrary = Def.task {
 // Points at reactify's own source tree (no vendoring) with -Yretain-trees so the
 // compiler can read its TASTy. `reactive/emitRoku` emits reactify alone — the
 // input to the gap meter (`tools/emit-gaps.py`).
+/** reactify's own source tree. */
+lazy val reactifySources = file("/home/mhicks/projects/open/reactify/reactify/src/main/scala")
+
 lazy val reactive = (project in file("reactive"))
   .settings(
     name := "everyui-reactive",
@@ -371,8 +374,9 @@ lazy val media3Modules = Seq("media3-common", "media3-container", "media3-databa
   "media3-decoder", "media3-extractor", "media3-exoplayer", "media3-exoplayer-hls")
 
 lazy val android = (project in file("android"))
-  .dependsOn(reactive)
   .settings(
+    // reactify compiled here rather than through `reactive`, so its lazy vals are the legacy kind too
+    Compile / unmanagedSourceDirectories += reactifySources,
     name := "everyui-android",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true),
@@ -394,7 +398,8 @@ lazy val android = (project in file("android"))
     Compile / unmanagedJars ++= androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
-    Compile / scalacOptions ++= Seq("-release", "17"),
+    // lazy vals as Scala 2 made them: the dexed library is 2.13's (project/AndroidRuntime.scala)
+    Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     packageApk := {
       val conv = fileConverter.value
       val buildRoot = (ThisBuild / baseDirectory).value
@@ -404,7 +409,8 @@ lazy val android = (project in file("android"))
       (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
       AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
         // the archives themselves are not dexable: what was opened out of them stands in their place
-        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
+        AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
+          (Compile / dependencyResolution).value, target.value / "android-runtime", streams.value.log.info(_)),
         baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
         Seq(baseDirectory.value / "proguard-rules.pro"), target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
@@ -595,8 +601,8 @@ lazy val monacoDesktop = (project in file("monaco/desktop"))
   )
 
 lazy val monacoAndroid = (project in file("monaco/android"))
-  .dependsOn(reactive)
   .settings(
+    Compile / unmanagedSourceDirectories += reactifySources,
     name := "everyui-monaco-android",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true) ++ Seq(
@@ -612,7 +618,8 @@ lazy val monacoAndroid = (project in file("monaco/android"))
     Compile / unmanagedJars ++= androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
-    Compile / scalacOptions ++= Seq("-release", "17"),
+    // lazy vals as Scala 2 made them: the dexed library is 2.13's (project/AndroidRuntime.scala)
+    Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     packageApk := {
       val conv = fileConverter.value
       val buildRoot = (ThisBuild / baseDirectory).value
@@ -625,7 +632,8 @@ lazy val monacoAndroid = (project in file("monaco/android"))
       MonacoAssets.generate(streams.value.log.info(_), buildRoot / "monaco" / "assets", staged)
       IO.copyDirectory(staged, assets)
       AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
-        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
+        AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
+          (Compile / dependencyResolution).value, target.value / "android-runtime", streams.value.log.info(_)),
         baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-monaco.apk",
