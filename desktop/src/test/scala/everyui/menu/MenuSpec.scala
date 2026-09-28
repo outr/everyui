@@ -84,6 +84,15 @@ class MenuSpec extends FxSpec {
       dismissed shouldBe 0
       fx(Focus.focused()) shouldBe Some(card)
     }
+    "open a submenu when the pointer rests on its entry" in onScreen { _ =>
+      fx(Menu.hoverDelay @= 0.05)
+      val menu = fx(Menu.at(100.0, 100.0, List(MenuItem("Open"), MenuItem.sub("Copy", List(MenuItem("Path"))))))
+      val copy = fx(menu.rows(1))
+      fx(copy.event.pointer.enter @= PointerEvent(PointerKind.Enter, 150.0, 130.0))
+      focusedLabel shouldBe Some("Copy")
+      eventually(Focus.focused().collect { case r: MenuRow => r.item.label }.contains("Path")) shouldBe true
+      fx(Menu.hoverDelay @= 0.3)
+    }
     "say it was closed with nothing chosen" in onScreen { card =>
       var dismissed = 0
       fx(Menu.show(List(MenuItem("One"), MenuItem("Two")), "Title", () => dismissed += 1))

@@ -37,12 +37,13 @@ object Tooltip {
 
   /** `target`'s tip, made by `make` each time it shows. */
   def rich(target: Component)(make: () => Component): Unit = {
+    val over = target.event.pointer.over   // following the pointer from now, before the focus asks
     target.event.pointer.enter.attach(_ => ask(target, make))
     target.event.pointer.leave.attach(_ => hideFor(target))
     target.event.pointer.down.attach(_ => hideFor(target))
     target.focused.attach { on =>
-      if (on && onFocus() && !target.event.pointer.over()) ask(target, make)
-      else if (!on && !target.event.pointer.over()) hideFor(target)
+      if (on && onFocus() && !over()) ask(target, make)
+      else if (!on && !over()) hideFor(target)
     }
     target.onDispose(() => hideFor(target))
   }

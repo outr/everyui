@@ -5,6 +5,7 @@ import everyui.component.types.FontWeight
 import everyui.event.Key
 import everyui.focus.Focus
 import everyui.layout.VerticalLayout
+import everyui.render.Platform
 import everyui.theme.Theme
 import everyui.{Color, Shadow, ui}
 import reactify.*
@@ -13,9 +14,10 @@ import reactify.*
   * button (`Menu.below`), or, on a television, a panel in the middle of the screen under a title (`Menu.show`).
   *
   * Up and Down move through what can be chosen, round from the last to the first; OK or a click chooses, which closes
-  * every menu open and then does what the entry says. Right (or a click) opens a submenu beside its entry, and Left,
-  * Back or Escape closes it, back on that entry; Back or a click outside closes a menu, and the focus goes back where it
-  * was. The pointer resting on an entry moves the focus to it. `dismissed` hears the menus closed with nothing chosen.
+  * every menu open and then does what the entry says. Right (or a click, or the pointer resting on it for
+  * `Menu.hoverDelay`) opens a submenu beside its entry, and Left, Back or Escape closes it, back on that entry; Back or
+  * a click outside closes a menu, and the focus goes back where it was. The pointer resting on an entry moves the focus
+  * to it. `dismissed` hears the menus closed with nothing chosen.
   *
   * {{{
   *   Menu.context(fileRow) {
@@ -49,6 +51,8 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
     content.children += column
   }
   private var settled = false
+  // the submenu this opened, while it is up
+  private var opened: Option[Menu] = None
 
   across := math.max(Menu.minWidth(), rows.map(_.natural()).foldLeft(0.0)(math.max) + inset * 2.0)
   heading.foreach { h =>
@@ -77,6 +81,10 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
     if (row.item.submenu.nonEmpty) {
       row.chosen.attach(_ => open(row))
       row.opened.attach(_ => open(row))
+      // a pointer resting on it opens it, a moment on, as a desktop menu does
+      val over = row.event.pointer.over   // following the pointer from now, before it is asked
+      row.event.pointer.enter.attach(_ => if (Platform.pointerSupport()) Platform.after(Menu.hoverDelay(), () =>
+        if (over() && Focus.showing(row) && !opened.exists(m => Focus.showing(m))) open(row)))
     }
     else row.chosen.attach(_ => choose(row.item))
   }
@@ -101,6 +109,7 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
       if (right + sub.size.width() <= ui.size.width() - 8.0) right else math.max(8.0, absoluteLeft - sub.size.width() + inset)
     }
     sub.position.top := Menu.fit(row.absoluteTop - inset, sub.size.height())
+    opened = Some(sub)
     sub.up(over = true)
   }
 
@@ -122,6 +131,8 @@ object Menu {
   val textSize: Var[Double] = Var(14.0)
   /** The least width of a menu. */
   val minWidth: Var[Double] = Var(200.0)
+  /** How long the pointer rests on an entry with a submenu before it opens, in seconds. */
+  val hoverDelay: Var[Double] = Var(0.3)
 
   /** A menu in the middle of the screen under `title`, over a dimmed screen: what a remote's menu is. */
   def show(items: List[MenuItem], title: String = "", dismissed: () => Unit = () => ()): Menu = {
