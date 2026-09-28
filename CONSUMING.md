@@ -429,3 +429,20 @@ Tooltip.rich(fileTab)(() => new FilePreview(file))     // made afresh each time 
 On a platform driven by a remote (`Platform.remoteNavigation()`), tips do not follow the focus unless the app sets
 `Tooltip.onFocus @= true`: the focus moves with every press there, and a tip would cover the next thing along. A
 plain tip drawn by the platform itself is still `Component.tooltip`.
+
+### Selection (lists and trees)
+
+`list.selection` (and `tree.selection`) is a `Selection`: `keys` is a `Var[Set[String]]` the app reads and sets,
+`anchor` is where a range starts, and `multiple` says whether more than one row may be chosen (off where a remote drives
+the app, so one row is chosen and follows the cursor).
+
+```scala
+tree.selection.keys.attach(keys => status @= keys.size.toString + " selected")
+tree.selection.keys @= Set("/src/A.scala", "/src/B.scala")   // chosen by the app
+tree.selectedItems                                           // the chosen nodes, in the order they show
+list.selectAll(); list.selectRange(10, 20); list.selection.clear()
+list.selection.multiple @= false                             // one at a time, wherever it runs
+```
+
+Click picks a row, Shift+click the range from the anchor, Primary+click adds or removes one; Shift+arrows extend,
+Primary+arrows move the cursor alone and Primary+Space toggles its row; Primary+A picks every row.

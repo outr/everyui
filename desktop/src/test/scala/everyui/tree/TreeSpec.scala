@@ -5,7 +5,7 @@ import everyui.async.Task
 import everyui.focus.Focus
 import everyui.list.Decoration
 import everyui.{FxSpec, ui}
-import javafx.scene.input.{KeyCode, KeyEvent}
+import javafx.scene.input.{KeyCode, KeyEvent, MouseButton, MouseEvent}
 
 /** The tree: a model changed a node at a time under a tree that keeps what is open, chosen and scrolled to, children
   * loaded as a node opens, the keys, the app's dressing and its menu. */
@@ -144,6 +144,37 @@ class TreeSpec extends FxSpec {
         }) should contain("U")
         fx(tree.list.menuAt(2))
         menus shouldBe List("/c")
+      }
+    }
+    "pick several nodes with the pointer and the keys, and show what the app picks" in {
+      val model = fx(files())
+      val tree = fx(new Tree[Node](model, _.name))
+      def held(code: KeyCode, down: Boolean): Unit = fx(javafx.event.Event.fireEvent(window, new KeyEvent(
+        if (down) KeyEvent.KEY_PRESSED else KeyEvent.KEY_RELEASED, "", "", code, code == KeyCode.SHIFT && down,
+        code == KeyCode.CONTROL && down, false, false)))
+      def click(row: Int): Unit = fx {
+        val x = tree.list.absoluteLeft + 60.0
+        val y = tree.list.absoluteTop + row * 28.0 + 10.0
+        javafx.event.Event.fireEvent(tree.list.node.fx, new MouseEvent(MouseEvent.MOUSE_CLICKED, x, y, x, y,
+          MouseButton.PRIMARY, 1, false, false, false, false, false, false, false, false, false, true, null))
+      }
+      onScreen(tree) {
+        fx(tree.expand("/a"))
+        click(1)
+        held(KeyCode.SHIFT, true)
+        click(3)
+        held(KeyCode.SHIFT, false)
+        fx(tree.selection.keys()) shouldBe Set("/a/1", "/a/2", "/b")
+        held(KeyCode.CONTROL, true)
+        click(0)
+        held(KeyCode.CONTROL, false)
+        fx(tree.selectedItems.map(_.path)) shouldBe Vector("/a", "/a/1", "/a/2", "/b")
+        fx(javafx.event.Event.fireEvent(window, new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.DOWN, true, false, false, false)))
+        held(KeyCode.SHIFT, false)
+        fx(tree.selection.keys()) shouldBe Set("/a", "/a/1")
+        // what the app picks shows on the rows
+        fx(tree.selection.keys @= Set("/c"))
+        fx(tree.list.rows.filter(_.selected()).flatMap(_.item()).map(_.key)) shouldBe Vector("/c")
       }
     }
     "take fifty thousand nodes, open, in its stride" in {
