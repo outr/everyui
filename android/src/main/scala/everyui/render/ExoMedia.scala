@@ -124,11 +124,13 @@ class ExoMedia(frame: Option[VideoFrame]) {
         // seconds" report, measured on 2026-09-20 against a Jellyfin library where the SAME file played cleanly in
         // another client on the same device, network and server. What that client did differently was OkHttp with
         // its pool, its keep-alive and no short read timeout.
-        val client = new okhttp3.OkHttpClient.Builder()
+        val builder = new okhttp3.OkHttpClient.Builder()
           .connectTimeout(holding.connectMs.toLong, java.util.concurrent.TimeUnit.MILLISECONDS)
           .readTimeout(holding.readMs.toLong, java.util.concurrent.TimeUnit.MILLISECONDS)
           .retryOnConnectionFailure(true)
-          .build()
+        // a media server behind Let's Encrypt, on Android too old to trust it (LegacyTrust)
+        LegacyTrust.joined.foreach { case (factory, manager) => builder.sslSocketFactory(factory, manager) }
+        val client = builder.build()
         val http = new androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(client)
         if (sending.nonEmpty) {
           val map = new java.util.HashMap[String, String]()

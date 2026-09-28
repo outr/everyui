@@ -102,7 +102,10 @@ class RenderNode(val view: View) {
     case t: TextView =>
       face = Faces(family, weight)
       fontSize = size
-      t.setTypeface(if (family.nonEmpty) Host.typeface(face) else Typeface.create(Typeface.DEFAULT, weight, false))
+      // a weighted system face is Android 9's; before it, bold or not is the choice there is
+      t.setTypeface(if (family.nonEmpty) Host.typeface(face)
+        else if (android.os.Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.DEFAULT, weight, false)
+        else Typeface.create(Typeface.DEFAULT, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL))
       t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size.toFloat)
       spaceLines(t)
       placeY()
@@ -350,8 +353,11 @@ class RenderNode(val view: View) {
     if (hex.isEmpty) view.setElevation(0f)
     else {
       val colour = android.graphics.Color.parseColor(hex)
-      view.setOutlineSpotShadowColor(colour)
-      view.setOutlineAmbientShadowColor(colour)
+      // a coloured shadow is Android 9's; before it the glow is the platform's own dark one, which still lifts
+      if (android.os.Build.VERSION.SDK_INT >= 28) {
+        view.setOutlineSpotShadowColor(colour)
+        view.setOutlineAmbientShadowColor(colour)
+      }
       view.setElevation((blur / 2.0).toFloat)
     }
   /** A hardware layer: the view is drawn into a texture once, and again only when it changes. */
@@ -544,7 +550,8 @@ class RenderNode(val view: View) {
     case g: ViewGroup => g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)
     case _ => ()
   }
-  def setTooltip(text: String): Unit = view.setTooltipText(if (text.isEmpty) null else text)
+  def setTooltip(text: String): Unit =
+    if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
 
   def setPositionType(name: String): Unit = ()
 
@@ -1163,7 +1170,7 @@ object Nodes {
   def text(): RenderNode = {
     val t = new OutlinedText(Host.activity)
     t.setIncludeFontPadding(false)
-    t.setFallbackLineSpacing(false)
+    if (android.os.Build.VERSION.SDK_INT >= 28) t.setFallbackLineSpacing(false)
     t.setPadding(0, 0, 0, 0)
     t.setMaxLines(1)
     t.setHorizontallyScrolling(true)
@@ -1333,6 +1340,20 @@ object Platform {
 
   private var aways: List[() => Unit] = Nil
 
+  /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): a picture dimmed, or its blue
+    * pulled down for the night, the video with it. A colour matrix on the root's layer, which the video's TextureView
+    * is drawn into like everything else; left off entirely when there is nothing to scale, a layer costing a pass. */
+  def tint(red: Double, green: Double, blue: Double): Boolean = {
+    if (red >= 0.999 && green >= 0.999 && blue >= 0.999) Host.root.setLayerType(View.LAYER_TYPE_NONE, null)
+    else {
+      val paint = new Paint()
+      paint.setColorFilter(new android.graphics.ColorMatrixColorFilter(Array[Float](red.toFloat, 0f, 0f, 0f, 0f,
+        0f, green.toFloat, 0f, 0f, 0f, 0f, 0f, blue.toFloat, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
+      Host.root.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+    }
+    true
+  }
+
   def keepAwake(on: Boolean): Unit = {
     val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
     if (on) Host.activity.getWindow.addFlags(flag) else Host.activity.getWindow.clearFlags(flag)
@@ -1374,20 +1395,6 @@ object Platform {
         new String(out.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
       } finally in.close()
     } catch { case _: Exception => "" })
-  /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): a picture dimmed, or its blue
-    * pulled down for the night, the video with it. A colour matrix on the root's layer, which the video's TextureView
-    * is drawn into like everything else; left off entirely when there is nothing to scale, a layer costing a pass. */
-  def tint(red: Double, green: Double, blue: Double): Boolean = {
-    if (red >= 0.999 && green >= 0.999 && blue >= 0.999) Host.root.setLayerType(View.LAYER_TYPE_NONE, null)
-    else {
-      val paint = new Paint()
-      paint.setColorFilter(new android.graphics.ColorMatrixColorFilter(Array[Float](red.toFloat, 0f, 0f, 0f, 0f,
-        0f, green.toFloat, 0f, 0f, 0f, 0f, 0f, blue.toFloat, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
-      Host.root.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
-    }
-    true
-  }
-
 
   /** The character at a Unicode code point, as a string. */
   def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))
@@ -1396,6 +1403,7 @@ object Platform {
   /** What it is, as its maker names it ("NVIDIA SHIELD Android TV"). */
   def deviceModel(): String = RenderNode.maker(android.os.Build.MANUFACTURER, android.os.Build.MODEL, false)
 
+  /** Whether this device opens a streaming service's own app itself, rather than needing another to do it. */
   /** The hardware facts a performance report cannot be read without, each as a name and a value: the processor's
     * instruction set (a 32-bit stick and a 64-bit box can share a name), the Android release, the memory there is,
     * what is free, what this process may use, whether the device says it is short, and the display's refresh rate.
@@ -1440,7 +1448,6 @@ object Platform {
       }
     } catch { case t: Throwable => logError("screenshot: could not draw the app", t); "" }
 
-  /** Whether this device opens a streaming service's own app itself, rather than needing another to do it. */
   def launchesApps(): Boolean = true
 
   /** Whether it can play `codec` (a media server's name for it: "hevc", "ac3"), with a decoder of its own or by passing
@@ -1561,13 +1568,33 @@ object Platform {
       val file = storeFile(space, key)
       if (!file.isFile) None
       else {
-        val text = new String(java.nio.file.Files.readAllBytes(file.toPath), "UTF-8")
+        val text = readUtf8(file)
         if (text.isEmpty) None else Some(text)
       }
     } catch { case _: Throwable => None })
 
+  /** A file's text, by plain `java.io`: `java.nio.file` is Android 8's, and the store must keep documents back to 6. */
+  private def readUtf8(file: java.io.File): String = {
+    val in = new java.io.FileInputStream(file)
+    try {
+      val out = new java.io.ByteArrayOutputStream
+      val buffer = new Array[Byte](8192)
+      var n = in.read(buffer)
+      while (n > 0) {
+        out.write(buffer, 0, n)
+        n = in.read(buffer)
+      }
+      new String(out.toByteArray, "UTF-8")
+    } finally in.close()
+  }
+
+  private def writeUtf8(file: java.io.File, text: String): Unit = {
+    val out = new java.io.FileOutputStream(file)
+    try out.write(text.getBytes("UTF-8")) finally out.close()
+  }
+
   def storePut(space: String, key: String, value: String, done: () => Unit): Unit = {
-    try java.nio.file.Files.write(storeFile(space, key).toPath, value.getBytes("UTF-8"))
+    try writeUtf8(storeFile(space, key), value)
     catch { case _: Throwable => () }
     done()
   }
@@ -1606,18 +1633,29 @@ object Platform {
   def registerFont(face: Face): Unit = ()
 
   def screenWidth(): Double =
-    if (Host.viewportWidth > 0.0) Host.viewportWidth
-    else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.width.toDouble / Host.scale
+    if (Host.viewportWidth > 0.0) Host.viewportWidth else windowPixels()._1.toDouble / Host.scale
   def screenHeight(): Double =
-    if (Host.viewportHeight > 0.0) Host.viewportHeight
-    else Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.height.toDouble / Host.scale
+    if (Host.viewportHeight > 0.0) Host.viewportHeight else windowPixels()._2.toDouble / Host.scale
 
   /** Screen pixels to a layout unit: the window's real width over the width it is laid out in — the display's density,
     * or whatever a `--es viewport` launch set the layout to. */
   def pixelRatio(): Double = {
     val laid = screenWidth()
-    if (laid > 0.0) Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds.width.toDouble / laid else 1.0
+    if (laid > 0.0) windowPixels()._1.toDouble / laid else 1.0
   }
+
+  /** The window's size in pixels: Android 11's window metrics, and before them the display's real size — which, the
+    * app being edge to edge and full screen, is the same thing. */
+  private def windowPixels(): (Int, Int) =
+    if (android.os.Build.VERSION.SDK_INT >= 30) {
+      val bounds = Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds
+      (bounds.width, bounds.height)
+    }
+    else {
+      val metrics = new android.util.DisplayMetrics
+      Host.activity.getWindowManager.getDefaultDisplay.getRealMetrics(metrics)
+      (metrics.widthPixels, metrics.heightPixels)
+    }
 
   /** `--es freeze <seconds>` on the launch intent: step the animation that far on a virtual clock and stop
     * (tools/check.sh). Negative when absent. */
@@ -1650,9 +1688,12 @@ object Platform {
   def quit(): Unit = Host.activity.finish()
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
-  def localDateTime(millis: Long): String =
-    java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(millis), java.time.ZoneId.systemDefault())
-      .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+  def localDateTime(millis: Long): String = {
+    // java.text rather than java.time, which is Android 8's
+    val format = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+    format.setTimeZone(java.util.TimeZone.getDefault)
+    format.format(new java.util.Date(millis))
+  }
 
   /** No page to be served from: an app names its server (`--es live`). */
   def webSocketOrigin(): String = ""

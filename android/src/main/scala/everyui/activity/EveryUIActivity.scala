@@ -40,17 +40,11 @@ abstract class EveryUIActivity extends Activity {
     // posters from the device rather than fetching every one of them again
     try android.net.http.HttpResponseCache.install(new java.io.File(getCacheDir, "http"), 64L * 1024L * 1024L)
     catch { case t: java.io.IOException => android.util.Log.w("everyui", "no disk cache: " + t.getMessage) }
+    // before anything goes out over HTTPS: the Let's Encrypt roots, on Android too old to know them
+    everyui.render.LegacyTrust.install()
     val window = getWindow
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    window.setDecorFitsSystemWindows(false)
-    val attributes = window.getAttributes
-    attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-    window.setAttributes(attributes)
-    val insets = window.getInsetsController
-    if (insets != null) {
-      insets.hide(WindowInsets.Type.systemBars())
-      insets.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
-    }
+    immersive(window)
     // the frames it draws, measured again for this window where the app is listening (FrameTimings)
     everyui.render.FrameTimings.attach(this)
 
@@ -110,6 +104,36 @@ abstract class EveryUIActivity extends Activity {
     }
     else hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN) || super.dispatchKeyEvent(e)
   }
+
+  /** Edge to edge with the system bars hidden, by whichever means this Android has.
+    *
+    * The inset controller is Android 11's; the cutout mode, Android 9's. Called unguarded on anything older they
+    * were a crash before the first frame — the app runs back to Android 6, whose televisions are still in living
+    * rooms. There the older flags do the same job: laid out under the bars, bars hidden, and back again after a
+    * swipe shows them. A television has no bars to speak of either way; a phone does. */
+  private def immersive(window: android.view.Window): Unit =
+    if (android.os.Build.VERSION.SDK_INT >= 30) {
+      window.setDecorFitsSystemWindows(false)
+      val attributes = window.getAttributes
+      attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+      window.setAttributes(attributes)
+      val insets = window.getInsetsController
+      if (insets != null) {
+        insets.hide(WindowInsets.Type.systemBars())
+        insets.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
+      }
+    }
+    else {
+      if (android.os.Build.VERSION.SDK_INT >= 28) {
+        val attributes = window.getAttributes
+        attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        window.setAttributes(attributes)
+      }
+      window.getDecorView.setSystemUiVisibility(
+        android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+          android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+          android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+    }
 
   // the system's answer to a permission asked for (Permissions.ask)
   override def onRequestPermissionsResult(code: Int, permissions: Array[String], results: Array[Int]): Unit = {
