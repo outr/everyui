@@ -446,3 +446,48 @@ list.selection.multiple @= false                             // one at a time, w
 
 Click picks a row, Shift+click the range from the anchor, Primary+click adds or removes one; Shift+arrows extend,
 Primary+arrows move the cursor alone and Primary+Space toggles its row; Primary+A picks every row.
+
+## An installable web app
+
+An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,
+and done by the app's build: `everyui.sbt.WebApp` (plain Scala in this repository's `sbt-support/`) writes a web app
+manifest and a small service worker next to the bundle and links them from its `index.html`.
+
+Add the sources to the app's build definition, in `project/everyui.sbt`:
+
+```scala
+Compile / unmanagedSourceDirectories += file("/path/to/everyui/sbt-support/src/main/scala")
+```
+
+and call it once the bundle is written (after `index.html` and `main.js`, as DataWrangler's `webBundle` writes them):
+
+```scala
+import everyui.sbt.{WebApp, WebAppIcon, WebAppManifest}
+
+webBundle := Def.uncached {
+  // ... index.html, main.js, fonts written to `out` as before
+  IO.copyDirectory(baseDirectory.value / "icons", out / "icons")
+  WebApp.write(out, WebAppManifest("Voidcraft", shortName = "Voidcraft", description = "Code browser",
+    themeColor = "#121212", backgroundColor = "#121212",
+    icons = Seq(
+      WebAppIcon("icons/icon-192.png", "192x192"),
+      WebAppIcon("icons/icon-512.png", "512x512"),
+      WebAppIcon("icons/maskable-512.png", "512x512", "maskable"))), version)
+  out
+}
+```
+
+It writes `manifest.webmanifest` (`display: standalone`, so the app opens in its own window), `sw.js` and `webapp.js`
+(which registers the worker from a file, so a Content-Security-Policy of `script-src 'self'` allows it), and adds to
+the page's head the manifest link, the theme colour and an Apple touch icon (the largest `any` icon). `version` names
+the worker's cache, so a new bundle starts a new cache (the script's content hash does). The worker answers from the
+network and keeps what it fetched, so the app still opens when the network is gone.
+
+**Icons.** PNG, square: **192×192** and **512×512** with purpose `any` are what browsers require to offer an install;
+add a **512×512 `maskable`** one (the picture within the middle 80%, the rest background) for Android's shaped icons.
+Apple devices use the touch icon (180×180 is their size; the 512 one is scaled).
+
+The page must be served over HTTPS (or from `localhost`). Chromium browsers then offer to install it from the address
+bar; Safari adds it with Add to Dock or Add to Home Screen. In its own window the browser keeps no tabs, so more of the
+chords a browser keeps for itself in a tab (Ctrl+T, Ctrl+N, Ctrl+Tab and others) reach the app's keymap; which ones is
+the browser's own choice and changes between browsers, so try the chords the app relies on in the installed window.

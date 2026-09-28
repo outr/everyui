@@ -1,0 +1,63 @@
+package everyui.sbt
+
+import java.io.File
+import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.file.Files
+
+/** Makes an EveryUI web bundle installable: a browser offers to install it, and it then runs in a window of its own.
+  * From an app's build, after its bundle is written (index.html next to main.js):
+  *
+  * {{{
+  *   WebApp.write(out, WebAppManifest("Voidcraft", icons = Seq(
+  *     WebAppIcon("icons/192.png", "192x192"), WebAppIcon("icons/512.png", "512x512"),
+  *     WebAppIcon("icons/maskable-512.png", "512x512", "maskable"))), version)
+  * }}}
+  *
+  * It writes `manifest.webmanifest`, `sw.js` and `webapp.js` (which registers it) into `out`, and links them from `out/index.html`: the manifest, the theme
+  * colour and an Apple touch icon in its head, the service worker's registration before its body ends. The service
+  * worker is the least a browser asks for: it answers from the network, keeping what it fetched, so the app still opens
+  * without one; `version` names its cache, so a new bundle starts a new one and the old is let go. Plain Scala, for an
+  * sbt build to compile in (CONSUMING.md). */
+object WebApp {
+  def write(out: File, manifest: WebAppManifest, version: String): Unit = {
+    Files.write(new File(out, "manifest.webmanifest").toPath, manifest.json.getBytes(UTF_8))
+    Files.write(new File(out, "sw.js").toPath, worker(version).getBytes(UTF_8))
+    Files.write(new File(out, "webapp.js").toPath, registration.getBytes(UTF_8))
+    val page = new File(out, "index.html")
+    Files.write(page.toPath, link(new String(Files.readAllBytes(page.toPath), UTF_8), manifest).getBytes(UTF_8))
+  }
+
+  /** `html` with the manifest, the theme colour, a touch icon and the worker's registration linked in (once). */
+  def link(html: String, manifest: WebAppManifest): String = if (html.contains("manifest.webmanifest")) html else {
+    val touch = manifest.icons.filter(_.purpose == "any").sortBy(i => -i.sizes.takeWhile(_.isDigit).toIntOption.getOrElse(0))
+      .headOption.map(i => s"""\n  <link rel="apple-touch-icon" href="${i.src}">""").getOrElse("")
+    val head = s"""  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="${manifest.themeColor}">$touch
+"""
+    val register = """  <script src="webapp.js"></script>
+"""
+    val withHead = html.replaceFirst("(?i)</head>", java.util.regex.Matcher.quoteReplacement(head + "</head>"))
+    withHead.replaceFirst("(?i)</body>", java.util.regex.Matcher.quoteReplacement(register + "</body>"))
+  }
+
+  /** What registers the service worker: a file of its own, so a page whose policy allows no inline script still runs it. */
+  val registration: String = "if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');\n"
+
+  /** The service worker: the network first, what it fetched kept in a cache named by `version` for when it is not
+    * there, and older caches cleared once this one is in charge. */
+  def worker(version: String): String =
+    s"""const CACHE = 'everyui-$version';
+       |self.addEventListener('install', () => self.skipWaiting());
+       |self.addEventListener('activate', e => e.waitUntil(
+       |  caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+       |    .then(() => self.clients.claim())));
+       |self.addEventListener('fetch', e => {
+       |  const request = e.request;
+       |  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+       |  e.respondWith(fetch(request).then(response => {
+       |    if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(c => c.put(request, copy)); }
+       |    return response;
+       |  }).catch(() => caches.match(request).then(hit => hit || caches.match('./'))));
+       |});
+       |""".stripMargin
+}
