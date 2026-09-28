@@ -4,15 +4,17 @@ import everyui.component.*
 import everyui.component.types.FontWeight
 import everyui.event.Key
 import everyui.focus.Focus
-import everyui.kit.TextScroll
+import everyui.i18n.Direction
+import everyui.kit.{Mirror, TextScroll}
 import everyui.layout.{FlowLayout, VerticalLayout}
 import everyui.theme.Theme
 import everyui.ui
 import reactify.*
 
 /** A dialog: a title, a `body` that scrolls when it is taller than the screen leaves room for (or than `tallest`), and
-  * its buttons at the right, `wide` across or as wide as the screen allows. It holds the focus while it is up; Back
-  * closes it, and the focus goes back where it was.
+  * its buttons at the end of the line (the right, or the left in a right-to-left language, the title then at the
+  * right), `wide` across or as wide as the screen allows. It holds the focus while it is up; Back closes it, and the
+  * focus goes back where it was.
   *
   * A body of words alone that is taller than its room takes the focus itself, and Up and Down read through it, since a
   * remote has no other way to reach its end. Down from the body goes to the buttons, onto the default one, and Up from
@@ -75,7 +77,9 @@ class DialogPanel(title: String, body: List[Component], actions: List[DialogActi
   size.width @= across
   backgroundColor := Theme.raised()
   radius @= points * 1.1
-  heading.position.left @= margin
+  // the title where the language starts, the buttons where it ends: in a right-to-left language the title at the right
+  // and the buttons at the left, whose row mirrors itself, so the default action still ends the line
+  Mirror.place(heading, () => size.width(), () => margin)
   heading.position.top @= margin
   private def top: Double = margin + (if (title.isEmpty) 0.0 else heading.size.height() + points * 0.85)
   private def actionsTall: Double = if (buttons.isEmpty) 0.0 else row.size.height() + margin
@@ -84,7 +88,7 @@ class DialogPanel(title: String, body: List[Component], actions: List[DialogActi
     ui.size.height() - 48.0 - top - actionsTall - margin) + slack * 2.0
   // the buttons at the right, on as few lines as they fit
   row.size.width := math.min(inner, buttons.map(_.size.width()).sum + 10.0 * math.max(0, buttons.size - 1) + 1.0)
-  row.position.left := margin + inner - row.size.width()
+  row.position.left := (if (Direction.rtl()) margin else margin + inner - row.size.width())
   row.position.top := top - slack + scroll.size.height() - slack + (if (body.isEmpty) 0.0 else margin)
   size.height := row.position.top() + actionsTall
   children ++= (if (title.isEmpty) Nil else List(heading)) ++ List(scroll, row)

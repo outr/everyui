@@ -6,8 +6,8 @@ import everyui.ui
 import reactify.*
 
 /** A dialog: a title, whatever goes in `body` (stacked; it scrolls when taller than the screen leaves room for),
-  * and its `buttons` on the right. `show(defaultFocus)` puts it up on the modal sheet with the focus there, `close()`
-  * takes it down. */
+  * and its `buttons` at the end of the line (the right, or the left in a right-to-left language). `show(defaultFocus)`
+  * puts it up on the modal sheet with the focus there, `close()` takes it down. */
 class Dialog(title: String, width: Double = 440.0) extends Container {
   val body: Container = new Container {
     size.width @= width
@@ -21,11 +21,12 @@ class Dialog(title: String, width: Double = 440.0) extends Container {
     content.children += body
   }
 
-  // the buttons sit at the right, on a line as wide as the body
+  // the buttons sit where the line ends, on a line as wide as the body: at the right, or at the left in a right-to-left
+  // language, where their row mirrors itself (the title, in the column, already starts at the right there)
   private val buttonLine = new Container {
     size.width @= width
     size.height := buttons.size.height
-    buttons.position.right @= width
+    buttons.position.left := (if (everyui.i18n.Direction.rtl()) 0.0 else width - buttons.size.width())
     children += buttons
   }
 

@@ -4,7 +4,7 @@ import everyui.async.Task
 import everyui.component.*
 import everyui.component.types.WhiteSpace
 import everyui.focus.Focus
-import everyui.i18n.{Language, Strings, Words}
+import everyui.i18n.{Direction, Language, Strings, Words}
 import everyui.kit.{AsyncPress, Toast}
 import everyui.render.{Nodes, Platform}
 import everyui.{FxSpec, ui}
@@ -142,6 +142,35 @@ class DialogSpec extends FxSpec {
       val scroll = fx(Focus.candidates(panel).head)
       fx(scroll.kind) shouldBe "ScrollContainer"
       fx(panel.size.height()) should be <= fx(ui.size.height())
+    }
+  }
+
+  "A dialog in a right-to-left language" should {
+    "put its title at the right and its buttons at the left, the default one still ending the line" in onScreen { _ =>
+      fx(Direction.rtl @= true)
+      try {
+        val panel = fx(new DialogPanel("Publish", Nil, List(DialogAction(Words.cancel, () => ()), DialogAction("Publish", () => (), default = true))))
+        fx(panel.open())
+        val margin = DialogPanel.textSize() * 1.45
+        val heading = fx(panel.children().collect { case t: TextView => t }.head)
+        fx(heading.position.left() + heading.size.width()) shouldBe fx(panel.size.width() - margin) +- 0.5
+        val (cancel, publish) = fx((panel.buttons(0), panel.buttons(1)))
+        fx(cancel.absoluteLeft) should be > fx(publish.absoluteLeft)
+        // (the row is a pixel wider than its buttons, which the mirrored row leaves at its start)
+        fx(publish.absoluteLeft - panel.absoluteLeft) shouldBe margin +- 1.5
+        fx(Modal.close())
+        val plain = fx {
+          val d = new Dialog("Rename")
+          d.buttons.children ++= List(new Button("Cancel"), new Button("Rename"))
+          d.show(d.buttons.children().last)
+          d
+        }
+        fx(plain.buttons.position.left()) shouldBe 0.0
+        val title = fx(plain.children().collect { case t: TextView => t }.head)
+        fx(title.position.left() + title.size.width()) shouldBe fx(plain.size.width() - plain.padding()) +- 0.5
+        fx(plain.buttons.children()(0).position.left()) should be > fx(plain.buttons.children()(1).position.left())
+      }
+      finally fx(Direction.rtl @= false)
     }
   }
 
