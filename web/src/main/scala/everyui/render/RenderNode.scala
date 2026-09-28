@@ -69,9 +69,17 @@ class RenderNode(val el: html.Element) {
     el.style.lineHeight = Faces(family, weight).lineHeight(size).toString + "px"
   }
 
-  /** The laid-out size in pixels (text is measured with its real font). */
-  def getWidth(): Double = el.getBoundingClientRect().width
-  def getHeight(): Double = el.getBoundingClientRect().height
+  /** The laid-out size in pixels (text is measured with its real font), shown or not: a component keeps its size out
+    * of sight, as it does on every other backend. */
+  def getWidth(): Double = box().width
+  def getHeight(): Double = box().height
+
+  // Under `display: none` a node has no box and reads 0 by 0: a button made in a hidden panel was an empty pill once
+  // the panel showed, since nothing measures it again then. What hides it is laid out, undrawn, for the read instead.
+  private def box(): dom.DOMRect = {
+    val r = el.getBoundingClientRect()
+    if (r.width == 0.0 && r.height == 0.0 && RenderNode.reveal(el)) el.getBoundingClientRect() else r
+  }
 
   def append(child: RenderNode): Unit = el.appendChild(child.el)
   def insert(child: RenderNode, index: Int): Unit = {
@@ -255,7 +263,11 @@ class RenderNode(val el: html.Element) {
     el.asInstanceOf[js.Dynamic].scrollTo(options)
   }
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
-  def setVisible(visible: Boolean): Unit = el.style.display = if (visible) "" else "none"
+  def setVisible(visible: Boolean): Unit = {
+    el.style.display = if (visible) "" else "none"
+    // no longer laid out only to be measured (RenderNode.reveal)
+    if (el.style.visibility.nonEmpty) el.style.visibility = ""
+  }
   def setOpacity(opacity: Double): Unit = el.style.opacity = opacity.toString
 
   /** Clipping is the browser's overflow; a scrollable node already clips. */
@@ -539,6 +551,40 @@ class RenderNode(val el: html.Element) {
 object RenderNode {
   /** SVG's namespace, which its elements are made in. */
   val svgNs: String = "http://www.w3.org/2000/svg"
+
+  // what `reveal` has laid out, undrawn, until the end of the turn
+  private var revealed: List[html.Element] = Nil
+
+  /** Lay out what hides `el` (it, or a container above it, `display: none`) without drawing it, until the end of the
+    * script's turn, so its size can be read; whether there was anything to. The sizes a turn asks for are read together
+    * (MeasuredFeature), so a hidden panel is laid out once for all of them, and it is hidden again before the frame is
+    * drawn. A node not on the page is measured when it is put there. */
+  def reveal(el: html.Element): Boolean = el.isConnected && el.getClientRects().length == 0 && {
+    val before = revealed
+    var at: dom.Node = el
+    while (at != null && !(at eq dom.document)) {
+      val e = at.asInstanceOf[html.Element]
+      if (e.style.display == "none") {
+        e.style.display = ""
+        e.style.visibility = "hidden"
+        revealed = e :: revealed
+      }
+      at = at.parentNode
+    }
+    if (before.isEmpty && revealed.nonEmpty) Platform.beforePaint(() => hide())
+    !(revealed eq before)
+  }
+
+  // hidden again, unless it was shown or hidden since (setVisible clears the visibility)
+  private def hide(): Unit = {
+    revealed.foreach { e =>
+      if (e.style.visibility == "hidden") {
+        e.style.display = "none"
+        e.style.visibility = ""
+      }
+    }
+    revealed = Nil
+  }
 
   /** CSS for `everyui.Gradient`'s encoding. */
   def linearGradient(angle: Double, stops: String): String =

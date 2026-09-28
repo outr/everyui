@@ -17,6 +17,7 @@ import everyui.render.Platform
   *   bench      reactify's per-operation cost
   *   easings    every easing curve as numbers
   *   blur       blur as the screensaver draws it: a photo over its blurred copy, and a blur coming clear
+  *   hidden     what is made or changed in a hidden panel has its size when the panel shows
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
@@ -28,5 +29,6 @@ import everyui.render.Platform
   else if (demo == "input") InputDemo.run()
   else if (demo == "widgets") WidgetsDemo.run()
   else if (demo == "blur") BlurDemo.run()
+  else if (demo == "hidden") HiddenDemo.run()
   else ExampleApp.main()
 }

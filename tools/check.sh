@@ -171,6 +171,15 @@ web_frame() {
   frame web "$LOGS/web-console.log"
 }
 
+# web_hidden: what is made or changed in a hidden panel has its size when the panel shows (HiddenDemo)
+web_hidden() {
+  "$CHROME" --headless=new --disable-gpu --no-sandbox --force-device-scale-factor=1 --virtual-time-budget=4000 \
+    --window-size=1440,900 --enable-logging=stderr --v=0 --dump-dom "file://$ROOT/web/out-js/index.html?demo=hidden" \
+    > /dev/null 2> "$LOGS/web-hidden-console.log"
+  grep -o "\[ui\] hidden[^\"]*" "$LOGS/web-hidden-console.log"
+  grep -q "\[ui\] hidden ok" "$LOGS/web-hidden-console.log"
+}
+
 web_live() {
   command -v Xvfb > /dev/null || { echo "Xvfb not found"; return 1; }
   local seconds=${FPS_SECONDS:-60}
@@ -336,9 +345,11 @@ fi
 
 if run "web bundle builds" web-build.log web_build; then
   run "web: AnimationExample frame" web-frame.log web_frame
+  run "web: sizes made in a hidden panel" web-hidden.log web_hidden
   WEB_BUILT=1
 else
   skip "web: AnimationExample frame" "web bundle did not build"
+  skip "web: sizes made in a hidden panel" "web bundle did not build"
   WEB_BUILT=0
 fi
 
