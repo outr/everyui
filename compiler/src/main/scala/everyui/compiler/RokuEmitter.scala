@@ -549,6 +549,47 @@ class RokuEmitter(
       case None     => emitTerm(t)
     }
 
+    /** What an argument no case takes does in a partial function's closure (`emitPartialClosure`): it says so in the
+      * closure's environment and returns. */
+    def partialMiss: String = "    env._miss = true\n    return invalid"
+
+    /** A partial function written as its cases (`{ case … }`), for `collect` and `collectFirst`: a closure like
+      * `emitClosure`'s, except that an argument no case takes returns with `env._miss` set (`_collectCases` reads it)
+      * rather than throwing a MatchError, which cost an exception, and the element written out as text for its
+      * message, for every element left out: a few hundred of them timed a Roku's channel out. `None` where the
+      * closure is not a match on its argument. */
+    def emitPartialClosure(dd: DefDef): Option[String] = {
+      val params = termParams(dd.paramss)
+      dd.rhs.map(unwrap) match {
+        case Some(Match(scrut, cases)) if params.size == 1 =>
+          val n = closureCounter; closureCounter += 1
+          val name = s"closure$n"
+          val fvs = freeVars(dd)
+          val binds = (fvs.map { case (nm, _) => s"  $nm = env.fv_$nm" } :+ s"  ${params.head} = args[0]").mkString("\n")
+          val mv = s"_mt${matchCounter}"; matchCounter += 1
+          val head = withStatement(s"  $mv = ${emitTerm(scrut)}")
+          val body = (head :: emitCasesOn(mv, cases, skReturn, partialMiss)).mkString("\n")
+          closures.append(s"function $name(env as object, args as object) as dynamic\n")
+          closures.append("  self = env.self\n")
+          closures.append(binds).append("\n")
+          closures.append(body).append("\n")
+          closures.append("  return invalid\n")
+          closures.append("end function\n\n")
+          val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
+          val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
+          Some(s"{ fn: $name, env: { self: $envSelf$envFvs } }")
+        case _ => None
+      }
+    }
+
+    /** `xs.collect(pf)` (`first`: `collectFirst`): cases written in place go to `_collectCases`, which leaves out what
+      * none of them takes without an exception; a partial function handed over as a value, to `_collect`. */
+    def emitCollect(recv: Term, pf: Term, first: Boolean): String =
+      asClosure(pf).flatMap(emitPartialClosure) match {
+        case Some(cl) => s"_collectCases(${emitTerm(recv)}, $cl, $first)"
+        case None => s"_collect(${emitTerm(recv)}, ${emitArgVal(pf)}, $first)"
+      }
+
     // Positional args for user calls / ctors. Omitted defaults are REAL
     // arguments to an emitted function (BrightScript checks arity), so they
     // are emitted — not dropped as they are for facade constructor options.
@@ -1700,11 +1741,9 @@ class RokuEmitter(
               s"_reduce(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Select(recv, "updated") if isSeqLike(recv) && args.size == 2 =>
               s"_seqUpdated(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
-            // `xs.collect { case … }`: the cases as one function, an element none of them takes (its MatchError) left out
-            case Select(recv, "collect") if isSeqLike(recv) && args.size == 1 =>
-              s"_collect(${emitTerm(recv)}, ${emitArgVal(args.head)}, false)"
-            case Select(recv, "collectFirst") if isSeqLike(recv) && args.size == 1 =>
-              s"_collect(${emitTerm(recv)}, ${emitArgVal(args.head)}, true)"
+            // `xs.collect { case … }`: what none of the cases takes left out (emitCollect)
+            case Select(recv, "collect") if isSeqLike(recv) && args.size == 1 => emitCollect(recv, args.head, false)
+            case Select(recv, "collectFirst") if isSeqLike(recv) && args.size == 1 => emitCollect(recv, args.head, true)
             // `a to b by s` and `a until b by s`: the bounds, since the range made first is already its values (and
             // counting down it has none)
             case Select(recv, "by") if fqnOf(recv.tpe).startsWith("scala.collection.immutable.Range") && args.size == 1 =>
@@ -6012,8 +6051,8 @@ class RokuEmitter(
       |    r[i] = x
       |    return r
       |end function
-      |' xs.collect { case … } (and collectFirst): the cases are one function, and an element none of them takes throws its
-      |' MatchError, which leaves it out
+      |' xs.collect(pf) (and collectFirst) where pf is a value: an element it does not take throws its MatchError, which
+      |' leaves it out. Cases written in place go to _collectCases instead
       |function _collect(xs as dynamic, pf as dynamic, first as boolean) as dynamic
       |    r = []
       |    for each x in _rtItems(xs)
@@ -6025,6 +6064,24 @@ class RokuEmitter(
       |            if e._cls <> "MatchError" then RtThrow(e)
       |        end try
       |        if taken
+      |            if first then return v
+      |            r.push(v)
+      |        end if
+      |    end for
+      |    if first then return invalid
+      |    return r
+      |end function
+      |' xs.collect { case … } (and collectFirst): an element none of the cases takes comes back with env._miss set
+      |' (emitPartialClosure), a call and a flag where a MatchError was an exception and the element made into text
+      |function _collectCases(xs as dynamic, pf as object, first as boolean) as dynamic
+      |    r = []
+      |    env = pf.env
+      |    env._miss = false
+      |    for each x in _rtItems(xs)
+      |        v = pf.fn(env, [x])
+      |        if env._miss
+      |            env._miss = false
+      |        else
       |            if first then return v
       |            r.push(v)
       |        end if

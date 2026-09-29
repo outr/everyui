@@ -662,6 +662,37 @@ func _arrIndexWhere(_ xs: V, _ cl: V) throws -> V {
     for (i, e) in rtItems(xs).enumerated() where try RtInvoke(cl, rtArr([e])).rtTrue { return .vInt(i) }
     return .vInt(-1)
 }
+/** xs.collect(pf) (and collectFirst) where pf is a value: an element it does not take throws its MatchError, which
+  * leaves it out. Cases written in place go to _collectCases instead. */
+func _collect(_ xs: V, _ pf: V, _ first: Bool) throws -> V {
+    var r: [V] = []
+    for e in rtItems(xs) {
+        do {
+            let v = try RtInvoke(pf, rtArr([e]))
+            if first { return v }
+            r.append(v)
+        } catch let error as RtError {
+            if rtS(error.v["_cls"]) != "MatchError" { throw error }
+        }
+    }
+    return first ? .vNull : rtArr(r)
+}
+/** xs.collect { case … } (and collectFirst): an element none of the cases takes comes back with the closure's
+  * env._miss set (the emitter's emitPartialClosure), rather than as a MatchError thrown and caught. */
+func _collectCases(_ xs: V, _ pf: V, _ first: Bool) throws -> V {
+    var r: [V] = []
+    let env = pf["env"]
+    env["_miss"] = .vBool(false)
+    for e in rtItems(xs) {
+        let v = try RtInvoke(pf, rtArr([e]))
+        if env["_miss"].rtTrue { env["_miss"] = .vBool(false) }
+        else {
+            if first { return v }
+            r.append(v)
+        }
+    }
+    return first ? .vNull : rtArr(r)
+}
 func _contains(_ xs: V, _ x: V) -> V { .vBool(rtItems(xs).contains { rtEq($0, x) }) }
 func _arrIndexOf(_ xs: V, _ x: V) -> V { .vInt(rtItems(xs).firstIndex { rtEq($0, x) } ?? -1) }
 func _optToList(_ o: V) -> V { if case .vNull = o { return rtArr([]) }; return rtArr([o]) }

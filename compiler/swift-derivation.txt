@@ -2241,6 +2241,39 @@ class SwiftEmitter(
 @@ new
           // the runtime's _toShort and _toByte truncate a fraction and read a String themselves
           val whole = if (fqnOf(q.tpe) == "scala.Char") s"_chCode(${emitTerm(q)})" else emitTerm(q)
+@@ old
+    def partialMiss: String = "    env._miss = true\n    return invalid"
+@@ new
+    def partialMiss: String = "    env[\"_miss\"] = V.vBool(true)\n    return V.vNull"
+@@ old
+          val binds = (fvs.map { case (nm, _) => s"  $nm = env.fv_$nm" } :+ s"  ${params.head} = args[0]").mkString("\n")
+          val mv = s"_mt${matchCounter}"; matchCounter += 1
+          val head = withStatement(s"  $mv = ${emitTerm(scrut)}")
+          val body = (head :: emitCasesOn(mv, cases, skReturn, partialMiss)).mkString("\n")
+          closures.append(s"function $name(env as object, args as object) as dynamic\n")
+          closures.append("  self = env.self\n")
+          closures.append(binds).append("\n")
+          closures.append(body).append("\n")
+          closures.append("  return invalid\n")
+          closures.append("end function\n\n")
+          val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
+          val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
+          Some(s"{ fn: $name, env: { self: $envSelf$envFvs } }")
+@@ new
+          val binds = (fvs.map { case (nm, _) => s"  $nm = ${field("env", "fv_" + nm)}" } :+
+            s"  ${params.head} = args[${vInt(0)}]").mkString("\n")
+          val mv = s"_mt${matchCounter}"; matchCounter += 1
+          val head = withStatement(s"  $mv = try ${emitTerm(scrut)}")
+          val body = (head :: emitCasesOn(mv, cases, skReturn, partialMiss)).mkString("\n")
+          closures.append(s"func $name(_ env: V, _ args: V) throws -> V {\n")
+          closures.append(s"  let this: V = ${field("env", "self")}\n")
+          closures.append(binds).append("\n")
+          closures.append(body).append("\n")
+          closures.append("  return V.vNull\n")
+          closures.append("}\n\n")
+          val envSelf = if (currentClass.exists) "this" else NULL
+          val envFvs = fvs.map { case (nm, _) => s"${swStr("fv_" + nm)}: $nm" }
+          Some(s"rtClosure($name, ${rtObj(s"${swStr("self")}: $envSelf" :: envFvs)})")
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {
