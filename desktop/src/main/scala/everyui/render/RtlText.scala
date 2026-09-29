@@ -83,36 +83,85 @@ object RtlText {
   }
 
   /** `text` with a line break wherever the next word would not fit `width` in `font`; its own line breaks kept. */
-  def lines(text: String, font: Font, width: Double): String = {
-    probe.setFont(font)
-    // a hair inside the width, so JavaFX never finds a line it has to wrap again
-    val room = width - 0.5
-    text.split("\n", -1).map(paragraph => wrap(paragraph, room)).mkString("\n")
+  def lines(text: String, font: Font, width: Double): String =
+    broken(text, width, (from, to) => across(font, text.substring(from, to)))
+
+  /** The words of `pieces`, each drawn in its own face, with a line break wherever the next word would not fit `width`:
+    * a paragraph of styled runs (`RichFlow`), broken as one. */
+  def lines(pieces: List[(String, Font)], width: Double): List[String] = {
+    val text = pieces.map(_._1).mkString
+    val starts = pieces.scanLeft(0)((at, p) => at + p._1.length)
+    val widths = (from: Int, to: Int) => pieces.indices.foldLeft(0.0) { (w, i) =>
+      val a = math.max(from, starts(i))
+      val b = math.min(to, starts(i + 1))
+      if (a < b) w + across(pieces(i)._2, text.substring(a, b)) else w
+    }
+    val laid = broken(text, width, widths)
+    // back into the pieces: a space the break took, or a break put in between letters, in the piece it falls in
+    val out = pieces.map(_ => new StringBuilder).toArray
+    var piece = 0
+    var i = 0
+    var j = 0
+    while (j < laid.length) {
+      while (piece < pieces.size - 1 && i >= starts(piece + 1)) piece += 1
+      out(piece).append(laid.charAt(j))
+      val put = laid.charAt(j) == '\n' && i < text.length && text.charAt(i) != '\n' && text.charAt(i) != ' '
+      if (put) j += 1
+      else {
+        i += 1
+        j += 1
+      }
+    }
+    out.toList.map(_.toString)
   }
 
-  private def across(s: String): Double = {
+  /** How wide `s` is in `font`. */
+  def across(font: Font, s: String): Double = {
+    probe.setFont(font)
     probe.setText(s)
     probe.getLayoutBounds.getWidth
   }
 
-  private def wrap(paragraph: String, room: Double): String = {
+  // `text` with a line break wherever the next word would not fit `width` as `widths` measures from one index to another
+  private def broken(text: String, width: Double, widths: (Int, Int) => Double): String = {
+    // a hair inside the width, so JavaFX never finds a line it has to wrap again
+    val room = width - 1.0
     val out = new StringBuilder
-    var line = ""
-    paragraph.split(" ", -1).foreach { word =>
-      val tried = if (line.isEmpty) word else line + " " + word
-      if (across(tried) <= room || tried.isEmpty) line = tried
+    var from = 0
+    text.split("\n", -1).foreach { paragraph =>
+      if (from > 0) out.append('\n')
+      wrap(text, from, from + paragraph.length, room, widths, out)
+      from += paragraph.length + 1
+    }
+    out.toString
+  }
+
+  // the paragraph of `text` from `start` to `end` into `out`, broken at spaces (a word wider than a line between its
+  // letters)
+  private def wrap(text: String, start: Int, end: Int, room: Double, widths: (Int, Int) => Double,
+                   out: StringBuilder): Unit = {
+    var line = start
+    var i = start
+    while (i < end) {
+      var j = i
+      while (j < end && text.charAt(j) == ' ') j += 1
+      while (j < end && text.charAt(j) != ' ') j += 1
+      if (widths(line, j) <= room) i = j
+      else if (i > line) {
+        // the space before the word becomes the break
+        out.append(text.substring(line, i)).append('\n')
+        line = i + 1
+        i = line
+      }
       else {
-        if (line.nonEmpty) out.append(line).append('\n')
-        line = word
-        // a word wider than the line: as much of it as fits, a line at a time
-        while (line.length > 1 && across(line) > room) {
-          var fits = 1
-          while (fits < line.length && across(line.substring(0, fits + 1)) <= room) fits += 1
-          out.append(line.substring(0, fits)).append('\n')
-          line = line.substring(fits)
-        }
+        // a word wider than the line: as much of it as fits
+        var k = line + 1
+        while (k < j && widths(line, k + 1) <= room) k += 1
+        out.append(text.substring(line, k)).append('\n')
+        line = k
+        i = k
       }
     }
-    out.append(line).toString
+    out.append(text.substring(line, end))
   }
 }

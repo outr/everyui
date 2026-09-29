@@ -7,9 +7,10 @@ import everyui.theme.Theme
   * the monospaced face on its wash, links in the link colour and underlined. A hard break starts a new line and a
   * picture stands on a line of its own (`MdPart`). */
 private[markdown] object MarkdownRuns {
-  /** The lines of `content`, set at `points` with `weight` as the words' own. */
-  def parts(content: List[MdInline], points: Double, weight: Int): List[MdPart] = {
-    val out = new MarkdownRuns(points)
+  /** The lines of `content`, set at `points` with `weight` as the words' own; with `breaks`, each line break of the
+    * text starts a new line too, as a chat's messages have it. */
+  def parts(content: List[MdInline], points: Double, weight: Int, breaks: Boolean = false): List[MdPart] = {
+    val out = new MarkdownRuns(points, breaks)
     out.add(content, TextRun("", weight = weight))
     out.done()
   }
@@ -30,7 +31,7 @@ private[markdown] object MarkdownRuns {
 }
 
 /** Runs gathered a line at a time (`MarkdownRuns.parts`). */
-private[markdown] class MarkdownRuns(points: Double) {
+private[markdown] class MarkdownRuns(points: Double, breaks: Boolean) {
   private var lines: List[MdPart] = Nil
   private var line: List[TextRun] = Nil
 
@@ -47,7 +48,7 @@ private[markdown] class MarkdownRuns(points: Double) {
 
   def add(content: List[MdInline], style: TextRun): Unit = content.foreach {
     case MdInline.Text(t) => line = style.copy(text = t) :: line
-    case MdInline.SoftBreak => line = style.copy(text = " ") :: line
+    case MdInline.SoftBreak => if (breaks) lineEnd() else line = style.copy(text = " ") :: line
     case MdInline.HardBreak => lineEnd()
     case MdInline.Emphasis(inside) => add(inside, style.copy(italic = true))
     case MdInline.Strong(inside) => add(inside, style.copy(weight = 700))

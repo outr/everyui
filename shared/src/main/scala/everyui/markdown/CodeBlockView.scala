@@ -1,7 +1,7 @@
 package everyui.markdown
 
 import everyui.component.{Container, IconButton, RichText, ScrollContainer, TextView}
-import everyui.component.types.{Semantics, WhiteSpace}
+import everyui.component.types.{Semantics, TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.kit.Highlight
 import everyui.render.Platform
@@ -26,6 +26,8 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
     font.size @= points
     whiteSpace @= WhiteSpace.Pre
     color := Theme.text()
+    // code reads left to right whatever the words about it do
+    direction @= TextDirection.LeftToRight
     runs := Highlight.runs(code(), language)
   }
   // the room after the longest line, as there is before it
@@ -33,7 +35,8 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
     size.width @= pad
     size.height @= 1.0
   }
-  private val scroll = new ScrollContainer(horizontal = true)
+  // code runs from its left in every language
+  private val scroll = new ScrollContainer(horizontal = true, followsDirection = false)
 
   size.width := width
   backgroundColor := MarkdownView.codeBackground()

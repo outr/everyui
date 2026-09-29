@@ -2,6 +2,7 @@ package everyui.markdown
 
 import everyui.Color
 import everyui.component.{Container, RichText}
+import everyui.component.types.WhiteSpace
 import everyui.event.Key
 import everyui.layout.VerticalLayout
 import everyui.menu.{Menu, MenuItem}
@@ -11,13 +12,28 @@ import reactify.*
 /** A paragraph or a heading of a `MarkdownView`: its lines wrapped to `width`, a picture on a line of its own. New
   * words for it (`inlines`, as an answer streams in) are drawn in place while its lines and pictures stay as they
   * were. Where it holds links it takes the focus, and Enter (a remote's OK) follows its link, or offers its links in a
-  * menu where it has several; a click or a tap on a link follows it where the platform draws links. */
+  * menu where it has several; a click or a tap on a link follows it where the platform draws links. Its words run the
+  * way the view says (`MarkdownContext.direction`), and a word too long for a line (a URL, a path) is broken where it
+  * must be. */
 class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Double, points: Double,
                     weight: Int = 400) extends Container {
   /** What it shows. */
   val inlines: Var[List[MdInline]] = own(Var(content))
   private val links: Val[List[(String, String)]] = own(Val(MarkdownRuns.links(inlines())))
   private var shape = ""
+  // where the view measures (`MarkdownContext.measures`): each line again on one line, out of sight and taking no room
+  private val twins: Container = new Container {
+    size.width @= 0.0
+    size.height @= 0.0
+    visible @= false
+  }
+  private val pictures: Var[Boolean] = own(Var(false))
+
+  /** How wide it would be drawn on its own: its widest line, or none where it holds a picture (which takes the
+    * width) or the view does not measure. */
+  val natural: Val[Option[Double]] = own(Val(
+    if (!ctx.measures || pictures()) None
+    else Some(twins.children().foldLeft(0.0)((w, t) => math.max(w, t.size.width())))))
 
   size.width := width
   layout @= Some(VerticalLayout(0.0))
@@ -41,26 +57,38 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   /** Its lines made again where they are no longer the same lines and pictures; otherwise their words follow
     * `inlines` where they stand. */
   private def build(): Unit = {
-    val parts = MarkdownRuns.parts(inlines(), points, weight)
+    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks)
     val now = parts.map(p => p.image.map(i => "i" + i.src).getOrElse("t")).mkString("|")
     if (now != shape) {
       shape = now
-      val old = children()
-      children @= parts.indices.toVector.map(i => parts(i).image match {
+      pictures @= parts.exists(_.image.nonEmpty)
+      val old = children().filterNot(_ eq twins)
+      val lines = parts.indices.toVector.map(i => parts(i).image match {
         case Some(image) => new MarkdownImage(image, ctx, size.width())
-        case None => line(i)
+        case None => line(i, wrapped = true)
       })
+      if (ctx.measures) {
+        val oldTwins = twins.children()
+        twins.children @= parts.indices.toVector.filter(i => parts(i).image.isEmpty).map(i => line(i, wrapped = false))
+        oldTwins.foreach(_.dispose())
+        children @= lines :+ twins
+      }
+      else children @= lines
       old.foreach(_.dispose())
     }
   }
 
-  private def line(i: Int): RichText = new RichText {
-    size.width := ParagraphView.this.size.width()
+  // line `i`, wrapped to the paragraph's width, or on one line as it would be drawn on its own
+  private def line(i: Int, wrapped: Boolean): RichText = new RichText {
+    if (wrapped) size.width := ParagraphView.this.size.width()
+    else whiteSpace @= WhiteSpace.NoWrap
     font.size @= points
     color := (if (ctx.quiet) Theme.muted() else Theme.text())
+    direction @= ctx.direction
+    wrapAnywhere @= true
     follow = ctx.onLink
     runs := {
-      val parts = MarkdownRuns.parts(inlines(), points, weight)
+      val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks)
       if (i < parts.size) parts(i).runs else Nil
     }
   }

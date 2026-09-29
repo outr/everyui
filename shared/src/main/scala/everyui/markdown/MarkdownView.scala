@@ -2,6 +2,7 @@ package everyui.markdown
 
 import everyui.Color
 import everyui.component.{Component, Container, Link}
+import everyui.component.types.TextDirection
 import everyui.layout.VerticalLayout
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -28,18 +29,33 @@ import reactify.*
   *   answer.content := message().text        // grows token by token
   * }}}
   *
+  * `direction` is which way its words run (`TextDirection.Auto` for words the app did not write: each paragraph, list
+  * and quote then reads the way its own letters do); code always reads left to right. With `measures`, each paragraph
+  * also measures its lines on one line, out of sight, so that `natural` says how wide it would be drawn on its own, as
+  * a chat's bubble needs to be as narrow as a short reply. With `breaks`, a line break in the text is a line break
+  * where Markdown would join the lines, as a chat's messages have it.
+  *
   * On a Roku and an Apple TV, which draw no styled runs, words keep the paragraph's own style. */
 class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyle(),
-                   onLink: String => Unit = MarkdownView.follow, base: => String = Platform.origin()) extends Container {
+                   onLink: String => Unit = MarkdownView.follow, base: => String = Platform.origin(),
+                   direction: TextDirection = TextDirection.Inherit, measures: Boolean = false,
+                   breaks: Boolean = false) extends Container {
   /** The Markdown it shows. */
   val content: Var[String] = own(Var(initial))
   private val stream = new MarkdownStream
-  private val context = MarkdownContext(style, onLink, () => base)
+  private val context = MarkdownContext(style, onLink, () => base, direction = direction, measures = measures,
+    breaks = breaks)
   private var drawn: Vector[MdBlock] = Vector.empty
 
   layout @= Some(VerticalLayout(style.spacing))
   content.attach(show)
   show(initial)
+
+  /** How wide it would be drawn on its own, where it `measures`: its widest line (a list's and a quote's past their
+    * indent), or none where a block takes all the width it is given (code, a table, a rule, a picture), as every block
+    * does where it does not measure. */
+  val natural: Val[Option[Double]] = own(Val(
+    if (!measures) None else MarkdownBlocks.widest(children().map(MarkdownBlocks.natural))))
 
   /** The blocks it shows, as parsed. */
   def blocks: Vector[MdBlock] = stream.blocks

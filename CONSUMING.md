@@ -433,6 +433,13 @@ answer.content := message().text          // may grow token by token while the a
   "code.number" and "code.type" for the code.
 - Headings, lists and their items, tables, rows and cells, and pictures carry their `Semantics`; a picture's alt text
   is its label. On the web the text can be selected.
+- `direction` is which way its words run: `TextDirection.Auto` for words the app did not write turns each paragraph,
+  list, quote and table by its own letters, and puts a list's markers and a quote's bar on the side its words start
+  from. Code reads left to right and scrolls from the left in every language.
+- With `measures = true`, `natural` (a `Val[Option[Double]]`) is how wide it would be drawn on its own: its widest line,
+  or `None` where a block takes all the width it is given (code, a table, a rule, a picture). Each paragraph measures
+  its lines again on one line, out of sight, for it. With `breaks = true`, a line break in the text is a line break
+  where Markdown would join the lines, as a chat's messages have it.
 - `Markdown.parse(text)` gives the blocks (`MdBlock`, `MdInline`) for an app that draws them its own way.
 
 A Roku and an Apple TV draw a run's words in the paragraph's own style (no bold, no colours in a line), and pictures,

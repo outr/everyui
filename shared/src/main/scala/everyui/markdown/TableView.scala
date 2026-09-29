@@ -28,7 +28,8 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
     borderWidth @= 1.0
     borderColor := Theme.border()
   }
-  private val scroll = new ScrollContainer(horizontal = true)
+  // from its right only where its own words read right to left
+  private val scroll = new ScrollContainer(horizontal = true, followsDirection = ctx.rightToLeft(List(table)))
 
   cells.indices.foreach { r =>
     val row = new Container {
@@ -85,7 +86,8 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
     color := (if (ctx.quiet) Theme.muted() else Theme.text())
     follow = ctx.onLink
     semantics @= Semantics(if (head) "columnheader" else "cell")
-    runs := MarkdownRuns.parts(content, points, if (head) 700 else 400).flatMap(_.runs)
+    direction @= ctx.direction
+    runs := MarkdownRuns.parts(content, points, if (head) 700 else 400, ctx.breaks).flatMap(_.runs)
   }
 
   override def kind: String = "TableView"

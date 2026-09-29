@@ -1,7 +1,7 @@
 package everyui.render
 
 import everyui.font.{Face, Faces}
-import everyui.text.TextRun
+import everyui.text.{Bidi, TextRun}
 import javafx.scene.paint.Color
 import javafx.scene.text.{Font, FontPosture, FontSmoothingType, FontWeight, Text, TextAlignment, TextFlow}
 
@@ -51,18 +51,40 @@ class RichFlow extends TextFlow {
   def across(): Double = math.ceil(prefWidth(-1.0))
   def down(width: Double): Double = math.ceil(prefHeight(width))
 
+  // words with right-to-left letters are drawn in a face that has them and broken into lines here, at the width it is
+  // given, as JavaFX cannot draw them in order in a fallback face nor wrap them (`RtlText`)
+  prefWidthProperty.addListener((_, _, _) => if (Bidi.anyRightToLeft(text)) draw())
+
+  // and where JavaFX must wrap them all the same, at a width narrower than a letter or one they were not broken for, its
+  // layout throws: they are laid out on the lines they have
+  override protected def computePrefHeight(width: Double): Double =
+    try super.computePrefHeight(width) catch { case _: ArrayIndexOutOfBoundsException => super.computePrefHeight(-1.0) }
+  override protected def layoutChildren(): Unit =
+    try super.layoutChildren() catch { case _: ArrayIndexOutOfBoundsException => () }
+
   private def draw(): Unit = {
-    val texts = runs.filter(_.text.nonEmpty).map(piece)
-    getChildren.setAll(texts*)
+    val shown = runs.filter(_.text.nonEmpty)
+    val rtl = Bidi.anyRightToLeft(text)
+    val fonts = shown.map(run => face(run, rtl))
+    val width = getPrefWidth
+    val words = if (rtl && width > 0.0) RtlText.lines(shown.map(_.text).zip(fonts), width) else shown.map(_.text)
+    getChildren.setAll(shown.indices.map(i => piece(shown(i), words(i), fonts(i)))*)
   }
 
-  private def piece(run: TextRun): Text = {
-    val t = new Text(run.text)
+  // the face `run` is drawn in: its own, or the paragraph's; for right-to-left words, one that has their letters
+  // unless it is the run's own (code)
+  private def face(run: TextRun, rtl: Boolean): Font = {
     val named = if (run.family.nonEmpty) run.family else family
     val heavy = if (run.weight > 0) run.weight else weight
     val points = if (run.size > 0.0) run.size else size
+    val font = RichFlow.font(named, heavy, run.italic, points)
+    if (rtl && run.family.isEmpty) RtlText.covering(font) else font
+  }
+
+  private def piece(run: TextRun, words: String, font: Font): Text = {
+    val t = new Text(words)
     t.setFontSmoothingType(FontSmoothingType.GRAY)
-    t.setFont(RichFlow.font(named, heavy, run.italic, points))
+    t.setFont(font)
     t.setFill(Color.web(if (run.color.nonEmpty) run.color else colour))
     t.setStrikethrough(run.strike)
     t.setUnderline(run.underline)

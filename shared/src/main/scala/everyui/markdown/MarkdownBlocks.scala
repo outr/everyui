@@ -31,6 +31,31 @@ private[markdown] object MarkdownBlocks {
     case MdBlock.Definitions(_) => new Container
   }
 
+  /** How wide `view` would be drawn on its own, read where it can change (see `MarkdownView.natural`): a paragraph, a
+    * list or a quote by their words, a block that shows nothing as nothing, and anything else (code, a table, a rule)
+    * none, as it takes all the width it is given. */
+  def natural(view: Component): Option[Double] = view match {
+    case p: ParagraphView => p.natural()
+    case l: ListView => l.natural()
+    case q: QuoteView => q.natural()
+    case c: Container if c.children().isEmpty && c.size.height() <= 0.0 => Some(0.0)
+    case _ => None
+  }
+
+  /** The widest of `widths`, or none where any of them takes all the width there is. */
+  def widest(widths: Seq[Option[Double]]): Option[Double] =
+    if (widths.exists(_.isEmpty)) None else Some(widths.foldLeft(0.0)((w, o) => math.max(w, o.getOrElse(0.0))))
+
+  /** The words of `blocks`, as plain text, for which way they read. */
+  def words(blocks: List[MdBlock]): String = blocks.map {
+    case MdBlock.Paragraph(content) => MdInline.plain(content)
+    case MdBlock.Heading(_, content) => MdInline.plain(content)
+    case MdBlock.Quote(inside) => words(inside)
+    case MdBlock.BulletList(_, _, _, items) => items.map(i => words(i.blocks)).mkString(" ")
+    case MdBlock.TableBlock(_, header, _) => header.map(MdInline.plain).mkString(" ")
+    case _ => ""
+  }.mkString(" ")
+
   /** Whether `view`, drawn for `was`, took `now` in place: a paragraph's or a heading's new words, a code block's new
     * code (in the same language). */
   def update(view: Component, was: MdBlock, now: MdBlock): Boolean = (view, was, now) match {
