@@ -5,11 +5,13 @@ import everyui.event.{Key, Pointer, PointerEvent}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.Color
+import everyui.component.feature.ContainerFeature
 import everyui.component.types.Prop
 import everyui.render.Platform
 import everyui.theme.Theme
 import everyui.task.*
 import reactify.*
+import reactify.reaction.Reaction
 
 import scala.concurrent.duration.*
 
@@ -106,7 +108,12 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
       }
     }
     event.pointer.up.attach(_ => dragFrom = None)
-    content.children.attach(_.foreach(cull))
+    // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and
+    // all it held, for as long as this scroll lived
+    content.children.changes { (was, now) =>
+      ContainerFeature.missing(was, now).foreach(uncull)
+      ContainerFeature.missing(now, was).foreach(cull)
+    }
     event.key.down.attach { k =>
       val along = if (horizontal) size.width() else size.height()
       val on = if (fromRight()) Key.ArrowLeft else if (horizontal) Key.ArrowRight else Key.ArrowDown
@@ -203,9 +210,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     *
     * The web scrolls the node itself, and a browser already draws only what shows. */
   private def cull(c: Component): Unit = if (!culling.contains(c)) {
-    culling = culling + c
     // and what is out of sight lets its pictures go until it comes back
-    c.visible.attach(on => ImageView.showing(c, on))
+    culling = culling.updated(c, c.visible.attach(on => ImageView.showing(c, on)))
     c.visible := {
       val along = if (horizontal) size.width() else size.height()
       val start = if (horizontal) c.position.left() else c.position.top()
@@ -216,7 +222,16 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     }
   }
 
-  private var culling: Set[Component] = Set.empty
+  // the children culled, each with what lets its pictures go
+  private var culling: Map[Component, Reaction[Boolean]] = Map.empty
+
+  /** A child taken out of the content is no longer culled: its `visible` stays as it was and stops following the
+    * viewport (which would otherwise hold it for as long as this lived). */
+  private def uncull(c: Component): Unit = culling.get(c).foreach { shows =>
+    culling = culling - c
+    c.visible.reactions -= shows
+    Component.unbind(c.visible)
+  }
 
   /** Whether `c` is somewhere under `content`. */
   private def holds(c: Component): Boolean = {
