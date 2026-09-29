@@ -4969,7 +4969,7 @@ class RokuEmitter(
       |    try
       |        RtInvoke(ga.uiErrorHook, [message, stack])
       |    catch again
-      |        print "[error] the error hook failed too"
+      |        print "[error] the error hook failed too: "; again.message
       |    end try
       |    ga.uiReporting = false
       |end sub
@@ -6032,6 +6032,7 @@ object RokuEmitter {
             case _ => false
           }
         }
+        body = dropUnusedLocals(dropUnusedLocals(body, paramNames(params)), paramNames(params))
         val kept = body.filterNot(_.trim.isEmpty)
         if (kept.size >= 2 && kept.last.trim == "return invalid" && kept(kept.size - 2).trim.startsWith("return"))
           body = body.take(body.lastIndexWhere(_.trim == "return invalid"))
@@ -6061,8 +6062,104 @@ object RokuEmitter {
     }
     if (sb.nonEmpty) sb.setLength(sb.length - 1)
     val tidy = sb.toString
-    if (alias.isEmpty) tidy
-    else "\\bclosure[0-9]+\\b".r.replaceAllIn(tidy, m => java.util.regex.Matcher.quoteReplacement(alias.getOrElse(m.matched, m.matched)))
+    val named =
+      if (alias.isEmpty) tidy
+      else "\\bclosure[0-9]+\\b".r.replaceAllIn(tidy, m => java.util.regex.Matcher.quoteReplacement(alias.getOrElse(m.matched, m.matched)))
+    tighten(named)
+  }
+
+  private val identifier = "[A-Za-z_][A-Za-z0-9_]*"
+  private def paramNames(params: String): Set[String] =
+    params.split(",").map(_.trim.takeWhile(c => c.isLetterOrDigit || c == '_').toLowerCase).filter(_.nonEmpty).toSet
+  private val assignment = ("^\\s*(" + identifier + ") = (.*)$").r
+  // what can be dropped unread: a name, a field or an index of one, a literal
+  private val pureValue = ("^(?:" + identifier + "(?:\\." + identifier + "|\\[[0-9]+\\])*|-?[0-9.]+#?|\"(?:[^\"]|\"\")*\"|invalid|true|false)$").r
+  private val callOnly = ("^" + identifier + "(?:\\." + identifier + ")*\\(.*\\)$").r
+
+  /** A local a function sets and never reads (an unused variable, which the device warns about): its assignment goes
+    * where what it is given is only read, and is left a call where it is a call. */
+  private def dropUnusedLocals(body: Vector[String], params: Set[String]): Vector[String] = {
+    val targets = body.collect { case assignment(v, _) => v.toLowerCase }.toSet -- params
+    val unread = targets.filter { v =>
+      val re = ("(?i)(?<![A-Za-z0-9_.])" + java.util.regex.Pattern.quote(v) + "(?![A-Za-z0-9_])").r
+      body.forall { l =>
+        l match {
+          case assignment(t, rhs) if t.toLowerCase == v => re.findFirstIn(rhs).isEmpty
+          case _ => re.findFirstIn(l).isEmpty
+        }
+      }
+    }
+    if (unread.isEmpty) body
+    else body.flatMap {
+      case l @ assignment(t, rhs) if unread(t.toLowerCase) =>
+        val indent = l.takeWhile(_ == ' ')
+        if (pureValue.matches(rhs.trim)) None
+        else if (callOnly.matches(rhs.trim) && closes(rhs.trim)) Some(indent + rhs.trim)
+        else Some(l)
+      case l => Some(l)
+    }
+  }
+
+  /** Whether a call's first parenthesis is closed by its last (`f(a)`, not `f(a) + g(b)`), strings aside. */
+  private def closes(call: String): Boolean = {
+    var depth = 0
+    var inString = false
+    var i = call.indexOf('(')
+    var closedAt = -1
+    while (i < call.length && closedAt < 0) {
+      val c = call(i)
+      if (c == '"') inString = !inString
+      else if (!inString && c == '(') depth += 1
+      else if (!inString && c == ')') { depth -= 1; if (depth == 0) closedAt = i }
+      i += 1
+    }
+    closedAt == call.length - 1
+  }
+
+  /** The program's lines without what the device does not need to read them: their indentation, the spaces after
+    * commas and around `=`, a block `if`'s `then`, and `self` (the object a method or closure runs on) as `_s`, where
+    * nothing else has that name. Strings and comments are left as they are. */
+  private def tighten(code: String): String = {
+    val selfRe = "(?<![A-Za-z0-9_.])self(?![A-Za-z0-9_])".r
+    val renameSelf = "(?<![A-Za-z0-9_.])_s(?![A-Za-z0-9_])".r.findFirstIn(code).isEmpty
+    def tightCode(seg: String): String = {
+      val renamed =
+        if (!renameSelf) seg
+        else selfRe.replaceAllIn(seg, m => {
+          // (`{ self: …` names an environment's field, which keeps its name)
+          val before = seg.substring(0, m.start).reverse.dropWhile(_ == ' ')
+          val after = seg.substring(m.end).dropWhile(_ == ' ')
+          if (after.startsWith(":") && (before.startsWith("{") || before.startsWith(","))) "self" else "_s"
+        })
+      renamed.replace(", ", ",").replace(" = ", "=")
+    }
+    code.split("\n", -1).map { line0 =>
+      val line = line0.dropWhile(c => c == ' ' || c == '\t')
+      val sb = new StringBuilder
+      var i = 0
+      var start = 0
+      var comment = false
+      while (i < line.length && !comment) {
+        line(i) match {
+          case '"' =>
+            sb.append(tightCode(line.substring(start, i)))
+            var j = i + 1
+            while (j < line.length && !(line(j) == '"' && !(j + 1 < line.length && line(j + 1) == '"'))) j += (if (line(j) == '"') 2 else 1)
+            sb.append(line.substring(i, math.min(j + 1, line.length)))
+            i = j + 1
+            start = i
+          case '\'' =>
+            comment = true
+          case _ => i += 1
+        }
+      }
+      if (comment) sb.append(tightCode(line.substring(start, i))).append(line.substring(i))
+      else if (start < line.length) sb.append(tightCode(line.substring(start)))
+      val out = sb.toString
+      val lower = out.toLowerCase
+      if (!comment && (lower.startsWith("if ") || lower.startsWith("else if ")) && lower.endsWith(" then")) out.dropRight(5)
+      else out
+    }.mkString("\n")
   }
 
   /** The program's files: `App.brs`, then `App2.brs`, `App3.brs` and on. */

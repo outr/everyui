@@ -1324,7 +1324,7 @@ sub uiHttp(method as string, url as string, headersJson as string, body as strin
     ga.uiHttps[id] = done
     headers = ParseJson(headersJson)
     if headers = invalid then headers = {}
-    ga.uiHttpQueue.Push({ id: id, url: url, method: method, headers: headers, body: body })
+    ga.uiHttpQueue.Push({ id: id, url: url, method: method, headers: headers, body: body, hasBody: hasBody })
     uiHttpNext()
 end sub
 
