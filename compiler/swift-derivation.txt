@@ -48,13 +48,20 @@ class SwiftEmitter(
     }
 
     def emitConst(c: Constant): String = c match {
-      case IntConstant(i)     => i.toString
-      case LongConstant(l)    => l.toString
+      // an Int's ends in hex, an Integer on every box (brs-engine reads 2147483647 as a Double)
+      case IntConstant(i)     => if (i == Int.MinValue) "&h80000000" else if (i == Int.MaxValue) "&h7FFFFFFF" else i.toString
+      // a Long at or past those ends a LongInteger (`&`), which BrightScript would otherwise read as a Double
+      case LongConstant(l)    =>
+        if (l > Int.MinValue && l < Int.MaxValue) l.toString
+        else if (l == Long.MinValue) "(-9223372036854775807& - 1&)"
+        else s"$l&"
       case DoubleConstant(d)  => d.toString
       case FloatConstant(f)   => f.toString
       case StringConstant(s)  => brStr(s)
       case BooleanConstant(b) => b.toString
       case CharConstant(ch)   => brStr(ch.toString)
+      case ByteConstant(b)    => b.toString
+      case ShortConstant(s)   => s.toString
       case NullConstant()     => "invalid"
       case UnitConstant()     => "invalid"
       case other              => brStr(other.value.toString)
@@ -126,6 +133,8 @@ class SwiftEmitter(
       case StringConstant(s)  => brStr(s)
       case BooleanConstant(b) => s"V.vBool($b)"
       case CharConstant(ch)   => brStr(ch.toString)
+      case ByteConstant(b)    => vInt(b.toLong)
+      case ShortConstant(s)   => vInt(s.toLong)
       case NullConstant()     => NULL
       case UnitConstant()     => NULL
       case other              => brStr(other.value.toString)
@@ -2255,6 +2264,22 @@ class SwiftEmitter(
     def emptyArray: String = "[]"
 @@ new
     def emptyArray: String = rtArr(Nil)
+@@ old
+    def bitOp(op: String, l: String, r: String, kind: String): String = (op, kind) match {
+      case ("&", _) => s"($l and $r)"
+      case ("|", _) => s"($l or $r)"
+      case ("^", "bool") => s"($l <> $r)"
+      case ("^", _) => s"_xor($l, $r)"
+      case ("~", _) => s"(not $l)"
+@@ new
+    def bitOp(op: String, l: String, r: String, kind: String): String = (op, kind) match {
+      case ("&", "bool") => s"($l && $r)"
+      case ("|", "bool") => s"($l || $r)"
+      case ("^", "bool") => s"($l != $r)"
+      case ("&", _) => s"_band($l, $r)"
+      case ("|", _) => s"_bor($l, $r)"
+      case ("^", _) => s"_xor($l, $r)"
+      case ("~", _) => s"_bnot($l)"
 @@ old
           val whole = fqnOf(q.tpe) match {
             case "scala.Double" | "scala.Float" => s"Fix(${emitTerm(q)})"

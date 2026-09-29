@@ -188,6 +188,32 @@ private func _whole(_ v: V) -> Int {
         return 0
     }
 }
+/// Bit operations the JVM's way: `&`, `|`, `^` and `~` on whole numbers, and the shifts on an Int's 32 bits or (the L
+/// forms) a Long's 64, the count taken as the JVM takes it.
+private func _bits(_ v: V) -> Int {
+    switch v {
+    case .vInt(let n): return n
+    case .vDbl(let d): return d.isNaN ? 0 : Int(d.rounded(.towardZero))
+    default: return 0
+    }
+}
+func _band(_ a: V, _ b: V) -> V { .vInt(_bits(a) & _bits(b)) }
+func _bor(_ a: V, _ b: V) -> V { .vInt(_bits(a) | _bits(b)) }
+func _xor(_ a: V, _ b: V) -> V { .vInt(_bits(a) ^ _bits(b)) }
+func _bnot(_ a: V) -> V { .vInt(~_bits(a)) }
+func _shl(_ a: V, _ n: V) -> V { .vInt(Int(Int32(truncatingIfNeeded: _bits(a)) << Int32(_bits(n) & 31))) }
+func _shr(_ a: V, _ n: V) -> V { .vInt(Int(Int32(truncatingIfNeeded: _bits(a)) >> Int32(_bits(n) & 31))) }
+func _ushr(_ a: V, _ n: V) -> V {
+    .vInt(Int(Int32(bitPattern: UInt32(truncatingIfNeeded: _bits(a)) >> UInt32(_bits(n) & 31))))
+}
+func _shlL(_ a: V, _ n: V) -> V { .vInt(Int(Int64(_bits(a)) << Int64(_bits(n) & 63))) }
+func _shrL(_ a: V, _ n: V) -> V { .vInt(Int(Int64(_bits(a)) >> Int64(_bits(n) & 63))) }
+func _ushrL(_ a: V, _ n: V) -> V {
+    .vInt(Int(Int64(bitPattern: UInt64(bitPattern: Int64(_bits(a))) >> UInt64(_bits(n) & 63))))
+}
+/// A whole number's hex digits, a negative one's as its unsigned 32 bits (`Integer.toHexString`) or 64 (`Long`'s).
+func _hex(_ a: V) -> V { .vStr(String(UInt32(truncatingIfNeeded: _bits(a)), radix: 16)) }
+func _hexL(_ a: V) -> V { .vStr(String(UInt64(bitPattern: Int64(_bits(a))), radix: 16)) }
 /// A charset by its name (a Charset is its name here): "latin1", "ascii", or "utf8" for UTF-8 and any other.
 private func _charset(_ cs: V) -> String {
     let n = rtS(cs).uppercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "_", with: "")

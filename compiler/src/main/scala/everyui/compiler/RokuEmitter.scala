@@ -85,13 +85,20 @@ class RokuEmitter(
     }
 
     def emitConst(c: Constant): String = c match {
-      case IntConstant(i)     => i.toString
-      case LongConstant(l)    => l.toString
+      // an Int's ends in hex, an Integer on every box (brs-engine reads 2147483647 as a Double)
+      case IntConstant(i)     => if (i == Int.MinValue) "&h80000000" else if (i == Int.MaxValue) "&h7FFFFFFF" else i.toString
+      // a Long at or past those ends a LongInteger (`&`), which BrightScript would otherwise read as a Double
+      case LongConstant(l)    =>
+        if (l > Int.MinValue && l < Int.MaxValue) l.toString
+        else if (l == Long.MinValue) "(-9223372036854775807& - 1&)"
+        else s"$l&"
       case DoubleConstant(d)  => d.toString
       case FloatConstant(f)   => f.toString
       case StringConstant(s)  => brStr(s)
       case BooleanConstant(b) => b.toString
       case CharConstant(ch)   => brStr(ch.toString)
+      case ByteConstant(b)    => b.toString
+      case ShortConstant(s)   => s.toString
       case NullConstant()     => "invalid"
       case UnitConstant()     => "invalid"
       case other              => brStr(other.value.toString)
@@ -2127,6 +2134,29 @@ class RokuEmitter(
       case _ => emitTermU(t0)
     }
 
+    /** The bit operations, by each name TASTy gives them. */
+    lazy val bitOps: Map[String, String] = Map("&" -> "&", "$amp" -> "&", "|" -> "|", "$bar" -> "|", "^" -> "^", "$up" -> "^",
+      "<<" -> "<<", "$less$less" -> "<<", ">>" -> ">>", "$greater$greater" -> ">>", ">>>" -> ">>>",
+      "$greater$greater$greater" -> ">>>")
+    /** A bit operation as the JVM does it (`op` one of bitOps' values, or "~" of `l` alone): on flags where `kind` is
+      * "bool", else on an Int's 32 bits, or a Long's 64 where it is "long". BrightScript's `and`, `or` and `not` are
+      * bitwise on whole numbers; the shifts go through the runtime, which takes the count as the JVM does and does not
+      * lean on how a box shifts a negative number (brs-engine's `>>` is logical, a count of 32 fails there). */
+    def bitOp(op: String, l: String, r: String, kind: String): String = (op, kind) match {
+      case ("&", _) => s"($l and $r)"
+      case ("|", _) => s"($l or $r)"
+      case ("^", "bool") => s"($l <> $r)"
+      case ("^", _) => s"_xor($l, $r)"
+      case ("~", _) => s"(not $l)"
+      case (shift, _) =>
+        val fn = if (shift == "<<") "_shl" else if (shift == ">>") "_shr" else "_ushr"
+        s"$fn${if (kind == "long") "L" else ""}($l, $r)"
+    }
+    /** An operand of a bit operation: a Char is its code, as the JVM widens it to an Int. */
+    def bitOperand(t: Term): String =
+      if (fqnOf(t.tpe) == "scala.Char") s"_chCode(${emitTerm(t)})" else emitTerm(t)
+    def isBitty(t: Term): Boolean = isIntegral(t.tpe) || fqnOf(t.tpe) == "scala.Boolean"
+
     /** `new String(…)`: text from its bytes in a charset (UTF-8 where none is named), from its Chars, or a String's
       * copy; any other form is a gap. */
     def newString(t: Term, args: List[Term]): String = {
@@ -2150,6 +2180,20 @@ class RokuEmitter(
         case Apply(Select(q, "forName"), List(name)) if q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "java.nio.charset.Charset" =>
           emitArgVal(name)
         case Apply(Select(New(tpt), _), args) if fqnOf(tpt.tpe) == "java.lang.String" => newString(t0, args)
+        // a bit operation on whole numbers (a Byte, a Short and a Char widened to an Int) or on flags
+        case a @ Apply(Select(l, op), List(r)) if bitOps.contains(op) && isBitty(l) && isBitty(r) =>
+          val kind = if (fqnOf(l.tpe) == "scala.Boolean") "bool" else if (fqnOf(a.tpe) == "scala.Long") "long" else "int"
+          bitOp(bitOps(op), bitOperand(l), bitOperand(r), kind)
+        case Select(q, "unary_~" | "unary_$tilde") if isIntegral(q.tpe) => bitOp("~", bitOperand(q), "", "int")
+        // a whole number's hex digits, a negative one's as its unsigned bits (Integer.toHexString, Long.toHexString)
+        case Apply(Select(q, "toHexString"), List(x)) if q.symbol.exists &&
+            Set("java.lang.Integer", "java.lang.Long").contains(q.symbol.fullName.stripSuffix("$")) =>
+          if (q.symbol.fullName.stripSuffix("$") == "java.lang.Long") s"_hexL(${emitArgVal(x)})" else s"_hex(${emitArgVal(x)})"
+        // an Int's and a Long's ends, as their constants are written (in hex, and as a LongInteger)
+        case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if Set("scala.Int", "scala.Long").contains(ownerFqn(sel.symbol)) =>
+          val max = n == "MaxValue"
+          if (ownerFqn(sel.symbol) == "scala.Int") emitConst(IntConstant(if (max) Int.MaxValue else Int.MinValue))
+          else emitConst(LongConstant(if (max) Long.MaxValue else Long.MinValue))
         // `Array.empty[T]` (its argument the ClassTag)
         case Apply(TypeApply(Select(q, "empty"), _), _) if q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "scala.Array" =>
           emptyArray
@@ -6208,7 +6252,7 @@ class RokuEmitter(
       |end function
       |""".stripMargin
 
-  /** Text as bytes and back: a constant of its own, under the JVM's cap. */
+  /** Text as bytes and back, and the bit operations of whole numbers: a constant of its own, under the JVM's cap. */
   private val bytesShimsBrs: String =
     """
       |' An Array of Bytes, Shorts, Chars or Floats as a collection (Predef's wrap…Array): the array itself
@@ -6335,6 +6379,94 @@ class RokuEmitter(
       |        end if
       |    end while
       |    return parts.Join("")
+      |end function
+      |' ── bit operations the JVM's way: an Int's 32 bits, a Long's 64 (the L forms) ──
+      |' The count is taken as the JVM takes it (its low 5 or 6 bits). A shift left keeps the bits that stay and puts the one
+      |' that reaches the top in the sign, so nothing overflows; a shift right of a negative number is the complement of the
+      |' shift of its complement, which is the same whether a box's `>>` is arithmetic or logical. A Long is shifted by
+      |' multiplying and dividing by powers of two, which every box does alike.
+      |function _xor(a as dynamic, b as dynamic) as dynamic
+      |    return (a or b) and not (a and b)
+      |end function
+      |function _shl(a as dynamic, n as dynamic) as dynamic
+      |    n = n and 31
+      |    if n = 0 then return a
+      |    top = 1 << (31 - n)
+      |    v = (a and (top - 1)) << n
+      |    if (a and top) <> 0 then v = v + &h80000000
+      |    return v
+      |end function
+      |function _shr(a as dynamic, n as dynamic) as dynamic
+      |    n = n and 31
+      |    if a < 0 then return not ((not a) >> n)
+      |    return a >> n
+      |end function
+      |function _ushr(a as dynamic, n as dynamic) as dynamic
+      |    n = n and 31
+      |    if n = 0 then return a
+      |    if a >= 0 then return a >> n
+      |    return ((a >> 1) and &h7FFFFFFF) >> (n - 1)
+      |end function
+      |' 2 to the power n, 0 to 62, as a LongInteger
+      |function _pow2L(n as integer) as dynamic
+      |    ga = GetGlobalAA()
+      |    t = ga.__rtPow2L
+      |    if t = invalid
+      |        t = [1&]
+      |        for i = 1 to 62
+      |            t.Push(t[i - 1] * 2&)
+      |        end for
+      |        ga.__rtPow2L = t
+      |    end if
+      |    return t[n]
+      |end function
+      |function _shlL(a as dynamic, n as dynamic) as dynamic
+      |    a = a + 0&
+      |    n = n and 63
+      |    if n = 0 then return a
+      |    least = -9223372036854775807& - 1&
+      |    if n = 63
+      |        if (a and 1&) <> 0& then return least
+      |        return 0&
+      |    end if
+      |    top = _pow2L(63 - n)
+      |    v = (a and (top - 1&)) * _pow2L(n)
+      |    if (a and top) <> 0& then v = v + least
+      |    return v
+      |end function
+      |function _shrL(a as dynamic, n as dynamic) as dynamic
+      |    a = a + 0&
+      |    n = n and 63
+      |    if n = 0 then return a
+      |    if a < 0& then return not _shrL(not a, n)
+      |    if n = 63 then return 0&
+      |    return a \ _pow2L(n)
+      |end function
+      |function _ushrL(a as dynamic, n as dynamic) as dynamic
+      |    a = a + 0&
+      |    n = n and 63
+      |    if n = 0 or a >= 0& then return _shrL(a, n)
+      |    return _shrL(_shrL(a, 1) and &h7FFFFFFFFFFFFFFF&, n - 1)
+      |end function
+      |' A whole number's hex digits in lower case, a negative one's as its unsigned 32 bits (_hex) or 64 (_hexL)
+      |function _hex(a as dynamic) as string
+      |    if a = 0 then return "0"
+      |    s = ""
+      |    while a <> 0
+      |        s = Mid("0123456789abcdef", (a and 15) + 1, 1) + s
+      |        a = _ushr(a, 4)
+      |    end while
+      |    return s
+      |end function
+      |function _hexL(a as dynamic) as string
+      |    a = a + 0&
+      |    if a = 0& then return "0"
+      |    s = ""
+      |    while a <> 0&
+      |        s = Mid("0123456789abcdef", (a and 15&) + 1, 1) + s
+      |        a = _ushrL(a, 4)
+      |    end while
+      |    return s
       |end function
       |""".stripMargin}
 
