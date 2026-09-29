@@ -3340,7 +3340,7 @@ class RokuEmitter(
     write("source/Main.brs", mainBrs)
     write("components/AppScene.brs", sceneBrs)
     val appCode = out.toString + "\n' ── defunctionalised closures ──\n" + closures.toString
-    val parts = RokuEmitter.split(appBrsHeader + RokuEmitter.compact(injectGa(appCode)), RokuEmitter.partBytes)
+    val parts = RokuEmitter.split(appBrsHeader + RokuEmitter.compact(injectGa(appCode), runtimeFnNames), RokuEmitter.partBytes)
     // a part from a larger build before this one would still be listed nowhere, but it would ship
     val components = outDir.resolve("components")
     if (Files.isDirectory(components)) {
@@ -5990,7 +5990,7 @@ object RokuEmitter {
     * it never reads (a warning apiece on the device); a `return invalid` after the function's last return goes; a
     * closure's environment no longer carries `self: invalid` (a missing key reads as invalid); and closures written
     * alike are one closure. */
-  def compact(code: String): String = {
+  def compact(code: String, runtimeFunctions: Set[String] = Set.empty): String = {
     val lines = code.replace("env: { self: invalid }", "env: {}").replace("env: { self: invalid, ", "env: { ").split("\n", -1)
     val header = "^(function|sub) ([A-Za-z0-9_]+)\\((.*)\\)(.*)$".r
     val argLine = "^\\s*([A-Za-z0-9_]+) = args\\[\\d+\\]$".r
@@ -6021,6 +6021,9 @@ object RokuEmitter {
           i += 1
       }
     }
+    // every function of the channel: a parameter renamed must not take one's name (a local named like a function
+    // shadows it, brighterscript's BS1104)
+    val functions = runtimeFunctions.map(_.toLowerCase) ++ pieces.collect { case Right(t) => t._2.toLowerCase }
     val tidied = pieces.map {
       case Left(l) => Left(l)
       case Right((kind, name, params, body0, rest)) =>
@@ -6037,7 +6040,7 @@ object RokuEmitter {
         if (kept.size >= 2 && kept.last.trim == "return invalid" && kept(kept.size - 2).trim.startsWith("return"))
           body = body.take(body.lastIndexWhere(_.trim == "return invalid"))
         val answer = if (rest.trim == "as dynamic") "" else rest
-        Right((kind, name, quiet(untyped(params), body), body, answer))
+        Right((kind, name, quiet(untyped(params), body, functions), body, answer))
     }
     // closures alike are one: the first of each, and the others' names made its name
     val first = mutable.HashMap[String, String]()
@@ -6073,7 +6076,7 @@ object RokuEmitter {
   /** A parameter the body never reads, renamed with a leading underscore: the device warns of an unused variable for
     * every one (a closure's env and args, a method's self, which every call passes), and not for a name so written. The
     * new name is one nothing in the function has. */
-  private def quiet(params: String, body: Vector[String]): String = {
+  private def quiet(params: String, body: Vector[String], functions: Set[String]): String = {
     if (params.trim.isEmpty) params
     else {
       val parts = params.split(",").map(_.trim).toVector
@@ -6088,7 +6091,7 @@ object RokuEmitter {
         else {
           var fresh = "_" + n
           var k = 1
-          while (taken(fresh.toLowerCase) || used(fresh)) { fresh = "_" + n + k; k += 1 }
+          while (taken(fresh.toLowerCase) || functions(fresh.toLowerCase) || used(fresh)) { fresh = "_" + n + k; k += 1 }
           taken += fresh.toLowerCase
           fresh + part.drop(n.length)
         }
