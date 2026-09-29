@@ -1048,7 +1048,7 @@ sub uiOnDeepLink(f as dynamic)
 end sub
 
 ' Hands the launch's deep link over, from uiOnDeepLink's later turn.
-function uiDeliverLaunchLink(env as object, args as object) as dynamic
+function uiDeliverLaunchLink(_env as object, _args as object) as dynamic
     uiLinked(GetGlobalAA().uiLaunchParams)
     return invalid
 end function
@@ -1360,7 +1360,7 @@ sub uiOnHttpResult(event as object)
 end sub
 
 ' A SceneGraph Rectangle has no corner radius.
-sub uiSetRadius(node as object, radius as float)
+sub uiSetRadius(_node as object, _radius as float)
 end sub
 
 ' A shape behind a node's children, tinted: a rounded fill or edge (a white 9-patch in images/rr, made by the channel
@@ -1391,7 +1391,7 @@ function uiLocalDateTime(millis as dynamic) as string
 end function
 
 ' A Roku has no pointer: nothing ever fires.
-sub uiOnPointer(node as object, kind as string, f as dynamic)
+sub uiOnPointer(_node as object, _kind as string, _f as dynamic)
 end sub
 
 ' The key hook (everyui.focus.Focus); the generated runtime's RtKeyEvent feeds it from AppScene's onKeyEvent.

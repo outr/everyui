@@ -3499,7 +3499,7 @@ class RokuEmitter(
       |end sub
       |
       |' Instant Resume: the viewer went to another channel (or the device's screensaver came up), and came back
-      |sub onSuspend(args as dynamic)
+      |sub onSuspend(_args as dynamic)
       |    uiSuspended()
       |end sub
       |
@@ -4727,7 +4727,7 @@ class RokuEmitter(
       |    RtSetTimeout(env.ms, RtCb(RtTaskSleepFire, { cb: args[0] }))
       |    return invalid
       |end function
-      |function RtTaskSleepFire(env as object, args as object) as dynamic
+      |function RtTaskSleepFire(env as object, _args as object) as dynamic
       |    RtInvoke(env.cb, [true, invalid])
       |    return invalid
       |end function
@@ -4842,7 +4842,7 @@ class RokuEmitter(
       |    RapidTask_run(RtForce(env.thunk), RtCb(RtTaskGuaranteeDone, { ok: args[0], v: args[1], cb: env.cb }))
       |    return invalid
       |end function
-      |function RtTaskGuaranteeDone(env as object, args as object) as dynamic
+      |function RtTaskGuaranteeDone(env as object, _args as object) as dynamic
       |    RtInvoke(env.cb, [env.ok, env.v])
       |    return invalid
       |end function
@@ -4855,7 +4855,7 @@ class RokuEmitter(
       |    RapidTask_run(env.t, RtCb(RtTaskTimeoutCb, { state: state }))
       |    return invalid
       |end function
-      |function RtTaskTimeoutFire(env as object, args as object) as dynamic
+      |function RtTaskTimeoutFire(env as object, _args as object) as dynamic
       |    if env.state.fired then return invalid
       |    env.state.fired = true
       |    RtInvoke(env.state.cb, [false, { _cls: "TimeoutException", message: "Task timed out after " + _str(env.state.ms) + " ms" }])
@@ -4870,7 +4870,7 @@ class RokuEmitter(
       |function RapidTask_unit(t as dynamic) as object
       |    return RapidTask_map(t, RtCb(RtTaskConstUnit, {}))
       |end function
-      |function RtTaskConstUnit(env as object, args as object) as dynamic
+      |function RtTaskConstUnit(_env as object, _args as object) as dynamic
       |    return invalid
       |end function
       |function RapidTask_foreach(t as dynamic, f as dynamic) as dynamic
@@ -4884,7 +4884,7 @@ class RokuEmitter(
       |    RapidTask_start(t)
       |    return invalid
       |end function
-      |function RtTaskStartCb(env as object, args as object) as dynamic
+      |function RtTaskStartCb(_env as object, args as object) as dynamic
       |    if not args[0] then print "[rt] task failed: "; _getMessage(args[1])
       |    return invalid
       |end function
@@ -5436,7 +5436,7 @@ class RokuEmitter(
       |    ThreadLocal_init(self)
       |    return self
       |end function
-      |function ThreadLocal_initialValue(self as object) as dynamic
+      |function ThreadLocal_initialValue(_self as object) as dynamic
       |    return invalid
       |end function
       |function ThreadLocal_get(self as object) as dynamic
@@ -6037,7 +6037,7 @@ object RokuEmitter {
         if (kept.size >= 2 && kept.last.trim == "return invalid" && kept(kept.size - 2).trim.startsWith("return"))
           body = body.take(body.lastIndexWhere(_.trim == "return invalid"))
         val answer = if (rest.trim == "as dynamic") "" else rest
-        Right((kind, name, untyped(params), body, answer))
+        Right((kind, name, quiet(untyped(params), body), body, answer))
     }
     // closures alike are one: the first of each, and the others' names made its name
     val first = mutable.HashMap[String, String]()
@@ -6069,6 +6069,32 @@ object RokuEmitter {
   }
 
   private val identifier = "[A-Za-z_][A-Za-z0-9_]*"
+
+  /** A parameter the body never reads, renamed with a leading underscore: the device warns of an unused variable for
+    * every one (a closure's env and args, a method's self, which every call passes), and not for a name so written. The
+    * new name is one nothing in the function has. */
+  private def quiet(params: String, body: Vector[String]): String = {
+    if (params.trim.isEmpty) params
+    else {
+      val parts = params.split(",").map(_.trim).toVector
+      val names = parts.map(_.takeWhile(c => c.isLetterOrDigit || c == '_'))
+      val taken = mutable.Set[String]() ++ names.map(_.toLowerCase)
+      def used(n: String): Boolean = {
+        val re = ("(?i)(?<![A-Za-z0-9_.])" + java.util.regex.Pattern.quote(n) + "(?![A-Za-z0-9_])").r
+        body.exists(l => re.findFirstIn(l).nonEmpty)
+      }
+      parts.zip(names).map { case (part, n) =>
+        if (n.isEmpty || n.startsWith("_") || used(n)) part
+        else {
+          var fresh = "_" + n
+          var k = 1
+          while (taken(fresh.toLowerCase) || used(fresh)) { fresh = "_" + n + k; k += 1 }
+          taken += fresh.toLowerCase
+          fresh + part.drop(n.length)
+        }
+      }.mkString(", ")
+    }
+  }
   private def paramNames(params: String): Set[String] =
     params.split(",").map(_.trim.takeWhile(c => c.isLetterOrDigit || c == '_').toLowerCase).filter(_.nonEmpty).toSet
   private val assignment = ("^\\s*(" + identifier + ") = (.*)$").r
