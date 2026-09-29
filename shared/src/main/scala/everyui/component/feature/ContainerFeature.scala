@@ -2,25 +2,52 @@ package everyui.component.feature
 
 import reactify.{Priority, Val, Var}
 import everyui.component.Component
+import everyui.layout.LayoutPass
 
 /** youi's `ContainerFeature`: the children, as a reactify `Var`. Changing it adds and removes the children's
-  * nodes; measuring the container measures everything under it first. */
+  * nodes; measuring the container measures everything under it first.
+  *
+  * A change costs its own size and the list's, once: what came and what went are found by marking one list and reading
+  * the marks off the other, and the container is laid out once for the change, after what was added is measured. */
 class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty) {
   changes { (old, current) =>
-    val removed = old.filterNot(c => current.exists(_ eq c))
-    removed.foreach { c =>
-      c.node.remove()
-      // where it was, so a focus on it (or inside it) goes to what takes its place
-      c.leaves(component, old.indexWhere(_ eq c))
-      c.parent @= None
+    val removed = ContainerFeature.missing(old, current)
+    val added = ContainerFeature.missing(current, old)
+    LayoutPass.batch {
+      removed.foreach { c =>
+        c.node.remove()
+        // where it was, so a focus on it (or inside it) goes to what takes its place
+        c.leaves(component, old.indexWhere(_ eq c))
+        c.parent @= None
+      }
+      if (removed.isEmpty && ContainerFeature.startsWith(current, old)) added.foreach { c =>
+        // only added to the end (`+=`, `++=`, a list grown by `bind`): each node appended in turn
+        component.node.append(c.node)
+        c.parent @= Some(component)
+        c.leftParent = None
+      }
+      else ordered(old, current, removed, added)
+      component.childListChanged(added, removed)
+      // only what was added is measured again, and then the container: those already here have their sizes, and
+      // measuring a rail of cards again for each card added to it took a Roku seconds
+      ContainerFeature.measureUnder(added.toList)
+      component.measured.refresh()
+      component.requestLayout()
+      if (removed.nonEmpty) everyui.focus.Focus.offScreen()
     }
-    val added = current.filterNot(c => old.exists(_ eq c))
-    // the nodes in the list's order, which is the order they are drawn in: one added anywhere but the end goes in at its
-    // place (a clip parked under the one playing was appended on top of it, and showed its first frame, stopped,
-    // through the rest of the clip it was parked under), and one moved in the list is moved among the nodes
-    var placed = old.filter(c => current.exists(_ eq c))
+  }
+
+  /** The nodes in the list's order, which is the order they are drawn in: one added anywhere but the end goes in at its
+    * place (a clip parked under the one playing was appended on top of it, and showed its first frame, stopped, through
+    * the rest of the clip it was parked under), and one moved in the list is moved among the nodes. */
+  private def ordered(old: Vector[Component], current: Vector[Component], removed: Vector[Component],
+                      added: Vector[Component]): Unit = {
+    removed.foreach(_.listMark = true)
+    var placed = old.filterNot(_.listMark)
+    removed.foreach(_.listMark = false)
+    added.foreach(_.listMark = true)
     current.zipWithIndex.foreach { case (c, i) =>
-      if (added.exists(_ eq c)) {
+      if (c.listMark) {
         if (i >= placed.size) component.node.append(c.node) else component.node.insert(c.node, i)
         c.parent @= Some(component)
         c.leftParent = None
@@ -33,11 +60,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
         placed = placed.filterNot(_ eq c).patch(i, Vector(c), 0)
       }
     }
-    // only what was added is measured again, and then the container: those already here have their sizes, and
-    // measuring a rail of cards again for each card added to it took a Roku seconds
-    ContainerFeature.measureUnder(added.toList)
-    component.measured.refresh()
-    if (removed.nonEmpty) everyui.focus.Focus.offScreen()
+    added.foreach(_.listMark = false)
   }
 
   def +=(child: Component): Unit = static(get :+ child)
@@ -60,10 +83,16 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     source.attachAndFire { all =>
       // a value still in the list keeps the component it already had: a list that grows an entry at a time would
       // otherwise build every entry again, and lose everything each had loaded (a rail of artwork) with it
-      // (a find and a filter rather than `span`, which the Roku's runtime has no form of)
+      // (a find and a filter rather than `span`, which the Roku's runtime has no form of). The one next in line is
+      // tried first: a list kept in its order finds each value there, not by a pass over those left
       var spare = previous
       val rendered = all.map { value =>
-        spare.find(kept => ContainerFeature.same(kept._1, value)) match {
+        if (spare.nonEmpty && ContainerFeature.same(spare.head._1, value)) {
+          val kept = spare.head
+          spare = spare.tail
+          value -> kept._2
+        }
+        else spare.find(kept => ContainerFeature.same(kept._1, value)) match {
           case Some(kept) =>
             val component = kept._2
             spare = spare.filterNot(_._2 eq component)
@@ -93,6 +122,21 @@ object ContainerFeature {
   /** The same value: the very one first, which is all a list kept from one change to the next needs, before `==`, which
     * on a Roku compares a value of pages of titles field by field. */
   def same[T](a: T, b: T): Boolean = (a.asInstanceOf[AnyRef] eq b.asInstanceOf[AnyRef]) || a == b
+
+  /** What of `from` is not in `in`, by identity: `in` marked, then `from` read. */
+  def missing(from: Vector[Component], in: Vector[Component]): Vector[Component] = {
+    in.foreach(_.listMark = true)
+    val out = from.filterNot(_.listMark)
+    in.foreach(_.listMark = false)
+    out
+  }
+
+  /** Whether `list` begins with every one of `start`, in its order. */
+  def startsWith(list: Vector[Component], start: Vector[Component]): Boolean = list.length >= start.length && {
+    var i = 0
+    while (i < start.length && (list(i) eq start(i))) i += 1
+    i == start.length
+  }
 
   /** Measure `roots` and everything under them, deepest first. */
   def measureUnder(roots: List[Component]): Unit = {

@@ -27,17 +27,106 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   var widthFollowsContent: Boolean = false
 
   /** How far the children reach, plus the padding beyond them. */
-  lazy val contentWidth: Val[Double] = own(Val(extent(c => c.position.left() + c.size.width()) + padding()))
-  lazy val contentHeight: Val[Double] = own(Val(extent(c => c.position.top() + c.size.height()) + padding()))
-
-  /** The furthest any child reaches, by `edge`; 0 with no children. */
-  private def extent(edge: Component => Double): Double = {
-    var furthest = 0.0
-    children().foreach(c => furthest = math.max(furthest, edge(c)))
-    furthest
+  lazy val contentWidth: Val[Double] = {
+    followReach()
+    reachedWidth
+  }
+  lazy val contentHeight: Val[Double] = {
+    followReach()
+    reachedHeight
   }
 
-  private lazy val childSizes: Val[Double] = own(Val(children().map(c => c.size.width() + c.size.height()).sum))
+  // How far the children reach, kept up as each one moves or changes size (ChildWatch, Extent): a Val over every child
+  // walked them all again for each child laid out, which for a table of a few hundred rows kept a browser busy for
+  // seconds.
+  private lazy val reachedWidth: Var[Double] = own(Var(0.0))
+  private lazy val reachedHeight: Var[Double] = own(Var(0.0))
+  private val reachAcross: Extent = new Extent
+  private val reachDown: Extent = new Extent
+  private var reachFollowed: Boolean = false
+
+  private def followReach(): Unit = if (!reachFollowed) {
+    reachFollowed = true
+    watchChildren()
+    padding.attach(_ => setReach())
+    recountReach()
+  }
+
+  private var reachRecounts: Int = 0
+
+  /** Every child counted again (each watch once, though a child be listed twice). */
+  private def recountReach(): Unit = {
+    reachAcross.reset()
+    reachDown.reset()
+    reachRecounts += 1
+    children().foreach { c =>
+      c.containerWatches.foreach { w =>
+        if ((w.container eq this) && w.round != reachRecounts) {
+          w.round = reachRecounts
+          countReach(w)
+        }
+      }
+    }
+    setReach()
+  }
+
+  private def countReach(w: ChildWatch): Unit = {
+    w.x = w.reachX
+    w.y = w.reachY
+    reachAcross.add(w.x)
+    reachDown.add(w.y)
+  }
+
+  private def setReach(): Unit = {
+    reachedWidth @= reachAcross.value + padding()
+    reachedHeight @= reachDown.value + padding()
+  }
+
+  /** A child's size (`sized`) or place changed: it is laid out again, and its reach counted where it now is. */
+  private[component] def childWatched(w: ChildWatch, sized: Boolean): Unit = {
+    if (sized && following) place()
+    if (reachFollowed) {
+      val x = w.reachX
+      val y = w.reachY
+      if (x != w.x || y != w.y) {
+        val wasX = w.x
+        val wasY = w.y
+        w.x = x
+        w.y = y
+        if (reachAcross.moved(wasX, x) && reachDown.moved(wasY, y)) setReach() else recountReach()
+      }
+    }
+  }
+
+  // Whether the children are watched (ChildWatch): once there is a layout to follow their sizes, or a content size to
+  // follow their reach.
+  private var childrenWatched: Boolean = false
+
+  private def watchChildren(): Unit = if (!childrenWatched) {
+    childrenWatched = true
+    children().foreach(watchChild)
+  }
+
+  private def watchChild(c: Component): Unit = c.containerWatches = new ChildWatch(this, c) :: c.containerWatches
+
+  private def unwatchChild(c: Component): Unit = {
+    c.containerWatches.foreach(w => if (w.container eq this) w.stop())
+    c.containerWatches = c.containerWatches.filterNot(_.container eq this)
+  }
+
+  /** The children changed (ContainerFeature): what was added is watched, what left is not, and the reach follows. */
+  override private[everyui] def childListChanged(added: Vector[Component], removed: Vector[Component]): Unit =
+    if (childrenWatched) {
+    removed.foreach(unwatchChild)
+    added.foreach { c =>
+      watchChild(c)
+      if (reachFollowed) countReach(c.containerWatches.head)
+    }
+    if (reachFollowed) {
+      if (removed.nonEmpty) recountReach() else setReach()
+    }
+  }
+
   private var exits: Map[everyui.event.Key, Option[Component]] = Map.empty
 
   /** An arrow `direction`'s way that finds nothing inside this container goes to `target` (onto its focusable part
@@ -102,24 +191,28 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   layout.attach { l =>
     l.foreach { lay =>
       follow()
-      if (!size.height.explicit) size.height := contentHeight()
+      if (!size.height.explicit) {
+        val content = contentHeight
+        size.height := content()
+      }
       if (lay.fitsWidth() && !size.width.explicit) {
         widthFollowsContent = true
-        size.width := contentWidth()
+        val content = contentWidth
+        size.width := content()
       }
     }
     place()
   }
   // What moves the children is followed once there is a layout to move them: most containers never have one (a card, a
-  // badge), and following every child's size for each of them is time a screen of them waits for on a Roku.
+  // badge), and following every child's size for each of them is time a screen of them waits for on a Roku. (A change
+  // of the children asks for the layout itself: ContainerFeature.)
   private var following: Boolean = false
   private def follow(): Unit = if (!following) {
     following = true
     padding.attach(_ => place())
-    children.attach(_ => place())
     size.width.attach(_ => place())
     size.height.attach(_ => place())
-    childSizes.attach(_ => place())
+    watchChildren()
   }
 
   override def kind: String = "Container"

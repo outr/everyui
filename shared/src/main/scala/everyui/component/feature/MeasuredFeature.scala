@@ -56,8 +56,8 @@ object MeasuredFeature {
     }
   }
 
-  /** Read every queued size, then set them, in the order they were asked for; what setting them asks to be measured
-    * again is the next round, in the same batch. */
+  /** Read every queued size, then set them, in the order they were asked for, and lay out what they moved; what
+    * setting them asks to be measured again is the next round, in the same batch. */
   private def flush(): Unit = {
     var rounds = 0
     while (pending.nonEmpty && rounds < MaxRounds) {
@@ -67,7 +67,9 @@ object MeasuredFeature {
         m.queued = false
         m.read()
       }
-      round.foreach(_.set())
+      // laid out once they are all set, not once for each: a column of lines measured together was laid out again for
+      // every line
+      everyui.layout.LayoutPass.batch(round.foreach(_.set()))
       rounds += 1
     }
     scheduled = false

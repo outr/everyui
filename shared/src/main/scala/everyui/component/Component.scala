@@ -60,6 +60,13 @@ class Component(val node: RenderNode) {
     * to lay out. */
   def requestLayout(): Unit = ()
 
+  /** The children of this changed (ContainerFeature): a container follows what came and what went. */
+  private[everyui] def childListChanged(added: Vector[Component], removed: Vector[Component]): Unit = ()
+  /** What the containers this is in follow of it. */
+  private[component] var containerWatches: List[ChildWatch] = Nil
+  /** A mark for a pass over lists of components (ContainerFeature), cleared by the pass that set it. */
+  private[everyui] var listMark: Boolean = false
+
   lazy val measure: Trigger = Trigger()
   lazy val measured: MeasuredFeature = new MeasuredFeature(this)
   val size: SizeFeature = new SizeFeature(this)

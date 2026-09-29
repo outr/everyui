@@ -66,15 +66,22 @@ object LayoutPass {
     else next()
   }
 
-  /** Lay out every container asked for, the deepest first, until none is left. */
+  /** Lay out every container asked for, the deepest first, until none is left: all those at the deepest level, then
+    * the deepest of what is left and what they asked for. A level at a time rather than a container at a time: finding
+    * the deepest of a thousand rows for each row was a pass over them all for each. */
   def flush(): Unit = if (!flushing) {
     flushing = true
     try {
       while (pending.nonEmpty) {
-        val next = deepest()
-        pending = pending.filterNot(_ eq next)
-        next.layoutPending = false
-        next.placeNow()
+        val depths = pending.map(c => c -> depthOf(c))
+        var deepest = 0
+        depths.foreach(d => if (d._2 > deepest) deepest = d._2)
+        val level = depths.filter(_._2 == deepest).map(_._1)
+        pending = depths.filter(_._2 != deepest).map(_._1)
+        level.foreach { next =>
+          next.layoutPending = false
+          next.placeNow()
+        }
       }
     } finally flushing = false
   }
@@ -93,19 +100,6 @@ object LayoutPass {
   private def close(): Unit = {
     batches -= 1
     if (batches == 0) flush()
-  }
-
-  private def deepest(): Container = {
-    var best = pending.head
-    var bestDepth = depthOf(best)
-    pending.tail.foreach { c =>
-      val d = depthOf(c)
-      if (d > bestDepth) {
-        best = c
-        bestDepth = d
-      }
-    }
-    best
   }
 
   private def depthOf(c: Component): Int = {
