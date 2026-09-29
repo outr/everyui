@@ -586,6 +586,26 @@ if (Files.savable) Files.save(csv.getBytes("UTF-8"), "report.csv", Some("text/cs
 
 A relative URL is found against `Platform.origin()`.
 
+### Clipboard (`everyui.clipboard`)
+
+`Clipboard.copy(text)` puts text on the system's clipboard where there is one (`Clipboard.copies`), and
+`Clipboard.read()` reads it back as a `Task[Option[String]]` where the platform lets an app (`Clipboard.readable`):
+None when it holds no text, or when reading it was refused.
+
+```scala
+import everyui.clipboard.Clipboard
+
+if (Clipboard.readable) paste.event.click.attach(_ => Clipboard.read().map(_.foreach(t => field.value @= t)).start())
+```
+
+- **Web**: `navigator.clipboard.readText`. The browser reads it only for a page in front, from a click or a key, and
+  asks the person first (Chromium's "clipboard-read" permission, remembered for the site; Firefox and Safari show a
+  small Paste button of their own at each read). A refusal answers None (and logs why). Read it from a Paste button.
+- **Desktop**: JavaFX's system clipboard, answered at once.
+- **Android**: the ClipboardManager's first item as text. Android 10 on lets only the app in front read it, and
+  Android 12 on tells the person it was read.
+- **Roku, Apple TV**: no clipboard; `readable` and `copies` are false, and a read answers None.
+
 ### ColorPicker (`everyui.color`)
 
 A colour chooser in plain shared EveryUI, so it runs on every backend: a saturation and brightness area with a hue
