@@ -20,7 +20,7 @@ import scala.concurrent.duration.Duration
   *     IO.delete(out)
   *     everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
   *     IO.copyDirectory(everyuiWebFonts.value, out / "fonts")
-  *     IO.copyDirectory(everyuiWebGuests.value, out)   // everyui-monaco/<version>/, everyui-terminal/<version>/
+  *     IO.copyDirectory(everyuiWebGuests.value, out)   // everyui-hls/<version>/, everyui-monaco/<version>/, ...
   *     // icons, …
   *     out
   *   }
@@ -52,7 +52,7 @@ object EveryUIWebPlugin extends AutoPlugin {
     val everyuiWebMinify = settingKey[Boolean]("Whether the full link runs Scala.js's minifier, on fullLinkJS and everyuiWasmLinkJS alike (true, the default)")
     val everyuiWasmLinkJS = taskKey[File]("The web app linked at everyuiWebStage to WebAssembly: a directory of main.js, __loader.js and main.wasm")
     val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath, with everyuiAppFonts: a directory for the bundle to copy as fonts/")
-    val everyuiWebGuests = taskKey[File]("The web guests' files (everyui-monaco's editor, everyui-terminal's xterm.js), taken from their modules on the classpath: a directory whose everyui-<module>/ directories the bundle copies next to the page")
+    val everyuiWebGuests = taskKey[File]("The web guests' files (everyui-web's hls.js, everyui-monaco's editor, everyui-terminal's xterm.js), taken from their modules on the classpath: a directory whose everyui-<module>/ directories the bundle copies next to the page")
   }
   import autoImport.*
 

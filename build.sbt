@@ -209,7 +209,9 @@ lazy val web = (project in file("web"))
       "org.scala-js" %% "scalajs-dom" % "2.8.1",
       "com.outr" %% "reactify" % reactifyVersion
     ),
-    Compile / resourceGenerators += fontResources.taskValue
+    Compile / resourceGenerators += fontResources.taskValue,
+    // hls.js, for a browser with no HLS of its own: served next to the page (project/HlsAssets.scala)
+    Compile / resourceGenerators += Def.task(HlsAssets.generate(streams.value.log.info(_), (Compile / resourceManaged).value)).taskValue
   )
 
 // --- network, published: the module and its backend, for the JVM and the browser ------------------------------

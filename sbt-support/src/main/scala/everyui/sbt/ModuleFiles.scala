@@ -5,9 +5,10 @@ import java.nio.file.{Files, StandardCopyOption}
 import java.util.zip.ZipFile
 
 /** The files an EveryUI module carries for the web to serve, taken off the app's classpath: EveryUI's fonts
-  * (`everyui/fonts/`, in everyui-web), a web guest's (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`). Each
-  * entry of the classpath is a jar, as an app that depends on the published artifacts has, or a classes directory, as a
-  * module of the same build has; what is found under `prefix` is copied to `out` under the same path.
+  * (`everyui/fonts/`, in everyui-web), a web guest's (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`, and
+  * everyui-web's hls.js in `everyui-hls/<version>/`). Each entry of the classpath is a jar, as an app that depends on
+  * the published artifacts has, or a classes directory, as a module of the same build has; what is found under `prefix`
+  * is copied to `out` under the same path.
   *
   * {{{
   *   ModuleFiles.copy(classpath, "everyui-terminal/", out)     // out/everyui-terminal/6.0.0/xterm.js, ...

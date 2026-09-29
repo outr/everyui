@@ -354,53 +354,31 @@ class RenderNode(val el: html.Element) {
   // ---- a `video` or `audio` element (`Nodes.video`, `Nodes.audio`); on any other node these do nothing ----
   private def media: Option[js.Dynamic] =
     if (el.tagName == "VIDEO" || el.tagName == "AUDIO") Some(el.asInstanceOf[js.Dynamic]) else None
-  private var mediaPlaying = true
+  // the playing itself, the browser's own or hls.js's (WebMedia)
+  private lazy val webMedia = new WebMedia(el)
 
-  /** A `<video>` fetches its own source and takes no headers with it: there is no way to add one short of fetching
-    * the media ourselves and feeding it through a media source, which is a different player. Whatever a token has
-    * to say must ride in the address here. */
-  def setMediaHeaders(headers: Map[String, String]): Unit = ()
+  /** Sent with every request an HLS stream makes through hls.js; the browser's own player sends none, so a plain
+    * file's token must ride in its address. */
+  def setMediaHeaders(headers: Map[String, String]): Unit = if (media.nonEmpty) webMedia.headers = headers
 
-  def setMediaSource(url: String): Unit = media.foreach { m =>
-    if (url.isEmpty) {
-      m.pause()
-      el.removeAttribute("src")
-      m.load()
-    }
-    else if (el.getAttribute("src") != url) {
-      el.setAttribute("src", url)
-      // before the file has said anything, a time set is where it starts once it has (its default playback start
-      // position), rather than a seek after it
-      if (mediaStart > 0.0) m.currentTime = mediaStart
-      mediaStart = 0.0
-      if (mediaPlaying) m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
-    }
-  }
+  def setMediaSource(url: String): Unit = if (media.nonEmpty) webMedia.source(url)
   /** Where the next source starts, in seconds. */
-  def setMediaStart(seconds: Double): Unit = mediaStart = seconds
-  private var mediaStart = 0.0
+  def setMediaStart(seconds: Double): Unit = if (media.nonEmpty) webMedia.start = seconds
   // a page could add a <track> for each; not yet
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
-  def setMediaPlaying(playing: Boolean): Unit = {
-    mediaPlaying = playing
-    media.foreach { m =>
-      if (!playing) m.pause()
-      else if (el.getAttribute("src") != null) m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
-    }
-  }
+  def setMediaPlaying(playing: Boolean): Unit = if (media.nonEmpty) webMedia.play(playing)
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.loop = loop)
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.muted = muted)
   def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = math.min(1.0, volume)) // a page cannot boost
   def setMediaRate(rate: Double): Unit = media.foreach(_.playbackRate = rate)
   def mediaRates(): Boolean = true
-  // neither what it holds nor what it waits for can be told here
-  def setMediaBuffering(named: String): Unit = ()
+  // what hls.js holds ahead; the browser's own player cannot be told
+  def setMediaBuffering(named: String): Unit = if (media.nonEmpty) webMedia.buffering = named
   // the browser keeps what its own cache allows, and a page has no other store for a clip
   def setMediaCached(cached: Boolean): Unit = ()
-  // it does not say whether it is waiting; the playhead standing still is what tells a viewer
-  def mediaBuffering(): Boolean = false
-  // nothing here counts what the link is carrying
-  def mediaBandwidth(): Long = 0L
+  def mediaBuffering(): Boolean = media.nonEmpty && webMedia.waiting
+  // what hls.js has measured; the browser's own player does not count
+  def mediaBandwidth(): Long = if (media.nonEmpty) webMedia.bandwidth else 0L
   // only a video element carries a frame size; an audio one answers nothing
   def mediaSize(): (Double, Double) = media.map(_.asInstanceOf[js.Dynamic]).map { m =>
     val w = m.selectDynamic("videoWidth")
@@ -412,8 +390,8 @@ class RenderNode(val el: html.Element) {
   /** The words on screen: "" here, where the browser draws the showing text track itself. */
   def mediaCues(): String = ""
   def mediaCueList(): List[everyui.component.MediaCue] = Nil
-  // a `video` retries by itself and says nothing of it
-  def mediaRetry(): Option[everyui.component.MediaRetry] = None
+  // hls.js says what it retries; a `video` retries by itself and says nothing of it
+  def mediaRetry(): Option[everyui.component.MediaRetry] = if (media.nonEmpty) webMedia.retry else None
   // nothing here shows what is playing, or hears it
   def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
   def setMediaSpectrum(on: Boolean): Unit = ()
@@ -452,44 +430,16 @@ class RenderNode(val el: html.Element) {
     embedHearing = Nil
   }
 
-  /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
-  def setMediaLanguages(audio: String, text: String): Unit = ()
+  /** What to hear and read this in: chosen as an HLS stream opens through hls.js; the browser's own player chooses
+    * its own. */
+  def setMediaLanguages(audio: String, text: String): Unit = if (media.nonEmpty) webMedia.languages(audio, text)
 
-  /** What was decoded: nothing a page is told. */
-  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
+  /** What hls.js decoded, and the last error. */
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics =
+    if (media.nonEmpty) webMedia.diagnostics else everyui.component.MediaDiagnostics()
 
-  def mediaTracks(): List[everyui.component.MediaTrack] = media.toList.flatMap { e =>
-    val m = e.asInstanceOf[js.Dynamic]
-    val audio = tracksOf(m, "audioTracks", everyui.component.MediaTrack.Audio)
-    val text = tracksOf(m, "textTracks", everyui.component.MediaTrack.Text)
-    audio ++ text
-  }
-  private def tracksOf(m: js.Dynamic, field: String, kind: String): List[everyui.component.MediaTrack] = {
-    val list = m.selectDynamic(field)
-    if (js.isUndefined(list) || list == null) Nil
-    else {
-      val count = list.length.asInstanceOf[Int]
-      (0 until count).toList.map { i =>
-        val t = list.applyDynamic("item")(i)
-        val language = Option(t.language.asInstanceOf[String]).getOrElse("")
-        val label = Option(t.label.asInstanceOf[String]).getOrElse("")
-        everyui.component.MediaTrack(i.toString, kind, language, label)
-      }
-    }
-  }
-  def selectMediaTrack(kind: String, id: String): Unit = media.foreach { m =>
-    val field = if (kind == everyui.component.MediaTrack.Audio) "audioTracks" else "textTracks"
-    val list = m.asInstanceOf[js.Dynamic].selectDynamic(field)
-    if (!js.isUndefined(list) && list != null) {
-      val count = list.length.asInstanceOf[Int]
-      (0 until count).foreach { i =>
-        val t = list.applyDynamic("item")(i)
-        val on = id == i.toString
-        if (kind == everyui.component.MediaTrack.Audio) t.enabled = on
-        else t.mode = if (on) "showing" else "disabled"
-      }
-    }
-  }
+  def mediaTracks(): List[everyui.component.MediaTrack] = if (media.nonEmpty) webMedia.tracks else Nil
+  def selectMediaTrack(kind: String, id: String): Unit = if (media.nonEmpty) webMedia.select(kind, id)
   def setMediaCover(cover: Boolean): Unit = el.style.setProperty("object-fit", if (cover) "cover" else "contain")
   def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.currentTime.asInstanceOf[Double]).getOrElse(0.0)
@@ -500,7 +450,7 @@ class RenderNode(val el: html.Element) {
   def onMediaEvent(f: String => Unit): Unit = if (media.nonEmpty) {
     el.addEventListener("playing", (_: dom.Event) => f("ready"))
     el.addEventListener("ended", (_: dom.Event) => f("ended"))
-    el.addEventListener("error", (_: dom.Event) => f("error"))
+    webMedia.listen(f)
   }
   def releaseMedia(): Unit = setMediaSource("")
 
