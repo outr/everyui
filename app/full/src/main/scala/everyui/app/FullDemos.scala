@@ -29,5 +29,9 @@ object FullDemos {
       PlatformDemo.run()
       true
     }
+    else if (demo == "video") {
+      VideoDemo.run()
+      true
+    }
     else false
 }

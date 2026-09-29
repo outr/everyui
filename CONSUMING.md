@@ -1126,6 +1126,48 @@ Both ask for the permission where it has not been given; `Location.permission` (
 
 `demo=platform` finds where the device is and follows it 25 m at a time.
 
+## Video on the web: HLS through hls.js
+
+A `VideoView` (or an `AudioPlayer`) whose `source` is an HLS stream plays in every major browser. Where the browser
+plays HLS itself AND lists its tracks (Safari, on a Mac, an iPhone or an iPad), it plays it itself. Everywhere else
+with Media Source Extensions (Chrome, Edge, Firefox) hls.js plays it, loaded the first time a source needs it and
+never before. It is decided by what the browser can do, not by its name:
+
+- a source is HLS by its address (a path ending `.m3u8`, before any query), or, where the browser refuses a source
+  whose address says nothing, by the type its server answers for it (`application/vnd.apple.mpegurl`,
+  `application/x-mpegURL`): the server is asked once, with `headers`, and a playlist goes to hls.js;
+- Chrome and Chromium (153 and 154 here) now play HLS themselves (`canPlayType` answers "maybe") but list no audio or
+  subtitle tracks, so an `.m3u8` still goes through hls.js there, and `tracks` and the track choice work;
+- with `headers` set, hls.js plays an HLS stream even where the browser has HLS of its own, since the browser's player
+  sends no headers. hls.js sends them with every playlist, segment and key (its `xhrSetup` and `fetchSetup`). A plain
+  file (an `.mp4`) is still played by the browser, which sends none: its token must be in its address.
+
+Everything a `VideoView` does works through hls.js: `playing`, `seek`, `playhead`, `duration` (0 for a live stream),
+`loop`, `muted`, `volume`, `rate`, the `ready`, `ended` and `error` events, `waiting` (on the web now for any source:
+playing asked for and the element short of data), `bandwidth` (hls.js's estimate, once a segment has come),
+`retrying` (a load hls.js is retrying), `diagnostics` (the level's codecs and size, the audio tracks, and the error
+with no address), and `buffering` (`responsive` holds 10 s ahead, `balanced` hls.js's own 30 s, `slow` 60 s). hls.js
+adapts the bitrate itself. `tracks` lists the stream's audio renditions (`audioTrack`), its subtitle renditions and
+its closed captions (ids `cc<n>`, format "CC") as text tracks (`textTrack`, drawn by the browser); `languages(audio,
+text)` chooses by language as the stream opens. Each source's hls.js is destroyed when the source changes, the view
+is released, or it goes out of sight.
+
+**Shipping it.** hls.js (1.7.3) comes in the everyui-web jar, under `everyui-hls/<version>/` (the script, the worker it
+transmuxes in, its licence), and sbt-everyui's `everyuiWebGuests` copies it out beside the page with the other guests,
+so an app's bundle that already does `IO.copyDirectory(everyuiWebGuests.value, out)` serves it with nothing more. It is
+loaded by a `<script src>`, never from a CDN, so a Content-Security-Policy needs only:
+
+```
+script-src 'self'; worker-src 'self'; media-src 'self' blob: data: <the streams' origins>; connect-src <the streams' origins>
+```
+
+(`blob:` for the stream Media Source Extensions hands the element, `data:` for the empty subtitle tracks hls.js makes,
+and `connect-src`, since hls.js fetches the playlists and segments itself). Served somewhere other than next to the
+page, the web's `everyui.render.HlsScript.root` says where. A stream on another origin must answer CORS for the page,
+and with `headers` for its preflight too (`Access-Control-Allow-Headers: Authorization`).
+
+`demo=video` plays an HLS stream, one with alternate audio and subtitles, and an `.mp4`, with `header=` and `lang=`.
+
 ## Web builds: JavaScript, WebAssembly, or both
 
 The `sbt-everyui` plugin builds a web app as JavaScript, as WebAssembly, or as both, with a loader in the page that
@@ -1179,8 +1221,9 @@ itself is 1.0 s fast against 1.4 s full for main.js, and 0.9 s against 1.3 s for
 bundle after a one-line change, so most of a web build's time is elsewhere.
 
 `everyuiWebFonts` is EveryUI's fonts out of the everyui-web jar, a directory to copy as `fonts/`, and `everyuiWebGuests`
-the web guests' files out of their modules (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`), a directory to
-copy next to the page: `IO.copyDirectory(everyuiWebGuests.value, out)`. Both are `everyui.sbt.ModuleFiles`, which a
+the web guests' files out of their modules (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`, and
+everyui-web's own `everyui-hls/<version>/`), a directory to copy next to the page:
+`IO.copyDirectory(everyuiWebGuests.value, out)`. Both are `everyui.sbt.ModuleFiles`, which a
 build without the plugin can call itself.
 
 An app with a face of its own (`Faces.register`) names its font files in `everyuiAppFonts`, and `everyuiWebFonts` (and
