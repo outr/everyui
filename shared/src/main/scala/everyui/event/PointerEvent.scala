@@ -8,7 +8,10 @@ import everyui.render.Platform
   * also its card's. */
 case class PointerEvent(kind: PointerKind, x: Double, y: Double, button: Int = 0, ctrl: Boolean = false,
                         meta: Boolean = false, alt: Boolean = false, shift: Boolean = false) {
-  def consume(): Unit = Pointer.consumed = Some(this)
+  def consume(): Unit = {
+    Pointer.consumed = Some(this)
+    Pointer.consumedAt = Platform.ticks()
+  }
 
   /** The platform's shortcut modifier held: Command on a Mac, Ctrl elsewhere (as `Chord.primary`). */
   def primary: Boolean = if (Platform.commandKey()) meta else ctrl
