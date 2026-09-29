@@ -2189,6 +2189,10 @@ class RokuEmitter(
         case Apply(Select(q, "toHexString"), List(x)) if q.symbol.exists &&
             Set("java.lang.Integer", "java.lang.Long").contains(q.symbol.fullName.stripSuffix("$")) =>
           if (q.symbol.fullName.stripSuffix("$") == "java.lang.Long") s"_hexL(${emitArgVal(x)})" else s"_hex(${emitArgVal(x)})"
+        // a number or a flag joined to a String (`n + ","`), the number made text as the JVM does: BrightScript's `+`
+        // refuses the two
+        case Apply(Select(l, "+" | "$plus"), List(r)) if isPrimLike(l) && !isStringLike(l.tpe) && isStringLike(r.tpe) =>
+          s"(_str(${emitTerm(l)}) + ${emitTerm(r)})"
         // an Int's and a Long's ends, as their constants are written (in hex, and as a LongInteger)
         case sel @ Select(_, n @ ("MinValue" | "MaxValue")) if Set("scala.Int", "scala.Long").contains(ownerFqn(sel.symbol)) =>
           val max = n == "MaxValue"
