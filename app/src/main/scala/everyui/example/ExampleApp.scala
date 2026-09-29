@@ -26,6 +26,9 @@ object ExampleApp extends ScreenManager {
   lazy val contentContainer: Container = new Container
   override def host: Container = contentContainer
 
+  /** The frame-rate checks (tools/check.sh, `checks fps`) read the `fps=` line from every live run. */
+  override protected def reportsFps: Boolean = true
+
   override protected def load(): Task[Unit] = super.load().map { _ =>
     contentContainer.size.width := ui.size.width
     contentContainer.size.height := ui.size.height() - appHeader.size.height()

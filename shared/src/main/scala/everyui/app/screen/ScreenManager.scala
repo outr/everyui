@@ -119,6 +119,11 @@ trait ScreenManager extends TaskSupport {
     * on the Android launch intent, `--freeze=` on the desktop. */
   protected def freezeSeconds: Double = Platform.freezeSeconds()
 
+  /** Whether the live frame rate is logged, once a second (`fps=` at info). Off unless the launch asks for it: `fps=1`
+    * as a launch argument (`?fps=1` in the page URL, `--fps=1` on the desktop, `--es fps 1` on the Android launch
+    * intent, a launch parameter on the Roku). An app that always wants it, as the frame-rate checks' does, says so. */
+  protected def reportsFps: Boolean = Platform.launchArg("fps") == "1"
+
   /** Start on the screen claiming the page's path, or `screen`. Nothing is built until the bundled faces have
     * loaded, so every node is measured with its real font and never a fallback the browser is still replacing. */
   def run(screen: Screen, others: Screen*): Unit = {
@@ -326,6 +331,7 @@ trait ScreenManager extends TaskSupport {
   protected def frame(ms: Double, updateMs: Double): Unit = ()
 
   private def live(): Unit = {
+    val reports = reportsFps
     var last = -1.0
     var frames = 0.0
     var reported = Platform.ticks()
@@ -338,7 +344,7 @@ trait ScreenManager extends TaskSupport {
       worked = Platform.ticks() - now
       last = now
       frames = frames + 1.0
-      if (now - reported >= 1000.0) {
+      if (reports && now - reported >= 1000.0) {
         scribe.info("fps=" + (frames * 1000.0 / (now - reported)).toString)
         frames = 0.0
         reported = now
