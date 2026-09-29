@@ -16,7 +16,7 @@ import scala.collection.mutable
  *
  *  BrightScript has NO lexical closures, so a Scala lambda is DEFUNCTIONALISED:
  *  each becomes a top-level `function closureN(env, args)` plus a value
- *  `{ fn: closureN, env: { self: self } }`, invoked through the runtime
+ *  `{ fn: closureN, self: self }` (its captures beside `self`), invoked through the runtime
  *  `RtInvoke(cl, args)`. User classes become assoc arrays carrying their
  *  method function-refs (`self.build`), methods become `Class_method(self, …)`.
  *
@@ -436,8 +436,9 @@ class RokuEmitter(
     }
 
     // Emit a lambda as a top-level `function closureN(env, args)` and return the
-    // `{ fn: closureN, env: { self: self } }` value. `env.self` is the enclosing
-    // instance (invalid at top level); params bind from the `args` array.
+    // `{ fn: closureN, self: self, fv_<x>: x }` value, which its function is handed
+    // as `env`: `env.self` is the enclosing instance (invalid at top level); params
+    // bind from the `args` array.
     // Free variables of a lambda: Idents referencing an enclosing def's
     // param/local (not `self`-members, not its own params/locals, not
     // modules/facades). BrightScript can't capture, so these ride in the env.
@@ -515,7 +516,7 @@ class RokuEmitter(
       val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
       // A captured box / thunk travels as itself (raw name), never unboxed.
       val envFvs = fvs.filterNot((_, s) => omit.contains(s)).map { case (nm, _) => s", fv_$nm: $nm" }.mkString
-      s"{ fn: $name, env: { self: $envSelf$envFvs } }"
+      s"{ fn: $name, self: $envSelf$envFvs }"
     }
 
     /** A by-name argument: a zero-arg closure over the expression, forced by
@@ -545,7 +546,7 @@ class RokuEmitter(
           closures.append("end function\n\n")
           val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(code)) "self" else "invalid"
           val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
-          s"{ fn: $name, env: { self: $envSelf$envFvs } }"
+          s"{ fn: $name, self: $envSelf$envFvs }"
       }
     }
 
@@ -582,7 +583,7 @@ class RokuEmitter(
           closures.append("end function\n\n")
           val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
           val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
-          Some(s"{ fn: $name, env: { self: $envSelf$envFvs } }")
+          Some(s"{ fn: $name, self: $envSelf$envFvs }")
         case _ => None
       }
     }
@@ -1384,7 +1385,7 @@ class RokuEmitter(
     def localDefCall(sym: Symbol, args: List[Term]): String = {
       val r = anonCaptureRef(sym).getOrElse(brLocal(sym.name))
       val a = emitOrdered(argParts(args, sym)).filter(_ != dropArg)
-      s"$r.fn($r.env, [${a.mkString(", ")}])"
+      s"$r.fn($r, [${a.mkString(", ")}])"
     }
 
     def rep(t: Term): List[Term] = unwrap(t) match {
@@ -1837,7 +1838,7 @@ class RokuEmitter(
               val r = emitTerm(recv)
               val a = emitArgs(args, fn.symbol)
               // A closure held in a local or a field chain is called in place — one call fewer than RtInvoke.
-              if (r.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*") && r != "invalid") s"$r.fn($r.env, [$a])"
+              if (r.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*") && r != "invalid") s"$r.fn($r, [$a])"
               else s"RtInvoke($r, [$a])"
             // A method DECLARED on a user class dispatches to its own emitted
             // function — it must win over the collection/string/Option builtins
@@ -2244,7 +2245,7 @@ class RokuEmitter(
         case Select(q, "init") if isSeqLike(q) => s"_dropRight(${emitTerm(q)}, 1)"
         case Select(q, "capitalize") if isStringLike(q.tpe) => s"_strCapitalize(${emitTerm(q)})"
         // `xs.lift` as a function of its own, where it is not applied at once (see `_lift`)
-        case Select(q, "lift") if isSeqLike(q) => s"{ fn: _liftCall, env: { xs: ${emitTerm(q)} } }"
+        case Select(q, "lift") if isSeqLike(q) => s"{ fn: _liftCall, xs: ${emitTerm(q)} }"
         case Select(q, "distinct") if isCollType(q)  => s"_distinct(${emitTerm(q)})"
         // a Set is an array of distinct values here, so a collection made one is its distinct values (a Map's, its pairs)
         case Select(q, "toSet") if isMapTpe(q.tpe) => s"_mapToList(${emitTerm(q)})"
@@ -2599,7 +2600,7 @@ class RokuEmitter(
     def selfCaptured(code: String, lhs: String): String = {
       val capture = s", fv_$lhs: $lhs"
       if (!code.contains(s"$lhs = { fn: ") || !code.contains(capture)) code
-      else code.replace(capture, "") + s"\n  $lhs.env.fv_$lhs = $lhs"
+      else code.replace(capture, "") + s"\n  $lhs.fv_$lhs = $lhs"
     }
 
     def emitStat(st: Statement): String = st match {
@@ -2637,7 +2638,7 @@ class RokuEmitter(
             later.foreach(s => waiting += ((nm, s)))
             val ready = waiting.filter((_, s) => made.contains(s)).toList
             waiting --= ready
-            (line :: ready.map((h, s) => s"  $h.env.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
+            (line :: ready.map((h, s) => s"  $h.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
           case st => emitStat(st)
         }
       }
@@ -2894,9 +2895,10 @@ class RokuEmitter(
           if (e.nonEmpty) out.append(e).append("\n")
         case _ => ()
       }
-      // expose method function-refs so the runtime can call self.m(self, …)
+      // the methods the runtime calls by name (`_rtSlot`: toString, compare) are on the object for it to find; every other
+      // call to one is to its function (`Class_m(self, …)`), and a copy of each on every instance was read by nothing
       cd.body.foreach {
-        case dd @ DefDef(name, _, _, Some(_)) if emittableMethod(dd) =>
+        case dd @ DefDef(name, _, _, Some(_)) if emittableMethod(dd) && RokuEmitter.runtimeCalled.contains(name) =>
           val mn = memberName(dd.symbol, name)
           out.append(s"  self.$mn = ${cn}_$mn\n")
         case _ => ()
@@ -3090,14 +3092,17 @@ class RokuEmitter(
         sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
-        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
+        // (its `_isa` is in its table, where it has one)
+        { val tag = isaTag(sym); if (tag.nonEmpty && vtableFor(sym).isEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
-        if (sym.flags.is(Flags.Case))
+        // a case class's fields, by name (the runtime compares and prints it by them): its table's list, where it has one
+        if (sym.flags.is(Flags.Case) && vtableFor(sym).isEmpty)
           sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
         if (vtableFor(sym).nonEmpty) sb.append(s"  self._vt = ${cn}__vt()\n")
+        if (sym.flags.is(Flags.Case) && vtableFor(sym).nonEmpty) sb.append("  self._fields = self._vt._fields\n")
         sb.append(s"  ${cn}__init(self${packParams(ctorParams).map(p => ", " + p).mkString})\n")
         // the guards that kept a diamond from initialising twice have done their work: kept, they were an entry per class
         // and trait in every instance
@@ -3125,6 +3130,9 @@ class RokuEmitter(
         slots.foreach { case (slot, impl) =>
           if (whole || !inherited.get(slot).contains(impl)) sb.append(s"  vt.$slot = $impl\n")
         }
+        // and what the class is (RtIsA), which is the same for all of its instances
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  vt._isa = ${brStr(tag)}\n") }
+        if (sym.flags.is(Flags.Case)) sb.append(s"  vt._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
         sb.append(s"  ga[$key] = vt\n")
         sb.append("  return vt\nend function\n\n")
       }
@@ -4332,13 +4340,15 @@ class RokuEmitter(
       |    if t <> invalid and (t._cls = "Success" or t._cls = "Right") then return t.value
       |    return invalid
       |end function
+      |' A closure is one associative array, its function (`fn`) beside what it captured (`self`, `fv_<name>`), and
+      |' its function is handed the closure itself as its environment.
       |function RtInvoke(cl as dynamic, args as object) as dynamic
       |    if type(cl) = "roAssociativeArray"
-      |        if cl.fn <> invalid then return cl.fn(cl.env, args)
+      |        if cl.fn <> invalid then return cl.fn(cl, args)
       |        return invalid
       |    end if
       |    if cl <> invalid and GetInterface(cl, "ifAssociativeArray") <> invalid and cl.fn <> invalid
-      |        return cl.fn(cl.env, args)
+      |        return cl.fn(cl, args)
       |    end if
       |    return invalid
       |end function
@@ -4533,14 +4543,19 @@ class RokuEmitter(
       |end function
       |
       |' `case x: SomeClass` for a class that is not a case class. Every object this
-      |' compiler makes carries `_isa`, its own name and its ancestors' between bars,
-      |' so a subclass answers to its parent's name too. Anything with no `_isa` (a
-      |' string, a number, a record from the runtime) answers yes, as it did before
-      |' there was a test at all: the tag only narrows what it knows about.
+      |' compiler makes carries `_isa` (in its class's table, where it has one), its own
+      |' name and its ancestors' between bars, so a subclass answers to its parent's name
+      |' too. Anything with no `_isa` (a string, a number, a record from the runtime)
+      |' answers yes, as it did before there was a test at all: the tag only narrows
+      |' what it knows about.
       |function RtIsA(v as dynamic, tag as string) as boolean
       |    if v = invalid then return false
       |    if type(v) <> "roAssociativeArray" then return true
       |    s = v._isa
+      |    if s = invalid
+      |        vt = v._vt
+      |        if vt <> invalid then s = vt._isa
+      |    end if
       |    if s = invalid then return true
       |    return Instr(1, s, tag) > 0
       |end function
@@ -4671,7 +4686,7 @@ class RokuEmitter(
       |' (a caller that already evaluated) passes through unchanged.
       |function RtForce(x as dynamic) as dynamic
       |    if type(x) = "roAssociativeArray"
-      |        if x.fn <> invalid then return x.fn(x.env, [])
+      |        if x.fn <> invalid then return x.fn(x, [])
       |    end if
       |    return x
       |end function
@@ -4741,7 +4756,18 @@ class RokuEmitter(
       |' ── Try ────────────────────────────────────────────────────────────────────
       |
       |function Success(v as dynamic) as object
-      |    return { _cls: "Success", value: v, _fields: ["value"] }
+      |    return { _cls: "Success", value: v, _fields: _rtValueFields() }
+      |end function
+      |' The fields a Success is compared and printed by: one list for them all, which none changes. A value (a Var) holds
+      |' its state as a Success, and a list apiece was an array for every value on the screen.
+      |function _rtValueFields() as object
+      |    ga = GetGlobalAA()
+      |    fields = ga.rtValueFields
+      |    if fields = invalid
+      |        fields = ["value"]
+      |        ga.rtValueFields = fields
+      |    end if
+      |    return fields
       |end function
       |function Failure(e as dynamic) as object
       |    return { _cls: "Failure", exception: e, error: e, _fields: ["exception"] }
@@ -4778,11 +4804,14 @@ class RokuEmitter(
       |' One thread: a task is a continuation-passing computation, { _cls: "Task", run: closure } where `run`
       |' takes [cb] and `cb` takes [ok, value]. A Completable holds its waiters instead. `sync` returns only a
       |' task that completes at once; anything that would block is an error here. `sleep` is a SceneGraph Timer.
+      |' (`env`, made for the one closure, becomes it: its function goes in beside what it holds)
       |function RtTask(runFn as function, env as object) as object
-      |    return { _cls: "Task", run: { fn: runFn, env: env } }
+      |    env.fn = runFn
+      |    return { _cls: "Task", run: env }
       |end function
       |function RtCb(fn as function, env as object) as object
-      |    return { fn: fn, env: env }
+      |    env.fn = fn
+      |    return env
       |end function
       |function RapidTask_run(t as dynamic, cb as dynamic) as dynamic
       |    if t = invalid
@@ -5548,11 +5577,12 @@ class RokuEmitter(
       |
       |' ── java.lang.ThreadLocal (one thread: a slot, lazily seeded) ─────────────
       |' Modelled as a class so an anonymous subclass overriding `initialValue`
-      |' composes: its constructor runs ThreadLocal__install then installs its own
-      |' `initialValue` slot on top.
+      |' composes: ThreadLocal_get seeds from the override in the subclass's table,
+      |' and from ThreadLocal_initialValue where there is none.
       |
-      |sub ThreadLocal__install(self as object)
-      |    self.initialValue = ThreadLocal_initialValue
+      |sub ThreadLocal__install(_self as object)
+      |    ' nothing to put on it: ThreadLocal_get finds an initialValue a subclass overrides in its class's table, and
+      |    ' else seeds with ThreadLocal_initialValue (a copy on every instance was a method slot on each)
       |end sub
       |function ThreadLocal_init(self as object) as dynamic
       |    self.__tlSet = false
@@ -5573,6 +5603,7 @@ class RokuEmitter(
       |    if self.DoesExist("__tlSet") then seeded = self.__tlSet
       |    if not seeded
       |        seed = _rtSlot(self, "initialValue")
+      |        if seed = invalid then seed = ThreadLocal_initialValue
       |        self.__tlValue = seed(self)
       |        self.__tlSet = true
       |    end if
@@ -5646,11 +5677,11 @@ class RokuEmitter(
       |end function
       |function _futureMap(f as object, fn as dynamic) as object
       |    r = Promise_new()
-      |    _futureOnSuccess(f, { fn: _rtFutureMapStep, env: { r: r, fn: fn } })
+      |    _futureOnSuccess(f, { fn: _rtFutureMapStep, r: r, f: fn })
       |    return r
       |end function
       |function _rtFutureMapStep(env as object, args as object) as dynamic
-      |    _promiseSuccess(env.r, RtInvoke(env.fn, [args[0]]))
+      |    _promiseSuccess(env.r, RtInvoke(env.f, [args[0]]))
       |    return invalid
       |end function
       |
@@ -6117,11 +6148,11 @@ class RokuEmitter(
       |    if first then return invalid
       |    return r
       |end function
-      |' xs.collect { case … } (and collectFirst): an element none of the cases takes comes back with env._miss set
+      |' xs.collect { case … } (and collectFirst): an element none of the cases takes comes back with the closure's _miss set
       |' (emitPartialClosure), a call and a flag where a MatchError was an exception and the element made into text
       |function _collectCases(xs as dynamic, pf as object, first as boolean) as dynamic
       |    r = []
-      |    env = pf.env
+      |    env = pf
       |    env._miss = false
       |    for each x in _rtItems(xs)
       |        v = pf.fn(env, [x])
@@ -6138,6 +6169,9 @@ class RokuEmitter(
       |""".stripMargin}
 
 object RokuEmitter {
+  /** The methods the runtime calls on an object by name (`_rtSlot`): its text, and its order for a sort. */
+  val runtimeCalled: Set[String] = Set("toString", "compare")
+
   /** Whether emitted code refers to `self`, the object a closure was written in. */
   def usesSelf(code: String): Boolean = "\\bself\\b".r.findFirstIn(code).nonEmpty
 
@@ -6150,10 +6184,10 @@ object RokuEmitter {
     * ten seconds), and most were ceremony. Each function's parameters lose `as dynamic` and `as object` (what an
     * untyped one is, or less), and its answer `as dynamic`; a closure loses the `self` it never reads and the arguments
     * it never reads (a warning apiece on the device); a `return invalid` after the function's last return goes; a
-    * closure's environment no longer carries `self: invalid` (a missing key reads as invalid); and closures written
+    * closure no longer carries `self: invalid` (a missing key reads as invalid); and closures written
     * alike are one closure. */
   def compact(code: String, runtimeFunctions: Set[String] = Set.empty): String = {
-    val lines = code.replace("env: { self: invalid }", "env: {}").replace("env: { self: invalid, ", "env: { ").split("\n", -1)
+    val lines = code.replaceAll("(\\{ fn: [A-Za-z0-9_]+), self: invalid( \\}|,)", "$1$2").split("\n", -1)
     val header = "^(function|sub) ([A-Za-z0-9_]+)\\((.*)\\)(.*)$".r
     val argLine = "^\\s*([A-Za-z0-9_]+) = args\\[\\d+\\]$".r
     val closureName = "closure[0-9]+"

@@ -256,7 +256,7 @@ class SwiftEmitter(
       val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
       // A captured box / thunk travels as itself (raw name), never unboxed.
       val envFvs = fvs.filterNot((_, s) => omit.contains(s)).map { case (nm, _) => s", fv_$nm: $nm" }.mkString
-      s"{ fn: $name, env: { self: $envSelf$envFvs } }"
+      s"{ fn: $name, self: $envSelf$envFvs }"
     }
 
     /** A by-name argument: a zero-arg closure over the expression, forced by
@@ -298,7 +298,7 @@ class SwiftEmitter(
           closures.append("end function\n\n")
           val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(code)) "self" else "invalid"
           val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
-          s"{ fn: $name, env: { self: $envSelf$envFvs } }"
+          s"{ fn: $name, self: $envSelf$envFvs }"
       }
     }
 
@@ -953,7 +953,7 @@ class SwiftEmitter(
               val r = emitTerm(recv)
               val a = emitArgs(args, fn.symbol)
               // A closure held in a local or a field chain is called in place — one call fewer than RtInvoke.
-              if (r.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*") && r != "invalid") s"$r.fn($r.env, [$a])"
+              if (r.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*") && r != "invalid") s"$r.fn($r, [$a])"
               else s"RtInvoke($r, [$a])"
             // A method DECLARED on a user class dispatches to its own emitted
             // function — it must win over the collection/string/Option builtins
@@ -1854,7 +1854,7 @@ class SwiftEmitter(
         case st: Term =>
 @@ old
       cd.body.foreach {
-        case dd @ DefDef(name, _, _, Some(_)) if emittableMethod(dd) =>
+        case dd @ DefDef(name, _, _, Some(_)) if emittableMethod(dd) && RokuEmitter.runtimeCalled.contains(name) =>
           val mn = memberName(dd.symbol, name)
           out.append(s"  self.$mn = ${cn}_$mn\n")
         case _ => ()
@@ -2068,14 +2068,17 @@ class SwiftEmitter(
         sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
         sb.append(s"  self._cls = ${brStr(cn)}\n")
-        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
+        // (its `_isa` is in its table, where it has one)
+        { val tag = isaTag(sym); if (tag.nonEmpty && vtableFor(sym).isEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
-        if (sym.flags.is(Flags.Case))
+        // a case class's fields, by name (the runtime compares and prints it by them): its table's list, where it has one
+        if (sym.flags.is(Flags.Case) && vtableFor(sym).isEmpty)
           sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
         if (vtableFor(sym).nonEmpty) sb.append(s"  self._vt = ${cn}__vt()\n")
+        if (sym.flags.is(Flags.Case) && vtableFor(sym).nonEmpty) sb.append("  self._fields = self._vt._fields\n")
         sb.append(s"  ${cn}__init(self${packParams(ctorParams).map(p => ", " + p).mkString})\n")
         // the guards that kept a diamond from initialising twice have done their work: kept, they were an entry per class
         // and trait in every instance
@@ -2103,6 +2106,9 @@ class SwiftEmitter(
         slots.foreach { case (slot, impl) =>
           if (whole || !inherited.get(slot).contains(impl)) sb.append(s"  vt.$slot = $impl\n")
         }
+        // and what the class is (RtIsA), which is the same for all of its instances
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  vt._isa = ${brStr(tag)}\n") }
+        if (sym.flags.is(Flags.Case)) sb.append(s"  vt._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
         sb.append(s"  ga[$key] = vt\n")
         sb.append("  return vt\nend function\n\n")
       }
@@ -2271,7 +2277,7 @@ class SwiftEmitter(
           closures.append("end function\n\n")
           val envSelf = if (currentClass.exists && RokuEmitter.usesSelf(body)) "self" else "invalid"
           val envFvs = fvs.map { case (nm, _) => s", fv_$nm: $nm" }.mkString
-          Some(s"{ fn: $name, env: { self: $envSelf$envFvs } }")
+          Some(s"{ fn: $name, self: $envSelf$envFvs }")
 @@ new
           val binds = (fvs.map { case (nm, _) => s"  $nm = ${field("env", "fv_" + nm)}" } :+
             s"  ${params.head} = args[${vInt(0)}]").mkString("\n")
@@ -2287,6 +2293,18 @@ class SwiftEmitter(
           val envSelf = if (currentClass.exists) "this" else NULL
           val envFvs = fvs.map { case (nm, _) => s"${swStr("fv_" + nm)}: $nm" }
           Some(s"rtClosure($name, ${rtObj(s"${swStr("self")}: $envSelf" :: envFvs)})")
+@@ old
+        case Select(q, "lift") if isSeqLike(q) => s"{ fn: _liftCall, xs: ${emitTerm(q)} }"
+@@ new
+        case Select(q, "lift") if isSeqLike(q) => s"{ fn: _liftCall, env: { xs: ${emitTerm(q)} } }"
+@@ old
+      else code.replace(capture, "") + s"\n  $lhs.fv_$lhs = $lhs"
+@@ new
+      else code.replace(capture, "") + s"\n  $lhs.env.fv_$lhs = $lhs"
+@@ old
+            (line :: ready.map((h, s) => s"  $h.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
+@@ new
+            (line :: ready.map((h, s) => s"  $h.env.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {

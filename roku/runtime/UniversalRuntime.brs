@@ -1043,7 +1043,7 @@ sub uiOnDeepLink(f as dynamic)
     params = ga.uiLaunchParams
     if params <> invalid and params.contentId <> invalid and ga.uiLaunchLinked <> true
         ga.uiLaunchLinked = true
-        uiLater({ fn: uiDeliverLaunchLink, env: {} })
+        uiLater({ fn: uiDeliverLaunchLink })
     end if
 end sub
 
