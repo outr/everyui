@@ -76,6 +76,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     content.size.height := content.contentHeight()
   }
   children += content
+  // the web scrolls the node itself (a wheel, a finger, the scrollbar, a smooth scroll): the offset follows it there
+  if (Platform.nativeScroll()) node.onScrolled(() => offset @= node.scrolled(horizontal))
 
   // the web scrolls to the focus itself only where a remote drives it (a TV's browser): under a pointer the focus lands
   // where it was clicked, which is already in view

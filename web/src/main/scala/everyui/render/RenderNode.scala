@@ -278,6 +278,9 @@ class RenderNode(val el: html.Element) {
   def setScrollTop(y: Double): Unit = el.scrollTop = y
   /** Scrolled `x` sideways from its start edge, which is the right in a right-to-left page. */
   def setScrollLeft(x: Double): Unit = el.scrollLeft = fromStart(x)
+  /** Hear the node scroll its own overflow (a wheel, a finger, the scrollbar, or a scroll the app asked for): a
+    * ScrollContainer keeps its offset with it. */
+  def onScrolled(f: () => Unit): Unit = el.addEventListener("scroll", (_: dom.Event) => f())
   /** A scroll that runs from its left in every language (a timeline): the browser counts it left to right, while what
     * it holds still reads the page's way. */
   def setLeftToRight(): Unit = {
