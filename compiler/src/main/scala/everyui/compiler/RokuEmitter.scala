@@ -291,11 +291,16 @@ class RokuEmitter(
       if (brReserved(s.toLowerCase)) s + "_" else s
     }
 
-    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`). A
-      * member keeps its `brSafe` name, which the runtime and dispatch reach by string. */
+    /** What an emitted function names itself: a closure's `env` and `args` (`closureN(env, args)`), the object a method
+      * or closure runs on (`self`), the global table (`ga`, see `injectGa`), and the packed and outer parameters. A
+      * captured `args` bound as `args = env.fv_args` replaced the closure's own arguments before it read them. */
+    val fnOwnNames = Set("env", "args", "self", "ga", "__more", "__outer")
+    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`) and of
+      * the names an emitted function gives its own (`fnOwnNames`). A member keeps its `brSafe` name, which the runtime
+      * and dispatch reach by string. */
     def brLocal(name: String): String = {
       val s = brSafe(name)
-      if (runtimeFnNames(s.toLowerCase)) s + "_" else s
+      if (runtimeFnNames(s.toLowerCase) || fnOwnNames(s.toLowerCase)) s + "_" else s
     }
     /** A term that lives in a method or a val's initialiser (a local, a parameter), not in a class. */
     def isLocalSym(s: Symbol): Boolean =

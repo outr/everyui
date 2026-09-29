@@ -196,11 +196,12 @@ class SwiftEmitter(
 
 
 @@ old
-    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`). A
-      * member keeps its `brSafe` name, which the runtime and dispatch reach by string. */
+    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`) and of
+      * the names an emitted function gives its own (`fnOwnNames`). A member keeps its `brSafe` name, which the runtime
+      * and dispatch reach by string. */
     def brLocal(name: String): String = {
       val s = brSafe(name)
-      if (runtimeFnNames(s.toLowerCase)) s + "_" else s
+      if (runtimeFnNames(s.toLowerCase) || fnOwnNames(s.toLowerCase)) s + "_" else s
     }
 @@ new
     /** A local's or a parameter's name. Swift names are case-sensitive, so no runtime function is shadowed by one. */
