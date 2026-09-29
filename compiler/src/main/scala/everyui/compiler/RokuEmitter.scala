@@ -2528,13 +2528,14 @@ class RokuEmitter(
         ((s"($subj <> invalid and $subj.count() > 0)" :: List(ht, tt)).filter(_ != "true").mkString(" and "), hb ++ tb)
       case u @ Unapply(_, _, subs) =>
         val cls = patternClass(u)
-        val fields = if (cls.exists) cls.caseFields.map(_.name) else Nil
+        // each field under the key it is kept at: `__v_<name>` where it implements a parent's `def`
+        val fields = if (cls.exists) cls.caseFields.map(fieldKey) else Nil
         val tag =
           if (cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+")) s"($subj <> invalid and $subj._cls = ${brStr(cls.name)})"
           else if (cls.exists) s"($subj <> invalid)"
           else "true"
         val subT = subs.zipWithIndex.map { case (sp, i) =>
-          patternTest(sp, s"$subj.${fields.lift(i).map(brSafe).getOrElse("_" + (i + 1))}") }
+          patternTest(sp, s"$subj.${fields.lift(i).getOrElse("_" + (i + 1))}") }
         val test = (tag :: subT.map(_._1)).filter(_ != "true").mkString(" and ")
         ((if (test.isEmpty) "true" else test), subT.flatMap(_._2))
       // A stable identifier (a case object, `Nil`, `None`, a val) matches by
