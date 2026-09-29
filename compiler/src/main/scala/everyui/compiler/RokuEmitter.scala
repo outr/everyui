@@ -3612,12 +3612,12 @@ class RokuEmitter(
       |    RtAfterTurn()
       |end sub
       |
-      |' The box warns that the channel nears its memory limit (Main's roAppMemoryNotificationEvent, at 80, 85, 90 and 95%):
-      |' the cycle collector runs now, at each warning. The run Platform.collect asks for waits for two quiet seconds, which
-      |' never come while a list is scrolled, and the box closed the channel with garbage it could have freed.
+      |' The box warns that the channel nears its memory limit (Main's roAppMemoryNotificationEvent, at 80, 85, 90 and 95%),
+      |' which Main has said already. The cycle collector is not run here: over a large heap RunGarbageCollector takes
+      |' longer than the render thread's watchdog allows, and a run at a warning hung a channel in the debugger
+      |' (Execution timeout &h23) after freeing nothing, the memory being live. Platform.collect's quiet-time run is the
+      |' collector's place.
       |sub onMemoryWarning()
-      |    freed = RunGarbageCollector()
-      |    if freed <> invalid and freed.ORPHANED <> invalid then print "[gc] at a memory warning, freed "; freed.ORPHANED; " of "; freed.COUNT
       |end sub
       |""".stripMargin
 
