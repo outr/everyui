@@ -21,6 +21,8 @@ import everyui.render.Platform
   *   autofill   a sign-in and a contact form as autofill and password managers see them
   *   rtlscroll  a rail in a right-to-left language, as the web's own scroll holds it
   *   rows       a table of `n=` rows built and then grown a row at a time, timed
+  *   chat       a group room in a ChatView: streaming replies, tool calls, reasoning, 2000 earlier entries (`theme=light`,
+  *              `rtl=1`, `offline=1`, `probe=1`)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
   */
@@ -38,5 +40,6 @@ import everyui.render.Platform
   else if (demo == "autofill") AutofillDemo.run()
   else if (demo == "rtlscroll") RtlScrollDemo.run()
   else if (demo == "rows") RowsDemo.run()
+  else if (demo == "chat") ChatDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }
