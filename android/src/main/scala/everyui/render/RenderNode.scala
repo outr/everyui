@@ -434,8 +434,8 @@ class RenderNode(val view: View) {
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
   def setOptions(labels: List[String]): Unit = ()
-  /** Styled runs as spans of one text: each run's colour, marking, weight, slant, size, strike and underline (a link
-    * is drawn, not followed; its family is the paragraph's). */
+  /** Styled runs as spans of one text: each run's colour, marking, weight, slant, size, strike and underline, and a
+    * link followed by a tap (its family is the paragraph's). */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = view match {
     case t: TextView =>
       val text = new android.text.SpannableStringBuilder()
@@ -460,7 +460,21 @@ class RenderNode(val view: View) {
           if (run.size > 0.0) span(new android.text.style.AbsoluteSizeSpan(math.round(run.size).toInt), from, to)
           if (run.strike) span(new android.text.style.StrikethroughSpan(), from, to)
           if (run.underline) span(new android.text.style.UnderlineSpan(), from, to)
+          // a link followed by a tap on it; its colour and underline are the run's own
+          if (run.href.nonEmpty) {
+            val href = run.href
+            span(new android.text.style.ClickableSpan {
+              override def onClick(widget: android.view.View): Unit = follow(href)
+              override def updateDrawState(paint: android.text.TextPaint): Unit = ()
+            }, from, to)
+          }
         }
+      }
+      // a tap reaches a link's span only through a movement method, which leaves the focus to the focus layer
+      if (runs.exists(_.href.nonEmpty) && !t.getMovementMethod.isInstanceOf[android.text.method.LinkMovementMethod]) {
+        t.setMovementMethod(android.text.method.LinkMovementMethod.getInstance())
+        t.setHighlightColor(android.graphics.Color.TRANSPARENT)
+        t.setFocusable(false)
       }
       t.setText(FaceSpan.fallen(text, t.getPaint))
       // as many lines as the runs are written as, where they are not wrapped (see setText)
