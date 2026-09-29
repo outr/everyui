@@ -1621,11 +1621,15 @@ function uiMotion(node as object, property as string, seconds as float, delay as
     return anim
 end function
 
+' A motion taken away: paused, never stopped, before it goes. Stopping an Animation has its interpolators set their
+' field once more, and by then the node is often off the scene or leaving it (a spinner taken away as what it waited
+' for arrives, and disposed of in the same turn), which is "Could not find node uiMotion…" again.
 sub uiStopMotion(anim as object)
     if anim = invalid then return
     motions = uiMotions()
+    e = motions[anim.id]
+    if e <> invalid and e.running then anim.control = "pause"
     motions.Delete(anim.id)
-    anim.control = "stop"
     uiRemove(anim)
 end sub
 
