@@ -1176,14 +1176,25 @@ end function
 ' "" for a document that is not there, which is also what an empty one reads as: a caller storing "" is storing
 ' nothing, and asking for it back gets nothing.
 ' Only a document the store holds is read: asking for one it does not (most of a cache's questions, the first time)
-' failed a read on the thread that draws and said so on the console, ten times over as a page came up.
+' failed a read on the thread that draws and said so on the console, ten times over as a page came up. The box can
+' clear cachefs: behind the list's back, so the file is looked for before it is read, and one found gone (or read
+' back empty) leaves the list, rather than failing a read, with an error on the console, each time it is asked for.
 function uiStoreGet(space as string, key as string) as string
     held = uiStoreHeld()
-    if not held.DoesExist(uiStorePrefix(space) + uiStoreSafe(key) + ".json") then return ""
-    text = ReadAsciiFile(uiStorePath(space, key))
+    name = uiStorePrefix(space) + uiStoreSafe(key) + ".json"
+    if not held.DoesExist(name) then return ""
+    path = uiStorePath(space, key)
+    ga = GetGlobalAA()
+    if ga.uiStoreFs = invalid then ga.uiStoreFs = CreateObject("roFileSystem")
+    text = invalid
+    fs = ga.uiStoreFs
+    if fs.Exists(path) then text = ReadAsciiFile(path)
     ' a missing file reads as invalid on some boxes and "" on others; both mean there is nothing kept here, and
     ' handing invalid up as though it were a document is how it reaches ParseJSON and takes the app down with it
-    if text = invalid then return ""
+    if text = invalid or text = ""
+        held.Delete(name)
+        return ""
+    end if
     return text
 end function
 
