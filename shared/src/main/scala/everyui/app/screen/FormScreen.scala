@@ -26,6 +26,11 @@ trait FormScreen extends UIScreen {
     math.min(wanted, everyui.ui.size.width() - 32.0 - (if (framed) 56.0 else 0.0))
   /** A card; a screen that is its own layout goes without. */
   protected def framed: Boolean = true
+  /** How round the card's corners are. */
+  protected def cardRadius: Double = 16.0
+  /** A 1px line round the card, in this colour, when there is one; only a framed card has it. Read reactively, so
+    * `Some(Theme.border())` follows the theme. */
+  protected def cardBorder: Option[everyui.Color] = None
   /** What the primary action says while `busy`. */
   protected def waiting: String = "…"
 
@@ -57,8 +62,13 @@ trait FormScreen extends UIScreen {
       layout @= Some(VerticalLayout(18.0))
       padding @= (if (framed) 28.0 else 0.0)
       size.width @= width + padding() * 2.0
-      radius @= 16.0
+      radius @= cardRadius
       if (framed) backgroundColor := Theme.surface()
+      // read inside the binding, so a border in the theme's colour follows a change of theme
+      if (framed && cardBorder.nonEmpty) {
+        borderWidth @= 1.0
+        borderColor := cardBorder.getOrElse(everyui.Color.Clear)
+      }
     }
     card.children.bind(
       List(top) ++ present(fields) ++ (if (error().nonEmpty) List(errorBox) else Nil) ++
