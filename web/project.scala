@@ -4,7 +4,7 @@
 //> using jsModuleKind none
 //> using jsEsVersionStr es2021
 //> using dep org.scala-js::scalajs-dom::2.8.1
-//> using dep com.outr::spice-client::1.10.9-SNAPSHOT4
+//> using dep com.outr::spice-client::1.10.9-SNAPSHOT5
 // spice-core_sjs1 as published locally lists its dependencies by their JVM names, so the Scala.js builds of them
 // are named here until spice publishes them right (reactify comes from source, below)
 //> using dep org.typelevel::fabric-io::1.30.2-SNAPSHOT

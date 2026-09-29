@@ -111,9 +111,11 @@ object Network {
 
 /** An HTTP request: a method, a URL, headers, and a text body with its content type. `timeout` is how many seconds it
   * may take, where a request is known to be slow (a server writing something new); 0 is the backend's own limit. Only
-  * the backends on Spice's client honour it: a Roku's and tvOS's requests keep their own. */
+  * the backends on Spice's client honour it: a Roku's and tvOS's requests keep their own. `credentials` sends the
+  * browser's cookies and HTTP authentication to another origin, which must then answer with the page's origin rather
+  * than `*`; its own origin has them either way. Only the web has the choice. */
 case class HttpCall(method: String, url: String, headers: List[(String, String)] = Nil, body: Option[String] = None,
-                    contentType: String = "application/json", timeout: Double = 0.0)
+                    contentType: String = "application/json", timeout: Double = 0.0, credentials: Boolean = false)
 
 /** An HTTP response: the status, the headers (as the backend surfaces them) and the body as text. */
 case class HttpResult(status: Int, headers: List[(String, String)], body: String) {

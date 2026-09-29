@@ -864,6 +864,11 @@ Network.origin = Platform.origin()     // "https://example.com"
 `Platform.origin()` is the page's origin on the web. On every other platform it is the setting `"everyui.origin"`,
 which the app saves with `Platform.saveSetting("everyui.origin", url)` or its build ships, and `""` without one.
 
+On the web, a request to the page's own origin carries its cookies; one to another origin carries none unless the
+call asks, `HttpCall(..., credentials = true)`, and that server must then answer with the page's origin in
+`Access-Control-Allow-Origin` (not `*`) and `Access-Control-Allow-Credentials: true`. Elsewhere there is no browser
+and `credentials` means nothing.
+
 ## An installable web app
 
 An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,
