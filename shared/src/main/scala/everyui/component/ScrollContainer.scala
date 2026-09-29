@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.easing.Easing
-import everyui.event.{Key, PointerEvent}
+import everyui.event.{Key, Pointer, PointerEvent}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.Color
@@ -79,11 +79,11 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   // the web scrolls the node itself (a wheel, a finger, the scrollbar, a smooth scroll): the offset follows it there
   if (Platform.nativeScroll()) node.onScrolled(() => offset @= node.scrolled(horizontal))
 
-  // the web scrolls to the focus itself only where a remote drives it (a TV's browser): under a pointer the focus lands
-  // where it was clicked, which is already in view
-  if (!Platform.nativeScroll() || Platform.remoteNavigation()) {
-    follow(Focus.focused, (f: Option[Component]) => f.foreach(c => if (holds(c)) reveal(c)))
-  }
+  // a focus moved by the keys, a remote or the app is brought into view; on the web one a pointer just moved is not,
+  // since it lands where it was clicked or hovered, which is already in view
+  follow(Focus.focused, (f: Option[Component]) => f.foreach { c =>
+    if (holds(c) && (!Platform.nativeScroll() || Platform.remoteNavigation() || !Pointer.recent)) reveal(c)
+  })
   if (!Platform.nativeScroll()) {
     size.width.attach(_ => clip())
     size.height.attach(_ => clip())

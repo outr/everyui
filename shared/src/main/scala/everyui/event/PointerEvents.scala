@@ -46,6 +46,7 @@ class PointerEvents(component: Component) {
       val event = PointerEvent(kind, x, y, everyui.render.Platform.pointerButton(), held.ctrl, held.meta, held.alt,
         held.shift)
       if (use) everyui.focus.Focus.used()
+      if (use && kind != PointerKind.Wheel) Pointer.usedAt = everyui.render.Platform.ticks()
       if (!Pointer.blocks(event)) channel @= event
     })
     channel

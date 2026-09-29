@@ -12,6 +12,13 @@ object Pointer {
   /** How long a consumed event keeps its equals from firing: far longer than one event's climb, far shorter than any
     * two clicks a person makes. */
   val hold: Double = 30.0
+  /** When a pointer last went down, moved or clicked, by `Platform.ticks()`. */
+  var usedAt: Double = -1.0e9
+  /** How soon after a pointer was used a focus change counts as its doing, in milliseconds. */
+  val lately: Double = 250.0
+
+  /** Whether a pointer was used just now: a focus that moves now was moved by it, not by a key. */
+  def recent: Boolean = Platform.ticks() - usedAt < lately
 
   /** Whether `event` is the one just consumed, still climbing, which the components under it must not fire. */
   def blocks(event: PointerEvent): Boolean =
