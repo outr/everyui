@@ -449,6 +449,65 @@ OK brings up the platform's keyboard. A component that wraps a platform field sa
 `Component.typesEvent`; those keys reach its `event.key.down` and then the platform, untouched. `TextInput` now does
 this too. Before, it kept Backspace, Space and the arrows from its own field while it was being edited.
 
+### Composer (`everyui.chat`)
+
+Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its
+words and its `Attachment`s), and the field is empty again. The app can set or clear `text` and `attachments` itself.
+
+```scala
+import everyui.chat.{Completion, CompletionTrigger, Composer}
+
+val composer = new Composer(draft => chat.send(draft.text, draft.attachments), onStop = () => chat.stop(),
+  onAcceptSuggestion = s => chat.took(s),
+  complete = Some((trigger, prefix) => people.find(prefix).map(_.map(p => Completion(p.name, "@" + p.handle, Some(p.handle))))),
+  triggers = List(CompletionTrigger('@'), CompletionTrigger('/', atStart = true)),
+  accept = List("image/*", ".txt"), maxSize = Some(10L * 1024L * 1024L))
+composer.size.width := ui.size.width() - 32.0
+composer.busy := chat.replying()            // Send becomes Stop; Enter sends nothing until the reply is done
+composer.enabled := chat.connected()        // out of use: dimmed, read-only, and a screen reader hears it
+composer.placeholder := (if (chat.connected()) "Message" else "Reconnecting…")
+composer.suggestion := chat.nextGuess()     // Option[String]: the app's guess at the next message
+composer.leading.children += modelPicker
+composer.trailing.children += micButton
+composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. stops, from anywhere
+```
+
+- Enter sends, Shift+Enter starts a new line, Primary+Enter sends too. An input method's Enter chooses its words
+  (`Platform.keyComposing`) and never sends. On a touch screen (`touch`) Enter starts a new line and the Send button
+  sends. While `busy` or out of use, Enter is kept and does nothing.
+- The suggestion shows in the accent colour in the empty field, in the placeholder's place. Tab or Right takes it (the
+  caret after it), Escape or typing puts it away until the next one. On a touch screen or a remote it is a chip above
+  the field. A screen reader is told it has come and how to take it.
+- Files come from the attach button (`Files.pick`) and from a drop on the composer; each is a chip with a remove
+  button. `accept`, `allow` and `maxSize` decide which are taken; the rest are refused with a toast.
+- Completions list over the composer for the word at the caret after a trigger: Up and Down, Enter or Tab to put the
+  lit one in place of the word, Escape to close.
+- Under `compactWidth` (480) the controls are a phone's, and `leading` folds behind a "+" with the attach button, in
+  a row that opens above the field. `trailing` stays beside Send.
+- On a Roku or an Apple TV it is one line written on the platform's keyboard, with Send, the suggestion as a chip, and
+  no files or completions.
+
+`ComposerKeys.action` is the key rule on its own, `TriggerWord` the word a completion replaces, and `ComposerWords`
+what the composer says, for a translation.
+
+### Files (`everyui.file`)
+
+Files from the person, on the web, the desktop and Android: the platform's own picker, and files dragged onto a
+component from outside the app. A Roku and an Apple TV have neither (`Files.pickable`, `Files.droppable` are false).
+
+```scala
+import everyui.file.Files
+
+Files.pick(List("image/*", ".txt"), multiple = true).map(_.foreach { f =>
+  f.bytes.map(b => upload(f.name, f.mime, b)).start()   // read off the drawing thread, answered on it
+}).start()
+Files.dropTarget(panel)(over => panel.borderWidth @= (if (over) 2.0 else 0.0))(files => add(files))
+```
+
+A `PickedFile` has its name, size, type (the platform's, or by extension: `FileTypes.of`), a `Task` reading its bytes,
+and a `preview` address an `ImageView` can show a picture from. `FileTypes.accepts(types, name, mime)` says whether a
+file is among the web's `accept` words ("image/*", "text/plain", ".md").
+
 ### Smaller pieces
 
 - `new SplitPane(..., collapsible = Some(SplitSide.First), startCollapsed = true)` is folded from the first frame, so

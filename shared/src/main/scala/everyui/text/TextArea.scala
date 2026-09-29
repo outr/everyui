@@ -43,9 +43,9 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
   private val pad = 10.0
-  // the lines as they wrap, measured out of sight: how tall the box grows
+  // the lines as they wrap and as Enter broke them, measured out of sight: how tall the box grows
   private val ruler = new TextView {
-    whiteSpace @= WhiteSpace.Normal
+    whiteSpace @= WhiteSpace.PreWrap
     font.size @= points
     opacity @= 0.0
     content := value() + " "
@@ -90,7 +90,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   }
   if (!native) {
     val shown = new TextView {
-      whiteSpace @= WhiteSpace.Normal
+      whiteSpace @= WhiteSpace.PreWrap
       font.size @= points
       color := (if (value().isEmpty) Theme.muted() else Theme.text())
       content := (if (value().isEmpty) hint() else value())
