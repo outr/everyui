@@ -737,6 +737,11 @@ lazy val app = project.in(file("app"))
 
 `sbt 'set app/everyuiWebTarget := WebTarget.Js' app/webBundle` builds one another way, without editing the build.
 
+`everyuiWebFonts` is EveryUI's fonts out of the everyui-web jar, a directory to copy as `fonts/`, and `everyuiWebGuests`
+the web guests' files out of their modules (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`), a directory to
+copy next to the page: `IO.copyDirectory(everyuiWebGuests.value, out)`. Both are `everyui.sbt.ModuleFiles`, which a
+build without the plugin can call itself.
+
 The JavaScript build is the project's own `fullLinkJS`, as its `scalaJSLinkerConfig` sets it (a script, or an ES
 module). The WebAssembly build (`everyuiWasmLinkJS`) links the same code with that configuration made an ES2022
 module with `useWebAssembly`, into `target/everyui-wasm`; `Both` links twice, so a bundle takes longer. Every script's

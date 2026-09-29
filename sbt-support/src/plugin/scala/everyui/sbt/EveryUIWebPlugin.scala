@@ -19,7 +19,9 @@ import scala.concurrent.duration.Duration
   *     val out = baseDirectory.value / "out"
   *     IO.delete(out)
   *     everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
-  *     // fonts, icons, …
+  *     IO.copyDirectory(everyuiWebFonts.value, out / "fonts")
+  *     IO.copyDirectory(everyuiWebGuests.value, out)   // everyui-monaco/<version>/, everyui-terminal/<version>/
+  *     // icons, …
   *     out
   *   }
   * }}}
@@ -40,6 +42,7 @@ object EveryUIWebPlugin extends AutoPlugin {
     val everyuiWebScripts = taskKey[WebScripts]("The web app linked (fullLink) for everyuiWebTarget; writeTo(out, page) writes them and the page")
     val everyuiWasmLinkJS = taskKey[File]("The web app linked (fullLink) to WebAssembly: a directory of main.js, __loader.js and main.wasm")
     val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath: a directory for the bundle to copy as fonts/")
+    val everyuiWebGuests = taskKey[File]("The web guests' files (everyui-monaco's editor, everyui-terminal's xterm.js), taken from their modules on the classpath: a directory whose everyui-<module>/ directories the bundle copies next to the page")
   }
   import autoImport.*
 
@@ -70,8 +73,15 @@ object EveryUIWebPlugin extends AutoPlugin {
         .getOrElse(sys.error("everyui-web is not on the classpath: add \"com.outr\" %% \"everyui-web\" to libraryDependencies"))
       val out = target.value / "everyui-fonts"
       IO.delete(out)
-      IO.unzip(jar, out, (entry: String) => entry.startsWith("everyui/fonts/"))
+      ModuleFiles.copy(Seq(jar), "everyui/fonts/", out)
       out / "everyui" / "fonts"
+    },
+    everyuiWebGuests := Def.uncached {
+      val converter = fileConverter.value
+      val out = target.value / "everyui-guests"
+      IO.delete(out)
+      ModuleFiles.guests((Compile / dependencyClasspath).value.map(a => converter.toPath(a.data).toFile), out)
+      out
     },
     everyuiWebScripts := Def.uncached(Def.taskDyn {
       val jsModule = (Compile / fullLinkJS / scalaJSLinkerConfig).value.moduleKind == ModuleKind.ESModule
