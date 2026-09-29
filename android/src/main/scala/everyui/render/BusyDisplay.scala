@@ -49,7 +49,8 @@ object BusyDisplay {
     else if (Build.VERSION.SDK_INT < 33) done(manager.areNotificationsEnabled)
     else Permissions.ask("android.permission.POST_NOTIFICATIONS")(granted => done(granted && manager.areNotificationsEnabled))
 
-  def show(next: Option[Busy], inTitle: Boolean): Unit = if (supported()) {
+  /** `still` (AppBusy.stillAfter) is the web's: a notification's bar shows no orbit. */
+  def show(next: Option[Busy], inTitle: Boolean, still: Option[Double]): Unit = if (supported()) {
     busy = next
     val since = SystemClock.elapsedRealtime() - posted
     if (next.isEmpty || since >= gap) post()

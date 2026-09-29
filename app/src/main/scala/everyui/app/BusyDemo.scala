@@ -6,7 +6,8 @@ import everyui.ui
 
 /** The app at work (`AppBusy`), round and round: idle, busy with no progress, "deliver" from 0 to 100%, idle again.
   * Each change is logged ("[ui] busy (42% deliver)", "[ui] busy idle") and written on the screen. `title=1` puts it
-  * in the title too, and `spin=<seconds>` holds the busy with no progress that long (4 by default). Where the
+  * in the title too, `spin=<seconds>` holds the busy with no progress that long (4 by default), and
+  * `still=<seconds>` sets `AppBusy.stillAfter` and holds the progress at 60% for six seconds past it. Where the
   * platform asks first (Android 13 on), the demo asks as it starts. */
 object BusyDemo {
   private val words = new TextView
@@ -16,6 +17,7 @@ object BusyDemo {
     words.position.top @= 40.0
     ui.children += words
     AppBusy.inTitle @= Platform.launchArg("title") == "1"
+    AppBusy.stillAfter @= Platform.launchArg("still").toDoubleOption
     if (AppBusy.supported && !AppBusy.permitted) AppBusy.permit().start()
     idle()
   }
@@ -39,6 +41,8 @@ object BusyDemo {
 
   private def deliver(step: Int): Unit = if (step > 20) idle() else {
     set(Some(Busy(Some(step / 20.0), Some("deliver"))))
-    Platform.after(0.4, () => deliver(step + 1))
+    // with still=<seconds>, the progress stands at 60% long enough for its orbit to go round
+    val hold = AppBusy.stillAfter().filter(_ => step == 12).map(_ + 6.0).getOrElse(0.4)
+    Platform.after(hold, () => deliver(step + 1))
   }
 }

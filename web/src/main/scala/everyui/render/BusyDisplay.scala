@@ -12,7 +12,9 @@ import scala.scalajs.js
   * as far as the progress where there is one, a turning arc where there is not. A browser does not animate an icon
   * itself (a GIF, an APNG or an SVG stands still in a tab), so each picture is drawn on a canvas and given to the
   * icon's link as a data URL. Once idle, every icon link the page had has its address back as it was, and a link made
-  * for a page with none is gone.
+  * for a page with none is gone. Where the page's icon cannot be drawn (it did not load, or it is from another origin
+  * that does not allow it), the ring is drawn alone, and the console says why once; it says so too of an SVG icon
+  * without a width and height of its own, which Chrome does not show in the tab. A progress that has stood still for `AppBusy.stillAfter` has a small arc going round it.
   *
   * The spinner has a clock of its own, not the frame loop: a worker's timer, which a browser does not slow for a tab
   * in the background the way it slows the page's own (to once a second, then once a minute), with the page's own
@@ -28,7 +30,13 @@ object BusyDisplay {
 
   private var busy: Option[Busy] = None
   private var inTitle = false
+  private var stillAfter: Option[Double] = None
   private var started = 0.0
+  /** The ring's fill as last shown, and when it last changed. */
+  private var fill: Option[Int] = None
+  private var moved = 0.0
+  /** Whether the console has been told why the page's icon is not drawn inside the ring. */
+  private var warned = false
   private var shown: Option[BusyFrame] = None
   /** The page's icon links, each with its address and type as the page had them. */
   private var links: List[(html.Link, Option[String], Option[String])] = Nil
@@ -45,30 +53,40 @@ object BusyDisplay {
 
   def permit(done: Boolean => Unit): Unit = done(true)
 
-  def show(next: Option[Busy], title: Boolean): Unit = {
-    if (!BusyFrame.moving(busy) && BusyFrame.moving(next)) started = dom.window.performance.now()
+  def show(next: Option[Busy], title: Boolean, still: Option[Double]): Unit = {
+    val now = dom.window.performance.now()
+    if (!BusyFrame.moving(busy) && BusyFrame.moving(next)) started = now
+    if (BusyFrame.fill(next) != fill) {
+      fill = BusyFrame.fill(next)
+      moved = now
+    }
     busy = next
     inTitle = title
+    stillAfter = still
     if (next.isEmpty) restore()
     else {
       if (links.isEmpty && made.isEmpty) take()
       draw()
-      if (BusyFrame.moving(next)) schedule()
+      if (BusyFrame.moving(next, stillAfter)) schedule()
     }
     retitle()
   }
 
   private def ticked(): Unit = {
     pending = false
-    if (BusyFrame.moving(busy)) {
+    if (BusyFrame.moving(busy, stillAfter)) {
       draw()
       schedule()
     }
   }
 
+  /** Asks for the next tick: a picture's time on while a spinner or an orbit turns, or not until the progress will
+    * have stood still long enough for its orbit to begin. */
   private def schedule(): Unit = if (!pending) {
     pending = true
-    val delay = 1000.0 / BusyFrame.perSecond
+    val frame = 1000.0 / BusyFrame.perSecond
+    val due = stillAfter.filter(_ => fill.nonEmpty).map(a => moved + a * 1000.0 - dom.window.performance.now())
+    val delay = due.filter(_ > frame).getOrElse(frame)
     worker match {
       case Some(w) if !workerFailed => w.postMessage(delay)
       case _ => dom.window.setTimeout(() => ticked(), delay)
@@ -90,7 +108,12 @@ object BusyDisplay {
     case _: Throwable => None
   }
 
-  private def draw(): Unit = BusyFrame.at(busy, (dom.window.performance.now() - started) / 1000.0).foreach { frame =>
+  private def draw(): Unit = {
+    val now = dom.window.performance.now()
+    BusyFrame.at(busy, (now - started) / 1000.0, (now - moved) / 1000.0, stillAfter).foreach(put)
+  }
+
+  private def put(frame: BusyFrame): Unit = {
     if (!shown.contains(frame)) picture(frame).foreach { url =>
       shown = Some(frame)
       (links.map(_._1) ++ made.toList).foreach { link =>
@@ -101,7 +124,7 @@ object BusyDisplay {
   }
 
   /** The frame as a PNG's data URL. An icon from another origin that did not allow it leaves the canvas unreadable:
-    * the rings are then drawn alone. */
+    * the rings are then drawn alone, and the console says why once. */
   private def picture(frame: BusyFrame): Option[String] = {
     val canvas = dom.document.createElement("canvas").asInstanceOf[html.Canvas]
     canvas.width = side
@@ -126,12 +149,33 @@ object BusyDisplay {
       g.arc(centre, centre, radius, from, from + frame.sweep * 2.0 * math.Pi)
       g.stroke()
     }
+    // the orbit round a progress that stands still: a pale light over the fill, the accent half seen over the empty
+    // ring (so it is not taken for more fill)
+    val accent = tone()
+    frame.orbitPieces.foreach { piece =>
+      val from = (piece._1 - 0.25) * 2.0 * math.Pi
+      g.strokeStyle = if (piece._3) "rgba(255, 255, 255, 0.75)" else accent
+      g.globalAlpha = if (piece._3) 1.0 else 0.5
+      g.lineCap = "butt"
+      g.beginPath()
+      g.arc(centre, centre, radius, from, from + piece._2 * 2.0 * math.Pi)
+      g.stroke()
+    }
+    g.globalAlpha = 1.0
     try Some(canvas.toDataURL("image/png")) catch {
       case _: Throwable if icon.nonEmpty =>
+        warn("it is from another origin that did not allow it (CORS), which leaves the canvas unreadable")
         icon = None
         picture(frame)
       case _: Throwable => None
     }
+  }
+
+  /** Says once in the console why the page's icon is not inside the ring (`ring`), or not right, so a ring around
+    * nothing points at the page's markup. */
+  private def warn(why: String, ring: Boolean = true): Unit = if (!warned) {
+    warned = true
+    dom.console.warn(if (ring) s"[everyui] AppBusy draws its ring without the page's icon: $why" else s"[everyui] AppBusy: $why")
   }
 
   /** The theme's accent as a tone that reads on a light tab strip and a dark one alike: a pale accent made for a dark
@@ -154,17 +198,42 @@ object BusyDisplay {
       dom.document.head.appendChild(link)
       made = Some(link)
     }
-    links.headOption.filter(_._2.nonEmpty).foreach { case (link, _, _) =>
+    links.headOption.filter(_._2.nonEmpty).foreach { case (link, _, kind) =>
       val image = dom.document.createElement("img").asInstanceOf[html.Image]
       image.setAttribute("crossorigin", "anonymous")
-      image.onload = (_: dom.Event) => if (busy.nonEmpty) {
-        icon = Some(image)
-        shown = None
-        draw()
-      }
-      image.src = link.href
+      val href = link.href
+      image.onload = (_: dom.Event) =>
+        if (image.naturalWidth == 0 || image.naturalHeight == 0) warn(s"$href has no size to draw at$unsized")
+        else {
+          if (svg(href, kind)) sized(href)
+          if (busy.nonEmpty) {
+            icon = Some(image)
+            shown = None
+            draw()
+          }
+        }
+      image.addEventListener("error", (_: dom.Event) =>
+        if (new dom.URL(href).origin != dom.window.location.origin)
+          warn(s"$href did not load; from another origin it must allow this page (CORS: Access-Control-Allow-Origin)")
+        else warn(s"$href did not load"))
+      image.src = href
     }
   }
+
+  private val unsized = " (an SVG icon needs width and height on its <svg>, not only a viewBox)"
+
+  /** Whether the icon at `href`, of the link's `kind` as the page had it, is an SVG. */
+  private def svg(href: String, kind: Option[String]): Boolean =
+    kind.contains("image/svg+xml") || href.split('?').head.endsWith(".svg") || href.startsWith("data:image/svg")
+
+  /** An SVG icon whose <svg> has no width and height of its own is drawn inside the ring (at a size the browser makes
+    * up), but Chrome shows no icon for it in the tab at all: said once, since the page looks broken while idle. */
+  private def sized(href: String): Unit =
+    dom.fetch(href).`then`[String](_.text()).`then`[Unit] { (text: String) =>
+      val root = new dom.DOMParser().parseFromString(text, dom.MIMEType.`image/svg+xml`).documentElement
+      if (root.localName == "svg" && !(root.hasAttribute("width") && root.hasAttribute("height")))
+        warn(s"$href has no width and height of its own, so Chrome shows no icon for it in the tab$unsized", ring = false)
+    }
 
   private def restore(): Unit = {
     links.foreach { case (link, href, kind) =>

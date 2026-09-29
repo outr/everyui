@@ -678,7 +678,11 @@ Each platform shows it its own way, and restores everything exactly once it is N
   pictures a second, not the frame loop, in a worker so that a tab in the background keeps turning (a page's own
   timers are slowed there to once a second, then once a minute). A picture is drawn only when it changes: a
   progress, only when it moves by 1/60. The ring is the theme's accent, deepened to read on a light or dark tab
-  strip. An icon from another origin without CORS cannot be drawn on, so there the ring is drawn alone.
+  strip. An icon from another origin without CORS cannot be drawn on, so there the ring is drawn alone. An SVG icon
+  needs `width` and `height` on its `<svg>`, not only a `viewBox`: Chrome shows no icon at all for one without them
+  (`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">`). The console says once
+  (`[everyui] AppBusy …`) when the page's icon did not load, is from another origin that does not allow it, or is
+  such an SVG, so a ring around nothing points at the markup.
 - **Desktop**: the dock or taskbar entry, through `java.awt.Taskbar`, where the system has one for the whole app:
   macOS fills the dock icon and badges it "…" when there is no progress; Linux fills the launcher entry where
   libunity is installed and a Unity launcher reads it (Ubuntu's dock, KDE's task manager). Windows only has a
@@ -695,8 +699,14 @@ Each platform shows it its own way, and restores everything exactly once it is N
 `AppBusy.inTitle @= true` (off by default) also puts it before the title, "(42% deliver) Dashboard", "(…) Dashboard",
 on the web's tab and the desktop's window, and takes it off again when idle; a title the app sets while busy takes it
 at the next change. Where a platform shows nothing else (the desktop on Windows or most of Linux) this is the only
-sign. `demo=busy` in the example app goes round idle, busy, and "deliver" from 0 to 100% (`title=1` for the title,
-`spin=<seconds>` to hold the spinner).
+sign.
+
+`AppBusy.stillAfter @= Some(3.0)` (None by default) keeps a long stage from looking stalled on the web: once a
+progress has not moved for that many seconds, a small arc goes round its ring (pale over the fill, a faint accent
+over the rest) until it moves again. Elsewhere the platform's own bar shows the progress, and nothing changes.
+
+`demo=busy` in the example app goes round idle, busy, and "deliver" from 0 to 100% (`title=1` for the title,
+`spin=<seconds>` to hold the spinner, `still=<seconds>` for `stillAfter`, with the progress held at 60% to show it).
 
 ## Relative URLs and the origin
 

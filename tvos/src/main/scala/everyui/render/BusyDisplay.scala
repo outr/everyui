@@ -11,5 +11,5 @@ object BusyDisplay {
 
   def permit(done: Boolean => Unit): Unit = done(false)
 
-  def show(busy: Option[Busy], inTitle: Boolean): Unit = ()
+  def show(busy: Option[Busy], inTitle: Boolean, still: Option[Double]): Unit = ()
 }

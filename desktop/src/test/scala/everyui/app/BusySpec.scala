@@ -81,4 +81,33 @@ class BusySpec extends AnyWordSpec with Matchers {
       BusyFrame.at(Some(Busy(Some(0.500))), 0.0) should not be BusyFrame.at(Some(Busy(Some(0.517))), 0.0)
     }
   }
+
+  "A progress standing still" should {
+    val half = Some(Busy(Some(0.5)))
+    "have no orbit unless asked for one, or before it has stood still long enough" in {
+      BusyFrame.at(half, 0.0, 60.0).get.orbit shouldBe None
+      BusyFrame.at(half, 0.0, 2.9, Some(3.0)).get.orbit shouldBe None
+      BusyFrame.moving(half, None) shouldBe false
+      BusyFrame.moving(half, Some(3.0)) shouldBe true
+      BusyFrame.moving(None, Some(3.0)) shouldBe false
+    }
+    "turn its orbit by the time since it began, as the spinner turns" in {
+      BusyFrame.at(half, 0.0, 3.0, Some(3.0)) shouldBe Some(BusyFrame(Some(30), 0, Some(0)))
+      BusyFrame.at(half, 0.0, 3.25, Some(3.0)).get.orbit shouldBe Some(2)
+      BusyFrame.at(half, 0.0, 3.0 + 1.5, Some(3.0)).get.orbit shouldBe Some(0)
+    }
+    "leave an indeterminate busy's spinner as it was" in {
+      BusyFrame.at(spinning, 0.125, 60.0, Some(3.0)) shouldBe Some(BusyFrame(None, 1))
+    }
+    "be drawn over the fill and the empty ring apart, across twelve o'clock too" in {
+      def pieces(f: BusyFrame) = f.orbitPieces.map(p => (math.rint(p._1 * 1000) / 1000, math.rint(p._2 * 1000) / 1000, p._3))
+      // at 0.25 over a half fill: all over the fill
+      pieces(BusyFrame(Some(30), 0, Some(3))) shouldBe List((0.25, 0.12, true))
+      // at 5/12 over a half fill: the fill up to 0.5, the empty ring after
+      pieces(BusyFrame(Some(30), 0, Some(5))) shouldBe List((0.417, 0.083, true), (0.5, 0.037, false))
+      // at 11/12, past twelve o'clock: the empty ring to 1, the fill from 0
+      pieces(BusyFrame(Some(30), 0, Some(11))) shouldBe List((0.917, 0.083, false), (0.0, 0.037, true))
+      BusyFrame(Some(30), 0).orbitPieces shouldBe Nil
+    }
+  }
 }

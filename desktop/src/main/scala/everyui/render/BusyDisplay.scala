@@ -40,7 +40,8 @@ object BusyDisplay {
 
   def permit(done: Boolean => Unit): Unit = done(true)
 
-  def show(busy: Option[Busy], inTitle: Boolean): Unit = {
+  /** `still` (AppBusy.stillAfter) is the web's: a taskbar's progress shows no orbit. */
+  def show(busy: Option[Busy], inTitle: Boolean, still: Option[Double]): Unit = {
     awt.execute(() => taskbar.foreach { t =>
       try {
         if (progress) t.setProgressValue(busy.flatMap(_.percent).getOrElse(-1))

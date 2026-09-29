@@ -23,6 +23,14 @@ object AppBusy {
     * takes the prefix at the next change. */
   val inTitle: Var[Boolean] = Var(false)
 
+  /** How many seconds a progress may stand still before a small arc goes round its ring, so that a long stage does
+    * not look stalled: None (the default) for never. The web's icon only; elsewhere the platform's own bar shows it.
+    *
+    * {{{
+    *   AppBusy.stillAfter @= Some(3.0)
+    * }}} */
+  val stillAfter: Var[Option[Double]] = Var(None)
+
   /** Whether this platform shows the app at work, beyond the title. */
   def supported: Boolean = BusyDisplay.supported()
 
@@ -35,6 +43,7 @@ object AppBusy {
 
   state.attach(_ => show())
   inTitle.attach(_ => show())
+  stillAfter.attach(_ => show())
 
-  private def show(): Unit = BusyDisplay.show(state(), inTitle())
+  private def show(): Unit = BusyDisplay.show(state(), inTitle(), stillAfter())
 }
