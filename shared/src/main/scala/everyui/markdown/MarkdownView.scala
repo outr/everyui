@@ -12,7 +12,7 @@ import reactify.*
   * quotes, lists and task lists, tables that scroll sideways, rules, and pictures. Raw HTML shows as the text it is.
   *
   * It lays itself out to the width it is given (`size.width`) and is as tall as its blocks, so it can sit in a chat's
-  * bubble or a measured list row (`VirtualList(measured = true)`). `content` can change at any time, and grow in place
+  * bubble or a measured list row (`VirtualList(measuredRows = true)`). `content` can change at any time, and grow in place
   * while an answer streams in: only the last block is parsed again (`MarkdownStream`), the blocks before it keep
   * their components, and a paragraph or a code block that grows is drawn again in place.
   *
