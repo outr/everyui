@@ -19,6 +19,10 @@ object ChatWords {
   def now: String = word("chat.now", "now")
   /** "5m" ago. */
   def minutesAgo(n: Long): String = word("chat.minutesAgo", "{n}m").replace("{n}", n.toString)
+  /** "3h" ago. */
+  def hoursAgo(n: Long): String = word("chat.hoursAgo", "{n}h").replace("{n}", n.toString)
+  /** "2d" ago. */
+  def daysAgo(n: Long): String = word("chat.daysAgo", "{n}d").replace("{n}", n.toString)
   def today: String = word("chat.today", "Today")
   def yesterday: String = word("chat.yesterday", "Yesterday")
   def thinking: String = word("chat.thinking", "Thinking")

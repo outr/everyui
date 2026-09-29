@@ -1,6 +1,6 @@
 package everyui.chat
 
-import everyui.i18n.DateText
+import everyui.i18n.{DateText, Strings}
 import everyui.render.Platform
 
 /** Times as a transcript shows them, in the language in use: how long ago a message was ("now", "5m", then the time of
@@ -21,6 +21,27 @@ object ChatTime {
     else {
       val (_, month, day) = parts(dayOf(time))
       DateText.monthDay(month, day) + " " + clock(time)
+    }
+  }
+
+  /** How long ago `time` was, seen at `now`, as a list of conversations says it beside each one: under a minute "now",
+    * then "5m", "3h", and "2d" within the week, and after that its date in numbers, the month and the day in the order
+    * the language writes them ("9/16", "16/9"), with the year after them from another year ("9/16/25"). A time after
+    * `now` (a clock that runs ahead) is "now". */
+  def ago(time: Long, now: Long): String = {
+    val since = now - time
+    if (since < Minute) ChatWords.now
+    else if (since < Hour) ChatWords.minutesAgo(since / Minute)
+    else if (since < Day) ChatWords.hoursAgo(since / Hour)
+    else if (since < Day * 7L) ChatWords.daysAgo(since / Day)
+    else {
+      val day = dayOf(time)
+      val (year, month, date) = parts(day)
+      val pattern = DateText.symbols(Strings.language().code).monthDay
+      val dayFirst = pattern.indexOf('d') >= 0 && pattern.indexOf('d') < pattern.indexOf('M')
+      val numbers = if (dayFirst) date.toString + "/" + month.toString else month.toString + "/" + date.toString
+      if (day.substring(0, 4) == dayOf(now).substring(0, 4)) numbers
+      else numbers + "/" + (if (year % 100 < 10) "0" else "") + (year % 100).toString
     }
   }
 
