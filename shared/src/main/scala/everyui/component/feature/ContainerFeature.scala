@@ -10,7 +10,31 @@ import everyui.layout.LayoutPass
   * A change costs its own size and the list's, once: what came and what went are found by marking one list and reading
   * the marks off the other, and the container is laid out once for the change, after what was added is measured. */
 class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty) {
-  changes { (old, current) =>
+  /** The children whose nodes are placed under the container's now: what a change is worked out from. Not the change's
+    * own previous value, which can be one whose nodes were never placed: a change made deep in a chain of changes is
+    * heard once the chain unwinds, and is dropped when a later one, made nearer the top, was heard first, so the later
+    * one's previous value is the dropped one's, and what was placed before it (a page's loading spinner) stayed under
+    * the container, on the screen and moving, while the list no longer held it. */
+  private var placed: Vector[Component] = Vector.empty
+  /** Whether the nodes are being placed: a change made meanwhile is placed once they are, by the same pass. */
+  private var placing = false
+
+  attach(_ => place())
+
+  /** Place the nodes as the children are now, and again for any change made while doing so. */
+  private def place(): Unit = if (!placing) {
+    placing = true
+    try {
+      while (!(placed eq get)) {
+        val old = placed
+        val current = get
+        placed = current
+        change(old, current)
+      }
+    } finally placing = false
+  }
+
+  private def change(old: Vector[Component], current: Vector[Component]): Unit = {
     val removed = ContainerFeature.missing(old, current)
     val added = ContainerFeature.missing(current, old)
     LayoutPass.batch {

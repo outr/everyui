@@ -13,6 +13,8 @@ import everyui.task.Frames
   *    wants the next for itself, with what wants it (the screen manager's tasks, `ui`'s, the showing screen's);
   *  - `motions`: how many nodes' motions (`Component.motion`) are running, each started and stopped also logged as
   *    it happens with what it is for;
+  *  - `moving`: what each running motion is for now (its lineage as it stands), and whether its view is in the window,
+  *    drawn and under the app's root;
   *  - `main`: every message the main thread ran, by who sent it (the Choreographer's frames, a Handler's Runnable, an
   *    animator), with how many ran and how long they took, the costliest first;
   *  - `wakes`: once the loop has run a second without idling, where each wake, request and hold came from;
@@ -76,6 +78,8 @@ object IdleAudit {
     Platform.log("[idle] frames: " + ran.toString + " ran, " + (if (Frames.running) "running for " +
       Frames.streak.toString else "idle") + ", holds " + Frames.held.toString + ", owed " + Frames.owed.toString +
       ", wants " + Frames.wants.toString + wanting + "; motions running: " + Motion.running.toString)
+    if (!Motion.live.isEmpty) Platform.log("[idle] moving: " +
+      scala.jdk.CollectionConverters.SetHasAsScala(Motion.live).asScala.toList.take(6).map(_.state).mkString("; "))
     Platform.log("[idle] main: " + main.top(10))
     if (wakes.nonEmpty) Platform.log("[idle] wakes: " + wakes.top(6))
     if (afters.nonEmpty) Platform.log("[idle] after: " + afters.top(8))

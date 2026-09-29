@@ -36,6 +36,16 @@ final class Motion(view: View, make: () => List[Animator]) extends View.OnAttach
     if (visible) run() else stop()
   }
 
+  /** What it is for now, and whether its view is in the window, drawn (it and everything it is in are visible) and
+    * under the app's root: for the idle audit. */
+  def state: String = owner() + " [attached " + view.isAttachedToWindow.toString + ", shown " + view.isShown.toString +
+    ", under root " + under(view).toString + "]"
+
+  private def under(v: View): Boolean = v.getParent match {
+    case p: View => (p eq Host.root) || under(p)
+    case _ => false
+  }
+
   override def onViewAttachedToWindow(v: View): Unit = run()
   override def onViewDetachedFromWindow(v: View): Unit = stop()
 
@@ -44,6 +54,7 @@ final class Motion(view: View, make: () => List[Animator]) extends View.OnAttach
     animators.foreach(_.start())
     if (animators.nonEmpty) {
       Motion.running += 1
+      Motion.live.add(this)
       IdleAudit.motion(true, owner)
     }
   }
@@ -52,6 +63,7 @@ final class Motion(view: View, make: () => List[Animator]) extends View.OnAttach
     animators.foreach(_.cancel())
     animators = Nil
     Motion.running -= 1
+    Motion.live.remove(this)
     IdleAudit.motion(false, owner)
   }
 }
@@ -59,4 +71,6 @@ final class Motion(view: View, make: () => List[Animator]) extends View.OnAttach
 object Motion {
   /** How many nodes' motions are running now, for the idle audit. */
   var running: Int = 0
+  /** The motions running, for the idle audit to say what each is for and where its view is now. */
+  val live: java.util.Set[Motion] = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[Motion, java.lang.Boolean])
 }
