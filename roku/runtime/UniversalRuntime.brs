@@ -151,7 +151,6 @@ end function
 
 sub uiAppend(parent as object, child as object)
     if parent <> invalid and child <> invalid then parent.appendChild(child)
-    uiMotionsBack()
 end sub
 
 sub uiInsert(parent as object, child as object, index as integer)
@@ -160,7 +159,6 @@ sub uiInsert(parent as object, child as object, index as integer)
         if old <> invalid then old.removeChild(child)
         parent.insertChild(child, index)
     end if
-    uiMotionsBack()
 end sub
 
 sub uiLog(message as dynamic)
@@ -907,8 +905,6 @@ sub uiRemove(node as object)
     if node = invalid then return
     p = node.getParent()
     if p <> invalid then p.removeChild(node)
-    ga = GetGlobalAA()
-    if ga.uiMotions <> invalid and ga.uiMotions.Count() > 0 then uiMotionsFollow(false)
 end sub
 
 ' Load an image off-screen to learn its natural size, then call `loaded(width, height)`. SceneGraph reports it
@@ -1619,37 +1615,30 @@ function uiMotion(node as object, property as string, seconds as float, delay as
     anim.appendChild(interp)
     node.appendChild(anim)
     anim.id = "uiAnim" + RtNextId().ToStr()
-    ' (started once its node is on the scene: see uiMotionsFollow)
-    shown = uiOnScene(node)
-    if shown then anim.control = "start"
+    ' (started at the end of the turn, if its node is on the scene then: see uiMotionsSettle)
     motions = uiMotions()
-    motions[anim.id] = { anim: anim, node: node, paused: not shown, started: shown }
-    ga = GetGlobalAA()
-    if not shown then ga.uiMotionsPaused = ga.uiMotionsPaused + 1
+    motions[anim.id] = { anim: anim, node: node, running: false, started: false }
     return anim
 end function
 
 sub uiStopMotion(anim as object)
     if anim = invalid then return
     motions = uiMotions()
-    e = motions[anim.id]
-    if e <> invalid
-        ga = GetGlobalAA()
-        if e.paused then ga.uiMotionsPaused = ga.uiMotionsPaused - 1
-        motions.Delete(anim.id)
-    end if
+    motions.Delete(anim.id)
     anim.control = "stop"
     uiRemove(anim)
 end sub
 
-' The motions running (uiMotion), by their Animation's id. SceneGraph finds a motion's node through the scene, so one
-' whose node is off it ("Could not find node uiMotion…", as it runs) is paused while the node is away, and goes on when
-' it is back; one made off the scene starts when its node joins it.
+' The motions (uiMotion), by their Animation's id. SceneGraph finds a motion's node through the scene, so a motion runs
+' only while its node is on it: one whose node is off it logs "Could not find node uiMotion…" as it runs. A node joins
+' and leaves the scene in many ways in one turn (built off it and added, moved under a parent not yet added, taken
+' away), so the motions are settled when the turn is over, before the scene is drawn: at the end of every handler the
+' platform calls (RtAfterTurn, from RtGuard and the scene's own).
 function uiMotions() as object
     ga = GetGlobalAA()
     if ga.uiMotions = invalid
         ga.uiMotions = {}
-        ga.uiMotionsPaused = 0
+        ga.rtAfterTurn = { fn: uiMotionsSettle, env: ga.uiMotions }
     end if
     return ga.uiMotions
 end function
@@ -1662,31 +1651,20 @@ function uiOnScene(node as object) as boolean
     end while
     return root.isSubtype("Scene")
 end function
-' After a node has left the scene (`back` false) or joined it (true): the running motions it took away are paused, and
-' the paused ones it brought back go on.
-sub uiMotionsFollow(back as boolean)
-    ga = GetGlobalAA()
-    motions = uiMotions()
+' Each motion running if its node is on the scene, and paused (or not yet started) if it is not.
+sub uiMotionsSettle(motions as object)
     for each id in motions
         e = motions[id]
-        if e.paused = back
-            shown = uiOnScene(e.node)
-            if back and shown
-                if e.started then e.anim.control = "resume" else e.anim.control = "start"
-                e.started = true
-                e.paused = false
-                ga.uiMotionsPaused = ga.uiMotionsPaused - 1
-            else if not back and not shown
-                e.anim.control = "pause"
-                e.paused = true
-                ga.uiMotionsPaused = ga.uiMotionsPaused + 1
-            end if
+        shown = uiOnScene(e.node)
+        if shown and not e.running
+            if e.started then e.anim.control = "resume" else e.anim.control = "start"
+            e.started = true
+            e.running = true
+        else if e.running and not shown
+            e.anim.control = "pause"
+            e.running = false
         end if
     end for
-end sub
-sub uiMotionsBack()
-    ga = GetGlobalAA()
-    if ga.uiMotionsPaused <> invalid and ga.uiMotionsPaused > 0 then uiMotionsFollow(true)
 end sub
 
 ' ---- media: a Video node (a video) or an Audio node (sound) ----

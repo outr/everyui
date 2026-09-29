@@ -3485,6 +3485,7 @@ class RokuEmitter(
       |    ga.uiLaunchParams = m.global.launchArgs
       |    m.top.setFocus(true)
       |    rtMain()
+      |    RtAfterTurn()
       |end sub
       |
       |function onKeyEvent(key as string, press as boolean) as boolean
@@ -3494,6 +3495,7 @@ class RokuEmitter(
       |' A deep link into the running channel (Main's roInputEvent)
       |sub onInputArgs()
       |    uiLaunched(m.top.inputArgs)
+      |    RtAfterTurn()
       |end sub
       |
       |' Instant Resume: the viewer went to another channel (or the device's screensaver came up), and came back
@@ -3503,6 +3505,7 @@ class RokuEmitter(
       |
       |sub onResume(args as dynamic)
       |    uiResumed(args)
+      |    RtAfterTurn()
       |end sub
       |""".stripMargin
 
@@ -4923,13 +4926,22 @@ class RokuEmitter(
       |' channel goes on, where it would otherwise stop (a sideloaded channel in the debugger, one from the store closing)
       |' with nothing told to anyone.
       |function RtGuard(cl as dynamic, args as object) as dynamic
+      |    answer = invalid
       |    try
-      |        return RtInvoke(cl, args)
+      |        answer = RtInvoke(cl, args)
       |    catch e
       |        RtReportError(e)
       |    end try
-      |    return invalid
+      |    RtAfterTurn()
+      |    return answer
       |end function
+      |' The end of a handler the platform called, before the scene is drawn again: what the program's runtime has to put
+      |' right by then (UniversalRuntime's motions, uiMotionsSettle), called with what it keeps.
+      |sub RtAfterTurn()
+      |    ga = GetGlobalAA()
+      |    hook = ga.rtAfterTurn
+      |    if hook <> invalid then hook.fn(hook.env)
+      |end sub
       |
       |sub RtReportError(e as dynamic)
       |    ga = GetGlobalAA()
