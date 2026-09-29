@@ -895,6 +895,10 @@ class RenderNode(val view: View) {
     if (android.os.Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(role == "heading")
   }
 
+  /** Where a slider stands, read out by TalkBack as the view's state (Android 11 on). */
+  def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean]): Unit =
+    if (android.os.Build.VERSION.SDK_INT >= 30) view.setStateDescription(range.map(_.text).orNull)
+
   def setAlt(text: String): Unit = view.setContentDescription(if (text.isEmpty) null else text)
 
   /** The focus landed here (the app's own focus, which Android's does not follow). With a screen reader on, this is

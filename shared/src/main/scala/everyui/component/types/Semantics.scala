@@ -3,8 +3,10 @@ package everyui.component.types
 /** What a component is, for whatever reads the page rather than looking at it: a screen reader, a search engine, an
   * answer engine. `role` is the ARIA role ("heading", "main", "navigation", "banner", "contentinfo", "article",
   * "list", "listitem", "img"), `level` a heading's rank (1 for the page's title), and `label` its name when what it
-  * shows does not say (an icon, a picture). Nothing, the default, is a component that is only drawn. */
-case class Semantics(role: String = "", level: Int = 0, label: String = "")
+  * shows does not say (an icon, a picture). A control that sets a number (a slider) says where it stands (`range`), and
+  * one that is on or off (a switch) whether it is (`checked`). Nothing, the default, is a component that is only drawn. */
+case class Semantics(role: String = "", level: Int = 0, label: String = "", range: Option[SemanticRange] = None,
+                     checked: Option[Boolean] = None)
 
 object Semantics {
   /** Only drawn: nothing to say about it. */
@@ -29,4 +31,8 @@ object Semantics {
   /** Something pressed to act, named `label` where what it shows does not say (an icon); empty, it is read by its
     * words. */
   def button(label: String = ""): Semantics = Semantics("button", label = label)
+  /** A control that sets a number, named `label`, where `range` says. */
+  def slider(label: String, range: SemanticRange): Semantics = Semantics("slider", label = label, range = Some(range))
+  /** A control that is on or off, named `label`. */
+  def switch(label: String, on: Boolean): Semantics = Semantics("switch", label = label, checked = Some(on))
 }

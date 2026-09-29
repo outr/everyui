@@ -475,6 +475,19 @@ class RenderNode(val el: html.Element) {
     attribute("aria-label", label)
   }
 
+  /** Where a slider stands (`aria-valuenow`, its range and its words) and whether a switch is on (`aria-checked`). */
+  def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean]): Unit = {
+    def attribute(name: String, value: Option[String]): Unit = value match {
+      case Some(v) => el.setAttribute(name, v)
+      case None => el.removeAttribute(name)
+    }
+    attribute("aria-valuenow", range.map(_.now.toString))
+    attribute("aria-valuemin", range.map(_.min.toString))
+    attribute("aria-valuemax", range.map(_.max.toString))
+    attribute("aria-valuetext", range.map(_.text))
+    attribute("aria-checked", checked.map(_.toString))
+  }
+
   /** The focus landed here. The page keeps its own focus rather than the browser's, and says what things are by
     * their roles and labels (setSemantics), so there is nothing more to do. */
   def accessibleFocus(click: () => Unit): Unit = ()

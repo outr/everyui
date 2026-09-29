@@ -156,10 +156,13 @@ class Component(val node: RenderNode) {
     * page under it, which on the web would take the drag away part-way. */
   lazy val touchDrags: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setTouchDrags(d)))
   /** What this is to whatever reads the page rather than looking at it (`Semantics`): a heading, the main content, a
-    * set of links. On the web it is the element's ARIA role, level and label; elsewhere, where the platform has one, its
-    * accessibility role. */
+    * set of links. On the web it is the element's ARIA role, level and label, with a slider's value and a switch's
+    * state; elsewhere, where the platform has one, its accessibility role. */
   lazy val semantics: Prop[Semantics] =
-    own(new Prop[Semantics](Semantics.Plain, s => node.setSemantics(s.role, s.level, s.label)))
+    own(new Prop[Semantics](Semantics.Plain, s => {
+      node.setSemantics(s.role, s.level, s.label)
+      node.setSemanticState(s.range, s.checked)
+    }))
   /** Out of use for now: whatever reads the page hears so (the web's `aria-disabled`, TalkBack for a field), and the
     * platform's own field takes no typing, though the focus still reaches it. How it looks is the component's to say. */
   lazy val disabled: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setDisabled(d)))
