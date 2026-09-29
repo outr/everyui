@@ -30,6 +30,9 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   val section: Var[String] = own(Var(""))
   /** Its name to autofill and password managers (`InputView.fieldName`); empty, it is named by its hint. */
   val fieldName: Var[String] = own(Var(""))
+  /** Shows `value`, to be focused, chosen and copied, but not changed (`InputView.readOnly`); where the platform has
+    * no field of its own (a Roku, an Apple TV) Enter or a click asks for no new value. */
+  val readOnly: Var[Boolean] = own(Var(false))
 
   // a secret, or asked for as a password
   private def hidden: Boolean = secure || autofill().exists(Autofill.secret)
@@ -67,6 +70,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.passkey := passkey()
     input.section := section()
     input.fieldName := fieldName()
+    input.readOnly := readOnly()
     // named by its label, which is drawn beside it rather than being its own
     input.semantics := Semantics(label = title())
     input.text.attach(v => if (value() != v) value @= v)
@@ -86,10 +90,11 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     shown.position.left @= 14.0
     shown.size.width := size.width() - 28.0
     shown.position.top @= 26.0
-    event.click.attach(_ => Platform.editField(title(), value(), hidden, autofill().map(Autofill.token).getOrElse(""), v => {
-      value @= v
-      submitted @= v
-    }))
+    event.click.attach(_ => if (!readOnly())
+      Platform.editField(title(), value(), hidden, autofill().map(Autofill.token).getOrElse(""), v => {
+        value @= v
+        submitted @= v
+      }))
     children ++= List(caption, shown)
   }
 

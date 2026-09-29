@@ -638,6 +638,24 @@ OK brings up the platform's keyboard. A component that wraps a platform field sa
 `Component.typesEvent`; those keys reach its `event.key.down` and then the platform, untouched. `TextInput` now does
 this too. Before, it kept Backspace, Space and the arrows from its own field while it was being edited.
 
+### Read-only fields (`readOnly`)
+
+`readOnly @= true` on an `InputView`, a `TextInput` or a `TextArea` shows the value as the field does, where it can be
+focused, chosen and copied, but typing, deleting and pasting change nothing: a share link, a key, a message to copy.
+It is not `disabled` (out of use, which a screen reader hears as such): it looks as it did, and a screen reader hears
+it is read-only.
+
+```scala
+val link = new TextInput("Share link")
+link.value @= shareUrl
+link.readOnly @= true
+```
+
+The web sets the field's `readonly` attribute and `aria-readonly`; the desktop makes the JavaFX field not editable,
+which leaves its look; Android takes the `EditText`'s key listener away and makes its words selectable, so it offers
+no paste and brings up no keyboard, and TalkBack reads it as not editable. A Roku's and an Apple TV's fields are only
+their words, and a read-only one asks the platform's keyboard for nothing when it is clicked.
+
 ### Italic (`font.italic`)
 
 `font.italic @= true` slants the words of anything with a `font`: a `TextView`, a `RichText` (every run, as the

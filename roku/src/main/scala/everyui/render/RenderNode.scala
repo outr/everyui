@@ -525,6 +525,9 @@ class RenderNode(val sg: SGNode) {
   def setCaret(at: Int): Unit = ()
   /** Nothing reads the nodes here, and a field is only its words: the app dims what is out of use. */
   def setDisabled(disabled: Boolean): Unit = ()
+  /** A field here is only its words, shown, and new ones are asked for by the app (`Platform.editField`), which a
+    * read-only field does not do: there is nothing to stop. */
+  def setReadOnly(on: Boolean): Unit = ()
   def focusInput(on: Boolean): Unit = ()
 }
 

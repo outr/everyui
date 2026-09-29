@@ -22,6 +22,31 @@ final class FieldView(context: Context) extends EditText(context) {
     setFocusableInTouchMode(on)
   }
 
+  // what a read-only field put by, to be a field again
+  private var fixed = false
+  private var keys: android.text.method.KeyListener = null
+  private var kind: Int = 0
+
+  /** Read-only, or a field again. Read-only, it has no key listener, so it takes no typing, offers no paste and brings
+    * up no keyboard, and TalkBack reads it as not editable; its words are still selectable, to be chosen and copied.
+    * Being a field again puts its keys, its input type (a secret's, an email address's) and its caret's movement back.
+    * Either way it takes the focus only while it is being edited, as before. */
+  def readOnly(on: Boolean): Unit = if (on != fixed) {
+    fixed = on
+    if (on) {
+      keys = getKeyListener
+      kind = getInputType
+      setKeyListener(null)
+      setTextIsSelectable(true)
+    } else {
+      setTextIsSelectable(false)
+      setKeyListener(keys)
+      setRawInputType(kind)
+      setMovementMethod(android.text.method.ArrowKeyMovementMethod.getInstance)
+    }
+    edit(editing)
+  }
+
   override def dispatchTouchEvent(event: MotionEvent): Boolean = editing && super.dispatchTouchEvent(event)
 
   override def onKeyPreIme(keyCode: Int, event: KeyEvent): Boolean = {

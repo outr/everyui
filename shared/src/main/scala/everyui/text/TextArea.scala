@@ -39,6 +39,9 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   val section: Var[String] = own(Var(""))
   /** Its name to autofill and password managers (`InputView.fieldName`); empty, it is named by its hint. */
   val fieldName: Var[String] = own(Var(""))
+  /** Shows `value`, to be focused, chosen and copied, but not changed (`InputView.readOnly`); where the platform has
+    * no field of its own (a Roku, an Apple TV) Enter or a click asks for no new words. */
+  val readOnly: Var[Boolean] = own(Var(false))
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
@@ -76,6 +79,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     input.autofill := autofill()
     input.section := section()
     input.fieldName := fieldName()
+    input.readOnly := readOnly()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)
@@ -100,7 +104,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     }
     node.setClip(width, minHeight)
     size.height.attach(h => node.setClip(size.width(), h))
-    event.click.attach(_ => Platform.editField(hint(), value(), false, autofill().map(Autofill.token).getOrElse(""), v => value @= v))
+    event.click.attach(_ => if (!readOnly())
+      Platform.editField(hint(), value(), false, autofill().map(Autofill.token).getOrElse(""), v => value @= v))
     children += shown
   }
   event.key.down.attach(k => if (editing() && TextArea.submit.matches(k)) submitted @= value())

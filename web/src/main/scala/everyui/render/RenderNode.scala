@@ -641,12 +641,26 @@ class RenderNode(val el: html.Element) {
     * but takes no typing (read-only, which unlike disabled leaves it where the focus can reach it). */
   def setDisabled(disabled: Boolean): Unit = {
     if (disabled) el.setAttribute("aria-disabled", "true") else el.removeAttribute("aria-disabled")
+    fieldDisabled = disabled
     el match {
-      case i: html.Input => i.readOnly = disabled
-      case t: html.TextArea => t.readOnly = disabled
+      case i: html.Input => i.readOnly = disabled || fieldReadOnly
+      case t: html.TextArea => t.readOnly = disabled || fieldReadOnly
       case _ => ()
     }
   }
+  /** Read-only, or editable again: a field shows its words, which can be chosen and copied, but takes no typing and
+    * no paste (the readonly attribute, which a screen reader hears); unlike disabled it is not out of use. */
+  def setReadOnly(on: Boolean): Unit = {
+    fieldReadOnly = on
+    if (on) el.setAttribute("aria-readonly", "true") else el.removeAttribute("aria-readonly")
+    el match {
+      case i: html.Input => i.readOnly = on || fieldDisabled
+      case t: html.TextArea => t.readOnly = on || fieldDisabled
+      case _ => ()
+    }
+  }
+  private var fieldDisabled: Boolean = false
+  private var fieldReadOnly: Boolean = false
   /** Give the field the keyboard, or take it away. */
   // never taken back from something the app did not make (a password manager's menu, a frame) while the page's focus
   // is in it

@@ -830,6 +830,12 @@ class RenderNode(val view: View) {
     case e: EditText => e.setEnabled(!disabled)
     case _ => ()
   }
+  /** Read-only, or editable again: the field's words can be chosen and copied, but it takes no typing or paste and
+    * brings up no keyboard, and TalkBack reads it as a field that cannot be edited (`FieldView.readOnly`). */
+  def setReadOnly(on: Boolean): Unit = view match {
+    case e: FieldView => e.readOnly(on)
+    case _ => ()
+  }
   /** Give the field the keyboard (and the soft keyboard where there is no other), or take both away. */
   def focusInput(on: Boolean): Unit = view match {
     case e: FieldView =>

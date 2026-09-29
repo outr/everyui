@@ -562,9 +562,21 @@ class RenderNode(val fx: Node) {
   /** Out of use, or back in it: a text field keeps its words but takes no typing. Nothing reads the nodes' roles here
     * (`setSemantics`), so there is nothing to tell. */
   def setDisabled(disabled: Boolean): Unit = fx match {
-    case field: TextInputControl => field.setEditable(!disabled)
+    case field: TextInputControl =>
+      fieldDisabled = disabled
+      field.setEditable(!disabled && !fieldReadOnly)
     case _ => ()
   }
+  /** Read-only, or editable again: a text field shows its words, which can be chosen and copied, but takes no typing
+    * or paste, and looks as it did (not editable, which JavaFX tells a screen reader, rather than disabled). */
+  def setReadOnly(on: Boolean): Unit = fx match {
+    case field: TextInputControl =>
+      fieldReadOnly = on
+      field.setEditable(!on && !fieldDisabled)
+    case _ => ()
+  }
+  private var fieldDisabled: Boolean = false
+  private var fieldReadOnly: Boolean = false
   /** Give a text field the keyboard, or take it back to the window. */
   def focusInput(on: Boolean): Unit = fx match {
     case field: TextInputControl =>

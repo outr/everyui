@@ -15,6 +15,15 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   val font: FontFeature = new FontFeature(this)
   /** What it says while empty. */
   lazy val placeholder: Prop[String] = own(new Prop[String]("", p => node.setPlaceholder(p)))
+  /** Shows `text`, which can be focused, chosen and copied, but takes no typing and no paste: a value to read and copy
+    * (a link to share, a key). Unlike `disabled` it is in use, and it looks as it did; a screen reader hears it is
+    * read-only. A Roku's and an Apple TV's fields are only their words there, so it changes nothing there.
+    * {{{
+    * val link = new InputView
+    * link.text @= shareUrl
+    * link.readOnly @= true
+    * }}} */
+  lazy val readOnly: Prop[Boolean] = own(new Prop[Boolean](false, r => node.setReadOnly(r)))
   /** What the keyboard's enter key says it does, where the keyboard says: "done", "search", "next", "go" or "send". */
   lazy val action: Prop[String] = own(new Prop[String]("done", a => node.setInputAction(a)))
   /** What it asks for (`Autofill`: a sign-in, a name, an email address, a phone number, an address, a card; `Off` for
