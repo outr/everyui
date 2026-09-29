@@ -1508,6 +1508,39 @@ header closes it; Right opens a header or goes to its first result; Enter or a c
 Enter or a double click on a result activates it. `collapsed` holds the closed groups' keys; `expandAll`,
 `collapseAll`.
 
+### RichList (`everyui.list`)
+
+The list down the side of a chat, mail or contacts app, virtualised (thousands scroll as ten do). Each item is drawn as
+its `RichLook` says: an avatar (a `chat.Participant`: their picture, or their initial on their colour) or an icon, a
+title and an optional second line, and at the end how long ago (`time`, epoch millis: "now", "5m", "3h", "2d", "9/16",
+kept current), a `count` badge ("99+") and a small `mark` (a pin, a lock); `unread` is bold with its time lit. Items
+sit in `RichSection`s under headers (title and count) that open and close, the closed ones' keys in `collapsed`, which
+the app may hold; a section with no title has no header.
+
+`selected` is the app's current item, drawn chosen; Enter, a click or a tap activates an item, which chooses it and
+fires `activated`. The arrows move through headers and items; Enter, a click, Right or Left on a header opens or closes
+it; Left and Right on an item leave the list, as the focus layer says. `menu` gives each item's `MenuItem`s, opened by
+the secondary button, a long press, the menu key (a Roku's options key), OK held, or the ⋮ that shows at the row's end
+with the pointer over it or the cursor on it. `search = true` puts a field over it that narrows it by `query` (the app
+can set it; `matches` says what a word finds), or the app filters its own `sections`. `reorders @= true` drags items
+into another place: `accepts` (within their own section, by default) and `moved` (a `RichMove`: the keys, the section,
+the item they go before). `rename(key)` types a title in place, for `commit`.
+
+```scala
+val chats = new RichList[Chat](sections, _.id, c => RichLook(c.title, Some(c.snippet), who = Some(c.persona),
+  time = Some(c.updated), count = c.unread, unread = c.unread > 0, mark = if (c.locked) Some(MaterialIcon.Lock) else None),
+  collapsed = app.collapsedSections, search = true)
+sections @= Vector(RichSection("unread", "Unread", unread), RichSection("recent", "Recent", recent))
+chats.menu @= (c => List(MenuItem("Rename…", () => chats.rename(c.id)),
+  MenuItem.check("Lock title", c.locked, lock(c, _)), MenuItem("Delete", () => delete(c), danger = true)))
+chats.commit @= ((c, title) => Task.pure { retitle(c, title); None })
+chats.activated.attach(c => open(c))
+chats.selected @= Some(current.id)
+```
+
+A long press opens the menu where the platform turns it into a context-menu request (Android, JavaFX, and browsers that
+fire `contextmenu` on one). `demo=richlist` has 5000 in three sections.
+
 ### Pointer buttons and modifiers
 
 A `PointerEvent` carries its `button` (`PointerEvent.PrimaryButton`, `MiddleButton`, `SecondaryButton`; a finger is the

@@ -26,6 +26,8 @@ import everyui.render.Platform
   *              `rtl=1`, `offline=1`, `probe=1`)
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
+  *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus
+  *              (`theme=light`, `collapsed=archive`)
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
@@ -52,5 +54,6 @@ import everyui.render.Platform
   else if (demo == "busy") BusyDemo.run()
   else if (demo == "colors") ColorsDemo.run()
   else if (demo == "markdown") MarkdownDemo.run()
+  else if (demo == "richlist") RichListDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }
