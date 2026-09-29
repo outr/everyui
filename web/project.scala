@@ -15,6 +15,7 @@
 //> using dep org.scala-js:scalajs-java-securerandom_sjs1_2.13:1.0.0
 //> using file ../shared/src/main/scala
 //> using file ../app/src/main/scala
+//> using file ../app/full/src/main/scala
 //> using file ../app/protocol/src/main/scala
 //> using file ../network/src/main/scala
 //> using file ../network/spice/src/main/scala

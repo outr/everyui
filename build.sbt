@@ -140,11 +140,15 @@ lazy val sharedSources = (file("shared") / "src" / "main" / "scala").getAbsolute
 lazy val appSources = (file("app") / "src" / "main" / "scala").getAbsoluteFile
 lazy val protocolSources = (file("app") / "protocol" / "src" / "main" / "scala").getAbsoluteFile   // the demo's wire types, shared with server/
 lazy val networkSources = (file("network") / "src" / "main" / "scala").getAbsoluteFile
+/** The example app's demos of what only the web, the desktop and Android run (lists, pickers): the Roku and tvOS
+  * compile `app/native` in their place, which runs none of them. */
+def demoSources(backend: String): File =
+  (file("app") / (if (backend == "native") "native" else "full") / "src" / "main" / "scala").getAbsoluteFile
 def networkBackend(name: String): File = (file("network") / name / "src" / "main" / "scala").getAbsoluteFile
 /** A backend's source roots: the framework (`shared/`), the example app (`app/`), the network module and its
   * backend — with Spice's own client where Spice runs (`spice = true`: the JVM and JS backends). */
 def backendSources(backend: String, spice: Boolean): Seq[File] =
-  Seq(sharedSources, appSources, protocolSources, networkSources, networkBackend(backend)) ++ (if (spice) Seq(networkBackend("spice")) else Nil)
+  Seq(sharedSources, appSources, demoSources(backend), protocolSources, networkSources, networkBackend(backend)) ++ (if (spice) Seq(networkBackend("spice")) else Nil)
 
 // --- published: what an app outside this build depends on (CONSUMING.md) ----------------------------------------
 // `sbt publishLocal` publishes these, and only these:

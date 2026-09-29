@@ -372,6 +372,22 @@ new FilterPicker[Symbol](q => symbols.find(q), _.id, _.name,
   row = Some(words => new HighlightRow[Symbol](_.name, s => s.matched, _.kind))).open()
 ```
 
+Segment chips narrow the matches to one group, on top of what the query found: a model picker by its provider, say.
+The app gives the segments (`Segment.all(label)` shows every match) and `groupOf`, the key of an item's group. The
+first segment is chosen to begin with, and `segment` holds the key of the one chosen (`shown` is what the list shows).
+The chips wrap to another row where they are many. A click or a tap chooses a chip; from the field, Tab and Shift+Tab
+go round the segments while the focus stays in the field; on a remote the chips are a stop between the field and the
+list, Left and Right along them and OK choosing.
+
+```scala
+import everyui.picker.Segment
+
+new FilterPicker[Model](q => models.find(q), _.id, _.name, _.providerName,
+  segments = List(Segment.all("All"), Segment("local", "Local"), Segment("anthropic", "Anthropic"),
+    Segment("openai", "OpenAI"), Segment("fireworks", "Fireworks.ai")),
+  groupOf = _.provider).open()
+```
+
 ### Drawing (`everyui.draw`)
 
 `Drawing` is a plain component that draws paths in its own pixels: lines, cubic curves, arcs and circles, rectangles

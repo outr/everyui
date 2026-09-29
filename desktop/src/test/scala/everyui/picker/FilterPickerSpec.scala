@@ -87,6 +87,72 @@ class FilterPickerSpec extends FxSpec {
     }
   }
 
+  "A picker with segments" should {
+    val models = Vector("llama:local", "qwen:local", "opus:anthropic", "sonnet:anthropic", "gpt:openai")
+    def group(m: String): String = m.substring(m.indexOf(':') + 1)
+    def make(): FilterPicker[String] = fx(new FilterPicker[String](q => Task.pure(models.filter(_.contains(q))),
+      identity, identity, debounce = 0.0,
+      segments = List(Segment.all("All"), Segment("local", "Local"), Segment("anthropic", "Anthropic"),
+        Segment("openai", "OpenAI")), groupOf = group))
+
+    "show every match under All, the first segment, and narrow on top of the query by the chip chosen" in onScreen { _ =>
+      val picker = make()
+      fx(picker.open())
+      eventually(picker.shown().size == 5) shouldBe true
+      fx(picker.segment()) shouldBe ""
+      fx(picker.chips.children().size) shouldBe 4
+      val anthropic = fx(picker.chips.children()(2))
+      fx(anthropic.event.click @= everyui.event.PointerEvent(everyui.event.PointerKind.Click, 0.0, 0.0))
+      fx(picker.segment()) shouldBe "anthropic"
+      fx(picker.shown()) shouldBe Vector("opus:anthropic", "sonnet:anthropic")
+      fx(picker.list.currentItem) shouldBe Some("opus:anthropic")
+      fx(picker.field.value @= "son")
+      eventually(picker.answered().contains("son")) shouldBe true
+      fx(picker.shown()) shouldBe Vector("sonnet:anthropic")
+      fx(picker.matches()) shouldBe Vector("sonnet:anthropic")
+      fx(picker.field.value @= "l")
+      eventually(picker.answered().contains("l")) shouldBe true
+      fx(picker.shown()) shouldBe Vector.empty
+      fx(picker.matches().size) shouldBe 2
+    }
+    "go round the segments with Tab and Shift+Tab from the field, the focus kept there" in onScreen { _ =>
+      val picker = make()
+      fx(picker.open())
+      eventually(picker.shown().size == 5) shouldBe true
+      press("Tab")
+      fx(picker.segment()) shouldBe "local"
+      fx(picker.shown()) shouldBe Vector("llama:local", "qwen:local")
+      fx(Focus.focused()) shouldBe Some(picker.field)
+      press("Tab")
+      press("Tab")
+      press("Tab")
+      fx(picker.segment()) shouldBe ""
+      fx(picker.field.event.key.down @= everyui.event.KeyEvent(everyui.event.Key.Tab, "Tab", false, false, false, true))
+      fx(picker.segment()) shouldBe "openai"
+      fx(picker.shown()) shouldBe Vector("gpt:openai")
+    }
+    "land on the chosen chip, move along the chips with the arrows, and choose with Enter" in onScreen { _ =>
+      val picker = make()
+      fx(picker.open())
+      eventually(picker.shown().size == 5) shouldBe true
+      val chips = fx(picker.chips.children())
+      fx(chips.head.focus())
+      press("ArrowRight")
+      fx(Focus.focused()) shouldBe Some(chips(1))
+      press("Enter")
+      fx(picker.segment()) shouldBe "local"
+      press("ArrowDown")
+      fx(Focus.focused()) shouldBe Some(picker.list)
+    }
+    "leave a picker without segments as it was: no chips, every match shown" in onScreen { _ =>
+      val picker = fx(new FilterPicker[String](q => Task.pure(models), identity, identity, debounce = 0.0))
+      fx(picker.open())
+      eventually(picker.shown().size == 5) shouldBe true
+      fx(picker.chips.children().isEmpty) shouldBe true
+      fx(picker.list.position.top()) shouldBe fx(picker.field.size.height() + 16.0)
+    }
+  }
+
   "Matching" should {
     "find the query's letters in order, as runs, and light them" in {
       Match.spans("gfp", "GoFilePicker") shouldBe Some(List((0, 1), (2, 3), (6, 7)))

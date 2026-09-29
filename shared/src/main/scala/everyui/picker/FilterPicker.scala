@@ -4,6 +4,7 @@ import everyui.async.Task
 import everyui.component.*
 import everyui.event.Key
 import everyui.i18n.Words
+import everyui.layout.FlowLayout
 import everyui.list.{ListRow, VirtualList}
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -19,15 +20,25 @@ import reactify.*
   * the picker and is heard on `chosen`; Escape, Back or a click outside closes it with nothing chosen. Rows are
   * `row`'s: by default the item's `labelOf` with what the query matched lit (`Match.spans`), and `detailOf` after it.
   *
+  * Given `segments`, a row of chips over the list narrows the matches to one group (`groupOf`), on top of the query:
+  * a model picker's providers, say. The first segment is chosen to begin with, and `Segment.all` shows every match.
+  * A click or a tap chooses a chip; from the field, Tab and Shift+Tab go round the segments, and on a remote the
+  * chips sit between the field and the list, Left and Right along them and OK choosing.
+  *
   * {{{
   *   FilterPicker.show[File](q => index.search(q), _.path, _.name, _.folder, placeholder = "Go to file") { f =>
   *     open(f)
   *   }
+  *
+  *   new FilterPicker[Model](q => models.find(q), _.id, _.name, _.provider,
+  *     segments = List(Segment.all("All"), Segment("local", "Local"), Segment("anthropic", "Anthropic")),
+  *     groupOf = _.providerKey).open()
   * }}} */
 class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labelOf: T => String,
                       detailOf: T => String = (_: T) => "", placeholder: String = Words.search,
                       width: Double = FilterPicker.width, debounce: Double = FilterPicker.debounce,
-                      row: Option[Var[String] => ListRow[T]] = None) extends Container {
+                      row: Option[Var[String] => ListRow[T]] = None, segments: List[Segment] = Nil,
+                      groupOf: T => String = (_: T) => "") extends Container {
   /** A match chosen. */
   val chosen: Channel[T] = Channel[T]
   /** The words in the field. */
@@ -36,6 +47,10 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   val answered: Var[Option[String]] = own(Var(None))
   /** The matches for the words, as `query` last answered. */
   val matches: Var[Vector[T]] = own(Var(Vector.empty))
+  /** The key of the segment chosen: the first segment's to begin with, "" (every match) without segments. */
+  val segment: Var[String] = own(Var(segments.headOption.map(_.key).getOrElse("")))
+  /** The matches the list shows: those in the chosen segment. */
+  val shown: Var[Vector[T]] = own(Var(Vector.empty))
 
   private val across = math.min(width, ui.size.width() - 32.0)
   private var asked = 0
@@ -44,18 +59,26 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   val field: TextInput = new TextInput(placeholder, false, across - 16.0) {
     // the matches move under the words while they are typed; on a remote the arrows go down into the list instead
     override def keepsKey(key: Key): Boolean = super.keepsKey(key) || (keyboard &&
-      (key == Key.ArrowUp || key == Key.ArrowDown || key == Key.PageUp || key == Key.PageDown))
+      (key == Key.ArrowUp || key == Key.ArrowDown || key == Key.PageUp || key == Key.PageDown)) ||
+      (key == Key.Tab && segments.size > 1)
   }
-  val list: VirtualList[T] = new VirtualList[T](matches, keyOf, labelOf)(() =>
+  /** The segments' chips, between the field and the list, wrapping to more rows where they are many; empty without
+    * segments. */
+  val chips: Container = new Container {
+    layout @= Some(FlowLayout(6.0, 6.0))
+    size.width @= across - 24.0
+    children ++= segments.map(s => new SegmentChip(s, segment))
+  }
+  val list: VirtualList[T] = new VirtualList[T](shown, keyOf, labelOf)(() =>
     row.map(make => make(words)).getOrElse(new HighlightRow[T](labelOf,
       (t: T) => Match.spans(words(), labelOf(t)).getOrElse(Nil), detailOf)))
   private val empty = new TextView {
     content := Words.noResults
     font.size @= 14.0
     color := Theme.muted()
-    visible := answered().nonEmpty && matches().isEmpty
+    visible := answered().nonEmpty && shown().isEmpty
   }
-  private val rows: Val[Double] = own(Val(math.max(1, math.min(FilterPicker.rowsShown, matches().size)).toDouble))
+  private val rows: Val[Double] = own(Val(math.max(1, math.min(FilterPicker.rowsShown, shown().size)).toDouble))
 
   field.value.attach(v => if (words() != v) words @= v)
   words.attach { w =>
@@ -68,16 +91,31 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     else if (k.key == Key.ArrowUp) list.moveTo(math.max(0, at - 1))
     else if (k.key == Key.PageDown) list.moveTo(math.min(list.count - 1, at + FilterPicker.rowsShown))
     else if (k.key == Key.PageUp) list.moveTo(math.max(0, at - FilterPicker.rowsShown))
+    else if (k.key == Key.Tab && segments.size > 1) step(if (k.shift) -1 else 1)
   }
   field.submitted.attach(_ => list.currentItem.foreach(choose))
   list.activated.attach(choose)
-  field.exitFocus(Key.ArrowDown, list)
-  list.exitFocus(Key.ArrowUp, field)
+  matches.attach(_ => narrow())
+  segment.attach(_ => narrow())
+  if (segments.isEmpty) {
+    field.exitFocus(Key.ArrowDown, list)
+    list.exitFocus(Key.ArrowUp, field)
+  } else {
+    // on a remote the chips are a stop of their own between the field and the list, landed on at the one chosen
+    field.exitFocus(Key.ArrowDown, chips)
+    chips.exitFocus(Key.ArrowUp, field)
+    chips.exitFocus(Key.ArrowDown, list)
+    list.exitFocus(Key.ArrowUp, chips)
+    segment.attach(_ => chip.foreach(chips.entryFocus))
+    chip.foreach(chips.entryFocus)
+  }
 
   field.position.left @= 8.0
   field.position.top @= 8.0
+  chips.position.left @= 12.0
+  chips.position.top := field.size.height() + 16.0
   list.position.left @= 4.0
-  list.position.top := field.size.height() + 16.0
+  list.position.top := field.size.height() + 16.0 + (if (segments.isEmpty) 0.0 else chips.size.height() + 10.0)
   list.size.width @= across - 8.0
   list.size.height := rows() * list.rowHeight
   empty.position.left @= 20.0
@@ -89,7 +127,7 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   borderColor := Theme.border()
   radius @= 10.0
   shadow @= Some(Shadow(0.0, 8.0, 32.0, Color.Black.withAlpha(0.5)))
-  children ++= List(field, list, empty)
+  children ++= List(field, chips, list, empty)
 
   /** Put it up, a fifth of the way down the screen, with `initial` in the field. */
   def open(initial: String = ""): Unit = {
@@ -108,12 +146,30 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     val mine = asked
     val run = () => if (mine == asked) query(w).map { found =>
       if (mine == asked) {
-        matches @= found
         answered @= Some(w)
-        if (found.nonEmpty) list.moveTo(0)
+        matches @= found
       }
     }.start()
     if (debounce <= 0.0) run() else Platform.after(debounce, run)
+  }
+
+  /** The chip of the segment chosen. */
+  private def chip: Option[Component] = chips.children().find {
+    case c: SegmentChip => c.segment.key == segment()
+    case _ => false
+  }
+
+  /** The segment `by` along from the one chosen, round from the last to the first. */
+  private def step(by: Int): Unit = {
+    val at = math.max(0, segments.indexWhere(_.key == segment()))
+    segment @= segments((at + by + segments.size) % segments.size).key
+  }
+
+  /** The matches in the chosen segment shown, the first of them under the cursor. */
+  private def narrow(): Unit = {
+    val key = segment()
+    shown @= (if (key.isEmpty) matches() else matches().filter(t => groupOf(t) == key))
+    if (shown().nonEmpty) list.moveTo(0)
   }
 
   private def choose(t: T): Unit = {

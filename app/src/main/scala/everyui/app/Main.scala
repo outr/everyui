@@ -21,6 +21,8 @@ import everyui.render.Platform
   *   autofill   a sign-in and a contact form as autofill and password managers see them
   *   rtlscroll  a rail in a right-to-left language, as the web's own scroll holds it
   *   rows       a table of `n=` rows built and then grown a row at a time, timed
+  *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
+  *              (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
@@ -36,5 +38,5 @@ import everyui.render.Platform
   else if (demo == "autofill") AutofillDemo.run()
   else if (demo == "rtlscroll") RtlScrollDemo.run()
   else if (demo == "rows") RowsDemo.run()
-  else ExampleApp.main()
+  else if (!FullDemos.run(demo)) ExampleApp.main()
 }
