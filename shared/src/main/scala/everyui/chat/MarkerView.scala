@@ -1,6 +1,7 @@
 package everyui.chat
 
 import everyui.component.{Container, TextView}
+import everyui.component.types.TextDirection
 import everyui.theme.Theme
 import reactify.*
 
@@ -8,6 +9,7 @@ import reactify.*
 class MarkerView(marker: ChatEntry.Marker, width: => Double) extends Container {
   private val words: TextView = new TextView {
     content := marker.text()
+    direction @= TextDirection.Auto
     font.size @= 11.5
     color := Theme.muted()
     maxWidth := math.max(40.0, width - Transcript.side * 2.0 - 20.0)

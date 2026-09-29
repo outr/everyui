@@ -2,7 +2,7 @@ package everyui.chat
 
 import everyui.Color
 import everyui.component.{Component, Container, Row, TextView}
-import everyui.component.types.FontWeight
+import everyui.component.types.{FontWeight, TextDirection}
 import everyui.kit.Spinner
 import everyui.list.ListRow
 import everyui.theme.Theme
@@ -19,12 +19,14 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
 
   private val name: TextView = new TextView {
     content @= m.author.name
+    direction @= TextDirection.Auto
     font.size @= 12.5
     font.weight @= FontWeight.SemiBold
     color := Theme.text()
   }
   private val when: TextView = new TextView {
     content := m.time.map(t => ChatTime.relative(t, now(), dated)).getOrElse("")
+    direction @= TextDirection.Auto
     font.size @= 11.5
     color := Theme.muted()
   }
@@ -49,6 +51,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   spinner.visible := m.streaming()
   private val meta: TextView = new TextView {
     content := m.meta().getOrElse("")
+    direction @= TextDirection.Auto
     font.size @= 11.5
     color := Theme.muted()
     maxWidth := Transcript.widest(width)

@@ -3,7 +3,7 @@ package everyui.app
 import everyui.async.Task
 import everyui.chat.*
 import everyui.component.*
-import everyui.component.types.{FontWeight, WhiteSpace}
+import everyui.component.types.{FontWeight, TextDirection, WhiteSpace}
 import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -11,16 +11,19 @@ import everyui.ui
 import everyui.util.Clock
 import reactify.*
 
-/** A group room in `everyui.chat.ChatView`: two people (one of them you) and two agents, with 2000 earlier entries to
-  * scroll back through, fetched a hundred at a time. Once it opens, timers play a conversation: an agent thinks, runs a
-  * tool that succeeds and one that fails, and streams a long reply while the status bar shows who is working; another
-  * asks for approval with a card of its own. What is typed in the field at the bottom is sent as yours, and answered.
+/** A group room in `everyui.chat.ChatView`: three people (one of them you, one writing in Arabic) and two agents, with
+  * 2000 earlier entries to scroll back through, fetched a hundred at a time. Once it opens, timers play a conversation:
+  * an agent thinks, runs a tool that succeeds and one that fails, and streams a long reply while the status bar shows
+  * who is working; another asks for approval with a card of its own. Each message runs the way its own words do, the
+  * Arabic ones right to left and the English ones left to right whichever way the app reads, and a long link, path and
+  * hash break inside their bubble. What is typed in the field at the bottom is sent as yours, and answered.
   * `theme=light` for the light theme, `rtl=1` for right to left. Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam")
   private def helper: Participant = Participant("agent-helper", "Helper")
   private def scout: Participant = Participant("agent-scout", "Scout")
+  private def layla: Participant = Participant("u-layla", "ليلى")
 
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
@@ -107,7 +110,8 @@ object ChatDemo {
     ChatEntry.message("o2", sam, self = false, "I need the notes by noon.", Some(start - 530000L)),
     ChatEntry.message("o3", you, self = true, "Close. Helper, can you check what is left?", Some(start - 300000L)),
     ChatEntry.message("o4", helper, self = false, "On it. I'll look through the open issues and the test runs first.",
-      Some(start - 280000L), meta = Some("model small · 212 tokens · 1.4s")))
+      Some(start - 280000L), meta = Some("model small · 212 tokens · 1.4s")),
+    ChatEntry.message("o5", layla, self = false, "صباح الخير! هل ملاحظات الإصدار جاهزة؟", Some(start - 240000L)))
 
   // the conversation, played on timers
   private def play(entries: Var[Vector[ChatEntry]], working: Var[Vector[Working]], connection: Var[ConnectionState],
@@ -157,6 +161,15 @@ object ChatDemo {
       add(entries, ChatEntry.marker("rename", "Topic renamed: Release 2.0 plan", Some(Clock.real())))
       working @= working().filterNot(_.id == "w-sam")
     })
+    Platform.after(19.0, () => {
+      add(entries, ChatEntry.message("l1", layla, self = false, "ممتاز. سأراجع SocketSpec بعد الظهر وأرسل لكم النتيجة.",
+        Some(Clock.real())))
+      add(entries, ChatEntry.message("l2", layla, self = false, "الخميس مناسب لي.", Some(Clock.real())))
+    })
+    Platform.after(20.0, () => add(entries, ChatEntry.message("you-log", you, self = true, "The failing run's log: " +
+      "https://ci.example.com/builds/2026-09-29/release-2.0/artifacts/logs/socket-spec-reconnect-after-drop-full-output.log " +
+      "and the fix goes in src/main/scala/everyui/network/transport/reconnect/SocketReconnectPolicyWithExponentialBackoff.scala " +
+      "(a00a382f6b789870a62db369bf580a006d7f1c2e).", Some(Clock.real()))))
     if (Platform.launchArg("offline") == "1") connection @= ConnectionState.Offline(Some("the server is not answering"),
       Some(() => connection @= ConnectionState.Connecting))
   }
@@ -194,6 +207,7 @@ object ChatDemo {
     }
     val command = new TextView {
       content @= "git tag v2.0.0-rc1 && git push --tags"
+      direction @= TextDirection.Auto
       font.size @= 12.5
       whiteSpace @= WhiteSpace.PreWrap
       color := Theme.muted()

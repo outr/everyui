@@ -1,7 +1,7 @@
 package everyui.chat
 
 import everyui.component.{Component, Container, MaterialIconView, Row, TextView}
-import everyui.component.types.{FontWeight, WhiteSpace}
+import everyui.component.types.{FontWeight, TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.kit.Spinner
 import everyui.list.ListRow
@@ -30,6 +30,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   spinner.position.top @= 1.0
   private val summary: TextView = new TextView {
     content := a.summary()
+    direction @= TextDirection.Auto
     font.size @= 13.0
     color := Theme.text()
     maxWidth := widest() - Transcript.padX * 2.0 - 16.0 - 18.0 - 16.0
@@ -113,6 +114,8 @@ object ActivityView {
       content @= words
       font.size @= 12.5
       whiteSpace @= WhiteSpace.PreWrap
+      direction @= TextDirection.Auto
+      wrapAnywhere @= true
       color := Theme.text()
     }
     val in = body(input)

@@ -1,7 +1,7 @@
 package everyui.chat
 
 import everyui.component.{Container, MaterialIconView, Row, TextView}
-import everyui.component.types.WhiteSpace
+import everyui.component.types.{TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.kit.Spinner
 import everyui.list.ListRow
@@ -42,6 +42,8 @@ class ThinkingView(t: ChatEntry.Thinking, width: => Double, now: Val[Long]) exte
     content := t.text()
     font.size @= 12.5
     whiteSpace @= WhiteSpace.PreWrap
+    direction @= TextDirection.Auto
+    wrapAnywhere @= true
     color := Theme.muted()
     visible := t.expanded()
   }
