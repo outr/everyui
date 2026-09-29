@@ -181,10 +181,12 @@ lazy val web = (project in file("web"))
       "org.scala-js" %% "scalajs-dom" % "2.8.1",
       "com.outr" %% "reactify" % reactifyVersion
     ),
-    // EveryUI's fonts, in the jar under everyui/fonts/, which an app's bundle copies out (sbt-everyui's everyuiWebFonts)
+    // EveryUI's fonts (and Material Icons' codepoints), in the jar under everyui/fonts/, which an app's bundle copies
+    // out (sbt-everyui's everyuiWebFonts)
     Compile / resourceGenerators += Def.task {
       val dir = (Compile / resourceManaged).value / "everyui" / "fonts"
-      ((ThisBuild / baseDirectory).value / "assets" / "fonts").listFiles().toSeq.filter(_.getName.endsWith(".ttf")).map { f =>
+      ((ThisBuild / baseDirectory).value / "assets" / "fonts").listFiles().toSeq
+        .filter(f => f.getName.endsWith(".ttf") || f.getName.endsWith(".codepoints")).map { f =>
         val copy = dir / f.getName
         IO.copyFile(f, copy)
         copy
@@ -266,6 +268,19 @@ lazy val seo = (project in file("seo"))
     // the build's side of the well-known files (sbt-support's AppDomains), checked against the server's
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "sbt-support" / "src" / "main" / "scala",
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test
+  )
+
+// The same for the browser, for a page that writes its own structured data (JsonLd) and head: everyui-seo for
+// Scala.js. The shared PageMeta and Alternate come with everyui-web, so they are not compiled in again here, and
+// WellKnown (and WellKnownAnswer, over it), which read files, are the server's alone.
+lazy val seoJs = (project in file("seo/js"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(web)
+  .settings(published)
+  .settings(
+    name := "everyui-seo",
+    Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "seo" / "src" / "main" / "scala",
+    Compile / unmanagedSources / excludeFilter := HiddenFileFilter || "WellKnown.scala" || "WellKnownAnswer.scala"
   )
 
 // --- sbt-everyui: a web app's build side, published as an sbt plugin -------------------------------------------
@@ -503,7 +518,7 @@ lazy val checks = (project in file("checks"))
 
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
-    web, networkJvm, networkJs, monaco, sbtEveryui)
+    web, networkJvm, networkJs, monaco, sbtEveryui, seoJs)
   .settings(
     name := "everyui",
     publish / skip := true,
