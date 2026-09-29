@@ -551,6 +551,46 @@ own, so a sort chosen before the change is not carried over.)
 - An empty String is kept by forgetting the key, because no backend tells an empty document from none, so it comes
   back as the default.
 
+## The app at work (`everyui.app.AppBusy`)
+
+`AppBusy.state` is a `Var[Option[Busy]]` the app sets while it works, so the person sees it from elsewhere: None
+when idle, `Some(Busy())` when busy with no end in sight, `Some(Busy(Some(0.42), Some("deliver")))` when 42%
+through something named. `progress` is 0 to 1 (held to it) and `label` any short name. DataWrangler's, from its
+running workflows:
+
+```scala
+AppBusy.state := running().headOption.map(w => Busy(Some(running().map(_.progress).sum / running().size), Some(w.name)))
+```
+
+Each platform shows it its own way, and restores everything exactly once it is None again:
+
+- **Web**: the tab's icon. A ring around the app's own icon (the page's `<link rel="icon">`, drawn smaller inside
+  it) fills with the progress, or an arc turns round it. Browsers do not animate GIF, APNG or SVG icons in a tab, so
+  the pictures are drawn on a canvas and put in the link as data URLs; each icon link gets its own address back when
+  idle, and a page with none gets a link for the time it is busy. The spinner runs on a clock of its own at 8
+  pictures a second, not the frame loop, in a worker so that a tab in the background keeps turning (a page's own
+  timers are slowed there to once a second, then once a minute). A picture is drawn only when it changes: a
+  progress, only when it moves by 1/60. The ring is the theme's accent, deepened to read on a light or dark tab
+  strip. An icon from another origin without CORS cannot be drawn on, so there the ring is drawn alone.
+- **Desktop**: the dock or taskbar entry, through `java.awt.Taskbar`, where the system has one for the whole app:
+  macOS fills the dock icon and badges it "…" when there is no progress; Linux fills the launcher entry where
+  libunity is installed and a Unity launcher reads it (Ubuntu's dock, KDE's task manager). Windows only has a
+  window's taskbar button, which a JavaFX stage is not, so nothing shows. KDE on Wayland without libunity (this
+  build's machine) reports no taskbar.
+- **Android**: an ongoing, silent notification with a progress bar (a moving one where there is none), titled with
+  the label or else the app's name, which opens the app when tapped and goes when idle. It has a channel of its own
+  (`everyui.busy`, "In progress", low importance). The app's manifest must declare
+  `<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />`, and on Android 13 and later the person
+  must allow it: `AppBusy.permit()` asks (a `Task[Boolean]`), best when they start something long;
+  `AppBusy.permitted` says whether it may. An Android TV shows nothing (there, `supported` is false).
+- **Roku, Apple TV**: nothing; `AppBusy.supported` is false.
+
+`AppBusy.inTitle @= true` (off by default) also puts it before the title, "(42% deliver) Dashboard", "(…) Dashboard",
+on the web's tab and the desktop's window, and takes it off again when idle; a title the app sets while busy takes it
+at the next change. Where a platform shows nothing else (the desktop on Windows or most of Linux) this is the only
+sign. `demo=busy` in the example app goes round idle, busy, and "deliver" from 0 to 100% (`title=1` for the title,
+`spin=<seconds>` to hold the spinner).
+
 ## Relative URLs and the origin
 
 `Network.http` and `Network.webSocket` take relative URLs and resolve them against `Network.origin`:
