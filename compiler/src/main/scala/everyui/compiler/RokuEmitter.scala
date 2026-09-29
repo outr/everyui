@@ -193,9 +193,10 @@ class RokuEmitter(
     def isUserModule(cd: ClassDef): Boolean = {
       val s = cd.symbol
       // A case class's companion is emitted too (its `given rw`, its own defs); its synthetic apply/unapply are not
-      // user members, and its default getters are inlined at the call site.
+      // user members, and its default getters are inlined at the call site. A file's top-level defs, vals and givens
+      // are its package object's (`Defs$package`), emitted as any object's are (`Defs_package_render`).
       s.exists && s.flags.is(Flags.Module) && !s.flags.is(Flags.Case) && !hasNative(s)
-        && !isEnumLike(s) && !s.name.stripSuffix("$").endsWith("$package") && !isBuiltin(s)
+        && !isEnumLike(s) && !isBuiltin(s)
     }
 
     def isUserClassSym(s: Symbol): Boolean =
@@ -1088,6 +1089,19 @@ class RokuEmitter(
     def isEnumCase(s: Symbol): Boolean =
       s.exists && s.isTerm && s.flags.is(Flags.Enum) && s.flags.is(Flags.Case)
         && (try s.owner.exists && s.owner.companionClass.exists && s.owner.companionClass.flags.is(Flags.Enum) catch case _: Throwable => false)
+    /** The enum whose companion `q` names (`Sort` in `Sort.values`). */
+    def enumOf(q: Term): Option[Symbol] = {
+      val s = q.symbol
+      val c = try if (s.exists && s.flags.is(Flags.Module)) s.companionClass else Symbol.noSymbol catch case _: Throwable => Symbol.noSymbol
+      if (c.exists && c.flags.is(Flags.Enum)) Some(c) else None
+    }
+    /** An enum's `values`: its simple cases in the order of their ordinals, as an array. */
+    def enumValues(enumClass: Symbol): String =
+      "[" + enumClass.children.filter(isEnumCase).map(c => emitEnumCase(c, c.name)).mkString(", ") + "]"
+    /** `Option`'s companion (`Option.empty[T]`). */
+    def isOptionModule(q: Term): Boolean = q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "scala.Option"
+    /** None, as an Option is a plain nullable. */
+    def noneValue: String = "invalid"
     def emitEnumCase(s: Symbol, name: String): String = {
       val enumClass = s.owner.companionClass
       val ordinal = try enumClass.children.indexOf(s) catch case _: Throwable => -1
@@ -2117,6 +2131,15 @@ class RokuEmitter(
         // a fabric RW instance (`stringRW`, `valueRW`): the runtime's codec of that name
         case id @ Ident(n) if isFabricRW(id.symbol)       => s"_rw(${brStr(n)})"
         case sel @ Select(_, n) if isFabricRW(sel.symbol) => s"_rw(${brStr(n)})"
+        // an enum's `values`, `valueOf` and `fromOrdinal`: its cases as an array, and one of them by name or ordinal
+        case Select(q, "values") if enumOf(q).isDefined => enumValues(enumOf(q).get)
+        case Apply(Select(q, "valueOf"), List(n)) if enumOf(q).isDefined =>
+          s"_enumValueOf(${enumValues(enumOf(q).get)}, ${emitTerm(n)})"
+        case Apply(Select(q, "fromOrdinal"), List(i)) if enumOf(q).isDefined =>
+          s"_enumFromOrdinal(${enumValues(enumOf(q).get)}, ${emitTerm(i)})"
+        // `Option.empty[T]`: None
+        case TypeApply(Select(q, "empty"), _) if isOptionModule(q) => noneValue
+        case Select(q, "empty") if isOptionModule(q) => noneValue
         // a Scala 3 enum's simple case (`ProtocolState.Active`): a runtime singleton, named and ordered
         case sel @ Select(_, n) if isEnumCase(sel.symbol) => emitEnumCase(sel.symbol, n)
         case id @ Ident(n) if isEnumCase(id.symbol)       => emitEnumCase(id.symbol, n)
@@ -5218,6 +5241,18 @@ class RokuEmitter(
       |end function
       |function RtEnumToString(self as object) as string
       |    return self._enum
+      |end function
+      |' An enum's `valueOf(name)` and `fromOrdinal(i)` over its `values`, throwing as the JVM does for no such case.
+      |function _enumValueOf(values as object, name as dynamic) as object
+      |    for each e in values
+      |        if e._enum = name then return e
+      |    end for
+      |    RtThrow({ _cls: "IllegalArgumentException", message: "enum case not found: " + _str(name) })
+      |    return invalid
+      |end function
+      |function _enumFromOrdinal(values as object, i as dynamic) as object
+      |    if i < 0 or i >= values.count() then RtThrow({ _cls: "NoSuchElementException", message: _str(i) })
+      |    return values[i]
       |end function
       |
       |' ── java.lang.Object: `new Object` is a lock (a synchronized block is just the block), so any distinct value does ──

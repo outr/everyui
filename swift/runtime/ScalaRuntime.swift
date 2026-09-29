@@ -1132,6 +1132,19 @@ func RtEnum(_ cls: V, _ name: V, _ ordinal: V) -> V {
     ga[key] = e
     return e
 }
+/// An enum's `valueOf(name)` over its `values`, throwing as the JVM does for no such case.
+func _enumValueOf(_ values: V, _ name: V) throws -> V {
+    if let e = rtItems(values).first(where: { rtS($0["_enum"]) == rtS(name) }) { return e }
+    return try RtThrow(IllegalArgumentException_new(.vStr("enum case not found: " + rtS(name))))
+}
+/// An enum's `fromOrdinal(i)` over its `values`, throwing as the JVM does for no such case.
+func _enumFromOrdinal(_ values: V, _ i: V) throws -> V {
+    let items = rtItems(values)
+    guard case .vInt(let n) = rtToInt(i), n >= 0, n < items.count else {
+        return try RtThrow(rtException("NoSuchElementException", rtS(i)))
+    }
+    return items[n]
+}
 
 // MARK: - java.lang.Object: `new Object` is a lock (a synchronized block is just the block), so any distinct value does
 

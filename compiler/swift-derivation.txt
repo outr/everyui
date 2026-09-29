@@ -2222,6 +2222,16 @@ class SwiftEmitter(
     /** `case x: SomeClass` for a class of this program's own. The spike's objects carry no ancestry yet, so this
       * still answers "true" as the Roku backend did before `_isa`; narrowing it waits on the Swift runtime. */
     def classTest(ts: Symbol, subj: String): String = "true"
+@@ old
+    def enumValues(enumClass: Symbol): String =
+      "[" + enumClass.children.filter(isEnumCase).map(c => emitEnumCase(c, c.name)).mkString(", ") + "]"
+@@ new
+    def enumValues(enumClass: Symbol): String =
+      rtArr(enumClass.children.filter(isEnumCase).map(c => emitEnumCase(c, c.name)))
+@@ old
+    def noneValue: String = "invalid"
+@@ new
+    def noneValue: String = NULL
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {

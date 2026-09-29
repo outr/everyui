@@ -703,8 +703,8 @@ own, so a sort chosen before the change is not carried over.)
   it applied. `Stored.get[T]` and `Stored.put[T]` read and write once. `Store.delete(space, key)` and
   `Store.clear(space)` forget (the next start is from the default).
 - Codecs are given for `String`, `Int`, `Long`, `Double`, `Boolean` and `Option` of any of them. `Codec.named` covers
-  one of a fixed set (on a Roku, list the cases, since its compiler does not read an enum's `values` yet), and
-  `Codec.from(encode, decode)` covers anything else. An app with fabric keeps a case class as JSON through its `RW`:
+  one of a fixed set (`Codec.named(Sort.values.toList)(_.toString)`), and `Codec.from(encode, decode)` covers
+  anything else. An app with fabric keeps a case class as JSON through its `RW`:
   `given Codec[Layout] = FabricCodec[Layout]` (in `everyui-network`, whose Scala.js build now depends on
   `everyui-web` for it).
 - An empty String is kept by forgetting the key, because no backend tells an empty document from none, so it comes
