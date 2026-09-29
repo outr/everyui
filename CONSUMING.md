@@ -996,6 +996,49 @@ if (Files.savable) Files.save(csv.getBytes("UTF-8"), "report.csv", Some("text/cs
 
 A relative URL is found against `Platform.origin()`.
 
+### Snapshots (`everyui.capture`)
+
+`Snapshot` takes a picture of what the app draws, as a PNG: the whole window, or one component and everything in it,
+`scale` times its size (2 for a sharper copy). Each answers a `Task[Option[SnapshotImage]]`, None where there is nothing
+to take (a component of no size) or it cannot be taken here. A `SnapshotImage` has the PNG's bytes (`png`), its `width`
+and `height` in pixels and its `mime`; `save(name)` hands it to the person as `Files.save` does, and `preview` is an
+address an `ImageView` shows it from (the web's object URL goes with `Files.release(preview)`).
+
+```scala
+import everyui.capture.Snapshot
+
+// a feedback form's screenshot, sent as a part
+if (Snapshot.supported) Snapshot.window().map(_.foreach { shot =>
+  Network.http(HttpCall.multipart("/feedback", List(FormPart.text("note", note()),
+    FormPart.file("screenshot", "screenshot.png", shot.png, shot.mime)))).start()
+}).start()
+
+// a chart exported crisp at three times its size, straight from its figures
+Snapshot.drawing(chart, scale = 3.0, background = Some(Theme.surface())).map(_.foreach(_.save("chart.png").start())).start()
+```
+
+A component is drawn as it is laid out, over the colour behind it (the nearest solid background round it, else the
+window's), whatever lies over it on the screen; a scroll inside it shows what it has scrolled to. `Snapshot.drawing(d)`
+and `Snapshot.figures(figures, width, height)` draw a `Drawing`'s figures into a PNG without the screen at all, over a
+`background` or clear, at any scale: a graph's export (`Snapshot.drawable`).
+
+- **Web**: a browser cannot draw its own elements into a picture, so they are drawn again. The component's elements are
+  copied as they stand, each with the style the browser worked out for it, its pictures and the faces its words are in
+  carried in as data, into an SVG `foreignObject`, which a canvas draws and writes as a PNG. It matches the page to the
+  pixel in Chromium (text in the page's faces, pictures, drawings, lists, rounded corners), in about a tenth of a
+  second. What the browser will not let the page read is left out, drawn as nothing: a picture of another origin that
+  does not allow the page to read it (CORS: `Access-Control-Allow-Origin`), a video whose frame cannot be read (another
+  origin's without CORS, or protected), and an embed or web view (another page). Scroll bars of the page's own scrolls
+  are left out. Faces are carried from the page's `@font-face` rules and the faces the app registered; a style sheet of
+  another origin is read again where it allows that, and a face that cannot be read falls back to the system's.
+- **Desktop**: JavaFX draws the node, or the scene's root, into an image (`Node.snapshot`) at the scale, over the colour
+  behind it; the PNG is written on a thread of its own. A JavaFX popup window (a system tooltip) is not in the window's.
+- **Android**: the window is copied from what the display shows (PixelCopy), video and hardware layers with it; a
+  component's views are drawn into a bitmap of their own, a TextureView's frame drawn in where it is. A SurfaceView's
+  picture (a video on its own plane) never passes through the app's drawing, so it is not in a component's picture,
+  only the window's.
+- **Roku, Apple TV**: nothing is taken (`supported` and `drawable` are false), and each answers None.
+
 ### Clipboard (`everyui.clipboard`)
 
 `Clipboard.copy(text)` puts text on the system's clipboard where there is one (`Clipboard.copies`), and

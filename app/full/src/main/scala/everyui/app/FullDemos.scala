@@ -45,5 +45,9 @@ object FullDemos {
       TransferDemo.run()
       true
     }
+    else if (demo == "capture") {
+      CaptureDemo.run()
+      true
+    }
     else false
 }

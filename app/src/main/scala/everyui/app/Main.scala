@@ -57,6 +57,9 @@ import everyui.render.Platform
   *   transfer   files and a server: a POST answered with a file, saved (`HttpFiles.save`) and read as bytes, and a
   *              multipart upload of a JSON field and a file, made or picked (`api=<origin>`); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
+  *   capture    pictures the app takes of itself (Snapshot): a panel of words, a picture, a chart and a list as a PNG,
+  *              the window, and the chart at three times its size from its figures, shown and saved (`probe=1`,
+  *              `scale=2`, `photo=<url>`, `theme=light`); not on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
