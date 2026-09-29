@@ -456,6 +456,42 @@ this too. Before, it kept Backspace, Space and the arrows from its own field whi
 - `new Checkbox("Wrap lines", compact = true)` is 24 pixels tall with a smaller box and words, as wide as its label
   unless given a `width`, for dense tool windows. Its focus ring stays clear of the box and the words.
 
+## Remembering small things (`everyui.store`)
+
+`Stored(space, key, default)` is a `Var` kept on the device between visits: read once as the app starts, written on
+every change after. It is for what a person picks for themselves, such as how a list is sorted or which tab is open.
+It works the same on every backend (the browser's storage, files on the desktop, Android, a Roku and an Apple TV),
+so an app never reaches for `localStorage` itself.
+
+```scala
+import everyui.store.{Codec, Stored}
+
+given Codec[Sort] = Codec.named(Sort.values.toList)(_.toString)   // an enum, kept by name
+val sort: Var[Sort] = Stored("dw.dashboard", "overview.sort", Sort.Name)
+```
+
+That second line replaces DataWrangler's `Remembered.load` / `Remembered.save` pair. (It is kept under a key of its
+own, so a sort chosen before the change is not carried over.)
+
+- The read is asynchronous. If the Var changes before it answers, because the app set it or the person chose, the
+  change stands and the kept value is not applied over it. The value read is not written back.
+- Nothing kept, or text the codec cannot read (an enum case since renamed), leaves the default. So does a browser
+  that refuses storage (a private window, or blocked site data). A read may always come back empty, and the app must
+  draw the same screen when it does.
+- Writes are coalesced within a turn: a Var set several times in one pass is written once, with the value it ended
+  on. Nothing waits past that, so a reload straight after a change keeps it. A value that changes every frame, such
+  as a slider mid-drag, is written every frame, so keep the value it settles on.
+- `Stored.connect(space, key, v)` does the same for a Var the app already has, and answers a `Task` with the value
+  it applied. `Stored.get[T]` and `Stored.put[T]` read and write once. `Store.delete(space, key)` and
+  `Store.clear(space)` forget (the next start is from the default).
+- Codecs are given for `String`, `Int`, `Long`, `Double`, `Boolean` and `Option` of any of them. `Codec.named` covers
+  one of a fixed set (on a Roku, list the cases, since its compiler does not read an enum's `values` yet), and
+  `Codec.from(encode, decode)` covers anything else. An app with fabric keeps a case class as JSON through its `RW`:
+  `given Codec[Layout] = FabricCodec[Layout]` (in `everyui-network`, whose Scala.js build now depends on
+  `everyui-web` for it).
+- An empty String is kept by forgetting the key, because no backend tells an empty document from none, so it comes
+  back as the default.
+
 ## Relative URLs and the origin
 
 `Network.http` and `Network.webSocket` take relative URLs and resolve them against `Network.origin`:

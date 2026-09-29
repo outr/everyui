@@ -146,9 +146,11 @@ def demoSources(backend: String): File =
   (file("app") / (if (backend == "native") "native" else "full") / "src" / "main" / "scala").getAbsoluteFile
 def networkBackend(name: String): File = (file("network") / name / "src" / "main" / "scala").getAbsoluteFile
 /** A backend's source roots: the framework (`shared/`), the example app (`app/`), the network module and its
-  * backend — with Spice's own client where Spice runs (`spice = true`: the JVM and JS backends). */
+  * backend — with Spice's own client where Spice runs (`spice = true`: the JVM and JS backends), and there the
+  * store's fabric codec (`network/fabric`), which needs both the UI layer and fabric. */
 def backendSources(backend: String, spice: Boolean): Seq[File] =
-  Seq(sharedSources, appSources, demoSources(backend), protocolSources, networkSources, networkBackend(backend)) ++ (if (spice) Seq(networkBackend("spice")) else Nil)
+  Seq(sharedSources, appSources, demoSources(backend), protocolSources, networkSources, networkBackend(backend)) ++
+    (if (spice) Seq(networkBackend("spice"), networkBackend("fabric")) else Nil)
 
 // --- published: what an app outside this build depends on (CONSUMING.md) ----------------------------------------
 // `sbt publishLocal` publishes these, and only these:
@@ -210,12 +212,14 @@ lazy val networkJvm = (project in file("network/jvm"))
     )
   )
 
+// on the web it also carries the store's fabric codec (everyui.store.FabricCodec), for which it takes everyui-web
 lazy val networkJs = (project in file("network/js"))
   .enablePlugins(ScalaJSPlugin)
+  .dependsOn(web)
   .settings(published)
   .settings(
     name := "everyui-network",
-    Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice")),
+    Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice"), networkBackend("fabric")),
     libraryDependencies ++= Seq(
       "com.outr" %% "spice-client" % spiceVersion,
       // spice-core_sjs1 as published locally lists its dependencies by their JVM names (reactify_3 is excluded
