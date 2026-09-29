@@ -60,6 +60,17 @@ lazy val app = project.in(file("app"))
   )
 ```
 
+### Republished snapshots
+
+Each publish replaces the last under the same version, and one may bring other dependencies of its own (a newer Spice).
+sbt resolves again only when what a build declares changes, so a build used to keep the old resolution and run the new
+EveryUI jars with the old Spice, failing with `NoSuchMethodError`. With sbt-everyui a build notices: each project hashes
+the descriptors (`ivy.xml`) of its snapshot dependencies in `~/.ivy2/local`, and of the snapshots those depend on, and
+resolves again once after a publish changed any of them (in a running sbt server too, whose in-memory resolutions it
+lets go), and never when nothing changed. A build without the plugin, or with an sbt-everyui from before this, recovers
+in a new server (`sbt shutdown`) by running `update` itself, which resolves afresh when it is the command, or `clean`;
+in the server that resolved it, neither helps, since that server remembers the old resolution.
+
 ## A minimal web app
 
 ```scala

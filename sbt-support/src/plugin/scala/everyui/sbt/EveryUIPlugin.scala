@@ -82,6 +82,15 @@ object EveryUIPlugin extends AutoPlugin {
     }
 
   override def projectSettings: Seq[Setting[?]] = Seq(
+    // a snapshot republished to the local repository with other dependencies of its own is resolved again (LocalSnapshots)
+    transitiveUpdate := Def.uncached {
+      val reports = transitiveUpdate.value
+      val repository = LocalSnapshots.repository(ivyPaths.value.ivyHome)
+      val cross = CrossVersion(scalaVersion.value, scalaBinaryVersion.value)
+      val stamp = LocalSnapshots.stamp(LocalSnapshots.descriptors(repository, libraryDependencies.value.map(cross)))
+      LocalSnapshots.recorded(target.value / "everyui-local-snapshots", stamp)
+      reports ++ stamp.map(LocalSnapshots.report(repository, _))
+    },
     everyuiVersion := published.getOrElse((ThisBuild / version).value),
     everyuiAppFonts := Nil,
     everyuiFonts := Def.uncached {
