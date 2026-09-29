@@ -366,10 +366,11 @@ class RenderNode(val fx: Node) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** `"normal"` wraps a text node at its width; anything else keeps it on one line. */
+  /** `"normal"` (or `"pre-wrap"`, `"pre-line"`, which keep the words' own line breaks as a text node always does here)
+    * wraps a text node at its width; anything else keeps it on one line. */
   def setWhiteSpace(value: String): Unit = fx match {
     case t: Text =>
-      wrapping = value == "normal"
+      wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
       applyAlign()
     case _ => ()
   }
@@ -960,6 +961,9 @@ object Platform {
     case stage: javafx.stage.Stage => stage.setTitle(title)
     case _ => ()
   }
+  /** Words for a screen reader to read out (a new message in a chat): no reader of roles or descriptions reaches this
+    * platform's nodes (`setSemantics`), so nothing is said. */
+  def announce(words: String): Unit = ()
   /** A desktop keeps its own screen timing. */
   def keepAwake(on: Boolean): Unit = ()
   /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): the root multiplied by a flat

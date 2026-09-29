@@ -392,6 +392,8 @@ object Platform {
   /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
   def afterFirstPaint(f: () => Unit): Unit = f()
 
+  /** Words for a screen reader to read out (a new message in a chat): not yet said here. */
+  def announce(words: String): Unit = ()
   def setTitle(title: String): Unit = ()
   /** Whether copyText reaches a clipboard: the television has none to paste from, so a caller offers something else. */
   def clipboard(): Boolean = false

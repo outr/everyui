@@ -7,14 +7,12 @@ import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
 
-import scala.collection.mutable
-
 /** A list of any length that makes only the rows that can be seen: as it scrolls, a row leaving one end is handed the
   * item arriving at the other (`ListRow.item`), so fifty thousand items cost what a screenful does.
   *
   * `items` is the app's, and the list follows it; each item has a `key`, by which the cursor, the selection and the
-  * scroll are kept while items come and go around them. Rows are `rowHeight` tall, or with `measured` as tall as each
-  * one draws itself (`rowHeight` is then the guess for one not yet drawn).
+  * scroll are kept while items come and go around them. Rows are `rowHeight` tall, or with `measuredRows` as tall as
+  * each one draws itself (`rowHeight` is then the guess for one not yet drawn).
   *
   * The list takes the focus as one component, with a cursor (`current`) among its rows: the arrows, Page Up and Down,
   * Home and End move it (Shift extends the selection, the primary modifier moves it alone), Enter activates the row
@@ -30,7 +28,7 @@ import scala.collection.mutable
   *   list.scrollTo(list.indexOf(path))
   * }}} */
 class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labelOf: T => String,
-                     val rowHeight: Double = VirtualList.rowHeight, measured: Boolean = false)
+                     val rowHeight: Double = VirtualList.rowHeight, measuredRows: Boolean = false)
                     (makeRow: () => ListRow[T]) extends Container {
   override def kind: String = "VirtualList"
 
@@ -47,6 +45,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   val clickActivates: Var[Boolean] = own(Var(!Platform.pointerSupport()))
   /** Rows made beyond each end of what shows, so a short scroll has them ready. */
   val overscan: Var[Int] = own(Var(4))
+  /** Whether the rows are kept scrolled to their end as they come, go and are drawn at heights of their own, rather
+    * than with the first that shows kept where it is: a chat's transcript while its newest message is in view. */
+  val followsEnd: Var[Boolean] = own(Var(false))
 
   /** Keys a list built on this one answers first (a tree's Left and Right): the action for a press, if it takes it. */
   var keys: KeyEvent => Option[() => Unit] = _ => None
@@ -55,11 +56,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   var clicks: (Int, Double) => Boolean = (_, _) => false
 
   private var shown: Vector[T] = Vector.empty
-  private val indexes = mutable.HashMap.empty[String, Int]
-  private val heights = mutable.HashMap.empty[String, Double]
+  // (immutable maps: a Roku keeps one keyed by strings as an associative array, and has no mutable one)
+  private var indexes: Map[String, Int] = Map.empty
+  private var heights: Map[String, Double] = Map.empty
   private var tops: Array[Double] = Array(0.0)
   private var topsStale = false
-  private val placed = mutable.HashMap.empty[Int, ListRow[T]]
+  private var placed: Map[Int, ListRow[T]] = Map.empty
   private var spare: List[ListRow[T]] = Nil
   private var currentAt = -1
   private var laying = false
@@ -92,18 +94,18 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   /** Where row `index` starts, from the top of the first. */
   def top(index: Int): Double =
-    if (!measured) index * rowHeight
+    if (!measuredRows) index * rowHeight
     else {
       if (topsStale) retop()
       tops(math.max(0, math.min(index, tops.length - 1)))
     }
   def heightAt(index: Int): Double =
-    if (!measured) rowHeight else heights.getOrElse(keyOf(shown(index)), rowHeight)
+    if (!measuredRows) rowHeight else heights.getOrElse(keyOf(shown(index)), rowHeight)
   /** How tall all the rows are together. */
   def total: Double = top(count)
 
   /** The row at `y` down the rows (0 at the first's top), kept within the list. */
-  def indexAt(y: Double): Int = if (count == 0) -1 else if (!measured) {
+  def indexAt(y: Double): Int = if (count == 0) -1 else if (!measuredRows) {
     math.max(0, math.min(count - 1, (y / rowHeight).toInt))
   } else {
     if (topsStale) retop()
@@ -132,8 +134,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private def furthest: Double = math.max(0.0, total - size.height())
 
   def scrollBy(delta: Double): Unit = scrollTop(offset() + delta)
-  /** Scrolled `to` pixels down, within the rows. */
-  def scrollTop(to: Double): Unit = offset @= math.max(0.0, math.min(furthest, to))
+  /** Scrolled `to` pixels down, within the rows. (Where the rows showed before some were drawn at heights of their own
+    * is let go: they are to show from here now.) */
+  def scrollTop(to: Double): Unit = {
+    held = None
+    offset @= math.max(0.0, math.min(furthest, to))
+  }
 
   /** Row `index` brought to `align` of the view: 0 at the top, 0.5 in the middle, 1 at the bottom. */
   def scrollTo(index: Int, align: Double = 0.0): Unit = if (index >= 0 && index < count) {
@@ -168,20 +174,20 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   def selectRange(from: Int, to: Int): Unit = if (count > 0) {
     val a = math.max(0, math.min(from, to))
     val b = math.min(count - 1, math.max(from, to))
-    val keys = Set.newBuilder[String]
+    var keys = Set.empty[String]
     var i = a
     while (i <= b) {
       keys += keyAt(i)
       i += 1
     }
-    selection.keys @= keys.result()
+    selection.keys @= keys
     selection.anchor @= Some(keyAt(math.max(0, math.min(count - 1, from))))
   }
 
   /** Every row chosen, where more than one may be. */
   def selectAll(): Unit = if (selection.multiple() && count > 0) {
     val anchor = selection.anchor()
-    selection.keys @= shown.iterator.map(keyOf).toSet
+    selection.keys @= shown.map(keyOf).toSet
     selection.anchor @= anchor.orElse(Some(keyAt(0)))
   }
 
@@ -486,10 +492,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   /** The row showing `key` made again from its item, now: for what it shows that comes from outside the item (a
     * status the app keeps elsewhere). A change to the item itself (a new value in `items`) redraws its row anyway. */
-  def redecorate(key: String): Unit = placed.valuesIterator.filter(_.item().exists(t => keyOf(t) == key)).foreach(redraw)
+  def redecorate(key: String): Unit = placed.values.filter(_.item().exists(t => keyOf(t) == key)).foreach(redraw)
 
   /** Every row showing made again from its item (see `redecorate`). */
-  def redecorateAll(): Unit = placed.valuesIterator.foreach(redraw)
+  def redecorateAll(): Unit = placed.values.foreach(redraw)
 
   private def redraw(row: ListRow[T]): Unit = {
     val was = row.item()
@@ -506,17 +512,19 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       row
     case Nil =>
       val row = makeRow()
-      if (measured) row.size.height.attach(_ => note(row))
+      if (measuredRows) row.size.height.attach(_ => note(row))
       row
   }
 
-  // a row drawn at a height of its own: the rows after it move
+  // a row drawn at a height of its own: the rows after it move (the first that showed is noted first, as it was, for
+  // `later` to keep it there: a row above it drawn taller or shorter must not move it)
   private def note(row: ListRow[T]): Unit = {
     val h = row.size.height()
     if (h > 0.0) row.item().foreach { t =>
       val key = keyOf(t)
       if (!heights.get(key).contains(h)) {
-        heights(key) = h
+        if (held.isEmpty) held = firstShowing()
+        heights = heights.updated(key, h)
         topsStale = true
         later()
       }
@@ -542,14 +550,14 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val width = size.width()
     val first = if (count == 0) 0 else math.max(0, indexAt(offset()) - overscan())
     val last = if (count == 0) -1 else math.min(count - 1, indexAt(offset() + height) + overscan())
-    placed.filterInPlace { (i, row) =>
-      val keep = i >= first && i <= last
-      if (!keep) {
+    val leaving = placed.filter { case (i, _) => i < first || i > last }
+    if (leaving.nonEmpty) {
+      leaving.values.foreach { row =>
         row.visible @= false
         row.item @= None
         spare = row :: spare
       }
-      keep
+      placed = placed.filter { case (i, _) => i >= first && i <= last }
     }
     var made: List[Component] = Nil
     val chosen = selection.keys()
@@ -557,15 +565,18 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val lit = focused()
     var i = first
     while (i <= last) {
-      val row = placed.getOrElseUpdate(i, {
-        val r = take()
-        if (r.parent().isEmpty) made = r :: made
-        r
-      })
+      val row = placed.get(i) match {
+        case Some(r) => r
+        case None =>
+          val r = take()
+          if (r.parent().isEmpty) made = r :: made
+          placed = placed.updated(i, r)
+          r
+      }
       val t = shown(i)
       val key = keyOf(t)
       row.item @= Some(t)
-      if (measured) note(row)
+      if (measuredRows) note(row)
       row.index @= i
       row.selected @= chosen.contains(key)
       row.current @= cursor.contains(key)
@@ -573,7 +584,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       row.editing @= editing().contains(key)
       row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
       row.size.width @= width
-      if (!measured) row.size.height @= rowHeight
+      if (!measuredRows) row.size.height @= rowHeight
       row.position.top @= top(i) - offset()
       row.visible @= true
       i += 1
@@ -602,16 +613,24 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
   }
 
-  /** `change` made with the first row that shows kept where it is, when it is still in the list. */
+  // the first row that shows and how far above the top it starts, unless the rows are at their very top
+  private def firstShowing(): Option[(String, Double)] = if (count == 0 || offset() <= 0.0) None else {
+    val i = indexAt(offset())
+    Some((keyAt(i), top(i) - offset()))
+  }
+  private var held: Option[(String, Double)] = None
+
+  /** `change` made with the first row that shows kept where it is, when it is still in the list: where it was before
+    * rows were drawn at heights of their own, if they were since. */
   private def keepingPlace(change: => Unit): Unit = {
-    val anchor = if (count == 0 || offset() <= 0.0) None else {
-      val i = indexAt(offset())
-      Some((keyAt(i), top(i) - offset()))
-    }
+    val anchor = held.orElse(firstShowing())
+    held = None
     change
-    if (measured) retop()
-    anchor.foreach { case (key, dy) => indexes.get(key).foreach(i => offset @= top(i) - dy) }
-    offset @= math.max(0.0, math.min(furthest, offset()))
+    if (measuredRows) retop()
+    // set once, where it ends up: whatever follows the scroll hears one move, not a step on the way
+    val kept = if (followsEnd()) furthest else anchor.flatMap { case (key, dy) => indexes.get(key).map(i => top(i) - dy) }
+      .getOrElse(offset())
+    offset @= math.max(0.0, math.min(furthest, kept))
   }
 
 
@@ -739,13 +758,14 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
         case Some((at, t)) => base.patch(math.max(0, math.min(at, base.length)), Vector(t), 0)
         case None => base
       }
-      indexes.clear()
+      var built = Map.empty[String, Int]
       var i = 0
       while (i < shown.length) {
-        indexes(keyOf(shown(i))) = i
+        built = built.updated(keyOf(shown(i)), i)
         i += 1
       }
-      topsStale = measured
+      indexes = built
+      topsStale = measuredRows
     }
     selection.keep(k => indexes.contains(k))
     current() match {
@@ -753,10 +773,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       // last before it
       case Some(key) if !indexes.contains(key) =>
         // (one new in its place, a row renamed, is what took it)
-        val had = if (was >= 0 && was < count) before.iterator.map(keyOf).toSet else Set.empty[String]
+        val had = if (was >= 0 && was < count) before.map(keyOf).toSet else Set.empty[String]
         val renamed = if (was >= 0 && was < count && !had.contains(keyAt(was))) Some(keyAt(was)) else None
-        val after = before.iterator.drop(math.max(0, was)).map(keyOf).find(indexes.contains)
-        val earlier = before.take(math.max(0, was)).reverseIterator.map(keyOf).find(indexes.contains)
+        val after = before.drop(math.max(0, was)).find(t => indexes.contains(keyOf(t))).map(keyOf)
+        val earlier = before.take(math.max(0, was)).reverse.find(t => indexes.contains(keyOf(t))).map(keyOf)
         current @= renamed.orElse(after).orElse(earlier).orElse(if (count == 0) None else Some(keyAt(math.max(0, math.min(was, count - 1)))))
         if (!selection.multiple()) current().foreach(k => selection.only(k))
       case _ => ()
@@ -785,8 +805,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   size.width.attach(_ => clip())
   size.height.attach { _ =>
     clip()
-    offset @= math.max(0.0, math.min(furthest, offset()))
+    offset @= (if (followsEnd()) furthest else math.max(0.0, math.min(furthest, offset())))
   }
+  followsEnd.attach(on => if (on) offset @= furthest)
   private def clip(): Unit = {
     node.setClip(size.width(), size.height())
     refresh()

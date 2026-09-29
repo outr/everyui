@@ -122,7 +122,7 @@ class ListSpec extends FxSpec {
     }
     "place rows of their own heights" in {
       val items = Var(Vector("a", "b", "c"))
-      val list = fx(new VirtualList[String](items, s => s, s => s, measured = true)(() => new ListRow[String] {
+      val list = fx(new VirtualList[String](items, s => s, s => s, measuredRows = true)(() => new ListRow[String] {
         size.height := (if (item().contains("b")) 60.0 else 20.0)
       }))
       onScreen(list) {

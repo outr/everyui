@@ -630,11 +630,12 @@ class RenderNode(val view: View) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** `"normal"` wraps a text node at its width; anything else breaks it only where the words themselves do. */
+  /** `"normal"` (or `"pre-wrap"`, `"pre-line"`: a TextView keeps the words' own line breaks anyway) wraps a text node
+    * at its width; anything else breaks it only where the words themselves do. */
   def setWhiteSpace(value: String): Unit = view match {
     case _: EditText => ()
     case t: TextView =>
-      wrapping = value == "normal"
+      wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
       if (wrapping) {
         t.setMaxLines(Integer.MAX_VALUE)
         t.setHorizontallyScrolling(false)
@@ -1523,6 +1524,8 @@ object Platform {
   def afterFirstPaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = Host.activity.setTitle(title)
+  /** `words` read out by TalkBack when it next can, where it is on (a new message in a chat). */
+  def announce(words: String): Unit = if (RenderNode.reading && Host.root != null) Host.root.announceForAccessibility(words)
   /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
     * server refuses the platform's own `Dalvik/…`. */
   def identify(app: String): Unit = Host.agent = app

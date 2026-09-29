@@ -296,9 +296,10 @@ class RenderNode(val sg: SGNode) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** A Label is a single line, cut short with an ellipsis, unless told to wrap: `"normal"` wraps it at its width. */
+  /** A Label is a single line, cut short with an ellipsis, unless told to wrap: `"normal"` (or `"pre-wrap"`, `"pre-line"`)
+    * wraps it at its width. */
   def setWhiteSpace(value: String): Unit = {
-    wrapping = value == "normal"
+    wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
     uiSetWrap(sg, wrapping)
     spaceLines()
   }
@@ -656,6 +657,8 @@ object Platform {
   /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
   def afterFirstPaint(f: () => Unit): Unit = f()
 
+  /** Words for a screen reader to read out (a new message in a chat): a channel's nodes are not read, so nothing is. */
+  def announce(words: String): Unit = ()
   def setTitle(title: String): Unit = ()
   /** Whether copyText reaches a clipboard: a channel has none, so a caller offers something else or nothing. */
   def clipboard(): Boolean = false

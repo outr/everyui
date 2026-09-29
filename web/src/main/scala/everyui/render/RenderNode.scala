@@ -1115,6 +1115,22 @@ object Platform {
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
 
+  /** `words` read out by a screen reader when it next can, not cutting in on what it is reading (a new message in a
+    * chat): a polite live region, made on first use, off the screen. The same words again are still read. */
+  def announce(words: String): Unit = {
+    val region = Option(dom.document.getElementById("everyui-announce")).getOrElse {
+      val made = dom.document.createElement("div").asInstanceOf[html.Element]
+      made.id = "everyui-announce"
+      made.setAttribute("aria-live", "polite")
+      made.setAttribute("role", "status")
+      made.style.cssText = "position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden"
+      dom.document.body.appendChild(made)
+      made
+    }
+    region.textContent = ""
+    dom.window.setTimeout(() => region.textContent = words, 50.0)
+  }
+
   /** The page's head says what the page now shown is (`everyui.seo.SEO`): its title, description, canonical
     * address, preview, other forms and structured data, replacing what the page before it said. What the server wrote
     * into the page first is replaced the same way, so the head never holds two of anything. */

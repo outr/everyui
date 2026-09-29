@@ -69,7 +69,7 @@ object DragDrop {
       g.position.left @= x + 14.0
       g.position.top @= y + 10.0
     }
-    val under = targets.findLast(t => Focus.showing(t) && inside(t, x, y))
+    val under = targets.reverse.find(t => Focus.showing(t) && inside(t, x, y))
     if (!under.exists(u => over.exists(_ eq u))) over.foreach(_.leaveDrop())
     over = under
     under.foreach(_.hoverDrop(x, y, rows))
