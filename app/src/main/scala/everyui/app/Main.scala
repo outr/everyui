@@ -36,6 +36,8 @@ import everyui.render.Platform
   *   dispose    home, then a theatre guide shown once, then a calendar over home, which disposes of the guide: nothing
   *              that made it up is left reachable afterwards (DisposeSpec; `sgnodes all` on a Roku)
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
+  *   dates      the date pickers: a date field and calendar, a range field and range calendar with presets, and
+  *              their dialogs (`dialog=date|range`, `theme=light`, `lang=ar`, `today=`, `min=`, `max=`)
   *   sliders    sliders, range sliders and switches: steps, divisions, value labels, vertical, out of use (`theme=light`,
   *              `rtl=1`)
   *   captions   the device's caption setting as it changes, over a video that follows it until a subtitle track is
@@ -81,6 +83,7 @@ import everyui.render.Platform
   else if (demo == "chat") ChatDemo.run()
   else if (demo == "busy") BusyDemo.run()
   else if (demo == "colors") ColorsDemo.run()
+  else if (demo == "dates") DatesDemo.run()
   else if (demo == "sliders") SlidersDemo.run()
   else if (demo == "markdown") MarkdownDemo.run()
   else if (demo == "richlist") RichListDemo.run()

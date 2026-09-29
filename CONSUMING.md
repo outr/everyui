@@ -1194,6 +1194,62 @@ switch as a switch that is checked or not (`aria-checked`): `Semantics.slider` a
 component can say. `SliderScale` is the arithmetic on its own (snapping, clamping, a range's gap, where each key goes),
 and `everyui.event.PointerDrag` the drag, held from the press until it lets go, for a control of an app's own.
 
+### Dates (`everyui.date`)
+
+A date picker and a date-range picker in plain shared EveryUI, on every backend, with the date type they work in.
+
+`CalendarDate(year, month, day)` is a day with no time or zone, worked out in plain arithmetic (no `java.time`, which a
+Roku has none of): `plusDays`, `plusWeeks`, `plusMonths` and `plusYears` (January 31 and a month is February 28 or 29),
+`weekday` (1 Monday to 7 Sunday), `daysInMonth`, `isLeapYear`, `daysUntil`, `compare`, `isBefore`/`isAfter`, `within`
+and `clamp` to optional bounds, `startOfWeek(firstDay)`, and ISO 8601 both ways (`iso`, `CalendarDate.parse`). To and
+from the epoch: `toEpochMillis`/`fromEpochMillis` at UTC midnight, and `toLocalEpochMillis`/`fromLocalEpochMillis` where
+the device is (`Platform.localDateTime`, so the platform's own zone), with `localOffsetMillis` and `CalendarDate.today()`.
+`DateRange(start, end)` is both ends included (`DateRange.of` puts them in order), `DateRange.parse("2026-09-01/2026-09-29")`.
+
+```scala
+import everyui.date.*
+
+val due = Var(Option(CalendarDate.today().plusDays(7)))
+val field = new DateField("Due date", due, min = Some(CalendarDate.today()))   // typed, or its calendar button
+val picker = new DatePicker(due)                                               // a calendar on the page, in step
+DatePicker.pick(DateWords.selectDate, due()).map(_.foreach(d => due @= Some(d))).start()   // OK and Cancel
+
+val period = Var(Option.empty[DateRange])
+val presets = List(DatePreset.lastDays("Last 7 days", 7), DatePreset.lastDays("Last 30 days", 30),
+  DatePreset.thisMonth("This month"), DatePreset.lastMonth("Last month"), DatePreset("Next week", t => ...))
+new DateRangeField(period, max = Some(CalendarDate.today()), presets = presets)    // start and end fields
+new DateRangePicker(period, presets = presets)
+DateRangePicker.pick(DateWords.selectRange, period(), presets = presets).map(_.foreach(r => period @= Some(r))).start()
+```
+
+`Calendar` is the month both pickers are made of: the month's name (press it for a grid of twenty years a page), the
+buttons to the month before and after, the days of the week, and the days, today ringed, the chosen filled, and those
+outside `min` and `max` muted and out of reach. The keyboard moves among the days as a grid does: the arrows a day and a
+week, Page Up and Down a month (Shift, a year), Home and End the week's ends, Enter chooses, and the month turns
+as the focus leaves it; the grid is one stop for Tab, the header's buttons others. On a remote, Up from the first week
+goes to the header and Down from the last out of the calendar (Left and Right still turn the month). A pointer or a
+finger chooses by tapping. In a range picker the first day starts the range and the next one (not before it) ends it, the
+days between drawn as a band, previewed to the day under the pointer or with the focus until the end is chosen
+(`RangeChoice`); `presets` are buttons above it. To a screen reader it is a `grid` of `row`s of `gridcell`s, each named
+with its whole date ("Tuesday, September 29, 2026, selected").
+
+A field shows the date in numbers as the language writes them (`DateFormat.numeric`: "9/29/2026", "29/09/2026",
+"2026/9/29"), or as `format` says: `DateFormat.medium` ("Sep 29, 2026"), `.full`, `.iso`, `.pattern("dd.MM.yyyy")`, or
+the app's own `DateFormat(write, read)`. What is typed is read leniently (`DateParse`): numbers in the language's order
+or with a four-digit year first, `20260929`, month names in the language or English, two-digit years near today, a year
+left out as this one's. It changes the value only once it is a date in range; left holding anything else, it says so
+under itself (`error`), and left holding a date it is written again in the format. Its calendar drops from it on a
+screen 600 wide or more, and is a dialog otherwise; on a remote (`Platform.remoteNavigation`) there is nothing to type,
+and OK on the field opens the dialog.
+
+Month and weekday names, a date in full and a month with its year come from `everyui.i18n.DateText` (CLDR's
+`yMMMMEEEEd`, `yMMMM`, `yMd` and the narrow weekdays now in `DateSymbols`) in the language in use; the week starts on
+`everyui.i18n.WeekStart.current()`: CLDR's first day for the device's region where it speaks the app's language, else
+the language's likeliest region (Sunday for `en` and `pt`, Saturday for `ar`, Monday for most), or `WeekStart.chosen`.
+The pickers' own words are `DateWords` (Select date, Previous month, Not a date, …), in English unless the app gives them
+with `Words.add` under `date.*` keys. In a right-to-left language the grid, the header and the band mirror, and Left and
+Right with them. `Calendar.textSize` is set once, larger, on a television.
+
 ### Smaller pieces
 
 - `new SplitPane(..., collapsible = Some(SplitSide.First), startCollapsed = true)` is folded from the first frame, so
