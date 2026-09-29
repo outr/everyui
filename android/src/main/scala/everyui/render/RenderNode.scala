@@ -625,6 +625,8 @@ class RenderNode(val view: View) {
     case d: DrawingView => d.figures(figures)
     case _ => ()
   }
+  /** Only a web page scrolls under a finger that drags: nothing to do here. */
+  def setTouchDrags(on: Boolean): Unit = ()
   /** A mouse on Android keeps its own arrow. */
   def setCursor(name: String): Unit = ()
 

@@ -329,6 +329,8 @@ class RenderNode(val el: html.Element) {
       }
     }
   }
+  /** A finger dragged on it drags it, rather than scrolling or zooming the page (CSS touch-action). */
+  def setTouchDrags(on: Boolean): Unit = el.style.setProperty("touch-action", if (on) "none" else "")
   /** The pointer's shape over it, by its CSS name ("col-resize", "text"); "" leaves the page's own. */
   def setCursor(name: String): Unit = el.style.cursor = name
 

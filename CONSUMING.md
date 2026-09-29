@@ -518,6 +518,35 @@ and a `preview` address an `ImageView` can show a picture from. `Files.release(p
 nothing shows it. `FileTypes.accepts(types, name, mime)` says whether a
 file is among the web's `accept` words ("image/*", "text/plain", ".md").
 
+### ColorPicker (`everyui.color`)
+
+A colour chooser in plain shared EveryUI, so it runs on every backend: a saturation and brightness area with a hue
+slider, an alpha slider where `alpha` allows see-through colours, the colour beside its hex and its red, green and
+blue fields, optional `presets`, and a row of the colours chosen lately. `value` is a `Var[Color]` the app gives and
+reads, in step both ways with the area, the sliders and the fields; a field changes it only once it holds a colour.
+`ColorDialog.pick` asks for one in a dialog (everyui.dialog) and remembers the one chosen.
+
+```scala
+import everyui.color.{ColorDialog, ColorPicker}
+
+val colour = Var(Color.fromHex("1e88e5"))
+val picker = new ColorPicker(colour, alpha = true, presets = ColorPicker.material)
+ColorDialog.pick("Label colour", label.colour(), presets = ColorPicker.material)
+  .map(_.foreach(c => label.colour @= c)).start()
+```
+
+A mouse or a finger presses or drags the area and the sliders (on the web, a finger's drag is theirs rather than the
+page's: `Component.touchDrags`). From the keyboard, Tab goes through them; the arrows move the area's thumb and a
+slider's, Shift ten times as far, and Home and End take a slider to its ends. Each is a `slider` to a screen reader,
+named with its value ("Hue 208°"). `ColorPicker.recent` holds the recent colours for every picker (give one its own
+`recent` to keep them apart); save and restore it as the app likes. `Hsv` and `ColorText` are the conversions: hue,
+saturation and value that keep a grey's hue, and strict hex and channel parsing.
+
+A Roku and an Apple TV draw no gradients, so there the picker has no area: saturation and brightness are sliders like
+the hue, drawn in bands of solid colour, and all of it works from the d-pad (Up and Down between controls, Left and
+Right along a slider or the swatches, OK on a swatch; a field takes its value from the platform's keyboard). Android
+TV keeps the area: OK starts moving its thumb with the arrows, and OK or Back stops.
+
 ### Smaller pieces
 
 - `new SplitPane(..., collapsible = Some(SplitSide.First), startCollapsed = true)` is folded from the first frame, so

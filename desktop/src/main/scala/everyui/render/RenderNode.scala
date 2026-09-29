@@ -354,6 +354,8 @@ class RenderNode(val fx: Node) {
       }*)
     case _ => ()
   }
+  /** Only a web page scrolls under a finger that drags: nothing to do here. */
+  def setTouchDrags(on: Boolean): Unit = ()
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"); "" for the default. */
   def setCursor(name: String): Unit = fx.setCursor(name match {
     case "col-resize" | "ew-resize" => javafx.scene.Cursor.H_RESIZE

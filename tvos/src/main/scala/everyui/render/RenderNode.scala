@@ -179,6 +179,8 @@ class RenderNode(val sg: SGNode) {
   /** The picture as it is: no tint here yet. */
   def setTint(hex: String): Unit = ()
 
+  /** Only a web page scrolls under a finger that drags: nothing to do here. */
+  def setTouchDrags(on: Boolean): Unit = ()
   /** No pointer to show. */
   def setCursor(name: String): Unit = ()
   // what a drawing shows here, which draws no paths: its rectangles (everyui.draw.Block)

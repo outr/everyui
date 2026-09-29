@@ -25,6 +25,7 @@ import everyui.render.Platform
   *   composer   a chat's composer: suggestions, attachments, @-mentions and /commands, a reply faked as busy
   *   chat       a group room in a ChatView: streaming replies, tool calls, reasoning, 2000 earlier entries (`theme=light`,
   *              `rtl=1`, `offline=1`, `probe=1`)
+  *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not
@@ -47,5 +48,6 @@ import everyui.render.Platform
   else if (demo == "busy") BusyDemo.run()
   else if (demo == "composer") ComposerDemo.run()
   else if (demo == "chat") ChatDemo.run()
+  else if (demo == "colors") ColorsDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

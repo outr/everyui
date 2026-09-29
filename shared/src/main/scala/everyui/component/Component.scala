@@ -152,6 +152,9 @@ class Component(val node: RenderNode) {
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"), where there is a
     * pointer to shape; "" leaves the platform's own. */
   lazy val cursor: Prop[String] = own(new Prop[String]("", c => node.setCursor(c)))
+  /** Whether a finger dragged on it is its own to follow (a slider, a colour area), rather than scrolling or zooming the
+    * page under it, which on the web would take the drag away part-way. */
+  lazy val touchDrags: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setTouchDrags(d)))
   /** What this is to whatever reads the page rather than looking at it (`Semantics`): a heading, the main content, a
     * set of links. On the web it is the element's ARIA role, level and label; elsewhere, where the platform has one, its
     * accessibility role. */
