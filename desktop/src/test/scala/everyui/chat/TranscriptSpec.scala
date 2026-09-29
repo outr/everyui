@@ -124,8 +124,7 @@ class TranscriptSpec extends FxSpec {
           eventually(!t.loading()) shouldBe true
           settle(t)
           if (!fx(t.exhausted())) {
-            // (within a few pixels: the entry that led its group may now continue one from the page before it)
-            fx(t.list.top(t.list.indexOf(key)) - t.list.offset()) shouldBe y +- 3.0
+            fx(t.list.top(t.list.indexOf(key)) - t.list.offset()) shouldBe y +- 0.5
             fx(t.list.indexOf(key)) should be >= 50
           }
           pages += 1
@@ -134,6 +133,38 @@ class TranscriptSpec extends FxSpec {
         fx(entries().size) shouldBe 530
         fx(entries().head.id) shouldBe "m0"
         fx(t.pin.pinned()) shouldBe false
+      }
+    }
+
+    "keep the header on the entry that led its group when earlier entries by its author come in above it" in {
+      val entries = Var[Vector[ChatEntry]]((0 until 30).toVector.map(i => ChatEntry.message("n" + i, ada, self = false, "Now " + i)))
+      var answer: Option[Vector[ChatEntry] => Unit] = None
+      val older = () => Task.async[Vector[ChatEntry]](done => answer = Some(done))
+      val t = fx(new Transcript(entries, Some(older)))
+      fx {
+        t.dayMarkers @= false
+        t.size.width @= 600.0
+        t.size.height @= 300.0
+      }
+      onScreen(t) {
+        settle(t)
+        fx(t.list.scrollTop(0.0))
+        settle(t)
+        eventually(answer.nonEmpty) shouldBe true
+        val (y, tall) = fx((t.list.top(0) - t.list.offset(), t.list.heightAt(0)))
+        fx(t.leads(0, entries().head)) shouldBe true
+        // a page by the same author, the last of it straight above what was first
+        fx(answer.get((0 until 20).toVector.map(i => ChatEntry.message("o" + i, ada, self = false, "Then " + i))))
+        settle(t)
+        val first = fx(t.list.indexOf("n0"))
+        first shouldBe 20
+        fx(t.leads(first, entries()(first))) shouldBe true
+        fx(t.leads(first + 1, entries()(first + 1))) shouldBe false
+        fx(t.leads(0, entries().head)) shouldBe true
+        fx(t.leads(19, entries()(19))) shouldBe false
+        // what showed is drawn as it was, where it was
+        fx(t.list.heightAt(first)) shouldBe tall
+        fx(t.list.top(first) - t.list.offset()) shouldBe y +- 0.001
       }
     }
 

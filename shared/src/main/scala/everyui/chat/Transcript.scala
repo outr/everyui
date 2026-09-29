@@ -63,6 +63,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private var dayOfEntry: Map[String, Option[String]] = Map.empty
   // what is kept by entry, made once: the app's components, tool calls' details
   private var kept: Map[String, Component] = Map.empty
+  // the entries that were first when earlier ones by the same author came in above them: they keep their header
+  private var headed: Set[String] = Set.empty
 
   val list: VirtualList[ChatEntry] = new VirtualList[ChatEntry](shown, _.id, _ => "", Transcript.guess,
     measuredRows = true)(() => new ChatRow(this))
@@ -93,8 +95,10 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   // ---- what shows ----
 
-  /** Whether the entry at `index` of the list starts a group (see `Grouping.leads`). */
-  def leads(index: Int, entry: ChatEntry): Boolean =
+  /** Whether the entry at `index` of the list starts a group (see `Grouping.leads`), with the avatar and the name. The
+    * entry that was the first there was keeps them when earlier ones by the same author come in above it, so nothing
+    * that shows changes or moves as history arrives. */
+  def leads(index: Int, entry: ChatEntry): Boolean = headed.contains(entry.id) ||
     Grouping.leads(if (index > 0 && index <= list.count) Some(list(index - 1)) else None, entry)
 
   /** How an entry is read out: a message by its author and words, a tool call by what it does and how it stands. */
@@ -157,7 +161,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     lastIds = ids
     pin.entries(ids)
     // what is kept for entries that have gone goes with them
-    if (kept.nonEmpty || dayOfEntry.size > ids.length) {
+    if (kept.nonEmpty || headed.nonEmpty || dayOfEntry.size > ids.length) {
       val here = ids.toSet
       val gone = kept.filter { case (id, _) => !here.contains(id) }
       if (gone.nonEmpty) {
@@ -165,6 +169,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
         kept = kept.filter { case (id, _) => here.contains(id) }
       }
       if (dayOfEntry.size > ids.length) dayOfEntry = dayOfEntry.filter { case (id, _) => here.contains(id) }
+      if (headed.nonEmpty) headed = headed.filter(here.contains)
     }
   }
 
@@ -204,6 +209,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       while (i < list.count - 1 && Grouping.isDay(list(i))) i += 1
       Some((list.keyAt(i), list.top(i) - list.offset()))
     }
+    // the entry that was first keeps its header, though it now continues a group
+    entries().headOption.foreach(first => if (!Grouping.leads(earlier.lastOption, first)) headed = headed + first.id)
     entries @= earlier ++ entries()
     anchor.foreach { case (key, dy) =>
       val i = list.indexOf(key)
