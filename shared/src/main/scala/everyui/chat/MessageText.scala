@@ -6,8 +6,9 @@ import everyui.component.types.{TextDirection, WhiteSpace}
 import everyui.theme.Theme
 import reactify.*
 
-/** A message's words as plain text: as wide as its longest line, wrapped at `widest`, its own line breaks kept. What a
-  * transcript shows a message with unless it is given another way to (`Transcript.render`: Markdown, say).
+/** A message's words as plain text: as wide as its longest line, wrapped at `widest`, its own line breaks kept. A
+  * transcript shows them so where it is given `MessageText.plain` to (`Transcript.render`), in place of the Markdown
+  * it shows by default (`MessageMarkdown`).
   *
   * The words are measured on one line first, out of sight, so a short reply makes a narrow bubble. They run the way
   * their own letters do (`direction`, `TextDirection.Auto` unless it is given), so an English message reads left to
@@ -38,6 +39,6 @@ class MessageText(text: Val[String], widest: Val[Double], points: Double = 14.0,
 }
 
 object MessageText {
-  /** The default way a transcript shows a message's words: plain, wrapped at the widest a bubble's text may be. */
+  /** A message's words shown plain, wrapped at the widest a bubble's text may be, not as Markdown. */
   def plain(text: Val[String], widest: Val[Double]): Component = new MessageText(text, widest)
 }

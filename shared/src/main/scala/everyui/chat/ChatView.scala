@@ -24,7 +24,7 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
                val working: Var[Vector[Working]] = Var(Vector.empty),
                val connection: Var[ConnectionState] = Var(ConnectionState.Connected),
                composer: Option[Component] = None,
-               render: (Val[String], Val[Double]) => Component = MessageText.plain) extends Container {
+               render: (Val[String], Val[Double]) => Component = MessageMarkdown.render) extends Container {
   val transcript: Transcript = new Transcript(entries, loadOlder, render)
   val status: StatusBar = new StatusBar(working, connection, transcript.ticker.now)
   /** What types the messages: the app's, filling the width at the bottom; none, and the transcript takes the room. */

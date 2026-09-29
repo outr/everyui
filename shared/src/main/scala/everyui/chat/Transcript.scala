@@ -30,8 +30,8 @@ import reactify.*
   * call or reasoning, or goes into the app's component (Right and Left open and close, as a tree's do). A new message
   * from somebody else is read out politely by a screen reader once it is whole.
   *
-  * `render` makes a message's words from its text and the widest they may be: plain text by default
-  * (`MessageText.plain`), or Markdown, say.
+  * `render` makes a message's words from its text and the widest they may be: Markdown by default
+  * (`MessageMarkdown.render`), as narrow as a short reply, or plain text (`MessageText.plain`).
   *
   * {{{
   *   val entries = Var(Vector.empty[ChatEntry])
@@ -42,7 +42,7 @@ import reactify.*
   * }}} */
 class Transcript(val entries: Var[Vector[ChatEntry]],
                  val loadOlder: Option[() => Task[Vector[ChatEntry]]] = None,
-                 val render: (Val[String], Val[Double]) => Component = MessageText.plain) extends Container {
+                 val render: (Val[String], Val[Double]) => Component = MessageMarkdown.render) extends Container {
   /** Whether a separator names the day wherever it changes between entries. */
   val dayMarkers: Var[Boolean] = own(Var(true))
   /** Whether a new message from somebody else is read out by a screen reader. */

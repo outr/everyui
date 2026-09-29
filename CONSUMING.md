@@ -539,6 +539,11 @@ A chat transcript (`everyui.chat`) shows every message's words, names, times, to
 earlier history arrives above an entry that led its group, that entry keeps its avatar and name, though an older
 message by the same author now sits straight above it, so nothing on the screen changes or moves.
 
+A transcript shows each message as Markdown by default (`MessageMarkdown`): as wide as its widest line up to the widest
+a bubble's words may be, so a short reply makes a narrow bubble, with code, a table, a rule or a picture taking all of
+that; the line breaks it was typed with kept; and a streaming message parsed again from its last block alone.
+`render = MessageText.plain` shows plain text instead.
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

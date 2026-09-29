@@ -16,8 +16,9 @@ import reactify.*
   * an agent thinks, runs a tool that succeeds and one that fails, and streams a long reply while the status bar shows
   * who is working; another asks for approval with a card of its own. Each message runs the way its own words do, the
   * Arabic ones right to left and the English ones left to right whichever way the app reads, and a long link, path and
-  * hash break inside their bubble. What is typed in the field at the bottom is sent as yours, and answered.
-  * `theme=light` for the light theme, `rtl=1` for right to left. Logs `chat ok` once built. */
+  * hash break inside their bubble. Messages are Markdown: the long reply has a list, a table, code and a link, and an
+  * Arabic one a list whose bullets stand on its right. What is typed in the field at the bottom is sent as yours, and
+  * answered. `theme=light` for the light theme, `rtl=1` for right to left. Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam")
@@ -141,9 +142,11 @@ object ChatDemo {
     Platform.after(10.0, () => {
       working @= working().map(w => if (w.id == "w-helper") w.copy(what = "writing the summary") else w)
       reply(entries, working, helper, "Here is where things stand:\n\n" +
-        "1. Two TODOs remain, both small.\n2. The test suite has one failure, in SocketSpec (reconnecting after a drop).\n" +
-        "3. Everything else since 1.4 is merged.\n\nI'd fix the reconnect test before we cut the release; the TODOs can " +
-        "wait for the next one.", "w-helper")
+        "1. Two `TODO`s remain, both small.\n2. The test suite has **one failure**, in `SocketSpec` (reconnecting after " +
+        "a drop).\n3. Everything else since 1.4 is merged.\n\n| Area | Status |\n|---|---|\n| Tests | 412 passed, 1 failed |\n" +
+        "| TODOs | 2 open |\n\nThe check that fails:\n\n```scala\nsocket.drop()\nassert(socket.reconnected)\n```\n\n" +
+        "I'd fix the reconnect test before we cut the release; the TODOs can wait. The log is in " +
+        "[run 412](https://ci.example.com/runs/412).", "w-helper")
     })
     Platform.after(13.0, () => {
       working @= working() :+ Working("w-scout", scout, "reading 14 files", Clock.real(), Some(() => working @= working().filterNot(_.id == "w-scout")))
@@ -165,6 +168,8 @@ object ChatDemo {
       add(entries, ChatEntry.message("l1", layla, self = false, "ممتاز. سأراجع SocketSpec بعد الظهر وأرسل لكم النتيجة.",
         Some(Clock.real())))
       add(entries, ChatEntry.message("l2", layla, self = false, "الخميس مناسب لي.", Some(Clock.real())))
+      add(entries, ChatEntry.message("l3", layla, self = false, "قبل الإصدار:\n\n- إصلاح `SocketSpec`\n- مراجعة " +
+        "**ملاحظات** الإصدار", Some(Clock.real())))
     })
     Platform.after(20.0, () => add(entries, ChatEntry.message("you-log", you, self = true, "The failing run's log: " +
       "https://ci.example.com/builds/2026-09-29/release-2.0/artifacts/logs/socket-spec-reconnect-after-drop-full-output.log " +
