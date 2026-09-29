@@ -2188,6 +2188,11 @@ class RokuEmitter(
         // (31 * h + c.toInt) added the letter itself
         case Select(q, "toInt" | "toLong") if fqnOf(q.tpe) == "scala.Char" => s"_chCode(${emitTerm(q)})"
         case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Char" => s"Cdbl(_chCode(${emitTerm(q)}))"
+        // a number narrowed to 16 or 8 bits wraps round as the JVM's does (PCM samples, bytes on the wire); a fraction is
+        // truncated first
+        case Select(q, n @ ("toShort" | "toByte")) =>
+          val whole = if (Set("scala.Double", "scala.Float").contains(fqnOf(q.tpe))) s"Fix(${emitTerm(q)})" else emitTerm(q)
+          if (n == "toShort") s"_toShort($whole)" else s"_toByte($whole)"
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
@@ -5607,6 +5612,20 @@ class RokuEmitter(
       |function longArrayOps(a as object) as object : return a : end function
       |function doubleArrayOps(a as object) as object : return a : end function
       |function booleanArrayOps(a as object) as object : return a : end function
+      |function shortArrayOps(a as object) as object : return a : end function
+      |function byteArrayOps(a as object) as object : return a : end function
+      |function floatArrayOps(a as object) as object : return a : end function
+      |' Short and Byte narrowing (toShort, toByte): the low 16 or 8 bits, read as signed
+      |function _toShort(n as dynamic) as integer
+      |    v = n and &hFFFF
+      |    if v >= 32768 then v = v - 65536
+      |    return v
+      |end function
+      |function _toByte(n as dynamic) as integer
+      |    v = n and &hFF
+      |    if v >= 128 then v = v - 256
+      |    return v
+      |end function
       |' Option.option2Iterable, for an Option used where a collection is wanted (a for-comprehension, a flatMap):
       |' None is invalid here as everywhere, Some is its value, and the iterable is empty or the one element.
       |function option2Iterable(o as dynamic) as object
