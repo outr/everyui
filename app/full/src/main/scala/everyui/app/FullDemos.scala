@@ -17,10 +17,6 @@ object FullDemos {
       PagedTableDemo.run()
       true
     }
-    else if (demo == "zoom") {
-      ZoomDemo.run()
-      true
-    }
     else if (demo == "platform") {
       PlatformDemo.run()
       true
