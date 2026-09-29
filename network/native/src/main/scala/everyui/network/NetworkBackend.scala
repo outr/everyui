@@ -52,7 +52,7 @@ object NetworkBackend {
         else if (call.headers.exists(_._1.toLowerCase == "content-type")) call.headers
         else call.headers :+ ("Content-Type" -> call.contentType)
       val body = if (call.parts.nonEmpty) Multipart.encode(call.parts, boundary)
-        else call.bodyBytes.getOrElse(call.body.map(uiUtf8(_)).getOrElse(new Array[Byte](0)))
+        else call.bodyBytes.getOrElse(call.body.map(_.getBytes("UTF-8")).getOrElse(Array.empty[Byte]))
       val hasBody = call.parts.nonEmpty || call.bodyBytes.isDefined || call.body.isDefined
       uiHttpBytes(call.method, call.url, json(typed), body, hasBody, call.binary,
         (status, headersJson, text, bytes) =>
@@ -62,10 +62,6 @@ object NetworkBackend {
       (status, headersJson, body) => done.success(HttpResult(status, headers(headersJson), body)))
     done
   }
-
-  /** `text` as the bytes of its UTF-8, and back: the platform's own, since a Roku's strings have neither. */
-  def utf8(text: String): Array[Byte] = uiUtf8(text)
-  def text(bytes: Array[Byte]): String = uiUtf8Text(bytes)
 
   private def json(headers: List[(String, String)]): String = JsonFormatter.Compact(obj(headers.map((k, v) => k -> str(v))*))
 

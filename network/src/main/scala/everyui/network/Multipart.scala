@@ -30,19 +30,19 @@ object Multipart {
     var chunks: List[Array[Byte]] = Nil
     parts.foreach { part =>
       val head = part match {
-        case FormPart.FieldPart(_, _) =>
-          "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + escape(part.name) + "\"\r\n\r\n"
-        case FormPart.FilePart(_, fileName, _, contentType) =>
-          "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + escape(part.name) + "\"; filename=\"" +
+        case FormPart.FieldPart(name, _) =>
+          "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + escape(name) + "\"\r\n\r\n"
+        case FormPart.FilePart(name, fileName, _, contentType) =>
+          "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + escape(name) + "\"; filename=\"" +
             escape(fileName) + "\"\r\nContent-Type: " + contentType + "\r\n\r\n"
       }
       val body = part match {
-        case FormPart.FieldPart(_, value) => NetworkBackend.utf8(value)
+        case FormPart.FieldPart(_, value) => value.getBytes("UTF-8")
         case FormPart.FilePart(_, _, bytes, _) => bytes
       }
-      chunks = NetworkBackend.utf8("\r\n") :: body :: NetworkBackend.utf8(head) :: chunks
+      chunks = "\r\n".getBytes("UTF-8") :: body :: head.getBytes("UTF-8") :: chunks
     }
-    chunks = NetworkBackend.utf8("--" + boundary + "--\r\n") :: chunks
+    chunks = ("--" + boundary + "--\r\n").getBytes("UTF-8") :: chunks
     joined(chunks.reverse)
   }
 

@@ -15,8 +15,4 @@ object NetworkBackend {
   def webSocket(url: String): WebSocket = SpiceHttp.webSocket(client, url)
   /** A multipart form goes as the browser's own FormData (`WebForm`); anything else through Spice's client. */
   def http(call: HttpCall): Task[HttpResult] = if (call.parts.nonEmpty) WebForm.send(call) else SpiceHttp.call(client, call)
-
-  /** `text` as the bytes of its UTF-8, and back. */
-  def utf8(text: String): Array[Byte] = text.getBytes("UTF-8")
-  def text(bytes: Array[Byte]): String = new String(bytes, "UTF-8")
 }

@@ -73,16 +73,11 @@ object Disposition {
           i += 3
         }
         else {
-          NetworkBackend.utf8(c).foreach(b => bytes = (if (b < 0) b + 256 else b.toInt) :: bytes)
+          c.getBytes("UTF-8").foreach(b => bytes = (b & 0xff) :: bytes)
           i += 1
         }
       }
-      val raw = bytes.reverse
-      // ISO-8859-1's bytes are the first 256 code points, written again as UTF-8
-      val utf8 = if (charset == "utf-8") Some(raw)
-        else if (charset == "iso-8859-1") Some(raw.flatMap(b => if (b < 0x80) List(b) else List(0xC0 + b / 64, 0x80 + b % 64)))
-        else None
-      utf8.map(u => NetworkBackend.text(u.map(_.toByte).toArray))
+      if (charset == "utf-8" || charset == "iso-8859-1") Some(new String(bytes.reverse.map(_.toByte).toArray, charset)) else None
     }
   }
 

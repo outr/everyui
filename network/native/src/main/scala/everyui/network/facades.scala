@@ -28,11 +28,3 @@ import everyui.compiler.api.native
   def apply(method: String, url: String, headersJson: String, body: Array[Byte], hasBody: Boolean, binary: Boolean,
             done: (Int, String, String, Array[Byte]) => Unit): Unit = native.value
 }
-/** `text` as the bytes of its UTF-8. */
-@native object uiUtf8 {
-  def apply(text: String): Array[Byte] = native.value
-}
-/** UTF-8 bytes as the text they are. */
-@native object uiUtf8Text {
-  def apply(bytes: Array[Byte]): String = native.value
-}

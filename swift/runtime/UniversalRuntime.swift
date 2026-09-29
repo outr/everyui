@@ -488,14 +488,6 @@ func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ 
     return .vNull
 }
 
-/// `text` as the bytes of its UTF-8, a Scala `Array[Byte]`'s numbers from -128 to 127.
-func uiUtf8(_ text: V) -> V { rtArr(Array(rtS(text).utf8).map { .vInt(Int(Int8(bitPattern: $0))) }) }
-
-/// UTF-8 bytes (a Scala `Array[Byte]`) as the text they are.
-func uiUtf8Text(_ bytes: V) -> V {
-    .vStr(String(decoding: rtItems(bytes).map { UInt8(truncatingIfNeeded: Int(rtDouble($0))) }, as: UTF8.self))
-}
-
 /// The same with a body of bytes (`hasBody`), or an answer wanted as bytes (`binary`) as well as text:
 /// `done(status, headersJson, text, bytes)`, a Scala `Array[Byte]`'s numbers from -128 to 127.
 func uiHttpBytes(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ binary: V, _ done: V) -> V {

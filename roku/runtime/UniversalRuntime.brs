@@ -1410,13 +1410,6 @@ sub uiHttpBytes(method as string, url as string, headersJson as string, body as 
     uiHttpEnqueue(request, done)
 end sub
 
-' `text` as the bytes of its UTF-8, as a Scala Array[Byte] is kept: numbers from -128 to 127.
-function uiUtf8(text as string) as object
-    ba = CreateObject("roByteArray")
-    ba.FromAsciiString(text)
-    return uiSignedBytes(ba)
-end function
-
 ' An roByteArray as a Scala Array[Byte] is kept: numbers from -128 to 127, read by index (not every engine walks a byte
 ' array with for each as a device does).
 function uiSignedBytes(ba as object) as object
@@ -1427,15 +1420,6 @@ function uiSignedBytes(ba as object) as object
         if b > 127 then out.Push(b - 256) else out.Push(b)
     end for
     return out
-end function
-
-' UTF-8 bytes (a Scala Array[Byte]) as the text they are.
-function uiUtf8Text(bytes as object) as string
-    ba = CreateObject("roByteArray")
-    for each b in bytes
-        ba.Push(b and 255)
-    end for
-    return ba.ToAsciiString()
 end function
 
 ' Queue `request` for a worker, `done` to hear its answer; the workers are started with the first.
