@@ -9,6 +9,7 @@
 import UIKit
 import CoreText
 import QuartzCore
+import MediaAccessibility
 
 // MARK: - app state
 
@@ -756,5 +757,43 @@ func uiStoreKeys(_ space: V) -> V {
 
 func uiStoreClear(_ space: V) -> V {
     try? FileManager.default.removeItem(at: uiStoreDir(space))
+    return .vNull
+}
+
+// MARK: - captions
+
+/// The viewer's caption setting (Settings, Accessibility, Subtitles and Captioning) as MediaAccessibility has it:
+/// "On" for Closed Captions and SDH (always on), "Automatic" (where the sound is not in the viewer's language), "Off"
+/// (forced subtitles only).
+func uiCaptionsMode() -> V {
+    switch MACaptionAppearanceGetDisplayType(.user) {
+    case .alwaysOn: return .vStr("On")
+    case .automatic: return .vStr("Automatic")
+    default: return .vStr("Off")
+    }
+}
+
+/// The first of the languages the viewer prefers captions in, or "".
+func uiCaptionsLanguage() -> V {
+    let languages = MACaptionAppearanceCopySelectedLanguages(.user).takeRetainedValue() as NSArray
+    return .vStr((languages.firstObject as? String) ?? "")
+}
+
+var uiCaptionObservers: [Int: NSObjectProtocol] = [:]
+var uiCaptionNext = 0
+
+/// `changed()` each time the viewer changes the setting, until uiCaptionsUnlisten(the id answered).
+func uiCaptionsListen(_ changed: V) -> V {
+    uiCaptionNext += 1
+    let name = Notification.Name(kMACaptionAppearanceSettingsChangedNotification as String)
+    uiCaptionObservers[uiCaptionNext] = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+        _ = try? RtInvoke(changed, rtArr([]))
+    }
+    return .vInt(uiCaptionNext)
+}
+
+func uiCaptionsUnlisten(_ id: V) -> V {
+    guard case .vInt(let key) = rtToInt(id), let observer = uiCaptionObservers.removeValue(forKey: key) else { return .vNull }
+    NotificationCenter.default.removeObserver(observer)
     return .vNull
 }

@@ -2160,17 +2160,133 @@ function uiStrOf(v as dynamic) as string
     return v.ToStr()
 end function
 
-' A track to hear or read by its id; text "" shows none. Captions are the device's to show, so turning a track on or
-' off is its caption mode, as Roku's own caption setting does.
+' A track to hear or read by its id; text "" shows none (uiCaptionsChosen).
 sub uiSelectMediaTrack(node as object, kind as string, id as string)
     if node = invalid or not node.hasField("availableAudioTracks") then return
     if kind = "audio"
         if id <> "" then node.audioTrack = id
-    else if id = ""
-        node.globalCaptionMode = "Off"
     else
-        node.subtitleTrack = id
-        node.globalCaptionMode = "On"
+        uiCaptionsChosen(node, id)
+    end if
+end sub
+
+' ── captions: the device's setting, and a video's by it ──
+' A Roku shows captions by its caption mode, the device's own setting (Settings, Accessibility, Captions mode, and the
+' options menu during a video), which outlives the video and the channel: a Video node's globalCaptionMode and
+' roDeviceInfo.SetCaptionsMode both write it. So the channel writes it only to show a track the app chose where the
+' device's mode is not On, and puts it back once that is over (uiCaptionsRestore); none chosen is suppressCaptions, on
+' that video alone. Main hears the viewer change it (roDeviceInfoEvent isCaptionModeChanged) and tells the scene.
+
+' The device's caption mode: "On", "Off", "Instant replay" or "When mute" (a Roku TV's).
+function uiCaptionsMode() as string
+    mode = CreateObject("roDeviceInfo").GetCaptionsMode()
+    if mode = invalid then return ""
+    return mode
+end function
+
+' The device's preferred caption language, two letters, or "" where the box does not say.
+function uiCaptionsLanguage() as string
+    info = CreateObject("roDeviceInfo")
+    if FindMemberFunction(info, "GetPreferredCaptionLanguage") = invalid then return ""
+    language = info.GetPreferredCaptionLanguage()
+    if language = invalid then return ""
+    return language
+end function
+
+' `changed()` each time the viewer changes the mode, until uiCaptionsUnlisten(the id answered).
+function uiCaptionsListen(changed as dynamic) as integer
+    ga = GetGlobalAA()
+    if ga.uiCaptionHooks = invalid
+        ga.uiCaptionHooks = {}
+        ga.uiCaptionHookNext = 0
+    end if
+    if ga.uiCaptionLast = invalid then ga.uiCaptionLast = uiCaptionsMode()
+    ga.uiCaptionHookNext = ga.uiCaptionHookNext + 1
+    ga.uiCaptionHooks["h" + ga.uiCaptionHookNext.ToStr()] = changed
+    return ga.uiCaptionHookNext
+end function
+
+sub uiCaptionsUnlisten(id as integer)
+    ga = GetGlobalAA()
+    if ga.uiCaptionHooks <> invalid then ga.uiCaptionHooks.Delete("h" + id.ToStr())
+end sub
+
+' The scene heard from Main that the mode changed. A change the channel made itself (uiCaptionsWrite) is not passed
+' on; one the viewer made is theirs, so nothing is put back after it.
+sub uiCaptionsChanged()
+    ga = GetGlobalAA()
+    mode = uiCaptionsMode()
+    if ga.uiCaptionLast <> invalid and ga.uiCaptionLast = mode then return
+    print "[captions] device mode now "; mode
+    ga.uiCaptionLast = mode
+    if ga.uiCaptionWrote <> invalid and ga.uiCaptionWrote = mode
+        ga.uiCaptionWrote = invalid
+        return
+    end if
+    ga.uiCaptionWrote = invalid
+    ga.uiCaptionWas = invalid
+    if ga.uiCaptionHooks = invalid then return
+    hooks = []
+    for each k in ga.uiCaptionHooks
+        hooks.push(ga.uiCaptionHooks[k])
+    end for
+    for each hook in hooks
+        RtGuard(hook, [])
+    end for
+end sub
+
+' The device's mode written by the channel, remembered so its own change is not taken for the viewer's.
+sub uiCaptionsWrite(node as object, mode as string)
+    ga = GetGlobalAA()
+    if ga.uiCaptionLast = invalid then ga.uiCaptionLast = uiCaptionsMode()
+    ga.uiCaptionWrote = mode
+    if node <> invalid and node.hasField("globalCaptionMode")
+        node.globalCaptionMode = mode
+    else
+        CreateObject("roDeviceInfo").SetCaptionsMode(mode)
+    end if
+end sub
+
+' A video's captions as the app chose them: the track `id` shown, the mode put On while it plays where the device's is
+' not (and what it was kept, to put back); "" for none, suppressed on this video alone and the mode left as it is.
+sub uiCaptionsChosen(node as object, id as string)
+    if node = invalid or not node.hasField("suppressCaptions") then return
+    print "[captions] "; node.id; " chosen '"; id; "', device mode "; uiCaptionsMode(); ", language '"; uiCaptionsLanguage(); "'"
+    if id = ""
+        node.suppressCaptions = true
+        uiCaptionsRestore()
+        return
+    end if
+    node.subtitleTrack = id
+    node.suppressCaptions = false
+    mode = uiCaptionsMode()
+    if mode <> "On"
+        ga = GetGlobalAA()
+        if ga.uiCaptionWas = invalid then ga.uiCaptionWas = mode
+        print "[captions] device mode "; mode; " put On while the chosen track plays"
+        uiCaptionsWrite(node, "On")
+    end if
+end sub
+
+' A video's captions as the device has them: its mode (On replay and When mute are the Video node's own to follow),
+' nothing suppressed, reading `id` where a track is known ("" leaves the choice to the box, by its caption language).
+sub uiCaptionsFollow(node as object, id as string)
+    if node = invalid or not node.hasField("suppressCaptions") then return
+    print "[captions] "; node.id; " the device's, mode "; uiCaptionsMode(); ", language '"; uiCaptionsLanguage(); "', track '"; id; "'"
+    node.suppressCaptions = false
+    uiCaptionsRestore()
+    if id <> "" then node.subtitleTrack = id
+end sub
+
+' The device's mode put back as it was before a chosen track put it On, unless the viewer has changed it since.
+sub uiCaptionsRestore()
+    ga = GetGlobalAA()
+    if ga.uiCaptionWas = invalid then return
+    was = ga.uiCaptionWas
+    ga.uiCaptionWas = invalid
+    if uiCaptionsMode() = "On" and was <> ""
+        print "[captions] device mode put back to "; was
+        uiCaptionsWrite(invalid, was)
     end if
 end sub
 

@@ -422,3 +422,29 @@ class SGNode
 @native object uiCollect {
   def apply(): Unit = native.value
 }
+/** The device's caption mode ("On", "Off", "Instant replay", "When mute") and preferred caption language ("" where
+  * the box does not say); a change heard (`uiCaptionsListen`, an id to stop it with) and no longer. */
+@native object uiCaptionsMode {
+  def apply(): String = native.value
+}
+@native object uiCaptionsLanguage {
+  def apply(): String = native.value
+}
+@native object uiCaptionsListen {
+  def apply(changed: () => Unit): Int = native.value
+}
+@native object uiCaptionsUnlisten {
+  def apply(id: Int): Unit = native.value
+}
+/** A video's captions as the app chose them: a track shown (the mode put On while it plays, where the device's is
+  * not), or "" for none on this video alone. As the device has them, with a track to read where one is known
+  * (uiCaptionsFollow); and the device's mode put back as it was (uiCaptionsRestore). */
+@native object uiCaptionsChosen {
+  def apply(node: SGNode, id: String): Unit = native.value
+}
+@native object uiCaptionsFollow {
+  def apply(node: SGNode, id: String): Unit = native.value
+}
+@native object uiCaptionsRestore {
+  def apply(): Unit = native.value
+}

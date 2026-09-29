@@ -223,3 +223,17 @@ class SGNode
 @native object uiStoreClear {
   def apply(space: String): Unit = native.value
 }
+/** The viewer's caption setting as MediaAccessibility has it ("On", "Automatic", "Off") and the first language they
+  * prefer captions in ("" for none); a change heard (`uiCaptionsListen`, an id to stop it with) and no longer. */
+@native object uiCaptionsMode {
+  def apply(): String = native.value
+}
+@native object uiCaptionsLanguage {
+  def apply(): String = native.value
+}
+@native object uiCaptionsListen {
+  def apply(changed: () => Unit): Int = native.value
+}
+@native object uiCaptionsUnlisten {
+  def apply(id: Int): Unit = native.value
+}

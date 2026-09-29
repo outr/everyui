@@ -3538,6 +3538,9 @@ class RokuEmitter(
       |    memory.setMessagePort(port)
       |    memory.EnableMemoryWarningEvent(true)
       |    print "[memory] limit "; memory.GetChannelMemoryLimit(); " KB"
+      |    ' the viewer changing the device's caption mode (its settings, or the options menu over a video), said to the scene
+      |    device = CreateObject("roDeviceInfo")
+      |    device.setMessagePort(port)
       |    while true
       |        msg = wait(30000, port)
       |        kind = type(msg)
@@ -3548,6 +3551,10 @@ class RokuEmitter(
       |            if info = invalid then info = {}
       |            print "[memory] WARNING "; FormatJson(info)
       |            scene.memoryWarning = info
+      |        else if kind = "roDeviceInfoEvent"
+      |            if FindMemberFunction(msg, "isCaptionModeChanged") <> invalid
+      |                if msg.isCaptionModeChanged() then scene.captionsChanged = true
+      |            end if
       |        else if kind = "roSGScreenEvent"
       |            if msg.isScreenClosed() then return
       |        else if kind = "roInputEvent"
@@ -3567,6 +3574,7 @@ class RokuEmitter(
       |  <interface>
       |    <field id="inputArgs" type="assocarray" alwaysNotify="true" onChange="onInputArgs" />
       |    <field id="memoryWarning" type="assocarray" alwaysNotify="true" onChange="onMemoryWarning" />
+      |    <field id="captionsChanged" type="boolean" alwaysNotify="true" onChange="onCaptionsChanged" />
       |  </interface>
       |  <customization suspendhandler="onSuspend" />
       |  <customization resumehandler="onResume" />
@@ -3618,6 +3626,12 @@ class RokuEmitter(
       |' (Execution timeout &h23) after freeing nothing, the memory being live. Platform.collect's quiet-time run is the
       |' collector's place.
       |sub onMemoryWarning()
+      |end sub
+      |
+      |' The viewer changed the device's caption mode (Main's roDeviceInfoEvent)
+      |sub onCaptionsChanged()
+      |    uiCaptionsChanged()
+      |    RtAfterTurn()
       |end sub
       |""".stripMargin
 
