@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.component.feature.FontFeature
-import everyui.component.types.{Autofill, Prop}
+import everyui.component.types.{Autofill, PasteAction, Prop}
 import everyui.render.Nodes
 import reactify.*
 
@@ -39,6 +39,11 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   /** Its name to autofill and password managers, the same on every visit ("email", "login-password"); empty, it is
     * named by its hint. */
   val fieldName: Var[String] = own(Var(""))
+  /** What a paste becomes, asked with the words on the clipboard before they land: the keyboard's paste, the context
+    * menu's, and a phone keyboard's where it says it is pasting (`PasteAction`: they land, other words in their place,
+    * or nothing). None, the default, lets every paste land. A Roku and an Apple TV have no pasting, so it is never
+    * asked there. */
+  val pasted: Var[Option[String => PasteAction]] = own(Var(None))
 
   private def hint(): Unit =
     node.setAutofill(autofill().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey())
@@ -54,6 +59,7 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
 
   text.attach(v => if (node.getValue() != v) node.setValue(v))
   node.onValue(v => if (text() != v) text @= v)
+  node.onPaste(words => pasted().map(f => f(words)).getOrElse(PasteAction.Insert))
   autofill.attach(_ => hint())
   passkey.attach(_ => hint())
   section.attach(_ => hint())

@@ -1,7 +1,7 @@
 package everyui.text
 
 import everyui.component.*
-import everyui.component.types.{Autofill, WhiteSpace}
+import everyui.component.types.{Autofill, PasteAction, WhiteSpace}
 import everyui.event.{Key, KeyEvent}
 import everyui.keymap.Chord
 import everyui.render.Platform
@@ -42,6 +42,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   /** Shows `value`, to be focused, chosen and copied, but not changed (`InputView.readOnly`); where the platform has
     * no field of its own (a Roku, an Apple TV) Enter or a click asks for no new words. */
   val readOnly: Var[Boolean] = own(Var(false))
+  /** What a paste becomes before it lands (`InputView.pasted`); None lets it land. */
+  val pasted: Var[Option[String => PasteAction]] = own(Var(None))
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
@@ -80,6 +82,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     input.section := section()
     input.fieldName := fieldName()
     input.readOnly := readOnly()
+    input.pasted := pasted()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)

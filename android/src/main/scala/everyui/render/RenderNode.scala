@@ -797,6 +797,12 @@ class RenderNode(val view: View) {
     })
     case _ => ()
   }
+  /** A paste into the field (its menu's Paste, Ctrl+V, a keyboard's), put to `f` with its words before they land
+    * (`FieldView.pasting`). */
+  def onPaste(f: String => everyui.component.types.PasteAction): Unit = view match {
+    case e: FieldView => e.pasting = Some(f)
+    case _ => ()
+  }
   /** The field taking the keyboard itself (a tap on it). */
   def onInputFocus(f: () => Unit): Unit = view match {
     case e: EditText => e.setOnFocusChangeListener((_, has) => if (has) f())

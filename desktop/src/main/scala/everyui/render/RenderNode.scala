@@ -533,6 +533,12 @@ class RenderNode(val fx: Node) {
     })
     case _ => ()
   }
+  /** A paste into a text field (Ctrl+V, Shift+Insert, the context menu's Paste), put to `f` with its words before they
+    * land (`Pasting`). */
+  def onPaste(f: String => everyui.component.types.PasteAction): Unit = fx match {
+    case field: TextInputControl => Pasting.hook(field, f)
+    case _ => ()
+  }
   /** A text field taking the keyboard focus itself (a click on it). */
   def onInputFocus(f: () => Unit): Unit = fx match {
     case field: TextInputControl => field.focusedProperty.addListener(new ChangeListener[java.lang.Boolean] {
@@ -948,7 +954,7 @@ object Nodes {
 
   /** A text field — a JavaFX `TextField`, or a `PasswordField` for a secret — with no box of its own. */
   def input(secure: Boolean): RenderNode = {
-    val f = if (secure) new PasswordField() else new TextField()
+    val f = if (secure) new PastingPasswordField() else new PastingTextField()
     f.setStyle(RenderNode.fieldStyle("#1c1b1f"))
     f.setFocusTraversable(false)
     val node = new RenderNode(f)
@@ -965,7 +971,7 @@ object Nodes {
 
   /** A box of lines to type in — a JavaFX `TextArea` — with no box of its own. */
   def textArea(): RenderNode = {
-    val a = new TextArea()
+    val a = new PastingTextArea()
     a.setWrapText(true)
     a.setStyle(RenderNode.fieldStyle("#1c1b1f"))
     a.getStylesheets.add(RenderNode.areaSheet)

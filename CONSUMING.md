@@ -830,6 +830,8 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
 - Files come from the attach button (`Files.pick`) and from a drop on the composer; each is a chip with a remove
   button. `accept`, `allow` and `maxSize` decide which are taken; the rest are refused with a toast. A picture's preview
   is let go (`Files.release`) once it leaves the draft, removed or sent: to show a sent picture, read its `bytes`.
+- `pasted` decides what a paste becomes: words in the field, or a file's chip, as a long log or stack trace should be
+  (`ComposerPaste.longAsFile`; see Pasting below).
 - Completions list over the composer for the word at the caret after a trigger: Up and Down, Enter or Tab to put the
   lit one in place of the word, Escape to close.
 - Under `compactWidth` (480) the controls are a phone's, and `leading` folds behind a "+" with the attach button, in
@@ -929,6 +931,50 @@ if (Clipboard.readable) paste.event.click.attach(_ => Clipboard.read().map(_.for
 - **Android**: the ClipboardManager's first item as text. Android 10 on lets only the app in front read it, and
   Android 12 on tells the person it was read.
 - **Roku, Apple TV**: no clipboard; `readable` and `copies` are false, and a read answers None.
+
+### Pasting (`pasted`)
+
+The app decides what a paste becomes before it lands. `pasted` on an `InputView`, a `TextInput` and a `TextArea` is
+asked with the clipboard's words and answers a `PasteAction`: `Insert` (they land, as with no hook: the default),
+`InsertText(other)` (these words land instead, at the caret or over the selection, and one undo takes them back as it
+would the paste) or `Ignore` (nothing lands). A paste with no words (a picture, files) is never asked about, nor is
+one into a read-only (`readOnly`) or disabled field, which takes no paste at all.
+
+```scala
+import everyui.component.types.PasteAction
+
+phone.pasted @= Some(text => PasteAction.InsertText(text.filter(_.isDigit)))
+```
+
+A `Composer`'s `pasted` answers a `ComposerPaste`, which can also be `Attach(attachment)`: the paste goes with the
+message as a chip, exactly as a dropped file does, taken where `accept`, `allow` and `maxSize` agree (refused, it is
+refused with the same toast, and nothing lands). `Attachment.pasted(text)` is the words as a text/plain file, its bytes
+their UTF-8, named after their first line (`Attachment.textName`: "stack trace.txt"); `ComposerPaste.longAsFile(n)`
+makes a paste longer than `n` characters one, so a log or a stack trace does not flood the message. `demo=composer`
+does this over 1500.
+
+```scala
+import everyui.chat.ComposerPaste
+
+composer.pasted @= Some(ComposerPaste.longAsFile(1500))
+```
+
+It is asked wherever the platform has a field of its own (`Platform.nativeInput()`), for every way a paste comes:
+
+- **Web**: the field's `paste` event, which Ctrl+V (Cmd+V), Shift+Insert, the context menu and a phone's Paste all fire;
+  the words are its `clipboardData`. The default is prevented when the app changes the paste, and other words go in
+  with `insertText`, on the browser's undo stack (else `setRangeText`, heard as an edit).
+- **Desktop**: the fields are JavaFX fields whose `paste` is asked first, which Ctrl+V (Cmd+V), Shift+Insert and the
+  context menu's Paste all call. Other words replace the selection as one undoable edit.
+- **Android**: the field's `onTextContextMenuItem` for Paste and Paste as plain text, which its menu, Ctrl+V on a
+  keyboard and a soft keyboard's own Paste key all come through. A soft keyboard's clipboard suggestion (Gboard's chip)
+  is typed rather than pasted (`commitText`), so it is asked about only where the words typed are the clipboard's and
+  run past a line (a newline, or over 80 characters): a short suggestion lands as typed, unasked. Reading the clipboard
+  for that is what Android 12 on tells the person of, which is why a word typed is never read against it.
+- **Roku, Apple TV**: no pasting (a field is written on the platform's keyboard), so it is never asked.
+
+On the web a phone keyboard's clipboard suggestion is typed too, and is not asked about; nor is text dragged into a
+field.
 
 ### ColorPicker (`everyui.color`)
 

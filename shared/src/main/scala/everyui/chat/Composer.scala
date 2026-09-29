@@ -2,7 +2,7 @@ package everyui.chat
 
 import everyui.async.Task
 import everyui.component.*
-import everyui.component.types.{Semantics, WhiteSpace}
+import everyui.component.types.{PasteAction, Semantics, WhiteSpace}
 import everyui.event.{Key, KeyEvent}
 import everyui.file.{Files, PickedFile}
 import everyui.focus.Focus
@@ -33,6 +33,9 @@ import reactify.*
   *    agrees to and `maxSize` fits is added; anything else is refused with a word saying why. A picture's preview
   *    is let go (`Files.release`) once its file leaves the draft, taken off or sent: an app that shows a sent picture
   *    reads its `bytes`. A platform with no picker (a Roku, an Apple TV, a television) shows no button.
+  *  - '''Pasting''' (`pasted`): the app decides what a paste becomes before it lands, words or a file: a paste of a
+  *    log or a whole file can go with the message as a chip named after its first line (`ComposerPaste.longAsFile`),
+  *    rather than flooding it. What `accept`, `allow` and `maxSize` refuse is refused as a dropped file is.
   *  - '''Completions''' (`complete`): typing one of `triggers` ('@' for a mention, '/' for a command at the start)
   *    asks the app for completions of what follows it, listed over the composer. Up and Down move through them,
   *    Enter or Tab puts the lit one in place of the word, and Escape closes them. None on a remote.
@@ -82,6 +85,10 @@ class Composer(onSend: Draft => Unit,
   val trailing: Container = Composer.slot()
   /** Narrower than this, it is a phone's: smaller controls, and `leading` folded behind "+". */
   val compactWidth: Var[Double] = own(Var(480.0))
+  /** What a paste into the field becomes, asked with the words on the clipboard before they land (`ComposerPaste`): they
+    * land, other words land in their place, nothing does, or they go with the message as a file, a chip as a dropped
+    * file is (`longAsFile` for a log or a stack trace). None, the default, lets every paste land. */
+  val pasted: Var[Option[String => ComposerPaste]] = own(Var(None))
 
   /** Whether the controls are a phone's. */
   val compact: Val[Boolean] = own(Val(size.width() < compactWidth()))
@@ -159,6 +166,15 @@ class Composer(onSend: Draft => Unit,
   suggestion.attach(_ => dismissed @= false)
   field.hint := (if (suggesting() && !asChip) "" else placeholder())
   field.disabled := !enabled()
+  field.pasted @= Some(words => pasted() match {
+    case Some(f) => f(words) match {
+      case ComposerPaste.AsText(action) => action
+      case ComposerPaste.Attach(a) =>
+        if (enabled()) attach(a)
+        PasteAction.Ignore
+    }
+    case None => PasteAction.Insert
+  })
   field.field.foreach { f =>
     f.disabled := !enabled()
     f.semantics := Semantics(label = if (suggesting() && !asChip)

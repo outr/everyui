@@ -516,6 +516,8 @@ class RenderNode(val sg: SGNode) {
   def formDone(saved: Boolean): Unit = ()
   def setHiddenUsername(username: String): Unit = ()
   def onValue(f: String => Unit): Unit = ()
+  // no pasting here: a field is written on the platform's keyboard
+  def onPaste(f: String => everyui.component.types.PasteAction): Unit = ()
   def onInputFocus(f: () => Unit): Unit = ()
   def onInputDone(f: () => Unit): Unit = ()
   def onInputAction(f: () => Unit): Unit = ()

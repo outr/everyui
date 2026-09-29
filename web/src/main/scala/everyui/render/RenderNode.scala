@@ -616,6 +616,8 @@ class RenderNode(val el: html.Element) {
     el.addEventListener("animationstart", (e: dom.Event) =>
       if (e.asInstanceOf[js.Dynamic].animationName.asInstanceOf[String] == "everyui-autofill") f(getValue()))
   }
+  /** A paste into the field, put to `f` with its words before they land (`Pasting`). */
+  def onPaste(f: String => everyui.component.types.PasteAction): Unit = Pasting.listen(el, f)
   /** The field taking the keyboard itself (a click, a tap, the browser's own Tab). */
   def onInputFocus(f: () => Unit): Unit = el.addEventListener("focus", (_: dom.Event) => f())
   /** The field losing the keyboard. */

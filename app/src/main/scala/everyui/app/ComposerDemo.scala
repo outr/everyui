@@ -1,7 +1,7 @@
 package everyui.app
 
 import everyui.async.Task
-import everyui.chat.{Completion, CompletionTrigger, Composer, Draft}
+import everyui.chat.{Attachment, Completion, CompletionTrigger, Composer, ComposerPaste, Draft}
 import everyui.component.{Button, ButtonStyle, Column, IconButton, TextView}
 import everyui.component.types.WhiteSpace
 import everyui.font.MaterialIcon
@@ -15,8 +15,11 @@ import reactify.*
 /** A chat's composer with nothing behind it: each message sent is logged (`[ui] composer sent …`), a "reply" takes
   * three seconds (Stop ends it at once: `[ui] composer stopped`), and each reply leaves a suggestion for the next
   * message. Pictures and text files can be attached (5 MB at most), '@' mentions one of four people, and '/' at the
-  * start offers commands. A model to choose sits before the field and a microphone after it. `theme=light` shows the
-  * light palette, `width=` sets the composer's width (a phone's is about 400), and `disabled=1` starts it out of use. */
+  * start offers commands. A model to choose sits before the field and a microphone after it. A paste longer than 1500
+  * characters (a log, a stack trace) goes with the message as a text file named after its first line rather than into
+  * the field (`[ui] composer pasted <n> chars as a file <name>`); `paste=upper` pastes a shorter one in capitals, and
+  * `paste=ignore` lets none land. `theme=light` shows the light palette, `width=` sets the composer's width (a phone's
+  * is about 400), and `disabled=1` starts it out of use. */
 class ComposerDemo {
   private val replies: Var[Int] = Var(0)
   private val model: Var[Int] = Var(0)
@@ -37,6 +40,7 @@ class ComposerDemo {
   composer.leading.children += choose
   composer.trailing.children += new IconButton(MaterialIcon.Mic, "Dictate", () => Toast.show("Dictation is the app's"))
   composer.commands(Keymap.global)
+  composer.pasted @= Some(text => pasted(text))
 
   log.children += TextView("Composer", 20.0)
   log.children += TextView.bound(if (composer.busy()) "Replying… (Stop ends it)" else "Replies: " + replies(), 13.0,
@@ -55,6 +59,19 @@ class ComposerDemo {
     composer.busy @= true
     val mine = replies() + 1
     Platform.after(3.0, () => if (composer.busy() && replies() == mine - 1) reply(mine))
+  }
+
+  // a long paste a file, as `ComposerPaste.longAsFile(1500)` makes it; a short one as `paste=` says
+  private def pasted(text: String): ComposerPaste = {
+    val mode = Platform.launchArg("paste")
+    val long = text.length > 1500
+    val made = if (long) ComposerPaste.Attach(Attachment.pasted(text))
+      else if (mode == "upper") ComposerPaste.InsertText(text.toUpperCase)
+      else if (mode == "ignore") ComposerPaste.Ignore
+      else ComposerPaste.Insert
+    Platform.log("composer pasted " + text.length.toString + " chars as " +
+      (if (long) "a file " + Attachment.textName(text) else if (mode == "upper" || mode == "ignore") mode else "words"))
+    made
   }
 
   private def stopped(): Unit = {

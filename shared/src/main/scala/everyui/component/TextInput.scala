@@ -1,6 +1,6 @@
 package everyui.component
 
-import everyui.component.types.{Autofill, Semantics}
+import everyui.component.types.{Autofill, PasteAction, Semantics}
 import everyui.event.Key
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -33,6 +33,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   /** Shows `value`, to be focused, chosen and copied, but not changed (`InputView.readOnly`); where the platform has
     * no field of its own (a Roku, an Apple TV) Enter or a click asks for no new value. */
   val readOnly: Var[Boolean] = own(Var(false))
+  /** What a paste becomes before it lands (`InputView.pasted`); None lets it land. */
+  val pasted: Var[Option[String => PasteAction]] = own(Var(None))
 
   // a secret, or asked for as a password
   private def hidden: Boolean = secure || autofill().exists(Autofill.secret)
@@ -71,6 +73,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.section := section()
     input.fieldName := fieldName()
     input.readOnly := readOnly()
+    input.pasted := pasted()
     // named by its label, which is drawn beside it rather than being its own
     input.semantics := Semantics(label = title())
     input.text.attach(v => if (value() != v) value @= v)
