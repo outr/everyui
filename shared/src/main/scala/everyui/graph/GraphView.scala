@@ -3,14 +3,14 @@ package everyui.graph
 import everyui.{Color, PlatformKind}
 import everyui.component.Component
 import everyui.component.types.Semantics
-import everyui.draw.{Drawing, Figure, Hit, Path}
+import everyui.draw.{Drawing, Figure, Hit, Path, PathOp}
 import everyui.event.{Key, KeyEvent, Keys}
 import everyui.render.Platform
 import everyui.spatial.{Rect, Size}
 import everyui.task.TaskInstance
 import everyui.theme.Theme
 import everyui.ui
-import everyui.zoom.{ZoomCanvas, ZoomItem, ZoomPoint, ZoomView}
+import everyui.zoom.{ZoomCanvas, ZoomGrab, ZoomItem, ZoomPoint, ZoomView}
 import reactify.*
 
 /** A directed graph, laid out in layers and drawn on a canvas that pans and zooms ([[ZoomCanvas]]): its `nodes` and
@@ -33,6 +33,14 @@ import reactify.*
   * there is none goes to the node most in line in the next layer that way; across it an arrow goes to the next node in
   * the layer. Enter activates the node, Escape lets it go, and the view follows. An arrow with no node its way leaves
   * the graph, as the focus layer says. + and - zoom and 0 fits, as on any canvas.
+  *
+  * With `mode` set to `GraphMode.Force` the nodes go where forces settle them instead ([[ForceLayout]]): each edge
+  * pulls its ends together (as hard as `strengthOf`, to `lengthOf` apart), every node pushes the others away (more for
+  * a greater `weightOf`), and no two overlap. The graph moves as the layout runs, a step a frame, and stops, frames
+  * and all, when it settles; a change to the nodes or edges keeps each node where it was, starts a new one beside its
+  * neighbours, and settles again gently. A node can be dragged (pinned while it is, and let go after), `force` is the
+  * layout itself (to pin a node, reheat it, or settle it at once), and `forceSettings` how it moves. Edges are straight
+  * lines with arrowheads, and the arrows move to the neighbour, else the nearest node, most the arrow's way.
   *
   * {{{
   *   val graph = new GraphView[Module, Dependency](modules, dependencies, _.name, _.name, _.from, _.to)
@@ -57,9 +65,17 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
   private var took: Double = 0.0
   // each node's value, which its box follows, by key
   private var valued: Map[String, Var[N]] = Map.empty
-  // each edge's line in the world, and the box round it, for a click
+  // each edge's line in the world, and the box round it, for a click: made when one is looked for, after a layout
   private var worldLines: Vector[Path] = Vector.empty
   private var lineBoxes: Vector[Rect] = Vector.empty
+  private var linesFresh = false
+  // the force layout, whether the graph is laid out by it now, and whether the view follows it as it spreads out
+  // (the first time, until the app or the user moves the view)
+  private val simulation = new ForceLayout(GraphView.forces)
+  private var forced = false
+  private var following = false
+  // a node to show once it is laid out
+  private var revealing: Option[String] = None
   // the edges drawn together (those leaving each layer), in each bundle's own pixels: an edge, its line, its head
   private var bundles: Vector[Vector[(Int, Path, Path)]] = Vector.empty
   private val drawn: Var[Int] = own(Var(0))
@@ -94,8 +110,27 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
   /** How wide a node is on the screen, in pixels, before it is a box of its own with its words; narrower, it is an
     * outline among its layer's in one drawing. */
   val detailFrom: Var[Double] = own(Var(40.0))
+  /** Whether the edges have a way, drawn with arrowheads; without, a graph whose edges are ties both ways (words seen
+    * together) has plain lines. */
+  val directed: Var[Boolean] = own(Var(true))
   /** What the graph is, to whatever reads the screen. */
   val description: Var[String] = own(Var("Graph"))
+
+  /** How the nodes are laid out: in layers along the flow, or where forces settle them. */
+  val mode: Var[GraphMode] = own(Var(GraphMode.Layered))
+  /** How the force layout moves the nodes (`GraphMode.Force`). */
+  val forceSettings: Var[ForceSettings] = own(Var(GraphView.forces))
+  /** How hard a node pushes the others away in the force layout (1 by default; 2 twice as hard). */
+  val weightOf: Var[N => Double] = own(Var((_: N) => 1.0))
+  /** How hard an edge pulls its ends together in the force layout (1 by default), and how far apart, edge to edge
+    * (the settings' `linkLength` where it says None). */
+  val strengthOf: Var[E => Double] = own(Var((_: E) => 1.0))
+  val lengthOf: Var[E => Option[Double]] = own(Var((_: E) => None))
+
+  /** The force layout the graph uses in `GraphMode.Force`: to `pin` a node, `reheat` it, or `settle` it at once. */
+  def force: ForceLayout = simulation
+  /** Each step of the force layout, once it is drawn (`force.settled` says whether it was the last). */
+  val forceStepped: Channel[Unit] = Channel[Unit]
 
   /** The key of the node chosen. */
   val selected: Var[Option[String]] = own(Var(None))
@@ -120,16 +155,19 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     case None => (Nil, Nil)
   }
 
-  /** The view moved, gliding, to show the node keyed `key`, where it is out of sight. */
-  def reveal(key: String): Unit = keyed.get(key).flatMap(i => laid.map(_.nodes(i))).foreach { box =>
-    val v = view()
-    val (x, y) = toScreen(box.x, box.y)
-    val room = margin()
-    if (x < room || y < room || x + box.width * v.scale > size.width() - room ||
-      y + box.height * v.scale > size.height() - room)
-      moveTo(ZoomView(box.centerX - size.width() / 2.0 / v.scale, box.centerY - size.height() / 2.0 / v.scale, v.scale),
-        animate = true)
-  }
+  /** The view moved, gliding, to show the node keyed `key`, where it is out of sight: once it is laid out, for a node
+    * the app has only just added. */
+  def reveal(key: String): Unit =
+    if (!keyed.contains(key)) revealing = Some(key)
+    else keyed.get(key).flatMap(i => laid.map(_.nodes(i))).foreach { box =>
+      val v = view()
+      val (x, y) = toScreen(box.x, box.y)
+      val room = margin()
+      if (x < room || y < room || x + box.width * v.scale > size.width() - room ||
+        y + box.height * v.scale > size.height() - room)
+        moveTo(ZoomView(box.centerX - size.width() / 2.0 / v.scale, box.centerY - size.height() / 2.0 / v.scale,
+          v.scale), animate = true)
+    }
 
   semantics := Semantics("application", label = description())
 
@@ -157,7 +195,14 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     val es = edges().filter(e => index.contains(fromOf(e)) && index.contains(toOf(e)))
     val pairs = es.map(e => (index(fromOf(e)), index(toOf(e))))
     val started = Platform.ticks()
-    val next = GraphLayout.layout(kept.map(boxOf), pairs, flow(), layerGap(), nodeGap())
+    val wasForced = forced
+    forced = mode() == GraphMode.Force
+    val sizes = kept.map(boxOf)
+    val next = if (forced) forceLayout(kept, sizes, es, pairs, wasForced)
+      else {
+        simulation.stop()
+        GraphLayout.layout(sizes, pairs, flow(), layerGap(), nodeGap())
+      }
     took = Platform.ticks() - started
     // where things were, to glide from
     val before = laid
@@ -197,14 +242,14 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     laid = Some(next)
     selected @= selected().filter(k => index.contains(k))
     selectedEdge @= selectedEdge().filter(e => es.contains(e))
-    worldLines = next.routes.map(r => lineOf(r, 0.0, 0.0))
-    lineBoxes = next.routes.map(r => boxAround(r.points))
+    linesFresh = false
     gliding.foreach(_.cancel())
     gliding = None
     val from = before.map(p => kept.indices.toVector.map(i => wasKeyed.get(keyOf(kept(i))).map(j => p.nodes(j))
       .getOrElse(next.nodes(i))))
     from match {
-      case Some(old) if glides() && kept.length <= 300 && size.width() > 0.0 =>
+      // (the force layout moves the nodes itself, a step a frame)
+      case Some(old) if glides() && !forced && kept.length <= 300 && size.width() > 0.0 =>
         val keys = linkKeys(es)
         val routesBefore = es.indices.toVector.map(i => wasRoutes.get(keys(i)))
         newcomers = kept.map(n => keyOf(n)).filterNot(k => wasKeyed.contains(k)).toSet
@@ -224,6 +269,57 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
       refit = false
       fit()
     }
+    revealing.foreach { k =>
+      revealing = None
+      if (keyed.contains(k)) reveal(k)
+    }
+  }
+
+  // the force layout given the graph (each node a box its size), started from where the layers had the nodes when it
+  // takes over from them, and run on the frames; its plan as it is now
+  private def forceLayout(kept: Vector[N], sizes: Vector[Size], es: Vector[E], pairs: Vector[(Int, Int)],
+                          wasForced: Boolean): GraphPlan = {
+    val weight = weightOf()
+    val strength = strengthOf()
+    val length = lengthOf()
+    simulation.settings = forceSettings()
+    val first = simulation.nodes.isEmpty
+    simulation.update(kept.indices.toVector.map(i => ForceNode.box(keyOf(kept(i)), sizes(i).width, sizes(i).height,
+      weight(kept(i)))), es.map(e => ForceEdge(fromOf(e), toOf(e), strength(e), length(e))))
+    if (!wasForced) {
+      laid.foreach(p => kept.foreach { n =>
+        val k = keyOf(n)
+        keyed.get(k).foreach(j => simulation.place(k, p.nodes(j).centerX, p.nodes(j).centerY))
+      })
+      simulation.reheat(1.0)
+    }
+    if (first || !wasForced) following = true
+    simulation.animate(() => stepped())
+    forcePlan(pairs)
+  }
+
+  // the force layout's plan now: each node's box, and each edge straight from one to the other
+  private def forcePlan(pairs: Vector[(Int, Int)]): GraphPlan = {
+    val boxes = simulation.nodes.indices.toVector.map(i => simulation.boxOf(i))
+    val routes = pairs.map { case (a, b) =>
+      if (a == b) GraphRoute(Vector((boxes(a).right, boxes(a).y)), loop = true)
+      else GraphRoute(GraphShapes.between(boxes(a), boxes(b), curved()))
+    }
+    val all = Rect.around(boxes).getOrElse(Rect(0.0, 0.0, 0.0, 0.0))
+    GraphPlan(boxes, routes, boxes.map(_ => 0), Vector(boxes.indices.toVector), all.width, all.height, 0, flow())
+  }
+
+  // a step of the force layout: the graph drawn where it is now, the view following it while it spreads out
+  private def stepped(): Unit = if (forced && simulation.nodes.length == present.length) {
+    val next = forcePlan(ends)
+    laid = Some(next)
+    linesFresh = false
+    lay(next.nodes, next.routes)
+    if (following) {
+      if (simulation.settled) following = false
+      fit(animate = false)
+    }
+    forceStepped @= (())
   }
 
   // each edge's key, the same from one layout to the next: its ends' keys, and which of the edges between them it is
@@ -270,11 +366,12 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
 
   /** The canvas given the nodes at `boxes` and the edges along `routes`. */
   private def lay(boxes: Vector[Rect], routes: Vector[GraphRoute]): Unit = {
-    // the edges leaving each layer drawn together, each bundle in a drawing of its own that the canvas shows only in view
+    // the edges leaving each layer drawn together, each bundle in a drawing of its own that the canvas shows only in
+    // view; laid out by forces, a few hundred at a time
     val layerOf = laid.map(_.layerOf).getOrElse(Vector.empty)
     val count = if (layerOf.isEmpty) 0 else layerOf.max + 1
-    var groups = (0 until count).toVector.map(_ => Vector.empty[Int])
-    routes.indices.foreach { e =>
+    var groups = if (forced) GraphView.chunks(routes.length) else (0 until count).toVector.map(_ => Vector.empty[Int])
+    if (!forced) routes.indices.foreach { e =>
       val l = math.min(layerOf(ends(e)._1), layerOf(ends(e)._2))
       groups = groups.updated(l, groups(l) :+ e)
     }
@@ -296,7 +393,8 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     // of boxes
     val detail = detailFrom()
     var shapes: Vector[(Int, Vector[(Int, Rect)])] = Vector.empty
-    laid.foreach(_.layers.foreach { layer =>
+    val sets = if (forced) GraphView.chunks(boxes.length) else laid.map(_.layers).getOrElse(Vector.empty)
+    sets.foreach { layer =>
       if (layer.nonEmpty) {
         val box = Rect.around(layer.map(i => boxes(i))).get
         val narrowest = layer.map(i => boxes(i).width).min
@@ -306,7 +404,7 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
         laidOut = laidOut :+ ZoomItem(" nodes " + s.toString, box.x, box.y, box.width, box.height, () => outlines(s),
           until = Some(detail * box.width / math.max(1.0, narrowest)), hits = false)
       }
-    })
+    }
     outlined = shapes.map(_._2)
     boxes.indices.foreach { i =>
       val k = keyOf(present(i))
@@ -320,12 +418,16 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
   // what the edge through `route` is drawn with, from the point (x, y)
   private def lineOf(route: GraphRoute, x: Double, y: Double): Path = {
     val points = route.points.map(p => (p._1 - x, p._2 - y))
-    if (route.loop) GraphShapes.loop(points.head) else GraphShapes.line(points, flow(), curved())
+    if (route.loop) GraphShapes.loop(points.head)
+    else if (forced) GraphShapes.straight(points, curved(), directed())
+    else GraphShapes.line(points, flow(), curved(), directed())
   }
 
   private def headOf(route: GraphRoute, x: Double, y: Double): Path = {
     val points = route.points.map(p => (p._1 - x, p._2 - y))
-    if (route.loop) GraphShapes.loopHead(points.head) else GraphShapes.head(points, flow(), curved())
+    if (route.loop) GraphShapes.loopHead(points.head)
+    else if (forced) GraphShapes.straightHead(points, curved())
+    else GraphShapes.head(points, flow(), curved())
   }
 
   // a box round an edge's points, with room for its curves, its head and a loop
@@ -379,13 +481,13 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
       drawn()
       val looks = nodeLook()
       if (s >= outlined.length) Nil
-      else outlined(s).toList.flatMap { case (i, b) =>
+      else GraphView.together(outlined(s).toList.flatMap { case (i, b) =>
         val look = looks(present(i))
         val edge = look.accent.getOrElse(Theme.border())
         val shape = Path.roundRect(b.x, b.y, b.width, b.height, 8.0)
         List(Figure(shape, fill = Some(if (look.dashed) Theme.surface().withAlpha(0.55) else Theme.raised())),
           Figure(if (look.dashed) shape.dashed(6.0, 4.0) else shape, stroke = Some(edge), width = 2.0))
-      }
+      })
     }
     d
   }
@@ -401,9 +503,10 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     drawn()
     val on = lit().flatMap(k => keyed.get(k))
     val chosen = selectedEdge()
+    val headed = directed()
     val looks = edgeLook()
     if (i >= bundles.length) Nil
-    else bundles(i).toList.flatMap { case (e, line, head) =>
+    else GraphView.together(bundles(i).toList.flatMap { case (e, line, head) =>
       val look = looks(links(e))
       val touches = on.exists(n => ends(e)._1 == n || ends(e)._2 == n)
       val picked = chosen.contains(links(e))
@@ -411,9 +514,9 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
       val colour = if (picked || (touches && look.color.isEmpty)) Theme.accent() else base
       val shown = if (on.nonEmpty && !touches && !picked) colour.withAlpha(colour.alpha * 0.2) else colour
       val width = look.width + (if (touches || picked) 1.0 else 0.0)
-      List(Figure(if (look.dashed) line.dashed(6.0, 4.0) else line, stroke = Some(shown), width = width),
-        Figure(head, fill = Some(shown)))
-    }
+      val drawn = Figure(if (look.dashed) line.dashed(6.0, 4.0) else line, stroke = Some(shown), width = width)
+      if (headed) List(drawn, Figure(head, fill = Some(shown))) else List(drawn)
+    })
   }
 
   // ---- the pointer and the keys ----
@@ -455,6 +558,12 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     val slop = 5.0 / view().scale
     var best: Option[Int] = None
     var nearest = 1.0e18
+    if (!linesFresh) {
+      linesFresh = true
+      val routes = laid.map(_.routes).getOrElse(Vector.empty)
+      worldLines = routes.map(r => lineOf(r, 0.0, 0.0))
+      lineBoxes = routes.map(r => boxAround(r.points))
+    }
     lineBoxes.indices.foreach { e =>
       if (lineBoxes(e).contains(x, y)) {
         val d = Hit.distance(worldLines(e), x, y) - edgeLook()(links(e)).width / 2.0
@@ -486,6 +595,7 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     else if (!Keys.isArrow(e.key) || present.isEmpty || e.ctrl || e.meta || e.alt) None
     else at match {
       case None => Some(() => choose(middle(p)))
+      case Some(i) if forced => toward(p, i, e.key).map(t => () => choose(t))
       case Some(i) =>
         val forward = if (across) e.key == Key.ArrowRight else e.key == Key.ArrowDown
         val back = if (across) e.key == Key.ArrowLeft else e.key == Key.ArrowUp
@@ -542,6 +652,23 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     else Some(nearest(pool, j => math.abs(crossOf(p, j) - crossOf(p, i)) + math.abs(p.layerOf(j) - layer) * 1000.0))
   }
 
+  // with the nodes where forces put them, the arrow's way: the neighbour nearest that way (within half a right angle
+  // of it), or, where there is none, the nearest node that way (within a wider angle); a node off to the side counts
+  // as further
+  private def toward(p: GraphPlan, i: Int, key: Key): Option[Int] = {
+    val wx = if (key == Key.ArrowRight) 1.0 else if (key == Key.ArrowLeft) -1.0 else 0.0
+    val wy = if (key == Key.ArrowDown) 1.0 else if (key == Key.ArrowUp) -1.0 else 0.0
+    val x = p.nodes(i).centerX
+    val y = p.nodes(i).centerY
+    def along(j: Int): Double = (p.nodes(j).centerX - x) * wx + (p.nodes(j).centerY - y) * wy
+    def aside(j: Int): Double = math.abs((p.nodes(j).centerX - x) * wy - (p.nodes(j).centerY - y) * wx)
+    val near = (leaving(i).map(e => ends(e)._2) ++ arriving(i).map(e => ends(e)._1))
+      .filter(j => j != i && along(j) > 0.0 && aside(j) <= along(j))
+    val pool = if (near.nonEmpty) near
+      else p.nodes.indices.toList.filter(j => j != i && along(j) > 0.0 && aside(j) <= along(j) * 2.0)
+    if (pool.isEmpty) None else Some(nearest(pool, j => along(j) + aside(j) * 2.0))
+  }
+
   // across the flow `way`: the next node in its layer
   private def beside(p: GraphPlan, i: Int, way: Int): Option[Int] = {
     val layer = p.layers(p.layerOf(i))
@@ -549,11 +676,41 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     if (at >= 0 && at < layer.length) Some(layer(at)) else None
   }
 
+  override def dispose(): Unit = {
+    simulation.stop()
+    super.dispose()
+  }
+
   nodes.attach(_ => arrange())
   edges.attach(_ => arrange())
   flow.attach { _ =>
-    refit = true
+    if (!forced) {
+      refit = true
+      arrange()
+    }
+  }
+  mode.attach { _ =>
+    refit = mode() == GraphMode.Layered
     arrange()
+  }
+  forceSettings.attach { s =>
+    simulation.settings = s
+    if (forced) simulation.reheat()
+  }
+  weightOf.attach(_ => if (forced) arrange())
+  strengthOf.attach(_ => if (forced) arrange())
+  lengthOf.attach(_ => if (forced) arrange())
+  // the view is the app's or the user's once they move it: it no longer follows the force layout spreading out
+  event.pointer.down.attach(_ => following = false)
+  event.pointer.wheel.attach(_ => following = false)
+  event.key.down.attach(_ => following = false)
+  grab = (x, y) => if (!forced) None else boxAt(x, y).flatMap { k =>
+    simulation.positionOf(k).map { case (nx, ny) =>
+      // held by where it was taken hold of, so it does not jump to the pointer
+      val dx = nx - x
+      val dy = ny - y
+      ZoomGrab((mx, my) => simulation.drag(k, mx + dx, my + dy), () => simulation.drop(k))
+    }
   }
   // the node chosen is the one lit, until the pointer moves over another
   selected.attach(_ => hovered @= None)
@@ -562,6 +719,10 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
   layerGap.attach(_ => arrange())
   nodeGap.attach(_ => arrange())
   curved.attach(_ => arrange())
+  directed.attach { _ =>
+    linesFresh = false
+    laid.foreach(p => lay(p.nodes, p.routes))
+  }
   detailFrom.attach(_ => laid.foreach(p => lay(p.nodes, p.routes)))
   edgeLook.attach(_ => laid.foreach(p => lay(p.nodes, p.routes)))
   renderer.attach(_ => present.foreach(n => remake(keyOf(n))))
@@ -571,4 +732,34 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
 object GraphView {
   /** Whether edges are drawn as curves here: everywhere but a Roku and an Apple TV, which draw only rectangles. */
   def curves: Boolean = Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS
+
+  /** How a graph's force layout moves its nodes by default: boxes with words in them, pushed further apart and linked
+    * further than dots would be. */
+  def forces: ForceSettings = ForceSettings(charge = 800.0, linkLength = 60.0, padding = 12.0, gravity = 0.03)
+
+  // figures that look the same drawn as one, so a drawing of hundreds of lines is a handful of paths: the faded ones
+  // under the rest, and otherwise in the order they came
+  private[graph] def together(figures: List[Figure]): List[Figure] = {
+    var groups: Vector[(Figure, Vector[PathOp])] = Vector.empty
+    figures.foreach { f =>
+      val at = groups.indexWhere(g => g._1.fill == f.fill && g._1.stroke == f.stroke && g._1.width == f.width)
+      if (at < 0) groups = groups :+ ((f, f.path.ops))
+      else groups = groups.updated(at, (groups(at)._1, groups(at)._2 ++ f.path.ops))
+    }
+    def faint(f: Figure): Boolean = f.fill.orElse(f.stroke).exists(_.alpha < 0.5)
+    val merged = groups.toList.map(g => g._1.copy(path = new Path(g._2)))
+    merged.filter(faint) ++ merged.filterNot(faint)
+  }
+
+  // the numbers up to `n` in runs of a few hundred: the edges, or the nodes, drawn together in one drawing
+  private[graph] def chunks(n: Int): Vector[Vector[Int]] = {
+    var all: Vector[Vector[Int]] = Vector.empty
+    var at = 0
+    while (at < n) {
+      val end = math.min(n, at + 256)
+      all = all :+ (at until end).toVector
+      at = end
+    }
+    all
+  }
 }

@@ -69,6 +69,13 @@ class ZoomCanvas extends Container {
   /** Keys a canvas built on this one answers first (a graph's arrows): the action for a press, if it takes it. */
   var keys: KeyEvent => Option[() => Unit] = _ => None
 
+  /** What a press with the primary button, or a finger, at the world's point takes hold of in place of a pan (a
+    * graph's node, dragged), if anything. A press that does not move is still a click.
+    * {{{
+    *   canvas.grab = (x, y) => layout.nodeAt(x, y).map(k => ZoomGrab((mx, my) => layout.drag(k, mx, my), () => layout.drop(k)))
+    * }}} */
+  var grab: (Double, Double) => Option[ZoomGrab] = (_, _) => None
+
   /** The box everything at the top of the canvas takes up; None while there is nothing. */
   def contentBounds: Option[Rect] = bounds
 
@@ -103,6 +110,7 @@ class ZoomCanvas extends Container {
   private var pinching = false
   private var pinchAt: Option[(Double, Double)] = None
   private var pointerAt: Option[(Double, Double)] = None
+  private var grabbed: Option[ZoomGrab] = None
 
   focusable @= true
   touchDrags @= true
@@ -385,17 +393,29 @@ class ZoomCanvas extends Container {
   private def local(e: PointerEvent): (Double, Double) = (e.x - absoluteLeft, e.y - absoluteTop)
 
   private def dragTo(e: PointerEvent): Unit = if (dragging && !pinching) {
-    last match {
-      case Some((lx, ly)) => if (e.x != lx || e.y != ly) panBy(lx - e.x, ly - e.y)
-      case None => ()
+    val far = math.abs(e.x - pressX) + math.abs(e.y - pressY) > 6.0
+    grabbed match {
+      case Some(g) =>
+        // what was grabbed follows the pointer once it is a drag, not a click
+        if (far || moved) {
+          val (lx, ly) = local(e)
+          val (wx, wy) = toWorld(lx, ly)
+          g.move(wx, wy)
+        }
+      case None => last match {
+        case Some((lx, ly)) => if (e.x != lx || e.y != ly) panBy(lx - e.x, ly - e.y)
+        case None => ()
+      }
     }
     last = Some((e.x, e.y))
-    if (math.abs(e.x - pressX) + math.abs(e.y - pressY) > 6.0) moved = true
+    if (far) moved = true
   }
 
   private def release(): Unit = {
     dragging = false
     last = None
+    grabbed.foreach(_.drop())
+    grabbed = None
   }
 
   private def pinch(factor: Double, x: Double, y: Double): Unit = {
@@ -426,6 +446,10 @@ class ZoomCanvas extends Container {
       pressX = e.x
       pressY = e.y
       last = Some((e.x, e.y))
+      grabbed.foreach(_.drop())
+      val (lx, ly) = local(e)
+      val (wx, wy) = toWorld(lx, ly)
+      grabbed = grab(wx, wy)
       // followed at the root too, which hears a page's moves wherever the pointer goes
       Pointers.track(m => dragTo(m), _ => release())
     }

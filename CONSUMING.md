@@ -572,6 +572,9 @@ map.zoomToItem("core", "network")   // glides there; fit() fits everything, zoom
   `+` and `-` zoom, and `0` fits. A click that did not move is `clicked`; `hovered` follows the pointer. The
   canvas takes the pointer itself: an item's component hears its own clicks on the web and the desktop but not on
   Android, so what must work everywhere goes by `clicked` and `hit`.
+- **Grabbing.** `grab` says what a press takes hold of in place of a pan: given the world's point, it answers a
+  `ZoomGrab(move, drop)`, whose `move` hears the pointer's world point as it drags and `drop` when it lets go. A press
+  that does not move is still a click. A graph's nodes are dragged this way.
 - **Roku and Apple TV.** The remote pans with the arrows, zooms with Fast Forward and Rewind and fits with Replay. OK
   clicks what is in the middle of the view, which a small cross marks while the canvas has the focus. Drawings there
   show what rectangles can (`Block.of`).
@@ -623,6 +626,69 @@ graph.selected.attach(k => showDetails(k))     // the chosen node's key
 Layout time on the JVM (random graphs of 1.5 edges a node): 50 nodes about 5 ms, 500 about 40 ms, 2,000 about 0.5 s.
 In Chromium the demo's 2,000 modules lay out in about 0.3 s and show in under a second, and a pan step costs about
 1 ms.
+
+`mode @= GraphMode.Force` lays the graph out by forces instead (`ForceLayout`, below): linked nodes pulled together,
+the rest pushed apart, none overlapping. It moves a step a frame and stops, frames and all, when it settles; the view
+follows it as it first spreads out, until the app or the user moves the view. A change to the lists keeps each node
+where it was and starts a new one beside its neighbours. A node can be dragged (pinned while it is), `force` is the
+layout itself (`pin`, `reheat`, `settle`), `forceSettings` how it moves (`GraphView.forces` by default, for boxes with
+words), `weightOf` how hard a node pushes, and `strengthOf` and `lengthOf` how hard and how far an edge pulls.
+`forceStepped` fires after each step is drawn. Edges are straight, and `directed @= false` draws them without
+arrowheads, for ties both ways; the arrows move to the neighbour, else the nearest node, most the arrow's way.
+
+```scala
+val graph = new GraphView[Word, Pair](words, pairs, _.text, _.text, _.a, _.b)
+graph.mode @= GraphMode.Force
+graph.directed @= false
+graph.weightOf @= (w => 0.6 + w.count / 20.0)
+graph.strengthOf @= (p => p.together / most)
+```
+
+### ForceLayout (`everyui.graph`)
+
+A force-directed layout in plain shared code, positions only, for an app that draws its own nodes (on a `ZoomCanvas`,
+say) or for `GraphView`'s force mode. Every node pushes the others away, each edge is a spring, a little gravity
+holds it together and no two nodes overlap. It settles and stops by itself: each `tick` is hot at first and cooler
+after (`alpha`), and once it is cool enough it is `settled` (about 300 ticks). As d3-force does it; the pushes of a
+few thousand nodes are worked out over a quadtree (Barnes and Hut).
+
+```scala
+import everyui.graph.{ForceEdge, ForceLayout, ForceNode, ForceSettings}
+import everyui.zoom.{ZoomGrab, ZoomItem}
+
+val layout = new ForceLayout(ForceSettings(linkLength = 40.0))
+layout.update(people.map(p => ForceNode.circle(p.id, radius = 6.0 + p.links, weight = 1.0 + p.links / 10.0)),
+  ties.map(t => ForceEdge(t.a, t.b, strength = t.weight)))
+layout.animate(() => canvas.items @= draw(layout))   // a tick a frame while it is warm; frames stop when it settles
+canvas.grab = (x, y) => layout.nodeAt(x, y).map(k => ZoomGrab((mx, my) => layout.drag(k, mx, my), () => layout.drop(k)))
+canvas.clicked.attach(p => layout.nodeAt(p.x, p.y).foreach(open))
+```
+
+- **Nodes and edges.** `ForceNode(key, width, height, weight, round)`: `ForceNode.circle(key, radius, weight)` or
+  `ForceNode.box(key, width, height, weight)` (a label, kept clear of as a box). A greater `weight` pushes harder.
+  `ForceEdge(from, to, strength, length)`: `strength` 1 by default, `length` edge to edge (the settings'
+  `linkLength` where it is None). An edge to a key the layout does not have is left out.
+- **Changes.** `update` again with the new lists: every node keeps its place by its key, a new one starts beside its
+  neighbours already placed (the first layout too, breadth first, so each part of the graph starts together), and it
+  warms only to `reheat` (0.1), so an added node settles in and the rest barely move.
+- **The app's hand.** `reheat(alpha)` warms it again; `pin(key, x, y)` holds a node, `unpin` lets it go; `place`
+  puts one somewhere and lets the forces move it on; `drag(key, x, y)` pins it where the pointer is and keeps the rest
+  warm to follow, and `drop(key)` lets it go (still pinned if it was before).
+- **Running it.** `tick(n)` steps it, `settle()` runs it to the end at once (a test, a first look), and
+  `animate(onTick)` runs it a tick a frame on the app's frames, telling `onTick` after each, for as long as it is warm:
+  the frame loop idles when it settles (When frames run) and wakes when it is warmed again. `stop` ends that.
+- **Out.** `x(i)`, `y(i)`, `positionOf(key)` and `positions` (each node's centre), `boxOf(i)`, `bounds`, and
+  `nodeAt(x, y)` for a pick.
+- **Settings.** `ForceSettings`: `charge` (30 for a weight of 1), `theta` and `distanceMax` for the far pushes,
+  `linkLength` and `linkStrength`, `gravity`, `centred`, `collide` and `collideIterations` with `padding`, `flow`
+  (a directed graph's edges lean that way; None for an undirected one) and `flowStrength`, `alphaDecay`, `alphaMin`,
+  `reheat`, `velocityDecay`, and `seed`: the same nodes, edges and seed lay out the same way every time, and the web
+  and the desktop lay the demo out alike.
+
+Settling from the start (300 ticks), co-occurrence graphs of about two edges a node: 100 nodes 20 ms (0.07 ms a tick),
+1,000 nodes 0.3 to 0.5 s (1 to 1.7 ms a tick), 3,000 nodes 1.2 to 1.6 s (4 to 5 ms a tick) on the JVM; in Chromium
+0.2, 3.6 and 13 ms a tick. `demo=forcegraph` shows 240 words, a frame a tick at about 57 frames a second in headless
+Chromium, and asks for no frames once it settles.
 
 ### SplitButton (`everyui.menu`)
 

@@ -43,6 +43,8 @@ import everyui.render.Platform
   *   graph      a project's module dependencies on a GraphView: layered, a broken rule in red, planned modules dashed,
   *              laid out again as a module is added (`flow=down`, `big=<n>`); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
+  *   forcegraph words seen together on a GraphView laid out by forces: a few hundred, draggable, with words added and
+  *              removed (`n=<words>`, `measure=1`); not on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

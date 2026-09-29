@@ -25,6 +25,10 @@ object FullDemos {
       GraphDemo.run()
       true
     }
+    else if (demo == "forcegraph") {
+      ForceGraphDemo.run()
+      true
+    }
     else if (demo == "platform") {
       PlatformDemo.run()
       true

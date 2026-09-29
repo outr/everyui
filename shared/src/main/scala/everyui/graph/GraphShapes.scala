@@ -1,6 +1,7 @@
 package everyui.graph
 
 import everyui.draw.Path
+import everyui.spatial.Rect
 
 /** The paths a [[GraphView]] draws its edges with, from their routes (`GraphRoute`): a curve that leaves and reaches
   * each layer square to it, or, where a platform draws no curves, lines across and down; and an arrowhead at the end. */
@@ -8,12 +9,12 @@ object GraphShapes {
   /** How long an arrowhead is, along its edge. */
   val arrow: Double = 9.0
 
-  /** The line through `points` along `flow`, stopping an arrowhead short of the last. */
-  def line(points: Vector[(Double, Double)], flow: GraphFlow, curved: Boolean): Path =
+  /** The line through `points` along `flow`, stopping an arrowhead short of the last where it has one (`headed`). */
+  def line(points: Vector[(Double, Double)], flow: GraphFlow, curved: Boolean, headed: Boolean = true): Path =
     if (points.length < 2) Path.empty
     else {
       val across = flow == GraphFlow.LeftToRight
-      val (endX, endY) = short(points, across)
+      val (endX, endY) = if (headed) short(points, across) else points.last
       var path = Path.empty.moveTo(points(0)._1, points(0)._2)
       var i = 1
       while (i < points.length) {
@@ -63,6 +64,73 @@ object GraphShapes {
         Path.empty.moveTo(tx, ty).lineTo(bx - dy * half, by + dx * half).lineTo(bx + dy * half, by - dx * half).close
       }
     }
+
+  /** The ends of an edge from the box `from` to the box `to`, where nodes lie anywhere (a force layout): where the line
+    * between their centres leaves the one and reaches the other; or, where a platform draws only rectangles, from the
+    * side of `from` that faces `to` across, and into the side of `to` that faces it up or down. */
+  def between(from: Rect, to: Rect, curved: Boolean): Vector[(Double, Double)] =
+    if (!curved) {
+      val right = to.centerX >= from.centerX
+      val down = to.centerY >= from.centerY
+      Vector((if (right) from.right else from.x, from.centerY), (to.centerX, if (down) to.y else to.bottom))
+    }
+    else {
+      val dx = to.centerX - from.centerX
+      val dy = to.centerY - from.centerY
+      Vector(edgeOf(from, dx, dy), edgeOf(to, -dx, -dy))
+    }
+
+  /** The line of an edge between two points (`between`), stopping an arrowhead short of the last where it has one
+    * (`headed`): straight, or across and then down where a platform draws only rectangles. */
+  def straight(points: Vector[(Double, Double)], curved: Boolean, headed: Boolean = true): Path =
+    if (points.length < 2) Path.empty
+    else {
+      val (ax, ay) = points(0)
+      val (bx, by) = points(1)
+      val (dx, dy) = heading(points, curved)
+      val back = if (headed) arrow * 0.8 else 0.0
+      val ex = bx - dx * back
+      val ey = by - dy * back
+      if (curved) Path.empty.moveTo(ax, ay).lineTo(ex, ey)
+      else Path.empty.moveTo(ax, ay).lineTo(bx, ay).lineTo(ex, ey)
+    }
+
+  /** The arrowhead at the end of a straight edge (`straight`), pointing the way it arrives. */
+  def straightHead(points: Vector[(Double, Double)], curved: Boolean): Path =
+    if (points.length < 2) Path.empty
+    else {
+      val (tx, ty) = points(1)
+      val (dx, dy) = heading(points, curved)
+      if (!curved) Path.rect(tx - dx * arrow - 3.0, ty - dy * arrow - 3.0, 6.0, 6.0)
+      else {
+        val bx = tx - dx * arrow
+        val by = ty - dy * arrow
+        val half = arrow * 0.5
+        Path.empty.moveTo(tx, ty).lineTo(bx - dy * half, by + dx * half).lineTo(bx + dy * half, by - dx * half).close
+      }
+    }
+
+  // which way a straight edge arrives, as a unit step: along it, or (drawn across and down) down or up, or across
+  // where it has no way down
+  private def heading(points: Vector[(Double, Double)], curved: Boolean): (Double, Double) = {
+    val (ax, ay) = points(0)
+    val (bx, by) = points(1)
+    if (!curved) {
+      if (math.abs(by - ay) > 0.5) (0.0, if (by > ay) 1.0 else -1.0) else (if (bx >= ax) 1.0 else -1.0, 0.0)
+    }
+    else {
+      val l = math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay))
+      if (l < 1.0e-9) (1.0, 0.0) else ((bx - ax) / l, (by - ay) / l)
+    }
+  }
+
+  // where a line from the middle of `box`, heading (`dx`, `dy`), leaves it
+  private def edgeOf(box: Rect, dx: Double, dy: Double): (Double, Double) = {
+    val sx = if (math.abs(dx) < 1.0e-9) 1.0e18 else box.width / 2.0 / math.abs(dx)
+    val sy = if (math.abs(dy) < 1.0e-9) 1.0e18 else box.height / 2.0 / math.abs(dy)
+    val s = math.min(1.0, math.min(sx, sy))
+    (box.centerX + dx * s, box.centerY + dy * s)
+  }
 
   /** A loop from a node's corner (`at`, its top right) back into it. */
   def loop(at: (Double, Double)): Path = {
