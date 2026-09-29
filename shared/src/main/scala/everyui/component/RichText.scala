@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.component.feature.FontFeature
-import everyui.component.types.{Prop, WhiteSpace}
+import everyui.component.types.{Prop, TextDirection, WhiteSpace}
 import everyui.render.Nodes
 import everyui.text.TextRun
 import everyui.theme.Theme
@@ -27,6 +27,16 @@ class RichText(node: everyui.render.RenderNode = Nodes.richText()) extends Compo
   /** Where each line sits in the box, as [[TextView.align]] has it: it matters once the lines differ in width. */
   lazy val align: Prop[everyui.component.types.TextAlign] = own(new Prop[everyui.component.types.TextAlign](
     everyui.component.types.TextAlign.Start, a => node.setTextAlign(TextView.side(a))))
+
+  /** Which way the words run: the app's reading direction by default (`TextDirection.Inherit`), or the words' own
+    * (`Auto`, the first letter with a direction deciding) for words the app did not write, a message or a name, so an
+    * English one reads left to right in an Arabic app. The start of `align` is the words' start. */
+  lazy val direction: Prop[TextDirection] =
+    own(new Prop[TextDirection](TextDirection.Inherit, d => node.setTextDirection(d.value)))
+  /** Whether a word too long for a line (a URL, a path, a hash) is broken where it must be, rather than running past
+    * the box's edge. It matters for wrapped words alone. */
+  lazy val wrapAnywhere: Prop[Boolean] =
+    own(new Prop[Boolean](false, on => node.setWrapAnywhere(on), () => measure.trigger()))
 
   whiteSpace @= WhiteSpace.Normal
   color := Theme.text()

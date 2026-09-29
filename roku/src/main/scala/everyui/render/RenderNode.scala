@@ -486,6 +486,10 @@ class RenderNode(val sg: SGNode) {
 
   /** "start", "center" or "end", by the reading direction, whatever script the words are in. */
   def setTextAlign(align: String): Unit = uiSetTextAlign(sg, align)
+  /** A Label turns no words by their script: the direction is the app's. */
+  def setTextDirection(value: String): Unit = ()
+  /** A Label wraps where the words let it. */
+  def setWrapAnywhere(on: Boolean): Unit = ()
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
   def getValue(): String = uiGetText(sg)

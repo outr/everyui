@@ -36,17 +36,21 @@ class RenderNode(val fx: Node) {
   private var wrapping: Boolean = false
   private var textColor: String = "#1c1b1f"
   private var align: String = "start"
+  // which way its words run (`setTextDirection`): "" the window's, "auto" their own, "ltr" or "rtl"
+  private var textDirection: String = ""
   // what a video or an audio node plays (`Nodes.video`, `Nodes.audio`)
   private[render] var media: Option[DesktopMedia] = None
 
   def getText(): String = fx match {
-    case t: Text => t.getText
+    case t: Text => RtlText.words(t)
     case f: RichFlow => f.text
     case _ => ""
   }
 
   def setText(text: String): Unit = fx match {
-    case t: Text => t.setText(text)
+    case t: Text =>
+      RtlText.lay(t, text)
+      if (textDirection == "auto") applyAlign()
     case _ => ()
   }
 
@@ -276,7 +280,9 @@ class RenderNode(val fx: Node) {
     * them is (a subtitle underlined whole), since a line under part of it cannot be. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
     fx match {
-      case f: RichFlow => f.setRuns(runs, follow)
+      case f: RichFlow =>
+        f.setRuns(runs, follow)
+        if (textDirection == "auto") applyAlign()
       case _ => setPlainRuns(runs)
     }
   }
@@ -424,17 +430,35 @@ class RenderNode(val fx: Node) {
     applyAlign()
   }
 
+  /** Which way the words run: "" the window's, "auto" their own (JavaFX has no such setting, so the first letter
+    * with a direction is found here, again as the words change), "ltr" or "rtl". */
+  def setTextDirection(value: String): Unit = {
+    textDirection = value
+    applyAlign()
+  }
+
+  /** A text node breaks a word too long for its line where it must already. */
+  def setWrapAnywhere(on: Boolean): Unit = ()
+
   /** Text's alignment and wrap width, a field's alignment and orientation, for the alignment and the direction. A line
     * that is neither wrapped nor aligned away from the left keeps no wrap width, so it never wraps. */
   private[render] def applyAlign(): Unit = {
     val centred = align == "center"
-    val right = (align == "end") != Host.rtl
+    // the words' own direction, where they are given one: a text turned right to left takes its left as its start
+    val rtl = everyui.text.Bidi.rightToLeft(textDirection, getText(), Host.rtl)
+    val right = (align == "end") != rtl
+    val turned = textDirection.nonEmpty && rtl
+    val orientation = if (textDirection.isEmpty) NodeOrientation.INHERIT
+      else if (rtl) NodeOrientation.RIGHT_TO_LEFT else NodeOrientation.LEFT_TO_RIGHT
+    val side = if (centred) TextAlignment.CENTER else if (right != turned) TextAlignment.RIGHT else TextAlignment.LEFT
     fx match {
       case t: Text =>
-        t.setTextAlignment(if (centred) TextAlignment.CENTER else if (right) TextAlignment.RIGHT else TextAlignment.LEFT)
+        t.setNodeOrientation(orientation)
+        t.setTextAlignment(side)
         t.setWrappingWidth(if ((wrapping || centred || right) && explicitWidth > 0.0) explicitWidth else 0.0)
       case f: RichFlow =>
-        f.setSide(if (centred) TextAlignment.CENTER else if (right) TextAlignment.RIGHT else TextAlignment.LEFT)
+        f.setNodeOrientation(orientation)
+        f.setSide(side)
       case f: TextField =>
         // a right-to-left field is mirrored already, so its alignment stays logical: left is where it starts
         f.setAlignment(if (centred) Pos.CENTER else if (align == "end") Pos.CENTER_RIGHT else Pos.CENTER_LEFT)

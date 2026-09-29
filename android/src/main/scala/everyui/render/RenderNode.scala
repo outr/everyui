@@ -30,6 +30,8 @@ class RenderNode(val view: View) {
   private var wrapping: Boolean = false
   // where its text sits, by the reading direction (`setTextAlign`)
   private var textAlign: String = "start"
+  // which way its words run (`setTextDirection`): "" the app's, "auto" their own, "ltr" or "rtl"
+  private var textDirection: String = ""
   // what a video or an audio node plays (`Nodes.video`, `Nodes.audio`)
   private[render] var media: Option[ExoMedia] = None
 
@@ -45,6 +47,7 @@ class RenderNode(val view: View) {
     case t: TextView =>
       // what the face has nothing for (an emoji newer than the device's own fonts) in the app's fallback face
       t.setText(FaceSpan.fallen(text, t.getPaint))
+      if (textDirection == "auto") applyAlign()
       // a string written as several lines is drawn as several lines, wrapping or not. Not wrapping means "do not
       // break these words for me", not "throw away everything after the first newline", which is what a fixed
       // maxLines of 1 did: a two-line subtitle drew its first line inside a box measured for both.
@@ -477,6 +480,7 @@ class RenderNode(val view: View) {
         t.setFocusable(false)
       }
       t.setText(FaceSpan.fallen(text, t.getPaint))
+      if (textDirection == "auto") applyAlign()
       // as many lines as the runs are written as, where they are not wrapped (see setText)
       if (!wrapping) {
         val lines = RenderNode.lineCount(text)
@@ -867,6 +871,16 @@ class RenderNode(val view: View) {
     applyAlign()
   }
 
+  /** Which way the words run: "" the app's, "auto" their own (the first letter with a direction, falling back to the
+    * app's), "ltr" or "rtl". The side their lines start from follows. */
+  def setTextDirection(value: String): Unit = {
+    textDirection = value
+    applyAlign()
+  }
+
+  /** A TextView breaks a word too long for its line where it must already. */
+  def setWrapAnywhere(on: Boolean): Unit = ()
+
   /** Text on the side the app reads from, whatever script its words are in: a TextView's own start is where its
     * first letter reads from, so a Latin line in Arabic sat on the left. A field is mirrored with the root already, so
     * its start stays logical. */
@@ -874,8 +888,15 @@ class RenderNode(val view: View) {
     case e: EditText => e.setTextAlignment(if (textAlign == "center") View.TEXT_ALIGNMENT_CENTER
       else if (textAlign == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
     case t: TextView =>
+      t.setTextDirection(textDirection match {
+        case "auto" => if (Host.rtl) View.TEXT_DIRECTION_FIRST_STRONG_RTL else View.TEXT_DIRECTION_FIRST_STRONG_LTR
+        case "ltr" => View.TEXT_DIRECTION_LTR
+        case "rtl" => View.TEXT_DIRECTION_RTL
+        case _ => View.TEXT_DIRECTION_INHERIT
+      })
+      val rtl = everyui.text.Bidi.rightToLeft(textDirection, t.getText.toString, Host.rtl)
       val side = if (textAlign == "center") android.view.Gravity.CENTER_HORIZONTAL
-        else if ((textAlign == "end") != Host.rtl) android.view.Gravity.RIGHT else android.view.Gravity.LEFT
+        else if ((textAlign == "end") != rtl) android.view.Gravity.RIGHT else android.view.Gravity.LEFT
       t.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY)
       t.setGravity(android.view.Gravity.TOP | side)
     case _ => ()

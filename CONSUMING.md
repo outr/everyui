@@ -500,6 +500,38 @@ OK brings up the platform's keyboard. A component that wraps a platform field sa
 `Component.typesEvent`; those keys reach its `event.key.down` and then the platform, untouched. `TextInput` now does
 this too. Before, it kept Backspace, Space and the arrows from its own field while it was being edited.
 
+### Text direction and long words (`TextView`, `RichText`)
+
+Words the app did not write (a message, a name, a title, code) should run the way their own letters do, not the
+app's: an English message in an Arabic app keeps its question mark at the end, and an Arabic one in an English app
+reads right to left. `direction @= TextDirection.Auto` does that: the first letter with a direction decides, as a web
+page's `dir="auto"` does. `Inherit` (the default) is the app's direction (`Direction`), and `LeftToRight` and
+`RightToLeft` fix it. It turns the words and the side `align`'s start is on, never where the box sits: layouts still
+mirror with the app. `wrapAnywhere @= true` breaks a word too long for its line (a URL, a path, a hash) where it must,
+rather than letting it run past the box.
+
+```scala
+import everyui.component.types.TextDirection
+
+val words = new TextView {
+  whiteSpace @= WhiteSpace.PreWrap
+  direction @= TextDirection.Auto
+  wrapAnywhere @= true
+  content := message().text
+}
+everyui.text.Bidi.firstStrong("صباح الخير")   // Some(true): right to left
+```
+
+The web sets `dir="auto"` and `overflow-wrap: anywhere`; Android the TextView's first-strong text direction (it breaks
+long words already). JavaFX has no automatic direction, so the desktop finds the first letter itself; it also draws
+words with right-to-left letters in a face that has them (Segoe UI, DejaVu Sans or Arial, the first installed), since
+JavaFX puts a line in the wrong order when a fallback face draws part of it, and wraps them itself, since JavaFX 22 and
+later throw when a wrap falls inside right-to-left words. The Roku and the Apple TV keep the app's direction.
+
+A chat transcript (`everyui.chat`) shows every message's words, names, times, tool calls and notes this way. When
+earlier history arrives above an entry that led its group, that entry keeps its avatar and name, though an older
+message by the same author now sits straight above it, so nothing on the screen changes or moves.
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

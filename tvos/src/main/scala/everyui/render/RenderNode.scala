@@ -236,6 +236,8 @@ class RenderNode(val sg: SGNode) {
   def setAlt(text: String): Unit = ()
 
   def setTextAlign(align: String): Unit = ()
+  def setTextDirection(value: String): Unit = ()
+  def setWrapAnywhere(on: Boolean): Unit = ()
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
   def getValue(): String = uiGetText(sg)

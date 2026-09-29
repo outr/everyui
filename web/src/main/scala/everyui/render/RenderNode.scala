@@ -532,6 +532,10 @@ class RenderNode(val el: html.Element) {
     el.style.setProperty("text-shadow", if (hex.isEmpty) "none" else s"${x}px ${y}px ${blur}px $hex")
 
   def setTextAlign(align: String): Unit = el.style.textAlign = align
+  /** Which way the words run: "" the page's, "auto" their own (the first letter with a direction), "ltr" or "rtl". */
+  def setTextDirection(value: String): Unit = if (value.isEmpty) el.removeAttribute("dir") else el.setAttribute("dir", value)
+  /** A word too long for its line broken where it must be (a URL, a path), so it never runs past the box. */
+  def setWrapAnywhere(on: Boolean): Unit = el.style.setProperty("overflow-wrap", if (on) "anywhere" else "")
 
   /** An `<input>`'s contents. */
   def getValue(): String = el match {
