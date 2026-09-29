@@ -47,8 +47,8 @@ trait UIScreen extends Screen with PathActivation {
     * start; returning to the screen with Back puts the focus back where it was instead. */
   // each component made while this screen is being made, for `dispose`: a field the screen holds but never shows
   // (an episode box on a film's page) is out of the container's reach, and bound to the theme it held the screen
-  private var made: List[Component] = Nil
-  Component.making @= Some((c: Component) => made = c :: made)
+  private val parts: ScreenParts = new ScreenParts
+  Component.making @= Some(parts.adding)
   // its constructor's turn is over by the next
   everyui.render.Platform.later(() => Component.making @= None)
 
@@ -56,9 +56,7 @@ trait UIScreen extends Screen with PathActivation {
     * the container never held. */
   override protected def dispose(): Unit = {
     container.dispose()
-    val all = made
-    made = Nil
-    all.foreach(c => c.dispose())
+    parts.take().foreach(c => c.dispose())
     everyui.render.Platform.collect()
   }
 
