@@ -10,14 +10,20 @@ class SizeProperty(measured: Val[Double], write: Double => Unit) extends Var[Dou
   def explicit: Boolean = explicitlySet
 
   attach { d =>
-    if (explicitlySet) write(d)
+    if (explicitlySet) writeOut(d)
+  }
+
+  // written out, and drawn: the frame loop runs, if it was idle (Frames)
+  private def writeOut(d: Double): Unit = {
+    write(d)
+    everyui.task.Frames.wake()
   }
 
   override def @=(value: Double): Unit = {
     val first = !explicitlySet
     explicitlySet = true
     // the first explicit value must reach the node even if it equals the measured one
-    if (first && get == value) write(value) else super.@=(value)
+    if (first && get == value) writeOut(value) else super.@=(value)
   }
 
   override def :=(value: => Double): Unit = {
@@ -25,6 +31,6 @@ class SizeProperty(measured: Val[Double], write: Double => Unit) extends Var[Dou
     explicitlySet = true
     val before = get
     super.:=(value)
-    if (first && get == before) write(get)
+    if (first && get == before) writeOut(get)
   }
 }

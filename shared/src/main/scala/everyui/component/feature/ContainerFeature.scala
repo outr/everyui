@@ -34,6 +34,8 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       component.measured.refresh()
       component.requestLayout()
       if (removed.nonEmpty) everyui.focus.Focus.offScreen()
+      // what is on the screen changed: the frame loop runs, if it was idle, and a focus waiting for this finds it
+      everyui.task.Frames.wake()
     }
   }
 

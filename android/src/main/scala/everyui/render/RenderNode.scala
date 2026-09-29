@@ -2049,6 +2049,13 @@ object Platform {
   def whenFontsReady(f: () => Unit): Unit = f()
 
   /** Run `tick` once per display frame. */
+  /** Frames on demand (`everyui.task.Frames`): the app asks for each frame it needs, and the Choreographer calls on
+    * it for none while nothing moves or changes. */
+  def framesOnDemand(): Boolean = true
+  /** `f` once, on the next display frame. */
+  def nextFrame(f: () => Unit): Unit = Choreographer.getInstance.postFrameCallback(new Choreographer.FrameCallback {
+    override def doFrame(frameTimeNanos: Long): Unit = f()
+  })
   def animate(tick: () => Unit): Unit = {
     val callback = new Choreographer.FrameCallback {
       override def doFrame(frameTimeNanos: Long): Unit = {

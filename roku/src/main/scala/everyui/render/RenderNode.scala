@@ -628,6 +628,10 @@ object Platform {
   def ticks(): Double = uiTicks()
   /** Frames as the platform measured them: not here, where the app times its own frames instead. */
   def frameTimings(f: (Double, Double) => Unit): Boolean = false
+  /** Every frame runs here (`everyui.task.Frames`): the render thread's Timer already idles itself when nothing is
+    * drawn (uiAnimate). */
+  def framesOnDemand(): Boolean = false
+  def nextFrame(f: () => Unit): Unit = uiLater(f)
   def animate(tick: () => Unit): Unit = uiAnimate(tick)
 
   /** Assets live in the channel package: `/images/icon.png` is `pkg:/images/icon.png`. A path already in the package

@@ -43,7 +43,10 @@ object Focus {
   val activity: Var[Long] = Var(0L)
 
   /** Somebody used the app just now. */
-  def used(): Unit = activity @= activity() + 1L
+  def used(): Unit = {
+    activity @= activity() + 1L
+    everyui.task.Frames.wake()
+  }
 
   /** Take the platform's keys: `ui` calls it as it starts, since the Roku compiler runs no statement in an object's
     * body. */
@@ -279,7 +282,7 @@ object Focus {
     val held = Platform.modifiers()
     val event = KeyEvent(key, name, held.ctrl, held.meta, held.alt, held.shift)
     val embed = Platform.keyEmbed()
-    if (pressed) used()
+    if (pressed) used() else everyui.task.Frames.wake()
     // heard before anything else might take the key
     val tapped = Keymap.tap(event, pressed, Platform.keyRepeat())
     val taken =

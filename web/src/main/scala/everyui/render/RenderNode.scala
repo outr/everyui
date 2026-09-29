@@ -1605,6 +1605,11 @@ object Platform {
 
   /** Frames as the platform measured them: not here, where the app times its own frames instead. */
   def frameTimings(f: (Double, Double) => Unit): Boolean = false
+  /** Frames on demand (`everyui.task.Frames`): the app asks for each frame it needs, and asks for none while nothing
+    * moves or changes. */
+  def framesOnDemand(): Boolean = true
+  /** `f` once, just before the browser draws its next frame. */
+  def nextFrame(f: () => Unit): Unit = dom.window.requestAnimationFrame(_ => f())
   def animate(tick: () => Unit): Unit = {
     lazy val frame: Double => Unit = _ =>
       tick()

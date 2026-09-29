@@ -125,6 +125,44 @@ refs.children.bindMaking(item().toList.flatMap(_.refs))(r => new Tag(r.name))
 `bind` is the same for components that are kept and handed back rather than made. Anything else built from a value
 belongs in a listener: `item.attach(i => panel.children @= …)`. A `:=` is for values: words, sizes, colours, icons.
 
+### When frames run
+
+On the web, the desktop and Android (`Frames.onDemand`) the screen manager's frame loop runs only while something
+needs it. A screen showing what it last heard asks the platform for no frames at all, so a dashboard left open for
+days, or a laptop on battery, spends nothing on it. On a Roku and an Apple TV every frame runs, as before.
+
+The loop wakes by itself, on the platform's next frame (the same one on the web), for:
+
+- a change to anything drawn: a component's property, its size, its children. It runs the frame that draws it and
+  the one after;
+- a key or a pointer;
+- an animation started on a `TaskSupport` (`x.to(1.0).in(…).start()`), for as long as it runs. A paused one needs
+  none;
+- a listener on a `TaskSupport`'s `delta`, for as long as it listens;
+- the clock: while anything reads `Clock.now` (`Format.elapsed`) or listens to `Clock.tick`, a frame a second.
+
+Motion (`Component.motion`) is run by the platform and needs no frames of the app's. Timers (`Platform.after`,
+`Platform.later`) are not frames either.
+
+Work done in `update` every frame must say it needs frames, or it stops when nothing else needs them:
+
+```scala
+override def update(delta: Double): Unit = {
+  super.update(delta)
+  if (counting()) now @= System.currentTimeMillis()
+}
+override def needsFrames: Boolean = super.needsFrames || counting()
+
+// when it starts needing them, from a quiet screen
+counting @= true
+Frames.request()
+```
+
+Anything else can ask directly: `Frames.request()` for the next frame, `Frames.request(3)` for three, or
+`Frames.hold()` for every frame until `release()`. The app's `frame(ms, updateMs)` hook is called on every frame that
+runs. The first after an idle spell is timed from what woke it. `fps=1` at launch holds every frame, so the rate
+it logs is the rate the app holds, not how often it idles.
+
 ## The page
 
 The bundle expects an element with the id `app` (it makes one if there is none) and the bundled faces in `fonts/`

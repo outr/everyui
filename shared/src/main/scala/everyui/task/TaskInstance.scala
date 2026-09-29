@@ -19,10 +19,16 @@ case class TaskInstance(task: Animation, updates: Updates) {
       }
     }
 
+  /** Whether the next frame would step it. */
+  private[task] def moving: Boolean = !paused && updates.updateTasks()
+
   def start(): Unit = updates.addTask(this)
 
   def pause(): Unit = paused = true
-  def play(): Unit = paused = false
+  def play(): Unit = {
+    paused = false
+    Frames.wake()
+  }
 
   def cancel(): Unit = updates.removeTask(this)
 }

@@ -362,6 +362,9 @@ object Platform {
   def ticks(): Double = uiTicks()
   /** Frames as the platform measured them: not here, where the app times its own frames instead. */
   def frameTimings(f: (Double, Double) => Unit): Boolean = false
+  /** Every frame runs here (`everyui.task.Frames`). */
+  def framesOnDemand(): Boolean = false
+  def nextFrame(f: () => Unit): Unit = later(f)
   def animate(tick: () => Unit): Unit = uiAnimate(tick)
 
   /** Assets live in the app bundle; the runtime resolves a site-absolute path against it. */

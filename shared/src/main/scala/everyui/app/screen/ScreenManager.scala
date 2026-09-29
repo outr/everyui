@@ -124,6 +124,11 @@ trait ScreenManager extends TaskSupport {
     * intent, a launch parameter on the Roku). An app that always wants it, as the frame-rate checks' does, says so. */
   protected def reportsFps: Boolean = Platform.launchArg("fps") == "1"
 
+  /** Whether the loop needs the next frame for itself: a task moving (the manager's, `ui`'s or the showing screen's),
+    * something listening to one of their `delta`s, or the showing screen saying it does (`needsFrames`). Otherwise it
+    * idles until something wakes it (`everyui.task.Frames`). */
+  override def needsFrames: Boolean = super.needsFrames || ui.needsFrames || active().exists(_.needsFrames)
+
   /** Start on the screen claiming the page's path, or `screen`. Nothing is built until the bundled faces have
     * loaded, so every node is measured with its real font and never a fallback the browser is still replacing. */
   def run(screen: Screen, others: Screen*): Unit = {
@@ -326,29 +331,49 @@ trait ScreenManager extends TaskSupport {
 
   /** Each frame as it went, for an app that reports where the time goes on a real device: `ms` from the start of the
     * frame before to the start of this one, and how much of that the app's own work took (the update: what changed,
-    * laid out). The rest is the platform's, drawing it, and anything else the thread was held up by. Called on the
-    * thread that draws, every frame, so what overrides it must be cheap. Nothing by default. */
+    * laid out). The rest is the platform's, drawing it, and anything else the thread was held up by. The first frame
+    * after the loop has idled (`everyui.task.Frames`) is timed from what woke it rather than across the idle spell.
+    * Called on the thread that draws, on every frame that runs, so what overrides it must be cheap. Nothing by
+    * default. */
   protected def frame(ms: Double, updateMs: Double): Unit = ()
 
   private def live(): Unit = {
     val reports = reportsFps
+    // measuring the frame rate draws every frame, so what is measured is the rate the app holds, not how often it idles
+    if (Platform.launchArg("fps") == "1") Frames.hold()
     var last = -1.0
     var frames = 0.0
     var reported = Platform.ticks()
     var worked = 0.0
-    Platform.animate(() => {
+    var ticking = false
+    Frames.run(woke => {
       val now = Platform.ticks()
+      // after an idle spell the frame is timed from what woke it, and the clock hears of the time spent idle
+      val from = if (woke < 0.0 || last < 0.0) last else woke
+      if (from > last) everyui.util.Clock.update((from - last) / 1000.0)
       // the frame that has just ended, with the work it began with
-      if (last >= 0.0) frame(now - last, worked)
-      update(if (last < 0.0) 0.0 else (now - last) / 1000.0)
+      if (last >= 0.0) frame(now - from, worked)
+      update(if (last < 0.0) 0.0 else (now - from) / 1000.0)
       worked = Platform.ticks() - now
       last = now
+      // a second's count of frames is only ever of frames that ran one after another
+      if (woke >= 0.0) {
+        frames = 0.0
+        reported = now
+      }
       frames = frames + 1.0
       if (reports && now - reported >= 1000.0) {
         scribe.info("fps=" + (frames * 1000.0 / (now - reported)).toString)
         frames = 0.0
         reported = now
       }
+    }, () => needsFrames, () => if (!ticking && everyui.util.Clock.watched) {
+      // idle, with something bound to the clock: a frame when it next moves on
+      ticking = true
+      Platform.after(everyui.util.Clock.untilTick, () => {
+        ticking = false
+        Frames.request()
+      })
     })
   }
 }

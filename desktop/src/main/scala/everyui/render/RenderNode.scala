@@ -1362,6 +1362,11 @@ object Platform {
   /** Run `tick` once per JavaFX pulse. */
   /** Frames as the platform measured them: not here, where the app times its own frames instead. */
   def frameTimings(f: (Double, Double) => Unit): Boolean = false
+  /** Frames on demand (`everyui.task.Frames`): the app asks for each frame it needs, and JavaFX pulses only when its
+    * scene changes while it needs none. */
+  def framesOnDemand(): Boolean = true
+  /** `f` once, on the next JavaFX pulse. */
+  def nextFrame(f: () => Unit): Unit = FrameTimer.next(f)
   def animate(tick: () => Unit): Unit = {
     val timer = new AnimationTimer {
       override def handle(now: Long): Unit = tick()

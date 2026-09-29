@@ -10,7 +10,11 @@ class Prop[T](getter: => T, setter: T => Unit, callbacks: (() => Unit)*) extends
 
   refresh()
   attach { v =>
-    if (!valueChanging) setter(v)
+    if (!valueChanging) {
+      setter(v)
+      // drawn differently: the frame loop runs, if it was idle (Frames)
+      everyui.task.Frames.wake()
+    }
     if (callbacks.nonEmpty) callbacks.foreach(_())
   }
 
