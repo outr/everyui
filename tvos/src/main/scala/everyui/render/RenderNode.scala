@@ -439,14 +439,27 @@ object Platform {
 
   def saveSetting(name: String, value: String): Unit = ()
 
-  /** The device's own store of documents (see [[everyui.store.Store]]). Nothing is kept here yet, as nothing is
-    * kept by `setting` either — an Apple television would write these under Application Support, and until this
-    * target is built out it answers the way an empty cache answers, which every caller already has to handle. */
-  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = got(None)
-  def storePut(space: String, key: String, value: String, done: () => Unit): Unit = done()
-  def storeDelete(space: String, key: String, done: () => Unit): Unit = done()
-  def storeKeys(space: String, got: List[String] => Unit): Unit = got(Nil)
-  def storeClear(space: String, done: () => Unit): Unit = done()
+  /** The device's own store of documents (see [[everyui.store.Store]]). Files under the app's Caches directory: a
+    * television app has no other place of its own to keep them, and the system may empty it whenever it wants the
+    * room, so a read can always come back empty. The work is done before the callback, on the thread that draws; one
+    * small document at a time is what this is for. */
+  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = {
+    val text = uiStoreGet(space, key)
+    got(if (text.isEmpty) None else Some(text))
+  }
+  def storePut(space: String, key: String, value: String, done: () => Unit): Unit = {
+    uiStorePut(space, key, value)
+    done()
+  }
+  def storeDelete(space: String, key: String, done: () => Unit): Unit = {
+    uiStoreDelete(space, key)
+    done()
+  }
+  def storeKeys(space: String, got: List[String] => Unit): Unit = got(uiStoreKeys(space))
+  def storeClear(space: String, done: () => Unit): Unit = {
+    uiStoreClear(space)
+    done()
+  }
 
   /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
   def deviceModel(): String = deviceName()

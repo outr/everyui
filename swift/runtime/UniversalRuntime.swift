@@ -632,3 +632,50 @@ func uiEditText(_ title: V, _ value: V, _ secure: V, _ autofill: V, _ done: V) -
     top?.present(alert, animated: true)
     return .vNull
 }
+
+// MARK: - store: documents kept between launches (everyui.store.Store)
+
+/// A space's directory under the app's Caches: the one place a television app may keep files of its own, and one the
+/// system empties when it wants the room back, which is what the store tells every reader to expect.
+func uiStoreDir(_ space: V) -> URL {
+    let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    let dir = caches.appendingPathComponent("everyui-store").appendingPathComponent(uiStoreSafe(rtS(space)))
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+/// A name as a file name: letters, digits, `.` and `-` as they are, anything else `_` (the Roku and Android fold it
+/// the same way).
+func uiStoreSafe(_ name: String) -> String {
+    String(name.map { (c: Character) -> Character in (c.isLetter || c.isNumber || c == "." || c == "-") ? c : "_" })
+}
+
+func uiStoreFile(_ space: V, _ key: V) -> URL {
+    uiStoreDir(space).appendingPathComponent(uiStoreSafe(rtS(key)) + ".json")
+}
+
+/// The document under a key, or "" where there is none.
+func uiStoreGet(_ space: V, _ key: V) -> V {
+    .vStr((try? String(contentsOf: uiStoreFile(space, key), encoding: .utf8)) ?? "")
+}
+
+func uiStorePut(_ space: V, _ key: V, _ value: V) -> V {
+    try? rtS(value).write(to: uiStoreFile(space, key), atomically: true, encoding: .utf8)
+    return .vNull
+}
+
+func uiStoreDelete(_ space: V, _ key: V) -> V {
+    try? FileManager.default.removeItem(at: uiStoreFile(space, key))
+    return .vNull
+}
+
+/// The keys a space holds, as the file names say them: a key folded by uiStoreSafe comes back folded.
+func uiStoreKeys(_ space: V) -> V {
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: uiStoreDir(space).path)) ?? []
+    return rtArr(names.filter { $0.hasSuffix(".json") }.map { (n: String) -> V in V.vStr(String(n.dropLast(5))) })
+}
+
+func uiStoreClear(_ space: V) -> V {
+    try? FileManager.default.removeItem(at: uiStoreDir(space))
+    return .vNull
+}
