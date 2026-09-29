@@ -3,6 +3,7 @@ package everyui.app
 import everyui.component.{Button, ButtonStyle, Column, Component, Container, ScrollContainer, TextInput, TextView}
 import everyui.component.types.Autofill
 import everyui.layout.FlowLayout
+import everyui.location.{Location, LocationAnswer, LocationWatch}
 import everyui.clipboard.Clipboard
 import everyui.file.{Files, SaveResult}
 import everyui.passkey.{PasskeyResult, Passkeys}
@@ -18,7 +19,8 @@ import reactify.*
   * a passkey made and signed in with, by a click or from the username field's autofill, with options made here as a
   * server would (`rp=<domain>` names the site, which Android needs) and the credential's JSON logged whole; push
   * notifications, allowed, subscribed to with `vapid=<public key>` (a key of the demo's own otherwise, which nothing
-  * can send with), and what arrives while open or is tapped. Each section says whether the platform has it.
+  * can send with), and what arrives while open or is tapped; where the device is, once and followed 25 m at a time.
+  * Each section says whether the platform has it.
   * `theme=light` shows the light palette. */
 class PlatformDemo {
   private val width = math.min(720.0, ui.size.width() - 32.0)
@@ -29,6 +31,9 @@ class PlatformDemo {
   private val autofills: Var[String] = Var("")
   private val pushed: Var[String] = Var("Not subscribed")
   private val allowed: Var[String] = Var("")
+  private val located: Var[String] = Var("Not asked yet")
+  private val followed: Var[String] = Var("")
+  private var following: Option[LocationWatch] = None
   private val username = new TextInput("Username", width = 220.0) {
     autofill @= Some(Autofill.Username)
     passkey @= true
@@ -63,7 +68,17 @@ class PlatformDemo {
           case other => tell(pushed, "push subscribe", other.toString)
         }
       }.start(), ButtonStyle.Filled),
-      new Button("Unsubscribe", () => Push.unsubscribe().map(_ => tell(pushed, "push unsubscribe", "Unsubscribed")).start()))
+      new Button("Unsubscribe", () => Push.unsubscribe().map(_ => tell(pushed, "push unsubscribe", "Unsubscribed")).start())),
+    section("Location", Location.supported, located, followed)(
+      new Button("Where am I?", () => Location.current().map(a => tell(located, "location current", where(a))).start(),
+        ButtonStyle.Filled),
+      new Button("Follow, 25 m at a time", () => follow()),
+      new Button("Stop following", () => {
+        following.foreach(_.stop())
+        following = None
+        followed @= ""
+        tell(located, "location stopped", "Stopped following")
+      }))
   )
   Passkeys.autofillable.map(a => autofills @= (if (a) "offered in autofill too" else "not in autofill")).start()
   Push.received.attach(m => tell(pushed, "push received", "Arrived while open: " + m.title + ": " + m.body +
@@ -136,6 +151,33 @@ class PlatformDemo {
     val bytes = new Array[Byte](count)
     scala.util.Random.nextBytes(bytes)
     java.util.Base64.getUrlEncoder.withoutPadding.encodeToString(bytes)
+  }
+
+  private def where(a: LocationAnswer): String = a match {
+    case LocationAnswer.Located(p) =>
+      val round = (v: Double, places: Int) => BigDecimal(v).setScale(places, BigDecimal.RoundingMode.HALF_UP).toString
+      round(p.latitude, 5) + ", " + round(p.longitude, 5) + " ±" + round(p.accuracy, 0) + " m" +
+        p.altitude.map(v => ", " + round(v, 0) + " m up").getOrElse("") +
+        p.heading.map(v => ", heading " + round(v, 0) + "°").getOrElse("") +
+        p.speed.map(v => ", " + round(v, 1) + " m/s").getOrElse("")
+    case other => other.toString
+  }
+
+  private def follow(): Unit = if (following.isEmpty) {
+    var heard = 0
+    followed @= "following"
+    val watch = Location.watch(distance = 25.0) { a =>
+      a match {
+        case LocationAnswer.Located(_) => heard += 1
+        case _ => ()
+      }
+      // a refusal ends the watch
+      val ended = a == LocationAnswer.LocationDenied || a == LocationAnswer.LocationUnsupported
+      if (ended) following = None
+      followed @= (if (ended) "" else "following, " + heard.toString + (if (heard == 1) " position" else " positions"))
+      tell(located, "location watch", where(a))
+    }
+    following = if (watch.running) Some(watch) else None
   }
 
   /** The app's own VAPID public key, from `vapid=`; otherwise one the demo made, whose private key nobody has. */

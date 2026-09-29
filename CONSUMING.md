@@ -926,6 +926,50 @@ while it lasts) and send it, so the server always has the current one. `Push.uns
 
 `demo=platform` allows notifications, subscribes (`vapid=<public key>`), and shows what arrives or is tapped.
 
+## Location (`everyui.location`)
+
+`Location.current()` answers where the device is, once, and `Location.watch(distance)` follows it as it moves until
+the watch is stopped, each as a `LocationAnswer`: `Located(position)`, `LocationDenied`, `LocationUnavailable` (no
+fix just now: no signal, location off, none in time; a watch goes on), `LocationUnsupported` or
+`LocationFailed(message)`. A `Position` has `latitude`, `longitude` and `accuracy` (metres), and `altitude`, `heading`
+and `speed` as Options, with the `time` it was fixed; `distanceTo` measures between two in metres.
+
+```scala
+import everyui.location.{Location, LocationAnswer}
+
+Location.current().map {
+  case LocationAnswer.Located(p) => map.centre(p.latitude, p.longitude)
+  case other => Toast.show("No location: " + other)
+}.start()
+
+val watch = Location.watch(distance = 25.0) {      // metres from the last position heard; 0 for every one
+  case LocationAnswer.Located(p) => track += p
+  case _ => ()
+}
+// ...
+watch.stop()
+```
+
+Both ask for the permission where it has not been given; `Location.permission` (a `Task[everyui.Permission]`) and
+`Location.permit()` ask on their own, before a screen that needs it. `precise = false` settles for a rough, quicker fix
+(the network's rather than the satellites'), and `current` gives up after `timeout` seconds (30 by default).
+
+- **Web**: `navigator.geolocation`, over HTTPS or on `localhost`. The browser asks the person at the first request.
+  A watch is `watchPosition`, whose positions `LocationWatch` filters by distance.
+- **Android**: the LocationManager: the fused provider where the device has one, else satellites for a precise fix
+  and the network for a rough one. The manifest declares both permissions, which are asked for together, so the
+  person chooses precise or approximate:
+
+  ```xml
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  ```
+
+  A watch gives the platform its distance too. Location turned off in the settings answers `LocationUnavailable`.
+- **Desktop, Roku, Apple TV**: none; `supported` is false and every request answers `LocationUnsupported`.
+
+`demo=platform` finds where the device is and follows it 25 m at a time.
+
 ## Web builds: JavaScript, WebAssembly, or both
 
 The `sbt-everyui` plugin builds a web app as JavaScript, as WebAssembly, or as both, with a loader in the page that
