@@ -27,12 +27,14 @@ object EveryUIPlugin extends AutoPlugin {
   override def trigger: PluginTrigger = allRequirements
 
   object autoImport {
-    val AndroidApk: everyui.sbt.AndroidApk.type = everyui.sbt.AndroidApk
-    val AndroidRuntime: everyui.sbt.AndroidRuntime.type = everyui.sbt.AndroidRuntime
-    val Aars: everyui.sbt.Aars.type = everyui.sbt.Aars
-    val RokuChannel: everyui.sbt.RokuChannel.type = everyui.sbt.RokuChannel
-    val AppleApp: everyui.sbt.AppleApp.type = everyui.sbt.AppleApp
-    val EveryUILibraries: everyui.sbt.EveryUILibraries.type = everyui.sbt.EveryUILibraries
+    // defs, not vals: each helper is loaded only when a build uses it, so loading the plugin never loads what one of
+    // them needs (AndroidRuntime's ASM) for a build that packages no Android app
+    def AndroidApk: everyui.sbt.AndroidApk.type = everyui.sbt.AndroidApk
+    def AndroidRuntime: everyui.sbt.AndroidRuntime.type = everyui.sbt.AndroidRuntime
+    def Aars: everyui.sbt.Aars.type = everyui.sbt.Aars
+    def RokuChannel: everyui.sbt.RokuChannel.type = everyui.sbt.RokuChannel
+    def AppleApp: everyui.sbt.AppleApp.type = everyui.sbt.AppleApp
+    def EveryUILibraries: everyui.sbt.EveryUILibraries.type = everyui.sbt.EveryUILibraries
 
     val everyuiVersion = settingKey[String]("The EveryUI release this plugin belongs to, for the app's EveryUI dependencies")
     @transient val everyuiFonts = taskKey[File]("EveryUI's fonts, taken out of the EveryUI backend on the classpath: a directory of .ttf files for the app's assets")

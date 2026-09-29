@@ -308,7 +308,8 @@ lazy val sbtEveryui = (project in file("sbt-support"))
     scalaVersion := "3.8.4",
     Compile / unmanagedSourceDirectories += baseDirectory.value / "src" / "plugin" / "scala",
     addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0"),
-    libraryDependencies += "org.ow2.asm" % "asm-tree" % "9.10.1",
+    // asm itself too: asm-tree names it, but a plugin's own dependencies are not always followed that far
+    libraryDependencies ++= Seq("org.ow2.asm" % "asm" % "9.10.1", "org.ow2.asm" % "asm-tree" % "9.10.1"),
     // the release the plugin belongs to (everyuiVersion), which fetches the compiler at the same one
     Compile / resourceGenerators += Def.task {
       val out = (Compile / resourceManaged).value / "everyui" / "sbt" / "everyui.properties"
