@@ -512,13 +512,60 @@ map.zoomToItem("core", "network")   // glides there; fit() fits everything, zoom
 - **Input.** A drag or one finger pans, and so does the wheel. The wheel with Ctrl (Command on a Mac), a trackpad's
   pinch, or two fingers zoom about where they are (`ZoomCanvas.pinches` says whether a pinch can come here). With the
   focus, the arrows pan while there is more of the world that way (then the arrow leaves, as the focus layer says),
-  `+` and `-` zoom, and `0` fits. A click that did not move is `clicked`; `hovered` follows the pointer.
+  `+` and `-` zoom, and `0` fits. A click that did not move is `clicked`; `hovered` follows the pointer. The
+  canvas takes the pointer itself: an item's component hears its own clicks on the web and the desktop but not on
+  Android, so what must work everywhere goes by `clicked` and `hit`.
 - **Roku and Apple TV.** The remote pans with the arrows, zooms with Fast Forward and Rewind and fits with Replay. OK
   clicks what is in the middle of the view, which a small cross marks while the canvas has the focus. Drawings there
   show what rectangles can (`Block.of`).
 
 `Path.dashed(on, off)` cuts a path into dashes, which every backend draws the same way, and `Path.roundRect` is a
 rectangle with rounded corners.
+
+### GraphView (`everyui.graph`)
+
+`GraphView[N, E]` draws a directed graph on a `ZoomCanvas`, laid out in layers in shared code (`GraphLayout`, no JS
+library): cycles broken, layers by the longest path, crossings taken out by barycentre sweeps and swaps, and places
+fitted to the neighbours' medians, with long edges kept straight. Its nodes and edges are the app's `Var[Vector]`s,
+and it is laid out again when they change (once for everything changed in a turn), the nodes gliding to their new
+places where there are up to 300.
+
+```scala
+import everyui.graph.{EdgeLook, GraphFlow, GraphView, NodeLook}
+
+val graph = new GraphView[Module, Dependency](modules, dependencies, _.name, _.name, _.from, _.to)
+graph.detailOf @= (m => Some(m.files.toString + " files"))
+graph.nodeLook @= (m => NodeLook(accent = Some(groupColour(m)), dashed = m.planned))
+graph.edgeLook @= (d => if (d.violation) EdgeLook(color = Some(Theme.danger()), width = 2.5) else EdgeLook(dashed = d.planned))
+graph.flow @= GraphFlow.TopToBottom            // LeftToRight by default
+graph.activated.attach(m => open(m))           // clicked twice, or Enter
+graph.selected.attach(k => showDetails(k))     // the chosen node's key
+```
+
+- **Nodes.** A key, a label and an optional `detailOf` line, in a box of the graph's own sized to its words
+  (`GraphNode`), or the app's `renderer` at the size `sizeOf` gives. `NodeLook` gives an accent colour (a bar and an
+  edge) or a dashed outline. Far out, a layer's nodes are outlines in one drawing until the narrowest is `detailFrom`
+  (40) pixels wide, so a graph of thousands fits in quickly.
+- **Edges.** Curves between the layers with arrowheads, drawn with `Drawing`s, a drawing for the edges leaving each
+  layer. `EdgeLook` gives a colour, a dash and a width. An edge the layout turned round to break a cycle is still drawn
+  from its source; one from a node to itself is a loop. A Roku and an Apple TV draw them as lines across and down
+  (`curved`), which rectangles can show.
+- **Events.** `nodeClicked`, `edgeClicked` (`edgeAt` finds one near a point), `activated`, `selected` and
+  `selectedEdge`. The node under the pointer, else the chosen one, is `lit` with its neighbours in and out and the
+  edges between them, and the rest fades. `neighbours(key)` answers them, `reveal(key)` brings a node into view, and
+  `plan` is the layout (every box and route) with `layoutMillis`.
+- **Keys.** With the focus, the arrows move among the nodes: along the flow an arrow follows an edge to the neighbour
+  most in line, or goes to the nearest node in the next layer that way; across it, to the next node in the layer.
+  This is the graph's own navigation, as a list moves its cursor; the app's focus is never handed on by position, and
+  an arrow with no node its way leaves the graph as the focus layer says. Enter activates, Escape lets go, the view
+  follows the chosen node, and a screen reader hears its name. The canvas's keys (+, -, 0; Fast Forward, Rewind and
+  Replay on a remote) still zoom.
+- **Semantics.** The graph is an `application` named by `description`, each node a button named by its label and
+  detail.
+
+Layout time on the JVM (random graphs of 1.5 edges a node): 50 nodes about 5 ms, 500 about 40 ms, 2,000 about 0.5 s.
+In Chromium the demo's 2,000 modules lay out in about 0.3 s and show in under a second, and a pan step costs about
+1 ms.
 
 ### SplitButton (`everyui.menu`)
 

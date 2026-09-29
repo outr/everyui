@@ -109,8 +109,9 @@ class ZoomCanvas extends Container {
   cursor @= "default"
   world.size.width := size.width()
   world.size.height := size.height()
-  flat.size.width := size.width()
-  flat.size.height := size.height()
+  // (no size of its own, so on the web it covers nothing of the world under it: only its items take the pointer)
+  flat.size.width @= 0.0
+  flat.size.height @= 0.0
   ring.size.width := size.width()
   ring.size.height := size.height()
   reticle.size.width @= 17.0
@@ -181,7 +182,8 @@ class ZoomCanvas extends Container {
     val h = size.height()
     if (w > 0.0 && h > 0.0) {
       val room = margin()
-      val scale = clamp(math.min((w - room * 2.0) / math.max(box.width, 1e-9), (h - room * 2.0) / math.max(box.height, 1e-9)))
+      val scale = clamp(math.min((w - room * 2.0) / math.max(box.width, 1e-9),
+        (h - room * 2.0) / math.max(box.height, 1e-9)))
       moveTo(ZoomView(box.centerX - w / 2.0 / scale, box.centerY - h / 2.0 / scale, scale), animate)
     }
   }
@@ -439,8 +441,9 @@ class ZoomCanvas extends Container {
   event.pointer.up.attach(_ => release())
   event.pointer.leave.attach(_ => if (!dragging) hovered @= None)
   event.pointer.wheel.attach { e =>
-    // (not consumed: a wheel event consumed is told from the next one by its deltas alone, so a second notch the same
-    // as the first would be lost; the backend keeps the wheel from what the canvas is in, Gestures.take)
+    // (not consumed: a wheel's notches, or a trackpad's steps, come closer together than a consumed event holds its
+    // equals off (Pointer.hold), and the next the same as it would be lost; the backend keeps the wheel from what the
+    // canvas is in, Gestures.take)
     stop()
     val (x, y) = pointerAt.getOrElse((size.width() / 2.0, size.height() / 2.0))
     // a notch of a mouse wheel (100 on the web, 40 on the desktop) a third or a tenth closer; a trackpad pinch,
@@ -468,9 +471,12 @@ class ZoomCanvas extends Container {
       (dy < 0.0 && b.y < v.y - edge) || (dy > 0.0 && b.bottom > v.y + size.height() / v.scale + edge)
   }
 
+  /** Whether the arrows pan the view: not on a canvas built on this one that moves among its items with them. */
+  protected def arrowsPan: Boolean = true
+
   // an arrow pans while there is more of the world its way, and otherwise leaves the canvas
   private def panning(dx: Double, dy: Double): Option[() => Unit] =
-    if (more(dx, dy)) Some(() => {
+    if (arrowsPan && more(dx, dy)) Some(() => {
       stop()
       panBy(dx, dy)
     })

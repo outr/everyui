@@ -38,6 +38,9 @@ import everyui.render.Platform
   *              the location; not on a Roku or an Apple TV (app/full: FullDemos)
   *   zoom       a project map on a canvas that pans and zooms (ZoomCanvas): semantic zoom over 2,578 boxes, and a
   *              drawing whose routers are picked by a click; not on a Roku or an Apple TV (app/full: FullDemos)
+  *   graph      a project's module dependencies on a GraphView: layered, a broken rule in red, planned modules dashed,
+  *              laid out again as a module is added (`flow=down`, `big=<n>`); not on a Roku or an Apple TV
+  *              (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

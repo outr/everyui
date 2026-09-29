@@ -56,7 +56,8 @@ class ZoomScreen extends UIScreen {
   // the world given once the screen is showing: a name cut short to fit its box is measured on the page (the web
   // measures nothing that is not on it)
   override protected def activate(): Task[Unit] = super.activate().map { _ =>
-    if (canvas.items().isEmpty) canvas.items @= sections.zipWithIndex.toVector.flatMap { case (name, i) => section(name, i) }
+    if (canvas.items().isEmpty)
+      canvas.items @= sections.zipWithIndex.toVector.flatMap { case (name, i) => section(name, i) }
   }
 
   // every item, however deep, counted
@@ -125,7 +126,8 @@ class ZoomScreen extends UIScreen {
 
   private def file(module: String, i: Int, f: Int): ZoomItem = {
     val name = List("Reader", "Writer", "Parser", "Node", "Store", "Index", "Route", "Spec")(f) + ".scala"
-    ZoomItem(name, 0.03 + (f % 4) * 0.245, 0.2 + (f / 4) * 0.4, 0.21, 0.34, () => card(name, "6 symbols", i, 0.45, 12.0, 8.0),
+    ZoomItem(name, 0.03 + (f % 4) * 0.245, 0.2 + (f / 4) * 0.4, 0.21, 0.34,
+      () => card(name, "6 symbols", i, 0.45, 12.0, 8.0),
       children = () => (0 until 6).toVector.map(s => symbol(name, i, s)), childrenFrom = 220.0, scales = false)
   }
 
