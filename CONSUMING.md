@@ -479,7 +479,8 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
   caret after it), Escape or typing puts it away until the next one. On a touch screen or a remote it is a chip above
   the field. A screen reader is told it has come and how to take it.
 - Files come from the attach button (`Files.pick`) and from a drop on the composer; each is a chip with a remove
-  button. `accept`, `allow` and `maxSize` decide which are taken; the rest are refused with a toast.
+  button. `accept`, `allow` and `maxSize` decide which are taken; the rest are refused with a toast. A picture's preview
+  is let go (`Files.release`) once it leaves the draft, removed or sent: to show a sent picture, read its `bytes`.
 - Completions list over the composer for the word at the caret after a trigger: Up and Down, Enter or Tab to put the
   lit one in place of the word, Escape to close.
 - Under `compactWidth` (480) the controls are a phone's, and `leading` folds behind a "+" with the attach button, in
@@ -505,7 +506,8 @@ Files.dropTarget(panel)(over => panel.borderWidth @= (if (over) 2.0 else 0.0))(f
 ```
 
 A `PickedFile` has its name, size, type (the platform's, or by extension: `FileTypes.of`), a `Task` reading its bytes,
-and a `preview` address an `ImageView` can show a picture from. `FileTypes.accepts(types, name, mime)` says whether a
+and a `preview` address an `ImageView` can show a picture from. `Files.release(preview)` lets it go (the web's object URL) once
+nothing shows it. `FileTypes.accepts(types, name, mime)` says whether a
 file is among the web's `accept` words ("image/*", "text/plain", ".md").
 
 ### Smaller pieces

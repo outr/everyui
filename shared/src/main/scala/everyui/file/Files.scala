@@ -26,6 +26,10 @@ object Files {
   def pick(types: List[String] = Nil, multiple: Boolean = true): Task[List[PickedFile]] =
     Task.async[List[PickedFile]](done => FileAccess.pick(types, multiple, done))
 
+  /** Done with a file's `preview` address: the web lets its object URL (and the file it holds) go; elsewhere nothing is
+    * held. After this the address shows nothing. */
+  def release(preview: String): Unit = FileAccess.release(preview)
+
   /** Files dropped on `target` from outside the app: `hover` hears true while files are held over it and false once
     * they leave or land, and `dropped` what landed. Nothing happens where files cannot be dropped. */
   def dropTarget(target: Component)(hover: Boolean => Unit)(dropped: List[PickedFile] => Unit): Unit =

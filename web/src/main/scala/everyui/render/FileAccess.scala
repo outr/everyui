@@ -67,6 +67,9 @@ object FileAccess {
     })
   }
 
+  /** Done with a picked file's `preview`: its object URL let go, and the file with it. */
+  def release(preview: String): Unit = if (preview.startsWith("blob:")) dom.URL.revokeObjectURL(preview)
+
   private var guarded = false
 
   private def guard(): Unit = if (!guarded) {

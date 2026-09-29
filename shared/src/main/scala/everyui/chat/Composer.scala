@@ -30,8 +30,9 @@ import reactify.*
   *    reader is told a suggestion has come, and how to take it.
   *  - '''Files''': the attach button opens the platform's picker (`Files.pick`) and files dropped on the composer
   *    come too, each a chip to take off again. What `accept` names (the picker's types: "image/\*", ".txt"), `allow`
-  *    agrees to and `maxSize` fits is added; anything else is refused with a word saying why. A platform with no
-  *    picker (a Roku, an Apple TV, a television) shows no button.
+  *    agrees to and `maxSize` fits is added; anything else is refused with a word saying why. A picture's preview
+  *    is let go (`Files.release`) once its file leaves the draft, taken off or sent: an app that shows a sent picture
+  *    reads its `bytes`. A platform with no picker (a Roku, an Apple TV, a television) shows no button.
   *  - '''Completions''' (`complete`): typing one of `triggers` ('@' for a mention, '/' for a command at the start)
   *    asks the app for completions of what follows it, listed over the composer. Up and Down move through them,
   *    Enter or Tab puts the lit one in place of the word, and Escape closes them. None on a remote.
@@ -109,6 +110,8 @@ class Composer(onSend: Draft => Unit,
   private var popup: Option[CompletionPopup] = None
   // the app's controls made unfocusable while it is out of use, to be given their focus back
   private var parked: List[Component] = Nil
+  // the attachments as they were, to see which left
+  private var held: List[Attachment] = Nil
 
   /** The box of lines. */
   val field: ComposerField = new ComposerField(e => ComposerKeys.action(e, state(), Platform.keyComposing()), act,
@@ -283,6 +286,9 @@ class Composer(onSend: Draft => Unit,
   leading.children.attach(_ => arrange())
   trailing.children.attach(_ => arrange())
   attachments.attach { list =>
+    // what left the draft (taken off, sent, or cleared by the app) lets its picture go
+    held.filterNot(a => list.exists(_ eq a)).foreach(a => a.preview.foreach(p => Files.release(p)))
+    held = list
     val was = chips.children()
     chips.children.clear()
     was.foreach(_.dispose())

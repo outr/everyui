@@ -12,4 +12,7 @@ object FileAccess {
   def pick(types: List[String], multiple: Boolean, done: List[PickedFile] => Unit): Unit = done(Nil)
 
   def onDrop(node: RenderNode, hover: Boolean => Unit, dropped: List[PickedFile] => Unit): Unit = ()
+
+  /** Done with a picked file's `preview`: nothing is held for one here. */
+  def release(preview: String): Unit = ()
 }

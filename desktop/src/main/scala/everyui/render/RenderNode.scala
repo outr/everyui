@@ -612,7 +612,7 @@ object RenderNode {
       ".text-area .scroll-bar, .text-area .corner { -fx-background-color: transparent; -fx-pref-width: 8; } " +
       ".text-area .scroll-bar .thumb { -fx-background-color: rgba(128, 128, 128, 0.45); -fx-background-radius: 4; } " +
       ".text-area .increment-button, .text-area .decrement-button, .text-area .increment-arrow, " +
-      ".text-area .decrement-arrow { -fx-padding: 0; }").getBytes("UTF-8"))
+      ".text-area .decrement-arrow { -fx-padding: 0; -fx-background-color: transparent; }").getBytes("UTF-8"))
 
   /** A text field drawn by the component around it: no box of its own, the caret and the words in `hex`. */
   def fieldStyle(hex: String): String =
@@ -865,6 +865,14 @@ object Nodes {
     a.setWrapText(true)
     a.setStyle(RenderNode.fieldStyle("#1c1b1f"))
     a.getStylesheets.add(RenderNode.areaSheet)
+    // its scroll bar only once the words run well past the box, never a sliver of thumb for a line not yet grown into
+    a.skinProperty.addListener((_, _, skin) => if (skin != null) javafx.application.Platform.runLater(() =>
+      a.lookupAll(".scroll-bar").forEach {
+        case bar: javafx.scene.control.ScrollBar if bar.getOrientation == javafx.geometry.Orientation.VERTICAL =>
+          bar.opacityProperty.bind(
+            javafx.beans.binding.Bindings.when(bar.visibleAmountProperty.lessThan(0.85)).`then`(1.0).otherwise(0.0))
+        case _ => ()
+      }))
     a.setFocusTraversable(false)
     val node = new RenderNode(a)
     Host.aligned.add(node)

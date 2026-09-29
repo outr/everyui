@@ -115,4 +115,7 @@ object FileAccess {
     }
     PickedFile(name, size, mime, bytes, if (mime.startsWith("image/")) Some(uri.toString) else None)
   }
+
+  /** Done with a picked file's `preview`: nothing is held for one here. */
+  def release(preview: String): Unit = ()
 }
