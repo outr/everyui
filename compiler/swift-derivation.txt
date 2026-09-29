@@ -2232,6 +2232,15 @@ class SwiftEmitter(
     def noneValue: String = "invalid"
 @@ new
     def noneValue: String = NULL
+@@ old
+          val whole = fqnOf(q.tpe) match {
+            case "scala.Double" | "scala.Float" => s"Fix(${emitTerm(q)})"
+            case "scala.Char" => s"_chCode(${emitTerm(q)})"
+            case _ => if (isStringLike(q.tpe)) s"_strToInt(${emitTerm(q)})" else emitTerm(q)
+          }
+@@ new
+          // the runtime's _toShort and _toByte truncate a fraction and read a String themselves
+          val whole = if (fqnOf(q.tpe) == "scala.Char") s"_chCode(${emitTerm(q)})" else emitTerm(q)
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {

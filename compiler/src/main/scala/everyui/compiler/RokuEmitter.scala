@@ -2212,9 +2212,14 @@ class RokuEmitter(
         case Select(q, "toInt" | "toLong") if fqnOf(q.tpe) == "scala.Char" => s"_chCode(${emitTerm(q)})"
         case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Char" => s"Cdbl(_chCode(${emitTerm(q)}))"
         // a number narrowed to 16 or 8 bits wraps round as the JVM's does (PCM samples, bytes on the wire); a fraction is
-        // truncated first
+        // truncated first, a Char is its code, and a String is read as a whole number (one out of range wraps round
+        // here, where the JVM would throw)
         case Select(q, n @ ("toShort" | "toByte")) =>
-          val whole = if (Set("scala.Double", "scala.Float").contains(fqnOf(q.tpe))) s"Fix(${emitTerm(q)})" else emitTerm(q)
+          val whole = fqnOf(q.tpe) match {
+            case "scala.Double" | "scala.Float" => s"Fix(${emitTerm(q)})"
+            case "scala.Char" => s"_chCode(${emitTerm(q)})"
+            case _ => if (isStringLike(q.tpe)) s"_strToInt(${emitTerm(q)})" else emitTerm(q)
+          }
           if (n == "toShort") s"_toShort($whole)" else s"_toByte($whole)"
         case Select(q, "min") if isCollType(q)       => s"_minList(${emitTerm(q)})"
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"

@@ -175,6 +175,21 @@ func rtToDbl(_ v: V) -> V {
     default: return .vDbl(0)
     }
 }
+/// A number narrowed to a Short (`toShort`) or a Byte (`toByte`) as the JVM does: the low 16 or 8 bits read as signed, a
+/// fraction first truncated toward zero and held to an Int's range (NaN is 0), a String first read as a whole number.
+func _toShort(_ v: V) -> V { .vInt(Int(Int16(truncatingIfNeeded: _whole(v)))) }
+func _toByte(_ v: V) -> V { .vInt(Int(Int8(truncatingIfNeeded: _whole(v)))) }
+private func _whole(_ v: V) -> Int {
+    switch v {
+    case .vDbl(let d): return d.isNaN ? 0 : Int(max(-2147483648.0, min(2147483647.0, d.rounded(.towardZero))))
+    case .vInt(let n): return n
+    default:
+        if case .vInt(let n) = rtToInt(v) { return n }
+        return 0
+    }
+}
+/// A Char's code (`c.toInt`): a Char is a one-character String here.
+func _chCode(_ c: V) -> V { .vInt(Int(rtS(c).utf16.first ?? 0)) }
 /// A String read as a whole number (`toIntOption`), or None (null) when the whole of it, trimmed, is not one.
 func _strToIntOpt(_ s: V) -> V {
     if let n = Int(rtS(s).trimmingCharacters(in: .whitespaces)) { return .vInt(n) }
