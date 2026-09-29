@@ -206,6 +206,16 @@ func _strBytes(_ s: V, _ cs: V) -> V {
     }
     return rtArr(bytes.map { .vInt(Int(Int8(bitPattern: $0))) })
 }
+/// Text from its bytes in a charset (`new String(bytes, charset)`): an ill-formed UTF-8 sequence, or a byte US-ASCII has
+/// no place for, is U+FFFD.
+func _bytesStr(_ b: V, _ cs: V) -> V {
+    let bytes = rtItems(b).map { UInt8(truncatingIfNeeded: Int(rtDouble($0))) }
+    switch _charset(cs) {
+    case "latin1": return .vStr(String(String.UnicodeScalarView(bytes.map { Unicode.Scalar($0) })))
+    case "ascii": return .vStr(String(String.UnicodeScalarView(bytes.map { $0 < 128 ? Unicode.Scalar($0) : "\u{FFFD}" })))
+    default: return .vStr(String(decoding: bytes, as: UTF8.self))
+    }
+}
 /// A Char's code (`c.toInt`): a Char is a one-character String here.
 func _chCode(_ c: V) -> V { .vInt(Int(rtS(c).utf16.first ?? 0)) }
 /// A String read as a whole number (`toIntOption`), or None (null) when the whole of it, trimmed, is not one.

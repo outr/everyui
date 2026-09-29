@@ -2125,6 +2125,18 @@ class RokuEmitter(
       case _ => emitTermU(t0)
     }
 
+    /** `new String(…)`: text from its bytes in a charset (UTF-8 where none is named), from its Chars, or a String's
+      * copy; any other form is a gap. */
+    def newString(t: Term, args: List[Term]): String = {
+      val elem = args.headOption.flatMap(_.tpe.widen.dealias.typeArgs.headOption).map(fqnOf).getOrElse("")
+      val first = args.headOption.map(a => fqnOf(a.tpe)).getOrElse("")
+      if (first == "scala.Array" && elem == "scala.Byte" && args.size <= 2)
+        s"_bytesStr(${emitArgVal(args.head)}, ${args.lift(1).map(emitArgVal).getOrElse(brStr("UTF-8"))})"
+      else if (first == "scala.Array" && elem == "scala.Char" && args.size == 1) s"_mkString(${emitArgVal(args.head)}, ${brStr("")})"
+      else if (first == "java.lang.String" && args.size == 1) emitArgVal(args.head)
+      else todo(t)
+    }
+
     def emitTermU(t0: Term): String =
       unwrap(t0) match {
         // a String's bytes in a charset (UTF-8 where none is named): a Charset is its name here, a StandardCharsets
@@ -2135,6 +2147,7 @@ class RokuEmitter(
           brStr(n.replace('_', '-'))
         case Apply(Select(q, "forName"), List(name)) if q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "java.nio.charset.Charset" =>
           emitArgVal(name)
+        case Apply(Select(New(tpt), _), args) if fqnOf(tpt.tpe) == "java.lang.String" => newString(t0, args)
         case Apply(Select(New(tpt), _), args) if hasNative(tpt.tpe.typeSymbol) =>
           s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
         case Apply(TypeApply(Select(New(tpt), _), _), args) if hasNative(tpt.tpe.typeSymbol) =>
@@ -6257,6 +6270,61 @@ class RokuEmitter(
       |        i = i + 1
       |    end while
       |    return out
+      |end function
+      |' Text from its bytes in a charset (new String(bytes, charset)), as the JVM reads them: a byte ISO-8859-1 is the
+      |' character of its value, one US-ASCII has no place for is U+FFFD, and in UTF-8 each ill-formed sequence (as much of
+      |' one as is well begun) is one U+FFFD. A NUL is lost, as a Roku string cannot hold one.
+      |function _bytesStr(b as object, cs as dynamic) as string
+      |    kind = _charset(cs)
+      |    parts = []
+      |    n = b.Count()
+      |    i = 0
+      |    while i < n
+      |        x = b[i] and 255
+      |        i = i + 1
+      |        if x < 128 or kind = "latin1"
+      |            parts.Push(Chr(x))
+      |        else if kind = "ascii"
+      |            parts.Push(Chr(&hFFFD))
+      |        else
+      |            need = 0
+      |            lo = &h80
+      |            hi = &hBF
+      |            if x >= &hC2 and x <= &hDF
+      |                need = 1
+      |                c = x and &h1F
+      |            else if x >= &hE0 and x <= &hEF
+      |                need = 2
+      |                c = x and &h0F
+      |                if x = &hE0 then lo = &hA0
+      |            else if x >= &hF0 and x <= &hF4
+      |                need = 3
+      |                c = x and &h07
+      |                if x = &hF0 then lo = &h90
+      |                if x = &hF4 then hi = &h8F
+      |            end if
+      |            ok = need > 0
+      |            k = 0
+      |            while ok and k < need
+      |                if i >= n
+      |                    ok = false
+      |                else
+      |                    y = b[i] and 255
+      |                    if y < lo or y > hi
+      |                        ok = false
+      |                    else
+      |                        c = c * 64 + (y and &h3F)
+      |                        i = i + 1
+      |                        k = k + 1
+      |                        lo = &h80
+      |                        hi = &hBF
+      |                    end if
+      |                end if
+      |            end while
+      |            if ok and (c < &hD800 or c > &hDFFF) then parts.Push(Chr(c)) else parts.Push(Chr(&hFFFD))
+      |        end if
+      |    end while
+      |    return parts.Join("")
       |end function
       |""".stripMargin}
 
