@@ -33,6 +33,8 @@ import everyui.render.Platform
   *   readonly   read-only fields beside an editable one: a share link, a note and a key to choose and copy but not change
   *   rtlwrap    paragraphs 560 wide that wrap in a right-to-left direction: an Arabic overview, the same cut to two lines,
   *              and one in English, each logging its laid-out size
+  *   dispose    home, then a theatre guide shown once, then a calendar over home, which disposes of the guide: nothing
+  *              that made it up is left reachable afterwards (DisposeSpec; `sgnodes all` on a Roku)
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   sliders    sliders, range sliders and switches: steps, divisions, value labels, vertical, out of use (`theme=light`,
   *              `rtl=1`)
@@ -87,5 +89,6 @@ import everyui.render.Platform
   else if (demo == "readonly") ReadOnlyDemo.run()
   else if (demo == "rtlwrap") RtlWrapDemo.run()
   else if (demo == "captions") CaptionsDemo.run()
+  else if (demo == "dispose") DisposeDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }
