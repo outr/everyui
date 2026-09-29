@@ -52,4 +52,39 @@ class ModuleFilesSpec extends AnyWordSpec with Matchers {
       read(new File(out, "everyui/fonts/Mono.ttf")) shouldBe "font"
     }
   }
+
+  "The app's fonts" should {
+    val root = Files.createTempDirectory("app-fonts").toFile
+    def font(name: String, text: String): File = {
+      val f = new File(root, "app/" + text + "/" + name)
+      f.getParentFile.mkdirs()
+      Files.write(f.toPath, text.getBytes(UTF_8))
+      f
+    }
+    def everyui(): File = {
+      val fonts = new File(root, "fonts-" + System.nanoTime)
+      fonts.mkdirs()
+      Files.write(new File(fonts, "OpenSans-Regular.ttf").toPath, "everyui".getBytes(UTF_8))
+      fonts
+    }
+
+    "go in beside EveryUI's" in {
+      val fonts = everyui()
+      ModuleFiles.appFonts(Seq(font("Brand.ttf", "brand"), font("Brand-Bold.otf", "bold")), fonts).map(_.getName) shouldBe
+        Seq("Brand.ttf", "Brand-Bold.otf")
+      read(new File(fonts, "Brand.ttf")) shouldBe "brand"
+      read(new File(fonts, "OpenSans-Regular.ttf")) shouldBe "everyui"
+      ModuleFiles.appFonts(Nil, fonts) shouldBe Nil
+    }
+    "refuse a name EveryUI's has, a name given twice, and a file that is not there, leaving EveryUI's as they were" in {
+      val fonts = everyui()
+      val e = the[IllegalArgumentException] thrownBy ModuleFiles.appFonts(
+        Seq(font("OpenSans-Regular.ttf", "mine"), font("Brand.ttf", "a"), font("Brand.ttf", "b"), new File(root, "none.ttf")), fonts)
+      e.getMessage should include("OpenSans-Regular.ttf is one of EveryUI's fonts")
+      e.getMessage should include("Brand.ttf is the name of more than one of them")
+      e.getMessage should include("none.ttf is not a file")
+      read(new File(fonts, "OpenSans-Regular.ttf")) shouldBe "everyui"
+      new File(fonts, "Brand.ttf").exists() shouldBe false
+    }
+  }
 }

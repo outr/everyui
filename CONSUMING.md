@@ -880,6 +880,19 @@ the web guests' files out of their modules (`everyui-monaco/<version>/`, `everyu
 copy next to the page: `IO.copyDirectory(everyuiWebGuests.value, out)`. Both are `everyui.sbt.ModuleFiles`, which a
 build without the plugin can call itself.
 
+An app with a face of its own (`Faces.register`) names its font files in `everyuiAppFonts`, and `everyuiWebFonts` (and
+`everyuiFonts`, for the other platforms) copies them in beside EveryUI's, so the bundle task copies one directory as
+before. A file with the name of one of EveryUI's (`OpenSans-Regular.ttf`), or two of the app's with one name, fails
+the build, naming each, rather than one font quietly taking another's place.
+
+```scala
+everyuiAppFonts := Seq(baseDirectory.value / "fonts" / "Brand-Regular.ttf", baseDirectory.value / "fonts" / "Brand-Bold.ttf"),
+webBundle := Def.uncached {
+  // …
+  IO.copyDirectory(everyuiWebFonts.value, out / "fonts")   // EveryUI's fonts and Brand-Regular.ttf, Brand-Bold.ttf
+}
+```
+
 The JavaScript build is the project's own `fullLinkJS`, as its `scalaJSLinkerConfig` sets it (a script, or an ES
 module). The WebAssembly build (`everyuiWasmLinkJS`) links the same code with that configuration made an ES2022
 module with `useWebAssembly`, into `target/everyui-wasm`; `Both` links twice, so a bundle takes longer. Every script's
@@ -959,7 +972,8 @@ The plugin's tasks, on every project:
 | Key | What it is |
 |---|---|
 | `everyuiVersion` | the EveryUI release the plugin belongs to |
-| `everyuiFonts` | EveryUI's fonts (and Material Icons' codepoints), out of the backend on the classpath: a directory to copy into the app's `fonts/` |
+| `everyuiFonts` | EveryUI's fonts (and Material Icons' codepoints), out of the backend on the classpath, with the app's own (`everyuiAppFonts`): a directory to copy into the app's `fonts/` |
+| `everyuiAppFonts` | the app's own font files (a face it registers with `Faces.register`), a setting, empty by default: copied in by `everyuiFonts` and `everyuiWebFonts`, and a name one of EveryUI's has fails the build |
 | `everyuiAndroidRules` | the Android backend's shrinker rules, out of everyui-android, for `AndroidApk.build` |
 | `everyuiCompiler` | the Roku and Swift compiler (everyui-compiler at `everyuiVersion`, fetched with the build's resolvers) and what it runs with |
 | `everyuiEmitLibraries` | what the compiler compiles through with the app: everyui-roku or everyui-tvos, reactify, and Spice's durable client |

@@ -35,7 +35,8 @@ import scala.concurrent.duration.Duration
   * `everyuiWebStage := WebStage.Fast` links both builds with `fastLinkJS`'s configuration instead, unminified, for
   * development; the bundle task's log says which stage built it. */
 object EveryUIWebPlugin extends AutoPlugin {
-  override def requires: Plugins = ScalaJSPlugin
+  // EveryUIPlugin's settings (everyuiAppFonts) first
+  override def requires: Plugins = ScalaJSPlugin && EveryUIPlugin
   override def trigger: PluginTrigger = allRequirements
 
   object autoImport {
@@ -50,7 +51,7 @@ object EveryUIWebPlugin extends AutoPlugin {
     val everyuiWebScripts = taskKey[WebScripts]("The web app linked at everyuiWebStage for everyuiWebTarget; writeTo(out, page) writes them and the page")
     val everyuiWebMinify = settingKey[Boolean]("Whether the full link runs Scala.js's minifier, on fullLinkJS and everyuiWasmLinkJS alike (true, the default)")
     val everyuiWasmLinkJS = taskKey[File]("The web app linked at everyuiWebStage to WebAssembly: a directory of main.js, __loader.js and main.wasm")
-    val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath: a directory for the bundle to copy as fonts/")
+    val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath, with everyuiAppFonts: a directory for the bundle to copy as fonts/")
     val everyuiWebGuests = taskKey[File]("The web guests' files (everyui-monaco's editor, everyui-terminal's xterm.js), taken from their modules on the classpath: a directory whose everyui-<module>/ directories the bundle copies next to the page")
   }
   import autoImport.*
@@ -87,6 +88,7 @@ object EveryUIWebPlugin extends AutoPlugin {
       val out = target.value / "everyui-fonts"
       IO.delete(out)
       ModuleFiles.copy(Seq(jar), "everyui/fonts/", out)
+      ModuleFiles.appFonts(EveryUIPlugin.autoImport.everyuiAppFonts.value, out / "everyui" / "fonts")
       out / "everyui" / "fonts"
     },
     everyuiWebGuests := Def.uncached {

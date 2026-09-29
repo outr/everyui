@@ -37,7 +37,8 @@ object EveryUIPlugin extends AutoPlugin {
     def EveryUILibraries: everyui.sbt.EveryUILibraries.type = everyui.sbt.EveryUILibraries
 
     val everyuiVersion = settingKey[String]("The EveryUI release this plugin belongs to, for the app's EveryUI dependencies")
-    @transient val everyuiFonts = taskKey[File]("EveryUI's fonts, taken out of the EveryUI backend on the classpath: a directory of .ttf files for the app's assets")
+    @transient val everyuiFonts = taskKey[File]("EveryUI's fonts, taken out of the EveryUI backend on the classpath, with everyuiAppFonts: a directory of .ttf files for the app's assets")
+    val everyuiAppFonts = settingKey[Seq[File]]("The app's own font files (a face it registers with Faces.register), copied in beside EveryUI's by everyuiFonts and everyuiWebFonts; a name one of EveryUI's has fails the build")
     @transient val everyuiCompiler = taskKey[Seq[File]]("EveryUI's Roku and Swift compiler (everyui-compiler at everyuiVersion) and what it runs with: the classpath RokuChannel.emit and AppleApp.emit run it on")
     @transient val everyuiEmitLibraries = taskKey[Seq[File]]("What the compiler compiles through with the app: the everyui-roku or everyui-tvos jar, reactify's, and Spice's durable client")
     @transient val everyuiRokuRuntime = taskKey[File]("The Roku runtime (BrightScript and SceneGraph), taken out of the everyui-roku jar: a directory for RokuChannel.assemble")
@@ -82,9 +83,12 @@ object EveryUIPlugin extends AutoPlugin {
 
   override def projectSettings: Seq[Setting[?]] = Seq(
     everyuiVersion := published.getOrElse((ThisBuild / version).value),
+    everyuiAppFonts := Nil,
     everyuiFonts := Def.uncached {
-      unpack(jar(classpath.value, "everyui-desktop", "everyui-android", "everyui-roku", "everyui-tvos", "everyui-web"),
+      val fonts = unpack(jar(classpath.value, "everyui-desktop", "everyui-android", "everyui-roku", "everyui-tvos", "everyui-web"),
         "everyui/fonts", target.value / "everyui-fonts")
+      ModuleFiles.appFonts(everyuiAppFonts.value, fonts)
+      fonts
     },
     everyuiCompiler := Def.uncached {
       fetch(dependencyResolution.value, "com.outr" % "everyui-compiler_3" % everyuiVersion.value,
