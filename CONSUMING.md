@@ -1167,3 +1167,56 @@ A word in a small coloured pill, for a cell or a row: solid (`new Tag("main", Th
 black to read on it) or `soft` (a wash of the colour with an edge and the word in it). `Tag.tone("success")` names a
 colour of the theme (accent, success, warning, danger, info, muted, text, or a palette extra). It takes no room while
 its word is empty. `everyui.component.Chip` is the older fixed pill, which stays as it is.
+
+## Voice audio (`everyui.audio`)
+
+For a voice mode that sends what is said to a server's speech to text and plays back its text to speech: the
+microphone as a stream of PCM chunks, and a player that plays PCM chunks as they arrive. Both are raw 16-bit mono
+PCM, as `Array[Short]` (`chunk.bytes` and `Pcm.toBytes` give the little-endian bytes most services take, and
+`Pcm.fromBytes` reads them back). Everything is heard on the thread that draws.
+
+```scala
+import everyui.audio.{CaptureEnd, Microphone, Pcm, PcmPlayer}
+
+val player = new PcmPlayer(24000)                       // the rate the text to speech sends
+player.drained.attach(_ => listening @= true)           // it has said everything queued
+speech.onAudio(bytes => player.play(Pcm.fromBytes(bytes)))   // the app's own connection
+
+val capture = Microphone.capture(sampleRate = 16000, frames = 2048)(
+  chunk => {
+    meter @= chunk.level                                // RMS, 0 to 1
+    if (chunk.level > 0.05 && player.playing()) player.stop()   // barge-in: flushes at once, no drained
+    transcriber.send(chunk.bytes)
+  },
+  why => if (why == CaptureEnd.Denied) Toast.show("The microphone is off"))
+...
+capture.stop()                                          // the rest comes as a shorter last chunk, then Stopped
+```
+
+- `Microphone.supported` and `PcmPlayer.supported` say whether this platform can at all: the web, the desktop and
+  Android can; a Roku and an Apple TV cannot (a capture ends at once with `Unavailable`, and a chunk played is over
+  at once, unheard).
+- The platform records at its own rate (48 kHz, usually) and the chunks are resampled to `sampleRate`, averaged
+  going down so little folds back as noise. Chunks are exactly `frames` long except the last.
+- `ended` hears one of `Stopped`, `Denied`, `Unavailable` (no microphone), `Lost` (unplugged, or taken by the
+  system) or `Failed(message)`, once, after the last chunk.
+- Permission: the first capture asks. On the web that is the browser's prompt (the page must be served over HTTPS
+  or from localhost). On Android the app's manifest must declare
+  `<uses-permission android:name="android.permission.RECORD_AUDIO" />`, and for a television
+  `<uses-feature android:name="android.hardware.microphone" android:required="false" />`; the runtime prompt is
+  asked for then. A Mac asks the first time the desktop opens a line.
+- Echo: `echoCancellation` (on by default) asks the platform to take the player's sound out of the microphone, so
+  the person can talk over it. The web passes it to `getUserMedia` (with noise suppression and gain control);
+  Android records from VOICE_COMMUNICATION and turns on an `AcousticEchoCanceler` where the device has one (off, it
+  records from VOICE_RECOGNITION). Java Sound has none, so on the desktop use a headset or the sound server's echo
+  cancelling (PipeWire's echo-cancel module).
+- Autoplay: a browser makes no sound until the person has touched the page. EveryUI resumes the page's audio on the
+  first pointer or key, so start voice from a tap; sound queued before one waits for it.
+- Playback is gapless while chunks arrive faster than they play. `drained` fires once when the queue runs dry
+  after the last chunk, including when the next chunk is merely late, so the app knows whether more is coming.
+  `stop()` silences it at once and fires nothing; `volume` is 0 to 1; `close()` lets the platform's output go.
+- The web records through an AudioWorklet whose code ships inside `everyui-web` (a Blob URL), falling back to a
+  ScriptProcessor where there is no AudioWorklet; the desktop through `TargetDataLine` and `SourceDataLine`;
+  Android through `AudioRecord` and a streaming `AudioTrack` used as an assistant's speech.
+- `demo=voice` in the example app records with a level meter, plays back what it recorded (or, with Loopback,
+  as it is heard), and streams a tone that Stop cuts off.
