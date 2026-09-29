@@ -20,7 +20,8 @@ import reactify.*
   * columns it still has. Their widths are `widths`, by column key, which a pointer changes by dragging a heading's edge
   * and the app may keep and give back; a column not in it is its own `width` wide, and one in `hidden` is not shown.
   * With `fills` on, the columns fill the table's width: those that stretch share what the others leave in proportion
-  * to their widths, and dragging an edge moves the room between that column and the next. A column that sorts is
+  * to their widths, and dragging an edge moves the room between that column and the next; where the table is narrower
+  * than the columns, they keep their widths and scroll sideways. A column that sorts is
   * sorted by a click on its heading, up, down and then not at all, with an arrow on it; `sort` says which, and the
   * table sorts the rows itself unless `sortsItself` is off (the app sorts `items`, or the server does). Wider than the
   * table, the columns scroll sideways: a sideways wheel, the bar at the foot, or Left and Right.
@@ -135,16 +136,17 @@ class VirtualTable[T](val items: Var[Vector[T]], val keyOf: T => String, val lab
     val set = widths()
     val gone = hidden()
     val all = shown()
-    if (!fills()) all.map(c => c.key -> (if (gone.contains(c.key)) 0.0 else base(c, set))).toMap
+    val (room, weights) = weighing(set)
+    // where the table is narrower than the columns, they keep their widths (and scroll sideways)
+    if (!fills() || room <= weights) all.map(c => c.key -> (if (gone.contains(c.key)) 0.0 else base(c, set))).toMap
     else {
-      val (room, weights) = weighing(set)
       val stretching = all.filter(c => c.stretches && !gone.contains(c.key))
       // whole pixels, the last stretching column taking what rounding leaves
       var left = room
       val last = stretching.lastOption.map(_.key)
       all.map { c =>
         c.key -> (if (gone.contains(c.key)) 0.0
-          else if (!c.stretches || weights <= 0.0) base(c, set)
+          else if (!c.stretches) base(c, set)
           else {
             val share = if (last.contains(c.key)) math.max(0.0, left) else math.floor(base(c, set) * room / weights)
             left -= share
@@ -157,12 +159,12 @@ class VirtualTable[T](val items: Var[Vector[T]], val keyOf: T => String, val lab
   /** Column `key` dragged `along` from where it was when the drag began (`from`, the widths then): wider or narrower;
     * with `fills`, the room it takes or gives is the next stretching column's. */
   def resize(key: String, from: Map[String, Double], along: Double): Unit = shown().find(_.key == key).foreach { c =>
-    if (!fills() || !c.stretches) widths @= from + (key -> math.max(c.minWidth, base(c, from) + along))
+    val (room, weights) = weighing(from)
+    if (!fills() || !c.stretches || room <= weights) widths @= from + (key -> math.max(c.minWidth, base(c, from) + along))
     else {
       val after = shown().dropWhile(_.key != key).drop(1).find(n => n.stretches && !hidden().contains(n.key))
       after.foreach { n =>
-        val (room, weights) = weighing(from)
-        if (room > 0.0 && weights > 0.0) {
+        if (weights > 0.0) {
           val scale = room / weights
           val was = base(c, from) * scale
           val next = base(n, from) * scale
@@ -242,6 +244,9 @@ class VirtualTable[T](val items: Var[Vector[T]], val keyOf: T => String, val lab
     hit
   }
 
+  /** The first cell that edits on the row under the cursor, edited: what F2 does. */
+  def edit(): Unit = editor.foreach(_.edit())
+
   // the first cell that edits on the row under the cursor
   private def editor: Option[GridCell[T]] = current().map(list.indexOf).flatMap(list.rowAt).flatMap {
     case row: TableRow[T] @unchecked => row.cells.find(_.edits)
@@ -253,7 +258,8 @@ class VirtualTable[T](val items: Var[Vector[T]], val keyOf: T => String, val lab
   list.size.width := size.width()
   list.size.height := math.max(0.0, size.height() - TableHeader.height - barRoom() - footRoom())
   items.attach(_ => arrange())
-  sort.attach(_ => arrange())
+  // (a paged table's sort is its source's, which may outlive it)
+  follow(sort, (_: Option[Sorting]) => arrange())
   sortsItself.attach(_ => arrange())
   laidOut.attach(_ => scrollSideways(scrollX()))
   size.width @= 640.0

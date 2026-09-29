@@ -1654,6 +1654,76 @@ log.widths.attach(save)
 log.activated.attach(showCommit)
 ```
 
+More a table can do, over items or paged rows alike:
+
+```scala
+table.columns @= viewColumns(view)            // a Var: change the set at runtime; rows keep the cells of columns kept
+table.fills @= true                           // the columns fill the width, sharing it by their widths (weights)
+table.checks @= true                          // a leading column of tick boxes; the heading's box chooses all or none
+table.rowColor @= (e => if (e.managed) Some(Theme.success().withAlpha(0.12)) else None)   // under the selection's
+table.hoverColor @= Theme.accent().withAlpha(0.08)    // the row under the pointer (the theme's text, faintly, unless set)
+table.footer @= Some(statusLine)              // a line of the app's under the rows
+table.chosenCount                             // how many are chosen, rows not loaded among them (reactive)
+table.edit()                                  // F2: the current row's first cell that edits (a MenuCell's menu)
+```
+
+With `fills`, a column that `stretches` (the default) takes a share of the room the others leave, in proportion to its
+width; dragging an edge moves room between that column and the next stretching one, and where the table is narrower than
+the columns they keep their widths and scroll sideways. `GridColumn.align` puts a heading at the end over numbers.
+
+A cell that edits: `GridCell.edits` and `edit()`. `MenuCell` is one, a small box with an arrow that drops a menu of the
+app's entries; a click on it opens it without choosing the row, and F2 on the row does too. The entries do the edit —
+confirm, post, and put the changed row back:
+
+```scala
+GridColumn[Entity]("status", "Status", 130.0, () => new MenuCell[Entity](_.status.label, e =>
+  Status.all.map(s => MenuItem(s.label, () =>
+    Dialogs.confirm("Change the status", s"Make ${e.name} ${s.label}?", "Change").map { yes =>
+      if (yes) api.setStatus(e, s).map(saved => source.replace(saved)).start()
+    }.start(), checked = Some(s == e.status)))), stretches = false)
+```
+
+### Paged rows (`everyui.paging`)
+
+A server's rows a page at a time, for a `VirtualTable` (or a `VirtualList`, which takes any `ListSource`). Only the pages
+near the view are asked for, and at most `maxPages` are kept, so 1.9 million rows cost what a few thousand do. A row not
+come yet is a placeholder (a grey bar per cell) until its page comes.
+
+```scala
+import everyui.paging.{Page, PagedSource, Paging}
+
+val source = new PagedSource[Entity](_.id, pageSize = 100)(request => Task.async { done =>
+  // request: offset, limit, sort (Option[Sorting]: the heading clicked), cursor (the one the page before gave)
+  api.list(filters(), request.offset, request.limit, request.sort)(
+    r => done(Right(Page(r.entities, total = Some(r.total)))),
+    e => done(Left(e.getMessage)))                     // the fetch must always complete
+})
+filters.attach(_ => source.invalidate())                 // a new query: from the first page, late answers dropped
+val table = VirtualTable.paged(source, _.name, Vector(
+  GridColumn.served[Entity]("name", "Name", 260.0)(_.name),                   // sorted on the server by its heading
+  GridColumn.served[Entity]("records", "Records", 100.0, align = TextAlign.End)(_.records.toString),
+  GridColumn.served[Entity]("id", "Id", 90.0, sortable = false)(_.id)))
+status := (if (source.searching()) "Searching…" else source.total().map(n => s"$n results").getOrElse(""))
+source.error()                                           // why a page failed; source.retry() asks again
+```
+
+- `Paging.Anywhere` (the default): any page by its offset; the list is as long as `total` from the first answer on
+  (which may change with each answer). `Paging.InOrder`: load more, a page after another, each asked with the cursor
+  the one before gave (`Page.next`; none on the last), or by offset where the server gives none (its rows end at a
+  short page or at `total`); the list is what has come and a page of placeholders while there is more.
+- `ahead` (half a page each way) is how near the view a page is fetched; `concurrent` (2) how many are asked at once,
+  nearest first; a page the view left before its turn is never asked for.
+- `sort` (the table's, from its headings) and `invalidate()` start again at the first page and scroll to the top;
+  whatever still comes for the query before is dropped.
+- `replace(row)` puts a row changed on the server back; `kept` and `here` say what is held.
+- Selection over a paged table: clicks, Shift and Primary choose loaded rows by key as a list does; Primary+A or the
+  heading's box chooses every row of the query, those never loaded among them: `selection.all` is on and
+  `selection.keys` holds the rows taken out since (a toggle takes one out). The table cannot list those rows —
+  `chosenCount` counts them, `selectedItems` gives only the chosen rows that are here, and the app acts on its query
+  less those keys on the server. `all` stays on across a new sort or filter (it is every row of the query as it now
+  is); an app whose filter change should not carry it over calls `table.selection.clear()`. A Shift range chooses the
+  rows it spans that are loaded, and its two ends; a row between that was never loaded has no key and is not in it.
+
 ### Tag (`everyui.kit`)
 
 A word in a small coloured pill, for a cell or a row: solid (`new Tag("main", Theme.accent())`, the word white or near

@@ -32,7 +32,8 @@ class MenuCell[T](text: T => String, items: T => List[MenuItem], colour: T => Op
     size.width := math.min(MenuCell.this.size.width() - ListRow.inset * 2.0, label.size.width() + 30.0)
     radius @= 4.0
     borderWidth @= 1.0
-    borderColor := Theme.border()
+    // (an edge that shows on a chosen row's colour as well as on the page)
+    borderColor := Theme.muted().withAlpha(0.45)
     backgroundColor := (if (event.pointer.over()) Theme.controlLit() else Color.Clear)
     cursor @= "pointer"
     label.position.left := ListRow.along(8.0, label.size.width(), size.width())

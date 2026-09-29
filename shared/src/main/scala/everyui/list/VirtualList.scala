@@ -195,15 +195,26 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     reveal(index)
   }
 
-  /** The rows from `from` to `to` chosen, and only those; the anchor stays at `from`. */
+  /** The rows from `from` to `to` chosen, and only those; the anchor stays at `from`. From a source, those of them that
+    * are here and the two ends: a row between never loaded has no key to choose it by. */
   def selectRange(from: Int, to: Int): Unit = if (count > 0) {
     val a = math.max(0, math.min(from, to))
     val b = math.min(count - 1, math.max(from, to))
     var keys = Set.empty[String]
-    var i = a
-    while (i <= b) {
-      keys += keyAt(i)
-      i += 1
+    source match {
+      case Some(s) =>
+        s.here.foreach { t =>
+          val key = keyOf(t)
+          val at = indexOf(key)
+          if (at >= a && at <= b) keys += key
+        }
+        keys = keys + keyAt(a) + keyAt(b)
+      case None =>
+        var i = a
+        while (i <= b) {
+          keys += keyAt(i)
+          i += 1
+        }
     }
     selection.all @= false
     selection.keys @= keys

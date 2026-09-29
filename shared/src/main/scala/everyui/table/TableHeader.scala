@@ -1,7 +1,7 @@
 package everyui.table
 
 import everyui.component.{Component, Container, MaterialIconView, TextView}
-import everyui.component.types.FontWeight
+import everyui.component.types.{FontWeight, TextAlign}
 import everyui.event.PointerEvent
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
@@ -44,9 +44,14 @@ class TableHeader[T](table: VirtualTable[T]) extends Container {
       size.height := TableHeader.this.size.height()
       visible := table.widthOf(key) > 0.0
       position.left := ListRow.along(table.startOf(key) - table.scrollX(), size.width(), TableHeader.this.size.width())
-      title.position.left := ListRow.along(ListRow.inset, title.size.width(), size.width())
+      // at the end, the arrow before the title (at the start where the column is too narrow for both)
+      private def atEnd: Boolean =
+        column.align == TextAlign.End && size.width() >= title.size.width() + ListRow.inset * 2.0 + 18.0
+      title.position.left := ListRow.along(if (atEnd) size.width() - ListRow.inset - title.size.width() else ListRow.inset,
+        title.size.width(), size.width())
       title.position.top := (size.height() - title.size.height()) / 2.0
-      arrow.position.left := ListRow.along(ListRow.inset + title.size.width() + 4.0, 14.0, size.width())
+      arrow.position.left := ListRow.along(if (atEnd) size.width() - ListRow.inset - title.size.width() - 18.0
+        else ListRow.inset + title.size.width() + 4.0, 14.0, size.width())
       arrow.position.top := (size.height() - 14.0) / 2.0
       handle.size.height := size.height()
       handle.position.left := ListRow.along(size.width() - TableHeader.grip, TableHeader.grip, size.width())

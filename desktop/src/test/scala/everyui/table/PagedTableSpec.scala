@@ -129,6 +129,18 @@ class PagedTableSpec extends FxSpec {
         fx(t.selection.keys()) shouldBe Set("e6")
         click(t, 8, 200.0, none.copy(shift = true))
         fx(t.selection.keys()) shouldBe Set("e6", "e7", "e8")
+        // a range far down: the rows it spans that are here and its ends, not a million keys
+        fx(t.list.scrollTo(1000000))
+        val started = System.nanoTime()
+        click(t, 1000003, 200.0, none.copy(shift = true))
+        info(f"a range over a million rows chosen in ${(System.nanoTime() - started) / 1e6}%.1f ms")
+        fx(t.selection.keys().contains("e1000003")) shouldBe true
+        fx(t.selection.keys().contains("e7")) shouldBe true
+        fx(t.selection.keys().size) should be <= fx(source.kept) + 2
+        click(t, 1000001, 200.0)
+        fx(t.list.scrollTop(0.0))
+        click(t, 6, 200.0)
+        click(t, 8, 200.0, none.copy(shift = true))
         // the heading's box: every row, those never loaded among them; one taken out; then none
         fx(t.header.cells(0).event.click @= PointerEvent(PointerKind.Click, 0, 0))
         fx(t.selection.all()) shouldBe true
@@ -170,6 +182,10 @@ class PagedTableSpec extends FxSpec {
         fx(t.totalWidth) shouldBe 600.0
         fx(t.size.width @= 800.0)
         fx(t.totalWidth) shouldBe 800.0
+        // narrower than the columns, they keep their widths and scroll sideways
+        fx(t.size.width @= 300.0)
+        fx(t.widthOf("name")) shouldBe 200.0
+        fx(t.totalWidth) shouldBe 476.0
         fx(t.size.width @= 600.0)
         // dragged 40 wider, the name takes it from the status beside it; the id keeps its width
         fx(t.resize("name", t.widths(), 40.0))
