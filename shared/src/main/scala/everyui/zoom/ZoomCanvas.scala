@@ -79,6 +79,14 @@ class ZoomCanvas extends Container {
   /** The box everything at the top of the canvas takes up; None while there is nothing. */
   def contentBounds: Option[Rect] = bounds
 
+  /** The world the arrows pan across and `fit` shows, where it is not what the items take up: a map's whole Earth,
+    * which has no items of its own. */
+  val extent: Var[Option[Rect]] = own(Var(None))
+
+  /** What a canvas built on this one draws itself, over the items and under the focus ring, placed in the canvas's
+    * own pixels as the view moves: a map's tiles, shapes and markers. */
+  val layer: Container = new Container
+
   // what scales, laid out in the world's units under one transform; and what is laid out at its size on the screen
   private val world = new Container
   private val flat = new Container
@@ -129,7 +137,9 @@ class ZoomCanvas extends Container {
   reticle.figures := List(everyui.draw.Figure(everyui.draw.Path.line(8.5, 0.0, 8.5, 17.0).moveTo(0.0, 8.5)
     .lineTo(17.0, 8.5), stroke = Some(Theme.accent()), width = 2.0))
   reticle.visible @= false
-  children ++= List(world, flat, ring, reticle)
+  layer.size.width @= 0.0
+  layer.size.height @= 0.0
+  children ++= List(world, flat, layer, ring, reticle)
 
   // ---- the world and the view ----
 
@@ -162,6 +172,9 @@ class ZoomCanvas extends Container {
 
   /** How many items are drawn now. */
   def showing: Int = shown.length
+
+  /** Whether a press is being followed: a drag, a pinch, something grabbed. */
+  def pressing: Boolean = dragging || pinching
 
   // how many components are made, shown or waiting
   private[everyui] def made: Int = cache.size
@@ -200,7 +213,7 @@ class ZoomCanvas extends Container {
   def zoomToItem(path: String*): Unit = find(path.toList).foreach(p => zoomTo(p.rect))
 
   /** Everything fitted in. */
-  def fit(animate: Boolean = true): Unit = bounds.foreach(b => zoomTo(b, animate))
+  def fit(animate: Boolean = true): Unit = whole.foreach(b => zoomTo(b, animate))
 
   /** Zoomed by `factor` (above 1 closer) about `x`, `y` of the canvas, which stays where it is. */
   def zoomBy(factor: Double, x: Double, y: Double): Unit = {
@@ -214,6 +227,9 @@ class ZoomCanvas extends Container {
     val v = view()
     view @= v.copy(x = v.x + dx / v.scale, y = v.y + dy / v.scale)
   }
+
+  // what `fit` and the arrows go by
+  private def whole: Option[Rect] = extent().orElse(bounds)
 
   private def clamp(scale: Double): Double = math.max(minScale(), math.min(maxScale(), scale))
 
@@ -488,7 +504,7 @@ class ZoomCanvas extends Container {
   // ---- the keys ----
 
   /** Whether the view can move `dx`, `dy` and still have more of the world that way. */
-  private def more(dx: Double, dy: Double): Boolean = bounds.exists { b =>
+  private def more(dx: Double, dy: Double): Boolean = whole.exists { b =>
     val v = view()
     val edge = 0.5 / v.scale
     (dx < 0.0 && b.x < v.x - edge) || (dx > 0.0 && b.right > v.x + size.width() / v.scale + edge) ||
