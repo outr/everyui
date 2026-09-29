@@ -36,6 +36,8 @@ import everyui.render.Platform
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   sliders    sliders, range sliders and switches: steps, divisions, value labels, vertical, out of use (`theme=light`,
   *              `rtl=1`)
+  *   captions   the device's caption setting as it changes, over a video that follows it until a subtitle track is
+  *              chosen (`src=<stream>`)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not
@@ -81,5 +83,6 @@ import everyui.render.Platform
   else if (demo == "italic") ItalicDemo.run()
   else if (demo == "readonly") ReadOnlyDemo.run()
   else if (demo == "rtlwrap") RtlWrapDemo.run()
+  else if (demo == "captions") CaptionsDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

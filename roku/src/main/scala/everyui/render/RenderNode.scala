@@ -157,8 +157,8 @@ class RenderNode(val sg: SGNode) {
     uiSetMediaHeaders(sg, headers.toList.map(h => h._1 + ":" + h._2))
   def setMediaSource(url: String): Unit = {
     uiSetMediaSource(sg, url)
-    // no text track asked for: none shown from the start, whatever the device's caption mode was left at
-    if (textChoice.isEmpty) uiSelectMediaTrack(sg, "text", "")
+    // captions from the start as the app chose them, else as the device has them
+    if (url.nonEmpty) showCaptions(Nil)
   }
   /** Where the next source starts, in seconds: its content node's PlayStart, so the stream opens there. */
   def setMediaStart(seconds: Double): Unit = uiSetMediaStart(sg, seconds)
@@ -219,27 +219,45 @@ class RenderNode(val sg: SGNode) {
     everyui.component.MediaTrack(if (p.length > 1) p(1) else "", p(0), if (p.length > 2) p(2) else "",
       if (p.length > 3) p(3) else "")
   }
-  // the languages asked for, from the tracks it turned out to have; without a text language found there, the text track
-  // asked for (none, unless one was)
+  // the languages asked for, from the tracks it turned out to have; without a text language found there, the captions
+  // as the app chose them, else as the device has them
   private def chooseLanguages(): Unit = {
     val tracks = mediaTracks()
     val chosen = List(("audio", wantAudio), ("text", wantText)).filter(w => w._2.nonEmpty).flatMap { w =>
       val tag = everyui.component.MediaTrack.languageTag(w._2)
       tracks.find(t => t.kind == w._1 && everyui.component.MediaTrack.languageTag(t.language) == tag)
     }
-    chosen.foreach(t => uiSelectMediaTrack(sg, t.kind, t.id))
-    if (!chosen.exists(_.kind == "text")) uiSelectMediaTrack(sg, "text", textChoice)
+    chosen.foreach(t => if (t.kind == "text") uiCaptionsChosen(sg, t.id) else uiSelectMediaTrack(sg, t.kind, t.id))
+    if (!chosen.exists(_.kind == "text")) showCaptions(tracks)
   }
+  /** Captions by the rule of `everyui.text.Captions`: the text track the app chose (none for ""), shown on this video
+    * alone (suppressCaptions for none, the device's mode put On only while a chosen track plays); until it chooses, the
+    * device's own mode, with the track in its caption language, else the first. The mode is the device's setting,
+    * which outlives the video and the channel, so none chosen never writes it. A change of it by the viewer (the
+    * Roku's own options menu, its settings) is theirs: the app's choice goes, and the device's is followed. */
+  private def showCaptions(tracks: List[everyui.component.MediaTrack]): Unit = {
+    if (captionWatch.isEmpty) captionWatch = Some(everyui.text.Captions.listen(_ => {
+      textChosen = false
+      textChoice = ""
+      showCaptions(mediaTracks())
+    }))
+    if (textChosen) uiCaptionsChosen(sg, textChoice)
+    else uiCaptionsFollow(sg, everyui.text.Captions.deviceTrack(everyui.text.Captions.device, tracks).getOrElse(""))
+  }
+  private var textChosen = false
+  private var textChoice = ""
+  private var captionWatch: Option[() => Unit] = None
   /** What was decoded: nothing this player says. */
   def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
-  /** A track to hear or read, by its id ("" reads none). A Roku shows captions by its caption mode, which is the
-    * device's own setting (Settings, Accessibility), not the video's: it outlives the video and the channel, so the text
-    * track asked for is put to each source as it opens, and none asked for turns the mode off. */
-  def selectMediaTrack(kind: String, id: String): Unit = {
-    if (kind == "text") textChoice = id
-    uiSelectMediaTrack(sg, kind, id)
-  }
-  private var textChoice = ""
+  /** A track to hear or read, by its id ("" reads none). The text track chosen is the app's choice from then on, put
+    * to each source as it opens (showCaptions). */
+  def selectMediaTrack(kind: String, id: String): Unit =
+    if (kind == "text") {
+      textChosen = true
+      textChoice = id
+      showCaptions(Nil)
+    }
+    else uiSelectMediaTrack(sg, kind, id)
   def setMediaCover(cover: Boolean): Unit = ()
   def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = uiGetMediaPosition(sg)
@@ -249,7 +267,13 @@ class RenderNode(val sg: SGNode) {
     if (e == "ready") chooseLanguages()
     f(e)
   })
-  def releaseMedia(): Unit = uiReleaseMedia(sg)
+  // and the device's caption mode as it was, where a chosen track put it On
+  def releaseMedia(): Unit = {
+    uiReleaseMedia(sg)
+    uiCaptionsRestore()
+    captionWatch.foreach(stop => stop())
+    captionWatch = None
+  }
 
   def setWidth(width: Double): Unit = {
     val rewrap = wrapping && richWidth >= 0.0 && width != boxWidth

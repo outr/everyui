@@ -168,13 +168,20 @@ class ExoMedia(frame: Option[VideoFrame]) {
         // nobody is watching a player behind another app, or a sleeping screen: it holds while the app is away and
         // carries on as it was asked to when it is back — where what it was asked was to play
         hooks = List(Platform.onAway(() => made.setPlayWhenReady(false)),
-          Platform.onResume(() => made.setPlayWhenReady(playing)))
+          Platform.onResume(() => made.setPlayWhenReady(playing)),
+          // the viewer changing the device's captions: theirs from then on, whatever the app chose
+          everyui.text.Captions.listen(_ => {
+            textChosen = false
+            prefer(made)
+            captions(made)
+          }))
         made.addListener(new Player.Listener {
           override def onPlaybackStateChanged(state: Int): Unit = {
             // READY is the first moment there is a picture to show, and the only one worth saying: it is said once,
             // because every rebuffer passes through READY again on its way back
             if (state == Player.STATE_READY && !said) {
               said = true
+              captions(made)
               listener("ready")
               darkWatch(made)
             }
@@ -388,8 +395,19 @@ class ExoMedia(frame: Option[VideoFrame]) {
   }
 
   /** Hear or read a track, by the id it was given out under. An empty id means the stream's own choice for sound,
-    * and none at all for text. */
-  def selectTrack(kind: String, id: String): Unit = player.foreach { p =>
+    * and none at all for text. A text track chosen is the app's choice from then on, put to each source as it is
+    * ready; until one is, the device's caption setting decides (captions). */
+  def selectTrack(kind: String, id: String): Unit = {
+    if (kind == MediaTrack.Text) {
+      textChosen = true
+      textChoice = id
+    }
+    player.foreach(p => select(p, kind, id))
+  }
+  private var textChosen = false
+  private var textChoice = ""
+
+  private def select(p: ExoPlayer, kind: String, id: String): Unit = {
     try {
       val which = if (kind == MediaTrack.Text) C.TRACK_TYPE_TEXT else C.TRACK_TYPE_AUDIO
       val from = p.getTrackSelectionParameters.buildUpon().clearOverridesOfType(which)
@@ -401,7 +419,8 @@ class ExoMedia(frame: Option[VideoFrame]) {
       else if (chosen.length == 2) {
         for (g <- chosen(0).toIntOption; t <- chosen(1).toIntOption) {
           val groups = p.getCurrentTracks.getGroups
-          if (g >= 0 && g < groups.size()) {
+          // an id of another source's may name a group of another kind here
+          if (g >= 0 && g < groups.size() && groups.get(g).getType == which) {
             from.setTrackTypeDisabled(which, false)
             from.addOverride(new TrackSelectionOverride(groups.get(g).getMediaTrackGroup, t))
           }
@@ -427,14 +446,36 @@ class ExoMedia(frame: Option[VideoFrame]) {
   private var hear = ""
   private var read = ""
 
+  /** The languages asked for, told to the selector. With no text language asked and no text track chosen, the
+    * device's caption setting instead: on, its language preferred, so a track in it is read from the start; off, a
+    * track the file marks as its default is not read for that alone (forced subtitles, the words said in another
+    * language, still are). */
   private def prefer(p: ExoPlayer): Unit =
     try {
       val from = p.getTrackSelectionParameters.buildUpon()
       if (hear.isEmpty) from.setPreferredAudioLanguages() else from.setPreferredAudioLanguage(hear)
-      if (read.isEmpty) from.setPreferredTextLanguages() else from.setPreferredTextLanguage(read)
+      val device = if (read.isEmpty && !textChosen) CaptionAccess.device() else None
+      val language = if (read.nonEmpty) Some(read) else device.filter(_.on).flatMap(_.language)
+      language match {
+        case Some(l) => from.setPreferredTextLanguage(l)
+        case None => from.setPreferredTextLanguages()
+      }
+      from.setIgnoredTextSelectionFlags(if (device.exists(_.off)) C.SELECTION_FLAG_DEFAULT else 0)
+      if (device.nonEmpty) from.clearOverridesOfType(C.TRACK_TYPE_TEXT).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
       p.setTrackSelectionParameters(from.build())
     }
     catch { case t: Throwable => Platform.logError("media: languages", t) }
+
+  /** Captions once the tracks are known, by the rule of `everyui.text.Captions`: the text track the app chose (none
+    * for "") put to this source; with none chosen and no text language asked, the device's, where its captions are on
+    * and the selector found no track in its language, the first there is. */
+  private def captions(p: ExoPlayer): Unit =
+    try {
+      if (textChosen) select(p, MediaTrack.Text, textChoice)
+      else if (read.isEmpty && !p.getCurrentTracks.isTypeSelected(C.TRACK_TYPE_TEXT))
+        everyui.text.Captions.choose(false, None, CaptionAccess.device(), tracks()).foreach(id => select(p, MediaTrack.Text, id))
+    }
+    catch { case t: Throwable => Platform.logError("media: captions", t) }
 
   /** What is being said on screen at this moment, as the text track has it, or "" while nothing is. */
   def cues(): String = cueText

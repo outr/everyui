@@ -135,7 +135,14 @@ trait MediaSupport { self: Component =>
   lazy val audioTrack: Prop[Option[String]] =
     own(new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Audio, t.getOrElse(""))))
 
-  /** The track being read, by its id; None shows none. */
+  /** The track being read, by its id; None shows none.
+    *
+    * Until it is set (or a text language is asked for through [[languages]]), what is read is the device's own caption
+    * setting ([[everyui.text.Captions]]): with its captions on, the track in its caption language, else the first;
+    * with them off, none. Once set, it is the app's choice for every source after, and None turns this video's
+    * captions off without touching the device's setting (a Roku's caption mode is the device's, and outlives the app).
+    * A change the viewer makes to the device's setting while it plays (a Roku's own options menu) is theirs, and is
+    * followed from then on. Where the device says nothing (a browser, the desktop), none is read until one is set. */
   lazy val textTrack: Prop[Option[String]] =
     own(new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Text, t.getOrElse(""))))
 
