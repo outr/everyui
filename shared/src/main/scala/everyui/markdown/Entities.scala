@@ -74,25 +74,18 @@ private[markdown] object Entities {
   def decode(s: String): String =
     if (s.indexOf("&") < 0) s
     else {
-      val out = new StringBuilder
-      var k = 0
-      while (k < s.length) {
-        if (s.charAt(k) == '&') {
-          val (text, length) = at(s, k)
-          if (length > 0) {
-            out.append(text)
-            k += length
-          }
-          else {
-            out.append("&")
-            k += 1
-          }
+      // the stretches between references as they are, each reference as what it stands for
+      var out: List[String] = Nil
+      var from = 0
+      var k = s.indexOf("&")
+      while (k >= 0) {
+        val (text, length) = at(s, k)
+        if (length > 0) {
+          out = text :: s.substring(from, k) :: out
+          from = k + length
         }
-        else {
-          out.append(s.charAt(k))
-          k += 1
-        }
+        k = s.indexOf("&", if (length > 0) k + length else k + 1)
       }
-      out.toString
+      (s.substring(from) :: out).reverse.mkString
     }
 }

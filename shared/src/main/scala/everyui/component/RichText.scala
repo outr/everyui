@@ -9,12 +9,15 @@ import everyui.theme.Theme
 /** A paragraph of styled runs, wrapped to its width: bold, italic, code, links (see [[TextRun]]). A link to a path in
   * this app is followed in place, any other opens in a new tab. The paragraph's own font and colour are the runs'
   * defaults. */
-class RichText(node: everyui.render.RenderNode = Nodes.text()) extends Component(node) {
+class RichText(node: everyui.render.RenderNode = Nodes.richText()) extends Component(node) {
   override def kind: String = "RichText(" + runs().map(_.text).mkString + ")"
 
   val font: FontFeature = new FontFeature(this)
+  /** What a click on a link does with its `href`: by default a path in this app is shown in place, and anything else
+    * opened (`Link.follow`). */
+  var follow: String => Unit = href => Link.follow(href, newTab = !RichText.inApp(href))
   lazy val runs: Prop[List[TextRun]] = own(new Prop[List[TextRun]](Nil,
-    r => node.setRuns(r, href => Link.follow(href, newTab = !RichText.inApp(href))), () => measure.trigger()))
+    r => node.setRuns(r, href => follow(href)), () => measure.trigger()))
 
   /** A shadow behind the letters, as [[TextView.textShadow]] has it: a subtitle's edge over a picture. */
   lazy val textShadow: Prop[Option[everyui.Shadow]] = own(new Prop[Option[everyui.Shadow]](None, s => s match {

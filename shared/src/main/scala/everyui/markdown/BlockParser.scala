@@ -99,14 +99,13 @@ private[markdown] object BlockParser {
       }
       else going = false
     }
-    val out = new StringBuilder
+    var out: List[String] = Nil
     var k = i
     while (k <= last) {
-      if (k > i) out.append("\n")
-      out.append(dedent(lines(k), 4))
+      out = dedent(lines(k), 4) :: out
       k += 1
     }
-    (MdBlock.CodeBlock("", out.toString), last + 1)
+    (MdBlock.CodeBlock("", out.reverse.mkString("\n")), last + 1)
   }
 
   /** The fence `line` opens: its marker repeated (three or more backticks or tildes), or "" where it opens none. */
@@ -132,18 +131,17 @@ private[markdown] object BlockParser {
     val info = Inlines.unescape(line.substring(ind + fence.length).trim)
     val space = info.indexOf(" ")
     val language = if (space < 0) info else info.substring(0, space)
-    val out = new StringBuilder
+    var out: List[String] = Nil
     var j = i + 1
     var closed = false
     while (!closed && j < lines.size) {
       if (closes(lines(j), fence)) closed = true
       else {
-        if (j > i + 1) out.append("\n")
-        out.append(dedent(lines(j), ind))
+        out = dedent(lines(j), ind) :: out
         j += 1
       }
     }
-    (MdBlock.CodeBlock(language, out.toString, closed), if (closed) j + 1 else j)
+    (MdBlock.CodeBlock(language, out.reverse.mkString("\n"), closed), if (closed) j + 1 else j)
   }
 
   /** Whether `line` closes a code block opened with `fence`: the same character, at least as many, and nothing after. */
@@ -415,20 +413,19 @@ private[markdown] object BlockParser {
       else if (rest.startsWith("!")) ">"
       else if (rawTags.contains(name) && !rest.startsWith("/")) "</" + name + ">"
       else ""
-    val out = new StringBuilder
+    var out: List[String] = Nil
     var j = i
     var going = true
     while (going && j < lines.size) {
       val line = lines(j)
       if (until.isEmpty && blank(line)) going = false
       else {
-        if (j > i) out.append("\n")
-        out.append(line)
+        out = line :: out
         j += 1
         if (until.nonEmpty && line.toLowerCase.indexOf(until) >= 0) going = false
       }
     }
-    (MdBlock.Html(out.toString), j)
+    (MdBlock.Html(out.reverse.mkString("\n")), j)
   }
 
   // ---- link reference definitions ----
@@ -542,25 +539,25 @@ private[markdown] object BlockParser {
     if (row.startsWith("|")) row = row.substring(1)
     if (row.endsWith("|") && !row.endsWith("\\|")) row = row.substring(0, row.length - 1)
     var out: List[String] = Nil
-    val cell = new StringBuilder
+    var cell = ""
     var k = 0
     while (k < row.length) {
       val c = row.charAt(k)
       if (c == '\\' && k + 1 < row.length && row.charAt(k + 1) == '|') {
-        cell.append("|")
+        cell = cell + "|"
         k += 2
       }
       else if (c == '|') {
-        out = cell.toString.trim :: out
-        cell.clear()
+        out = cell.trim :: out
+        cell = ""
         k += 1
       }
       else {
-        cell.append(c)
+        cell = cell + c
         k += 1
       }
     }
-    out = cell.toString.trim :: out
+    out = cell.trim :: out
     out.reverse
   }
 
@@ -580,7 +577,7 @@ private[markdown] object BlockParser {
         j += 1
       }
     }
-    (MdBlock.Table(align, header.map(pending), rows.toList), j)
+    (MdBlock.TableBlock(align, header.map(pending), rows.toList), j)
   }
 
   // ---- paragraphs ----
@@ -599,14 +596,13 @@ private[markdown] object BlockParser {
       else if (interrupts(line) || tableAt(lines, j)) going = false
       else j += 1
     }
-    val out = new StringBuilder
+    var out: List[String] = Nil
     var k = i
     while (k < j) {
-      if (k > i) out.append("\n")
-      out.append(dedent(lines(k), lines(k).length))
+      out = dedent(lines(k), lines(k).length) :: out
       k += 1
     }
-    val words = trimEnd(out.toString)
+    val words = trimEnd(out.reverse.mkString("\n"))
     if (level > 0) (MdBlock.Heading(level, pending(words)), j + 1)
     else (MdBlock.Paragraph(pending(words)), j)
   }

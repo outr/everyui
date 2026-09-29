@@ -30,6 +30,7 @@ import everyui.render.Platform
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not
   *              on a Roku or an Apple TV (app/full: FullDemos)
+  *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
@@ -49,5 +50,6 @@ import everyui.render.Platform
   else if (demo == "composer") ComposerDemo.run()
   else if (demo == "chat") ChatDemo.run()
   else if (demo == "colors") ColorsDemo.run()
+  else if (demo == "markdown") MarkdownDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

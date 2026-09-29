@@ -194,8 +194,8 @@ class RenderNode(val el: html.Element) {
     }
   }
 
-  /** The text as styled runs: spans, and `<a>`s for links. A click on a link to a path on this site is `follow`ed in
-    * place; any other link, or one clicked with a modifier, is the browser's (a new tab). */
+  /** The text as styled runs: spans, and `<a>`s for links. A click on a link is `follow`ed (a path on this site shown in
+    * place, any other opened, unless the app says otherwise); one clicked with a modifier is the browser's (a new tab). */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
     el.textContent = ""
     runs.foreach { run =>
@@ -224,7 +224,7 @@ class RenderNode(val el: html.Element) {
         }
         span.addEventListener("click", (e: dom.MouseEvent) => {
           e.stopPropagation()
-          if (inApp && !RenderNode.modified(e)) {
+          if (!RenderNode.modified(e)) {
             e.preventDefault()
             follow(run.href)
           }
@@ -986,6 +986,9 @@ object Nodes {
     el.style.setProperty("user-select", "text")
     new RenderNode(el)
   }
+
+  /** A paragraph of styled runs (`everyui.component.RichText`): a text node here, which draws them. */
+  def richText(): RenderNode = text()
 
   /** A text node — an absolutely positioned `<div>`. */
   def text(): RenderNode = {

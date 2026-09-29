@@ -19,7 +19,7 @@ object MdBlock {
   /** `---`, `***` or `___`: a line across. */
   case object Rule extends MdBlock
   /** A table: its columns' alignment, its header's cells and its rows' cells. */
-  case class Table(align: List[TextAlign], header: List[List[MdInline]], rows: List[List[List[MdInline]]])
+  case class TableBlock(align: List[TextAlign], header: List[List[MdInline]], rows: List[List[List[MdInline]]])
     extends MdBlock
   /** Raw HTML, which is shown as the text it is, never rendered. */
   case class Html(source: String) extends MdBlock

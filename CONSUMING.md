@@ -396,6 +396,44 @@ new FilterPicker[Model](q => models.find(q), _.id, _.name, _.providerName,
   groupOf = _.provider).open()
 ```
 
+### Markdown (`everyui.markdown`)
+
+`MarkdownView` draws Markdown with EveryUI's own components, so it looks the same on the web, the desktop and Android:
+CommonMark (headings, paragraphs, emphasis, code, links, images, quotes, lists, rules, hard breaks, escapes and
+entities) with GFM's tables, strikethrough, task lists and bare links. Raw HTML shows as the text it is. It lays out to
+the width it is given and is as tall as its blocks, so it fits a chat's bubble or a measured list row
+(`VirtualList(measured = true)`).
+
+```scala
+import everyui.markdown.{MarkdownStyle, MarkdownView}
+
+val answer = new MarkdownView(style = MarkdownStyle.compact, onLink = url => openInBrowser(url))
+answer.size.width := bubble.size.width() - 24.0
+answer.content := message().text          // may grow token by token while the answer streams
+```
+
+- `content` can change at any time. As it grows, only the last block is parsed again (`MarkdownStream`), the blocks
+  before it keep their components, and a paragraph or a code block that grows is drawn again in place: a 10 KB answer
+  appended 16 characters at a time costs about 0.7 ms an append on the desktop, and 14 us of that is parsing. A fence
+  that has not closed yet shows as a code block so far.
+- Code blocks are coloured for the fence's language (`everyui.kit.Highlight`, which `CodeView(text, points, language)`
+  uses too), scroll sideways rather than wrap, and have a copy button where the platform has a clipboard. Tables
+  scroll sideways too. Each takes the focus only when there is somewhere to scroll.
+- A click on a link, or Enter (a remote's OK) on a paragraph that holds links, goes to `onLink`: by default a path of
+  this app is shown in place and anything else opened (`Link.follow`). A paragraph with several links offers them in a
+  menu. A picture's relative URL is found against `base`, `Platform.origin()` by default (`MarkdownView.resolve`).
+- `MarkdownStyle` sets the sizes: the body's points, code's, the headings' scale, the gap between blocks, the list
+  indent, a table cell's padding and the tallest picture. The colours are the theme's; a palette's `extras` can name
+  "markdown.link", "markdown.code" and "markdown.quote", and "code.keyword", "code.string", "code.comment",
+  "code.number" and "code.type" for the code.
+- Headings, lists and their items, tables, rows and cells, and pictures carry their `Semantics`; a picture's alt text
+  is its label. On the web the text can be selected.
+- `Markdown.parse(text)` gives the blocks (`MdBlock`, `MdInline`) for an app that draws them its own way.
+
+A Roku and an Apple TV draw a run's words in the paragraph's own style (no bold, no colours in a line), and pictures,
+tables, lists and code blocks as everywhere else. The desktop draws a paragraph's runs in a `TextFlow` of their own
+styles (`Nodes.richText`); JavaFX paints no background behind a run, so code in a line is told by its face.
+
 ### Drawing (`everyui.draw`)
 
 `Drawing` is a plain component that draws paths in its own pixels: lines, cubic curves, arcs and circles, rectangles
@@ -736,11 +774,6 @@ lazy val app = project.in(file("app"))
 | `WebTarget.Both` | `main.js`, `wasm-<hash>/` and `everyui-loader.js` | WebAssembly where the browser can, JavaScript elsewhere |
 
 `sbt 'set app/everyuiWebTarget := WebTarget.Js' app/webBundle` builds one another way, without editing the build.
-
-`everyuiWebFonts` is EveryUI's fonts out of the everyui-web jar, a directory to copy as `fonts/`, and `everyuiWebGuests`
-the web guests' files out of their modules (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`), a directory to
-copy next to the page: `IO.copyDirectory(everyuiWebGuests.value, out)`. Both are `everyui.sbt.ModuleFiles`, which a
-build without the plugin can call itself.
 
 The JavaScript build is the project's own `fullLinkJS`, as its `scalaJSLinkerConfig` sets it (a script, or an ES
 module). The WebAssembly build (`everyuiWasmLinkJS`) links the same code with that configuration made an ES2022
@@ -1120,54 +1153,6 @@ editor is made.
 **Android and the desktop** compile it from source like the rest of their backends: add `monaco/src/main/scala`, fabric-io,
 and the resources (`MonacoAssets.generate` in `project/`); on Android put `everyui-monaco/<version>/` under the APK's
 assets. The desktop needs `javafx-web` and `desktop/web/src/main/scala` (FxWebGuest).
-
-## Terminal (everyui-terminal)
-
-`"com.outr" %% "everyui-terminal" % "0.1.0-SNAPSHOT"` (Scala.js) is a terminal as a component: xterm.js 6.0.0 with its
-fit and web-links addons, over an `Embed` as Monaco is. It knows nothing of where the bytes come from: the app writes a
-program's output in and sends what it gives out on, over whatever carries them (a socket to a pty on another machine,
-say). xterm.js's files come as resources under `everyui-terminal/6.0.0/`, fetched from npm with their integrity checked
-by the build, never committed. It needs nothing beyond everyui-web.
-
-```scala
-import everyui.terminal.*
-
-val term = new Terminal(TerminalOptions(fontSize = 14.0, scrollback = 10000))
-term.size.width := panel.size.width()
-term.size.height := panel.size.height()
-term.onInput.attach(data => socket.send(data))              // keys and pastes as a terminal sends them: Ctrl+C is \u0003
-term.onResize.attach(s => socket.resize(s.cols, s.rows))   // the pty's window size, each time the grid changes
-socket.onBytes(bytes => term.writeBytes(bytes))            // UTF-8, split anywhere; term.write(text) for text
-term.title.attach(t => tab.label @= t)                     // what the program set
-term.fontSize @= 15.0                                      // and term.theme, which follows Theme.palette until set
-Terminal.keep(Chord("T", primary = true, shift = true))    // an app chord that still runs inside the terminal
-```
-
-It lays its grid out to its box (`dimensions`, `onResize`), keeps `scrollback` lines for the wheel or a finger, and
-takes its colours from the palette (`TerminalTheme.of`: the text on the surface, the cursor in the accent, ANSI colours
-for a dark or light ground). `selection` is the selected text; `copy()`, `paste(text)`, `selectAll()`, `clear()`,
-`reset()`, `scrollToBottom()` and `scrollLines(n)` are there for a menu; `onBell`, `onLink` (a clicked address, opened
-in the browser too while `openLinks`) and `onBinary` (old mouse reports) are heard.
-
-**Keys.** While it has the focus every key is the program's, Tab, Escape and the arrows included, so no key of its own
-takes the focus out. The app's shortcuts still run inside it exactly where they do inside a Monaco editor: a command
-with `inEmbeds`, a chord left to terminals (`Terminal.keep`, which is `Keymap.embed("terminal", ...)`), a double-tap
-of a modifier, and a remote's Back (to `exit`); those keys never reach the program. Copy is Ctrl+Shift+C (Cmd+C on a
-Mac), through the platform's clipboard; paste is Ctrl+Shift+V (Cmd+V), the engine's own paste, bracketed where the
-program asked for it.
-
-**Serving it (web).** Copy the jar's `everyui-terminal/` next to the page: the sbt-everyui plugin's `everyuiWebGuests`
-does it for every web guest on the classpath (Monaco too). The scripts load with `<script src>` and the styles with
-`<link>`: nothing inline and nothing evaluated, so the policy needs only `script-src 'self'; style-src 'self'
-'unsafe-inline'` (xterm.js sets style attributes). The scripts define their globals even where Monaco's require.js is
-already in the page. The terminal is set in Roboto Mono, the page's own on the web (`fonts/`), and in the platform's
-monospace face in a web view of its own.
-
-**Android and the desktop** compile it from source like Monaco: add `terminal/src/main/scala` and the resources
-(`TerminalAssets.generate` in `project/`); on Android put
-`everyui-terminal/<version>/` under the APK's assets. The desktop needs `javafx-web` and `desktop/web/src/main/scala`.
-Where no web engine runs (Roku, tvOS, a desktop without javafx-web) a line saying so shows in its place.
-`terminal/demo` is its demo (`sbt terminalDemo/demoBundle`, `terminalDesktop/run`, `terminalAndroid/packageApk`).
 
 ## Collections
 

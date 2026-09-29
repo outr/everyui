@@ -1395,6 +1395,9 @@ object Nodes {
   /** A drawing (everyui.draw.Drawing): paths on a canvas of its own. */
   def drawing(): RenderNode = new RenderNode(new DrawingView(Host.activity))
 
+  /** A paragraph of styled runs (`everyui.component.RichText`): a text node here, which draws them. */
+  def richText(): RenderNode = text()
+
   /** A text node — a single-line `TextView` with no padding of its own. */
   def text(): RenderNode = {
     val t = new OutlinedText(Host.activity)

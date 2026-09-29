@@ -41,6 +41,7 @@ class RenderNode(val fx: Node) {
 
   def getText(): String = fx match {
     case t: Text => t.getText
+    case f: RichFlow => f.text
     case _ => ""
   }
 
@@ -76,6 +77,9 @@ class RenderNode(val fx: Node) {
   }
 
   def setFontSize(size: Double): Unit = fx match {
+    case f: RichFlow =>
+      fontSize = size
+      f.setSize(size)
     case t: Text =>
       fontSize = size
       t.setFont(new Font(t.getFont.getName, size))
@@ -88,6 +92,7 @@ class RenderNode(val fx: Node) {
 
   /** `"#rrggbb"`. */
   def setColor(hex: String): Unit = fx match {
+    case f: RichFlow => f.setColour(hex)
     case t: Text => t.setFill(Color.web(hex))
     case f: TextInputControl =>
       textColor = hex
@@ -97,6 +102,10 @@ class RenderNode(val fx: Node) {
 
   /** A bundled face (`assets/fonts/`): family, CSS weight, size in pixels. */
   def setFont(family: String, weight: Int, size: Double): Unit = fx match {
+    case f: RichFlow =>
+      face = Faces(family, weight)
+      fontSize = size
+      f.setBase(family, weight, size)
     case t: Text =>
       face = Faces(family, weight)
       fontSize = size
@@ -118,6 +127,7 @@ class RenderNode(val fx: Node) {
     if (explicitWidth >= 0.0) explicitWidth
     else fx match {
       case t: Text => t.getLayoutBounds.getWidth
+      case f: RichFlow => f.across()
       case _ => 0.0
     }
 
@@ -125,6 +135,7 @@ class RenderNode(val fx: Node) {
     if (explicitHeight >= 0.0) explicitHeight
     else fx match {
       case t: Text => if (wrapping) math.ceil(t.getLayoutBounds.getHeight) else face.lineHeight(fontSize)
+      case f: RichFlow => f.down(if (wrapping && explicitWidth > 0.0) explicitWidth else -1.0)
       case _ => 0.0
     }
 
@@ -260,9 +271,17 @@ class RenderNode(val fx: Node) {
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
   def setOptions(labels: List[String]): Unit = ()
-  /** Styled runs are drawn as the paragraph's own style, their words run together: one `Text` is one style. It is
-    * underlined where every word of it is (a subtitle underlined whole), since a line under part of it cannot be. */
+  /** Styled runs: each in its own style in a `RichFlow` (`Nodes.richText`, a `RichText`'s node). A plain `Text` is one
+    * style, so there they are drawn as the paragraph's own, their words run together, underlined where every word of
+    * them is (a subtitle underlined whole), since a line under part of it cannot be. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
+    fx match {
+      case f: RichFlow => f.setRuns(runs, follow)
+      case _ => setPlainRuns(runs)
+    }
+  }
+
+  private def setPlainRuns(runs: List[everyui.text.TextRun]): Unit = {
     setText(runs.map(_.text).mkString)
     fx match {
       case t: Text => t.setUnderline(runs.exists(_.text.nonEmpty) && runs.forall(r => r.underline || r.text.isEmpty))
@@ -371,6 +390,7 @@ class RenderNode(val fx: Node) {
   /** `"normal"` (or `"pre-wrap"`, `"pre-line"`, which keep the words' own line breaks as a text node always does here)
     * wraps a text node at its width; anything else keeps it on one line. */
   def setWhiteSpace(value: String): Unit = fx match {
+    case _: RichFlow => wrapping = value != "nowrap" && value != "pre"
     case t: Text =>
       wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
       applyAlign()
@@ -413,6 +433,8 @@ class RenderNode(val fx: Node) {
       case t: Text =>
         t.setTextAlignment(if (centred) TextAlignment.CENTER else if (right) TextAlignment.RIGHT else TextAlignment.LEFT)
         t.setWrappingWidth(if ((wrapping || centred || right) && explicitWidth > 0.0) explicitWidth else 0.0)
+      case f: RichFlow =>
+        f.setSide(if (centred) TextAlignment.CENTER else if (right) TextAlignment.RIGHT else TextAlignment.LEFT)
       case f: TextField =>
         // a right-to-left field is mirrored already, so its alignment stays logical: left is where it starts
         f.setAlignment(if (centred) Pos.CENTER else if (align == "end") Pos.CENTER_RIGHT else Pos.CENTER_LEFT)
@@ -823,6 +845,13 @@ object Nodes {
 
   /** A drawing (everyui.draw.Drawing): a pane of shapes. */
   def drawing(): RenderNode = container()
+
+  /** A paragraph of styled runs (`everyui.component.RichText`): a `RichFlow`, each run a `Text` of its own. */
+  def richText(): RenderNode = {
+    val node = new RenderNode(new RichFlow)
+    Host.aligned.add(node)
+    node
+  }
 
   /** A text node — a `Text`, positioned by its baseline. */
   def text(): RenderNode = {

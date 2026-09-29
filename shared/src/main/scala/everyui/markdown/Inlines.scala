@@ -11,7 +11,10 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
   private var last: Piece = null
   private var delimiters: Delimiter = null
   private var brackets: Bracket = null
-  private val words = new StringBuilder
+  // the words since the last piece, newest first, and where a stretch of them still being read began (-1 for none):
+  // plain words are taken from the source a stretch at a time, rather than a character at a time
+  private var words: List[String] = Nil
+  private var from = -1
   private var pos = 0
 
   /** The pieces `src` is made of. */
@@ -24,7 +27,14 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
 
   private def step(): Unit = {
     val c = src.charAt(pos)
-    if (c == '\\') escape()
+    val special = c == '\\' || c == '`' || c == '*' || c == '_' || c == '~' || c == '[' || c == ']' || c == '<' ||
+      c == '&' || c == '\n' || c == '!' || c == 'h' || c == 'w'
+    if (special) settle()
+    if (!special) {
+      if (from < 0) from = pos
+      pos += 1
+    }
+    else if (c == '\\') escape()
     else if (c == '`') code()
     else if (c == '*' || c == '_' || c == '~') run(c)
     else if (c == '[') open(false, 1)
@@ -35,9 +45,21 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
     else if (c == '\n') lineEnd(false)
     else if ((c == 'h' || c == 'w') && bare()) ()
     else {
-      words.append(c)
+      from = pos
       pos += 1
     }
+  }
+
+  /** The stretch of plain words being read, taken into `words`. */
+  private def settle(): Unit = if (from >= 0) {
+    words = src.substring(from, pos) :: words
+    from = -1
+  }
+
+  /** `s` added to the words. */
+  private def say(s: String): Unit = {
+    settle()
+    words = s :: words
   }
 
   // ---- the list of pieces ----
@@ -54,9 +76,11 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
   }
 
   /** The words gathered so far, as a piece of text. */
-  private def flush(): Unit = if (words.nonEmpty) {
-    add(MdInline.Text(words.toString))
-    words.clear()
+  private def flush(): Unit = {
+    settle()
+    val text = words.reverse.mkString
+    if (text.nonEmpty) add(MdInline.Text(text))
+    words = Nil
   }
 
   private def remove(p: Piece): Unit = {
@@ -87,11 +111,11 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
       lineEnd(true)
     }
     else if (Inlines.punctuation(next)) {
-      words.append(next)
+      say(next.toString)
       pos += 2
     }
     else {
-      words.append('\\')
+      say("\\")
       pos += 1
     }
   }
@@ -99,11 +123,11 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
   private def entity(): Unit = {
     val (text, length) = Entities.at(src, pos)
     if (length > 0) {
-      words.append(text)
+      say(text)
       pos += length
     }
     else {
-      words.append('&')
+      say("&")
       pos += 1
     }
   }
@@ -111,9 +135,11 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
   /** A line's end inside the paragraph: a hard break after two spaces (or a backslash, `hard`), else a soft one; the
     * next line's leading spaces go. */
   private def lineEnd(hard: Boolean): Unit = {
+    settle()
+    val text = words.reverse.mkString
     var spaces = 0
-    while (spaces < words.length && words.charAt(words.length - 1 - spaces) == ' ') spaces += 1
-    words.setLength(words.length - spaces)
+    while (spaces < text.length && text.charAt(text.length - 1 - spaces) == ' ') spaces += 1
+    words = List(text.substring(0, text.length - spaces))
     flush()
     add(if (hard || spaces >= 2) MdInline.HardBreak else MdInline.SoftBreak)
     pos += 1
@@ -136,7 +162,7 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
       }
     }
     if (end < 0) {
-      words.append(src.substring(pos, pos + ticks))
+      say(src.substring(pos, pos + ticks))
       pos += ticks
     }
     else {
@@ -278,12 +304,12 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
   private def close(): Unit = {
     val opener = brackets
     if (opener == null) {
-      words.append(']')
+      say("]")
       pos += 1
     }
     else if (!opener.active) {
       brackets = opener.before
-      words.append(']')
+      say("]")
       pos += 1
     }
     else {
@@ -311,7 +337,7 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
       }
       brackets = opener.before
       if (end < 0) {
-        words.append(']')
+        say("]")
         pos += 1
       }
       else {
@@ -319,8 +345,8 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
         emphasis(opener.bottom)
         val inside = collect(opener.piece.next, null)
         val made =
-          if (opener.image) MdInline.Image(href, title, MdInline.plain(inside))
-          else MdInline.Link(href, title, inside)
+          if (opener.image) MdInline.Picture(href, title, MdInline.plain(inside))
+          else MdInline.Hyperlink(href, title, inside)
         // the bracket and everything after it become the link
         while (last != null && (last ne opener.piece)) remove(last)
         opener.piece.inline = made
@@ -414,11 +440,11 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
       inside.indexOf("\\") < 0 && inside.substring(at + 1).indexOf(".") > 0
     if (uri || email) {
       flush()
-      add(MdInline.Link(if (email) "mailto:" + inside else inside, "", List(MdInline.Text(inside))))
+      add(MdInline.Hyperlink(if (email) "mailto:" + inside else inside, "", List(MdInline.Text(inside))))
       pos = end + 1
     }
     else {
-      words.append('<')
+      say("<")
       pos += 1
     }
   }
@@ -448,7 +474,7 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
       if (dot <= 0 || dot >= host.length - 1) false
       else {
         flush()
-        add(MdInline.Link(if (text.startsWith("www.")) "http://" + text else text, "", List(MdInline.Text(text))))
+        add(MdInline.Hyperlink(if (text.startsWith("www.")) "http://" + text else text, "", List(MdInline.Text(text))))
         pos = end
         true
       }
@@ -495,38 +521,37 @@ object Inlines {
   def unescape(s: String): String =
     if (s.indexOf("\\") < 0) s
     else {
-      val out = new StringBuilder
-      var k = 0
-      while (k < s.length) {
-        val c = s.charAt(k)
-        if (c == '\\' && k + 1 < s.length && punctuation(s.charAt(k + 1)) && s.charAt(k + 1) <= '\u007f') {
-          out.append(s.charAt(k + 1))
-          k += 2
+      // the stretches between escapes as they are, each escaped mark without its backslash
+      var out: List[String] = Nil
+      var from = 0
+      var k = s.indexOf("\\")
+      while (k >= 0 && k + 1 < s.length) {
+        val next = s.charAt(k + 1)
+        if (punctuation(next) && next <= '\u007f') {
+          out = next.toString :: s.substring(from, k) :: out
+          from = k + 2
         }
-        else {
-          out.append(c)
-          k += 1
-        }
+        k = s.indexOf("\\", k + 2)
       }
-      out.toString
+      (s.substring(from) :: out).reverse.mkString
     }
 
   /** A link label as it is looked up: trimmed, its runs of spaces made one, in lower case. */
   def normalise(label: String): String = {
-    val out = new StringBuilder
-    var spaced = false
+    // the words between runs of spaces, joined by one
+    var out: List[String] = Nil
     val t = label.trim
+    var from = -1
     var k = 0
-    while (k < t.length) {
-      val c = t.charAt(k)
-      if (space(c)) spaced = true
-      else {
-        if (spaced) out.append(' ')
-        spaced = false
-        out.append(c)
+    while (k <= t.length) {
+      val gap = k == t.length || space(t.charAt(k))
+      if (gap && from >= 0) {
+        out = t.substring(from, k) :: out
+        from = -1
       }
+      else if (!gap && from < 0) from = k
       k += 1
     }
-    out.toString.toLowerCase
+    out.reverse.mkString(" ").toLowerCase
   }
 }

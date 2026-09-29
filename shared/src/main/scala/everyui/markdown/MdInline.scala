@@ -15,9 +15,9 @@ object MdInline {
   /** `` `code` ``: in a monospaced face. */
   case class CodeSpan(code: String) extends MdInline
   /** `[words](href "title")`, a reference to a definition, or an autolink. */
-  case class Link(href: String, title: String, content: List[MdInline]) extends MdInline
+  case class Hyperlink(href: String, title: String, content: List[MdInline]) extends MdInline
   /** `![alt](src "title")`: a picture, `alt` its words for whatever cannot see it. */
-  case class Image(src: String, title: String, alt: String) extends MdInline
+  case class Picture(src: String, title: String, alt: String) extends MdInline
   /** A line ending inside a paragraph: a space when it is drawn. */
   case object SoftBreak extends MdInline
   /** Two spaces or a backslash at a line's end: a new line. */
@@ -27,11 +27,7 @@ object MdInline {
   case class Pending(source: String) extends MdInline
 
   /** The words in `content`, without their styles: an image's alt text, a heading's plain name. */
-  def plain(content: List[MdInline]): String = {
-    val out = new StringBuilder
-    content.foreach(i => out.append(plainOf(i)))
-    out.toString
-  }
+  def plain(content: List[MdInline]): String = content.map(plainOf).mkString
 
   private def plainOf(i: MdInline): String = i match {
     case Text(t) => t
@@ -39,8 +35,8 @@ object MdInline {
     case Strong(c) => plain(c)
     case Strike(c) => plain(c)
     case CodeSpan(c) => c
-    case Link(_, _, c) => plain(c)
-    case Image(_, _, alt) => alt
+    case Hyperlink(_, _, c) => plain(c)
+    case Picture(_, _, alt) => alt
     case SoftBreak => " "
     case HardBreak => "\n"
     case Pending(s) => s

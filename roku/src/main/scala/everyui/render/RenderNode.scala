@@ -533,6 +533,9 @@ object Nodes {
 
   /** The channel's root Group, created by the generated `AppScene`. */
   def root(): RenderNode = new RenderNode(uiRoot())
+  /** A paragraph of styled runs (`everyui.component.RichText`): a text node here, which draws them. */
+  def richText(): RenderNode = text()
+
   /** A text node — a SceneGraph `Label`. */
   def text(): RenderNode = new RenderNode(uiText())
   /** A container — a transparent `Rectangle` other nodes are appended to. */

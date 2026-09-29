@@ -39,22 +39,21 @@ object Markdown {
   private def expand(line: String): String =
     if (line.indexOf("\t") < 0) line
     else {
-      val out = new StringBuilder
+      var out = ""
       var k = 0
       var lead = true
-      while (k < line.length) {
+      while (lead && k < line.length) {
         val c = line.charAt(k)
-        if (lead && c == '\t') {
-          out.append(' ')
-          while (out.length % 4 != 0) out.append(' ')
+        if (c == '\t') {
+          out = out + " "
+          while (out.length % 4 != 0) out = out + " "
         }
-        else {
-          if (c != ' ' && c != '>') lead = false
-          out.append(c)
-        }
-        k += 1
+        else if (c == ' ' || c == '>') out = out + c
+        else lead = false
+        if (lead) k += 1
       }
-      out.toString
+      out = out + line.substring(k)
+      out
     }
 
   /** The link reference definitions in `blocks`, quotes and lists too, added to `found` (the first of a label wins). */
@@ -76,8 +75,8 @@ object Markdown {
     case MdBlock.Quote(inner) => MdBlock.Quote(inner.map(b => resolve(b, refs)))
     case MdBlock.BulletList(ordered, start, tight, items) =>
       MdBlock.BulletList(ordered, start, tight, items.map(i => MdItem(i.blocks.map(b => resolve(b, refs)), i.task)))
-    case MdBlock.Table(align, header, rows) =>
-      MdBlock.Table(align, header.map(c => inlines(c, refs)), rows.map(r => r.map(c => inlines(c, refs))))
+    case MdBlock.TableBlock(align, header, rows) =>
+      MdBlock.TableBlock(align, header.map(c => inlines(c, refs)), rows.map(r => r.map(c => inlines(c, refs))))
     case other => other
   }
 

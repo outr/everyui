@@ -113,18 +113,18 @@ class MarkdownSpec extends AnyWordSpec with Matchers {
     }
     "take GFM tables with their alignment, rows padded or cut to the header's cells" in {
       Markdown.parse("| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 |\n| 1 | 2 | 3 | 4 |\n| `x` \\| y | **z** | |") shouldBe
-        List(Table(List(TextAlign.Start, TextAlign.Center, TextAlign.End), List(List(t("a")), List(t("b")), List(t("c"))),
+        List(TableBlock(List(TextAlign.Start, TextAlign.Center, TextAlign.End), List(List(t("a")), List(t("b")), List(t("c"))),
           List(List(List(t("1")), List(t("2")), Nil), List(List(t("1")), List(t("2")), List(t("3"))),
             List(List(CodeSpan("x"), t(" | y")), List(Strong(List(t("z")))), Nil))))
       Markdown.parse("a | b\n--|--\nc | d\n\nafter") shouldBe List(
-        Table(List(TextAlign.Start, TextAlign.Start), List(List(t("a")), List(t("b"))),
+        TableBlock(List(TextAlign.Start, TextAlign.Start), List(List(t("a")), List(t("b"))),
           List(List(List(t("c")), List(t("d"))))), para(t("after")))
       // a header and a delimiter row of different widths are no table
       Markdown.parse("| a | b |\n| - |") shouldBe List(para(t("| a | b |"), SoftBreak, t("| - |")))
     }
     "let a table break into a paragraph" in {
       Markdown.parse("Intro\n| a |\n| - |\n| b |") shouldBe List(para(t("Intro")),
-        Table(List(TextAlign.Start), List(List(t("a"))), List(List(List(t("b"))))))
+        TableBlock(List(TextAlign.Start), List(List(t("a"))), List(List(List(t("b"))))))
     }
     "keep raw HTML as its text" in {
       Markdown.parse("<div>\n*hi*\n</div>\n\npara") shouldBe List(Html("<div>\n*hi*\n</div>"), para(t("para")))
@@ -133,9 +133,9 @@ class MarkdownSpec extends AnyWordSpec with Matchers {
     }
     "take link reference definitions, and resolve links to them anywhere in the document" in {
       Markdown.parse("[foo]\n\n[Foo]: /url \"Title\"") shouldBe List(
-        para(Link("/url", "Title", List(t("foo")))), Definitions(List(MdReference("foo", "/url", "Title"))))
+        para(Hyperlink("/url", "Title", List(t("foo")))), Definitions(List(MdReference("foo", "/url", "Title"))))
       Markdown.parse("[text][ref] and [ref][] and [missing]\n\n[ref]: <http://x.y/a b>").head shouldBe para(
-        Link("http://x.y/a b", "", List(t("text"))), t(" and "), Link("http://x.y/a b", "", List(t("ref"))),
+        Hyperlink("http://x.y/a b", "", List(t("text"))), t(" and "), Hyperlink("http://x.y/a b", "", List(t("ref"))),
         t(" and [missing]"))
     }
   }
@@ -177,29 +177,29 @@ class MarkdownSpec extends AnyWordSpec with Matchers {
     }
     "take inline links with titles and brackets in their hrefs, and images with their alt text" in {
       one("[a *b*](/u \"T\") ![alt *x*](img.png) [p](/a(b)c) [e](<a b>)") shouldBe List(
-        Link("/u", "T", List(t("a "), Emphasis(List(t("b"))))), t(" "), Image("img.png", "", "alt x"), t(" "),
-        Link("/a(b)c", "", List(t("p"))), t(" "), Link("a b", "", List(t("e"))))
+        Hyperlink("/u", "T", List(t("a "), Emphasis(List(t("b"))))), t(" "), Picture("img.png", "", "alt x"), t(" "),
+        Hyperlink("/a(b)c", "", List(t("p"))), t(" "), Hyperlink("a b", "", List(t("e"))))
       one("[not a link] (x)") shouldBe List(t("[not a link] (x)"))
       one("[a](b") shouldBe List(t("[a](b"))
-      one("[![img](i.png)](/to)") shouldBe List(Link("/to", "", List(Image("i.png", "", "img"))))
+      one("[![img](i.png)](/to)") shouldBe List(Hyperlink("/to", "", List(Picture("i.png", "", "img"))))
     }
     "never put a link inside a link" in {
-      one("[a [b](/in) c](/out)") shouldBe List(t("[a "), Link("/in", "", List(t("b"))), t(" c](/out)"))
+      one("[a [b](/in) c](/out)") shouldBe List(t("[a "), Hyperlink("/in", "", List(t("b"))), t(" c](/out)"))
     }
     "take autolinks, in angle brackets and bare" in {
-      one("<https://a.b/c> <me@x.org> <nope>") shouldBe List(Link("https://a.b/c", "", List(t("https://a.b/c"))),
-        t(" "), Link("mailto:me@x.org", "", List(t("me@x.org"))), t(" <nope>"))
+      one("<https://a.b/c> <me@x.org> <nope>") shouldBe List(Hyperlink("https://a.b/c", "", List(t("https://a.b/c"))),
+        t(" "), Hyperlink("mailto:me@x.org", "", List(t("me@x.org"))), t(" <nope>"))
       one("see https://example.com/a_b. or www.x.org, (https://y.io/p)") shouldBe List(t("see "),
-        Link("https://example.com/a_b", "", List(t("https://example.com/a_b"))), t(". or "),
-        Link("http://www.x.org", "", List(t("www.x.org"))), t(", ("), Link("https://y.io/p", "", List(t("https://y.io/p"))),
+        Hyperlink("https://example.com/a_b", "", List(t("https://example.com/a_b"))), t(". or "),
+        Hyperlink("http://www.x.org", "", List(t("www.x.org"))), t(", ("), Hyperlink("https://y.io/p", "", List(t("https://y.io/p"))),
         t(")"))
       one("nohttps://x.y") shouldBe List(t("nohttps://x.y"))
     }
     "resolve references, full, collapsed and shortcut, by a label in any case" in {
       val refs = "\n\n[ref]: /r 'Tt'"
       Markdown.parse("[text][REF] [ref][] [ref] [miss][]" + refs).head shouldBe para(
-        Link("/r", "Tt", List(t("text"))), t(" "), Link("/r", "Tt", List(t("ref"))), t(" "),
-        Link("/r", "Tt", List(t("ref"))), t(" [miss][]"))
+        Hyperlink("/r", "Tt", List(t("text"))), t(" "), Hyperlink("/r", "Tt", List(t("ref"))), t(" "),
+        Hyperlink("/r", "Tt", List(t("ref"))), t(" [miss][]"))
     }
   }
 
@@ -260,7 +260,7 @@ class MarkdownSpec extends AnyWordSpec with Matchers {
       stream.update("# A\n\npara ONE\n\npara two\n\n[x]") shouldBe 0
       stream.blocks.toList shouldBe Markdown.parse("# A\n\npara ONE\n\npara two\n\n[x]")
       stream.update("# A\n\npara ONE\n\npara two\n\n[x]\n\n[x]: /there") shouldBe 0
-      stream.blocks(3) shouldBe para(Link("/there", "", List(t("x"))))
+      stream.blocks(3) shouldBe para(Hyperlink("/there", "", List(t("x"))))
     }
   }
 }

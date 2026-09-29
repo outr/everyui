@@ -274,6 +274,9 @@ object Nodes {
 
   /** The root view controller's view. */
   def root(): RenderNode = new RenderNode(uiRoot())
+  /** A paragraph of styled runs (`everyui.component.RichText`): a text node here, which draws them. */
+  def richText(): RenderNode = text()
+
   /** A text node — a `UILabel`. */
   def text(): RenderNode = new RenderNode(uiText())
   /** A container — a `UIView` other nodes are appended to. */
