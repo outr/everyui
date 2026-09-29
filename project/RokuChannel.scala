@@ -27,6 +27,9 @@ object RokuChannel {
         Seq(classes.getAbsolutePath, classpath.map(_.getAbsolutePath).mkString(sep), out.getAbsolutePath,
           sourceRoot.getAbsolutePath, title)
     ).!
+    // -Deveryui.debugMotion=true: the channel tells its motions from its first launch (Main reads a .txt at its root as a
+    // launch parameter, which a sideload's own launch cannot be given)
+    if (sys.props.get("everyui.debugMotion").contains("true")) IO.write(out / "everyui_debug_motion.txt", "1")
     if (rc == 3) sys.error("emitRoku: the Roku compiler could not translate everything (listed above); -Deveryui.allowGaps=true emits the channel anyway")
     if (rc != 0) sys.error(s"everyui.compiler.Main exited $rc")
     out

@@ -1068,7 +1068,12 @@ end sub
 sub uiLaunched(params as dynamic)
     if params <> invalid and params.everyui_debug_motion <> invalid
         ga = GetGlobalAA()
-        ga.uiMotionDebug = (_str(params.everyui_debug_motion) = "1")
+        text = _str(params.everyui_debug_motion)
+        ga.uiMotionDebug = (text.Trim() = "1")
+        ' (kept for the next cold start, which a sideload or a launch of a suspended channel cannot pass it to)
+        section = CreateObject("roRegistrySection", "everyui")
+        if ga.uiMotionDebug then section.Write("debug_motion", "1") else section.Delete("debug_motion")
+        section.Flush()
     end if
     uiLinked(params)
 end sub
@@ -1652,14 +1657,19 @@ function uiMotions() as object
     end if
     return ga.uiMotions
 end function
+' Whether a node is in the app's tree on the scene: under the root group (appRoot), which is. Not whether its topmost
+' ancestor is the scene: a node made in the scene's script and put under nothing answers getParent() with the scene
+' itself (seen on Roku OS 15.3), so a spinner still being built, or a subtree not yet added, looked on the scene while
+' the scene could not find it.
 function uiOnScene(node as object) as boolean
-    root = node
-    up = root.getParent()
-    while up <> invalid
-        root = up
-        up = root.getParent()
+    appRoot = GetGlobalAA().appRoot
+    at = node
+    while at <> invalid
+        if at.isSameNode(appRoot) then return true
+        if at.isSubtype("Scene") then return false
+        at = at.getParent()
     end while
-    return root.isSubtype("Scene")
+    return false
 end function
 ' Each motion running if its node is on the scene, and paused (or not yet started) if it is not.
 sub uiMotionsSettle(motions as object)
@@ -1687,12 +1697,20 @@ end sub
 ' everyui_debug_motion=1 (a launch or deep-link parameter: ECP /launch/dev?everyui_debug_motion=1): every motion made,
 ' started, paused and taken away is told on the console with its target's id, the field, what it is for (the component
 ' and those it sits in), whether the node is on the scene, and the node's path up to the scene.
+' (on from a cold start: a launch parameter, a file everyui_debug_motion.txt in the channel holding 1, which Main
+' reads as one and emitRoku writes under -Deveryui.debugMotion=true, or the registry, where a deep link leaves it)
 function uiMotionDebug() as boolean
     ga = GetGlobalAA()
     if ga.uiMotionDebug = invalid
-        ga.uiMotionDebug = false
+        said = invalid
         params = ga.uiLaunchParams
-        if params <> invalid and params.everyui_debug_motion <> invalid then ga.uiMotionDebug = (_str(params.everyui_debug_motion) = "1")
+        if params <> invalid and params.everyui_debug_motion <> invalid then said = params.everyui_debug_motion
+        if said = invalid
+            section = CreateObject("roRegistrySection", "everyui")
+            said = section.Read("debug_motion")
+        end if
+        text = _str(said)
+        ga.uiMotionDebug = (text.Trim() = "1")
     end if
     return ga.uiMotionDebug
 end function

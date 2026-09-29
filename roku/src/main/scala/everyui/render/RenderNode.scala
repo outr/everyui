@@ -79,14 +79,14 @@ class RenderNode(val sg: SGNode) {
   def setX(x: Double): Unit = {
     left = x
     uiSetTranslation(sg, px(left), px(top))
-    if (tracks.nonEmpty) animate()
+    if (movesPosition) animate()
   }
 
   def getY(): Double = top
   def setY(y: Double): Unit = {
     top = y
     uiSetTranslation(sg, px(left), px(top))
-    if (tracks.nonEmpty) animate()
+    if (movesPosition) animate()
   }
 
   /** Radians, clockwise, about the node's own centre — matching youi's
@@ -372,6 +372,9 @@ class RenderNode(val sg: SGNode) {
     tracks = motion
     animate()
   }
+
+  // a position track runs from where the node is placed, so placing it again makes it again; no other track does
+  private def movesPosition: Boolean = tracks.exists(t => t.property == everyui.motion.Track.Position)
 
   private def animate(): Unit = {
     animations.foreach(a => uiStopMotion(a))
