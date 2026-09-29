@@ -20,8 +20,8 @@ class Component(val node: RenderNode) {
     * everything below that: a screensaver's scenes, each with its pictures, piled up until a Roku closed the channel
     * for its memory. Taken apart, such a binding holds only its own piece. A container takes its children apart too,
     * and a player lets its player go. Nothing is to be shown again once it is disposed of. */
-  def dispose(): Unit = if (!disposed) {
-    disposed = true
+  def dispose(): Unit = if (!takenApart) {
+    takenApart = true
     val undo = cleanups
     cleanups = Nil
     undo.foreach(f => f())
@@ -41,7 +41,7 @@ class Component(val node: RenderNode) {
   }
 
   /** Whether this has been taken apart (`dispose`): taking it apart again does nothing. */
-  private[everyui] var disposed: Boolean = false
+  private[everyui] var takenApart: Boolean = false
 
   /** What to undo when this is disposed of: a reaction it put on something that lives on, above all. */
   private var cleanups: List[() => Unit] = Nil
@@ -241,7 +241,7 @@ object Component {
     while (pending.nonEmpty) {
       val c = pending.head
       pending = pending.tail
-      if (!c.disposed && !c.listMark) {
+      if (!c.takenApart && !c.listMark) {
         c.listMark = true
         if (count == order.length) {
           val bigger = new Array[Component](order.length * 2)
