@@ -43,6 +43,56 @@ object net {
     out
   }
 
+  private val unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+  private val upperHex = "0123456789ABCDEF"
+
+  /** `value` made safe to put in a URL as one path segment or one query value: every character but the unreserved ones
+    * (letters, digits, `-`, `.`, `_`, `~`) becomes the `%XX` escapes of its UTF-8 bytes, so a `/`, `:`, `?`, `&`, `#`,
+    * `+` or space in it stays part of it. `decode` gives it back.
+    *
+    * {{{
+    *   ScreenManager.navigate("/c/" + net.encode(conversation.id))   // "team/a:1" → "/c/team%2Fa%3A1"
+    * }}} */
+  def encode(value: String): String = {
+    var out = ""
+    var i = 0
+    while (i < value.length) {
+      val c = value.substring(i, i + 1)
+      if (unreserved.indexOf(c) >= 0) {
+        out = out + c
+        i += 1
+      }
+      else {
+        var point = value.charAt(i).toInt
+        i += 1
+        // a character beyond the first 65536 comes as two halves where strings are UTF-16 (the JVM, a browser)
+        if (point >= 0xD800 && point <= 0xDBFF && i < value.length) {
+          val low = value.charAt(i).toInt
+          if (low >= 0xDC00 && low <= 0xDFFF) {
+            point = 0x10000 + (point - 0xD800) * 1024 + (low - 0xDC00)
+            i += 1
+          }
+        }
+        out = out + escaped(point)
+      }
+    }
+    out
+  }
+
+  /** A code point as the `%XX` escapes of its UTF-8 bytes. */
+  private def escaped(point: Int): String = {
+    val bytes =
+      if (point < 0x80) List(point)
+      else if (point < 0x800) List(0xC0 + point / 64, 0x80 + point % 64)
+      else if (point < 0x10000) List(0xE0 + point / 4096, 0x80 + (point / 64) % 64, 0x80 + point % 64)
+      else List(0xF0 + point / 262144, 0x80 + (point / 4096) % 64, 0x80 + (point / 64) % 64, 0x80 + point % 64)
+    var out = ""
+    bytes.foreach { b =>
+      out = out + "%" + upperHex.substring(b / 16, b / 16 + 1) + upperHex.substring(b % 16, b % 16 + 1)
+    }
+    out
+  }
+
   /** UTF-8 bytes as the characters they are; a broken sequence is dropped. */
   private def utf8(bytes: List[Int]): String = {
     var out = ""
