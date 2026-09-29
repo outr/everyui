@@ -68,7 +68,7 @@ object FileAccess {
       case DragEvent.ACTION_DROP =>
         hover(false)
         // the other app's files, readable for as long as this drop is being handled and what it starts
-        Host.activity.requestDragAndDropPermissions(e)
+        if (android.os.Build.VERSION.SDK_INT >= 24) Host.activity.requestDragAndDropPermissions(e)
         val clip = e.getClipData
         val uris = if (clip == null) Nil else (0 until clip.getItemCount).toList.flatMap(i => Option(clip.getItemAt(i).getUri))
         dropped(uris.map(picked))

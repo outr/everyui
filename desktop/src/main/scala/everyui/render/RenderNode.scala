@@ -602,6 +602,17 @@ object RenderNode {
     Some(new LinearGradient(0.5 - dx, 0.5 - dy, 0.5 + dx, 0.5 + dy, true, CycleMethod.NO_CYCLE, list*))
   }
 
+  /** What a box of lines draws inside itself, taken away as a field's own box is (`fieldStyle` reaches only the
+    * control): the white page under the words, and the padding around them, which the component keeps itself. */
+  lazy val areaSheet: String = "data:text/css;base64," + java.util.Base64.getEncoder.encodeToString((
+    ".text-area .content, .text-area .scroll-pane, .text-area .scroll-pane .viewport, .text-area:readonly .content " +
+      "{ -fx-background-color: transparent; } " +
+      ".text-area .content, .text-area .scroll-pane { -fx-padding: 0; -fx-background-insets: 0; } " +
+      ".text-area .scroll-bar, .text-area .corner { -fx-background-color: transparent; -fx-pref-width: 8; } " +
+      ".text-area .scroll-bar .thumb { -fx-background-color: rgba(128, 128, 128, 0.45); -fx-background-radius: 4; } " +
+      ".text-area .increment-button, .text-area .decrement-button, .text-area .increment-arrow, " +
+      ".text-area .decrement-arrow { -fx-padding: 0; }").getBytes("UTF-8"))
+
   /** A text field drawn by the component around it: no box of its own, the caret and the words in `hex`. */
   def fieldStyle(hex: String): String =
     "-fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; -fx-text-fill: " + hex +
@@ -852,6 +863,7 @@ object Nodes {
     val a = new TextArea()
     a.setWrapText(true)
     a.setStyle(RenderNode.fieldStyle("#1c1b1f"))
+    a.getStylesheets.add(RenderNode.areaSheet)
     a.setFocusTraversable(false)
     val node = new RenderNode(a)
     Host.aligned.add(node)

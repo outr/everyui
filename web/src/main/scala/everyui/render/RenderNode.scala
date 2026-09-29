@@ -978,6 +978,8 @@ object Nodes {
     el.style.margin = "0px"
     el.style.background = "transparent"
     el.style.setProperty("resize", "none")
+    // the family a text node starts with, until the app's (`Theme.family`) is set: a textarea's own is monospace
+    el.style.fontFamily = "system-ui, sans-serif"
     el.style.setProperty("box-sizing", "border-box")
     el.style.setProperty("user-select", "text")
     new RenderNode(el)

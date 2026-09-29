@@ -57,6 +57,6 @@ object FileAccess {
       })
     }
     PickedFile(file.getName, file.length(), mime, bytes,
-      if (mime.startsWith("image/")) Some(file.toURI.toString) else None)
+      if (mime.startsWith("image/")) Some(file.toPath.toUri.toString) else None)
   }
 }
