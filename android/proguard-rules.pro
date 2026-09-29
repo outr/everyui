@@ -69,3 +69,7 @@
 # and the web view finds those methods by their annotation, at run time: shrunk away with the other annotations, the
 # object reaches the page with no methods at all (an embed's guest could not answer, a page's bridge heard nothing)
 -keepattributes RuntimeVisibleAnnotations
+
+# Passkeys ask Credential Manager (androidx.credentials, EveryUILibraries.credentials); an app built without it has no
+# passkeys (Passkeys.supported is false), and nothing else reaches for it
+-dontwarn androidx.credentials.**

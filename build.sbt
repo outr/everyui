@@ -453,6 +453,8 @@ lazy val android = (project in file("android"))
     // archives, so the classes are opened out of them (Aars, in sbt-support) before anything compiles against them.
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
+    // Credential Manager, which passkeys ask (EveryUILibraries.credentials)
+    libraryDependencies += EveryUILibraries.credentials,
     libraryDependencies ++= Seq(
       "androidx.annotation" % "annotation-jvm" % "1.9.1",
       "com.google.guava" % "guava" % "33.4.0-android"),
@@ -460,8 +462,9 @@ lazy val android = (project in file("android"))
       update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     androidAarRules := Aars.open(streams.value.log.info(_),
       update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._2,
-    Compile / unmanagedJars ++= androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    // uncached: androidAars is transient, so a cached list would never hear of an archive added since
+    Compile / unmanagedJars ++= Def.uncached(androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: AndroidRuntime, in sbt-support)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
@@ -519,8 +522,8 @@ lazy val androidPublished = (project in file("published/android"))
     libraryDependencies ++= EveryUILibraries.android.map(_ % Provided),
     androidAars := Aars.open(streams.value.log.info(_),
       update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-    Compile / unmanagedJars ++= androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    Compile / unmanagedJars ++= Def.uncached(androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     Compile / resourceGenerators += fontResources.taskValue,
@@ -760,10 +763,11 @@ lazy val monacoAndroid = (project in file("monaco/android"))
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
-    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
+    libraryDependencies ++= Seq(EveryUILibraries.credentials,
+      "androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
     androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-    Compile / unmanagedJars ++= androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    Compile / unmanagedJars ++= Def.uncached(androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: AndroidRuntime, in sbt-support)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
@@ -876,10 +880,11 @@ lazy val terminalAndroid = (project in file("terminal/android"))
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
-    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
+    libraryDependencies ++= Seq(EveryUILibraries.credentials,
+      "androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
     androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-    Compile / unmanagedJars ++= androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    Compile / unmanagedJars ++= Def.uncached(androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: project/AndroidRuntime.scala)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),

@@ -8,6 +8,7 @@ import sbt.*
 object EveryUILibraries {
   val javafxVersion: String = "26.0.2"
   val media3Version: String = "1.9.2"
+  val credentialsVersion: String = "1.6.0"
 
   /** The Media3 (ExoPlayer) modules the Android backend plays with: what a television needs from a player and
     * `MediaPlayer` has no answer to — its own timeouts, a buffer that can be chosen, and a measurement of what the
@@ -31,10 +32,18 @@ object EveryUILibraries {
     (if (modules.isEmpty) Seq("base", "graphics", "controls", "media") else modules)
       .map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform))
 
-  /** What everyui-android compiles against beside android.jar: Media3's archives, each named and none taken
-    * transitively (an archive's dependencies are archives too, and a build takes only those it can open), and what
-    * their classes reach for. Resolved from `google`. */
+  /** Credential Manager (androidx.credentials), which everyui-android's passkeys ask (`everyui.passkey.Passkeys`). On
+    * Android 14 and later it is all they need, handing each request to the system's own Credential Manager; before 14
+    * it hands them to Google Play services, through `credentials-play-services-auth`, which an app that signs in with
+    * passkeys there adds for itself (CONSUMING.md). An app that never asks for a passkey keeps none of it: the shrinker
+    * takes it out. */
+  def credentials: ModuleID =
+    ("androidx.credentials" % "credentials" % credentialsVersion).intransitive().artifacts(Artifact("credentials", "aar", "aar"))
+
+  /** What everyui-android compiles against beside android.jar: Media3's archives and Credential Manager's, each named
+    * and none taken transitively (an archive's dependencies are archives too, and a build takes only those it can
+    * open), and what their classes reach for. Resolved from `google`. */
   def android: Seq[ModuleID] =
     media3Modules.map(m => ("androidx.media3" % m % media3Version).intransitive().artifacts(Artifact(m, "aar", "aar"))) ++
-      Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android")
+      Seq(credentials, "androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android")
 }

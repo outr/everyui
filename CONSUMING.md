@@ -1200,8 +1200,56 @@ WellKnown.answer(webRoot, path) match {
 ```
 
 NaboTV would name `nabo.tv` with the Play signing key's fingerprint and the Apple app's id; a site with no app
-(matthicks.com) needs only `changePassword`, if it has such a page. Passkeys (WebAuthn on the web, Credential Manager
-on Android, `ASAuthorization` on Apple) are still to come: `passkey` on a username field is the web's half of it.
+(matthicks.com) needs only `changePassword`, if it has such a page. The same association lets the Android app use the
+site's passkeys (below).
+
+### Passkeys (`everyui.passkey`)
+
+A passkey is made and signed in with by the platform's own passkey manager; the server makes the options with its
+WebAuthn library and verifies what comes back, and the app carries one to the other. Options are the JSON a server
+library writes for the browser (`PublicKeyCredentialCreationOptionsJSON`, `PublicKeyCredentialRequestOptionsJSON`:
+binary fields as base64url), bare or under `"publicKey"`. The answer is a `Task[PasskeyResult]`:
+`Credential(json)`, the credential as the web's `PublicKeyCredential.toJSON()` writes it (what the server's library
+verifies), `PasskeyCancelled`, `PasskeyUnsupported`, or `PasskeyFailed(message)`.
+
+```scala
+import everyui.passkey.{PasskeyResult, Passkeys}
+
+if (Passkeys.supported) signInButton.event.click.attach { _ =>
+  server.passkeyOptions().flatMap(options => Passkeys.get(options)).map {
+    case PasskeyResult.Credential(json) => server.verifyPasskey(json)
+    case PasskeyResult.PasskeyCancelled => ()
+    case other => error @= other.toString
+  }.start()
+}
+// registering one: Passkeys.create(server.registrationOptions()) the same way
+```
+
+`PasskeyCancelled` is the person closing the request or letting it time out; the web does not tell that apart from
+having no passkey for the site, on purpose, and Android's "no credential" answers the same. `PasskeyFailed` carries the
+platform's words, such as "InvalidStateError" for a passkey this authenticator already holds for the account (the
+options' `excludeCredentials`). Start `create` and `get` from a click.
+
+**Autofill.** On the web the site's passkeys can be offered in the username field's own autofill menu, beside saved
+passwords: give the field `passkey @= true` (with `Autofill.Username`), and as the sign-in shows start
+`Passkeys.autofill(options)`, which answers once the person picks a passkey there. `Passkeys.autofillable` says whether
+the browser can (Chromium, Safari, Firefox). A page has one request at a time, so a `create` or `get` (a click on a
+"Sign in with a passkey" button) ends the one waiting, which answers `PasskeyCancelled`; start `autofill` again if the
+sign-in is still showing.
+
+- **Web**: `navigator.credentials.create` and `get` (conditional mediation for `autofill`), over HTTPS or on
+  `localhost`. The `rp.id` is the site's domain or one it is under.
+- **Android**: Credential Manager (androidx.credentials, part of `EveryUILibraries.android`). Android 14 and later
+  answer from the system's own, with nothing more to add. Before 14 an app that wants passkeys there adds Google Play
+  services' provider itself, `"androidx.credentials" % "credentials-play-services-auth"` and what it pulls in; without
+  it, `supported` is false there. The options' `rp.id` is the site's domain, and the site must say the app is its own:
+  `AppDomains` (above) with the signing key's fingerprint, whose `assetlinks.json` also grants
+  `delegate_permission/common.get_login_creds`. There is no autofill (`autofill` answers `PasskeyUnsupported`).
+- **Desktop, Roku, Apple TV**: none; `supported` is false and every request answers `PasskeyUnsupported`. Sign in on
+  another device, or in the system browser.
+
+`demo=platform` makes a passkey and signs in with it, with options made on the page (`rp=<domain>` names the site),
+logging the credential's JSON.
 
 ## Embeds
 

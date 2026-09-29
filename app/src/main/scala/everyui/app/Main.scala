@@ -33,7 +33,8 @@ import everyui.render.Platform
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not
   *              on a Roku or an Apple TV (app/full: FullDemos)
-  *   platform   the platform's services: saving a file, the clipboard; not on a Roku or an Apple TV (app/full: FullDemos)
+  *   platform   the platform's services: saving a file, the clipboard, passkeys (`rp=`); not on a Roku or an Apple
+  *              TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

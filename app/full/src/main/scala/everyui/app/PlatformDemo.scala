@@ -1,8 +1,10 @@
 package everyui.app
 
-import everyui.component.{Button, ButtonStyle, Column, Component, Container, Row, ScrollContainer, TextView}
+import everyui.component.{Button, ButtonStyle, Column, Component, Container, Row, ScrollContainer, TextInput, TextView}
+import everyui.component.types.Autofill
 import everyui.clipboard.Clipboard
 import everyui.file.{Files, SaveResult}
+import everyui.passkey.{PasskeyResult, Passkeys}
 import everyui.PlatformKind
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -10,13 +12,21 @@ import everyui.ui
 import reactify.*
 
 /** The platform's own services, one section each, with what each answered written under it and logged
-  * (`[ui] platform save Saved notes.txt`): saving a file, as bytes or from a URL; the clipboard, copied to and read.
-  * Each section says whether the platform has it. `theme=light` shows the light palette. */
+  * (`[ui] platform save Saved notes.txt`): saving a file, as bytes or from a URL; the clipboard, copied to and read;
+  * a passkey made and signed in with, by a click or from the username field's autofill, with options made here as a
+  * server would (`rp=<domain>` names the site, which Android needs) and the credential's JSON logged whole. Each section
+  * says whether the platform has it. `theme=light` shows the light palette. */
 class PlatformDemo {
   private val width = math.min(720.0, ui.size.width() - 32.0)
 
   private val saved: Var[String] = Var("Nothing saved yet")
   private val pasted: Var[String] = Var("Nothing read yet")
+  private val signedIn: Var[String] = Var("No passkey yet")
+  private val autofills: Var[String] = Var("")
+  private val username = new TextInput("Username", width = 220.0) {
+    autofill @= Some(Autofill.Username)
+    passkey @= true
+  }
 
   private val column = Column(20.0, padding = 16.0)(
     TextView("The platform", 22.0),
@@ -30,8 +40,17 @@ class PlatformDemo {
       }),
       new Button("Read the clipboard", () =>
         Clipboard.read().map(t => tell(pasted, "read", t.map(w => "Read \"" + w + "\"").getOrElse("Nothing to read"))).start(),
-        ButtonStyle.Filled))
+        ButtonStyle.Filled)),
+    section("Passkeys", Passkeys.supported, signedIn,
+      username,
+      new Button("Create a passkey", () => Passkeys.create(creation()).map(r => keyed("create", r)).start()),
+      new Button("Sign in with a passkey", () => Passkeys.get(request()).map(r => keyed("get", r)).start(),
+        ButtonStyle.Filled),
+      new Button("Offer in autofill", () => Passkeys.autofill(request()).map(r => keyed("autofill", r)).start())),
+    TextView.bound(autofills(), 12.0, Theme.muted())
   )
+  Passkeys.autofillable.map(a => autofills @= (if (a) "Passkeys can be offered in autofill here" else
+    "No passkeys in autofill here")).start()
 
   private val scroll = new ScrollContainer {
     size.width := ui.size.width()
@@ -58,6 +77,39 @@ class PlatformDemo {
     case SaveResult.Saved(name) => "Saved " + name.getOrElse("(to the browser's downloads)")
     case SaveResult.Cancelled => "Cancelled"
     case SaveResult.SaveFailed(why) => "Not saved: " + why
+  }
+
+  private def keyed(what: String, r: PasskeyResult): Unit = r match {
+    case PasskeyResult.Credential(json) =>
+      Platform.log("platform passkey " + what + " json " + json)
+      val id = "\"id\":\"([^\"]+)\"".r.findFirstMatchIn(json).map(_.group(1)).getOrElse("?")
+      tell(signedIn, "passkey " + what, (if (what == "create") "Created" else "Signed in with") + " passkey " + id)
+    case other => tell(signedIn, "passkey " + what, other.toString)
+  }
+
+  /** Options as a server's WebAuthn library writes them: a fresh challenge, this demo's user, ES256 or RS256, a
+    * passkey the authenticator keeps (a discoverable credential). */
+  private def creation(): String = {
+    val name = if (username.value().isEmpty) "demo@everyui.com" else username.value()
+    "{\"challenge\":\"" + random(32) + "\",\"rp\":{\"name\":\"EveryUI\"" + rp + "}," +
+      "\"user\":{\"id\":\"" + userId + "\",\"name\":\"" + name + "\",\"displayName\":\"" + name + "\"}," +
+      "\"pubKeyCredParams\":[{\"type\":\"public-key\",\"alg\":-7},{\"type\":\"public-key\",\"alg\":-257}]," +
+      "\"authenticatorSelection\":{\"residentKey\":\"required\",\"userVerification\":\"preferred\"}," +
+      "\"timeout\":60000,\"attestation\":\"none\"}"
+  }
+
+  private def request(): String =
+    "{\"challenge\":\"" + random(32) + "\",\"userVerification\":\"preferred\",\"timeout\":60000" +
+      (if (rpId.isEmpty) "" else ",\"rpId\":\"" + rpId + "\"") + "}"
+
+  private val rpId = Platform.launchArg("rp")
+  private def rp: String = if (rpId.isEmpty) "" else ",\"id\":\"" + rpId + "\""
+  private val userId = random(16)
+
+  private def random(count: Int): String = {
+    val bytes = new Array[Byte](count)
+    scala.util.Random.nextBytes(bytes)
+    java.util.Base64.getUrlEncoder.withoutPadding.encodeToString(bytes)
   }
 
   private def save(): Unit = {
