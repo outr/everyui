@@ -1,9 +1,10 @@
 package everyui.render
 
-import everyui.file.PickedFile
+import everyui.file.{PickedFile, SaveResult}
 
 /** Files from the person (`everyui.file.Files`). A remote has no picker and nothing is dragged onto a television, so
-  * this platform offers neither: a pick answers at once with nothing, and no drop ever comes. */
+  * this platform offers neither: a pick answers at once with nothing, and no drop ever comes. Nor is there anywhere
+  * for the person to save a file to, so a save fails at once. */
 object FileAccess {
   def pickable(): Boolean = false
 
@@ -15,4 +16,12 @@ object FileAccess {
 
   /** Done with a picked file's `preview`: nothing is held for one here. */
   def release(preview: String): Unit = ()
+
+  def savable(): Boolean = false
+
+  def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
+    done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
+
+  def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
+    done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
 }

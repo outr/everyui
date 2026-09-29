@@ -6,17 +6,21 @@ import android.provider.OpenableColumns
 import android.view.{DragEvent, View}
 import android.webkit.MimeTypeMap
 import everyui.async.Task
-import everyui.file.{FileTypes, PickedFile}
+import everyui.file.{FileTypes, PickedFile, SaveResult}
 
 /** Files from the person (`everyui.file.Files`): the system's document picker for a pick, answered through the
   * activity's result (`EveryUIActivity.onActivityResult` hands it to [[answered]]), and files dragged onto a view from
-  * another app (a tablet's split screen, a desktop window). A file is read through the content resolver on a thread of
-  * its own and answered on the one that draws; a picture's `preview` is its content address, which pictures load
+  * another app (a tablet's split screen, a desktop window). A save goes to the system's document creator
+  * (ACTION_CREATE_DOCUMENT), answered the same way. A file is read or written through the content resolver on a thread
+  * of its own and answered on the one that draws; a picture's `preview` is its content address, which pictures load
   * scaled down. A television has no document picker to speak of, so it offers none. */
 object FileAccess {
   /** The request code the picker's answer comes back under. */
   val request: Int = 7300
+  /** The request code the document creator's answer comes back under. */
+  val saveRequest: Int = 7301
   private var waiting: Option[List[PickedFile] => Unit] = None
+  private var saving: Option[(java.io.OutputStream => Unit, SaveResult => Unit)] = None
 
   def pickable(): Boolean = !Platform.remoteNavigation()
 
@@ -40,20 +44,34 @@ object FileAccess {
     }
   }
 
-  /** The activity's result for `code`: whether it was the picker's. */
-  def answered(code: Int, result: Int, data: Intent): Boolean = code == request && {
-    val chosen =
-      if (result != android.app.Activity.RESULT_OK || data == null) Nil
-      else if (data.getClipData != null) {
-        val clip = data.getClipData
-        (0 until clip.getItemCount).toList.flatMap(i => Option(clip.getItemAt(i).getUri))
+  /** The activity's result for `code`: whether it was the picker's or the document creator's. */
+  def answered(code: Int, result: Int, data: Intent): Boolean =
+    if (code == request) {
+      val chosen =
+        if (result != android.app.Activity.RESULT_OK || data == null) Nil
+        else if (data.getClipData != null) {
+          val clip = data.getClipData
+          (0 until clip.getItemCount).toList.flatMap(i => Option(clip.getItemAt(i).getUri))
+        }
+        else Option(data.getData).toList
+      val done = waiting
+      waiting = None
+      done.foreach(d => d(chosen.map(picked)))
+      true
+    }
+    else if (code == saveRequest) {
+      val save = saving
+      saving = None
+      val created = if (result == android.app.Activity.RESULT_OK && data != null) Option(data.getData) else None
+      save.foreach { case (write, done) =>
+        created match {
+          case None => done(SaveResult.Cancelled)
+          case Some(uri) => written(uri, write, done)
+        }
       }
-      else Option(data.getData).toList
-    val done = waiting
-    waiting = None
-    done.foreach(d => d(chosen.map(picked)))
-    true
-  }
+      true
+    }
+    else false
 
   /** Files dragged over the view from another app; anything else dragged is not a drop here. */
   def onDrop(node: RenderNode, hover: Boolean => Unit, dropped: List[PickedFile] => Unit): Unit =
@@ -118,4 +136,69 @@ object FileAccess {
 
   /** Done with a picked file's `preview`: nothing is held for one here. */
   def release(preview: String): Unit = ()
+
+  def savable(): Boolean = !Platform.remoteNavigation()
+
+  def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
+    create(name, mime, done)(out => out.write(bytes))
+
+  /** Fetched straight into the document created, as it arrives. */
+  def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
+    create(name, mime, done) { out =>
+      val in = new java.net.URI(url).toURL.openStream()
+      try {
+        val buffer = new Array[Byte](64 * 1024)
+        var read = in.read(buffer)
+        while (read >= 0) {
+          out.write(buffer, 0, read)
+          read = in.read(buffer)
+        }
+      } finally in.close()
+    }
+
+  /** The system's document creator, suggesting `name` of type `mime`; what the person creates is written by `write`. */
+  private def create(name: String, mime: String, done: SaveResult => Unit)(write: java.io.OutputStream => Unit): Unit = {
+    saving.foreach(s => s._2(SaveResult.Cancelled))
+    val intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+    intent.addCategory(Intent.CATEGORY_OPENABLE)
+    intent.setType(mime)
+    intent.putExtra(Intent.EXTRA_TITLE, name)
+    saving = Some((write, done))
+    try Host.activity.startActivityForResult(intent, saveRequest)
+    catch {
+      case t: ActivityNotFoundException =>
+        Platform.logError("No document creator", t)
+        saving = None
+        done(SaveResult.SaveFailed("No document creator on this device"))
+    }
+  }
+
+  /** `write` into the document at `uri`, off the thread that draws; a document it could not be written into is
+    * deleted again rather than left empty. */
+  private def written(uri: Uri, write: java.io.OutputStream => Unit, done: SaveResult => Unit): Unit =
+    Platform.offThread(() => {
+      val resolver = Host.activity.getContentResolver
+      val result = try {
+        val out = resolver.openOutputStream(uri, "wt")
+        try write(out) finally out.close()
+        SaveResult.Saved(Some(displayName(uri)))
+      } catch {
+        case t: Exception =>
+          try android.provider.DocumentsContract.deleteDocument(resolver, uri) catch { case _: Exception => () }
+          SaveResult.SaveFailed(Option(t.getMessage).getOrElse(t.getClass.getSimpleName))
+      }
+      Platform.later(() => done(result))
+    })
+
+  /** The name the provider gives the document at `uri`. */
+  private def displayName(uri: Uri): String = {
+    var name = Option(uri.getLastPathSegment).getOrElse("file")
+    try {
+      val cursor = Host.activity.getContentResolver.query(uri, Array(OpenableColumns.DISPLAY_NAME), null, null, null)
+      if (cursor != null) try {
+        if (cursor.moveToFirst() && !cursor.isNull(0)) name = cursor.getString(0)
+      } finally cursor.close()
+    } catch { case t: Exception => Platform.logError("Reading about " + uri, t) }
+    name
+  }
 }

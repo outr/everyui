@@ -561,6 +561,31 @@ and a `preview` address an `ImageView` can show a picture from. `Files.release(p
 nothing shows it. `FileTypes.accepts(types, name, mime)` says whether a
 file is among the web's `accept` words ("image/*", "text/plain", ".md").
 
+**Saving.** `Files.save(bytes, name, mime)` hands the person a file to keep, and `Files.saveUrl(url, name, mime)` what a
+URL answers with; `mime` is an `Option` (by the name's extension when None). Each answers a `Task[SaveResult]`:
+`Saved(name)`, `Cancelled` (the picker closed), or `SaveFailed(message)`.
+
+```scala
+import everyui.file.{Files, SaveResult}
+
+if (Files.savable) Files.save(csv.getBytes("UTF-8"), "report.csv", Some("text/csv")).map {
+  case SaveResult.Saved(name) => Toast.show("Saved " + name.getOrElse("report.csv"))
+  case SaveResult.Cancelled => ()
+  case SaveResult.SaveFailed(why) => Toast.show("Not saved: " + why)
+}.start()
+```
+
+- **Web**: the File System Access API's save picker where the browser has one (Chromium's), the file written or the URL
+  streamed into it; `Saved` has the name the person gave. Elsewhere (Firefox, Safari), or where the picker may not open
+  (it needs a click to open from), a download: `Saved(None)`, since the browser says no more. Start a save from a click.
+  A URL of another origin must allow the page to read it (CORS) for the picker; a download of one may open it instead.
+- **Desktop**: JavaFX's save dialog; `Saved` has the whole path. A URL is fetched straight into the file.
+- **Android**: the system's document creator (ACTION_CREATE_DOCUMENT), answered through the activity's result as a pick
+  is; `Saved` has the document's name. A document that could not be written is deleted again. Not on an Android TV.
+- **Roku, Apple TV**: `Files.savable` is false and a save answers `SaveFailed`.
+
+A relative URL is found against `Platform.origin()`.
+
 ### ColorPicker (`everyui.color`)
 
 A colour chooser in plain shared EveryUI, so it runs on every backend: a saturation and brightness area with a hue

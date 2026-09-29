@@ -1,15 +1,15 @@
 package everyui.render
 
 import everyui.async.Task
-import everyui.file.{FileTypes, PickedFile}
+import everyui.file.{FileTypes, PickedFile, SaveResult}
 import javafx.scene.input.{DragEvent, TransferMode}
 import javafx.stage.FileChooser
 
 import scala.jdk.CollectionConverters.*
 
 /** Files from the person (`everyui.file.Files`): JavaFX's file dialog for a pick, and files dragged onto the window
-  * from the system's file manager. A file is read on a thread of its own and answered on the one that draws; a
-  * picture's `preview` is the file's own address. */
+  * from the system's file manager, and its save dialog for a save. A file is read or written on a thread of its own and
+  * answered on the one that draws; a picture's `preview` is the file's own address. */
 object FileAccess {
   def pickable(): Boolean = true
 
@@ -62,4 +62,43 @@ object FileAccess {
 
   /** Done with a picked file's `preview`: nothing is held for one here. */
   def release(preview: String): Unit = ()
+
+  def savable(): Boolean = true
+
+  def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
+    chooseAndWrite(name, done)(file => java.nio.file.Files.write(file.toPath, bytes))
+
+  /** Fetched straight into the file chosen, as it arrives. */
+  def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
+    chooseAndWrite(name, done) { file =>
+      val connection = new java.net.URI(url).toURL.openConnection()
+      val in = connection.getInputStream
+      try java.nio.file.Files.copy(in, file.toPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      finally in.close()
+    }
+
+  /** Where a save goes: the system's save dialog over the window, suggesting `name` (with its extension offered beside
+    * any file), or None when the person closes it. A spec puts a file of its own here. */
+  private[everyui] var chooseSave: String => Option[java.io.File] = name => {
+    val chooser = new FileChooser()
+    chooser.setInitialFileName(name)
+    val extension = FileTypes.extension(name)
+    if (extension.nonEmpty) chooser.getExtensionFilters.addAll(
+      new FileChooser.ExtensionFilter("*." + extension, "*." + extension),
+      new FileChooser.ExtensionFilter("All files", "*"))
+    Option(chooser.showSaveDialog(if (Host.scene == null) null else Host.scene.getWindow))
+  }
+
+  /** `write` into the file chosen for `name`, off the thread that draws. */
+  private def chooseAndWrite(name: String, done: SaveResult => Unit)(write: java.io.File => Unit): Unit =
+    chooseSave(name) match {
+      case None => done(SaveResult.Cancelled)
+      case Some(file) => Platform.offThread(() => {
+        val result = try {
+          write(file)
+          SaveResult.Saved(Some(file.getPath))
+        } catch { case t: Exception => SaveResult.SaveFailed(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)) }
+        Platform.later(() => done(result))
+      })
+    }
 }
