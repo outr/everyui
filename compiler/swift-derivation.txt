@@ -1242,6 +1242,8 @@ class SwiftEmitter(
         case Select(q, "max") if isCollType(q)       => s"_maxList(${emitTerm(q)})"
         case Select(q, "zipWithIndex") if isCollType(q) => s"_zipWithIndex(${emitTerm(q)})"
         case Select(q, "mkString") if isCollType(q) => s"_mkString(${emitTerm(q)}, ${brStr("")})"
+        case Select(q, "toIntOption" | "toLongOption") if isStringLike(q.tpe) => s"_strToIntOpt(${emitTerm(q)})"
+        case Select(q, "toDoubleOption" | "toFloatOption") if isStringLike(q.tpe) => s"_strToDoubleOpt(${emitTerm(q)})"
         case Select(q, "toDouble" | "toFloat") => s"rtToDbl(${emitTerm(q)})"
         case Select(q, "toInt" | "toLong")     => s"rtToInt(${emitTerm(q)})"
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, ${vInt(1)})"

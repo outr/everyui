@@ -175,6 +175,16 @@ func rtToDbl(_ v: V) -> V {
     default: return .vDbl(0)
     }
 }
+/// A String read as a whole number (`toIntOption`), or None (null) when the whole of it, trimmed, is not one.
+func _strToIntOpt(_ s: V) -> V {
+    if let n = Int(rtS(s).trimmingCharacters(in: .whitespaces)) { return .vInt(n) }
+    return .vNull
+}
+/// A String read as a number (`toDoubleOption`), or None (null) when the whole of it, trimmed, is not one.
+func _strToDoubleOpt(_ s: V) -> V {
+    if let d = Double(rtS(s).trimmingCharacters(in: .whitespaces)) { return .vDbl(d) }
+    return .vNull
+}
 
 // MARK: - construction helpers the emitter writes
 
