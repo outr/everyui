@@ -212,8 +212,8 @@ func _ushrL(_ a: V, _ n: V) -> V {
     .vInt(Int(Int64(bitPattern: UInt64(bitPattern: Int64(_bits(a))) >> UInt64(_bits(n) & 63))))
 }
 /// A whole number's hex digits, a negative one's as its unsigned 32 bits (`Integer.toHexString`) or 64 (`Long`'s).
-func _hex(_ a: V) -> V { .vStr(String(UInt32(truncatingIfNeeded: _bits(a)), radix: 16)) }
-func _hexL(_ a: V) -> V { .vStr(String(UInt64(bitPattern: Int64(_bits(a))), radix: 16)) }
+func _hexOf(_ a: V) -> V { .vStr(String(UInt32(truncatingIfNeeded: _bits(a)), radix: 16)) }
+func _hexOfL(_ a: V) -> V { .vStr(String(UInt64(bitPattern: Int64(_bits(a))), radix: 16)) }
 /// A charset by its name (a Charset is its name here): "latin1", "ascii", or "utf8" for UTF-8 and any other.
 private func _charset(_ cs: V) -> String {
     let n = rtS(cs).uppercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "_", with: "")

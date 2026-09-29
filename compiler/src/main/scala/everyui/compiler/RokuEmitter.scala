@@ -2188,7 +2188,7 @@ class RokuEmitter(
         // a whole number's hex digits, a negative one's as its unsigned bits (Integer.toHexString, Long.toHexString)
         case Apply(Select(q, "toHexString"), List(x)) if q.symbol.exists &&
             Set("java.lang.Integer", "java.lang.Long").contains(q.symbol.fullName.stripSuffix("$")) =>
-          if (q.symbol.fullName.stripSuffix("$") == "java.lang.Long") s"_hexL(${emitArgVal(x)})" else s"_hex(${emitArgVal(x)})"
+          if (q.symbol.fullName.stripSuffix("$") == "java.lang.Long") s"_hexOfL(${emitArgVal(x)})" else s"_hexOf(${emitArgVal(x)})"
         // a number or a flag joined to a String (`n + ","`), the number made text as the JVM does: BrightScript's `+`
         // refuses the two
         case Apply(Select(l, "+" | "$plus"), List(r)) if isPrimLike(l) && !isStringLike(l.tpe) && isStringLike(r.tpe) =>
@@ -3627,9 +3627,14 @@ class RokuEmitter(
       |            print "[memory] WARNING "; FormatJson(info)
       |            scene.memoryWarning = info
       |        else if kind = "roDeviceInfoEvent"
-      |            if FindMemberFunction(msg, "isCaptionModeChanged") <> invalid
-      |                if msg.isCaptionModeChanged() then scene.captionsChanged = true
-      |            end if
+      |            ' guarded, as a failure here on the main thread would close the channel: a box (or a simulator)
+      |            ' whose event lists the method yet cannot call it is heard as no change
+      |            try
+      |                if FindMemberFunction(msg, "isCaptionModeChanged") <> invalid
+      |                    if msg.isCaptionModeChanged() then scene.captionsChanged = true
+      |                end if
+      |            catch e
+      |            end try
       |        else if kind = "roSGScreenEvent"
       |            if msg.isScreenClosed() then return
       |        else if kind = "roInputEvent"
@@ -6453,8 +6458,9 @@ class RokuEmitter(
       |    if n = 0 or a >= 0& then return _shrL(a, n)
       |    return _shrL(_shrL(a, 1) and &h7FFFFFFFFFFFFFFF&, n - 1)
       |end function
-      |' A whole number's hex digits in lower case, a negative one's as its unsigned 32 bits (_hex) or 64 (_hexL)
-      |function _hex(a as dynamic) as string
+      |' A whole number's hex digits in lower case, a negative one's as its unsigned 32 bits (_hexOf) or 64 (_hexOfL). Not
+      |' _hex, which a parameter named hex becomes (BS1104)
+      |function _hexOf(a as dynamic) as string
       |    if a = 0 then return "0"
       |    s = ""
       |    while a <> 0
@@ -6463,7 +6469,7 @@ class RokuEmitter(
       |    end while
       |    return s
       |end function
-      |function _hexL(a as dynamic) as string
+      |function _hexOfL(a as dynamic) as string
       |    a = a + 0&
       |    if a = 0& then return "0"
       |    s = ""
