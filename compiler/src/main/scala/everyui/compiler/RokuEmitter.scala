@@ -3516,7 +3516,10 @@ class RokuEmitter(
       |        if msg = invalid
       |            print "[memory] "; memory.GetMemoryLimitPercent(); "% of the limit, "; memory.GetChannelAvailableMemory(); " KB free"
       |        else if kind = "roAppMemoryNotificationEvent"
-      |            print "[memory] WARNING "; FormatJson(msg.GetInfo())
+      |            info = msg.GetInfo()
+      |            if info = invalid then info = {}
+      |            print "[memory] WARNING "; FormatJson(info)
+      |            scene.memoryWarning = info
       |        else if kind = "roSGScreenEvent"
       |            if msg.isScreenClosed() then return
       |        else if kind = "roInputEvent"
@@ -3535,6 +3538,7 @@ class RokuEmitter(
       |<component name="AppScene" extends="Scene">
       |  <interface>
       |    <field id="inputArgs" type="assocarray" alwaysNotify="true" onChange="onInputArgs" />
+      |    <field id="memoryWarning" type="assocarray" alwaysNotify="true" onChange="onMemoryWarning" />
       |  </interface>
       |  <customization suspendhandler="onSuspend" />
       |  <customization resumehandler="onResume" />
@@ -3578,6 +3582,14 @@ class RokuEmitter(
       |sub onResume(args as dynamic)
       |    uiResumed(args)
       |    RtAfterTurn()
+      |end sub
+      |
+      |' The box warns that the channel nears its memory limit (Main's roAppMemoryNotificationEvent, at 80, 85, 90 and 95%):
+      |' the cycle collector runs now, at each warning. The run Platform.collect asks for waits for two quiet seconds, which
+      |' never come while a list is scrolled, and the box closed the channel with garbage it could have freed.
+      |sub onMemoryWarning()
+      |    freed = RunGarbageCollector()
+      |    if freed <> invalid and freed.ORPHANED <> invalid then print "[gc] at a memory warning, freed "; freed.ORPHANED; " of "; freed.COUNT
       |end sub
       |""".stripMargin
 
