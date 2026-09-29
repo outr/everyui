@@ -171,12 +171,22 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       if (dayOfEntry.size > ids.length) dayOfEntry = dayOfEntry.filter { case (id, _) => here.contains(id) }
       if (headed.nonEmpty) headed = headed.filter(here.contains)
     }
+    // and a day no entry is on any longer loses its separator, which follows the clock
+    if (days.nonEmpty) {
+      val on = all.flatMap(e => dayOf(e).toList).toSet
+      val gone = days.filter { case (day, _) => !on.contains(day) }
+      if (gone.nonEmpty) {
+        gone.values.foreach(m => Component.unbind(m.text))
+        days = days.filter { case (day, _) => on.contains(day) }
+      }
+    }
   }
 
   private def announce(e: ChatEntry): Unit = e match {
     case m: ChatEntry.Message if !m.self =>
       if (!m.streaming()) Platform.announce(said(m))
-      else follow(m.streaming, (on: Boolean) => if (!on) Platform.announce(said(m)))
+      // once, when it is whole: a reaction kept on it until the transcript went held every message ever streamed
+      else m.streaming.once(_ => Platform.announce(said(m)), (on: Boolean) => !on)
     case _ => ()
   }
 
