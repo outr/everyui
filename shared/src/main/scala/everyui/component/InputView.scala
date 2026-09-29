@@ -37,6 +37,12 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   /** Choose all of what it holds, so what is typed next replaces it (a value being changed rather than added to). */
   def selectAll(): Unit = node.selectAllInput()
 
+  /** Where the caret is, in characters from the start of `text` (where the platform has no caret, 0). */
+  def caret: Int = node.getCaret()
+
+  /** The caret put at `at`, in characters from the start of `text`, nothing chosen. */
+  def moveCaret(at: Int): Unit = node.setCaret(at)
+
   text.attach(v => if (node.getValue() != v) node.setValue(v))
   node.onValue(v => if (text() != v) text @= v)
   autofill.attach(_ => hint())

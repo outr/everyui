@@ -51,7 +51,10 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     content := value() + " "
     size.width := TextArea.this.size.width() - pad * 2.0
   }
-  private val lines: Val[Double] = own(Val(ruler.size.height() + pad * 2.0))
+  /** How tall its lines ask it to be, with its padding: what `grow` follows, between `minHeight` and `maxHeight`. */
+  val lines: Val[Double] = own(Val(ruler.size.height() + pad * 2.0))
+  /** The platform's own field it wraps, where the platform has one (not a Roku's or an Apple TV's): for its caret. */
+  val field: Option[InputView] = if (native) Some(new InputView(false, multiline = true)) else None
 
   focusable @= true
   radius @= 8.0
@@ -62,16 +65,14 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   backgroundColor := (if (focused()) Theme.controlLit() else Theme.raised())
   children += ruler
 
-  if (native) {
-    val input = new InputView(false, multiline = true) {
-      font.size @= points
-      color := Theme.text()
-      position.left @= pad
-      position.top @= pad
-      size.width := TextArea.this.size.width() - pad * 2.0
-      size.height := TextArea.this.size.height() - pad * 2.0
-      this.placeholder := hint()
-    }
+  field.foreach { input =>
+    input.font.size @= points
+    input.color := Theme.text()
+    input.position.left @= pad
+    input.position.top @= pad
+    input.size.width := size.width() - pad * 2.0
+    input.size.height := size.height() - pad * 2.0
+    input.placeholder := hint()
     input.autofill := autofill()
     input.section := section()
     input.fieldName := fieldName()
@@ -87,7 +88,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     event.click.attach(_ => editing @= true)
     children += input
   }
-  else {
+  if (!native) {
     val shown = new TextView {
       whiteSpace @= WhiteSpace.Normal
       font.size @= points

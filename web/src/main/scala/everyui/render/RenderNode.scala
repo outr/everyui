@@ -658,6 +658,28 @@ class RenderNode(val el: html.Element) {
     el.addEventListener("keydown", (e: dom.KeyboardEvent) => if (e.key == "Enter" && !e.shiftKey) f())
   /** All of what the field holds chosen, so what is typed next replaces it. */
   def selectAllInput(): Unit = el.asInstanceOf[js.Dynamic].select()
+  /** Where the field's caret is, counted in the words' UTF-16 units from the start: the start of any selection. */
+  def getCaret(): Int = el match {
+    case i: html.Input => i.selectionStart
+    case t: html.TextArea => t.selectionStart
+    case _ => 0
+  }
+  /** The field's caret put at `at` (as `getCaret` counts), nothing chosen. */
+  def setCaret(at: Int): Unit = el match {
+    case i: html.Input => i.setSelectionRange(at, at)
+    case t: html.TextArea => t.setSelectionRange(at, at)
+    case _ => ()
+  }
+  /** Out of use, or back in it: a screen reader hears so (`aria-disabled`), and a field keeps its words and its caret
+    * but takes no typing (read-only, which unlike disabled leaves it where the focus can reach it). */
+  def setDisabled(disabled: Boolean): Unit = {
+    if (disabled) el.setAttribute("aria-disabled", "true") else el.removeAttribute("aria-disabled")
+    el match {
+      case i: html.Input => i.readOnly = disabled
+      case t: html.TextArea => t.readOnly = disabled
+      case _ => ()
+    }
+  }
   /** Give the field the keyboard, or take it away. */
   // never taken back from something the app did not make (a password manager's menu, a frame) while the page's focus
   // is in it
@@ -1456,6 +1478,8 @@ object Platform {
       held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
       embedded = RenderNode.embedOf(dom.document.activeElement)
       repeating = e.repeat
+      // an input method's words being composed: Chrome and Firefox say so, and Safari's Enter that ends them says 229
+      composing = e.asInstanceOf[js.Dynamic].isComposing.asInstanceOf[js.UndefOr[Boolean]].getOrElse(false) || e.keyCode == 229
       // what a field of the app's types, or moves its caret by, is the field's whatever the app made of it
       if (f(e.key, pressed) && !RenderNode.fieldKey(e)) e.preventDefault()
     }
@@ -1481,6 +1505,10 @@ object Platform {
   private var repeating = false
   /** Whether the key being reported is one held down repeating (`KeyboardEvent.repeat`). */
   def keyRepeat(): Boolean = repeating
+  private var composing = false
+  /** Whether the key being reported belongs to an input method composing words (`KeyboardEvent.isComposing`): its
+    * Enter chooses the words rather than sending them. */
+  def keyComposing(): Boolean = composing
 
   /** The embed the key being reported is meant for, "" for none (`RenderNode.embedOf`). */
   def keyEmbed(): String = embedded

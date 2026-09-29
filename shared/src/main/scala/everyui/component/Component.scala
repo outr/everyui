@@ -157,6 +157,9 @@ class Component(val node: RenderNode) {
     * accessibility role. */
   lazy val semantics: Prop[Semantics] =
     own(new Prop[Semantics](Semantics.Plain, s => node.setSemantics(s.role, s.level, s.label)))
+  /** Out of use for now: whatever reads the page hears so (the web's `aria-disabled`, TalkBack for a field), and the
+    * platform's own field takes no typing, though the focus still reaches it. How it looks is the component's to say. */
+  lazy val disabled: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setDisabled(d)))
 
   lazy val event: Events = new Events(this)
   /** Whether the focus can land here: by a click, `focus()`, or the arrows from a neighbour (everyui.focus.Focus). */

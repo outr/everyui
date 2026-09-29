@@ -156,6 +156,12 @@ abstract class EveryUIActivity extends Activity {
       results.nonEmpty && results.forall(_ == android.content.pm.PackageManager.PERMISSION_GRANTED))
   }
 
+  // what an activity started for its answer said: the document picker's files (FileAccess.pick)
+  override def onActivityResult(code: Int, result: Int, data: android.content.Intent): Unit = {
+    super.onActivityResult(code, result, data)
+    everyui.render.FileAccess.answered(code, result, data)
+  }
+
   /** Somebody is in front of it again: the app was away and is back, which is a sign of use like any key. Not the
     * first time it is in front, which Android also calls resuming: a launch is not a return, and an app that read
     * everything again on its way back read it all twice on the way in. */

@@ -756,6 +756,22 @@ class RenderNode(val view: View) {
     case e: EditText => e.selectAll()
     case _ => ()
   }
+  /** Where the field's caret is, in characters from the start: the start of any selection. */
+  def getCaret(): Int = view match {
+    case e: EditText => math.max(0, e.getSelectionStart)
+    case _ => 0
+  }
+  /** The field's caret put at `at`, nothing chosen. */
+  def setCaret(at: Int): Unit = view match {
+    case e: EditText => e.setSelection(math.max(0, math.min(at, e.length())))
+    case _ => ()
+  }
+  /** Out of use, or back in it: a field takes no typing and TalkBack reads it as disabled. Other views are only drawn
+    * dimmed by the app: disabling one would stop the touches that move the focus to it. */
+  def setDisabled(disabled: Boolean): Unit = view match {
+    case e: EditText => e.setEnabled(!disabled)
+    case _ => ()
+  }
   /** Give the field the keyboard (and the soft keyboard where there is no other), or take both away. */
   def focusInput(on: Boolean): Unit = view match {
     case e: FieldView =>
@@ -1233,6 +1249,21 @@ object Host {
         val in = connection.getInputStream
         try BitmapFactory.decodeStream(in) finally in.close()
       }
+    // a document the person chose (FileAccess): a photo's full size is far more than a preview needs, so it is decoded
+    // scaled down by halves to no more than twice `previewSide`
+    case None if uri.startsWith("content:") =>
+      elsewhere(uri, done) {
+        val address = android.net.Uri.parse(uri)
+        val bounds = new BitmapFactory.Options()
+        bounds.inJustDecodeBounds = true
+        val probe = activity.getContentResolver.openInputStream(address)
+        try BitmapFactory.decodeStream(probe, null, bounds) finally probe.close()
+        val options = new BitmapFactory.Options()
+        while (math.max(bounds.outWidth, bounds.outHeight) / (options.inSampleSize max 1) > previewSide * 2)
+          options.inSampleSize = (options.inSampleSize max 1) * 2
+        val in = activity.getContentResolver.openInputStream(address)
+        try BitmapFactory.decodeStream(in, null, options) finally in.close()
+      }
     case None if pixels(uri) <= decodedHere => done(bitmap(uri))
     case None =>
       elsewhere(uri, done) {
@@ -1268,6 +1299,8 @@ object Host {
     * screen (a theme's backdrop, 1920 by 1080) is decoded on a loading thread as a download is: decoding it on the
     * thread that draws held a television's frame for 40ms, and what shows one keeps what it had until it has come. */
   private val decodedHere: Long = 1000L * 1000L
+  /** The side a chosen document's picture is shown at, at most (a preview beside its name). */
+  private val previewSide: Int = 256
 
   /** Each asset's size in pixels, read once from its header. */
   private val assetPixels = mutable.Map.empty[String, Long]
@@ -1920,6 +1953,9 @@ object Platform {
   def keyEmbed(): String = Host.embedded
   /** Whether the key being reported is one held down repeating: a press whose repeat count is past 0. */
   def keyRepeat(): Boolean = Host.repeat
+  /** Whether the key being reported belongs to an input method composing words: never, since a keyboard on the screen
+    * composes through the field itself and sends no keys for it. */
+  def keyComposing(): Boolean = false
   /** Shortcuts are made with Ctrl on Android. */
   def commandKey(): Boolean = false
 

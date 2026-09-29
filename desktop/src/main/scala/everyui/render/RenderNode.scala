@@ -472,6 +472,22 @@ class RenderNode(val fx: Node) {
     case field: TextInputControl => field.selectAll()
     case _ => ()
   }
+  /** Where a text field's caret is, in characters from the start. */
+  def getCaret(): Int = fx match {
+    case field: TextInputControl => field.getCaretPosition
+    case _ => 0
+  }
+  /** A text field's caret put at `at`, nothing chosen. */
+  def setCaret(at: Int): Unit = fx match {
+    case field: TextInputControl => field.positionCaret(at)
+    case _ => ()
+  }
+  /** Out of use, or back in it: a text field keeps its words but takes no typing. Nothing reads the nodes' roles here
+    * (`setSemantics`), so there is nothing to tell. */
+  def setDisabled(disabled: Boolean): Unit = fx match {
+    case field: TextInputControl => field.setEditable(!disabled)
+    case _ => ()
+  }
   /** Give a text field the keyboard, or take it back to the window. */
   def focusInput(on: Boolean): Unit = fx match {
     case field: TextInputControl =>
@@ -1197,6 +1213,9 @@ object Platform {
   private var repeating = false
   /** Whether the key being reported is one held down repeating: pressed again without being released. */
   def keyRepeat(): Boolean = repeating
+  /** Whether the key being reported belongs to an input method composing words: never, since JavaFX hands those to the
+    * field as input method events rather than keys. */
+  def keyComposing(): Boolean = false
   private var embedded = ""
   /** The embed the key being reported is meant for, "" for none (`Host.embedOf`). */
   def keyEmbed(): String = embedded

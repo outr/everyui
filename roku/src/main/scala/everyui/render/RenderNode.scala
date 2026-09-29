@@ -500,6 +500,11 @@ class RenderNode(val sg: SGNode) {
   def onInputDone(f: () => Unit): Unit = ()
   def onInputAction(f: () => Unit): Unit = ()
   def selectAllInput(): Unit = ()
+  /** No field of its own here: the caret is always after the words. */
+  def getCaret(): Int = 0
+  def setCaret(at: Int): Unit = ()
+  /** Nothing reads the nodes here, and a field is only its words: the app dims what is out of use. */
+  def setDisabled(disabled: Boolean): Unit = ()
   def focusInput(on: Boolean): Unit = ()
 }
 
@@ -826,6 +831,8 @@ object Platform {
   def modifiers(): everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
   /** Whether the key being reported is one held down repeating: a remote never says so. */
   def keyRepeat(): Boolean = false
+  /** A remote composes no words. */
+  def keyComposing(): Boolean = false
   /** The button of the pointer event being reported: none here, so always the primary (0). */
   def pointerButton(): Int = 0
   /** Every key is the focus layer's: nothing here handles its own. */
