@@ -11,8 +11,9 @@
 -dontwarn java.lang.invoke.**
 -dontwarn org.jetbrains.annotations.**
 
-# Scala 3 reads and writes a `lazy val`'s cell (`<name>$lzy1`) through a VarHandle its class initialiser
-# finds BY NAME and stores in `<name>$lzy1$lzyHandle`. When no instance of the class is live — a stdlib
+# Scala 3 reads and writes a `lazy val`'s cell (`<name>$lzy1`) through a VarHandle (an AtomicReferenceFieldUpdater
+# once project/AndroidRuntime.scala has rewritten it for old Android) its class initialiser finds BY NAME and
+# stores in `<name>$lzy1$lzyHandle`. When no instance of the class is live — a stdlib
 # companion that `scala.package$`'s initialiser merely touches — R8 removes the instance cell but keeps the
 # initialiser's lookup, and the app dies in `<clinit>` with NoSuchFieldException. So wherever a handle
 # survives, its cell survives too, under its own name. (`-keepclassmembers` needs a live instance; an

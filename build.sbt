@@ -400,7 +400,7 @@ lazy val android = (project in file("android"))
     Compile / unmanagedJars ++= androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
-    // lazy vals as Scala 2 made them: the dexed library is 2.13's (project/AndroidRuntime.scala)
+    // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: project/AndroidRuntime.scala)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     packageApk := {
       val conv = fileConverter.value
@@ -412,7 +412,7 @@ lazy val android = (project in file("android"))
       AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
         // the archives themselves are not dexable: what was opened out of them stands in their place
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
-          (Compile / dependencyResolution).value, target.value / "android-runtime", streams.value.log.info(_)),
+          androidMinSdk, target.value / "android-runtime", streams.value.log.info(_)),
         baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
         Seq(baseDirectory.value / "proguard-rules.pro"), target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
@@ -620,7 +620,7 @@ lazy val monacoAndroid = (project in file("monaco/android"))
     Compile / unmanagedJars ++= androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
-    // lazy vals as Scala 2 made them: the dexed library is 2.13's (project/AndroidRuntime.scala)
+    // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: project/AndroidRuntime.scala)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     packageApk := {
       val conv = fileConverter.value
@@ -635,7 +635,7 @@ lazy val monacoAndroid = (project in file("monaco/android"))
       IO.copyDirectory(staged, assets)
       AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
-          (Compile / dependencyResolution).value, target.value / "android-runtime", streams.value.log.info(_)),
+          androidMinSdk, target.value / "android-runtime", streams.value.log.info(_)),
         baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-monaco.apk",

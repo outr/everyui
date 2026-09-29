@@ -69,7 +69,7 @@ object AndroidApk {
     // SHIELD (API 30) before its first frame, and R8 was blamed for an afternoon. The real cause was the
     // Scala 3 standard library, whose lazy vals are held in a java.lang.invoke.VarHandle: that method is
     // signature-polymorphic, Android has no such thing before API 33, and the verifier throws out every class
-    // holding one. The app's build swaps the 2.13 library in for dexing; see `androidClasspath` there.
+    // holding one. project/AndroidRuntime.scala rewrites those lazy vals before dexing.
     log(s"AndroidApk: R8 over ${inputs.size} inputs")
     // with desugaring, R8 rewrites the program's newer library calls onto the back-port's names, and L8 below dexes
     // the back-port itself. (The command line has no way to hand L8 the list of back-port classes the program
