@@ -34,6 +34,8 @@ import everyui.render.Platform
   *   rtlwrap    paragraphs 560 wide that wrap in a right-to-left direction: an Arabic overview, the same cut to two lines,
   *              and one in English, each logging its laid-out size
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
+  *   sliders    sliders, range sliders and switches: steps, divisions, value labels, vertical, out of use (`theme=light`,
+  *              `rtl=1`)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not
@@ -68,6 +70,7 @@ import everyui.render.Platform
   else if (demo == "chat") ChatDemo.run()
   else if (demo == "busy") BusyDemo.run()
   else if (demo == "colors") ColorsDemo.run()
+  else if (demo == "sliders") SlidersDemo.run()
   else if (demo == "markdown") MarkdownDemo.run()
   else if (demo == "richlist") RichListDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()

@@ -1005,6 +1005,51 @@ the hue, drawn in bands of solid colour, and all of it works from the d-pad (Up 
 Right along a slider or the swatches, OK on a swatch; a field takes its value from the platform's keyboard). Android
 TV keeps the area: OK starts moving its thumb with the arrows, and OK or Back stops.
 
+### Sliders and switches (`everyui.slider`, `everyui.component.Switch`)
+
+Material's slider, range slider and switch, in plain shared EveryUI, so they run on every backend. A `Slider` sets a
+`Var[Double]` from `min` to `max`, in steps of `step` (0 runs smoothly) or in `divisions` equal steps with a tick at
+each; a `RangeSlider` sets two, `start` and `end`, which never cross and stay `minGap` apart, the track lit between
+them. `value` (or `start` and `end`) changes as the thumb moves; `onChangeEnd` hears where it came to once a drag lets
+go, and after each key, for work to do only then (a filter, a query). `showValue` puts the value over the thumb in
+`format`'s words: `ValueLabel.Never`, `Moving` (while dragged, or set from the keys) or `Always`. `vertical = true`
+runs one up; `length` is its long side (bind `size.width`, or `size.height`, to change it), and it is 40 across.
+`disabled @= true` fades it and the focus passes it by.
+
+```scala
+import everyui.slider.{RangeSlider, Slider, SliderScale, ValueLabel}
+import everyui.component.Switch
+
+val volume = Var(40.0)
+val slider = new Slider(volume, 0.0, 100.0, step = 1.0, label = "Volume", showValue = ValueLabel.Moving,
+  format = v => SliderScale.text(v) + "%")
+slider.onChangeEnd.attach(v => save(v))
+
+val (low, high) = (Var(20.0), Var(80.0))
+val price = new RangeSlider(low, high, 0.0, 100.0, step = 5.0, minGap = 10.0, label = "Price")
+price.onChangeEnd.attach { case (from, to) => filter(from, to) }
+
+val wifi = new Switch("Wi-Fi", Var(true))                              // the switch after its label
+val line = new Switch("Apply as the slider moves", width = Some(360.0))  // label at one end, switch at the other
+wifi.on.attach(on => network.enable(on))
+```
+
+A press on the track puts the (nearer) thumb there and a drag takes it along, held until the pointer or the finger lets
+go wherever it goes; on the web a finger's drag is the slider's, not the page's. With the focus, the arrows along a
+slider move it a step (a hundredth of the way where it runs smoothly), Page Up and Page Down a tenth, Home and End to
+its ends; the arrows across it are the focus layer's, so on a remote Left and Right set it and Up and Down go on past
+it, and nothing else is taken. Each of a range's thumbs takes the focus: Tab goes from the start to the end, and OK
+from either to the other, which is how a remote reaches the second. A horizontal slider runs from the right in a
+right-to-left language, and its arrows with it; a switch mirrors too, on at the left. A switch flips with a click, a
+tap, OK, Enter or Space, and its thumb can be dragged across; it lands on the side it is let go nearer, sliding there.
+The colours are the theme's (`Theme.accent` and the palette's text, control and muted colours), in light and dark.
+
+A screen reader hears a slider's thumb as a slider with its value, its range and `format`'s words (on the web
+`aria-valuenow`, `aria-valuemin`, `aria-valuemax`, `aria-valuetext`; TalkBack reads the words, Android 11 on), and a
+switch as a switch that is checked or not (`aria-checked`): `Semantics.slider` and `Semantics.switch`, which any
+component can say. `SliderScale` is the arithmetic on its own (snapping, clamping, a range's gap, where each key goes),
+and `everyui.event.PointerDrag` the drag, held from the press until it lets go, for a control of an app's own.
+
 ### Smaller pieces
 
 - `new SplitPane(..., collapsible = Some(SplitSide.First), startCollapsed = true)` is folded from the first frame, so
