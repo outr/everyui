@@ -188,6 +188,24 @@ private func _whole(_ v: V) -> Int {
         return 0
     }
 }
+/// A charset by its name (a Charset is its name here): "latin1", "ascii", or "utf8" for UTF-8 and any other.
+private func _charset(_ cs: V) -> String {
+    let n = rtS(cs).uppercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "_", with: "")
+    if ["ISO88591", "LATIN1", "ISOLATIN1", "L1"].contains(n) { return "latin1" }
+    if ["USASCII", "ASCII"].contains(n) { return "ascii" }
+    return "utf8"
+}
+/// A String's bytes in a charset (`getBytes`), each a Byte from -128 to 127; a character the charset cannot hold is "?".
+func _strBytes(_ s: V, _ cs: V) -> V {
+    let text = rtS(s)
+    let bytes: [UInt8]
+    switch _charset(cs) {
+    case "latin1": bytes = text.unicodeScalars.map { $0.value < 256 ? UInt8($0.value) : 63 }
+    case "ascii": bytes = text.unicodeScalars.map { $0.value < 128 ? UInt8($0.value) : 63 }
+    default: bytes = Array(text.utf8)
+    }
+    return rtArr(bytes.map { .vInt(Int(Int8(bitPattern: $0))) })
+}
 /// A Char's code (`c.toInt`): a Char is a one-character String here.
 func _chCode(_ c: V) -> V { .vInt(Int(rtS(c).utf16.first ?? 0)) }
 /// A String read as a whole number (`toIntOption`), or None (null) when the whole of it, trimmed, is not one.

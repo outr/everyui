@@ -2127,6 +2127,14 @@ class RokuEmitter(
 
     def emitTermU(t0: Term): String =
       unwrap(t0) match {
+        // a String's bytes in a charset (UTF-8 where none is named): a Charset is its name here, a StandardCharsets
+        // member the name it goes by, as Charset.forName takes one
+        case Apply(Select(recv, "getBytes"), args) if isStringLike(recv.tpe) && args.size <= 1 =>
+          s"_strBytes(${emitTerm(recv)}, ${args.headOption.map(emitArgVal).getOrElse(brStr("UTF-8"))})"
+        case Select(q, n) if q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "java.nio.charset.StandardCharsets" =>
+          brStr(n.replace('_', '-'))
+        case Apply(Select(q, "forName"), List(name)) if q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "java.nio.charset.Charset" =>
+          emitArgVal(name)
         case Apply(Select(New(tpt), _), args) if hasNative(tpt.tpe.typeSymbol) =>
           s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
         case Apply(TypeApply(Select(New(tpt), _), _), args) if hasNative(tpt.tpe.typeSymbol) =>
@@ -3452,7 +3460,7 @@ class RokuEmitter(
     parts.zipWithIndex.foreach { case (code, i) => write("components/" + RokuEmitter.partName(i), code) }
     write("components/AppScene.xml", sceneXml.replace(RokuEmitter.appScript(0),
       parts.indices.map(RokuEmitter.appScript).mkString("\n  ")))
-    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs + collectionShimsBrs)
+    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs + collectionShimsBrs + bytesShimsBrs)
   }
 
   // Facade access is emitted as `ga.<Module>.<member>` (see the Select case).
@@ -6179,6 +6187,76 @@ class RokuEmitter(
       |    end for
       |    if first then return invalid
       |    return r
+      |end function
+      |""".stripMargin
+
+  /** Text as bytes and back: a constant of its own, under the JVM's cap. */
+  private val bytesShimsBrs: String =
+    """
+      |' A charset by its name (a Charset is its name here): "latin1" for ISO-8859-1, "ascii" for US-ASCII, and "utf8" for
+      |' UTF-8 and any other
+      |function _charset(cs as dynamic) as string
+      |    n = UCase(_str(cs)).Replace("-", "").Replace("_", "")
+      |    if n = "ISO88591" or n = "LATIN1" or n = "ISOLATIN1" or n = "L1" then return "latin1"
+      |    if n = "USASCII" or n = "ASCII" then return "ascii"
+      |    return "utf8"
+      |end function
+      |' A String's bytes in a charset (getBytes), each a Byte from -128 to 127; a character the charset cannot hold is "?",
+      |' as the JVM writes it. The box's own UTF-8 (roByteArray.FromAsciiString) is taken only where it plainly wrote UTF-8
+      |' (more bytes than characters) or the text is ASCII, since some boxes write Latin-1 there; otherwise each character
+      |' is encoded here, a UTF-16 pair (which brs-engine's strings hold) as the one character it is.
+      |function _strBytes(s as dynamic, cs as dynamic) as object
+      |    kind = _charset(cs)
+      |    n = Len(s)
+      |    out = []
+      |    if kind = "utf8"
+      |        ba = CreateObject("roByteArray")
+      |        ba.FromAsciiString(s)
+      |        count = ba.Count()
+      |        plain = count > n
+      |        for i = 0 to count - 1
+      |            b = ba[i]
+      |            if b > 127
+      |                if not plain then exit for
+      |                b = b - 256
+      |            end if
+      |            out.Push(b)
+      |        end for
+      |        if out.Count() = count and (plain or ba.ToAsciiString() = s) then return out
+      |        out = []
+      |    end if
+      |    i = 1
+      |    while i <= n
+      |        c = Asc(Mid(s, i, 1))
+      |        if c >= &hD800 and c <= &hDBFF and i < n
+      |            d = Asc(Mid(s, i + 1, 1))
+      |            if d >= &hDC00 and d <= &hDFFF
+      |                c = &h10000 + (c - &hD800) * 1024 + (d - &hDC00)
+      |                i = i + 1
+      |            end if
+      |        end if
+      |        if c < 128
+      |            out.Push(c)
+      |        else if kind = "latin1"
+      |            if c < 256 then out.Push(c - 256) else out.Push(63)
+      |        else if kind = "ascii" or (c >= &hD800 and c <= &hDFFF)
+      |            out.Push(63)
+      |        else if c < &h800
+      |            out.Push((&hC0 or (c >> 6)) - 256)
+      |            out.Push((&h80 or (c and &h3F)) - 256)
+      |        else if c < &h10000
+      |            out.Push((&hE0 or (c >> 12)) - 256)
+      |            out.Push((&h80 or ((c >> 6) and &h3F)) - 256)
+      |            out.Push((&h80 or (c and &h3F)) - 256)
+      |        else
+      |            out.Push((&hF0 or (c >> 18)) - 256)
+      |            out.Push((&h80 or ((c >> 12) and &h3F)) - 256)
+      |            out.Push((&h80 or ((c >> 6) and &h3F)) - 256)
+      |            out.Push((&h80 or (c and &h3F)) - 256)
+      |        end if
+      |        i = i + 1
+      |    end while
+      |    return out
       |end function
       |""".stripMargin}
 
