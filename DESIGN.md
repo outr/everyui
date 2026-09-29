@@ -436,7 +436,7 @@ reactify alone and for the suite, every count is **0**.
 
 | Feature | What it does | reactify construct that needed it |
 |---|---|---|
-| Object model | vtable per concrete class from its linearization (most-derived wins); `C_init` chains super → mixins (guarded for diamonds) → own fields and constructor statements; calls on a model member dispatch `recv.m(recv, …)` | `Var extends Val with Mutable`; groups overriding `set`/`get`; `GroupReactions` overriding `+=` |
+| Object model | vtable per concrete class from its linearization (most-derived wins), one table shared by the class's instances (`_vt`); `C_init` chains super → mixins (guarded for diamonds, the guards dropped once it is made) → own fields and constructor statements; calls on a model member dispatch `recv._vt.m(recv, …)` | `Var extends Val with Mutable`; groups overriding `set`/`get`; `GroupReactions` overriding `+=` |
 | Super calls | resolved statically to the implementation TASTy names | `super.+=`, `super.static` |
 | Lazy vals | virtual getter slot, value cached on first read | `override lazy val reactions` in every group |
 | Vals overriding defs | slot holds a getter, value under `__v_<name>` | `override val priority` in `FunctionReaction` |

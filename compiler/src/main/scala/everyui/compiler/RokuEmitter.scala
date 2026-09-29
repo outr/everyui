@@ -637,15 +637,15 @@ class RokuEmitter(
     // Types that take part in inheritance — traits, classes with user bases,
     // classes something else extends, case classes with methods — get a real
     // object model:
-    //   * `C_new(args)` allocates, installs every vtable SLOT for C's whole
-    //     linearization (most-derived implementation wins), then runs
-    //     `C_init(self, args)`;
+    //   * `C_new(args)` allocates, points `_vt` at C's table of every vtable SLOT for
+    //     its whole linearization (most-derived implementation wins; one table for
+    //     the class, shared by its instances), then runs `C_init(self, args)`;
     //   * `C_init` chains like a JVM constructor: superclass init, then each
     //     mixed-in trait init (guarded so a diamond initialises once), then C's
     //     own fields and constructor statements in body order;
     //   * a call to one of their members dispatches through the slot —
-    //     `recv.m(recv, …)`, the convention the runtime already uses for
-    //     `recv.m(recv, …)` — so an override in a subclass or mixin actually runs.
+    //     `recv._vt.m(recv, …)` (the runtime's `_rtSlot` finds one by name) — so an
+    //     override in a subclass or mixin actually runs.
     // Everything outside that set emits exactly as before.
     def isUserTypeSym(s: Symbol): Boolean =
       s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !hasNative(s) && !isBuiltin(s) && !isEnumLike(s)
@@ -745,7 +745,7 @@ class RokuEmitter(
           case None    => true
           case Some(r) => isThis(r) || isSimpleRecv(r) || isTrivialExpr(recvStr)
         }
-        if (simple || argList.size > 8) s"$recvStr.${slotName(sy)}($recvStr$tail)"
+        if (simple || argList.size > 8) s"$recvStr._vt.${slotName(sy)}($recvStr$tail)"
         else s"RtVcall${argList.size}($recvStr, ${brStr(slotName(sy))}$tail)"
       }
     }
@@ -2936,6 +2936,10 @@ class RokuEmitter(
       case other      => other.symbol.exists && other.symbol.fullName.endsWith("uninitialized")
     }
 
+    /** The init guards (`__i_<type>`) constructing `sym` sets: one for it and each user class and trait it is made of. */
+    def initGuards(sym: Symbol): List[String] =
+      sym.typeRef.baseClasses.filter(b => userTypeDefs.contains(b)).map(b => brStr("__i_" + typeName(b)))
+
     def vtableFor(sym: Symbol): List[(String, String)] = {
       val slots = mutable.LinkedHashMap[String, String]()
       sym.typeRef.baseClasses.filter(userTypeDefs.contains).foreach { b =>
@@ -2982,6 +2986,9 @@ class RokuEmitter(
           sb.append(s"  if not self.DoesExist(${brStr("__lzs_" + k)}) then\n")
           sb.append(s"    self[${brStr("__lzs_" + k)}] = true\n")
           sb.append(emitInto(vd.rhs.get, s"self[${brStr("__lz_" + k)}]")).append("\n")
+          // made, the flag that it was being made goes (an entry for each lazy val used, in each instance); one that came
+          // out invalid (None, null) keeps it, as the value alone would not say it was made
+          sb.append(s"    if self[${brStr("__lz_" + k)}] <> invalid then self.Delete(${brStr("__lzs_" + k)})\n")
           sb.append("  end if\n")
           sb.append(s"  return self[${brStr("__lz_" + k)}]\nend function\n\n")
         case vd: ValDef if isVirtualField(vd.symbol) =>
@@ -3064,9 +3071,12 @@ class RokuEmitter(
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
+        // its slots are its own, and it is its own table (`_vt`), as there is only the one of it
         vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  self.$slot = $impl\n") }
+        if (vtableFor(sym).nonEmpty) sb.append("  self._vt = self\n")
         sb.append(s"  ga[$key] = self\n")
         sb.append(s"  ${cn}__init(self)\n")
+        initGuards(sym).foreach(g => sb.append(s"  self.Delete($g)\n"))
         sb.append("  return self\nend function\n\n")
       }
       // constructor: allocate, captures, runtime-parent slots, vtable, init
@@ -3081,13 +3091,17 @@ class RokuEmitter(
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  ${shim}__install(self)\n"))
         }
-        if (vtableFor(sym).nonEmpty) sb.append(s"  self.Append(${cn}__vt())\n")
+        if (vtableFor(sym).nonEmpty) sb.append(s"  self._vt = ${cn}__vt()\n")
         sb.append(s"  ${cn}__init(self${packParams(ctorParams).map(p => ", " + p).mkString})\n")
+        // the guards that kept a diamond from initialising twice have done their work: kept, they were an entry per class
+        // and trait in every instance
+        initGuards(sym).foreach(g => sb.append(s"  self.Delete($g)\n"))
         sb.append("  return self\nend function\n\n")
       }
-      // the method slots: one table for the class, made once and copied into each instance. Listed in every
+      // the method slots: one table for the class, made once, which each instance refers to (`_vt`). Listed in every
       // constructor they were a third of a large app's code (a component's fifty inherited slots, in each of its
-      // subclasses). A class's table is its superclass's with its own slots put in.
+      // subclasses), and copied into each instance, half of what a component kept on a Roku's heap. A class's table is
+      // its superclass's with its own slots put in.
       if (!isTrait && !sym.flags.is(Flags.Module) && vtableFor(sym).nonEmpty) {
         val slots = vtableFor(sym)
         val parent = vtParent(cd)
@@ -4453,8 +4467,21 @@ class RokuEmitter(
       |'
       |' Additions for emitting general Scala libraries (reactify, unmodified).
       |' Everything here follows the emitted object model: an instance is an assoc
-      |' array carrying `_cls`, its vtable slots, and its fields; a method takes the
-      |' receiver as an explicit first `self` argument.
+      |' array carrying `_cls`, its fields and `_vt`, its class's table of method slots,
+      |' which every instance shares; a method takes the receiver as an explicit first
+      |' `self` argument.
+      |
+      |' A method slot of `o` by name, for the runtime to call: from its class's table, or,
+      |' for an object that carries its methods itself (a class outside the object model,
+      |' a ThreadLocal), from the object.
+      |function _rtSlot(o as object, n as string) as dynamic
+      |    vt = o._vt
+      |    if vt <> invalid
+      |        f = vt[n]
+      |        if f <> invalid then return f
+      |    end if
+      |    return o[n]
+      |end function
       |
       |' ── identity and equality ──────────────────────────────────────────────────
       |
@@ -4594,43 +4621,43 @@ class RokuEmitter(
       |end function
       |
       |' ── dispatch ────────────────────────────────────────────────────────────────
-      |' A virtual call whose receiver must not be evaluated twice (`recv.m(recv, …)`
-      |' would). The receiver is bound once, then its slot is looked up and invoked.
+      |' A virtual call whose receiver must not be evaluated twice (`recv._vt.m(recv, …)`
+      |' would). The receiver is bound once, then its slot is looked up in its table and invoked.
       |
       |function RtVcall0(r as object, n as string) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r)
       |end function
       |function RtVcall1(r as object, n as string, a1 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1)
       |end function
       |function RtVcall2(r as object, n as string, a1 as dynamic, a2 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1, a2)
       |end function
       |function RtVcall3(r as object, n as string, a1 as dynamic, a2 as dynamic, a3 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1, a2, a3)
       |end function
       |function RtVcall4(r as object, n as string, a1 as dynamic, a2 as dynamic, a3 as dynamic, a4 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1, a2, a3, a4)
       |end function
       |function RtVcall5(r as object, n as string, a1 as dynamic, a2 as dynamic, a3 as dynamic, a4 as dynamic, a5 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1, a2, a3, a4, a5)
       |end function
       |function RtVcall6(r as object, n as string, a1 as dynamic, a2 as dynamic, a3 as dynamic, a4 as dynamic, a5 as dynamic, a6 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1, a2, a3, a4, a5, a6)
       |end function
       |function RtVcall7(r as object, n as string, a1 as dynamic, a2 as dynamic, a3 as dynamic, a4 as dynamic, a5 as dynamic, a6 as dynamic, a7 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1, a2, a3, a4, a5, a6, a7)
       |end function
       |function RtVcall8(r as object, n as string, a1 as dynamic, a2 as dynamic, a3 as dynamic, a4 as dynamic, a5 as dynamic, a6 as dynamic, a7 as dynamic, a8 as dynamic) as dynamic
-      |    f = r[n]
+      |    f = r._vt[n]
       |    return f(r, a1, a2, a3, a4, a5, a6, a7, a8)
       |end function
       |
@@ -5539,7 +5566,8 @@ class RokuEmitter(
       |    seeded = false
       |    if self.DoesExist("__tlSet") then seeded = self.__tlSet
       |    if not seeded
-      |        self.__tlValue = self.initialValue(self)
+      |        seed = _rtSlot(self, "initialValue")
+      |        self.__tlValue = seed(self)
       |        self.__tlSet = true
       |    end if
       |    return self.__tlValue
@@ -5574,7 +5602,8 @@ class RokuEmitter(
       |    if n > 1
       |        for i = 0 to n - 2
       |            for j = 0 to n - 2 - i
-      |                if r[j].compare(r[j], r[j + 1]) > 0
+      |                compare = _rtSlot(r[j], "compare")
+      |                if compare(r[j], r[j + 1]) > 0
       |                    tmp = r[j]
       |                    r[j] = r[j + 1]
       |                    r[j + 1] = tmp
@@ -5671,9 +5700,8 @@ class RokuEmitter(
       |' An object with a `toString` slot formats itself; a case class prints as
       |' `Cls(f1, f2)`; an exception prints its message; a sequence as `List(…)`.
       |function _rtObjStr(o as object) as string
-      |    if o.DoesExist("toString")
-      |        if _rtKind(o.toString) = "fn" then return o.toString(o)
-      |    end if
+      |    format = _rtSlot(o, "toString")
+      |    if _rtKind(format) = "fn" then return format(o)
       |    if o.DoesExist("_fields") and o.DoesExist("_cls")
       |        parts = []
       |        for each f in o._fields
