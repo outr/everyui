@@ -1,7 +1,10 @@
 package everyui.i18n
 
 /** How one language writes dates, from CLDR (as the `intl` package carries it): the month and weekday names, full
-  * and short (weekdays from Monday), the words for morning and afternoon, and the patterns `DateText` fills in. */
+  * and short (weekdays from Monday), the words for morning and afternoon, and the patterns `DateText` fills in. A
+  * calendar also takes the weekdays narrowest (`narrowWeekdays`, a letter or so over each column: none falls back to
+  * the short ones), a date written in full with its weekday and year (`fullDate`, CLDR's `yMMMMEEEEd`) and a month
+  * with its year (`monthYear`, `yMMMM`), and a date in numbers (`numericDate`, `yMd`: what a date field shows). */
 case class DateSymbols(code: String,
                        months: List[String],
                        shortMonths: List[String],
@@ -13,7 +16,11 @@ case class DateSymbols(code: String,
                        monthDay: String,
                        weekdayMonthDay: String,
                        longWeekdayDate: String,
-                       timeOfDay: String)
+                       timeOfDay: String,
+                       narrowWeekdays: List[String] = Nil,
+                       fullDate: String = "EEEE, MMMM d, y",
+                       monthYear: String = "MMMM y",
+                       numericDate: String = "M/d/y")
 
 object DateSymbols {
   lazy val English: DateSymbols = DateSymbols("en",
@@ -22,7 +29,8 @@ object DateSymbols {
     List("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
     List("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
     List("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
-    "AM", "PM", "MMM d, y", "MMM d", "EEE, MMM d", "EEEE, MMMM d", "h:mm a")
+    "AM", "PM", "MMM d, y", "MMM d", "EEE, MMM d", "EEEE, MMMM d", "h:mm a",
+    List("M", "T", "W", "T", "F", "S", "S"), "EEEE, MMMM d, y", "MMMM y", "M/d/y")
 
   private lazy val chineseWeekdays: List[String] = List("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
   private lazy val chineseMonths: List[String] =
@@ -37,59 +45,69 @@ object DateSymbols {
       List("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"),
       List("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
       List("lun", "mar", "mié", "jue", "vie", "sáb", "dom"),
-      "a. m.", "p. m.", "d MMM y", "d MMM", "EEE, d MMM", "EEEE, d 'de' MMMM", "H:mm"),
+      "a. m.", "p. m.", "d MMM y", "d MMM", "EEE, d MMM", "EEEE, d 'de' MMMM", "H:mm",
+      List("L", "M", "X", "J", "V", "S", "D"), "EEEE, d 'de' MMMM 'de' y", "MMMM 'de' y", "d/M/y"),
     DateSymbols("pt",
       List("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro",
         "novembro", "dezembro"),
       List("jan.", "fev.", "mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."),
       List("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"),
       List("seg.", "ter.", "qua.", "qui.", "sex.", "sáb.", "dom."),
-      "AM", "PM", "d 'de' MMM 'de' y", "d 'de' MMM", "EEE, d 'de' MMM", "EEEE, d 'de' MMMM", "HH:mm"),
+      "AM", "PM", "d 'de' MMM 'de' y", "d 'de' MMM", "EEE, d 'de' MMM", "EEEE, d 'de' MMMM", "HH:mm",
+      List("S", "T", "Q", "Q", "S", "S", "D"), "EEEE, d 'de' MMMM 'de' y", "MMMM 'de' y", "dd/MM/y"),
     DateSymbols("fr",
       List("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
         "novembre", "décembre"),
       List("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."),
       List("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"),
       List("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."),
-      "AM", "PM", "d MMM y", "d MMM", "EEE d MMM", "EEEE d MMMM", "HH:mm"),
+      "AM", "PM", "d MMM y", "d MMM", "EEE d MMM", "EEEE d MMMM", "HH:mm",
+      List("L", "M", "M", "J", "V", "S", "D"), "EEEE d MMMM y", "MMMM y", "dd/MM/y"),
     DateSymbols("de",
       List("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November",
         "Dezember"),
       List("Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."),
       List("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"),
       List("Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."),
-      "AM", "PM", "d. MMM y", "d. MMM", "EEE, d. MMM", "EEEE, d. MMMM", "HH:mm"),
+      "AM", "PM", "d. MMM y", "d. MMM", "EEE, d. MMM", "EEEE, d. MMMM", "HH:mm",
+      List("M", "D", "M", "D", "F", "S", "S"), "EEEE, d. MMMM y", "MMMM y", "d.M.y"),
     DateSymbols("ar",
       List("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"),
       List("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"),
       List("الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"),
       List("الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"),
-      "ص", "م", "d MMM y", "d MMM", "EEE، d MMM", "EEEE، d MMMM", "h:mm a"),
+      "ص", "م", "d MMM y", "d MMM", "EEE، d MMM", "EEEE، d MMMM", "h:mm a",
+      List("ن", "ث", "ر", "خ", "ج", "س", "ح"), "EEEE، d MMMM y", "MMMM y", "d/M/y"),
     DateSymbols("tr",
       List("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım",
         "Aralık"),
       List("Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"),
       List("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"),
       List("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"),
-      "ÖÖ", "ÖS", "d MMM y", "d MMM", "d MMMM EEE", "d MMMM EEEE", "HH:mm"),
+      "ÖÖ", "ÖS", "d MMM y", "d MMM", "d MMMM EEE", "d MMMM EEEE", "HH:mm",
+      List("P", "S", "Ç", "P", "C", "C", "P"), "d MMMM y EEEE", "MMMM y", "dd.MM.y"),
     DateSymbols("nl",
       List("januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober",
         "november", "december"),
       List("jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"),
       List("maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"),
       List("ma", "di", "wo", "do", "vr", "za", "zo"),
-      "a.m.", "p.m.", "d MMM y", "d MMM", "EEE d MMM", "EEEE d MMMM", "HH:mm"),
+      "a.m.", "p.m.", "d MMM y", "d MMM", "EEE d MMM", "EEEE d MMMM", "HH:mm",
+      List("M", "D", "W", "D", "V", "Z", "Z"), "EEEE d MMMM y", "MMMM y", "d-M-y"),
     DateSymbols("it",
       List("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre",
         "novembre", "dicembre"),
       List("gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"),
       List("lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"),
       List("lun", "mar", "mer", "gio", "ven", "sab", "dom"),
-      "AM", "PM", "d MMM y", "d MMM", "EEE d MMM", "EEEE d MMMM", "HH:mm"),
+      "AM", "PM", "d MMM y", "d MMM", "EEE d MMM", "EEEE d MMMM", "HH:mm",
+      List("L", "M", "M", "G", "V", "S", "D"), "EEEE d MMMM y", "MMMM y", "d/M/y"),
     DateSymbols("zh", chineseMonths, chineseMonths, chineseWeekdays,
       List("周一", "周二", "周三", "周四", "周五", "周六", "周日"),
-      "上午", "下午", "y年M月d日", "M月d日", "M月d日EEE", "M月d日EEEE", "ah:mm"),
+      "上午", "下午", "y年M月d日", "M月d日", "M月d日EEE", "M月d日EEEE", "ah:mm",
+      List("一", "二", "三", "四", "五", "六", "日"), "y年M月d日EEEE", "y年M月", "y/M/d"),
     DateSymbols("zh_Hant", chineseMonths, chineseMonths, chineseWeekdays,
       List("週一", "週二", "週三", "週四", "週五", "週六", "週日"),
-      "上午", "下午", "y年M月d日", "M月d日", "M月d日 EEE", "M月d日 EEEE", "ah:mm"))
+      "上午", "下午", "y年M月d日", "M月d日", "M月d日 EEE", "M月d日 EEEE", "ah:mm",
+      List("一", "二", "三", "四", "五", "六", "日"), "y年M月d日 EEEE", "y年M月", "y/M/d"))
 }

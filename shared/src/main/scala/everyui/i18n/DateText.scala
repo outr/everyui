@@ -11,6 +11,10 @@ object DateText {
   def mediumDate(year: Int, month: Int, day: Int, code: String = Strings.language().code): String =
     write(symbols(code).mediumDate, year, month, day, 0, 0, 0, symbols(code))
 
+  /** "1/15/2013", "15/1/2013", "15.01.2013", "2013/1/15": CLDR's `yMd`, a date in numbers. */
+  def numericDate(year: Int, month: Int, day: Int, code: String = Strings.language().code): String =
+    write(symbols(code).numericDate, year, month, day, 0, 0, 0, symbols(code))
+
   /** "Jan 15", "15 ene": CLDR's `MMMd`. */
   def monthDay(month: Int, day: Int, code: String = Strings.language().code): String =
     write(symbols(code).monthDay, 0, month, day, 0, 0, 0, symbols(code))
@@ -26,6 +30,21 @@ object DateText {
   /** "3:07 PM", "15:07", "下午3:07": CLDR's `jm`, the language's own clock. */
   def timeOfDay(hour: Int, minute: Int, code: String = Strings.language().code): String =
     write(symbols(code).timeOfDay, 0, 0, 0, 0, hour, minute, symbols(code))
+
+  /** "Tuesday, September 29, 2026", "martes, 29 de septiembre de 2026": CLDR's `yMMMMEEEEd`, a day named in full (what
+    * a calendar says of each of its days to a screen reader). */
+  def fullDate(year: Int, month: Int, day: Int, weekday: Int, code: String = Strings.language().code): String =
+    write(symbols(code).fullDate, year, month, day, weekday, 0, 0, symbols(code))
+
+  /** "September 2026", "septiembre de 2026", "2026年9月": CLDR's `yMMMM`, over a calendar's month. */
+  def monthYear(year: Int, month: Int, code: String = Strings.language().code): String =
+    write(symbols(code).monthYear, year, month, 1, 0, 0, 0, symbols(code))
+
+  /** A date written to `form`, CLDR's way (see below: `dd/MM/y`, `d. MMMM y`, `EEE, MMM d`): an app's own
+    * format, in the language's names. */
+  def pattern(form: String, year: Int, month: Int, day: Int, weekday: Int = 0,
+              code: String = Strings.language().code): String =
+    write(form, year, month, day, weekday, 0, 0, symbols(code))
 
   /** Whether the language's clock runs to 12 hours (English, Arabic, Chinese) rather than 24. */
   def twelveHour(code: String = Strings.language().code): Boolean = symbols(code).timeOfDay.contains("h")
@@ -44,6 +63,14 @@ object DateText {
     if (weekday < 1 || weekday > 7) "" else names(weekday - 1)
   }
 
+  /** A weekday at its narrowest ("W", "X", "ر"), 1 being Monday: what heads a calendar's column. The short form where
+    * the language has no narrow one. */
+  def narrowWeekday(weekday: Int, code: String = Strings.language().code): String = {
+    val s = symbols(code)
+    val names = if (s.narrowWeekdays.length == 7) s.narrowWeekdays else s.shortWeekdays
+    if (weekday < 1 || weekday > 7) "" else names(weekday - 1)
+  }
+
   /** The symbols for `code`: its own, those of its language without the script or region (`pt_BR` as `pt`), else
     * English's. Traditional Chinese is filed as `zh_Hant`. */
   def symbols(code: String): DateSymbols = {
@@ -55,8 +82,8 @@ object DateText {
   }
 
   /** `pattern` with its fields filled in, CLDR's way: a run of one letter is one field (`y`, `M`, `MMM`, `MMMM`, `d`,
-    * `dd`, `EEE`, `EEEE`, `h`, `H`, `HH`, `mm`, `a`), text between single quotes is written as it is, and anything
-    * else is kept. */
+    * `dd`, `EEE`, `EEEE`, `h`, `H`, `HH`, `mm`, `a`; `yy` is the year's last two digits), text between single quotes is
+    * written as it is, and anything else is kept. */
   private def write(pattern: String, year: Int, month: Int, day: Int, weekday: Int, hour: Int, minute: Int,
                     s: DateSymbols): String = {
     var out = ""
@@ -84,7 +111,7 @@ object DateText {
   private def field(c: Char, count: Int, year: Int, month: Int, day: Int, weekday: Int, hour: Int, minute: Int,
                     s: DateSymbols): String = {
     val two: Int => String = n => (if (n < 10) "0" else "") + n.toString
-    if (c == 'y') year.toString
+    if (c == 'y') { if (count == 2) two(((year % 100) + 100) % 100) else year.toString }
     else if (c == 'M' || c == 'L') {
       if (count >= 4) monthOf(s.months, month)
       else if (count == 3) monthOf(s.shortMonths, month)
