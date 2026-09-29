@@ -13,4 +13,8 @@ object NetworkBackend {
   private lazy val client: HttpClient = SpiceHttp.client(JVMHttpClientImplementation)
   def webSocket(url: String): WebSocket = SpiceHttp.webSocket(client, url)
   def http(call: HttpCall): Task[HttpResult] = SpiceHttp.call(client, call)
+
+  /** `text` as the bytes of its UTF-8, and back. */
+  def utf8(text: String): Array[Byte] = text.getBytes("UTF-8")
+  def text(bytes: Array[Byte]): String = new String(bytes, "UTF-8")
 }

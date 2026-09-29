@@ -113,9 +113,25 @@ object Network {
   * may take, where a request is known to be slow (a server writing something new); 0 is the backend's own limit. Only
   * the backends on Spice's client honour it: a Roku's and tvOS's requests keep their own. `credentials` sends the
   * browser's cookies and HTTP authentication to another origin, which must then answer with the page's origin rather
-  * than `*`; its own origin has them either way. Only the web has the choice. */
+  * than `*`; its own origin has them either way. Only the web has the choice.
+  *
+  * `parts` is a multipart/form-data body (`multipart`), sent in place of `body` under a boundary of its own, which the
+  * Content-Type names (`contentType` is not used).
+  *
+  * {{{
+  *   Network.http(HttpCall.multipart("/feedback",
+  *     List(FormPart.json("auth", auth), FormPart.file("screenshot", "s.png", png, "image/png"))))
+  * }}} */
 case class HttpCall(method: String, url: String, headers: List[(String, String)] = Nil, body: Option[String] = None,
-                    contentType: String = "application/json", timeout: Double = 0.0, credentials: Boolean = false)
+                    contentType: String = "application/json", timeout: Double = 0.0, credentials: Boolean = false,
+                    parts: List[FormPart] = Nil)
+
+object HttpCall {
+  /** A multipart/form-data request of `parts` (RFC 7578, as a browser sends a form): fields of text and files. */
+  def multipart(url: String, parts: List[FormPart], headers: List[(String, String)] = Nil, method: String = "POST",
+                timeout: Double = 0.0, credentials: Boolean = false): HttpCall =
+    HttpCall(method, url, headers, None, "multipart/form-data", timeout, credentials, parts)
+}
 
 /** An HTTP response: the status, the headers (as the backend surfaces them) and the body as text. */
 case class HttpResult(status: Int, headers: List[(String, String)], body: String) {

@@ -20,5 +20,6 @@
 //> using file ../network/src/main/scala
 //> using file ../network/spice/src/main/scala
 //> using file ../network/js/src/main/scala
+//> using file ../network/files/src/main/scala
 //> using file ../../reactify/reactify/src/main/scala
 //> using mainClass everyui.app.main

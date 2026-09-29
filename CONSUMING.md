@@ -1123,6 +1123,42 @@ call asks, `HttpCall(..., credentials = true)`, and that server must then answer
 `Access-Control-Allow-Origin` (not `*`) and `Access-Control-Allow-Credentials: true`. Elsewhere there is no browser
 and `credentials` means nothing.
 
+## Uploads: multipart forms (`everyui.network`)
+
+`HttpCall.multipart(url, parts)` is a multipart/form-data POST, as a browser sends a form: fields of text and files.
+A `FormPart` is `FormPart.text(name, value)`, `FormPart.json(name, value)` (a field of compact JSON, through fabric's
+`RW`), or `FormPart.file(name, fileName, bytes, contentType)` (`application/octet-stream` when not given). A file the
+person picked (`Files.pick`) is a part through `HttpFiles.part(name, picked)`, with its name and type as picked and
+its bytes read; a message's attachment through `HttpFiles.attached(name, attachment)`. Both answer rapid Tasks, as
+`Network.http` does:
+
+```scala
+import everyui.network.{FormPart, HttpCall, HttpFiles, Network}
+import fabric.rw.*
+
+Files.pick(List("image/*"), multiple = false).map(_.headOption.foreach { picked =>
+  HttpFiles.part("image", picked).flatMap { image =>
+    Network.http(HttpCall.multipart("/user/profile/picture/upload", List(FormPart.json("auth", auth), image)))
+  }.map(r => if (r.ok) shown(r.body) else failed(r.status)).start()
+}).start()
+
+Network.http(HttpCall.multipart("/feedback", List(
+  FormPart.json("auth", auth), FormPart.json("text", words),
+  FormPart.file("screenshot", "screenshot.png", png, "image/png"))))
+```
+
+Fields go with no type of their own, as a form's inputs do (a server reads a JSON field from its text). A name or a
+file name keeps its UTF-8, with `"`, CR and LF escaped as `%22`, `%0D` and `%0A`, as browsers write them. The call's
+own headers go with it (an `Authorization`, say), but not a Content-Type: the body's names its boundary.
+
+- **Web**: the browser writes the form: a `FormData` of the parts, each file a `Blob` of its bytes and type, sent
+  with `fetch`. Another origin must allow the page (CORS: `Access-Control-Allow-Origin`); a multipart POST needs no
+  preflight unless the call adds headers of its own. `credentials` and `timeout` are honoured as on any call.
+- **Desktop, Android**: EveryUI writes the body (`Multipart.encode`, under a boundary of its own) and sends it through
+  Spice's client.
+- **Roku, Apple TV**: the same body, sent as bytes: the Roku's worker posts it from a file in `tmp:`, since a string
+  would stop at the first NUL; the Apple TV's `URLSession` takes the bytes as they are.
+
 ## An installable web app
 
 An EveryUI web app can be installed from the browser, to run in a window of its own like any other app. It is opt-in,

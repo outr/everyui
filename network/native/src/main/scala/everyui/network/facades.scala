@@ -21,3 +21,18 @@ import everyui.compiler.api.native
   def apply(method: String, url: String, headersJson: String, body: String, hasBody: Boolean,
             done: (Int, String, String) => Unit): Unit = native.value
 }
+/** One HTTP request whose body is bytes (`hasBody`), or whose answer is wanted as bytes (`binary`) as well as text:
+  * `done(status, headersJson, body, bytes)`, `bytes` empty where they were not asked for; status -1 when the request
+  * itself failed. The Roku's worker takes the bytes to and from files, so they come through whole. */
+@native object uiHttpBytes {
+  def apply(method: String, url: String, headersJson: String, body: Array[Byte], hasBody: Boolean, binary: Boolean,
+            done: (Int, String, String, Array[Byte]) => Unit): Unit = native.value
+}
+/** `text` as the bytes of its UTF-8. */
+@native object uiUtf8 {
+  def apply(text: String): Array[Byte] = native.value
+}
+/** UTF-8 bytes as the text they are. */
+@native object uiUtf8Text {
+  def apply(bytes: Array[Byte]): String = native.value
+}

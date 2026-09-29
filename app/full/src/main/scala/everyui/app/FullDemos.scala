@@ -37,5 +37,9 @@ object FullDemos {
       VideoDemo.run()
       true
     }
+    else if (demo == "transfer") {
+      TransferDemo.run()
+      true
+    }
     else false
 }

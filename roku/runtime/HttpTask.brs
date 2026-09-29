@@ -1,7 +1,8 @@
 ' EveryUI's HTTP worker on the Roku (the network module): the render thread cannot own an roUrlTransfer, so a few of
 ' these run for the life of the channel, each taking requests one at a time on its `request` field ({id, url, method,
-' headers, body}) and answering on `result` ({id, status, headers (JSON), body}). Each keeps its roUrlTransfer, and so
-' its connection: a request of its own would pay for a TLS handshake every time, which on a Roku is most of the wait.
+' headers, body}, and bytes, binary and bodyHex for bytes) and answering on `result` ({id, status, headers (JSON), body},
+' and hex). Each keeps its roUrlTransfer, and so its connection: a request of its own would pay for a TLS handshake every
+' time, which on a Roku is most of the wait.
 sub init()
     m.top.functionName = "runTask"
 end sub
@@ -49,6 +50,7 @@ function fetch(u as object, req as object) as object
     u.SetHeaders(headers)
     method = UCase(req.method)
     u.SetRequest(method)
+    if req.bytes <> invalid then return fetchBytes(u, req, method)
     started = false
     if method = "GET"
         started = u.AsyncGetToString()
@@ -64,4 +66,53 @@ function fetch(u as object, req as object) as object
     end if
     u.AsyncCancel()
     return { id: req.id, status: -1, headers: "{}", body: "timeout" }
+end function
+
+' A request with a body of bytes, or wanting its answer's (`binary`): sent from and taken into files in tmp:, which
+' carry every byte where a string would stop at a NUL, and handed back as hex ({hex}), which a field can carry.
+function fetchBytes(u as object, req as object, method as string) as object
+    fs = CreateObject("roFileSystem")
+    base = "tmp:/everyui-" + req.id
+    sent = invalid
+    if req.bodyHex <> invalid or method <> "GET"
+        body = CreateObject("roByteArray")
+        if req.bodyHex <> invalid then body.FromHexString(req.bodyHex)
+        sent = base + "-body"
+        body.WriteFile(sent)
+    end if
+    got = invalid
+    if req.binary = true then got = base + "-answer"
+    started = false
+    if method = "HEAD"
+        started = u.AsyncHead()
+    else if sent = invalid and got <> invalid
+        started = u.AsyncGetToFile(got)
+    else if sent = invalid
+        started = u.AsyncGetToString()
+    else if got = invalid
+        started = u.AsyncPostFromFile(sent)
+    else
+        started = u.AsyncPostFromFileToFile(sent, got)
+    end if
+    r = { id: req.id, bytes: true, status: -1, headers: "{}", body: "request not started" }
+    if started
+        msg = wait(60000, u.GetMessagePort())
+        if type(msg) = "roUrlEvent"
+            r.status = msg.GetResponseCode()
+            r.headers = FormatJson(msg.GetResponseHeaders())
+            r.body = msg.GetString()
+            if got <> invalid and fs.Exists(got)
+                answer = CreateObject("roByteArray")
+                answer.ReadFile(got)
+                r.hex = answer.ToHexString()
+                r.body = answer.ToAsciiString()
+            end if
+        else
+            u.AsyncCancel()
+            r.body = "timeout"
+        end if
+    end if
+    if sent <> invalid then fs.Delete(sent)
+    if got <> invalid and fs.Exists(got) then fs.Delete(got)
+    return r
 end function

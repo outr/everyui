@@ -487,6 +487,47 @@ func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ 
     return .vNull
 }
 
+/// `text` as the bytes of its UTF-8, a Scala `Array[Byte]`'s numbers from -128 to 127.
+func uiUtf8(_ text: V) -> V { rtArr(Array(rtS(text).utf8).map { .vInt(Int(Int8(bitPattern: $0))) }) }
+
+/// UTF-8 bytes (a Scala `Array[Byte]`) as the text they are.
+func uiUtf8Text(_ bytes: V) -> V {
+    .vStr(String(decoding: rtItems(bytes).map { UInt8(truncatingIfNeeded: Int(rtDouble($0))) }, as: UTF8.self))
+}
+
+/// The same with a body of bytes (`hasBody`), or an answer wanted as bytes (`binary`) as well as text:
+/// `done(status, headersJson, text, bytes)`, a Scala `Array[Byte]`'s numbers from -128 to 127.
+func uiHttpBytes(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ binary: V, _ done: V) -> V {
+    guard let u = URL(string: rtS(url)) else {
+        _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url)), rtArr([])]))
+        return .vNull
+    }
+    var request = URLRequest(url: u)
+    request.httpMethod = rtS(method)
+    if let data = rtS(headersJson).data(using: .utf8),
+       let headers = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        for (k, v) in headers { request.setValue("\(v)", forHTTPHeaderField: k) }
+    }
+    if hasBody.rtTrue { request.httpBody = Data(rtItems(body).map { UInt8(truncatingIfNeeded: Int(rtDouble($0))) }) }
+    let wanted = binary.rtTrue
+    URLSession.shared.dataTask(with: request) { data, response, error in
+        DispatchQueue.main.async {
+            if let error = error {
+                _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription), rtArr([])]))
+                return
+            }
+            let http = response as? HTTPURLResponse
+            var headers: [String: String] = [:]
+            http?.allHeaderFields.forEach { headers["\($0.key)"] = "\($0.value)" }
+            let headersJson = (try? JSONSerialization.data(withJSONObject: headers)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+            let text = data.map { String(decoding: $0, as: UTF8.self) } ?? ""
+            let bytes: [V] = wanted ? (data.map { d in d.map { V.vInt(Int(Int8(bitPattern: $0))) } } ?? []) : []
+            _ = try? RtInvoke(done, rtArr([.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text), rtArr(bytes)]))
+        }
+    }.resume()
+    return .vNull
+}
+
 /// `--<name>=value` on the launch, or "".
 func uiLaunchArg(_ name: V) -> V {
     let prefix = "--" + rtS(name) + "="

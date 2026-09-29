@@ -47,6 +47,8 @@ import everyui.render.Platform
   *              (app/full: FullDemos)
   *   forcegraph words seen together on a GraphView laid out by forces: a few hundred, draggable, with words added and
   *              removed (`n=<words>`, `measure=1`); not on a Roku or an Apple TV (app/full: FullDemos)
+  *   transfer   files to a server: a multipart upload of a JSON field and a file, made or picked (`api=<origin>`); not
+  *              on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

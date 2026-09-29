@@ -4,7 +4,7 @@ import rapid.Task
 import spice.http.{Headers, HttpMethod, HttpRequest, WebSocket}
 import spice.http.client.{ClientPlatform, HttpClient, HttpClientImplementation, HttpClientImplementationManager, RetryManager}
 import spice.http.client.intercept.Interceptor
-import spice.http.content.StringContent
+import spice.http.content.{BytesContent, StringContent}
 import spice.net.{ContentType, DNS, URL}
 
 import scala.concurrent.duration.*
@@ -45,8 +45,14 @@ object SpiceHttp {
   def call(client: HttpClient, call: HttpCall): Task[HttpResult] = {
     var c = client.url(URL.parse(call.url)).method(HttpMethod(call.method)).withCredentials(call.credentials)
     if (call.timeout > 0.0) c = c.timeout((call.timeout * 1000.0).toLong.millis)
-    call.headers.foreach((k, v) => c = c.header(k, v))
-    call.body.foreach(b => c = c.content(StringContent(b, ContentType.parse(call.contentType))))
+    // a multipart body's Content-Type is its own, naming its boundary
+    call.headers.filter(h => call.parts.isEmpty || h._1.toLowerCase != "content-type")
+      .foreach((k, v) => c = c.header(k, v))
+    if (call.parts.nonEmpty) {
+      val boundary = Multipart.boundary()
+      c = c.content(BytesContent(Multipart.encode(call.parts, boundary), ContentType.parse(Multipart.contentType(boundary))))
+    }
+    else call.body.foreach(b => c = c.content(StringContent(b, ContentType.parse(call.contentType))))
     c.send().flatMap { response =>
       response.content.map(_.asString).getOrElse(Task.pure("")).map { body =>
         HttpResult(response.status.code, response.headers.map.toList.flatMap((k, vs) => vs.map(v => k -> v)), body)

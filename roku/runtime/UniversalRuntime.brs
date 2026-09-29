@@ -1388,6 +1388,58 @@ end sub
 
 ' Requests wait in a queue for one of a few EveryUIHttpTask workers (uiHttpWorkers), which keep their connections.
 sub uiHttp(method as string, url as string, headersJson as string, body as string, hasBody as boolean, done as dynamic)
+    headers = ParseJson(headersJson)
+    if headers = invalid then headers = {}
+    uiHttpEnqueue({ url: url, method: method, headers: headers, body: body, hasBody: hasBody }, done)
+end sub
+
+' The same with a body of bytes, or an answer wanted as bytes (`binary`): the bytes cross to the worker and back as hex,
+' which a field carries where it cannot carry an roByteArray, and the worker sends and takes them through files, so they
+' come through whole where a string would stop at a NUL. `done` hears (status, headersJson, text, bytes).
+sub uiHttpBytes(method as string, url as string, headersJson as string, body as object, hasBody as boolean, binary as boolean, done as dynamic)
+    headers = ParseJson(headersJson)
+    if headers = invalid then headers = {}
+    request = { url: url, method: method, headers: headers, body: "", hasBody: hasBody, bytes: true, binary: binary }
+    if hasBody
+        ba = CreateObject("roByteArray")
+        for each b in body
+            ba.Push(b and 255)
+        end for
+        request.bodyHex = ba.ToHexString()
+    end if
+    uiHttpEnqueue(request, done)
+end sub
+
+' `text` as the bytes of its UTF-8, as a Scala Array[Byte] is kept: numbers from -128 to 127.
+function uiUtf8(text as string) as object
+    ba = CreateObject("roByteArray")
+    ba.FromAsciiString(text)
+    return uiSignedBytes(ba)
+end function
+
+' An roByteArray as a Scala Array[Byte] is kept: numbers from -128 to 127, read by index (not every engine walks a byte
+' array with for each as a device does).
+function uiSignedBytes(ba as object) as object
+    out = []
+    last = ba.Count() - 1
+    for i = 0 to last
+        b = ba[i]
+        if b > 127 then out.Push(b - 256) else out.Push(b)
+    end for
+    return out
+end function
+
+' UTF-8 bytes (a Scala Array[Byte]) as the text they are.
+function uiUtf8Text(bytes as object) as string
+    ba = CreateObject("roByteArray")
+    for each b in bytes
+        ba.Push(b and 255)
+    end for
+    return ba.ToAsciiString()
+end function
+
+' Queue `request` for a worker, `done` to hear its answer; the workers are started with the first.
+sub uiHttpEnqueue(request as object, done as dynamic)
     ga = GetGlobalAA()
     if ga.uiHttps = invalid
         ga.uiHttps = {}
@@ -1404,11 +1456,9 @@ sub uiHttp(method as string, url as string, headersJson as string, body as strin
         end for
     end if
     ga.uiHttpSeq = ga.uiHttpSeq + 1
-    id = "uiHttp" + ga.uiHttpSeq.ToStr()
-    ga.uiHttps[id] = done
-    headers = ParseJson(headersJson)
-    if headers = invalid then headers = {}
-    ga.uiHttpQueue.Push({ id: id, url: url, method: method, headers: headers, body: body, hasBody: hasBody })
+    request.id = "uiHttp" + ga.uiHttpSeq.ToStr()
+    ga.uiHttps[request.id] = done
+    ga.uiHttpQueue.Push(request)
     uiHttpNext()
 end sub
 
@@ -1440,7 +1490,19 @@ sub uiOnHttpResult(event as object)
     done = ga.uiHttps[r.id]
     ga.uiHttps.Delete(r.id)
     uiHttpNext()
-    if done <> invalid then RtGuard(done, [r.status, r.headers, r.body])
+    if done = invalid then return
+    if r.bytes <> invalid
+        ' the bytes back from hex, as a Scala Array[Byte] is kept: numbers from -128 to 127
+        bytes = []
+        if r.hex <> invalid
+            ba = CreateObject("roByteArray")
+            ba.FromHexString(r.hex)
+            bytes = uiSignedBytes(ba)
+        end if
+        RtGuard(done, [r.status, r.headers, r.body, bytes])
+    else
+        RtGuard(done, [r.status, r.headers, r.body])
+    end if
 end sub
 
 ' A SceneGraph Rectangle has no corner radius.
