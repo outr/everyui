@@ -805,6 +805,14 @@ lazy val app = project.in(file("app"))
 
 `sbt 'set app/everyuiWebTarget := WebTarget.Js' app/webBundle` builds one another way, without editing the build.
 
+`everyuiWebStage` says how far both builds are linked: `WebStage.Full` (the default) is `fullLinkJS`, a release;
+`WebStage.Fast` is `fastLinkJS` for main.js, and the WebAssembly build linked with `fastLinkJS`'s configuration, for
+development: `sbt 'set app/everyuiWebStage := WebStage.Fast' app/webBundle`. A fast build is not minified (over the
+wire, main.js a third larger and main.wasm twice the size, and both run slower), so the bundle task's log says which
+it is: `[sbt-everyui] web bundle: fast link (development)` or `full link (release)`. On the example app the link
+itself is 1.0 s fast against 1.4 s full for main.js, and 0.9 s against 1.3 s for main.wasm, out of about 6 s for a
+bundle after a one-line change, so most of a web build's time is elsewhere.
+
 `everyuiWebFonts` is EveryUI's fonts out of the everyui-web jar, a directory to copy as `fonts/`, and `everyuiWebGuests`
 the web guests' files out of their modules (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`), a directory to
 copy next to the page: `IO.copyDirectory(everyuiWebGuests.value, out)`. Both are `everyui.sbt.ModuleFiles`, which a
