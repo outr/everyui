@@ -52,6 +52,17 @@ object Files {
   def saveUrl(url: String, name: String, mime: Option[String] = None): Task[SaveResult] =
     Task.async[SaveResult](done => FileAccess.saveUrl(absolute(url), name, mime.getOrElse(FileTypes.of(name)), done))
 
+  /** A file whose bytes are made once the person has chosen where it goes: the picker opens first (from the click, as a
+    * browser wants it), then `bytes` runs, and what it answers is written. `Left(why)` writes nothing and answers
+    * `SaveFailed(why)` (Android deletes the document it made). A browser without a picker downloads the bytes once they
+    * come. For bytes from a server, `everyui.network.HttpFiles.save` runs the request this way.
+    *
+    * {{{
+    *   Files.saveLater("export.zip")(Task.async(done => build(zip => done(Right(zip))))).map(said).start()
+    * }}} */
+  def saveLater(name: String, mime: Option[String] = None)(bytes: Task[Either[String, Array[Byte]]]): Task[SaveResult] =
+    Task.async[SaveResult](done => FileAccess.saveLater(name, mime.getOrElse(FileTypes.of(name)), bytes, done))
+
   private def absolute(url: String): String = {
     val origin = everyui.render.Platform.origin()
     if (url.contains("://") || url.startsWith("blob:") || url.startsWith("data:") || origin.isEmpty) url

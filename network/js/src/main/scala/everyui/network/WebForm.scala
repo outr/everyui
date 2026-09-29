@@ -28,7 +28,12 @@ object WebForm {
       credentials = if (call.credentials) "include" else "same-origin")
     val done = Task.completable[HttpResult]
     dom.fetch(call.url, init.asInstanceOf[dom.RequestInit]).`then`[Unit] { (r: dom.Response) =>
-      r.text().`then`[Unit] { (text: String) =>
+      if (call.binary) r.arrayBuffer().`then`[Unit] { (buffer: ArrayBuffer) =>
+        dom.window.clearTimeout(timer)
+        val bytes = new Int8Array(buffer).toArray
+        done.success(HttpResult(r.status, headersOf(r), new String(bytes, "UTF-8"), Some(bytes)))
+      }
+      else r.text().`then`[Unit] { (text: String) =>
         dom.window.clearTimeout(timer)
         done.success(HttpResult(r.status, headersOf(r), text))
       }

@@ -102,40 +102,63 @@ object FileAccess {
 
   /** The bytes as a Blob: written to the file the picker chose, or downloaded. */
   def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit = {
-    val blob = new dom.Blob(js.Array(bytes.toTypedArray.buffer), new dom.BlobPropertyBag { `type` = mime })
-    val href = () => {
-      val url = dom.URL.createObjectURL(blob)
-      // kept until the browser has started its download from it
-      dom.window.setTimeout(() => dom.URL.revokeObjectURL(url), 60000)
-      url
-    }
-    toPicked(name, mime, href, done)(file => file.write(blob).asInstanceOf[js.Promise[Any]]
-      .`then`[Any]((_: Any) => file.close().asInstanceOf[js.Promise[Any]]))
+    val blob = blobOf(bytes, mime)
+    toPicked(name, mime, () => download(objectUrl(blob), name, done), done)(file => written(file, blob))
   }
 
   /** Fetched into the file the picker chose, as it arrives; without a picker, the browser downloads it itself. */
   def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
-    toPicked(name, mime, () => url, done)(file => dom.fetch(url).`then`[Any] { (r: dom.Response) =>
+    toPicked(name, mime, () => download(url, name, done), done)(file => dom.fetch(url).`then`[Any] { (r: dom.Response) =>
       if (!r.ok) js.Promise.reject(r.status.toString + " " + r.statusText)
       else r.body.asInstanceOf[js.Dynamic].pipeTo(file).asInstanceOf[js.Promise[Any]]
     })
 
+  /** The picker first, while the click that asked is still fresh; then the bytes made and written into the file chosen.
+    * Without a picker they are made first, and downloaded. */
+  def saveLater(name: String, mime: String, bytes: Task[Either[String, Array[Byte]]], done: SaveResult => Unit): Unit = {
+    val downloaded = () => bytes.map {
+      case Right(made) => download(objectUrl(blobOf(made, mime)), name, done)
+      case Left(why) => done(SaveResult.SaveFailed(why))
+    }.start()
+    toPicked(name, mime, downloaded, done) { file =>
+      new js.Promise[Array[Byte]]((resolve, reject) => bytes.map {
+        case Right(made) => resolve(made)
+        case Left(why) => reject(why)
+      }.start()).`then`[Any]((made: Array[Byte]) => written(file, blobOf(made, mime)))
+    }
+  }
+
+  private def blobOf(bytes: Array[Byte], mime: String): dom.Blob =
+    new dom.Blob(js.Array(bytes.toTypedArray.buffer), new dom.BlobPropertyBag { `type` = mime })
+
+  /** `blob` written into the file chosen, which is then closed. */
+  private def written(file: js.Dynamic, blob: dom.Blob): js.Promise[Any] =
+    file.write(blob).asInstanceOf[js.Promise[Any]].`then`[Any]((_: Any) => file.close().asInstanceOf[js.Promise[Any]])
+
+  /** An object URL for `blob`, kept until the browser has started its download from it. */
+  private def objectUrl(blob: dom.Blob): String = {
+    val url = dom.URL.createObjectURL(blob)
+    dom.window.setTimeout(() => dom.URL.revokeObjectURL(url), 60000)
+    url
+  }
+
+  /** `href` downloaded as `name`, which the browser says no more about. */
+  private def download(href: String, name: String, done: SaveResult => Unit): Unit = {
+    val a = dom.document.createElement("a").asInstanceOf[html.Anchor]
+    a.href = href
+    a.setAttribute("download", name)
+    a.style.display = "none"
+    dom.document.body.appendChild(a)
+    a.click()
+    dom.document.body.removeChild(a)
+    done(SaveResult.Saved(None))
+  }
+
   /** The save picker, suggesting `name`, and `write` into the file chosen (which closes it). Without a picker, or
-    * where it may not open now (no click to open it from, a type it will not take), the file is downloaded from
-    * `href` instead, which the browser says no more about. */
-  private def toPicked(name: String, mime: String, href: () => String, done: SaveResult => Unit)
+    * where it may not open now (no click to open it from, a type it will not take), `download` instead. */
+  private def toPicked(name: String, mime: String, download: () => Unit, done: SaveResult => Unit)
                       (write: js.Dynamic => js.Promise[Any]): Unit = {
     val window = dom.window.asInstanceOf[js.Dynamic]
-    val download = () => {
-      val a = dom.document.createElement("a").asInstanceOf[html.Anchor]
-      a.href = href()
-      a.setAttribute("download", name)
-      a.style.display = "none"
-      dom.document.body.appendChild(a)
-      a.click()
-      dom.document.body.removeChild(a)
-      done(SaveResult.Saved(None))
-    }
     if (js.typeOf(window.showSaveFilePicker) != "function") download()
     else {
       val options = js.Dynamic.literal(suggestedName = name)

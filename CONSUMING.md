@@ -890,6 +890,8 @@ file is among the web's `accept` words ("image/*", "text/plain", ".md").
 **Saving.** `Files.save(bytes, name, mime)` hands the person a file to keep, and `Files.saveUrl(url, name, mime)` what a
 URL answers with; `mime` is an `Option` (by the name's extension when None). Each answers a `Task[SaveResult]`:
 `Saved(name)`, `Cancelled` (the picker closed), or `SaveFailed(message)`.
+`Files.saveLater(name, mime)(bytes)` opens the picker first and writes bytes made afterwards (a `Task[Either[String,
+Array[Byte]]]`); a server's answer is saved with `everyui.network.HttpFiles.save` (below).
 
 ```scala
 import everyui.file.{Files, SaveResult}
@@ -1203,6 +1205,45 @@ own headers go with it (an `Authorization`, say), but not a Content-Type: the bo
   Spice's client.
 - **Roku, Apple TV**: the same body, sent as bytes: the Roku's worker posts it from a file in `tmp:`, since a string
   would stop at the first NUL; the Apple TV's `URLSession` takes the bytes as they are.
+
+## Downloads: a response's bytes, saved (`everyui.network`)
+
+`HttpCall(..., binary = true)` reads the response's bytes as they came: `HttpResult.bytes` is `Some(bytes)` (None on a
+call that did not ask), and `body` is the same read as UTF-8, for an error's text. `result.mime` is the Content-Type's
+type ("image/png"), `result.contentType` the header whole, `result.fileName` the name its Content-Disposition gives
+(`filename*=UTF-8''…` first, then `filename`, any path dropped), and `result.header(name)` any header, whatever its
+case. `bodyBytes = Some(bytes)` sends a body of bytes, of `contentType`, in place of `body`.
+
+`HttpFiles.save(call, name = None, mime = None)` makes the call for its bytes and saves them as `Files.save` does,
+answering a `Task[SaveResult]`:
+
+```scala
+import everyui.network.{HttpCall, HttpFiles}
+
+val export = HttpCall("POST", "/entity/download-export", body = Some(JsonFormatter.Compact(request.json)))
+HttpFiles.save(export).map {                          // named as the server names it
+  case SaveResult.Saved(name) => Toast.show("Saved " + name.getOrElse(entry.fileName))
+  case SaveResult.Cancelled => ()
+  case SaveResult.SaveFailed(why) => Toast.show("Not saved: " + why)   // "HTTP 403: …" for a refusal
+}.start()
+HttpFiles.save(export, Some(entry.fileName))          // the picker first, then the request
+```
+
+With a `name`, the save picker opens first, from the click (a browser opens it only for one), and the request is made
+once the person has chosen where (`Files.saveLater(name, mime)(bytes)`, which any bytes made later can use); closing
+the picker makes no request. Without one, the request is made first and the file named by the server (else by the
+URL's last segment); a browser then opens its picker only while the click is recent (about five seconds in Chromium)
+and downloads the file otherwise. A status that is not a success saves nothing and answers `SaveFailed("HTTP <status>:
+<what it said>")`. `HttpFiles.fetched(call)` is the call alone: the bytes and the result, or why there are none.
+
+- **Web**: the response read as an ArrayBuffer (Spice 1.10.9-SNAPSHOT6's client, which reads every response as
+  bytes and a text one as its charset says). Another origin must allow the page (CORS) and expose the name,
+  `Access-Control-Expose-Headers: Content-Disposition`, or `fileName` is None there.
+- **Desktop, Android**: Spice's client; the file is written off the drawing thread.
+- **Roku**: the worker takes the answer into a file in `tmp:` (a string would stop at the first NUL) and hands it back
+  whole, as hex, so `bytes` are exact, but an `Array[Byte]` on a Roku is an array of numbers: keep it to small files.
+  There is nowhere to save, so `HttpFiles.save` answers `SaveFailed` without a request.
+- **Apple TV**: `URLSession`'s data, whole; nowhere to save either.
 
 ## An installable web app
 

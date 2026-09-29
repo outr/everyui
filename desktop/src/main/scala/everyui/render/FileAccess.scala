@@ -77,6 +77,16 @@ object FileAccess {
       finally in.close()
     }
 
+  /** The bytes made once the file is chosen, and written into it; nothing is written where they fail. */
+  def saveLater(name: String, mime: String, bytes: Task[Either[String, Array[Byte]]], done: SaveResult => Unit): Unit =
+    chooseSave(name) match {
+      case None => done(SaveResult.Cancelled)
+      case Some(file) => bytes.map {
+        case Left(why) => Platform.later(() => done(SaveResult.SaveFailed(why)))
+        case Right(made) => written(file, done)(f => java.nio.file.Files.write(f.toPath, made))
+      }.start()
+    }
+
   /** Where a save goes: the system's save dialog over the window, suggesting `name` (with its extension offered beside
     * any file), or None when the person closes it. A spec puts a file of its own here. */
   private[everyui] var chooseSave: String => Option[java.io.File] = name => {
@@ -93,12 +103,15 @@ object FileAccess {
   private def chooseAndWrite(name: String, done: SaveResult => Unit)(write: java.io.File => Unit): Unit =
     chooseSave(name) match {
       case None => done(SaveResult.Cancelled)
-      case Some(file) => Platform.offThread(() => {
-        val result = try {
-          write(file)
-          SaveResult.Saved(Some(file.getPath))
-        } catch { case t: Exception => SaveResult.SaveFailed(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)) }
-        Platform.later(() => done(result))
-      })
+      case Some(file) => written(file, done)(write)
     }
+
+  private def written(file: java.io.File, done: SaveResult => Unit)(write: java.io.File => Unit): Unit =
+    Platform.offThread(() => {
+      val result = try {
+        write(file)
+        SaveResult.Saved(Some(file.getPath))
+      } catch { case t: Exception => SaveResult.SaveFailed(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)) }
+      Platform.later(() => done(result))
+    })
 }

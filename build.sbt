@@ -280,7 +280,7 @@ lazy val roku = (project in file("roku"))
 // example server used it too), so the backend is part of the system rather than
 // a dev-only prop — where API endpoints, WebSocket hot-reload or OpenAPI go
 // when the framework needs them. Consumed from ~/.ivy2/local.
-lazy val spiceVersion = "1.10.9-SNAPSHOT5"
+lazy val spiceVersion = "1.10.9-SNAPSHOT6"
 
 // --- seo: what a page says to search and answer engines, written by an app's server -------------------------
 // Plain Scala over the shared PageMeta and Alternate (every backend has those); the rest (the page's content as HTML

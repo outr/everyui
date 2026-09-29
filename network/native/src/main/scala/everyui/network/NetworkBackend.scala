@@ -43,13 +43,20 @@ object NetworkBackend {
 
   def http(call: HttpCall): Task[HttpResult] = {
     val done = Task.completable[HttpResult]
-    if (call.parts.nonEmpty) {
-      // a multipart body goes as bytes, under the boundary its Content-Type names
+    if (call.parts.nonEmpty || call.bodyBytes.isDefined || call.binary) {
       val boundary = Multipart.boundary()
-      val typed = call.headers.filter(_._1.toLowerCase != "content-type") :+
-        ("Content-Type" -> Multipart.contentType(boundary))
-      uiHttpBytes(call.method, call.url, json(typed), Multipart.encode(call.parts, boundary), true, false,
-        (status, headersJson, text, _) => done.success(HttpResult(status, headers(headersJson), text)))
+      // the body's type goes with it: a multipart body's names its boundary
+      val typed = if (call.parts.nonEmpty) call.headers.filter(_._1.toLowerCase != "content-type") :+
+          ("Content-Type" -> Multipart.contentType(boundary))
+        else if (call.bodyBytes.isEmpty && call.body.isEmpty) call.headers
+        else if (call.headers.exists(_._1.toLowerCase == "content-type")) call.headers
+        else call.headers :+ ("Content-Type" -> call.contentType)
+      val body = if (call.parts.nonEmpty) Multipart.encode(call.parts, boundary)
+        else call.bodyBytes.getOrElse(call.body.map(uiUtf8(_)).getOrElse(new Array[Byte](0)))
+      val hasBody = call.parts.nonEmpty || call.bodyBytes.isDefined || call.body.isDefined
+      uiHttpBytes(call.method, call.url, json(typed), body, hasBody, call.binary,
+        (status, headersJson, text, bytes) =>
+          done.success(HttpResult(status, headers(headersJson), text, if (call.binary) Some(bytes) else None)))
     }
     else uiHttp(call.method, call.url, json(call.headers), call.body.getOrElse(""), call.body.isDefined,
       (status, headersJson, body) => done.success(HttpResult(status, headers(headersJson), body)))

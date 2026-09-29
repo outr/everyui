@@ -1,5 +1,6 @@
 package everyui.render
 
+import everyui.async.Task
 import everyui.file.{PickedFile, SaveResult}
 
 /** Files from the person (`everyui.file.Files`). A remote has no picker and nothing is dragged onto a television, so
@@ -23,5 +24,9 @@ object FileAccess {
     done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
 
   def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
+    done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
+
+  /** The bytes are never made: there is nowhere for them to go. */
+  def saveLater(name: String, mime: String, bytes: Task[Either[String, Array[Byte]]], done: SaveResult => Unit): Unit =
     done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
 }

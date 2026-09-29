@@ -116,15 +116,16 @@ object Network {
   * than `*`; its own origin has them either way. Only the web has the choice.
   *
   * `parts` is a multipart/form-data body (`multipart`), sent in place of `body` under a boundary of its own, which the
-  * Content-Type names (`contentType` is not used).
+  * Content-Type names (`contentType` is not used). `bodyBytes` is a body of bytes, sent as they are in place of `body`,
+  * of `contentType`. `binary` asks for the response's bytes as well as its text (`HttpResult.bytes`), for a file.
   *
   * {{{
-  *   Network.http(HttpCall.multipart("/feedback",
-  *     List(FormPart.json("auth", auth), FormPart.file("screenshot", "s.png", png, "image/png"))))
+  *   Network.http(HttpCall("POST", "/entity/download-export", body = Some(request), binary = true))
+  *   Network.http(HttpCall.multipart("/feedback", List(FormPart.json("feedback", note), FormPart.file("file", "log.txt", log))))
   * }}} */
 case class HttpCall(method: String, url: String, headers: List[(String, String)] = Nil, body: Option[String] = None,
                     contentType: String = "application/json", timeout: Double = 0.0, credentials: Boolean = false,
-                    parts: List[FormPart] = Nil)
+                    parts: List[FormPart] = Nil, bodyBytes: Option[Array[Byte]] = None, binary: Boolean = false)
 
 object HttpCall {
   /** A multipart/form-data request of `parts` (RFC 7578, as a browser sends a form): fields of text and files. */
@@ -133,7 +134,27 @@ object HttpCall {
     HttpCall(method, url, headers, None, "multipart/form-data", timeout, credentials, parts)
 }
 
-/** An HTTP response: the status, the headers (as the backend surfaces them) and the body as text. */
-case class HttpResult(status: Int, headers: List[(String, String)], body: String) {
+/** An HTTP response: the status, the headers (as the backend surfaces them) and the body as text; and, where the call
+  * asked for them (`binary`), the body's bytes as they came, which `body` then holds read as UTF-8. */
+case class HttpResult(status: Int, headers: List[(String, String)], body: String, bytes: Option[Array[Byte]] = None) {
   def ok: Boolean = status >= 200 && status < 300
+
+  /** The first value of the header `name`, whatever its case. */
+  def header(name: String): Option[String] = {
+    val wanted = name.toLowerCase
+    headers.find(_._1.toLowerCase == wanted).map(_._2)
+  }
+
+  /** The Content-Type the server named, as it named it ("text/csv; charset=utf-8"). */
+  def contentType: Option[String] = header("Content-Type")
+
+  /** The type alone, without its parameters ("text/csv"). */
+  def mime: Option[String] = contentType.map { t =>
+    val semi = t.indexOf(";")
+    (if (semi >= 0) t.substring(0, semi) else t).trim.toLowerCase
+  }.filter(_.nonEmpty)
+
+  /** The file name the server gave in its Content-Disposition (`attachment; filename="report.csv"`, or RFC 6266's
+    * `filename*=UTF-8''r%C3%A9sum%C3%A9.pdf`, which wins), without any path in it. */
+  def fileName: Option[String] = header("Content-Disposition").flatMap(Disposition.fileName)
 }

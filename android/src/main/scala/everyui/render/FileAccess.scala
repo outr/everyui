@@ -156,6 +156,23 @@ object FileAccess {
       } finally in.close()
     }
 
+  /** The bytes made once the document is created, and written into it (waited for off the thread that draws); a
+    * document they fail for is deleted again. */
+  def saveLater(name: String, mime: String, bytes: Task[Either[String, Array[Byte]]], done: SaveResult => Unit): Unit =
+    create(name, mime, done) { out =>
+      val made = new java.util.concurrent.CountDownLatch(1)
+      var answer: Either[String, Array[Byte]] = Left("No bytes")
+      bytes.map { b =>
+        answer = b
+        made.countDown()
+      }.start()
+      made.await()
+      answer match {
+        case Left(why) => throw new java.io.IOException(why)
+        case Right(b) => out.write(b)
+      }
+    }
+
   /** The system's document creator, suggesting `name` of type `mime`; what the person creates is written by `write`. */
   private def create(name: String, mime: String, done: SaveResult => Unit)(write: java.io.OutputStream => Unit): Unit = {
     saving.foreach(s => s._2(SaveResult.Cancelled))

@@ -4,7 +4,7 @@ import rapid.Task
 import spice.http.{Headers, HttpMethod, HttpRequest, WebSocket}
 import spice.http.client.{ClientPlatform, HttpClient, HttpClientImplementation, HttpClientImplementationManager, RetryManager}
 import spice.http.client.intercept.Interceptor
-import spice.http.content.{BytesContent, StringContent}
+import spice.http.content.{BytesContent, Content, StringContent}
 import spice.net.{ContentType, DNS, URL}
 
 import scala.concurrent.duration.*
@@ -52,11 +52,24 @@ object SpiceHttp {
       val boundary = Multipart.boundary()
       c = c.content(BytesContent(Multipart.encode(call.parts, boundary), ContentType.parse(Multipart.contentType(boundary))))
     }
-    else call.body.foreach(b => c = c.content(StringContent(b, ContentType.parse(call.contentType))))
-    c.send().flatMap { response =>
-      response.content.map(_.asString).getOrElse(Task.pure("")).map { body =>
-        HttpResult(response.status.code, response.headers.map.toList.flatMap((k, vs) => vs.map(v => k -> v)), body)
-      }
+    else call.bodyBytes match {
+      case Some(bytes) => c = c.content(BytesContent(bytes, ContentType.parse(call.contentType)))
+      case None => call.body.foreach(b => c = c.content(StringContent(b, ContentType.parse(call.contentType))))
     }
+    c.send().flatMap { response =>
+      val headers = response.headers.map.toList.flatMap((k, vs) => vs.map(v => k -> v))
+      if (call.binary) response.content.map(bytes).getOrElse(Task.pure(Array.empty[Byte])).map { b =>
+        HttpResult(response.status.code, headers, new String(b, "UTF-8"), Some(b))
+      }
+      else response.content.map(_.asString).getOrElse(Task.pure("")).map(body => HttpResult(response.status.code, headers, body))
+    }
+  }
+
+  /** A response's bytes as they came: kept as bytes where the client kept them, a text response's as its UTF-8, and a
+    * file the client spooled a large one to read back. */
+  private def bytes(content: Content): Task[Array[Byte]] = content match {
+    case b: BytesContent => Task.pure(b.value)
+    case s: StringContent => Task.pure(s.value.getBytes("UTF-8"))
+    case other => other.asStream.toList.map(_.toArray)
   }
 }

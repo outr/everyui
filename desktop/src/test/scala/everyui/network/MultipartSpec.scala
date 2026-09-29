@@ -69,6 +69,7 @@ class MultipartSpec extends AnyWordSpec with Matchers {
       call.headers shouldBe List("X-Auth" -> "t")
       call.body shouldBe None
       call.parts shouldBe List(FormPart.FieldPart("a", "b"))
+      call.bodyBytes shouldBe None
     }
   }
 }
