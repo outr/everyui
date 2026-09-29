@@ -2173,9 +2173,10 @@ end sub
 ' ── captions: the device's setting, and a video's by it ──
 ' A Roku shows captions by its caption mode, the device's own setting (Settings, Accessibility, Captions mode, and the
 ' options menu during a video), which outlives the video and the channel: a Video node's globalCaptionMode and
-' roDeviceInfo.SetCaptionsMode both write it. So the channel writes it only to show a track the app chose where the
-' device's mode is not On, and puts it back once that is over (uiCaptionsRestore); none chosen is suppressCaptions, on
-' that video alone. Main hears the viewer change it (roDeviceInfoEvent isCaptionModeChanged) and tells the scene.
+' roDeviceInfo.SetCaptionsMode both write it. As Roku's own caption guidance and its certification (4.8) have it, a
+' channel's caption choice is that setting: a track the app chose writes it On, none chosen writes it Off, and with
+' nothing chosen it is left as the viewer set it. Main hears the viewer change it (roDeviceInfoEvent
+' isCaptionModeChanged) and tells the scene.
 
 ' The device's caption mode: "On", "Off", "Instant replay" or "When mute" (a Roku TV's).
 function uiCaptionsMode() as string
@@ -2212,7 +2213,7 @@ sub uiCaptionsUnlisten(id as integer)
 end sub
 
 ' The scene heard from Main that the mode changed. A change the channel made itself (uiCaptionsWrite) is not passed
-' on; one the viewer made is theirs, so nothing is put back after it.
+' on; one the viewer made is heard.
 sub uiCaptionsChanged()
     ga = GetGlobalAA()
     mode = uiCaptionsMode()
@@ -2224,7 +2225,12 @@ sub uiCaptionsChanged()
         return
     end if
     ga.uiCaptionWrote = invalid
-    ga.uiCaptionWas = invalid
+    uiCaptionsHeard()
+end sub
+
+' Each listener told the mode changed.
+sub uiCaptionsHeard()
+    ga = GetGlobalAA()
     if ga.uiCaptionHooks = invalid then return
     hooks = []
     for each k in ga.uiCaptionHooks
@@ -2235,10 +2241,13 @@ sub uiCaptionsChanged()
     end for
 end sub
 
-' The device's mode written by the channel, remembered so its own change is not taken for the viewer's.
+' The device's mode written by the channel for a video's captions, remembered so its own change is not taken for the
+' viewer's.
 sub uiCaptionsWrite(node as object, mode as string)
     ga = GetGlobalAA()
     if ga.uiCaptionLast = invalid then ga.uiCaptionLast = uiCaptionsMode()
+    if uiCaptionsMode() = mode then return
+    print "[captions] device mode "; uiCaptionsMode(); " written "; mode
     ga.uiCaptionWrote = mode
     if node <> invalid and node.hasField("globalCaptionMode")
         node.globalCaptionMode = mode
@@ -2247,47 +2256,40 @@ sub uiCaptionsWrite(node as object, mode as string)
     end if
 end sub
 
-' A video's captions as the app chose them: the track `id` shown, the mode put On while it plays where the device's is
-' not (and what it was kept, to put back); "" for none, suppressed on this video alone and the mode left as it is.
+' The device's mode written as the viewer would write it in the options menu ("On", "Off", "Instant replay", "When
+' mute"), for an app's own caption menu: every listener hears it at once, as the viewer's. False where the box refused.
+function uiCaptionsSetMode(mode as string) as boolean
+    ga = GetGlobalAA()
+    written = CreateObject("roDeviceInfo").SetCaptionsMode(mode)
+    print "[captions] device mode set "; mode; " by the app: "; written
+    if written <> true then return false
+    ga.uiCaptionLast = mode
+    ga.uiCaptionWrote = invalid
+    uiCaptionsHeard()
+    return true
+end function
+
+' A video's captions as the app chose them: the track `id` shown and the device's mode written On, or "" for none and
+' the mode written Off.
 sub uiCaptionsChosen(node as object, id as string)
-    if node = invalid or not node.hasField("suppressCaptions") then return
+    if node = invalid or not node.hasField("globalCaptionMode") then return
     print "[captions] "; node.id; " chosen '"; id; "', device mode "; uiCaptionsMode(); ", language '"; uiCaptionsLanguage(); "'"
+    if node.hasField("suppressCaptions") then node.suppressCaptions = false
     if id = ""
-        node.suppressCaptions = true
-        uiCaptionsRestore()
-        return
-    end if
-    node.subtitleTrack = id
-    node.suppressCaptions = false
-    mode = uiCaptionsMode()
-    if mode <> "On"
-        ga = GetGlobalAA()
-        if ga.uiCaptionWas = invalid then ga.uiCaptionWas = mode
-        print "[captions] device mode "; mode; " put On while the chosen track plays"
+        uiCaptionsWrite(node, "Off")
+    else
+        node.subtitleTrack = id
         uiCaptionsWrite(node, "On")
     end if
 end sub
 
-' A video's captions as the device has them: its mode (On replay and When mute are the Video node's own to follow),
-' nothing suppressed, reading `id` where a track is known ("" leaves the choice to the box, by its caption language).
+' A video's captions as the device has them: its mode as it is (On replay and When mute are the Video node's own to
+' follow), reading `id` where a track is known ("" leaves the choice to the box, by its caption language).
 sub uiCaptionsFollow(node as object, id as string)
-    if node = invalid or not node.hasField("suppressCaptions") then return
+    if node = invalid or not node.hasField("globalCaptionMode") then return
     print "[captions] "; node.id; " the device's, mode "; uiCaptionsMode(); ", language '"; uiCaptionsLanguage(); "', track '"; id; "'"
-    node.suppressCaptions = false
-    uiCaptionsRestore()
+    if node.hasField("suppressCaptions") then node.suppressCaptions = false
     if id <> "" then node.subtitleTrack = id
-end sub
-
-' The device's mode put back as it was before a chosen track put it On, unless the viewer has changed it since.
-sub uiCaptionsRestore()
-    ga = GetGlobalAA()
-    if ga.uiCaptionWas = invalid then return
-    was = ga.uiCaptionWas
-    ga.uiCaptionWas = invalid
-    if uiCaptionsMode() = "On" and was <> ""
-        print "[captions] device mode put back to "; was
-        uiCaptionsWrite(invalid, was)
-    end if
 end sub
 
 ' Whether it is waiting for more of the stream rather than playing.

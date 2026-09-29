@@ -436,15 +436,15 @@ class SGNode
 @native object uiCaptionsUnlisten {
   def apply(id: Int): Unit = native.value
 }
-/** A video's captions as the app chose them: a track shown (the mode put On while it plays, where the device's is
-  * not), or "" for none on this video alone. As the device has them, with a track to read where one is known
-  * (uiCaptionsFollow); and the device's mode put back as it was (uiCaptionsRestore). */
+/** A video's captions as the app chose them: a track shown, the device's mode written On, or "" for none, written Off.
+  * As the device has them, with a track to read where one is known (uiCaptionsFollow). The device's mode written as the
+  * viewer would, and heard as theirs (uiCaptionsSetMode; false where the box refused it). */
 @native object uiCaptionsChosen {
   def apply(node: SGNode, id: String): Unit = native.value
 }
 @native object uiCaptionsFollow {
   def apply(node: SGNode, id: String): Unit = native.value
 }
-@native object uiCaptionsRestore {
-  def apply(): Unit = native.value
+@native object uiCaptionsSetMode {
+  def apply(mode: String): Boolean = native.value
 }

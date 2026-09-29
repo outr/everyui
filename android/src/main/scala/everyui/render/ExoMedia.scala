@@ -407,6 +407,18 @@ class ExoMedia(frame: Option[VideoFrame]) {
   private var textChosen = false
   private var textChoice = ""
 
+  /** The captions as `MediaSupport.captions` chooses them: a track or none (selectTrack), or back to the device's
+    * caption setting, told to the selector and put to the tracks it has. */
+  def chooseText(choice: everyui.component.TextChoice): Unit = choice match {
+    case everyui.component.TextChoice.TextFromDevice =>
+      textChosen = false
+      player.foreach { p =>
+        prefer(p)
+        captions(p)
+      }
+    case other => selectTrack(MediaTrack.Text, everyui.component.TextChoice.asTrack(other).getOrElse(""))
+  }
+
   private def select(p: ExoPlayer, kind: String, id: String): Unit = {
     try {
       val which = if (kind == MediaTrack.Text) C.TRACK_TYPE_TEXT else C.TRACK_TYPE_AUDIO
@@ -473,7 +485,8 @@ class ExoMedia(frame: Option[VideoFrame]) {
     try {
       if (textChosen) select(p, MediaTrack.Text, textChoice)
       else if (read.isEmpty && !p.getCurrentTracks.isTypeSelected(C.TRACK_TYPE_TEXT))
-        everyui.text.Captions.choose(false, None, CaptionAccess.device(), tracks()).foreach(id => select(p, MediaTrack.Text, id))
+        everyui.text.Captions.choose(everyui.component.TextChoice.TextFromDevice, CaptionAccess.device(), tracks())
+          .foreach(id => select(p, MediaTrack.Text, id))
     }
     catch { case t: Throwable => Platform.logError("media: captions", t) }
 

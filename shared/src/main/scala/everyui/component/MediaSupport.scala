@@ -135,16 +135,40 @@ trait MediaSupport { self: Component =>
   lazy val audioTrack: Prop[Option[String]] =
     own(new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Audio, t.getOrElse(""))))
 
-  /** The track being read, by its id; None shows none.
+  /** What its captions are ([[TextChoice]]), and the way to choose them:
     *
-    * Until it is set (or a text language is asked for through [[languages]]), what is read is the device's own caption
-    * setting ([[everyui.text.Captions]]): with its captions on, the track in its caption language, else the first;
-    * with them off, none. Once set, it is the app's choice for every source after, and None turns this video's
-    * captions off without touching the device's setting (a Roku's caption mode is the device's, and outlives the app).
-    * A change the viewer makes to the device's setting while it plays (a Roku's own options menu) is theirs, and is
-    * followed from then on. Where the device says nothing (a browser, the desktop), none is read until one is set. */
+    *  - `TextFromDevice` (what it starts as): the device's own caption setting ([[everyui.text.Captions]]) decides:
+    *    with its captions on, the track in its caption language, else the first; with them off, none. A text language
+    *    asked for through [[languages]] that the stream has is the app's choice over it. Where the device says nothing
+    *    (a browser, the desktop), none.
+    *  - `TextOff`: none, whatever the device says.
+    *  - `TextTrack(id)`: that track ([[textTracks]]), whatever the device says.
+    *
+    * A choice holds for every source after, until another is made. A change the viewer makes to the device's setting
+    * while it plays (a Roku's own options menu, Android's caption settings) is theirs: it goes back to
+    * `TextFromDevice`. On a Roku, captions are drawn by the device's caption mode, which only the device keeps, so
+    * `TextOff` writes it Off and `TextTrack` writes it On, as Roku's own caption menu does (Roku's closed-caption
+    * guidance, and its certification's 4.8); elsewhere the choice is this app's alone.
+    *
+    * {{{
+    *   video.captions @= TextChoice.TextOff
+    *   video.captions @= TextChoice.TextTrack(video.textTracks.head.id)
+    *   video.captions @= TextChoice.TextFromDevice
+    * }}} */
+  lazy val captions: Prop[TextChoice] = own(new Prop[TextChoice](TextChoice.TextFromDevice, c => {
+    node.setMediaText(c)
+    textTrack @= TextChoice.asTrack(c)
+    if (c != TextChoice.TextFromDevice && deviceWatch.isEmpty && !released)
+      deviceWatch = Some(everyui.text.Captions.listen(_ => captions @= TextChoice.TextFromDevice))
+  }))
+  private var deviceWatch: Option[() => Unit] = None
+
+  /** [[captions]] as an id, kept for code written before it, and mapped both ways: None is `TextFromDevice` (the
+    * device decides, NOT none), Some("") is `TextOff`, and Some(id) is `TextTrack(id)`. Setting None after a track
+    * therefore hands the captions back to the device rather than turning them off: say `TextOff` (or Some("")) for
+    * that. */
   lazy val textTrack: Prop[Option[String]] =
-    own(new Prop[Option[String]](None, t => node.selectMediaTrack(MediaTrack.Text, t.getOrElse(""))))
+    own(new Prop[Option[String]](None, t => captions @= TextChoice.fromTrack(t)))
 
   private var listeners: List[String => Unit] = Nil
   private var seated = false
@@ -188,6 +212,8 @@ trait MediaSupport { self: Component =>
     * screen that is finished with what it was playing. */
   def release(): Unit = if (!released) {
     released = true
+    deviceWatch.foreach(stop => stop())
+    deviceWatch = None
     asleep = None
     node.releaseMedia()
   }

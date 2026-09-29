@@ -15,6 +15,11 @@ object CaptionAccess {
 
   def supported(): Boolean = manager.nonEmpty
 
+  // the viewer's to change, in the device's own settings
+  def writable(): Boolean = false
+
+  def setDevice(mode: CaptionMode): Boolean = false
+
   def device(): Option[CaptionPreference] = manager.map { m =>
     val language = Option(m.getLocale).map(_.getLanguage).filter(_.nonEmpty)
     CaptionPreference(if (m.isEnabled) CaptionMode.CaptionsOn else CaptionMode.CaptionsOff, language)

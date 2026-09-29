@@ -1,6 +1,6 @@
 package everyui.text
 
-import everyui.component.MediaTrack
+import everyui.component.{MediaTrack, TextChoice}
 import everyui.text.CaptionMode.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -18,38 +18,48 @@ class CaptionsSpec extends AnyWordSpec with Matchers {
 
   "Choosing captions" should {
     "read the track the app chose, whatever the device says" in {
-      Captions.choose(chosen = true, Some("t3"), device(CaptionsOff), tracks) shouldBe Some("t3")
-      Captions.choose(chosen = true, Some("t3"), device(CaptionsOn, "en"), tracks) shouldBe Some("t3")
-      Captions.choose(chosen = true, Some("t3"), None, tracks) shouldBe Some("t3")
+      Captions.choose(TextChoice.TextTrack("t3"), device(CaptionsOff), tracks) shouldBe Some("t3")
+      Captions.choose(TextChoice.TextTrack("t3"), device(CaptionsOn, "en"), tracks) shouldBe Some("t3")
+      Captions.choose(TextChoice.TextTrack("t3"), None, tracks) shouldBe Some("t3")
     }
     "read none where the app chose none, even with the device's on" in {
-      Captions.choose(chosen = true, None, device(CaptionsOn, "en"), tracks) shouldBe None
-      Captions.choose(chosen = true, Some(""), device(CaptionsOn, "en"), tracks) shouldBe None
+      Captions.choose(TextChoice.TextOff, device(CaptionsOn, "en"), tracks) shouldBe None
+      Captions.choose(TextChoice.TextTrack(""), device(CaptionsOn, "en"), tracks) shouldBe None
     }
     "with nothing chosen and the device's on, read the track in its language" in {
-      Captions.choose(chosen = false, None, device(CaptionsOn, "en"), tracks) shouldBe Some("t2")
-      Captions.choose(chosen = false, None, device(CaptionsOn, "fr"), tracks) shouldBe Some("t1")
-      Captions.choose(chosen = false, None, device(CaptionsOn, "es-MX"), tracks) shouldBe Some("t3")
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOn, "en"), tracks) shouldBe Some("t2")
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOn, "fr"), tracks) shouldBe Some("t1")
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOn, "es-MX"), tracks) shouldBe Some("t3")
     }
     "with nothing chosen and the device's on, read the first track where none is in its language, or it has none" in {
-      Captions.choose(chosen = false, None, device(CaptionsOn, "de"), tracks) shouldBe Some("t1")
-      Captions.choose(chosen = false, None, device(CaptionsOn), tracks) shouldBe Some("t1")
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOn, "de"), tracks) shouldBe Some("t1")
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOn), tracks) shouldBe Some("t1")
     }
     "with nothing chosen and the device's off, or unknown, read none" in {
-      Captions.choose(chosen = false, None, device(CaptionsOff, "en"), tracks) shouldBe None
-      Captions.choose(chosen = false, None, None, tracks) shouldBe None
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOff, "en"), tracks) shouldBe None
+      Captions.choose(TextChoice.TextFromDevice, None, tracks) shouldBe None
     }
     "leave a mode that shows captions only at times to the platform" in {
-      Captions.choose(chosen = false, None, device(CaptionsOnReplay, "en"), tracks) shouldBe None
-      Captions.choose(chosen = false, None, device(CaptionsWhenMuted, "en"), tracks) shouldBe None
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOnReplay, "en"), tracks) shouldBe None
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsWhenMuted, "en"), tracks) shouldBe None
       // the track to have ready for when it does
       Captions.deviceTrack(device(CaptionsWhenMuted, "en"), tracks) shouldBe Some("t2")
       Captions.deviceTrack(device(CaptionsOff, "en"), tracks) shouldBe None
     }
     "read nothing where there is no text track" in {
       val audio = tracks.filter(_.kind == MediaTrack.Audio)
-      Captions.choose(chosen = false, None, device(CaptionsOn, "fr"), audio) shouldBe None
-      Captions.choose(chosen = false, None, device(CaptionsOn, "fr"), Nil) shouldBe None
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOn, "fr"), audio) shouldBe None
+      Captions.choose(TextChoice.TextFromDevice, device(CaptionsOn, "fr"), Nil) shouldBe None
+    }
+  }
+
+  "A caption choice" should {
+    "be read from textTrack and said back as it, both ways" in {
+      TextChoice.fromTrack(None) shouldBe TextChoice.TextFromDevice
+      TextChoice.fromTrack(Some("")) shouldBe TextChoice.TextOff
+      TextChoice.fromTrack(Some("t2")) shouldBe TextChoice.TextTrack("t2")
+      List(TextChoice.TextFromDevice, TextChoice.TextOff, TextChoice.TextTrack("t2"))
+        .foreach(c => TextChoice.fromTrack(TextChoice.asTrack(c)) shouldBe c)
     }
   }
 
@@ -65,9 +75,11 @@ class CaptionsSpec extends AnyWordSpec with Matchers {
   }
 
   "The desktop" should {
-    "say it has no caption setting to tell" in {
+    "say it has no caption setting to tell, nor one to write" in {
       Captions.supported shouldBe false
       Captions.device shouldBe None
+      Captions.writable shouldBe false
+      Captions.setDevice(CaptionsOff) shouldBe false
     }
   }
 }

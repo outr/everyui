@@ -10,6 +10,11 @@ import everyui.tvos.{uiCaptionsLanguage, uiCaptionsListen, uiCaptionsMode, uiCap
 object CaptionAccess {
   def supported(): Boolean = true
 
+  // the viewer's to change, in the device's own settings
+  def writable(): Boolean = false
+
+  def setDevice(mode: CaptionMode): Boolean = false
+
   def device(): Option[CaptionPreference] = CaptionMode.named(uiCaptionsMode()).map { mode =>
     val tag = MediaTrack.languageTag(uiCaptionsLanguage())
     CaptionPreference(mode, if (tag.isEmpty) None else Some(tag))

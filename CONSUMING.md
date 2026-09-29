@@ -1571,38 +1571,66 @@ and with `headers` for its preflight too (`Access-Control-Allow-Headers: Authori
 language they are wanted in, two letters, where the device keeps one. `Captions.listen(p => ...)` hears it change
 (it answers the function that stops it); `Captions.supported` says whether the platform tells at all.
 
-| Platform | Where it comes from | Change heard |
-| --- | --- | --- |
-| Roku | roDeviceInfo: `GetCaptionsMode()` (On, Off, Instant replay, When mute) and `GetPreferredCaptionLanguage()` | yes: Main's roDeviceInfoEvent `isCaptionModeChanged` |
-| Android | CaptioningManager: `isEnabled` (On or Off) and `getLocale` | yes: its CaptioningChangeListener |
-| Apple TV | MediaAccessibility: `MACaptionAppearanceGetDisplayType` (Always On, Automatic, or off) and the first selected language | yes: its settings-changed notification (the Swift runtime is not compiled yet) |
-| Web, desktop | none: a browser and JavaFX say nothing of it (`device` None) | never |
+| Platform | Where it comes from | Change heard | Writable |
+| --- | --- | --- | --- |
+| Roku | roDeviceInfo: `GetCaptionsMode()` (On, Off, Instant replay, When mute) and `GetPreferredCaptionLanguage()` | yes: Main's roDeviceInfoEvent `isCaptionModeChanged` | yes |
+| Android | CaptioningManager: `isEnabled` (On or Off) and `getLocale` | yes: its CaptioningChangeListener | no |
+| Apple TV | MediaAccessibility: `MACaptionAppearanceGetDisplayType` (Always On, Automatic, or off) and the first selected language | yes: its settings-changed notification (the Swift runtime is not compiled yet) | no |
+| Web, desktop | none: a browser and JavaFX say nothing of it (`device` None) | never | no |
 
-A `VideoView` follows it by itself. The rule (`Captions.choose`): a text track the app chose wins (`textTrack`, or a
-text language through `languages` that the stream has); with nothing chosen, the device's: captions on, the track in
-its caption language, else the first; off, none. Once chosen, the choice holds for every source the view plays
-after; a change the viewer makes to the device's setting while it plays is theirs, and drops the app's choice.
+**Writing it.** `Captions.setDevice(mode): Boolean` writes the device's mode where the platform lets an app
+(`Captions.writable`): only a Roku, whose certification (4.8) asks an app with captions for On, Off, On instant replay
+and On mute (a Roku TV's) in its options menu. It answers false where it was not written (every other platform, and
+`CaptionsAutomatic` on a Roku). What it writes is heard by `listen` as the viewer's change, and a video goes back to
+the device's captions.
 
 ```scala
-video.textTrack @= Some(track.id)   // this track, whatever the device says
-video.textTrack @= Some("")         // none, for this video: the device's setting is left as it is
-// never set: the device's setting decides (textTrack's first None is no change, so Off before any choice is Some(""))
+// the four rows of an options menu's Captions item, offered where Captions.writable
+Captions.setDevice(CaptionMode.CaptionsOn)          // On
+Captions.setDevice(CaptionMode.CaptionsOff)         // Off
+Captions.setDevice(CaptionMode.CaptionsOnReplay)    // On instant replay
+Captions.setDevice(CaptionMode.CaptionsWhenMuted)   // On mute (a Roku TV)
 ```
 
-- **Roku.** Captions are drawn by the device's caption mode, which a channel's `globalCaptionMode` writes and which
-  outlives the channel, so EveryUI writes it only to show a track the app chose where the mode is not On, and puts it
-  back as it was when the video is released (or the app chooses none), unless the viewer changed it in between. None
-  chosen is the Video node's `suppressCaptions`, on that video alone. On replay and When mute are left to the Video
-  node. Each source's choice is said on the console: `[captions] <video> the device's, mode On, language 'en', track
-  't2'` or `[captions] <video> chosen '<id>', device mode Off, ...`, and `[captions] device mode now <mode>` as the
-  viewer changes it.
-- **Android.** With nothing chosen, the device's caption language is told to the track selector (a track in it reads
-  from the start) and, once the tracks are known, the first text track stands in where none is in it; with the
-  device's captions off, a track the file flags as its default is not read for that alone (forced subtitles still are).
-- **Web, desktop.** No device setting: none is read until the app chooses one, as before.
+**A video's captions** are `captions: Prop[TextChoice]` on a `VideoView` (or an `AudioPlayer`):
 
-`demo=captions` shows the device's setting as it changes, over a video that follows it until the button chooses none
-or a track (`src=<stream>`), and logs `captions device <mode> <language>` and the rule's choice once the video is ready.
+- `TextChoice.TextFromDevice` (what it starts as): the device's setting decides, by `Captions.choose`: captions on,
+  the track in its caption language, else the first; off, none. A text language asked for through `languages` that
+  the stream has is the app's choice over it. Where the device says nothing (a browser, the desktop), none.
+- `TextChoice.TextOff`: none, whatever the device says.
+- `TextChoice.TextTrack(id)`: that track, whatever the device says.
+
+A choice holds for every source the view plays after, until another is made; a change the viewer makes to the device's
+setting while it plays is theirs, and puts it back to `TextFromDevice`.
+
+```scala
+video.captions @= TextChoice.TextTrack(track.id)
+video.captions @= TextChoice.TextOff
+video.captions @= TextChoice.TextFromDevice
+```
+
+`textTrack: Prop[Option[String]]` is the same choice as an id, kept for code written before `captions`, and mapped both
+ways: **None is `TextFromDevice`** (the device decides, which may well show captions), `Some("")` is `TextOff`, and
+`Some(id)` is `TextTrack(id)`. So `textTrack @= None` does not turn captions off: say `TextOff`.
+
+- **Roku.** Captions are drawn by the device's caption mode, which a channel's `globalCaptionMode` writes and which
+  outlives the channel. As Roku's closed-caption guidance and its certification (4.8) have it, the app's choice is
+  that setting: `TextTrack` writes it On (and picks the track), `TextOff` writes it Off, and neither is put back
+  afterwards; `TextFromDevice` leaves it as the viewer set it, On replay and When mute to the Video node. The choice is
+  put to each source as it opens and again once it plays. Each is said on the console: `[captions] <video> the
+  device's, mode On, language 'en', track 't2'` or `[captions] <video> chosen '<id>', device mode Off, ...`,
+  `[captions] device mode Off written On`, `[captions] device mode set <mode> by the app: true`, and `[captions]
+  device mode now <mode>` as the viewer changes it.
+- **Android.** The choice is the app's alone (CaptioningManager cannot be written). With `TextFromDevice`, the device's
+  caption language is told to the track selector (a track in it reads from the start) and, once the tracks are known,
+  the first text track stands in where none is in it; with the device's captions off, a track the file flags as its
+  default is not read for that alone (forced subtitles still are).
+- **Web, desktop.** No device setting: `TextFromDevice` reads none.
+
+`demo=captions` shows the device's setting as it changes, over a video whose first button steps `captions` through the
+device's, none and each track, and whose second writes the device's mode where it may (`src=<stream>`); it logs
+`captions device <mode> <language>`, the rule's choice once the video is ready, and `captions setDevice <mode>
+<written>`.
 
 ## Web builds: JavaScript, WebAssembly, or both
 

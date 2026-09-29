@@ -674,6 +674,7 @@ class RenderNode(val fx: Node) {
   def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
   // JavaFX lists its tracks but will not switch between them
   def selectMediaTrack(kind: String, id: String): Unit = ()
+  def setMediaText(choice: everyui.component.TextChoice): Unit = ()
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
   def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)

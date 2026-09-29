@@ -440,6 +440,10 @@ class RenderNode(val el: html.Element) {
 
   def mediaTracks(): List[everyui.component.MediaTrack] = if (media.nonEmpty) webMedia.tracks else Nil
   def selectMediaTrack(kind: String, id: String): Unit = if (media.nonEmpty) webMedia.select(kind, id)
+  // no device setting to follow here: the device's is none
+  def setMediaText(choice: everyui.component.TextChoice): Unit =
+    if (media.nonEmpty)
+      webMedia.select(everyui.component.MediaTrack.Text, everyui.component.TextChoice.asTrack(choice).getOrElse(""))
   def setMediaCover(cover: Boolean): Unit = el.style.setProperty("object-fit", if (cover) "cover" else "contain")
   def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.currentTime.asInstanceOf[Double]).getOrElse(0.0)

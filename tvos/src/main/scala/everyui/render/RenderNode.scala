@@ -137,6 +137,7 @@ class RenderNode(val sg: SGNode) {
   /** What was decoded: nothing this player says. */
   def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
   def selectMediaTrack(kind: String, id: String): Unit = ()
+  def setMediaText(choice: everyui.component.TextChoice): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()
   def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = 0.0

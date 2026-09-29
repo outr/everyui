@@ -299,6 +299,7 @@ class RenderNode(val view: View) {
   def mediaDiagnostics(): everyui.component.MediaDiagnostics =
     media.map(_.diagnostics()).getOrElse(everyui.component.MediaDiagnostics())
   def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
+  def setMediaText(choice: everyui.component.TextChoice): Unit = media.foreach(_.chooseText(choice))
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
   def setMediaDirect(direct: Boolean): Unit = media.foreach(_.setDirect(direct))
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
