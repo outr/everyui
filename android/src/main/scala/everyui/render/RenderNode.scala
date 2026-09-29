@@ -427,6 +427,15 @@ class RenderNode(val view: View) {
 
   private var lineAdvance: Double = 0.0
 
+  /** Extra space after each letter, in pixels. Android spaces letters in ems, so it is the pixels over the size (which
+    * `FontFeature` sets first); the measured width takes it. */
+  def setLetterSpacing(px: Double): Unit = view match {
+    case t: TextView =>
+      t.setLetterSpacing(if (fontSize > 0.0) (px / fontSize).toFloat else 0f)
+      laidOutText = null
+    case _ => ()
+  }
+
   /** The TextView's own line spacing, to the advance asked for at its current face and size (which it depends on). */
   private def spaceLines(t: TextView): Unit = if (lineAdvance > 0.0) {
     val metrics = t.getPaint.getFontMetrics
@@ -461,6 +470,7 @@ class RenderNode(val view: View) {
             if (bold && run.italic && slanted.isEmpty) Typeface.BOLD_ITALIC else if (bold) Typeface.BOLD
             else Typeface.ITALIC), from, to)
           if (run.size > 0.0) span(new android.text.style.AbsoluteSizeSpan(math.round(run.size).toInt), from, to)
+          run.letterSpacing.foreach(px => span(new SpacingSpan(px), from, to))
           if (run.strike) span(new android.text.style.StrikethroughSpan(), from, to)
           if (run.underline) span(new android.text.style.UnderlineSpan(), from, to)
           // a link followed by a tap on it; its colour and underline are the run's own

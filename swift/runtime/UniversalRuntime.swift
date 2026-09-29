@@ -195,11 +195,20 @@ func uiSetFont(_ node: V, _ family: V, _ weight: V, _ size: V) -> V {
     return .vNull
 }
 
-/// A label's text width at exactly `size` points of its face: the advance width, as a browser measures it.
+/// Extra space after each letter of a label, in points (0 for the face's own): UIKit's kern.
+func uiSetLetterSpacing(_ node: V, _ px: V) -> V {
+    guard let l = view(node) as? OutlinedLabel else { return .vNull }
+    l.kern = CGFloat(dbl(px))
+    place(l, geo(l))
+    return .vNull
+}
+
+/// A label's text width at exactly `size` points of its face: the advance width, as a browser measures it, its
+/// letter spacing with it.
 func uiTextWidth(_ node: V, _ uri: V, _ size: V) -> V {
     guard let l = view(node) as? UILabel else { return .vDbl(0) }
     let f = l.font.withSize(dbl(size))
-    let w = ((l.text ?? "") as NSString).size(withAttributes: [.font: f]).width
+    let w = ((l.text ?? "") as NSString).size(withAttributes: [.font: f, .kern: (l as? OutlinedLabel)?.kern ?? 0]).width
     return .vDbl(Double(w))
 }
 
@@ -543,6 +552,20 @@ func uiSetOpacity(_ node: V, _ opacity: V) -> V {
 final class OutlinedLabel: UILabel {
     var edgeWidth: CGFloat = 0
     var edgeColor: UIColor = .clear
+    /// Extra space after each letter (`uiSetLetterSpacing`): while it is not 0 the words are attributed text, which a
+    /// font or a colour set later is applied over, keeping the kern.
+    var kern: CGFloat = 0 { didSet { spaced(text) } }
+    override var text: String? {
+        get { super.text }
+        set { spaced(newValue) }
+    }
+    private func spaced(_ words: String?) {
+        if kern == 0 { super.text = words }
+        else {
+            super.attributedText = NSAttributedString(string: words ?? "",
+                attributes: [.kern: kern, .font: font as Any, .foregroundColor: textColor as Any])
+        }
+    }
     // the colour is swapped for the edge's while the stroke is drawn, and a label redraws itself whenever its colour
     // is set: that is held off for the one pass
     private var drawing = false

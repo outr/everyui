@@ -392,6 +392,8 @@ class RenderNode(val sg: SGNode) {
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
   /** A Roku draws nothing blurred. */
   def setBlur(radius: Double): Unit = ()
+  /** A Label spaces no letters: they sit as the face sets them, and the width is theirs. */
+  def setLetterSpacing(px: Double): Unit = ()
   /** Each line of wrapped text `advance` units below the last: the Label's own spacing, to what the face leaves. */
   def setLineHeight(advance: Double): Unit = {
     lineAdvance = advance

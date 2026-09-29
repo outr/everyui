@@ -130,8 +130,8 @@ class RenderNode(val fx: Node) {
   def getWidth(): Double =
     if (explicitWidth >= 0.0) explicitWidth
     else fx match {
-      case t: Text => t.getLayoutBounds.getWidth
-      case f: RichFlow => f.across()
+      case t: Text => t.getLayoutBounds.getWidth + LetterSpacing.width(letterSpacing, t.getText)
+      case f: RichFlow => f.across() + LetterSpacing.width(letterSpacing, runs)
       case _ => 0.0
     }
 
@@ -271,6 +271,11 @@ class RenderNode(val fx: Node) {
     }
   /** Lines of wrapped text keep the face's own spacing here. */
   def setLineHeight(px: Double): Unit = ()
+  /** Extra space after each letter, in pixels: JavaFX spaces no letters, so the words take the spaced width and their
+    * letters sit as the face sets them (`LetterSpacing`). */
+  def setLetterSpacing(px: Double): Unit = letterSpacing = px
+  private var letterSpacing: Double = 0.0
+  private var runs: List[everyui.text.TextRun] = Nil
   /** A link is followed by its click; there is no address to show. */
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
@@ -279,6 +284,7 @@ class RenderNode(val fx: Node) {
     * style, so there they are drawn as the paragraph's own, their words run together, underlined where every word of
     * them is (a subtitle underlined whole), since a line under part of it cannot be. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
+    this.runs = runs
     fx match {
       case f: RichFlow =>
         f.setRuns(runs, follow)

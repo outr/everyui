@@ -101,6 +101,10 @@ class SGNode
 @native object uiSetTextOutline {
   def apply(node: SGNode, width: Double, hex: String): Unit = native.value
 }
+/** Extra space after each letter of a label, in points (0 for the face's own). */
+@native object uiSetLetterSpacing {
+  def apply(node: SGNode, px: Double): Unit = native.value
+}
 /** A bundled face by family and CSS weight; size in points. */
 @native object uiSetFont {
   def apply(node: SGNode, family: String, weight: Int, size: Double): Unit = native.value

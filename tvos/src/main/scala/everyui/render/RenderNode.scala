@@ -218,6 +218,8 @@ class RenderNode(val sg: SGNode) {
   def setBlur(radius: Double): Unit = ()
   /** Lines keep the face's own spacing. */
   def setLineHeight(px: Double): Unit = ()
+  /** Extra space after each letter, in points: UIKit's kern, which the measured width takes. */
+  def setLetterSpacing(px: Double): Unit = uiSetLetterSpacing(sg, px)
   /** A link is followed by its select; there is no address to show. */
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */

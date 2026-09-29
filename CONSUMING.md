@@ -582,6 +582,32 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
   a row that opens above the field. `trailing` stays beside Send.
 - On a Roku or an Apple TV it is one line written on the platform's keyboard, with Send, the suggestion as a chip, and
   no files or completions.
+### Letter spacing (`font.letterSpacing`)
+
+`font.letterSpacing` is the space added after each letter, in pixels (negative draws them closer; 0, the default, is
+the face's own), on anything with a `font`: a `TextView`, a `RichText`, an `InputView` and a `Select`. A `Button` has
+`letterSpacing` for its words, and a `TextRun` its own `letterSpacing`, where the paragraph's would be. The spaced width
+is the measured one, so a label and whatever is laid out after it move over by the spacing times its letters: 13
+letters at 0.5 are 6.5 wider.
+
+EveryUI has no type scale of its own, so an app porting a Material design sets Material's spacing where it uses each
+style: displayLarge -0.25, displayMedium/Small and the headlines and titleLarge 0, titleMedium 0.15, titleSmall 0.1,
+bodyLarge 0.5, bodyMedium 0.25, bodySmall 0.4, labelLarge 0.1, labelMedium and labelSmall 0.5.
+
+```scala
+val title = TextView("Settings", 16.0)
+title.font.weight @= FontWeight.Medium
+title.font.letterSpacing @= 0.15                    // titleMedium
+new Button("Continue").letterSpacing @= 0.1           // labelLarge
+TextRun("NEW", letterSpacing = Some(1.5))             // one run spaced apart from its paragraph
+```
+
+The web sets CSS `letter-spacing`; Android `TextView.setLetterSpacing`, in ems, so the pixels over the size (kept as the
+size changes; a run with its own size and no spacing of its own is spaced in proportion to it there); the Apple TV
+UIKit's kern. JavaFX has no letter spacing at all, so the desktop draws the letters as the face sets them and takes the
+spaced width for their box: everything around them sits as it does elsewhere, the letters themselves a little closer
+together. A field on the desktop is not spaced. A Roku's Label spaces none, and measures unspaced.
+
 
 `ComposerKeys.action` is the key rule on its own, `TriggerWord` the word a completion replaces, and `ComposerWords`
 what the composer says, for a translation.

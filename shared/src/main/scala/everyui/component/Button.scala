@@ -16,6 +16,9 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   val enabled: Var[Boolean] = own(Var(true))
   /** At least this wide, its content centred: a button as wide as the form it ends. */
   val minWidth: Var[Double] = own(Var(0.0))
+  /** Extra space after each letter of the words, in pixels (`FontFeature.letterSpacing`): Material's labelLarge is
+    * 0.1. */
+  val letterSpacing: Var[Double] = own(Var(0.0))
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.
@@ -32,6 +35,7 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
     font.size @= points
     color := foreground()
   }
+  letterSpacing.attach(px => words.font.letterSpacing @= px)
   private val icon: Option[MaterialIconView] = glyph.map(g => new MaterialIconView(g, points * 1.4))
   icon.foreach(i => i.color := foreground())
   private val line: Container = icon match {

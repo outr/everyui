@@ -181,6 +181,9 @@ class RenderNode(val el: html.Element) {
   /** The distance between lines of wrapped text, in pixels. */
   def setLineHeight(px: Double): Unit = el.style.lineHeight = px.toString + "px"
 
+  /** Extra space after each letter, in pixels (0 for the face's own); the box, and so the measured width, takes it. */
+  def setLetterSpacing(px: Double): Unit = el.style.letterSpacing = if (px == 0.0) "" else px.toString + "px"
+
   /** Where a link goes (the node is an `<a>`, `Nodes.link`), in a new tab with `newTab`. */
   def setHref(href: String, newTab: Boolean): Unit = {
     el.setAttribute("href", href)
@@ -205,6 +208,7 @@ class RenderNode(val el: html.Element) {
       if (run.weight > 0) span.style.fontWeight = run.weight.toString
       if (run.italic) span.style.fontStyle = "italic"
       if (run.size > 0.0) span.style.fontSize = run.size.toString + "px"
+      run.letterSpacing.foreach(px => span.style.letterSpacing = px.toString + "px")
       if (run.color.nonEmpty) span.style.color = run.color
       if (run.strike || run.underline)
         span.style.textDecoration = List(Option.when(run.underline)("underline"), Option.when(run.strike)("line-through"))
