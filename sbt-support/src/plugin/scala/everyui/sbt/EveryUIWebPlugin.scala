@@ -39,6 +39,7 @@ object EveryUIWebPlugin extends AutoPlugin {
     val everyuiWebTarget = settingKey[WebTarget]("What the web app is built as: WebTarget.Js (the default), WebTarget.Wasm, or WebTarget.Both (WebAssembly where the browser runs it, JavaScript elsewhere)")
     val everyuiWebScripts = taskKey[WebScripts]("The web app linked (fullLink) for everyuiWebTarget; writeTo(out, page) writes them and the page")
     val everyuiWasmLinkJS = taskKey[File]("The web app linked (fullLink) to WebAssembly: a directory of main.js, __loader.js and main.wasm")
+    val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath: a directory for the bundle to copy as fonts/")
   }
   import autoImport.*
 
@@ -61,6 +62,16 @@ object EveryUIWebPlugin extends AutoPlugin {
       import scala.concurrent.ExecutionContext.Implicits.global
       Await.result(linker.link(ir, initializers, impl.outputDirectory(out.toPath), logger), Duration.Inf)
       out
+    },
+    everyuiWebFonts := Def.uncached {
+      val converter = fileConverter.value
+      val jar = (Compile / dependencyClasspath).value.map(a => converter.toPath(a.data).toFile)
+        .find(_.getName.startsWith("everyui-web"))
+        .getOrElse(sys.error("everyui-web is not on the classpath: add \"com.outr\" %% \"everyui-web\" to libraryDependencies"))
+      val out = target.value / "everyui-fonts"
+      IO.delete(out)
+      IO.unzip(jar, out, (entry: String) => entry.startsWith("everyui/fonts/"))
+      out / "everyui" / "fonts"
     },
     everyuiWebScripts := Def.uncached(Def.taskDyn {
       val jsModule = (Compile / fullLinkJS / scalaJSLinkerConfig).value.moduleKind == ModuleKind.ESModule

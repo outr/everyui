@@ -176,7 +176,16 @@ lazy val web = (project in file("web"))
     libraryDependencies ++= Seq(
       "org.scala-js" %% "scalajs-dom" % "2.8.1",
       "com.outr" %% "reactify" % reactifyVersion
-    )
+    ),
+    // EveryUI's fonts, in the jar under everyui/fonts/, which an app's bundle copies out (sbt-everyui's everyuiWebFonts)
+    Compile / resourceGenerators += Def.task {
+      val dir = (Compile / resourceManaged).value / "everyui" / "fonts"
+      ((ThisBuild / baseDirectory).value / "assets" / "fonts").listFiles().toSeq.filter(_.getName.endsWith(".ttf")).map { f =>
+        val copy = dir / f.getName
+        IO.copyFile(f, copy)
+        copy
+      }
+    }.taskValue
   )
 
 // --- network, published: the module and its backend, for the JVM and the browser ------------------------------
