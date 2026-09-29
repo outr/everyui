@@ -9,7 +9,7 @@ import javafx.scene.input.{Clipboard, ClipboardContent, KeyCode, KeyEvent, Mouse
 import javafx.scene.shape.{Rectangle, StrokeLineJoin, StrokeType}
 import javafx.scene.layout.{Background, BackgroundFill, Border, BorderStroke, BorderStrokeStyle, BorderWidths, CornerRadii, Pane, Region}
 import javafx.scene.paint.{Color, CycleMethod, LinearGradient, Paint, Stop}
-import javafx.scene.text.{Font, FontSmoothingType, FontWeight, Text, TextAlignment}
+import javafx.scene.text.{Font, FontSmoothingType, Text, TextAlignment}
 import javafx.scene.{Node, Scene}
 import everyui.font.{Face, Faces}
 import everyui.PlatformKind
@@ -118,7 +118,7 @@ class RenderNode(val fx: Node) {
       t.setFont(
         if (italic) RichFlow.font(family, weight, true, size)
         else if (family.nonEmpty) Host.font(face, size)
-        else Font.font("System", if (weight >= 600) FontWeight.SEMI_BOLD else FontWeight.NORMAL, size)
+        else FontWeights("System", weight, false, size)
       )
       Oblique(t, italic)
       placeY()
@@ -128,7 +128,7 @@ class RenderNode(val fx: Node) {
       fontFamily = family
       fontWeight = weight
       f.setFont(if (italic) RichFlow.font(family, weight, true, size)
-        else if (family.nonEmpty) Host.font(face, size) else Font.font("System", size))
+        else if (family.nonEmpty) Host.font(face, size) else FontWeights("System", weight, false, size))
     case _ => ()
   }
 
@@ -737,6 +737,7 @@ object Host {
     val name = fontNames.getOrElseUpdate(face.file, {
       val loaded = Font.loadFont(new File(assets, "fonts/" + face.file).toURI.toString, size)
       if (loaded == null) throw new IllegalStateException("could not load font " + face.file)
+      FontWeights.forget()
       loaded.getName
     })
     new Font(name, size)
@@ -923,7 +924,7 @@ object Nodes {
     t.setTextOrigin(VPos.BASELINE)
     t.setFontSmoothingType(FontSmoothingType.GRAY)
     t.setFill(Color.web("#1c1b1f"))
-    t.setFont(Font.font("System", FontWeight.SEMI_BOLD, 32.0))
+    t.setFont(FontWeights("System", 600, false, 32.0))
     val node = new RenderNode(t)
     Host.aligned.add(node)
     node

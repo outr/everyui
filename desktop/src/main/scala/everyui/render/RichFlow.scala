@@ -110,9 +110,7 @@ class RichFlow extends TextFlow {
 object RichFlow {
   /** A bundled face (its own italic where it has one) at `size`, or the system's where `family` is none. */
   def font(family: String, weight: Int, italic: Boolean, size: Double): Font =
-    if (family.isEmpty)
-      Font.font("System", if (weight >= 700) FontWeight.BOLD else if (weight >= 600) FontWeight.SEMI_BOLD else FontWeight.NORMAL,
-        if (italic) FontPosture.ITALIC else FontPosture.REGULAR, size)
+    if (family.isEmpty) FontWeights("System", weight, italic, size)
     else {
       val face: Face = (if (italic) Faces.italic(family, weight) else None).getOrElse(Faces(family, weight))
       val base = Host.font(face, size)

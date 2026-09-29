@@ -1,7 +1,7 @@
 package everyui.render
 
 import everyui.text.Bidi
-import javafx.scene.text.{Font, FontPosture, FontWeight, Text}
+import javafx.scene.text.{Font, Text}
 
 /** Words with right-to-left letters in them (Arabic, Hebrew) set here as JavaFX can draw them, around two of its
   * faults (JavaFX 22 to 28 at least):
@@ -59,15 +59,9 @@ object RtlText {
   /** `font` in a face that draws right-to-left words in order, as heavy and as slanted, where the system has one. */
   def covering(font: Font): Font = face match {
     case Some(family) if font.getFamily != family =>
-      val style = font.getStyle.toLowerCase
-      val weight = if (style.contains("black") || style.contains("heavy")) FontWeight.BLACK
-        else if (style.contains("semi") || style.contains("demi")) FontWeight.SEMI_BOLD
-        else if (style.contains("bold")) FontWeight.BOLD
-        else if (style.contains("medium")) FontWeight.MEDIUM
-        else if (style.contains("light")) FontWeight.LIGHT
-        else FontWeight.NORMAL
-      val posture = if (style.contains("italic") || style.contains("oblique")) FontPosture.ITALIC else FontPosture.REGULAR
-      Font.font(family, weight, posture, font.getSize)
+      // the name too, as a face loaded from a file may give its weight only there ("Open Sans SemiBold", style Regular)
+      val style = (font.getName + " " + font.getStyle).toLowerCase
+      FontWeights(family, FontWeights.weightOf(style), style.contains("italic") || style.contains("oblique"), font.getSize)
     case _ => font
   }
 
