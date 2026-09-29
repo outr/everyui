@@ -44,6 +44,9 @@ import everyui.render.Platform
   *              the location; not on a Roku or an Apple TV (app/full: FullDemos)
   *   zoom       a project map on a canvas that pans and zooms (ZoomCanvas): semantic zoom over 2,578 boxes, and a
   *              drawing whose routers are picked by a click; not on a Roku or an Apple TV (app/full: FullDemos)
+  *   map        a slippy map (MapView): survey sections as polygons, a road, pins and a thousand clustered wells over
+  *              tiles drawn in the page (`tiles=<template>`, `cluster=0`); not on a Roku or an Apple TV
+  *              (app/full: FullDemos)
   *   graph      a project's module dependencies on a GraphView: layered, a broken rule in red, planned modules dashed,
   *              laid out again as a module is added (`flow=down`, `big=<n>`); not on a Roku or an Apple TV
   *              (app/full: FullDemos)

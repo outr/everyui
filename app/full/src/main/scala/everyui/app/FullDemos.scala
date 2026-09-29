@@ -21,6 +21,10 @@ object FullDemos {
       ZoomDemo.run()
       true
     }
+    else if (demo == "map") {
+      MapDemo.run()
+      true
+    }
     else if (demo == "graph") {
       GraphDemo.run()
       true
