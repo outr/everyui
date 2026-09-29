@@ -86,6 +86,7 @@ class Component(val node: RenderNode) {
     * moving, and Nil stops it. */
   lazy val motion: Prop[List[Track]] = own(new Prop[List[Track]](Nil, t => {
     ownMotion = t.nonEmpty
+    node.setMotionOwner(() => Component.lineage(this))
     node.setMotion(t)
   }))
   private var ownMotion = false
@@ -181,6 +182,18 @@ class Component(val node: RenderNode) {
 }
 
 object Component {
+  /** A component and those it sits in, as class names from it outward (`Spinner < Container < LoadingOverlay`), six at
+    * most: what a platform's diagnostics name a node by. */
+  def lineage(c: Component): String = {
+    var names = List(c.getClass.getSimpleName)
+    var at = c.parent()
+    while (at.nonEmpty && names.size < 6) {
+      names = names :+ at.get.getClass.getSimpleName
+      at = at.get.parent()
+    }
+    names.mkString(" < ")
+  }
+
   /** While a screen is being made (its constructor's turn), what to tell of each component made: the screen keeps
     * them, so one it holds but never put on the screen (an episode box on a film's page) is taken apart with it. */
   val making: Var[Option[Component => Unit]] = Var(None)

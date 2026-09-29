@@ -384,6 +384,8 @@ class RenderNode(val view: View) {
 
   /** Each track an animator of the view's own properties, repeating: a position moves the translation the node is
     * placed by, from where it is placed. */
+  /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
+  def setMotionOwner(owner: () => String): Unit = ()
   def setMotion(motion: List[everyui.motion.Track]): Unit = {
     tracks = motion
     animate()

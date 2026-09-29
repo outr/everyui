@@ -307,9 +307,10 @@ class SGNode
   def apply(codePoint: Int): String = native.value
 }
 /** A field of `node` moving through keyframes (`fractions`, with values `a`, and `b` for a translation or a scale) over
-  * `seconds`, repeating, after `delay`: the Animation node that runs it. */
+  * `seconds`, repeating, after `delay`: the Animation node that runs it. `owner` names what it is for, when the channel
+  * logs its motions (everyui_debug_motion). */
 @native object uiMotion {
-  def apply(node: SGNode, property: String, seconds: Double, delay: Double, fractions: List[Double], a: List[Double], b: List[Double]): SGNode = native.value
+  def apply(node: SGNode, property: String, seconds: Double, delay: Double, fractions: List[Double], a: List[Double], b: List[Double], owner: () => String): SGNode = native.value
 }
 /** Stop an Animation from uiMotion and take it away. */
 @native object uiStopMotion {

@@ -363,6 +363,8 @@ class RenderNode(val sg: SGNode) {
 
   private var tracks: List[everyui.motion.Track] = Nil
   private var animations: List[SGNode] = Nil
+  private var motionOwner: () => String = () => ""
+  def setMotionOwner(owner: () => String): Unit = motionOwner = owner
 
   /** Each track an Animation node over one of the node's own fields, repeating: SceneGraph runs it, with no script
     * per frame. A position is the node's translation, from where it is placed. */
@@ -377,7 +379,7 @@ class RenderNode(val sg: SGNode) {
       val position = t.property == everyui.motion.Track.Position
       val a = t.keys.map(k => if (position) px(left + k.a) else if (t.property == everyui.motion.Track.Rotation) -k.a else k.a)
       val b = t.keys.map(k => if (position) px(top + k.b) else k.b)
-      uiMotion(sg, t.property, t.seconds, t.delay, t.keys.map(k => k.at), a, b)
+      uiMotion(sg, t.property, t.seconds, t.delay, t.keys.map(k => k.at), a, b, motionOwner)
     }
   }
   /** No shadow is drawn. */

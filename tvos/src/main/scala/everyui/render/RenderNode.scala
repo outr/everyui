@@ -207,6 +207,8 @@ class RenderNode(val sg: SGNode) {
   /** SceneGraph keeps no pictures of its own to ask for. */
   def setCached(cached: Boolean): Unit = ()
   /** Nothing moves on its own here yet. */
+  /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
+  def setMotionOwner(owner: () => String): Unit = ()
   def setMotion(tracks: List[everyui.motion.Track]): Unit = ()
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()

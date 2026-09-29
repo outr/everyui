@@ -208,6 +208,8 @@ class RenderNode(val fx: Node) {
 
   /** Each track a timeline of the node's own properties, repeating: a position is its translation, on top of the
     * layout position it is placed by. */
+  /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
+  def setMotionOwner(owner: () => String): Unit = ()
   def setMotion(tracks: List[everyui.motion.Track]): Unit = {
     import javafx.animation.{Animation, Interpolator, KeyFrame, KeyValue, Timeline}
     import javafx.util.Duration

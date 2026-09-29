@@ -142,6 +142,8 @@ class RenderNode(val el: html.Element) {
 
   /** Each track an animation of one of the element's own transform properties (`translate`, `rotate`, `scale`), which
     * the browser applies before `transform` and runs off the page's thread, or of its opacity. */
+  /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
+  def setMotionOwner(owner: () => String): Unit = ()
   def setMotion(tracks: List[everyui.motion.Track]): Unit = {
     import everyui.motion.Track
     animations.foreach(_.cancel())

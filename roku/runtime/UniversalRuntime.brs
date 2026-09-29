@@ -1066,6 +1066,10 @@ end sub
 
 ' A deep link while the channel is up (the scene's inputArgs, from Main's roInputEvent).
 sub uiLaunched(params as dynamic)
+    if params <> invalid and params.everyui_debug_motion <> invalid
+        ga = GetGlobalAA()
+        ga.uiMotionDebug = (_str(params.everyui_debug_motion) = "1")
+    end if
     uiLinked(params)
 end sub
 
@@ -1586,7 +1590,7 @@ end function
 ' A field of `node` moving through keyframes, over and over (Track, everyui.motion): an Animation node with one
 ' interpolator, a child of the node itself. Positions and scales are pairs (`a`, `b`); a rotation is already
 ' SceneGraph's way round.
-function uiMotion(node as object, property as string, seconds as float, delay as float, fractions as object, a as object, b as object) as object
+function uiMotion(node as object, property as string, seconds as float, delay as float, fractions as object, a as object, b as object, owner as dynamic) as object
     if node.id = "" then node.id = "uiMotion" + RtNextId().ToStr()
     anim = CreateObject("roSGNode", "Animation")
     anim.duration = seconds
@@ -1617,7 +1621,8 @@ function uiMotion(node as object, property as string, seconds as float, delay as
     anim.id = "uiAnim" + RtNextId().ToStr()
     ' (started at the end of the turn, if its node is on the scene then: see uiMotionsSettle)
     motions = uiMotions()
-    motions[anim.id] = { anim: anim, node: node, running: false, started: false }
+    motions[anim.id] = { anim: anim, node: node, field: field, owner: owner, running: false, started: false }
+    if uiMotionDebug() then uiMotionLog("made", motions[anim.id])
     return anim
 end function
 
@@ -1628,6 +1633,7 @@ sub uiStopMotion(anim as object)
     if anim = invalid then return
     motions = uiMotions()
     e = motions[anim.id]
+    if e <> invalid and uiMotionDebug() then uiMotionLog("taken away", e)
     if e <> invalid and e.running then anim.control = "pause"
     motions.Delete(anim.id)
     uiRemove(anim)
@@ -1664,12 +1670,50 @@ sub uiMotionsSettle(motions as object)
             if e.started then e.anim.control = "resume" else e.anim.control = "start"
             e.started = true
             e.running = true
+            if uiMotionDebug() then uiMotionLog("started", e)
         else if e.running and not shown
             e.anim.control = "pause"
             e.running = false
+            if uiMotionDebug() then uiMotionLog("paused", e)
+        end if
+        ' (what its interpolator will look for: a running motion whose node the scene cannot find is the error itself)
+        if e.running and uiMotionDebug()
+            ga = GetGlobalAA()
+            if ga.appScene <> invalid and ga.appScene.findNode(e.node.id) = invalid then uiMotionLog("NOT FOUND from the scene", e)
         end if
     end for
 end sub
+
+' everyui_debug_motion=1 (a launch or deep-link parameter: ECP /launch/dev?everyui_debug_motion=1): every motion made,
+' started, paused and taken away is told on the console with its target's id, the field, what it is for (the component
+' and those it sits in), whether the node is on the scene, and the node's path up to the scene.
+function uiMotionDebug() as boolean
+    ga = GetGlobalAA()
+    if ga.uiMotionDebug = invalid
+        ga.uiMotionDebug = false
+        params = ga.uiLaunchParams
+        if params <> invalid and params.everyui_debug_motion <> invalid then ga.uiMotionDebug = (_str(params.everyui_debug_motion) = "1")
+    end if
+    return ga.uiMotionDebug
+end function
+sub uiMotionLog(what as string, e as object)
+    owner = ""
+    if e.owner <> invalid then owner = _str(RtInvoke(e.owner, []))
+    print "[motion] "; what; " "; e.anim.id; " target="; e.node.id; " field="; e.field; " onScene="; uiOnScene(e.node); " running="; e.running; " owner="; owner
+    print "[motion]   path="; uiNodePath(e.node)
+end sub
+' A node and those it sits in, up to the root: subtype#id each.
+function uiNodePath(node as object) as string
+    parts = []
+    at = node
+    while at <> invalid
+        name = at.subtype()
+        if at.id <> "" then name = name + "#" + at.id
+        parts.Push(name)
+        at = at.getParent()
+    end while
+    return parts.Join(" < ")
+end function
 
 ' ---- media: a Video node (a video) or an Audio node (sound) ----
 ' Each carries what it was last asked (uiPlaying, uiLoop) so a source set later still starts and loops as
