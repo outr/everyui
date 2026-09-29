@@ -1349,8 +1349,8 @@ and `app/everyui/desktop` for the desktop launcher; `sbt appDesktop/run`). What 
   which the frame checks do. Android also loads images from the network now, and starts at `--es path`.
 - **The focus scrolls into view.** A `ScrollContainer` scrolls the least that shows a component the focus lands on
   under its content: a remote has no other way to reach what is below the fold.
-- **Shared packaging and launchers.** `project/AndroidApk.scala` is the APK build (R8, aapt2, zipalign, apksigner)
-  that `android/packageApk` and an app's build both call. `EveryUIActivity` is the activity an app extends, as
+- **Shared packaging and launchers.** `AndroidApk` (in the sbt-everyui plugin) is the APK build (R8, aapt2, zipalign,
+  apksigner) that `android/packageApk` and an app's build both call. `EveryUIActivity` is the activity an app extends, as
   `Desktop.launch` is the desktop's launcher, and the example's own `MainActivity` moved to `app/android`.
 - **Keys a component keeps.** `Component.keepsKey(key)`: a focused text field keeps Enter and the keys along its
   line, so the arrows move the caret rather than the focus. Tab now moves the focus on in tree order.

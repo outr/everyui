@@ -1,3 +1,5 @@
+package everyui.sbt
+
 import org.objectweb.asm.{ClassReader, ClassWriter, Label, Opcodes, Type}
 import org.objectweb.asm.tree.*
 import sbt.*

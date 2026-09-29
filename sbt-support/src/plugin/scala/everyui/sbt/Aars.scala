@@ -1,3 +1,5 @@
+package everyui.sbt
+
 import sbt.*
 import sbt.io.IO
 

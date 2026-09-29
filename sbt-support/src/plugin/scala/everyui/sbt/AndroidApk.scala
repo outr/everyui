@@ -1,3 +1,5 @@
+package everyui.sbt
+
 import sbt.*
 
 /** An Android app as a signed APK, from a Scala program's classpath: R8 over the program (shrinking from the
@@ -8,7 +10,7 @@ import sbt.*
   * With `bundletool`, an app bundle (`.aab`) instead: the same dex, resources and manifest, linked in the protocol
   * buffer form a bundle wants and signed as a jar, for a store that builds the per-device APKs itself (Play).
   *
-  * EveryUI's `android/packageApk` calls it, and so does an app's build that includes this file in its meta-build. */
+  * EveryUI's `android/packageApk` calls it, and so does an app's build, from the sbt-everyui plugin. */
 object AndroidApk {
   /** A keystore to sign with, and the words to open it. `debug` is the SDK's own throwaway key — fine to test with,
     * but a store update must be signed with the same release key every time, so a shipping build passes its own. */
@@ -69,7 +71,7 @@ object AndroidApk {
     // SHIELD (API 30) before its first frame, and R8 was blamed for an afternoon. The real cause was the
     // Scala 3 standard library, whose lazy vals are held in a java.lang.invoke.VarHandle: that method is
     // signature-polymorphic, Android has no such thing before API 33, and the verifier throws out every class
-    // holding one. project/AndroidRuntime.scala rewrites those lazy vals before dexing.
+    // holding one. AndroidRuntime rewrites those lazy vals before dexing.
     log(s"AndroidApk: R8 over ${inputs.size} inputs")
     // with desugaring, R8 rewrites the program's newer library calls onto the back-port's names, and L8 below dexes
     // the back-port itself. (The command line has no way to hand L8 the list of back-port classes the program

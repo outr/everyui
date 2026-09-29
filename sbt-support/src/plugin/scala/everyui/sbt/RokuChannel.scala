@@ -1,13 +1,16 @@
+package everyui.sbt
+
 import sbt.*
 
 /** A Roku channel from a compiled Scala 3 program: EveryUI's compiler over its TASTy (and any libraries compiled
   * through with it), then the pieces a channel ships beside the generated code — EveryUI's runtime, images, fonts,
   * other packaged files, and the channel's icons and splash screens.
   *
-  * EveryUI's `roku/emitRoku` calls it, and so does an app's build that includes this file in its meta-build. */
+  * EveryUI's `roku/emitRoku` calls it, and so does an app's build, from the sbt-everyui plugin. */
 object RokuChannel {
-  /** Run the compiler (`compilerClasspath`, EveryUI's `compiler` project) over `classes`, resolving against
-    * `classpath`, into a fresh `out`. `sourceRoot` is where gaps are reported against; `title` names the channel.
+  /** Run the compiler (`compilerClasspath`: EveryUI's `compiler` project, or `everyuiCompiler` in an app) over
+    * `classes`, and the `libraries` compiled through with it (classes directories or jars: `everyuiEmitLibraries`),
+    * resolving against `classpath`, into a fresh `out`. `sourceRoot` is where gaps are reported against; `title` names the channel.
     *
     * Anything the compiler cannot translate (a library method it does not know, a parameter that overwrites an
     * inherited member) fails the build, each listed at its Scala source: emitted, it would compile, lint clean and do
@@ -134,13 +137,13 @@ object RokuChannel {
     dir
   }
 
-  /** Complete an emitted channel in `out`: EveryUI's runtime (`everyui/roku/runtime`, with the network module's Task
-    * nodes), the images and fonts in `images` and `fonts` (directories, later ones winning), each of `files` at its
-    * path in the package, and the channel's icons and splash screens from `channelImages` (declared in the manifest),
-    * if given. */
-  def assemble(out: File, everyui: File, images: Seq[File], fonts: Seq[File], files: Seq[(String, File)],
+  /** Complete an emitted channel in `out`: EveryUI's runtime (the `.brs` and `.xml` files in `runtime`, with the network
+    * module's Task nodes: EveryUI's `roku/runtime`, or `everyuiRokuRuntime` out of the everyui-roku jar), the images and
+    * fonts in `images` and `fonts` (directories, later ones winning), each of `files` at its path in the package, and
+    * the channel's icons and splash screens from `channelImages` (declared in the manifest), if given. */
+  def assemble(out: File, runtime: File, images: Seq[File], fonts: Seq[File], files: Seq[(String, File)],
                channelImages: Option[File]): File = {
-    (everyui / "roku" / "runtime" * ("*.brs" | "*.xml")).get().foreach(f => IO.copyFile(f, out / "components" / f.getName))
+    (runtime * ("*.brs" | "*.xml")).get().foreach(f => IO.copyFile(f, out / "components" / f.getName))
     images.filter(_.isDirectory).foreach(d => IO.copyDirectory(d, out / "images"))
     fonts.foreach(d => (d * "*.ttf").get().foreach(f => IO.copyFile(f, out / "fonts" / f.getName)))
     files.foreach { case (path, f) => IO.copyFile(f, out / path) }

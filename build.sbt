@@ -65,28 +65,15 @@ def emitRokuTask(outName: String, title: String, libraries: Def.Initialize[Task[
 /** The Swift spike: the same program and libraries, emitted as `<out>/App.swift` for
   * `swift/runtime/ScalaRuntime.swift` (see tools/swift-spike.sh). */
 @transient val emitSwift = taskKey[File]("Compile this project and emit it, with the libraries it emits with, as Swift")
-@transient val appleInfoPlist = settingKey[File]("The Info.plist the Apple app is packaged with: EveryUI's own template unless an app gives its own")
 
 def emitSwiftTask(outName: String, libraries: Def.Initialize[Task[Seq[File]]]) = Def.task {
-  val log = streams.value.log
   (Compile / compile).value
   val conv = fileConverter.value
-  val sep = java.io.File.pathSeparator
-  val classes = (Compile / classDirectory).value
-  val cp = (Compile / fullClasspath).value
-    .map(e => conv.toPath(e.data).toAbsolutePath.toString).mkString(sep)
-  val compilerCp = (compiler / Compile / fullClasspath).value
-    .map(e => conv.toPath(e.data).toAbsolutePath.toString).mkString(sep)
-  val libArgs = libraries.value.map(f => s"--library=${f.getAbsolutePath}")
-  val outDir = baseDirectory.value / outName
-  IO.delete(outDir); IO.createDirectory(outDir)
-  log.info(s"emitSwift: emitting Swift into $outDir")
-  val rc = sys.process.Process(
-    Seq("java", "-cp", compilerCp, "everyui.compiler.Main", "--target=swift") ++ libArgs ++
-      Seq(classes.getAbsolutePath, cp, outDir.getAbsolutePath, baseDirectory.value.getAbsolutePath, "App")
-  ).!
-  if (rc != 0) sys.error(s"everyui.compiler.Main exited $rc")
-  outDir
+  AppleApp.emit(streams.value.log.info(_),
+    (compiler / Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile),
+    (Compile / classDirectory).value,
+    (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile),
+    libraries.value, baseDirectory.value / outName, baseDirectory.value)
 }
 
 /** reactify's classes, compiled through with every channel that uses it. */
@@ -248,7 +235,7 @@ lazy val roku = (project in file("roku"))
       // The shared image assets are the SAME files the web bundle serves, so the two backends are compared on
       // identical pixels; the channel's own icons and splash screens are roku/images (tools/make-icons.py).
       val root = (ThisBuild / baseDirectory).value
-      RokuChannel.assemble(outDir, root, Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"), Nil,
+      RokuChannel.assemble(outDir, root / "roku" / "runtime", Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"), Nil,
         Some(baseDirectory.value / "images"))
     }
   )
@@ -287,10 +274,13 @@ lazy val seoJs = (project in file("seo/js"))
     Compile / unmanagedSources / excludeFilter := HiddenFileFilter || "WellKnown.scala" || "WellKnownAnswer.scala"
   )
 
-// --- sbt-everyui: a web app's build side, published as an sbt plugin -------------------------------------------
-// everyuiWebTarget (JS, WebAssembly, or both with the loader choosing), everyuiWebScripts, and the plain helpers
-// (WebApp, AppDomains, WebScripts). Compiled with sbt 2's own Scala; the helpers in src/main/scala are plain Scala an
-// app's build can also compile from source (CONSUMING.md), the plugin in src/plugin/scala needs sbt and Scala.js.
+// --- sbt-everyui: an app's build side, published as an sbt plugin -----------------------------------------------
+// For the web, everyuiWebTarget (JS, WebAssembly, or both with the loader choosing), everyuiWebScripts, and the plain
+// helpers (WebApp, AppDomains, WebScripts); for the other platforms, the packaging helpers (AndroidApk, AndroidRuntime,
+// Aars, RokuChannel, AppleApp) and the tasks that take what they need out of the published backends (everyuiCompiler,
+// everyuiEmitLibraries, everyuiRokuRuntime, everyuiFonts, …). Compiled with sbt 2's own Scala; the helpers in
+// src/main/scala are plain Scala an app's build can also compile from source (CONSUMING.md), the plugin in
+// src/plugin/scala needs sbt, Scala.js and ASM. This build compiles both into its own meta-build (project/plugins.sbt).
 lazy val sbtEveryui = (project in file("sbt-support"))
   .enablePlugins(SbtPlugin)
   .settings(published)
@@ -298,7 +288,14 @@ lazy val sbtEveryui = (project in file("sbt-support"))
     name := "sbt-everyui",
     scalaVersion := "3.8.4",
     Compile / unmanagedSourceDirectories += baseDirectory.value / "src" / "plugin" / "scala",
-    addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0")
+    addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0"),
+    libraryDependencies += "org.ow2.asm" % "asm-tree" % "9.10.1",
+    // the release the plugin belongs to (everyuiVersion), which fetches the compiler at the same one
+    Compile / resourceGenerators += Def.task {
+      val out = (Compile / resourceManaged).value / "everyui" / "sbt" / "everyui.properties"
+      IO.write(out, s"version=${version.value}\n")
+      Seq(out)
+    }.taskValue
   )
 
 @transient val serverClasspath = taskKey[File]("Compile the server and write its runtime classpath to server/out/classpath.txt")
@@ -336,22 +333,18 @@ lazy val tvos = (project in file("tvos"))
   .settings(
     name := "everyui-tvos",
     publish / skip := true,
-    appleInfoPlist := (ThisBuild / baseDirectory).value / "swift" / "app" / "Info.plist",
+    everyuiAppleInfoPlist := (ThisBuild / baseDirectory).value / "swift" / "app" / "Info.plist",
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / unmanagedSourceDirectories ++= backendSources("native", spice = false),
     libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
     emitSwift := {
       val outDir = emitSwiftTask("out-swift", networkLibraries).value
-      val swift = (ThisBuild / baseDirectory).value / "swift"
-      IO.copyFile(swift / "runtime" / "ScalaRuntime.swift", outDir / "ScalaRuntime.swift")
-      IO.copyFile(swift / "runtime" / "UniversalRuntime.swift", outDir / "UniversalRuntime.swift")
-      IO.copyFile(swift / "app" / "main.swift", outDir / "main.swift")
-      IO.copyFile(appleInfoPlist.value, outDir / "Info.plist")
-      IO.copyDirectory(swift / "app" / "Assets.xcassets", outDir / "Assets.xcassets")   // app icons (tools/make-icons.py)
-      val assets = (ThisBuild / baseDirectory).value / "assets"
-      IO.copyDirectory(assets / "images", outDir / "images")
-      (assets / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, outDir / "fonts" / f.getName))
-      outDir
+      val root = (ThisBuild / baseDirectory).value
+      val swift = root / "swift"
+      // the example's app icons (tools/make-icons.py)
+      AppleApp.assemble(outDir, Seq(swift / "runtime" / "ScalaRuntime.swift", swift / "runtime" / "UniversalRuntime.swift",
+        swift / "app" / "main.swift"), everyuiAppleInfoPlist.value, Some(swift / "app" / "Assets.xcassets"),
+        Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"))
     }
   )
 
@@ -361,11 +354,8 @@ lazy val tvos = (project in file("tvos"))
 //
 //   sbt desktop/run                 a 1920x1080 window
 //   tools/check.sh                  freezes a frame under Xvfb and compares it
-lazy val javafxVersion = "26.0.2"
-lazy val javafxPlatform = {
-  val os = sys.props("os.name").toLowerCase
-  if (os.contains("mac")) "mac" else if (os.contains("win")) "win" else "linux"
-}
+lazy val javafxVersion = EveryUILibraries.javafxVersion
+lazy val javafxPlatform = EveryUILibraries.javafxPlatform
 @transient val desktopClasspath = taskKey[File]("Compile the desktop backend and write its runtime classpath to desktop/out/classpath.txt")
 
 lazy val desktop = (project in file("desktop"))
@@ -415,11 +405,8 @@ lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
 @transient val androidAars = taskKey[Seq[File]]("Open the Android archives the backend depends on: their classes, as jars")
 @transient val androidAarRules = taskKey[Seq[File]]("The shrinker rules those archives ship")
 
-lazy val media3Version = "1.9.2"
-lazy val media3Modules = Seq("media3-common", "media3-container", "media3-database", "media3-datasource",
-  // the OkHttp data source, which is what actually fetches the media: see ExoMedia for why it is not the default one
-  "media3-datasource-okhttp",
-  "media3-decoder", "media3-extractor", "media3-exoplayer", "media3-exoplayer-hls")
+lazy val media3Version = EveryUILibraries.media3Version
+lazy val media3Modules = EveryUILibraries.media3Modules
 
 lazy val android = (project in file("android"))
   .settings(
@@ -433,7 +420,7 @@ lazy val android = (project in file("android"))
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
     // Media3 (ExoPlayer): what a television needs from a player and `MediaPlayer` has no answer to — its own
     // timeouts, a buffer that can be chosen, and a measurement of what the link is carrying. It ships as Android
-    // archives, so the classes are opened out of them (project/Aars.scala) before anything compiles against them.
+    // archives, so the classes are opened out of them (Aars, in sbt-support) before anything compiles against them.
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
     libraryDependencies ++= Seq(
@@ -446,7 +433,7 @@ lazy val android = (project in file("android"))
     Compile / unmanagedJars ++= androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
-    // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: project/AndroidRuntime.scala)
+    // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: AndroidRuntime, in sbt-support)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     packageApk := {
       val conv = fileConverter.value
@@ -666,7 +653,7 @@ lazy val monacoAndroid = (project in file("monaco/android"))
     Compile / unmanagedJars ++= androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
-    // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: project/AndroidRuntime.scala)
+    // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: AndroidRuntime, in sbt-support)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     packageApk := {
       val conv = fileConverter.value
