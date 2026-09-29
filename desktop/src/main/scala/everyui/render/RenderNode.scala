@@ -677,7 +677,10 @@ object Host {
       KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ",
       KeyCode.FAST_FWD -> "MediaFastForward", KeyCode.REWIND -> "MediaRewind", KeyCode.TRACK_NEXT -> "MediaTrackNext",
       KeyCode.TRACK_PREV -> "MediaTrackPrevious", KeyCode.PAGE_UP -> "PageUp", KeyCode.PAGE_DOWN -> "PageDown",
-      KeyCode.HOME -> "Home", KeyCode.END -> "End", KeyCode.CONTEXT_MENU -> "ContextMenu", KeyCode.DELETE -> "Delete")
+      KeyCode.HOME -> "Home", KeyCode.END -> "End", KeyCode.CONTEXT_MENU -> "ContextMenu", KeyCode.DELETE -> "Delete",
+      // the modifiers on their own, as the web names them (a double-tap is one pressed twice)
+      KeyCode.CONTROL -> "Control", KeyCode.SHIFT -> "Shift", KeyCode.ALT -> "Alt", KeyCode.META -> "Meta",
+      KeyCode.COMMAND -> "Meta", KeyCode.WINDOWS -> "Meta")
     if (e.isAltDown && e.getCode == KeyCode.LEFT) "BrowserBack"
     else named.getOrElse(e.getCode, if (e.getText.nonEmpty) e.getText else e.getCode.getName)
   }
@@ -1155,11 +1158,20 @@ object Platform {
     def hear(e: KeyEvent, pressed: Boolean): Unit = {
       held = everyui.event.Modifiers(e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
       embedded = Host.embedOf(e.getTarget)
+      // JavaFX says nothing of a repeat: a press of a key already down is one
+      repeating = if (pressed) !down.add(e.getCode) else { down.remove(e.getCode); false }
       try if (f(Host.keyName(e), pressed)) e.consume()
       // the embed is the one this key was meant for, and no other: a key sent later from anywhere else (a key given
-      // back, one a test sends) is nobody's embed's
-      finally embedded = ""
+      // back, one a test sends) is nobody's embed's, nor a repeat
+      finally {
+        embedded = ""
+        repeating = false
+      }
     }
+    // a key let go while the window is not the one in front is never released here
+    def watch(w: javafx.stage.Window): Unit = if (w != null) w.focusedProperty.addListener((_, _, now) => if (!now) down.clear())
+    watch(Host.scene.getWindow)
+    Host.scene.windowProperty.addListener((_, _, w) => watch(w))
     Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => hear(e, true))
     Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => hear(e, false))
     // a mouse's back button is Back too
@@ -1180,6 +1192,11 @@ object Platform {
   }
   /** The modifiers held with the key being reported. */
   def modifiers(): everyui.event.Modifiers = held
+  // the keys down now, as their presses and releases have told
+  private val down = scala.collection.mutable.Set.empty[javafx.scene.input.KeyCode]
+  private var repeating = false
+  /** Whether the key being reported is one held down repeating: pressed again without being released. */
+  def keyRepeat(): Boolean = repeating
   private var embedded = ""
   /** The embed the key being reported is meant for, "" for none (`Host.embedOf`). */
   def keyEmbed(): String = embedded

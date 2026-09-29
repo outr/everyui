@@ -162,6 +162,29 @@ Keymap.listed   // every command in force, with its label and chords, for a shor
 
 Tab and Shift+Tab move the focus through the screen in tree order.
 
+A double-tap is a modifier on its own, pressed and released twice in quick succession. It works in any binding:
+
+```scala
+Keymap.global.add("palette", "Command palette", Chord.doubleTap("Shift")) { palette.open() }
+keymap.add("search", "Search everywhere", Chord.parse("Primary Primary")) { search() }  // Ctrl Ctrl, Cmd Cmd on a Mac
+Keymap.doubleTapWindow @= 300.0   // ms from the first press to the second release; 400 by default
+```
+
+The modifiers are `Control` (`Ctrl`), `Shift`, `Alt` (`Option`), `Meta` (`Cmd`) and `Primary`. `Chord.parse` takes
+the name twice with a space between: "Ctrl Ctrl", "Shift Shift", "Alt Alt", "Primary Primary". The command runs on
+the second release, and only when:
+
+- both taps fall within `Keymap.doubleTapWindow`, from the first press to the second release;
+- no other key goes down in between, and no other modifier is held (so Ctrl+C then Ctrl is not one);
+- the modifier's own auto-repeat is ignored: holding it down is still one press.
+
+A double-tap always runs, even while the focus is inside an embed, whether or not the command is `inEmbeds`: a
+modifier on its own types nothing, so the embed loses nothing to it. `Keymap.listed` shows it as "Ctrl Ctrl",
+"Shift Shift" or "Alt Alt", and as "Cmd Cmd" or "Option Option" on a Mac. While a double-tap of Alt runs a command, a
+lone Alt is kept from the browser (`preventDefault`), so the browser's or the system's menu bar does not take the
+focus. With no such command, Alt is left alone as before. Remotes (Roku, tvOS, a TV browser, Android TV) have no
+double-taps.
+
 The browser never hands some chords to a page: Ctrl+W, Ctrl+T, Ctrl+Tab and Ctrl+N in a normal tab. They work when
 the app runs as an installed app window. Choose defaults with that in mind.
 

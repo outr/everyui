@@ -1450,6 +1450,7 @@ object Platform {
     def hear(e: dom.KeyboardEvent, pressed: Boolean): Unit = {
       held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
       embedded = RenderNode.embedOf(dom.document.activeElement)
+      repeating = e.repeat
       // what a field of the app's types, or moves its caret by, is the field's whatever the app made of it
       if (f(e.key, pressed) && !RenderNode.fieldKey(e)) e.preventDefault()
     }
@@ -1472,6 +1473,9 @@ object Platform {
 
   /** The modifiers held with the key being reported. */
   def modifiers(): everyui.event.Modifiers = held
+  private var repeating = false
+  /** Whether the key being reported is one held down repeating (`KeyboardEvent.repeat`). */
+  def keyRepeat(): Boolean = repeating
 
   /** The embed the key being reported is meant for, "" for none (`RenderNode.embedOf`). */
   def keyEmbed(): String = embedded

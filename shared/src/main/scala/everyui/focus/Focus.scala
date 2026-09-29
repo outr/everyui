@@ -270,16 +270,24 @@ object Focus {
     * first, before the focused component hears of it. A key meant for an embed, something that handles its own keys
     * (`Platform.keyEmbed`: an editor in a web page), is the embed's, untouched — Escape too — unless it runs a command
     * made to win there or one on a chord the embed leaves to the app (`Keymap.embed`); the embed can give a key back
-    * (`handBack`). Otherwise a key the focused component keeps (`keepsKey`) goes to it alone. */
+    * (`handBack`). Otherwise a key the focused component keeps (`keepsKey`) goes to it alone.
+    *
+    * A double-tap of a modifier (`Chord.doubleTap`) runs its command on the second release, inside an embed too, and
+    * while one of Alt runs a command, Alt on its own is kept from the platform (`Keymap.keepsAlt`). */
   def key(name: String, pressed: Boolean): Boolean = {
     val key = Keys.of(name)
     val held = Platform.modifiers()
     val event = KeyEvent(key, name, held.ctrl, held.meta, held.alt, held.shift)
     val embed = Platform.keyEmbed()
     if (pressed) used()
-    if (embed.nonEmpty) pressed && Keymap.run(event, embed)
-    else if (pressed && Keymap.run(event)) true
-    else focusKey(key, event, pressed)
+    // heard before anything else might take the key
+    val tapped = Keymap.tap(event, pressed, Platform.keyRepeat())
+    val taken =
+      if (tapped) true
+      else if (embed.nonEmpty) pressed && Keymap.run(event, embed)
+      else if (pressed && Keymap.run(event)) true
+      else focusKey(key, event, pressed)
+    taken || Keymap.keepsAlt(event)
   }
 
   /** A key an embed had and gives back, pressed as though it had never been the embed's: an editor's Escape with no

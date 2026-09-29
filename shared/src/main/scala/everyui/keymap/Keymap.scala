@@ -15,7 +15,10 @@ import reactify.*
   *   Keymap.global.rebind("tab.close", Chord("F4", ctrl = true))
   *   Keymap.listed.map(c => c.label + "  " + c.chords().map(_.label).mkString(", "))   // a shortcut help screen
   *   Keymap.embed("editor", Chord("W", primary = true))   // inside the editor embed, only this chord stays the app's
-  * }}} */
+  *   Keymap.global.add("palette", "Command palette", Chord.doubleTap("Shift")) { palette.open() }   // Shift, Shift
+  * }}}
+  *
+  * A double-tap of a modifier (`Chord.doubleTap`) runs on its second release, even inside an embed. */
 class Keymap {
   val commands: Var[List[Command]] = Var(Nil)
 
@@ -79,6 +82,40 @@ object Keymap {
     }
     found
   }
+
+  /** How long a double-tap (`Chord.doubleTap`) may take, from the first press to the second release, in milliseconds. */
+  val doubleTapWindow: Var[Double] = Var(400.0)
+  /** The keys so far, as a double-tap goes. */
+  lazy val taps: DoubleTap = new DoubleTap
+
+  /** The command a double-tap of `modifier` ("Control", "Shift", "Alt", "Meta") runs, the showing screen's before the
+    * global ones. A double-tap runs inside embeds too: a modifier on its own types nothing, so an editor loses nothing
+    * to it. */
+  def findTap(modifier: String): Option[Command] = {
+    var found: Option[Command] = None
+    var left = active
+    while (found.isEmpty && left.nonEmpty) {
+      found = left.head.commands().find(_.tappedBy(modifier))
+      left = left.tail
+    }
+    found
+  }
+
+  /** Hear `e` for the double-taps, pressed or released and whether it is a key held down repeating, and run the
+    * command a double-tap it completes runs: whether one ran, and so took the key. */
+  def tap(e: KeyEvent, pressed: Boolean, repeat: Boolean): Boolean = {
+    val m = taps.key(e, pressed, repeat)
+    m.nonEmpty && (findTap(m) match {
+      case Some(command) =>
+        command.run()
+        true
+      case None => false
+    })
+  }
+
+  /** Whether `e` is Alt on its own while a double-tap of Alt runs a command, which the platform must not have: a
+    * browser, or the system, puts the focus in its menu bar on a lone Alt. */
+  def keepsAlt(e: KeyEvent): Boolean = e.name == "Alt" && findTap("Alt").nonEmpty
 
   /** Run the command `e` is a chord of, if there is one (inside embed `embed`, one it allows): whether one ran, and
     * so took the key. */

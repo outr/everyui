@@ -1,7 +1,7 @@
 package everyui.focus
 
 import everyui.component.{Component, Container}
-import everyui.event.KeyEvent as UIKeyEvent
+import everyui.event.{Keys, KeyEvent as UIKeyEvent}
 import everyui.keymap.{Chord, Keymap}
 import everyui.layout.HorizontalLayout
 import everyui.render.{Host, Nodes}
@@ -51,6 +51,7 @@ class KeymapSpec extends FxSpec {
       Keymap.global.commands @= Nil
       Keymap.shown @= (() => None)
       Keymap.embeds @= Map.empty
+      Keymap.doubleTapWindow @= 400.0
       ui.children.clear()
       Focus.focused @= None
     }
@@ -216,6 +217,130 @@ class KeymapSpec extends FxSpec {
         backs shouldBe 1
       }
       finally fx(off())
+    }
+  }
+
+  /** A modifier `code` pressed or released on `target`, holding itself as it goes down (Ctrl down with Ctrl's own
+    * press) and the others given, as a keyboard reports it. */
+  private def modifier(code: KeyCode, pressed: Boolean, target: javafx.event.EventTarget = window,
+                       shift: Boolean = false): Unit = fx {
+    val kind = if (pressed) KeyEvent.KEY_PRESSED else KeyEvent.KEY_RELEASED
+    javafx.event.Event.fireEvent(target, new KeyEvent(kind, "", "", code,
+      shift || (pressed && code == KeyCode.SHIFT), pressed && code == KeyCode.CONTROL,
+      pressed && code == KeyCode.ALT, pressed && code == KeyCode.META))
+  }
+
+  /** A modifier `code` tapped on `target`: pressed and released. */
+  private def tap(code: KeyCode, target: javafx.event.EventTarget = window): Unit = {
+    modifier(code, pressed = true, target)
+    modifier(code, pressed = false, target)
+  }
+
+  "A double-tap of a modifier" should {
+    "run its command on the second release" in onScreen { _ =>
+      var ran: List[String] = Nil
+      fx {
+        Keymap.global.add("palette", "Palette", Chord.doubleTap("Control")) { ran = ran :+ "palette" }
+        Keymap.global.add("search", "Search", Chord.parse("Shift Shift")) { ran = ran :+ "search" }
+      }
+      tap(KeyCode.CONTROL)
+      modifier(KeyCode.CONTROL, pressed = true)
+      ran shouldBe Nil
+      modifier(KeyCode.CONTROL, pressed = false)
+      ran shouldBe List("palette")
+      tap(KeyCode.SHIFT)
+      tap(KeyCode.SHIFT)
+      ran shouldBe List("palette", "search")
+      // a third tap is the first of the next double-tap
+      tap(KeyCode.SHIFT)
+      ran shouldBe List("palette", "search")
+    }
+    "not run when too slow" in onScreen { _ =>
+      var ran = 0
+      fx {
+        Keymap.doubleTapWindow @= 100.0
+        Keymap.global.add("palette", "Palette", Chord.doubleTap("Control"))(ran += 1)
+      }
+      tap(KeyCode.CONTROL)
+      Thread.sleep(200L)
+      tap(KeyCode.CONTROL)
+      ran shouldBe 0
+      // the slow second tap starts another, which a quick third completes
+      tap(KeyCode.CONTROL)
+      ran shouldBe 1
+    }
+    "not run when another key goes down between, or another modifier is held" in onScreen { _ =>
+      var ran = 0
+      fx(Keymap.global.add("palette", "Palette", Chord.doubleTap("Control"))(ran += 1))
+      // Ctrl+C, then Ctrl
+      modifier(KeyCode.CONTROL, pressed = true)
+      press(KeyCode.C, "c", ctrl = true)
+      modifier(KeyCode.CONTROL, pressed = false)
+      tap(KeyCode.CONTROL)
+      ran shouldBe 0
+      // Ctrl tapped twice with Shift held
+      modifier(KeyCode.CONTROL, pressed = true, shift = true)
+      modifier(KeyCode.CONTROL, pressed = false, shift = true)
+      modifier(KeyCode.CONTROL, pressed = true, shift = true)
+      modifier(KeyCode.CONTROL, pressed = false, shift = true)
+      ran shouldBe 0
+    }
+    "take no repeat of a held modifier for a press" in onScreen { _ =>
+      var ran = 0
+      fx(Keymap.global.add("palette", "Palette", Chord.doubleTap("Control"))(ran += 1))
+      modifier(KeyCode.CONTROL, pressed = true)
+      modifier(KeyCode.CONTROL, pressed = true)
+      modifier(KeyCode.CONTROL, pressed = true)
+      modifier(KeyCode.CONTROL, pressed = false)
+      ran shouldBe 0
+      tap(KeyCode.CONTROL)
+      ran shouldBe 1
+    }
+    "run inside an embed, though the command is not made to win there" in onScreen { cards =>
+      var ran = 0
+      fx(Keymap.global.add("palette", "Palette", Chord.doubleTap("Primary"))(ran += 1))
+      val editor = fx {
+        val r = new javafx.scene.layout.Region
+        r.getProperties.put(Host.embedKey, "editor")
+        window.getRoot.asInstanceOf[Pane].getChildren.add(r)
+        r
+      }
+      try {
+        tap(KeyCode.CONTROL, editor)
+        tap(KeyCode.CONTROL, editor)
+        ran shouldBe 1
+        fx(Focus.focused()) shouldBe Some(cards(0))
+      }
+      finally fx(window.getRoot.asInstanceOf[Pane].getChildren.remove(editor))
+    }
+    "keep a lone Alt from the platform only while a double-tap of Alt runs a command" in onScreen { _ =>
+      var ran = 0
+      tap(KeyCode.ALT)
+      reached shouldBe List("Alt")
+      fx(Keymap.global.add("menu", "Menu", Chord.parse("Alt Alt"))(ran += 1))
+      tap(KeyCode.ALT)
+      tap(KeyCode.ALT)
+      ran shouldBe 1
+      reached shouldBe List("Alt")
+    }
+    "be written out, labelled and listed" in onScreen { _ =>
+      Chord.parse("Ctrl Ctrl") shouldBe Chord.doubleTap("Control")
+      Chord.parse("control  control") shouldBe Chord("Control", doubleTap = true)
+      Chord.parse("Shift Shift") shouldBe Chord.doubleTap("Shift")
+      Chord.parse("Alt Alt") shouldBe Chord.doubleTap("Option")
+      Chord.parse("Primary Primary") shouldBe Chord.doubleTap("Primary")
+      Chord.parse("Ctrl+Shift") shouldBe Chord("Shift", ctrl = true)
+      fx {
+        Keymap.global.add("palette", "Palette", Chord.parse("Primary Primary"))(())
+        Keymap.global.add("search", "Search", Chord.doubleTap("Shift"))(())
+        Keymap.global.add("menu", "Menu", Chord.doubleTap("Alt"))(())
+      }
+      // not a Mac: Primary is Ctrl
+      fx(Keymap.listed.map(c => c.id + " " + c.chords().map(_.label).mkString(", "))) shouldBe
+        List("palette Ctrl Ctrl", "search Shift Shift", "menu Alt Alt")
+      fx(Chord.doubleTap("Primary").tapped) shouldBe "Control"
+      // no one key is a double-tap
+      fx(Chord.doubleTap("Control").matches(UIKeyEvent(Keys.of("Control"), "Control", ctrl = true))) shouldBe false
     }
   }
 }

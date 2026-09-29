@@ -21,4 +21,7 @@ class Command(val id: String, val label: String, val defaults: List[Chord], acti
 
   /** Whether `e` runs it: enabled, and one of its chords. */
   def runsOn(e: everyui.event.KeyEvent): Boolean = enabled() && chords().exists(_.matches(e))
+
+  /** Whether a double-tap of `modifier` ("Control", "Shift", "Alt", "Meta") runs it: enabled, and one of its chords. */
+  def tappedBy(modifier: String): Boolean = enabled() && chords().exists(_.tapped == modifier)
 }

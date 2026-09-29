@@ -1111,6 +1111,8 @@ object Host {
   var pointerButton: Int = 0
   /** The embed the key the activity is reporting is meant for (`Platform.keyEmbed`). */
   var embedded: String = ""
+  /** Whether the key the activity is reporting is one held down repeating (`Platform.keyRepeat`). */
+  var repeat: Boolean = false
   /** Whether the app reads right to left (`Platform.setDirection`), and the text nodes that follow it. */
   var rtl: Boolean = false
   val aligned: java.util.Set[RenderNode] = java.util.Collections.newSetFromMap(new java.util.WeakHashMap[RenderNode, java.lang.Boolean]())
@@ -1135,6 +1137,11 @@ object Host {
     else if (code == KeyEvent.KEYCODE_MEDIA_REWIND) "MediaRewind"
     else if (code == KeyEvent.KEYCODE_MEDIA_NEXT) "MediaTrackNext"
     else if (code == KeyEvent.KEYCODE_MEDIA_PREVIOUS) "MediaTrackPrevious"
+    // the modifiers on their own, as the web names them (a double-tap is one pressed twice)
+    else if (code == KeyEvent.KEYCODE_CTRL_LEFT || code == KeyEvent.KEYCODE_CTRL_RIGHT) "Control"
+    else if (code == KeyEvent.KEYCODE_SHIFT_LEFT || code == KeyEvent.KEYCODE_SHIFT_RIGHT) "Shift"
+    else if (code == KeyEvent.KEYCODE_ALT_LEFT || code == KeyEvent.KEYCODE_ALT_RIGHT) "Alt"
+    else if (code == KeyEvent.KEYCODE_META_LEFT || code == KeyEvent.KEYCODE_META_RIGHT) "Meta"
     else if (e.getUnicodeChar > 0) e.getUnicodeChar.toChar.toString
     else KeyEvent.keyCodeToString(code)
   }
@@ -1911,6 +1918,8 @@ object Platform {
   /** The embed the key being reported is meant for, "" for none: the one whose web view has the focus
     * (`Host.embedded`, as the activity reads it; never for Back, which is the app's). */
   def keyEmbed(): String = Host.embedded
+  /** Whether the key being reported is one held down repeating: a press whose repeat count is past 0. */
+  def keyRepeat(): Boolean = Host.repeat
   /** Shortcuts are made with Ctrl on Android. */
   def commandKey(): Boolean = false
 

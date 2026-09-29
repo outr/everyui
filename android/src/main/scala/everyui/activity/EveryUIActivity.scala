@@ -111,7 +111,12 @@ abstract class EveryUIActivity extends Activity {
         taken || super.dispatchKeyEvent(e)
       }
     }
-    else hook(Host.keyName(e), e.getAction == KeyEvent.ACTION_DOWN) || super.dispatchKeyEvent(e)
+    else {
+      val down = e.getAction == KeyEvent.ACTION_DOWN
+      Host.repeat = down && e.getRepeatCount > 0
+      val taken = try hook(Host.keyName(e), down) finally Host.repeat = false
+      taken || super.dispatchKeyEvent(e)
+    }
   }
 
   /** Edge to edge with the system bars hidden, by whichever means this Android has.
