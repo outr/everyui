@@ -1535,8 +1535,9 @@ class RokuEmitter(
               return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             case Some(fields) if isCaseCtor(fn, t.tpe) =>
               val flat = caseLiteralArgs(fields, flattenVarargs(args))
-              val fs = fields.zip(flat).map((f, a) => s"$f: ${emitArgVal(a)}")
-              val fieldList = fields.take(flat.size).map(f => brStr(f)).mkString(", ")
+              // each field under the key its reads use: `stop.pos` reads `pos_` (brSafe), so it is stored there, not at `pos`
+              val fs = fields.zip(flat).map((f, a) => s"${brSafe(f)}: ${emitArgVal(a)}")
+              val fieldList = fields.take(flat.size).map(f => brStr(brSafe(f))).mkString(", ")
               return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: fs).mkString(", ") + " }"
             case _ =>
           }

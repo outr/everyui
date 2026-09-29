@@ -757,8 +757,9 @@ class SwiftEmitter(
               return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             case Some(fields) if isCaseCtor(fn, t.tpe) =>
               val flat = caseLiteralArgs(fields, flattenVarargs(args))
-              val fs = fields.zip(flat).map((f, a) => s"$f: ${emitArgVal(a)}")
-              val fieldList = fields.take(flat.size).map(f => brStr(f)).mkString(", ")
+              // each field under the key its reads use: `stop.pos` reads `pos_` (brSafe), so it is stored there, not at `pos`
+              val fs = fields.zip(flat).map((f, a) => s"${brSafe(f)}: ${emitArgVal(a)}")
+              val fieldList = fields.take(flat.size).map(f => brStr(brSafe(f))).mkString(", ")
               return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: fs).mkString(", ") + " }"
             case _ =>
           }
@@ -773,8 +774,9 @@ class SwiftEmitter(
               return s"${typeName(t.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             case Some(fields) if isCaseCtor(fn, t.tpe) =>
               val flat = caseLiteralArgs(fields, flattenVarargs(args))
-              val fs = fields.zip(flat).map((f, a) => s"${swStr(f)}: ${emitArgVal(a)}")
-              val fieldList = rtArr(fields.take(flat.size).map(f => brStr(f)))
+              // each field under the key its reads use: `stop.pos` reads `pos_` (brSafe), so it is stored there, not at `pos`
+              val fs = fields.zip(flat).map((f, a) => s"${swStr(brSafe(f))}: ${emitArgVal(a)}")
+              val fieldList = rtArr(fields.take(flat.size).map(f => brStr(brSafe(f))))
               return rtObj(s"${swStr("_cls")}: ${brStr(t.tpe.typeSymbol.name)}" :: s"${swStr("_fields")}: $fieldList" :: fs)
             case _ =>
           }
