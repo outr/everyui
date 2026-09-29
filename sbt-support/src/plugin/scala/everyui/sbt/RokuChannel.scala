@@ -40,22 +40,29 @@ object RokuChannel {
 
   /** Faces for the scripts a Roku has no glyphs for: its system font has no Arabic or CJK, and a Label draws in one
     * font, so the runtime draws such text in runs, each in a face that has its glyphs (`uiRichText`). Noto Sans Arabic
-    * whole, and Noto Sans CJK SC and TC cut down to the characters in `text` (an app's translations) and printable
-    * ASCII, as `fonts/fallback-<arabic|cjk-sc|cjk-tc>[-bold]`, regular and bold. Needs `hb-subset` (HarfBuzz) and the
-    * Noto fonts under `noto` (`noto/NotoSansArabic-*.ttf`, `noto-cjk/NotoSansCJK-*.ttc`). */
-  def fallbackFonts(log: String => Unit, out: File, text: String, fonts: File = file("/usr/share/fonts")): Unit = {
+    * with the ASCII, Latin-1 and punctuation it lacks put in from `latin` (the channel's Latin faces, regular and bold;
+    * Noto Sans by default), since an Arabic word carries its "…", "/" or "—" into the Arabic face (FontMerge); and Noto
+    * Sans CJK SC and TC cut down to the characters in `text` (an app's translations), printable ASCII and that
+    * punctuation, as `fonts/fallback-<arabic|cjk-sc|cjk-tc>[-bold]`, regular and bold. Needs `hb-subset` (HarfBuzz)
+    * and the Noto fonts under `noto` (`noto/NotoSansArabic-*.ttf`, `noto/NotoSans-*.ttf`,
+    * `noto-cjk/NotoSansCJK-*.ttc`). */
+  def fallbackFonts(log: String => Unit, out: File, text: String, fonts: File = file("/usr/share/fonts"),
+                    latin: Option[(File, File)] = None): Unit = {
     val dir = out / "fonts"
     IO.createDirectory(dir)
-    Seq("Regular" -> "", "Bold" -> "-bold").foreach { case (weight, suffix) =>
+    val (latinRegular, latinBold) =
+      latin.getOrElse((fonts / "noto" / "NotoSans-Regular.ttf", fonts / "noto" / "NotoSans-Bold.ttf"))
+    Seq(("Regular", "", latinRegular), ("Bold", "-bold", latinBold)).foreach { case (weight, suffix, latinFace) =>
       val arabic = fonts / "noto" / s"NotoSansArabic-$weight.ttf"
       if (!arabic.exists) sys.error(s"fallbackFonts: $arabic is missing (Noto Sans Arabic)")
-      IO.copyFile(arabic, dir / s"fallback-arabic$suffix.ttf")
+      if (!latinFace.exists) sys.error(s"fallbackFonts: $latinFace is missing (the Latin face for Arabic's punctuation)")
+      FontMerge.add(arabic, latinFace, FontMerge.latin, dir / s"fallback-arabic$suffix.ttf")
       val cjk = fonts / "noto-cjk" / s"NotoSansCJK-$weight.ttc"
       if (!cjk.exists) sys.error(s"fallbackFonts: $cjk is missing (Noto Sans CJK)")
       // and the symbols the runtime draws in this face where the box's own has none (uiScriptOf): suits, stars, the sun, a tick
       val symbols = "\u2600\u2601\u2602\u2603\u2605\u2606\u2660\u2661\u2662\u2663\u2664\u2665\u2666\u2667\u2668\u2669" +
         "\u266A\u266B\u266C\u266D\u266E\u266F\u2713"
-      val characters = (text + (32 to 126).map(_.toChar).mkString + symbols).distinct
+      val characters = (text + FontMerge.latin.map(_.toChar).mkString + symbols).distinct
       val list = IO.createTemporaryDirectory / "characters.txt"
       IO.write(list, characters)
       // the collection's faces: 2 is Simplified Chinese, 3 Traditional

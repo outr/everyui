@@ -1547,8 +1547,10 @@ screen look different on two TVs). It matches the Android TV build, after these 
 
 - **Arabic and Chinese.** A Roku's system font has neither, and a Label draws in one face. Text in those scripts is
   drawn in runs (`uiRichText`): each a Label in a face that has its glyphs, Roboto for Latin and the channel's
-  `fonts/fallback-*` for the rest (`RokuChannel.fallbackFonts`: Noto Sans Arabic, and Noto Sans CJK SC and TC cut down
-  by hb-subset to the characters an app's translations use; `Platform.setLanguage` picks Traditional for zh_Hant). A
+  `fonts/fallback-*` for the rest (`RokuChannel.fallbackFonts`: Noto Sans Arabic, with the ASCII and punctuation it
+  lacks put in from a Latin face by `FontMerge`, since the "…" or "/" in an Arabic word is drawn in the Arabic face; and
+  Noto Sans CJK SC and TC cut down by hb-subset to the characters an app's translations use and that punctuation;
+  `Platform.setLanguage` picks Traditional for zh_Hant). A
   Roku Label joins Arabic letters but lays them out left to right, mirroring each word, so an Arabic run arrives
   shaped (its letters in their presentation forms, lam-alef ligatures, marks kept with their letters, brackets
   mirrored) and reversed, and a paragraph that begins in Arabic draws its runs right to left. The shaping follows
