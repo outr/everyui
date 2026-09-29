@@ -110,10 +110,7 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     event.pointer.up.attach(_ => dragFrom = None)
     // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and
     // all it held, for as long as this scroll lived
-    content.children.changes { (was, now) =>
-      ContainerFeature.missing(was, now).foreach(uncull)
-      ContainerFeature.missing(now, was).foreach(cull)
-    }
+    content.children.attach(_ => recull())
     event.key.down.attach { k =>
       val along = if (horizontal) size.width() else size.height()
       val on = if (fromRight()) Key.ArrowLeft else if (horizontal) Key.ArrowRight else Key.ArrowDown
@@ -224,6 +221,21 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
 
   // the children culled, each with what lets its pictures go
   private var culling: Map[Component, Reaction[Boolean]] = Map.empty
+  // the content's children as they were last culled
+  private var culled: Vector[Component] = Vector.empty
+
+  /** The content's children culled as they are now: worked out from what was culled last, not from a change's own previous
+    * value, which need not be what was there (a change made deep in a chain of changes is heard late, or is dropped for a
+    * later one, whose previous value is then a list that never was). */
+  private def recull(): Unit = {
+    val now = content.children()
+    if (!(now eq culled)) {
+      val was = culled
+      culled = now
+      ContainerFeature.missing(was, now).foreach(uncull)
+      ContainerFeature.missing(now, was).foreach(cull)
+    }
+  }
 
   /** A child taken out of the content is no longer culled: its `visible` stays as it was and stops following the
     * viewport (which would otherwise hold it for as long as this lived). */

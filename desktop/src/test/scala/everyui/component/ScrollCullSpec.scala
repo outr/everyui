@@ -75,6 +75,34 @@ class ScrollCullSpec extends FxSpec {
       // (the children last replaced are still the content's previous value, as every reactify value keeps its last)
       surviving(dropped.dropRight(20)) shouldBe 0
     }
+    "let go of a child dropped by a change heard late, made deep in a chain of changes, after a later one" in {
+      // a change made past the depth a chain may nest to is heard once the chain unwinds, and one made nearer the top in
+      // the same turn is heard before it; each depth up to past that budget, so wherever it lies
+      (1 to 12).foreach { depth =>
+        scrolling { scroll =>
+          val bare = fx(scroll.offset.reactions().size)
+          val first = Vector(row(), row(), row())
+          fx(scroll.content.children @= first)
+          val start = reactify.Var(0)
+          val chain = (1 to depth).map(_ => reactify.Var(0)).toList
+          (start :: chain).zip(chain).foreach { case (a, b) => a.attach(n => b @= n) }
+          val later = Vector(row(), row())
+          val rows = Vector(row(), row())
+          chain.last.attach(_ => scroll.content.children @= later)
+          start.attach(_ => scroll.content.children @= rows)
+          fx(start @= 1)
+          withClue("depth " + depth.toString + ": ") {
+            val now = fx(scroll.content.children())
+            // what the content holds follows the viewport, one reaction each on its offset, and nothing else does
+            fx(scroll.offset.reactions().size) shouldBe bare + now.size
+            (first ++ later ++ rows).foreach { c =>
+              val held = now.exists(_ eq c)
+              fx(c.visible.references.nonEmpty) shouldBe held
+            }
+          }
+        }
+      }
+    }
     "still cull a child put back after it was taken out" in scrolling { scroll =>
       val rows = Vector.fill(20)(row())
       fx(scroll.content.children := rows)
