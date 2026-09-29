@@ -49,6 +49,19 @@ object Frames {
   /** Which loop this is: a frame asked for by one since replaced is not run. */
   private var loop = 0
 
+  /** For a look at what keeps the loop from idling (Android's `everyui.render.IdleAudit`): the frames run, and those
+    * run one after another since the loop last idled. */
+  private[everyui] var stepped: Int = 0
+  private[everyui] var streak: Int = 0
+  /** Told of each wake, request and hold while `watched`: what asked, a diagnostic's. */
+  private[everyui] var watched: Boolean = false
+  private[everyui] var watcher: String => Unit = (_: String) => ()
+
+  /** How many frames are still owed, how many holds are out, and whether the loop wants the next frame for itself. */
+  private[everyui] def owed: Int = left
+  private[everyui] def held: Int = holds
+  private[everyui] def wants: Boolean = wanted()
+
   /** Whether frames run only while something needs one, rather than every frame the platform draws. */
   def onDemand: Boolean = Platform.framesOnDemand()
 
@@ -58,18 +71,21 @@ object Frames {
   /** Something drawn changed: the frame that draws it runs, and the one after. What changes as a frame runs has those
     * two after it. Cheap when frames are running already, as it is called on every change. */
   def wake(): Unit = if (demand) {
+    if (watched) watcher("wake")
     if (left < 2) left = 2
     if (asleep) resume()
   }
 
   /** The next `count` frames run, whatever else needs them. */
   def request(count: Int = 1): Unit = {
+    if (watched) watcher("request")
     if (left < count) left = count
     if (asleep) resume()
   }
 
   /** Every frame runs until the hold is released. */
   def hold(): FrameHold = {
+    if (watched) watcher("hold")
     holds += 1
     if (asleep) resume()
     new FrameHold
@@ -111,11 +127,14 @@ object Frames {
   private def step(): Unit = {
     val woke = wokeAt
     wokeAt = -1.0
+    stepped += 1
+    streak += 1
     if (left > 0) left -= 1
     tick(woke)
     if (holds > 0 || left > 0 || wanted()) next(loop)
     else {
       asleep = true
+      streak = 0
       stopping()
     }
   }

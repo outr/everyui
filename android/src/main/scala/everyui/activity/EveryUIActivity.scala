@@ -52,6 +52,8 @@ abstract class EveryUIActivity extends Activity {
     BackCallback.register(this)
 
     if (!adopted) run()
+    // what keeps it busy while nothing moves, logged where the launch asks (`--es idleAudit 1`)
+    everyui.render.IdleAudit.start()
   }
 
   /** The render root, made. */

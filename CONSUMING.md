@@ -163,6 +163,14 @@ Anything else can ask directly: `Frames.request()` for the next frame, `Frames.r
 runs. The first after an idle spell is timed from what woke it. `fps=1` at launch holds every frame, so the rate
 it logs is the rate the app holds, not how often it idles.
 
+On Android a component's motion runs only while its view is in the window and not hidden (`visible`): a spinner
+taken off the screen and never disposed of stops, and turns again if it is put back. To find what keeps an Android app
+busy while nothing moves, launch it with `--es idleAudit 1` (release builds too): every five seconds it logs, under
+`[idle]`, the frames the loop ran and what keeps it running (holds, frames owed, the tasks or screen that want them,
+and, once it has run a second without idling, where each wake came from), the motions running, every message the main
+thread ran by who sent it with its time, where each `Platform.after` was asked for, and each thread's CPU. Off, it
+costs nothing.
+
 ## The page
 
 The bundle expects an element with the id `app` (it makes one if there is none) and the bundled faces in `fonts/`

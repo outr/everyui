@@ -171,5 +171,47 @@ class FramesSpec extends FxSpec {
       words.content() shouldBe "Count: 2"
       frames() shouldBe 2
     }
+
+    "count the frames it runs, and those run without idling since it last idled" in fx {
+      fresh()
+      val before = Frames.stepped
+      Frames.request(3)
+      frames(2) shouldBe 2
+      Frames.streak shouldBe 2
+      frames() shouldBe 1
+      Frames.streak shouldBe 0
+      Frames.stepped shouldBe before + 3
+      val hold = Frames.hold()
+      frames(100)
+      Frames.streak shouldBe 100
+      Frames.held shouldBe 1
+      hold.release()
+      frames()
+      Frames.streak shouldBe 0
+      Frames.held shouldBe 0
+      Frames.owed shouldBe 0
+      Frames.wants shouldBe false
+    }
+
+    "tell a watcher of each wake, request and hold, and only while it is watched" in fx {
+      fresh()
+      var heard = Vector.empty[String]
+      Frames.watcher = kind => heard = heard :+ kind
+      try {
+        Frames.request()
+        frames()
+        heard shouldBe empty
+        Frames.watched = true
+        Frames.request()
+        new Container().backgroundColor @= Color.Red
+        val hold = Frames.hold()
+        hold.release()
+        frames()
+        heard shouldBe Vector("request", "wake", "hold")
+      } finally {
+        Frames.watched = false
+        Frames.watcher = _ => ()
+      }
+    }
   }
 }

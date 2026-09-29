@@ -392,22 +392,28 @@ class RenderNode(val view: View) {
     view.setLayerType(if (cached) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, null)
 
   private var tracks: List[everyui.motion.Track] = Nil
-  private var animators: List[android.animation.Animator] = Nil
+  /** The motion's animators, run only while the view is in a window and shown (Motion): made on first use. */
+  private var motion: Motion = null
+  private def moves: Motion = {
+    if (motion == null) motion = new Motion(view, () => animators())
+    motion
+  }
 
   /** Each track an animator of the view's own properties, repeating: a position moves the translation the node is
     * placed by, from where it is placed. */
-  /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
-  def setMotionOwner(owner: () => String): Unit = ()
+  /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion; the idle audit here). */
+  def setMotionOwner(owner: () => String): Unit = moves.owner = owner
   def setMotion(motion: List[everyui.motion.Track]): Unit = {
     tracks = motion
     animate()
   }
 
-  private def animate(): Unit = {
+  private def animate(): Unit = if (tracks.nonEmpty || motion != null) moves.set(tracks.nonEmpty)
+
+  private def animators(): List[android.animation.Animator] = {
     import android.animation.{Keyframe, ObjectAnimator, PropertyValuesHolder, ValueAnimator}
     import everyui.motion.Track
-    animators.foreach(_.cancel())
-    animators = tracks.map { track =>
+    tracks.map { track =>
       def holder(name: String, value: everyui.motion.Keyframe => Double): PropertyValuesHolder =
         PropertyValuesHolder.ofKeyframe(name, track.keys.map(k => Keyframe.ofFloat(k.at.toFloat, value(k).toFloat))*)
       val holders = track.property match {
@@ -421,7 +427,6 @@ class RenderNode(val view: View) {
       animator.setStartDelay((track.delay * 1000.0).toLong)
       animator.setRepeatCount(ValueAnimator.INFINITE)
       animator.setInterpolator(new android.view.animation.LinearInterpolator)
-      animator.start()
       animator
     }
   }
@@ -665,8 +670,10 @@ class RenderNode(val view: View) {
   def scrollSmoothly(to: Double, horizontal: Boolean): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. Its place and its size are
     * kept (INVISIBLE, not GONE), since the layout is ours and not the view system's. */
-  def setVisible(visible: Boolean): Unit =
+  def setVisible(visible: Boolean): Unit = {
     view.setVisibility(if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE)
+    if (motion != null) motion.show(visible)
+  }
   def setOpacity(opacity: Double): Unit = view.setAlpha(opacity.toFloat)
 
   def setClip(width: Double, height: Double): Unit = view match {
@@ -1852,8 +1859,10 @@ object Platform {
 
   def later(f: () => Unit): Unit = new android.os.Handler(android.os.Looper.getMainLooper).post(() => f())
   /** `f` on the UI thread once `seconds` have passed. */
-  def after(seconds: Double, f: () => Unit): Unit =
+  def after(seconds: Double, f: () => Unit): Unit = {
+    if (IdleAudit.on) IdleAudit.after(seconds)
     new android.os.Handler(android.os.Looper.getMainLooper).postDelayed(() => f(), math.max(0L, (seconds * 1000.0).toLong))
+  }
 
   /** A value kept across launches (the app's shared preferences), or "" when there is none. */
   def setting(name: String): String = Host.settings.getString(name, "")
