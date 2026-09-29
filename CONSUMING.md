@@ -402,7 +402,7 @@ new FilterPicker[Model](q => models.find(q), _.id, _.name, _.providerName,
 CommonMark (headings, paragraphs, emphasis, code, links, images, quotes, lists, rules, hard breaks, escapes and
 entities) with GFM's tables, strikethrough, task lists and bare links. Raw HTML shows as the text it is. It lays out to
 the width it is given and is as tall as its blocks, so it fits a chat's bubble or a measured list row
-(`VirtualList(measured = true)`).
+(`VirtualList(measuredRows = true)`).
 
 ```scala
 import everyui.markdown.{MarkdownStyle, MarkdownView}
@@ -1217,7 +1217,7 @@ arrow leaves it as the focus layer says (`exitFocus` on a container around it).
 
 Only the rows that show exist; as it scrolls, a row leaving one end is handed the item arriving at the other. The items
 are a `Var[Vector[T]]` the app keeps, each with a key: the cursor (`current`), the selection and the scroll are kept by
-key as items come and go. Rows are `rowHeight` tall, or `measured = true` for rows as tall as each draws itself.
+key as items come and go. Rows are `rowHeight` tall, or `measuredRows = true` for rows as tall as each draws itself.
 
 ```scala
 import everyui.list.{Decoration, VirtualList}
