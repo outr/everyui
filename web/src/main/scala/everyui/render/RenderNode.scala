@@ -1304,39 +1304,45 @@ object Platform {
     * this is the backend that will not stay synchronous. A browser gives `localStorage` a few megabytes and hands
     * it over as strings, which is enough to cache a screen but not a library — IndexedDB is where this goes (via
     * LightDB, which speaks it), and the callback is already shaped to answer later when it does. Nothing above
-    * changes when it moves; only these five bodies. */
+    * changes when it moves; only these five bodies.
+    *
+    * A browser may refuse the storage outright (a private window, or site data blocked): reaching for it throws,
+    * and then nothing is kept and every read comes back empty, which each caller already draws a screen from. */
   private def storeKey(space: String, key: String): String = "everyui-store:" + space + ":" + key
 
-  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = {
-    val value = dom.window.localStorage.getItem(storeKey(space, key))
-    got(if (value == null || value.isEmpty) None else Some(value))
-  }
+  private def storage[T](refused: T)(f: dom.Storage => T): T =
+    try f(dom.window.localStorage) catch { case _: Throwable => refused }
+
+  def storeGet(space: String, key: String, got: Option[String] => Unit): Unit = got(storage[Option[String]](None) { s =>
+    val value = s.getItem(storeKey(space, key))
+    if (value == null || value.isEmpty) None else Some(value)
+  })
 
   def storePut(space: String, key: String, value: String, done: () => Unit): Unit = {
     // a browser refuses a write once its quota is met, and a cache that cannot be written is still a working app
-    try dom.window.localStorage.setItem(storeKey(space, key), value) catch { case _: Throwable => () }
+    storage(())(_.setItem(storeKey(space, key), value))
     done()
   }
 
   def storeDelete(space: String, key: String, done: () => Unit): Unit = {
-    dom.window.localStorage.removeItem(storeKey(space, key))
+    storage(())(_.removeItem(storeKey(space, key)))
     done()
   }
 
-  def storeKeys(space: String, got: List[String] => Unit): Unit = {
+  def storeKeys(space: String, got: List[String] => Unit): Unit = got(storage[List[String]](Nil) { s =>
     val prefix = storeKey(space, "")
     var found: List[String] = Nil
     var i = 0
-    while (i < dom.window.localStorage.length) {
-      val name = dom.window.localStorage.key(i)
+    while (i < s.length) {
+      val name = s.key(i)
       if (name != null && name.startsWith(prefix)) found = name.substring(prefix.length) :: found
       i += 1
     }
-    got(found)
-  }
+    found
+  })
 
   def storeClear(space: String, done: () => Unit): Unit = {
-    storeKeys(space, keys => keys.foreach(k => dom.window.localStorage.removeItem(storeKey(space, k))))
+    storeKeys(space, keys => storage(())(s => keys.foreach(k => s.removeItem(storeKey(space, k)))))
     done()
   }
 
