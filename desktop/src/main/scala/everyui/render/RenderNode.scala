@@ -1097,12 +1097,8 @@ object Platform {
     try f() catch { case t: Throwable => logError("Off the FX thread", t) })
 
   def later(f: () => Unit): Unit = javafx.application.Platform.runLater(() => f())
-  /** `f` on the FX thread once `seconds` have passed. */
-  def after(seconds: Double, f: () => Unit): Unit = {
-    val pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(seconds))
-    pause.setOnFinished(_ => f())
-    pause.play()
-  }
+  /** `f` on the FX thread once `seconds` have passed, on a later turn of it (Timers). */
+  def after(seconds: Double, f: () => Unit): Unit = Timers.after(seconds, f)
 
   /** A value kept across launches (the user's preferences store), or "" when there is none. */
   def setting(name: String): String = Host.settings.get(name, "")
