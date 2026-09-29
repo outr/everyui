@@ -21,16 +21,16 @@ import everyui.render.Platform
   *   autofill   a sign-in and a contact form as autofill and password managers see them
   *   rtlscroll  a rail in a right-to-left language, as the web's own scroll holds it
   *   rows       a table of `n=` rows built and then grown a row at a time, timed
-  *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   composer   a chat's composer: suggestions, attachments, @-mentions and /commands, a reply faked as busy
   *   chat       a group room in a ChatView: streaming replies, tool calls, reasoning, 2000 earlier entries (`theme=light`,
   *              `rtl=1`, `offline=1`, `probe=1`)
+  *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
+  *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not
   *              on a Roku or an Apple TV (app/full: FullDemos)
-  *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
@@ -46,9 +46,9 @@ import everyui.render.Platform
   else if (demo == "autofill") AutofillDemo.run()
   else if (demo == "rtlscroll") RtlScrollDemo.run()
   else if (demo == "rows") RowsDemo.run()
-  else if (demo == "busy") BusyDemo.run()
   else if (demo == "composer") ComposerDemo.run()
   else if (demo == "chat") ChatDemo.run()
+  else if (demo == "busy") BusyDemo.run()
   else if (demo == "colors") ColorsDemo.run()
   else if (demo == "markdown") MarkdownDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
