@@ -6035,7 +6035,7 @@ object RokuEmitter {
             case _ => false
           }
         }
-        body = dropUnusedLocals(dropUnusedLocals(body, paramNames(params)), paramNames(params))
+        body = dropUnusedLocals(dropUnusedLocals(body, paramNames(params), functions), paramNames(params), functions)
         val kept = body.filterNot(_.trim.isEmpty)
         if (kept.size >= 2 && kept.last.trim == "return invalid" && kept(kept.size - 2).trim.startsWith("return"))
           body = body.take(body.lastIndexWhere(_.trim == "return invalid"))
@@ -6082,10 +6082,7 @@ object RokuEmitter {
       val parts = params.split(",").map(_.trim).toVector
       val names = parts.map(_.takeWhile(c => c.isLetterOrDigit || c == '_'))
       val taken = mutable.Set[String]() ++ names.map(_.toLowerCase)
-      def used(n: String): Boolean = {
-        val re = ("(?i)(?<![A-Za-z0-9_.])" + java.util.regex.Pattern.quote(n) + "(?![A-Za-z0-9_])").r
-        body.exists(l => re.findFirstIn(l).nonEmpty)
-      }
+      def used(n: String): Boolean = body.exists(l => reads(l, n))
       parts.zip(names).map { case (part, n) =>
         if (n.isEmpty || n.startsWith("_") || used(n)) part
         else {
@@ -6107,25 +6104,41 @@ object RokuEmitter {
 
   /** A local a function sets and never reads (an unused variable, which the device warns about): its assignment goes
     * where what it is given is only read, and is left a call where it is a call. */
-  private def dropUnusedLocals(body: Vector[String], params: Set[String]): Vector[String] = {
-    val targets = body.collect { case assignment(v, _) => v.toLowerCase }.toSet -- params
+  private def dropUnusedLocals(body: Vector[String], params: Set[String], functions: Set[String]): Vector[String] = {
+    val targets = body.collect { case assignment(v, _) if !v.startsWith("_") => v.toLowerCase }.toSet -- params
     val unread = targets.filter { v =>
-      val re = ("(?i)(?<![A-Za-z0-9_.])" + java.util.regex.Pattern.quote(v) + "(?![A-Za-z0-9_])").r
-      body.forall { l =>
-        l match {
-          case assignment(t, rhs) if t.toLowerCase == v => re.findFirstIn(rhs).isEmpty
-          case _ => re.findFirstIn(l).isEmpty
-        }
+      body.forall {
+        case assignment(t, rhs) if t.toLowerCase == v => !reads(rhs, v)
+        case l => !reads(l, v)
       }
     }
+    // what is left of one computes something: it keeps its assignment, under a name the device does not warn of
+    val renamed = unread.map { v =>
+      var fresh = "_" + v
+      var k = 1
+      while (functions(fresh) || targets(fresh) || params(fresh) || body.exists(l => reads(l, fresh))) { fresh = "_" + v + k; k += 1 }
+      v -> fresh
+    }.toMap
     if (unread.isEmpty) body
     else body.flatMap {
       case l @ assignment(t, rhs) if unread(t.toLowerCase) =>
         val indent = l.takeWhile(_ == ' ')
         if (pureValue.matches(rhs.trim)) None
         else if (callOnly.matches(rhs.trim) && closes(rhs.trim)) Some(indent + rhs.trim)
-        else Some(l)
+        else Some(indent + renamed(t.toLowerCase) + " = " + rhs)
       case l => Some(l)
+    }
+  }
+
+  /** Whether a line reads `name`: as a word, in its code (not a string, not a comment), not after a `.` (a field),
+    * and not as an associative array's key (`{ env: … }`, `, self: …`). */
+  private def reads(line: String, name: String): Boolean = {
+    val code = line.replaceAll("\"(?:[^\"]|\"\")*\"", "\"\"").replaceAll("'.*$", "")
+    val re = ("(?i)(?<![A-Za-z0-9_.])" + java.util.regex.Pattern.quote(name) + "(?![A-Za-z0-9_])").r
+    re.findAllMatchIn(code).exists { m =>
+      val before = code.substring(0, m.start).reverse.dropWhile(_ == ' ')
+      val after = code.substring(m.end).dropWhile(_ == ' ')
+      !(after.startsWith(":") && (before.startsWith("{") || before.startsWith(",")))
     }
   }
 
