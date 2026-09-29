@@ -466,19 +466,17 @@ An EveryUI web app can be installed from the browser, to run in a window of its 
 and done by the app's build: `everyui.sbt.WebApp` (plain Scala in this repository's `sbt-support/`) writes a web app
 manifest and a small service worker next to the bundle and links them from its `index.html`.
 
-Add the sources to the app's build definition, in `project/everyui.sbt`:
-
-```scala
-Compile / unmanagedSourceDirectories += file("/path/to/everyui/sbt-support/src/main/scala")
-```
-
-and call it once the bundle is written (after `index.html` and `main.js`, as DataWrangler's `webBundle` writes them):
+It comes with the `sbt-everyui` plugin ([Web builds](#web-builds-javascript-webassembly-or-both)). Call it once the
+bundle is written, with the version `writeTo` answers:
 
 ```scala
 import everyui.sbt.{WebApp, WebAppIcon, WebAppManifest}
 
 webBundle := Def.uncached {
-  // ... index.html, main.js, fonts written to `out` as before
+  val out = baseDirectory.value / "out"
+  IO.delete(out)
+  val version = everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
+  // ... fonts
   IO.copyDirectory(baseDirectory.value / "icons", out / "icons")
   WebApp.write(out, WebAppManifest("Voidcraft", shortName = "Voidcraft", description = "Code browser",
     themeColor = "#121212", backgroundColor = "#121212",
@@ -505,47 +503,77 @@ bar; Safari adds it with Add to Dock or Add to Home Screen. In its own window th
 chords a browser keeps for itself in a tab (Ctrl+T, Ctrl+N, Ctrl+Tab and others) reach the app's keymap; which ones is
 the browser's own choice and changes between browsers, so try the chords the app relies on in the installed window.
 
-## WebAssembly, falling down to JavaScript
+## Web builds: JavaScript, WebAssembly, or both
 
-A web app can ship as WebAssembly too, with its JavaScript build kept for browsers that cannot run it. It is opt-in,
-and done by the app's build. The WebAssembly build runs heavy layout and data work 2.5 to 3.7 times faster (the
-DataWrangler dashboard, measured). It downloads about as many bytes, so it does not open any sooner.
+The `sbt-everyui` plugin builds a web app as JavaScript, as WebAssembly, or as both, with a loader in the page that
+runs the WebAssembly build where the browser can and the JavaScript one elsewhere. The WebAssembly build runs heavy
+layout and data work 2.5 to 3.7 times faster (the DataWrangler dashboard, measured). It downloads about as many
+bytes, so it does not open any sooner.
 
-Link the app a second time, from the same sources, to WebAssembly:
+`project/plugins.sbt`, beside Scala.js:
 
 ```scala
-lazy val appWasm = project.in(file("app-wasm"))
+addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")
+```
+
+A build that compiles EveryUI from a checkout can take the plugin's sources instead, in `project/everyui.sbt`:
+
+```scala
+Compile / unmanagedSourceDirectories ++= Seq(
+  file("/path/to/everyui/sbt-support/src/main/scala"),
+  file("/path/to/everyui/sbt-support/src/plugin/scala")
+)
+```
+
+It is on every Scala.js project. The app chooses with `everyuiWebTarget`, and its bundle task writes what
+`everyuiWebScripts` links for it, with the page, which loads the app with `<script src="main.js"></script>` (`/main.js`
+too):
+
+```scala
+lazy val app = project.in(file("app"))
   .enablePlugins(ScalaJSPlugin)
   .settings(
-    scalaJSUseMainModuleInitializer := true,
-    Compile / mainClass := (app / Compile / mainClass).value,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)
-      .withESFeatures(_.withUseWebAssembly(true).withESVersion(org.scalajs.linker.interface.ESVersion.ES2022))),
-    libraryDependencies := (app / libraryDependencies).value,
-    Compile / unmanagedSourceDirectories ++= (app / Compile / unmanagedSourceDirectories).value
+    // ... as in sbt, above
+    everyuiWebTarget := WebTarget.Both,
+    webBundle := Def.uncached {
+      val out = baseDirectory.value / "out"
+      IO.delete(out)
+      everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
+      // ... fonts, icons
+      out
+    }
   )
 ```
 
-and, with `sbt-support` in the build as for an installable app, call `everyui.sbt.WasmLoader` once the bundle's
-`index.html` and `main.js` are written:
+| `everyuiWebTarget` | What `writeTo` writes | Where it runs |
+|---|---|---|
+| `WebTarget.Js` (the default) | `main.js`, loaded as it always was | every browser |
+| `WebTarget.Wasm` | `wasm-<hash>/` and `everyui-loader.js` | a browser with WasmGC, exnref and the JS string builtins; elsewhere the console says what it lacks, and nothing runs |
+| `WebTarget.Both` | `main.js`, `wasm-<hash>/` and `everyui-loader.js` | WebAssembly where the browser can, JavaScript elsewhere |
 
-```scala
-WasmLoader.write(out, (appWasm / Compile / fullLinkJSOutput).value)
-```
+`sbt 'set app/everyuiWebTarget := WebTarget.Js' app/webBundle` builds one another way, without editing the build.
 
-It copies the WebAssembly build into `wasm-<hash>/` beside `main.js`, writes `everyui-loader.js`, and puts the loader in
-the page in place of `main.js`'s script. The loader:
+The JavaScript build is the project's own `fullLinkJS`, as its `scalaJSLinkerConfig` sets it (a script, or an ES
+module). The WebAssembly build (`everyuiWasmLinkJS`) links the same code with that configuration made an ES2022
+module with `useWebAssembly`, into `target/everyui-wasm`; `Both` links twice, so a bundle takes longer. Every script's
+URL carries a hash of its contents, so a new bundle is a new URL no browser serves from its cache. `writeTo` answers a
+hash naming the build, which `WebApp.write` takes as its `version`.
+
+The loader (`everyui.sbt.WasmLoader`):
 
 - runs the WebAssembly build where the browser has WasmGC, exception handling with exnref, and the JS string
   builtins (it tests the browser for each, not its name), and the JS build everywhere else;
-- falls down to the JS build if the WebAssembly one fails to start;
-- takes `?wasm=false` (or `?wasm=true`) in the page's URL to choose, whatever the browser has;
-- says in the console which build it loaded and why (`[everyui] loading the WebAssembly build v…: …`).
+- falls down to the JS build if the WebAssembly one fails to start, clearing what it put in `#app`;
+- takes `?wasm=false` (or `?wasm=true`) in the page's URL to choose, whatever the browser has, after a hash route
+  (`#/runs?wasm=false`) too;
+- says in the console which build it loaded and why (`[everyui] loading the WebAssembly build v…: …`, then
+  `[everyui] running the …`).
 
-`window.everyuiBuild` and `Platform.build` (`"wasm"` or `"js"`) say which build runs.
+`Platform.build` (`"wasm"` or `"js"`) says which build runs, and so does `window.everyuiBuild` where the loader is in
+the page.
 
-The server must send `main.wasm` as `application/wasm`, and a Content-Security-Policy must allow
-`'wasm-unsafe-eval'`.
+The server must send `main.wasm` as `application/wasm` (spice does), and a Content-Security-Policy must allow
+`'wasm-unsafe-eval'`. Source maps are not copied; a browser asks for them only with its developer tools open.
 
 ## Sign-in, autofill and password managers
 

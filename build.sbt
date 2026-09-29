@@ -255,6 +255,20 @@ lazy val seo = (project in file("seo"))
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test
   )
 
+// --- sbt-everyui: a web app's build side, published as an sbt plugin -------------------------------------------
+// everyuiWebTarget (JS, WebAssembly, or both with the loader choosing), everyuiWebScripts, and the plain helpers
+// (WebApp, AppDomains, WebScripts). Compiled with sbt 2's own Scala; the helpers in src/main/scala are plain Scala an
+// app's build can also compile from source (CONSUMING.md), the plugin in src/plugin/scala needs sbt and Scala.js.
+lazy val sbtEveryui = (project in file("sbt-support"))
+  .enablePlugins(SbtPlugin)
+  .settings(published)
+  .settings(
+    name := "sbt-everyui",
+    scalaVersion := "3.8.4",
+    Compile / unmanagedSourceDirectories += baseDirectory.value / "src" / "plugin" / "scala",
+    addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0")
+  )
+
 @transient val serverClasspath = taskKey[File]("Compile the server and write its runtime classpath to server/out/classpath.txt")
 
 lazy val server = (project in file("server"))
@@ -476,7 +490,7 @@ lazy val checks = (project in file("checks"))
 
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
-    web, networkJvm, networkJs, monaco)
+    web, networkJvm, networkJs, monaco, sbtEveryui)
   .settings(
     name := "everyui",
     publish / skip := true,
