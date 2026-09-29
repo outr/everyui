@@ -2252,6 +2252,10 @@ class SwiftEmitter(
 @@ new
     def noneValue: String = NULL
 @@ old
+    def emptyArray: String = "[]"
+@@ new
+    def emptyArray: String = rtArr(Nil)
+@@ old
           val whole = fqnOf(q.tpe) match {
             case "scala.Double" | "scala.Float" => s"Fix(${emitTerm(q)})"
             case "scala.Char" => s"_chCode(${emitTerm(q)})"

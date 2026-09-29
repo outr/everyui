@@ -788,6 +788,10 @@ func wrapIntArray(_ a: V = .vNull) -> V { a }
 func wrapLongArray(_ a: V = .vNull) -> V { a }
 func wrapDoubleArray(_ a: V = .vNull) -> V { a }
 func wrapBooleanArray(_ a: V = .vNull) -> V { a }
+func wrapByteArray(_ a: V = .vNull) -> V { a }
+func wrapShortArray(_ a: V = .vNull) -> V { a }
+func wrapCharArray(_ a: V = .vNull) -> V { a }
+func wrapFloatArray(_ a: V = .vNull) -> V { a }
 func intWrapper(_ x: V = .vNull) -> V { x }
 
 // MARK: - Option (a nullable: Some(x) is x, None is null)

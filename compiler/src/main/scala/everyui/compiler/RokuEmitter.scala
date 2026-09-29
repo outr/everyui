@@ -1149,6 +1149,8 @@ class RokuEmitter(
     def isOptionModule(q: Term): Boolean = q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "scala.Option"
     /** None, as an Option is a plain nullable. */
     def noneValue: String = "invalid"
+    /** An empty Array (`Array.empty[T]`), whatever T: an array is an array here. */
+    def emptyArray: String = "[]"
     def emitEnumCase(s: Symbol, name: String): String = {
       val enumClass = s.owner.companionClass
       val ordinal = try enumClass.children.indexOf(s) catch case _: Throwable => -1
@@ -2148,6 +2150,9 @@ class RokuEmitter(
         case Apply(Select(q, "forName"), List(name)) if q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "java.nio.charset.Charset" =>
           emitArgVal(name)
         case Apply(Select(New(tpt), _), args) if fqnOf(tpt.tpe) == "java.lang.String" => newString(t0, args)
+        // `Array.empty[T]` (its argument the ClassTag)
+        case Apply(TypeApply(Select(q, "empty"), _), _) if q.symbol.exists && q.symbol.fullName.stripSuffix("$") == "scala.Array" =>
+          emptyArray
         case Apply(Select(New(tpt), _), args) if hasNative(tpt.tpe.typeSymbol) =>
           s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
         case Apply(TypeApply(Select(New(tpt), _), _), args) if hasNative(tpt.tpe.typeSymbol) =>
@@ -6206,6 +6211,11 @@ class RokuEmitter(
   /** Text as bytes and back: a constant of its own, under the JVM's cap. */
   private val bytesShimsBrs: String =
     """
+      |' An Array of Bytes, Shorts, Chars or Floats as a collection (Predef's wrap…Array): the array itself
+      |function wrapByteArray(a = invalid as dynamic) as dynamic : return a : end function
+      |function wrapShortArray(a = invalid as dynamic) as dynamic : return a : end function
+      |function wrapCharArray(a = invalid as dynamic) as dynamic : return a : end function
+      |function wrapFloatArray(a = invalid as dynamic) as dynamic : return a : end function
       |' A charset by its name (a Charset is its name here): "latin1" for ISO-8859-1, "ascii" for US-ASCII, and "utf8" for
       |' UTF-8 and any other
       |function _charset(cs as dynamic) as string
