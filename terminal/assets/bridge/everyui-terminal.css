@@ -1,0 +1,6 @@
+/* everyui-terminal: the box a terminal draws into, and the room round its cells. The box's ground is the theme's (the
+   embed draws it), so xterm's own viewport, black unless told, is clear; its native scroll bar is hidden, since the
+   terminal scrolls with a bar of its own. */
+.everyui-terminal .xterm { height: 100%; padding: 4px 0 0 8px; box-sizing: border-box; }
+.everyui-terminal .xterm .xterm-viewport { background-color: transparent !important; scrollbar-width: none; }
+.everyui-terminal .xterm .xterm-viewport::-webkit-scrollbar { display: none; }

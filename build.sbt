@@ -609,7 +609,7 @@ lazy val checks = (project in file("checks"))
 
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
-    web, networkJvm, networkJs, monaco, sbtEveryui, seoJs,
+    web, networkJvm, networkJs, monaco, terminal, sbtEveryui, seoJs,
     desktopPublished, androidPublished, rokuPublished, tvosPublished)
   .settings(
     name := "everyui",
@@ -773,6 +773,122 @@ lazy val monacoAndroid = (project in file("monaco/android"))
         baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-monaco.apk",
+        version.value, 1, AndroidApk.debug)
+    }
+  )
+
+// --- terminal: everyui-terminal, xterm.js as an EveryUI component -----------------------------------------------------
+// The shared Scala (terminal/src) over an Embed, as Monaco is: in the page on the web, a web view of its own on Android
+// and the desktop. xterm.js and its fit and web-links addons are fetched from npm and checked
+// (project/TerminalAssets.scala), and ship as the module's resources under everyui-terminal/<version>/ with the bridge
+// (terminal/assets). Plain Scala over the shared layer: no dependency beyond everyui-web.
+//
+//   sbt terminal/publishLocal            everyui-terminal (Scala.js)
+//   sbt terminalDemo/demoBundle          the demo for the web, in terminal/demo/out-web
+//   sbt terminalDesktop/run              the demo on the desktop (JavaFX's web view)
+//   sbt terminalDesktop/test             the wire, the UTF-8 stream, and xterm.js driven in a web view
+//   sbt terminalAndroid/packageApk       the demo for Android, in terminal/android/out-apk/everyui-terminal.apk
+lazy val terminalSources = (file("terminal") / "src" / "main" / "scala").getAbsoluteFile
+lazy val terminalDemoSources = (file("terminal") / "demo" / "src" / "main" / "scala").getAbsoluteFile
+lazy val terminalResources = Def.task {
+  TerminalAssets.generate(streams.value.log.info(_), (ThisBuild / baseDirectory).value / "terminal" / "assets",
+    (Compile / resourceManaged).value)
+}
+@transient val demoBundle = taskKey[File]("Link the terminal demo and put it, its page and xterm.js's files in terminal/demo/out-web")
+
+lazy val terminal = (project in file("terminal"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(web)
+  .settings(published)
+  .settings(
+    name := "everyui-terminal",
+    Compile / resourceGenerators += terminalResources.taskValue
+  )
+
+lazy val terminalDemo = (project in file("terminal/demo"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(terminal)
+  .settings(
+    name := "everyui-terminal-demo",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories += (file("terminal") / "demo" / "web" / "src" / "main" / "scala").getAbsoluteFile,
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := Some("everyui.terminal.demo.TerminalDemoWeb"),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.NoModule)
+      .withESFeatures(_.withESVersion(org.scalajs.linker.interface.ESVersion.ES2021))),
+    demoBundle := {
+      val root = (ThisBuild / baseDirectory).value
+      val out = baseDirectory.value / "out-web"
+      val linked = (Compile / fastLinkJS).value
+      val dir = (Compile / fastLinkJS / scalaJSLinkerOutputDirectory).value
+      IO.delete(out)
+      IO.copyFile(dir / "main.js", out / "main.js")
+      IO.copyFile(baseDirectory.value / "web" / "index.html", out / "index.html")
+      (root / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, out / "fonts" / f.getName))
+      val staged = (terminal / Compile / resourceManaged).value
+      (terminal / Compile / resources).value.filter(_.getPath.startsWith(staged.getPath))
+        .foreach(f => IO.copyFile(f, out / IO.relativize(staged, f).get))
+      out
+    }
+  )
+
+lazy val terminalDesktop = (project in file("terminal/desktop"))
+  .dependsOn(reactive)
+  .settings(
+    name := "everyui-terminal-desktop",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true) ++ Seq((file("desktop") / "src" / "main" / "scala").getAbsoluteFile,
+      desktopWebSources, terminalSources, terminalDemoSources, (file("terminal") / "demo" / "desktop" / "src" / "main" / "scala").getAbsoluteFile),
+    libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
+    libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
+    libraryDependencies ++= Seq("base", "graphics", "controls", "media", "web").map(m => ("org.openjfx" % s"javafx-$m" % javafxVersion).classifier(javafxPlatform)),
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
+    Compile / resourceGenerators += terminalResources.taskValue,
+    Compile / mainClass := Some("everyui.terminal.demo.TerminalDemoDesktop"),
+    Compile / run / fork := true,
+    run / baseDirectory := (ThisBuild / baseDirectory).value,
+    Test / fork := true,
+    Test / parallelExecution := false,
+    Test / baseDirectory := (ThisBuild / baseDirectory).value
+  )
+
+lazy val terminalAndroid = (project in file("terminal/android"))
+  .settings(
+    Compile / unmanagedSourceDirectories += reactifySources,
+    name := "everyui-terminal-android",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true) ++ Seq(
+      (file("android") / "src" / "main" / "scala").getAbsoluteFile, terminalSources, terminalDemoSources,
+      (file("terminal") / "demo" / "android" / "src" / "main" / "scala").getAbsoluteFile),
+    libraryDependencies += "com.outr" %% "spice-client-okhttp" % spiceVersion,
+    libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
+    resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
+    libraryDependencies ++= media3Modules.map(m =>
+      ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
+    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
+    androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
+    Compile / unmanagedJars ++= androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
+    // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: project/AndroidRuntime.scala)
+    Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
+    packageApk := {
+      val conv = fileConverter.value
+      val buildRoot = (ThisBuild / baseDirectory).value
+      val assets = target.value / "apk-assets"
+      IO.delete(assets)
+      IO.copyDirectory(buildRoot / "assets" / "images", assets / "images")
+      (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
+      // xterm.js's files, as the web views ask for them (EmbedClient)
+      val staged = target.value / "terminal-assets"
+      TerminalAssets.generate(streams.value.log.info(_), buildRoot / "terminal" / "assets", staged)
+      IO.copyDirectory(staged, assets)
+      AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
+        AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
+          androidMinSdk, target.value / "android-runtime", streams.value.log.info(_)),
+        baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
+        Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
+        baseDirectory.value / "out-apk" / "everyui-terminal.apk",
         version.value, 1, AndroidApk.debug)
     }
   )
