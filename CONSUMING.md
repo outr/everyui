@@ -807,6 +807,31 @@ the page.
 The server must send `main.wasm` as `application/wasm` (spice does), and a Content-Security-Policy must allow
 `'wasm-unsafe-eval'`. Source maps are not copied; a browser asks for them only with its developer tools open.
 
+### Size
+
+The full link runs Scala.js's minifier on both builds: `everyuiWebMinify`, true by default (sbt-scalajs already
+turns it on for `fullLinkJS`, so `withMinify(true)` in a build changes nothing, and `show` reports it on because it
+is). `everyuiWebMinify := false` turns it off, for a readable release build. Closure (`withClosureCompilerIfAvailable`,
+deprecated in Scala.js since 1.21 and to be removed) goes further on the JavaScript build only; the WebAssembly link
+ignores it. Measured with Scala.js 1.22.0, NoModule, ES2021 (brotli -q 11, gzip -9):
+
+| Build | DataWrangler dashboard: raw / gzip / brotli | EveryUI example app: raw / gzip / brotli |
+|---|---|---|
+| main.js, not minified | 5.32 MB / 634 KB / 412 KB | 7.03 MB / 805 KB / 514 KB |
+| main.js, minified (the default) | 3.33 MB / 487 KB / 335 KB | 4.13 MB / 606 KB / 416 KB |
+| main.js, Closure | 1.07 MB / 287 KB / 224 KB | 1.40 MB / 363 KB / 284 KB |
+| main.wasm, not minified | 4.39 MB / 902 KB / 663 KB | 5.85 MB / 1.11 MB / 816 KB |
+| main.wasm, minified (the default) | 1.58 MB / 473 KB / 353 KB | 1.99 MB / 597 KB / 447 KB |
+
+The WebAssembly build's own main.js adds 48 KB (7 KB brotli) to 65 KB (10 KB). Closure takes 16 to 18 seconds to
+link where the minified link takes one or two.
+
+Keep the default. Serve the bundle compressed (brotli where the browser takes it): that matters more than any of
+these. Closure's JavaScript is a third smaller again over the wire, so an app that ships `WebTarget.Js` alone and
+counts every kilobyte may keep it on `Compile / fullLinkJS / scalaJSLinkerConfig` while Scala.js still has it (with the
+minifier left on, which makes Closure's output 2% smaller still); an app on `WebTarget.Both` sends most browsers the WebAssembly build, which Closure never
+touches.
+
 ## The desktop, Android, the Roku and the Apple TV
 
 Each platform is a project in the app's build that compiles the app's sources with that platform's backend artifact.
