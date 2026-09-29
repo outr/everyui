@@ -20,7 +20,8 @@ class Component(val node: RenderNode) {
     * everything below that: a screensaver's scenes, each with its pictures, piled up until a Roku closed the channel
     * for its memory. Taken apart, such a binding holds only its own piece. A container takes its children apart too,
     * and a player lets its player go. Nothing is to be shown again once it is disposed of. */
-  def dispose(): Unit = {
+  def dispose(): Unit = if (!disposed) {
+    disposed = true
     val undo = cleanups
     cleanups = Nil
     undo.foreach(f => f())
@@ -38,6 +39,9 @@ class Component(val node: RenderNode) {
       Focus.offScreen()
     }
   }
+
+  /** Whether this has been taken apart (`dispose`): taking it apart again does nothing. */
+  private[everyui] var disposed: Boolean = false
 
   /** What to undo when this is disposed of: a reaction it put on something that lives on, above all. */
   private var cleanups: List[() => Unit] = Nil
@@ -216,6 +220,69 @@ object Component {
 
   /** `v` kept at its value and no longer listening to what it was bound to. */
   def unbind[T](v: Val[T]): Unit = v.option.foreach(x => v.static(x))
+
+  /** How long a turn of `disposeGradually` takes apart components for, in milliseconds, before it leaves the rest for
+    * the next turn. */
+  val disposeSliceMs: Double = 12.0
+
+  /** Take `roots` and everything under them apart (`dispose`), what is deepest first, a slice of about
+    * `disposeSliceMs` a turn (`Platform.later`), then run `done`. A screen of thousands of components taken apart in
+    * one turn could outlast a Roku's watchdog (Execution timeout), which stopped it part of the way through and left
+    * the rest bound to the theme for good. One that fails is logged and the rest are taken apart all the same.
+    * {{{
+    *   Component.disposeGradually(List(page), () => Platform.collect())
+    * }}} */
+  def disposeGradually(roots: List[Component], done: () => Unit = () => ()): Unit = {
+    // every component under the roots, once (a screen's parts are mostly under its container too), each before those
+    // under it (an array grown as it fills: a list built a component at a time is a copy per component on a Roku)
+    var order = new Array[Component](64)
+    var count = 0
+    var pending: List[Component] = roots
+    while (pending.nonEmpty) {
+      val c = pending.head
+      pending = pending.tail
+      if (!c.disposed && !c.listMark) {
+        c.listMark = true
+        if (count == order.length) {
+          val bigger = new Array[Component](order.length * 2)
+          var i = 0
+          while (i < count) {
+            bigger(i) = order(i)
+            i += 1
+          }
+          order = bigger
+        }
+        order(count) = c
+        count += 1
+        c.childComponents.foreach(child => pending = child :: pending)
+      }
+    }
+    // (the marks are this pass's alone: a container reads them as it places its children)
+    var i = 0
+    while (i < count) {
+      order(i).listMark = false
+      i += 1
+    }
+    disposeSlice(order, count, done)
+  }
+
+  // the last `left` of `all` taken apart, from the end, for a slice of a turn; the rest on the next
+  private def disposeSlice(all: Array[Component], left: Int, done: () => Unit): Unit = {
+    val started = everyui.render.Platform.ticks()
+    var at = left
+    while (at > 0 && everyui.render.Platform.ticks() - started < disposeSliceMs) {
+      at -= 1
+      val c = all(at)
+      all(at) = null
+      try c.dispose()
+      catch {
+        case t: Throwable => everyui.render.Platform.log("[dispose] " + c.kind + " failed to be taken apart: " + t.toString)
+      }
+    }
+    val rest = at
+    if (rest > 0) everyui.render.Platform.later(() => disposeSlice(all, rest, done))
+    else done()
+  }
 
   /** A colour as the seam takes it: `"#rrggbb"`, `"#rrggbbaa"` when translucent, or `""` for none. */
   def css(c: Color): String = if (c.alphaInt == 0) "" else if (c.alphaInt < 255) c.toHexAlpha else c.toHex

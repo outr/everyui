@@ -53,12 +53,10 @@ trait UIScreen extends Screen with PathActivation {
   everyui.render.Platform.later(() => Component.making @= None)
 
   /** Its container taken apart, and with it everything the screen built (Component.dispose), and what it made that
-    * the container never held. */
-  override protected def dispose(): Unit = {
-    container.dispose()
-    parts.take().foreach(c => c.dispose())
-    everyui.render.Platform.collect()
-  }
+    * the container never held: a slice a turn (`Component.disposeGradually`), so a screen of thousands of components is
+    * taken apart whole however long that takes, and then what it held is collected. */
+  override protected def dispose(): Unit =
+    Component.disposeGradually(container :: parts.take(), () => everyui.render.Platform.collect())
 
   def defaultFocus(): Component
 

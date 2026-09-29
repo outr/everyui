@@ -8,7 +8,7 @@ import reactify.*
 class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   lazy val children: ContainerFeature = new ContainerFeature(this)
 
-  override def dispose(): Unit = {
+  override def dispose(): Unit = if (!disposed) {
     val held = children()
     children.clear()
     held.foreach(c => c.dispose())
