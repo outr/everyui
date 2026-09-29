@@ -1,4 +1,5 @@
-# R8 rules for everyui's Android build (build.sbt: android/packageApk).
+# R8 rules for everyui's Android build (build.sbt: android/packageApk), shipped in everyui-android for an app's build
+# too (sbt-everyui's everyuiAndroidRules).
 #
 # The program is instantiated by name only at one point — the manifest's activity; everything else is
 # reached from there, so R8 can remove the rest of the Scala library and reactify's unused surface.
@@ -12,7 +13,7 @@
 -dontwarn org.jetbrains.annotations.**
 
 # Scala 3 reads and writes a `lazy val`'s cell (`<name>$lzy1`) through a VarHandle (an AtomicReferenceFieldUpdater
-# once project/AndroidRuntime.scala has rewritten it for old Android) its class initialiser finds BY NAME and
+# once sbt-everyui's AndroidRuntime has rewritten it for old Android) its class initialiser finds BY NAME and
 # stores in `<name>$lzy1$lzyHandle`. When no instance of the class is live — a stdlib
 # companion that `scala.package$`'s initialiser merely touches — R8 removes the instance cell but keeps the
 # initialiser's lookup, and the app dies in `<clinit>` with NoSuchFieldException. So wherever a handle
@@ -53,7 +54,7 @@
 
 # Media3 reaches for two things no player here does. Its image handling reads EXIF orientation, which only
 # matters for the picture formats it can show as media; nothing in this backend asks it to decode a bitmap.
-# Its download service shows notifications, whose strings live in resources that are not merged (project/Aars.scala),
+# Its download service shows notifications, whose strings live in resources that are not merged (sbt-everyui's Aars),
 # so it must be removed rather than kept — which it is, since nothing reaches it.
 -dontwarn androidx.exifinterface.**
 -dontwarn androidx.media3.exoplayer.offline.**

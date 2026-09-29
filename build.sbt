@@ -21,9 +21,9 @@ ThisBuild / excludeDependencies += ExclusionRule("com.outr", "reactify_3")
 // `emitRoku` runs it as a forked `java` process over the TASTy of the project
 // being emitted (kept inspectable by -Yretain-trees).
 lazy val compiler = (project in file("compiler"))
+  .settings(published)
   .settings(
     name := "everyui-compiler",
-    publish / skip := true,
     libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value,
     // SwiftEmitter.scala is derived from RokuEmitter.scala by compiler/swift-derivation.txt (project/SwiftEmitterDerivation.scala)
     Compile / sourceGenerators += Def.task {
@@ -45,9 +45,9 @@ lazy val compiler = (project in file("compiler"))
 // `@native` marks a facade over a platform global (roku/.../facades.scala).
 // Compiled against, never emitted.
 lazy val compilerApi = (project in file("compiler-api"))
+  .settings(published)
   .settings(
-    name := "everyui-compiler-api",
-    publish / skip := true
+    name := "everyui-compiler-api"
   )
 
 /** Compile the current project, then run the Roku compiler over its TASTy plus
@@ -142,15 +142,44 @@ def backendSources(backend: String, spice: Boolean): Seq[File] =
 // --- published: what an app outside this build depends on (CONSUMING.md) ----------------------------------------
 // `sbt publishLocal` publishes these, and only these:
 //
-//   everyui-web      (Scala.js)   the shared UI layer over the DOM backend
-//   everyui-network  (JVM and JS) HTTP and DurableSocket with Spice as the core, a backend for each
-//   everyui-seo      (JVM)        what an app's server writes for search and answer engines
+//   everyui-web           (Scala.js)   the shared UI layer over the DOM backend
+//   everyui-desktop       (JVM)        the shared UI layer over JavaFX, with the network module
+//   everyui-android       (JVM)        the shared UI layer over Android's Views, with the network module
+//   everyui-roku          (JVM, TASTy) the shared UI layer over SceneGraph, with the network module, for the compiler
+//   everyui-tvos          (JVM, TASTy) the shared UI layer over UIKit, with the network module, for the compiler
+//   everyui-compiler      (JVM)        Scala 3 TASTy to BrightScript and Swift, which the sbt plugin runs
+//   everyui-compiler-api  (JVM)        `@native`, which the Roku and tvOS facades are written with
+//   everyui-network       (JVM and JS) HTTP and DurableSocket with Spice as the core: the web's, and a server's
+//   everyui-seo           (JVM and JS) what an app's server writes for search and answer engines
+//   everyui-monaco        (Scala.js)   Monaco as EveryUI components
+//   sbt-everyui           (sbt 2)      an app's build: web targets, and packaging for the other platforms
 //
 // The shared layer names `everyui.render.RenderNode` and a backend supplies it at compile time, so it ships inside
 // each backend's artifact rather than as a core of its own. reactify comes as its published snapshot here (4.2.1,
 // what the `reactive` project compiles from source), which evicts the older release Spice depends on.
 lazy val reactifyVersion = "4.2.1-SNAPSHOT"
 lazy val published = Seq(publish / skip := false)
+
+/** `files` (from the build's root) as resources under `path` in a published jar, for the sbt plugin to take out. */
+def bundled(path: String, files: File => Seq[File]): Def.Initialize[Task[Seq[File]]] = Def.task {
+  val dir = (Compile / resourceManaged).value / path
+  files((ThisBuild / baseDirectory).value).map { f =>
+    val copy = dir / f.getName
+    IO.copyFile(f, copy)
+    copy
+  }
+}
+
+/** EveryUI's fonts (and Material Icons' codepoints), in each backend's jar under everyui/fonts/, which an app copies out
+  * (sbt-everyui's everyuiFonts, and everyuiWebFonts on the web). */
+lazy val fontResources = bundled("everyui/fonts", root => (root / "assets" / "fonts" * ("*.ttf" | "*.codepoints")).get())
+
+/** A published backend's jar compiles the shared layer, the backend (`backend/src/main/scala`), and the network module
+  * with the backend's side of it (`network`), as the example app compiles them: with Spice's own client and the store's
+  * fabric codec where Spice runs (`spice = true`: the desktop and Android). The web's network module is everyui-network. */
+def publishedSources(backend: String, network: String, spice: Boolean): Seq[File] =
+  Seq(sharedSources, (file(backend) / "src" / "main" / "scala").getAbsoluteFile, networkSources, networkBackend(network)) ++
+    (if (spice) Seq(networkBackend("spice"), networkBackend("fabric")) else Nil)
 
 // --- web: the DOM backend -----------------------------------------------------
 // Real Scala.js over the live DOM (see web/src/.../RenderNode.scala for why), with the shared layer compiled in. The
@@ -170,17 +199,7 @@ lazy val web = (project in file("web"))
       "org.scala-js" %% "scalajs-dom" % "2.8.1",
       "com.outr" %% "reactify" % reactifyVersion
     ),
-    // EveryUI's fonts (and Material Icons' codepoints), in the jar under everyui/fonts/, which an app's bundle copies
-    // out (sbt-everyui's everyuiWebFonts)
-    Compile / resourceGenerators += Def.task {
-      val dir = (Compile / resourceManaged).value / "everyui" / "fonts"
-      ((ThisBuild / baseDirectory).value / "assets" / "fonts").listFiles().toSeq
-        .filter(f => f.getName.endsWith(".ttf") || f.getName.endsWith(".codepoints")).map { f =>
-        val copy = dir / f.getName
-        IO.copyFile(f, copy)
-        copy
-      }
-    }.taskValue
+    Compile / resourceGenerators += fontResources.taskValue
   )
 
 // --- network, published: the module and its backend, for the JVM and the browser ------------------------------
@@ -225,7 +244,7 @@ lazy val networkJs = (project in file("network/js"))
 lazy val roku = (project in file("roku"))
   .dependsOn(reactive, compilerApi)
   .settings(
-    name := "everyui-roku",
+    name := "everyui-roku-example",   // the example app; everyui-roku is the published backend
     publish / skip := true,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / unmanagedSourceDirectories ++= backendSources("native", spice = false),
@@ -331,7 +350,7 @@ lazy val server = (project in file("server"))
 lazy val tvos = (project in file("tvos"))
   .dependsOn(reactive, compilerApi)
   .settings(
-    name := "everyui-tvos",
+    name := "everyui-tvos-example",   // the example app; everyui-tvos is the published backend
     publish / skip := true,
     everyuiAppleInfoPlist := (ThisBuild / baseDirectory).value / "swift" / "app" / "Info.plist",
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
@@ -361,7 +380,7 @@ lazy val javafxPlatform = EveryUILibraries.javafxPlatform
 lazy val desktop = (project in file("desktop"))
   .dependsOn(reactive)
   .settings(
-    name := "everyui-desktop",
+    name := "everyui-desktop-example",   // the example app; everyui-desktop is the published backend
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true),
     Compile / unmanagedSourceDirectories += (file("app") / "desktop" / "src" / "main" / "scala").getAbsoluteFile,   // the example's launcher
@@ -412,7 +431,7 @@ lazy val android = (project in file("android"))
   .settings(
     // reactify compiled here rather than through `reactive`, so its lazy vals are the legacy kind too
     Compile / unmanagedSourceDirectories += reactifySources,
-    name := "everyui-android",
+    name := "everyui-android-example",   // the example app; everyui-android is the published backend
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true),
     Compile / unmanagedSourceDirectories += (file("app") / "android" / "src" / "main" / "scala").getAbsoluteFile,   // the example's activity
@@ -451,6 +470,87 @@ lazy val android = (project in file("android"))
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
         version.value, 1, AndroidApk.debug)
     }
+  )
+
+// --- the other backends, published: each with the shared layer compiled in, as everyui-web has it ----------------
+// The example apps (desktop, android, roku, tvos below) compile the same sources with the app; these compile them
+// alone, for an app's build to depend on (CONSUMING.md). What the sbt plugin takes out of a jar is a resource in it:
+// the fonts, and the Roku's runtime, the Swift runtime and the Android shrinker rules.
+
+// JavaFX is `provided`: its jars are one per operating system, so the app names them for its own
+// (EveryUILibraries.javafx)
+lazy val desktopPublished = (project in file("published/desktop"))
+  .settings(published)
+  .settings(
+    name := "everyui-desktop",
+    excludeDependencies := Nil,   // the published reactify
+    Compile / unmanagedSourceDirectories ++= publishedSources("desktop", "jvm", spice = true),
+    libraryDependencies ++= Seq(
+      "com.outr" %% "reactify" % reactifyVersion,
+      "com.outr" %% "spice-client-jvm" % spiceVersion),
+    libraryDependencies ++= EveryUILibraries.javafx().map(_ % Provided),
+    Compile / resourceGenerators += fontResources.taskValue
+  )
+
+// Plain JVM bytecode against android.jar, as a jar rather than an Android archive: the backend has no resources or
+// manifest of its own for an archive to carry, and an app's build dexes jars (AndroidApk). Its Android archives are
+// `provided` for the same reason as JavaFX (EveryUILibraries.android).
+lazy val androidPublished = (project in file("published/android"))
+  .settings(published)
+  .settings(
+    name := "everyui-android",
+    excludeDependencies := Nil,
+    Compile / unmanagedSourceDirectories ++= publishedSources("android", "android", spice = true),
+    libraryDependencies ++= Seq(
+      "com.outr" %% "reactify" % reactifyVersion,
+      "com.outr" %% "spice-client-okhttp" % spiceVersion),
+    resolvers += EveryUILibraries.google,
+    libraryDependencies ++= EveryUILibraries.android.map(_ % Provided),
+    androidAars := Aars.open(streams.value.log.info(_),
+      update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
+    Compile / unmanagedJars ++= androidAars.value
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
+    Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
+    Compile / resourceGenerators += fontResources.taskValue,
+    Compile / resourceGenerators += bundled("everyui/android", root => Seq(root / "android" / "proguard-rules.pro")).taskValue
+  )
+
+// The Roku and the Apple TV run no JVM: an app compiles against these, and the compiler (everyui-compiler) translates
+// the app's TASTy with these jars' compiled through (sbt-everyui's everyuiEmitLibraries). -Yretain-trees as the
+// example's own compile has it.
+lazy val rokuPublished = (project in file("published/roku"))
+  .dependsOn(compilerApi)
+  .settings(published)
+  .settings(
+    name := "everyui-roku",
+    excludeDependencies := Nil,
+    Compile / scalacOptions ++= Seq("-Yretain-trees"),
+    Compile / unmanagedSourceDirectories ++= publishedSources("roku", "native", spice = false),
+    libraryDependencies ++= Seq(
+      "com.outr" %% "reactify" % reactifyVersion,
+      "com.outr" %% "spice-core" % spiceVersion),
+    Compile / resourceGenerators += fontResources.taskValue,
+    Compile / resourceGenerators += bundled("everyui/roku/runtime",
+      root => (root / "roku" / "runtime" * ("*.brs" | "*.xml")).get()).taskValue
+  )
+
+lazy val tvosPublished = (project in file("published/tvos"))
+  .dependsOn(compilerApi)
+  .settings(published)
+  .settings(
+    name := "everyui-tvos",
+    excludeDependencies := Nil,
+    Compile / scalacOptions ++= Seq("-Yretain-trees"),
+    Compile / unmanagedSourceDirectories ++= publishedSources("tvos", "native", spice = false),
+    libraryDependencies ++= Seq(
+      "com.outr" %% "reactify" % reactifyVersion,
+      "com.outr" %% "spice-core" % spiceVersion),
+    Compile / resourceGenerators += fontResources.taskValue,
+    // the runtime, the launcher and the Info.plist template (everyuiSwiftRuntime, everyuiAppleInfoPlist)
+    Compile / resourceGenerators += bundled("everyui/swift", root => Seq(root / "swift" / "runtime" / "ScalaRuntime.swift",
+      root / "swift" / "runtime" / "UniversalRuntime.swift", root / "swift" / "app" / "main.swift",
+      root / "swift" / "app" / "Info.plist")).taskValue
   )
 
 // --- webcheck: the web build in a real browser ---------------------------------
@@ -509,7 +609,8 @@ lazy val checks = (project in file("checks"))
 
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
-    web, networkJvm, networkJs, monaco, sbtEveryui, seoJs)
+    web, networkJvm, networkJs, monaco, sbtEveryui, seoJs,
+    desktopPublished, androidPublished, rokuPublished, tvosPublished)
   .settings(
     name := "everyui",
     publish / skip := true,

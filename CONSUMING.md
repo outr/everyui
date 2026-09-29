@@ -8,16 +8,24 @@ EveryUI is published locally for now: run `sbt publishLocal` in this repository,
 | Module | What it is | Platforms |
 |---|---|---|
 | `"com.outr" %% "everyui-web" % "0.1.0-SNAPSHOT"` | the UI layer (components, layouts, focus, keymaps, screens, theme, i18n) over the DOM | Scala.js |
-| `"com.outr" %% "everyui-network" % "0.1.0-SNAPSHOT"` | HTTP and DurableSocket, with Spice as the core | JVM and Scala.js |
-| `"com.outr" %% "everyui-seo" % "0.1.0-SNAPSHOT"` | what an app's server writes for search and answer engines | JVM |
+| `"com.outr" %% "everyui-desktop" % "0.1.0-SNAPSHOT"` | the UI layer over JavaFX, with the network module | JVM |
+| `"com.outr" %% "everyui-android" % "0.1.0-SNAPSHOT"` | the UI layer over Android's Views, with the network module | JVM (Android) |
+| `"com.outr" %% "everyui-roku" % "0.1.0-SNAPSHOT"` | the UI layer over SceneGraph, with the network module, for the compiler | JVM (TASTy) |
+| `"com.outr" %% "everyui-tvos" % "0.1.0-SNAPSHOT"` | the UI layer over UIKit, with the network module, for the compiler | JVM (TASTy) |
+| `"com.outr" %% "everyui-network" % "0.1.0-SNAPSHOT"` | HTTP and DurableSocket, with Spice as the core: the web's, and a server's | JVM and Scala.js |
+| `"com.outr" %% "everyui-seo" % "0.1.0-SNAPSHOT"` | what an app's server writes for search and answer engines | JVM and Scala.js |
+| `"com.outr" %% "everyui-monaco" % "0.1.0-SNAPSHOT"` | Monaco as EveryUI components | Scala.js |
+| `"com.outr" %% "everyui-compiler" % "0.1.0-SNAPSHOT"` | Scala 3 TASTy to BrightScript and Swift, run by the plugin | JVM |
+| `"com.outr" %% "everyui-compiler-api" % "0.1.0-SNAPSHOT"` | `@native`, for a facade over a Roku or Apple TV global (comes with everyui-roku and everyui-tvos) | JVM |
+| `addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")` | an app's build: web targets, and packaging for every other platform | sbt 2 |
 
 Everything is built with Scala **3.10.0-RC3** and Scala.js **1.22.0**, so a consumer needs Scala 3.10 (an RC or
 later) to read it.
 
 A backend is chosen when EveryUI is compiled: the shared layer names `everyui.render.RenderNode`, and each backend
 supplies it. So there is no separate core artifact. The shared layer ships inside each backend module, and
-`everyui-web` is the web one. The desktop, Android, Roku and tvOS backends are still compiled from source (see NaboTV's
-`build.sbt`).
+`everyui-web` is the web one. An app builds every platform from these alone, with no EveryUI checkout: see
+[The desktop, Android, the Roku and the Apple TV](#the-desktop-android-the-roku-and-the-apple-tv).
 
 ## sbt
 
@@ -669,14 +677,8 @@ bytes, so it does not open any sooner.
 addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")
 ```
 
-A build that compiles EveryUI from a checkout can take the plugin's sources instead, in `project/everyui.sbt`:
-
-```scala
-Compile / unmanagedSourceDirectories ++= Seq(
-  file("/path/to/everyui/sbt-support/src/main/scala"),
-  file("/path/to/everyui/sbt-support/src/plugin/scala")
-)
-```
+(EveryUI's own build compiles the plugin's sources into its meta-build, `project/plugins.sbt`; an app takes the
+published plugin.)
 
 It is on every Scala.js project. The app chooses with `everyuiWebTarget`, and its bundle task writes what
 `everyuiWebScripts` links for it, with the page, which loads the app with `<script src="main.js"></script>` (`/main.js`
@@ -727,6 +729,169 @@ the page.
 
 The server must send `main.wasm` as `application/wasm` (spice does), and a Content-Security-Policy must allow
 `'wasm-unsafe-eval'`. Source maps are not copied; a browser asks for them only with its developer tools open.
+
+## The desktop, Android, the Roku and the Apple TV
+
+Each platform is a project in the app's build that compiles the app's sources with that platform's backend artifact.
+The `sbt-everyui` plugin (`project/plugins.sbt`, as for the web) does the rest: its tasks take what a build needs out
+of the published artifacts, and its helpers package the app. Nothing comes from an EveryUI checkout.
+
+```scala
+addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")
+```
+
+`everyuiVersion` is the release the plugin belongs to, so the backends are named at it. Each backend carries the
+network module with that platform's side of it (Spice over `java.net.http` on the desktop, over OkHttp on Android, the
+device's own transfers on a Roku and an Apple TV), so none of them wants `everyui-network`. reactify comes as its
+published jar: an app does not exclude `reactify_3`.
+
+| Platform | The app depends on | and adds itself |
+|---|---|---|
+| desktop | `"com.outr" %% "everyui-desktop" % everyuiVersion.value` | `EveryUILibraries.javafx()` |
+| Android | `"com.outr" %% "everyui-android" % everyuiVersion.value` | `EveryUILibraries.android`, from `EveryUILibraries.google`, and android.jar |
+| Roku | `"com.outr" %% "everyui-roku" % everyuiVersion.value` | nothing |
+| Apple TV | `"com.outr" %% "everyui-tvos" % everyuiVersion.value` | nothing |
+
+JavaFX and the Android archives are `provided` in the backends, because only the app's build knows the form it needs:
+JavaFX's jars are one per operating system (`javafx()` names base, graphics, controls and media for the machine the
+build runs on; name others to add them, `javafx("base", "graphics", "controls", "media", "web")`), and an Android
+archive is opened rather than put on a classpath (`Aars`).
+
+The plugin's tasks, on every project:
+
+| Key | What it is |
+|---|---|
+| `everyuiVersion` | the EveryUI release the plugin belongs to |
+| `everyuiFonts` | EveryUI's fonts (and Material Icons' codepoints), out of the backend on the classpath: a directory to copy into the app's `fonts/` |
+| `everyuiAndroidRules` | the Android backend's shrinker rules, out of everyui-android, for `AndroidApk.build` |
+| `everyuiCompiler` | the Roku and Swift compiler (everyui-compiler at `everyuiVersion`, fetched with the build's resolvers) and what it runs with |
+| `everyuiEmitLibraries` | what the compiler compiles through with the app: everyui-roku or everyui-tvos, reactify, and Spice's durable client |
+| `everyuiRokuRuntime` | the Roku runtime (BrightScript and SceneGraph), out of everyui-roku, for `RokuChannel.assemble` |
+| `everyuiSwiftRuntime` | the Swift runtime and launcher, out of everyui-tvos, for `AppleApp.assemble` |
+| `everyuiAppleInfoPlist` | the Info.plist an Apple app is packaged with: EveryUI's template unless the app sets its own |
+
+And its helpers, plain objects an app's tasks call: `AndroidApk` (R8, aapt2, zipalign and apksigner, or bundletool for
+an app bundle), `AndroidRuntime` (the classpath an APK is dexed from, with Scala 3's VarHandle lazy vals rewritten for
+Android before 13, and the build failing if one is left), `Aars` (Android archives opened into jars and shrinker
+rules), `RokuChannel` (emit, assemble, version, fallback fonts, the store package), `AppleApp` (emit and assemble) and
+`EveryUILibraries`.
+
+### Desktop
+
+The desktop reads its fonts and images from `assets/` under the working directory (`--assets=dir` elsewhere):
+
+```scala
+lazy val desktop = project.in(file("desktop"))
+  .settings(
+    libraryDependencies += "com.outr" %% "everyui-desktop" % everyuiVersion.value,
+    libraryDependencies ++= EveryUILibraries.javafx(),
+    Compile / mainClass := Some("myapp.desktop.Main"),   // calls everyui.desktop.Desktop.launch
+    Compile / run / fork := true,
+    Compile / run / baseDirectory := baseDirectory.value / "out",
+    Compile / run := (Compile / run).dependsOn(Def.task {
+      IO.copyDirectory(everyuiFonts.value, baseDirectory.value / "out" / "assets" / "fonts")
+    }).evaluated
+  )
+```
+
+### Android
+
+The backend is plain JVM bytecode compiled against android.jar, published as a jar rather than an Android archive (it
+has no resources or manifest of its own), and the app's build dexes it with everything else. An app's activity extends
+`everyui.activity.EveryUIActivity`.
+
+```scala
+lazy val androidSdk = file(sys.env.getOrElse("ANDROID_HOME", sys.props("user.home") + "/opt/android-sdk"))
+lazy val androidJar = androidSdk / "platforms" / "android-37.0" / "android.jar"
+@transient lazy val aars = taskKey[Seq[File]]("The Android archives' classes, as jars")
+@transient lazy val apk = taskKey[File]("The app as a signed APK")
+
+lazy val android = project.in(file("android"))
+  .settings(
+    libraryDependencies += "com.outr" %% "everyui-android" % everyuiVersion.value,
+    resolvers += EveryUILibraries.google,
+    libraryDependencies ++= EveryUILibraries.android,
+    aars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")),
+      Aars.room)._1,
+    Compile / unmanagedJars ++= (aars.value :+ androidJar)
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
+    Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
+    apk := {
+      val conv = fileConverter.value
+      val assets = target.value / "apk-assets"
+      IO.copyDirectory(everyuiFonts.value, assets / "fonts")
+      AndroidApk.build(streams.value.log.info(_), androidSdk, "android-37.0", "37.0.0", "23", "37",
+        AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile)
+          .filterNot(_.getName.endsWith(".aar")), "23", target.value / "android-runtime", streams.value.log.info(_)),
+        baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
+        Seq(everyuiAndroidRules.value, baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
+        baseDirectory.value / "out-apk" / "myapp.apk", version.value, 1, AndroidApk.debug)
+    }
+  )
+```
+
+The app's own `proguard-rules.pro` keeps its activity (`-keep class myapp.MainActivity { *; }`) and anything else the
+manifest names; `everyuiAndroidRules` has the rest. A shipping build passes its release key as an
+`AndroidApk.Signing`, a `Desugar` for the Java library on Android before 8, and `bundletool` for an app bundle.
+
+### The Roku
+
+The Roku runs no JVM: the app is compiled against everyui-roku (keeping its trees with `-Yretain-trees`), then
+everyui-compiler translates its TASTy, with everyui-roku, reactify and Spice's durable client compiled through, into a
+SceneGraph channel. Anything it cannot translate fails the build, each listed at its Scala source
+(`-Deveryui.allowGaps=true` lets such a channel through to look at).
+
+```scala
+@transient lazy val emitRoku = taskKey[File]("The app as a Roku channel in out-roku/")
+
+lazy val roku = project.in(file("roku"))
+  .settings(
+    libraryDependencies += "com.outr" %% "everyui-roku" % everyuiVersion.value,
+    Compile / scalacOptions += "-Yretain-trees",
+    emitRoku := {
+      (Compile / compile).value
+      val conv = fileConverter.value
+      val out = RokuChannel.emit(streams.value.log.info(_), everyuiCompiler.value, (Compile / classDirectory).value,
+        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile), everyuiEmitLibraries.value,
+        baseDirectory.value / "out-roku", baseDirectory.value, "MyApp")
+      RokuChannel.assemble(out, everyuiRokuRuntime.value, Seq(baseDirectory.value / "images"),
+        Seq(everyuiFonts.value), Nil, Some(baseDirectory.value / "channel-art"))
+      RokuChannel.version(out, "1.0.0")
+      out
+    }
+  )
+```
+
+`channel-art` holds the channel's icons and splash screens (`icon-fhd.png`, `icon-hd.png`, `icon-sd.png`,
+`splash-fhd.png`, `splash-hd.png`, `splash-sd.png`). Lint the channel with brighterscript before sideloading it:
+a channel the Roku refuses to compile wipes the dev channel and what it kept. `RokuChannel.packageChannel` makes the
+store package on a keyed Roku.
+
+### The Apple TV
+
+The same compiler writes the app as Swift (`App.swift`), and `AppleApp.assemble` puts the runtime, the launcher, the
+Info.plist, the icons and the assets beside it. The build itself is Xcode's (swiftc and actool, on a Mac); EveryUI's
+`tools/tvos-run.sh` shows the commands.
+
+```scala
+@transient lazy val emitSwift = taskKey[File]("The app as Swift, with what an Apple TV build takes, in out-swift/")
+
+lazy val tvos = project.in(file("tvos"))
+  .settings(
+    libraryDependencies += "com.outr" %% "everyui-tvos" % everyuiVersion.value,
+    Compile / scalacOptions += "-Yretain-trees",
+    everyuiAppleInfoPlist := baseDirectory.value / "Info.plist",   // or EveryUI's template, left unset
+    emitSwift := {
+      (Compile / compile).value
+      val conv = fileConverter.value
+      val out = AppleApp.emit(streams.value.log.info(_), everyuiCompiler.value, (Compile / classDirectory).value,
+        (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile), everyuiEmitLibraries.value,
+        baseDirectory.value / "out-swift", baseDirectory.value)
+      AppleApp.assemble(out, everyuiSwiftRuntime.value, everyuiAppleInfoPlist.value,
+        Some(baseDirectory.value / "Assets.xcassets"), Seq(baseDirectory.value / "images"), Seq(everyuiFonts.value))
+    }
+  )
+```
 
 ## Sign-in, autofill and password managers
 
