@@ -39,6 +39,45 @@ final class Path(val ops: Vector[PathOp]) {
 
   def isEmpty: Boolean = ops.isEmpty
 
+  /** The path in dashes: `on` pixels drawn, then `off` left out, all along it (curves followed in short steps), each
+    * dash a line of its own, so every backend draws it the same way; and a platform that draws only straight strokes
+    * (a Roku) still draws the dashes of a line across or down. A dashed edge, a planned box's outline. */
+  def dashed(on: Double, off: Double): Path =
+    if (on <= 0.0 || off <= 0.0) this
+    else {
+      var out = Path.empty
+      Hit.lines(this).foreach { case (points, closed) =>
+        val all = if (closed) points :+ points.head else points
+        var drawing = true
+        var left = on
+        var down = false
+        var i = 0
+        while (i + 1 < all.length) {
+          val (ax, ay) = all(i)
+          val (bx, by) = all(i + 1)
+          val length = Hit.length(bx - ax, by - ay)
+          var t = 0.0
+          while (t < length) {
+            val step = math.min(left, length - t)
+            if (drawing) {
+              if (!down) out = out.moveTo(ax + (bx - ax) * t / length, ay + (by - ay) * t / length)
+              out = out.lineTo(ax + (bx - ax) * (t + step) / length, ay + (by - ay) * (t + step) / length)
+              down = true
+            }
+            t += step
+            left -= step
+            if (left <= 1e-9) {
+              drawing = !drawing
+              left = if (drawing) on else off
+              down = false
+            }
+          }
+          i += 1
+        }
+      }
+      out
+    }
+
   /** The path as SVG path data ("M 0 10 L 20 0 Z"), which the web and JavaFX draw as it is. */
   def svg: String = ops.map(op => (op.kind :: op.values.map(Path.number)).mkString(" ")).mkString(" ")
 
@@ -48,7 +87,8 @@ final class Path(val ops: Vector[PathOp]) {
     case p: Path => p.ops == ops
     case _ => false
   }
-  override def hashCode: Int = ops.hashCode
+  // its length alone, which equal paths share: a Roku has no hash of a Vector
+  override def hashCode: Int = ops.length
 }
 
 object Path {
@@ -63,6 +103,15 @@ object Path {
 
   def rect(x: Double, y: Double, width: Double, height: Double): Path =
     empty.moveTo(x, y).lineTo(x + width, y).lineTo(x + width, y + height).lineTo(x, y + height).close
+
+  /** A rectangle with its corners rounded `r` (no more than half its shorter side). */
+  def roundRect(x: Double, y: Double, width: Double, height: Double, r: Double): Path = {
+    val c = math.max(0.0, math.min(r, math.min(width, height) / 2.0))
+    if (c == 0.0) rect(x, y, width, height)
+    else empty.arc(x + c, y + c, c, math.Pi, math.Pi * 1.5).arc(x + width - c, y + c, c, math.Pi * 1.5, math.Pi * 2.0)
+      .arc(x + width - c, y + height - c, c, 0.0, math.Pi / 2.0).arc(x + c, y + height - c, c, math.Pi / 2.0, math.Pi)
+      .close
+  }
 
   def circle(cx: Double, cy: Double, r: Double): Path = empty.arc(cx, cy, r, 0.0, 2.0 * math.Pi).close
 

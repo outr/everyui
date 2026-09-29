@@ -474,6 +474,52 @@ and Android on a canvas of its own. A Roku and an Apple TV draw no paths: they s
 (`Block.of`): straight strokes across or down, like a commit graph's lanes, and filled rectangles. Diagonals, curves
 and circles are left out there.
 
+### ZoomCanvas (`everyui.zoom`)
+
+`ZoomCanvas` is a surface that pans and zooms over a world of items: a map, a diagram, a project seen from its sections
+down to its symbols. Each `ZoomItem` is a box and a `make` for its component. Only what is in view, and wide enough on
+the screen, is made and drawn; the rest costs a box in a list, so a world of thousands moves as a screenful does. What
+leaves the view waits (`keep`, 200) and is taken apart after that.
+
+```scala
+import everyui.zoom.{ZoomCanvas, ZoomItem}
+
+val map = new ZoomCanvas
+map.size.width := panel.size.width()
+map.size.height := panel.size.height()
+map.items @= sections.map { s =>
+  ZoomItem(s.key, s.x, s.y, s.width, s.height, () => SectionBox(s), childrenFrom = 360.0,
+    children = () => s.modules.map(m => ZoomItem(m.key, m.x, m.y, m.w, m.h, () => ModuleCard(m), scales = false)))
+}
+map.clicked.attach(p => p.hit.foreach(h => map.zoomToItem(h.path*)))
+map.zoomToItem("core", "network")   // glides there; fit() fits everything, zoomTo(rect) any box
+```
+
+- **Semantic zoom.** A child's box is in its parent's, 0 to 1 across and down, however deep. `childrenFrom` makes the
+  children once the parent is that many pixels wide on the screen, and `from` and `until` show an item only between
+  two widths, so a summary can give way to its detail.
+- **Scaled or laid out.** By default (`scales`) a component is part of the picture, laid out in world units (or at
+  `design`, scaled to fit its box) and drawn larger and smaller with the view. With `scales = false` it is laid out
+  again at its box's size on the screen as the view moves, so its words stay their own size at any depth. Those are
+  drawn over the scaled ones.
+- **The view.** `view` is the world's point at the top left and the scale, within `minScale` and `maxScale`.
+  `toWorld` and `toScreen` convert. `moveTo`, `zoomTo`, `zoomToItem` and `fit` glide there (`glide` seconds) on the
+  app's frame loop, a screen manager's. `autoFit` fits everything the first time there is a size and something to show.
+- **Hits.** `hit(x, y)` (or `hitAt(event)`) is the topmost item there that `hits`, with its path of keys, its component
+  and the point in the component's own units. `ZoomHit.figure(figures)` picks a drawing's figure under it, within a few
+  pixels of the screen however far the view is zoomed, so a drawing's shapes can be clicked. `everyui.draw.Hit` does the
+  same for any drawing: `figureAt`, `inside`, `distance`, `bounds`.
+- **Input.** A drag or one finger pans, and so does the wheel. The wheel with Ctrl (Command on a Mac), a trackpad's
+  pinch, or two fingers zoom about where they are (`ZoomCanvas.pinches` says whether a pinch can come here). With the
+  focus, the arrows pan while there is more of the world that way (then the arrow leaves, as the focus layer says),
+  `+` and `-` zoom, and `0` fits. A click that did not move is `clicked`; `hovered` follows the pointer.
+- **Roku and Apple TV.** The remote pans with the arrows, zooms with Fast Forward and Rewind and fits with Replay. OK
+  clicks what is in the middle of the view, which a small cross marks while the canvas has the focus. Drawings there
+  show what rectangles can (`Block.of`).
+
+`Path.dashed(on, off)` cuts a path into dashes, which every backend draws the same way, and `Path.roundRect` is a
+rectangle with rounded corners.
+
 ### SplitButton (`everyui.menu`)
 
 A main action with an arrow beside it that drops a `Menu` of alternatives. The menu also opens on the menu key, on

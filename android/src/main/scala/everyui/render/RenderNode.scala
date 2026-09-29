@@ -546,16 +546,22 @@ class RenderNode(val view: View) {
       }
       else false
     }
-    if (!listening) {
-      listening = true
-      view.setOnTouchListener((_, e) => touch(e))
-      view.setOnHoverListener { (_, e) =>
-        if (e.getAction == MotionEvent.ACTION_HOVER_ENTER) fire(PointerKind.Enter, e)
-        else if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) fire(PointerKind.Leave, e)
-        false
-      }
+    listen()
+  }
+
+  /** The view's touches and hovers heard, once. */
+  private[render] def listen(): Unit = if (!listening) {
+    listening = true
+    view.setOnTouchListener((_, e) => touch(e))
+    view.setOnHoverListener { (_, e) =>
+      if (e.getAction == MotionEvent.ACTION_HOVER_ENTER) fire(PointerKind.Enter, e)
+      else if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) fire(PointerKind.Leave, e)
+      false
     }
   }
+
+  /** What hears every touch on the view before its pointer events are made of it: a pinch (Gestures). */
+  private[render] var touchHook: Option[MotionEvent => Unit] = None
 
   private val pointer = mutable.Map.empty[PointerKind, (Double, Double) => Unit]
   private var listening = false
@@ -582,6 +588,7 @@ class RenderNode(val view: View) {
     pressHeld = None
   }
   private def touch(e: MotionEvent): Boolean = {
+    touchHook.foreach(f => f(e))
     val action = e.getActionMasked
     if (action == MotionEvent.ACTION_DOWN) {
       fire(PointerKind.Down, e)

@@ -36,6 +36,8 @@ import everyui.render.Platform
   *              on a Roku or an Apple TV (app/full: FullDemos)
   *   platform   the platform's services: saving a file, the clipboard, passkeys (`rp=`), push notifications (`vapid=`),
   *              the location; not on a Roku or an Apple TV (app/full: FullDemos)
+  *   zoom       a project map on a canvas that pans and zooms (ZoomCanvas): semantic zoom over 2,578 boxes, and a
+  *              drawing whose routers are picked by a click; not on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
