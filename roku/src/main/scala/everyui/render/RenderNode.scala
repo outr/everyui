@@ -155,7 +155,11 @@ class RenderNode(val sg: SGNode) {
   // the headers go on the content node the source is given, and with every request the player makes for it
   def setMediaHeaders(headers: Map[String, String]): Unit =
     uiSetMediaHeaders(sg, headers.toList.map(h => h._1 + ":" + h._2))
-  def setMediaSource(url: String): Unit = uiSetMediaSource(sg, url)
+  def setMediaSource(url: String): Unit = {
+    uiSetMediaSource(sg, url)
+    // no text track asked for: none shown from the start, whatever the device's caption mode was left at
+    if (textChoice.isEmpty) uiSelectMediaTrack(sg, "text", "")
+  }
   /** Where the next source starts, in seconds: its content node's PlayStart, so the stream opens there. */
   def setMediaStart(seconds: Double): Unit = uiSetMediaStart(sg, seconds)
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit =
@@ -215,18 +219,27 @@ class RenderNode(val sg: SGNode) {
     everyui.component.MediaTrack(if (p.length > 1) p(1) else "", p(0), if (p.length > 2) p(2) else "",
       if (p.length > 3) p(3) else "")
   }
-  // the languages asked for, from the tracks it turned out to have
+  // the languages asked for, from the tracks it turned out to have; without a text language found there, the text track
+  // asked for (none, unless one was)
   private def chooseLanguages(): Unit = {
     val tracks = mediaTracks()
-    List(("audio", wantAudio), ("text", wantText)).filter(w => w._2.nonEmpty).foreach { w =>
+    val chosen = List(("audio", wantAudio), ("text", wantText)).filter(w => w._2.nonEmpty).flatMap { w =>
       val tag = everyui.component.MediaTrack.languageTag(w._2)
       tracks.find(t => t.kind == w._1 && everyui.component.MediaTrack.languageTag(t.language) == tag)
-        .foreach(t => selectMediaTrack(t.kind, t.id))
     }
+    chosen.foreach(t => uiSelectMediaTrack(sg, t.kind, t.id))
+    if (!chosen.exists(_.kind == "text")) uiSelectMediaTrack(sg, "text", textChoice)
   }
   /** What was decoded: nothing this player says. */
   def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
-  def selectMediaTrack(kind: String, id: String): Unit = uiSelectMediaTrack(sg, kind, id)
+  /** A track to hear or read, by its id ("" reads none). A Roku shows captions by its caption mode, which is the
+    * device's own setting (Settings, Accessibility), not the video's: it outlives the video and the channel, so the text
+    * track asked for is put to each source as it opens, and none asked for turns the mode off. */
+  def selectMediaTrack(kind: String, id: String): Unit = {
+    if (kind == "text") textChoice = id
+    uiSelectMediaTrack(sg, kind, id)
+  }
+  private var textChoice = ""
   def setMediaCover(cover: Boolean): Unit = ()
   def setMediaDirect(direct: Boolean): Unit = ()
   def getMediaPosition(): Double = uiGetMediaPosition(sg)
