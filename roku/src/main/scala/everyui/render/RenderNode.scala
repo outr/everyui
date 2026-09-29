@@ -239,8 +239,11 @@ class RenderNode(val sg: SGNode) {
   def releaseMedia(): Unit = uiReleaseMedia(sg)
 
   def setWidth(width: Double): Unit = {
+    val rewrap = wrapping && richWidth >= 0.0 && width != boxWidth
     boxWidth = width
     uiSetWidth(sg, px(width))
+    // text drawn in runs is put on its lines by the runtime, at the width it has (uiRichText)
+    if (rewrap) drawText()
     if (imageUri.nonEmpty) drawImage()
     if (cornerRadius >= 1.0 || edges.nonEmpty || gradientStops.nonEmpty || fillRect.nonEmpty) paint()
   }
@@ -305,6 +308,7 @@ class RenderNode(val sg: SGNode) {
     wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
     uiSetWrap(sg, wrapping)
     spaceLines()
+    if (richWidth >= 0.0) drawText()
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
@@ -409,6 +413,7 @@ class RenderNode(val sg: SGNode) {
   def setLineHeight(advance: Double): Unit = {
     lineAdvance = advance
     spaceLines()
+    if (wrapping && richWidth >= 0.0) drawText()
   }
 
   /** The Label's spacing between lines, set for the advance asked for at its current face and size. */

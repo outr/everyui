@@ -601,52 +601,119 @@ function uiRichText(label as object, text as string, baseUri as string, weight a
         return -1.0
     end if
     label.text = ""
-    ' runs of consecutive words in one script; a word with no letters joins the run it follows
-    runs = []
-    for each w in words
-        last = invalid
-        if runs.count() > 0 then last = runs[runs.count() - 1]
-        if last <> invalid and (w.script = "" or w.script = last.script)
-            last.words.push(w.text)
-        else
-            script = w.script
-            if script = "" then script = "latin"
-            runs.push({ script: script, words: [w.text] })
-        end if
-    end for
-    if rtl = true then runs.Reverse()
     tint = color
     if color = "" then tint = label.color
     base = uiMeasureText("Ag", baseUri, size)
     space = uiMeasureText("A A", baseUri, size).width - uiMeasureText("AA", baseUri, size).width
-    x = 0.0
+    ' a label that wraps at a width puts its words on lines as they fit (uiWrapWords), each line drawn as the one line was
+    lines = [words]
+    if label.wrap and label.width > 0 then lines = uiWrapWords(words, label.width, label.maxLines, space, baseUri, weight, size)
+    advance = base.height
+    if lines.count() > 1 then advance = base.height + label.lineSpacing
+    widest = 0.0
     index = 0
-    for each segment in runs
-        runText = segment.words.Join(" ")
-        if segment.script = "arabic" then runText = uiShapeArabic(runText)
-        uri = uiScriptFace(segment.script, baseUri, weight)
-        node = invalid
-        if index < children then node = label.getChild(index)
-        if node = invalid
-            node = CreateObject("roSGNode", "Label")
-            label.appendChild(node)
-        end if
-        node.font = uiFontNode(uri, size)
-        node.text = runText
-        node.color = tint
-        measured = uiMeasureText(runText, uri, size)
-        own = uiMeasureText("Ag", uri, size)
-        ' the runs share a middle, whatever each face's line box
-        node.translation = [x, (base.height - own.height) / 2.0]
-        x = x + measured.width + space
-        index = index + 1
+    for l = 0 to lines.count() - 1
+        ' runs of consecutive words in one script; a word with no letters joins the run it follows
+        runs = []
+        for each w in lines[l]
+            last = invalid
+            if runs.count() > 0 then last = runs[runs.count() - 1]
+            if last <> invalid and (w.script = "" or w.script = last.script)
+                last.words.push(w.text)
+            else
+                script = w.script
+                if script = "" then script = "latin"
+                runs.push({ script: script, words: [w.text] })
+            end if
+        end for
+        if rtl = true then runs.Reverse()
+        x = 0.0
+        first = index
+        for each segment in runs
+            runText = segment.words.Join(" ")
+            if segment.script = "arabic" then runText = uiShapeArabic(runText)
+            uri = uiScriptFace(segment.script, baseUri, weight)
+            node = invalid
+            if index < children then node = label.getChild(index)
+            if node = invalid
+                node = CreateObject("roSGNode", "Label")
+                label.appendChild(node)
+            end if
+            node.font = uiFontNode(uri, size)
+            node.text = runText
+            node.color = tint
+            measured = uiMeasureText(runText, uri, size)
+            own = uiMeasureText("Ag", uri, size)
+            ' the runs share a middle, whatever each face's line box; where along its line a run starts is kept for
+            ' uiAlignRuns
+            node.translation = [x, l * advance + (base.height - own.height) / 2.0]
+            if not node.hasField("uiLineX") then node.addFields({ uiLineX: 0.0, uiLineWidth: 0.0 })
+            node.uiLineX = x
+            x = x + measured.width + space
+            index = index + 1
+        end for
+        for i = first to index - 1
+            drawn = label.getChild(i)
+            drawn.uiLineWidth = x - space
+        end for
+        if x - space > widest then widest = x - space
     end for
     count = label.getChildCount()
     if count > index then label.removeChildrenIndex(count - index, index)
     if not label.hasField("uiRunsWidth") then label.addField("uiRunsWidth", "float", false)
-    label.uiRunsWidth = x - space
+    label.uiRunsWidth = widest
     uiAlignRuns(label)
-    return x - space
+    return widest
+end function
+
+' Words on lines no wider than `width`, in reading order, each measured in the face it is drawn in (a word with no
+' letters in the face of the word before it); a word wider than a line has one to itself. At most `maxLines` lines (0
+' for no limit), the last cut short with an ellipsis where words are left over.
+function uiWrapWords(words as object, width as float, maxLines as integer, space as float, baseUri as string, weight as integer, size as float) as object
+    lines = []
+    line = []
+    x = 0.0
+    script = "latin"
+    for each w in words
+        if w.script <> "" then script = w.script
+        shown = w.text
+        if script = "arabic" then shown = uiShapeArabic(shown)
+        wide = uiMeasureText(shown, uiScriptFace(script, baseUri, weight), size).width
+        if line.count() > 0 and x + space + wide > width
+            lines.push(line)
+            line = []
+            x = 0.0
+        end if
+        if line.count() > 0 then x = x + space
+        line.push({ text: w.text, script: w.script, width: wide })
+        x = x + wide
+    end for
+    if line.count() > 0 then lines.push(line)
+    if maxLines > 0 and lines.count() > maxLines
+        last = lines[maxLines - 1]
+        lines = uiTake(lines, maxLines)
+        ellipsis = uiMeasureText(Chr(&h2026), baseUri, size).width
+        used = 0.0
+        for each w in last
+            used = used + w.width + space
+        end for
+        while last.count() > 1 and used - space + ellipsis > width
+            gone = last.Pop()
+            used = used - gone.width - space
+        end while
+        tail = last[last.count() - 1]
+        last[last.count() - 1] = { text: tail.text + Chr(&h2026), script: tail.script, width: tail.width + ellipsis }
+    end if
+    return lines
+end function
+
+' The first `n` elements of an array.
+function uiTake(items as object, n as integer) as object
+    taken = []
+    for i = 0 to n - 1
+        if i < items.count() then taken.push(items[i])
+    end for
+    return taken
 end function
 
 ' A face by its file (pkg:/fonts/<file>.ttf): the one the text is measured by, whatever its family.
@@ -783,19 +850,20 @@ sub uiApplyAlign(label as object)
     uiAlignRuns(label)
 end sub
 
-' Runs drawn by uiRichText, moved along to where the Label's alignment puts text of their width in its own.
+' Runs drawn by uiRichText, moved along to where the Label's alignment puts a line of their line's width in its own.
 sub uiAlignRuns(label as object)
     count = label.getChildCount()
     if count = 0 or not label.hasField("uiRunsWidth") then return
-    room = label.width - label.uiRunsWidth
-    offset = 0.0
-    if room > 0.0 and label.horizAlign = "right" then offset = room
-    if room > 0.0 and label.horizAlign = "center" then offset = room / 2.0
-    shift = offset - label.getChild(0).translation[0]
-    if shift = 0.0 then return
     for i = 0 to count - 1
         child = label.getChild(i)
-        child.translation = [child.translation[0] + shift, child.translation[1]]
+        if child.hasField("uiLineX")
+            room = label.width - child.uiLineWidth
+            offset = 0.0
+            if room > 0.0 and label.horizAlign = "right" then offset = room
+            if room > 0.0 and label.horizAlign = "center" then offset = room / 2.0
+            x = offset + child.uiLineX
+            if child.translation[0] <> x then child.translation = [x, child.translation[1]]
+        end if
     end for
 end sub
 
