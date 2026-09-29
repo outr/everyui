@@ -226,18 +226,27 @@ class RenderNode(val fx: Node) {
   /** JavaFX's cached bitmap of the node. */
   def setCached(cached: Boolean): Unit = fx.setCache(cached)
 
-  private var timelines: List[javafx.animation.Timeline] = Nil
+  private var motionTracks: List[everyui.motion.Track] = Nil
+  /** The motion's timelines, run only while the node is in a shown window and visible (Motion): made on first use. */
+  private var motion: Motion = null
 
-  /** Each track a timeline of the node's own properties, repeating: a position is its translation, on top of the
-    * layout position it is placed by. */
   /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
   def setMotionOwner(owner: () => String): Unit = ()
   def setMotion(tracks: List[everyui.motion.Track]): Unit = {
+    motionTracks = tracks
+    if (tracks.nonEmpty || motion != null) {
+      if (motion == null) motion = new Motion(fx, () => timelines())
+      motion.set(tracks.nonEmpty)
+    }
+  }
+
+  /** Each track a timeline of the node's own properties, repeating: a position is its translation, on top of the
+    * layout position it is placed by. */
+  private def timelines(): List[javafx.animation.Timeline] = {
     import javafx.animation.{Animation, Interpolator, KeyFrame, KeyValue, Timeline}
     import javafx.util.Duration
     import everyui.motion.Track
-    timelines.foreach(_.stop())
-    timelines = tracks.map { track =>
+    motionTracks.map { track =>
       val frames = track.keys.map { k =>
         val at = Duration.seconds(k.at * track.seconds)
         def value(p: javafx.beans.value.WritableValue[Number], v: Double) = new KeyValue(p, Double.box(v), Interpolator.LINEAR)
@@ -252,7 +261,6 @@ class RenderNode(val fx: Node) {
       val timeline = new Timeline(frames*)
       timeline.setCycleCount(Animation.INDEFINITE)
       timeline.setDelay(Duration.seconds(track.delay))
-      timeline.play()
       timeline
     }
   }
