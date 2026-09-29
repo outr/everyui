@@ -19,6 +19,11 @@ EveryUI is published locally for now: run `sbt publishLocal` in this repository,
 | `"com.outr" %% "everyui-compiler-api" % "0.1.0-SNAPSHOT"` | `@native`, for a facade over a Roku or Apple TV global (comes with everyui-roku and everyui-tvos) | JVM |
 | `addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")` | an app's build: web targets, and packaging for every other platform | sbt 2 |
 
+The version stays 0.1.0-SNAPSHOT from one publish to the next. What a build has is in each jar's manifest instead:
+`EveryUI-Commit` is the commit it was published from (with `-dirty` after it if the tree had uncommitted changes), and
+the plugin's `everyuiCommit` answers it (`sbt show everyuiCommit`), warning when the jars on a classpath come from more
+than one commit. Record it with a deploy to say which EveryUI shipped.
+
 Everything is built with Scala **3.10.0-RC3** and Scala.js **1.22.0**, so a consumer needs Scala 3.10 (an RC or
 later) to read it.
 

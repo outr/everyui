@@ -43,7 +43,8 @@ object EveryUIPlugin extends AutoPlugin {
     @transient val everyuiRokuRuntime = taskKey[File]("The Roku runtime (BrightScript and SceneGraph), taken out of the everyui-roku jar: a directory for RokuChannel.assemble")
     @transient val everyuiSwiftRuntime = taskKey[Seq[File]]("The Swift runtime and launcher, taken out of the everyui-tvos jar, for AppleApp.assemble")
     @transient val everyuiAppleInfoPlist = taskKey[File]("The Info.plist the Apple app is packaged with: EveryUI's template, out of the everyui-tvos jar, unless the app gives its own")
-    @transient val everyuiAndroidRules = taskKey[File]("The Android backend's shrinker rules, taken out of the everyui-android jar, for AndroidApk.build")
+    @transient val everyuiCommit = taskKey[Option[String]]("The EveryUI commit the everyui jars on the classpath were published from (their manifest's EveryUI-Commit, \"-dirty\" after it if the tree had uncommitted changes), or None where there is none: for recording which EveryUI a build has")
+    @transient val everyuiAndroidRules =taskKey[File]("The Android backend's shrinker rules, taken out of the everyui-android jar, for AndroidApk.build")
   }
   import autoImport.*
 
@@ -104,6 +105,18 @@ object EveryUIPlugin extends AutoPlugin {
     },
     everyuiAppleInfoPlist := Def.uncached {
       unpack(jar(classpath.value, "everyui-tvos"), "everyui/swift", target.value / "everyui-plist") / "Info.plist"
+    },
+    everyuiCommit := Def.uncached {
+      val commits = classpath.value.filter(f => f.getName.startsWith("everyui-") && f.getName.endsWith(".jar")).flatMap { f =>
+        scala.util.Try {
+          val jar = new java.util.jar.JarFile(f)
+          try Option(jar.getManifest).flatMap(m => Option(m.getMainAttributes.getValue("EveryUI-Commit")))
+          finally jar.close()
+        }.toOption.flatten
+      }.distinct
+      // jars from more than one commit mean an EveryUI republished part-way through: say so rather than pick one
+      if (commits.size > 1) streams.value.log.warn(s"sbt-everyui: the everyui jars come from ${commits.size} commits: ${commits.mkString(", ")}")
+      commits.headOption
     },
     everyuiAndroidRules := Def.uncached {
       unpack(jar(classpath.value, "everyui-android"), "everyui/android", target.value / "everyui-android") /

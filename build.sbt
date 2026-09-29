@@ -158,7 +158,17 @@ def backendSources(backend: String, spice: Boolean): Seq[File] =
 // each backend's artifact rather than as a core of its own. reactify comes as its published snapshot here (4.2.1,
 // what the `reactive` project compiles from source), which evicts the older release Spice depends on.
 lazy val reactifyVersion = "4.2.1-SNAPSHOT"
-lazy val published = Seq(publish / skip := false)
+/** The commit a published artifact is built from, "-dirty" after it when the tree had uncommitted changes: written into
+  * each published jar's manifest as EveryUI-Commit, so an app's build can say which EveryUI it has (sbt-everyui's
+  * everyuiCommit) while the version stays 0.1.0-SNAPSHOT. */
+lazy val builtFrom: String = {
+  import scala.sys.process.*
+  val sha = scala.util.Try(Process(Seq("git", "rev-parse", "HEAD"), file(".")).!!.trim).getOrElse("unknown")
+  val dirty = scala.util.Try(Process(Seq("git", "status", "--porcelain"), file(".")).!!.trim.nonEmpty).getOrElse(false)
+  if (dirty) sha + "-dirty" else sha
+}
+lazy val published = Seq(publish / skip := false,
+  Compile / packageBin / packageOptions += Package.ManifestAttributes("EveryUI-Commit" -> builtFrom))
 
 /** `files` (from the build's root) as resources under `path` in a published jar, for the sbt plugin to take out. */
 def bundled(path: String, files: File => Seq[File]): Def.Initialize[Task[Seq[File]]] = Def.task {
@@ -271,9 +281,9 @@ lazy val spiceVersion = "1.10.9-SNAPSHOT4"
 // and Markdown, JSON-LD, sitemap.xml, robots.txt, llms.txt) is the server's alone, kept out of shared so no device
 // build carries it. An app's server compiles these two source directories in.
 lazy val seo = (project in file("seo"))
+  .settings(published)
   .settings(
     name := "everyui-seo",
-    publish / skip := false,
     Compile / unmanagedSourceDirectories += sharedSources / "everyui" / "seo",
     // the build's side of the well-known files (sbt-support's AppDomains), checked against the server's
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "sbt-support" / "src" / "main" / "scala",
