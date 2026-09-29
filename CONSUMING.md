@@ -575,6 +575,9 @@ map.zoomToItem("core", "network")   // glides there; fit() fits everything, zoom
 - **Grabbing.** `grab` says what a press takes hold of in place of a pan: given the world's point, it answers a
   `ZoomGrab(move, drop)`, whose `move` hears the pointer's world point as it drags and `drop` when it lets go. A press
   that does not move is still a click. A graph's nodes are dragged this way.
+- **Built on.** `layer` is what a canvas built on this one draws itself, over the items and placed in the canvas's
+  pixels as the view moves (a map's tiles, shapes and markers); `extent` is the world the arrows pan across and `fit`
+  shows where that is not the items' box; `pressing` says whether a drag or a pinch is under way.
 - **Roku and Apple TV.** The remote pans with the arrows, zooms with Fast Forward and Rewind and fits with Replay. OK
   clicks what is in the middle of the view, which a small cross marks while the canvas has the focus. Drawings there
   show what rectangles can (`Block.of`).
@@ -689,6 +692,85 @@ Settling from the start (300 ticks), co-occurrence graphs of about two edges a n
 1,000 nodes 0.3 to 0.5 s (1 to 1.7 ms a tick), 3,000 nodes 1.2 to 1.6 s (4 to 5 ms a tick) on the JVM; in Chromium
 0.2, 3.6 and 13 ms a tick. `demo=forcegraph` shows 240 words, a frame a tick at about 57 frames a second in headless
 Chromium, and asks for no frames once it settles.
+
+### MapView (`everyui.map`)
+
+`MapView` is a slippy map, as OpenStreetMap's is, in shared code over a `ZoomCanvas` (no JS map library): tiles from a
+tile server, polygons and lines in latitude and longitude over them, markers that keep their own size at every zoom,
+gathered into clusters where they crowd, all in Web Mercator at zooms 0 (the whole Earth in one 256-pixel tile) to 19.
+
+```scala
+import everyui.map.*
+import everyui.map.MapFeature.{ClusterFeature, MarkerFeature, ShapeFeature}
+
+val map = new MapView
+map.size.width := panel.size.width()
+map.size.height @= 420.0
+map.tiles @= Some(TileSource.openStreetMap)            // or TileSource.template(url, attribution, subdomains)
+map.shapes @= parcels.map(p => MapShape.polygon(p.id, p.ring,
+  MapStyle(fill = Some(teal.withAlpha(0.35)), stroke = Some(teal), width = 1.5), label = p.name))
+map.markers @= wells.map(w => MapMarker.pin(w.id, w.at, label = w.name))
+map.cluster @= Some(MapCluster())
+map.legend @= Some(new OwnersKey)
+map.clicked.attach(c => c.feature match {
+  case Some(ShapeFeature(s)) => open(s.key)
+  case Some(MarkerFeature(m)) => show(m.key)
+  case _ => ()                                           // a cluster glides in by itself
+})
+LatLngBounds.around(parcels.flatMap(_.ring)).foreach(b => map.fitBounds(b, padding = 32.0))
+```
+
+- **Where it looks.** `setView(center, zoom, animate)`, `fitBounds(bounds, padding, animate)` (as close as `maxZoom`
+  allows; asked before the map has a size, it is done once it has one) and `zoomBy(levels)`, within `minZoom` and
+  `maxZoom` (0 and 19). `center`, `zoom` and `bounds` are `Val`s that follow the view. `toScreen(latLng)` and
+  `toLatLng(x, y)` convert with the map's own pixels; `WebMercator` has the projection itself (`toWorld`, `toLatLng`,
+  `tileAt`, `tileBounds`, `tilesIn`, `metersPerPixel`, `zoomToFit`). `LatLng(lat, lng)`; GeoJSON writes `[lng, lat]`.
+- **Moving it.** A drag or a finger pans, and so does the wheel; Ctrl (Command) and the wheel, a trackpad's pinch, two
+  fingers and the + and - buttons (`zoomButtons`) zoom about where they are. A press gives it the keys: the arrows
+  pan, + and - zoom; on a remote Fast Forward and Rewind zoom and OK clicks the middle of the view. `map.canvas` is
+  the `ZoomCanvas` underneath: the thing to focus.
+- **Tiles.** `TileSource(address, attribution, minZoom, maxZoom, retina, link)`: `address(tile, sharp)` is where a
+  tile's picture is, so a test (or an app that makes its pictures) gives a function; `TileSource.template` fills
+  `{z}`, `{x}`, `{y}`, `{-y}` (TMS), `{s}` (a subdomain, the same for a tile every time) and `{r}` (`@2x` on a screen
+  sharper than a pixel a point, and the source is then `retina`). Only the tiles of the nearest whole zoom that cover
+  the view and `tileMargin` (128 px) round it are asked for, nearest the middle first, `tileLoads` (6) at a time; one
+  that leaves the view before it was asked for is never asked for; one not yet come shows the nearest tile above it
+  drawn larger (or those below it), so a zoom never blanks; `tileCache` (256) that came are kept, the longest unused
+  let go first. Past the source's `maxZoom` its closest tiles are drawn larger.
+- **Credit and scale.** The source's `attribution` is always shown in the bottom right (a link where it has one);
+  OpenStreetMap's licence requires it. The scale bar (`scaleBar`) shows a round distance at the middle of the view, in
+  metres or, with `imperial`, feet and miles.
+- **Shapes.** `MapShape(key, rings, closed, style, label, hits, from, until)`, or `MapShape.polygon(key, ring, style)`
+  and `MapShape.line(key, points, style)`. A polygon's rings fill by the nonzero rule, so a ring wound the other way (a
+  GeoJSON hole) is a hole. `MapStyle(fill, stroke, width, opacity, dash)`: the width in pixels of the screen at every
+  zoom, `dash = Some(MapDash(on, off))`. They are drawn as one `Drawing` in screen pixels for the view and half a view
+  round it, each ring thinned to points a pixel apart and cut to that frame, so a county outline at a state's zoom is a
+  handful of points. `from` and `until` show a shape only between two zooms (a section grid close in).
+- **Markers.** `MapMarker(key, at, make, anchor, label, hits, from, until, clusters)`: `make` is any component, sized by
+  itself, made only as it comes into view and let go a while after it leaves (`keep`, 300); `anchor` is the point of it
+  at the place (`MapAnchor.Bottom` for a pin). `MapMarker.pin`, `.dot` (a rounded box, drawn everywhere) and `.text`
+  (words with a dark edge) are ready-made. `MapCluster(cell, until, least, make, zoomsIn)` gathers the markers of each
+  square of `cell` pixels (fixed to the world, so a pan does not reshuffle them) below zoom `until`; a click on one
+  glides in to its markers.
+- **Hits.** `clicked` hears a `MapClick(at, feature, modifiers)`, and `hovered` is the feature under the pointer:
+  `MarkerFeature`, `ShapeFeature` or `ClusterFeature`, each with the app's `key`. Markers are found by their box,
+  polygons anywhere inside, lines within `slop` (4) pixels. A feature's `label` shows in a tip as the pointer rests on
+  it (`tips`). `featureAt(x, y)` asks directly. `hits = false` leaves a feature to the eye alone.
+- **Legend.** `legend` is any component, shown over the map in `legendCorner` (`MapCorner.TopLeft` by default), clear
+  of the buttons, the credit and the scale bar.
+
+Panning moves the layers, laid out for a frame of the view and half a view round it, without laying out anything
+again until the view leaves that frame; a zoom lays them out for the new scale. `demo=map` (259 polygons, 5 pins, 1,000
+clustered dots and 257 labels) in headless Chromium without a GPU: a drag at 60 frames a second without a dropped
+frame (under 2 ms of script a move), with or without clustering and with 600 sections; a wheel zoom 5 to 15 ms of
+script a step, 60 frames a second with the odd frame at 33 ms (1,000 unclustered markers zooming out: some 83 ms at
+worst).
+
+The web, the desktop and Android draw everything. A Roku and an Apple TV draw the tiles and the markers that are
+components (`dot`, `text`, the app's own); of the shapes and the pin only what rectangles can (`everyui.draw.Block`);
+they move by the remote. A Roku computes in single precision, so past zoom 16 what it draws may be a pixel or more
+out. Tests and demos never use OpenStreetMap's own server, whose tile usage policy forbids heavy use: `demo=map` draws
+its tiles in the page, and takes `tiles=<template>` for a local server's.
 
 ### SplitButton (`everyui.menu`)
 
