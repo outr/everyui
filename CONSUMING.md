@@ -638,6 +638,26 @@ OK brings up the platform's keyboard. A component that wraps a platform field sa
 `Component.typesEvent`; those keys reach its `event.key.down` and then the platform, untouched. `TextInput` now does
 this too. Before, it kept Backspace, Space and the arrows from its own field while it was being edited.
 
+### Italic (`font.italic`)
+
+`font.italic @= true` slants the words of anything with a `font`: a `TextView`, a `RichText` (every run, as the
+paragraph's own style; a run marked `italic` is slanted either way), an `InputView` and a `Select`. A `Button` has
+`italic` for its words. The measured width is the width as drawn, so what is laid out after the words follows them.
+
+```scala
+val empty = TextView("-- No Results --", 14.0)
+empty.font.italic @= true
+new Button("Retry").italic @= true
+```
+
+Each platform draws the family's own italic where there is one: a face registered with `italic = true`
+(`Faces.register(new Face(..., italic = true))`, its file named in `everyuiAppFonts`), or the system's italic for the
+system family. Where the family has none (Open Sans, as EveryUI bundles it) the upright letters are slanted: by the
+browser (CSS `font-style`), by Android (`Typeface.ITALIC`, which a TextView fakes by skewing), by UIKit (the italic
+trait, else a sheared face), and on the desktop by a shear about the baseline, as JavaFX has no slant of its own; a
+desktop field in such a family stays upright. A Roku cannot slant a font, so it draws the registered italic face where
+there is one and the upright letters where not.
+
 ### Text direction and long words (`TextView`, `RichText`)
 
 Words the app did not write (a message, a name, a title, code) should run the way their own letters do, not the

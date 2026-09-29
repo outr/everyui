@@ -105,6 +105,10 @@ class SGNode
 @native object uiSetLetterSpacing {
   def apply(node: SGNode, px: Double): Unit = native.value
 }
+/** A label's face made italic: its own italic where it has one, else its letters slanted. */
+@native object uiSetItalic {
+  def apply(node: SGNode): Unit = native.value
+}
 /** A bundled face by family and CSS weight; size in points. */
 @native object uiSetFont {
   def apply(node: SGNode, family: String, weight: Int, size: Double): Unit = native.value

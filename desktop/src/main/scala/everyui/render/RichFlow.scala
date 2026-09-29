@@ -16,6 +16,7 @@ class RichFlow extends TextFlow {
   private var weight: Int = 600
   private var size: Double = 32.0
   private var colour: String = "#1c1b1f"
+  private var italic: Boolean = false
 
   /** The words of every run. */
   def text: String = runs.map(_.text).mkString
@@ -31,6 +32,12 @@ class RichFlow extends TextFlow {
     this.family = family
     this.weight = weight
     this.size = size
+    draw()
+  }
+
+  /** Every run slanted, as the paragraph's own style: a run marked italic is slanted either way. */
+  def setItalic(on: Boolean): Unit = {
+    italic = on
     draw()
   }
 
@@ -77,7 +84,7 @@ class RichFlow extends TextFlow {
     val named = if (run.family.nonEmpty) run.family else family
     val heavy = if (run.weight > 0) run.weight else weight
     val points = if (run.size > 0.0) run.size else size
-    val font = RichFlow.font(named, heavy, run.italic, points)
+    val font = RichFlow.font(named, heavy, run.italic || italic, points)
     if (rtl && run.family.isEmpty) RtlText.covering(font) else font
   }
 
@@ -85,6 +92,7 @@ class RichFlow extends TextFlow {
     val t = new Text(words)
     t.setFontSmoothingType(FontSmoothingType.GRAY)
     t.setFont(font)
+    if (run.italic || italic) Oblique(t, true)
     t.setFill(Color.web(if (run.color.nonEmpty) run.color else colour))
     t.setStrikethrough(run.strike)
     t.setUnderline(run.underline)

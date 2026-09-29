@@ -113,15 +113,22 @@ class RenderNode(val fx: Node) {
     case t: Text =>
       face = Faces(family, weight)
       fontSize = size
+      fontFamily = family
+      fontWeight = weight
       t.setFont(
-        if (family.nonEmpty) Host.font(face, size)
+        if (italic) RichFlow.font(family, weight, true, size)
+        else if (family.nonEmpty) Host.font(face, size)
         else Font.font("System", if (weight >= 600) FontWeight.SEMI_BOLD else FontWeight.NORMAL, size)
       )
+      Oblique(t, italic)
       placeY()
     case f: TextInputControl =>
       face = Faces(family, weight)
       fontSize = size
-      f.setFont(if (family.nonEmpty) Host.font(face, size) else Font.font("System", size))
+      fontFamily = family
+      fontWeight = weight
+      f.setFont(if (italic) RichFlow.font(family, weight, true, size)
+        else if (family.nonEmpty) Host.font(face, size) else Font.font("System", size))
     case _ => ()
   }
 
@@ -276,6 +283,19 @@ class RenderNode(val fx: Node) {
   def setLetterSpacing(px: Double): Unit = letterSpacing = px
   private var letterSpacing: Double = 0.0
   private var runs: List[everyui.text.TextRun] = Nil
+  /** Slanted: the family's registered italic, or the system's, where it has one (`RichFlow.font`), else its upright
+    * letters sheared (`Oblique`); the measured width is the words' as drawn. A field in a family with no italic stays
+    * upright. */
+  def setItalic(on: Boolean): Unit = if (on != italic) {
+    italic = on
+    fx match {
+      case f: RichFlow => f.setItalic(on)
+      case _ => setFont(fontFamily, fontWeight, fontSize)
+    }
+  }
+  private var italic: Boolean = false
+  private var fontFamily: String = ""
+  private var fontWeight: Int = 400
   /** A link is followed by its click; there is no address to show. */
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */

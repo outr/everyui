@@ -111,7 +111,8 @@ class RenderNode(val sg: SGNode) {
   def setFont(family: String, weight: Int, size: Double): Unit = {
     if (family.nonEmpty) {
       // drawn in the face it is measured by: the registered or bundled file every other backend draws with
-      val face = Faces(family, weight)
+      val face = (if (italic) Faces.italic(family, weight) else None).getOrElse(Faces(family, weight))
+      fontFamily = family
       fontUri = "pkg:/fonts/" + face.file
       fontSize = size
       lineHeight = face.lineHeight(size)
@@ -396,6 +397,14 @@ class RenderNode(val sg: SGNode) {
   def setBlur(radius: Double): Unit = ()
   /** A Label spaces no letters: they sit as the face sets them, and the width is theirs. */
   def setLetterSpacing(px: Double): Unit = ()
+  /** Slanted: a SceneGraph font cannot be slanted, so the words are drawn, and measured, in the family's registered
+    * italic face where there is one, and upright where not. */
+  def setItalic(on: Boolean): Unit = if (on != italic) {
+    italic = on
+    if (fontFamily.nonEmpty) setFont(fontFamily, fontWeight, fontSize)
+  }
+  private var italic: Boolean = false
+  private var fontFamily: String = ""
   /** Each line of wrapped text `advance` units below the last: the Label's own spacing, to what the face leaves. */
   def setLineHeight(advance: Double): Unit = {
     lineAdvance = advance

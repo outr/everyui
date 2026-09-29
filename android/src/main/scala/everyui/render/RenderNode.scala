@@ -107,10 +107,19 @@ class RenderNode(val view: View) {
     case t: TextView =>
       face = Faces(family, weight)
       fontSize = size
+      fontFamily = family
+      fontWeight = weight
       // a weighted system face is Android 9's; before it, bold or not is the choice there is
-      t.setTypeface(if (family.nonEmpty) Host.typeface(face)
+      val upright = if (family.nonEmpty) Host.typeface(face)
         else if (android.os.Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.DEFAULT, weight, false)
-        else Typeface.create(Typeface.DEFAULT, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL))
+        else Typeface.create(Typeface.DEFAULT, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL)
+      // slanted: the family's own italic where one is registered, else the face made italic, which TextView slants
+      // itself where the face has none (NORMAL takes that slant off again)
+      if (!italic) t.setTypeface(upright, Typeface.NORMAL)
+      else Faces.italic(family, weight) match {
+        case Some(f) => t.setTypeface(Host.typeface(f), Typeface.NORMAL)
+        case None => t.setTypeface(upright, Typeface.ITALIC)
+      }
       t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size.toFloat)
       spaceLines(t)
       placeY()
@@ -426,6 +435,15 @@ class RenderNode(val view: View) {
   }
 
   private var lineAdvance: Double = 0.0
+
+  /** Slanted or upright (the face set again, `setFont`); the measured width is the slanted words'. */
+  def setItalic(on: Boolean): Unit = if (on != italic) {
+    italic = on
+    setFont(fontFamily, fontWeight, fontSize)
+  }
+  private var italic: Boolean = false
+  private var fontFamily: String = ""
+  private var fontWeight: Int = 400
 
   /** Extra space after each letter, in pixels. Android spaces letters in ems, so it is the pixels over the size (which
     * `FontFeature` sets first); the measured width takes it. */

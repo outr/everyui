@@ -61,6 +61,10 @@ class RenderNode(val sg: SGNode) {
   /** A bundled face (`assets/fonts/`, in the app bundle): family, CSS weight, size in points. */
   def setFont(family: String, weight: Int, size: Double): Unit = {
     uiSetFont(sg, family, weight, size)
+    fontFamily = family
+    fontWeight = weight
+    fontPoints = size
+    if (italic) uiSetItalic(sg)
     if (family.nonEmpty) {
       val face = Faces(family, weight)
       fontUri = "fonts/" + face.file
@@ -222,6 +226,16 @@ class RenderNode(val sg: SGNode) {
   def setLineHeight(px: Double): Unit = ()
   /** Extra space after each letter, in points: UIKit's kern, which the measured width takes. */
   def setLetterSpacing(px: Double): Unit = uiSetLetterSpacing(sg, px)
+  /** Slanted: UIKit's italic of the face where it has one, else its upright letters slanted; the measured width is
+    * the slanted words'. Upright again is the face set afresh. */
+  def setItalic(on: Boolean): Unit = if (on != italic) {
+    italic = on
+    if (on) uiSetItalic(sg) else uiSetFont(sg, fontFamily, fontWeight, fontPoints)
+  }
+  private var italic: Boolean = false
+  private var fontFamily: String = ""
+  private var fontWeight: Int = 400
+  private var fontPoints: Double = 0.0
   /** A link is followed by its select; there is no address to show. */
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */

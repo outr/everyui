@@ -4,7 +4,7 @@ import everyui.component.Component
 import everyui.component.types.{FontWeight, Prop}
 import everyui.theme.Theme
 
-/** youi's `FontFeature`: family, weight and size (pixels). Setting a weight converted from a Google Fonts weight
+/** youi's `FontFeature`: family, weight, size (pixels) and slant. Setting a weight converted from a Google Fonts weight
   * sets the family too. */
 class FontFeature(component: Component) {
   /** The theme's family (`Theme.family`, as it is when the text is made) until this names its own. */
@@ -35,9 +35,23 @@ class FontFeature(component: Component) {
   }, () => component.measure.trigger()))
   // what letterSpacing is, read without making it: most text never spaces its letters
   private var spacing: Double = 0.0
+  /** Slanted: the family's own italic where one is registered (`Faces.register` with `italic = true`), else its upright
+    * letters slanted by the platform (a browser, JavaFX, Android and an Apple TV each slant a face that has none). A
+    * Roku draws the registered italic and otherwise the upright letters, as its fonts cannot be slanted. The measured
+    * width is the slanted words':
+    * {{{
+    * empty.font.italic @= true
+    * }}} */
+  lazy val italic: Prop[Boolean] = component.own(new Prop[Boolean](false, on => {
+    slanted = on
+    component.node.setItalic(on)
+  }, () => component.measure.trigger()))
+  // what italic is, read without making it: most text is upright
+  private var slanted: Boolean = false
 
   private def applyFont(): Unit = {
     component.node.setFont(family(), weight().value, size())
+    if (slanted) component.node.setItalic(true)
     if (lineHeight() > 0.0) component.node.setLineHeight(lineHeight() * size())
     // spacing given in ems where the platform takes them is kept in pixels as the size changes
     if (spacing != 0.0) component.node.setLetterSpacing(spacing)

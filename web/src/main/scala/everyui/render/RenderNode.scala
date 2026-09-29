@@ -184,6 +184,10 @@ class RenderNode(val el: html.Element) {
   /** Extra space after each letter, in pixels (0 for the face's own); the box, and so the measured width, takes it. */
   def setLetterSpacing(px: Double): Unit = el.style.letterSpacing = if (px == 0.0) "" else px.toString + "px"
 
+  /** Slanted or upright: CSS font-style, drawn in the family's italic face where one is registered and slanted by the
+    * browser where not; the box, and so the measured width, takes it. */
+  def setItalic(on: Boolean): Unit = el.style.fontStyle = if (on) "italic" else ""
+
   /** Where a link goes (the node is an `<a>`, `Nodes.link`), in a new tab with `newTab`. */
   def setHref(href: String, newTab: Boolean): Unit = {
     el.setAttribute("href", href)

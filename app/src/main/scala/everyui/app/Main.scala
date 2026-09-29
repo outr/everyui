@@ -29,6 +29,7 @@ import everyui.render.Platform
   *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus
   *              (`theme=light`, `collapsed=archive`)
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
+  *   italic     an empty list's and a search's labels upright and slanted, a paragraph, buttons and a field slanted
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
@@ -63,5 +64,6 @@ import everyui.render.Platform
   else if (demo == "markdown") MarkdownDemo.run()
   else if (demo == "richlist") RichListDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()
+  else if (demo == "italic") ItalicDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

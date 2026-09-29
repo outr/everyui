@@ -203,6 +203,21 @@ func uiSetLetterSpacing(_ node: V, _ px: V) -> V {
     return .vNull
 }
 
+/// A label's face made italic: the face's own italic where UIKit finds one, else its upright letters slanted (a
+/// shear, as a browser slants a face that has no italic). Upright again is the face set afresh (`uiSetFont`).
+func uiSetItalic(_ node: V) -> V {
+    guard let l = view(node) as? UILabel else { return .vNull }
+    let d = l.font.fontDescriptor
+    if let italic = d.withSymbolicTraits(d.symbolicTraits.union(.traitItalic)) {
+        l.font = UIFont(descriptor: italic, size: l.font.pointSize)
+    } else {
+        l.font = UIFont(descriptor: d.withMatrix(CGAffineTransform(a: 1, b: 0, c: 0.2, d: 1, tx: 0, ty: 0)),
+                        size: l.font.pointSize)
+    }
+    place(l, geo(l))
+    return .vNull
+}
+
 /// A label's text width at exactly `size` points of its face: the advance width, as a browser measures it, its
 /// letter spacing with it.
 func uiTextWidth(_ node: V, _ uri: V, _ size: V) -> V {
