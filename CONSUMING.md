@@ -136,6 +136,23 @@ refs.children.bindMaking(item().toList.flatMap(_.refs))(r => new Tag(r.name))
 `bind` is the same for components that are kept and handed back rather than made. Anything else built from a value
 belongs in a listener: `item.attach(i => panel.children @= …)`. A `:=` is for values: words, sizes, colours, icons.
 
+### Taking components apart
+
+A component bound to something that lives on (a theme colour, the clock, the host's size, the focus) is held by it
+until it is taken apart with `dispose`, and with it everything it holds, pictures and nodes included. So what is made
+and then dropped must be disposed of, or a page that makes rows, boards or tiles as it goes grows until a television
+closes the app for its memory:
+
+```scala
+stage.children.replaceMaking(Vector(board.build()))   // the last board is taken apart as this goes in
+rows.children.bindMaking(items())(item => new Row(item))
+```
+
+`replaceMaking` and `bindMaking` take apart what leaves; `children @= …` does not, and suits only components that are
+kept and shown again. A screen made for one showing (`oneShowing`) is taken apart by its manager once nothing can go
+back to it. Taking a large tree apart runs a slice a turn (`Component.disposeGradually(roots, done)`), so a screen of
+thousands of components never outlasts a Roku's watchdog; disposing twice does nothing.
+
 ### When frames run
 
 On the web, the desktop and Android (`Frames.onDemand`) the screen manager's frame loop runs only while something

@@ -94,6 +94,18 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   def ++=(seq: Seq[Component]): Unit = static(get ++ seq)
   def clear(): Unit = static(Vector.empty)
 
+  /** The children become `parts`, and each that is not among them is taken apart (Component.dispose, a slice a turn:
+    * `Component.disposeGradually`), never to be shown again: a board drawn afresh for each question, a page's rows
+    * made again, where replacing them with `@=` left each old one bound to the theme, and so held, for good.
+    * {{{
+    *   stage.children.replaceMaking(Vector(board.build()))
+    * }}} */
+  def replaceMaking(parts: Vector[Component]): Unit = {
+    val gone = ContainerFeature.missing(get, parts)
+    static(parts)
+    if (gone.nonEmpty) Component.disposeGradually(gone.toList, () => everyui.render.Platform.collect())
+  }
+
   /** The children follow `values`: whenever what it reads changes, each value is rendered again. `values` is data —
     * construct components only in `render`, since a component built inside the tracked expression makes its own
     * measurements dependencies, and the list rebuilds itself forever. */
