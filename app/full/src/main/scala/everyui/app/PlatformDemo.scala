@@ -1,11 +1,13 @@
 package everyui.app
 
-import everyui.component.{Button, ButtonStyle, Column, Component, Container, Row, ScrollContainer, TextInput, TextView}
+import everyui.component.{Button, ButtonStyle, Column, Component, Container, ScrollContainer, TextInput, TextView}
 import everyui.component.types.Autofill
+import everyui.layout.FlowLayout
 import everyui.clipboard.Clipboard
 import everyui.file.{Files, SaveResult}
 import everyui.passkey.{PasskeyResult, Passkeys}
-import everyui.PlatformKind
+import everyui.push.{Push, PushAnswer}
+import everyui.{Permission, PlatformKind}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -14,8 +16,10 @@ import reactify.*
 /** The platform's own services, one section each, with what each answered written under it and logged
   * (`[ui] platform save Saved notes.txt`): saving a file, as bytes or from a URL; the clipboard, copied to and read;
   * a passkey made and signed in with, by a click or from the username field's autofill, with options made here as a
-  * server would (`rp=<domain>` names the site, which Android needs) and the credential's JSON logged whole. Each section
-  * says whether the platform has it. `theme=light` shows the light palette. */
+  * server would (`rp=<domain>` names the site, which Android needs) and the credential's JSON logged whole; push
+  * notifications, allowed, subscribed to with `vapid=<public key>` (a key of the demo's own otherwise, which nothing
+  * can send with), and what arrives while open or is tapped. Each section says whether the platform has it.
+  * `theme=light` shows the light palette. */
 class PlatformDemo {
   private val width = math.min(720.0, ui.size.width() - 32.0)
 
@@ -23,6 +27,8 @@ class PlatformDemo {
   private val pasted: Var[String] = Var("Nothing read yet")
   private val signedIn: Var[String] = Var("No passkey yet")
   private val autofills: Var[String] = Var("")
+  private val pushed: Var[String] = Var("Not subscribed")
+  private val allowed: Var[String] = Var("")
   private val username = new TextInput("Username", width = 220.0) {
     autofill @= Some(Autofill.Username)
     passkey @= true
@@ -30,10 +36,10 @@ class PlatformDemo {
 
   private val column = Column(20.0, padding = 16.0)(
     TextView("The platform", 22.0),
-    section("Save a file", Files.savable, saved,
+    section("Save a file", Files.savable, saved)(
       new Button("Save notes.txt", () => save(), ButtonStyle.Filled),
       new Button("Save a picture from its URL", () => saveUrl())),
-    section("The clipboard", Clipboard.readable, pasted,
+    section("The clipboard", Clipboard.readable, pasted)(
       new Button("Copy a line", () => {
         Clipboard.copy("Copied from EveryUI")
         tell(pasted, "copy", "Copied \"Copied from EveryUI\"")
@@ -41,16 +47,30 @@ class PlatformDemo {
       new Button("Read the clipboard", () =>
         Clipboard.read().map(t => tell(pasted, "read", t.map(w => "Read \"" + w + "\"").getOrElse("Nothing to read"))).start(),
         ButtonStyle.Filled)),
-    section("Passkeys", Passkeys.supported, signedIn,
-      username,
+    section("Passkeys", Passkeys.supported, signedIn, autofills, Some(username))(
       new Button("Create a passkey", () => Passkeys.create(creation()).map(r => keyed("create", r)).start()),
       new Button("Sign in with a passkey", () => Passkeys.get(request()).map(r => keyed("get", r)).start(),
         ButtonStyle.Filled),
       new Button("Offer in autofill", () => Passkeys.autofill(request()).map(r => keyed("autofill", r)).start())),
-    TextView.bound(autofills(), 12.0, Theme.muted())
+    section("Push notifications", Push.supported, pushed, allowed)(
+      new Button("Allow notifications", () => Push.permit().map(_ => permission()).start()),
+      new Button("Subscribe", () => Push.subscribe(vapid).map { a =>
+        permission()
+        a match {
+          case PushAnswer.Subscribed(token) =>
+            Platform.log("platform push token " + token.service + " " + token.value)
+            tell(pushed, "push subscribe", "Subscribed (" + token.service + "): " + token.value.take(90) + "…")
+          case other => tell(pushed, "push subscribe", other.toString)
+        }
+      }.start(), ButtonStyle.Filled),
+      new Button("Unsubscribe", () => Push.unsubscribe().map(_ => tell(pushed, "push unsubscribe", "Unsubscribed")).start()))
   )
-  Passkeys.autofillable.map(a => autofills @= (if (a) "Passkeys can be offered in autofill here" else
-    "No passkeys in autofill here")).start()
+  Passkeys.autofillable.map(a => autofills @= (if (a) "offered in autofill too" else "not in autofill")).start()
+  Push.received.attach(m => tell(pushed, "push received", "Arrived while open: " + m.title + ": " + m.body +
+    m.path.map(p => " (" + p + ")").getOrElse("")))
+  Push.opened.attach(m => tell(pushed, "push opened", "Tapped: " + m.title + m.path.map(p => " (" + p + ")").getOrElse("")))
+  Push.tokens.attach(t => tell(pushed, "push renewed", "Renewed (" + t.service + "): " + t.value.take(90) + "…"))
+  permission()
 
   private val scroll = new ScrollContainer {
     size.width := ui.size.width()
@@ -59,14 +79,20 @@ class PlatformDemo {
   scroll.content.children += column
   ui.children += scroll
 
-  /** A section: its title, whether the platform has it, its buttons, and what it last answered. */
-  private def section(title: String, supported: Boolean, answer: Var[String], buttons: Component*): Container =
-    Column(8.0)(
-      TextView(title, 16.0),
-      TextView(if (supported) "Supported here" else "Not supported here", 12.0, Theme.muted()),
-      Row(10.0, middle = true)(buttons*),
-      TextView.paragraph(answer(), width, 13.0, Theme.muted())
-    )
+  /** A section: its title, whether the platform has it (and anything more to say of that), a field above its buttons
+    * where it has one, its buttons (wrapping on a narrow screen), and what it last answered. */
+  private def section(title: String, supported: Boolean, answer: Var[String], note: Var[String] = Var(""),
+                      field: Option[Component] = None)(buttons: Component*): Container = {
+    val row = new Container {
+      layout @= Some(FlowLayout(10.0, 10.0))
+      size.width @= width
+      children ++= buttons
+    }
+    val status = TextView.bound((if (supported) "Supported here" else "Not supported here") +
+      (if (note().isEmpty) "" else " · " + note()), 12.0, Theme.muted())
+    Column(8.0)((List(TextView(title, 16.0), status) ++ field.toList ++
+      List(row, TextView.paragraph(answer(), width, 13.0, Theme.muted())))*)
+  }
 
   private def tell(answer: Var[String], what: String, words: String): Unit = {
     answer @= words
@@ -111,6 +137,17 @@ class PlatformDemo {
     scala.util.Random.nextBytes(bytes)
     java.util.Base64.getUrlEncoder.withoutPadding.encodeToString(bytes)
   }
+
+  /** The app's own VAPID public key, from `vapid=`; otherwise one the demo made, whose private key nobody has. */
+  private def vapid: String = {
+    val asked = Platform.launchArg("vapid")
+    if (asked.nonEmpty) asked else "BLSOXys1qjYrgzDKjeRKolQdpn2QJ4UhzRPnI7cir1pKrx84DS56fBO_hZ_73xIZhkbZQ6--RxCfdXpun26k2Qg"
+  }
+
+  private def permission(): Unit = Push.permission.map { p =>
+    allowed @= "notifications " + (if (p == Permission.Granted) "allowed" else if (p == Permission.Refused) "refused"
+      else "not asked for yet")
+  }.start()
 
   private def save(): Unit = {
     val words = "Notes from EveryUI\nsaved at " + Platform.localDateTime(System.currentTimeMillis()) + "\n"

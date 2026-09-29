@@ -44,7 +44,12 @@ object WebApp {
   val registration: String = "if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');\n"
 
   /** The service worker: the network first, what it fetched kept in a cache named by `version` for when it is not
-    * there, and older caches cleared once this one is in charge. */
+    * there, and older caches cleared once this one is in charge. And push notifications (`everyui.push.Push`): a
+    * push's JSON payload, `{"title", "body", "path"}`, goes to a window of the app that is in sight, which shows it its
+    * own way, and otherwise is shown as a notification; a tap on one focuses a window of the app and tells it
+    * (`everyui.push.Push.opened`, and the app goes to the path), or opens the app at the path when none is open. A path
+    * off the app's own origin opens the app's start instead. A subscription the browser renews is subscribed again
+    * with the same key and handed to the open windows (`everyui.push.Push.tokens`). */
   def worker(version: String): String =
     s"""const CACHE = 'everyui-$version';
        |self.addEventListener('install', () => self.skipWaiting());
@@ -58,6 +63,36 @@ object WebApp {
        |    if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(c => c.put(request, copy)); }
        |    return response;
        |  }).catch(() => caches.match(request).then(hit => hit || caches.match('./'))));
+       |});
+       |const windows = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+       |const tell = (client, data) => client.postMessage(data);
+       |self.addEventListener('push', e => {
+       |  let m = {};
+       |  try { m = e.data ? e.data.json() : {}; } catch (x) { m = { body: e.data.text() }; }
+       |  const message = { title: String(m.title || ''), body: String(m.body || ''), path: m.path ? String(m.path) : null };
+       |  e.waitUntil(windows().then(list => {
+       |    const seen = list.find(c => c.focused || c.visibilityState === 'visible');
+       |    if (seen) return tell(seen, { everyui: 'push', message });
+       |    return self.registration.showNotification(message.title, { body: message.body, data: message });
+       |  }));
+       |});
+       |self.addEventListener('notificationclick', e => {
+       |  e.notification.close();
+       |  const message = e.notification.data || { title: e.notification.title, body: e.notification.body, path: null };
+       |  let url = new URL(message.path || './', self.registration.scope);
+       |  if (url.origin !== self.location.origin) url = new URL('./', self.registration.scope);
+       |  e.waitUntil(windows().then(list => {
+       |    const open = list.find(c => c.url.startsWith(self.registration.scope));
+       |    if (!open) return self.clients.openWindow(url.href);
+       |    tell(open, { everyui: 'open', message });
+       |    return open.focus();
+       |  }));
+       |});
+       |self.addEventListener('pushsubscriptionchange', e => {
+       |  const renewed = e.newSubscription ? Promise.resolve(e.newSubscription) :
+       |    self.registration.pushManager.subscribe(e.oldSubscription ? e.oldSubscription.options : { userVisibleOnly: true });
+       |  e.waitUntil(renewed.then(s => windows().then(list =>
+       |    list.forEach(c => tell(c, { everyui: 'subscription', subscription: JSON.stringify(s.toJSON()) })))));
        |});
        |""".stripMargin
 }

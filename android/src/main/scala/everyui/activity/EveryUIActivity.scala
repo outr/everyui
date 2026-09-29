@@ -156,6 +156,13 @@ abstract class EveryUIActivity extends Activity {
       results.nonEmpty && results.forall(_ == android.content.pm.PackageManager.PERMISSION_GRANTED))
   }
 
+  // the app, already running, brought back by a tap on one of its push notifications (everyui.push.Push)
+  override def onNewIntent(intent: android.content.Intent): Unit = {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    everyui.render.PushAccess.tapped(intent)
+  }
+
   // what an activity started for its answer said: the document picker's files (FileAccess.pick)
   override def onActivityResult(code: Int, result: Int, data: android.content.Intent): Unit = {
     super.onActivityResult(code, result, data)

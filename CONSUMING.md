@@ -850,7 +850,8 @@ It writes `manifest.webmanifest` (`display: standalone`, so the app opens in its
 (which registers the worker from a file, so a Content-Security-Policy of `script-src 'self'` allows it), and adds to
 the page's head the manifest link, the theme colour and an Apple touch icon (the largest `any` icon). `version` names
 the worker's cache, so a new bundle starts a new cache (the script's content hash does). The worker answers from the
-network and keeps what it fetched, so the app still opens when the network is gone.
+network and keeps what it fetched, so the app still opens when the network is gone, and it shows and opens push
+notifications ([Push notifications](#push-notifications-everyuipush)).
 
 **Icons.** PNG, square: **192×192** and **512×512** with purpose `any` are what browsers require to offer an install;
 add a **512×512 `maskable`** one (the picture within the middle 80%, the rest background) for Android's shaped icons.
@@ -860,6 +861,70 @@ The page must be served over HTTPS (or from `localhost`). Chromium browsers then
 bar; Safari adds it with Add to Dock or Add to Home Screen. In its own window the browser keeps no tabs, so more of the
 chords a browser keeps for itself in a tab (Ctrl+T, Ctrl+N, Ctrl+Tab and others) reach the app's keymap; which ones is
 the browser's own choice and changes between browsers, so try the chords the app relies on in the installed window.
+
+## Push notifications (`everyui.push`)
+
+`Push` subscribes the app to push notifications and hears them. A notification that arrives while the app is open is
+the app's (`Push.received`, to show its own way; the system shows nothing); one that arrives while it is not is shown
+by the system, and a tap on it opens the app at the message's path. `Push.opened` hears a tap while the app runs, and
+the app then goes to the path (`ScreenManager.go`); a tap that opens the app starts it at the path, which its screens
+answer as a link.
+
+```scala
+import everyui.push.{Push, PushAnswer}
+
+Push.received.attach(m => Toast.show(m.title + ": " + m.body))
+Push.tokens.attach(server.registerPush)                    // a token the platform replaced
+if (Push.supported) Push.subscribe(vapidPublicKey).map {   // from a click the first time: it asks for the permission
+  case PushAnswer.Subscribed(token) => server.registerPush(token)
+  case PushAnswer.PushDenied => ()                         // the person said no
+  case other => scribe.warn(other.toString)
+}.start()
+```
+
+`Push.permission` (a `Task[everyui.Permission]`: `Granted`, `Refused`, `NotAsked`) and `Push.permit()` ask on their own;
+`subscribe` asks first where it has to. A `PushToken` is what the server needs, sent as it is: `service` `"webpush"`
+with `value` the browser's subscription as JSON (`endpoint` and `keys`, for a Web Push library with the app's VAPID
+key pair), or `"fcm"` with the device's registration token. Subscribe on every start (it answers the same subscription
+while it lasts) and send it, so the server always has the current one. `Push.unsubscribe()` lets it go.
+
+**The payload** is JSON with three keys, all optional:
+
+```json
+{"title": "Build done", "body": "voidcraft#42 passed", "path": "/runs/42"}
+```
+
+`path` is the app's own path, where a tap takes the person; one off the app's origin opens the app at its start.
+
+- **Web**: the Push API through the service worker `WebApp.write` installs ([An installable web app](#an-installable-web-app)),
+  which shows a push as a notification when no window of the app is in sight, hands it to the page otherwise, focuses
+  a window of the app (or opens one at the path) when a notification is tapped, and subscribes again when the browser
+  renews a subscription (heard on `Push.tokens`). The server sends the payload above, encrypted with the VAPID key
+  pair, as any Web Push library does. A page without the worker answers `PushFailed`. Chromium, Firefox and Safari (on
+  iOS only for an app added to the home screen) have it; the page must be served over HTTPS (or `localhost`). Touch
+  `Push` as the app starts (attach to `received` and `opened`), so it hears what the worker hands the page.
+- **Android**: Firebase Cloud Messaging. The backend compiles against it but does not bring it: an app with push adds
+  `EveryUILibraries.firebase` and the rest of Firebase messaging's runtime (`firebase-messaging` and what it pulls in),
+  its Firebase configuration as the resources the Google services plugin writes from `google-services.json`
+  (`res/values/google-services.xml`: `google_app_id`, `gcm_defaultSenderId`, `google_api_key`, `project_id`), and in
+  its manifest `POST_NOTIFICATIONS` and the service:
+
+  ```xml
+  <service android:name="everyui.render.PushService" android:exported="false">
+    <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+  </service>
+  ```
+
+  with `-keep class everyui.render.PushService` in its shrinker rules. Firebase's own manifest entries (its component
+  registrars, the Play services version) must be in the app's manifest too, since the Android packaging here does not
+  merge archives' manifests or resources. The server sends a data message with the payload's three keys as `data`; it
+  reaches the app whether or not it is in front, and the app shows it as a notification (channel "everyui.push") when it
+  is not. A notification message the system shows itself; its `data.path` still reaches the app on a tap. Android 13
+  and later ask the person first. Not on an Android TV. Without Firebase in the app, `Push.supported` is false.
+- **Desktop, Roku, Apple TV**: none; `supported` is false and `subscribe` answers `PushUnsupported`. A desktop app
+  hears its server over its own connection while it runs.
+
+`demo=platform` allows notifications, subscribes (`vapid=<public key>`), and shows what arrives or is tapped.
 
 ## Web builds: JavaScript, WebAssembly, or both
 

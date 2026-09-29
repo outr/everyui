@@ -40,6 +40,17 @@ object EveryUILibraries {
   def credentials: ModuleID =
     ("androidx.credentials" % "credentials" % credentialsVersion).intransitive().artifacts(Artifact("credentials", "aar", "aar"))
 
+  /** Firebase Cloud Messaging's archives, which everyui-android's push notifications ask (`everyui.push.Push`) and
+    * compiles against, but does not bring: an app that wants push adds these, with the rest of Firebase messaging's
+    * runtime, its configuration and its manifest's entries (CONSUMING.md). Without them there is no push on Android. */
+  def firebase: Seq[ModuleID] = Seq(
+    "com.google.firebase" -> "firebase-messaging" -> "25.1.3", "com.google.firebase" -> "firebase-common" -> "22.0.1",
+    "com.google.firebase" -> "firebase-components" -> "19.0.0", "com.google.android.gms" -> "play-services-tasks" -> "18.4.0",
+    "com.google.android.gms" -> "play-services-basement" -> "18.9.0",
+    "com.google.android.gms" -> "play-services-cloud-messaging" -> "17.4.0").map { case ((group, name), version) =>
+    (group % name % version).intransitive().artifacts(Artifact(name, "aar", "aar"))
+  }
+
   /** What everyui-android compiles against beside android.jar: Media3's archives and Credential Manager's, each named
     * and none taken transitively (an archive's dependencies are archives too, and a build takes only those it can
     * open), and what their classes reach for. Resolved from `google`. */

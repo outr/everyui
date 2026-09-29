@@ -4,7 +4,7 @@ import everyui.passkey.PasskeyResult
 import org.scalajs.dom
 
 import scala.scalajs.js
-import scala.scalajs.js.typedarray.{ArrayBuffer, Uint8Array}
+import scala.scalajs.js.typedarray.ArrayBuffer
 
 /** Passkeys (`everyui.passkey.Passkeys`) through `navigator.credentials`: the server's options, JSON with base64url
   * fields, made into what `create` and `get` take (the browser's own `parse…OptionsFromJSON` where it has it), and the
@@ -129,20 +129,7 @@ object PasskeyAccess {
         response = response, clientExtensionResults = credential.getClientExtensionResults()))
     }
 
-  /** base64url (padded or not) to the bytes it holds. */
-  private def bytes(value: js.Dynamic): ArrayBuffer = {
-    val base64 = value.asInstanceOf[String].replace('-', '+').replace('_', '/')
-    val binary = dom.window.atob(base64 + "=" * ((4 - base64.length % 4) % 4))
-    val out = new Uint8Array(binary.length)
-    (0 until binary.length).foreach(i => out(i) = binary.charAt(i).toShort)
-    out.buffer
-  }
+  private def bytes(value: js.Dynamic): ArrayBuffer = Base64Url.decode(value.asInstanceOf[String]).buffer
 
-  /** Bytes (an ArrayBuffer) as unpadded base64url. */
-  private def text(buffer: js.Dynamic): String = {
-    val view = new Uint8Array(buffer.asInstanceOf[ArrayBuffer])
-    val binary = new java.lang.StringBuilder
-    (0 until view.length).foreach(i => binary.append(view(i).toChar))
-    dom.window.btoa(binary.toString).replace('+', '-').replace('/', '_').reverse.dropWhile(_ == '=').reverse
-  }
+  private def text(buffer: js.Dynamic): String = Base64Url.encode(buffer.asInstanceOf[ArrayBuffer])
 }

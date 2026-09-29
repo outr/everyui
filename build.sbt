@@ -453,8 +453,10 @@ lazy val android = (project in file("android"))
     // archives, so the classes are opened out of them (Aars, in sbt-support) before anything compiles against them.
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
-    // Credential Manager, which passkeys ask (EveryUILibraries.credentials)
+    // Credential Manager, which passkeys ask (EveryUILibraries.credentials), and Firebase Cloud Messaging, which push
+    // notifications ask (EveryUILibraries.firebase: compiled against; without its runtime and configuration, no push)
     libraryDependencies += EveryUILibraries.credentials,
+    libraryDependencies ++= EveryUILibraries.firebase,
     libraryDependencies ++= Seq(
       "androidx.annotation" % "annotation-jvm" % "1.9.1",
       "com.google.guava" % "guava" % "33.4.0-android"),
@@ -519,7 +521,7 @@ lazy val androidPublished = (project in file("published/android"))
       "com.outr" %% "reactify" % reactifyVersion,
       "com.outr" %% "spice-client-okhttp" % spiceVersion),
     resolvers += EveryUILibraries.google,
-    libraryDependencies ++= EveryUILibraries.android.map(_ % Provided),
+    libraryDependencies ++= (EveryUILibraries.android ++ EveryUILibraries.firebase).map(_ % Provided),
     androidAars := Aars.open(streams.value.log.info(_),
       update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     Compile / unmanagedJars ++= Def.uncached(androidAars.value
@@ -763,8 +765,8 @@ lazy val monacoAndroid = (project in file("monaco/android"))
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
-    libraryDependencies ++= Seq(EveryUILibraries.credentials,
-      "androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
+    libraryDependencies ++= EveryUILibraries.credentials +: EveryUILibraries.firebase,
+    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
     androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     Compile / unmanagedJars ++= Def.uncached(androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
@@ -880,8 +882,8 @@ lazy val terminalAndroid = (project in file("terminal/android"))
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
-    libraryDependencies ++= Seq(EveryUILibraries.credentials,
-      "androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
+    libraryDependencies ++= EveryUILibraries.credentials +: EveryUILibraries.firebase,
+    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
     androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     Compile / unmanagedJars ++= Def.uncached(androidAars.value
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),

@@ -73,3 +73,8 @@
 # Passkeys ask Credential Manager (androidx.credentials, EveryUILibraries.credentials); an app built without it has no
 # passkeys (Passkeys.supported is false), and nothing else reaches for it
 -dontwarn androidx.credentials.**
+
+# Push notifications ask Firebase Cloud Messaging (EveryUILibraries.firebase), which an app adds only if it has push
+# (Push.supported is false without it); what of it the backend compiles against reaches for the rest of Firebase
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**

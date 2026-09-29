@@ -14,13 +14,24 @@ object Permissions {
     android.os.Build.VERSION.SDK_INT < 23 ||
       Host.activity.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
+  /** Where `permission` stands: held; refused, once asked for here and not given; or not asked yet. */
+  def state(permission: String): everyui.Permission =
+    if (held(permission)) everyui.Permission.Granted
+    else if (Platform.setting("everyui.asked." + permission).nonEmpty) everyui.Permission.Refused
+    else everyui.Permission.NotAsked
+
   /** `permission`, asked for where it is not held yet (the system's own prompt), and whether it was given. */
-  def ask(permission: String)(answer: Boolean => Unit): Unit =
-    if (held(permission)) answer(true)
+  def ask(permission: String)(answer: Boolean => Unit): Unit = askAll(List(permission))(answer)
+
+  /** Each of `permissions`, asked for together where any is not held yet (one prompt: a precise and an approximate
+    * location are offered as one choice), and whether all were given. */
+  def askAll(permissions: List[String])(answer: Boolean => Unit): Unit =
+    if (permissions.forall(held)) answer(true)
     else {
+      permissions.foreach(p => Platform.saveSetting("everyui.asked." + p, "1"))
       next += 1
       waiting(next) = answer
-      Host.activity.requestPermissions(Array(permission), next)
+      Host.activity.requestPermissions(permissions.toArray, next)
     }
 
   /** What the system said to request `code`. */
