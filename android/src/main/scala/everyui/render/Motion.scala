@@ -4,21 +4,26 @@ import android.animation.Animator
 import android.view.View
 
 /** A node's motion (`Component.motion`): the animators that move its view, repeating, run only while the view is in a
-  * window and not hidden by its own visibility.
+  * window and shown, it and everything it is in visible (`View.isShown`).
   *
   * An animator is the Choreographer's every frame for as long as it runs, whether or not its view is drawn. A spinner
   * taken off the screen without being disposed of (a page's loading spinner removed once the page came) went on
   * turning a view in no window, frame after frame, for as long as the app ran, and each one taken off added another,
-  * keeping the main thread busy under a screen with nothing moving on it and no frame drawn. Out of a window, or hidden,
-  * the animators are cancelled; back in one and shown, they are made again (`make`) from where the node is then. */
+  * keeping the main thread busy under a screen with nothing moving on it and no frame drawn; and so did one inside a
+  * box that was hidden, its own visibility untouched. Out of a window, or hidden (by its own visibility or any box's
+  * it is in), the animators are cancelled; back in one and shown, they are made again (`make`) from where the node is
+  * then.
+  *
+  * A box shown or hidden (`RenderNode.setVisible`) looks again at the motions in a window (`Motion.visibilityChanged`),
+  * which are few: no pass over the views, and nothing each frame. */
 final class Motion(view: View, make: () => List[Animator]) extends View.OnAttachStateChangeListener {
   private var animators: List[Animator] = Nil
   private var moving = false
-  private var shown = true
   /** What the motion is for (`Component.lineage`), for the idle audit. */
   var owner: () => String = () => ""
 
   view.addOnAttachStateChangeListener(this)
+  if (view.isAttachedToWindow) Motion.inWindow.add(this)
 
   /** Whether the animators run now. */
   def running: Boolean = animators.nonEmpty
@@ -27,17 +32,14 @@ final class Motion(view: View, make: () => List[Animator]) extends View.OnAttach
   def set(on: Boolean): Unit = {
     moving = on
     stop()
-    run()
+    refresh()
   }
 
-  /** Hidden or shown by the node's own visibility. */
-  def show(visible: Boolean): Unit = if (visible != shown) {
-    shown = visible
-    if (visible) run() else stop()
-  }
+  /** Run while it can be seen, and stop while it cannot. */
+  def refresh(): Unit = if (moving && view.isAttachedToWindow && view.isShown) run() else stop()
 
-  /** What it is for now, and whether its view is in the window, drawn (it and everything it is in are visible) and
-    * under the app's root: for the idle audit. */
+  /** What it is for now, and whether its view is in the window, shown (as the motion reads it: it and everything it is
+    * in visible) and under the app's root: for the idle audit. */
   def state: String = owner() + " [attached " + view.isAttachedToWindow.toString + ", shown " + view.isShown.toString +
     ", under root " + under(view).toString + "]"
 
@@ -46,10 +48,16 @@ final class Motion(view: View, make: () => List[Animator]) extends View.OnAttach
     case _ => false
   }
 
-  override def onViewAttachedToWindow(v: View): Unit = run()
-  override def onViewDetachedFromWindow(v: View): Unit = stop()
+  override def onViewAttachedToWindow(v: View): Unit = {
+    Motion.inWindow.add(this)
+    refresh()
+  }
+  override def onViewDetachedFromWindow(v: View): Unit = {
+    Motion.inWindow.remove(this)
+    stop()
+  }
 
-  private def run(): Unit = if (moving && shown && animators.isEmpty && view.isAttachedToWindow) {
+  private def run(): Unit = if (animators.isEmpty) {
     animators = make()
     animators.foreach(_.start())
     if (animators.nonEmpty) {
@@ -73,4 +81,14 @@ object Motion {
   var running: Int = 0
   /** The motions running, for the idle audit to say what each is for and where its view is now. */
   val live: java.util.Set[Motion] = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[Motion, java.lang.Boolean])
+  /** The motions whose views are in a window, which a box shown or hidden may start or stop: a view out of one is
+    * looked at again as it comes back. */
+  private val inWindow: java.util.Set[Motion] =
+    java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[Motion, java.lang.Boolean])
+
+  /** A view was shown or hidden: each motion in a window looks again at whether it can be seen. */
+  def visibilityChanged(): Unit = if (!inWindow.isEmpty) {
+    val all = inWindow.toArray(new Array[Motion](0))
+    all.foreach(_.refresh())
+  }
 }

@@ -671,8 +671,12 @@ class RenderNode(val view: View) {
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. Its place and its size are
     * kept (INVISIBLE, not GONE), since the layout is ours and not the view system's. */
   def setVisible(visible: Boolean): Unit = {
-    view.setVisibility(if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE)
-    if (motion != null) motion.show(visible)
+    val next = if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE
+    if (view.getVisibility != next) {
+      view.setVisibility(next)
+      // what moves in it, or is it, runs only while it can be seen (Motion)
+      Motion.visibilityChanged()
+    }
   }
   def setOpacity(opacity: Double): Unit = view.setAlpha(opacity.toFloat)
 

@@ -394,7 +394,11 @@ class RenderNode(val fx: Node) {
   def scrolled(horizontal: Boolean): Double = 0.0
   def scrollSmoothly(to: Double, horizontal: Boolean): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
-  def setVisible(visible: Boolean): Unit = fx.setVisible(visible)
+  def setVisible(visible: Boolean): Unit = if (fx.isVisible != visible) {
+    fx.setVisible(visible)
+    // what moves in it, or is it, runs only while it can be seen (Motion)
+    Motion.visibilityChanged()
+  }
   def setOpacity(opacity: Double): Unit = fx.setOpacity(opacity)
 
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))

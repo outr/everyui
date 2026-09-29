@@ -109,6 +109,46 @@ class MotionSpec extends FxSpec {
       fx(Motion.running) shouldBe before
     }
 
+    "stop while a box it is in is hidden, and turn again once it is shown" in {
+      val before = fx(Motion.running)
+      val spinner = fx(new Spinner)
+      val inner = fx(new everyui.component.Container)
+      val plate = fx(new everyui.component.Container)
+      fx {
+        inner.children += spinner
+        plate.children += inner
+        ui.children += plate
+      }
+      try {
+        fx(Motion.running) shouldBe before + 1
+        // the box around the box hidden: the spinner's own visibility is untouched
+        fx(plate.visible @= false)
+        fx(spinner.visible()) shouldBe true
+        fx(Motion.running) shouldBe before
+        settled() shouldBe true
+        val still = turn(spinner)
+        pulsesIn(600L) shouldBe 0
+        turn(spinner) shouldBe still
+        fx(plate.visible @= true)
+        fx(Motion.running) shouldBe before + 1
+        Thread.sleep(200L)
+        turn(spinner) should not be still
+        // hidden by a box and by itself, it runs only once both are shown
+        fx {
+          inner.visible @= false
+          spinner.visible @= false
+        }
+        fx(Motion.running) shouldBe before
+        fx(inner.visible @= true)
+        fx(Motion.running) shouldBe before
+        fx(spinner.visible @= true)
+        fx(Motion.running) shouldBe before + 1
+      }
+      finally fx(ui.children -= plate)
+      fx(Motion.running) shouldBe before
+      settled() shouldBe true
+    }
+
     "stop once disposed of" in {
       val before = fx(Motion.running)
       val spinner = fx(new Spinner)
