@@ -1424,6 +1424,11 @@ object Platform {
     if (value == null) "" else value
   }
 
+  /** Which build of the app is running: "wasm" when it was linked to WebAssembly, "js" otherwise. Fixed when the
+    * app is linked, so it cannot disagree with what the page loaded; `everyui.sbt.WasmLoader`'s loader says the same
+    * in `window.everyuiBuild`. For an about box or a log line. */
+  val build: String = if (scala.scalajs.LinkingInfo.isWebAssembly) "wasm" else "js"
+
   /** A page has nowhere to exit to; a demo that is done just stops. */
   def quit(): Unit = ()
 

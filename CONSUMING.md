@@ -505,6 +505,48 @@ bar; Safari adds it with Add to Dock or Add to Home Screen. In its own window th
 chords a browser keeps for itself in a tab (Ctrl+T, Ctrl+N, Ctrl+Tab and others) reach the app's keymap; which ones is
 the browser's own choice and changes between browsers, so try the chords the app relies on in the installed window.
 
+## WebAssembly, falling down to JavaScript
+
+A web app can ship as WebAssembly too, with its JavaScript build kept for browsers that cannot run it. It is opt-in,
+and done by the app's build. The WebAssembly build runs heavy layout and data work 2.5 to 3.7 times faster (the
+DataWrangler dashboard, measured). It downloads about as many bytes, so it does not open any sooner.
+
+Link the app a second time, from the same sources, to WebAssembly:
+
+```scala
+lazy val appWasm = project.in(file("app-wasm"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := (app / Compile / mainClass).value,
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)
+      .withESFeatures(_.withUseWebAssembly(true).withESVersion(org.scalajs.linker.interface.ESVersion.ES2022))),
+    libraryDependencies := (app / libraryDependencies).value,
+    Compile / unmanagedSourceDirectories ++= (app / Compile / unmanagedSourceDirectories).value
+  )
+```
+
+and, with `sbt-support` in the build as for an installable app, call `everyui.sbt.WasmLoader` once the bundle's
+`index.html` and `main.js` are written:
+
+```scala
+WasmLoader.write(out, (appWasm / Compile / fullLinkJSOutput).value)
+```
+
+It copies the WebAssembly build into `wasm-<hash>/` beside `main.js`, writes `everyui-loader.js`, and puts the loader in
+the page in place of `main.js`'s script. The loader:
+
+- runs the WebAssembly build where the browser has WasmGC, exception handling with exnref, and the JS string
+  builtins (it tests the browser for each, not its name), and the JS build everywhere else;
+- falls down to the JS build if the WebAssembly one fails to start;
+- takes `?wasm=false` (or `?wasm=true`) in the page's URL to choose, whatever the browser has;
+- says in the console which build it loaded and why (`[everyui] loading the WebAssembly build v…: …`).
+
+`window.everyuiBuild` and `Platform.build` (`"wasm"` or `"js"`) say which build runs.
+
+The server must send `main.wasm` as `application/wasm`, and a Content-Security-Policy must allow
+`'wasm-unsafe-eval'`.
+
 ## Sign-in, autofill and password managers
 
 Every text field (`TextInput`, `TextArea`, and `InputView` beneath them) says what it asks for with `autofill`, an
