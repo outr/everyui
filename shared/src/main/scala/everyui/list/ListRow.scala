@@ -9,7 +9,10 @@ import reactify.*
   * (`content := item().map(_.name).getOrElse("")`) rather than reading it once. The list sets the rest: where it is
   * (`index`), whether it is chosen (`selected`), under the cursor (`current`), in a list that has the focus
   * (`active`), being renamed (`editing`: hide the label, an editor sits over it), and how a drag would drop onto it
-  * (`drop`). The row's own background and edge show the selection and the cursor. */
+  * (`drop`). The row's own background and edge show the selection and the cursor.
+  *
+  * Over a source (a server's paged rows), a row not come yet is drawn by the list's `placeholder` instead, unless the
+  * list has none: then this row shows it with no item (`present` false). */
 class ListRow[T] extends Container {
   val item: Var[Option[T]] = own(Var(None))
   val index: Var[Int] = own(Var(-1))
@@ -18,6 +21,11 @@ class ListRow[T] extends Container {
   val active: Var[Boolean] = own(Var(false))
   val editing: Var[Boolean] = own(Var(false))
   val drop: Var[Option[DropPosition]] = own(Var(None))
+  /** Whether the row has an item to show. */
+  val present: Val[Boolean] = own(Val(item().nonEmpty))
+
+  /** Whether this row stands in for one not come (a `PlaceholderRow`). */
+  def standsIn: Boolean = false
 
   /** Where an editor over this row starts, from its start edge (the right, right to left): where the label does. */
   def editStart: Double = ListRow.inset

@@ -21,9 +21,10 @@ import reactify.*
   * `selection` is the app's to read and set. On a remote only one row is chosen, and it follows the cursor.
   *
   * Given a `source`, the rows are read from it by place instead of from `items`, and only those in view are asked
-  * for: a server's millions, paged (`everyui.paging.PagedSource`). A row not here yet is handed no item (`ListRow.item`
-  * is None while it shows: draw a placeholder). There the rows are `rowHeight` tall, a letter does not jump, and
-  * Primary+A chooses every row, those never loaded among them (`Selection.all`).
+  * for: a server's millions, paged (`everyui.paging.PagedSource`). A row not here yet is drawn by `placeholder` (a
+  * faint bar) rather than by the app's row, until it comes; `loadingView` shows in the list's box while the source
+  * looks for the first rows of a query, and `emptyView` where there are none. There the rows are `rowHeight` tall, a
+  * letter does not jump, and Primary+A chooses every row, those never loaded among them (`Selection.all`).
   *
   * {{{
   *   val list = VirtualList.text(files, (f: File) => f.path, (f: File) => f.name)
@@ -56,6 +57,16 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** Whether the rows are kept scrolled to their end as they come, go and are drawn at heights of their own, rather
     * than with the first that shows kept where it is: a chat's transcript while its newest message is in view. */
   val followsEnd: Var[Boolean] = own(Var(false))
+  /** What stands in a row whose item has not come from the `source`, sized to the row, which draws the cursor and the
+    * selection under it (a `PlaceholderRow`): by default a faint bar (`VirtualList.blank`). None hands the app's own
+    * row no item instead (`ListRow.item` None, `present` false), for a row that draws its own placeholder. */
+  val placeholder: Var[Option[() => Component]] = own(Var[Option[() => Component]](Some(() => VirtualList.blank())))
+  /** Shown in the middle of the list's box, in place of its rows, while the source looks for the first rows of a query
+    * (`ListSource.searching`): `VirtualList.loading()`, say. None by default: the rows stand in until they come. */
+  val loadingView: Var[Option[Component]] = own(Var(None))
+  /** Shown in the middle of the list's box when there are no rows (a query that found none, once it has answered):
+    * `VirtualList.empty()`, say. */
+  val emptyView: Var[Option[Component]] = own(Var(None))
 
   /** Keys a list built on this one answers first (a tree's Left and Right): the action for a press, if it takes it. */
   var keys: KeyEvent => Option[() => Unit] = _ => None
@@ -71,6 +82,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private var topsStale = false
   private var placed: Map[Int, ListRow[T]] = Map.empty
   private var spare: List[ListRow[T]] = Nil
+  private var spareStands: List[ListRow[T]] = Nil
+  // whether the loading view shows in place of the rows
+  private var blank = false
   private var currentAt = -1
   private var laying = false
   private var again = false
@@ -255,7 +269,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** What a press does here, if the list takes it. */
   private def action(e: KeyEvent): Option[() => Unit] = keys(e).orElse(own(e))
 
-  private def own(e: KeyEvent): Option[() => Unit] = if (count == 0) None else {
+  private def own(e: KeyEvent): Option[() => Unit] = if (count == 0 || blank) None else {
     val at = currentAt
     val keep = primary(e.ctrl, e.meta)
     val page = math.max(1, (size.height() / rowHeight).toInt - 1)
@@ -334,7 +348,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** A click at `x`, `y` in the root's coordinates: the row under it, picked as the modifiers held say. */
   private[everyui] def clickAt(x: Double, y: Double, held: Modifiers): Unit = {
     val down = y - absoluteTop + offset()
-    if (down >= 0.0 && down < total) {
+    if (down >= 0.0 && down < total && !blank) {
       val i = indexAt(down)
       val along = if (Direction.rtl()) absoluteLeft + size.width() - x else x - absoluteLeft
       if (!clicks(i, along)) press(i, held)
@@ -369,7 +383,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   // the secondary button: the row under it chosen (unless it already is), and its menu asked for
   event.pointer.menu.attach { e =>
     val down = e.y - absoluteTop + offset()
-    if (down >= 0.0 && down < total) {
+    if (down >= 0.0 && down < total && !blank) {
       val i = indexAt(down)
       if (!selection.contains(keyAt(i))) moveTo(i) else current @= Some(keyAt(i))
       menuAt(i, e.x, e.y)
@@ -525,7 +539,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   // ---- the rows ----
 
-  /** Every row made so far, those out of use among them (hidden). */
+  /** Every row made so far, those out of use (hidden) and those standing in for rows not come among them. */
   def rows: Vector[ListRow[T]] = children().collect { case r: ListRow[T] @unchecked => r }
 
   /** The row showing `key` made again from its item, now: for what it shows that comes from outside the item (a
@@ -544,7 +558,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** The row showing `index`, if it is made. */
   def rowAt(index: Int): Option[ListRow[T]] = placed.get(index)
 
-  private def take(): ListRow[T] = spare match {
+  private def take(stand: Boolean): ListRow[T] = if (stand) spareStands match {
+    case row :: rest =>
+      spareStands = rest
+      row
+    case Nil => new PlaceholderRow[T](placeholder().map(make => make()).getOrElse(new Container))
+  } else spare match {
     case row :: rest =>
       spare = rest
       row
@@ -552,6 +571,23 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       val row = makeRow()
       if (ownHeights) row.size.height.attach(_ => note(row))
       row
+  }
+
+  private def putAway(row: ListRow[T]): Unit = {
+    row.visible @= false
+    row.item @= None
+    if (row.standsIn) spareStands = row :: spareStands else spare = row :: spare
+  }
+
+  // the rows standing in let go, for another `placeholder`
+  private def dropStands(): Unit = {
+    val stood = placed.values.filter(_.standsIn).toList ++ spareStands
+    placed = placed.filter { case (_, r) => !r.standsIn }
+    spareStands = Nil
+    if (stood.nonEmpty) {
+      children @= children().filterNot(c => stood.exists(_ eq c))
+      stood.foreach(_.dispose())
+    }
   }
 
   // a row drawn at a height of its own: the rows after it move (the first that showed is noted first, as it was, for
@@ -586,15 +622,15 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private def place(): Unit = {
     val height = size.height()
     val width = size.width()
+    val searching = source.exists(_.searching())
+    blank = searching && loadingView().nonEmpty
     val first = if (count == 0) 0 else math.max(0, indexAt(offset()) - overscan())
-    val last = if (count == 0) -1 else math.min(count - 1, indexAt(offset() + height) + overscan())
+    val near = if (count == 0) -1 else math.min(count - 1, indexAt(offset() + height) + overscan())
+    // (the rows the source is to fetch are asked for even while the loading view hides them)
+    val last = if (blank) -1 else near
     val leaving = placed.filter { case (i, _) => i < first || i > last }
     if (leaving.nonEmpty) {
-      leaving.values.foreach { row =>
-        row.visible @= false
-        row.item @= None
-        spare = row :: spare
-      }
+      leaving.values.foreach(putAway)
       placed = placed.filter { case (i, _) => i >= first && i <= last }
     }
     var made: List[Component] = Nil
@@ -602,19 +638,24 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val everyRow = selection.all()
     val cursor = current()
     val lit = focused()
-    source.foreach(s => if (last >= first) s.showing(first, last))
+    source.foreach(s => if (near >= first) s.showing(first, near))
+    val stands = source.nonEmpty && placeholder().nonEmpty
     var i = first
     while (i <= last) {
+      val item = itemAt(i)
+      val stand = stands && item.isEmpty
+      // a row not come stands in until it does, and the row then takes its place (and back, as rows are let go)
       val row = placed.get(i) match {
-        case Some(r) => r
-        case None =>
-          val r = take()
+        case Some(r) if r.standsIn == stand => r
+        case other =>
+          other.foreach(putAway)
+          val r = take(stand)
           if (r.parent().isEmpty) made = r :: made
           placed = placed.updated(i, r)
           r
       }
       val key = keyAt(i)
-      row.item @= itemAt(i)
+      row.item @= item
       if (ownHeights) note(row)
       row.index @= i
       row.selected @= everyRow != chosen.contains(key)
@@ -634,8 +675,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     // the drop line and the thumb last, over the rows
     if (children().lastOption.forall(c => !(c eq thumb)))
       children @= children().filterNot(c => (c eq thumb) || (c eq dropLine)) :+ dropLine :+ thumb
+    loadingView().foreach(_.visible @= blank)
+    emptyView().foreach(_.visible @= count == 0 && !searching)
     val all = total
-    thumb.visible @= all > height + 0.5
+    thumb.visible @= !blank && all > height + 0.5
     val length = math.max(24.0, height * height / math.max(1.0, all))
     thumb.size.height @= length
     thumb.position.left @= (if (Direction.rtl()) 2.0 else width - 8.0)
@@ -694,7 +737,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val i = indexOf(key)
     if (i >= 0) {
       dropField()
-      val initial = text.getOrElse(if (placeholder.exists(p => keyOf(p._2) == key)) "" else itemAt(i).map(labelOf).getOrElse(""))
+      val initial = text.getOrElse(if (standIn.exists(p => keyOf(p._2) == key)) "" else itemAt(i).map(labelOf).getOrElse(""))
       current @= Some(key)
       reveal(i)
       if (!Platform.nativeInput()) Platform.editText("", initial, false, v => submit(None, v, false))
@@ -716,7 +759,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     * hears it with `created`, and adds the item itself; cancelled, the row goes. */
   def insertEditing(index: Int, stand: T): Unit = {
     closeEditor(false)
-    placeholder = Some((index, stand))
+    standIn = Some((index, stand))
     reindex()
     edit(keyOf(stand), Some(""))
   }
@@ -730,7 +773,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     if (!committing && field.forall(f => editor.exists(_ eq f))) {
       val key = if (field.isEmpty) current() else editing()
       key.map(indexOf).filter(_ >= 0).foreach(i => itemAt(i).foreach { t =>
-        val created = placeholder.exists(p => keyOf(p._2) == keyAt(i))
+        val created = standIn.exists(p => keyOf(p._2) == keyAt(i))
         committing = true
         commit()(ListEdit(t, keyAt(i), i, text, created)).map { verdict =>
           committing = false
@@ -761,8 +804,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   private def closeEditor(refocus: Boolean): Unit = {
     dropField()
-    if (placeholder.nonEmpty) {
-      placeholder = None
+    if (standIn.nonEmpty) {
+      standIn = None
       reindex()
     }
     if (refocus) focus()
@@ -785,7 +828,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   // ---- editing (see `edit`) ----
   // a row put in for a new item while its name is being typed: where, and what stands for it
-  private[list] var placeholder: Option[(Int, T)] = None
+  private[list] var standIn: Option[(Int, T)] = None
 
   /** The items again, as they are now, with the cursor, the selection and the scroll kept by key. */
   def reindex(): Unit = if (source.nonEmpty) reread() else {
@@ -793,7 +836,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val before = shown
     keepingPlace {
       val base = items()
-      shown = placeholder match {
+      shown = standIn match {
         case Some((at, t)) => base.patch(math.max(0, math.min(at, base.length)), Vector(t), 0)
         case None => base
       }
@@ -877,6 +920,26 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   children ++= List(dropLine, thumb)
+  // the loading and empty views, in the middle of the list's box, under the drop line and the thumb
+  private var views: List[Component] = Nil
+  private def showViews(): Unit = {
+    val now = loadingView().toList ++ emptyView().toList
+    now.foreach { v =>
+      v.visible @= false
+      v.position.left := math.max(0.0, (size.width() - v.size.width()) / 2.0)
+      v.position.top := math.max(0.0, (size.height() - v.size.height()) / 2.0)
+    }
+    children @= children().filterNot(c => views.exists(_ eq c) || (c eq dropLine) || (c eq thumb)) ++ now ++
+      List(dropLine, thumb)
+    views = now
+    refresh()
+  }
+  loadingView.attach(_ => showViews())
+  emptyView.attach(_ => showViews())
+  placeholder.attach { _ =>
+    dropStands()
+    refresh()
+  }
   dropHover.attach(_ => refresh())
   clip()
   reindex()
@@ -900,4 +963,25 @@ object VirtualList {
               decorate: T => Decoration = (_: T) => Decoration.plain,
               rowHeight: Double = VirtualList.rowHeight): VirtualList[T] =
     new VirtualList[T](items, key, label, rowHeight)(() => new TextRow[T](label, decorate))
+
+  /** A row still to come, as `placeholder` draws it by default: a faint bar where its words will be. */
+  def blank(): Component = new Container {
+    private val bar = new Container {
+      size.height @= 10.0
+      radius @= 5.0
+      backgroundColor := Theme.muted().withAlpha(0.18)
+    }
+    bar.size.width := math.max(0.0, math.min(240.0, size.width() * 0.4))
+    bar.position.left := ListRow.along(ListRow.inset, bar.size.width(), size.width())
+    bar.position.top := (size.height() - 10.0) / 2.0
+    children += bar
+  }
+
+  /** A spinner in the theme's accent, for `loadingView`. */
+  def loading(): Component = new everyui.kit.Spinner(28.0, () => Theme.accent())
+
+  /** `words` (by default "No results" in the language in use, `Words("noResults")`, which an app may reword with
+    * `Words.add`), muted, for `emptyView`. */
+  def empty(words: => String = everyui.i18n.Words("noResults")): Component =
+    everyui.component.TextView.bound(words, 14.0, Theme.muted())
 }

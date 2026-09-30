@@ -2763,6 +2763,22 @@ source.error()                                           // why a page failed; s
   less those keys on the server. `all` stays on across a new sort or filter (it is every row of the query as it now
   is); an app whose filter change should not carry it over calls `table.selection.clear()`. A Shift range chooses the
   rows it spans that are loaded, and its two ends; a row between that was never loaded has no key and is not in it.
+- Rows not come yet: a `VirtualList` over a source draws `placeholder` in their place (a `PlaceholderRow`, sized to
+  the row, the cursor and the selection shown on it), never the app's row with no item, and swaps the two as pages come
+  and the rows scroll. The default is a faint bar (`VirtualList.blank()`); `placeholder @= Some(() => mine)` gives
+  another, and `None` hands the app's row `item` None as before (`ListRow.present` says whether it has one). A
+  table's rows draw a grey bar per cell themselves (its `placeholder` is None) unless the app gives one. The cursor may
+  stand on a placeholder: the arrows move on, Enter and the menu do nothing there, and it moves onto the row as it comes.
+- `loadingView` and `emptyView` (both None by default, on the list and on the table) show in the middle of the list's
+  box, under a table's headings: the first while the source looks for a query's first page (`searching`), in place of
+  the rows, whose pages are still asked for; the second when there are no rows once it has answered. The list keeps the
+  focus meanwhile, and the arrows go on past it as they do past an empty list.
+
+```scala
+table.loadingView @= Some(VirtualList.loading())     // a spinner in the accent
+table.emptyView @= Some(VirtualList.empty())         // "No results" in the language in use: Words("noResults")
+list.placeholder @= Some(() => new MyGhostRow)       // or None: the app's row, with no item
+```
 
 ### Tag (`everyui.kit`)
 

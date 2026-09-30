@@ -31,4 +31,12 @@ trait ListSource[T] {
 
   /** Heard when anything above changes: rows come, the count, a new query. */
   def changed: Channel[Unit]
+
+  /** Whether the rows are being looked for and none has come yet (a query not answered): the list shows its
+    * `loadingView` meanwhile. Heard through `changed`. */
+  def searching: Val[Boolean] = ListSource.idle
+}
+
+object ListSource {
+  private val idle: Val[Boolean] = Val(false)
 }

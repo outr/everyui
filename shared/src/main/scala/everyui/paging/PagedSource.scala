@@ -13,7 +13,7 @@ import reactify.*
   * It must always complete. Whether any page can be asked for by its offset, or only the one after the last, is
   * `paging` (`Paging.Anywhere`, `Paging.InOrder`).
   *
-  * A row not come yet is a placeholder (the table draws it as a grey bar per cell), its page asked for as it comes
+  * A row not come yet is a placeholder (the list's `placeholder`, the table's a grey bar per cell), its page asked for as it comes
   * within `ahead` rows of the view; no more than `concurrent` pages are asked for at once, nearest the view first, and a
   * page the view has moved away from before its turn is never asked for at all. A new `sort`, or `invalidate()` (the
   * app's filter changed), starts again from the first page: what was kept is let go, and an answer to the query before
@@ -48,7 +48,7 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
   /** How many rows the server says there are, from its latest answer to this query. */
   val total: Val[Option[Int]] = counted
   /** Whether this query has had no answer yet: "Searching…". */
-  val searching: Val[Boolean] = waiting
+  override val searching: Val[Boolean] = waiting
   /** Whether a page is being fetched. */
   val loading: Val[Boolean] = busy
   /** Why the last page to fail failed, until `retry` or a new query. */

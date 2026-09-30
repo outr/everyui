@@ -1,10 +1,11 @@
 package everyui.app
 
-import everyui.component.{Button, ButtonStyle, Checkbox, Container, TextInput, TextView}
+import everyui.component.{Button, ButtonStyle, Checkbox, Container, MaterialIconView, TextInput, TextView}
 import everyui.component.types.{FontWeight, TextAlign}
 import everyui.dialog.Dialogs
 import everyui.font.MaterialIcon
 import everyui.kit.Toast
+import everyui.list.{ListRow, VirtualList}
 import everyui.menu.{Menu, MenuItem}
 import everyui.paging.PagedSource
 import everyui.render.Platform
@@ -18,7 +19,10 @@ import reactify.*
   * the search narrows the rows; tick boxes and the heading's box choose rows, every row among them; a status is
   * changed from its cell's menu, confirmed and saved; the view changes the columns; the columns fill the width or keep
   * their own; and the footer counts the results and the choice, or says why a page failed with a way to try again.
-  * `theme=light` shows the light palette, `latency=` sets the server's seconds, `flaky=1` fails one request in seven,
+  * A spinner shows under the headings while a query's first page is awaited, and "No results" where it finds none (ten
+  * letters or more). `as=list` shows the rows as a `VirtualList` of the app's own rows (a glyph and a name) instead,
+  * with a faint bar standing in each row not come. `theme=light` shows the light palette, `latency=` sets the
+  * server's seconds (`latency=2` to watch the loading and the placeholders), `flaky=1` fails one request in seven,
   * and `q=` puts words in the search. Logs `pagedtable <rows> rows` as each query's count comes. */
 object PagedTableDemo {
   private def grouped(n: Int): String = n.toString.reverse.grouped(3).mkString(",").reverse
@@ -48,6 +52,18 @@ object PagedTableDemo {
     }
   }
 
+  // a row of the list (`as=list`): a glyph, green for a managed entity, and the name
+  private def row(): ListRow[DemoEntity] = new ListRow[DemoEntity] {
+    private val glyph = new MaterialIconView(MaterialIcon.Business, 18.0)
+    private val name = TextView.bound(item().map(_.name).getOrElse(""), 14.0, Theme.text())
+    glyph.color := (if (item().exists(_.managed)) Theme.success() else Theme.muted())
+    glyph.position.left := ListRow.along(12.0, 18.0, size.width())
+    glyph.position.top := (size.height() - 18.0) / 2.0
+    name.position.left := ListRow.along(40.0, name.size.width(), size.width())
+    name.position.top := (size.height() - name.size.height()) / 2.0
+    children ++= List(glyph, name)
+  }
+
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
     Platform.launchArg("latency").toDoubleOption.foreach(s => EntityServer.latency = s)
@@ -64,6 +80,10 @@ object PagedTableDemo {
     table.rowColor @= (e => if (e.managed) Some(Theme.success().withAlpha(0.12)) else None)
     table.borderWidth @= 1.0
     table.borderColor := Theme.border()
+    table.loadingView @= Some(VirtualList.loading())
+    table.emptyView @= Some(VirtualList.empty())
+    val asList = Platform.launchArg("as") == "list"
+    lazy val list = new VirtualList[DemoEntity](Var(Vector.empty), _.id, _.name, 36.0, source = Some(source))(() => row())
     search.value.attach(_ => source.invalidate())
     source.total.attach(_.foreach(n => Platform.log("pagedtable " + n + " rows")))
 
@@ -124,9 +144,25 @@ object PagedTableDemo {
     table.position.top := (if (narrow()) 164.0 else 88.0)
     table.size.width := ui.size.width() - 32.0
     table.size.height := math.max(160.0, ui.size.height() - table.position.top() - 16.0)
-    ui.children ++= List(title, search, viewButton, fit, table)
-    table.focus()
-    if (Platform.launchArg("probe") == "1") probe(source, table)
+    // as a list, the table let go (a second view over the source would ask for its own pages)
+    if (asList) {
+      table.dispose()
+      list.loadingView @= Some(VirtualList.loading())
+      list.emptyView @= Some(VirtualList.empty())
+      list.borderWidth @= 1.0
+      list.borderColor := Theme.border()
+      source.reset.attach(_ => list.scrollTop(0.0))
+      list.position.left @= 16.0
+      list.position.top := (if (narrow()) 120.0 else 88.0)
+      list.size.width := ui.size.width() - 32.0
+      list.size.height := math.max(160.0, ui.size.height() - list.position.top() - 16.0)
+      ui.children ++= List(title, search, list)
+      list.focus()
+    } else {
+      ui.children ++= List(title, search, viewButton, fit, table)
+      table.focus()
+    }
+    if (Platform.launchArg("probe") == "1" && !asList) probe(source, table)
     // a frame saved where the desktop is asked for one (--freeze= --screenshot=)
     if (Platform.freezeSeconds() >= 0.0) Platform.after(math.max(0.0, Platform.freezeSeconds() - 0.1), () => Platform.frozen())
   }

@@ -14,7 +14,9 @@ import reactify.*
   * show are made, and each row's cells are made once and handed item after item.
   *
   * The rows are `items`, or, made with `VirtualTable.paged`, a server's, a page at a time (`PagedSource`): a row not
-  * come yet is drawn as a grey bar per cell, and a click on a heading sorts on the server (the source's `sort`).
+  * come yet is drawn as a grey bar per cell (the app's cells hidden), or as `placeholder` says where it gives one, and a
+  * click on a heading sorts on the server (the source's `sort`). `loadingView` shows under the headings while the
+  * source looks for a query's first rows, and `emptyView` where there are none.
   *
   * The columns are `columns`, which the app may change at any time (a view of its own): a row keeps the cells of the
   * columns it still has. Their widths are `widths`, by column key, which a pointer changes by dragging a heading's edge
@@ -94,7 +96,15 @@ class VirtualTable[T](val items: Var[Vector[T]], val keyOf: T => String, val lab
   private val rows: Var[Vector[T]] = own(Var(Vector.empty))
   val list: VirtualList[T] = new VirtualList[T](rows, keyOf, labelOf, rowHeight, source = source)(() => new TableRow[T](this))
   val header: TableHeader[T] = new TableHeader[T](this)
+  // a row not come draws a grey bar in each cell itself
+  list.placeholder @= None
 
+  /** What stands in a row not come from the source, where not its grey bars (see `VirtualList.placeholder`). */
+  def placeholder: Var[Option[() => Component]] = list.placeholder
+  /** Shown under the headings while the source looks for a query's first rows (see `VirtualList.loadingView`). */
+  def loadingView: Var[Option[Component]] = list.loadingView
+  /** Shown under the headings where there are no rows (see `VirtualList.emptyView`). */
+  def emptyView: Var[Option[Component]] = list.emptyView
   def selection: Selection = list.selection
   def current: Var[Option[String]] = list.current
   def activated: Channel[T] = list.activated
