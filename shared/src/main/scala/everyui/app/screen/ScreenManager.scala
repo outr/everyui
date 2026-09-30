@@ -111,6 +111,8 @@ trait ScreenManager extends TaskSupport {
   private var backStack: List[(Screen, Option[Component], String)] = Nil
   /** The address the showing screen was shown at. */
   private var shownAt: String = ""
+  /** Screens to build afresh when they are next shown (`rebuild`). */
+  private var stale: List[Screen] = Nil
   /** A screen's default focus not on screen yet (behind a loading state): it takes the focus when it appears. */
   private var pendingFocus: Option[(Screen, Component)] = None
 
@@ -249,6 +251,35 @@ trait ScreenManager extends TaskSupport {
   /** Forget the history: what is shown now is where Back leaves the app (signing in, say). */
   def clearHistory(): Unit = backStack = Nil
 
+  /** Build `screen` afresh, as a change of language or of the theme's structure wants where there is no restarting the
+    * app (the web): what it built is taken apart and it is built again (`Screen.rebuild`: a `UIScreen` keeps its fields
+    * and runs `createUI` over them again), with what it carries across from `onRebuild`. The showing screen is rebuilt
+    * on a turn of its own, deactivated and activated again, the focus going to what now stands where it was (the same
+    * place under the screen, the same kind of component), else the screen's default; one not showing is rebuilt when
+    * it is next shown, where Back's focus finds its equivalent the same way.
+    * {{{
+    *   Strings.use(french).flatMap(_ => manager.rebuildAll()).startUnit()
+    * }}} */
+  def rebuild(screen: Screen): Task[Unit] = Task.async[Unit] { done =>
+    markStale(screen)
+    if (!active().exists(_ eq screen)) done(())
+    else Platform.later(() =>
+      // still showing and still to be rebuilt (else when it is next shown, or it already has been)
+      if (active().exists(_ eq screen) && stale.exists(_ eq screen))
+        change(screen, push = false, Focus.focused()).map(_ => done(())).startUnit()
+      else done(()))
+  }
+
+  /** The showing screen built afresh (`rebuild`). */
+  def rebuild(): Task[Unit] = Task(active()).flatMap(_.map(s => rebuild(s)).getOrElse(Task.unit))
+
+  /** Every screen built afresh (`rebuild`): the showing one now, the rest as each is next shown. */
+  def rebuildAll(): Task[Unit] = Task(loaded.foreach(markStale)).flatMap(_ => rebuild())
+
+  /** `screen` to be built afresh when next shown: one never built yet will be built then anyway. */
+  private def markStale(screen: Screen): Unit =
+    if (loaded.exists(_ eq screen) && !stale.exists(_ eq screen)) stale = screen :: stale
+
   /** Show `screen`, then focus `focus` if it is still on screen, else the screen's default: on a turn of its own
     * (`Platform.later`), since a change is asked for at the end of a chain (a key, the focus, a click, an action, a
     * task) whose nesting a Roku's small stack cannot also carry a screen's build under. */
@@ -257,11 +288,19 @@ trait ScreenManager extends TaskSupport {
 
   private def change(screen: Screen, push: Boolean, focus: Option[Component]): Task[Unit] = {
     val started = Platform.ticks()
+    // one marked to be built afresh (`rebuild`) is, with what it carries across, and where the focus was on it (the
+    // component itself will be gone)
+    val remade = stale.exists(_ eq screen) && loaded.exists(_ eq screen)
+    stale = stale.filterNot(_ eq screen)
+    val carry = if (remade) Screen.onRebuild(screen) else () => ()
+    val place = if (remade) focus.flatMap(f => placeOf(screen, f)) else None
+    if (remade) everyui.component.Component.making @= None
     // the leaving, the building and the arriving in one layout pass, before the focus looks for where things are
     LayoutPass.batched(
-      active().filterNot(_ eq screen).map(Screen.deactivate).getOrElse(Task.unit)
+      active().filter(s => !(s eq screen) || remade).map(Screen.deactivate).getOrElse(Task.unit)
         .flatMap { _ =>
-          if (loaded.exists(_ eq screen)) Task.unit
+          if (remade) Screen.rebuild(screen)
+          else if (loaded.exists(_ eq screen)) Task.unit
           else {
             loaded = screen :: loaded
             Screen.init(screen).flatMap(_ => Screen.load(screen))
@@ -276,11 +315,18 @@ trait ScreenManager extends TaskSupport {
         val kept = loaded.filter(s => (s eq screen) || screens.exists(_ eq s) || backStack.exists(_._1 eq s))
         val dropped = loaded.filterNot(s => kept.exists(_ eq s))
         loaded = kept
+        stale = stale.filter(s => kept.exists(_ eq s))
         dropped.filter(s => s.oneShowing).foreach(s => Platform.after(1.0, () =>
           if (!loaded.exists(_ eq s) && !active().exists(_ eq s) && !backStack.exists(_._1 eq s)) Screen.dispose(s)))
+        // what it carried across may have put the focus somewhere of its own
+        val before = Focus.focused()
+        carry()
+        val carried = Focus.focused().filter(f => !before.exists(_ eq f) && Focus.showing(f))
         screen match {
+          case _ if carried.nonEmpty => ()
           case u: UIScreen =>
-            val target = focus.filter(Focus.showing).getOrElse(u.defaultFocus())
+            val target = focus.filter(Focus.showing).orElse(place.flatMap(p => standing(u.screenRoot, p)))
+              .getOrElse(u.defaultFocus())
             if (Focus.showing(target)) target.focus()
             else pendingFocus = Some(screen -> target)
           case _ => focus.filter(Focus.showing).foreach(_.focus())
@@ -296,9 +342,33 @@ trait ScreenManager extends TaskSupport {
         // how long the screen took to leave the last, build (the first time), lay out and arrive; a slow one is
         // logged loud enough to forward, so a sluggish page in the wild shows up centrally and not only here
         val ms = Platform.ticks() - started
-        val note = "screen " + screen.getClass.getSimpleName + " shown in " + ms.toInt.toString + "ms"
+        val note = "screen " + screen.getClass.getSimpleName + (if (remade) " rebuilt in " else " shown in ") +
+          ms.toInt.toString + "ms"
         if (ms >= 1200.0) scribe.warn(note) else scribe.info(note)
       }
+  }
+
+  /** Where `c` is on `screen`: its kind, and the index of each container's child on the way down to it. */
+  private def placeOf(screen: Screen, c: Component): Option[(String, List[Int])] = screen match {
+    case u: UIScreen =>
+      var path: List[Int] = Nil
+      var step = c
+      while (!(step eq u.screenRoot) && step.parent().nonEmpty) {
+        val p = step.parent().get
+        val here = step
+        path = p.childComponents.indexWhere(_ eq here) :: path
+        step = p
+      }
+      if (step eq u.screenRoot) Some(c.kind -> path) else None
+    case _ => None
+  }
+
+  /** What stands at `place` under `root` now, where it is the same kind of component and can take the focus. */
+  private def standing(root: Component, place: (String, List[Int])): Option[Component] = {
+    var step: Option[Component] = Some(root)
+    place._2.foreach(i =>
+      step = step.flatMap(c => if (i >= 0 && i < c.childComponents.length) Some(c.childComponents(i)) else None))
+    step.filter(c => c.kind == place._1 && c.focusable() && Focus.showing(c))
   }
 
   override def update(delta: Double): Unit = {

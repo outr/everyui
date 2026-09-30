@@ -28,11 +28,52 @@ trait UIScreen extends Screen with PathActivation {
   /** What the screen shows, whole: where the focus stops looking for what took the place of something gone (Focus). */
   def screenRoot: Component = container
 
-  override protected def init(): Task[Unit] = super.init().flatMap { _ =>
-    container.size.width := manager.host.size.width
-    container.size.height := manager.host.size.height
-    // the whole UI laid out in one pass once it is built, rather than a container at a time as it is put together
-    LayoutPass.batched(createUI())
+  override protected def init(): Task[Unit] = {
+    if (!built) {
+      built = true
+      unbuilt = (container :: parts.all.filterNot(_ eq container)).collect { case c: Container => c -> c.children() }
+    }
+    super.init().flatMap { _ =>
+      container.size.width := manager.host.size.width
+      container.size.height := manager.host.size.height
+      // the whole UI laid out in one pass once it is built, rather than a container at a time as it is put together
+      LayoutPass.batched(createUI())
+    }
+  }
+
+  // whether it has been built, and each container made with the screen (its own among them) with the children it had
+  // before its first build: a rebuild puts them back so, for the build to add to again
+  private var built: Boolean = false
+  private var unbuilt: List[(Container, Vector[Component])] = Nil
+
+  /** Built afresh (`ScreenManager.rebuild`): what the last build made is taken apart, a slice a turn, and what the
+    * screen made as it was constructed (its fields) is kept, put back as it was before the first build, and `init`
+    * (and so `createUI`) runs again over it. A field given a lasting reaction by `createUI` (a `bind`, an `attach`)
+    * would have it twice: such a part is better made in `createUI` itself. */
+  override protected def rebuild(): Task[Unit] = {
+    // (the marks are read by a container placing its children: nothing changes until they are cleared)
+    container.listMark = true
+    parts.all.foreach(_.listMark = true)
+    // what was made with the screen out of what the build put it in, and what the build added to it, which goes: only
+    // on this screen (what else was made on the turn the screen was, an app bar say, is not the screen's to change)
+    val detached = parts.all.flatMap(k => k.parent().toList.collect {
+      case p: Container if !p.listMark && shows(p) => p -> k
+    })
+    val mine = unbuilt.filter((c, _) => (c eq container) || shows(c))
+    val gone = mine.flatMap((c, was) => c.children().toList.filter(child => !child.listMark && !was.exists(_ eq child)))
+    container.listMark = false
+    parts.all.foreach(_.listMark = false)
+    detached.foreach((p, k) => p.children -= k)
+    mine.foreach((c, was) => c.children @= was.filterNot(_.takenApart))
+    if (gone.nonEmpty) Component.disposeGradually(gone, () => everyui.render.Platform.collect(), getClass.getSimpleName)
+    init()
+  }
+
+  /** Whether `c` is on this screen: in its container, however deep. */
+  private def shows(c: Component): Boolean = {
+    var at = c.parent()
+    while (at.nonEmpty && !(at.get eq container)) at = at.get.parent()
+    at.nonEmpty
   }
 
   /** Showing a screen swaps its container into the host, in front of the backdrop and its washes when those share the

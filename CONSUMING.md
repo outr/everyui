@@ -153,6 +153,37 @@ kept and shown again. A screen made for one showing (`oneShowing`) is taken apar
 back to it. Taking a large tree apart runs a slice a turn (`Component.disposeGradually(roots, done)`), so a screen of
 thousands of components never outlasts a Roku's watchdog; disposing twice does nothing.
 
+### Rebuilding a screen
+
+Most changes need nothing rebuilt: text bound to `Strings` changes language, and anything bound to `Theme` changes
+colour. Where a change reshapes the UI itself (a language whose screens are laid out differently, a theme that changes
+structure), and there is no restarting the process (the web), the manager builds screens afresh in place:
+
+```scala
+Strings.use(french).flatMap(_ => App.rebuildAll()).startUnit()   // or App.rebuild(), App.rebuild(screen)
+```
+
+`rebuild()` rebuilds the showing screen on a turn of its own: it is deactivated, what its last build made is taken
+apart (a slice a turn), `init` and so `createUI` run again, it is activated, and the focus goes to what stands where it
+was (the same place under the screen, the same kind of component), else to `defaultFocus`. `rebuild(screen)` of a screen
+not showing, and `rebuildAll()` for all but the showing one, mark it to be rebuilt the next time it is shown, Back
+included, where its focus finds its equivalent the same way.
+
+Keep state outside the built UI, so a rebuild has nothing to lose: what the screen shows lives in `Var`s on the screen
+(or further out) and `createUI` reads them. Components a screen makes as fields, in its constructor, are kept, put back
+where they were before its first build and placed again by `createUI`; everything `createUI` makes is made anew. So give
+a field no lasting reaction in `createUI` (a `bind`, an `attach`), which a second build would add again: make that part
+in `createUI` instead. What lives only in the built UI (a field's words, how far a list is scrolled) is carried across by
+`onRebuild`, asked with the old UI still there, which answers what to do once the new one is built:
+
+```scala
+// search: the TextInput createUI last made
+override protected def onRebuild(): () => Unit = {
+  val typed = search.value()
+  () => search.value @= typed
+}
+```
+
 ### When frames run
 
 On the web, the desktop and Android (`Frames.onDemand`) the screen manager's frame loop runs only while something

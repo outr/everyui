@@ -28,6 +28,14 @@ trait Screen extends TaskSupport {
   def oneShowing: Boolean = false
   /** Take the screen apart: it will not be shown again. */
   protected def dispose(): Unit = ()
+
+  /** Build the screen afresh (`ScreenManager.rebuild`): by default its `init` again. */
+  protected def rebuild(): Task[Unit] = init()
+  /** Asked as the screen is about to be built afresh (`ScreenManager.rebuild`), with what it built still there: what
+    * to do once it has been built again, to carry across what lives only in the built UI (a field's words, how far a
+    * list is scrolled). State kept outside the built UI (a `Var` on the screen that `createUI` reads) needs nothing,
+    * the default. */
+  protected def onRebuild(): () => Unit = () => ()
 }
 
 object Screen {
@@ -37,4 +45,6 @@ object Screen {
   def deactivate(screen: Screen): Task[Unit] = screen.deactivate()
   def seo(screen: Screen): Option[SEO] = screen.seo
   def dispose(screen: Screen): Unit = screen.dispose()
+  def rebuild(screen: Screen): Task[Unit] = screen.rebuild()
+  def onRebuild(screen: Screen): () => Unit = screen.onRebuild()
 }

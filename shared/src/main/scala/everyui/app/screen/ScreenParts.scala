@@ -11,6 +11,9 @@ final class ScreenParts {
 
   def add(c: Component): Unit = made = c :: made
 
+  /** Every component made, kept here. */
+  def all: List[Component] = made
+
   /** `add` as a function, holding only this: what `Component.making` is given. */
   def adding: Component => Unit = (c: Component) => add(c)
 
