@@ -66,9 +66,6 @@ class Component(val node: RenderNode) {
 
   /** The children of this changed (ContainerFeature): a container follows what came and what went. */
   private[everyui] def childListChanged(added: Vector[Component], removed: Vector[Component]): Unit = ()
-  /** Just before the node's size is read (MeasuredFeature): what could not be measured until now (words cut short to
-    * fit, made off the page) is made ready to be. */
-  private[everyui] def beforeRead(): Unit = ()
   /** What the containers this is in follow of it. */
   private[component] var containerWatches: List[ChildWatch] = Nil
   /** A mark for a pass over lists of components (ContainerFeature), cleared by the pass that set it. */
@@ -231,11 +228,13 @@ object Component {
   /** Take `roots` and everything under them apart (`dispose`), what is deepest first, a slice of about
     * `disposeSliceMs` a turn (`Platform.later`), then run `done`. A screen of thousands of components taken apart in
     * one turn could outlast a Roku's watchdog (Execution timeout), which stopped it part of the way through and left
-    * the rest bound to the theme for good. One that fails is logged and the rest are taken apart all the same.
+    * the rest bound to the theme for good. One that fails is logged and the rest are taken apart all the same. `what`
+    * names it on the console: `[dispose] <what> taken apart: <n> components in <ms> ms over <turns> turns` as it
+    * finishes, and a line as it starts when it will take more than a turn.
     * {{{
-    *   Component.disposeGradually(List(page), () => Platform.collect())
+    *   Component.disposeGradually(List(page), () => Platform.collect(), "SettingsPage")
     * }}} */
-  def disposeGradually(roots: List[Component], done: () => Unit = () => ()): Unit = {
+  def disposeGradually(roots: List[Component], done: () => Unit = () => (), what: String = ""): Unit = {
     // every component under the roots, once (a screen's parts are mostly under its container too), each before those
     // under it (an array grown as it fills: a list built a component at a time is a copy per component on a Roku)
     var order = new Array[Component](64)
@@ -266,25 +265,45 @@ object Component {
       order(i).listMark = false
       i += 1
     }
-    disposeSlice(order, count, done)
+    val named = if (what.nonEmpty) what else roots.headOption.map(_.kind).getOrElse("nothing")
+    disposeSlice(order, count, done, Disposal(named, count, everyui.render.Platform.ticks(), 0))
   }
 
   // the last `left` of `all` taken apart, from the end, for a slice of a turn; the rest on the next
-  private def disposeSlice(all: Array[Component], left: Int, done: () => Unit): Unit = {
+  private def disposeSlice(all: Array[Component], left: Int, done: () => Unit, run: Disposal): Unit = {
     val started = everyui.render.Platform.ticks()
+    val turn = run.turns + 1
     var at = left
     while (at > 0 && everyui.render.Platform.ticks() - started < disposeSliceMs) {
       at -= 1
       val c = all(at)
-      all(at) = null
       try c.dispose()
       catch {
         case t: Throwable => everyui.render.Platform.log("[dispose] " + c.kind + " failed to be taken apart: " + t.toString)
       }
     }
     val rest = at
-    if (rest > 0) everyui.render.Platform.later(() => disposeSlice(all, rest, done))
-    else done()
+    if (rest > 0) {
+      if (turn == 1) everyui.render.Platform.log("[dispose] " + run.what + " being taken apart: " + run.count.toString +
+        " components, a slice a turn")
+      val next = run.copy(turns = turn)
+      everyui.render.Platform.later(() => disposeSlice(all, rest, done, next))
+    }
+    else {
+      everyui.render.Platform.log("[dispose] " + run.what + " taken apart: " + run.count.toString + " components in " +
+        math.round(everyui.render.Platform.ticks() - run.started).toString + " ms over " + turn.toString + " turns")
+      // and, once the focus has moved on from any of them (it looks where they were, on a turn of its own), each forgets
+      // where it was: one kept by something (the focus last on it) held, through its last containers, all it was in
+      everyui.render.Platform.later(() => {
+        var i = 0
+        while (i < run.count) {
+          all(i).leftParent = None
+          all(i) = null
+          i += 1
+        }
+      })
+      done()
+    }
   }
 
   /** A colour as the seam takes it: `"#rrggbb"`, `"#rrggbbaa"` when translucent, or `""` for none. */
