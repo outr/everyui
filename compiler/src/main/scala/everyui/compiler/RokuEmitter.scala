@@ -712,7 +712,28 @@ class RokuEmitter(
       }.filter(_ => p.allOverriddenSymbols.isEmpty && !p.flags.is(Flags.Override))
       catch case _: Throwable => None
     def fieldKey(s: Symbol): String =
-      if (isVirtualField(s)) "__v_" + brSafe(s.name) else brSafe(s.name)
+      if (isVirtualField(s)) "__v_" + brSafe(s.name)
+      else if (hidesInheritedParam(s)) brSafe(s.name) + "__" + typeName(s.owner)
+      else brSafe(s.name)
+    /** Whether `p`, a class's constructor parameter kept as a field, is named like a constructor parameter of a class it
+      * extends that it does not pass on to it: in one flat table the two would share a slot, and the subclass's
+      * (`TriviaClue(q, node: Json, …) extends Container`) replaced the component's own `node`, so every write to the
+      * component's node went to the Json. Such a parameter is kept under a name of its own (`fieldKey`). One passed on
+      * (`TextView(node) extends Component(node)`) holds the same value, and shares the slot as before. */
+    def hidesInheritedParam(p: Symbol): Boolean = p.exists && p.flags.is(Flags.ParamAccessor) && !p.flags.is(Flags.Override) &&
+      p.allOverriddenSymbols.isEmpty && p.owner.exists && userTypeDefs.contains(p.owner) && {
+        val inherited = try p.owner.typeRef.baseClasses.drop(1).exists { b =>
+          userTypeDefs.contains(b) && b.declarations.exists(d => d.name == p.name && d.flags.is(Flags.ParamAccessor))
+        } catch case _: Throwable => false
+        inherited && !userTypeDefs(p.owner).parents.exists { parent =>
+          parentInfo(parent)._2.exists(a => unwrap(a) match {
+            case id: Ident => id.name == p.name
+            case NamedArg(_, v) => unwrap(v) match { case id: Ident => id.name == p.name; case _ => false }
+            case _ => false
+          })
+        }
+      }
+
     def isModelMember(s: Symbol): Boolean =
       s.exists && s.owner.exists && isModel(s.owner) && !s.isClassConstructor
         && ((s.isDefDef && !s.flags.is(Flags.FieldAccessor)) || s.flags.is(Flags.Lazy) || isVirtualField(s))
@@ -2393,7 +2414,8 @@ class RokuEmitter(
             // instance of the same class (`child.node` inside a Component
             // method). Only a real `this.` receiver resolves against `self`.
             if (inCurrentClass(s.owner) && isThis(q))
-              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(self)" else s"self.${brSafe(name)}"
+              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(self)"
+              else s"self.${if (hidesInheritedParam(s)) fieldKey(s) else brSafe(name)}"
             else moduleSyms.get(s.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a

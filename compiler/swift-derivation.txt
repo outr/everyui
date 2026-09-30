@@ -1289,7 +1289,8 @@ class SwiftEmitter(
             // instance of the same class (`child.node` inside a Component
             // method). Only a real `this.` receiver resolves against `self`.
             if (inCurrentClass(s.owner) && isThis(q))
-              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(self)" else s"self.${brSafe(name)}"
+              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(self)"
+              else s"self.${if (hidesInheritedParam(s)) fieldKey(s) else brSafe(name)}"
             else moduleSyms.get(s.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a
@@ -1306,7 +1307,8 @@ class SwiftEmitter(
             // instance of the same class (`child.node` inside a Component
             // method). Only a real `this.` receiver resolves against `self`.
             if (inCurrentClass(s.owner) && isThis(q))
-              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(this)" else field("this", brSafe(name))
+              if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(this)"
+              else field("this", if (hidesInheritedParam(s)) fieldKey(s) else brSafe(name))
             else moduleSyms.get(s.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a
