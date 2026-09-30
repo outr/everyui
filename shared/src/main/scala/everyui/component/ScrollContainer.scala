@@ -28,12 +28,20 @@ import scala.concurrent.duration.*
 class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boolean = true) extends Container {
   override def kind: String = "ScrollContainer"
 
-  val content: Container = new Container
+  val content: Container = new Container {
+    // where the page scrolls the node itself (the web) the content stays put in it, and is where it is on the screen
+    // only less how far it has scrolled, as it is where this shifts it: a pointer on something in it is found there
+    override def absoluteLeft: Double = super.absoluteLeft - natively(true)
+    override def absoluteTop: Double = super.absoluteTop - natively(false)
+  }
   /** How far the content is scrolled from its start, in pixels: a rail's start is its right end in a right-to-left
     * language, so it stays on its first items at 0 however it grows or narrows. */
   val offset: Var[Double] = own(Var(0.0))
   // a rail in a right-to-left language, which runs from the right unless it runs from its left in every language
   private val fromRight: Val[Boolean] = own(Val(horizontal && followsDirection && Direction.rtl()))
+  // how far the page's own scroll has moved the content on the screen, across or down: back along a rail from the right
+  private def natively(across: Boolean): Double =
+    if (across != horizontal || !Platform.nativeScroll()) 0.0 else if (fromRight()) -offset() else offset()
   // as far as the content's length, which is what it holds unless it is given more (room left at its end)
   private val furthest: Val[Double] =
     Val(math.max(0.0, (if (horizontal) content.size.width() - size.width() else content.size.height() - size.height())))
