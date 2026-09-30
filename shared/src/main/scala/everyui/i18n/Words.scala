@@ -10,42 +10,45 @@ object Words {
   private val tables: Var[Map[String, Map[String, String]]] = Var(Map(
     "en" -> Map("ok" -> "OK", "cancel" -> "Cancel", "close" -> "Close", "done" -> "Done", "yes" -> "Yes", "no" -> "No",
       "save" -> "Save", "discard" -> "Don't save", "delete" -> "Delete", "retry" -> "Try again", "search" -> "Search",
-      "noResults" -> "No results", "loading" -> "Loading…", "back" -> "Back", "apply" -> "Apply"),
+      "noResults" -> "No results", "loading" -> "Loading…", "back" -> "Back", "apply" -> "Apply",
+      "clear" -> "Clear"),
     "de" -> Map("ok" -> "OK", "cancel" -> "Abbrechen", "close" -> "Schließen", "done" -> "Fertig", "yes" -> "Ja",
       "no" -> "Nein", "save" -> "Speichern", "discard" -> "Nicht speichern", "delete" -> "Löschen",
       "retry" -> "Erneut versuchen", "search" -> "Suchen", "noResults" -> "Keine Ergebnisse", "loading" -> "Wird geladen…",
-      "back" -> "Zurück", "apply" -> "Übernehmen"),
+      "back" -> "Zurück", "apply" -> "Übernehmen", "clear" -> "Leeren"),
     "es" -> Map("ok" -> "Aceptar", "cancel" -> "Cancelar", "close" -> "Cerrar", "done" -> "Listo", "yes" -> "Sí",
       "no" -> "No", "save" -> "Guardar", "discard" -> "No guardar", "delete" -> "Eliminar", "retry" -> "Reintentar",
       "search" -> "Buscar", "noResults" -> "Sin resultados", "loading" -> "Cargando…", "back" -> "Atrás",
-      "apply" -> "Aplicar"),
+      "apply" -> "Aplicar", "clear" -> "Borrar"),
     "fr" -> Map("ok" -> "OK", "cancel" -> "Annuler", "close" -> "Fermer", "done" -> "Terminé", "yes" -> "Oui",
       "no" -> "Non", "save" -> "Enregistrer", "discard" -> "Ne pas enregistrer", "delete" -> "Supprimer",
       "retry" -> "Réessayer", "search" -> "Rechercher", "noResults" -> "Aucun résultat", "loading" -> "Chargement…",
-      "back" -> "Retour", "apply" -> "Appliquer"),
+      "back" -> "Retour", "apply" -> "Appliquer", "clear" -> "Effacer"),
     "it" -> Map("ok" -> "OK", "cancel" -> "Annulla", "close" -> "Chiudi", "done" -> "Fine", "yes" -> "Sì", "no" -> "No",
       "save" -> "Salva", "discard" -> "Non salvare", "delete" -> "Elimina", "retry" -> "Riprova", "search" -> "Cerca",
-      "noResults" -> "Nessun risultato", "loading" -> "Caricamento…", "back" -> "Indietro", "apply" -> "Applica"),
+      "noResults" -> "Nessun risultato", "loading" -> "Caricamento…", "back" -> "Indietro", "apply" -> "Applica",
+      "clear" -> "Cancella"),
     "nl" -> Map("ok" -> "OK", "cancel" -> "Annuleren", "close" -> "Sluiten", "done" -> "Klaar", "yes" -> "Ja",
       "no" -> "Nee", "save" -> "Opslaan", "discard" -> "Niet opslaan", "delete" -> "Verwijderen",
       "retry" -> "Opnieuw proberen", "search" -> "Zoeken", "noResults" -> "Geen resultaten", "loading" -> "Laden…",
-      "back" -> "Terug", "apply" -> "Toepassen"),
+      "back" -> "Terug", "apply" -> "Toepassen", "clear" -> "Wissen"),
     "pt" -> Map("ok" -> "OK", "cancel" -> "Cancelar", "close" -> "Fechar", "done" -> "Concluído", "yes" -> "Sim",
       "no" -> "Não", "save" -> "Salvar", "discard" -> "Não salvar", "delete" -> "Excluir", "retry" -> "Tentar novamente",
       "search" -> "Pesquisar", "noResults" -> "Nenhum resultado", "loading" -> "Carregando…", "back" -> "Voltar",
-      "apply" -> "Aplicar"),
+      "apply" -> "Aplicar", "clear" -> "Limpar"),
     "tr" -> Map("ok" -> "Tamam", "cancel" -> "İptal", "close" -> "Kapat", "done" -> "Bitti", "yes" -> "Evet",
       "no" -> "Hayır", "save" -> "Kaydet", "discard" -> "Kaydetme", "delete" -> "Sil", "retry" -> "Yeniden dene",
-      "search" -> "Ara", "noResults" -> "Sonuç yok", "loading" -> "Yükleniyor…", "back" -> "Geri", "apply" -> "Uygula"),
+      "search" -> "Ara", "noResults" -> "Sonuç yok", "loading" -> "Yükleniyor…", "back" -> "Geri", "apply" -> "Uygula",
+      "clear" -> "Temizle"),
     "ar" -> Map("ok" -> "موافق", "cancel" -> "إلغاء", "close" -> "إغلاق", "done" -> "تم", "yes" -> "نعم", "no" -> "لا",
       "save" -> "حفظ", "discard" -> "عدم الحفظ", "delete" -> "حذف", "retry" -> "إعادة المحاولة", "search" -> "بحث",
-      "noResults" -> "لا توجد نتائج", "loading" -> "جارٍ التحميل…", "back" -> "رجوع", "apply" -> "تطبيق"),
+      "noResults" -> "لا توجد نتائج", "loading" -> "جارٍ التحميل…", "back" -> "رجوع", "apply" -> "تطبيق", "clear" -> "مسح"),
     "zh" -> Map("ok" -> "确定", "cancel" -> "取消", "close" -> "关闭", "done" -> "完成", "yes" -> "是", "no" -> "否",
       "save" -> "保存", "discard" -> "不保存", "delete" -> "删除", "retry" -> "重试", "search" -> "搜索",
-      "noResults" -> "无结果", "loading" -> "正在加载…", "back" -> "返回", "apply" -> "应用"),
+      "noResults" -> "无结果", "loading" -> "正在加载…", "back" -> "返回", "apply" -> "应用", "clear" -> "清除"),
     "zh_Hant" -> Map("ok" -> "確定", "cancel" -> "取消", "close" -> "關閉", "done" -> "完成", "yes" -> "是", "no" -> "否",
       "save" -> "儲存", "discard" -> "不儲存", "delete" -> "刪除", "retry" -> "重試", "search" -> "搜尋",
-      "noResults" -> "沒有結果", "loading" -> "正在載入…", "back" -> "返回", "apply" -> "套用")))
+      "noResults" -> "沒有結果", "loading" -> "正在載入…", "back" -> "返回", "apply" -> "套用", "clear" -> "清除")))
 
   /** `messages` for language `code`, over those it had: another language, or an app's own wording. */
   def add(code: String, messages: Map[String, String]): Unit =
@@ -74,6 +77,8 @@ object Words {
   def delete: String = apply("delete")
   def retry: String = apply("retry")
   def search: String = apply("search")
+  /** What empties a field (a search box's ×). */
+  def clear: String = apply("clear")
   def noResults: String = apply("noResults")
   def loading: String = apply("loading")
   def back: String = apply("back")

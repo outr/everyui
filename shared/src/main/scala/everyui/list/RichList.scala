@@ -1,9 +1,10 @@
 package everyui.list
 
 import everyui.chat.{ChatTime, Ticker}
-import everyui.component.{Component, Container, TextInput}
+import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent}
 import everyui.i18n.{Direction, Words}
+import everyui.kit.SearchField
 import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import reactify.*
@@ -62,8 +63,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val list: VirtualList[RichLine[T]] = new VirtualList[RichLine[T]](lines, _.key,
     l => l.item.map(t => lookOf(t).title).getOrElse(l.section.title), RichRow.tallHeight, measuredRows = true)(() =>
     new RichRow[T](this))
-  /** The field over the list that narrows it, with `search`. */
-  val field: Option[TextInput] = if (search) Some(new TextInput(Words.search)) else None
+  /** The field over the list that narrows it, with `search`: a search box on one line (`SearchField`). */
+  val field: Option[SearchField] = if (search) Some(new SearchField(Words.search)) else None
 
   /** Where each item's line is, by the item's key. */
   private var lineOf: Map[String, String] = Map.empty

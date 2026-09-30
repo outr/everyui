@@ -2673,6 +2673,20 @@ chats.selected @= Some(current.id)
 A long press opens the menu where the platform turns it into a context-menu request (Android, JavaFX, and browsers that
 fire `contextmenu` on one). `demo=richlist` has 5000 in three sections.
 
+The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,
+with a magnifier, "Search" (`Words.search`) faint inside it while it is empty, and a × once it holds something. The ×
+and Escape empty it; an empty one leaves Escape to the screen (Back). Enter goes to the list, and so does Down (Up from
+the list's top comes back). It is one stop for the focus, its edge lit; the × is the pointer's, Escape the keys'. Where
+the platform has a field of its own (the web, the desktop, Android) the words are typed there; on a Roku and an Apple TV
+OK on it asks the platform's keyboard (`Platform.editField`). It stands on its own anywhere a search box is wanted:
+
+```scala
+val search = new SearchField()                          // placeholder: Words.search
+search.value.attach(words => results @= find(words))
+search.exitFocus(Key.ArrowDown, results)
+list.field.foreach(_.focus())                           // Ctrl+K
+```
+
 ### Pointer buttons and modifiers
 
 A `PointerEvent` carries its `button` (`PointerEvent.PrimaryButton`, `MiddleButton`, `SecondaryButton`; a finger is the
