@@ -466,6 +466,11 @@ lazy val android = (project in file("android"))
     libraryDependencies ++= Seq(
       "androidx.annotation" % "annotation-jvm" % "1.9.1",
       "com.google.guava" % "guava" % "33.4.0-android"),
+    // what Media3's classes reach for that the published backend leaves to the app, as NaboTV adds it: the shrinker
+    // fails on a class it cannot find (AsynchronousMediaCodecCallback's CircularIntArray), and Android 12 on queues a
+    // decoder's buffers through it
+    libraryDependencies += "androidx.collection" % "collection-jvm" % "1.5.0",
+    libraryDependencies += ("androidx.core" % "core" % "1.13.1").intransitive() artifacts Artifact("core", "aar", "aar"),
     androidAars := Aars.open(streams.value.log.info(_),
       update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     androidAarRules := Aars.open(streams.value.log.info(_),

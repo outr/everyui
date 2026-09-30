@@ -1,7 +1,7 @@
 package everyui.render
 
 import android.content.Context
-import android.view.{View, ViewGroup}
+import android.view.{SurfaceView, View, ViewGroup}
 import android.widget.ImageView
 import androidx.media3.common.text.Cue
 
@@ -22,10 +22,20 @@ final class VideoFrame(context: Context) extends ViewGroup(context) {
 
   setClipChildren(true)
 
-  /** The view the picture is drawn into, in place of the one before. */
+  /** The view the picture is drawn into, in place of the one before. A `SurfaceView` is laid out at its size in the
+    * screen's pixels and shrunk back by the density the whole app is scaled up by (EveryUIActivity), so nothing above
+    * it scales it. Android 11 places a `SurfaceView`'s plane twice, once from the view's own size and once from its
+    * size on the screen, and the two disagree under a scaled parent: the last to land wins, and on a SHIELD that is
+    * often the first, a 1080p picture on a quarter of a 4K panel with its upscaling off. */
   def hold(view: View): Unit = {
     picture.foreach(removeView)
     picture = Some(view)
+    if (grown(view) != 1.0) {
+      view.setPivotX(0f)
+      view.setPivotY(0f)
+      view.setScaleX((1.0 / grown(view)).toFloat)
+      view.setScaleY((1.0 / grown(view)).toFloat)
+    }
     // under the subtitles, whatever came first
     addView(view, 0)
   }
@@ -94,7 +104,7 @@ final class VideoFrame(context: Context) extends ViewGroup(context) {
     val w = View.getDefaultSize(0, widthSpec)
     val h = View.getDefaultSize(0, heightSpec)
     val (x, y, pw, ph) = place(w, h)
-    picture.foreach(exactly(_, pw, ph))
+    picture.foreach(v => exactly(v, pixels(v, pw), pixels(v, ph)))
     bitmaps.foreach { case (cue, view) =>
       val (_, _, cw, ch) = spot(cue, x, y, pw, ph)
       exactly(view, cw, ch)
@@ -104,12 +114,20 @@ final class VideoFrame(context: Context) extends ViewGroup(context) {
 
   override def onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int): Unit = {
     val (x, y, pw, ph) = place(r - l, b - t)
-    picture.foreach(_.layout(x, y, x + pw, y + ph))
+    picture.foreach(v => v.layout(x, y, x + pixels(v, pw), y + pixels(v, ph)))
     bitmaps.foreach { case (cue, view) =>
       val (cx, cy, cw, ch) = spot(cue, x, y, pw, ph)
       view.layout(cx, cy, cx + cw, cy + ch)
     }
   }
+
+  /** How many times larger `view` is laid out than it is shown: the density for a `SurfaceView`, else 1. */
+  private def grown(view: View): Double = view match {
+    case _: SurfaceView if Host.scale > 0.0 => Host.scale
+    case _ => 1.0
+  }
+
+  private def pixels(view: View, size: Int): Int = math.round(size * grown(view)).toInt
 
   private def exactly(view: View, w: Int, h: Int): Unit =
     view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),

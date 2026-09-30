@@ -8,11 +8,14 @@ import reactify.*
 
 /** A VideoView over streams and a file: an HLS stream with one audio track, one with alternate audio and subtitle
   * renditions, and an `.mp4`, played through hls.js where the browser has no HLS of its own. The bar pauses and
-  * resumes, seeks back 10 s and on 30 s, steps through the audio and subtitle tracks, and opens the next source.
-  * `src=` gives the sources instead (comma separated), `header=Name:value` sends a header with every request an HLS
-  * stream makes (`headers`), `lang=<audio>,<text>` chooses its tracks by language as it opens (`languages`), and
-  * `muted=1` starts it silent. Logs `video <event>` as each is heard, and twice a second `video probe t=<playhead>
-  * d=<duration> playing=<on> waiting=<on> bw=<bits> audio=<n>/<chosen> text=<n>/<chosen> src=<index> tracks=...`. */
+  * resumes, seeks back 10 s and on 30 s, steps through the audio and subtitle tracks, draws the picture on the
+  * display's own plane or in the app's layers (`direct`), and opens the next source. `src=` gives the sources instead
+  * (comma separated), `header=Name:value` sends a header with every request an HLS stream makes (`headers`),
+  * `lang=<audio>,<text>` chooses its tracks by language as it opens (`languages`), `muted=1` starts it silent,
+  * `direct=1` starts it on the display's plane, `swap=<seconds>` changes between the two every so many seconds, and
+  * `full=1` fills the screen with it, the bar over its foot. Logs `video <event>` as each is heard, and twice a second
+  * `video probe t=<playhead> d=<duration> playing=<on> waiting=<on> bw=<bits> audio=<n>/<chosen> text=<n>/<chosen>
+  * src=<index> tracks=...`. */
 object VideoDemo {
   private val defaults = List(
     "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
@@ -38,6 +41,15 @@ object VideoDemo {
     }
     video.muted @= Platform.launchArg("muted") == "1"
     video.cover @= false
+    video.direct @= Platform.launchArg("direct") == "1"
+    val full = Platform.launchArg("full") == "1"
+    Platform.launchArg("swap").toDoubleOption.filter(_ > 0.0).foreach { every =>
+      def swap(): Unit = Platform.after(every, () => {
+        video.direct @= !video.direct()
+        swap()
+      })
+      swap()
+    }
     video.events(e => Platform.log("video " + e + (if (e == "error") " " + video.diagnostics.failure else "")))
 
     val audio = Var("")
@@ -73,18 +85,26 @@ object VideoDemo {
       text @= t.map(_.name).getOrElse("off")
     })
     val source = Button.bound("Source " + (at() + 1) + " of " + sources.size, () => open((at() + 1) % sources.size))
+    val drawn = Button.bound(if (video.direct()) "Direct" else "Texture", () => video.direct @= !video.direct())
     val said = TextView.bound(status(), 13.0, Theme.muted())
 
-    video.position.left @= 16.0
-    video.position.top @= 16.0
-    video.size.width := ui.size.width() - 32.0
-    video.size.height := math.max(120.0, math.min((ui.size.width() - 32.0) * 9.0 / 16.0, ui.size.height() - 150.0))
+    if (full) {
+      video.size.width := ui.size.width()
+      video.size.height := ui.size.height()
+    }
+    else {
+      video.position.left @= 16.0
+      video.position.top @= 16.0
+      video.size.width := ui.size.width() - 32.0
+      video.size.height := math.max(120.0, math.min((ui.size.width() - 32.0) * 9.0 / 16.0, ui.size.height() - 150.0))
+    }
     // the bar under it, wrapping at the edge
-    val bar = List(play, back, on, hear, read, source)
+    val bar = List(play, back, on, hear, read, drawn, source)
     bar.zipWithIndex.foreach { case (b, i) =>
       if (i == 0) {
         b.position.left @= 16.0
-        b.position.top := video.position.top() + video.size.height() + 12.0
+        b.position.top :=
+          (if (full) ui.size.height() - b.size.height() - 16.0 else video.position.top() + video.size.height() + 12.0)
       }
       else {
         val before = bar(i - 1)

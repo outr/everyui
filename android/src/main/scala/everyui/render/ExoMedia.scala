@@ -671,21 +671,57 @@ class ExoMedia(frame: Option[VideoFrame]) {
   /** The view the picture goes into, made for how it is drawn, in place of the one before. */
   private def show(): Unit = frame.foreach { f =>
     player.foreach(detach)
-    val made: View = if (direct) new SurfaceView(Host.activity) else new TextureView(Host.activity)
+    surface = None
+    val made: View = if (direct) surfaced(new VideoSurface(Host.activity)) else new TextureView(Host.activity)
     f.hold(made)
     picture = Some(made)
     player.foreach(attach)
     fit()
   }
 
+  /** The `SurfaceView`'s surface once it is laid out, which is when the player is given it. */
+  private var surface: Option[android.view.Surface] = None
+
+  /** A `SurfaceView` whose surface goes to the player only once the view is laid out with a size, and is taken back
+    * as it goes, so the decoder starts on the plane as it will be shown. Each size the surface is given, and a frame
+    * moved after, is logged (`[video] surface ...`, tag everyui) with the window's size and the display's, which say
+    * whether the plane is scaled to the screen: a SHIELD upscales it (DeepISP) only where the display scales it. How
+    * the view is laid out to be scaled whole is [[VideoFrame]]'s. */
+  private def surfaced(s: SurfaceView): SurfaceView = {
+    s.getHolder.addCallback(new android.view.SurfaceHolder.Callback {
+      override def surfaceCreated(holder: android.view.SurfaceHolder): Unit = ()
+      override def surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int): Unit =
+        if (picture.contains(s)) {
+          if (surface.nonEmpty) ExoMedia.sizes("changed", s)
+          else if (w > 0 && h > 0 && s.getWidth > 0 && s.getHeight > 0) {
+            ExoMedia.sizes("attach", s)
+            surface = Some(holder.getSurface)
+            player.foreach(attach)
+          }
+          else ExoMedia.sizes("waiting", s)
+        }
+      override def surfaceDestroyed(holder: android.view.SurfaceHolder): Unit =
+        if (picture.contains(s) && surface.nonEmpty) {
+          ExoMedia.sizes("destroyed", s)
+          // the player lets go before the surface does: clearing waits for the decoder to have left it
+          player.foreach(detach)
+          surface = None
+        }
+    })
+    // a frame moved after the surface was given: said, as the display decided its scaling on the one before
+    s.addOnLayoutChangeListener((_, l, t, r, b, ol, ot, or, ob) =>
+      if (surface.nonEmpty && (l != ol || t != ot || r != or || b != ob)) ExoMedia.sizes("moved", s))
+    s
+  }
+
   private def attach(p: ExoPlayer): Unit = picture.foreach {
-    case s: SurfaceView => p.setVideoSurfaceView(s)
+    case _: SurfaceView => surface.foreach(p.setVideoSurface)
     case t: TextureView => p.setVideoTextureView(t)
     case _ => ()
   }
 
   private def detach(p: ExoPlayer): Unit = picture.foreach {
-    case s: SurfaceView => p.clearVideoSurfaceView(s)
+    case _: SurfaceView => surface.foreach(p.clearVideoSurface)
     case t: TextureView => p.clearVideoTextureView(t)
     case _ => ()
   }
@@ -693,20 +729,32 @@ class ExoMedia(frame: Option[VideoFrame]) {
   /** How wide one of the file's pixels is for its height: 1 but for an anamorphic file, whose pixels are wider. */
   private var aspect = 1.0
 
-  /** The picture at its own shape in the box. A `SurfaceView`'s buffer is also held at the file's own size, which is
-    * what lets the display, not the app, scale it to the screen. */
-  private def fit(): Unit = frame.foreach { f =>
-    f.fit(videoWidth * aspect, videoHeight.toDouble, cover)
-    picture.foreach {
-      case s: SurfaceView =>
-        if (videoWidth > 0 && videoHeight > 0) s.getHolder.setFixedSize(videoWidth, videoHeight)
-        else s.getHolder.setSizeFromLayout()
-      case _ => ()
-    }
-  }
+  /** The picture at its own shape in the box. A `SurfaceView`'s buffers are the decoder's, at the file's own size,
+    * and its frame the picture's place on the screen: the display, not the app, scales the one to the other. */
+  private def fit(): Unit = frame.foreach(_.fit(videoWidth * aspect, videoHeight.toDouble, cover))
 }
 
 object ExoMedia {
+  /** Says what size a `SurfaceView` is to the display as `what` happens to it: its frame, its surface's, the
+    * window's, the display's as the app sees it, and the panel's own mode. */
+  private def sizes(what: String, s: SurfaceView): Unit = {
+    val frame = s.getHolder.getSurfaceFrame
+    val at = new Array[Int](2)
+    s.getLocationOnScreen(at)
+    val decor = Host.activity.getWindow.getDecorView
+    val window = Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds
+    val display = Option(s.getDisplay)
+    val real = new android.graphics.Point
+    display.foreach(_.getRealSize(real))
+    val mode = display.map { d =>
+      val m = d.getMode
+      s"${m.getPhysicalWidth}x${m.getPhysicalHeight}@${m.getRefreshRate}"
+    }.getOrElse("-")
+    android.util.Log.i("everyui", s"[video] surface $what view=${s.getWidth}x${s.getHeight} scale=${s.getScaleX} " +
+      s"at=${at(0)},${at(1)} surface=${frame.width}x${frame.height} window=${decor.getWidth}x${decor.getHeight} " +
+      s"metrics=${window.width}x${window.height} display=${real.x}x${real.y} mode=$mode")
+  }
+
   /** What a text track is written in, from its sample type, as the Flutter menu names it; "" for anything else. */
   def written(mime: String): String = {
     import androidx.media3.common.MimeTypes
