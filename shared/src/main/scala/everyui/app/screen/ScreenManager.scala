@@ -106,8 +106,11 @@ trait ScreenManager extends TaskSupport {
   }
   private var screens: List[Screen] = Nil
   private var loaded: List[Screen] = Nil
-  /** The screens Back returns to, the most recent first, each with what had the focus when it was left. */
-  private var backStack: List[(Screen, Option[Component])] = Nil
+  /** The screens Back returns to, the most recent first, each with what had the focus when it was left and the address
+    * it was shown at. */
+  private var backStack: List[(Screen, Option[Component], String)] = Nil
+  /** The address the showing screen was shown at. */
+  private var shownAt: String = ""
   /** A screen's default focus not on screen yet (behind a loading state): it takes the focus when it appears. */
   private var pendingFocus: Option[(Screen, Component)] = None
 
@@ -146,17 +149,7 @@ trait ScreenManager extends TaskSupport {
     ui.children.clear()
     ui.children ++= List(backdrop, washes)
     ui.children ++= before
-    Platform.onPath(path => at(URLPath(path)).foreach { s =>
-      // the browser went back to the screen before this one, or forward past it
-      backStack.headOption.filter(_._1 eq s) match {
-        case Some((_, focus)) =>
-          backStack = backStack.tail
-          swap(s, push = false, focus).startUnit()
-        case None =>
-          remember(s)
-          swap(s, push = false).startUnit()
-      }
-    })
+    Platform.onPath(path => arrived(path))
     Focus.onBack(key => key == Key.Back && back())
     // where the focus goes when it has nowhere else: the showing screen's own default
     Focus.home @= (() => active() match {
@@ -180,6 +173,21 @@ trait ScreenManager extends TaskSupport {
           if (freezeSeconds >= 0.0) freeze() else live()
         }
         .startUnit())
+  }
+
+  /** The page's address changed to `path` by the browser (its Back or Forward). */
+  private[screen] def arrived(path: String): Unit = backStack match {
+    // the browser went back to the screen before this one: that one, as it was left, even where the app makes a new
+    // screen for each showing of its path (a title's page), which would come back at its default focus with the
+    // screen being left put on the history in its place
+    case (s, focus, address) :: rest if address == path || at(URLPath(path)).exists(_ eq s) =>
+      backStack = rest
+      swap(s, push = false, focus).startUnit()
+    // or forward past it
+    case _ => at(URLPath(path)).foreach { s =>
+      remember(s)
+      swap(s, push = false).startUnit()
+    }
   }
 
   /** Keep `screen` as the screens given to `run` are kept: built once, and answering its path from now on. For a screen
@@ -216,7 +224,7 @@ trait ScreenManager extends TaskSupport {
 
   /** Back to the screen before this one: whether there was one (at the first, Back is left to the platform). */
   def back(): Boolean = backStack match {
-    case (previous, focus) :: rest =>
+    case (previous, focus, _) :: rest =>
       if (!Platform.historyBack()) {
         backStack = rest
         swap(previous, push = false, focus).startUnit()
@@ -227,14 +235,14 @@ trait ScreenManager extends TaskSupport {
 
   /** The screen being left for `next` goes on the history, with its focus. */
   private def remember(next: Screen): Unit =
-    active().filterNot(_ eq next).foreach(current => backStack = (current, Focus.focused()) :: backStack)
+    active().filterNot(_ eq next).foreach(current => backStack = (current, Focus.focused(), shownAt) :: backStack)
 
   /** Show `screen` with only `under` behind it, whatever came before: Back returns to `under`, at its default focus. A
     * section of an app's shell, which Back leaves for the shell's first screen. `under` itself is shown with nothing
     * behind it. */
   def showOver(screen: Screen, under: Screen): Task[Unit] = {
     everyui.component.Component.making @= None
-    backStack = if (screen eq under) Nil else List((under, None))
+    backStack = if (screen eq under) Nil else List((under, None, ""))
     swap(screen, push = true)
   }
 
@@ -284,6 +292,7 @@ trait ScreenManager extends TaskSupport {
           case p: PathActivation if push => Platform.pushPath(p.path.value)
           case _ => ()
         }
+        shownAt = Platform.path()
         // how long the screen took to leave the last, build (the first time), lay out and arrive; a slow one is
         // logged loud enough to forward, so a sluggish page in the wild shows up centrally and not only here
         val ms = Platform.ticks() - started
