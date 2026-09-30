@@ -1,6 +1,7 @@
 package everyui.chat
 
 import everyui.async.Task
+import everyui.clipboard.Clipboard
 import everyui.component.{Button, ButtonStyle, Component, Container}
 import everyui.component.types.Semantics
 import everyui.event.{Key, KeyEvent}
@@ -9,6 +10,7 @@ import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.Spinner
 import everyui.list.VirtualList
+import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
@@ -29,6 +31,13 @@ import reactify.*
   * line at a time), Page Up and Page Down scroll a page, Home and End go to either end, and Enter opens or closes a tool
   * call or reasoning, or goes into the app's component (Right and Left open and close, as a tree's do). A new message
   * from somebody else is read out politely by a screen reader once it is whole.
+  *
+  * A message's words can be selected (`Component.selectable`, where the platform selects text): a drag selects them,
+  * across lines and on across messages, and Ctrl or Command+C copies them, while a click still puts the cursor on the
+  * message it lands on. With nothing selected, Ctrl or Command+C copies the message under the cursor; Ctrl or
+  * Command+A selects every word, as Select all does. The context menu (the secondary button, the menu key, a long
+  * press, OK held) offers what `menu` says for the entry, by default on a message Copy (the words selected), Copy
+  * message and Select all (`menuFor`); over an entry it offers nothing for, and over a link, the browser's own shows.
   *
   * `render` makes a message's words from its text and the widest they may be: Markdown by default
   * (`MessageMarkdown.render`), as narrow as a short reply, or plain text (`MessageText.plain`).
@@ -51,6 +60,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val ticker: Ticker = new Ticker(1.0)
   /** Whether it is kept at the newest entry, and how many have arrived below while it is not. */
   val pin: BottomPin = new BottomPin()
+  /** What the context menu on an entry offers: `menuFor` unless the app says otherwise; nothing, no menu. */
+  val menu: Var[ChatEntry => List[MenuItem]] = own(Var((e: ChatEntry) => menuFor(e)))
   /** Whether earlier entries are being fetched. */
   val loading: Var[Boolean] = own(Var(false))
   /** Whether `loadOlder` has said there is nothing earlier. */
@@ -190,6 +201,41 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case _ => ()
   }
 
+  // ---- copying ----
+
+  /** What a context menu on `entry` offers by default: on a message, where there is a clipboard, Copy (the words
+    * selected, where the platform selects them: only while some are), Copy message (its text, as it was written) and
+    * Select all (the words of the entries drawn); nothing on anything else. */
+  def menuFor(entry: ChatEntry): List[MenuItem] = entry match {
+    case m: ChatEntry.Message if Clipboard.copies =>
+      val whole = MenuItem(ChatWords.copyMessage, () => Clipboard.copy(m.text()))
+      if (!Platform.selectsText()) List(whole)
+      else {
+        val selected = Platform.selectedText()
+        List(MenuItem(ChatWords.copy, () => Clipboard.copy(selected), enabled = selected.nonEmpty), whole,
+          MenuItem(ChatWords.selectAll, () => list.selectText()))
+      }
+    case _ => Nil
+  }
+
+  list.menu.attach { p =>
+    val items = menu()(p.item)
+    if (items.nonEmpty) {
+      if (Platform.remoteNavigation()) Menu.show(items) else Menu.at(p.x, p.y, items)
+    }
+  }
+
+  // Ctrl or Command+C with no words selected: the message under the cursor, whole; Ctrl or Command+A: every word, as
+  // Select all
+  private def copyKey(e: KeyEvent): Option[() => Unit] =
+    if (!(if (Platform.commandKey()) e.meta else e.ctrl) || e.alt || e.shift) None
+    else if (e.name.toLowerCase == "a" && Platform.selectsText()) Some(() => list.selectText())
+    else if (e.name.toLowerCase != "c" || !Clipboard.copies || Platform.selectedText().nonEmpty) None
+    else list.currentItem match {
+      case Some(m: ChatEntry.Message) => Some(() => Clipboard.copy(m.text()))
+      case _ => None
+    }
+
   // ---- the bottom, and what is earlier ----
 
   private def furthest: Double = math.max(0.0, list.total - list.size.height())
@@ -299,7 +345,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case _ => None
   }
 
-  list.keys = (e: KeyEvent) => if (e.ctrl || e.meta || e.alt || list.count == 0) None else {
+  list.keys = (e: KeyEvent) => if (list.count == 0) None else if (e.ctrl || e.meta || e.alt) copyKey(e) else {
     val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
     val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
     val at = indexOfCurrent
@@ -324,8 +370,12 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       case _ => None
     }
   }
-  // a click opens what it lands on itself (a tool call's line); it leaves the cursor and the scroll be
-  list.clicks = (_: Int, _: Double) => true
+  // a click opens what it lands on itself (a tool call's line) and puts the cursor on its entry where it is, leaving the
+  // scroll be (and the words a drag it ended selected)
+  list.clicks = (i: Int, _: Double) => {
+    cursorTo(i)
+    true
+  }
 
   // ---- following ----
 

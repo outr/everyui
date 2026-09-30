@@ -12,7 +12,9 @@ class PointerEvents(component: Component) {
   lazy val leave: Channel[PointerEvent] = channel(PointerKind.Leave)
   /** The wheel: `x` and `y` are the deltas, in pixels. */
   lazy val wheel: Channel[PointerEvent] = channel(PointerKind.Wheel)
-  /** A context menu asked for where the pointer is: the secondary button (the page's own menu is not shown). */
+  /** A context menu asked for where the pointer is: the secondary button, or a finger held. A handler that shows one
+    * puts up a `Menu` (or any dialog), or consumes the event: only then is the page's own menu kept away
+    * (`Pointer.menuAnswered`), so words the app has no menu for keep the browser's Copy and Look Up. */
   lazy val menu: Channel[PointerEvent] = channel(PointerKind.Menu)
 
   /** A click with the middle button: down and up on the component (an app closes a tab with it). */
@@ -37,18 +39,26 @@ class PointerEvents(component: Component) {
 
   def channel(kind: PointerKind): Channel[PointerEvent] = {
     val channel = Channel[PointerEvent]
+    component.node.onPointer(kind, (x, y) => heard(channel, kind, x, y))
+    channel
+  }
+
+  /** What the platform heard, handed to `channel` unless a component inside this consumed it: a menu asked for that
+    * something put a dialog up for (a `Menu`) is consumed, as answered. */
+  private[everyui] def heard(channel: Channel[PointerEvent], kind: PointerKind, x: Double, y: Double): Unit = {
+    val held = everyui.render.Platform.modifiers()
+    val event = PointerEvent(kind, x, y, everyui.render.Platform.pointerButton(), held.ctrl, held.meta, held.alt,
+      held.shift)
     // a hand on the pointer is somebody using the app as surely as a key is: a finger scrolling a list on a phone,
     // or a mouse moving over a desktop window, holds a screensaver off just as a remote does
     val use = kind == PointerKind.Down || kind == PointerKind.Move || kind == PointerKind.Wheel ||
       kind == PointerKind.Click
-    component.node.onPointer(kind, (x, y) => {
-      val held = everyui.render.Platform.modifiers()
-      val event = PointerEvent(kind, x, y, everyui.render.Platform.pointerButton(), held.ctrl, held.meta, held.alt,
-        held.shift)
-      if (use) everyui.focus.Focus.used()
-      if (use && kind != PointerKind.Wheel) Pointer.usedAt = everyui.render.Platform.ticks()
-      if (!Pointer.blocks(event)) channel @= event
-    })
-    channel
+    if (use) everyui.focus.Focus.used()
+    if (use && kind != PointerKind.Wheel) Pointer.usedAt = everyui.render.Platform.ticks()
+    if (!Pointer.blocks(event)) {
+      val dialogs = everyui.component.Modal.opened
+      channel @= event
+      if (kind == PointerKind.Menu && everyui.component.Modal.opened != dialogs) event.consume()
+    }
   }
 }

@@ -17,6 +17,10 @@ import reactify.*
 object Modal {
   /** The dialogs up, the top one first. */
   private var layers: List[ModalLayer] = Nil
+  private var puts: Int = 0
+
+  /** How many dialogs have been put up so far: a right click that put one up (a `Menu`) was answered by the app. */
+  def opened: Int = puts
 
   /** Whether something covering the WHOLE screen on its own account is over the top of it — a screensaver.
     *
@@ -89,6 +93,7 @@ object Modal {
       children += panel
     }
     val layer = new ModalLayer(sheet, panel, Focus.focused(), after, focus, dismissible)
+    puts += 1
     sheet.event.click.attach(_ => if (layer.dismissible && layers.headOption.exists(_ eq layer)) take(layer))
     panel.event.click.attach(_.consume())
     // Back is this dialog's while it is on top and in view: it closes it, or — where it cannot be dismissed — does

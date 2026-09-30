@@ -356,6 +356,9 @@ class RenderNode(val sg: SGNode) {
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
+  /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
+  def setSelectable(on: Boolean): Unit = ()
+  def selectText(): Unit = ()
   /** No pointer to show. */
   def setCursor(name: String): Unit = ()
   // what a drawing shows here, which draws no paths: its rectangles (everyui.draw.Block)
@@ -748,6 +751,9 @@ object Platform {
   def setTitle(title: String): Unit = ()
   /** Whether copyText reaches a clipboard: a channel has none, so a caller offers something else or nothing. */
   def clipboard(): Boolean = false
+  /** Whether people select text with a pointer (`Component.selectable`): not here. */
+  def selectsText(): Boolean = false
+  def selectedText(): String = ""
   def copyText(text: String): Unit = ()
   /** The device keeps its own screen timing here. */
   def keepAwake(on: Boolean): Unit = ()

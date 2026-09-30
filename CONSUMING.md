@@ -948,6 +948,24 @@ a bubble's words may be, so a short reply makes a narrow bubble, with code, a ta
 that; the line breaks it was typed with kept; and a streaming message parsed again from its last block alone.
 `render = MessageText.plain` shows plain text instead.
 
+A message's words (its Markdown's code blocks and tables too) can be selected and copied where the platform selects text
+(the web): a drag selects them, across lines and on across messages, Ctrl or Cmd+C copies them, and a plain click still
+puts the transcript's cursor on the message it lands on, without scrolling. With nothing selected, Ctrl or Cmd+C copies
+the message under the cursor, as it was written, and Ctrl or Cmd+A selects every message's words. The context menu over
+a message (the secondary button, the menu key, a long press, OK held) is the transcript's own: Copy (the selection,
+while there is one), Copy message and Select all (the words of the entries drawn: those in view and a few either side),
+or Copy message alone where nothing is selected with a pointer (the desktop, Android). It is the app's rather than the
+browser's so that every platform can copy a message whole, the desktop included, which selects no text; the browser's
+own still shows over a link, over an entry the menu offers nothing for (a day's separator, a tool call, the app's
+component), and with Shift held. `menu` changes what it offers:
+
+```scala
+transcript.menu @= (e => transcript.menuFor(e) ++ (e match {
+  case m: ChatEntry.Message => List(MenuItem.separator, MenuItem("Reply", () => replyTo(m)))
+  case _ => Nil
+}))
+```
+
 ### Letter spacing (`font.letterSpacing`)
 
 `font.letterSpacing` is the space added after each letter, in pixels (negative draws them closer; 0, the default, is
@@ -2459,6 +2477,19 @@ modifier (Ctrl, Cmd on a Mac) only the cursor moves and Primary+Space toggles it
 letter jumps to the next row whose label starts with it. Clicks pick a row, Shift+click a range, Primary+click one more.
 Where a remote drives the app (`Platform.remoteNavigation`), `selection.multiple` is off: one row is chosen and it follows
 the cursor.
+
+A row whose words are there to be read (a log line, a message) marks them `selectable`: on the web a drag across them
+selects them, across rows, and Ctrl or Cmd+C copies them, while a plain click still picks the row, and a press on them
+starts no drag of the row (`Pointer.onText`). The rows are put in the order they read as such a press goes down, so a
+selection across rows takes in only those between; `list.selectText()` selects the words of every row drawn. What
+answers a click inside (a button, a chip) stays unselectable. Other platforms select no text and ignore it. The
+secondary button chooses the row under it and fires `menu`; the browser's own menu (Copy, Look Up) is kept away only
+when a handler puts a `Menu` (or any dialog) up for it, or consumes the event, so a list with no menu for a row leaves
+the browser's. Shift with the secondary button always gives the browser's, and a link's is always the browser's.
+
+```scala
+val line = new TextView { selectable @= true }     // or on a container: everything in it
+```
 
 ### Tree (`everyui.tree`)
 

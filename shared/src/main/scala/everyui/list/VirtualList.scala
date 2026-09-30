@@ -1,7 +1,7 @@
 package everyui.list
 
 import everyui.component.{Component, Container}
-import everyui.event.{Key, KeyEvent, Modifiers, PointerEvent}
+import everyui.event.{Key, KeyEvent, Modifiers, Pointer, PointerEvent}
 import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -378,14 +378,18 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
   }
 
+  // a press on words that can be selected: the rows in the order they read, for the selection a drag makes
+  event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton && Pointer.onText) inReadingOrder())
   // (not the click a drag ends in)
   event.click.attach(e => if (!DragDrop.justEnded) clickAt(e.x, e.y, e.modifiers))
-  // the secondary button: the row under it chosen (unless it already is), and its menu asked for
+  // the secondary button: the row under it chosen (unless it already is) where it is, which is in view, and its menu
+  // asked for; the page's own menu shows unless something answered (Pointer.menuAnswered)
   event.pointer.menu.attach { e =>
     val down = e.y - absoluteTop + offset()
     if (down >= 0.0 && down < total && !blank) {
       val i = indexAt(down)
-      if (!selection.contains(keyAt(i))) moveTo(i) else current @= Some(keyAt(i))
+      if (!selection.contains(keyAt(i))) selection.only(keyAt(i))
+      current @= Some(keyAt(i))
       menuAt(i, e.x, e.y)
     }
   }
@@ -433,8 +437,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   event.pointer.down.attach { e =>
     val down = e.y - absoluteTop + offset()
+    // (not from words that can be selected, where a drag selects them)
     if (e.button == PointerEvent.PrimaryButton && draggable() && !Platform.remoteNavigation() && editing().isEmpty &&
-      down >= 0.0 && down < total) {
+      !Pointer.onText && down >= 0.0 && down < total) {
       pressedAt = Some((indexAt(down), e.x, e.y))
       Pointers.track(m => pressedAt.foreach { case (i, x, y) =>
         if (DragDrop.dragging().nonEmpty) DragDrop.move(m.x, m.y)
@@ -557,6 +562,38 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   /** The row showing `index`, if it is made. */
   def rowAt(index: Int): Option[ListRow[T]] = placed.get(index)
+
+  /** Every word in the rows made selected (`Component.selectable`), in the order they read, where the platform selects
+    * text: those in view and the few made either side. */
+  def selectText(): Unit = {
+    inReadingOrder()
+    node.selectText()
+  }
+
+  /** The rows put in the order they read among the list's nodes, where scrolling (a row leaving one end handed the item
+    * arriving at the other) shuffled them: a platform selects text in the nodes' order, so a drag from one row to the
+    * next took in the rows made out of sight as well. Only the rows' places change; nothing else moves. */
+  private[everyui] def inReadingOrder(): Unit = {
+    val all = children()
+    val made = rows
+    val shown = placed.toVector.sortBy(_._1).map(_._2)
+    val order = shown ++ made.filterNot(r => shown.exists(_ eq r))
+    if (!made.indices.forall(i => made(i) eq order(i))) {
+      var out = Vector.empty[Component]
+      var next = 0
+      var i = 0
+      while (i < all.size) {
+        all(i) match {
+          case _: ListRow[T] @unchecked =>
+            out = out :+ order(next)
+            next += 1
+          case c => out = out :+ c
+        }
+        i += 1
+      }
+      children @= out
+    }
+  }
 
   private def take(stand: Boolean): ListRow[T] = if (stand) spareStands match {
     case row :: rest =>

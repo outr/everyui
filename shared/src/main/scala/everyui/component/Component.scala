@@ -164,6 +164,12 @@ class Component(val node: RenderNode) {
   /** Whether a finger dragged on it is its own to follow (a slider, a colour area), rather than scrolling or zooming the
     * page under it, which on the web would take the drag away part-way. */
   lazy val touchDrags: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setTouchDrags(d)))
+  /** Whether its words, and those of everything in it, are there to be read and copied: a drag across them selects
+    * them (across lines and on into the next such component, as a chat's messages), Ctrl or Command+C copies them, and
+    * a press there is not a list's row dragged (`Pointer.onText`). What answers a click inside it (a button, a chip)
+    * stays unselectable, and a plain click does what it did. Where the platform lets people select text (the web,
+    * `Platform.selectsText`); elsewhere it changes nothing. */
+  lazy val selectable: Prop[Boolean] = own(new Prop[Boolean](false, s => node.setSelectable(s)))
   /** What this is to whatever reads the page rather than looking at it (`Semantics`): a heading, the main content, a
     * set of links. On the web it is the element's ARIA role, level and label, with a slider's value and a switch's
     * state; elsewhere, where the platform has one, its accessibility role. */

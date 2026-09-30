@@ -12,7 +12,8 @@ import reactify.*
   * author's avatar and name, or at the end edge for the person using the app. A message that `leads` its group has the
   * avatar, the name and when it was said (`now` keeps "5m" current); the rest of the group sit close under it. Under
   * the bubble go the app's `meta` line and, while the words are still arriving, a small spinner. When it was said has
-  * its date too unless the transcript names the days (`dated`). */
+  * its date too unless the transcript names the days (`dated`). The words can be selected and copied
+  * (`Component.selectable`). */
 class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: Val[Long],
                   render: (Val[String], Val[Double]) => Component, dated: Boolean = true) extends Container {
   private val top: Double = if (leads) Transcript.groupGap else Transcript.lineGap
@@ -36,6 +37,8 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
 
   private val words: Component = render(own(Val(if (m.text().isEmpty && m.streaming()) "…" else m.text())),
     own(Val(Transcript.widest(width) - Transcript.padX * 2.0)))
+  // there to be read and copied: a drag selects them, on into the next message
+  words.selectable @= true
   private val bubble: Container = new Container {
     size.width := math.max(Transcript.padX * 2.0 + 8.0, words.size.width() + Transcript.padX * 2.0)
     size.height := words.size.height() + Transcript.padY * 2.0

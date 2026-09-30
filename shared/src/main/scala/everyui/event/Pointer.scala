@@ -36,4 +36,17 @@ object Pointer {
   /** Whether `event` is the one just consumed, still climbing, which the components under it must not fire. */
   def blocks(event: PointerEvent): Boolean =
     consumed.contains(event) && Platform.ticks() - consumedAt < hold
+
+  /** Whether the context menu just asked for was the app's to show: a handler consumed it, or put a menu (or any
+    * dialog) up for it (PointerEvents). Where it was not, the platform's own shows, as a browser's Copy and Look Up. */
+  def menuAnswered: Boolean = consumed.exists(_.kind == PointerKind.Menu) && Platform.ticks() - consumedAt < hold
+
+  private var textAt: Double = -1.0e9
+
+  /** Told by the platform: a press went down on words that can be selected (`Component.selectable`). */
+  def pressedText(): Unit = textAt = Platform.ticks()
+
+  /** Whether the press going down now is on words that can be selected: a drag from there selects them, and is not
+    * a list's row dragged. */
+  def onText: Boolean = Platform.ticks() - textAt < hold
 }

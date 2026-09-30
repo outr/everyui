@@ -421,6 +421,9 @@ class RenderNode(val fx: Node) {
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
+  /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
+  def setSelectable(on: Boolean): Unit = ()
+  def selectText(): Unit = ()
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"); "" for the default. */
   def setCursor(name: String): Unit = fx.setCursor(name match {
     case "col-resize" | "ew-resize" => javafx.scene.Cursor.H_RESIZE
@@ -1112,6 +1115,9 @@ object Platform {
 
   /** Whether copyText reaches a clipboard: it does. */
   def clipboard(): Boolean = true
+  /** Whether people select text with a pointer (`Component.selectable`): not here. */
+  def selectsText(): Boolean = false
+  def selectedText(): String = ""
   def copyText(text: String): Unit = {
     val content = new ClipboardContent()
     content.putString(text)

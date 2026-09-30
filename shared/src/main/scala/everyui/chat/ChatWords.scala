@@ -40,4 +40,7 @@ object ChatWords {
   def loadingOlder: String = word("chat.loadingOlder", "Loading earlier messages")
   def show: String = word("chat.show", "Show")
   def hide: String = word("chat.hide", "Hide")
+  def copy: String = word("chat.copy", "Copy")
+  def copyMessage: String = word("chat.copyMessage", "Copy message")
+  def selectAll: String = word("chat.selectAll", "Select all")
 }

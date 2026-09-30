@@ -237,6 +237,8 @@ class RenderNode(val el: html.Element) {
             follow(run.href)
           }
         })
+        // its right click is the browser's, whatever menu the app has around it: open in a new tab, copy the address
+        span.addEventListener("contextmenu", (e: dom.MouseEvent) => e.stopPropagation())
       }
       el.appendChild(span)
     }
@@ -250,11 +252,12 @@ class RenderNode(val el: html.Element) {
       Platform.pointed(e)
       WheelDelta(e, el, f)
     })
-    // the app's context menu in place of the browser's
-    else if (kind == PointerKind.Menu) el.addEventListener("contextmenu", (e: dom.MouseEvent) => {
-      e.preventDefault()
+    // the app's context menu in place of the browser's, where it put one up (Pointer.menuAnswered): elsewhere, and
+    // with Shift held, the browser's own (Copy, Look Up, Inspect)
+    else if (kind == PointerKind.Menu) el.addEventListener("contextmenu", (e: dom.MouseEvent) => if (!e.shiftKey) {
       Platform.pointed(e)
       f(e.clientX, e.clientY)
+      if (everyui.event.Pointer.menuAnswered) e.preventDefault()
     })
     else {
       val name = if (kind == PointerKind.Click) "click" else "pointer" + kind.toString.toLowerCase
@@ -267,9 +270,39 @@ class RenderNode(val el: html.Element) {
       // something that answers a click is clickable: the hand, and no text selection under it
       if (kind == PointerKind.Click) {
         el.style.cursor = "pointer"
-        el.style.setProperty("user-select", "none")
+        clickable = true
+        if (!selectable) el.style.setProperty("user-select", "none")
       }
     }
+  private var clickable = false
+  private var selectable = false
+  private var hearsWords = false
+
+  /** Its words, and those under it, selected by a drag and copied as the browser does (CSS user-select), under the
+    * I-beam; what answers a click in it keeps its own "none". A press on the words is told to `Pointer.pressedText`,
+    * so that a drag of the app's (a list's row) does not start there. */
+  def setSelectable(on: Boolean): Unit = {
+    selectable = on
+    val value = if (on) "text" else if (clickable) "none" else ""
+    el.style.setProperty("user-select", value)
+    el.style.setProperty("-webkit-user-select", value)
+    if (on && el.style.cursor.isEmpty) el.style.cursor = "auto"
+    if (on && !hearsWords) {
+      hearsWords = true
+      el.addEventListener("pointerdown", (e: dom.MouseEvent) => if (selectable && onWords(e.target)) everyui.event.Pointer.pressedText())
+    }
+  }
+
+  // whether `target` is in this with nothing that answers a click between
+  private def onWords(target: dom.EventTarget): Boolean = {
+    var at = target.asInstanceOf[dom.Node]
+    while (at != null && at != el && !(at.isInstanceOf[html.Element] &&
+      at.asInstanceOf[html.Element].style.getPropertyValue("user-select") == "none")) at = at.parentNode
+    at == el
+  }
+
+  /** Every word in it selected, as the browser's Select All selects a page's. */
+  def selectText(): Unit = dom.window.getSelection().selectAllChildren(el)
 
   /** The node scrolls its own overflow: the browser's scrollbar, wheel, touch and keys. */
   def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = {
@@ -1265,6 +1298,10 @@ object Platform {
 
   /** Whether copyText reaches a clipboard: it does. */
   def clipboard(): Boolean = true
+  /** Whether people select text with the pointer (`Component.selectable`): not on a television's browser. */
+  def selectsText(): Boolean = !remoteNavigation()
+  /** The words selected on the page, or "". */
+  def selectedText(): String = Option(dom.window.getSelection()).map(_.toString).getOrElse("")
   def copyText(text: String): Unit = {
     val clipboard = dom.window.navigator.asInstanceOf[js.Dynamic].clipboard
     if (!js.isUndefined(clipboard)) clipboard.writeText(text)

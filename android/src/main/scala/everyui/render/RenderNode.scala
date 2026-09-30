@@ -697,6 +697,9 @@ class RenderNode(val view: View) {
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
+  /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
+  def setSelectable(on: Boolean): Unit = ()
+  def selectText(): Unit = ()
   /** A mouse on Android keeps its own arrow. */
   def setCursor(name: String): Unit = ()
 
@@ -1708,6 +1711,9 @@ object Platform {
 
   /** Whether copyText reaches a clipboard: it does. */
   def clipboard(): Boolean = true
+  /** Whether people select text with a pointer (`Component.selectable`): not here. */
+  def selectsText(): Boolean = false
+  def selectedText(): String = ""
   def copyText(text: String): Unit = {
     val manager = Host.activity.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[android.content.ClipboardManager]
     manager.setPrimaryClip(android.content.ClipData.newPlainText("everyui", text))
