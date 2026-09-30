@@ -3019,6 +3019,15 @@ class RokuEmitter(
       currentClass = Symbol.noSymbol
     }
 
+    /** What a parent constructor's call is written after: the locals Scala gives its arguments through where some are
+      * named or left to their defaults (`new Field(words, action = "search") { … }`), which the call reads by name. */
+    def parentBindings(p: Tree): List[Statement] = p match {
+      case Block(stats, e) => stats ++ parentBindings(e)
+      case Inlined(_, bindings, e) => bindings ++ parentBindings(e)
+      case Apply(f, _) => parentBindings(f)
+      case TypeApply(f, _) => parentBindings(f)
+      case _ => Nil
+    }
     // ── object-model type → methods + init chain + (concrete) constructor ──
     def parentInfo(p: Tree): (Symbol, List[Term]) = {
       def peel(t: Term, acc: List[Term]): (Symbol, List[Term]) = t match {
@@ -3113,6 +3122,11 @@ class RokuEmitter(
         if (ps.exists && ps != sym && userTypeDefs.contains(ps)) {
           val ctor = parentCtor(p)
           inParentArgs = true
+          // the locals the arguments are given through (a named argument, a default left out), made first
+          parentBindings(p).foreach { st =>
+            val e = emitStat(st)
+            if (e.trim.nonEmpty) sb.append(e).append("\n")
+          }
           val call = withStatement(s"  ${initName(ps, ctor)}(self${emitArgList(pargs, ctor).map(", " + _).mkString})")
           inParentArgs = false
           sb.append(call).append("\n")

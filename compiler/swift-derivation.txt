@@ -1952,6 +1952,11 @@ class SwiftEmitter(
         if (ps.exists && ps != sym && userTypeDefs.contains(ps)) {
           val ctor = parentCtor(p)
           inParentArgs = true
+          // the locals the arguments are given through (a named argument, a default left out), made first
+          parentBindings(p).foreach { st =>
+            val e = emitStat(st)
+            if (e.trim.nonEmpty) sb.append(e).append("\n")
+          }
           val call = withStatement(s"  ${initName(ps, ctor)}(self${emitArgList(pargs, ctor).map(", " + _).mkString})")
           inParentArgs = false
           sb.append(call).append("\n")
@@ -2011,6 +2016,11 @@ class SwiftEmitter(
         if (ps.exists && ps != sym && userTypeDefs.contains(ps)) {
           val ctor = parentCtor(p)
           inParentArgs = true
+          // the locals the arguments are given through (a named argument, a default left out), made first
+          parentBindings(p).foreach { st =>
+            val e = emitStat(st)
+            if (e.trim.nonEmpty) sb.append(e).append("\n")
+          }
           val call = withStatement(s"  _ = try ${initName(ps, ctor)}(this${emitArgList(pargs, ctor).map(", " + _).mkString})")
           inParentArgs = false
           sb.append(call).append("\n")
