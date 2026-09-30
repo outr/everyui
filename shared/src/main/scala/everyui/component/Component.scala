@@ -66,6 +66,9 @@ class Component(val node: RenderNode) {
 
   /** The children of this changed (ContainerFeature): a container follows what came and what went. */
   private[everyui] def childListChanged(added: Vector[Component], removed: Vector[Component]): Unit = ()
+  /** Just before the node's size is read (MeasuredFeature): what could not be measured until now (words cut short to
+    * fit, made off the page) is made ready to be. */
+  private[everyui] def beforeRead(): Unit = ()
   /** What the containers this is in follow of it. */
   private[component] var containerWatches: List[ChildWatch] = Nil
   /** A mark for a pass over lists of components (ContainerFeature), cleared by the pass that set it. */

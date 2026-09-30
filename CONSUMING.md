@@ -860,6 +860,26 @@ trait, else a sheared face), and on the desktop by a shear about the baseline, a
 desktop field in such a family stays upright. A Roku cannot slant a font, so it draws the registered italic face where
 there is one and the upright letters where not.
 
+### Words cut short to fit (`maxWidth`, `maxLines`)
+
+`maxWidth @= 104.0` draws a line no wider than that, cut short with an ellipsis where the words run past it, and
+`maxLines @= 2` cuts wrapped words (`WhiteSpace.Normal` and a width) to that many lines at a word. The cut is made by
+measuring the words, so it is the one they really take in their face and size, and `size.width` is the cut width:
+whatever sits after them lays out against what is drawn. A text view made before it is on the screen, as a row's are,
+is cut once it joins it, and again when its face or size changes after its words were set.
+
+```scala
+val name = new TextView {
+  content := s"${person.name} · ${person.episodes} eps"
+  font.size @= 11.0
+  maxWidth @= 104.0
+}
+```
+
+On the web the words are measured once they are on the page and drawn in their own face: one still loading is waited
+for, and until then the page holds them to their room itself (CSS `max-width` with `text-overflow: ellipsis`, and a
+`max-height` of their lines). `demo=textcut` shows rows of them made off the screen.
+
 ### Text direction and long words (`TextView`, `RichText`)
 
 Words the app did not write (a message, a name, a title, code) should run the way their own letters do, not the

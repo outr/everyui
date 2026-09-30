@@ -29,10 +29,6 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val textStart: Val[Double] = own(Val(RichRow.inset + (if (hasLead()) lead() + 10.0 else 0.0)))
   // the end edge the trailing pieces line up against, clear of the list's scroll thumb
   private val end: Val[Double] = own(Val(size.width() - RichRow.inset))
-  // whether the row has joined the list, a turn ago: words are cut short to fit by measuring them, which a page can
-  // only do once they are on it, so the title and the detail are cut from then on
-  private val joined: Var[Boolean] = own(Var(false))
-  parent.attach(p => if (p.nonEmpty && !joined()) Platform.later(() => joined @= true))
 
   // ---- a header ----
   private val chevron = new MaterialIconView(MaterialIcon.ExpandMore, 18.0) {
@@ -112,14 +108,14 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     font.size @= 14.0
     font.weight := (if (unread()) FontWeight.Bold else FontWeight.Normal)
     color := Theme.text()
-    maxWidth := (if (joined()) math.max(20.0, end() - textStart() - firstTrail() - 8.0) else 0.0)
+    maxWidth := math.max(20.0, end() - textStart() - firstTrail() - 8.0)
     visible := !header() && !editing()
   }
   val detail: TextView = new TextView {
     content := look().flatMap(_.detail).getOrElse("")
     font.size @= 12.5
     color := (if (unread()) Theme.text() else Theme.muted())
-    maxWidth := (if (joined()) math.max(20.0, end() - textStart() - secondTrail() - 8.0) else 0.0)
+    maxWidth := math.max(20.0, end() - textStart() - secondTrail() - 8.0)
     visible := tall()
   }
 

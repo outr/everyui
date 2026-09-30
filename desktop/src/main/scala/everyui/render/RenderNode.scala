@@ -480,6 +480,11 @@ class RenderNode(val fx: Node) {
 
   /** A text node breaks a word too long for its line where it must already. */
   def setWrapAnywhere(on: Boolean): Unit = ()
+  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
+    * here. */
+  def setTextLimit(width: Double, lines: Int): Unit = ()
+  /** Words measure as they will be drawn from the moment they are set. */
+  def textMeasurable(ready: () => Unit): Boolean = true
 
   /** Text's alignment and wrap width, a field's alignment and orientation, for the alignment and the direction. A line
     * that is neither wrapped nor aligned away from the left keeps no wrap width, so it never wraps. */

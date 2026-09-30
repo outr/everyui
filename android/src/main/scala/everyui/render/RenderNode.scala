@@ -945,6 +945,11 @@ class RenderNode(val view: View) {
 
   /** A TextView breaks a word too long for its line where it must already. */
   def setWrapAnywhere(on: Boolean): Unit = ()
+  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
+    * here. */
+  def setTextLimit(width: Double, lines: Int): Unit = ()
+  /** Words measure as they will be drawn from the moment they are set. */
+  def textMeasurable(ready: () => Unit): Boolean = true
 
   /** Text on the side the app reads from, whatever script its words are in: a TextView's own start is where its
     * first letter reads from, so a Latin line in Arabic sat on the left. A field is mirrored with the root already, so

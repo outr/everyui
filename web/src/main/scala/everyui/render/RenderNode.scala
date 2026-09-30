@@ -514,6 +514,12 @@ class RenderNode(val el: html.Element) {
   def setTextDirection(value: String): Unit = if (value.isEmpty) el.removeAttribute("dir") else el.setAttribute("dir", value)
   /** A word too long for its line broken where it must be (a URL, a path), so it never runs past the box. */
   def setWrapAnywhere(on: Boolean): Unit = el.style.setProperty("overflow-wrap", if (on) "anywhere" else "")
+  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) held to their room by the page until the cut is made
+    * (TextFit). */
+  def setTextLimit(width: Double, lines: Int): Unit = TextFit.limit(el, width, lines)
+  /** Whether the words measure as they will be drawn: on the page, in a face that has loaded (TextFit); `ready` once a
+    * face they wait for has. */
+  def textMeasurable(ready: () => Unit): Boolean = TextFit.ready(el, ready)
 
   /** An `<input>`'s contents. */
   def getValue(): String = el match {

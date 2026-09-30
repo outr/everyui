@@ -8,7 +8,7 @@ import everyui.theme.Theme
 import reactify.Var
 
 class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
-  lazy val content: Prop[String] = own(new Prop[String](node.getText(), _ => fit(), () => measure.trigger()))
+  lazy val content: Prop[String] = own(new Prop[String](node.getText(), _ => fit()))
   /** The widest these words may be drawn on one line: what will not fit is cut short with an ellipsis, as a title
     * beside a chip is, so whatever sits after them keeps its place. 0 for no limit. */
   lazy val maxWidth: Var[Double] = own(Var(0.0))
@@ -51,16 +51,52 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   size.width.attach(_ => if (size.width.explicit && whiteSpace() != WhiteSpace.NoWrap) {
     if (maxLines() > 0) fit() else measure.trigger()
   })
+  // the cut is being made, whether it was made where the words could not yet be measured as they will be drawn (off
+  // the page, or in a face still loading), and whether the page holds them to their room while it waits (setTextLimit)
+  private var fitting = false
+  private var unfit = false
+  private var held = false
+  private def limited: Boolean = maxWidth() > 0.0 || maxLines() > 0
+
   maxWidth.attach(_ => fit())
   maxLines.attach(_ => fit())
+  // drawn in another face or size, the words are cut again: the cut was made in the one before
+  measure.on(if (!fitting && limited) fit())
+
+  // words that could not be measured when they were set are cut once they can be: as they join the page, whose sizes
+  // are read then, or once their face has loaded
+  override private[everyui] def beforeRead(): Unit = if (unfit && node.textMeasurable(refit)) fit(announce = false)
+  private val refit: () => Unit = () => if (unfit && !takenApart) fit()
 
   /** Draw the words, or as many of them as `maxWidth` or `maxLines` leaves room for with an ellipsis after. The
     * platform measures each try, so the cut is the one the words really take, and not a guess at how wide a letter
     * is. */
-  private def fit(): Unit = {
+  private def fit(announce: Boolean = true): Unit = {
+    fitting = true
+    try {
+      cut()
+      // what is drawn decides the width: a cut that came from a narrower `maxWidth` changes nothing else
+      if (announce) measure.trigger()
+    } finally fitting = false
+  }
+
+  private def cut(): Unit = {
     val wanted = content()
     val limit = maxWidth()
+    val lines = if (maxLines() > 0 && whiteSpace() != WhiteSpace.NoWrap) maxLines() else 0
     node.setText(wanted)
+    unfit = (limit > 0.0 || lines > 0) && !node.textMeasurable(refit)
+    // measured whole, then held to the room it has; where it cannot be measured yet, only held
+    if (held) node.setTextLimit(0.0, 0)
+    held = limit > 0.0 || lines > 0
+    if (unfit) node.setTextLimit(limit, lines)
+    else {
+      cutTo(wanted, limit, lines)
+      if (held) node.setTextLimit(limit, lines)
+    }
+  }
+
+  private def cutTo(wanted: String, limit: Double, lines: Int): Unit = {
     if (limit > 0.0 && node.getWidth() > limit) {
       var fewest = 0
       var most = wanted.length
@@ -71,8 +107,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       }
       node.setText(wanted.substring(0, fewest) + "…")
     }
-    val lines = maxLines()
-    if (lines > 0 && whiteSpace() != WhiteSpace.NoWrap && wanted.nonEmpty) {
+    if (lines > 0 && wanted.nonEmpty) {
       // a line's height, from one letter: n lines are no taller than n of them, give or take half of one
       node.setText(wanted.substring(0, 1))
       val one = node.getHeight()
@@ -92,8 +127,6 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
         node.setText(wanted.substring(0, cut).trim + "…")
       }
     }
-    // what is drawn decides the width: a cut that came from a narrower `maxWidth` changes nothing else
-    measure.trigger()
   }
 
   override def kind: String = "TextView(" + content() + ")"

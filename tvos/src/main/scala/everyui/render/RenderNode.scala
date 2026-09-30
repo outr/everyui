@@ -258,6 +258,11 @@ class RenderNode(val sg: SGNode) {
   def setTextAlign(align: String): Unit = ()
   def setTextDirection(value: String): Unit = ()
   def setWrapAnywhere(on: Boolean): Unit = ()
+  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
+    * here. */
+  def setTextLimit(width: Double, lines: Int): Unit = ()
+  /** Words measure as they will be drawn from the moment they are set. */
+  def textMeasurable(ready: () => Unit): Boolean = true
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
   def getValue(): String = uiGetText(sg)

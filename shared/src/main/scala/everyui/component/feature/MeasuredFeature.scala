@@ -28,6 +28,7 @@ class MeasuredFeature(component: Component) {
   }
 
   private[feature] def read(): Unit = {
+    component.beforeRead()
     readWidth = component.node.getWidth()
     readHeight = component.node.getHeight()
   }
