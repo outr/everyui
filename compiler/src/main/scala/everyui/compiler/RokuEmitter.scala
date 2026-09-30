@@ -4578,13 +4578,53 @@ class RokuEmitter(
       |    end for
       |    return m
       |end function
-      |' Map(k -> v, ...) and map.toList
+      |' Map(k -> v, ...) and seq.toMap, built in one pass, a later pair taking the place of an earlier one with an equal
+      |' key: a keyed assoc array when every key is a String, else the entry list, each key found among those before it
+      |' through an index by its written form (_mapIndexKey), where putting each pair copied the list and compared its
+      |' key with every one before it, and 5000 chats made into a map by id took minutes
       |function _mapFromPairs(pairs as object) as object
-      |    m = _mapEmpty()
+      |    keyed = true
       |    for each t in pairs
-      |        m = _mapPut(m, t._1, t._2)
+      |        if not _rtIsStr(t._1) then keyed = false
       |    end for
-      |    return m
+      |    if keyed
+      |        m = {}
+      |        m.SetModeCaseSensitive()
+      |        for each t in pairs
+      |            m[t._1] = t._2
+      |        end for
+      |        return m
+      |    end if
+      |    r = _mapEmpty()
+      |    index = {}
+      |    index.SetModeCaseSensitive()
+      |    for each t in pairs
+      |        ik = _mapIndexKey(t._1)
+      |        at = index[ik]
+      |        if at = invalid
+      |            at = []
+      |            index[ik] = at
+      |        end if
+      |        found = -1
+      |        for each i in at
+      |            if found < 0 and _eq(r.entries[i].k, t._1) then found = i
+      |        end for
+      |        if found >= 0
+      |            r.entries[found] = { k: t._1, v: t._2 }
+      |        else
+      |            at.push(r.entries.count())
+      |            r.entries.push({ k: t._1, v: t._2 })
+      |        end if
+      |    end for
+      |    return r
+      |end function
+      |' What a key is filed under in _mapFromPairs's index: the same for any two keys _eq finds equal (a number by its
+      |' value as a Double, as _eq compares 1 with 1.0), so an equal key is always found; two unequal ones may share it
+      |function _mapIndexKey(k as dynamic) as string
+      |    kind = _rtKind(k)
+      |    if kind = "n" then return "n" + Str(Cdbl(k))
+      |    if kind = "s" then return "s" + k
+      |    return kind + _str(k)
       |end function
       |function _mapToList(m as dynamic) as object
       |    r = []
@@ -4747,7 +4787,7 @@ class RokuEmitter(
       |        return true
       |    end if
       |    if ka <> "aa" then return false
-      |    if a.DoesExist("_map") and b.DoesExist("_map") then return _mapEq(a, b)
+      |    if a.DoesExist("_map") or b.DoesExist("_map") then return _mapEq(a, b)
       |    if a._fields <> invalid and b._fields <> invalid
       |        if a._cls <> b._cls then return false
       |        for each f in a._fields
@@ -6066,11 +6106,29 @@ class RokuEmitter(
       |end function
       |function _mapPut(m as dynamic, k as dynamic, v as dynamic) as object
       |    if m = invalid then m = _mapEmpty()
-      |    if not _rtIsEntryMap(m)
+      |    ' a map of String keys is a keyed assoc array, found by key rather than by a pass over every entry: an empty
+      |    ' one becomes one with its first String key (a list's row heights, looked up for each of thousands of rows),
+      |    ' and one given a key that is not a String becomes an entry list, rather than keeping the key as its text
+      |    if _rtIsEntryMap(m) and m.entries.count() = 0 and _rtIsStr(k)
       |        c = {}
-      |        c.Append(m)
-      |        c[_str(k)] = v
+      |        c.SetModeCaseSensitive()
+      |        c[k] = v
       |        return c
+      |    end if
+      |    if not _rtIsEntryMap(m)
+      |        if _rtIsStr(k)
+      |            ' told its case counts before it is filled: a plain {} took "A" and "a" for one key
+      |            c = {}
+      |            c.SetModeCaseSensitive()
+      |            c.Append(m)
+      |            c[k] = v
+      |            return c
+      |        end if
+      |        e = _mapEmpty()
+      |        for each key in m
+      |            e.entries.push({ k: key, v: m[key] })
+      |        end for
+      |        m = e
       |    end if
       |    r = { _map: true, entries: [] }
       |    replaced = false
@@ -6089,6 +6147,7 @@ class RokuEmitter(
       |    if m = invalid then return _mapEmpty()
       |    if not _rtIsEntryMap(m)
       |        c = {}
+      |        c.SetModeCaseSensitive()
       |        c.Append(m)
       |        c.Delete(_str(k))
       |        return c
@@ -6103,22 +6162,22 @@ class RokuEmitter(
       |function _mapConcat(a as dynamic, pairs as object) as object
       |    if a = invalid then a = _mapEmpty()
       |    if pairs.count() = 0 then return a
-      |    if not _rtIsEntryMap(a)
+      |    keys = true
+      |    for each t in pairs
+      |        if not _rtIsStr(t._1) then keys = false
+      |    end for
+      |    if keys and not _rtIsEntryMap(a)
       |        r = {}
       |        r.SetModeCaseSensitive()
       |        r.Append(a)
       |        for each t in pairs
-      |            r[_str(t._1)] = t._2
+      |            r[t._1] = t._2
       |        end for
       |        return r
       |    end if
-      |    r = { _map: true, entries: [] }
-      |    r.entries.Append(a.entries)
-      |    for each t in pairs
-      |        i = _mapFind(r, t._1)
-      |        if i < 0 then r.entries.push({ k: t._1, v: t._2 }) else r.entries[i] = { k: t._1, v: t._2 }
-      |    end for
-      |    return r
+      |    ' the map's pairs and then these, made into one in a single pass (a key not a String among them, or a map kept
+      |    ' as an entry list), where each pair was looked for among all those before it
+      |    return _mapFromPairs(_concat(_mapToList(a), pairs))
       |end function
       |' map -- keys
       |function _mapRemoveAll(a as dynamic, keys as object) as object
@@ -6152,12 +6211,12 @@ class RokuEmitter(
       |    end for
       |    return r
       |end function
+      |' Two maps, either kept as a keyed assoc array or as an entry list: the same keys, each with an equal value
       |function _mapEq(a as object, b as object) as boolean
-      |    if a.entries.count() <> b.entries.count() then return false
-      |    for each e in a.entries
-      |        i = _mapFind(b, e.k)
-      |        if i < 0 then return false
-      |        if not _eq(b.entries[i].v, e.v) then return false
+      |    if _mapSize(a) <> _mapSize(b) then return false
+      |    for each t in _mapToList(a)
+      |        if not _mapHas(b, t._1) then return false
+      |        if not _eq(_mapGet(b, t._1), t._2) then return false
       |    end for
       |    return true
       |end function

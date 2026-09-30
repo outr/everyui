@@ -840,13 +840,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
         case Some((at, t)) => base.patch(math.max(0, math.min(at, base.length)), Vector(t), 0)
         case None => base
       }
-      var built = Map.empty[String, Int]
-      var i = 0
-      while (i < shown.length) {
-        built = built.updated(keyOf(shown(i)), i)
-        i += 1
-      }
-      indexes = built
+      // made in one go: a Roku's map copies itself for each key added, and 5000 rows added a key at a time took minutes
+      indexes = (0 until shown.length).toVector.map(i => keyOf(shown(i)) -> i).toMap
       topsStale = ownHeights
     }
     selection.keep(k => indexes.contains(k))

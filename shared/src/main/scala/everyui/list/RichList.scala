@@ -112,7 +112,9 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     val test = matches()
     // a section at a time (no builder: a Roku has none)
     var out = Vector.empty[RichLine[T]]
-    var found = Map.empty[String, String]
+    // each item's line, the first where it shows, as pairs made into a map in one go (a Roku's map copies itself for
+    // each key added one at a time): reversed, so the first of an item's lines is the one kept
+    var found = Vector.empty[(String, String)]
     sections().foreach { s =>
       val items = if (narrowed) s.items.filter(t => test(t, words)) else s.items
       if (!narrowed || items.nonEmpty) {
@@ -122,12 +124,12 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
           out = out :+ RichLine(GroupedList.headerKey(s.key), s, None, open, if (narrowed) items.size else s.count.getOrElse(items.size))
         if (open) {
           val shown = items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0))
-          shown.foreach(l => l.item.foreach(t => if (!found.contains(keyOf(t))) found = found.updated(keyOf(t), l.key)))
+          found = found ++ shown.flatMap(l => l.item.map(t => keyOf(t) -> l.key).toList)
           out = out ++ shown
         }
       }
     }
-    lineOf = found
+    lineOf = found.reverse.toMap
     lines @= out
   }
 
