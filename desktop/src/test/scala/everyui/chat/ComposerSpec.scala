@@ -88,6 +88,19 @@ class ComposerSpec extends FxSpec {
     }
   }
 
+  "A chat's status bar" should {
+    "be as round as the composer's card, and square with no composer" in {
+      val c = make()
+      val chat = fx(new ChatView(Var(Vector.empty[ChatEntry]), composer = Some(c)))
+      fx(chat.size.width @= 600.0)
+      fx(chat.status.radius()) shouldBe 20.0
+      fx(chat.size.width @= 300.0)
+      fx(chat.status.radius()) shouldBe 18.0
+      fx(chat.composerSlot @= None)
+      fx(chat.status.radius()) shouldBe 0.0
+    }
+  }
+
   "Enter" should {
     "send and clear, Shift+Enter not" in {
       val c = make()

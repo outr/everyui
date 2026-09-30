@@ -56,6 +56,11 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
       children += c
       transcript.exitFocus(Key.ArrowDown, c)
     }
+    // the status bar sits on the composer's card: rounded as it is, so round corners are not set against square ones
+    next match {
+      case Some(c: Composer) => status.radius := c.cornerRadius()
+      case _ => status.radius @= 0.0
+    }
     if (next.isEmpty) transcript.dropExit(Key.ArrowDown)
   }
   composerSlot.attach(c => place(c))

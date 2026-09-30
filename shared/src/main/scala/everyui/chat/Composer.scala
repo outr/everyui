@@ -99,6 +99,8 @@ class Composer(onSend: Draft => Unit,
   private val gap = 6.0
   private val lineHeight = 40.0
   private val pad: Val[Double] = own(Val(if (compact()) 6.0 else 8.0))
+  /** How round the card's corners are: 18 when compact, else 20. ChatView rounds its status bar to match. */
+  val cornerRadius: Val[Double] = own(Val(if (compact()) 18.0 else 20.0))
 
   // the suggestion put away for this turn: by typing, by Escape, or by taking it
   private val dismissed: Var[Boolean] = own(Var(false))
@@ -235,7 +237,7 @@ class Composer(onSend: Draft => Unit,
   chips.layout @= Some(FlowLayout(6.0, 6.0))
   chips.size.width := card.size.width() - pad() * 2.0
   card.size.width := size.width()
-  card.radius := (if (compact()) 18.0 else 20.0)
+  card.radius := cornerRadius()
   card.backgroundColor := Theme.raised()
   card.borderWidth := (if (dropping() || field.focused()) 2.0 else 1.0)
   card.borderColor := (if (dropping() || field.focused()) Theme.accent() else Theme.border())
