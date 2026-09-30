@@ -2190,6 +2190,52 @@ The guest talks through `everyuiEmbed.channel(name)` (`send`, `onMessage`) and d
 `everyuiEmbed.container(id)`, the embed's `id`. While the page's focus is in the guest every key is its own but the
 chords the app keeps (`Keymap.embed(name, chords*)`); a key it does not want it gives back with `embed.handBack(key)`.
 
+## WebView (`everyui.component.WebView`)
+
+A page of the web drawn in place by the platform's own engine, for what is only ever published as a page (a YouTube
+embed): Android's WebView, and on the web an `<iframe>` filling the box (`allow="autoplay; encrypted-media;
+fullscreen"`, no border, out of the tab order). `Platform.webViews()` says whether there is an engine; where there is
+none (the desktop for now, the Roku, the Apple TV) it is an empty box.
+
+```scala
+val page = new WebView("naboBridge")   // the page calls naboBridge.postMessage("...")
+page.hear(message => handle(message))
+page.source @= "/yt-embed?v=..."
+page.run("player.playVideo()")         // waits on the web for the page to load
+```
+
+On the web how the two talk depends on the page's origin:
+
+- **The app's own origin.** As on Android: `run` runs its script in the page (its window's `eval`), and the page's
+  window is lent `<bridge>` with a `postMessage(string)` that the app hears. The bridge is put on the page's window as
+  soon as it has one while it loads, and again as it finishes (each load is a new window), so a script run as the page
+  is first read may be too early for it; say things from `load` on, or post to the parent (below). What `run` is given
+  before the page has loaded is run once it has.
+- **Another origin.** Nothing can be run in it, and nothing is lent. `run(script)` posts
+  `{everyui: "run", script}` to the page, addressed to the origin of `source` alone, and the page decides what to do.
+  What the page posts to its parent (`window.parent.postMessage(s, appOrigin)`) is heard, a string as it is and an
+  object as its JSON; a message is heard only from this view's frame and the origin of its `source`.
+
+A page of another origin must never run what it is sent: anything that can post to it could run script in it. It
+should check `event.source === window.parent` and `event.origin` against the app's origin, and then act only on the
+few commands it knows, matched exactly, refusing the rest:
+
+```js
+window.addEventListener('message', e => {
+  if (e.source !== window.parent || e.origin !== 'https://app.example.com') return
+  const m = e.data
+  if (!m || m.everyui !== 'run' || typeof m.script !== 'string') return
+  const seek = /^seekTo\((\d+(?:\.\d+)?),true\)$/.exec(m.script)
+  if (m.script === 'player.playVideo()') player.playVideo()
+  else if (seek) player.seekTo(Number(seek[1]), true)
+})
+```
+
+`agent` does nothing on the web: the browser says who is asking. A WebView taken apart (`dispose`) lets its page go
+(the frame is left on `about:blank`, so what it played stops) and stops listening to the app's window.
+`demo=webview` shows `web/webview.html` (copied beside the build), or `src=<url>` for the same page served from another
+origin.
+
 ## Monaco (everyui-monaco)
 
 `"com.outr" %% "everyui-monaco" % "0.1.0-SNAPSHOT"` (Scala.js) is Monaco, VS Code's editor, as components: a port of

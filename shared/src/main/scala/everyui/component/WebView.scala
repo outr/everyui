@@ -9,12 +9,18 @@ import everyui.render.{Nodes, RenderNode}
   * Only where a platform has an engine to lend. A television's browser engine is the one thing that can show what is
   * only ever published as an embed — a YouTube video, which no API will hand over as a file — and it is the only
   * reason this exists: everything else the app draws itself. On a platform with no engine (a Roku, an Apple TV) it
-  * is an empty box, and whoever wanted the page has to want something else instead.
+  * is an empty box, and whoever wanted the page has to want something else instead (`Platform.webViews`).
+  *
+  * On the web the page is an iframe. One of the app's own origin is told things and answers as it would anywhere
+  * else; one of another origin cannot be run in, and `run` posts `{everyui: "run", script}` to it instead, for it to
+  * act on the few commands it knows, while what it posts to its parent is heard (CONSUMING.md, WebView).
   *
   * `bridge` is the name of the object the page calls to say something back: `<bridge>.postMessage("…")`. The page
   * and the app have to agree on it, and neither of them is this layer, so it is named by whoever builds the view. */
 class WebView(bridge: String, supplied: RenderNode = null)
   extends Component(if (supplied != null) supplied else Nodes.web(bridge)) {
+  onDispose(() => this.node.releaseWeb())
+
   /** The address showing. Setting it again goes there again. */
   lazy val source: Prop[String] = own(new Prop[String]("", url => this.node.setWebSource(url)))
 

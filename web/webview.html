@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WebView page</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #10233a; color: #e8eef6; font: 16px sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+  #pings { font-size: 32px; }
+</style>
+</head>
+<body>
+<div>The page in demo=webview</div>
+<div id="pings">no pings yet</div>
+<div id="where"></div>
+<script>
+  // What the app's WebView "demoBridge" shows. Where the app is of this page's origin it lends window.demoBridge and
+  // runs its scripts here; where it is not, the page and the app only post to each other, and the page does what it is
+  // asked only for the commands it knows (ping(n)), never whatever script it is sent.
+  var parentOrigin = document.referrer ? new URL(document.referrer).origin : null;
+  var pinged = 0;
+  document.getElementById('where').textContent = location.origin;
+  function say(message) {
+    var s = JSON.stringify(message);
+    if (window.demoBridge) window.demoBridge.postMessage(s);
+    else if (parentOrigin) window.parent.postMessage(s, parentOrigin);
+  }
+  function ping(n) {
+    pinged = n;
+    document.getElementById('pings').textContent = 'ping ' + n;
+    say({ event: 'pong', n: n, origin: location.origin });
+  }
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent || e.origin !== parentOrigin) return;
+    var m = e.data;
+    if (!m || m.everyui !== 'run' || typeof m.script !== 'string') return;
+    var call = /^ping\((\d+)\)$/.exec(m.script);
+    if (call) ping(Number(call[1]));
+    else say({ event: 'refused', script: m.script });
+  });
+  window.addEventListener('load', function () { say({ event: 'ready', origin: location.origin }); });
+</script>
+</body>
+</html>

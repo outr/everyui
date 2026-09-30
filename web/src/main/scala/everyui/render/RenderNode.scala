@@ -399,11 +399,14 @@ class RenderNode(val el: html.Element) {
   def setMediaSpectrum(on: Boolean): Unit = ()
   def mediaBands(): List[Double] = Nil
 
-  // ---- a page of the web ----
-  def setWebSource(url: String): Unit = ()
+  // ---- a page of the web (Nodes.web): an iframe, told things and heard through a WebFrame ----
+  private[render] var webFrame: WebFrame = null
+  def setWebSource(url: String): Unit = if (webFrame != null) webFrame.source(url)
+  // the browser says who is asking, and a page cannot be told otherwise
   def setWebAgent(agent: String): Unit = ()
-  def runWebScript(script: String): Unit = ()
-  def onWebMessage(f: String => Unit): Unit = ()
+  def runWebScript(script: String): Unit = if (webFrame != null) webFrame.run(script)
+  def onWebMessage(f: String => Unit): Unit = if (webFrame != null) webFrame.hear(f)
+  def releaseWeb(): Unit = if (webFrame != null) webFrame.release()
 
   // ---- an embed (everyui.component.Embed, Nodes.embed): the guest runs in this page, drawing into this element ----
   private[render] var embedSite: everyui.component.EmbedSite = null
@@ -830,8 +833,18 @@ object RenderNode {
 
 /** Backend node factories. */
 object Nodes {
-  /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
-  def web(bridge: String): RenderNode = container()
+  /** A page of the web: an `<iframe>` filling its box, allowed to play by itself, full screen and protected media, and
+    * out of the page's tab order, since the keys are the app's (WebFrame). */
+  def web(bridge: String): RenderNode = {
+    val frame = dom.document.createElement("iframe").asInstanceOf[html.IFrame]
+    frame.setAttribute("allow", "autoplay; encrypted-media; fullscreen")
+    frame.setAttribute("allowfullscreen", "")
+    frame.tabIndex = -1
+    frame.style.cssText = "position:absolute;left:0;top:0;border:0;margin:0;padding:0;display:block;background:#000"
+    val node = new RenderNode(frame)
+    node.webFrame = new WebFrame(frame, bridge)
+    node
+  }
 
   /** An embed's box (everyui.component.Embed): a `<div>` marked `data-everyui-embed`, so the keys are the guest's while
     * the page's focus is inside it, with an id of its own for the guest to find it by. A `site`'s scripts are loaded
@@ -1053,8 +1066,8 @@ object Nodes {
 /** The handful of non-render platform services the slice needs. */
 object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
-  /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
-  def webViews(): Boolean = false
+  /** Whether this platform has a browser engine to lend a page (Nodes.web): the browser's own, in an iframe. */
+  def webViews(): Boolean = true
   /** Whether a web guest runs in an embed here: in this very page. */
   def embeds(): Boolean = true
 

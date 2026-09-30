@@ -656,6 +656,7 @@ class RenderNode(val fx: Node) {
   def setWebAgent(agent: String): Unit = ()
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
+  def releaseWeb(): Unit = ()
 
   // ---- an embed (everyui.component.Embed, Nodes.embed): a web guest in a web view of its own, where JavaFX's web
   // view is on the classpath (WebGuest) ----

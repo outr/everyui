@@ -198,7 +198,7 @@ def publishedSources(backend: String, network: String, spice: Boolean): Seq[File
 // Real Scala.js over the live DOM (see web/src/.../RenderNode.scala for why), with the shared layer compiled in. The
 // example app's bundle is still built by scala-cli (web/project.scala), which compiles the same sources with the app:
 //
-//   mkdir -p web/out-js && cp web/index.html web/out-js/ && cp -r assets/images assets/fonts web/out-js/
+//   mkdir -p web/out-js && cp web/index.html web/webview.html web/out-js/ && cp -r assets/images assets/fonts web/out-js/
 //   scala-cli --power package web -o web/out-js/main.js -f   (add --js-mode release for Closure)
 //   sbt server/run                                           (serves web/out-js)
 lazy val web = (project in file("web"))

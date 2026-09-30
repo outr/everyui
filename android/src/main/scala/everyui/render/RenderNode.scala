@@ -274,6 +274,9 @@ class RenderNode(val view: View) {
   /** Hear what the page says back. */
   def onWebMessage(f: String => Unit): Unit = webListener = f
 
+  /** Heard no more: the app is done with the page. */
+  def releaseWeb(): Unit = webListener = _ => ()
+
   private[render] var webListener: String => Unit = _ => ()
 
   private[render] def webSaid(message: String): Unit = webListener(message)

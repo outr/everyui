@@ -37,6 +37,8 @@ import everyui.render.Platform
   *              that made it up is left reachable afterwards (DisposeSpec; `sgnodes all` on a Roku)
   *   textcut    words cut short to fit (maxWidth, maxLines) that were made before they were on the screen, and in a face
   *              still loading
+  *   webview    a page of the web (WebView) that is pinged and answers: web/webview.html beside the web build, or
+  *              `src=<url>` (the same page on another origin); an empty box where there is no engine to lend
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   dates      the date pickers: a date field and calendar, a range field and range calendar with presets, and
   *              their dialogs (`dialog=date|range`, `theme=light`, `lang=ar`, `today=`, `min=`, `max=`)
@@ -96,5 +98,6 @@ import everyui.render.Platform
   else if (demo == "captions") CaptionsDemo.run()
   else if (demo == "dispose") DisposeDemo.run()
   else if (demo == "textcut") TextCutDemo.run()
+  else if (demo == "webview") WebViewDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

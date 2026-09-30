@@ -119,6 +119,7 @@ class RenderNode(val sg: SGNode) {
   def setWebAgent(agent: String): Unit = ()
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
+  def releaseWeb(): Unit = ()
 
   // ---- an embed (everyui.component.Embed): tvOS lends no web engine (WebKit is not public there), so its fallback
   // shows ----

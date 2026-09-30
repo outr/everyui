@@ -196,6 +196,7 @@ class RenderNode(val sg: SGNode) {
   def setWebAgent(agent: String): Unit = ()
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
+  def releaseWeb(): Unit = ()
 
   // ---- an embed (everyui.component.Embed): nothing runs one here, so its fallback shows ----
   def embedId(): String = ""
