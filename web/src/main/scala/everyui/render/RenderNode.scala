@@ -248,7 +248,7 @@ class RenderNode(val el: html.Element) {
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit =
     if (kind == PointerKind.Wheel) el.addEventListener("wheel", (e: dom.WheelEvent) => {
       Platform.pointed(e)
-      f(e.deltaX, e.deltaY)
+      WheelDelta(e, el, f)
     })
     // the app's context menu in place of the browser's
     else if (kind == PointerKind.Menu) el.addEventListener("contextmenu", (e: dom.MouseEvent) => {
