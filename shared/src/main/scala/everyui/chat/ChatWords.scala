@@ -43,4 +43,6 @@ object ChatWords {
   def copy: String = word("chat.copy", "Copy")
   def copyMessage: String = word("chat.copyMessage", "Copy message")
   def selectAll: String = word("chat.selectAll", "Select all")
+  /** "About Ada", the menu's way to a message's author. */
+  def about(name: String): String = word("chat.about", "About {name}").replace("{name}", name)
 }

@@ -13,6 +13,9 @@ import reactify.*
 class StatusBar(working: Var[Vector[Working]], connection: Var[ConnectionState], now: Val[Long]) extends Container {
   /** Whether more than two at work are each shown, rather than counted. */
   val expanded: Var[Boolean] = own(Var(false))
+  /** What a press on a worker's avatar does: their picture unless the conversation says otherwise (`ChatView` hands on
+    * its transcript's `onAuthor`). */
+  val onAuthor: Var[Option[AuthorPressed => Unit]] = own(Var(None))
 
   private val column: Container = Column(2.0)()
   column.position.left := everyui.list.ListRow.along(StatusBar.inset, column.size.width(), size.width())
@@ -49,6 +52,8 @@ class StatusBar(working: Var[Vector[Working]], connection: Var[ConnectionState],
 
   private def workLine(w: Working): Container = {
     val who = new Avatar(w.who, 18.0)
+    MessageView.pressable(who, () => onAuthor().getOrElse(AuthorPressed.showPicture)(AuthorPressed(w.who, None)),
+      AuthorPressed.answers(w.who, onAuthor()))
     val what = words(w.who.name + " · " + w.what)
     val took = words(ChatTime.span(now() - w.since), Theme.muted())
     w.cancel match {

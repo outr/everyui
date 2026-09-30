@@ -27,6 +27,10 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
                render: (Val[String], Val[Double]) => Component = MessageMarkdown.render) extends Container {
   val transcript: Transcript = new Transcript(entries, loadOlder, render)
   val status: StatusBar = new StatusBar(working, connection, transcript.ticker.now)
+  status.onAuthor := transcript.onAuthor()
+  /** What a press on an author's avatar or name does, in the transcript and the status bar: the app's handler, or with
+    * none their picture over the screen (`AuthorPressed.showPicture`). */
+  def onAuthor: Var[Option[AuthorPressed => Unit]] = transcript.onAuthor
   /** What types the messages: the app's, filling the width at the bottom; none, and the transcript takes the room. */
   val composerSlot: Var[Option[Component]] = own(Var(composer))
 

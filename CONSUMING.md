@@ -966,6 +966,19 @@ transcript.menu @= (e => transcript.menuFor(e) ++ (e match {
 }))
 ```
 
+A click on a message's avatar or its author's name, and on a worker's avatar in the status bar, is an `AuthorPressed`
+(the participant, and the message's id where it was a message). `onAuthor` (on the `ChatView` or its `Transcript`) is
+the app's: None by default, which shows the author's picture whole over the screen (`AuthorPressed.showPicture`: the
+`ImageViewer` at the avatar's own address, closed by Escape, Back or a click outside the picture) where they have one,
+and does nothing where they are only a letter. Where a press does something the avatar and the name show the hand; the
+click is theirs alone, so it neither moves the transcript's cursor nor starts a selection. The avatar is not a stop for
+the focus of its own (the transcript is one, its cursor on the entries); the keyboard and a remote reach the author
+through the message's menu, whose About entry does the same.
+
+```scala
+chat.onAuthor @= Some(p => showProfile(p.participant.id))
+```
+
 ### Letter spacing (`font.letterSpacing`)
 
 `font.letterSpacing` is the space added after each letter, in pixels (negative draws them closer; 0, the default, is

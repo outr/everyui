@@ -13,9 +13,10 @@ import reactify.*
   * avatar, the name and when it was said (`now` keeps "5m" current); the rest of the group sit close under it. Under
   * the bubble go the app's `meta` line and, while the words are still arriving, a small spinner. When it was said has
   * its date too unless the transcript names the days (`dated`). The words can be selected and copied
-  * (`Component.selectable`). */
+  * (`Component.selectable`). A click on the avatar or the name is `pressAuthor`, under the hand where it `answers`. */
 class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: Val[Long],
-                  render: (Val[String], Val[Double]) => Component, dated: Boolean = true) extends Container {
+                  render: (Val[String], Val[Double]) => Component, dated: Boolean = true,
+                  pressAuthor: () => Unit = () => (), answers: => Boolean = false) extends Container {
   private val top: Double = if (leads) Transcript.groupGap else Transcript.lineGap
 
   private val name: TextView = new TextView {
@@ -80,7 +81,9 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     face.position.left := ListRow.along(Transcript.side, Transcript.avatar, width)
     face.position.top @= top
     children += face
+    MessageView.pressable(face, pressAuthor, answers)
   }
+  if (!m.self) MessageView.pressable(name, pressAuthor, answers)
   size.width := width
   size.height := footer.position.top() + (if (footer.visible()) footer.size.height() + 2.0 else -3.0)
   children ++= List(header, bubble, footer)
@@ -89,6 +92,16 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
 }
 
 object MessageView {
+  /** `c` pressed is `press`, the click kept from the row under it, and under the hand while it `answers`. */
+  def pressable(c: Component, press: () => Unit, answers: => Boolean): Unit = {
+    c.event.click.attach { e =>
+      e.consume()
+      if (answers) press()
+    }
+    // (the arrow where it does nothing: a click listened for alone gives the hand)
+    c.cursor := (if (answers) "pointer" else "default")
+  }
+
   /** A bubble's colour: one's own a wash of the accent, everybody else's the control colour; the text colour reads on
     * either, in a light theme and a dark one. */
   def fill(self: Boolean): Color = if (self) Theme.accent().withAlpha(0.2) else Theme.control()

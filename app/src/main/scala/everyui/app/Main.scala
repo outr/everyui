@@ -23,7 +23,7 @@ import everyui.render.Platform
   *   rows       a table of `n=` rows built and then grown a row at a time, timed
   *   composer   a chat's composer: suggestions, attachments, @-mentions and /commands, a reply faked as busy
   *   chat       a group room in a ChatView: streaming replies, tool calls, reasoning, 2000 earlier entries (`theme=light`,
-  *              `rtl=1`, `offline=1`, `probe=1`)
+  *              `rtl=1`, `offline=1`, `probe=1`, `author=log`)
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
   *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus

@@ -15,7 +15,7 @@ import scala.concurrent.duration.*
 /** Pictures one at a time over the whole screen: whole, on black, Left and Right to the one before and after, sliding
   * across as a page does in a fifth of a second, and which of how many at the foot. The ones either side are fetched
   * while one is looked at, so the next is there to slide in. `sources` are the pictures' addresses, at the size to show
-  * them; `closed` hears it go (Back). */
+  * them; `closed` hears it go (Back, Escape, or a click outside the picture). */
 class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => ()) {
   private val index: Var[Int] = Var(start)
 
@@ -84,6 +84,12 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
         show(next, step)
         near(next)
       }
+    }
+    // a click on the black about the picture closes it, as one outside it does
+    panel.event.click.attach { e =>
+      val x = e.x - panel.absoluteLeft - view.position.left()
+      val y = e.y - panel.absoluteTop - view.position.top()
+      if (x < 0.0 || y < 0.0 || x > view.size.width() || y > view.size.height()) Modal.remove(panel)
     }
     show(start, 0)
     near(start)

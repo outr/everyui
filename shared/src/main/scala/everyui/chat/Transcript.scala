@@ -60,6 +60,10 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val ticker: Ticker = new Ticker(1.0)
   /** Whether it is kept at the newest entry, and how many have arrived below while it is not. */
   val pin: BottomPin = new BottomPin()
+  /** What a press on a message's avatar or author's name does (a click, a tap, or the author's entry in its context
+    * menu): the app's handler, or with none their picture over the screen (`AuthorPressed.showPicture`), where they
+    * have one. */
+  val onAuthor: Var[Option[AuthorPressed => Unit]] = own(Var(None))
   /** What the context menu on an entry offers: `menuFor` unless the app says otherwise; nothing, no menu. */
   val menu: Var[ChatEntry => List[MenuItem]] = own(Var((e: ChatEntry) => menuFor(e)))
   /** Whether earlier entries are being fetched. */
@@ -123,7 +127,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   /** The view for `entry` in `row`, which is taken apart again when the row moves on. */
   private[chat] def viewFor(entry: ChatEntry, leading: Boolean, row: ChatRow): Component = entry match {
-    case m: ChatEntry.Message => new MessageView(m, leading, row.size.width(), ticker.now, render, !dayMarkers())
+    case m: ChatEntry.Message => new MessageView(m, leading, row.size.width(), ticker.now, render, !dayMarkers(),
+      () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()))
     case a: ChatEntry.Activity => new ActivityView(a, row.size.width(), () => a.details.map(make => keep(a.id, make)))
     case t: ChatEntry.Thinking => new ThinkingView(t, row.size.width(), ticker.now)
     case m: ChatEntry.Marker => new MarkerView(m, row.size.width())
@@ -201,20 +206,32 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case _ => ()
   }
 
+  /** `pressed` answered: by the app's `onAuthor`, else their picture. */
+  def pressAuthor(pressed: AuthorPressed): Unit = onAuthor().getOrElse(AuthorPressed.showPicture)(pressed)
+
+  // the entry for a message's author in its menu, where a press on them does anything: the keyboard's and a remote's
+  // way to them, the transcript being one stop for the focus
+  private def authorItem(m: ChatEntry.Message): List[MenuItem] =
+    if (m.self || !AuthorPressed.answers(m.author, onAuthor())) Nil
+    else List(MenuItem.separator, MenuItem(ChatWords.about(m.author.name),
+      () => pressAuthor(AuthorPressed(m.author, Some(m.id))), MaterialIcon.Person))
+
   // ---- copying ----
 
   /** What a context menu on `entry` offers by default: on a message, where there is a clipboard, Copy (the words
     * selected, where the platform selects them: only while some are), Copy message (its text, as it was written) and
-    * Select all (the words of the entries drawn); nothing on anything else. */
+    * Select all (the words of the entries drawn), and About the author (`onAuthor`) where a press on them does
+    * anything; nothing on anything else. */
   def menuFor(entry: ChatEntry): List[MenuItem] = entry match {
     case m: ChatEntry.Message if Clipboard.copies =>
       val whole = MenuItem(ChatWords.copyMessage, () => Clipboard.copy(m.text()))
-      if (!Platform.selectsText()) List(whole)
+      if (!Platform.selectsText()) whole :: authorItem(m)
       else {
         val selected = Platform.selectedText()
         List(MenuItem(ChatWords.copy, () => Clipboard.copy(selected), enabled = selected.nonEmpty), whole,
-          MenuItem(ChatWords.selectAll, () => list.selectText()))
+          MenuItem(ChatWords.selectAll, () => list.selectText())) ++ authorItem(m)
       }
+    case m: ChatEntry.Message => authorItem(m).drop(1)
     case _ => Nil
   }
 

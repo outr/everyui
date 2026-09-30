@@ -18,10 +18,12 @@ import reactify.*
   * Arabic ones right to left and the English ones left to right whichever way the app reads, and a long link, path and
   * hash break inside their bubble. Messages are Markdown: the long reply has a list, a table, code and a link, and an
   * Arabic one a list whose bullets stand on its right. What is typed in the field at the bottom is sent as yours, and
-  * answered. `theme=light` for the light theme, `rtl=1` for right to left. Logs `chat ok` once built. */
+  * answered. Sam has a picture, which a click on his avatar or name shows whole; `author=log` logs the press
+  * (`chat author <id> <message>`) in its place. `theme=light` for the light theme, `rtl=1` for right to left. Logs
+  * `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
-  private def sam: Participant = Participant("u-sam", "Sam")
+  private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
   private def helper: Participant = Participant("agent-helper", "Helper")
   private def scout: Participant = Participant("agent-scout", "Scout")
   private def layla: Participant = Participant("u-layla", "ليلى")
@@ -63,6 +65,9 @@ object ChatDemo {
         Platform.after(0.8, () => reply(entries, working, scout, "Noted: \"" + text.trim + "\". I'll fold it into the plan."))
       }
     }
+    if (Platform.launchArg("author") == "log")
+      chat.onAuthor @= Some((p: AuthorPressed) =>
+        Platform.log("chat author " + p.participant.id + " " + p.messageId.getOrElse("-")))
     ui.children += chat
     chat.focus()
     play(entries, working, connection, chat)
