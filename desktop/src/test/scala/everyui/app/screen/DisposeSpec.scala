@@ -11,7 +11,12 @@ import java.lang.ref.WeakReference
 
 /** A screen shown once and left is taken apart, and then nothing keeps it: not the manager, the focus, the layout pass,
   * the theme, the clock or anything else that lives on. The guide is `DisposeGuide`: a dozen theatres, each with a tile
-  * following the clock and a rail of showtimes, the focus on one of them as it is left. */
+  * following the clock and a rail of showtimes, the focus on one of them as it is left.
+  *
+  * A reactify value keeps the value it had before its last change, so the screen manager's `active` holds the screen
+  * shown before this one, and the focus the component focused before this one, until the next change: each check moves
+  * on once more (another screen, and so another focus) before it looks, and a board is checked once two more have
+  * followed it. */
 class DisposeSpec extends FxSpec {
   private object Manager extends ScreenManager
   private lazy val home = new DisposePlain(Manager, "Home", "/")
@@ -72,6 +77,11 @@ class DisposeSpec extends FxSpec {
   /** How many of what `left` names are still reachable: waited for, a collection at a time, until none is or eight
     * seconds have passed (it is taken apart a second after it is out of sight, a slice a turn). */
   private def surviving(left: Left): Int = {
+    // on to another screen, so what was last shown and last focused before it is not the guide (see above)
+    fx(Manager.showOver(home, home).startUnit())
+    eventually(Manager.active().exists(_ eq home)) shouldBe true
+    fx(Manager.showOver(calendar, home).startUnit())
+    eventually(Manager.active().exists(_ eq calendar)) shouldBe true
     def count = (left.parts :+ left.screen).count(_.get() != null)
     val until = System.currentTimeMillis() + 8000L
     while (count > 0 && System.currentTimeMillis() < until) {
@@ -114,7 +124,8 @@ class DisposeSpec extends FxSpec {
         parts.map(p => new WeakReference(p))
       }
       boards.last.count(_.get() == null) shouldBe 0
-      surviving(Left(new WeakReference(new Object), boards.init.flatten.toVector)) shouldBe 0
+      // (the board before the last is still the stage's previous children: see above)
+      surviving(Left(new WeakReference(new Object), boards.dropRight(2).flatten.toVector)) shouldBe 0
     }
   }
 }

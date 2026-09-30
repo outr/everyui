@@ -11,6 +11,7 @@ import everyui.render.Platform
   *   [ui] dispose: guide left
   *   [ui] dispose: settled
   *
+  * (`quiz=0` stops once the guide is left, `theatres=<n>` sizes the guide)
   * after which nothing that made up the guide is reachable (`DisposeSpec` checks it on the desktop; on a Roku, the
   * guide's labels are gone from `sgnodes all`). */
 object DisposeDemo extends ScreenManager {
@@ -31,7 +32,7 @@ object DisposeDemo extends ScreenManager {
         // taken apart a second after it is out of sight, and collected two after that
         Platform.after(4.0, () => {
           Platform.log("dispose: settled")
-          quizzes()
+          if (Platform.launchArg("quiz") != "0") quizzes()
         })
       }.startUnit())
     }.startUnit())
