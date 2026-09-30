@@ -32,18 +32,22 @@ object TextFit {
   // letter. The browser's own `check` answers that a face still loading, or never asked for, is ready.
   private def waitsFor(el: html.Element, fonts: js.Dynamic): js.Array[js.Dynamic] = {
     val style = el.style
-    val family = style.fontFamily.split(",").headOption.map(_.trim.stripPrefix("\"").stripSuffix("\"")
-      .stripPrefix("'").stripSuffix("'")).getOrElse("")
+    val family = named(style.fontFamily.split(",").headOption.getOrElse(""))
     val slant = if (style.fontStyle.isEmpty) "normal" else style.fontStyle
     val weight = if (style.fontWeight.isEmpty) "400" else style.fontWeight
     val own = js.Array.from(fonts.asInstanceOf[js.Iterable[js.Dynamic]])
-      .filter(f => f.family.asInstanceOf[String] == family && f.style.asInstanceOf[String] == slant)
+      .filter(f => named(f.family.asInstanceOf[String]) == family && f.style.asInstanceOf[String] == slant)
     val weighted = own.filter(_.weight.asInstanceOf[String] == weight)
     (if (weighted.isEmpty) own else weighted).filter { f =>
       val status = f.status.asInstanceOf[String]
-      status == "loading" || (status == "unloaded" && f.unicodeRange.asInstanceOf[String] == "U+0-10FFFF")
+      val everyLetter = f.unicodeRange.asInstanceOf[String].equalsIgnoreCase("U+0-10FFFF")
+      status == "loading" || (status == "unloaded" && everyLetter)
     }
   }
+
+  // a family as it is named, whether quoted (Firefox quotes a FontFace's own) or not
+  private def named(family: String): String =
+    family.trim.stripPrefix("\"").stripSuffix("\"").stripPrefix("'").stripSuffix("'")
 
   /** Hold `el`'s words to `width` (0 for no limit), with an ellipsis where one line runs past it, and to `lines`
     * lines of its line height (0 for no limit). 0 and 0 lifts the limit, for the words to be measured whole. */
