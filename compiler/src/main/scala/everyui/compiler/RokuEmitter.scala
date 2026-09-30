@@ -1665,6 +1665,10 @@ class RokuEmitter(
             case Select(recv, "getMessage") if args.isEmpty => s"_getMessage(${emitTerm(recv)})"
             case Select(recv, "getSimpleName" | "getName") if args.isEmpty && getClassRecv(recv).isDefined =>
               s"_clsName(${emitTerm(getClassRecv(recv).get)})"
+            // `a.getClass == b.getClass`: the class a value was made of, as its name, which two values of one class share
+            // (and two cases of one enum, where `_clsName` would tell them apart); a call to a method of that name that
+            // no class has, otherwise, which only brighterscript would catch
+            case Select(recv, "getClass") if args.isEmpty => s"_clsOf(${emitTerm(recv)})"
             // ── stdlib the emitter models directly (runtime shims) ──
             case _ if fnIs(fn, "scala.Option", "apply") && args.size == 1 => emitArgVal(args.head)
             // `Try(body)`: the body run under a try, answering a Success or a Failure as the runtime's Try ops read them
@@ -5738,6 +5742,11 @@ class RokuEmitter(
       |end function
       |function _clsName(x as dynamic) as string
       |    if _rtKind(x) = "aa" and x._name <> invalid then return _str(x._name)
+      |    if _rtKind(x) = "aa" and x._cls <> invalid then return _str(x._cls)
+      |    return type(x)
+      |end function
+      |' x.getClass, for comparing: its class's name (not a case object's own, which _clsName gives), else its type
+      |function _clsOf(x as dynamic) as string
       |    if _rtKind(x) = "aa" and x._cls <> invalid then return _str(x._cls)
       |    return type(x)
       |end function

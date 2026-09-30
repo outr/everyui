@@ -1321,6 +1321,11 @@ func _clsName(_ x: V) -> V {
     if case .vObj = x, rtHas(x, "_cls") { return _str(x["_cls"]) }
     return .vStr(rtKindName(x))
 }
+// x.getClass, for comparing: its class's name (not a case object's own, which _clsName gives), else its kind
+func _clsOf(_ x: V) -> V {
+    if case .vObj = x, rtHas(x, "_cls") { return _str(x["_cls"]) }
+    return .vStr(rtKindName(x))
+}
 func _regex(_ pattern: V) -> V { .vRef(try! NSRegularExpression(pattern: rtS(pattern))) }
 
 // MARK: - java.util.concurrent.atomic.AtomicBoolean, java.lang.ThreadLocal (one thread)
