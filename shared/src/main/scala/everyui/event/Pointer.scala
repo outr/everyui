@@ -20,6 +20,19 @@ object Pointer {
   /** Whether a pointer was used just now: a focus that moves now was moved by it, not by a key. */
   def recent: Boolean = Platform.ticks() - usedAt < lately
 
+  private var focusing: Option[PointerEvent] = None
+  private var focusingAt: Double = 0.0
+
+  /** Record that `event`, climbing, focused a component: the ones it climbs through after, its containers, do not take the
+    * focus from it. */
+  def focused(event: PointerEvent): Unit = {
+    focusing = Some(event)
+    focusingAt = Platform.ticks()
+  }
+
+  /** Whether `event` has already focused a component inside the one it is climbing through now. */
+  def focusedBy(event: PointerEvent): Boolean = focusing.contains(event) && Platform.ticks() - focusingAt < hold
+
   /** Whether `event` is the one just consumed, still climbing, which the components under it must not fire. */
   def blocks(event: PointerEvent): Boolean =
     consumed.contains(event) && Platform.ticks() - consumedAt < hold
