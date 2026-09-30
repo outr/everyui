@@ -400,7 +400,7 @@ object SnapshotAccess {
     val links = dom.document.querySelectorAll("link[rel=preload][as=font]")
     (0 until links.length).map(links(_).getAttribute("href")).find { href =>
       href != null && href.takeWhile(_ != '?').endsWith("/fonts/" + face.file)
-    }.getOrElse("fonts/" + face.file)
+    }.getOrElse(WebAssets.url("fonts/" + face.file))
   }
 
   private[render] def px(d: Double): String = num(d) + "px"

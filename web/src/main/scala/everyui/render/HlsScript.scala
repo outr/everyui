@@ -17,7 +17,8 @@ object HlsScript {
   /** The version of hls.js bundled (project/HlsAssets.scala). */
   val version: String = "1.7.3"
 
-  /** Where its files are: relative to the page's base (its `<base href>`, else its address), or a whole address. */
+  /** Where its files are: relative to the page's base (its `<base href>`, else its address), under a sealed bundle's
+    * (WebAssets), or a whole address. */
   var root: String = "everyui-hls/" + version
 
   private var loaded = false
@@ -65,5 +66,5 @@ object HlsScript {
   // its workerPath against the page's own address, which on a deep route (/play/show/1973) a single-page host answers
   // with the page itself
   private def file(name: String): String =
-    new dom.URL((if (root.endsWith("/")) root else root + "/") + name, dom.document.baseURI).href
+    new dom.URL(WebAssets.url((if (root.endsWith("/")) root else root + "/") + name), dom.document.baseURI).href
 }

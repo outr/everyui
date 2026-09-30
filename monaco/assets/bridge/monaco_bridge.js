@@ -16,6 +16,8 @@
   if (window.monacoBridge) return;
 
   var channel = window.everyuiEmbed.channel('monaco');
+  // where this script was loaded from (the root is the directory above bridge/), which the page's own files follow
+  var script = document.currentScript;
 
   var bridge = {
     _ready: false,
@@ -77,8 +79,10 @@
   handlers['bridge.init'] = function (args) {
     if (bridge._ready) return { version: window.monaco && monaco.editor && args.version || null };
     if (bridge._loading) return bridge._loading;
-    // in a web view of its own the page is served from the root; in the app's page the root is where it says
-    var base = new URL(window.everyuiEmbed.hosted ? './' : (args.base || './'), document.baseURI).href;
+    // in a web view of its own the page is served from the root; in the app's page the root is where this script came
+    // from (a sealed bundle's base, WebAssets), else where the app says
+    var base = window.everyuiEmbed.hosted ? new URL('./', document.baseURI).href :
+      script && script.src ? new URL('../', script.src).href : new URL(args.base || './', document.baseURI).href;
     if (base.charAt(base.length - 1) !== '/') base += '/';
     bridge._loading = new Promise(function (resolve, reject) {
       var css = document.createElement('link');

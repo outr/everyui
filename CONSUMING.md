@@ -1849,6 +1849,52 @@ the page.
 The server must send `main.wasm` as `application/wasm` (spice does), and a Content-Security-Policy must allow
 `'wasm-unsafe-eval'`. Source maps are not copied; a browser asks for them only with its developer tools open.
 
+### Behind a CDN: `WebBundle.seal`
+
+A bundle served through a CDN is sealed, so that everything but `index.html` can be cached for good and a new
+release is never served stale. `WebBundle.seal(out)` is the bundle task's last step, once everything is in `out`:
+
+```scala
+webBundle := Def.uncached {
+  val out = baseDirectory.value / "out"
+  IO.delete(out)
+  everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
+  IO.copyDirectory(everyuiWebFonts.value, out / "fonts")
+  IO.copyDirectory(everyuiWebGuests.value, out)
+  // l10n, images, WebApp.write, …
+  WebBundle.seal(out)
+  out
+}
+```
+
+- Every directory at the top of `out` (`fonts/`, `l10n/`, `images/`, `everyui-hls/…`, the WebAssembly build's
+  `wasm-…/`) moves under `a/<hash>/`, the hash being of all the files in them. Dot directories (`.well-known`) stay,
+  and so do those named in `seal(out, keep = Seq("docs"))`.
+- The scripts the staging wrote are named by a hash of their bytes: `main.<hash>.js`, `everyui-loader.<hash>.js`,
+  `webapp.<hash>.js`.
+- What names them is rewritten: `index.html` (its script tag, `url(fonts/…)`, an icon's `href`), the loader, and
+  `manifest.webmanifest`'s icons: a path straight after a quote or `url(`, with `./` or `/` before it or nothing.
+- The page names the one base for the runtime, `<meta name="everyui-assets" content="a/<hash>/" data-dirs="…">`, and
+  everything everyui-web loads by path goes through it (`everyui.render.WebAssets`): fonts, translations
+  (`Strings.source`), pictures (`Platform.resolvePath`), hls.js, and the web guests' scripts (Monaco, the terminal).
+  The main script's own bytes are not touched.
+- `index.html` and the other files at the top (`sw.js`, `manifest.webmanifest`, a favicon, `robots.txt`) stay where
+  they are, to be revalidated. The service worker's cache (`WebApp.write`) is named by the bundle's hash.
+- `web-assets.json`, beside `index.html`, lists what may be cached for good, for the host's
+  `Cache-Control: public, max-age=31536000, immutable`, and what is to be revalidated (`no-cache`):
+
+```json
+{
+  "version": "5d0c3e8a41f2",
+  "immutable": ["a/3f2a9c01be47/", "main.9b1e0d6c22a4.js", "everyui-loader.71c4a5e0f3d8.js"],
+  "revalidate": ["index.html", "manifest.webmanifest", "sw.js", "web-assets.json"]
+}
+```
+
+A path ending in `/` is a prefix. `seal` answers the bundle's hash. Paths are relative to the page's base, so a
+single-page host that answers a deep route (`/some/deep/path`) with `index.html` needs `<base href="/">` in it. A
+bundle that is not sealed is staged exactly as before, and the runtime finds its files where it always did.
+
 ### Size
 
 The full link runs Scala.js's minifier on both builds: `everyuiWebMinify`, true by default (sbt-scalajs already

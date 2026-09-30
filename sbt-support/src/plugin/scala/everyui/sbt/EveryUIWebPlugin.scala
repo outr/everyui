@@ -22,6 +22,7 @@ import scala.concurrent.duration.Duration
   *     IO.copyDirectory(everyuiWebFonts.value, out / "fonts")
   *     IO.copyDirectory(everyuiWebGuests.value, out)   // everyui-hls/<version>/, everyui-monaco/<version>/, ...
   *     // icons, …
+  *     WebBundle.seal(out)   // for a CDN: hashed names, everything but index.html cached for good (optional)
   *     out
   *   }
   * }}}
@@ -45,6 +46,7 @@ object EveryUIWebPlugin extends AutoPlugin {
     type WebScripts = everyui.sbt.WebScripts
     type WebStage = everyui.sbt.WebStage
     val WebStage: everyui.sbt.WebStage.type = everyui.sbt.WebStage
+    val WebBundle: everyui.sbt.WebBundle.type = everyui.sbt.WebBundle
 
     val everyuiWebTarget = settingKey[WebTarget]("What the web app is built as: WebTarget.Js (the default), WebTarget.Wasm, or WebTarget.Both (WebAssembly where the browser runs it, JavaScript elsewhere)")
     val everyuiWebStage = settingKey[WebStage]("How far the web app is linked: WebStage.Full (the default, fullLinkJS, a release) or WebStage.Fast (fastLinkJS, for development), for its JavaScript and WebAssembly builds alike")

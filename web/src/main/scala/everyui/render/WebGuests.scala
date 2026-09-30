@@ -45,7 +45,7 @@ object WebGuests {
         said.foreach(m => deliver(guest, m))
       case script :: rest =>
         val tag = dom.document.createElement("script").asInstanceOf[dom.html.Script]
-        tag.src = site.resolve(script)
+        tag.src = WebAssets.url(site.resolve(script))
         tag.async = false
         tag.addEventListener("load", (_: dom.Event) => next(rest))
         tag.addEventListener("error", (_: dom.Event) => {

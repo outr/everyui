@@ -1112,8 +1112,8 @@ object Platform {
 
   def ticks(): Double = dom.window.performance.now()
 
-  /** Served next to index.html. */
-  def imagePath(name: String): String = "images/" + name
+  /** Served next to index.html (under a sealed bundle's base: WebAssets). */
+  def imagePath(name: String): String = WebAssets.url("images/" + name)
 
   // The window's inner size, as youi's `ui` measures it. The root clips its
   // content, so no scrollbar ever takes space out of it.
@@ -1463,7 +1463,7 @@ object Platform {
     val links = dom.document.querySelectorAll("link[rel=preload][as=font]")
     (0 until links.length).map(links(_).getAttribute("href")).find { href =>
       href != null && href.takeWhile(_ != '?').endsWith("/fonts/" + file)
-    }.getOrElse("fonts/" + file)
+    }.getOrElse(WebAssets.url("fonts/" + file))
   }
 
   def screenWidth(): Double = dom.window.innerWidth.toDouble
@@ -1578,8 +1578,8 @@ object Platform {
   def cos(x: Double): Double = math.cos(x)
 
   /** A site-absolute asset path (`/images/icon.png`), made relative to the page so the bundle works wherever
-    * it is served. */
-  def resolvePath(path: String): String = path.stripPrefix("/")
+    * it is served, and found under a sealed bundle's base (WebAssets). */
+  def resolvePath(path: String): String = WebAssets.url(path.stripPrefix("/"))
 
   /** Load `uri` and report its natural size (0 x 0 if it cannot). */
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
