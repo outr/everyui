@@ -108,16 +108,28 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
 
   /** The children follow `values`: whenever what it reads changes, each value is rendered again. `values` is data —
     * construct components only in `render`, since a component built inside the tracked expression makes its own
-    * measurements dependencies, and the list rebuilds itself forever. */
+    * measurements dependencies, and the list rebuilds itself forever.
+    *
+    * A component `render` made is taken apart (Component.dispose) at the list's next change after its value left, or
+    * with the container: left whole, it stayed bound to whatever lives on (the theme, the host's size), and a list
+    * rendered again every two seconds held every one it had ever made until the page ran out of memory. One `render`
+    * hands back from elsewhere (`parts(key)`, made before) is only removed. A `render` that hands back again one it made
+    * (a `lazy val` first read inside it) keeps what it makes: this list takes none of them apart from then on. */
   def bind[T](values: => List[T])(render: T => Component): Unit = bindAll(values, render, false)
 
-  /** `bind`, where `render` makes each component afresh: one whose value has left the list is taken apart
-    * (Component.dispose), never to be shown again. Not for a list that hands back components it keeps (`c => c`). */
+  /** `bind`, taking apart every component whose value has left the list, whether `render` made it or not. Not for a
+    * list that hands back components it keeps (`c => c`). */
   def bindMaking[T](values: => List[T])(render: T => Component): Unit = bindAll(values, render, true)
 
   private def bindAll[T](values: => List[T], render: T => Component, making: Boolean): Unit = {
     val source: Val[List[T]] = Val(values)
-    var previous: List[(T, Component)] = Nil
+    // each value with its component, and whether `render` made it (and so this takes it apart once it has left)
+    var previous: List[(T, Component, Boolean)] = Nil
+    // made by `render` and gone at the last change: taken apart at the next unless `render` hands one back
+    var leaving: List[Component] = Nil
+    // `render` handed back one it had made: it keeps them, and none is taken apart
+    var keeps = false
+    component.onDispose(() => leaving.foreach(_.dispose()))
     source.attachAndFire { all =>
       // a value still in the list keeps the component it already had: a list that grows an entry at a time would
       // otherwise build every entry again, and lose everything each had loaded (a rail of artwork) with it
@@ -128,23 +140,47 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
         if (spare.nonEmpty && ContainerFeature.same(spare.head._1, value)) {
           val kept = spare.head
           spare = spare.tail
-          value -> kept._2
+          kept
         }
         else spare.find(kept => ContainerFeature.same(kept._1, value)) match {
           case Some(kept) =>
-            val component = kept._2
-            spare = spare.filterNot(_._2 eq component)
-            value -> component
-          case None => value -> render(value)
+            spare = spare.filterNot(_._2 eq kept._2)
+            kept
+          case None =>
+            val made = renderMaking(value, render)
+            if (leaving.exists(_ eq made._2)) {
+              keeps = true
+              (value, made._2, false)
+            }
+            else made
         }
       }
       previous = rendered
       static(rendered.map(_._2).toVector)
-      if (making && spare.nonEmpty) {
-        spare.foreach(gone => gone._2.dispose())
+      val gone = if (making) spare.map(_._2) else if (keeps) Nil else leaving
+      leaving = if (making || keeps) Nil else spare.filter(_._3).map(_._2)
+      if (gone.nonEmpty) {
+        gone.foreach(_.dispose())
         everyui.render.Platform.collect()
       }
     }
+  }
+
+  /** `value` rendered, with whether `render` made the component it returned: each component made meanwhile tells
+    * Component.rendered. One rendering inside another (a list in a component another list renders) leaves the outer
+    * one seeing what it made too. */
+  private def renderMaking[T](value: T, render: T => Component): (T, Component, Boolean) = {
+    val wasRendering = Component.rendering(0)
+    val outer = Component.rendered(0)
+    Component.rendering(0) = true
+    Component.rendered(0) = Nil
+    var fresh: List[Component] = Nil
+    val out = try render(value) finally {
+      fresh = Component.rendered(0)
+      Component.rendering(0) = wasRendering
+      Component.rendered(0) = if (wasRendering) fresh ::: outer else Nil
+    }
+    (value, out, fresh.exists(_ eq out))
   }
 
   def isEmpty: Boolean = get.isEmpty

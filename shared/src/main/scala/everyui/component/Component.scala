@@ -79,6 +79,8 @@ class Component(val node: RenderNode) {
   val size: SizeFeature = new SizeFeature(this)
   // told to the screen being made, if one is (Component.making), so it can take this apart with it
   Component.making().foreach(f => f(this))
+  // and to a bound list rendering, if one is (ContainerFeature.bind), so it can take apart what its render made
+  if (Component.rendering(0)) Component.rendered(0) = this :: Component.rendered(0)
   lazy val position: PositionFeature = new PositionFeature(this)
 
   /** Whether the platform draws this at all. A component that is not shown keeps its place and its size: it is out of
@@ -220,6 +222,11 @@ object Component {
   /** While a screen is being made (its constructor's turn), what to tell of each component made: the screen keeps
     * them, so one it holds but never put on the screen (an episode box on a film's page) is taken apart with it. */
   val making: Var[Option[Component => Unit]] = Var(None)
+
+  // while a bound list renders (ContainerFeature.bind): the components made meanwhile, newest first. Arrays of one, not
+  // a Var, whose previous value would hold what was made, nor a `var` here, which a Roku may not be able to set
+  private[everyui] val rendering: Array[Boolean] = Array(false)
+  private[everyui] val rendered: Array[List[Component]] = Array(Nil)
 
   /** `v` kept at its value and no longer listening to what it was bound to. */
   def unbind[T](v: Val[T]): Unit = v.option.foreach(x => v.static(x))
