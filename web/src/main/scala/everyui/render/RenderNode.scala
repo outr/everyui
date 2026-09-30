@@ -276,6 +276,8 @@ class RenderNode(val el: html.Element) {
     el.style.overflowY = if (vertical) "auto" else "hidden"
     el.style.overflowX = if (horizontal) "auto" else "hidden"
     el.style.setProperty("scrollbar-width", "thin")
+    // a scrollbar on the left, in a right-to-left page, kept off the layout
+    if (vertical && !el.classList.contains("everyui-scroll")) ScrollGutter.watch(el)
   }
   /** The scrollbar's thumb colour, on a clear track. */
   def setScrollbarColor(hex: String): Unit = el.style.setProperty("scrollbar-color", if (hex.isEmpty) "auto" else hex + " transparent")
