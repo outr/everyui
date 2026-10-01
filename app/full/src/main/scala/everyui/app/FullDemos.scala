@@ -5,7 +5,11 @@ package everyui.app
 object FullDemos {
   /** Run the demo named `demo`, if it is one of these. Whether it was. */
   def run(demo: String): Boolean =
-    if (demo == "picker") {
+    if (demo == "treebadge") {
+      TreeBadgeDemo.run()
+      true
+    }
+    else if (demo == "picker") {
       PickerDemo.run()
       true
     }

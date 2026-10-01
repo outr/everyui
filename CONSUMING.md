@@ -929,6 +929,12 @@ On the web the words are measured once they are on the page and drawn in their o
 for, and until then the page holds them to their room itself (CSS `max-width` with `text-overflow: ellipsis`, and a
 `max-height` of their lines). `demo=textcut` shows rows of them made off the screen.
 
+`elide` says where a line too wide for `maxWidth` is cut: `Elide.End` (the default, "AppConnect…"), `Elide.Start`
+for a path or anything whose end says the most ("…/backend/app +39 −7"), or `Elide.Middle` ("backend/sr…/app"). The
+cut is measured the same way on every backend, halving the letters kept until they fit; wrapped words cut to
+`maxLines` are cut at the end. `elided` says whether the words are drawn cut short. On the web, until the words can
+be measured, the page holds them to their room with an ellipsis at the end whatever `elide` says.
+
 ### Text direction and long words (`TextView`, `RichText`)
 
 Words the app did not write (a message, a name, a title, code) should run the way their own letters do, not the
@@ -2586,6 +2592,12 @@ model.move("/src/Main.scala", Some("/app"), 0)
 model.remove("/tmp")
 tree.reveal("/src/deep/File.scala")   // opens what is above it and scrolls to it
 ```
+
+A row's label keeps its width, cut with an ellipsis only where it is wider than the row, and its badge has the room
+left between the label (and a gap) and the end, in a list's rows as in a tree's: a badge too wide for it is cut where
+`Decoration.badgeElide` says, from its start by default, so a file's folder keeps its end ("…/voidcraft/backend/app
++39 −7"), and one with no room for more than its ellipsis is not drawn. It never runs over the label. `demo=badge`
+shows a commit window's changed files at 400 wide and wider.
 
 A node changed in the model (`model.update(entry.copy(status = "M"))`) is dressed again at once, on the row already
 showing. Where the look comes from outside the node (a status map the app keeps), `tree.redecorate(key)` or

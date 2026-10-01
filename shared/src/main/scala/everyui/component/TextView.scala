@@ -2,7 +2,7 @@ package everyui.component
 
 import everyui.{Color, Gradient}
 import everyui.component.feature.FontFeature
-import everyui.component.types.{Prop, TextAlign, TextDirection, WhiteSpace}
+import everyui.component.types.{Elide, Prop, TextAlign, TextDirection, WhiteSpace}
 import everyui.render.{Nodes, RenderNode}
 import everyui.theme.Theme
 import reactify.Var
@@ -15,6 +15,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** The most lines wrapped words may take: what will not fit is cut short at a word with an ellipsis, as a synopsis
     * under an episode's name is. 0 for no limit. */
   lazy val maxLines: Var[Int] = own(Var(0))
+  /** Where words wider than `maxWidth` are cut: at the end, the default; at the start, for a path whose end says the
+    * most ("…/backend/app"); or in the middle. Wrapped words cut to `maxLines` are cut at the end. */
+  lazy val elide: Var[Elide] = own(Var(Elide.End))
+  /** Whether the words are drawn cut short to fit (`maxWidth`, `maxLines`), as last measured. */
+  lazy val elided: Var[Boolean] = own(Var(false))
   /** A shadow behind the letters themselves, not the box: an edge that keeps words readable over a picture. */
   lazy val textShadow: types.Prop[Option[everyui.Shadow]] = new types.Prop[Option[everyui.Shadow]](None, s =>
     s match {
@@ -60,6 +65,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
 
   maxWidth.attach(_ => fit())
   maxLines.attach(_ => fit())
+  elide.attach(_ => if (maxWidth() > 0.0) fit())
   // drawn in another face or size, the words are cut again: the cut was made in the one before
   measure.on(if (!fitting && limited) fit())
 
@@ -92,20 +98,23 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     if (unfit) node.setTextLimit(limit, lines)
     else {
       cutTo(wanted, limit, lines)
+      elided @= node.getText() != wanted
       if (held) node.setTextLimit(limit, lines)
     }
   }
 
   private def cutTo(wanted: String, limit: Double, lines: Int): Unit = {
     if (limit > 0.0 && node.getWidth() > limit) {
+      // the most letters kept, found in as many measures as halvings: a Roku measures each one
+      val side = elide()
       var fewest = 0
       var most = wanted.length
       while (fewest < most) {
         val half = (fewest + most + 1) / 2
-        node.setText(wanted.substring(0, half) + "…")
+        node.setText(TextView.kept(wanted, half, side))
         if (node.getWidth() <= limit) fewest = half else most = half - 1
       }
-      node.setText(wanted.substring(0, fewest) + "…")
+      node.setText(TextView.kept(wanted, fewest, side))
     }
     if (lines > 0 && wanted.nonEmpty) {
       // a line's height, from one letter: n lines are no taller than n of them, give or take half of one
@@ -137,6 +146,15 @@ object TextView {
   /** The seam's name for an alignment: "start", "center" or "end", resolved against the platform's direction. */
   def side(align: TextAlign): String =
     if (align == TextAlign.Center) "center" else if (align == TextAlign.End) "end" else "start"
+
+  /** `words` cut to `letters` of them with an ellipsis where `side` says: "AppConn…", "…ection" or "App…ion". */
+  def kept(words: String, letters: Int, side: Elide): String =
+    if (side == Elide.Start) "…" + words.substring(words.length - letters, words.length)
+    else if (side == Elide.Middle) {
+      val front = (letters + 1) / 2
+      words.substring(0, front) + "…" + words.substring(words.length - (letters - front), words.length)
+    }
+    else words.substring(0, letters) + "…"
 
   def apply(value: String, points: Double = 14.0, colour: => Color = Theme.text()): TextView = new TextView {
     content @= value
