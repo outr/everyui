@@ -2596,8 +2596,12 @@ tree.reveal("/src/deep/File.scala")   // opens what is above it and scrolls to i
 A row's label keeps its width, cut with an ellipsis only where it is wider than the row, and its badge has the room
 left between the label (and a gap) and the end, in a list's rows as in a tree's: a badge too wide for it is cut where
 `Decoration.badgeElide` says, from its start by default, so a file's folder keeps its end ("…/voidcraft/backend/app
-+39 −7"), and one with no room for more than its ellipsis is not drawn. It never runs over the label. `demo=badge`
-shows a commit window's changed files at 400 wide and wider.
++39 −7"), and one with no room for more than its ellipsis is not drawn. It never runs over the label.
+`Decoration.badgeTail` is a part after the badge that is never cut, drawn at the end with a small gap before it: a
+file's counts after its folder (`badge = "backend/app", badgeTail = "+1 −1"`), so a narrow row reads "…/backend/app
++1 −1" where one badge would have been cut to "…1 −1". The badge has the room between the label and the tail; with
+too little, the badge goes first, and the tail too where even it does not fit beside the label. `demo=badge` shows a
+commit window's changed files at 280 and 400 wide and wider.
 
 A node changed in the model (`model.update(entry.copy(status = "M"))`) is dressed again at once, on the row already
 showing. Where the look comes from outside the node (a status map the app keeps), `tree.redecorate(key)` or
