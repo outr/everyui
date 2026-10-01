@@ -251,11 +251,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** Row `index` activated, as Enter or a double click does. */
   def activate(index: Int): Unit = if (index >= 0 && index < count) itemAt(index).foreach(t => activated @= t)
 
-  /** The context menu asked for on row `index`, at `x`, `y` (the row's start, where not given). */
+  /** The context menu asked for on row `index`, at `x`, `y`, the pointer's place (the row's start, where not given: the
+    * keys asking). */
   def menuAt(index: Int, x: Double = -1.0, y: Double = -1.0): Unit = if (index >= 0 && index < count) {
     val atX = if (x < 0.0) absoluteLeft + editStartOf(index) else x
     val atY = if (y < 0.0) absoluteTop + top(index) - offset() + heightAt(index) else y
-    itemAt(index).foreach(t => menu @= ListPoint(t, keyAt(index), atX, atY))
+    itemAt(index).foreach(t => menu @= ListPoint(t, keyAt(index), atX, atY, x >= 0.0))
   }
 
   private def editStartOf(index: Int): Double = placed.get(index).map(_.editStart).getOrElse(ListRow.inset)

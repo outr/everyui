@@ -5,6 +5,7 @@ import everyui.chat.Participant
 import everyui.component.{Container, TextView}
 import everyui.component.types.FontWeight
 import everyui.font.MaterialIcon
+import everyui.i18n.Direction
 import everyui.list.{RichList, RichLook, RichSection}
 import everyui.menu.MenuItem
 import everyui.render.Platform
@@ -15,11 +16,12 @@ import reactify.*
 
 /** A conversation list (`everyui.list.RichList`): 5000 conversations in three sections (Unread, Recent and Archive),
   * with avatars (one with a picture), icons, snippets, times from now back over months, unread counts, pins and locks,
-  * a search field over them, and a menu on each (Rename…, Pin, Lock title, Delete). Conversations in Recent drag into
-  * another order. Wide, the list is a sidebar beside the conversation chosen; narrow, it fills the screen.
-  * `theme=light` for the light palette, `collapsed=<key>` to start with a section closed, `scroll=<pixels>` to start
-  * scrolled, `find=<words>` to start narrowed, and `menu=1` to open the chosen conversation's ⋮ menu. Logs `richlist ok` once built,
-  * and each thing done. */
+  * a search field over them, a menu on each (Rename…, Pin, Lock title, Delete), and one on the Unread and Recent
+  * headers (Mark all read, Collapse others), Archive's marked with an icon and without one. Conversations in Recent
+  * drag into another order. Wide, the list is a sidebar beside the conversation chosen; narrow, it fills the screen.
+  * `theme=light` for the light palette, `rtl=1` to lay it out right to left, `collapsed=<key>` to start with a section
+  * closed, `scroll=<pixels>` to start scrolled, `find=<words>` to start narrowed, and `menu=1` to open the chosen
+  * conversation's ⋮ menu. Logs `richlist ok` once built, and each thing done. */
 object RichListDemo {
   private case class Chat(id: String, title: String, snippet: String, who: Option[Participant], icon: Option[MaterialIcon],
                           updated: Long, unread: Int, pinned: Boolean, locked: Boolean)
@@ -37,6 +39,7 @@ object RichListDemo {
 
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
+    if (Platform.launchArg("rtl") == "1") Direction.set(true)
     ui.backgroundColor := Theme.background()
     val start = Clock.real()
     val chats: Var[Vector[Chat]] = Var((0 until 5000).toVector.map(i => made(i, start)))
@@ -59,6 +62,19 @@ object RichListDemo {
         chats @= chats().filterNot(_.id == c.id)
         Platform.log("richlist deleted " + c.id)
       }, MaterialIcon.Delete, danger = true)))
+    // a menu on the Unread and Recent headers, none on Archive's
+    list.sectionMenu @= { (s: RichSection[Chat]) =>
+      val others = MenuItem("Collapse others", () => {
+        collapsed @= sections().map(_.key).filterNot(_ == s.key).toSet
+        Platform.log("richlist collapsed all but " + s.key)
+      }, MaterialIcon.UnfoldLess)
+      if (s.key == "archive") Nil
+      else if (s.key == "unread") List(MenuItem("Mark all read", () => {
+        chats @= chats().map(_.copy(unread = 0))
+        Platform.log("richlist marked all read")
+      }, MaterialIcon.DoneAll), others)
+      else List(others)
+    }
     list.commit @= ((c: Chat, text: String) =>
       if (c.locked) Task.pure(Some("The title is locked"): Option[String])
       else if (text.trim.isEmpty) Task.pure(Some("A title can't be empty"): Option[String])
@@ -131,7 +147,7 @@ object RichListDemo {
     val ranked = order().flatMap(id => byId.get(id).toVector)
     sections @= Vector(RichSection("unread", "Unread", all.filter(_.unread > 0)),
       RichSection("recent", "Recent", ranked.filter(_.pinned) ++ ranked.filterNot(_.pinned)),
-      RichSection("archive", "Archive", rest.filter(c => start - c.updated >= week)))
+      RichSection("archive", "Archive", rest.filter(c => start - c.updated >= week), icon = Some(MaterialIcon.Archive)))
   }
 
   private def change(chats: Var[Vector[Chat]], id: String, f: Chat => Chat): Unit =

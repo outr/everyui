@@ -21,7 +21,9 @@ import reactify.*
   *
   * `menu` gives an item's context menu: asked for with the secondary button, a long press on a touch screen, the menu
   * key or a remote's options key, OK held, or the ⋮ at the row's end that shows with the pointer over it or the cursor
-  * on it. With `search`, a field over the list narrows it to the items `matches` finds for the words (`query`, which
+  * on it. `sectionMenu` gives a section's, asked for the same ways on its header, whose ⋮ shows with the pointer over
+  * it or the cursor on it, and always where there is no pointer; a header with none only opens and closes. With
+  * `search`, a field over the list narrows it to the items `matches` finds for the words (`query`, which
   * the app can also set), under their sections, opened; an app filtering its own sections leaves it off. With
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
   * and `moved` hears.
@@ -44,6 +46,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val selected: Var[Option[String]] = own(Var(None))
   /** An item's context menu, made afresh each time it opens: none (and no ⋮) where it is empty. */
   val menu: Var[T => List[MenuItem]] = own(Var((_: T) => Nil))
+  /** A section's menu, on its header, made afresh each time it opens: none (and no ⋮) where it is empty. */
+  val sectionMenu: Var[RichSection[T] => List[MenuItem]] = own(Var((_: RichSection[T]) => Nil))
   /** The words the list is narrowed by, where they are not empty. */
   val query: Var[String] = own(Var(""))
   /** Whether an item is one the words find: by default, one whose title or detail holds them, in any case. */
@@ -95,10 +99,17 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
 
   /** Item `t`'s menu, where it has one: dropped from `anchor` (the ⋮), else at `x`, `y`, or in the middle of the screen
     * where a remote drives the app. */
-  def openMenu(t: T, anchor: Option[Component], x: Double, y: Double): Unit = {
-    val items = menu()(t)
+  def openMenu(t: T, anchor: Option[Component], x: Double, y: Double): Unit =
+    drop(menu()(t), lookOf(t).title, anchor, x, y)
+
+  /** Section `s`'s menu, where it has one: dropped from `anchor` (its header's ⋮, or its header), else at `x`, `y`, or in
+    * the middle of the screen where a remote drives the app. */
+  def openSectionMenu(s: RichSection[T], anchor: Option[Component], x: Double, y: Double): Unit =
+    drop(sectionMenu()(s), s.title, anchor, x, y)
+
+  private def drop(items: List[MenuItem], title: String, anchor: Option[Component], x: Double, y: Double): Unit = {
     if (items.nonEmpty) {
-      if (Platform.remoteNavigation()) Menu.show(items, lookOf(t).title)
+      if (Platform.remoteNavigation()) Menu.show(items, title)
       else anchor match {
         case Some(a) => Menu.below(a, items)
         case None => Menu.at(x, y, items)
@@ -206,7 +217,11 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     case Some(t) => commit()(t, e.text)
     case None => everyui.async.Task.pure(None: Option[String])
   })
-  list.menu.attach(p => p.item.item.foreach(t => openMenu(t, None, p.x, p.y)))
+  // a header's menu at the pointer, or dropped from the header for the keys
+  list.menu.attach(p => p.item.item match {
+    case Some(t) => openMenu(t, None, p.x, p.y)
+    case None => openSectionMenu(p.item.section, if (p.pointer) None else list.rowAt(list.indexOf(p.key)), p.x, p.y)
+  })
   list.draggable := reorders() && query().trim.isEmpty
   list.accepts := ((d: Drop) => moveFor(d).exists(m => accepts()(m)))
   list.dropped.attach(d => moveFor(d).filter(m => accepts()(m)).foreach(m => moved @= m))

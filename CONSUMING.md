@@ -2673,6 +2673,23 @@ chats.selected @= Some(current.id)
 A long press opens the menu where the platform turns it into a context-menu request (Android, JavaFX, and browsers that
 fire `contextmenu` on one). `demo=richlist` has 5000 in three sections.
 
+A section can have actions of its own (a workspace, a folder, a label): `sectionMenu` (`RichSection[T] =>
+List[MenuItem]`, empty by default) gives them, on its header. The secondary button opens them at the pointer (and only
+then keeps the browser's own menu away, so a header without any leaves it); the menu key, Shift+F10 and OK held drop
+them from the header; a ⋮ at the header's end, shown with the pointer over it or the cursor on it and always where there
+is no pointer (a touch screen, a television), drops them from itself. A click or Enter on the header still opens and
+closes it; a click on the ⋮ does not. The ⋮ is not a stop for the focus: the list is one stop, its cursor on the
+header, and the keys reach the menu as they do an item's. Where a section has a menu its count sits short of the ⋮,
+whether it shows or not; without one the header is as it was. `RichSection.icon` puts an icon before the title, for a
+kind of group of its own. Right to left, the ⋮ is at the left.
+
+```scala
+val sidebar = new RichList[Chat](Var(workspaces.map(w => RichSection(w.id, w.name, w.chats, icon = Some(MaterialIcon.Folder)))),
+  _.id, look)
+sidebar.sectionMenu @= (s => List(MenuItem("New chat here", () => create(s.key)), MenuItem("Rename…", () => rename(s.key)),
+  MenuItem("Delete workspace", () => delete(s.key), danger = true)))
+```
+
 The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,
 with a magnifier, "Search" (`Words.search`) faint inside it while it is empty, and a × once it holds something. The ×
 and Escape empty it; an empty one leaves Escape to the screen (Back). Enter goes to the list, and so does Down (Up from

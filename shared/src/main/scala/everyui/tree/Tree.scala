@@ -368,7 +368,7 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
       activated @= t
     }
   }
-  list.menu.attach(p => p.item.value.foreach(t => menu @= ListPoint(t, p.key, p.x, p.y)))
+  list.menu.attach(p => p.item.value.foreach(t => menu @= ListPoint(t, p.key, p.x, p.y, p.pointer)))
 
   model.changed.attach { _ =>
     settle()
