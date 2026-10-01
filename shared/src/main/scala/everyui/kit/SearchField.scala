@@ -31,6 +31,9 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
   val submitted: Channel[String] = Channel[String]
   /** Whether the caret is in it. */
   val editing: Var[Boolean] = own(Var(false))
+  /** Holds words meant as they are typed (a pattern, a path, an identifier), never spell-checked, corrected or
+    * capitalized (`InputView.literal`). */
+  val literal: Var[Boolean] = own(Var(false))
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
@@ -72,6 +75,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     input.position.left := ListRow.along(SearchField.lead, wordsWidth(), size.width())
     input.position.top := (size.height() - 20.0) / 2.0
     input.placeholder := placeholder()
+    input.literal := literal()
     input.semantics := Semantics(label = placeholder())
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)

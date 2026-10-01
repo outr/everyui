@@ -871,6 +871,24 @@ which leaves its look; Android takes the `EditText`'s key listener away and make
 no paste and brings up no keyboard, and TalkBack reads it as not editable. A Roku's and an Apple TV's fields are only
 their words, and a read-only one asks the platform's keyboard for nothing when it is clicked.
 
+### Literal fields (`literal`)
+
+`literal @= true` on an `InputView`, a `TextInput`, a `TextArea` or a `SearchField` says the field holds text meant
+exactly as it is typed (a path, a shell command, an identifier or slug, a pattern, a branch name, a host, a key, code),
+so the platform does not check its spelling, correct it or capitalize it. It says nothing to autofill: a field can be
+literal and filled (a username is both), and `autofill` stays as it was.
+
+```scala
+val folder = new TextInput("Folder")
+folder.literal @= true          // /home/matt/projects/nabotv, with no red underlines
+```
+
+The web sets `spellcheck="false"`, `autocapitalize="none"` and `autocorrect="off"`, as it already did for the
+username, email, url, password and one-time-code autofill tokens. Android's field is plain text with no suggestions
+(`TYPE_TEXT_FLAG_NO_SUGGESTIONS`) and no capitals, rather than the visible-password variation keyboards also honour,
+which would tell autofill it is a password. The desktop (JavaFX) checks no spelling to begin with, and a Roku's and
+an Apple TV's text comes from the platform's own keyboard, which is left as it is.
+
 ### Italic (`font.italic`)
 
 `font.italic @= true` slants the words of anything with a `font`: a `TextView`, a `RichText` (every run, as the

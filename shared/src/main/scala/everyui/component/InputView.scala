@@ -36,6 +36,11 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   /** Which of a form's groups it belongs to where one form asks twice ("shipping", "billing", or a name of the app's):
     * the delivery address kept apart from the billing one. */
   val section: Var[String] = own(Var(""))
+  /** Holds text meant as it is typed (a path, a command, an identifier, a pattern, a host, code), which the platform
+    * neither checks the spelling of, corrects nor capitalizes, whatever it is filled with (`autofill` is unchanged).
+    * The web and Android do as it says; the desktop checks no spelling anyway, and a Roku's and an Apple TV's keyboard
+    * is the platform's own. */
+  val literal: Var[Boolean] = own(Var(false))
   /** Its name to autofill and password managers, the same on every visit ("email", "login-password"); empty, it is
     * named by its hint. */
   val fieldName: Var[String] = own(Var(""))
@@ -46,7 +51,7 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
 
   private def hint(): Unit =
-    node.setAutofill(autofill().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey())
+    node.setAutofill(autofill().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey(), literal())
 
   /** Choose all of what it holds, so what is typed next replaces it (a value being changed rather than added to). */
   def selectAll(): Unit = node.selectAllInput()
@@ -64,6 +69,7 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   passkey.attach(_ => hint())
   section.attach(_ => hint())
   fieldName.attach(_ => hint())
+  literal.attach(_ => hint())
 
   override def kind: String = "InputView"
 }

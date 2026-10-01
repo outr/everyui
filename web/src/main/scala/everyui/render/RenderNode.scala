@@ -621,7 +621,7 @@ class RenderNode(val el: html.Element) {
     * (`inputmode`: the type otherwise stays text, which keeps the caret and the selection the page's to set). "off"
     * keeps them all out (a search box, notes, a guest's name), with the markers 1Password, LastPass, Bitwarden and
     * Dashlane go by; "" says nothing. */
-  def setAutofill(token: String, section: String, name: String, passkey: Boolean): Unit = {
+  def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean): Unit = {
     def attribute(key: String, value: String): Unit =
       if (value.isEmpty) el.removeAttribute(key) else el.setAttribute(key, value)
     val off = token == "off"
@@ -648,10 +648,11 @@ class RenderNode(val el: html.Element) {
       case "one-time-code" | "cc-number" | "cc-csc" => "numeric"
       case _ => ""
     })
-    // what is typed as it is meant, not as the phone would correct it
-    val literal = Set("username", "email", "url", "current-password", "new-password", "one-time-code").contains(token)
-    attribute("spellcheck", if (literal) "false" else "")
-    attribute("autocapitalize", if (literal) "none" else "")
+    // what is typed as it is meant, not as the phone would correct it: what these fill, or a field held literal
+    val asTyped = literal || Set("username", "email", "url", "current-password", "new-password", "one-time-code").contains(token)
+    attribute("spellcheck", if (asTyped) "false" else "")
+    attribute("autocapitalize", if (asTyped) "none" else "")
+    attribute("autocorrect", if (asTyped) "off" else "")
     List("data-1p-ignore", "data-lpignore", "data-bwignore").foreach(a => attribute(a, if (off) "true" else ""))
     attribute("data-form-type", if (off) "other" else "")
   }

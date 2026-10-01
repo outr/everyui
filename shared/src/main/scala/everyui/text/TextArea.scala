@@ -41,6 +41,9 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   val fieldName: Var[String] = own(Var(""))
   /** Shows `value`, to be focused, chosen and copied, but not changed (`InputView.readOnly`); where the platform has
     * no field of its own (a Roku, an Apple TV) Enter or a click asks for no new words. */
+  /** Holds text meant as it is typed (code, a script), never spell-checked, corrected or capitalized
+    * (`InputView.literal`). */
+  val literal: Var[Boolean] = own(Var(false))
   val readOnly: Var[Boolean] = own(Var(false))
   /** What a paste becomes before it lands (`InputView.pasted`); None lets it land. */
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
@@ -83,6 +86,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     input.fieldName := fieldName()
     input.readOnly := readOnly()
     input.pasted := pasted()
+    input.literal := literal()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)

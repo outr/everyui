@@ -743,7 +743,7 @@ class RenderNode(val view: View) {
     * a phone number, digits, a password), and whether it is to be filled at all ("off" is not). Every autofill service
     * the user picked (Google's, 1Password, LastPass, Bitwarden) goes by these. `section`, `name` and `passkey` are the
     * web's; Android has nothing for them. */
-  def setAutofill(token: String, section: String, name: String, passkey: Boolean): Unit = view match {
+  def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean): Unit = view match {
     case e: EditText if android.os.Build.VERSION.SDK_INT >= 26 =>
       import android.text.InputType as T
       if (token == "off") e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO)
@@ -768,6 +768,9 @@ class RenderNode(val view: View) {
           T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_PERSON_NAME | T.TYPE_TEXT_FLAG_CAP_WORDS
         case "street-address" | "address-line1" | "address-line2" | "address-level1" | "address-level2" | "country" =>
           T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_POSTAL_ADDRESS | T.TYPE_TEXT_FLAG_CAP_WORDS
+        // held literal: no suggestions or corrections, and no capitals (no CAP flag), told as plain text rather than as
+        // a password, the keyboards' usual trick, which would mislead autofill (a path, a command, code)
+        case _ if literal => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         case _ => T.TYPE_CLASS_TEXT
       }
       if (e.getInputType != (kind | lines)) {
