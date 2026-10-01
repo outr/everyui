@@ -53,8 +53,13 @@ class PointerEvents(component: Component) {
     // or a mouse moving over a desktop window, holds a screensaver off just as a remote does
     val use = kind == PointerKind.Down || kind == PointerKind.Move || kind == PointerKind.Wheel ||
       kind == PointerKind.Click
+    // the pointer coming onto a component, or off it, is the pointer's doing too, for what the focus does next (not for
+    // the screensaver: a list scrolling under a still pointer brings it onto things): a card that takes the focus as
+    // the pointer comes onto it was focused by the pointer, not a key, and a scroll revealing it as for a key brought the
+    // next card under the still pointer, which took the focus, and on down the page (NaboTV's Home ran 3 to 4338 px)
+    val pointed = kind == PointerKind.Enter || kind == PointerKind.Leave
     if (use) everyui.focus.Focus.used()
-    if (use && kind != PointerKind.Wheel) Pointer.usedAt = everyui.render.Platform.ticks()
+    if ((use && kind != PointerKind.Wheel) || pointed) Pointer.usedAt = everyui.render.Platform.ticks()
     if (!Pointer.blocks(event)) {
       val dialogs = everyui.component.Modal.opened
       channel @= event

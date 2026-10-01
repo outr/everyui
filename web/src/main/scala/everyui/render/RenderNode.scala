@@ -73,14 +73,38 @@ class RenderNode(val el: html.Element) {
 
   /** The laid-out size in pixels (text is measured with its real font), shown or not: a component keeps its size out
     * of sight, as it does on every other backend. */
-  def getWidth(): Double = box().width
-  def getHeight(): Double = box().height
+  def getWidth(): Double = {
+    val r = box()
+    if (transformed(r)) laidOut(horizontal = true) else r.width
+  }
+  def getHeight(): Double = {
+    val r = box()
+    if (transformed(r)) laidOut(horizontal = false) else r.height
+  }
 
   // Under `display: none` a node has no box and reads 0 by 0: a button made in a hidden panel was an empty pill once
   // the panel showed, since nothing measures it again then. What hides it is laid out, undrawn, for the read instead.
   private def box(): dom.DOMRect = {
     val r = el.getBoundingClientRect()
     if (r.width == 0.0 && r.height == 0.0 && RenderNode.reveal(el)) el.getBoundingClientRect() else r
+  }
+
+  // The box on the screen is the laid-out one turned and scaled by every transform on the way up (a row of words in a
+  // container scaled by 1.25 measured 1.25 wide, and was spread apart by as much again as the layout placed it), which
+  // the whole-pixel layout size (offsetWidth) is not: a box more than a pixel from it is under a transform.
+  private def transformed(r: dom.DOMRect): Boolean =
+    math.abs(r.width - el.offsetWidth) > 1.0 || math.abs(r.height - el.offsetHeight) > 1.0
+
+  // The size as laid out, to the fraction of a pixel (what cutting words to fit measures by), untouched by any
+  // transform: the used width or height, with the padding and edge a content box leaves out of it.
+  private def laidOut(horizontal: Boolean): Double = {
+    val s = dom.window.getComputedStyle(el)
+    def px(v: String): Double = if (v == null || !v.endsWith("px")) 0.0 else v.dropRight(2).toDoubleOption.getOrElse(0.0)
+    val size = px(if (horizontal) s.width else s.height)
+    if (size <= 0.0) (if (horizontal) el.offsetWidth else el.offsetHeight)
+    else if (s.boxSizing == "border-box") size
+    else if (horizontal) size + px(s.paddingLeft) + px(s.paddingRight) + px(s.borderLeftWidth) + px(s.borderRightWidth)
+    else size + px(s.paddingTop) + px(s.paddingBottom) + px(s.borderTopWidth) + px(s.borderBottomWidth)
   }
 
   // the first of the elements a node keeps after its children (a form's submit button), which children go before
