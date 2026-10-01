@@ -127,6 +127,9 @@ object Modal {
     * dismissed takes it down this way, without closing whatever may have been put up over it since. */
   def remove(panel: Container): Unit = layers.find(_.panel eq panel).foreach(take)
 
+  /** Where the focus goes back to when the dialog that is `panel` closes, in place of what had it as it was put up. */
+  def returnTo(panel: Container, to: Option[Component]): Unit = layers.find(_.panel eq panel).foreach(_.before = to)
+
   private def take(layer: ModalLayer): Unit = {
     val top = layers.headOption.exists(_ eq layer)
     // the one directly above it, if any, now goes back to where this one would have

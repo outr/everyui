@@ -2,7 +2,7 @@ package everyui.menu
 
 import everyui.component.*
 import everyui.component.types.FontWeight
-import everyui.event.Key
+import everyui.event.{FocusMoves, Key, Pointer}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.kit.Mirror
@@ -211,8 +211,12 @@ object Menu {
     menu
   }
 
-  /** A menu dropped from `anchor`: under it at its start, or over it where below has no room. */
+  /** A menu dropped from `anchor`: under it at its start, or over it where below has no room. Closed, it gives the focus
+    * back to what had it before the press that opened it, where that press moved the focus to `anchor` (a field's focus,
+    * a button pressed for its menu): else to what had it as it opened, `anchor` most often. */
   def below(anchor: Component, items: List[MenuItem], dismissed: () => Unit = () => ()): Menu = {
+    // asked before the menu takes the focus, which moves it again
+    val back = if (Pointer.recent && Focus.focused().exists(_ eq anchor)) FocusMoves.before else None
     val menu = new Menu(items)
     val left = anchor.absoluteLeft
     val top = anchor.absoluteTop
@@ -225,6 +229,7 @@ object Menu {
       else math.max(8.0, top - menu.size.height() - 4.0)
     }
     menu.up(dismissed = dismissed)
+    back.foreach(b => Modal.returnTo(menu, Some(b)))
     menu
   }
 

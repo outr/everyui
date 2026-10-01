@@ -38,6 +38,57 @@ class MenuSpec extends FxSpec {
     }
   }
 
+  "A menu dropped from a button" should {
+    "give the focus back to what had it before the press on the button" in onScreen { field =>
+      val button = fx {
+        val b = new Component(Nodes.container())
+        b.focusable @= true
+        b.size.width @= 80.0
+        b.size.height @= 30.0
+        b.position.left @= 200.0
+        b.position.top @= 50.0
+        ui.children += b
+        b
+      }
+      everyui.event.FocusMoves.watch()
+      // a click on the button: the pointer used, and the focus moved to the button by it, as a click does
+      fx {
+        everyui.event.Pointer.usedAt = everyui.render.Platform.ticks()
+        button.focus()
+        Menu.below(button, List(MenuItem("High", () => ())))
+      }
+      focusedLabel shouldBe Some("High")
+      press("Enter")
+      fx(Focus.focused()) shouldBe Some(field)
+      // dismissed the same way
+      fx {
+        everyui.event.Pointer.usedAt = everyui.render.Platform.ticks()
+        button.focus()
+        Menu.below(button, List(MenuItem("Low", () => ())))
+      }
+      press("Escape")
+      fx(Focus.focused()) shouldBe Some(field)
+    }
+    "give it back to the button where the keys opened it" in onScreen { _ =>
+      val button = fx {
+        val b = new Component(Nodes.container())
+        b.focusable @= true
+        b.size.width @= 80.0
+        b.size.height @= 30.0
+        b.position.left @= 200.0
+        b.position.top @= 50.0
+        ui.children += b
+        b.focus()
+        b
+      }
+      Thread.sleep(1100L)
+      everyui.event.Pointer.usedAt = -1.0e9
+      fx(Menu.below(button, List(MenuItem("High", () => ()))))
+      press("Enter")
+      fx(Focus.focused()) shouldBe Some(button)
+    }
+  }
+
   "A menu" should {
     "move through what can be chosen, round the ends, and choose with OK" in onScreen { card =>
       var chose: List[String] = Nil
