@@ -602,7 +602,7 @@ class RenderNode(val view: View) {
       (meta & android.view.KeyEvent.META_SHIFT_ON) != 0)
     val at = Array(0, 0)
     Host.root.getLocationOnScreen(at)
-    pointer.get(kind).foreach(f => f((e.getRawX - at(0)) / Host.scale, (e.getRawY - at(1)) / Host.scale))
+    pointer.get(kind).foreach(f => f((e.getRawX - at(0)) / Host.touchScale, (e.getRawY - at(1)) / Host.touchScale))
   }
   // A finger held still on a view that has a context menu (something listens for PointerKind.Menu) asks for it, as a
   // long press does anywhere on Android: where it went down, after the platform's long-press time, unless it moved
@@ -1171,7 +1171,10 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
       child.measure(spec(params.width), spec(params.height))
       i += 1
     }
-    setMeasuredDimension(View.getDefaultSize(0, widthSpec), View.getDefaultSize(0, heightSpec))
+    // the render root drawn smaller than a unit to a pixel is laid out that much larger, so its edges are the window's
+    val grown = if ((this eq Host.root) && Host.scale > 0.0 && Host.scale < 1.0) 1.0 / Host.scale else 1.0
+    setMeasuredDimension(math.ceil(View.getDefaultSize(0, widthSpec) * grown - 0.001).toInt,
+      math.ceil(View.getDefaultSize(0, heightSpec) * grown - 0.001).toInt)
   }
 
   override def onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int): Unit = {
@@ -1434,8 +1437,42 @@ object Host {
     } catch { case _: java.io.IOException => 0L })
 
   /** Layout units to screen pixels: the display's density, so a TV or a phone is laid out in the same units its own
-    * apps are (1 on a launch that pins a viewport, whose frame is compared pixel for pixel). */
+    * apps are (1 on a launch that pins a viewport, whose frame is compared pixel for pixel), times the size the app is
+    * drawn at (everyui.theme.UiScale). */
   var scale: Double = 1.0
+  /** The display's density, or 1 on a launch that pins a viewport: `scale` before the size the app is drawn at. */
+  var density: Double = 1.0
+  /** `scale` as the touch or the pointer's move being heard began (the activity takes it), so one that changes the size
+    * the app is drawn at as it is heard is the same place to every view it reaches. */
+  var touchScale: Double = 1.0
+
+  /** The render root scaled from its top left by `density` times the size the app is drawn at, and what is drawn at
+    * the screen's own pixels under it (an embed's web view, a video's surface) shrunk back by as much again. */
+  def scaleRoot(): Unit = if (root != null) {
+    scale = density * everyui.theme.UiScale()
+    root.setPivotX(0f)
+    root.setPivotY(0f)
+    root.setScaleX(scale.toFloat)
+    root.setScaleY(scale.toFloat)
+    unscale(root)
+    root.requestLayout()
+  }
+  private def unscale(view: View): Unit = view match {
+    case embed: EmbedView =>
+      embed.setScaleX((1.0 / scale).toFloat)
+      embed.setScaleY((1.0 / scale).toFloat)
+    case surface: android.view.SurfaceView if surface.getParent.isInstanceOf[VideoFrame] =>
+      surface.setScaleX((1.0 / scale).toFloat)
+      surface.setScaleY((1.0 / scale).toFloat)
+      surface.getParent.requestLayout()
+    case group: ViewGroup =>
+      var i = 0
+      while (i < group.getChildCount) {
+        unscale(group.getChildAt(i))
+        i += 1
+      }
+    case _ => ()
+  }
   /** The path the app is at: `--es path /somewhere` to start there, then wherever it last pushed. */
   var path: String = ""
 }
@@ -1996,10 +2033,14 @@ object Platform {
   /** A registered face loads from the APK's `assets/fonts/` when first used. */
   def registerFont(face: Face): Unit = ()
 
+  /** The window in the app's units: its pixels over `Host.scale` (the density times the size the app is drawn at), or
+    * a pinned viewport over the size the app is drawn at. */
   def screenWidth(): Double =
-    if (Host.viewportWidth > 0.0) Host.viewportWidth else windowPixels()._1.toDouble / Host.scale
+    if (Host.viewportWidth > 0.0) Host.viewportWidth / everyui.theme.UiScale() else windowPixels()._1.toDouble / Host.scale
   def screenHeight(): Double =
-    if (Host.viewportHeight > 0.0) Host.viewportHeight else windowPixels()._2.toDouble / Host.scale
+    if (Host.viewportHeight > 0.0) Host.viewportHeight / everyui.theme.UiScale() else windowPixels()._2.toDouble / Host.scale
+  /** The app drawn `factor` times its size (everyui.theme.UiScale), over the density it is already scaled by. */
+  def setUiScale(factor: Double): Unit = Host.scaleRoot()
 
   /** Screen pixels to a layout unit: the window's real width over the width it is laid out in — the display's density,
     * or whatever a `--es viewport` launch set the layout to. */

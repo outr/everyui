@@ -568,10 +568,14 @@ object Platform {
   /** Faces are files the runtime opens by name. */
   def registerFont(face: Face): Unit = ()
 
-  def screenWidth(): Double = uiScreenWidth()
-  def screenHeight(): Double = uiScreenHeight()
-  /** Screen pixels to a layout unit: a point is taken as a pixel, the screen's own scale not yet being asked for. */
-  def pixelRatio(): Double = 1.0
+  /** The screen in the app's units, over the size the app is drawn at (everyui.theme.UiScale). */
+  def screenWidth(): Double = uiScreenWidth() / everyui.theme.UiScale()
+  def screenHeight(): Double = uiScreenHeight() / everyui.theme.UiScale()
+  /** Screen pixels to a layout unit: a point is taken as a pixel, the screen's own scale not yet being asked for, times
+    * the size the app is drawn at. */
+  def pixelRatio(): Double = everyui.theme.UiScale()
+  /** The app drawn `factor` times its size (everyui.theme.UiScale): the root view's layers scaled from its top left. */
+  def setUiScale(factor: Double): Unit = uiSetRootScale(factor)
 
   /** `--freeze=<seconds>` on the launch (tools/tvos-run.sh --freeze): step the animation that far on a virtual
     * clock and stop. Negative when absent. */

@@ -11,7 +11,7 @@ object Gestures {
     * scene), and `ended` as it finishes; and the wheel over it kept from what it is in. */
   def take(node: RenderNode, pinch: (Double, Double, Double) => Unit, ended: () => Unit): Unit = {
     node.fx.addEventHandler(ZoomEvent.ZOOM, (e: ZoomEvent) => {
-      pinch(e.getZoomFactor, e.getSceneX, e.getSceneY)
+      pinch(e.getZoomFactor, Host.unscaled(e.getSceneX), Host.unscaled(e.getSceneY))
       e.consume()
     })
     node.fx.addEventHandler(ZoomEvent.ZOOM_FINISHED, (e: ZoomEvent) => {

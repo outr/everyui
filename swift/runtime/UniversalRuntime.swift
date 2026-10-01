@@ -167,6 +167,17 @@ func uiSetScale(_ node: V, _ factor: V) -> V {
     return .vNull
 }
 
+/// The whole app drawn `factor` times its size (everyui.theme.UiScale): the root's sublayers scaled from its top left.
+/// A sublayer transform applies about the layer's anchor (its centre), so the scale is moved back to the corner.
+func uiSetRootScale(_ factor: V) -> V {
+    guard let root = UI.root else { return .vNull }
+    let f = CGFloat(dbl(factor))
+    let cx = root.bounds.width * root.layer.anchorPoint.x, cy = root.bounds.height * root.layer.anchorPoint.y
+    root.layer.sublayerTransform = CATransform3DConcat(CATransform3DMakeScale(f, f, 1),
+        CATransform3DMakeTranslation((f - 1) * cx, (f - 1) * cy, 0))
+    return .vNull
+}
+
 func uiSetFontSize(_ node: V, _ size: V) -> V {
     if let l = view(node) as? UILabel { l.font = l.font.withSize(dbl(size)); place(l, geo(l)) }
     return .vNull

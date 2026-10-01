@@ -11,7 +11,7 @@ object Gestures {
   def pinches(): Boolean = true
 
   /** `node`'s gestures its own: two fingers pinching are told to `pinch` as they move (how much further apart since
-    * the last, and the point between them, in the page's coordinates), and `ended` when one lifts; and the wheel over
+    * the last, and the point between them, in the app's units), and `ended` when one lifts; and the wheel over
     * it is kept from the page, which would otherwise scroll what it is in, or zoom the page on Ctrl. Heard before the
     * node's pointer events, so a canvas knows a finger's move is part of a pinch before it takes it for a drag. */
   def take(node: RenderNode, pinch: (Double, Double, Double) => Unit, ended: () => Unit): Unit = {
@@ -32,7 +32,7 @@ object Gestures {
     }
     def touch(e: dom.PointerEvent): Boolean = e.pointerType == "touch"
     el.addEventListener("pointerdown", (e: dom.PointerEvent) => if (touch(e)) {
-      fingers += e.pointerId.toDouble -> ((e.clientX, e.clientY))
+      fingers += e.pointerId.toDouble -> ((e.clientX / RenderNode.heardAt(e), e.clientY / RenderNode.heardAt(e)))
       if (fingers.size == 2) {
         val (x, y, d) = between()
         apart = d
@@ -40,7 +40,7 @@ object Gestures {
       }
     })
     el.addEventListener("pointermove", (e: dom.PointerEvent) => if (touch(e) && fingers.contains(e.pointerId.toDouble)) {
-      fingers += e.pointerId.toDouble -> ((e.clientX, e.clientY))
+      fingers += e.pointerId.toDouble -> ((e.clientX / RenderNode.heardAt(e), e.clientY / RenderNode.heardAt(e)))
       if (fingers.size >= 2) {
         val (x, y, d) = between()
         if (apart > 0.0 && d > 0.0) pinch(d / apart, x, y)

@@ -1393,6 +1393,45 @@ own, so a sort chosen before the change is not carried over.)
 - An empty String is kept by forgetting the key, because no backend tells an empty document from none, so it comes
   back as the default.
 
+## The size the app is drawn at (`everyui.theme.UiScale`)
+
+`UiScale.factor` (a `Var[Double]`, 1 by default) draws the whole app larger or smaller, as a browser's zoom draws a
+page: every component, not only its words. At 1.5 a 30 px row is 45 px on the screen with its 14 px words at 21, a
+field still fits its line, and `ui.size` is the screen over 1.5, so whatever follows `ui.size` lays itself out again in
+the room left, as it would for a smaller window. A change takes effect at once. It is a whole-UI scale because
+EveryUI's components have fixed heights (rows, fields, buttons): larger words alone would be cut short in them.
+
+```scala
+import everyui.theme.UiScale
+import everyui.kit.ScaleControl
+
+UiScale.remembered()             // as the app starts: the size chosen last time on this device, kept from now on
+UiScale.commands(Keymap.global)  // Primary with = or + (Shift or not), - and 0
+settings.children += new ScaleControl(label = "Size")   // − / 100% / +
+```
+
+- It is kept between 0.5 and 3.0 (`UiScale.least`, `UiScale.most`): set outside, it is taken to the nearer end.
+  `UiScale()` is the size drawn at.
+- `larger()`, `smaller()` and `reset()` step through `UiScale.steps` (a `SliderScale`, 0.8 to 2.0 by 0.1 unless the
+  app sets it) and back to 1. `percent()` says it as "130%".
+- `remembered(space = "everyui", key = "scale")` is off until the app calls it (once, at start): it is
+  `Stored.connect` over `factor`, so a size set before the read answers stands.
+- `commands(keymap)` adds `ui.larger`, `ui.smaller` and `ui.defaultSize`, labelled in the current language
+  (`Words.larger`, `smaller`, `defaultSize`), on Primary+= (and with Shift, and Primary++ either way), Primary+- and
+  Primary+0. A browser's own zoom keys are then the app's.
+- `ScaleControl` is one stop for the focus: Left and Right (mirrored right to left), - and + step it, Enter or OK goes
+  back to 100%, and Up and Down move on. A click on − or + steps it and one on the percentage resets it; each end fades
+  where the steps end. A screen reader hears it as a slider.
+- It multiplies what the platform does already, never replaces it: the browser's zoom and device pixel ratio, the
+  desktop's display scale, Android's density. `Platform.pixelRatio()` includes it.
+- How each backend draws it: on the web the root's CSS `scale` (from its top left, laid out in the window over the
+  factor), with a box on the screen and a pointer's place read back over it; on the desktop a `Scale` on the root
+  pane; on Android the root's scale is the density times it; on a Roku the root group's scale, and on an Apple TV the
+  root view's sublayer transform. A Roku and an Apple TV enlarge what they have drawn, so words above 1 are a little
+  soft there; the others draw them afresh at the size.
+- An app that lays itself out once from `ui.size()` (outside `:=`) keeps that layout until it is built again; bind to
+  `ui.size` to follow the size as it changes. `demo=scale` shows words, rows, a field, buttons and menus at each size.
+
 ## The app at work (`everyui.app.AppBusy`)
 
 `AppBusy.state` is a `Var[Option[Busy]]` the app sets while it works, so the person sees it from elsewhere: None

@@ -881,11 +881,15 @@ object Platform {
   /** Faces are files the runtime opens by name. */
   def registerFont(face: Face): Unit = ()
 
-  def screenWidth(): Double = uiScreenWidth()
-  def screenHeight(): Double = uiScreenHeight()
+  /** The screen in the app's units, over the size the app is drawn at (everyui.theme.UiScale). */
+  def screenWidth(): Double = uiScreenWidth() / everyui.theme.UiScale()
+  def screenHeight(): Double = uiScreenHeight() / everyui.theme.UiScale()
   /** Screen pixels to a layout unit. A Roku lays out at 1920 by 1080 whatever its panel, and says nothing here of a
-    * 4K one: one pixel to a unit. */
-  def pixelRatio(): Double = 1.0
+    * 4K one: one pixel to a unit, times the size the app is drawn at. */
+  def pixelRatio(): Double = everyui.theme.UiScale()
+  /** The app drawn `factor` times its size (everyui.theme.UiScale): the root group scaled from the screen's top left,
+    * its words enlarged as drawn, so a little soft above 1. */
+  def setUiScale(factor: Double): Unit = uiSetRootScale(factor)
 
   /** `pkg:/freeze.txt` in the channel (added by tools/check.sh to a test sideload): step the animation that far on
     * a virtual clock and stop. Negative when absent. */

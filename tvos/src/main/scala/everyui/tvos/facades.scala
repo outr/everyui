@@ -53,6 +53,10 @@ class SGNode
 @native object uiSetScale {
   def apply(node: SGNode, factor: Double): Unit = native.value
 }
+/** The whole app drawn `factor` times its size, from the screen's top left (everyui.theme.UiScale). */
+@native object uiSetRootScale {
+  def apply(factor: Double): Unit = native.value
+}
 @native object uiSetFontSize {
   def apply(node: SGNode, size: Double): Unit = native.value
 }

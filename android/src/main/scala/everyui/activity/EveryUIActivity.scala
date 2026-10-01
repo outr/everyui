@@ -3,7 +3,7 @@ package everyui.activity
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
-import android.view.{KeyEvent, ViewGroup, WindowInsets, WindowInsetsController, WindowManager}
+import android.view.{KeyEvent, MotionEvent, ViewGroup, WindowInsets, WindowInsetsController, WindowManager}
 import everyui.render.{Host, NodeGroup}
 
 /** The Android entry point an app's activity extends: a full-screen window whose content view is the render root,
@@ -67,13 +67,9 @@ abstract class EveryUIActivity extends Activity {
     def extent(size: Double): Int = if (size > 0.0) size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
     setContentView(root, new ViewGroup.LayoutParams(extent(Host.viewportWidth), extent(Host.viewportHeight)))
     Host.root = root
-    if (Host.viewportWidth <= 0.0) {
-      Host.scale = getResources.getDisplayMetrics.density.toDouble
-      root.setPivotX(0f)
-      root.setPivotY(0f)
-      root.setScaleX(Host.scale.toFloat)
-      root.setScaleY(Host.scale.toFloat)
-    }
+    // laid out in the density's units, times the size the app is drawn at (everyui.theme.UiScale)
+    if (Host.viewportWidth <= 0.0) Host.density = getResources.getDisplayMetrics.density.toDouble
+    Host.scaleRoot()
   }
 
   /** The render root a previous activity of this process made, moved into this one, as it is. */
@@ -88,6 +84,17 @@ abstract class EveryUIActivity extends Activity {
 
   /** Whether the app took the Back being held, so its release is the app's too. */
   private var backTaken = false
+
+  /** A touch read over the scale the app is drawn at as it began (Host.touchScale), whatever it changes as it is heard. */
+  override def dispatchTouchEvent(e: MotionEvent): Boolean = {
+    Host.touchScale = Host.scale
+    super.dispatchTouchEvent(e)
+  }
+  /** A mouse's moves and wheel, read over the scale they began at, as a touch is. */
+  override def dispatchGenericMotionEvent(e: MotionEvent): Boolean = {
+    Host.touchScale = Host.scale
+    super.dispatchGenericMotionEvent(e)
+  }
 
   /** Every key to the shared layer's hook, by the web's name. Back goes there first, and is Android's (leaving the app)
     * only when the app has nowhere to go back to; a Back the app took keeps its release, or Android would act on that. */

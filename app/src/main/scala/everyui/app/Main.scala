@@ -28,6 +28,8 @@ import everyui.render.Platform
   *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
   *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus
   *              (`theme=light`, `collapsed=archive`)
+  *   scale      the size the app is drawn at (UiScale), turned up and down over words, rows, a field, buttons and menus,
+  *              kept on the device (`scale=<factor>`, `theme=light`, `rtl=1`)
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
   *   italic     an empty list's and a search's labels upright and slanted, a paragraph, buttons and a field slanted
   *   readonly   read-only fields beside an editable one: a share link, a note and a key to choose and copy but not change
@@ -91,6 +93,7 @@ import everyui.render.Platform
   else if (demo == "sliders") SlidersDemo.run()
   else if (demo == "markdown") MarkdownDemo.run()
   else if (demo == "richlist") RichListDemo.run()
+  else if (demo == "scale") ScaleDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()
   else if (demo == "italic") ItalicDemo.run()
   else if (demo == "readonly") ReadOnlyDemo.run()

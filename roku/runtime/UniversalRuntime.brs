@@ -131,6 +131,16 @@ sub uiSetScale(node as object, factor as float)
     node.scale = [factor, factor]
 end sub
 
+' The whole app drawn factor times its size (everyui.theme.UiScale): the root group scaled about the screen's top
+' left, which uiSetWidth and uiSetHeight leave as its pivot. SceneGraph enlarges what it has drawn, as a picture is
+' enlarged, so words drawn larger than 1 are a little soft.
+sub uiSetRootScale(factor as float)
+    root = GetGlobalAA().appRoot
+    if root = invalid then return
+    root.scaleRotateCenter = [0.0, 0.0]
+    root.scale = [factor, factor]
+end sub
+
 sub uiSetFontSize(node as object, size as float)
     if node = invalid then return
     f = CreateObject("roSGNode", "Font")
@@ -814,8 +824,8 @@ end function
 sub uiSetWidth(node as object, width as float)
     if node = invalid then return
     if not node.hasField("width")
-        ' a Group has no size of its own, but grows about its middle all the same
-        if node.hasField("scaleRotateCenter")
+        ' a Group has no size of its own, but grows about its middle all the same; the root about the screen's corner
+        if node.hasField("scaleRotateCenter") and not node.isSameNode(GetGlobalAA().appRoot)
             pivot = node.scaleRotateCenter
             node.scaleRotateCenter = [width / 2.0, pivot[1]]
         end if
@@ -894,7 +904,7 @@ end sub
 sub uiSetHeight(node as object, height as float)
     if node = invalid then return
     if not node.hasField("height")
-        if node.hasField("scaleRotateCenter")
+        if node.hasField("scaleRotateCenter") and not node.isSameNode(GetGlobalAA().appRoot)
             pivot = node.scaleRotateCenter
             node.scaleRotateCenter = [pivot[0], height / 2.0]
         end if

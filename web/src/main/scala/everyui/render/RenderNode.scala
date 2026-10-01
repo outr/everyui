@@ -75,11 +75,11 @@ class RenderNode(val el: html.Element) {
     * of sight, as it does on every other backend. */
   def getWidth(): Double = {
     val r = box()
-    if (transformed(r)) laidOut(horizontal = true) else r.width
+    if (transformed(r)) laidOut(horizontal = true) else r.width / RenderNode.drawnAt
   }
   def getHeight(): Double = {
     val r = box()
-    if (transformed(r)) laidOut(horizontal = false) else r.height
+    if (transformed(r)) laidOut(horizontal = false) else r.height / RenderNode.drawnAt
   }
 
   // Under `display: none` a node has no box and reads 0 by 0: a button made in a hidden panel was an empty pill once
@@ -91,9 +91,12 @@ class RenderNode(val el: html.Element) {
 
   // The box on the screen is the laid-out one turned and scaled by every transform on the way up (a row of words in a
   // container scaled by 1.25 measured 1.25 wide, and was spread apart by as much again as the layout placed it), which
-  // the whole-pixel layout size (offsetWidth) is not: a box more than a pixel from it is under a transform.
-  private def transformed(r: dom.DOMRect): Boolean =
-    math.abs(r.width - el.offsetWidth) > 1.0 || math.abs(r.height - el.offsetHeight) > 1.0
+  // the whole-pixel layout size (offsetWidth) is not: a box more than a pixel from it is under a transform, past the
+  // root's own (the size the app is drawn at, which the box is read over).
+  private def transformed(r: dom.DOMRect): Boolean = {
+    val at = RenderNode.drawnAt
+    math.abs(r.width / at - el.offsetWidth) > 1.0 || math.abs(r.height / at - el.offsetHeight) > 1.0
+  }
 
   // The size as laid out, to the fraction of a pixel (what cutting words to fit measures by), untouched by any
   // transform: the used width or height, with the padding and edge a content box leaves out of it.
@@ -270,7 +273,7 @@ class RenderNode(val el: html.Element) {
 
   /** CSS `position`; `""` is static. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
-    * viewport coordinates. */
+    * place in the app's units: the viewport's over the size the app is drawn at. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit =
     if (kind == PointerKind.Wheel) el.addEventListener("wheel", (e: dom.WheelEvent) => {
       Platform.pointed(e)
@@ -280,7 +283,7 @@ class RenderNode(val el: html.Element) {
     // with Shift held, the browser's own (Copy, Look Up, Inspect)
     else if (kind == PointerKind.Menu) el.addEventListener("contextmenu", (e: dom.MouseEvent) => if (!e.shiftKey) {
       Platform.pointed(e)
-      f(e.clientX, e.clientY)
+      f(e.clientX / RenderNode.heardAt(e), e.clientY / RenderNode.heardAt(e))
       if (everyui.event.Pointer.menuAnswered) e.preventDefault()
     })
     else {
@@ -289,7 +292,7 @@ class RenderNode(val el: html.Element) {
         Platform.pointed(e)
         // the middle button is the app's (a tab closed), not the browser's scrolling
         if (kind == PointerKind.Down && e.button == 1) e.preventDefault()
-        f(e.clientX, e.clientY)
+        f(e.clientX / RenderNode.heardAt(e), e.clientY / RenderNode.heardAt(e))
       })
       // something that answers a click is clickable: the hand, and no text selection under it
       if (kind == PointerKind.Click) {
@@ -770,6 +773,21 @@ object RenderNode {
   /** SVG's namespace, which its elements are made in. */
   val svgNs: String = "http://www.w3.org/2000/svg"
 
+  /** The size the app is drawn at (everyui.theme.UiScale): what a box on the screen, and a place on it, are read over. */
+  def drawnAt: Double = everyui.theme.UiScale()
+
+  /** The size `e`'s place is read over: the size drawn at as the first node heard it, kept on the event, so one that
+    * changes the size as it is heard (a click on a + that turns it up) is the same place to every node it climbs
+    * through, and the one that consumed it is still known for it. */
+  def heardAt(e: dom.Event): Double = {
+    val kept = e.asInstanceOf[js.Dynamic].everyuiDrawnAt
+    if (js.isUndefined(kept)) {
+      e.asInstanceOf[js.Dynamic].everyuiDrawnAt = drawnAt
+      drawnAt
+    }
+    else kept.asInstanceOf[Double]
+  }
+
   private val Negative = -1
   private val Reverse = 1
   /** How this browser counts a right-to-left scroll: `Negative`, `Reverse`, or 0 (from the far left), found once on a
@@ -941,6 +959,11 @@ object Nodes {
     app.style.overflow = "hidden"
     app.style.width = "100%"
     app.style.height = "100%"
+    // drawn at the app's size from its top left (Platform.setUiScale), by the `scale` property, which leaves the root's
+    // own `transform` (Component.scale) to it; at the window's left in a right-to-left page too, where a box narrower
+    // than the page would sit at its right
+    app.style.setProperty("transform-origin", "0 0")
+    app.style.marginRight = "auto"
     // a link in running text shows it is one under the pointer
     val style = dom.document.createElement("style")
     style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }" +
@@ -1528,11 +1551,33 @@ object Platform {
     }.getOrElse(WebAssets.url("fonts/" + file))
   }
 
-  def screenWidth(): Double = dom.window.innerWidth.toDouble
-  def screenHeight(): Double = dom.window.innerHeight.toDouble
+  /** The window in the app's units: its CSS pixels over the size the app is drawn at (everyui.theme.UiScale). */
+  def screenWidth(): Double = dom.window.innerWidth.toDouble / RenderNode.drawnAt
+  def screenHeight(): Double = dom.window.innerHeight.toDouble / RenderNode.drawnAt
   /** Screen pixels to a layout unit: the browser's device pixel ratio (2 on a HiDPI screen, often 1.5 or 2 on a
-    * television whose page is laid out smaller than its panel). */
-  def pixelRatio(): Double = if (dom.window.devicePixelRatio > 0.0) dom.window.devicePixelRatio else 1.0
+    * television whose page is laid out smaller than its panel), times the size the app is drawn at. */
+  def pixelRatio(): Double =
+    (if (dom.window.devicePixelRatio > 0.0) dom.window.devicePixelRatio else 1.0) * RenderNode.drawnAt
+
+  /** The app drawn `factor` times its size (everyui.theme.UiScale), as the browser's zoom draws a page: the root
+    * scaled from its top left and laid out in the window over it, its edges the window's. The browser's own zoom is
+    * under it, multiplied. Under a transform a node's box on the screen is scaled with it, and so is read over it
+    * (`getWidth`); a pointer's place too. */
+  def setUiScale(factor: Double): Unit = {
+    val app = dom.document.getElementById("app").asInstanceOf[html.Element]
+    if (app != null) {
+      if (factor == 1.0) {
+        app.style.removeProperty("scale")
+        app.style.width = "100%"
+        app.style.height = "100%"
+      }
+      else {
+        app.style.setProperty("scale", factor.toString)
+        app.style.width = "calc(100% / " + factor.toString + ")"
+        app.style.height = "calc(100% / " + factor.toString + ")"
+      }
+    }
+  }
 
   /** `?freeze=<seconds>` in the page URL: step the animation that far on a virtual clock and stop (tools/check.sh).
     * Negative when absent. */

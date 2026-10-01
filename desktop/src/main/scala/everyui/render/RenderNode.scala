@@ -343,7 +343,7 @@ class RenderNode(val fx: Node) {
 
   /** Every node is placed by its layout position, so there is no position type to set. */
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
-    * scene coordinates. */
+    * place in the app's units: the scene's over the size the app is drawn at (`Host.unscaled`). */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = if (kind == PointerKind.Wheel)
     fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => {
       Platform.pointed(0, e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
@@ -355,7 +355,7 @@ class RenderNode(val fx: Node) {
       (e: javafx.scene.input.ContextMenuEvent) => {
         Platform.pointed(2, Platform.modifiers().ctrl, Platform.modifiers().meta, Platform.modifiers().alt,
           Platform.modifiers().shift)
-        f(e.getSceneX, e.getSceneY)
+        f(Host.unscaled(e.getSceneX), Host.unscaled(e.getSceneY))
       })
   }
   else {
@@ -365,13 +365,13 @@ class RenderNode(val fx: Node) {
     // a click is the primary button's, as a browser's is: the others have their own uses (a menu, a tab closed)
     fx.addEventHandler(kinds(kind), (e: MouseEvent) => if (kind != PointerKind.Click || e.getButton == MouseButton.PRIMARY) {
       pointed(e)
-      f(e.getSceneX, e.getSceneY)
+      f(Host.unscaled(e.getSceneX), Host.unscaled(e.getSceneY))
     })
     // a pointer moving with a button held is a drag, which JavaFX sends only to the node it went down on: a move all
     // the same, as a browser's pointermove is, so a split's handle follows it
     if (kind == PointerKind.Move) fx.addEventHandler(MouseEvent.MOUSE_DRAGGED, (e: MouseEvent) => {
       pointed(e)
-      f(e.getSceneX, e.getSceneY)
+      f(Host.unscaled(e.getSceneX), Host.unscaled(e.getSceneY))
     })
   }
 
@@ -793,6 +793,36 @@ object Host {
 
   // as it will be held once it has loaded (nothing yet while it is on its way)
   private def bytesOf(image: Image): Long = math.round(image.getWidth * image.getHeight * 4.0)
+
+  /** A pointer's place in the scene in the app's units: over the size the app was drawn at as the event began
+    * (everyui.theme.UiScale), so one that changes the size as it is heard (a click on a + that turns it up) is the
+    * same place to every node it climbs through, and the one that consumed it is still known for it. */
+  def unscaled(v: Double): Double = v / heardAt
+  private var heardAt: Double = 1.0
+
+  /** The root drawn `factor` times its size from its top left, and laid out in the scene over it, so its edges are the
+    * window's whether larger or smaller: the scene sizes its root to itself, and is put right whenever it does. */
+  def scaleRoot(factor: Double): Unit = if (root != null && scene != null) {
+    if (!root.getTransforms.contains(rootScale)) {
+      root.getTransforms.add(rootScale)
+      // the size each input event begins at, before any node hears it
+      scene.addEventFilter(javafx.scene.input.InputEvent.ANY, (_: javafx.scene.input.InputEvent) =>
+        heardAt = everyui.theme.UiScale())
+      root.widthProperty.addListener((_: javafx.beans.Observable) => fitRoot())
+      root.heightProperty.addListener((_: javafx.beans.Observable) => fitRoot())
+      scene.widthProperty.addListener((_: javafx.beans.Observable) => fitRoot())
+      scene.heightProperty.addListener((_: javafx.beans.Observable) => fitRoot())
+    }
+    rootScale.setX(factor)
+    rootScale.setY(factor)
+    fitRoot()
+  }
+  private lazy val rootScale = new javafx.scene.transform.Scale(1.0, 1.0, 0.0, 0.0)
+  private def fitRoot(): Unit = {
+    val w = scene.getWidth / rootScale.getX
+    val h = scene.getHeight / rootScale.getY
+    if (math.abs(root.getWidth - w) > 0.01 || math.abs(root.getHeight - h) > 0.01) root.resize(w, h)
+  }
 
   lazy val settings: java.util.prefs.Preferences = java.util.prefs.Preferences.userRoot().node("everyui/" + app)
 
@@ -1277,11 +1307,15 @@ object Platform {
   /** A registered face loads from its file when first used. */
   def registerFont(face: Face): Unit = ()
 
-  def screenWidth(): Double = Host.scene.getWidth
-  def screenHeight(): Double = Host.scene.getHeight
-  /** Screen pixels to a layout unit: the output scale of the screen the window is on (2 on a HiDPI display). */
+  /** The window in the app's units: its size over the size the app is drawn at (everyui.theme.UiScale). */
+  def screenWidth(): Double = Host.scene.getWidth / everyui.theme.UiScale()
+  def screenHeight(): Double = Host.scene.getHeight / everyui.theme.UiScale()
+  /** Screen pixels to a layout unit: the output scale of the screen the window is on (2 on a HiDPI display), times the
+    * size the app is drawn at. */
   def pixelRatio(): Double =
-    Option(Host.scene.getWindow).map(_.getOutputScaleX).filter(_ > 0.0).getOrElse(1.0)
+    Option(Host.scene.getWindow).map(_.getOutputScaleX).filter(_ > 0.0).getOrElse(1.0) * everyui.theme.UiScale()
+  /** The app drawn `factor` times its size (everyui.theme.UiScale): the root scaled from its top left. */
+  def setUiScale(factor: Double): Unit = Host.scaleRoot(factor)
 
   /** `--freeze=<seconds>`: step the animation that far on a virtual clock and stop (tools/check.sh). Negative when
     * absent. */
