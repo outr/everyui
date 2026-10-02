@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.easing.Easing
-import everyui.event.{Key, Pointer, PointerEvent}
+import everyui.event.{Fling, FlingRun, Key, Pointer, PointerEvent}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.Color
@@ -50,6 +50,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   private var glideRun: Option[TaskInstance] = None
   private var glideAim: Double = 0.0
   private var glideAt: Double = 0.0
+  // a flick carrying the content on after the finger lifted, on a touch screen
+  private var flung: Option[FlingRun] = None
 
   /** How much room `reveal` leaves around what it brings into view: enough for whatever sits beside it and should be
     * seen with it (a rail's name, above its titles). */
@@ -105,17 +107,37 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     event.pointer.wheel.attach(e => scrollBy(if (horizontal && e.x != 0.0) (if (fromRight()) -e.x else e.x) else e.y))
     var dragFrom: Option[Double] = None
     var dragOffset = 0.0
+    // and on a touch screen a flick carries on once the finger lifts, slowing as a phone's own scrolling does
+    val flicks = Platform.touchSupport() && !Platform.pointerSupport()
+    val fling = new Fling
     event.pointer.down.attach { e =>
-      dragFrom = Some(if (horizontal) e.x else e.y)
+      if (flicks) stopGlide()
+      val at = if (horizontal) e.x else e.y
+      dragFrom = Some(at)
       dragOffset = offset()
+      fling.clear()
+      fling.at(at, Platform.ticks())
     }
     event.pointer.move.attach { e =>
       dragFrom.foreach { from =>
         val moved = (if (horizontal) e.x else e.y) - from
         scrollTo(dragOffset + (if (fromRight()) moved else -moved))
+        fling.at(if (horizontal) e.x else e.y, Platform.ticks())
       }
     }
-    event.pointer.up.attach(_ => dragFrom = None)
+    event.pointer.up.attach { _ =>
+      val v = fling.velocity(Platform.ticks())
+      if (flicks && dragFrom.nonEmpty && v != 0.0) {
+        val run = new FlingRun(if (fromRight()) v else -v, (d: Double) => {
+          val was = offset()
+          offset @= math.max(0.0, math.min(furthest(), was + d))
+          offset() - was
+        })
+        flung = Some(run)
+        run.start()
+      }
+      dragFrom = None
+    }
     // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and
     // all it held, for as long as this scroll lived
     content.children.attach(_ => recull())
@@ -167,6 +189,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   private def stopGlide(): Unit = {
     glideRun.foreach(_.cancel())
     glideRun = None
+    flung.foreach(_.stop())
+    flung = None
   }
 
   /** Where `reveal` puts what it brings into view, as a share of the room the viewport has around it: 0 at the start,

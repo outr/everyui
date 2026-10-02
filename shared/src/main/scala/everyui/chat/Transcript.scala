@@ -265,6 +265,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** Scrolled to the newest entry, and kept there. */
   def toLatest(): Unit = {
     pin.pin()
+    list.stopFling()
     list.scrollTop(list.total)
     list.current @= (if (list.count > 0) Some(list.keyAt(list.count - 1)) else None)
   }

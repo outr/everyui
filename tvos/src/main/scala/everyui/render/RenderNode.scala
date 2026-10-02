@@ -189,6 +189,9 @@ class RenderNode(val sg: SGNode) {
 
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
+  def setTouchScrolls(on: Boolean): Unit = ()
+  /** Only a page is read for how far a list has scrolled: nothing to do here. */
+  def setScrolled(at: Double, furthest: Double): Unit = ()
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
@@ -469,6 +472,8 @@ object Platform {
   def offThread(f: () => Unit): Unit = f()
 
   def later(f: () => Unit): Unit = f()
+  /** `f` once what is running now is done: `later` here. */
+  def afterTurn(f: () => Unit): Unit = later(f)
   /** Nothing waits here yet, so nothing comes of it. */
   def after(seconds: Double, f: () => Unit): Unit = ()
 

@@ -421,6 +421,9 @@ class RenderNode(val fx: Node) {
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
+  def setTouchScrolls(on: Boolean): Unit = ()
+  /** Only a page is read for how far a list has scrolled: nothing to do here. */
+  def setScrolled(at: Double, furthest: Double): Unit = ()
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
@@ -1196,6 +1199,8 @@ object Platform {
     try f() catch { case t: Throwable => logError("Off the FX thread", t) })
 
   def later(f: () => Unit): Unit = javafx.application.Platform.runLater(() => f())
+  /** `f` once what is running now is done: `later` here. */
+  def afterTurn(f: () => Unit): Unit = later(f)
   /** `f` on the FX thread once `seconds` have passed, on a later turn of it (Timers). */
   def after(seconds: Double, f: () => Unit): Unit = Timers.after(seconds, f)
 

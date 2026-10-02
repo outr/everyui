@@ -697,6 +697,9 @@ class RenderNode(val view: View) {
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
+  def setTouchScrolls(on: Boolean): Unit = ()
+  /** Only a page is read for how far a list has scrolled: nothing to do here. */
+  def setScrolled(at: Double, furthest: Double): Unit = ()
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
@@ -1935,6 +1938,8 @@ object Platform {
     try f() catch { case t: Throwable => logError("Off the UI thread", t) })
 
   def later(f: () => Unit): Unit = new android.os.Handler(android.os.Looper.getMainLooper).post(() => f())
+  /** `f` once what is running now is done: `later` here. */
+  def afterTurn(f: () => Unit): Unit = later(f)
   /** `f` on the UI thread once `seconds` have passed. */
   def after(seconds: Double, f: () => Unit): Unit = {
     if (IdleAudit.on) IdleAudit.after(seconds)

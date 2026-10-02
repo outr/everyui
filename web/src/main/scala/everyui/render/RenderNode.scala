@@ -408,6 +408,16 @@ class RenderNode(val el: html.Element) {
   }
   /** A finger dragged on it drags it, rather than scrolling or zooming the page (CSS touch-action). */
   def setTouchDrags(on: Boolean): Unit = el.style.setProperty("touch-action", if (on) "none" else "")
+  /** A finger dragged up or down on it is the app's (a list that scrolls itself), while one dragged across, or two
+    * pinching, are still the browser's: left to the browser, a vertical drag was taken for the page's own pan a few
+    * pixels in, and the app heard no more of it (pointercancel). */
+  def setTouchScrolls(on: Boolean): Unit = el.style.setProperty("touch-action", if (on) "pan-x pinch-zoom" else "")
+  /** How far a list that scrolls itself has scrolled, and how far it can, in pixels, for a test or a tool to read off
+    * the page where it has no `scrollTop` of its own: `data-everyui-scroll` and `data-everyui-scroll-max`. */
+  def setScrolled(at: Double, furthest: Double): Unit = {
+    el.setAttribute("data-everyui-scroll", (math.round(at * 10.0) / 10.0).toString)
+    el.setAttribute("data-everyui-scroll-max", (math.round(furthest * 10.0) / 10.0).toString)
+  }
   /** The pointer's shape over it, by its CSS name ("col-resize", "text"); "" leaves the page's own. */
   def setCursor(name: String): Unit = el.style.cursor = name
 
@@ -1431,6 +1441,9 @@ object Platform {
   def offThread(f: () => Unit): Unit = f()
 
   def later(f: () => Unit): Unit = dom.window.setTimeout(() => f(), 0)
+  /** `f` once what is running now is done, before the browser draws (a microtask): what follows from it is drawn in
+    * the same frame, where `later` can come after a frame drawn in between. */
+  def afterTurn(f: () => Unit): Unit = beforePaint(f)
   /** `f` once `seconds` have passed. */
   def after(seconds: Double, f: () => Unit): Unit = dom.window.setTimeout(() => f(), seconds * 1000.0)
 

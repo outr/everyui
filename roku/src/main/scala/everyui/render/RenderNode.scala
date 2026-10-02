@@ -356,6 +356,9 @@ class RenderNode(val sg: SGNode) {
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
+  def setTouchScrolls(on: Boolean): Unit = ()
+  /** Only a page is read for how far a list has scrolled: nothing to do here. */
+  def setScrolled(at: Double, furthest: Double): Unit = ()
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
@@ -781,6 +784,8 @@ object Platform {
   /** On a later turn of the render thread, from a fresh stack (a Timer): what a JavaFX runLater or a browser's
     * setTimeout gives, and what keeps a chain of callbacks from nesting into a Roku's small stack. */
   def later(f: () => Unit): Unit = uiLater(f)
+  /** `f` once what is running now is done: `later` here. */
+  def afterTurn(f: () => Unit): Unit = later(f)
   /** `f` once `seconds` have passed, from a Timer of its own. */
   def after(seconds: Double, f: () => Unit): Unit = uiAfter(seconds, f)
 

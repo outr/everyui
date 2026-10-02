@@ -1,7 +1,7 @@
 package everyui.list
 
 import everyui.component.{Component, Container}
-import everyui.event.{Key, KeyEvent, Modifiers, Pointer, PointerEvent}
+import everyui.event.{Fling, FlingRun, Key, KeyEvent, Modifiers, Pointer, PointerEvent}
 import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -172,7 +172,29 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   private def furthest: Double = math.max(0.0, total - size.height())
 
-  def scrollBy(delta: Double): Unit = scrollTop(offset() + delta)
+  // a flick carrying the rows on after the finger lifted, and whether the finger last put down caught one
+  private val fling = new Fling
+  private var flinging: Option[FlingRun] = None
+  private var caught = false
+
+  /** A flick still carrying the rows on stops where it is: the app scrolling them itself, its newest row brought into
+    * view, say. A row brought into view, the wheel and a finger put down stop it already. */
+  def stopFling(): Unit = {
+    flinging.foreach(_.stop())
+    flinging = None
+  }
+
+  /** Scrolled `delta` pixels on from where it is, from the place kept first where rows above it were just drawn at
+    * heights of their own. A row whose place is still to be kept keeps it, moved by as far as this went: a flick or a
+    * wheel turning as an earlier page of a chat comes in above would otherwise have the rows jump by however much
+    * taller those drew than they were guessed. */
+  def scrollBy(delta: Double): Unit = {
+    settle()
+    val anchor = held
+    val from = offset()
+    scrollTop(from + delta)
+    if (anchor.nonEmpty) held = anchor.map { case (key, dy) => (key, dy - (offset() - from)) }
+  }
   /** Scrolled `to` pixels down, within the rows. (Where the rows showed before some were drawn at heights of their own
     * is let go: they are to show from here now.) */
   def scrollTop(to: Double): Unit = {
@@ -182,11 +204,13 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   /** Row `index` brought to `align` of the view: 0 at the top, 0.5 in the middle, 1 at the bottom. */
   def scrollTo(index: Int, align: Double = 0.0): Unit = if (index >= 0 && index < count) {
+    stopFling()
     scrollTop(top(index) - (size.height() - heightAt(index)) * align)
   }
 
   /** Scrolled the least that shows all of row `index`. */
   def reveal(index: Int): Unit = if (index >= 0 && index < count) {
+    stopFling()
     val start = top(index)
     val end = start + heightAt(index)
     if (start < offset()) scrollTop(start)
@@ -382,7 +406,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   // a press on words that can be selected: the rows in the order they read, for the selection a drag makes
   event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton && Pointer.onText) inReadingOrder())
   // (not the click a drag ends in)
-  event.click.attach(e => if (!DragDrop.justEnded) clickAt(e.x, e.y, e.modifiers))
+  event.click.attach(e => if (!DragDrop.justEnded && !caught) clickAt(e.x, e.y, e.modifiers))
   // the secondary button: the row under it chosen (unless it already is) where it is, which is in view, and its menu
   // asked for; the page's own menu shows unless something answered (Pointer.menuAnswered)
   event.pointer.menu.attach { e =>
@@ -395,12 +419,46 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
   }
   cursor @= "default"
-  event.pointer.wheel.attach(e => scrollBy(e.y))
-  // a finger drags the rows along where there is no mouse to wheel them
-  if (Platform.touchSupport() && !Platform.pointerSupport()) event.pointer.down.attach { e =>
-    val from = e.y
-    val was = offset()
-    Pointers.track(m => scrollTop(was + from - m.y), _ => ())
+  event.pointer.wheel.attach { e =>
+    stopFling()
+    scrollBy(e.y)
+  }
+  // a finger drags the rows along where there is no mouse to wheel them, one for one, each move from the last (so rows
+  // put in above while it drags, an earlier page of a chat, do not move what is under it), and a flick carries on once
+  // it lifts, slowing as a phone's own lists do. Up and down are the list's, never the page's: a page given them took
+  // the finger for its own pan a few pixels in, and the list heard no more of it.
+  private val fingers = Platform.touchSupport() && !Platform.pointerSupport()
+  if (fingers) {
+    node.setTouchScrolls(true)
+    event.pointer.down.attach { e =>
+      // a finger put down on rows still gliding stops them, and is no tap on the row under it
+      caught = flinging.exists(_.gliding)
+      stopFling()
+      fling.clear()
+      fingerScroll(e.y)
+    }
+  }
+
+  // the rows following a finger from `from`, and gliding on from how fast it went as it lifts
+  private def fingerScroll(from: Double): Unit = {
+    var at = from
+    fling.at(at, Platform.ticks())
+    Pointers.track({ m =>
+      scrollBy(at - m.y)
+      at = m.y
+      fling.at(at, Platform.ticks())
+    }, { _ =>
+      val v = -fling.velocity(Platform.ticks())
+      if (v != 0.0) {
+        val run = new FlingRun(v, (d: Double) => {
+          val was = offset()
+          scrollBy(d)
+          offset() - was
+        })
+        flinging = Some(run)
+        run.start()
+      }
+    })
   }
   thumb.event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton) {
     e.consume()
@@ -442,9 +500,18 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     if (e.button == PointerEvent.PrimaryButton && draggable() && !Platform.remoteNavigation() && editing().isEmpty &&
       !Pointer.onText && down >= 0.0 && down < total) {
       pressedAt = Some((indexAt(down), e.x, e.y))
+      val pressed = Platform.ticks()
       Pointers.track(m => pressedAt.foreach { case (i, x, y) =>
         if (DragDrop.dragging().nonEmpty) DragDrop.move(m.x, m.y)
-        else if (math.abs(m.x - x) + math.abs(m.y - y) > VirtualList.dragStart) startDrag(i, m.x, m.y)
+        else if (math.abs(m.x - x) + math.abs(m.y - y) > VirtualList.dragStart) {
+          // a finger drags a row only once held on it a moment, as a phone's lists have it; moved at once, it scrolls
+          if (!fingers || Platform.ticks() - pressed >= VirtualList.holdSeconds * 1000.0) startDrag(i, m.x, m.y)
+          else {
+            pressedAt = None
+            scrollBy(y - m.y)
+            fingerScroll(m.y)
+          }
+        }
       }, u => {
         pressedAt = None
         DragDrop.end(u.x, u.y)
@@ -721,16 +788,21 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     thumb.size.height @= length
     thumb.position.left @= (if (Direction.rtl()) 2.0 else width - 8.0)
     thumb.position.top @= (if (furthest <= 0.0) 0.0 else offset() / furthest * (height - length))
+    node.setScrolled(offset(), furthest)
   }
 
   private var waiting = false
+  // the place kept once the rows drawn at heights of their own are all in, before anything is drawn where the platform
+  // can say (Platform.afterTurn): a page drew a frame with the rows moved by heights the place had not yet been kept
+  // from, an earlier page of a chat coming in, before the place was kept in the next
   private def later(): Unit = if (!waiting) {
     waiting = true
-    Platform.later { () =>
-      waiting = false
-      keepingPlace(())
-      refresh()
-    }
+    Platform.afterTurn(() => settle())
+  }
+  private def settle(): Unit = if (waiting) {
+    waiting = false
+    keepingPlace(())
+    refresh()
   }
 
   // the first row that shows and how far above the top it starts, unless the rows are at their very top
