@@ -1,5 +1,6 @@
 package everyui.kit
 
+import everyui.async.Task
 import everyui.component.*
 import everyui.event.{Key, PointerEvent}
 import everyui.focus.Focus
@@ -28,15 +29,32 @@ import reactify.*
   * open already. `commands(keymap)` puts the actions on the keyboard. `tabLayout` is how it all lies, to keep
   * (`layoutChanged`) and `restore`.
   *
+  * A tab closes only once `canClose` lets it (the app asking whether to save it), whichever way it is closed; Close
+  * Others and Close All ask one tab at a time and stop at the first that stays. `tab(k)` finds a key's tabs, and
+  * `dirty(k, on)` marks them with a dot. The keys `sharesGroupContent` says share one view per group show
+  * `groupContent`'s for their group, told which of them it shows (`GroupContent.show`), rather than a content each: one
+  * editor for a group's files, while a terminal keeps its own.
+  *
   * {{{
-  *   val editor = new TabGroups[File](_.name, f => new FileView(f), _.path, allowsTwice = _ => true)
+  *   val editor = new TabGroups[File](_.name, f => new TerminalView(f), _.path, allowsTwice = _ => true,
+  *     sharesGroupContent = _.isText, groupContent = _ => new EditorView)
+  *   editor.canClose @= (f => if (!editor.isDirty(f)) Task.pure(true) else Dialogs.saveChanges("Save " + f.name + "?", "")
+  *     .map(c => c != SaveChoice.Cancel))
   *   editor.open(readme)
   *   editor.tabMenu @= (f => List(MenuItem("Reveal in tree", () => tree.reveal(f))))
   *   editor.commands(Keymap.global)
   * }}} */
 class TabGroups[K](val label: K => String, val content: K => Component, val id: K => String,
                    val lead: K => TabLead = (_: K) => TabLead.None,
-                   val allowsTwice: K => Boolean = (_: K) => false) extends Container {
+                   val allowsTwice: K => Boolean = (_: K) => false,
+                   val sharesGroupContent: K => Boolean = (_: K) => false,
+                   val groupContent: TabGroup[K] => GroupContent[K] = (_: TabGroup[K]) => GroupContent.empty[K])
+  extends Container {
+  /** Whether `k` may close: asked before its last tab closes, by the ×, the menu, the keys and `closeAllTabs`, and
+    * answered by the app as it likes (asking whether to save it); a tab it answers false for stays. Always, by default. */
+  val canClose: Var[K => Task[Boolean]] = own(Var((_: K) => Task.pure(true)))
+  /** The keys marked as holding unsaved work (`dirty`). */
+  val dirtyKeys: Var[Set[K]] = own(Var(Set.empty[K]))
   /** The app's own entries on a tab's menu, after the groups' own. */
   val tabMenu: Var[K => List[MenuItem]] = own(Var((_: K) => Nil))
   /** The groups, first to last. */
@@ -82,20 +100,69 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     focusedGroup @= target
   }
 
-  /** `k` closed in `g`, its content disposed of; a group left empty closes, unless it is the last. */
-  def close(g: TabGroup[K], k: K): Unit = {
+  /** `k` closed in `g`, once `canClose` says it may be (asked where this is its last tab open), its content disposed
+    * of; a group left empty closes, unless it is the last. Asked again while the answer is awaited, it does nothing. */
+  def close(g: TabGroup[K], k: K): Unit = closeInTurn(g, List(k), _ => ())
+
+  /** Every other tab of `g` closed, one at a time, in order, each asked of `canClose` in turn: the first it will not let
+    * close stays, with those after it, and those before it are closed. */
+  def closeOthers(g: TabGroup[K], k: K): Unit = closeInTurn(g, g.keys().toList.filterNot(_ == k), _ => ())
+
+  /** Every tab of `g` closed, as `closeOthers` closes them, and `g` with them where none stays. */
+  def closeAll(g: TabGroup[K]): Unit = closeInTurn(g, g.keys().toList, _ => ())
+
+  /** Every tab of every group closed, group by group, as `closeAll` closes them: true once all have, false at the first
+    * that stays. What an app asks before it lets its window go: disposing of this asks nothing, as it cannot wait. */
+  def closeAllTabs(): Task[Boolean] = Task.async[Boolean] { done =>
+    def next(rest: List[TabGroup[K]]): Unit = rest match {
+      case Nil => done(true)
+      case g :: more => closeInTurn(g, g.keys().toList, all => if (all) next(more) else done(false))
+    }
+    next(groups())
+  }
+
+  /** The tabs `ks` of `g` closed one after another, each once `canClose` lets it, stopping at the first it does not:
+    * `done` hears whether all closed. One whose answer is still awaited stops it, and `done` is not told. */
+  private def closeInTurn(g: TabGroup[K], ks: List[K], done: Boolean => Unit): Unit = ks match {
+    case Nil => done(true)
+    case k :: rest =>
+      if (!g.has(k)) closeInTurn(g, rest, done)
+      else if (!asking.exists(a => (a._1 eq g) && a._2 == k)) {
+        val last = groups().forall(o => (o eq g) || !o.has(k))
+        val answer = if (last) canClose()(k) else Task.pure(true)
+        asking = (g, k) :: asking
+        answer.map { ok =>
+          asking = asking.filterNot(a => (a._1 eq g) && a._2 == k)
+          if (ok) {
+            discard(g, k)
+            closeInTurn(g, rest, done)
+          }
+          else done(false)
+        }.start()
+      }
+  }
+
+  /** The tabs whose closing waits on `canClose`, by group. */
+  private var asking: List[(TabGroup[K], K)] = Nil
+
+  /** `k` taken out of `g` for good, its content disposed of; a group left empty closes, unless it is the last. */
+  private def discard(g: TabGroup[K], k: K): Unit = if (g.has(k)) {
     val had = Focus.focused().exists(c => Focus.within(c, g))
     g.take(k).foreach(_.dispose())
     if (g.keys().isEmpty) closeGroup(g, had) else if (had) g.focusTab()
   }
 
-  def closeOthers(g: TabGroup[K], k: K): Unit = g.keys().filterNot(_ == k).foreach(o => g.take(o).foreach(_.dispose()))
+  /** The tab of `k` in each group it shows in, first to last: one, unless it may show twice. */
+  def tab(k: K): List[TabItem] = groups().flatMap(g => if (g.has(k)) g.bar(id(k)).toList else Nil)
 
-  def closeAll(g: TabGroup[K]): Unit = {
-    val had = Focus.focused().exists(c => Focus.within(c, g))
-    g.keys().foreach(o => g.take(o).foreach(_.dispose()))
-    closeGroup(g, had)
+  /** `k` marked as holding unsaved work, or not: a dot after its label on every tab of it, and on any opened after. */
+  def dirty(k: K, on: Boolean): Unit = {
+    dirtyKeys @= (if (on) dirtyKeys() + k else dirtyKeys() - k)
+    tab(k).foreach(t => t.marker @= (if (on) Some(TabGroups.dirtyDot()) else None))
   }
+
+  /** Whether `k` is marked as holding unsaved work (`dirty`). */
+  def isDirty(k: K): Boolean = dirtyKeys().contains(k)
 
   /** `k` opened in a new group after `g` (`vertical`: below it): a second view of it where it may show twice, else
     * moved there. Nothing happens to a group's only tab that may not show twice. */
@@ -453,6 +520,14 @@ object TabGroups {
   def unsplitWord: String = word("tabs.unsplit", "Unsplit")
   def nextGroupWord: String = word("tabs.nextGroup", "Next Group")
   def previousGroupWord: String = word("tabs.previousGroup", "Previous Group")
+  /** The dot after the label of a tab holding unsaved work (`TabGroups.dirty`). */
+  def dirtyDot(): Component = new Container {
+    size.width @= 8.0
+    size.height @= 8.0
+    radius @= 4.0
+    backgroundColor := Theme.text()
+  }
+
   /** What an empty group says. */
   def noTabs: String = word("tabs.none", "No tabs open")
 }

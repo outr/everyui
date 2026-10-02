@@ -36,6 +36,10 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   empty.position.middle := body.size.height() / 2.0
 
   private var made: Map[K, Component] = Map.empty
+  /** The one view this group shows its tabs that share one in (`TabGroups.sharesGroupContent`), once it has shown one,
+    * and the tab it was last told it shows. */
+  private var shared: Option[GroupContent[K]] = None
+  private var told: Option[K] = None
 
   backgroundColor := Theme.background()
   children ++= List(bar, body)
@@ -61,6 +65,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     }
     val tab = bar.add(owner.id(k), owner.label(k), closable = true, at = at, lead = owner.lead(k))
     owner.draggable(this, k, tab)
+    if (owner.isDirty(k)) tab.marker @= Some(TabGroups.dirtyDot())
     val all = keys() :+ k
     keys @= bar.tabs().flatMap(t => all.find(x => owner.id(x) == t.key)).toVector
   }
@@ -89,7 +94,10 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     shown @= was
   }
 
-  /** The content made for `k` here, where it has been shown. */
+  /** The view this group shows its tabs that share one in, once it has shown one. */
+  def groupView: Option[GroupContent[K]] = shared
+
+  /** The content made for `k` here, where it has been shown: none for a tab that shares the group's view. */
   def contentOf(k: K): Option[Component] = made.get(k)
 
   /** The focus on the tab being shown, or on the empty group's words. */
@@ -98,13 +106,32 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   // what the tab being shown shows, made the first time; the rest off the screen, alive
   private def show(): Unit = {
     // (read afresh: `selected` may not have heard the change yet)
-    val content = keys().find(k => owner.id(k) == shown()).map { k =>
-      made.getOrElse(k, {
+    val on = keys().find(k => owner.id(k) == shown())
+    val content: Option[Component] = on.map { k =>
+      if (owner.sharesGroupContent(k)) {
+        val view = shared.getOrElse {
+          val fresh = owner.groupContent(this)
+          fit(fresh)
+          shared = Some(fresh)
+          fresh
+        }
+        if (!told.contains(k)) {
+          told = Some(k)
+          view.show(k)
+        }
+        view
+      }
+      else made.getOrElse(k, {
         val c = owner.content(k)
         fit(c)
         made = made + (k -> c)
         c
       })
+    }
+    // the shared view told it shows none of its tabs now
+    if (told.nonEmpty && !on.exists(owner.sharesGroupContent)) {
+      told = None
+      shared.foreach(_.hide())
     }
     val keep = Vector(empty) ++ content.toVector
     if (body.children().size != keep.size || !body.children().zip(keep).forall { case (a, b) => a eq b })
@@ -121,6 +148,9 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   private[kit] def disposeContents(): Unit = {
     made.values.foreach(_.dispose())
     made = Map.empty
+    shared.foreach(_.dispose())
+    shared = None
+    told = None
   }
 
   override def kind: String = "TabGroup"

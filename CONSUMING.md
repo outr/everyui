@@ -3005,7 +3005,33 @@ focus layer's rules: Down from a bar goes into what it shows, Up comes back, and
 is how it all lies, a `TabLayout` tree (the groups' tabs by id and the one shown; the splits' direction and share),
 plain enough for fabric (`given RW[TabLayout] = RW.gen`) and kept as JSON without it (`TabLayout.codec`);
 `layoutChanged` tells each change and `restore` lays a kept one out again, leaving out what it no longer finds.
-`demo=tabgroups` has four files and a conversation in three groups, each tab counting since it was made, its layout
+A tab closes only once `canClose` (`K => Task[Boolean]`, always true by default) lets it, by the ×, the menu, the keys
+and `closeAllTabs()`: the app asks as it likes (`Dialogs.saveChanges`) and a tab it answers false for stays. It is asked
+for a key's last tab only, a second view of it closing at once. Close Others and Close All ask one tab at a time, in
+order, and stop at the first that stays, those before it closed. A close asked again while its answer is awaited does
+nothing. Disposing of the groups asks nothing (it cannot wait): an app closing its window asks `closeAllTabs()` first.
+`tab(k)` finds a key's tabs in every group, and `dirty(k, on)` puts a dot after their label (`isDirty`, `dirtyKeys`), on
+tabs opened later too.
+
+The keys `sharesGroupContent` picks show one view per group rather than a content each: `groupContent` makes a
+`GroupContent[K]` for a group the first time it shows such a key, `show(k)` tells it which it shows now and `hide()`
+when the group shows another kind of tab or none; it lives as long as the group and is disposed of with it. A key moved
+in, or opened in a second group, is shown by that group's view. One editor per group, while terminals and
+conversations keep a content each:
+
+```scala
+val editor = new TabGroups[Doc](_.name, d => new Terminal(d), _.id, sharesGroupContent = _.isFile,
+  groupContent = _ => new GroupContent[Doc] { override def show(d: Doc): Unit = code.model @= modelOf(d) })
+editor.canClose @= (d => if (!editor.isDirty(d)) Task.pure(true)
+  else Dialogs.saveChanges("Save changes to " + d.name + "?", "").flatMap {
+    case SaveChoice.Save => save(d).map(_ => true)
+    case SaveChoice.Discard => Task.pure(true)
+    case SaveChoice.Cancel => Task.pure(false)
+  })
+```
+
+`demo=tabgroups` has four files, a terminal and a conversation in three groups: the files in one view per group, the
+others a view each, each counting since it was made; two files hold unsaved work and ask before they close; its layout
 kept. Tabs are not dragged on a television, which has no pointer; the menu and the keys do it all there.
 
 ### Tag (`everyui.kit`)
