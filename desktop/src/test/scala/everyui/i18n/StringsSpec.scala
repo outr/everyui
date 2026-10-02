@@ -24,6 +24,12 @@ class StringsSpec extends FxSpec {
     read
   }
 
+  // English again, as the specs after this one read the kit's own words in it
+  override def afterAll(): Unit = {
+    started(english)
+    super.afterAll()
+  }
+
   "Strings.start" should {
     "read the template's file once where it is the language spoken" in {
       started(english) shouldBe List("en")
