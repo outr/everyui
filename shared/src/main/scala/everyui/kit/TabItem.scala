@@ -2,9 +2,11 @@ package everyui.kit
 
 import everyui.component.*
 import everyui.Color
-import everyui.component.types.FontWeight
+import everyui.component.types.{FontWeight, Semantics}
+import everyui.event.Key
 import everyui.font.MaterialIcon
 import everyui.layout.HorizontalLayout
+import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
@@ -18,10 +20,14 @@ import reactify.*
   *
   * A `lead` goes first of all (`TabLead`): somebody's avatar, which turns a ring while the tab is `busy` (an agent at
   * work in it) and says `busyDetail` to a pointer resting on it and to a screen reader; or an icon. The avatar keeps
-  * the ring's room whether or not it is busy, so the label does not move as it starts and stops. */
+  * the ring's room whether or not it is busy, so the label does not move as it starts and stops.
+  *
+  * `menu` is the tab's context menu (`TabBar.tabMenu`): the secondary button opens it at the pointer, keeping the
+  * browser's own away only where there is one; the menu key, Shift+F10 and OK held (a remote's long press) drop it from
+  * the tab. A tab is read as a tab (`Semantics("tab")`), by its words. */
 class TabItem(val key: String, title: String, current: Var[String], closable: Boolean = false,
-              close: String => Unit = _ => (), showOnFocus: Boolean = true, lead: TabLead = TabLead.None)
-  extends Container {
+              close: String => Unit = _ => (), showOnFocus: Boolean = true, lead: TabLead = TabLead.None,
+              menu: String => List[MenuItem] = _ => Nil) extends Container {
   val label: Var[String] = Var(title)
   /** Whether what the tab shows is at work: a ring turns around its avatar, where it is led by one. */
   val busy: Var[Boolean] = Var(false)
@@ -92,6 +98,24 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   if (closable) event.pointer.middle.attach { e =>
     e.consume()
     close(key)
+  }
+  semantics @= Semantics("tab")
+  event.pointer.menu.attach { e =>
+    val items = menu(key)
+    if (items.nonEmpty) {
+      e.consume()
+      if (Platform.remoteNavigation()) Menu.show(items, label()) else Menu.at(e.x, e.y, items)
+    }
+  }
+  event.hold.attach(_ => openMenu())
+  event.key.down.attach(k => if (k.key == Key.ContextMenu || (k.key == Key.Other && k.name == "F10" && k.shift)) openMenu())
+
+  /** Its menu, dropped from it, where it has one. */
+  def openMenu(): Unit = {
+    val items = menu(key)
+    if (items.nonEmpty) {
+      if (Platform.remoteNavigation()) Menu.show(items, label()) else Menu.below(this, items)
+    }
   }
 }
 

@@ -334,6 +334,10 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   `TabLead.Icon(i)` with an icon (a file's type); `TabLead.None` by default, as before. A tab's `busy` and `busyDetail`
   Vars turn the busy ring (below) around its avatar, the avatar keeping the ring's room so the label never moves;
   right to left the lead is at the label's right.
+  `tabMenu` (`String => List[MenuItem]`, empty by default) gives a tab a context menu: the secondary button opens it
+  at the pointer (keeping the browser's own away only where there is one), the menu key, Shift+F10 and OK held drop it
+  from the tab. The bar is read as a tab list and each tab as a tab, and the tab shown is scrolled into view.
+- `TabGroups[K]`: tabs in groups split across and down, as an editor splits its files (below).
 - `Toast.show(words, seconds, top, margin)`: one short message at a time.
 - `AsyncPress`: a press that runs slow work, with a delayed spinner, and failures toasted.
 - `Spinner` and `Ring`: an indeterminate spinner and a determinate dial.
@@ -2969,6 +2973,40 @@ table.loadingView @= Some(VirtualList.loading())     // a spinner in the accent
 table.emptyView @= Some(VirtualList.empty())         // "No results" in the language in use: Words("noResults")
 list.placeholder @= Some(() => new MyGhostRow)       // or None: the app's row, with no item
 ```
+
+### TabGroups (`everyui.kit`)
+
+Tabs in groups, as IntelliJ splits its editors: each group a `TabBar` over what its tab being shown shows, the groups in
+`SplitPane`s whose handles drag, across and down. `new TabGroups[K](label, content, id, lead, allowsTwice)`: `content`
+makes what a tab shows the first time it is shown, and it is kept while the tab is open, in whichever group it moves to,
+then disposed of as it closes; `id` names a tab for the bars and the saved layout.
+
+```scala
+val editor = new TabGroups[File](_.name, f => new FileView(f), _.path, f => TabLead.Icon(iconOf(f)), allowsTwice = _.isFile)
+editor.open(readme)                                  // in the focused group, or shown where it is open already
+editor.tabMenu @= (f => List(MenuItem("Reveal in tree", () => tree.reveal(f))))
+editor.commands(Keymap.global)                       // tabs.openRight, openDown, nextGroup, previousGroup, close
+val saved: Var[TabLayout] = Stored("editor", "layout", TabLayout())(using TabLayout.codec)
+editor.restore(saved(), path => files.get(path))
+editor.layoutChanged.attach(l => saved @= l)
+```
+
+A tab's menu has Close, Close Others and Close All; Open Right and Open Down, which open it in a new group after its
+group (by the reading direction: on the left, right to left) or below it; Move Right, Left, Down and Up, to the group
+that way where there is one; and Unsplit, which puts the group's tabs into the group beside it; then the app's
+`tabMenu`. A tab dragged onto another group goes in among its tabs, and onto a group's edge (lit while it is over it)
+splits the group there; Escape lets it go. A key shows in one group at a time, moved rather than opened again, unless
+`allowsTwice` says it may show in two (a file in both halves of a split), each with its own content; a group's only
+tab that may not show twice does not open right or down. A group left empty closes, the focus going to the one in its
+place; the last stays, saying so. `focusedGroup` is the group the focus is in or was last; `open(k)` opens there.
+`commands` puts the actions on a keymap, as Primary+\ (open right), Primary+Shift+\ (down), Primary+Alt+Right and Left
+(the next and the previous group) and Primary+W or Primary+F4 (close), which the app can `rebind`. Arrows keep to the
+focus layer's rules: Down from a bar goes into what it shows, Up comes back, and a split's arrows cross it. `tabLayout`
+is how it all lies, a `TabLayout` tree (the groups' tabs by id and the one shown; the splits' direction and share),
+plain enough for fabric (`given RW[TabLayout] = RW.gen`) and kept as JSON without it (`TabLayout.codec`);
+`layoutChanged` tells each change and `restore` lays a kept one out again, leaving out what it no longer finds.
+`demo=tabgroups` has four files and a conversation in three groups, each tab counting since it was made, its layout
+kept. Tabs are not dragged on a television, which has no pointer; the menu and the keys do it all there.
 
 ### Tag (`everyui.kit`)
 

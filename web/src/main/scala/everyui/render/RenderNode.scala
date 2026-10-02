@@ -297,9 +297,10 @@ class RenderNode(val el: html.Element) {
         if (kind == PointerKind.Down && e.button == 1) e.preventDefault()
         f(e.clientX / RenderNode.heardAt(e), e.clientY / RenderNode.heardAt(e))
       })
-      // something that answers a click is clickable: the hand, and no text selection under it
+      // something that answers a click is clickable: the hand (unless it has a shape of its own, a split's handle's),
+      // and no text selection under it
       if (kind == PointerKind.Click) {
-        el.style.cursor = "pointer"
+        if (el.style.cursor.isEmpty) el.style.cursor = "pointer"
         clickable = true
         if (!selectable) el.style.setProperty("user-select", "none")
       }

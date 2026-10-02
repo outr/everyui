@@ -1,8 +1,11 @@
 package everyui.kit
 
 import everyui.component.*
+import everyui.component.types.Semantics
 import everyui.i18n.Direction
 import everyui.layout.HorizontalLayout
+import everyui.menu.MenuItem
+import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
 
@@ -17,6 +20,7 @@ import reactify.*
   *   val tab = files.add(path, name, closable = true)
   *   tab.marker @= Some(dot)                            // unsaved
   *   files.closing.attach(path => askThenClose(path))   // the close button, or the app's own Ctrl+W
+  *   files.tabMenu @= (path => List(MenuItem("Reveal in tree", () => tree.reveal(path))))   // a right-click
   *
   *   files.add(path, name, closable = true, lead = TabLead.Icon(MaterialIcon.Description))   // led by an icon
   *   val chat = files.add("c-7", "Release plan", closable = true, lead = TabLead.Person(helper))
@@ -29,6 +33,10 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   /** Heard with a closable tab's key when its close button is pressed: the app decides (a file with unsaved work asks
     * first) and calls `remove`. */
   val closing: Channel[String] = Channel[String]
+  /** Each tab's context menu, by its key, empty (none) by default: asked for with the secondary button, the menu key,
+    * Shift+F10 or OK held on the tab (`TabItem.openMenu`). The browser's own menu is kept away only from a tab that has
+    * one. */
+  val tabMenu: Var[String => List[MenuItem]] = Var((_: String) => Nil)
 
   private val scroll = new ScrollContainer(horizontal = true) {
     size.width := width
@@ -48,17 +56,21 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   size.width := width
   size.height @= TabBar.height
   children ++= List(rule, scroll)
+  semantics @= Semantics("tablist")
   // arriving from elsewhere, the focus lands on the tab being shown rather than the nearest one: a tab can show itself
   // on focus, so the nearest one would be another page
   private def entry(key: String): Unit = apply(key).foreach(entryFocus)
   current.attach(entry)
+  // the tab shown brought into view, once it is laid out, where there are more than fit
+  current.attach(k => Platform.later(() => apply(k).filter(_.parent().nonEmpty).foreach(t => scroll.reveal(t))))
   tabs.attach(_ => entry(current()))
 
   /** A tab `label` for `key`, added at `at` among the tabs (at the end, where it is past the last or not given), or in
     * place of the one it replaces (moved to `at` where it is given). Neither the tab shown nor the focus moves: a tab
     * the focus was on that is replaced hands it to the new one. `lead` goes before the label (`TabLead`). */
   def add(key: String, label: String, closable: Boolean = false, at: Int = -1, lead: TabLead = TabLead.None): TabItem = {
-    val tab = new TabItem(key, label, current, closable, k => closing @= k, showOnFocus, lead)
+    val tab = new TabItem(key, label, current, closable, k => closing @= k, showOnFocus, lead,
+      k => tabMenu()(k))
     val replaced = apply(key)
     val was = tabs().indexWhere(_.key == key)
     val rest = tabs().filterNot(_.key == key)
@@ -87,6 +99,9 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
 
   /** The tab for `key`. */
   def apply(key: String): Option[TabItem] = tabs().find(_.key == key)
+
+  /** The tab for `key`'s menu, dropped from it, where it has one. */
+  def openMenu(key: String): Unit = apply(key).foreach(_.openMenu())
 }
 
 object TabBar {
