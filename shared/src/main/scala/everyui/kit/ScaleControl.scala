@@ -86,6 +86,7 @@ class ScaleControl(label: String = "") extends Container {
     tooltip @= tip
     backgroundColor := (if (event.pointer.over() && can()) Theme.controlLit() else Color.Clear)
     children += icon
+    tapSlop @= true
     event.click.attach { e =>
       e.consume()
       act()

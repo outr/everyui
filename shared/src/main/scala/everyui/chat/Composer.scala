@@ -227,6 +227,7 @@ class Composer(onSend: Draft => Unit,
   chip.backgroundColor := (if (chip.focused() || chip.event.pointer.over()) Theme.controlLit() else Theme.raised())
   chip.semantics := Semantics.button(words.suggestion + ": " + suggestion().getOrElse(""))
   chip.children ++= List(spark, chipWords)
+  chip.tapSlop @= true
   chip.event.click.attach { e =>
     e.consume()
     acceptSuggestion()

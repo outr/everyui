@@ -39,6 +39,7 @@ class DialogButton(val action: DialogAction, points: Double = 14.0) extends Cont
   spinner.visible @= false
   spinner.size.width @= 0.0
   children += line
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     press()

@@ -44,6 +44,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
   clear.visible := value().nonEmpty
   clear.tooltip @= everyui.i18n.Words.clear
   clear.semantics @= Semantics.button(everyui.i18n.Words.clear)
+  clear.tapSlop @= true
   clear.event.click.attach { e =>
     e.consume()
     empty()

@@ -29,6 +29,7 @@ class SegmentChip(val segment: Segment, chosen: Var[String]) extends Container {
   backgroundColor := (if (lit) (if (focused()) Theme.accentLit() else Theme.accent())
     else if (focused()) Theme.controlLit() else Color.Clear)
   children += words
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     chosen @= segment.key

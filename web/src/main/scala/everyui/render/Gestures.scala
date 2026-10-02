@@ -59,4 +59,17 @@ object Gestures {
     el.addEventListener("pointerup", lift)
     el.addEventListener("pointercancel", lift)
   }
+
+  /** `node` tapped by a finger from a little outside it where it is smaller than a fingertip (`everyui.event.TapSlop`),
+    * or no longer. */
+  def slop(node: RenderNode, on: Boolean): Unit =
+    if (on) {
+      node.el.setAttribute(TapReach.attribute, "")
+      TapReach.install()
+    }
+    else node.el.removeAttribute(TapReach.attribute)
+
+  /** `node` never the pointer's: a finger, a click and the wheel go through it to what is under it (a shade drawn over
+    * a table). */
+  def passThrough(node: RenderNode): Unit = node.el.style.setProperty("pointer-events", "none")
 }

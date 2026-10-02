@@ -62,6 +62,7 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   borderWidth := (if (ringed()) 2.5 else if (style == ButtonStyle.Outlined) 1.0 else 0.0)
   borderColor := (if (ringed() || (lit() && style == ButtonStyle.Outlined)) Theme.accent() else Theme.border())
   children += line
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     if (enabled()) action()

@@ -26,4 +26,11 @@ object Gestures {
     node.touchHook = Some(e => detector.onTouchEvent(e))
     node.listen()
   }
+
+  /** A finger's reach past a small control (`everyui.event.TapSlop`): not here, where the view system finds the view a
+    * touch lands on. */
+  def slop(node: RenderNode, on: Boolean): Unit = ()
+
+  /** `node` never the pointer's: a view that hears no touches lets them through to the views under it already. */
+  def passThrough(node: RenderNode): Unit = ()
 }

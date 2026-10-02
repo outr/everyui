@@ -26,6 +26,7 @@ class IconButton(glyph: MaterialIcon, tip: String, action: () => Unit = () => ()
   backgroundColor := (if (focused() || event.pointer.over()) Theme.controlLit() else Color.Clear)
   icon.color := (if (focused() || event.pointer.over()) Theme.text() else tint())
   children += icon
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     action()

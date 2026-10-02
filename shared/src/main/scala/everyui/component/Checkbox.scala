@@ -49,6 +49,7 @@ class Checkbox(label: String, initial: Boolean = false, note: Option[String] = N
   borderColor := Theme.accent()
   children ++= List(box, title)
   detail.foreach(d => children += d)
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     checked @= !checked()

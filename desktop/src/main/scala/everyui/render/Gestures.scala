@@ -20,4 +20,12 @@ object Gestures {
     })
     node.fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => e.consume())
   }
+
+  /** A finger's reach past a small control (`everyui.event.TapSlop`): none here, where JavaFX hears a mouse, and a
+    * touch screen's taps as the mouse at their point. */
+  def slop(node: RenderNode, on: Boolean): Unit = ()
+
+  /** `node` never the pointer's: a click and the wheel go through it to what is under it (a shade drawn over a
+    * table). */
+  def passThrough(node: RenderNode): Unit = node.fx.setMouseTransparent(true)
 }

@@ -81,6 +81,7 @@ class Switch(label: String = "", val on: Var[Boolean] = Var(false), width: Optio
   on.attach(v => slide(if (v) 1.0 else 0.0))
   // once a press: a held key's repeats flip nothing
   event.key.down.attach(e => if (keepsEvent(e) && !Platform.keyRepeat()) on @= !on())
+  tapSlop @= true
   // what a screen reader's press, or a platform's click after a tap the drag already took, arrives as
   event.click.attach { e =>
     e.consume()

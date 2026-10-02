@@ -35,6 +35,7 @@ class SendButton(sendLabel: String, stopLabel: String, points: Double = 36.0) ex
   semantics := Semantics.button(if (stopping()) stopLabel else sendLabel)
   disabled := !usable()
   children += glyph
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     if (usable()) pressed @= (())

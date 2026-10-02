@@ -32,6 +32,7 @@ class ColorSwatch(val colour: Color, chosen: => Boolean, side: Double = ColorSwa
   fill.radius @= 3.0
   fill.backgroundColor @= colour
   children += fill
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     choose(colour)

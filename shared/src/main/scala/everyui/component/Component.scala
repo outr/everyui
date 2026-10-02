@@ -164,6 +164,11 @@ class Component(val node: RenderNode) {
   /** Whether a finger dragged on it is its own to follow (a slider, a colour area), rather than scrolling or zooming the
     * page under it, which on the web would take the drag away part-way. */
   lazy val touchDrags: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setTouchDrags(d)))
+  /** Whether a finger's tap a little outside it is still its own, where it is smaller than a fingertip
+    * (`everyui.event.TapSlop`): a glyph button, a check box, a chip. It is drawn and laid out at its own size, a
+    * mouse's clicks land where they did, and where two such reaches overlap the nearer centre takes the tap. On the
+    * web; elsewhere the platform's own touch rules hold. */
+  lazy val tapSlop: Prop[Boolean] = own(new Prop[Boolean](false, s => everyui.render.Gestures.slop(node, s)))
   /** Whether its words, and those of everything in it, are there to be read and copied: a drag across them selects
     * them (across lines and on into the next such component, as a chat's messages), Ctrl or Command+C copies them, and
     * a press there is not a list's row dragged (`Pointer.onText`). What answers a click inside it (a button, a chip)

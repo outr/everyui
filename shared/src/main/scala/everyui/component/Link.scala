@@ -17,6 +17,7 @@ class Link(target: String = "", newTab: Boolean = false) extends Container(Nodes
   node.setHref(href(), newTab)
 
   focusable @= true
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     Link.follow(href(), newTab)

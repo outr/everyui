@@ -549,8 +549,14 @@ answer.content := message().text          // may grow token by token while the a
   appended 16 characters at a time costs about 0.7 ms an append on the desktop, and 14 us of that is parsing. A fence
   that has not closed yet shows as a code block so far.
 - Code blocks are coloured for the fence's language (`everyui.kit.Highlight`, which `CodeView(text, points, language)`
-  uses too), scroll sideways rather than wrap, and have a copy button where the platform has a clipboard. Tables
-  scroll sideways too. Each takes the focus only when there is somewhere to scroll.
+  uses too), scroll sideways rather than wrap, and have a copy button where the platform has a clipboard. Each takes
+  the focus only when there is somewhere to scroll.
+- A table's columns share the width given as a browser's automatic table layout shares it (`TableWidths`): where every
+  cell fits on one line each column is as wide as its widest cell (a wide screen's table, as before); where not, the
+  cells' words wrap, each column between its widest word and its widest cell, a column of long phrases giving up more
+  than one of short words, and no word is cut. Only where the widest words alone are wider than the room (long code,
+  a path, a URL) does the table scroll sideways, each column then at least its even share of the room so its words
+  are not left a word a line, with a shade over each edge it goes on past, gone at that end.
 - A click on a link, or Enter (a remote's OK) on a paragraph that holds links, goes to `onLink`: by default a path of
   this app is shown in place and anything else opened (`Link.follow`). A paragraph with several links offers them in a
   menu. A picture's relative URL is found against `base`, `Platform.origin()` by default (`MarkdownView.resolve`).
@@ -2984,6 +2990,21 @@ a middle click, which closes a closable `TabItem`.
 ```scala
 row.event.click.attach(e => if (e.shift) extend() else if (e.primary) toggle() else pick())
 tab.event.pointer.middle.attach(_ => close())
+```
+
+A control smaller than a fingertip (a glyph button, a check box, a chip) answers a finger's tap a little outside it
+(`Component.tapSlop`, `everyui.event.TapSlop`): anywhere in the 48-pixel square around its centre (Material's 48 dp,
+which holds Apple's 44 pt), while it is drawn and laid out at its own size, so its neighbours stay where they are. Where
+two reaches overlap the nearer centre takes the tap, and a tap on something else that answers a click (a field, a
+button, a row) stays its own unless that holds the control, as a row holds its menu's glyph. A mouse's and a pen's
+clicks land exactly where they did. `IconButton`, `SendButton`, `Button`, `DialogButton`, `Link`, `Checkbox`, `Switch`,
+`Choice`, `SegmentChip`, `ColorSwatch`, a `TabItem`'s close, a `SearchField`'s clear, `ScaleControl`'s parts, a
+`MenuCell` and the composer's suggestion chip have it; an app's own small control sets it. It is the web's, where a
+click a finger made is taken to the control; Android finds the view a touch lands on itself, the desktop hears a touch
+screen's taps as the mouse, and a Roku and an Apple TV have no fingers on the app.
+
+```scala
+val star = new Container { size.width @= 24.0; size.height @= 24.0; tapSlop @= true }
 ```
 
 Lists, trees and grouped lists mirror in a right-to-left language (`Direction.set(true)`): indentation, chevrons,

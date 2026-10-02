@@ -44,6 +44,7 @@ class MenuCell[T](text: T => String, items: T => List[MenuItem], colour: T => Op
   }
   box.position.left := ListRow.along(ListRow.inset, box.size.width(), size.width())
   box.position.top := (size.height() - box.size.height()) / 2.0
+  box.tapSlop @= true
   box.event.click.attach { e =>
     e.consume()
     edit()

@@ -65,6 +65,7 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   /** The close button, on a closable tab. */
   val closeButton: Option[MaterialIconView] = if (!closable) None else Some(new MaterialIconView(MaterialIcon.Close, 16.0) {
     color := Theme.muted()
+    tapSlop @= true
     event.click.attach { e =>
       e.consume()
       close(key)

@@ -25,6 +25,7 @@ class Choice(label: String, chosen: Boolean, choose: () => Unit) extends Contain
   borderWidth := (if (focused() && !chosen) 2.5 else 0.0)
   borderColor := Theme.accent()
   children += text
+  tapSlop @= true
   event.click.attach { e =>
     e.consume()
     choose()
