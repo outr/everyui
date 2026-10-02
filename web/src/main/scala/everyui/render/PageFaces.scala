@@ -31,24 +31,7 @@ object PageFaces {
   }
 
   /** Whether a `unicode-range` (`U+0-FF, U+131, U+4??`) holds `c`. */
-  def covers(range: String, c: Int): Boolean = holds(range, new String(Character.toChars(c)))
-
-  /** Whether a `unicode-range` holds one of `text`'s characters. */
-  def holds(range: String, text: String): Boolean = {
-    def hex(s: String, fill: Char): Int = java.lang.Integer.parseInt(s.replace('?', fill), 16)
-    val runs = range.split(",").toList.map(_.trim.toUpperCase.stripPrefix("U+")).filter(_.nonEmpty).map { p =>
-      val dash = p.indexOf('-')
-      if (dash > 0) (hex(p.substring(0, dash), '0'), hex(p.substring(dash + 1), 'F')) else (hex(p, '0'), hex(p, 'F'))
-    }
-    var i = 0
-    var found = false
-    while (!found && i < text.length) {
-      val c = text.codePointAt(i)
-      found = runs.exists(r => c >= r._1 && c <= r._2)
-      i += Character.charCount(c)
-    }
-    found
-  }
+  def covers(range: String, c: Int): Boolean = FaceWait.holds(range, new String(Character.toChars(c)))
 
   private def list(attribute: String): List[String] =
     if (meta == null) Nil

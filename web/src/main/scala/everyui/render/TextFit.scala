@@ -12,10 +12,15 @@ import scala.scalajs.js
 object TextFit {
   /** Whether `el`'s words measure as they will be drawn: on the page, in faces that have loaded, its own and its runs'
     * (a paragraph's code, in a face of its own). Where a face has yet to load, it is asked for, and `loaded` once every
-    * one has; asked again while they load, it waits on the same. */
-  def ready(el: html.Element, loaded: () => Unit): Boolean = el.isConnected && {
+    * one has; asked again while they load, it waits on the same. A face still not loaded once its load is over (one
+    * the browser did not take for these words after all) is not waited for again: that would ask for it, and be
+    * answered at once, for ever, and the page would never draw again. */
+  def ready(el: html.Element, loaded: () => Unit): Boolean = ready(el, loaded, js.Array())
+
+  private def ready(el: html.Element, loaded: () => Unit, tried: js.Array[js.Dynamic]): Boolean = el.isConnected && {
     val fonts = dom.document.asInstanceOf[js.Dynamic].fonts
-    val waiting = if (js.isUndefined(fonts)) Nil else faces(el).filter(f => waitsFor(f, fonts, el.textContent).nonEmpty)
+    val waiting = if (js.isUndefined(fonts)) Nil
+      else faces(el).map(f => f -> waitsFor(f, fonts, el.textContent, tried)).filter(_._2.nonEmpty)
     val held = el.asInstanceOf[js.Dynamic]
     if (waiting.nonEmpty && !js.isUndefined(held.everyuiFaces)) ()
     else if (waiting.nonEmpty) {
@@ -24,12 +29,13 @@ object TextFit {
       val size = if (el.style.fontSize.isEmpty) "16px" else el.style.fontSize
       // once they are in (or failed, and are not waited for again), asked again: words changed meanwhile may wait for
       // another face
+      val asked = tried.concat(js.Array(waiting.flatMap(_._2)*))
       val done: js.Function1[js.Any, Unit] = _ => {
         js.special.delete(held, "everyuiFaces")
-        if (ready(el, loaded)) loaded()
+        if (ready(el, loaded, asked)) loaded()
       }
-      val loads = js.Array(waiting.map(f => fonts.load(f._2 + " " + f._3 + " " + size + " '" + f._1 + "'",
-        text))*)
+      val loads = js.Array(waiting.map { case (f, _) => fonts.load(f._2 + " " + f._3 + " " + size + " '" + f._1 + "'",
+        text) }*)
       js.Dynamic.global.Promise.all(loads).applyDynamic("then")(done, done)
     }
     waiting.isEmpty
@@ -46,20 +52,15 @@ object TextFit {
     (own :: (0 until runs.length).toList.map(i => of(runs(i).asInstanceOf[html.Element].style, own))).distinct
   }
 
-  // The faces of `face`'s family (the first named: the others are fallbacks for what it cannot draw), in its slant and
-  // weight (or any weight, where none is that one), that are loading, or not yet asked for and meant for any letter or
-  // for one of `text`'s (a slice of a face by script, a build's). The browser's own `check` answers that a face still
+  // The faces of `face`'s family (the first named: the others are fallbacks for what it cannot draw) and slant that
+  // its words wait for (FaceWait), but those `tried` already. The browser's own `check` answers that a face still
   // loading, or never asked for, is ready.
-  private def waitsFor(face: (String, String, String), fonts: js.Dynamic, text: String): js.Array[js.Dynamic] = {
-    val own = js.Array.from(fonts.asInstanceOf[js.Iterable[js.Dynamic]])
+  private def waitsFor(face: (String, String, String), fonts: js.Dynamic, text: String,
+                       tried: js.Array[js.Dynamic]): List[js.Dynamic] = {
+    val own = js.Array.from(fonts.asInstanceOf[js.Iterable[js.Dynamic]]).toList
       .filter(f => named(f.family.asInstanceOf[String]) == face._1 && f.style.asInstanceOf[String] == face._2)
-    val weighted = own.filter(_.weight.asInstanceOf[String] == face._3)
-    (if (weighted.isEmpty) own else weighted).filter { f =>
-      val status = f.status.asInstanceOf[String]
-      val range = f.unicodeRange.asInstanceOf[String]
-      status == "loading" ||
-        (status == "unloaded" && (range.equalsIgnoreCase("U+0-10FFFF") || PageFaces.holds(range, text)))
-    }
+    FaceWait.waiting(own, face._3, text, tried.toList)(_.weight.asInstanceOf[String], _.status.asInstanceOf[String],
+      _.unicodeRange.asInstanceOf[String]).toList
   }
 
   // a family as it is named, whether quoted (Firefox quotes a FontFace's own) or not

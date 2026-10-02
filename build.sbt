@@ -419,6 +419,8 @@ lazy val desktop = (project in file("desktop"))
     Test / testForkedParallel := false,
     // the bundled faces are found from the build's root, as the app finds them
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
+    // the web's choice of which faces words wait for (FaceWait), plain Scala, checked here with the rest
+    Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,
