@@ -26,8 +26,9 @@ class SeoSpec extends AnyWordSpec with Matchers {
       html should include("<ul><li>one</li><li><a href=\"https://other.org/\">two</a></li></ul>")
       html should include("<div><p>Body <b>html</b></p></div>")
     }
-    "put the snapshot in the element the app removes" in {
-      DocHtml.snapshot(Doc.paragraph("x")) shouldBe "<div id=\"everyui-snapshot\"><p>x</p></div>"
+    "put the snapshot in the element the app removes, scrolling itself" in {
+      DocHtml.snapshot(Doc.paragraph("x")) shouldBe
+        "<div id=\"everyui-snapshot\" style=\"box-sizing:border-box;height:100%;overflow-y:auto\"><p>x</p></div>"
     }
   }
 

@@ -13,8 +13,11 @@ object DocHtml {
     b.toString
   }
 
-  /** The page's content, in the element the app replaces (`#everyui-snapshot`, inside the page's `#app`). */
-  def snapshot(doc: Doc): String = "<div id=\"everyui-snapshot\">" + render(doc) + "</div>"
+  /** The page's content, in the element the app replaces (`#everyui-snapshot`, inside the page's `#app`). It scrolls
+    * itself, as the page around an app does not (`overflow: hidden` on `html`, `body` and `#app`), so a page longer
+    * than the window can be read to its end before the app draws. */
+  def snapshot(doc: Doc): String =
+    "<div id=\"everyui-snapshot\" style=\"box-sizing:border-box;height:100%;overflow-y:auto\">" + render(doc) + "</div>"
 
   private def write(doc: Doc, b: StringBuilder): Unit =
     if (doc.tag.isEmpty) {

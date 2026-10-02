@@ -22,23 +22,25 @@ object Strings {
   private val table: Var[Map[String, String]] = Var(Map.empty)
   private var template: Map[String, String] = Map.empty
 
-  /** Load the template language (the one every key exists in), then `current`: before building anything. */
+  /** Load the template language (the one every key exists in), then `current`: before building anything. Where they
+    * are the same language its messages are loaded once. */
   def start(templateLanguage: Language, current: Language): Task[Unit] =
     load(templateLanguage.code).flatMap { messages =>
       template = messages
-      use(current)
+      if (current.code == templateLanguage.code) show(current, messages) else use(current)
     }
 
   /** Change language: load its messages, and every bound text follows. */
-  def use(next: Language): Task[Unit] = load(next.code).flatMap { messages =>
-    // every bound text changes at once: laid out in one pass after, and drawn with the language's own glyphs
+  def use(next: Language): Task[Unit] = load(next.code).flatMap(messages => show(next, messages))
+
+  // every bound text changes at once: laid out in one pass after, and drawn with the language's own glyphs
+  private def show(next: Language, messages: Map[String, String]): Task[Unit] =
     LayoutPass.batched(Task {
       Platform.setLanguage(next.code)
       table @= messages
       language @= next
       Direction.set(next.rtl)
     })
-  }
 
   /** The language chosen on this device before, of `supported`, if one was (`remember`). */
   def remembered(supported: List[Language]): Option[Language] = {
