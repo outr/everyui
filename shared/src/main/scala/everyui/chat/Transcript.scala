@@ -54,6 +54,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
                  val render: (Val[String], Val[Double]) => Component = MessageMarkdown.render) extends Container {
   /** Whether a separator names the day wherever it changes between entries. */
   val dayMarkers: Var[Boolean] = own(Var(true))
+  /** How many lines of a tool call's `body` show before it is opened. */
+  val bodyLines: Var[Int] = own(Var(3))
   /** Whether a new message from somebody else is read out by a screen reader. */
   val announces: Var[Boolean] = own(Var(true))
   /** The clock "5m" and a live elapsed time follow. */
@@ -116,10 +118,12 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   def leads(index: Int, entry: ChatEntry): Boolean = headed.contains(entry.id) ||
     Grouping.leads(if (index > 0 && index <= list.count) Some(list(index - 1)) else None, entry)
 
-  /** How an entry is read out: a message by its author and words, a tool call by what it does and how it stands. */
+  /** How an entry is read out: a message by its author and words, a tool call by what it does, its body and how it
+    * stands. */
   def said(entry: ChatEntry): String = entry match {
     case m: ChatEntry.Message => m.author.name + ": " + m.text()
-    case a: ChatEntry.Activity => a.summary() + ", " + ActivityView.said(a.status())
+    case a: ChatEntry.Activity => a.summary() + (if (a.body().isEmpty) "" else ": " + a.body()) + ", " +
+      ActivityView.said(a.status())
     case t: ChatEntry.Thinking => t.done().map(d => ChatWords.thoughtFor(ChatTime.span(d))).getOrElse(ChatWords.thinking)
     case m: ChatEntry.Marker => m.text()
     case _: ChatEntry.Custom => ""
@@ -129,7 +133,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private[chat] def viewFor(entry: ChatEntry, leading: Boolean, row: ChatRow): Component = entry match {
     case m: ChatEntry.Message => new MessageView(m, leading, row.size.width(), ticker.now, render, !dayMarkers(),
       () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()))
-    case a: ChatEntry.Activity => new ActivityView(a, row.size.width(), () => a.details.map(make => keep(a.id, make)))
+    case a: ChatEntry.Activity =>
+      new ActivityView(a, row.size.width(), () => a.details.map(make => keep(a.id, make)), render, bodyLines())
     case t: ChatEntry.Thinking => new ThinkingView(t, row.size.width(), ticker.now)
     case m: ChatEntry.Marker => new MarkerView(m, row.size.width())
     case c: ChatEntry.Custom => new CustomView(made(c), row.size.width(), list)
@@ -350,14 +355,14 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   /** Enter on an entry: a tool call or reasoning opened or closed, the app's component gone into. */
   private def act(entry: ChatEntry): Option[() => Unit] = entry match {
-    case a: ChatEntry.Activity if a.details.nonEmpty => Some(() => a.expanded @= !a.expanded())
+    case a: ChatEntry.Activity if a.opens => Some(() => a.expanded @= !a.expanded())
     case t: ChatEntry.Thinking => Some(() => t.expanded @= !t.expanded())
     case c: ChatEntry.Custom => Some(() => Focus.candidates(made(c)).headOption.foreach(_.focus()))
     case _ => None
   }
 
   private def open(entry: ChatEntry, on: Boolean): Option[() => Unit] = entry match {
-    case a: ChatEntry.Activity if a.details.nonEmpty && a.expanded() != on => Some(() => a.expanded @= on)
+    case a: ChatEntry.Activity if a.opens && a.expanded() != on => Some(() => a.expanded @= on)
     case t: ChatEntry.Thinking if t.expanded() != on => Some(() => t.expanded @= on)
     case _ => None
   }

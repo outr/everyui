@@ -1053,6 +1053,26 @@ an Apple TV, the whole ring is lit and stands still. The ring is made the first 
 outside its box by `BusyRing.outset(diameter)`, so leave that room around it. `RichLook.busy` and `TabItem.busy` draw
 it on a list's rows and a tab's lead; `demo=tabs` shows both kinds of lead and the ring turning and stopped.
 
+### Tool calls (`ChatEntry.Activity`: `lead`, `body`)
+
+A tool call is one line in the transcript: its `summary` after a status mark (a spinner, a tick, a cross). It can say
+what it is rather than show its raw input: `lead` (an `ActivityLead`) puts somebody's avatar first, in place of the
+mark (a message sent to them: a ring turns around the face while the call runs, and a tick or a cross sits on the
+face's corner once it has), or an icon (a search, a command: a small spinner on its corner while it runs, then the
+tick or the cross). The corner is read as the status, and the line as its summary, body and status ("Message to The
+Oracle: Hello…, done"). `body` is a short text under the summary, shown without opening the line (the message sent, the
+command run): Markdown drawn as the transcript draws a message's words (its `render`), selectable, and cut to
+`transcript.bodyLines` lines (3); one cut short opens (a click, Enter) to be read whole, details or not. Both are
+reactive, like `summary` and `status`, so a body can arrive as the call settles; with neither, the line is as it was.
+
+```scala
+val call = ChatEntry.activity("c-9", "Message to The Oracle", lead = ActivityLead.Person(oracle),
+  body = "Hello Oracle. Luma here. Can you help me create a new Persona?")
+ChatEntry.activity("c-10", "Ran a command", ActivityStatus.Succeeded, lead = ActivityLead.Icon(MaterialIcon.Terminal),
+  body = "`ls -la backend/src`")
+call.status @= ActivityStatus.Failed       // the ring stops, a cross on the face's corner
+```
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

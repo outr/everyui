@@ -32,12 +32,25 @@ object ChatEntry {
   }
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it
-    * (its input and output as text, an image, a table): made the first time the line is opened, and kept. */
+    * (its input and output as text, an image, a table): made the first time the line is opened, and kept.
+    *
+    * `lead` is what goes first on the line (`ActivityLead`): by default the status mark alone; somebody's avatar, a
+    * ring turning around it while the call runs and the status on its corner once it has; or an icon, with the status
+    * on its corner. `body` is a short text under the summary, shown without opening the line (the message that was
+    * sent, the command that ran): Markdown, drawn as the transcript draws a message's words, cut to the transcript's
+    * `bodyLines` and shown whole once the line is opened. Empty by default. */
   final class Activity(val id: String, val details: Option[() => Component] = None, val time: Option[Long] = None)
     extends ChatEntry {
     val summary: Var[String] = Var("")
     val status: Var[ActivityStatus] = Var(ActivityStatus.Running)
     val expanded: Var[Boolean] = Var(false)
+    val lead: Var[ActivityLead] = Var(ActivityLead.None)
+    val body: Var[String] = Var("")
+    // whether its body, as last drawn, was cut short: it then opens, to be read whole
+    private[chat] val cut: Var[Boolean] = Var(false)
+
+    /** Whether it opens: onto its details, or its body cut short. */
+    def opens: Boolean = details.nonEmpty || cut()
   }
 
   /** An agent's reasoning as it goes, begun at `started` (epoch milliseconds); `done` once it has, with how long it took
@@ -69,10 +82,13 @@ object ChatEntry {
   }
 
   def activity(id: String, summary: String, status: ActivityStatus = ActivityStatus.Running,
-               details: Option[() => Component] = None, time: Option[Long] = None): Activity = {
+               details: Option[() => Component] = None, time: Option[Long] = None,
+               lead: ActivityLead = ActivityLead.None, body: String = ""): Activity = {
     val a = new Activity(id, details, time)
     a.summary @= summary
     a.status @= status
+    a.lead @= lead
+    a.body @= body
     a
   }
 

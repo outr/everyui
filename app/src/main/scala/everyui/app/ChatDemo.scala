@@ -4,6 +4,7 @@ import everyui.async.Task
 import everyui.chat.*
 import everyui.component.*
 import everyui.component.types.{FontWeight, TextDirection, WhiteSpace}
+import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -13,10 +14,12 @@ import reactify.*
 
 /** A group room in `everyui.chat.ChatView`: three people (one of them you, one writing in Arabic) and two agents, with
   * 2000 earlier entries to scroll back through, fetched a hundred at a time. Once it opens, timers play a conversation:
-  * an agent thinks, runs a tool that succeeds and one that fails, and streams a long reply while the status bar shows
-  * who is working; another asks for approval with a card of its own. Each message runs the way its own words do, the
-  * Arabic ones right to left and the English ones left to right whichever way the app reads, and a long link, path and
-  * hash break inside their bubble. Messages are Markdown: the long reply has a list, a table, code and a link, and an
+  * an agent thinks, messages The Oracle (the words it sent arriving after it starts, and failing), runs a tool that
+  * succeeds and one that fails, and streams a long reply while the status bar shows who is working; another asks for
+  * approval with a card of its own. Before them, tool calls led by The Oracle's portrait (with the message sent, cut
+  * to three lines), a search icon and a terminal icon (with the command). Each message runs the way its own words do,
+  * the Arabic ones right to left and the English ones left to right whichever way the app reads, and a long link, path
+  * and hash break inside their bubble. Messages are Markdown: the long reply has a list, a table, code and a link, and an
   * Arabic one a list whose bullets stand on its right. What is typed in the field at the bottom is sent as yours, and
   * answered. Sam has a picture, which a click on his avatar or name shows whole; `author=log` logs the press
   * (`chat author <id> <message>`) in its place. `theme=light` for the light theme, `rtl=1` for right to left. Logs
@@ -27,6 +30,8 @@ object ChatDemo {
   private def helper: Participant = Participant("agent-helper", "Helper")
   private def scout: Participant = Participant("agent-scout", "Scout")
   private def layla: Participant = Participant("u-layla", "ليلى")
+  private def oracle: Participant =
+    Participant("agent-oracle", "The Oracle", Some(Platform.resolvePath("/images/icon.png")))
 
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
@@ -86,6 +91,12 @@ object ChatDemo {
     probe(chat)
   })
 
+  /** What was sent to The Oracle: long enough to be cut to three lines until its line is opened. */
+  val toOracle: String = "Hello Oracle. Luma here. Can you help me create a new Persona? I would like one that reviews " +
+    "pull requests the way our team does: it reads the diff, runs the tests, points out anything that breaks the style " +
+    "guide in `CONTRIBUTING.md`, and writes its findings as **short** comments rather than one long essay. It should " +
+    "also know when to stay quiet, and say so."
+
   /** How many earlier entries there are, and how many come at a time. */
   val history: Int = 2000
   val page: Int = 100
@@ -117,6 +128,14 @@ object ChatDemo {
     ChatEntry.message("o3", you, self = true, "Close. Helper, can you check what is left?", Some(start - 300000L)),
     ChatEntry.message("o4", helper, self = false, "On it. I'll look through the open issues and the test runs first.",
       Some(start - 280000L), meta = Some("model small · 212 tokens · 1.4s")),
+    ChatEntry.activity("o-msg", "Message to The Oracle", ActivityStatus.Succeeded,
+      Some(ChatEntry.textDetails("message_conversation \"The Oracle\"", "delivered")), Some(start - 270000L),
+      ActivityLead.Person(oracle), ChatDemo.toOracle),
+    ChatEntry.activity("o-look", "Looked up “Creating Custom Persona”: nothing found", ActivityStatus.Succeeded,
+      time = Some(start - 265000L), lead = ActivityLead.Icon(MaterialIcon.Search)),
+    ChatEntry.activity("o-ls", "Ran a command", ActivityStatus.Succeeded,
+      Some(ChatEntry.textDetails("ls -la backend/src", "drwxr-xr-x  main\ndrwxr-xr-x  test")), Some(start - 260000L),
+      ActivityLead.Icon(MaterialIcon.Terminal), "`ls -la backend/src`"),
     ChatEntry.message("o5", layla, self = false, "صباح الخير! هل ملاحظات الإصدار جاهزة؟", Some(start - 240000L)))
 
   // the conversation, played on timers
@@ -136,6 +155,14 @@ object ChatDemo {
           "src/net/Socket.scala:88: // TODO: back off on reconnect")), time = Some(Clock.real()))
       add(entries, search)
       Platform.after(2.0, () => search.status @= ActivityStatus.Succeeded)
+    })
+    // a message to The Oracle that goes, its words arriving after it started, and fails
+    Platform.after(2.0, () => {
+      val ask = ChatEntry.activity("a0", "Message to The Oracle", lead = ActivityLead.Person(oracle),
+        time = Some(Clock.real()))
+      add(entries, ask)
+      Platform.after(1.0, () => ask.body @= "Are you there? The Persona needs a `name` before it can be saved.")
+      Platform.after(6.0, () => ask.status @= ActivityStatus.Failed)
     })
     Platform.after(7.5, () => {
       val tests = ChatEntry.activity("a2", "Ran the test suite", details = Some(ChatEntry.textDetails("sbt test",
