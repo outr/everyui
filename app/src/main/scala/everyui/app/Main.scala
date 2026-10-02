@@ -94,6 +94,7 @@ import everyui.render.Platform
   else if (demo == "rows") RowsDemo.run()
   else if (demo == "composer") ComposerDemo.run()
   else if (demo == "chat") ChatDemo.run()
+  else if (demo == "bubbles") BubbleDemo.run()
   else if (demo == "busy") BusyDemo.run()
   else if (demo == "colors") ColorsDemo.run()
   else if (demo == "dates") DatesDemo.run()

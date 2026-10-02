@@ -40,6 +40,10 @@ class RichText(node: everyui.render.RenderNode = Nodes.richText()) extends Compo
 
   whiteSpace @= WhiteSpace.Normal
   color := Theme.text()
+  // measured again once a face its words wait for has loaded: code drawn in a fallback face first was narrower, and
+  // the paragraph took fewer lines than it does in its own
+  private val faceLoaded: () => Unit = () => if (!takenApart) measure.trigger()
+  override private[everyui] def beforeRead(): Unit = node.textMeasurable(faceLoaded)
   // wrapped to a width that changes, the words take a different number of lines
   size.width.attach(_ => if (size.width.explicit) measure.trigger())
 }

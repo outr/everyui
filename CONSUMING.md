@@ -935,7 +935,10 @@ val name = new TextView {
 
 On the web the words are measured once they are on the page and drawn in their own face: one still loading is waited
 for, and until then the page holds them to their room itself (CSS `max-width` with `text-overflow: ellipsis`, and a
-`max-height` of their lines). `demo=textcut` shows rows of them made off the screen.
+`max-height` of their lines). `demo=textcut` shows rows of them made off the screen. Words not cut are measured again
+once a face they are drawn in has loaded, a `TextView`'s and a `RichText`'s runs' alike (code in a line is in a face
+the page loads only once it is drawn), so a paragraph, a `MarkdownView` and a chat's bubble take the lines their words
+take in their own faces; `demo=bubbles` shows messages wrapping with code, bold, italic and links, and one streamed.
 
 `elide` says where a line too wide for `maxWidth` is cut: `Elide.End` (the default, "AppConnect…"), `Elide.Start`
 for a path or anything whose end says the most ("…/backend/app +39 −7"), or `Elide.Middle` ("backend/sr…/app"). The

@@ -70,9 +70,10 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   measure.on(if (!fitting && limited) fit())
 
   // words that could not be measured when they were set are cut once they can be: as they join the page, whose sizes
-  // are read then, or once their face has loaded
-  override private[everyui] def beforeRead(): Unit = if (unfit && node.textMeasurable(refit)) fit(announce = false)
-  private val refit: () => Unit = () => if (unfit && !takenApart) fit()
+  // are read then, or once their face has loaded; words not cut are measured again once it has
+  override private[everyui] def beforeRead(): Unit =
+    if (node.textMeasurable(refit) && unfit) fit(announce = false)
+  private val refit: () => Unit = () => if (!takenApart) { if (unfit) fit() else measure.trigger() }
 
   /** Draw the words, or as many of them as `maxWidth` or `maxLines` leaves room for with an ellipsis after. The
     * platform measures each try, so the cut is the one the words really take, and not a guess at how wide a letter
