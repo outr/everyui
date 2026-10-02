@@ -229,7 +229,9 @@ lazy val networkJvm = (project in file("network/jvm"))
     libraryDependencies ++= Seq(
       "com.outr" %% "spice-core" % spiceVersion,
       "com.outr" %% "spice-client-jvm" % spiceVersion,
-      "com.outr" %% "reactify" % reactifyVersion
+      "com.outr" %% "reactify" % reactifyVersion,
+      // its own code reads and writes JSON (Network, FormPart): named, rather than the release spice-core brings
+      "org.typelevel" %% "fabric-io" % fabricVersion
     )
   )
 
@@ -520,7 +522,8 @@ lazy val desktopPublished = (project in file("published/desktop"))
     Compile / unmanagedSourceDirectories ++= publishedSources("desktop", "jvm", spice = true),
     libraryDependencies ++= Seq(
       "com.outr" %% "reactify" % reactifyVersion,
-      "com.outr" %% "spice-client-jvm" % spiceVersion),
+      "com.outr" %% "spice-client-jvm" % spiceVersion,
+      "org.typelevel" %% "fabric-io" % fabricVersion),   // the network module and the store's codec use it
     libraryDependencies ++= EveryUILibraries.javafx().map(_ % Provided),
     Compile / resourceGenerators += fontResources.taskValue
   )
@@ -536,7 +539,8 @@ lazy val androidPublished = (project in file("published/android"))
     Compile / unmanagedSourceDirectories ++= publishedSources("android", "android", spice = true),
     libraryDependencies ++= Seq(
       "com.outr" %% "reactify" % reactifyVersion,
-      "com.outr" %% "spice-client-okhttp" % spiceVersion),
+      "com.outr" %% "spice-client-okhttp" % spiceVersion,
+      "org.typelevel" %% "fabric-io" % fabricVersion),   // the network module and the store's codec use it
     resolvers += EveryUILibraries.google,
     libraryDependencies ++= (EveryUILibraries.android ++ EveryUILibraries.firebase).map(_ % Provided),
     androidAars := Aars.open(streams.value.log.info(_),

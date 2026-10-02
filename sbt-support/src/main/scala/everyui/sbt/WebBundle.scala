@@ -4,8 +4,6 @@ import java.io.File
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 import java.util.regex.{Matcher, Pattern}
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
 
 /** Seals a staged EveryUI web bundle for a CDN, so everything but index.html can be cached for good and a new release
   * is never served stale. The last step of the bundle task, once everything is in `out`:
@@ -107,8 +105,7 @@ object WebBundle {
       val name = f.getName
       compressible(name.substring(name.lastIndexOf('.') + 1).toLowerCase)
     }
-    import scala.concurrent.ExecutionContext.Implicits.global
-    val written = Future.sequence(files.map(f => Future {
+    Parallel.map(files) { f =>
       val bytes = read(f)
       Seq("br" -> Compression.brotli(bytes), "gz" -> Compression.gzip(bytes)).collect {
         case (suffix, packed) if packed.length < bytes.length =>
@@ -116,8 +113,7 @@ object WebBundle {
           Files.write(target.toPath, packed)
           target
       }
-    }))
-    Await.result(written, Duration.Inf).flatten
+    }.flatten
   }
 
   // the scripts in `renamed` named by their new names: a quote or `url(` and `./` or `/` before, and any query after

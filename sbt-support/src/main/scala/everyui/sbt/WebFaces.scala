@@ -4,8 +4,6 @@ import java.io.File
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 import java.util.regex.Matcher
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
 
 /** An EveryUI web app's faces, as its build declares them (`everyuiWebFaces`), shipped the way a browser fetches
   * least: each as WOFF2, cut to what the app draws (WebGlyphs), with the page's `@font-face` rules and preloads written
@@ -35,9 +33,7 @@ final case class WebFaces(fonts: File, faces: Seq[WebFace]) {
     lazy val reached = WebFaces.reached(out)
     val dir = new File(out, "fonts")
     dir.mkdirs()
-    import scala.concurrent.ExecutionContext.Implicits.global
-    val shipped = Await.result(Future.sequence(faces.map(face => Future(face -> WebFaces.files(fonts, face, reached)))),
-      Duration.Inf)
+    val shipped = Parallel.map(faces)(face => face -> WebFaces.files(fonts, face, reached))
     val written = shipped.flatMap { case (_, files) =>
       files.map { f =>
         val file = new File(dir, f.name)
