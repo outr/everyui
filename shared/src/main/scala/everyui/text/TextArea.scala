@@ -1,7 +1,7 @@
 package everyui.text
 
 import everyui.component.*
-import everyui.component.types.{Autofill, PasteAction, WhiteSpace}
+import everyui.component.types.{Autofill, PasteAction, Semantics, WhiteSpace}
 import everyui.event.{Key, KeyEvent}
 import everyui.keymap.Chord
 import everyui.render.Platform
@@ -33,6 +33,9 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   val editing: Var[Boolean] = own(Var(false))
   /** What it says while empty; bind it to change it. */
   val hint: Var[String] = own(Var(placeholder))
+  /** What a screen reader names the field (and a test finds it by): its placeholder (`hint`) unless this says
+    * otherwise, as a TextInput is named by its label. */
+  val label: Var[String] = own(Var(""))
   /** What it asks for, so the platform's autofill and a password manager can fill it (`Autofill`); None says nothing. */
   val autofill: Var[Option[Autofill]] = own(Var(None))
   /** Which of a form's groups it belongs to ("shipping", "billing": `InputView.section`). */
@@ -81,6 +84,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     input.size.width := size.width() - pad * 2.0
     input.size.height := size.height() - pad * 2.0
     input.placeholder := hint()
+    input.semantics := Semantics(label = if (label().nonEmpty) label() else hint())
     input.autofill := autofill()
     input.section := section()
     input.fieldName := fieldName()
