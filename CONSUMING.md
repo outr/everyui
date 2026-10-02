@@ -232,9 +232,9 @@ costs nothing.
 
 ## The page
 
-The bundle expects an element with the id `app` (it makes one if there is none) and the bundled faces in `fonts/`
-next to the page. Copy `assets/fonts/*.ttf` from this repository, and add `assets/images` if the app uses them. A
-minimal `index.html`:
+The bundle expects an element with the id `app` (it makes one if there is none) and its faces. With the sbt-everyui
+plugin the build writes the faces into the page (see [The faces](#the-faces-everyuiwebfaces) below), so a minimal
+`index.html` is:
 
 ```html
 <!doctype html>
@@ -243,10 +243,6 @@ minimal `index.html`:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    @font-face { font-family: 'Open Sans'; font-weight: 400; src: url(fonts/OpenSans-Regular.ttf) format('truetype'); }
-    @font-face { font-family: 'Open Sans'; font-weight: 600; src: url(fonts/OpenSans-SemiBold.ttf) format('truetype'); }
-    @font-face { font-family: 'Material Icons'; font-weight: 400; src: url(fonts/MaterialIcons-Regular.ttf) format('truetype'); }
-    @font-face { font-family: 'Roboto Mono'; font-weight: 400; src: url(fonts/RobotoMono-Regular.ttf) format('truetype'); }
     html, body { margin: 0; height: 100%; overflow: hidden; }
     #app { width: 100%; height: 100%; overflow: hidden; }
   </style>
@@ -257,6 +253,24 @@ minimal `index.html`:
 </body>
 </html>
 ```
+
+A build without the plugin writes the bundled faces' rules itself, with the files in `fonts/` next to the page (copy
+`assets/fonts/*.ttf` from this repository, and `assets/images` if the app uses them):
+
+```html
+  <style>
+    @font-face { font-family: 'Open Sans'; font-weight: 400; src: url(fonts/OpenSans-Regular.ttf) format('truetype'); }
+    @font-face { font-family: 'Open Sans'; font-weight: 600; src: url(fonts/OpenSans-SemiBold.ttf) format('truetype'); }
+    @font-face { font-family: 'Material Icons'; font-weight: 400; src: url(fonts/MaterialIcons-Regular.ttf) format('truetype'); }
+    @font-face { font-family: 'Roboto Mono'; font-weight: 400; src: url(fonts/RobotoMono-Regular.ttf) format('truetype'); }
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    #app { width: 100%; height: 100%; overflow: hidden; }
+  </style>
+```
+
+That page still works as it always did: the runtime waits for Open Sans and Material Icons before the first frame, and
+adds an app's own faces (`Faces.register`) from `fonts/<file>`. It ships every face whole, as TrueType, and fetches
+Open Sans at the start whether the app draws in it or not.
 
 Link with `fastLinkJS` or `fullLinkJS`, and serve `main.js` next to the page. DataWrangler's `ui/webBundle` task
 (its `build.sbt`) does this, with a content hash on the script's URL.
@@ -1196,8 +1210,9 @@ and `Snapshot.figures(figures, width, height)` draw a `Drawing`'s figures into a
   second. What the browser will not let the page read is left out, drawn as nothing: a picture of another origin that
   does not allow the page to read it (CORS: `Access-Control-Allow-Origin`), a video whose frame cannot be read (another
   origin's without CORS, or protected), and an embed or web view (another page). Scroll bars of the page's own scrolls
-  are left out. Faces are carried from the page's `@font-face` rules and the faces the app registered; a style sheet of
-  another origin is read again where it allows that, and a face that cannot be read falls back to the system's.
+  are left out. Faces are carried from the page's `@font-face` rules and the faces the app registered (of a face in
+  slices by script, the Latin ones, and the rest where the words go beyond Latin); a style sheet of another origin is
+  read again where it allows that, and a face that cannot be read falls back to the system's.
 - **Desktop**: JavaFX draws the node, or the scene's root, into an image (`Node.snapshot`) at the scale, over the colour
   behind it; the PNG is written on a thread of its own. A JavaFX popup window (a system tooltip) is not in the window's.
 - **Android**: the window is copied from what the display shows (PixelCopy), video and hardware layers with it; a
@@ -1946,24 +1961,17 @@ it is: `[sbt-everyui] web bundle: fast link (development)` or `full link (releas
 itself is 1.0 s fast against 1.4 s full for main.js, and 0.9 s against 1.3 s for main.wasm, out of about 6 s for a
 bundle after a one-line change, so most of a web build's time is elsewhere.
 
-`everyuiWebFonts` is EveryUI's fonts out of the everyui-web jar, a directory to copy as `fonts/`, and `everyuiWebGuests`
-the web guests' files out of their modules (`everyui-monaco/<version>/`, `everyui-terminal/<version>/`, and
-everyui-web's own `everyui-hls/<version>/`), a directory to copy next to the page:
-`IO.copyDirectory(everyuiWebGuests.value, out)`. Both are `everyui.sbt.ModuleFiles`, which a
-build without the plugin can call itself.
+`everyuiWebGuests` is the web guests' files out of their modules (`everyui-monaco/<version>/`,
+`everyui-terminal/<version>/`, and everyui-web's own `everyui-hls/<version>/`), a directory to copy next to the page:
+`IO.copyDirectory(everyuiWebGuests.value, out)`. `everyuiWebFonts` is EveryUI's fonts out of the everyui-web jar, with
+the app's own (`everyuiAppFonts`), a directory the faces are taken from (below), or, for a page that writes its own
+`@font-face` rules, to copy as `fonts/`. Both are `everyui.sbt.ModuleFiles`, which a build without the plugin can call
+itself.
 
 An app with a face of its own (`Faces.register`) names its font files in `everyuiAppFonts`, and `everyuiWebFonts` (and
-`everyuiFonts`, for the other platforms) copies them in beside EveryUI's, so the bundle task copies one directory as
-before. A file with the name of one of EveryUI's (`OpenSans-Regular.ttf`), or two of the app's with one name, fails
-the build, naming each, rather than one font quietly taking another's place.
-
-```scala
-everyuiAppFonts := Seq(baseDirectory.value / "fonts" / "Brand-Regular.ttf", baseDirectory.value / "fonts" / "Brand-Bold.ttf"),
-webBundle := Def.uncached {
-  // …
-  IO.copyDirectory(everyuiWebFonts.value, out / "fonts")   // EveryUI's fonts and Brand-Regular.ttf, Brand-Bold.ttf
-}
-```
+`everyuiFonts`, for the other platforms) copies them in beside EveryUI's. A file with the name of one of EveryUI's
+(`OpenSans-Regular.ttf`), or two of the app's with one name, fails the build, naming each, rather than one font quietly
+taking another's place.
 
 The JavaScript build is the project's own `fullLinkJS`, as its `scalaJSLinkerConfig` sets it (a script, or an ES
 module). The WebAssembly build (`everyuiWasmLinkJS`) links the same code with that configuration made an ES2022
@@ -1987,6 +1995,62 @@ the page.
 The server must send `main.wasm` as `application/wasm` (spice does), and a Content-Security-Policy must allow
 `'wasm-unsafe-eval'`. Source maps are not copied; a browser asks for them only with its developer tools open.
 
+### The faces (`everyuiWebFaces`)
+
+An app declares the faces it draws with in its build, EveryUI's and its own, and the build ships each the way a
+browser fetches least and writes the page's `@font-face` rules and preloads for them. `everyuiWebFaceFiles` writes
+them, once the scripts are written (it reads the icons out of them):
+
+```scala
+everyuiAppFonts := Seq("Light", "Regular", "Medium", "Bold").map(w => baseDirectory.value / "fonts" / s"Roboto-$w.ttf"),
+everyuiWebFaces := Seq(
+  WebFace("Roboto", 300, "Roboto-Light.ttf"), WebFace("Roboto", 400, "Roboto-Regular.ttf"),
+  WebFace("Roboto", 500, "Roboto-Medium.ttf"), WebFace("Roboto", 700, "Roboto-Bold.ttf").later,
+  WebFace.MaterialIcons, WebFace.RobotoMono),
+webBundle := Def.uncached {
+  val out = baseDirectory.value / "out"
+  IO.delete(out)
+  everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
+  everyuiWebFaceFiles.value.writeTo(out)   // fonts/*.woff2, and their rules and preloads in index.html
+  // …
+}
+```
+
+A `WebFace` is the family, weight and slant the app's `Face` names (`italic = true` for an italic one), and its file
+among `everyuiWebFonts` (EveryUI's and `everyuiAppFonts`). EveryUI's are `WebFace.OpenSans`, `OpenSansSemiBold`,
+`MaterialIcons` and `RobotoMono`; `everyuiWebFaces` is `WebFace.bundled` (all four) unless the app says otherwise.
+Each is shipped as WOFF2, cut to what the app draws (`glyphs`, a `WebGlyphs`):
+
+| `glyphs` | What is shipped | For |
+|---|---|---|
+| `WebGlyphs.Scripts` (the default) | every glyph, in slices by script (`<file>.latin.woff2`, `.latin-ext`, `.vietnamese`, `.cyrillic`, `.greek`, `.other`), each rule naming the characters its slice holds (`unicode-range`); the browser fetches only the slices the words on the page need | words |
+| `WebGlyphs.Reached` | only the icons main.js or main.wasm names (the characters in Unicode's private use areas there; a `MaterialIcon` the app reaches is its codepoint), in one file; none at all, and no rule, where it names none | an icon face drawn by codepoint (`WebFace.MaterialIcons`) |
+| `WebGlyphs.All` | every glyph, in one file (a CFF face, `.otf`, is always shipped so) | anything else |
+
+A slice keeps every glyph's number and the face's layout tables, so kerning, ligatures and accents are the whole
+face's within it; the combining accents are in every slice, so a letter and its accent are drawn from one file. A
+pair of letters from two slices (Ł and ó in "Łódź") is not kerned, as with any face served in slices. On Linux, where
+the browser hints faces itself (FreeType's autohinter), a slice or icon file is hinted from what it holds, so its
+edges can differ by a shade from the whole face's; the outlines and advances are the face's own.
+
+A face at the `start` (the default) is preloaded with the page (its Latin slice, or its one file) and waited for before
+the first frame; one declared `.later` is fetched only when words on the page are drawn in it, and never waited for,
+so a face the app declares but does not draw costs nothing. The runtime reads which is which from
+`<meta name="everyui-fonts">`, which the build writes beside the rules. A face the app registers (`Faces.register`)
+that the build declared is the page's already; one it did not is loaded from `fonts/<file>` as before, and the console
+says so. A page that still writes an `@font-face` rule for a family the build declares fails the build, since that face
+would be fetched twice: take the page's rules out.
+
+Measured on NaboTV (six Roboto faces of its own, four at the start, with Material Icons; Open Sans, Roboto Black and
+italic, and Roboto Mono later): the faces fetched at the start went from 643 KB (whole TrueType, brotli) to 139 KB
+(Material Icons 16 KB for its 270 icons, a Roboto Latin slice 29 to 30 KB), and the first words on a cold load over
+"Slow 4G" with the CPU four times slower from 22.5 s to 13.5 s (the median of five runs each).
+
+To move a page that writes its own rules: take its `@font-face` lines out, name the app's faces in `everyuiWebFaces`
+(and their files in `everyuiAppFonts`), and in the bundle task write `everyuiWebFaceFiles.value.writeTo(out)` after the
+scripts in place of copying `everyuiWebFonts` to `out / "fonts"`. `everyui.sbt.WebFaces` is the same for a build
+without the plugin: `WebFaces(fontsDirectory, faces).writeTo(out)`.
+
 ### Behind a CDN: `WebBundle.seal`
 
 A bundle served through a CDN is sealed, so that everything but `index.html` can be cached for good and a new
@@ -1997,7 +2061,7 @@ webBundle := Def.uncached {
   val out = baseDirectory.value / "out"
   IO.delete(out)
   everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
-  IO.copyDirectory(everyuiWebFonts.value, out / "fonts")
+  everyuiWebFaceFiles.value.writeTo(out)
   IO.copyDirectory(everyuiWebGuests.value, out)
   // l10n, images, WebApp.write, …
   WebBundle.seal(out)
@@ -2018,6 +2082,7 @@ webBundle := Def.uncached {
   The main script's own bytes are not touched.
 - `index.html` and the other files at the top (`sw.js`, `manifest.webmanifest`, a favicon, `robots.txt`) stay where
   they are, to be revalidated. The service worker's cache (`WebApp.write`) is named by the bundle's hash.
+- Last, every text file is compressed beside itself, Brotli and gzip ([below](#compressed-once-at-the-build-webbundleprecompress)).
 - `web-assets.json`, beside `index.html`, lists what may be cached for good, for the host's
   `Cache-Control: public, max-age=31536000, immutable`, and what is to be revalidated (`no-cache`):
 
@@ -2032,6 +2097,32 @@ webBundle := Def.uncached {
 A path ending in `/` is a prefix. `seal` answers the bundle's hash. Paths are relative to the page's base, so a
 single-page host that answers a deep route (`/some/deep/path`) with `index.html` needs `<base href="/">` in it. A
 bundle that is not sealed is staged exactly as before, and the runtime finds its files where it always did.
+
+### Compressed once, at the build: `WebBundle.precompress`
+
+`seal` ends by compressing the bundle: beside every text file (`js`, `mjs`, `wasm`, `css`, `html`, `arb`, `json`,
+`svg`, `ttf`, `otf`, `txt`, `xml`, `webmanifest`) it writes `<file>.br` (Brotli at quality 11, its best) and
+`<file>.gz` (gzip at level 9), each only where it is smaller. A bundle that is not sealed calls
+`WebBundle.precompress(out)` itself as its last step; `seal(out, compress = false)` leaves it out, for a development
+build, where Brotli's best over an unminified main.js takes seconds (NaboTV's 20 MB one, about 20). WOFF2 and pictures
+are compressed already. Brotli is brotli4j (Google's encoder, natively; the plugin brings it).
+
+A server compressing as it answers can afford only a fast setting: NaboTV's main.js is 1,305 KB at Brotli 11 against
+1,892 KB at about 4 and 2,196 KB at gzip 9. So the host sends the precompressed file in the original's place to a
+browser that takes it (browsers ask for `br` over HTTPS and from localhost), with `Content-Encoding: br` (or `gzip`),
+the original's `Content-Type`, and `Vary: Accept-Encoding`; `web-assets.json`'s paths are the requests', and a file's
+`.br` and `.gz` are cached as it is. Most hosts do this by configuration:
+
+- nginx: `brotli_static on;` (the ngx_brotli module) and `gzip_static on;`.
+- Caddy: `file_server { precompressed br gzip }`.
+- Apache: rewrite to the `.br` where `Accept-Encoding` has `br`, with `Content-Encoding` set on `.br` files.
+- A CDN in front of an origin: the origin serves the variants as above and the CDN keeps them by `Vary`; one that
+  stores the files itself (S3 with CloudFront, say) is given each `.br` under the original's name with
+  `Content-Encoding: br` in its metadata, or compresses on its own.
+- Spice: EveryUI's own server (`server/`, `DirectoryPath`) sends a file's `.br`, else its `.gz`, where the browser takes
+  it; an app's Spice server does the same with `Content.file(new File(file.getPath + ".br"), type)` and
+  `setHeader("Content-Encoding", "br")`. Spice's Undertow leaves a response that says its encoding as it is, and
+  gzips the rest as it answers.
 
 ### Size
 
@@ -2052,11 +2143,17 @@ ignores it. Measured with Scala.js 1.22.0, NoModule, ES2021 (brotli -q 11, gzip 
 The WebAssembly build's own main.js adds 48 KB (7 KB brotli) to 65 KB (10 KB). Closure takes 16 to 18 seconds to
 link where the minified link takes one or two.
 
-Keep the default. Serve the bundle compressed (brotli where the browser takes it): that matters more than any of
-these. Closure's JavaScript is a third smaller again over the wire, so an app that ships `WebTarget.Js` alone and
-counts every kilobyte may keep it on `Compile / fullLinkJS / scalaJSLinkerConfig` while Scala.js still has it (with the
-minifier left on, which makes Closure's output 2% smaller still); an app on `WebTarget.Both` sends most browsers the WebAssembly build, which Closure never
-touches.
+Keep the default. Serve the bundle compressed, Brotli where the browser takes it, from the files `seal` (or
+`WebBundle.precompress`) wrote: that matters more than any of these. Closure's JavaScript is a third smaller again
+over the wire, so an app that ships `WebTarget.Js` alone and counts every kilobyte may keep it on
+`Compile / fullLinkJS / scalaJSLinkerConfig` while Scala.js still has it (with the minifier left on, which makes
+Closure's output 2% smaller still); an app on `WebTarget.Both` sends most browsers the WebAssembly build, which
+Closure never touches.
+
+A minifier run over the linked main.js would take more off: esbuild took NaboTV's from 1,350 KB to 976 KB. None
+runs inside sbt without a Node toolchain: esbuild and terser are Node's, and Closure Compiler (Java), given the
+linked file, stops at the Unicode escapes Scala.js writes in identifiers (`_\uff3fself`), so it runs only as the
+linker's own (`withClosureCompilerIfAvailable`, above), which takes NaboTV's main.js from 1,350 KB to 924 KB.
 
 ## The desktop, Android, the Roku and the Apple TV
 

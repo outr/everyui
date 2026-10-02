@@ -295,11 +295,19 @@ object SnapshotAccess {
     val fallbacks = Faces.fallbackFaces().map(_.family).toSet
     val wanted = (f: String) => families.contains(f) || (wide && fallbacks.contains(f))
     sheetFaces().`then`[String] { (rules: js.Array[FaceRule]) =>
-      val registered = (Faces.all() ++ Faces.fallbackFaces()).filter(f => wanted(f.family)).map { f =>
+      // the faces the page's build declared are among its rules already
+      val unruled = (Faces.all() ++ Faces.fallbackFaces()).filter(f => wanted(f.family) && !PageFaces.has(f))
+      val registered = unruled.map { f =>
         ("font-family: '" + f.family + "'; font-weight: " + f.weight.toString + "; font-style: " +
           (if (f.italic) "italic" else "normal") + ";", absolute(fontAddress(f), dom.document.baseURI))
       }
-      val chosen = rules.toList.filter(r => wanted(r._1)).map(r => (r._2, r._3)) ++ registered.toList
+      // a face in slices by script (a build's): only the Latin ones, where the words are no more
+      val latin = (descriptors: String) => wide || {
+        val at = descriptors.indexOf("unicode-range:")
+        val range = if (at < 0) "" else descriptors.substring(at + 14).takeWhile(_ != ';')
+        at < 0 || PageFaces.covers(range, 'A'.toInt) || PageFaces.covers(range, 0x100)
+      }
+      val chosen = rules.toList.filter(r => wanted(r._1) && latin(r._2)).map(r => (r._2, r._3)) ++ registered.toList
       val waits = js.Array(chosen.map { case (_, url) => inlined(url) }*)
       js.Promise.all(waits).`then`[String] { (data: js.Array[String]) =>
         chosen.zip(data).filter(_._2.nonEmpty).map { case ((descriptors, _), d) =>

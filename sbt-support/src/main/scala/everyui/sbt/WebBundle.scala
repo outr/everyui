@@ -4,13 +4,15 @@ import java.io.File
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 import java.util.regex.{Matcher, Pattern}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 /** Seals a staged EveryUI web bundle for a CDN, so everything but index.html can be cached for good and a new release
   * is never served stale. The last step of the bundle task, once everything is in `out`:
   *
   * {{{
   *   everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
-  *   IO.copyDirectory(everyuiWebFonts.value, out / "fonts")
+  *   everyuiWebFaceFiles.value.writeTo(out)
   *   IO.copyDirectory(everyuiWebGuests.value, out)
   *   // l10n, images, WebApp.write, …
   *   WebBundle.seal(out)
@@ -24,7 +26,9 @@ import java.util.regex.{Matcher, Pattern}
   * straight after a quote or `url(`, with `./` or `/` before it or nothing. index.html and the other files at the top
   * (sw.js, manifest.webmanifest, a favicon, robots.txt) stay where they are, to be revalidated; so do dot directories
   * (.well-known) and those named in `keep`. The service worker's cache (WebApp) is named by the bundle's hash.
-  * `web-assets.json`, written beside index.html, lists what is immutable, for the host's `Cache-Control`.
+  * `web-assets.json`, written beside index.html, lists what is immutable, for the host's `Cache-Control`. Last, every
+  * text file is compressed beside itself (`precompress`), unless `compress` is false (for a development build, where
+  * Brotli at its best takes seconds over a large unminified main.js).
   *
   * The page's files are then found relative to its base, so a single-page host that answers a deep route with
   * index.html needs `<base href="/">` in it (as main.js already did). Answers a hash naming the bundle. */
@@ -36,7 +40,7 @@ object WebBundle {
   /** The scripts the staging writes, in the order they are named: the loader names main.js. */
   val scripts: Seq[String] = Seq("main.js", WasmLoader.fileName, "webapp.js")
 
-  def seal(out: File, keep: Seq[String] = Nil): String = {
+  def seal(out: File, keep: Seq[String] = Nil, compress: Boolean = true): String = {
     val page = new File(out, "index.html")
     if (!page.isFile) sys.error(s"$out has no index.html to seal")
     if (new File(out, assets).exists) sys.error(s"$out has an $assets/ already: sealed twice, or a directory of that name")
@@ -85,7 +89,35 @@ object WebBundle {
   "revalidate": ${list(revalidate.distinct)}
 }
 """)
+    if (compress) precompress(out)
     bundle
+  }
+
+  /** The extensions of the files `precompress` compresses: the text a bundle serves. */
+  val compressible: Set[String] = Set("js", "mjs", "wasm", "css", "html", "arb", "json", "svg", "ttf", "otf", "txt", "xml",
+    "webmanifest")
+
+  /** Writes `<file>.br` (Brotli, quality 11) and `<file>.gz` (gzip, level 9) beside every file in `out` whose extension
+    * is `compressible`, each only where it is smaller, for a host to send in the file's place to a browser that takes
+    * it (`Accept-Encoding`), saying so (`Content-Encoding`) under the file's own `Content-Type`. Compressed once here,
+    * at the best each does, rather than on every response at what a server can afford (Brotli about 4, which sent
+    * NaboTV's main.js 45% larger). WOFF2 and pictures are compressed already. Answers the files written. */
+  def precompress(out: File): Seq[File] = {
+    val files = walk(out, "").map(_._2).filter { f =>
+      val name = f.getName
+      compressible(name.substring(name.lastIndexOf('.') + 1).toLowerCase)
+    }
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val written = Future.sequence(files.map(f => Future {
+      val bytes = read(f)
+      Seq("br" -> Compression.brotli(bytes), "gz" -> Compression.gzip(bytes)).collect {
+        case (suffix, packed) if packed.length < bytes.length =>
+          val target = new File(f.getPath + "." + suffix)
+          Files.write(target.toPath, packed)
+          target
+      }
+    }))
+    Await.result(written, Duration.Inf).flatten
   }
 
   // the scripts in `renamed` named by their new names: a quote or `url(` and `./` or `/` before, and any query after

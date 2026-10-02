@@ -293,7 +293,8 @@ lazy val seo = (project in file("seo"))
     Compile / unmanagedSourceDirectories += sharedSources / "everyui" / "seo",
     // the build's side of the well-known files (sbt-support's AppDomains), checked against the server's
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "sbt-support" / "src" / "main" / "scala",
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test
+    libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.2.20" % Test,
+      "com.aayushatharva.brotli4j" % "brotli4j" % brotli4jVersion % Test)
   )
 
 // The same for the browser, for a page that writes its own structured data (JsonLd) and head: everyui-seo for
@@ -309,12 +310,15 @@ lazy val seoJs = (project in file("seo/js"))
     Compile / unmanagedSources / excludeFilter := HiddenFileFilter || "WellKnown.scala" || "WellKnownAnswer.scala"
   )
 
+/** brotli4j, which the plugin compresses with (as this build's meta-build does, project/plugins.sbt). */
+lazy val brotli4jVersion = "1.23.0"
+
 // --- sbt-everyui: an app's build side, published as an sbt plugin -----------------------------------------------
 // For the web, everyuiWebTarget (JS, WebAssembly, or both with the loader choosing), everyuiWebScripts, and the plain
 // helpers (WebApp, AppDomains, WebScripts); for the other platforms, the packaging helpers (AndroidApk, AndroidRuntime,
 // Aars, RokuChannel, AppleApp) and the tasks that take what they need out of the published backends (everyuiCompiler,
 // everyuiEmitLibraries, everyuiRokuRuntime, everyuiFonts, …). Compiled with sbt 2's own Scala; the helpers in
-// src/main/scala are plain Scala an app's build can also compile from source (CONSUMING.md), the plugin in
+// src/main/scala are plain Scala (and brotli4j) an app's build can also compile from source (CONSUMING.md), the plugin in
 // src/plugin/scala needs sbt, Scala.js and ASM. This build compiles both into its own meta-build (project/plugins.sbt).
 lazy val sbtEveryui = (project in file("sbt-support"))
   .enablePlugins(SbtPlugin)
@@ -326,6 +330,8 @@ lazy val sbtEveryui = (project in file("sbt-support"))
     addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0"),
     // asm itself too: asm-tree names it, but a plugin's own dependencies are not always followed that far
     libraryDependencies ++= Seq("org.ow2.asm" % "asm" % "9.10.1", "org.ow2.asm" % "asm-tree" % "9.10.1"),
+    // Brotli at its best for a web bundle (WebBundle.precompress) and its fonts (Woff2): Google's encoder, natively
+    libraryDependencies += "com.aayushatharva.brotli4j" % "brotli4j" % brotli4jVersion,
     // the release the plugin belongs to (everyuiVersion), which fetches the compiler at the same one
     Compile / resourceGenerators += Def.task {
       val out = (Compile / resourceManaged).value / "everyui" / "sbt" / "everyui.properties"

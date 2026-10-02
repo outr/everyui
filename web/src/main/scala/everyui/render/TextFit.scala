@@ -15,7 +15,7 @@ object TextFit {
     * one has; asked again while they load, it waits on the same. */
   def ready(el: html.Element, loaded: () => Unit): Boolean = el.isConnected && {
     val fonts = dom.document.asInstanceOf[js.Dynamic].fonts
-    val waiting = if (js.isUndefined(fonts)) Nil else faces(el).filter(f => waitsFor(f, fonts).nonEmpty)
+    val waiting = if (js.isUndefined(fonts)) Nil else faces(el).filter(f => waitsFor(f, fonts, el.textContent).nonEmpty)
     val held = el.asInstanceOf[js.Dynamic]
     if (waiting.nonEmpty && !js.isUndefined(held.everyuiFaces)) ()
     else if (waiting.nonEmpty) {
@@ -47,16 +47,18 @@ object TextFit {
   }
 
   // The faces of `face`'s family (the first named: the others are fallbacks for what it cannot draw), in its slant and
-  // weight (or any weight, where none is that one), that are loading, or not yet asked for and meant for any letter.
-  // The browser's own `check` answers that a face still loading, or never asked for, is ready.
-  private def waitsFor(face: (String, String, String), fonts: js.Dynamic): js.Array[js.Dynamic] = {
+  // weight (or any weight, where none is that one), that are loading, or not yet asked for and meant for any letter or
+  // for one of `text`'s (a slice of a face by script, a build's). The browser's own `check` answers that a face still
+  // loading, or never asked for, is ready.
+  private def waitsFor(face: (String, String, String), fonts: js.Dynamic, text: String): js.Array[js.Dynamic] = {
     val own = js.Array.from(fonts.asInstanceOf[js.Iterable[js.Dynamic]])
       .filter(f => named(f.family.asInstanceOf[String]) == face._1 && f.style.asInstanceOf[String] == face._2)
     val weighted = own.filter(_.weight.asInstanceOf[String] == face._3)
     (if (weighted.isEmpty) own else weighted).filter { f =>
       val status = f.status.asInstanceOf[String]
-      val everyLetter = f.unicodeRange.asInstanceOf[String].equalsIgnoreCase("U+0-10FFFF")
-      status == "loading" || (status == "unloaded" && everyLetter)
+      val range = f.unicodeRange.asInstanceOf[String]
+      status == "loading" ||
+        (status == "unloaded" && (range.equalsIgnoreCase("U+0-10FFFF") || PageFaces.holds(range, text)))
     }
   }
 

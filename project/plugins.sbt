@@ -8,3 +8,6 @@ Compile / unmanagedSourceDirectories ++= Seq("main", "plugin")
 
 // ASM for AndroidRuntime, which rewrites Scala 3's VarHandle lazy vals for Android before API 33
 libraryDependencies += "org.ow2.asm" % "asm-tree" % "9.10.1"
+
+// brotli4j for the web bundle's precompression and WOFF2 (WebBundle, Woff2), as the published plugin has it
+libraryDependencies += "com.aayushatharva.brotli4j" % "brotli4j" % "1.23.0"

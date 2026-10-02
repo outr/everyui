@@ -19,7 +19,7 @@ import scala.concurrent.duration.Duration
   *     val out = baseDirectory.value / "out"
   *     IO.delete(out)
   *     everyuiWebScripts.value.writeTo(out, baseDirectory.value / "index.html")
-  *     IO.copyDirectory(everyuiWebFonts.value, out / "fonts")
+  *     everyuiWebFaceFiles.value.writeTo(out)   // fonts/<face>.woff2, cut to what the app draws, and their rules
   *     IO.copyDirectory(everyuiWebGuests.value, out)   // everyui-hls/<version>/, everyui-monaco/<version>/, ...
   *     // icons, …
   *     WebBundle.seal(out)   // for a CDN: hashed names, everything but index.html cached for good (optional)
@@ -47,6 +47,11 @@ object EveryUIWebPlugin extends AutoPlugin {
     type WebStage = everyui.sbt.WebStage
     val WebStage: everyui.sbt.WebStage.type = everyui.sbt.WebStage
     val WebBundle: everyui.sbt.WebBundle.type = everyui.sbt.WebBundle
+    type WebFace = everyui.sbt.WebFace
+    val WebFace: everyui.sbt.WebFace.type = everyui.sbt.WebFace
+    type WebGlyphs = everyui.sbt.WebGlyphs
+    val WebGlyphs: everyui.sbt.WebGlyphs.type = everyui.sbt.WebGlyphs
+    type WebFaces = everyui.sbt.WebFaces
 
     val everyuiWebTarget = settingKey[WebTarget]("What the web app is built as: WebTarget.Js (the default), WebTarget.Wasm, or WebTarget.Both (WebAssembly where the browser runs it, JavaScript elsewhere)")
     val everyuiWebStage = settingKey[WebStage]("How far the web app is linked: WebStage.Full (the default, fullLinkJS, a release) or WebStage.Fast (fastLinkJS, for development), for its JavaScript and WebAssembly builds alike")
@@ -54,6 +59,8 @@ object EveryUIWebPlugin extends AutoPlugin {
     val everyuiWebMinify = settingKey[Boolean]("Whether the full link runs Scala.js's minifier, on fullLinkJS and everyuiWasmLinkJS alike (true, the default)")
     val everyuiWasmLinkJS = taskKey[File]("The web app linked at everyuiWebStage to WebAssembly: a directory of main.js, __loader.js and main.wasm")
     val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath, with everyuiAppFonts: a directory for the bundle to copy as fonts/")
+    val everyuiWebFaces = settingKey[Seq[WebFace]]("The faces the web app draws with, EveryUI's (WebFace.OpenSans, …) and its own (files in everyuiAppFonts), which everyuiWebFaceFiles ships as WOFF2 cut to what the app draws, with the page's @font-face rules and preloads: WebFace.bundled by default")
+    val everyuiWebFaceFiles = taskKey[WebFaces]("everyuiWebFaces over everyuiWebFonts: writeTo(out), once the scripts are written, writes their files into out/fonts and their rules into out/index.html")
     val everyuiWebGuests = taskKey[File]("The web guests' files (everyui-web's hls.js, everyui-monaco's editor, everyui-terminal's xterm.js), taken from their modules on the classpath: a directory whose everyui-<module>/ directories the bundle copies next to the page")
   }
   import autoImport.*
@@ -62,6 +69,8 @@ object EveryUIWebPlugin extends AutoPlugin {
     everyuiWebTarget := WebTarget.Js,
     everyuiWebStage := WebStage.Full,
     everyuiWebMinify := true,
+    everyuiWebFaces := WebFace.bundled,
+    everyuiWebFaceFiles := Def.uncached(WebFaces(everyuiWebFonts.value, everyuiWebFaces.value)),
     Compile / fullLinkJS / scalaJSLinkerConfig := (Compile / fullLinkJS / scalaJSLinkerConfig).value
       .withMinify(everyuiWebMinify.value),
     everyuiWasmLinkJS := Def.uncached {
@@ -87,7 +96,8 @@ object EveryUIWebPlugin extends AutoPlugin {
       val jar = (Compile / dependencyClasspath).value.map(a => converter.toPath(a.data).toFile)
         .find(_.getName.startsWith("everyui-web"))
         .getOrElse(sys.error("everyui-web is not on the classpath: add \"com.outr\" %% \"everyui-web\" to libraryDependencies"))
-      val out = target.value / "everyui-fonts"
+      // not everyuiFonts' directory: a bundle task may ask for both, and they would clear each other's
+      val out = target.value / "everyui-web-fonts"
       IO.delete(out)
       ModuleFiles.copy(Seq(jar), "everyui/fonts/", out)
       ModuleFiles.appFonts(EveryUIPlugin.autoImport.everyuiAppFonts.value, out / "everyui" / "fonts")

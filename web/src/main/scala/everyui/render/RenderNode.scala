@@ -1552,8 +1552,12 @@ object Platform {
 
   /** An app's face, served beside the bundled ones in `fonts/`, added to the page's fonts. Where the page preloads it
     * (`<link rel="preload" as="font">`), from that very address, versioned or not, so the preloaded download is the one
-    * used rather than a second. */
-  def registerFont(face: Face): Unit = {
+    * used rather than a second. A face the page's build declared (PageFaces) is the page's already, with its rules and
+    * preload, and is left to them. */
+  def registerFont(face: Face): Unit = if (!PageFaces.has(face)) {
+    if (PageFaces.declared)
+      log(face.family + " " + face.weight.toString + " is not among the faces the build declared (everyuiWebFaces): " +
+        "loaded from fonts/" + face.file)
     // an italic face answers for its family's italic runs; a fallback is a family of its own, named after the others
     val options = js.Dynamic.literal(weight = face.weight.toString, style = if (face.italic) "italic" else "normal")
     val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, "url(" + fontAddress(face.file) + ")", options)
@@ -1728,12 +1732,14 @@ object Platform {
       .applyDynamic("then")(done, done)
   }
 
-  /** Run `f` once the bundled faces have loaded, so text measures with its
+  /** Run `f` once the faces the app starts with have loaded, so text measures with its
     * real font rather than a fallback. (The Roku loads fonts synchronously.) */
   def whenFontsReady(f: () => Unit): Unit = {
     val fonts = dom.document.asInstanceOf[js.Dynamic].fonts
-    val loads = js.Array("400 24px 'Open Sans'", "600 24px 'Open Sans'", "400 24px 'Material Icons'")
-      .map(face => fonts.load(face)) ++ registered.map(font => font.load())
+    // those the page's build said to wait for, else the bundled faces a page writing its own rules has
+    val start = if (PageFaces.declared) js.Array(PageFaces.start*)
+      else js.Array("400 24px 'Open Sans'", "600 24px 'Open Sans'", "400 24px 'Material Icons'")
+    val loads = start.map(face => fonts.load(face)) ++ registered.map(font => font.load())
     // and then a frame drawn with them: what the server wrote into the page is painted in its own faces (a headline
     // that waited for its face) before the app, built at once, draws over it
     val done: js.Function1[js.Any, Unit] = _ => afterFirstPaint(f)
