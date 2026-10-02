@@ -2752,15 +2752,38 @@ then keeps the browser's own menu away, so a header without any leaves it); the 
 them from the header; a ⋮ at the header's end, shown with the pointer over it or the cursor on it and always where there
 is no pointer (a touch screen, a television), drops them from itself. A click or Enter on the header still opens and
 closes it; a click on the ⋮ does not. The ⋮ is not a stop for the focus: the list is one stop, its cursor on the
-header, and the keys reach the menu as they do an item's. Where a section has a menu its count sits short of the ⋮,
-whether it shows or not; without one the header is as it was. `RichSection.icon` puts an icon before the title, for a
-kind of group of its own. Right to left, the ⋮ is at the left.
+header, and the keys reach the menu as they do an item's. Where any header has a menu (`headersHaveMenus`), every
+header's count sits short of the ⋮, in one line down the list, whether it shows or not; in a list with none each
+header is as it was. `RichSection.icon` puts an icon before the title, for a kind of group of its own. Right to left,
+the ⋮ is at the left.
 
 ```scala
 val sidebar = new RichList[Chat](Var(workspaces.map(w => RichSection(w.id, w.name, w.chats, icon = Some(MaterialIcon.Folder)))),
   _.id, look)
 sidebar.sectionMenu @= (s => List(MenuItem("New chat here", () => create(s.key)), MenuItem("Rename…", () => rename(s.key)),
   MenuItem("Delete workspace", () => delete(s.key), danger = true)))
+```
+
+Sections can go under a level above them: `RichSection.group` (`Option[RichGroup]`, `None` by default) puts the sections
+next to each other with the same `RichGroup(key, title, icon = None)` under one header ("Workspaces", "Personal"). The
+group travels on its sections, so the list follows `sections` alone and needs no second Var kept in step with it. Its
+header is bold in the text's colour, where a section's is muted, and the sections' headers under it are set in by
+`RichRow.nest` (from the right, right to left); its count is the sum of what its sections' headers say. A click, Enter,
+Right and Left open and close it as a section; the closed groups' keys are in `collapsedGroups` (a constructor
+argument after `search`, a `Var` the app may hold, as `collapsed` is), apart from the sections', so a group and a
+section of the same key never clash. A closed group hides its sections and their headers, and each keeps its own state
+inside it. The words (`query`) open a group to what they find in it, with only the sections they find something in;
+one they find nothing in is not shown. `groupMenu` (`RichGroup => List[MenuItem]`, empty by default) is its menu, asked
+for and shown as a section's is, the ⋮ included. Sections in no group are drawn as they always were. A drag never goes
+into a closed group; onto an open group's header is its first section's start, and before it the end of the section
+above. `RichMove` still names sections, which the app maps to its groups.
+
+```scala
+val workspaces = RichGroup("workspaces", "Workspaces", Some(MaterialIcon.Workspaces))
+sections @= app.workspaces.map(w => RichSection(w.id, w.name, w.chats, group = Some(workspaces))) ++
+  app.personas.map(p => RichSection(p.id, p.name, p.chats, group = Some(RichGroup("personal", "Personal"))))
+val sidebar = new RichList[Chat](sections, _.id, look, collapsedGroups = app.closedGroups)
+sidebar.groupMenu @= (g => if (g.key == "workspaces") List(MenuItem("New workspace…", () => create())) else Nil)
 ```
 
 The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,

@@ -19,6 +19,11 @@ import reactify.*
   * a tap) chooses it and fires `activated`. The arrows move a cursor through headers and items; Enter or a click on a
   * header opens or closes it, as do Right and Left on it.
   *
+  * Sections next to each other in the same `RichSection.group` go under that group's header, a level above theirs,
+  * which says how many they hold between them and opens and closes them all as a section's does its items; the keys of
+  * the groups closed are in `collapsedGroups`, apart from the sections', so neither can be taken for the other.
+  * `groupMenu` gives a group's menu, asked for as a section's is.
+  *
   * `menu` gives an item's context menu: asked for with the secondary button, a long press on a touch screen, the menu
   * key or a remote's options key, OK held, or the ⋮ at the row's end that shows with the pointer over it or the cursor
   * on it. `sectionMenu` gives a section's, asked for the same ways on its header, whose ⋮ shows with the pointer over
@@ -26,7 +31,7 @@ import reactify.*
   * `search`, a field over the list narrows it to the items `matches` finds for the words (`query`, which
   * the app can also set), under their sections, opened; an app filtering its own sections leaves it off. With
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
-  * and `moved` hears.
+  * and `moved` hears: never into a group that is closed.
   *
   * {{{
   *   val chats = new RichList[Chat](sections, _.id, c => RichLook(c.title, Some(c.snippet), who = Some(c.persona),
@@ -37,7 +42,8 @@ import reactify.*
   *   chats.selected @= Some(current.id)
   * }}} */
 class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => String, val lookOf: T => RichLook,
-                  val collapsed: Var[Set[String]] = Var(Set.empty[String]), search: Boolean = false) extends Container {
+                  val collapsed: Var[Set[String]] = Var(Set.empty[String]), search: Boolean = false,
+                  val collapsedGroups: Var[Set[String]] = Var(Set.empty[String])) extends Container {
   override def kind: String = "RichList"
 
   /** An item activated: Enter on it, a click, a tap. It is chosen (`selected`) first. */
@@ -48,6 +54,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val menu: Var[T => List[MenuItem]] = own(Var((_: T) => Nil))
   /** A section's menu, on its header, made afresh each time it opens: none (and no ⋮) where it is empty. */
   val sectionMenu: Var[RichSection[T] => List[MenuItem]] = own(Var((_: RichSection[T]) => Nil))
+  /** A group's menu, on its header, made afresh each time it opens: none (and no ⋮) where it is empty. */
+  val groupMenu: Var[RichGroup => List[MenuItem]] = own(Var((_: RichGroup) => Nil))
   /** The words the list is narrowed by, where they are not empty. */
   val query: Var[String] = own(Var(""))
   /** Whether an item is one the words find: by default, one whose title or detail holds them, in any case. */
@@ -64,8 +72,12 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val moved: Channel[RichMove] = Channel[RichMove]
 
   private val lines: Var[Vector[RichLine[T]]] = own(Var(Vector.empty))
+  /** Whether any section's or group's header has a menu: then every header's count sits short of the ⋮, in one line
+    * down the list, and in a list with none each is where it always was. */
+  val headersHaveMenus: Val[Boolean] = own(Val(sections().exists(s => sectionMenu()(s).nonEmpty ||
+    s.group.exists(g => groupMenu()(g).nonEmpty))))
   val list: VirtualList[RichLine[T]] = new VirtualList[RichLine[T]](lines, _.key,
-    l => l.item.map(t => lookOf(t).title).getOrElse(l.section.title), RichRow.tallHeight, measuredRows = true)(() =>
+    l => l.item.map(t => lookOf(t).title).getOrElse(l.groupHead.map(_.title).getOrElse(l.section.title)), RichRow.tallHeight, measuredRows = true)(() =>
     new RichRow[T](this))
   /** The field over the list that narrows it, with `search`: a search box on one line (`SearchField`). */
   val field: Option[SearchField] = if (search) Some(new SearchField(Words.search)) else None
@@ -81,6 +93,27 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     collapsed @= collapsed() + section
   }
   def toggle(section: String): Unit = if (collapsed().contains(section)) expand(section) else collapse(section)
+
+  def expandGroup(group: String): Unit = if (collapsedGroups().contains(group)) collapsedGroups @= collapsedGroups() - group
+  /** Group `group` closed, and every section in it; a cursor on one of their lines goes up to its header. */
+  def collapseGroup(group: String): Unit = if (!collapsedGroups().contains(group)) {
+    if (list.currentItem.exists(l => l.groupHead.isEmpty && l.section.group.exists(_.key == group)))
+      list.current @= Some(RichList.groupLineKey(group))
+    collapsedGroups @= collapsedGroups() + group
+  }
+  def toggleGroup(group: String): Unit =
+    if (collapsedGroups().contains(group)) expandGroup(group) else collapseGroup(group)
+
+  // a header's line opened, closed, or either: its group's, or its section's
+  private def openLine(l: RichLine[T]): Unit = l.groupHead match {
+    case Some(g) => expandGroup(g.key)
+    case None => expand(l.section.key)
+  }
+  private def closeLine(l: RichLine[T]): Unit = l.groupHead match {
+    case Some(g) => collapseGroup(g.key)
+    case None => collapse(l.section.key)
+  }
+  private def toggleLine(l: RichLine[T]): Unit = if (l.open) closeLine(l) else openLine(l)
 
   /** The cursor onto item `key`, scrolled into view, where it shows. */
   def reveal(key: String): Unit = lineOf.get(key).foreach { line =>
@@ -107,6 +140,10 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   def openSectionMenu(s: RichSection[T], anchor: Option[Component], x: Double, y: Double): Unit =
     drop(sectionMenu()(s), s.title, anchor, x, y)
 
+  /** Group `g`'s menu, where it has one, as `openSectionMenu` opens a section's. */
+  def openGroupMenu(g: RichGroup, anchor: Option[Component], x: Double, y: Double): Unit =
+    drop(groupMenu()(g), g.title, anchor, x, y)
+
   private def drop(items: List[MenuItem], title: String, anchor: Option[Component], x: Double, y: Double): Unit = {
     if (items.nonEmpty) {
       if (Platform.remoteNavigation()) Menu.show(items, title)
@@ -119,29 +156,52 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
 
   private def flatten(): Unit = {
     val shut = collapsed()
+    val shutGroups = collapsedGroups()
     val words = query().trim
     val narrowed = words.nonEmpty
     val test = matches()
-    // a section at a time (no builder: a Roku has none)
-    var out = Vector.empty[RichLine[T]]
-    // each item's line, the first where it shows, as pairs made into a map in one go (a Roku's map copies itself for
-    // each key added one at a time): reversed, so the first of an item's lines is the one kept
-    var found = Vector.empty[(String, String)]
-    sections().foreach { s =>
+    // a section's lines (its header, and its items where it is open) and what its header says, or none where the words
+    // find nothing in it
+    def part(s: RichSection[T], nested: Boolean): Option[(Vector[RichLine[T]], Int)] = {
       val items = if (narrowed) s.items.filter(t => test(t, words)) else s.items
-      if (!narrowed || items.nonEmpty) {
+      if (narrowed && items.isEmpty) None
+      else {
         // what the words find shows whether its section was closed or not
         val open = narrowed || s.title.isEmpty || !shut.contains(s.key)
-        if (s.title.nonEmpty)
-          out = out :+ RichLine(GroupedList.headerKey(s.key), s, None, open, if (narrowed) items.size else s.count.getOrElse(items.size))
-        if (open) {
-          val shown = items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0))
-          found = found ++ shown.flatMap(l => l.item.map(t => keyOf(t) -> l.key).toList)
-          out = out ++ shown
-        }
+        val count = if (narrowed) items.size else s.count.getOrElse(items.size)
+        val head = if (s.title.isEmpty) Vector.empty[RichLine[T]]
+          else Vector(RichLine(GroupedList.headerKey(s.key), s, None, open, count, None, nested))
+        val shown = if (open) items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0, None, nested))
+          else Vector.empty[RichLine[T]]
+        Some((head ++ shown, count))
       }
     }
-    lineOf = found.reverse.toMap
+    // a section at a time, or a group's run of them (no builder: a Roku has none)
+    val all = sections()
+    var out = Vector.empty[RichLine[T]]
+    var i = 0
+    while (i < all.size) {
+      val s = all(i)
+      s.group match {
+        case None =>
+          part(s, false).foreach(p => out = out ++ p._1)
+          i += 1
+        case Some(g) =>
+          var j = i
+          while (j < all.size && all(j).group.exists(_.key == g.key)) j += 1
+          val parts = all.slice(i, j).flatMap(s => part(s, true).toList)
+          // a group the words find nothing in is not shown; one they find something in is, opened
+          if (parts.nonEmpty) {
+            val open = narrowed || !shutGroups.contains(g.key)
+            out = out :+ RichLine(RichList.groupLineKey(g.key), s, None, open, parts.foldLeft(0)((n, p) => n + p._2), Some(g))
+            if (open) parts.foreach(p => out = out ++ p._1)
+          }
+          i = j
+      }
+    }
+    // each item's line, the first where it shows, as pairs made into a map in one go (a Roku's map copies itself for
+    // each key added one at a time): reversed, so the first of an item's lines is the one kept
+    lineOf = out.flatMap(l => l.item.map(t => keyOf(t) -> l.key).toList).reverse.toMap
     lines @= out
   }
 
@@ -169,14 +229,24 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
         found
       }
       val target = d.target.map(k => list.indexOf(k)).filter(_ >= 0)
-      val place: Option[(String, Option[String])] = target.map { i =>
+      val place: Option[(String, Option[String])] = target.flatMap { i =>
         val l = list(i)
-        (l.item.nonEmpty, d.position) match {
-          case (true, DropPosition.Before) => (l.section.key, firstFrom(i, l.section.key))
-          case (true, _) => (l.section.key, firstFrom(i + 1, l.section.key))
-          // before a header is the end of the section above it, where there is one
-          case (false, DropPosition.Before) if i > 0 => (list(i - 1).section.key, None)
-          case (false, _) => (l.section.key, firstFrom(i + 1, l.section.key))
+        // the start of the section on line `at`
+        def startOf(at: Int): (String, Option[String]) = (list(at).section.key, firstFrom(at, list(at).section.key))
+        if (l.groupHead.nonEmpty) d.position match {
+          // before a group's header is the end of the section above it, where there is one and it is not a closed group
+          case DropPosition.Before => if (i > 0 && list(i - 1).groupHead.isEmpty) Some((list(i - 1).section.key, None)) else None
+          // onto or after it is the start of its first section, where it is open: never into a closed group
+          case _ => if (l.open && i + 1 < list.count) Some(startOf(i + 1)) else None
+        }
+        else (l.item.nonEmpty, d.position) match {
+          case (true, DropPosition.Before) => Some((l.section.key, firstFrom(i, l.section.key)))
+          case (true, _) => Some((l.section.key, firstFrom(i + 1, l.section.key)))
+          // before a header is the end of the section above it, where there is one: under a group's header, the start of
+          // its own
+          case (false, DropPosition.Before) if i > 0 =>
+            if (list(i - 1).groupHead.nonEmpty) Some(startOf(i)) else Some((list(i - 1).section.key, None))
+          case (false, _) => Some((l.section.key, firstFrom(i + 1, l.section.key)))
         }
       }
       place.map { case (section, before) => RichMove(keys, from.head.section.key, section, before) }
@@ -194,15 +264,15 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     .flatMap { line =>
       val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
       val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
-      if (e.key == forward && !line.open) Some(() => expand(line.section.key))
-      else if (e.key == back && line.open) Some(() => collapse(line.section.key))
+      if (e.key == forward && !line.open) Some(() => openLine(line))
+      else if (e.key == back && line.open) Some(() => closeLine(line))
       else None
     }
   list.clicks = (i: Int, _: Double) => {
     val line = list(i)
     if (line.item.isEmpty) {
       list.moveTo(i)
-      toggle(line.section.key)
+      toggleLine(line)
       true
     }
     else false
@@ -211,17 +281,21 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     case Some(t) =>
       selected @= Some(keyOf(t))
       activated @= t
-    case None => toggle(line.section.key)
+    case None => toggleLine(line)
   })
   list.commit := ((e: ListEdit[RichLine[T]]) => e.item.item match {
     case Some(t) => commit()(t, e.text)
     case None => everyui.async.Task.pure(None: Option[String])
   })
   // a header's menu at the pointer, or dropped from the header for the keys
-  list.menu.attach(p => p.item.item match {
-    case Some(t) => openMenu(t, None, p.x, p.y)
-    case None => openSectionMenu(p.item.section, if (p.pointer) None else list.rowAt(list.indexOf(p.key)), p.x, p.y)
-  })
+  list.menu.attach { p =>
+    val anchor = if (p.pointer) None else list.rowAt(list.indexOf(p.key))
+    (p.item.item, p.item.groupHead) match {
+      case (Some(t), _) => openMenu(t, None, p.x, p.y)
+      case (None, Some(g)) => openGroupMenu(g, anchor, p.x, p.y)
+      case (None, None) => openSectionMenu(p.item.section, anchor, p.x, p.y)
+    }
+  }
   list.draggable := reorders() && query().trim.isEmpty
   list.accepts := ((d: Drop) => moveFor(d).exists(m => accepts()(m)))
   list.dropped.attach(d => moveFor(d).filter(m => accepts()(m)).foreach(m => moved @= m))
@@ -232,6 +306,7 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
 
   sections.attach(_ => flatten())
   collapsed.attach(_ => flatten())
+  collapsedGroups.attach(_ => flatten())
   query.attach(_ => flatten())
   matches.attach(_ => flatten())
 
@@ -264,6 +339,9 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
 object RichList {
   /** How often the times are said again, in seconds. */
   val tick: Double = 20.0
+
+  /** The line of group `group`'s header, apart from any section's or item's. */
+  def groupLineKey(group: String): String = "s\u0000" + group
 
   /** A count as a badge says it: "99+" past 99. */
   def countText(n: Int): String = if (n > 99) "99+" else n.toString

@@ -6,7 +6,7 @@ import everyui.component.{Container, TextView}
 import everyui.component.types.FontWeight
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
-import everyui.list.{RichList, RichLook, RichSection}
+import everyui.list.{RichGroup, RichList, RichLook, RichSection}
 import everyui.menu.MenuItem
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -14,14 +14,16 @@ import everyui.ui
 import everyui.util.Clock
 import reactify.*
 
-/** A conversation list (`everyui.list.RichList`): 5000 conversations in three sections (Unread, Recent and Archive),
-  * with avatars (one with a picture), icons, snippets, times from now back over months, unread counts, pins and locks,
-  * a search field over them, a menu on each (Rename…, Pin, Lock title, Delete), and one on the Unread and Recent
-  * headers (Mark all read, Collapse others), Archive's marked with an icon and without one. Conversations in Recent
-  * drag into another order. Wide, the list is a sidebar beside the conversation chosen; narrow, it fills the screen.
-  * `theme=light` for the light palette, `rtl=1` to lay it out right to left, `collapsed=<key>` to start with a section
-  * closed, `scroll=<pixels>` to start scrolled, `find=<words>` to start narrowed, and `menu=1` to open the chosen
-  * conversation's ⋮ menu. Logs `richlist ok` once built, and each thing done. */
+/** A conversation list (`everyui.list.RichList`): 5000 conversations in four sections, Unread on its own, Recent and
+  * Archive in the Workspaces group and Ada Lovelace's in the Personal one, with avatars (one with a picture), icons,
+  * snippets, times from now back over months, unread counts, pins and locks, a search field over them, a menu on each
+  * (Rename…, Pin, Lock title, Delete), one on the Unread and Recent headers (Mark all read, Collapse others), Archive's
+  * marked with an icon and without one, and one on each group's (Close its sections, Open its sections). Conversations
+  * in Recent drag into another order. Wide, the list is a sidebar beside the conversation chosen; narrow, it fills the
+  * screen. `theme=light` for the light palette, `rtl=1` to lay it out right to left, `collapsed=<key>` to start with a
+  * section closed, `groups=<key>` with a group (workspaces, personal), `scroll=<pixels>` to start scrolled,
+  * `find=<words>` to start narrowed, and `menu=1` to open the chosen conversation's ⋮ menu. Logs `richlist ok` once
+  * built, and each thing done. */
 object RichListDemo {
   private case class Chat(id: String, title: String, snippet: String, who: Option[Participant], icon: Option[MaterialIcon],
                           updated: Long, unread: Int, pinned: Boolean, locked: Boolean)
@@ -45,13 +47,14 @@ object RichListDemo {
     val chats: Var[Vector[Chat]] = Var((0 until 5000).toVector.map(i => made(i, start)))
     val order: Var[Vector[String]] = Var(Vector.empty)
     val collapsed: Var[Set[String]] = Var(Platform.launchArg("collapsed").split(",").filter(_.nonEmpty).toSet)
+    val closedGroups: Var[Set[String]] = Var(Platform.launchArg("groups").split(",").filter(_.nonEmpty).toSet)
     val sections: Var[Vector[RichSection[Chat]]] = Var(Vector.empty)
     order @= chats().map(_.id)
     chats.attach(_ => group(chats, order, sections, start))
     order.attach(_ => group(chats, order, sections, start))
     group(chats, order, sections, start)
 
-    val list = new RichList[Chat](sections, _.id, look, collapsed, search = true)
+    val list = new RichList[Chat](sections, _.id, look, collapsed, search = true, collapsedGroups = closedGroups)
     list.reorders @= true
     list.menu @= ((c: Chat) => List(
       MenuItem("Rename…", () => list.rename(c.id), MaterialIcon.Edit),
@@ -74,6 +77,17 @@ object RichListDemo {
         Platform.log("richlist marked all read")
       }, MaterialIcon.DoneAll), others)
       else List(others)
+    }
+    // a menu on each group's header, over the sections in it
+    list.groupMenu @= { (g: RichGroup) =>
+      val keys = sections().filter(_.group.exists(_.key == g.key)).map(_.key).toSet
+      List(MenuItem("Close its sections", () => {
+        collapsed @= collapsed() ++ keys
+        Platform.log("richlist closed the sections of " + g.key)
+      }, MaterialIcon.UnfoldLess), MenuItem("Open its sections", () => {
+        collapsed @= collapsed() -- keys
+        Platform.log("richlist opened the sections of " + g.key)
+      }, MaterialIcon.UnfoldMore))
     }
     list.commit @= ((c: Chat, text: String) =>
       if (c.locked) Task.pure(Some("The title is locked"): Option[String])
@@ -137,17 +151,25 @@ object RichListDemo {
 
   private val week: Long = 7L * 86400000L
 
-  // the three sections: Unread, Recent (in the order it was dragged into, pinned first) and Archive
+  private val workspaces: RichGroup = RichGroup("workspaces", "Workspaces", Some(MaterialIcon.Workspaces))
+  private val personal: RichGroup = RichGroup("personal", "Personal", Some(MaterialIcon.Person))
+
+  // the four sections: Unread on its own; Recent (in the order it was dragged into, pinned first) and Archive in
+  // Workspaces; and Ada's, read, in Personal
   private def group(chats: Var[Vector[Chat]], order: Var[Vector[String]], sections: Var[Vector[RichSection[Chat]]],
                     start: Long): Unit = {
     val all = chats()
-    val rest = all.filter(_.unread == 0)
+    val read = all.filter(_.unread == 0)
+    val ada = read.filter(_.who.exists(_.id == "p-ada"))
+    val rest = read.filterNot(_.who.exists(_.id == "p-ada"))
     val recent = rest.filter(c => start - c.updated < week)
     val byId = recent.map(c => c.id -> c).toMap
     val ranked = order().flatMap(id => byId.get(id).toVector)
     sections @= Vector(RichSection("unread", "Unread", all.filter(_.unread > 0)),
-      RichSection("recent", "Recent", ranked.filter(_.pinned) ++ ranked.filterNot(_.pinned)),
-      RichSection("archive", "Archive", rest.filter(c => start - c.updated >= week), icon = Some(MaterialIcon.Archive)))
+      RichSection("recent", "Recent", ranked.filter(_.pinned) ++ ranked.filterNot(_.pinned), group = Some(workspaces)),
+      RichSection("archive", "Archive", rest.filter(c => start - c.updated >= week), icon = Some(MaterialIcon.Archive),
+        group = Some(workspaces)),
+      RichSection("ada", "Ada Lovelace", ada, group = Some(personal)))
   }
 
   private def change(chats: Var[Vector[Chat]], id: String, f: Chat => Chat): Unit =

@@ -10,7 +10,8 @@ import everyui.theme.Theme
 import reactify.*
 
 /** A row of a `RichList`, handed line after line as it scrolls: a section's header (a chevron, its icon, its title, its
-  * count, and a ⋮ for its menu where it has one, shown as an item's is, and always where there is no pointer),
+  * count, and a ⋮ for its menu where it has one, shown as an item's is, and always where there is no pointer), set in
+  * under its group's where it is in one; a group's header, the same in bold and the text's colour;
   * or an item as its `RichLook` says, with its avatar or icon, its title and detail, and at its end the time, the count
   * and the mark. A ⋮ at its end opens the item's menu, shown while the pointer is over the row, the cursor is on it in
   * a list with the focus, or (on a touch screen) it is the item chosen; it takes the time's place while it shows. */
@@ -22,10 +23,18 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   /** Whether it shows the item the app has chosen (`RichList.selected`). */
   val chosen: Val[Boolean] = own(Val(item().flatMap(_.item).exists(t => owner.selected().contains(owner.keyOf(t)))))
   private val hovered: Val[Boolean] = if (Platform.pointerSupport()) event.pointer.over else own(Val(false))
-  /** The header's section, where this row is one. */
-  private val section: Val[Option[RichSection[T]]] = own(Val(item().filter(_.item.isEmpty).map(_.section)))
-  private val sectionHasMenu: Val[Boolean] = own(Val(section().exists(s => owner.sectionMenu()(s).nonEmpty)))
-  private val sectionMenuShows: Val[Boolean] = own(Val(sectionHasMenu() &&
+  /** The group this row heads, where it is a group's header. */
+  private val group: Val[Option[RichGroup]] = own(Val(item().filter(_.item.isEmpty).flatMap(_.groupHead)))
+  /** The header's section, where this row is a section's header. */
+  private val section: Val[Option[RichSection[T]]] = own(Val(item().filter(l => l.item.isEmpty && l.groupHead.isEmpty)
+    .map(_.section)))
+  // how far a section's header in a group is set in under the group's
+  private val nest: Val[Double] = own(Val(if (section().nonEmpty && item().exists(_.nested)) RichRow.nest else 0.0))
+  private val headerHasMenu: Val[Boolean] = own(Val(group() match {
+    case Some(g) => owner.groupMenu()(g).nonEmpty
+    case None => section().exists(s => owner.sectionMenu()(s).nonEmpty)
+  }))
+  private val sectionMenuShows: Val[Boolean] = own(Val(headerHasMenu() &&
     (hovered() || (current() && active()) || !Platform.pointerSupport())))
   private val menuShows: Val[Boolean] = own(Val(!header() && item().flatMap(_.item).exists(t => owner.menu()(t).nonEmpty) &&
     (hovered() || (current() && active()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
@@ -40,20 +49,23 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val chevron = new MaterialIconView(MaterialIcon.ExpandMore, 18.0) {
     icon := (if (item().exists(_.open)) MaterialIcon.ExpandMore
       else if (everyui.i18n.Direction.rtl()) MaterialIcon.ChevronLeft else MaterialIcon.ChevronRight)
-    color := Theme.muted()
+    color := (if (group().nonEmpty) Theme.text() else Theme.muted())
     visible := header()
-    position.left := ListRow.along(ListRow.inset, 18.0, RichRow.this.size.width())
+    position.left := ListRow.along(ListRow.inset + nest(), 18.0, RichRow.this.size.width())
     position.top := (RichRow.this.size.height() - 18.0) / 2.0
   }
-  private val heading: RowLabel = new RowLabel(item().filter(_.item.isEmpty).map(_.section.title).getOrElse(""),
-    Decoration(icon = section().flatMap(_.icon), weight = FontWeight.SemiBold, color = Some(Theme.muted()),
+  // a group's header a level above a section's: bold, in the text's colour, where a section's is muted
+  private val heading: RowLabel = new RowLabel(group().map(_.title).orElse(section().map(_.title)).getOrElse(""),
+    Decoration(icon = if (group().nonEmpty) group().flatMap(_.icon) else section().flatMap(_.icon),
+      weight = if (group().nonEmpty) FontWeight.Bold else FontWeight.SemiBold,
+      color = Some(if (group().nonEmpty) Theme.text() else Theme.muted()),
       badge = item().filter(_.item.isEmpty).map(_.count.toString).getOrElse("")),
-    // short of the ⋮, where the section has a menu, so the count keeps its place as the ⋮ comes and goes
-    RichRow.this.size.width() - ListRow.inset - 22.0 - RichRow.inset + 8.0 -
-      (if (sectionHasMenu()) RichRow.headerMore - 2.0 else 0.0), RichRow.this.size.height(), 12.5)
-  heading.position.left := ListRow.along(ListRow.inset + 22.0, heading.size.width(), size.width())
+    // short of the ⋮ where any header has a menu, so the counts keep one line as the ⋮ comes and goes
+    RichRow.this.size.width() - ListRow.inset - 22.0 - RichRow.inset + 8.0 - nest() -
+      (if (owner.headersHaveMenus()) RichRow.headerMore - 2.0 else 0.0), RichRow.this.size.height(), 12.5)
+  heading.position.left := ListRow.along(ListRow.inset + 22.0 + nest(), heading.size.width(), size.width())
   heading.visible := header()
-  /** The header's ⋮, opening its section's menu: a little smaller than an item's, to fit the header. */
+  /** The header's ⋮, opening its section's (or group's) menu: a little smaller than an item's, to fit the header. */
   val sectionMore: IconButton = new IconButton(MaterialIcon.MoreVert, RichList.moreLabel, () => openSectionMore()) {
     size.width @= RichRow.headerMore
     size.height @= RichRow.headerMore
@@ -170,7 +182,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     else Color.Clear)
   semantics := item().map(l => Semantics("listitem", label = l.item match {
     case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText)
-    case None => l.section.title + ", " + l.count.toString
+    case None => l.groupHead.map(_.title).getOrElse(l.section.title) + ", " + l.count.toString
   })).getOrElse(Semantics.Plain)
   children ++= List(chevron, heading, sectionMore, tallFace, shortFace, glyph, title, detail, mark, time, badge, more)
 
@@ -178,7 +190,10 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
 
   private def openSectionMore(): Unit = item().filter(_.item.isEmpty).foreach { l =>
     owner.list.current @= Some(l.key)
-    owner.openSectionMenu(l.section, Some(sectionMore), 0.0, 0.0)
+    l.groupHead match {
+      case Some(g) => owner.openGroupMenu(g, Some(sectionMore), 0.0, 0.0)
+      case None => owner.openSectionMenu(l.section, Some(sectionMore), 0.0, 0.0)
+    }
   }
 
   private def openMore(): Unit = item().foreach { l =>
@@ -194,6 +209,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
 object RichRow {
   val inset: Double = 12.0
   val headerHeight: Double = 30.0
+  /** How far a section's header in a group is set in under the group's: its chevron under the group's title. */
+  val nest: Double = 22.0
   /** How big a header's ⋮ is. */
   val headerMore: Double = 28.0
   val shortHeight: Double = 44.0
