@@ -55,10 +55,16 @@ class MonacoEditor(val controller: MonacoController = MonacoController(), transp
       val to = Monaco.bridge(this)
       to.attach(this)
       bridge = Some(to)
-      to.call("editor.create", obj("containerId" -> str(id), "options" -> controller.createOptions,
-        "width" -> num(size.width()), "height" -> num(size.height()))).onComplete {
+      // on a shared model, its copy in this Monaco first (on the web, the page's one copy), and kept alive meanwhile
+      val shared = controller.startModel
+      val done = shared.map(m => MonacoModels.use(m.uri)).getOrElse(() => ())
+      shared.map(_.in(to)).getOrElse(scala.concurrent.Future.unit).flatMap(_ =>
+        to.call("editor.create", obj("containerId" -> str(id), "options" -> controller.createOptions,
+          "uri" -> shared.map(m => str(m.uri)).getOrElse(Null), "width" -> num(size.width()), "height" -> num(size.height())))
+      ).onComplete {
         case Success(created) =>
           making = false
+          done()
           editorId = Wire.string(created, "editorId")
           if (disposed) to.call("editor.dispose", obj("editorId" -> str(editorId)))
           else {
@@ -68,6 +74,7 @@ class MonacoEditor(val controller: MonacoController = MonacoController(), transp
           }
         case Failure(t) =>
           making = false
+          done()
           Platform.log("[monaco] the editor could not be made: " + t.getMessage)
       }
     }
@@ -109,4 +116,10 @@ object MonacoEditor {
             options: MonacoEditorOptions = MonacoEditorOptions(), onChanged: String => Unit = null,
             transparent: Boolean = false): MonacoEditor =
     new MonacoEditor(MonacoController(initialValue, language, theme, readOnly, options), transparent, onChanged, owned = true)
+
+  /** An editor on `model` (MonacoModels), with a controller of its own disposed with it: one more view of the document,
+    * sharing its text, undo and dirty state with every other editor on it, and keeping its own cursor and scroll. */
+  def of(model: MonacoModel, theme: String = "vs-dark", readOnly: Boolean = false,
+         options: MonacoEditorOptions = MonacoEditorOptions(), transparent: Boolean = false): MonacoEditor =
+    new MonacoEditor(MonacoController.forModel(model, theme, readOnly, options), transparent, owned = true)
 }

@@ -15,13 +15,21 @@ import scala.concurrent.{Future, Promise}
   * commands given it go along. `dispose` when done.
   *
   * The state reads as reactify values (`value()`, `position()`), and what happens arrives on channels
-  * (`onDidChangeContent.attach(...)`). The text is kept here edit by edit, so reading it costs nothing. */
+  * (`onDidChangeContent.attach(...)`). The text is kept here edit by edit, so reading it costs nothing.
+  *
+  * Given `initialModel` (`MonacoController.forModel`), its editor is made on that shared model (MonacoModels) rather
+  * than a text of its own; `switchToModel` moves it to another, and `saved`, `dirty` and `markSaved` are then the
+  * model's, shared with every editor showing it. */
 class MonacoController(initialValue: String = "", initialLanguage: String = "plaintext", initialTheme: String = "vs-dark",
-                       initialReadOnly: Boolean = false, initialOptions: MonacoEditorOptions = MonacoEditorOptions()) {
+                       initialReadOnly: Boolean = false, initialOptions: MonacoEditorOptions = MonacoEditorOptions(),
+                       initialModel: Option[MonacoModel] = None) {
   import Monaco.uiThread
 
-  private val text = Var(initialValue)
-  private val lang = Var(initialLanguage)
+  // read once, plainly: a Var given an expression of other values would follow them
+  private val startText: String = initialModel.map(_.value()).getOrElse(initialValue)
+  private val text = Var(startText)
+  private val startLanguage: String = initialModel.map(_.language()).getOrElse(initialLanguage)
+  private val lang = Var(startLanguage)
   private val themed = Var(initialTheme)
   private val locked = Var(initialReadOnly)
   private val opts = Var(initialOptions)
@@ -44,13 +52,22 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   val attached: Val[Boolean] = live
   /** The uri of the model the editor shows. */
   val uri: Val[String] = model
-  private val savedText = Var(initialValue)
+  private val savedText = Var(startText)
   // what was saved of each model shown before, so switching back to a file keeps whether it is dirty
   private val savedBy = scala.collection.mutable.Map.empty[String, String]
+  // the shared model (MonacoModels) the editor shows, if it shows one
+  private val sharedModel = Var[Option[MonacoModel]](initialModel)
+  // the shared model's uri to make the next editor on, kept across a detach
+  private var lastShared: Option[String] = initialModel.map(_.uri)
+  /** The shared model (MonacoModels) the editor shows, if it shows one rather than a model of its own. */
+  val shownModel: Val[Option[MonacoModel]] = sharedModel
   /** The text as it was last saved (`markSaved`): the text it was made with until then. */
-  val saved: Val[String] = savedText
+  val saved: Val[String] = Val(sharedModel().map(_.saved()).getOrElse(savedText()))
   /** Whether the text differs from what was saved: undone back to it, it is clean again. */
-  val dirty: Val[Boolean] = Val(text() != savedText())
+  val dirty: Val[Boolean] = Val(sharedModel() match {
+    case Some(m) => m.dirty()
+    case None => text() != savedText()
+  })
 
   /** The user changed the text (not the app, through `setValue`): the new text. */
   val onDidChangeContent: Channel[String] = Channel[String]
@@ -73,7 +90,7 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
 
   private var bridge: Option[MonacoBridge] = None
   private var editorId: String = ""
-  private var mirror = new TextMirror(initialValue, 0)
+  private var mirror = new TextMirror(startText, 0)
   private var stopListening: () => Unit = () => ()
   private var attachedOnce = Promise[Unit]()
   private var disposed = false
@@ -103,7 +120,10 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   def setLanguage(language: String): Future[Unit] = {
     check()
     lang @= language
-    if (!isAttached) Future.unit else invoke("editor.setLanguage", obj("language" -> str(language))).map(_ => ())
+    sharedModel() match {
+      case Some(m) => m.setLanguage(language)
+      case None => if (!isAttached) Future.unit else invoke("editor.setLanguage", obj("language" -> str(language))).map(_ => ())
+    }
   }
 
   /** `theme` shown, in every editor there is (themes are global to a page: MonacoThemes). */
@@ -158,7 +178,10 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     }*))).map(j => j.isBool && j.asBoolean)
 
   /** The text as it is now counted as saved: `dirty` is false until it changes again. */
-  def markSaved(): Unit = savedText @= text()
+  def markSaved(): Unit = sharedModel() match {
+    case Some(m) => m.markSaved()
+    case None => savedText @= text()
+  }
 
   // ---- decorations and markers ----
 
@@ -239,10 +262,32 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     whenReady("models.create", obj("value" -> str(value), "language" -> str(language),
       "uri" -> uri.map(u => str(u)).getOrElse(Null))).map(j => Wire.string(j, "uri"))
 
-  def switchToModel(uri: String): Future[Unit] = whenReady("editor.setModel", obj("uri" -> str(uri))).map(_ => ())
+  /** The editor shows `uri`: a model opened through MonacoModels (shared with every other editor showing it), or one
+    * made by `createModel`. The editor keeps its own cursor, selection, scroll and folding in each model it has shown,
+    * and has them back as it shows that model again. */
+  def switchToModel(uri: String): Future[Unit] = MonacoModels.get(uri) match {
+    case Some(m) =>
+      check()
+      val done = MonacoModels.use(uri)
+      val switched = (if (isAttached) Future.unit else ready).flatMap { _ =>
+        bridge match {
+          case Some(to) => m.in(to).flatMap(_ => invoke("editor.setModel", obj("uri" -> str(uri))))
+          case None => Future.failed(new MonacoBridgeException("no editor is showing this controller", "editor.setModel"))
+        }
+      }.map(_ => ())
+      switched.onComplete(_ => done())
+      switched
+    case None => whenReady("editor.setModel", obj("uri" -> str(uri))).map(_ => ())
+  }
 
-  /** A model made by `createModel` let go. Switch away from it first if the editor shows it. */
-  def disposeMonacoModel(uri: String): Future[Unit] = whenReady("models.dispose", obj("uri" -> str(uri))).map(_ => ())
+  /** A model made by `createModel` let go (switch away from it first if the editor shows it); one opened through
+    * MonacoModels is closed there (`MonacoModels.close`), and goes once no editor shows it. */
+  def disposeMonacoModel(uri: String): Future[Unit] =
+    if (MonacoModels.get(uri).nonEmpty) {
+      MonacoModels.close(uri)
+      Future.unit
+    }
+    else whenReady("models.dispose", obj("uri" -> str(uri))).map(_ => ())
 
   /** Done with: the editor let go of, and every call waiting fails. */
   def dispose(): Unit = if (!disposed) {
@@ -262,6 +307,18 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     "value" -> str(text()), "language" -> str(lang()),
     "theme" -> str(MonacoThemes.current.getOrElse(themed())), "readOnly" -> bool(locked())))
 
+  /** The shared model its next editor is made on, if it shows one: the one it was made for, or showed last. */
+  private[monaco] def startModel: Option[MonacoModel] = lastShared.flatMap(MonacoModels.get)
+
+  private[monaco] def textMirror: TextMirror = mirror
+
+  // the editor shows `uri` now: whether it is a shared model, and that one
+  private def showing(uri: String): Unit = {
+    model @= uri
+    sharedModel @= MonacoModels.get(uri)
+    if (sharedModel().nonEmpty) lastShared = Some(uri)
+  }
+
   /** Its editor made (`editor.create`'s answer): the actions and commands given it before are given again. */
   private[monaco] def attach(to: MonacoBridge, created: Json): Unit = {
     if (disposed) throw new IllegalStateException("MonacoController.attach on a disposed controller")
@@ -269,8 +326,8 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     bridge = Some(to)
     editorId = Wire.string(created, "editorId")
     mirror = new TextMirror(Wire.string(created, "value"), Wire.int(created, "versionId"))
-    model @= Wire.string(created, "uri")
-    to.texts(model()) = mirror
+    showing(Wire.string(created, "uri"))
+    to.show(model(), mirror)
     text @= mirror.value
     stopListening = to.listen(event => if (event.editorId == editorId) heard(event))
     to.controllers(editorId) = this
@@ -284,11 +341,12 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   private[monaco] def detach(): Unit = if (isAttached) {
     stopListening()
     bridge.foreach(_.controllers.remove(editorId))
-    bridge.foreach(_.texts.remove(model()))
+    bridge.foreach(_.unshow(model(), mirror))
     bridge = None
     editorId = ""
     live @= false
     if (attachedOnce.isCompleted) attachedOnce = Promise[Unit]()
+    MonacoModels.release(model())
   }
 
   private def heard(event: BridgeEvent): Unit = {
@@ -300,13 +358,15 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
         onDidChangeModelContent @= change
         if (!change.external) onDidChangeContent @= text()
       case "editor.modelChange" =>
-        bridge.foreach(_.texts.remove(model()))
-        savedBy(model()) = savedText()
+        val was = model()
+        bridge.foreach(_.unshow(was, mirror))
+        if (sharedModel().isEmpty) savedBy(was) = savedText()
         mirror = new TextMirror(Wire.string(p, "value"), Wire.int(p, "versionId"))
-        model @= Wire.string(p, "uri")
-        bridge.foreach(_.texts(model()) = mirror)
+        showing(Wire.string(p, "uri"))
+        bridge.foreach(_.show(model(), mirror))
         text @= mirror.value
         savedText @= savedBy.getOrElse(model(), mirror.value)
+        MonacoModels.release(was)
       case "editor.cursorChange" =>
         val at = MonacoPosition(Wire.int(p, "line"), Wire.int(p, "column"))
         cursor @= Some(at)
@@ -361,4 +421,10 @@ object MonacoController {
   def apply(initialValue: String = "", language: String = "plaintext", theme: String = "vs-dark", readOnly: Boolean = false,
             options: MonacoEditorOptions = MonacoEditorOptions()): MonacoController =
     new MonacoController(initialValue, language, theme, readOnly, options)
+
+  /** A controller whose editor is made on `model` (MonacoModels), shared with every other editor showing it. */
+  def forModel(model: MonacoModel, theme: String = "vs-dark", readOnly: Boolean = false,
+               options: MonacoEditorOptions = MonacoEditorOptions()): MonacoController =
+    new MonacoController(initialValue = model.value(), initialLanguage = model.language(), initialTheme = theme,
+      initialReadOnly = readOnly, initialOptions = options, initialModel = Some(model))
 }

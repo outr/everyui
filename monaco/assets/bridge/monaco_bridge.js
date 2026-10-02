@@ -25,6 +25,7 @@
     _editors: Object.create(null),       // editorId -> entry
     _diffs: Object.create(null),         // diffId -> entry
     _models: Object.create(null),        // uri -> model created by the app
+    _shared: Object.create(null),        // the app's uri -> {model, listener}: models opened through MonacoModels
     _providers: Object.create(null),     // providerId -> IDisposable
     _pending: Object.create(null),       // requestId -> {resolve, reject, timer}
     _nextEditor: 1,
@@ -130,21 +131,24 @@
     if (!container) throw new Error('editor.create: no element "' + args.containerId + '"');
     var editorId = String(bridge._nextEditor++);
     var options = Object.assign({}, args.options || {}, { automaticLayout: false });
+    // made on a model the app opened (models.open), shared with every other editor showing it, rather than its own
+    var shown = args.uri ? sharedModel(args.uri) : null;
+    if (shown) { delete options.value; delete options.language; options.model = shown; }
     var editor = monaco.editor.create(container, options);
     var entry = { editor: editor, disposers: [], commands: Object.create(null), actions: Object.create(null),
-                  external: false, eol: null, container: container };
+                  eol: null, container: container, views: Object.create(null) };
     bridge._editors[editorId] = entry;
     wireEditor(entry, editor, 'editor.', { editorId: editorId });
     entry.disposers.push(editor.onDidChangeModel(function () {
       entry.eol = null;
       var model = editor.getModel();
-      bridge.emit('editor.modelChange', { editorId: editorId, uri: model ? model.uri.toString() : null,
+      bridge.emit('editor.modelChange', { editorId: editorId, uri: model ? uriOf(model) : null,
         versionId: model ? model.getVersionId() : 0, value: model ? model.getValue() : '' });
     }));
     if (args.width > 0 && args.height > 0 && !window.everyuiEmbed.hosted) editor.layout({ width: args.width, height: args.height });
     else editor.layout();
     var model = editor.getModel();
-    return { editorId: editorId, uri: model.uri.toString(), versionId: model.getVersionId(), value: model.getValue() };
+    return { editorId: editorId, uri: uriOf(model), versionId: model.getVersionId(), value: model.getValue() };
   };
 
   // What every editor (a diff's two included) tells the app, `ids` naming it.
@@ -158,7 +162,7 @@
         versionId: e.versionId,
         changes: e.changes.map(function (c) { return { rangeOffset: c.rangeOffset, rangeLength: c.rangeLength, text: c.text }; }),
         flush: !!e.isFlush,
-        external: !!entry.external,
+        external: !!model.__everyuiExternal,
         undo: !!e.isUndoing,
         redo: !!e.isRedoing
       };
@@ -224,23 +228,33 @@
     return entry;
   }
 
-  // The text replaced, as one edit the user can undo, and the change marked as the app's own.
-  function replaceText(entry, model, value, keepUndo) {
-    entry.external = true;
-    try {
+  // The text replaced, as one edit the user can undo, and the change marked as the app's own: on the model, so every
+  // editor showing it says so.
+  function replaceText(model, value, keepUndo, relayed) {
+    marked(model, true, relayed, function () {
       if (keepUndo) {
         if (model.getValue() === value) return;
         model.pushStackElement();
         model.pushEditOperations([], [{ range: model.getFullModelRange(), text: value }], function () { return null; });
         model.pushStackElement();
       } else model.setValue(value);
-    } finally { entry.external = false; }
+    });
   }
+
+  // `f` run with the model's changes marked: the app's own (external), and one copied from another copy (relayed).
+  function marked(model, external, relayed, f) {
+    model.__everyuiExternal = !!external;
+    model.__everyuiRelayed = !!relayed;
+    try { f(); } finally { model.__everyuiExternal = false; model.__everyuiRelayed = false; }
+  }
+
+  // The app's name for a model: the uri it was opened with (models.open), else Monaco's.
+  function uriOf(model) { return model.__everyuiUri || model.uri.toString(); }
 
   handlers['editor.getValue'] = function (a) { return editorEntry(a.editorId).editor.getValue(); };
   handlers['editor.setValue'] = function (a) {
     var entry = editorEntry(a.editorId);
-    replaceText(entry, entry.editor.getModel(), a.value == null ? '' : String(a.value), a.keepUndo !== false);
+    replaceText(entry.editor.getModel(), a.value == null ? '' : String(a.value), a.keepUndo !== false);
     return null;
   };
   handlers['editor.setLanguage'] = function (a) {
@@ -426,11 +440,78 @@
     var model = monaco.editor.getModel(monaco.Uri.parse(a.uri));
     return model ? { value: model.getValue(), versionId: model.getVersionId() } : null;
   };
+  // Each editor keeps its own view of each model it has shown (the cursor, the selection, the scroll, what is folded),
+  // put back as it shows that model again: two editors on one model each keep theirs.
   handlers['editor.setModel'] = function (a) {
-    var model = bridge._models[a.uri] || monaco.editor.getModel(monaco.Uri.parse(a.uri));
+    var model = (bridge._shared[a.uri] && bridge._shared[a.uri].model) || bridge._models[a.uri] ||
+      monaco.editor.getModel(monaco.Uri.parse(a.uri));
     if (!model) throw new Error('editor.setModel: unknown uri ' + a.uri);
-    editorEntry(a.editorId).editor.setModel(model);
+    var entry = editorEntry(a.editorId), editor = entry.editor, was = editor.getModel();
+    if (was === model) return null;
+    if (was) entry.views[uriOf(was)] = editor.saveViewState();
+    editor.setModel(model);
+    var view = entry.views[uriOf(model)];
+    if (view) editor.restoreViewState(view);
     return null;
+  };
+
+  // Models the app opened through its registry (MonacoModels), by the app's uri: each says every change to it once,
+  // whichever editor (or none) made it, so the app keeps one copy of its text, whether it is dirty, and, where each
+  // editor has a Monaco of its own (a web view each), copies the change into the other copies (models.applyEdits).
+  function sharedModel(uri) {
+    var s = bridge._shared[uri];
+    if (!s) throw new Error('no model open for ' + uri);
+    return s.model;
+  }
+
+  handlers['models.open'] = function (a) {
+    var s = bridge._shared[a.uri];
+    if (!s) {
+      var parsed = monaco.Uri.parse(a.uri);
+      var model = monaco.editor.getModel(parsed) || monaco.editor.createModel(a.value || '', a.language || 'plaintext', parsed);
+      model.__everyuiUri = a.uri;
+      var eol = model.getEOL();
+      s = bridge._shared[a.uri] = { model: model, listener: model.onDidChangeContent(function (e) {
+        var payload = {
+          uri: a.uri, versionId: e.versionId, flush: !!e.isFlush, undo: !!e.isUndoing, redo: !!e.isRedoing,
+          external: !!model.__everyuiExternal, relayed: !!model.__everyuiRelayed,
+          changes: e.changes.map(function (c) { return { rangeOffset: c.rangeOffset, rangeLength: c.rangeLength, text: c.text }; })
+        };
+        if (e.isFlush || e.isEolChange || model.getEOL() !== eol) payload.value = model.getValue();
+        eol = model.getEOL();
+        bridge.emit('model.contentChange', payload);
+      }) };
+    }
+    return { uri: a.uri, versionId: s.model.getVersionId(), value: s.model.getValue() };
+  };
+  handlers['models.close'] = function (a) {
+    var s = bridge._shared[a.uri];
+    if (!s) return null;
+    delete bridge._shared[a.uri];
+    for (var id in bridge._editors) delete bridge._editors[id].views[a.uri];
+    try { s.listener.dispose(); s.model.dispose(); } catch (e) { console.error(e); }
+    return null;
+  };
+  handlers['models.setValue'] = function (a) {
+    replaceText(sharedModel(a.uri), a.value == null ? '' : String(a.value), a.keepUndo !== false, a.relayed);
+    return null;
+  };
+  handlers['models.setLanguage'] = function (a) { monaco.editor.setModelLanguage(sharedModel(a.uri), a.language); return null; };
+  // Edits made in another copy of the model, made here too as one step that can be undone. They refer to the text
+  // before them, which must be as long as `length`: otherwise this copy is out of step, and says so.
+  handlers['models.applyEdits'] = function (a) {
+    var model = sharedModel(a.uri);
+    if (model.getValueLength() !== a.length) return { applied: false };
+    var edits = (a.changes || []).map(function (c) {
+      return { range: monaco.Range.fromPositions(model.getPositionAt(c.rangeOffset), model.getPositionAt(c.rangeOffset + c.rangeLength)),
+               text: c.text };
+    });
+    marked(model, a.external, true, function () {
+      model.pushStackElement();
+      model.pushEditOperations([], edits, function () { return null; });
+      model.pushStackElement();
+    });
+    return { applied: true };
   };
 
   // ------------------------------------------------------------------------------------------------------------
@@ -448,7 +529,7 @@
       }, bridge.providerTimeoutMs);
       bridge._pending[requestId] = { resolve: resolve, reject: reject, timer: timer };
       bridge.emit(type, Object.assign({
-        providerId: providerId, requestId: requestId, uri: model.uri.toString(), languageId: model.getLanguageId(),
+        providerId: providerId, requestId: requestId, uri: uriOf(model), languageId: model.getLanguageId(),
         versionId: model.getVersionId(), line: position.lineNumber, column: position.column
       }, extra || {}));
     });
@@ -601,7 +682,7 @@
     for (var i = 0; resolved.length > bridge.resolvedLimit && i < resolved.length; ) {
       var m = resolved[i];
       if (m.isDisposed()) { resolved.splice(i, 1); continue; }
-      if (shown.indexOf(m) < 0 && !bridge._models[m.uri.toString()]) { resolved.splice(i, 1); m.dispose(); } else i++;
+      if (shown.indexOf(m) < 0 && !bridge._models[m.uri.toString()] && !m.__everyuiUri) { resolved.splice(i, 1); m.dispose(); } else i++;
     }
   }
 
@@ -634,7 +715,8 @@
         var at = null;
         if (where && typeof where.startLineNumber === 'number') at = { startLine: where.startLineNumber, startColumn: where.startColumn, endLine: where.endLineNumber, endColumn: where.endColumn };
         else if (where && typeof where.lineNumber === 'number') at = { startLine: where.lineNumber, startColumn: where.column, endLine: where.lineNumber, endColumn: where.column };
-        return askApp('editor.open.request', { editorId: editorId, uri: resource.toString(), range: at })
+        var target = monaco.editor.getModel(resource);
+        return askApp('editor.open.request', { editorId: editorId, uri: target ? uriOf(target) : resource.toString(), range: at })
           .then(function (handled) { return !!handled; }, function () { return false; });
       }
     });
@@ -654,8 +736,8 @@
     var modified = monaco.editor.createModel(a.modified || '', a.language || 'plaintext');
     diff.setModel({ original: original, modified: modified });
     var entry = { diff: diff, original: original, modified: modified, disposers: [], container: container,
-                  originalSide: { disposers: [], external: false, eol: null, commands: {}, actions: {} },
-                  modifiedSide: { disposers: [], external: false, eol: null, commands: {}, actions: {} } };
+                  originalSide: { disposers: [], eol: null, commands: {}, actions: {} },
+                  modifiedSide: { disposers: [], eol: null, commands: {}, actions: {} } };
     wireEditor(entry.originalSide, diff.getOriginalEditor(), 'diff.original.', { diffId: diffId });
     wireEditor(entry.modifiedSide, diff.getModifiedEditor(), 'diff.modified.', { diffId: diffId });
     // a click in the modified side's gutter, on a checkbox the app put there (diff.setChecks)
@@ -675,12 +757,12 @@
   };
   handlers['diff.setOriginal'] = function (a) {
     var e = diffEntry(a.diffId);
-    replaceText(e.originalSide, e.original, a.value == null ? '' : String(a.value), a.keepUndo !== false);
+    replaceText(e.original, a.value == null ? '' : String(a.value), a.keepUndo !== false);
     return null;
   };
   handlers['diff.setModified'] = function (a) {
     var e = diffEntry(a.diffId);
-    replaceText(e.modifiedSide, e.modified, a.value == null ? '' : String(a.value), a.keepUndo !== false);
+    replaceText(e.modified, a.value == null ? '' : String(a.value), a.keepUndo !== false);
     return null;
   };
   handlers['diff.getOriginal'] = function (a) { return diffEntry(a.diffId).original.getValue(); };

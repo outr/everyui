@@ -33,6 +33,15 @@ class MonacoBridge(val runtime: String) {
   /** The text of each model an attached editor shows, by its uri: what a provider is asked about. */
   private[monaco] val texts = scala.collection.mutable.Map.empty[String, TextMirror]
 
+  /** `mirror` is the text of `uri` an editor here shows. */
+  private[monaco] def show(uri: String, mirror: TextMirror): Unit = texts(uri) = mirror
+
+  /** `mirror` no longer shown: another editor here showing `uri` gives its own, if one does. */
+  private[monaco] def unshow(uri: String, mirror: TextMirror): Unit = if (texts.get(uri).exists(_ eq mirror)) {
+    texts.remove(uri)
+    controllers.values.find(c => c.uri() == uri && !(c.textMirror eq mirror)).foreach(c => texts(uri) = c.textMirror)
+  }
+
   /** Completes once Monaco has loaded here. */
   def ready: Future[Unit] = loaded.future
   def isReady: Boolean = readyNow
@@ -97,6 +106,7 @@ class MonacoBridge(val runtime: String) {
     listeners = Nil
     loaded.tryFailure(new MonacoBridgeException("the editor went away before it loaded", "bridge.init"))
     Monaco.forget(this)
+    MonacoModels.forget(this)
   }
 
   private def start(): Unit = {

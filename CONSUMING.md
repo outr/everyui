@@ -2470,6 +2470,37 @@ Monaco a file's text and language when it needs its model (the peek's lines), an
 the app's way (its tab, `switchToModel`, the range revealed); with neither, Monaco stays where it is. Every call answers as a `Future`; themes and
 providers are global and reach every editor, including ones made later.
 
+**Shared models (an editor per tab, split views).** `MonacoModels` holds the documents by uri, as VS Code does: open a
+file once and any number of editors show it, editing one text with one undo history and one dirty state, each editor
+with its own cursor, selection, scroll and folding:
+
+```scala
+val main = MonacoModels.open("file:///src/Main.scala", source, "scala")   // open again: the same model, as it is
+val left = MonacoEditor.of(main)                                          // or new MonacoEditor(MonacoController.forModel(main))
+val right = MonacoEditor.of(main)                                         // a second view of the same document
+main.dirty.attach(d => tab.marker @= (if (d) Some(dot) else None))       // also main.value, saved, onDidChangeContent
+MonacoEditor.saveCommand(keymap) { write(main.value()); main.markSaved() }
+main.setMarkers(compilerErrors, owner = "scalac")                         // on every editor showing it, now or later
+left.controller.switchToModel(other.uri)                                  // and back: its cursor and scroll as they were
+MonacoModels.close(main.uri)                                              // once its tabs have closed
+```
+
+`MonacoModels.get(uri)`, `dirty(uri)`, `all` (a `Val` of the open models by uri) and `onDidDispose` are there too, and a
+model has `value`, `language`, `saved`, `dirty`, `onDidChangeContent` (the user's edits, from any editor),
+`onDidChangeModelContent` (every edit), `setValue`, `setLanguage`, `markSaved`, `setMarkers` and `clearMarkers`. A
+controller showing one says so (`shownModel`), and its `dirty`, `saved` and `markSaved` are the model's. A model lives
+while the app holds it (from `open` to `close`) or any editor shows it: closed while one still does, it goes once the
+last editor on it switches away or goes. Each editor keeps its own view of every model it has shown, whether shared or
+made by `createModel`, and has it back as it shows that model again. `controller.disposeMonacoModel(uri)` on a shared
+model is `MonacoModels.close(uri)`.
+
+On the web every editor is one more editor in the page's one Monaco, on the one model: Monaco's code loads once
+however many editors there are. On the desktop and Android each editor is a web view with a Monaco of its own (web
+views share no objects), so each holds a copy of the model and an edit made in one is made in the others through the
+app: the text, `dirty` and the markers are shared there too, but each copy keeps its own undo history, which holds
+every edit whoever made it. Undo in one editor undoes the last edit in it, the other editor's included, and the others
+follow; a redo after an undo made in another editor is not there, and Monaco's typing steps can differ from copy to copy.
+
 **Serving it (web).** Copy the jar's `everyui-monaco/` directory next to the page (the gallery's `galleryBundle` task
 in this build does it; `Monaco.site` points elsewhere, a CDN say). The bridge loads its own scripts with `<script src>`
 and its styles with `<link>`: nothing inline. Monaco starts its workers from blobs, so a Content-Security-Policy needs:

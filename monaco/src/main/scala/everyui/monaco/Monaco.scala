@@ -45,6 +45,9 @@ object Monaco {
   /** The bridge to the copy of Monaco `embed` shows, made on first asking. */
   def bridge(embed: Embed): MonacoBridge = bridges.getOrElseUpdate(embed.runtime, new MonacoBridge(embed.runtime))
 
+  /** Every bridge, loaded or not. */
+  private[monaco] def all: List[MonacoBridge] = bridges.values.toList
+
   /** Every bridge whose Monaco has loaded. */
   def live: List[MonacoBridge] = bridges.values.filter(_.isReady).toList
 

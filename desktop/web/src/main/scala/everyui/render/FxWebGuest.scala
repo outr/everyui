@@ -20,6 +20,7 @@ class FxWebGuest(pane: Pane, name: String, site: EmbedSite) extends WebGuest {
   private var waiting: List[String] = Nil
   private var listeners: List[String => Unit] = Nil
   private var released = false
+  private var reloads = 0
   // held here: the page's window holds what it is handed weakly, and a host collected is a guest that goes quiet
   private val host = new FxEmbedHost(message => if (!released) listeners.foreach(f => f(message)),
     line => Platform.log("[embed " + name + "] " + line))
@@ -33,7 +34,14 @@ class FxWebGuest(pane: Pane, name: String, site: EmbedSite) extends WebGuest {
     view.setMinSize(0.0, 0.0)
     pane.getChildren.add(view)
     engine.getLoadWorker.stateProperty.addListener((_, _, state) => {
-      if (state == Worker.State.SUCCEEDED && !released) {
+      // a page whose channel did not run is loaded again: of two web views loading the page at once, WebKit has been
+      // seen to finish one with its parsing stopped at the channel's script
+      if (state == Worker.State.SUCCEEDED && !released && reloads < 3 && engine.executeScript("typeof everyuiEmbed") == "undefined") {
+        reloads += 1
+        Platform.log("[embed " + name + "] the page loaded without its channel; loading it again")
+        engine.reload()
+      }
+      else if (state == Worker.State.SUCCEEDED && !released) {
         engine.executeScript("window").asInstanceOf[JSObject].setMember("EveryUIEmbedHost", host)
         engine.executeScript(FxWebGuest.connect)
         loaded = true
