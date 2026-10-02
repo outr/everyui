@@ -20,7 +20,8 @@ class Select(options: => List[String]) extends Container {
   val font: FontFeature = new FontFeature(field)
 
   field.color := color()
-  color @= Theme.text()
+  // the theme's words, following it when it changes (a dark list on the web follows them)
+  color := Theme.text()
   field.size.width := size.width()
   if (native) {
     field.size.height := size.height()

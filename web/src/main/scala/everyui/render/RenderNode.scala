@@ -58,6 +58,9 @@ class RenderNode(val el: html.Element) {
     if (!textFilled) el.style.color = hex
     // a field keeps its colour through the browser's autofill look, which would paint its words in its own
     if (el.isInstanceOf[html.Input] || el.isInstanceOf[html.TextArea]) el.style.setProperty("--everyui-fill", hex)
+    // a drop-down's list is the browser's, drawn light unless told the page is dark: its options, in the select's own
+    // light words, were all but invisible on white in a dark theme. Light words say the page is dark
+    if (el.isInstanceOf[html.Select]) el.style.setProperty("color-scheme", if (RenderNode.light(hex)) "dark" else "light")
   }
 
   /** A bundled face (index.html's `@font-face` rules): family, CSS weight,
@@ -815,6 +818,15 @@ object RenderNode {
     * script's turn, so its size can be read; whether there was anything to. The sizes a turn asks for are read together
     * (MeasuredFeature), so a hidden panel is laid out once for all of them, and it is hidden again before the frame is
     * drawn. A node not on the page is measured when it is put there. */
+  /** Whether `"#rrggbb"` is a light colour (its luminance over half): the words of a dark theme. */
+  private[render] def light(hex: String): Boolean = {
+    val h = hex.stripPrefix("#")
+    h.length >= 6 && {
+      def channel(i: Int): Double = Integer.parseInt(h.substring(i, i + 2), 16) / 255.0
+      0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4) > 0.5
+    }
+  }
+
   def reveal(el: html.Element): Boolean = el.isConnected && el.getClientRects().length == 0 && {
     val before = revealed
     var at: dom.Node = el
