@@ -747,6 +747,10 @@ object Platform {
   def afterFirstPaint(f: () => Unit): Unit = f()
 
   /** Words for a screen reader to read out (a new message in a chat): a channel's nodes are not read, so nothing is. */
+  /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): a Roku has no such setting, so never. */
+  def reduceMotion(): Boolean = false
+  /** The setting as it changes: it never does here. */
+  def watchReduceMotion(f: Boolean => Unit): Unit = ()
   def announce(words: String): Unit = ()
   def setTitle(title: String): Unit = ()
   /** Whether copyText reaches a clipboard: a channel has none, so a caller offers something else or nothing. */

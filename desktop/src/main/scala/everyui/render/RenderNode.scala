@@ -1126,6 +1126,10 @@ object Platform {
   }
   /** Words for a screen reader to read out (a new message in a chat): no reader of roles or descriptions reaches this
     * platform's nodes (`setSemantics`), so nothing is said. */
+  /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): no setting is read here, so never. */
+  def reduceMotion(): Boolean = false
+  /** The setting as it changes: it never does here. */
+  def watchReduceMotion(f: Boolean => Unit): Unit = ()
   def announce(words: String): Unit = ()
   /** A desktop keeps its own screen timing. */
   def keepAwake(on: Boolean): Unit = ()

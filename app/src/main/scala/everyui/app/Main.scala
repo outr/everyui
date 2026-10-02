@@ -27,7 +27,7 @@ import everyui.render.Platform
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
   *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus
-  *              (`theme=light`, `collapsed=archive`)
+  *              (`theme=light`, `collapsed=archive`), a few with an agent at work (`stop=<seconds>`)
   *   scale      the size the app is drawn at (UiScale), turned up and down over words, rows, a field, buttons and menus,
   *              kept on the device (`scale=<factor>`, `theme=light`, `rtl=1`)
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
@@ -50,6 +50,8 @@ import everyui.render.Platform
   *              `rtl=1`)
   *   captions   the device's caption setting as it changes, over a video that follows it until a subtitle track is
   *              chosen (`src=<stream>`)
+  *   tabs       tabs led by an avatar or an icon, and the ring around somebody at work, turning and stopped (`busy=0`,
+  *              `theme=light`, `rtl=1`)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
@@ -106,5 +108,6 @@ import everyui.render.Platform
   else if (demo == "textcut") TextCutDemo.run()
   else if (demo == "webview") WebViewDemo.run()
   else if (demo == "badge") BadgeDemo.run()
+  else if (demo == "tabs") TabsDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

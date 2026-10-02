@@ -436,6 +436,10 @@ object Platform {
   /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
   def afterFirstPaint(f: () => Unit): Unit = f()
 
+  /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): Reduce Motion in Accessibility. */
+  def reduceMotion(): Boolean = uiReduceMotion()
+  /** The setting as it changes, read again as the app comes back to the front. */
+  def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
   /** Words for a screen reader to read out (a new message in a chat): not yet said here. */
   def announce(words: String): Unit = ()
   def setTitle(title: String): Unit = ()

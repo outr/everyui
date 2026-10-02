@@ -334,6 +334,9 @@ func uiTicks() -> V { .vDbl(CACurrentMediaTime() * 1000.0) }
 
 func uiFreezeSeconds() -> V { .vDbl(UI.freeze) }
 
+/// Whether Reduce Motion is on in Accessibility.
+func uiReduceMotion() -> V { .vBool(UIAccessibility.isReduceMotionEnabled) }
+
 final class FrameDriver {
     @objc func frame(_ link: CADisplayLink) {
         do {

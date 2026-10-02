@@ -1,6 +1,6 @@
 package everyui.list
 
-import everyui.chat.{ChatTime, Ticker}
+import everyui.chat.{ChatTime, ChatWords, Ticker}
 import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent}
 import everyui.i18n.{Direction, Words}
@@ -356,7 +356,9 @@ object RichList {
   def said(look: RichLook, now: Long, timeText: (Long, Long) => String): String =
     (List(look.title) ++ look.detail.toList ++ look.time.map(t => timeText(t, now)).toList ++
       (if (look.count > 0) List(countText(look.count)) else Nil) ++
-      (if (look.unread) List(unreadLabel) else Nil)).mkString(", ")
+      (if (look.unread) List(unreadLabel) else Nil) ++
+      (if (look.busy) ChatWords.busy :: (if (look.busyDetail.isEmpty) Nil else List(look.busyDetail)) else Nil))
+      .mkString(", ")
 
   def moreLabel: String = word("list.more", "More")
   def unreadLabel: String = word("list.unread", "unread")

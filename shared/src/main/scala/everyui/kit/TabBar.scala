@@ -17,6 +17,11 @@ import reactify.*
   *   val tab = files.add(path, name, closable = true)
   *   tab.marker @= Some(dot)                            // unsaved
   *   files.closing.attach(path => askThenClose(path))   // the close button, or the app's own Ctrl+W
+  *
+  *   files.add(path, name, closable = true, lead = TabLead.Icon(MaterialIcon.Description))   // led by an icon
+  *   val chat = files.add("c-7", "Release plan", closable = true, lead = TabLead.Person(helper))
+  *   chat.busy @= true                                  // a ring turns around its avatar while the agent works
+  *   chat.busyDetail @= "Running bash"
   * }}} */
 class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true) extends Container {
   /** The tabs, in order. */
@@ -51,9 +56,9 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
 
   /** A tab `label` for `key`, added at `at` among the tabs (at the end, where it is past the last or not given), or in
     * place of the one it replaces (moved to `at` where it is given). Neither the tab shown nor the focus moves: a tab
-    * the focus was on that is replaced hands it to the new one. */
-  def add(key: String, label: String, closable: Boolean = false, at: Int = -1): TabItem = {
-    val tab = new TabItem(key, label, current, closable, k => closing @= k, showOnFocus)
+    * the focus was on that is replaced hands it to the new one. `lead` goes before the label (`TabLead`). */
+  def add(key: String, label: String, closable: Boolean = false, at: Int = -1, lead: TabLead = TabLead.None): TabItem = {
+    val tab = new TabItem(key, label, current, closable, k => closing @= k, showOnFocus, lead)
     val replaced = apply(key)
     val was = tabs().indexWhere(_.key == key)
     val rest = tabs().filterNot(_.key == key)
@@ -64,9 +69,10 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   }
 
   /** A tab added just after the tab for `after` (a diff opened beside the file it compares), else at the end. */
-  def addAfter(after: String, key: String, label: String, closable: Boolean = false): TabItem = {
+  def addAfter(after: String, key: String, label: String, closable: Boolean = false,
+               lead: TabLead = TabLead.None): TabItem = {
     val i = tabs().filterNot(_.key == key).indexWhere(_.key == after)
-    add(key, label, closable, if (i < 0) -1 else i + 1)
+    add(key, label, closable, if (i < 0) -1 else i + 1, lead)
   }
 
   /** The tab for `key` taken off the strip. Where it was the one shown, the tab now in its place is shown, else the one

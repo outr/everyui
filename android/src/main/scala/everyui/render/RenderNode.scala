@@ -1680,6 +1680,14 @@ object Platform {
   def afterFirstPaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = Host.activity.setTitle(title)
+  /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): animations removed, or their duration scale
+    * set to none, in the accessibility or developer settings. */
+  def reduceMotion(): Boolean =
+    try android.provider.Settings.Global.getFloat(Host.activity.getContentResolver,
+      android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f) == 0.0f
+    catch { case _: Throwable => false }
+  /** The setting as it changes, read again as the app comes back to the front from the settings. */
+  def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
   /** `words` read out by TalkBack when it next can, where it is on (a new message in a chat). */
   def announce(words: String): Unit = if (RenderNode.reading && Host.root != null) Host.root.announceForAccessibility(words)
   /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile

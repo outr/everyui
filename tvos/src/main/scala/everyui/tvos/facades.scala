@@ -156,6 +156,10 @@ class SGNode
 @native object uiSetTranslation {
   def apply(node: SGNode, x: Double, y: Double): Unit = native.value
 }
+/** Whether Reduce Motion is on in Accessibility. */
+@native object uiReduceMotion {
+  def apply(): Boolean = native.value
+}
 /** Seconds from `--freeze=` on the launch, or -1. */
 @native object uiFreezeSeconds {
   def apply(): Double = native.value

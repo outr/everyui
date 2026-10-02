@@ -80,6 +80,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val nobody = Participant("", "")
   private def face(diameter: Double, wanted: => Boolean): Avatar = new Avatar(look().flatMap(_.who).getOrElse(nobody), diameter) {
     visible := wanted && look().exists(_.who.nonEmpty)
+    busy := wanted && look().exists(_.busy)
+    busyDetail := look().map(_.busyDetail).getOrElse("")
     position.left := ListRow.along(RichRow.inset, diameter, RichRow.this.size.width())
     position.top := (RichRow.this.size.height() - diameter) / 2.0
   }

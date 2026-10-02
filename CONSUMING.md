@@ -330,6 +330,10 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   (`add`, `remove`, closable tabs, the `closing` channel), with `icon` and `marker` slots beside each label. `add(key, label, closable,
   at = i)` puts a tab at a place and `addAfter(key0, key, label)` beside another (a diff by its file); closing the tab
   shown shows the one now in its place, else the one before; a middle click closes a closable tab.
+  `add(…, lead = TabLead.Person(p))` leads a tab with somebody's avatar (a conversation with an agent), and
+  `TabLead.Icon(i)` with an icon (a file's type); `TabLead.None` by default, as before. A tab's `busy` and `busyDetail`
+  Vars turn the busy ring (below) around its avatar, the avatar keeping the ring's room so the label never moves;
+  right to left the lead is at the label's right.
 - `Toast.show(words, seconds, top, margin)`: one short message at a time.
 - `AsyncPress`: a press that runs slow work, with a delayed spinner, and failures toasted.
 - `Spinner` and `Ring`: an indeterminate spinner and a determinate dial.
@@ -1028,6 +1032,19 @@ size changes; a run with its own size and no spacing of its own is spaced in pro
 UIKit's kern. JavaFX has no letter spacing at all, so the desktop draws the letters as the face sets them and takes the
 spaced width for their box: everything around them sits as it does elsewhere, the letters themselves a little closer
 together. A field on the desktop is not spaced. A Roku's Label spaces none, and measures unspaced.
+
+### Busy ring (`Avatar.busy`, `everyui.kit.BusyRing`)
+
+Somebody at work (an agent running a tool, thinking) has a ring around their avatar in the accent: `avatar.busy @= true`,
+and `avatar.busyDetail @= "Running bash"` for what a pointer resting on it says and a screen reader hears ("Ada, busy,
+Running bash"). Half the ring is lit and turns once a second over the rest, faint; the platform runs the turn (the
+browser's `animate`, a JavaFX timeline, an Android animator), so it asks the app for no frames and a screen of rings
+stays idle, and it stops the moment `busy` is false or the ring is out of sight (a list's row put away). Where people
+ask for less motion (`everyui.motion.ReduceMotion`: the web's `prefers-reduced-motion`, Android's animations removed,
+an Apple TV's Reduce Motion; never on the desktop or a Roku, unless the app sets `ReduceMotion.on`), and on a Roku or
+an Apple TV, the whole ring is lit and stands still. The ring is made the first time an avatar is busy, and sits
+outside its box by `BusyRing.outset(diameter)`, so leave that room around it. `RichLook.busy` and `TabItem.busy` draw
+it on a list's rows and a tab's lead; `demo=tabs` shows both kinds of lead and the ring turning and stopped.
 
 ### Composer (`everyui.chat`)
 
@@ -2718,7 +2735,9 @@ Enter or a double click on a result activates it. `collapsed` holds the closed g
 The list down the side of a chat, mail or contacts app, virtualised (thousands scroll as ten do). Each item is drawn as
 its `RichLook` says: an avatar (a `chat.Participant`: their picture, or their initial on their colour) or an icon, a
 title and an optional second line, and at the end how long ago (`time`, epoch millis: "now", "5m", "3h", "2d", "9/16",
-kept current), a `count` badge ("99+") and a small `mark` (a pin, a lock); `unread` is bold with its time lit. Items
+kept current), a `count` badge ("99+") and a small `mark` (a pin, a lock); `unread` is bold with its time lit. `busy`
+turns the busy ring around the avatar (an agent at work in it, unread or not), with `busyDetail` ("Running bash") said
+by the avatar to a pointer and with the row to a screen reader; rows reused as the list scrolls start and stop it. Items
 sit in `RichSection`s under headers (title and count) that open and close, the closed ones' keys in `collapsed`, which
 the app may hold; a section with no title has no header.
 

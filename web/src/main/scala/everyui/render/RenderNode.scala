@@ -1232,6 +1232,15 @@ object Platform {
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
 
+  /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): the page told `prefers-reduced-motion`. */
+  def reduceMotion(): Boolean = dom.window.matchMedia(lessMotion).matches
+  /** The setting as it changes, which the browser says at once. */
+  def watchReduceMotion(f: Boolean => Unit): Unit = {
+    val query = dom.window.matchMedia(lessMotion)
+    query.addEventListener("change", (_: dom.Event) => f(query.matches))
+  }
+  private val lessMotion = "(prefers-reduced-motion: reduce)"
+
   /** `words` read out by a screen reader when it next can, not cutting in on what it is reading (a new message in a
     * chat): a polite live region, made on first use, off the screen. The same words again are still read. */
   def announce(words: String): Unit = {

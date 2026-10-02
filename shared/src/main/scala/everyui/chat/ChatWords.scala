@@ -31,6 +31,8 @@ object ChatWords {
   def input: String = word("chat.input", "Input")
   def output: String = word("chat.output", "Output")
   def running: String = word("chat.running", "running")
+  /** Said of somebody at work (`Avatar.busy`). */
+  def busy: String = word("chat.busy", "busy")
   def succeeded: String = word("chat.succeeded", "done")
   def failed: String = word("chat.failed", "failed")
   def connecting: String = word("chat.connecting", "Connecting…")

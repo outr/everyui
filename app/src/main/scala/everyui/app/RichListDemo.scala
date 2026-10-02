@@ -18,15 +18,17 @@ import reactify.*
   * Archive in the Workspaces group and Ada Lovelace's in the Personal one, with avatars (one with a picture), icons,
   * snippets, times from now back over months, unread counts, pins and locks, a search field over them, a menu on each
   * (Rename…, Pin, Lock title, Delete), one on the Unread and Recent headers (Mark all read, Collapse others), Archive's
-  * marked with an icon and without one, and one on each group's (Close its sections, Open its sections). Conversations
-  * in Recent drag into another order. Wide, the list is a sidebar beside the conversation chosen; narrow, it fills the
-  * screen. `theme=light` for the light palette, `rtl=1` to lay it out right to left, `collapsed=<key>` to start with a
-  * section closed, `groups=<key>` with a group (workspaces, personal), `scroll=<pixels>` to start scrolled,
-  * `find=<words>` to start narrowed, and `menu=1` to open the chosen conversation's ⋮ menu. Logs `richlist ok` once
-  * built, and each thing done. */
+  * marked with an icon and without one, and one on each group's (Close its sections, Open its sections). A few have
+  * an agent at work in them, a ring turning around the avatar with what it is doing on it (one unread too), until
+  * `stop=<seconds>` stops them. Conversations in Recent drag into another order. Wide, the list is a sidebar beside the
+  * conversation chosen; narrow, it fills the screen. `theme=light` for the light palette, `rtl=1` to lay it out right to
+  * left, `collapsed=<key>` to start with a section closed, `groups=<key>` with a group (workspaces, personal),
+  * `scroll=<pixels>` to start scrolled, `find=<words>` to start narrowed, and `menu=1` to open the chosen
+  * conversation's ⋮ menu. Logs `richlist ok` once built, and each thing done. */
 object RichListDemo {
   private case class Chat(id: String, title: String, snippet: String, who: Option[Participant], icon: Option[MaterialIcon],
-                          updated: Long, unread: Int, pinned: Boolean, locked: Boolean)
+                          updated: Long, unread: Int, pinned: Boolean, locked: Boolean,
+                          doing: Option[String] = None)
 
   private val people: Vector[Participant] = Vector(
     Participant("p-ada", "Ada Lovelace"), Participant("p-grace", "Grace Hopper"), Participant("p-alan", "Alan Turing"),
@@ -137,6 +139,10 @@ object RichListDemo {
     val scroll = Platform.launchArg("scroll")
     if (scroll.nonEmpty) Platform.later(() => list.list.scrollTop(scroll.toDouble))
     if (Platform.launchArg("find").nonEmpty) list.query @= Platform.launchArg("find")
+    Platform.launchArg("stop").toDoubleOption.foreach(s => Platform.after(s, () => {
+      chats @= chats().map(_.copy(doing = None))
+      Platform.log("richlist stopped the agents")
+    }))
     if (Platform.launchArg("menu") == "1") Platform.after(0.5, () => list.list.current().foreach { key =>
       list.list.rowAt(list.list.indexOf(key)).foreach {
         case r: everyui.list.RichRow[?] => r.more.event.click @= everyui.event.PointerEvent(everyui.event.PointerKind.Click, 0.0, 0.0)
@@ -177,7 +183,13 @@ object RichListDemo {
 
   private def look(c: Chat): RichLook = RichLook(c.title, Some(c.snippet), c.who, c.icon,
     time = Some(c.updated), count = c.unread, unread = c.unread > 0,
-    mark = if (c.locked) Some(MaterialIcon.Lock) else if (c.pinned) Some(MaterialIcon.PushPin) else None)
+    mark = if (c.locked) Some(MaterialIcon.Lock) else if (c.pinned) Some(MaterialIcon.PushPin) else None,
+    busy = c.doing.nonEmpty, busyDetail = c.doing.getOrElse(""))
+
+  // what the agent is doing in the conversations it is at work in: the first, unread, and two pinned near the top of
+  // Recent among them
+  private val working: Map[Int, String] = Map(0 -> "Running bash", 5 -> "Thinking", 42 -> "Editing RichRow.scala",
+    14 -> "Searching the web", 21 -> "Running the tests")
 
   // conversation `i`: newer the lower `i` is, a few unread (one past 99), some pinned or locked, some a group's icon
   private def made(i: Int, start: Long): Chat = {
@@ -191,6 +203,6 @@ object RichListDemo {
       if (group) Some(if (i % 2 == 0) MaterialIcon.Group else MaterialIcon.Tag) else None,
       start - ago,
       if (i == 1) 128 else if (i < 20 && i % 4 == 0) i % 7 + 1 else 0,
-      pinned = i % 37 == 5, locked = i % 31 == 7)
+      pinned = i % 37 == 5, locked = i % 31 == 7, doing = working.get(i))
   }
 }

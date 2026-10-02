@@ -14,14 +14,42 @@ import reactify.*
   *
   * Around the label are slots an app fills: `icon` before it (a file's type), `marker` after it (an unsaved file's
   * dot, a count); and a closable tab ends in a close button, which asks the bar to close it (`TabBar.closing`) rather
-  * than showing it, as a click on it with the middle button does. */
+  * than showing it, as a click on it with the middle button does.
+  *
+  * A `lead` goes first of all (`TabLead`): somebody's avatar, which turns a ring while the tab is `busy` (an agent at
+  * work in it) and says `busyDetail` to a pointer resting on it and to a screen reader; or an icon. The avatar keeps
+  * the ring's room whether or not it is busy, so the label does not move as it starts and stops. */
 class TabItem(val key: String, title: String, current: Var[String], closable: Boolean = false,
-              close: String => Unit = _ => (), showOnFocus: Boolean = true) extends Container {
+              close: String => Unit = _ => (), showOnFocus: Boolean = true, lead: TabLead = TabLead.None)
+  extends Container {
   val label: Var[String] = Var(title)
+  /** Whether what the tab shows is at work: a ring turns around its avatar, where it is led by one. */
+  val busy: Var[Boolean] = Var(false)
+  /** What it is doing while busy ("Running bash"), said by the avatar. */
+  val busyDetail: Var[String] = Var("")
   val icon: Var[Option[Component]] = Var(None)
   val marker: Var[Option[Component]] = Var(None)
 
   private def selected: Boolean = current() == key
+  /** What leads the label: the avatar in the ring's room, or the icon. */
+  val leadView: Option[Component] = lead match {
+    case TabLead.Person(who) =>
+      val face = new everyui.chat.Avatar(who, TabItem.face)
+      face.busy := busy()
+      face.busyDetail := busyDetail()
+      val room = BusyRing.outset(TabItem.face)
+      face.position.left @= room
+      face.position.top @= room
+      Some(new Container {
+        size.width @= TabItem.face + room * 2.0
+        size.height @= TabItem.face + room * 2.0
+        children += face
+      })
+    case TabLead.Icon(glyph) => Some(new MaterialIconView(glyph, 18.0) {
+      color := (if (selected) Theme.accent() else Theme.muted())
+    })
+    case _ => None
+  }
   private val text = new TextView {
     content := label()
     font.size @= 16.0
@@ -38,7 +66,7 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   })
   private val row = new Container {
     layout @= Some(HorizontalLayout(6.0, middle = true))
-    children := icon().toVector ++ Vector(text) ++ marker().toVector ++ closeButton.toVector
+    children := leadView.toVector ++ icon().toVector ++ Vector(text) ++ marker().toVector ++ closeButton.toVector
   }
   private val underline = new Container {
     size.height @= 3.0
@@ -69,4 +97,6 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
 
 object TabItem {
   val padH: Double = 18.0
+  /** How big a lead avatar is. */
+  val face: Double = 20.0
 }
