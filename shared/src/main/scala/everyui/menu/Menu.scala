@@ -173,12 +173,13 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
   }
 
   /** Put it up, the focus on its first entry that can be chosen: over what is up with `over` (a submenu), `dim`
-    * and `centre`d for a menu in the middle of the screen. */
+    * and `centre`d for a menu in the middle of the screen. A menu opened while another is on top takes its place; one
+    * opened from a dialog goes over it, and the dialog is there again once it closes. */
   private[menu] def up(over: Boolean = false, dim: Boolean = false, centre: Boolean = false,
                        dismissed: () => Unit = () => ()): Unit = {
     val first: Component = choosable.headOption.getOrElse(this)
     val after = () => if (under.isEmpty && !settled) dismissed()
-    if (over) Modal.over(this, first, after, dim = dim, centre = centre)
+    if (over || !Modal.top.forall(_.kind == "Menu")) Modal.over(this, first, after, dim = dim, centre = centre)
     else Modal.show(this, first, after, dim = dim, centre = centre)
   }
 

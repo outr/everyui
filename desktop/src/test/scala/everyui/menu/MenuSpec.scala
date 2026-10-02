@@ -89,6 +89,42 @@ class MenuSpec extends FxSpec {
     }
   }
 
+  "A menu dropped from a dialog" should {
+    "go over the dialog, which is there again with the focus once it is chosen from or dismissed" in onScreen { _ =>
+      var chose = 0
+      val (dialog, button) = fx {
+        val d = new Container
+        d.size.width @= 300.0
+        d.size.height @= 200.0
+        val b = new Component(Nodes.container())
+        b.focusable @= true
+        b.size.width @= 80.0
+        b.size.height @= 30.0
+        d.children += b
+        Modal.show(d, b)
+        (d, b)
+      }
+      fx(Focus.focused()) shouldBe Some(button)
+      val menu = fx(Menu.below(button, List(MenuItem("High", () => chose += 1))))
+      fx(Modal.top) shouldBe Some(menu)
+      press("Escape")
+      fx(Modal.top) shouldBe Some(dialog)
+      fx(Focus.focused()) shouldBe Some(button)
+      fx(Menu.below(button, List(MenuItem("High", () => chose += 1))))
+      press("Enter")
+      chose shouldBe 1
+      fx(Modal.top) shouldBe Some(dialog)
+      fx(Focus.focused()) shouldBe Some(button)
+    }
+    "take the place of a menu on top rather than go over it" in onScreen { _ =>
+      fx(Menu.at(100.0, 100.0, List(MenuItem("One", () => ()))))
+      val second = fx(Menu.at(200.0, 200.0, List(MenuItem("Two", () => ()))))
+      fx(Modal.top) shouldBe Some(second)
+      fx(Modal.close())
+      fx(Modal.showing) shouldBe false
+    }
+  }
+
   "A menu" should {
     "move through what can be chosen, round the ends, and choose with OK" in onScreen { card =>
       var chose: List[String] = Nil

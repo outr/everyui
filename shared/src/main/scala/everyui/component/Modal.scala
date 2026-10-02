@@ -50,6 +50,12 @@ object Modal {
     layers.nonEmpty
   }
 
+  /** The panel of the dialog on top, if one is up. */
+  def top: Option[Container] = {
+    forget()
+    layers.headOption.map(_.panel)
+  }
+
   /** Whether a dialog is up where it can be seen, and so holds the focus and Back: one waiting under a cover does
     * neither, and the screen it waits over answers Back as though it were not there. */
   def inView: Boolean = showing && !covered()
