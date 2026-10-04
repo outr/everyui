@@ -4014,11 +4014,23 @@ class RokuEmitter(
       |function RtKeyEvent(key as string, press as boolean) as boolean
       |    ga = GetGlobalAA()
       |    if ga.uiKey = invalid then return false
-      |    names = { back: "Back", up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", OK: "Enter", play: "MediaPlayPause", rewind: "MediaRewind", fastforward: "MediaFastForward", replay: "MediaReplay", options: "ContextMenu" }
-      |    name = names[key]
-      |    if name = invalid then name = key
-      |    taken = RtGuard(ga.uiKey, [name, press])
+      |    taken = RtGuard(ga.uiKey, [RtKeyName(key), press])
       |    return taken = true
+      |end function
+      |' A key's web name. What is typed rather than pressed (ECP's keypress/Lit_<c>, from the phone app's keyboard, voice
+      |' entry, a remote with keys) is its character, percent-decoded where it still is (Lit_%20 a space, Lit_%C3%A9 an
+      |' é); ECP's Backspace is Backspace, and its Enter, which is not OK, is Enter typed (everyui.event.Keys.TypedEnter).
+      |function RtKeyName(key as string) as string
+      |    names = { back: "Back", up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", OK: "Enter", play: "MediaPlayPause", rewind: "MediaRewind", fastforward: "MediaFastForward", replay: "MediaReplay", options: "ContextMenu", backspace: "Backspace", enter: Chr(10) }
+      |    name = names[key]
+      |    if name <> invalid then return name
+      |    if Len(key) < 5 or LCase(Left(key, 4)) <> "lit_" then return key
+      |    c = Mid(key, 5)
+      |    if Len(c) > 1 and CreateObject("roRegex", "^([^%]|%[0-9A-Fa-f]{2})+$", "").IsMatch(c)
+      |        decoded = c.DecodeUriComponent()
+      |        if decoded <> "" then c = decoded
+      |    end if
+      |    return c
       |end function
       |function _str(v as dynamic) as string
       |    if v = invalid then return ""

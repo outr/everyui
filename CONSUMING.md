@@ -339,6 +339,32 @@ Keymap.embed("editor", Chord("W", primary = true))           // the chords this 
 An embed gives back a key it did not want. For example, an editor's Escape with no popup to close becomes Back:
 `Focus.handBack("Escape")`.
 
+### Typing without the platform's keyboard (`Container.typeInto`)
+
+A Roku types characters as keys: its phone app's keyboard, voice entry and a remote with keys send ECP's
+`keypress/Lit_<c>`, `Backspace` and `Enter`. The Roku backend reports a character as its own name (`"a"`, `" "`,
+`"é"`, percent-decoded where it still is), Backspace as `"Backspace"`, and that Enter, which is not OK, as
+`Keys.TypedEnter`. The remote's own keys are unchanged.
+
+A container that takes typing says where it goes. While the focus is on it or in it, a character, a space,
+Backspace and a typed Enter go to its `TextEntry` instead of to the focused part's `event.key.down`. The nearest
+container that says takes them. OK still presses what has the focus, and the arrows still move. A `TextInput` and a
+`SearchField` with no platform field under them (Roku, Apple TV) say it of themselves, so the field with the focus
+is typed into. A keyboard drawn by the app says it once, for the field it edits:
+
+```scala
+keys.typeInto(TextEntry(query, () => done()))   // after the words; Backspace takes off the last; Enter runs done
+keys.typeInto(new TextEntry {                    // or the keyboard's own editing (a selection being replaced)
+  def typed(s: String): Unit = typeIn(s)
+  def erase(): Unit = backspace()
+  def enter(): Unit = done()
+})
+```
+
+On every platform a keyboard's printable keys, Space and Backspace, with no Ctrl, Alt or Meta, reach the entry the
+same way. Drop any per-key `event.key.down` typing (for example, a Bluetooth keyboard typed through each focused key)
+once the keyboard states an entry. Those keys no longer reach `event.key.down` there.
+
 ## General components
 
 Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:

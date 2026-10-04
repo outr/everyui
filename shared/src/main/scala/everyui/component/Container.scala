@@ -171,6 +171,18 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Where an arrow arriving at this container lands, when the container says. */
   def focusEntry: Option[Component] = arrival
 
+  private var typedInto: Option[everyui.focus.TextEntry] = None
+
+  /** What is typed while the focus is on this container or in it goes to `to` (a character, a space, Backspace, a
+    * phone app's Enter), ahead of the focused part's own key handling: the field an app's own keyboard edits, typed into
+    * as well from a Roku's phone app or a keyboard while the focus is on the keys. The nearest container that says
+    * takes it. A field of EveryUI's where the platform has none of its own (TextInput, SearchField on a Roku) says it
+    * of itself. */
+  def typeInto(to: everyui.focus.TextEntry): Unit = typedInto = Some(to)
+
+  /** Where what is typed here goes, when this container says (`typeInto`). */
+  def textEntry: Option[everyui.focus.TextEntry] = typedInto
+
   /** Place the children again, here and all the way down, in one pass: the reading direction changed. */
   def relayout(): Unit = LayoutPass.relayout(this)
 

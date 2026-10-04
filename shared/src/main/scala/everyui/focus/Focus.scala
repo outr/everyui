@@ -11,8 +11,10 @@ import reactify.*
   * browser, in one place rather than one per platform or per screen.
   *
   * A key that runs a command (`everyui.keymap.Keymap`) is taken before anything else. Every other key goes to the
-  * focused component first. Enter clicks it; Tab moves the focus on in tree order, Shift+Tab back; Back goes to
-  * the newest back handler (`onBack`: an open dialog, then the screen history). An arrow is answered by the layouts:
+  * focused component first, unless it types: a character, a space or Backspace where the focus is in something that
+  * takes typing (`Container.typeInto`: a field with no platform field under it, an app's own keyboard) goes there. Enter
+  * clicks it; Tab moves the focus on in tree order, Shift+Tab back; Back goes to the newest back handler (`onBack`: an
+  * open dialog, then the screen history). An arrow is answered by the layouts:
   * from the focused component up through its containers, the first whose layout has a neighbour that way (a row's next
   * item, a column's next line, the next row of a flow) takes the focus there. Nothing is found by where things are on the
   * screen: a move is always one somebody decided, by a layout's order or by what a container states, never whatever
@@ -253,6 +255,25 @@ object Focus {
     taken
   }
 
+  /** Where `event` types, when it is a character, a space, Backspace or a phone app's Enter with no modifier but Shift:
+    * the text entry of the focused component's nearest container that takes typing (`Container.typeInto`), it
+    * included. */
+  private def entryFor(target: Option[Component], event: KeyEvent): Option[TextEntry] =
+    if (event.ctrl || event.meta || event.alt || !(event.key == Key.Backspace || event.key == Key.Space ||
+      event.name == Keys.TypedEnter || (event.key == Key.Other && event.name.length == 1))) None
+    else {
+      var at = target
+      var found: Option[TextEntry] = None
+      while (found.isEmpty && at.nonEmpty) {
+        at.get match {
+          case box: Container => found = box.textEntry
+          case _ => ()
+        }
+        at = at.flatMap(_.parent())
+      }
+      found
+    }
+
   private def goBack(key: Key): Boolean = {
     var taken = false
     var left = backs
@@ -318,7 +339,9 @@ object Focus {
     val kept = pressed && target.exists(_.keepsEvent(event))
     // and one the platform's own field types with or moves its caret by: heard, and then left to the platform
     val typed = pressed && !kept && target.exists(_.typesEvent(event))
-    target.foreach { c =>
+    // and one typed where the focus is in something that takes typing (Container.typeInto) is that's, in its place
+    val entry = if (pressed && !kept && !typed) entryFor(target, event) else None
+    if (entry.isEmpty) target.foreach { c =>
       if (pressed) c.event.key.down @= event else c.event.key.up @= event
     }
     // OK let go on what it went down on, which is waiting for the release to know whether it was a press or a hold: a
@@ -337,6 +360,13 @@ object Focus {
     else if (kept) true
     // a key typed into a field is the field's: the platform types it, and the focus layer makes no use of it
     else if (typed) false
+    else if (entry.nonEmpty) {
+      val to = entry.get
+      if (key == Key.Backspace) to.erase()
+      else if (event.name == Keys.TypedEnter) to.enter()
+      else to.typed(event.name)
+      true
+    }
     // what the screen itself claims, before the focus layer makes its own use of the key
     else if (hooked(key)) true
     // one press, one click: a held OK is a single press however long it is held, where the remote's own repeat made

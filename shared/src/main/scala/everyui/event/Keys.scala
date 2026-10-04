@@ -4,9 +4,13 @@ import everyui.event.Key.*
 
 /** The keys by name; apart from the enum, since the emitter does not carry an enum's companion. */
 object Keys {
+  /** The name of Enter typed as text rather than pressed (a Roku's phone app's Enter, ECP's `Enter`, where the remote's
+    * OK is "Enter"): what is being typed into is done (`TextEntry.enter`); with nothing to type into, it is OK. */
+  val TypedEnter: String = "\n"
+
   /** The key for a platform's name — the web's names, which every backend reports (`Platform.onKey`). */
   def of(name: String): Key =
-    if (name == "Enter") Enter
+    if (name == "Enter" || name == TypedEnter) Enter
     else if (name == "Escape") Escape
     else if (name == "Back" || name == "BrowserBack" || name == "GoBack" || name == "XF86Back") Back
     else if (name == "ArrowUp") ArrowUp

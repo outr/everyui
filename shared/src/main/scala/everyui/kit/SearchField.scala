@@ -17,7 +17,8 @@ import reactify.*
   * Where the platform has a text field of its own (a browser, a desktop, a phone) the words are typed into that, the
   * caret there as the focus arrives where a keyboard is at hand, and on Enter or a tap where the keyboard is on the
   * screen. Where it has none (a Roku, an Apple TV) Enter or a click asks the platform's keyboard for the words
-  * (`Platform.editField`). The up and down arrows are not the field's: Down goes on to what is under it (a list).
+  * (`Platform.editField`), and what is typed while it has the focus (a Roku's phone app: `Container.typeInto`) goes
+  * straight in. The up and down arrows are not the field's: Down goes on to what is under it (a list).
   *
   * {{{
   *   val search = new SearchField()
@@ -104,6 +105,9 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
       submitted @= v
     }))
     children ++= List(icon, shown, clear)
+    // typed straight in as well, where something types without the platform's keyboard (a Roku's phone app, its voice
+    // entry): after the words, Backspace taking off the last, Enter submitting
+    typeInto(everyui.focus.TextEntry(value, () => submitted @= value()))
   }
   event.key.down.attach(k => if (k.key == Key.Escape && value().nonEmpty) value @= "")
 

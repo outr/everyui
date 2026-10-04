@@ -14,7 +14,8 @@ import reactify.*
   * hand the focus moving onto it puts the caret there. Where the keyboard is on the screen (a TV remote, a phone) the
   * focus only lights the field, and Enter or a tap starts `editing` and brings the keyboard up, so moving across a form
   * never opens it; the keyboard's Done or Back ends it. Where it has none (a Roku, an Apple TV) the field shows its
-  * value, and Enter or a click asks the platform's keyboard for a new one (`Platform.editText`). */
+  * value, and Enter or a click asks the platform's keyboard for a new one (`Platform.editText`); what is typed while it
+  * has the focus (a Roku's phone app, its voice entry: `Container.typeInto`) goes straight in. */
 class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) extends Container {
   val value: Var[String] = own(Var(""))
   /** What the label says; bind it to change it (a language change, say). */
@@ -103,6 +104,13 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
         submitted @= v
       }))
     children ++= List(caption, shown)
+    // typed straight in as well, where something types without the platform's keyboard (a Roku's phone app, its voice
+    // entry): after the words, Backspace taking off the last, Enter submitting
+    typeInto(new everyui.focus.TextEntry {
+      def typed(s: String): Unit = if (!readOnly()) value @= value() + s
+      def erase(): Unit = if (!readOnly() && value().nonEmpty) value @= value().substring(0, value().length - 1)
+      def enter(): Unit = submitted @= value()
+    })
   }
 
   /** A field being edited types Enter and the keys that move along its line, which go on to the platform's field (kept

@@ -33,6 +33,8 @@ import everyui.render.Platform
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
   *   italic     an empty list's and a search's labels upright and slanted, a paragraph, buttons and a field slanted
   *   readonly   read-only fields beside an editable one: a share link, a note and a key to choose and copy but not change
+  *   typing     a field, a search box and a keyboard of the app's own typed into without the platform's keyboard (a Roku's
+  *              phone app: ECP's Lit_ keys), each value logged (`probe=1` types itself)
   *   rtlwrap    paragraphs 560 wide that wrap in a right-to-left direction: an Arabic overview, the same cut to two lines,
   *              and one in English, each logging its laid-out size
   *   dispose    home, then a theatre guide shown once, then a calendar over home, which disposes of the guide: nothing
@@ -105,6 +107,7 @@ import everyui.render.Platform
   else if (demo == "letterspacing") LetterSpacingDemo.run()
   else if (demo == "italic") ItalicDemo.run()
   else if (demo == "readonly") ReadOnlyDemo.run()
+  else if (demo == "typing") TypingDemo.run()
   else if (demo == "rtlwrap") RtlWrapDemo.run()
   else if (demo == "captions") CaptionsDemo.run()
   else if (demo == "dispose") DisposeDemo.run()
