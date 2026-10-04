@@ -1290,16 +1290,16 @@ class SwiftEmitter(
             // method). Only a real `this.` receiver resolves against `self`.
             if (inCurrentClass(s.owner) && isThis(q))
               if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(self)"
-              else s"self.${if (hidesInheritedParam(s)) fieldKey(s) else brSafe(name)}"
+              else s"self.${fieldName(s, name)}"
             else moduleSyms.get(s.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `self.getter` only holds the function ref, so call it.
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
-              case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${emitTerm(q)}.${brSafe(name)})"
+              case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${emitTerm(q)}.${fieldName(s, name)})"
               case None if isLibraryGap(q, s) => libraryGap(q, name)
-              case None                  => s"${emitTerm(q)}.${brSafe(name)}"
+              case None                  => s"${emitTerm(q)}.${fieldName(s, name)}"
             }
           }
         // `_iif(c, a, b)` only where both arms are pure; any other control flow
@@ -1308,16 +1308,16 @@ class SwiftEmitter(
             // method). Only a real `this.` receiver resolves against `self`.
             if (inCurrentClass(s.owner) && isThis(q))
               if (parenlessSelf) s"${typeName(currentClass)}_${memberName(s, name)}(this)"
-              else field("this", if (hidesInheritedParam(s)) fieldKey(s) else brSafe(name))
+              else field("this", fieldName(s, name))
             else moduleSyms.get(s.owner) match {
               case Some(prefix) => s"${prefix}_${memberName(s, name)}()"
               // A paren-less getter on ANOTHER user instance is a method, not a
               // field — `this.getter` only holds the function ref, so call it.
               case None if parenlessSelf => s"${typeName(s.owner)}_${memberName(s, name)}(${emitTerm(q)})"
               // an outer instance's by-name constructor parameter (read from an anonymous class inside it) is forced
-              case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${field(emitTerm(q), brSafe(name))})"
+              case None if isByNameParam(s) && s.flags.is(Flags.ParamAccessor) => s"RtForce(${field(emitTerm(q), fieldName(s, name))})"
               case None if isLibraryGap(q, s) => libraryGap(q, name)
-              case None                  => field(emitTerm(q), brSafe(name))
+              case None                  => field(emitTerm(q), fieldName(s, name))
             }
           }
         // `_iif(c, a, b)` only where both arms are pure; any other control flow
@@ -1923,7 +1923,7 @@ class SwiftEmitter(
           sb.append(emitMethodBody(dd.symbol, dd.rhs.get, wantRet)).append("\n")
           sb.append("  return invalid\nend function\n\n")
         case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
-          val k = brSafe(vd.name)
+          val k = fieldName(vd.symbol, vd.name)
           sb.append(s"function ${modelImplName(vd.symbol)}(self as object) as dynamic\n")
           sb.append(s"  cached = self[${brStr("__lz_" + k)}]\n")
           sb.append("  if cached <> invalid then return cached\n")
@@ -1991,7 +1991,7 @@ class SwiftEmitter(
           sb.append(emitMethodBody(dd.symbol, dd.rhs.get, wantRet)).append("\n")
           sb.append(s"  return $NULL\n}\n\n")
         case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) && vd.rhs.isDefined && !vd.symbol.flags.is(Flags.Module) && liveLazy(vd.symbol) =>
-          val k = brSafe(vd.name)
+          val k = fieldName(vd.symbol, vd.name)
           sb.append(s"func ${modelImplName(vd.symbol)}(_ this: V) throws -> V {\n")
           sb.append(s"  cached = ${field("this", "__lz_" + k)}\n")
           sb.append(s"  if (cached != $NULL).rtTrue { return cached }\n")

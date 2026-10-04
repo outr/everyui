@@ -244,6 +244,14 @@ func _bytesStr(_ b: V, _ cs: V) -> V {
 }
 /// A Char's code (`c.toInt`): a Char is a one-character String here.
 func _chCode(_ c: V) -> V { .vInt(Int(rtS(c).utf16.first ?? 0)) }
+/// A Char of a code (or a Char already), and a Char's lower and upper case.
+func _chOf(_ c: V) -> V {
+    if case .vStr = c { return c }
+    guard case .vInt(let n) = c, let u = UnicodeScalar(UInt32(truncatingIfNeeded: n)) else { return .vStr("") }
+    return .vStr(String(Character(u)))
+}
+func _chLower(_ c: V) -> V { rtLower(_chOf(c)) }
+func _chUpper(_ c: V) -> V { rtUpper(_chOf(c)) }
 /// A String read as a whole number (`toIntOption`), or None (null) when the whole of it, trimmed, is not one.
 func _strToIntOpt(_ s: V) -> V {
     if let n = Int(rtS(s).trimmingCharacters(in: .whitespaces)) { return .vInt(n) }
@@ -851,7 +859,7 @@ func RtLeft(_ v: V) -> V { rtObj(["_cls": .vStr("Left"), "value": v, "_fields": 
 func RtRight(_ v: V) -> V { rtObj(["_cls": .vStr("Right"), "value": v, "_fields": rtArr([.vStr("value")])]) }
 func rtIsRight(_ t: V) -> Bool { let c = rtS(t["_cls"]); return c == "Success" || c == "Right" }
 func _tryMap(_ t: V, _ cl: V) throws -> V {
-    rtIsRight(t) ? rtObj(["_cls": t["_cls"], "value": try RtInvoke(cl, rtArr([t["value"]]))]) : t
+    rtIsRight(t) ? rtObj(["_cls": t["_cls"], "value": try RtInvoke(cl, rtArr([t["value"]])), "_fields": t["_fields"]]) : t
 }
 func _tryFlatMap(_ t: V, _ cl: V) throws -> V { rtIsRight(t) ? try RtInvoke(cl, rtArr([t["value"]])) : t }
 func _tryFold(_ t: V, _ fa: V, _ fb: V) throws -> V {
@@ -865,6 +873,24 @@ func _tryFold(_ t: V, _ fa: V, _ fb: V) throws -> V {
 }
 func _tryGetOrElse(_ t: V, _ d: V) -> V { rtIsRight(t) ? t["value"] : d }
 func _tryToOption(_ t: V) -> V { rtIsRight(t) ? t["value"] : .vNull }
+func _tryIsRight(_ t: V) -> V { .vBool(rtIsRight(t)) }
+func _tryIsLeft(_ t: V) -> V { .vBool(!rtIsRight(t)) }
+func _tryForeach(_ t: V, _ cl: V) throws -> V {
+    if rtIsRight(t) { _ = try RtInvoke(cl, rtArr([t["value"]])) }
+    return .vNull
+}
+func _tryExists(_ t: V, _ cl: V) throws -> V { rtIsRight(t) ? try RtInvoke(cl, rtArr([t["value"]])) : .vBool(false) }
+func _tryForall(_ t: V, _ cl: V) throws -> V { rtIsRight(t) ? try RtInvoke(cl, rtArr([t["value"]])) : .vBool(true) }
+func _tryContains(_ t: V, _ x: V) -> V { rtIsRight(t) ? _eq(t["value"], x) : .vBool(false) }
+/// `orElse`: the alternative (a thunk) where there is no value.
+func _tryOrElse(_ t: V, _ alt: V) throws -> V { rtIsRight(t) ? t : try RtForce(alt) }
+/// `filterOrElse`: a Right whose value fails the test becomes a Left of the alternative (a thunk).
+func _eitherFilterOrElse(_ t: V, _ cl: V, _ alt: V) throws -> V {
+    if rtIsRight(t), !(try RtInvoke(cl, rtArr([t["value"]]))).rtTrue { return RtLeft(try RtForce(alt)) }
+    return t
+}
+func _eitherSwap(_ t: V) -> V { rtIsRight(t) ? RtLeft(t["value"]) : RtRight(t["value"]) }
+func _eitherMerge(_ t: V) -> V { t["value"] }
 
 // MARK: - immutable Set (array-backed, `==` membership)
 
@@ -894,6 +920,11 @@ func _mapGet(_ m: V, _ k: V) -> V {
     let i = _mapFind(m, k)
     return i < 0 ? .vNull : rtItems(m["entries"])[i]["v"]
 }
+/// A collection Scala reads as a function (`run.map(heights)`): a sequence as its element at an index, a map as its
+/// value at a key, a set as whether it holds a value.
+func _seqAsFn(_ xs: V) -> V { rtClosure({ env, args in env["xs"][args[V.vInt(0)]] }, rtObj(["xs": xs])) }
+func _mapAsFn(_ m: V) -> V { rtClosure({ env, args in _mapGet(env["m"], args[V.vInt(0)]) }, rtObj(["m": m])) }
+func _setAsFn(_ s: V) -> V { rtClosure({ env, args in _setHas(env["s"], args[V.vInt(0)]) }, rtObj(["s": s])) }
 func _mapHas(_ m: V, _ k: V) -> V {
     if case .vNull = m { return .vBool(false) }
     if !_rtIsEntryMap(m) { return .vBool(rtHas(m, rtS(k))) }
@@ -1327,6 +1358,19 @@ func _clsOf(_ x: V) -> V {
     return .vStr(rtKindName(x))
 }
 func _regex(_ pattern: V) -> V { .vRef(try! NSRegularExpression(pattern: rtS(pattern))) }
+/// A Regex's first match in a String, as its groups (the whole match first), or None.
+func _regexFirstMatch(_ re: V, _ s: V) -> V {
+    guard case .vRef(let r) = re, let rx = r as? NSRegularExpression else { return .vNull }
+    let str = rtS(s), ns = str as NSString
+    guard let m = rx.firstMatch(in: str, range: NSRange(location: 0, length: ns.length)) else { return .vNull }
+    let groups: [V] = (0..<m.numberOfRanges).map { i in
+        let g = m.range(at: i)
+        return g.location == NSNotFound ? .vNull : .vStr(ns.substring(with: g))
+    }
+    return rtObj(["_cls": .vStr("Match"), "groups": rtArr(groups)])
+}
+func _matchGroup(_ m: V, _ i: V) -> V { m["groups"][i] }
+func _strMatches(_ s: V, _ p: V) -> V { .vBool(rtS(s).range(of: "^(?:" + rtS(p) + ")$", options: .regularExpression) != nil) }
 
 // MARK: - java.util.concurrent.atomic.AtomicBoolean, java.lang.ThreadLocal (one thread)
 
