@@ -315,6 +315,8 @@ func rtFn(_ f: @escaping (V, V, V, V, V, V, V, V, V, V) throws -> V) -> V {
 
 /** A field write as an expression (a `var` setter in value position). */
 func rtSet(_ o: V, _ key: String, _ v: V) -> V { o[key] = v; return .vNull }
+/// A field of an object written by its name (an object of the object model's var, from outside it).
+func _setField(_ o: V, _ k: V, _ v: V) -> V { o[rtS(k)] = v; return .vNull }
 
 func Map(_ o: V = .vNull) -> V { if case .vNull = o { return _mapEmpty() }; return o }
 
@@ -505,6 +507,17 @@ func _split(_ s: V, _ sep: V) -> V {
     return rtArr(str.components(separatedBy: by).filter { !$0.isEmpty }.map { .vStr($0) })
 }
 func _startsWith(_ s: V, _ p: V) -> V { .vBool(rtS(s).hasPrefix(rtS(p))) }
+/// Whether a String has a prefix at an index (Java's startsWith(prefix, offset)), by UTF-16 unit as Java counts.
+func _startsWithAt(_ s: V, _ p: V, _ at: V) -> V {
+    guard case .vInt(let i) = at else { return .vBool(false) }
+    let a = Array(rtS(s).utf16), b = Array(rtS(p).utf16)
+    return .vBool(i >= 0 && i + b.count <= a.count && Array(a[i..<(i + b.count)]) == b)
+}
+/// A String repeated (`"ab" * 3`).
+func _strRepeat(_ s: V, _ n: V) -> V {
+    guard case .vInt(let k) = n, k > 0 else { return .vStr("") }
+    return .vStr(String(repeating: rtS(s), count: k))
+}
 func _endsWith(_ s: V, _ p: V) -> V { .vBool(rtS(s).hasSuffix(rtS(p))) }
 func _stripPrefix(_ s: V, _ p: V) -> V { let a = rtS(s), b = rtS(p); return .vStr(a.hasPrefix(b) ? String(a.dropFirst(b.count)) : a) }
 func _stripSuffix(_ s: V, _ p: V) -> V { let a = rtS(s), b = rtS(p); return .vStr(a.hasSuffix(b) ? String(a.dropLast(b.count)) : a) }
@@ -789,6 +802,20 @@ func _distinct(_ xs: V) -> V {
 }
 func _sum(_ xs: V) -> V { rtItems(xs).reduce(.vInt(0), +) }
 func _minList(_ xs: V) -> V { rtItems(xs).min { rtCompare($0, $1) < 0 } ?? .vNull }
+/// `minBy` and `maxBy`: the first element whose key is least or greatest; none of an empty one.
+func _minBy(_ xs: V, _ cl: V, _ least: Bool) throws -> V {
+    let items = rtItems(xs)
+    guard var best = items.first else { return .vNull }
+    var bk = try RtInvoke(cl, rtArr([best]))
+    for e in items.dropFirst() {
+        let k = try RtInvoke(cl, rtArr([e]))
+        if least ? rtCompare(k, bk) < 0 : rtCompare(k, bk) > 0 {
+            best = e
+            bk = k
+        }
+    }
+    return best
+}
 func _maxList(_ xs: V) -> V { rtItems(xs).max { rtCompare($0, $1) < 0 } ?? .vNull }
 func _arrFoldLeft(_ xs: V, _ z: V, _ cl: V) throws -> V {
     var acc = z

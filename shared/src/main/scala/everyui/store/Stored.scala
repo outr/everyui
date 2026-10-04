@@ -79,7 +79,10 @@ object Stored {
         }
       }
     }
-    var answer: Option[Option[T]] = None
+    // the read's answer, once it has come: a flag beside it, as `Some(None)` is None on a Roku, where a read that found
+    // nothing was taken for one not come yet and `connect` never completed
+    var answered = false
+    var answer: Option[T] = None
     var waiting: List[Option[T] => Unit] = Nil
     load.map { found =>
       val applied = if (touched) None else found
@@ -87,15 +90,13 @@ object Stored {
         kept = Some(value)
         v @= value
       }
-      answer = Some(applied)
+      answer = applied
+      answered = true
       waiting.foreach(done => done(applied))
       waiting = Nil
     }.start()
     Task.async[Option[T]] { done =>
-      answer match {
-        case Some(applied) => done(applied)
-        case None => waiting = done :: waiting
-      }
+      if (answered) done(answer) else waiting = done :: waiting
     }
   }
 }

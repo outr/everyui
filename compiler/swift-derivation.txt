@@ -50,11 +50,9 @@ class SwiftEmitter(
     def emitConst(c: Constant): String = c match {
       // an Int's ends in hex, an Integer on every box (brs-engine reads 2147483647 as a Double)
       case IntConstant(i)     => if (i == Int.MinValue) "&h80000000" else if (i == Int.MaxValue) "&h7FFFFFFF" else i.toString
-      // a Long at or past those ends a LongInteger (`&`), which BrightScript would otherwise read as a Double
-      case LongConstant(l)    =>
-        if (l > Int.MinValue && l < Int.MaxValue) l.toString
-        else if (l == Long.MinValue) "(-9223372036854775807& - 1&)"
-        else s"$l&"
+      // a Long a LongInteger (`&`) whatever its size: a small one written as an Integer was multiplied in 32 bits
+      // (`days.toLong * 86400000L` overflowed), and one past an Int's ends BrightScript would read as a Double
+      case LongConstant(l)    => if (l == Long.MinValue) "(-9223372036854775807& - 1&)" else s"$l&"
       case DoubleConstant(d)  => d.toString
       case FloatConstant(f)   => f.toString
       case StringConstant(s)  => brStr(s)
@@ -1237,6 +1235,8 @@ class SwiftEmitter(
         // a fraction made whole is truncated toward zero, as the JVM does (BrightScript's Int() floors)
         case Select(q, "toInt" | "toLong") if !isIntegral(q.tpe) && Set("scala.Double", "scala.Float").contains(fqnOf(q.tpe)) =>
           s"Fix(${emitTerm(q)})"
+        // a whole number made a Long is a LongInteger, so what it is multiplied by is too: an Integer overflowed at 2^31
+        case Select(q, "toLong") if isIntegral(q.tpe) => s"(${emitTerm(q)} + 0&)"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)

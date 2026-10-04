@@ -87,11 +87,9 @@ class RokuEmitter(
     def emitConst(c: Constant): String = c match {
       // an Int's ends in hex, an Integer on every box (brs-engine reads 2147483647 as a Double)
       case IntConstant(i)     => if (i == Int.MinValue) "&h80000000" else if (i == Int.MaxValue) "&h7FFFFFFF" else i.toString
-      // a Long at or past those ends a LongInteger (`&`), which BrightScript would otherwise read as a Double
-      case LongConstant(l)    =>
-        if (l > Int.MinValue && l < Int.MaxValue) l.toString
-        else if (l == Long.MinValue) "(-9223372036854775807& - 1&)"
-        else s"$l&"
+      // a Long a LongInteger (`&`) whatever its size: a small one written as an Integer was multiplied in 32 bits
+      // (`days.toLong * 86400000L` overflowed), and one past an Int's ends BrightScript would read as a Double
+      case LongConstant(l)    => if (l == Long.MinValue) "(-9223372036854775807& - 1&)" else s"$l&"
       case DoubleConstant(d)  => d.toString
       case FloatConstant(f)   => f.toString
       case StringConstant(s)  => brStr(s)
@@ -212,6 +210,11 @@ class RokuEmitter(
         && (!isEnumLike(s) || !s.flags.is(Flags.Enum) && s.companionClass.exists && s.companionClass.flags.is(Flags.Enum))
         && !isBuiltin(s)
     }
+
+    /** Whether an `object`'s body has statements (`register(this)`, `seen = seen :+ "boot"`) beside its vals and defs: it
+      * is then one of the object model, whose `__init` runs them with its vals when it is first used, as the JVM does.
+      * A plain object is its members' functions, which had nowhere to run them, so they did nothing. */
+    def hasStatements(cd: ClassDef): Boolean = cd.body.exists { case _: Term => true; case _ => false }
 
     def isUserClassSym(s: Symbol): Boolean =
       s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !s.flags.is(Flags.Case)
@@ -899,26 +902,31 @@ class RokuEmitter(
           val inner = arg match { case NamedArg(_, v) => v; case other => other }
           if (params.lift(i).exists(isByNameParam) && !isDefaultArg(arg)) (() => emitThunk(inner)) else part
         }
-        return fixed :+ (() => varargsArray(args.drop(repeatedAt)))
+        // a clause after the varargs one (Keymap's `add(id, label, chords*)(run)`) has arguments of its own, which were
+        // taken for more of the varargs: `run` was one more chord, and the call was an argument short
+        val after = args.drop(repeatedAt + 1).zipWithIndex.map { case (a, j) => argPart(a, params.lift(repeatedAt + 1 + j)) }
+        return (fixed :+ (() => varargsArray(args.slice(repeatedAt, repeatedAt + 1)))) ++ after
       }
-      val flat = flattenVarargs(args)
-      flat.zipWithIndex.map { case (arg, i) => () =>
-        val inner = arg match { case NamedArg(_, v) => v; case other => other }
-        val byName = params.lift(i).exists(isByNameParam)
-        if (isDefaultArg(arg)) {
-          val gs = unwrap(inner).symbol
-          val owner = if (gs.exists && gs.owner.exists) gs.owner else Symbol.noSymbol
-          // a local def's default is a local def beside it, called as one
-          if (!isUserDefaultOwner(owner) && !isLocalDef(gs)) dropArg
-          else {
-            val term = if (owner.flags.is(Flags.Module)) defaultGetterRhs(gs).getOrElse(inner) else inner
-            if (byName) emitThunk(term) else emitArgVal(term)
-          }
+      flattenVarargs(args).zipWithIndex.map { case (arg, i) => argPart(arg, params.lift(i)) }
+    }
+
+    /** One argument, for the parameter `param` where it is known: a by-name one as a thunk, a default as its getter. */
+    def argPart(arg: Term, param: Option[Symbol]): () => String = () => {
+      val inner = arg match { case NamedArg(_, v) => v; case other => other }
+      val byName = param.exists(isByNameParam)
+      if (isDefaultArg(arg)) {
+        val gs = unwrap(inner).symbol
+        val owner = if (gs.exists && gs.owner.exists) gs.owner else Symbol.noSymbol
+        // a local def's default is a local def beside it, called as one
+        if (!isUserDefaultOwner(owner) && !isLocalDef(gs)) dropArg
+        else {
+          val term = if (owner.flags.is(Flags.Module)) defaultGetterRhs(gs).getOrElse(inner) else inner
+          if (byName) emitThunk(term) else emitArgVal(term)
         }
-        else if (byName && isStableValue(inner) && !byNameIsFunction(params.lift(i))) emitArgVal(inner)
-        else if (byName) emitThunk(inner)
-        else emitArgVal(inner)
       }
+      else if (byName && isStableValue(inner) && !byNameIsFunction(param)) emitArgVal(inner)
+      else if (byName) emitThunk(inner)
+      else emitArgVal(inner)
     }
 
     def isStableValue(t: Term): Boolean = unwrap(t) match {
@@ -1615,7 +1623,13 @@ class RokuEmitter(
 
     def emitApply(t: Term): String = {
       someArg(t) match {
-        case Some(x) => return emitArgVal(x)
+        case Some(x) =>
+          // an Option is its value or `invalid` here, so a Some of an Option is that Option, and `Some(None)` is None:
+          // a gap where the Option may be None, as nothing after it can tell (Stored.connect, answered with nothing
+          // stored, waited for ever); a Some of a Some is its value either way
+          if (Set("scala.Option", "scala.None").contains(fqnOf(x.tpe).stripSuffix("$")))
+            todos += s"unsupported: Some of an Option, which is that Option on a Roku${where(t)}"
+          return emitArgVal(x)
         case None    =>
       }
       emitStringInterp(t) match {
@@ -1901,6 +1915,12 @@ class RokuEmitter(
               s"_strIndexFrom(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
             case Select(recv, "lastIndexOf") if fqnOf(recv.tpe) == "java.lang.String" && args.size == 2 =>
               s"_strLastIndexFrom(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
+            // whether a String has a prefix at an index (the one-argument form is below)
+            case Select(recv, "startsWith") if isStringLike(recv.tpe) && args.size == 2 =>
+              s"_startsWithAt(${emitTerm(recv)}, ${emitArgVal(args(0))}, ${emitArgVal(args(1))})"
+            // a String repeated (`"ab" * 3`, StringOps.*), which BrightScript's `*` refuses
+            case Select(recv, "*" | "$times") if isStringLike(recv.tpe) && args.size == 1 =>
+              s"_strRepeat(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             // a Regex's first match in a String (None where there is none), and a group of one
             case Select(recv, "findFirstMatchIn") if fqnOf(recv.tpe) == "scala.util.matching.Regex" && args.size == 1 =>
               s"_regexFirstMatch(${emitTerm(recv)}, ${emitArgVal(args.head)})"
@@ -1921,6 +1941,13 @@ class RokuEmitter(
               s"${typeName(implicitClassTarget(fn.symbol))}_new(${emitArgs(args)})"
             case Select(New(tpt), _) if hasNative(tpt.tpe.typeSymbol) =>
               s"${tpt.tpe.typeSymbol.name}(${emitFacadeCtorArgs(tpt.tpe.typeSymbol.primaryConstructor, args)})"
+            // a Scala or Java library class the runtime makes none of (`new java.lang.StringBuilder()`): a call to an
+            // `X_new` that nothing defines, found only by a device or the lint
+            case Select(New(tpt), _)
+                if isBuiltin(tpt.tpe.typeSymbol) && !RokuEmitter.runtimeClasses(tpt.tpe.typeSymbol.name) =>
+              val label = "new " + tpt.tpe.typeSymbol.fullName
+              todos += s"unsupported: $label${where(t)}"
+              s"RtTodoOpt(${brStr(label)})"
             case Select(New(tpt), _) if isUserClassSym(tpt.tpe.typeSymbol) =>
               s"${typeName(tpt.tpe.typeSymbol)}_new(${emitArgs(args, fn.symbol)})"
             case Select(New(tpt), _) =>
@@ -2182,6 +2209,9 @@ class RokuEmitter(
               s"_takeWhile(${emitTerm(recv)}, ${emitArgVal(args.head)}, false)"
             case Select(recv, "lastIndexWhere") if isCollType(recv) && args.size == 1 =>
               s"_arrLastIndexWhere(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+            // the first element whose key is least or greatest (None, `invalid`, where there is none: the Option forms)
+            case Select(recv, op @ ("minBy" | "maxBy" | "minByOption" | "maxByOption")) if isCollType(recv) && args.nonEmpty =>
+              s"_minBy(${emitTerm(recv)}, ${emitArgVal(args.head)}, ${op.startsWith("min")})"
             // an empty collection has no least or greatest, which is None — `invalid` here
             case Select(recv, "minOption") if isCollType(recv) => s"_minOption(${emitTerm(recv)}, true)"
             case Select(recv, "maxOption") if isCollType(recv) => s"_minOption(${emitTerm(recv)}, false)"
@@ -2505,6 +2535,8 @@ class RokuEmitter(
         // a fraction made whole is truncated toward zero, as the JVM does (BrightScript's Int() floors)
         case Select(q, "toInt" | "toLong") if !isIntegral(q.tpe) && Set("scala.Double", "scala.Float").contains(fqnOf(q.tpe)) =>
           s"Fix(${emitTerm(q)})"
+        // a whole number made a Long is a LongInteger, so what it is multiplied by is too: an Integer overflowed at 2^31
+        case Select(q, "toLong") if isIntegral(q.tpe) => s"(${emitTerm(q)} + 0&)"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
@@ -2788,7 +2820,7 @@ class RokuEmitter(
     }
 
     def isModuleVar(s: Symbol): Boolean =
-      s.exists && s.isValDef && s.flags.is(Flags.Mutable) && s.owner.exists && s.owner.flags.is(Flags.Module)
+      s.exists && s.isValDef && s.flags.is(Flags.Mutable) && s.owner.exists && moduleSyms.contains(s.owner)
 
     /** The non-null operand of `x == null` (either side) when a direct
       * `= invalid` test is safe: an object of a concrete class. Never a string,
@@ -2829,6 +2861,13 @@ class RokuEmitter(
     }
 
     def emitStat(st: Statement): String = st match {
+      // a var of an object of the object model, written from outside it (`Registry.seen = …`): through the runtime, as a
+      // BrightScript statement cannot begin with the call that finds the object
+      case Assign(lhs @ Select(q, n), rhs) if !isThis(q) && modelModuleOf(q.symbol).isDefined =>
+        anfCounter += 1
+        val tmp = s"_mv$anfCounter"
+        List(emitInto(rhs, tmp), stmtTerm(s"_setField(${emitTerm(q)}, ${brStr(fieldName(lhs.symbol, n))}, $tmp)"))
+          .filter(_.trim.nonEmpty).mkString("\n")
       case vd @ ValDef(name, _, Some(rhs)) =>
         val lhs = brLocal(name)
         if (boxedVars.contains(vd.symbol))
@@ -3539,7 +3578,7 @@ class RokuEmitter(
         val sy = cd.symbol
         if (sy.flags.is(Flags.Module) && !hasNative(sy) && !isBuiltin(sy) && !isEnumLike(sy)
            && !sy.name.stripSuffix("$").endsWith("$package") && !mainNames.contains(sy.name)
-           && sy.typeRef.baseClasses.exists(b => b != sy && userTypeDefs.contains(b))) {
+           && (sy.typeRef.baseClasses.exists(b => b != sy && userTypeDefs.contains(b)) || hasStatements(cd))) {
           modelModules += sy
           userTypeDefs(sy) = cd
         }
@@ -3566,7 +3605,8 @@ class RokuEmitter(
           userTypeDefs(sy).body.exists { case dd: DefDef => emittableMethod(dd) && !dd.name.contains("$default$"); case _ => false }
         // A `lazy val` needs the object model's lazy getter; the flat class path would evaluate it eagerly.
         val hasLazy = userTypeDefs(sy).body.exists { case vd: ValDef => vd.symbol.flags.is(Flags.Lazy) && !vd.symbol.flags.is(Flags.Module); case _ => false }
-        if (sy.flags.is(Flags.Trait) || bases.nonEmpty || extended || caseWithMethods || hasLazy) objectModelTypes += sy
+        if (sy.flags.is(Flags.Trait) || bases.nonEmpty || extended || caseWithMethods || hasLazy || modelModules.contains(sy))
+          objectModelTypes += sy
       }
     }
     for (tasty <- tastys)
@@ -3953,6 +3993,11 @@ class RokuEmitter(
       |    t = type(v)
       |    return t = "roString" or t = "String"
       |end function
+      |' a field of an object written by its name (an object of the object model's var, from outside it)
+      |function _setField(o as object, k as string, v as dynamic) as dynamic
+      |    o[k] = v
+      |    return invalid
+      |end function
       |function _iif(c as dynamic, a as dynamic, b as dynamic) as dynamic
       |    if c then return a
       |    return b
@@ -4251,6 +4296,21 @@ class RokuEmitter(
       |    if least then return _minList(items)
       |    return _maxList(items)
       |end function
+      |' `minBy` and `maxBy`: the first element whose key (a number or a string) is least or greatest; none of an empty one
+      |function _minBy(xs as dynamic, cl as dynamic, least as boolean) as dynamic
+      |    items = _rtItems(xs)
+      |    if items.count() = 0 then return invalid
+      |    best = items[0]
+      |    bk = RtInvoke(cl, [best])
+      |    for i = 1 to items.count() - 1
+      |        k = RtInvoke(cl, [items[i]])
+      |        if (least and k < bk) or (not least and k > bk)
+      |            best = items[i]
+      |            bk = k
+      |        end if
+      |    end for
+      |    return best
+      |end function
       |function _strTakeWhile(s as dynamic, cl as dynamic, keeping as boolean) as string
       |    if s = invalid then return ""
       |    at = Len(s)
@@ -4489,6 +4549,15 @@ class RokuEmitter(
       |        i = Instr(i + 1, t, f)
       |    end while
       |    return at
+      |end function
+      |function _startsWithAt(s as dynamic, pre as dynamic, at as integer) as boolean
+      |    a = _str(s) : b = _str(pre)
+      |    if at < 0 or at + Len(b) > Len(a) then return false
+      |    return Mid(a, at + 1, Len(b)) = b
+      |end function
+      |function _strRepeat(s as dynamic, n as integer) as string
+      |    if n <= 0 then return ""
+      |    return String(n, _str(s))
       |end function
       |function _startsWith(s as dynamic, pre as dynamic) as boolean
       |    a = _str(s) : b = _str(pre)
@@ -6838,6 +6907,12 @@ class RokuEmitter(
 object RokuEmitter {
   /** The methods the runtime calls on an object by name (`_rtSlot`): its text, and its order for a sort. */
   val runtimeCalled: Set[String] = Set("toString", "compare")
+
+  /** The Scala and Java library classes the runtime makes (`new Exception(…)` is `Exception_new`); `new` of any other
+    * is a gap. */
+  val runtimeClasses: Set[String] = Set("AssertionError", "AtomicBoolean", "AtomicInteger", "AtomicLong", "ConcurrentHashMap",
+    "ConcurrentLinkedQueue", "Exception", "IllegalArgumentException", "IllegalStateException", "MatchError", "Object", "Promise",
+    "RuntimeException", "ThreadLocal")
 
   /** Whether emitted code refers to `self`, the object a closure was written in. */
   def usesSelf(code: String): Boolean = "\\bself\\b".r.findFirstIn(code).nonEmpty

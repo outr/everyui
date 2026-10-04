@@ -64,7 +64,7 @@ case class CalendarDate(year: Int, month: Int, day: Int) {
   def endOfWeek(firstDay: Int): CalendarDate = startOfWeek(firstDay).plusDays(6)
 
   /** Midnight at its start in UTC, in milliseconds since the epoch. */
-  def toEpochMillis: Long = CalendarDate.wide(epochDay) * CalendarDate.DayMillis
+  def toEpochMillis: Long = epochDay.toLong * CalendarDate.DayMillis
 
   /** Midnight at its start where the device is (`Platform.localDateTime`), in milliseconds since the epoch. On a day
     * whose midnight a change of the clocks skips, the first moment it has. */
@@ -184,11 +184,6 @@ object CalendarDate {
   }
 
   private[date] def floorModLong(a: Long, b: Long): Long = a - floorDivLong(a, b) * b
-
-  /** `n` as a Long that multiplies in 64 bits on every backend. A Roku keeps `n.toLong`, and a Long constant that fits
-    * in 32 bits, as a 32-bit Integer, so a day's number times a day's milliseconds overflowed there; a clock's
-    * reading is a LongInteger, and a sum with one stays one. */
-  private[date] def wide(n: Int): Long = System.currentTimeMillis() * 0L + n
 
   private[date] def two(n: Int): String = if (n < 10) "0" + n.toString else n.toString
 }
