@@ -772,7 +772,7 @@ class SwiftEmitter(
               // each field under the key its reads use: `stop.pos` reads `pos_` (brSafe), so it is stored there, not at `pos`
               val fs = fields.zip(flat).map((f, a) => s"${brSafe(f)}: ${emitArgVal(a)}")
               val fieldList = fields.take(flat.size).map(f => brStr(brSafe(f))).mkString(", ")
-              return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: fs).mkString(", ") + " }"
+              return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: (ordinalField(t.tpe.typeSymbol).map(o => s"ordinal: $o").toList ++ fs)).mkString(", ") + " }"
             case _ =>
           }
           fn match {
@@ -789,7 +789,7 @@ class SwiftEmitter(
               // each field under the key its reads use: `stop.pos` reads `pos_` (brSafe), so it is stored there, not at `pos`
               val fs = fields.zip(flat).map((f, a) => s"${swStr(brSafe(f))}: ${emitArgVal(a)}")
               val fieldList = rtArr(fields.take(flat.size).map(f => brStr(brSafe(f))))
-              return rtObj(s"${swStr("_cls")}: ${brStr(t.tpe.typeSymbol.name)}" :: s"${swStr("_fields")}: $fieldList" :: fs)
+              return rtObj(s"${swStr("_cls")}: ${brStr(t.tpe.typeSymbol.name)}" :: s"${swStr("_fields")}: $fieldList" :: (ordinalField(t.tpe.typeSymbol).map(o => s"${swStr("ordinal")}: ${vInt(o)}").toList ++ fs))
             case _ =>
           }
           fn match {
@@ -2098,6 +2098,8 @@ class SwiftEmitter(
         // (its `_isa` is in its table, where it has one)
         { val tag = isaTag(sym); if (tag.nonEmpty && vtableFor(sym).isEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
+        // a class case of an enum, its ordinal (`isEnumOrdinal`)
+        ordinalField(sym).foreach(o => sb.append(s"  self.ordinal = $o\n"))
         // a case class's fields, by name (the runtime compares and prints it by them): its table's list, where it has one
         if (sym.flags.is(Flags.Case) && vtableFor(sym).isEmpty)
           sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
@@ -2193,6 +2195,7 @@ class SwiftEmitter(
         sb.append(s"func ${cn}_new(${(extraParams ++ ctorParams).map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
         sb.append(s"  let this: V = rtNew(${swStr(clsTag(sym))})\n")
         extraParams.foreach(ep => sb.append(s"  ${field("this", ep)} = $ep\n"))
+        ordinalField(sym).foreach(o => sb.append(s"  ${field("this", "ordinal")} = ${vInt(o)}\n"))
         if (sym.flags.is(Flags.Case))
           sb.append(s"  ${field("this", "_fields")} = ${rtArr(sym.caseFields.map(f => brStr(fieldKey(f))))}\n")
         sym.typeRef.baseClasses.reverse.foreach { bc =>
@@ -2352,6 +2355,76 @@ class SwiftEmitter(
             (line :: ready.map((h, s) => s"  $h.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
 @@ new
             (line :: ready.map((h, s) => s"  $h.env.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
+@@ old
+    def enumCaseAt(cn: String, i: Int): String = s"${cn}__cases()[$i]"
+    def enumOrdinalOf(recv: String): String = s"$recv.ordinal"
+@@ new
+    def enumCaseAt(cn: String, i: Int): String = s"${cn}__cases()[${vInt(i)}]"
+    def enumOrdinalOf(recv: String): String = field(recv, "ordinal")
+@@ old
+    def emitEnumCases(cd: ClassDef, sb: StringBuilder): Unit = {
+      val sym = cd.symbol
+      val cn = typeName(sym)
+      val key = brStr("__enum_" + cn)
+      sb.append(s"function ${cn}__cases() as object\n")
+      sb.append("  ga = GetGlobalAA()\n")
+      sb.append(s"  cs = ga[$key]\n")
+      sb.append("  if cs <> invalid then return cs\n")
+      sb.append("  cs = []\n")
+      sb.append(s"  ga[$key] = cs\n")
+      // (one with no methods has a table all the same, of what it is, `_isa`, which `case h: HasCode` tests)
+      val tag = isaTag(sym)
+      sb.append(s"  vt = ${if (vtableFor(sym).nonEmpty) s"${cn}__vt()" else if (tag.nonEmpty) s"{ _isa: ${brStr(tag)} }" else "invalid"}\n")
+      enumCases(sym).foreach { c =>
+        val made = s"RtEnumOf(cs, vt, ${brStr(clsTag(sym))}, ${brStr(c.name)}, ${sym.children.indexOf(c)})"
+        enumCaseParent(c) match {
+          case Some(p) =>
+            val (_, pargs) = parentInfo(p)
+            val ctor = parentCtor(p)
+            parentBindings(p).foreach { st =>
+              val e = emitStat(st)
+              if (e.trim.nonEmpty) sb.append(e).append("\n")
+            }
+            sb.append(withStatement(s"  ${initName(sym, ctor)}($made${emitArgList(pargs, ctor).map(", " + _).mkString})")).append("\n")
+          case None =>
+            todos += s"unsupported: the case ${c.name} of ${sym.name}, whose constructor is not found${where(cd)}"
+            sb.append(s"  $made\n")
+        }
+      }
+      sb.append(s"  _enumMade(cs, [${initGuards(sym).mkString(", ")}])\n")
+      sb.append("  return cs\nend function\n\n")
+    }
+@@ new
+    def emitEnumCases(cd: ClassDef, sb: StringBuilder): Unit = {
+      val sym = cd.symbol
+      val cn = typeName(sym)
+      val key = swStr("__enum_" + cn)
+      sb.append(s"func ${cn}__cases() throws -> V {\n")
+      sb.append(s"  existing = ga[$key]\n")
+      sb.append(s"  if (existing != $NULL).rtTrue { return existing }\n")
+      sb.append("  let cs: V = rtArr([])\n")
+      sb.append(s"  ga[$key] = cs\n")
+      // a Swift object carries its slots itself: each case is given the enum's, from this one table
+      sb.append(s"  let vt: V = rtNew(${swStr(clsTag(sym))})\n")
+      vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  ${field("vt", slot)} = rtFn($impl)\n") }
+      enumCases(sym).foreach { c =>
+        val made = s"RtEnumOf(cs, vt, ${brStr(clsTag(sym))}, ${brStr(c.name)}, ${vInt(sym.children.indexOf(c))})"
+        enumCaseParent(c) match {
+          case Some(p) =>
+            val (_, pargs) = parentInfo(p)
+            val ctor = parentCtor(p)
+            parentBindings(p).foreach { st =>
+              val e = emitStat(st)
+              if (e.trim.nonEmpty) sb.append(e).append("\n")
+            }
+            sb.append(withStatement(s"  _ = try ${initName(sym, ctor)}($made${emitArgList(pargs, ctor).map(", " + _).mkString})")).append("\n")
+          case None =>
+            todos += s"unsupported: the case ${c.name} of ${sym.name}, whose constructor is not found${where(cd)}"
+            sb.append(s"  _ = $made\n")
+        }
+      }
+      sb.append("  return cs\n}\n\n")
+    }
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {

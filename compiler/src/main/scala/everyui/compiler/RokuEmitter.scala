@@ -144,6 +144,11 @@ class RokuEmitter(
     // `object`s that extend a user class or trait (including case objects): emitted as a singleton instance
     // of an object-model type, reached through `<Name>__module()`.
     val modelModules = mutable.Set[Symbol]()
+    // enums with members (a def, a val, a parameter, a trait they extend): of the object model, each case one of its
+    // values (see `enumWithMembers`)
+    val modelEnums = mutable.Set[Symbol]()
+    // the enums with class cases whose ordinal the program reads (`ordinalField`)
+    val ordinalsRead = mutable.Set[Symbol]()
     // While a parent constructor's arguments are emitted, the class's own constructor parameters are still
     // locals of `<Type>__init` — their fields are assigned after the parent init runs.
     var inParentArgs = false
@@ -682,7 +687,33 @@ class RokuEmitter(
     //     override in a subclass or mixin actually runs.
     // Everything outside that set emits exactly as before.
     def isUserTypeSym(s: Symbol): Boolean =
-      s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !hasNative(s) && !isBuiltin(s) && !isEnumLike(s)
+      s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !hasNative(s) && !isBuiltin(s) && (!isEnumLike(s) || isModelEnumType(s))
+    /** Whether an enum's class has members of its own to carry: a def, a val or a lazy val in its body, a parameter, or a
+      * trait or class of the program it extends. One without (`enum Sort { case Asc, Desc }`) stays the runtime's
+      * `RtEnum`, a name and an ordinal. */
+    def enumWithMembers(cd: ClassDef): Boolean = {
+      val s = cd.symbol
+      s.flags.is(Flags.Enum) && !s.flags.is(Flags.Case) && !s.flags.is(Flags.Module) && !hasNative(s) && !isBuiltin(s) && (
+        cd.body.exists {
+          case dd: DefDef => userMember(dd.symbol) && !dd.symbol.isClassConstructor
+          case vd: ValDef => userMember(vd.symbol)
+          case _          => false
+        } || (try s.typeRef.baseClasses catch case _: Throwable => Nil).exists(b => b != s && allClassDefs.contains(b) && !isBuiltin(b)))
+    }
+    /** The enum a class case (`case Circle(r: Double)`) is one of. */
+    def enumOfClassCase(s: Symbol): Option[Symbol] =
+      if (!s.exists || !s.isClassDef || !s.flags.is(Flags.Case) || s.flags.is(Flags.Module)) None
+      else try {
+        val o = s.owner
+        val e = if (o.exists && o.flags.is(Flags.Module)) o.companionClass else Symbol.noSymbol
+        if (e.exists && e.flags.is(Flags.Enum) && e.children.contains(s)) Some(e) else None
+      } catch case _: Throwable => None
+    /** An enum with members, or one of its class cases: a type of the object model. */
+    def isModelEnumType(s: Symbol): Boolean = modelEnums(s) || enumOfClassCase(s).exists(modelEnums)
+    /** A class case's ordinal, which Scala gives it as a def and an enum's value carries as a field (`ordinal`). */
+    def classCaseOrdinal(s: Symbol): Option[Int] = enumOfClassCase(s).map(e => e.children.indexOf(s))
+    /** A class case's ordinal as a field of its values, where the program reads one of its enum (`scanOrdinalsRead`). */
+    def ordinalField(s: Symbol): Option[Int] = classCaseOrdinal(s).filter(_ => enumOfClassCase(s).exists(ordinalsRead))
     def isModel(s: Symbol): Boolean = s.exists && objectModelTypes.contains(s)
     def typeName(s: Symbol): String =
       typeNameOverride.getOrElse(s, if (sharedClassNames(s.name)) fullIdent(s) else brIdent(s.name))
@@ -798,6 +829,8 @@ class RokuEmitter(
     def emittableMethod(dd: DefDef): Boolean =
       dd.rhs.isDefined && dd.name != "<init>" && !dd.symbol.flags.is(Flags.FieldAccessor)
         && (userMember(dd.symbol) || dd.name.contains("$default$")) && keepMember(dd.symbol)
+        // (a class case's `ordinal`, which its value carries as a field)
+        && !(dd.name == "ordinal" && classCaseOrdinal(dd.symbol.owner).isDefined)
 
     // A receiver that is safe to evaluate twice (`recv.m(recv, …)`): a local,
     // `this`, a literal, or a plain field chain. Anything else — a call, a
@@ -1133,6 +1166,11 @@ class RokuEmitter(
         val sy = ta.dealias.typeSymbol
         userTypeDefs.contains(sy) || isUserClassSym(sy)
       }
+    /** Whether `t` is of a class or trait of the program (not a library type, as a Duration is). */
+    def isOwnType(t: Term): Boolean = { val s = t.tpe.widen.dealias.typeSymbol; userTypeDefs.contains(s) || isUserClassSym(s) }
+    /** Whether `recv` holds values of a type of the program that is Ordered (`enum Prio extends Ordered[Prio]`). */
+    def elemIsOrdered(recv: Term): Boolean = elemIsUserType(recv) &&
+      recv.tpe.widen.dealias.typeArgs.headOption.exists(ta => try ta.baseClasses.exists(_.fullName == "scala.math.Ordered") catch case _: Throwable => false)
     // Scala 3.10 replaced the `Rich*` wrappers by extension methods in the primitive companions
     // (`Int.until(0)(n)`, `Double.compare(a)(b)`, `Double.abs(a)`), and `k -> v` by a call of a top-level `->`.
     // Both shapes are recognised, so the emitter reads 3.9's and 3.10's TASTy alike.
@@ -1245,6 +1283,33 @@ class RokuEmitter(
     }
     def isTaskModule(q: Term): Boolean =
       q.symbol.exists && q.symbol.flags.is(Flags.Module) && q.symbol.fullName.stripSuffix("$") == "rapid.Task"
+    /** An enum with members' simple cases (`modelEnums`): its values, made once in order by `<Enum>__cases()`. */
+    def enumCases(enumClass: Symbol): List[Symbol] = enumClass.children.filter(isEnumCase)
+    /** A simple case of an enum: of one with members, its value from the enum's own; of one without, the runtime's. */
+    def enumCaseValue(s: Symbol, name: String): String = {
+      val enumClass = s.owner.companionClass
+      if (modelEnums(enumClass)) enumCaseAt(typeName(enumClass), enumCases(enumClass).indexOf(s)) else emitEnumCase(s, name)
+    }
+    def enumCaseAt(cn: String, i: Int): String = s"${cn}__cases()[$i]"
+    def enumOrdinalOf(recv: String): String = s"$recv.ordinal"
+    /** An enum's cases, to look one up in (`valueOf`, `fromOrdinal`), and as its `values`, an array of its own. */
+    def enumLookup(enumClass: Symbol): String =
+      if (modelEnums(enumClass)) s"${typeName(enumClass)}__cases()" else enumValues(enumClass)
+    def enumValuesOf(enumClass: Symbol): String =
+      if (modelEnums(enumClass)) s"_enumValues(${typeName(enumClass)}__cases())" else enumValues(enumClass)
+    /** The enum whose companion a member is named from: `Planet.values`, or `values` bare in the companion. */
+    def enumOfMember(t: Term): Option[Symbol] = t match {
+      case Select(q, _) => enumOf(q)
+      case id: Ident =>
+        val o = id.symbol.owner
+        val c = try if (o.exists && o.flags.is(Flags.Module)) o.companionClass else Symbol.noSymbol catch case _: Throwable => Symbol.noSymbol
+        if (c.exists && c.flags.is(Flags.Enum)) Some(c) else None
+      case _ => None
+    }
+    /** Whether `s` is an enum value's `ordinal` (scala.reflect.Enum's, or a class case's own): a field of the value. */
+    def isEnumOrdinal(s: Symbol): Boolean =
+      s.exists && s.name == "ordinal" && s.paramSymss.flatten.isEmpty && s.owner.exists &&
+        (Set("scala.reflect.Enum", "scala.runtime.EnumValue").contains(s.owner.fullName) || classCaseOrdinal(s.owner).isDefined)
     def isTaskTerm(t: Term): Boolean =
       try t.tpe.baseClasses.exists(_.fullName == "rapid.Task") catch case _: Throwable => false
     def isFabricWrapper(fn: Term, name: String): Boolean =
@@ -1411,14 +1476,15 @@ class RokuEmitter(
       sym.exists && sym.isDefDef && isBuiltin(sym.owner) && !isFacade(sym) &&
         (isCollType(recv) || isStringLike(recv.tpe) || isOptionType(recv) || isLibraryValue(recv)) || isEnumGap(sym)
     /** A member of one of the program's own enums or of its companion other than its ordinal and what is lowered (its
-      * cases, `values`, `valueOf`, `fromOrdinal`): an enum's case is the runtime's `RtEnum`, a name and an ordinal, and
-      * an enum's parameters and methods are not emitted, nor are its companion's, so each is a member nothing has. */
+      * cases, `values`, `valueOf`, `fromOrdinal`) where the enum has no members of its own to carry: its case is then the
+      * runtime's `RtEnum`, a name and an ordinal, and nothing else of it is emitted. An enum with members is of the object
+      * model (`modelEnums`), and its members are dispatched as any class's. */
     def isEnumGap(sym: Symbol): Boolean =
       sym.exists && sym.isTerm && !sym.isClassConstructor && sym.owner.exists && !isBuiltin(sym.owner) && !hasNative(sym.owner) &&
         !isEnumCase(sym) && sym.name != "ordinal" && {
           val o = sym.owner
           if (o.flags.is(Flags.Module)) o.companionClass.exists && o.companionClass.flags.is(Flags.Enum)
-          else o.isClassDef && o.flags.is(Flags.Enum) && !o.flags.is(Flags.Case)
+          else o.isClassDef && o.flags.is(Flags.Enum) && !o.flags.is(Flags.Case) && !(modelEnums(o) && userTypeDefs.contains(o))
         }
     /** Whether `recv` is of a type of the Scala or Java library (an Either, a number, a tuple, `Integer`): none of their
       * methods is a member of what a BrightScript value is made of. */
@@ -1672,7 +1738,7 @@ class RokuEmitter(
               // each field under the key its reads use: `stop.pos` reads `pos_` (brSafe), so it is stored there, not at `pos`
               val fs = fields.zip(flat).map((f, a) => s"${brSafe(f)}: ${emitArgVal(a)}")
               val fieldList = fields.take(flat.size).map(f => brStr(brSafe(f))).mkString(", ")
-              return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: fs).mkString(", ") + " }"
+              return "{ " + (s"_cls: ${brStr(t.tpe.typeSymbol.name)}" :: s"_fields: [$fieldList]" :: (ordinalField(t.tpe.typeSymbol).map(o => s"ordinal: $o").toList ++ fs)).mkString(", ") + " }"
             case _ =>
           }
           fn match {
@@ -1789,6 +1855,12 @@ class RokuEmitter(
               s"AtomicBoolean_$m(${(emitTerm(recv) :: emitArgList(args)).mkString(", ")})"
             case Select(Apply(wrap, List(x)), "compare") if isRichNumWrapper(wrap) && args.size == 1 =>
               s"_cmpNum(${emitTerm(x)}, ${emitArgVal(args.head)})"
+            // an Ordered value of the program's compared (`Prio.Low < Prio.High`) by its own `compare`: BrightScript's `<`
+            // on two objects stopped the channel
+            case Select(recv, op @ ("<" | ">" | "<=" | ">=")) if ownerIs(fn, "scala.math.Ordered") && args.size == 1 && isOwnType(recv) =>
+              s"(_ordCompare(${emitTerm(recv)}, ${emitArgVal(args.head)}) $op ${emitConst(IntConstant(0))})"
+            case Select(recv, "compareTo") if ownerIs(fn, "scala.math.Ordered") && args.size == 1 && isOwnType(recv) =>
+              s"_ordCompare(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             case Ident("->" | "$minus$greater") if args.size == 2 =>
               s"Tuple2(${emitTerm(args(0))}, ${emitArgVal(args(1))})"
             case Select(_, name) if isPrimitiveExtension(fn) => emitPrimitiveExtension(fn, name, args)
@@ -2243,6 +2315,9 @@ class RokuEmitter(
               s"_zip(${emitTerm(recv)}, ${emitArgVal(args.head)})"
             // `.sum` / `.min` / `.max` carry their Numeric / Ordering as the one argument
             case Select(recv, "sum") if isCollType(recv) => s"_sum(${emitTerm(recv)})"
+            // (of Ordered values of the program, by their own `compare`, where BrightScript's `<` stopped on two objects)
+            case Select(recv, m @ ("min" | "max")) if isCollType(recv) && elemIsOrdered(recv) =>
+              s"_extremeOrdered(${emitTerm(recv)}, ${m == "max"})"
             case Select(recv, "min") if isCollType(recv) => s"_minList(${emitTerm(recv)})"
             case Select(recv, "max") if isCollType(recv) => s"_maxList(${emitTerm(recv)})"
             case Select(recv, "getOrElse") =>
@@ -2439,18 +2514,22 @@ class RokuEmitter(
         // a fabric RW instance (`stringRW`, `valueRW`): the runtime's codec of that name
         case id @ Ident(n) if isFabricRW(id.symbol)       => s"_rw(${brStr(n)})"
         case sel @ Select(_, n) if isFabricRW(sel.symbol) => s"_rw(${brStr(n)})"
-        // an enum's `values`, `valueOf` and `fromOrdinal`: its cases as an array, and one of them by name or ordinal
-        case Select(q, "values") if enumOf(q).isDefined => enumValues(enumOf(q).get)
-        case Apply(Select(q, "valueOf"), List(n)) if enumOf(q).isDefined =>
-          s"_enumValueOf(${enumValues(enumOf(q).get)}, ${emitTerm(n)})"
-        case Apply(Select(q, "fromOrdinal"), List(i)) if enumOf(q).isDefined =>
-          s"_enumFromOrdinal(${enumValues(enumOf(q).get)}, ${emitTerm(i)})"
+        // an enum's `values`, `valueOf` and `fromOrdinal`: its cases as an array, and one of them by name or ordinal (named
+        // bare in its companion too, `values.find(…)`, which was a call to a `Route_values` nothing defines)
+        case v @ (Select(_, "values") | Ident("values")) if enumOfMember(v).isDefined => enumValuesOf(enumOfMember(v).get)
+        case Apply(f @ (Select(_, "valueOf") | Ident("valueOf")), List(n)) if enumOfMember(f).isDefined =>
+          s"_enumValueOf(${enumLookup(enumOfMember(f).get)}, ${emitTerm(n)})"
+        case Apply(f @ (Select(_, "fromOrdinal") | Ident("fromOrdinal")), List(i)) if enumOfMember(f).isDefined =>
+          s"_enumFromOrdinal(${enumLookup(enumOfMember(f).get)}, ${emitTerm(i)})"
         // `Option.empty[T]`: None
         case TypeApply(Select(q, "empty"), _) if isOptionModule(q) => noneValue
         case Select(q, "empty") if isOptionModule(q) => noneValue
-        // a Scala 3 enum's simple case (`ProtocolState.Active`): a runtime singleton, named and ordered
-        case sel @ Select(_, n) if isEnumCase(sel.symbol) => emitEnumCase(sel.symbol, n)
-        case id @ Ident(n) if isEnumCase(id.symbol)       => emitEnumCase(id.symbol, n)
+        // an enum value's ordinal: a field of it, a class case's too (whose own `def ordinal` is not emitted)
+        case sel @ Select(q, "ordinal") if isEnumOrdinal(sel.symbol) => enumOrdinalOf(emitTerm(q))
+        // a Scala 3 enum's simple case (`ProtocolState.Active`): a runtime singleton, named and ordered, or of an enum with
+        // members, its value (`enumCaseValue`)
+        case sel @ Select(_, n) if isEnumCase(sel.symbol) => enumCaseValue(sel.symbol, n)
+        case id @ Ident(n) if isEnumCase(id.symbol)       => enumCaseValue(id.symbol, n)
         case id @ Ident(n) => emitRef(id.symbol, n)
         case Select(q, "toString")             => s"_str(${emitTerm(q)})"
         case Apply(Select(q, "toString"), Nil) => s"_str(${emitTerm(q)})"
@@ -3404,6 +3483,8 @@ class RokuEmitter(
         // (its `_isa` is in its table, where it has one)
         { val tag = isaTag(sym); if (tag.nonEmpty && vtableFor(sym).isEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
+        // a class case of an enum, its ordinal (`isEnumOrdinal`)
+        ordinalField(sym).foreach(o => sb.append(s"  self.ordinal = $o\n"))
         // a case class's fields, by name (the runtime compares and prints it by them): its table's list, where it has one
         if (sym.flags.is(Flags.Case) && vtableFor(sym).isEmpty)
           sb.append(s"  self._fields = [${sym.caseFields.map(f => brStr(fieldKey(f))).mkString(", ")}]\n")
@@ -3454,6 +3535,64 @@ class RokuEmitter(
         ps.exists && ps != cd.symbol && !ps.flags.is(Flags.Trait) && !ps.flags.is(Flags.Module) && userTypeDefs.contains(ps) &&
           isModel(ps) && keepClass(ps) && vtableFor(ps).nonEmpty
       }
+
+    /** What a simple case of an enum gives the enum's constructor: the parent of the class Scala makes the case of
+      * (`case Earth extends Planet(5.97e24)` is `new Planet(5.97e24) { … }`, and `case Red` the enum's own `$new`'s,
+      * `new Color() { … }`). */
+    def enumCaseParent(c: Symbol): Option[Tree] = {
+      def anonParent(t: Tree): Option[Tree] = t match {
+        case Block(stats, _) => stats.collectFirst { case cd: ClassDef => cd.parents.headOption }.flatten
+        case Inlined(_, _, e) => anonParent(e)
+        case Typed(e, _) => anonParent(e)
+        case _ => None
+      }
+      try c.tree match {
+        case ValDef(_, _, Some(rhs)) => anonParent(rhs).orElse(unwrap(rhs) match {
+          case Apply(f, _) => f.symbol.tree match {
+            case dd: DefDef => dd.rhs.flatMap(anonParent)
+            case _ => None
+          }
+          case _ => None
+        })
+        case _ => None
+      } catch case _: Throwable => None
+    }
+    /** An enum with members (`modelEnums`): its simple cases, made once and in order by `<Enum>__cases()`, each an enum
+      * value of the runtime (`RtEnumOf`: its name and ordinal, as an `RtEnum`) with the enum's table of members, then
+      * initialised by the enum's `__init` with what the case gives it, its parameters and its vals. Its `values` are a
+      * copy of them, and a case is read from them by its place (`Planet__cases()[1]`). */
+    def emitEnumCases(cd: ClassDef, sb: StringBuilder): Unit = {
+      val sym = cd.symbol
+      val cn = typeName(sym)
+      val key = brStr("__enum_" + cn)
+      sb.append(s"function ${cn}__cases() as object\n")
+      sb.append("  ga = GetGlobalAA()\n")
+      sb.append(s"  cs = ga[$key]\n")
+      sb.append("  if cs <> invalid then return cs\n")
+      sb.append("  cs = []\n")
+      sb.append(s"  ga[$key] = cs\n")
+      // (one with no methods has a table all the same, of what it is, `_isa`, which `case h: HasCode` tests)
+      val tag = isaTag(sym)
+      sb.append(s"  vt = ${if (vtableFor(sym).nonEmpty) s"${cn}__vt()" else if (tag.nonEmpty) s"{ _isa: ${brStr(tag)} }" else "invalid"}\n")
+      enumCases(sym).foreach { c =>
+        val made = s"RtEnumOf(cs, vt, ${brStr(clsTag(sym))}, ${brStr(c.name)}, ${sym.children.indexOf(c)})"
+        enumCaseParent(c) match {
+          case Some(p) =>
+            val (_, pargs) = parentInfo(p)
+            val ctor = parentCtor(p)
+            parentBindings(p).foreach { st =>
+              val e = emitStat(st)
+              if (e.trim.nonEmpty) sb.append(e).append("\n")
+            }
+            sb.append(withStatement(s"  ${initName(sym, ctor)}($made${emitArgList(pargs, ctor).map(", " + _).mkString})")).append("\n")
+          case None =>
+            todos += s"unsupported: the case ${c.name} of ${sym.name}, whose constructor is not found${where(cd)}"
+            sb.append(s"  $made\n")
+        }
+      }
+      sb.append(s"  _enumMade(cs, [${initGuards(sym).mkString(", ")}])\n")
+      sb.append("  return cs\nend function\n\n")
+    }
 
     /** `new T { … }` — an anonymous (or other local) class instance. The class
      *  is emitted out of line under a generated name, capturing the enclosing
@@ -3525,6 +3664,26 @@ class RokuEmitter(
       if (isMapTpe(t.tpe)) s"_mapAsFn(${emitTermU(t)})"
       else if (isSetTpe(t.tpe)) s"_setAsFn(${emitTermU(t)})"
       else s"_seqAsFn(${emitTermU(t)})"
+
+    /** Marks each enum whose ordinal the program reads (`shape.ordinal`), so its class cases carry theirs as a field
+      * (`ordinalField`); read of a value of no one enum (an `Enum`, a type parameter), every enum's do. */
+    def scanOrdinalsRead(root: Tree): Unit =
+      new TreeTraverser {
+        override def traverseTree(t: Tree)(owner: Symbol): Unit = {
+          t match {
+            case sel @ Select(q, "ordinal") if isEnumOrdinal(sel.symbol) =>
+              val ts = q.tpe.widen.dealias.typeSymbol
+              enumOfClassCase(ts).orElse(Option(ts).filter(s => s.exists && s.flags.is(Flags.Enum) && !s.flags.is(Flags.Case))) match {
+                case Some(e) => ordinalsRead += e
+                case None    => ordinalsRead ++= allClassDefs.keys.filter(s => s.flags.is(Flags.Enum) && !s.flags.is(Flags.Case) && !s.flags.is(Flags.Module))
+              }
+            // (what Scala makes for an enum, its Mirror's `ordinal(x)` and a case's `readResolve`, reads every one's)
+            case dd: DefDef if dd.name == "readResolve" || (dd.name == "ordinal" && !userMember(dd.symbol)) => return
+            case _ =>
+          }
+          super.traverseTree(t)(owner)
+        }
+      }.traverseTree(root)(Symbol.noSymbol)
 
     /** Local `var`s read or written inside a closure, a by-name argument or a
      *  local class are boxed, so both scopes share one cell. */
@@ -3605,6 +3764,7 @@ class RokuEmitter(
       sharedModuleNames ++= shared(named.filter(_.flags.is(Flags.Module)))
     }
     val mainNames = mains.map(_.name).toSet
+    modelEnums ++= allClassDefs.values.filter(enumWithMembers).map(_.symbol)
     for (tasty <- tastys)
       eachClassDef(tasty.ast) { cd =>
         if (isUserTypeSym(cd.symbol) && !mainNames.contains(cd.symbol.name)) userTypeDefs(cd.symbol) = cd
@@ -3653,6 +3813,7 @@ class RokuEmitter(
       eachClassDef(tasty.ast) { cd => if (isUserModule(cd) && !modelModules.contains(cd.symbol)) moduleSyms.getOrElseUpdate(cd.symbol, modulePrefix(cd.symbol)) }
     for (tasty <- tastys) scanBoxedVars(tasty.ast)
     for (tasty <- tastys) scanCollectionsAsFunctions(tasty.ast)
+    for (tasty <- tastys) scanOrdinalsRead(tasty.ast)
 
     // ── reachability ─────────────────────────────────────────────────────
     // Only what `main` reaches is emitted. A class is LIVE when something constructs it (`new`, a case-class
@@ -3770,7 +3931,10 @@ class RokuEmitter(
     for (tasty <- tastys)
       eachClassDef(tasty.ast) { cd =>
         if (!keepClass(cd.symbol)) ()
-        else if (isModel(cd.symbol)) emitModelType(cd, out)
+        else if (isModel(cd.symbol)) {
+          emitModelType(cd, out)
+          if (modelEnums(cd.symbol)) emitEnumCases(cd, out)
+        }
         else if (isUserClass(cd) && !mainNames.contains(cd.symbol.name)) emitClass(cd)
         else if (isUserModule(cd)) emitModule(cd)
       }
@@ -3802,7 +3966,7 @@ class RokuEmitter(
     parts.zipWithIndex.foreach { case (code, i) => write("components/" + RokuEmitter.partName(i), code) }
     write("components/AppScene.xml", sceneXml.replace(RokuEmitter.appScript(0),
       parts.indices.map(RokuEmitter.appScript).mkString("\n  ")))
-    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs + collectionShimsBrs + bytesShimsBrs)
+    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs + enumShimsBrs + collectionShimsBrs + bytesShimsBrs)
   }
 
   // Facade access is emitted as `ga.<Module>.<member>` (see the Select case).
@@ -4000,7 +4164,7 @@ class RokuEmitter(
     * Scala local takes. */
   private lazy val runtimeFnNames: Set[String] =
     "(?im)^\\s*(?:function|sub)\\s+([A-Za-z_][A-Za-z0-9_]*)".r
-      .findAllMatchIn(runtimeBrs + "\n" + shimsBrs + collectionShimsBrs).map(_.group(1).toLowerCase).toSet
+      .findAllMatchIn(runtimeBrs + "\n" + shimsBrs + enumShimsBrs + collectionShimsBrs).map(_.group(1).toLowerCase).toSet
 
   /** The core of the Scala runtime: string conversion, collection, String,
    *  Option and Try/Either operations, closure invocation (`RtInvoke`) and the
@@ -5849,31 +6013,6 @@ class RokuEmitter(
       |    RtThrow("RtCallArgs: more than 32 arguments, which is as many as a BrightScript function takes")
       |    return invalid
       |end function
-      |' A Scala 3 enum's simple case: one singleton per (enum, case), named by `toString`, ordered by `ordinal`.
-      |function RtEnum(cls as string, name as string, ordinal as integer) as object
-      |    ga = GetGlobalAA()
-      |    key = "__enum_" + cls + "_" + name
-      |    e = ga[key]
-      |    if e <> invalid then return e
-      |    e = { _cls: cls, _enum: name, ordinal: ordinal, toString: RtEnumToString }
-      |    ga[key] = e
-      |    return e
-      |end function
-      |function RtEnumToString(self as object) as string
-      |    return self._enum
-      |end function
-      |' An enum's `valueOf(name)` and `fromOrdinal(i)` over its `values`, throwing as the JVM does for no such case.
-      |function _enumValueOf(values as object, name as dynamic) as object
-      |    for each e in values
-      |        if e._enum = name then return e
-      |    end for
-      |    RtThrow({ _cls: "IllegalArgumentException", message: "enum case not found: " + _str(name) })
-      |    return invalid
-      |end function
-      |function _enumFromOrdinal(values as object, i as dynamic) as object
-      |    if i < 0 or i >= values.count() then RtThrow({ _cls: "NoSuchElementException", message: _str(i) })
-      |    return values[i]
-      |end function
       |
       |' ── java.lang.Object: `new Object` is a lock (a synchronized block is just the block), so any distinct value does ──
       |function Object_new() as object
@@ -6361,6 +6500,73 @@ class RokuEmitter(
       |end function
       |function _json_isBoolean(j as dynamic) as boolean
       |    return _rtKind(j) = "b"
+      |end function
+      |""".stripMargin
+
+  /** An enum's values, and Ordered values compared: a constant of their own, as `shimsBrs` is one, under the JVM's cap. */
+  private val enumShimsBrs: String =
+    """
+      |' A Scala 3 enum's simple case: one singleton per (enum, case), named by `toString`, ordered by `ordinal`, and of its
+      |' enum alone (`_isa`: `case f: Fruit` took one of any enum, which had none).
+      |function RtEnum(cls as string, name as string, ordinal as integer) as object
+      |    ga = GetGlobalAA()
+      |    key = "__enum_" + cls + "_" + name
+      |    e = ga[key]
+      |    if e <> invalid then return e
+      |    e = { _cls: cls, _isa: "|" + cls + "|", _enum: name, ordinal: ordinal, toString: RtEnumToString }
+      |    ga[key] = e
+      |    return e
+      |end function
+      |function RtEnumToString(self as object) as string
+      |    return self._enum
+      |end function
+      |' An enum's `valueOf(name)` and `fromOrdinal(i)` over its `values`, throwing as the JVM does for no such case.
+      |function _enumValueOf(values as object, name as dynamic) as object
+      |    for each e in values
+      |        if e._enum = name then return e
+      |    end for
+      |    RtThrow({ _cls: "IllegalArgumentException", message: "enum case not found: " + _str(name) })
+      |    return invalid
+      |end function
+      |function _enumFromOrdinal(values as object, i as dynamic) as object
+      |    if i < 0 or i >= values.count() then RtThrow({ _cls: "NoSuchElementException", message: _str(i) })
+      |    return values[i]
+      |end function
+      |' A case of an enum with members (`<Enum>__cases()`): an RtEnum with the enum's table of members, put with the
+      |' cases made before it; its `__init` runs on it next. Made, the guards that kept its init to once go.
+      |function RtEnumOf(cs as object, vt as dynamic, cls as string, name as string, ordinal as integer) as object
+      |    e = { _cls: cls, _enum: name, ordinal: ordinal, toString: RtEnumToString }
+      |    if vt <> invalid then e._vt = vt
+      |    cs.Push(e)
+      |    return e
+      |end function
+      |sub _enumMade(cs as object, guards as object)
+      |    for each e in cs
+      |        for each g in guards
+      |            e.Delete(g)
+      |        end for
+      |    end for
+      |end sub
+      |' An enum with members' `values`: its cases, in an array of their own.
+      |function _enumValues(cs as object) as object
+      |    r = []
+      |    r.Append(cs)
+      |    return r
+      |end function
+      |' An Ordered value of the program's compared with another by its `compare` (`a < b` is `_ordCompare(a, b) < 0`).
+      |function _ordCompare(a as object, b as dynamic) as integer
+      |    compare = _rtSlot(a, "compare")
+      |    return compare(a, b)
+      |end function
+      |' The greatest (`max`) or least of Ordered values, the first of equals, as Scala's `max` and `min` are.
+      |function _extremeOrdered(xs as object, greatest as boolean) as dynamic
+      |    if xs = invalid or xs.count() = 0 then RtThrow({ _cls: "UnsupportedOperationException", message: "empty.max" })
+      |    mv = xs[0]
+      |    for each e in xs
+      |        c = _ordCompare(e, mv)
+      |        if (greatest and c > 0) or (not greatest and c < 0) then mv = e
+      |    end for
+      |    return mv
       |end function
       |""".stripMargin
 

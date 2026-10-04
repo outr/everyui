@@ -1294,6 +1294,30 @@ func RtEnum(_ cls: V, _ name: V, _ ordinal: V) -> V {
     ga[key] = e
     return e
 }
+/// A case of an enum with members (`<Enum>__cases()`): an RtEnum given the enum's slots (its own toString among them,
+/// where it has one), put with the cases made before it; its `__init` runs on it next.
+func RtEnumOf(_ cs: V, _ vt: V, _ cls: V, _ name: V, _ ordinal: V) -> V {
+    let e = rtObj(["_cls": cls, "_enum": name, "ordinal": ordinal, "toString": rtFn { (s: V) in s["_enum"] }])
+    if case .vObj(let t) = vt, case .vObj(let o) = e {
+        for (k, f) in t.fields where k != "_cls" { o.fields[k] = f }
+    }
+    if case .vArr(let a) = cs { a.items.append(e) }
+    return e
+}
+/// An enum with members' `values`: its cases, in an array of their own.
+func _enumValues(_ cs: V) -> V { rtArr(rtItems(cs)) }
+/// An Ordered value of the program's compared with another by its `compare` (`a < b` is `_ordCompare(a, b) < 0`).
+func _ordCompare(_ a: V, _ b: V) throws -> V { try a["compare"](a, b) }
+/// The greatest (`max`) or least of Ordered values, the first of equals, as Scala's `max` and `min` are.
+func _extremeOrdered(_ xs: V, _ greatest: Bool) throws -> V {
+    let items = rtItems(xs)
+    guard var best = items.first else { return try RtThrow(rtException("UnsupportedOperationException", "empty.max")) }
+    for e in items {
+        let c = rtCompare(try _ordCompare(e, best), .vInt(0))
+        if (greatest && c > 0) || (!greatest && c < 0) { best = e }
+    }
+    return best
+}
 /// An enum's `valueOf(name)` over its `values`, throwing as the JVM does for no such case.
 func _enumValueOf(_ values: V, _ name: V) throws -> V {
     if let e = rtItems(values).first(where: { rtS($0["_enum"]) == rtS(name) }) { return e }
