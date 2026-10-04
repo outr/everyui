@@ -42,6 +42,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
         c.node.remove()
         // where it was, so a focus on it (or inside it) goes to what takes its place
         c.leaves(component, old.indexWhere(_ eq c))
+        ContainerFeature.forget(component, c)
         c.parent @= None
       }
       if (removed.isEmpty && ContainerFeature.startsWith(current, old)) added.foreach { c =>
@@ -193,6 +194,22 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
 }
 
 object ContainerFeature {
+  /** What the focus was last on in `from` and in each container it is in (Container.remembered), forgotten where it is
+    * `gone` or in it: a long-lived container (a screen kept, the root) remembered a row of a board drawn afresh, and
+    * held it, and through what follows it the whole board, long after the board was taken away. One not in `gone` is
+    * kept. */
+  def forget(from: Component, gone: Component): Unit = {
+    var at: Option[Component] = Some(from)
+    while (at.nonEmpty) {
+      at.get match {
+        case box: everyui.component.Container =>
+          if (box.remembered.exists(r => everyui.focus.Focus.within(r, gone))) box.remembered = None
+        case _ => ()
+      }
+      at = at.get.parent()
+    }
+  }
+
   /** The same value: the very one first, which is all a list kept from one change to the next needs, before `==`, which
     * on a Roku compares a value of pages of titles field by field. */
   def same[T](a: T, b: T): Boolean = (a.asInstanceOf[AnyRef] eq b.asInstanceOf[AnyRef]) || a == b

@@ -38,6 +38,24 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
     held
   }
 
+  private var stage: javafx.stage.Stage = null
+
+  /** The scene in a window (under Xvfb) until `offStage`. JavaFX keeps every node changed in a scene that has been in
+    * a window (MotionSpec puts it in one) on a list of nodes to draw, which only a window's pulse empties: out of one,
+    * the list held each node changed since, and what a spec let go of stayed reachable through it. */
+  protected def onStage(): Unit = fx {
+    javafx.application.Platform.setImplicitExit(false)
+    stage = new javafx.stage.Stage()
+    stage.setScene(Host.scene)
+    stage.show()
+  }
+
+  protected def offStage(): Unit = fx {
+    stage.hide()
+    stage.setScene(null)
+    stage = null
+  }
+
   override def beforeAll(): Unit = {
     val started = new CountDownLatch(1)
     try javafx.application.Platform.startup(() => started.countDown())

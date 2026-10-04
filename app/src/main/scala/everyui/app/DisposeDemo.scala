@@ -10,10 +10,13 @@ import everyui.render.Platform
   *   [ui] dispose: guide shown
   *   [ui] dispose: guide left
   *   [ui] dispose: settled
+  *   [ui] dispose: quiz done
   *
   * (`quiz=0` stops once the guide is left, `theatres=<n>` sizes the guide)
   * after which nothing that made up the guide is reachable (`DisposeSpec` checks it on the desktop; on a Roku, the
-  * guide's labels are gone from `sgnodes all`). */
+  * guide's labels are gone from `sgnodes all`). Then ten questions, a board each, whether to quit asked over the third
+  * and answered Keep playing, and asked again after the tenth and answered Quit: once the quiz is done, neither "Quit
+  * the quiz?" nor any "Question" is left in `sgnodes all` (`ModalDisposeSpec` on the desktop). */
 object DisposeDemo extends ScreenManager {
   lazy val home: DisposePlain = new DisposePlain(this, "Home", "/")
   lazy val calendar: DisposePlain = new DisposePlain(this, "Calendar", "/calendar")
@@ -45,7 +48,20 @@ object DisposeDemo extends ScreenManager {
 
   private def ask(n: Int): Unit = if (n <= 10) {
     quiz.ask(n)
-    Platform.after(0.8, () => ask(n + 1))
+    if (n == 3) {
+      quiz.askQuit()
+      Platform.after(0.8, () => {
+        everyui.component.Modal.close()
+        Platform.after(0.8, () => ask(n + 1))
+      })
+    }
+    else Platform.after(0.8, () => ask(n + 1))
   }
-  else Platform.after(4.0, () => Platform.log("dispose: quiz done"))
+  else {
+    quiz.askQuit()
+    Platform.after(0.8, () => {
+      quiz.quit()
+      Platform.after(4.0, () => Platform.log("dispose: quiz done"))
+    })
+  }
 }

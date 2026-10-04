@@ -414,6 +414,9 @@ lazy val desktop = (project in file("desktop"))
     // the focus layer checked against real nodes (FocusSpec), on a JavaFX thread of its own
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
     Test / fork := true,
+    // a spec that finds something not let go of says what holds it (LeakPaths): the classes loaded, and the JDK's own
+    // collections, read by reflection
+    Test / javaOptions ++= Seq("--add-opens=java.base/java.lang=ALL-UNNAMED", "--add-opens=java.base/java.util=ALL-UNNAMED"),
     // the specs share one `ui` and one window, so they take turns
     Test / parallelExecution := false,
     Test / testForkedParallel := false,

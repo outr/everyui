@@ -25,6 +25,8 @@ class DisposeSpec extends FxSpec {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
+    // in a window, so JavaFX lets go of the nodes of what is left (FxSpec.onStage)
+    onStage()
     fx {
       ui.children.clear()
       Focus.focused @= None
@@ -43,6 +45,7 @@ class DisposeSpec extends FxSpec {
       Keymap.shown @= (() => None)
       ScreenManager.running = None
     }
+    offStage()
     super.afterAll()
   }
 
@@ -89,6 +92,9 @@ class DisposeSpec extends FxSpec {
       System.gc()
       Thread.sleep(50L)
     }
+    // what holds those that are left, for the failure to say
+    if (count > 0) everyui.LeakPaths.find((left.parts :+ left.screen).flatMap(r => Option(r.get())), 4)
+      .foreach(p => info("held: " + p))
     count
   }
 

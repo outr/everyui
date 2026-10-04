@@ -32,9 +32,11 @@ class Component(val node: RenderNode) {
     owned.foreach(v => Component.unbind(v))
     Component.unbind(size.width)
     Component.unbind(size.height)
-    // taken off the screen as it is taken apart: a focus on it moves on to what is there in its place
+    // taken off the screen as it is taken apart: a focus on it moves on to what is there in its place, and the
+    // containers it was in no longer remember the focus on it
     parent().foreach { p =>
       leaves(p, p.childComponents.indexWhere(_ eq this))
+      everyui.component.feature.ContainerFeature.forget(p, this)
       parent @= None
       Focus.offScreen()
     }

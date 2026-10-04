@@ -13,7 +13,12 @@ import reactify.*
   * `over` puts one up ON TOP of it — a confirmation over a picker, a word that something is under way over the dialog
   * that started it — and closing that one is back to the one under it, focus and all. A dialog that is not
   * `dismissible` ignores Back and the sheet (something is being written, and leaving now would act on a screen that
-  * is about to change); only the code that put it up takes it down, by `remove`. */
+  * is about to change); only the code that put it up takes it down, by `remove`.
+  *
+  * A dialog is made for its showing: once it has closed, the sheet it was on and the panel are taken apart
+  * (Component.dispose), a turn later. Left whole, each stayed bound to what lives on (the size of the screen, the
+  * theme), which held it and all it held for as long as the app ran: on a Roku, every dialog ever closed, its words and
+  * its rounded corners. A panel put up to be shown again is put up with `keep`, and is left whole. */
 object Modal {
   /** The dialogs up, the top one first. */
   private var layers: List[ModalLayer] = Nil
@@ -72,22 +77,24 @@ object Modal {
     layers = layers.filterNot(_ eq layer)
     layer.release()
     if (Focus.scope().exists(_ eq layer.sheet)) Focus.scope @= (if (covered()) None else layers.headOption.map(_.sheet))
+    let(layer)
     layer.after()
   }
 
   /** Put `panel` up in place of the dialog on top, if there is one, with the focus on `focus`; `after` hears it close,
-    * however it closes, once the focus is back. */
+    * however it closes, once the focus is back. It is taken apart once it has closed, unless it is put up to `keep`. */
   def show(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true,
-           dim: Boolean = true, centre: Boolean = true): Unit = {
+           dim: Boolean = true, centre: Boolean = true, keep: Boolean = false): Unit = {
     close()
-    over(panel, focus, after, dismissible, dim, centre)
+    over(panel, focus, after, dismissible, dim, centre, keep)
   }
 
   /** Put `panel` up on top of whatever dialog is up, which is there again when it closes. A sheet that does not `dim`
     * leaves what it covers as it was (a menu over a page), and one that does not `centre` leaves the panel where the
-    * caller puts it. */
+    * caller puts it. One put up to `keep` is left whole once it closes, to be put up again; any other is taken
+    * apart. */
   def over(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true,
-           dim: Boolean = true, centre: Boolean = true): Unit = {
+           dim: Boolean = true, centre: Boolean = true, keep: Boolean = false): Unit = {
     val sheet = new Container {
       size.width := ui.size.width
       size.height := ui.size.height
@@ -98,7 +105,7 @@ object Modal {
       }
       children += panel
     }
-    val layer = new ModalLayer(sheet, panel, Focus.focused(), after, focus, dismissible)
+    val layer = new ModalLayer(sheet, panel, Focus.focused(), after, focus, dismissible, centre, keep)
     puts += 1
     sheet.event.click.attach(_ => if (layer.dismissible && layers.headOption.exists(_ eq layer)) take(layer))
     panel.event.click.attach(_.consume())
@@ -155,6 +162,25 @@ object Modal {
       // dialog), on what took its place, rather than on nothing. Not under a cover, whose own screen has the focus
       if (!covered()) Focus.restore(layer.before)
     }
+    let(layer)
     layer.after()
+  }
+
+  /** A dialog closed, taken apart: its sheet, and its panel unless that is kept or has been put up again meanwhile. On
+    * a turn of its own, once what closed it and what heard it close are done with it. */
+  private def let(layer: ModalLayer): Unit = {
+    // the panel off the sheet now, and no longer placed by it: one put up again goes on a sheet of its own, which
+    // taking this one apart must not reach, and one kept would hold this one by where it was and how it was placed
+    layer.sheet.children -= layer.panel
+    layer.panel.leftParent = None
+    if (layer.centred) {
+      Component.unbind(layer.panel.position.left)
+      Component.unbind(layer.panel.position.top)
+    }
+    everyui.render.Platform.later(() => {
+      val again = layer.keep || layers.exists(_.panel eq layer.panel) || Focus.showing(layer.panel)
+      Component.disposeGradually(if (again) List(layer.sheet) else List(layer.sheet, layer.panel),
+        () => everyui.render.Platform.collect(), "dialog " + layer.panel.kind)
+    })
   }
 }

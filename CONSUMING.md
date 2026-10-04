@@ -149,9 +149,12 @@ rows.children.bindMaking(items())(item => new Row(item))
 ```
 
 `replaceMaking` and `bindMaking` take apart what leaves; `children @= …` does not, and suits only components that are
-kept and shown again. A screen made for one showing (`oneShowing`) is taken apart by its manager once nothing can go
-back to it. Taking a large tree apart runs a slice a turn (`Component.disposeGradually(roots, done)`), so a screen of
-thousands of components never outlasts a Roku's watchdog; disposing twice does nothing.
+kept and shown again. A component made but left off the screen (rows a view drops with `children := …`) is not under
+the board as it is taken apart, so whatever made it disposes of it with the board: `list.onDispose(() =>
+rows.foreach(_.dispose()))`. A dialog is taken apart once it has closed (`Modal`), its panel too unless it was put up
+with `keep = true` to be put up again. A screen made for one showing (`oneShowing`) is taken apart by its manager once
+nothing can go back to it. Taking a large tree apart runs a slice a turn (`Component.disposeGradually(roots, done)`),
+so a screen of thousands of components never outlasts a Roku's watchdog; disposing twice does nothing.
 
 ### Rebuilding a screen
 
@@ -426,7 +429,8 @@ Menu.textSize @= 18.0                // set once, larger on a television
 ```
 
 `Modal.show` and `Modal.over` take `dim = false` (leave what is under the dialog as it is) and `centre = false` (the
-caller places the panel), which is how menus sit where they were opened.
+caller places the panel), which is how menus sit where they were opened. A panel is taken apart a turn after it closes,
+as one made for its showing; `keep = true` leaves it whole, to be put up again.
 
 ### Dialogs (`everyui.dialog`)
 
