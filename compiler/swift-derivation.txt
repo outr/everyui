@@ -495,6 +495,8 @@ class SwiftEmitter(
     // ── `this`, outer instances and captures of local classes ────────────────
     def thisRef(target: Symbol): String =
       if (!currentClass.exists || !target.exists) "self"
+      // an object of the object model, from a class or an anonymous class of its own: the object, which `self` is not
+      else if (outsideModelModule(target)) moduleAccessor(target)
       else {
         var c = currentClass
         var ref = "self"
@@ -509,6 +511,8 @@ class SwiftEmitter(
     // ── `this`, outer instances and captures of local classes ────────────────
     def thisRef(target: Symbol): String =
       if (!currentClass.exists || !target.exists) "this"
+      // an object of the object model, from a class or an anonymous class of its own: the object, which `self` is not
+      else if (outsideModelModule(target)) moduleAccessor(target)
       else {
         var c = currentClass
         var ref = "this"
@@ -1841,7 +1845,7 @@ class SwiftEmitter(
       out.append(s"function ${cn}_new(${packParams(ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
       out.append(unpackParams(ctorParams))
       out.append("  self = {}\n")
-      out.append(s"  self._cls = ${brStr(cn)}\n")
+      out.append(s"  self._cls = ${brStr(clsTag(sym))}\n")
       { val tag = isaTag(sym); if (tag.nonEmpty) out.append(s"  self._isa = ${brStr(tag)}\n") }
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
@@ -1856,7 +1860,7 @@ class SwiftEmitter(
 
       // constructor
       out.append(s"func ${cn}_new(${ctorParams.map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
-      out.append(s"  let this: V = rtNew(${swStr(cn)})\n")
+      out.append(s"  let this: V = rtNew(${swStr(clsTag(sym))})\n")
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
           out.append(s"  ${field("this", brSafe(vd.name))} = ${brLocal(vd.name)}\n")
@@ -2072,7 +2076,7 @@ class SwiftEmitter(
         sb.append(s"  self = ga[$key]\n")
         sb.append("  if self <> invalid then return self\n")
         sb.append("  self = {}\n")
-        sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sb.append(s"  self._cls = ${brStr(clsTag(sym))}\n")
         { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
@@ -2090,7 +2094,7 @@ class SwiftEmitter(
       else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
         sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
-        sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sb.append(s"  self._cls = ${brStr(clsTag(sym))}\n")
         // (its `_isa` is in its table, where it has one)
         { val tag = isaTag(sym); if (tag.nonEmpty && vtableFor(sym).isEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
@@ -2174,7 +2178,7 @@ class SwiftEmitter(
         sb.append(s"func ${cn}__module() throws -> V {\n")
         sb.append(s"  existing = ga[$key]\n")
         sb.append(s"  if (existing != $NULL).rtTrue { return existing }\n")
-        sb.append(s"  let this: V = rtNew(${swStr(cn)})\n")
+        sb.append(s"  let this: V = rtNew(${swStr(clsTag(sym))})\n")
         sb.append(s"  ${field("this", "_name")} = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  _ = ${shim}__install(this)\n"))
@@ -2187,7 +2191,7 @@ class SwiftEmitter(
       // constructor: allocate, captures, runtime-parent slots, vtable, init
       else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
         sb.append(s"func ${cn}_new(${(extraParams ++ ctorParams).map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
-        sb.append(s"  let this: V = rtNew(${swStr(cn)})\n")
+        sb.append(s"  let this: V = rtNew(${swStr(clsTag(sym))})\n")
         extraParams.foreach(ep => sb.append(s"  ${field("this", ep)} = $ep\n"))
         if (sym.flags.is(Flags.Case))
           sb.append(s"  ${field("this", "_fields")} = ${rtArr(sym.caseFields.map(f => brStr(fieldKey(f))))}\n")

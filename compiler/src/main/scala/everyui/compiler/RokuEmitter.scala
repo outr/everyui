@@ -156,6 +156,11 @@ class RokuEmitter(
     val reachableMembers = mutable.Set[Symbol]()
     // the member names of the classes each object of a class is also made of (namesBesideOf)
     val namesBeside = mutable.Map[Symbol, Set[String]]()
+    // the simple names two or more of the program's classes share, and two or more of its objects (TextPick's `Track` and
+    // everyui.motion's): each of those is written by its full name (fullIdent), as one flat namespace of functions held
+    // two `Track_new`s, which brighterscript refuses
+    val sharedClassNames = mutable.Set[String]()
+    val sharedModuleNames = mutable.Set[String]()
     // the collections Scala reads as functions where they stand (scanCollectionsAsFunctions), by identity
     val asFunctions = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[Tree, java.lang.Boolean]())
     var pruning = false
@@ -191,9 +196,11 @@ class RokuEmitter(
       val cleaned = name.map(c => if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') c else '_')
       if (cleaned.nonEmpty && cleaned.head >= '0' && cleaned.head <= '9') "_" + cleaned else cleaned
     }
+    /** A class or object by its full name (`nabo.ui.player.TextPick.Track` as `nabo_ui_player_TextPick_Track`). */
+    def fullIdent(s: Symbol): String = brIdent(s.fullName.replace("$.", ".").stripSuffix("$"))
     def modulePrefix(s: Symbol): String = {
       val raw = s.name.stripSuffix("$")
-      val base = brIdent(raw)
+      val base = if (sharedModuleNames(raw)) fullIdent(s) else brIdent(raw)
       if (userClassNames.contains(raw)) base + "Obj" else base
     }
     def isEnumLike(s: Symbol): Boolean =
@@ -215,6 +222,10 @@ class RokuEmitter(
       * is then one of the object model, whose `__init` runs them with its vals when it is first used, as the JVM does.
       * A plain object is its members' functions, which had nowhere to run them, so they did nothing. */
     def hasStatements(cd: ClassDef): Boolean = cd.body.exists { case _: Term => true; case _ => false }
+    /** Whether `m` is an object of the object model (`modelModules`) and the code being written is not its own body, but
+      * a class or an anonymous class written in it: there `self` is that class's object, and the object's own members
+      * (`Width` in `new Container { size.width @= Width }`) are read through the object. */
+    def outsideModelModule(m: Symbol): Boolean = m.exists && modelModules.contains(m) && !(currentClass.exists && inCurrentClass(m))
 
     def isUserClassSym(s: Symbol): Boolean =
       s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !s.flags.is(Flags.Case)
@@ -673,7 +684,10 @@ class RokuEmitter(
     def isUserTypeSym(s: Symbol): Boolean =
       s.exists && s.isClassDef && !s.flags.is(Flags.Module) && !hasNative(s) && !isBuiltin(s) && !isEnumLike(s)
     def isModel(s: Symbol): Boolean = s.exists && objectModelTypes.contains(s)
-    def typeName(s: Symbol): String = typeNameOverride.getOrElse(s, brIdent(s.name))
+    def typeName(s: Symbol): String =
+      typeNameOverride.getOrElse(s, if (sharedClassNames(s.name)) fullIdent(s) else brIdent(s.name))
+    /** What an object of the program is tagged with (`_cls`), which it prints and is matched by: Scala's simple name. */
+    def clsTag(s: Symbol): String = typeNameOverride.getOrElse(s, brIdent(s.name))
 
     // BrightScript roAssociativeArray INTERFACE methods. `aa.clear()` calls the
     // built-in ifAssociativeArray.Clear, never a member named `clear`, so a
@@ -963,6 +977,8 @@ class RokuEmitter(
     // ── `this`, outer instances and captures of local classes ────────────────
     def thisRef(target: Symbol): String =
       if (!currentClass.exists || !target.exists) "self"
+      // an object of the object model, from a class or an anonymous class of its own: the object, which `self` is not
+      else if (outsideModelModule(target)) moduleAccessor(target)
       else {
         var c = currentClass
         var ref = "self"
@@ -1963,6 +1979,8 @@ class RokuEmitter(
             // Object-model dispatch (see "object model" above).
             case Select(recv, _) if isModelMember(fn.symbol) && !isFacade(fn.symbol) && !isSuper(recv) =>
               emitModelCall(Some(recv), fn.symbol, args)
+            case Ident(_) if isModelMember(fn.symbol) && outsideModelModule(fn.symbol.owner) =>
+              emitModelCall(Some(This(fn.symbol.owner)), fn.symbol, args)
             case Ident(_) if isModelMember(fn.symbol) && !isFacade(fn.symbol) =>
               emitModelCall(None, fn.symbol, args)
             // `x == null` / `x ne null` on an object: a direct test, not a call.
@@ -2288,6 +2306,10 @@ class RokuEmitter(
 
     def emitTerm(t0: Term): String = t0 match {
       case _ if asFunctions.contains(t0) => collectionAsFunction(t0)
+      // a val or def of an object of the object model named bare from a class or an anonymous class in it (see
+      // outsideModelModule): read through the object, as `self` there is the class's own
+      case id: Ident if id.symbol.exists && (id.symbol.isValDef || id.symbol.isDefDef) && !id.symbol.flags.is(Flags.Module) &&
+          outsideModelModule(id.symbol.owner) => emitTerm(Select(This(id.symbol.owner), id.symbol))
       // fabric's `RW.gen[T]`: the emitter derives the codec itself (see emitRwGen); the macro's output is not emitted
       case Inlined(Some(call), _, _) if rwGenType(call).isDefined => emitRwGen(rwGenType(call).get, 0)
       case Inlined(call, bs, e) if call.exists(c => c.show.contains("gen")) =>
@@ -2860,13 +2882,22 @@ class RokuEmitter(
       else code.replace(capture, "") + s"\n  $lhs.fv_$lhs = $lhs"
     }
 
+    /** The object an assignment writes a var of, where that is an object of the object model and the code is outside it
+      * (see outsideModelModule): `Registry` in `Registry.seen = …`, the object itself for a bare `shown = …`. */
+    def moduleFieldOutside(lhs: Term): Option[Term] = lhs match {
+      case Select(q, _) if !isThis(q) && modelModuleOf(q.symbol).isDefined => Some(q)
+      case id: Ident if id.symbol.exists && outsideModelModule(id.symbol.owner) => Some(This(id.symbol.owner))
+      case _ => None
+    }
+
     def emitStat(st: Statement): String = st match {
-      // a var of an object of the object model, written from outside it (`Registry.seen = …`): through the runtime, as a
-      // BrightScript statement cannot begin with the call that finds the object
-      case Assign(lhs @ Select(q, n), rhs) if !isThis(q) && modelModuleOf(q.symbol).isDefined =>
+      // a var of an object of the object model, written from outside it (`Registry.seen = …`, or `shown += 1` in a class
+      // written in it): through the runtime, as a BrightScript statement cannot begin with the call that finds the object
+      case Assign(lhs, rhs) if moduleFieldOutside(lhs).isDefined =>
+        val q = moduleFieldOutside(lhs).get
         anfCounter += 1
         val tmp = s"_mv$anfCounter"
-        List(emitInto(rhs, tmp), stmtTerm(s"_setField(${emitTerm(q)}, ${brStr(fieldName(lhs.symbol, n))}, $tmp)"))
+        List(emitInto(rhs, tmp), stmtTerm(s"_setField(${emitTerm(q)}, ${brStr(fieldName(lhs.symbol, lhs.symbol.name))}, $tmp)"))
           .filter(_.trim.nonEmpty).mkString("\n")
       case vd @ ValDef(name, _, Some(rhs)) =>
         val lhs = brLocal(name)
@@ -3137,7 +3168,7 @@ class RokuEmitter(
     // ── class → constructor fn (assoc + method refs) + method fns ────────────
     def emitClass(cd: ClassDef): Unit = {
       val sym = cd.symbol
-      val cn  = sym.name
+      val cn  = typeName(sym)
       currentClass = sym
       val ctorParams = termParams(cd.constructor.paramss)
 
@@ -3145,7 +3176,7 @@ class RokuEmitter(
       out.append(s"function ${cn}_new(${packParams(ctorParams).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
       out.append(unpackParams(ctorParams))
       out.append("  self = {}\n")
-      out.append(s"  self._cls = ${brStr(cn)}\n")
+      out.append(s"  self._cls = ${brStr(clsTag(sym))}\n")
       { val tag = isaTag(sym); if (tag.nonEmpty) out.append(s"  self._isa = ${brStr(tag)}\n") }
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
@@ -3351,7 +3382,7 @@ class RokuEmitter(
         sb.append(s"  self = ga[$key]\n")
         sb.append("  if self <> invalid then return self\n")
         sb.append("  self = {}\n")
-        sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sb.append(s"  self._cls = ${brStr(clsTag(sym))}\n")
         { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         sb.append(s"  self._name = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
@@ -3369,7 +3400,7 @@ class RokuEmitter(
       else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
         sb.append(s"function ${cn}_new(${(extraParams ++ packParams(ctorParams)).map(p => s"$p as dynamic").mkString(", ")}) as object\n")
         sb.append("  self = {}\n")
-        sb.append(s"  self._cls = ${brStr(cn)}\n")
+        sb.append(s"  self._cls = ${brStr(clsTag(sym))}\n")
         // (its `_isa` is in its table, where it has one)
         { val tag = isaTag(sym); if (tag.nonEmpty && vtableFor(sym).isEmpty) sb.append(s"  self._isa = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  self.$ep = $ep\n"))
@@ -3565,6 +3596,14 @@ class RokuEmitter(
       }
       for (tasty <- tastys) collector.traverseTree(tasty.ast)(Symbol.noSymbol)
     }
+    locally {
+      // (a class or object of a package or of another, not a local or anonymous one, which is named after where it is)
+      val named = allClassDefs.keys.filter(s => !isBuiltin(s) && !hasNative(s) && s.owner.exists && !s.owner.flags.is(Flags.Method) &&
+        !s.name.startsWith("$anon") && (try s.owner.isPackageDef || s.owner.isClassDef catch case _: Throwable => false)).toList
+      def shared(ss: List[Symbol]): Iterable[String] = ss.groupBy(_.name.stripSuffix("$")).collect { case (n, g) if g.size > 1 => n }
+      sharedClassNames ++= shared(named.filterNot(_.flags.is(Flags.Module)))
+      sharedModuleNames ++= shared(named.filter(_.flags.is(Flags.Module)))
+    }
     val mainNames = mains.map(_.name).toSet
     for (tasty <- tastys)
       eachClassDef(tasty.ast) { cd =>
@@ -3587,7 +3626,8 @@ class RokuEmitter(
       val base = brIdent(mc.name.stripSuffix("$"))
       val owner = mc.owner
       val qualified =
-        if (owner.exists && owner.flags.is(Flags.Module)) brIdent(owner.name.stripSuffix("$")) + "_" + base else base
+        if (sharedModuleNames(mc.name.stripSuffix("$"))) fullIdent(mc)
+        else if (owner.exists && owner.flags.is(Flags.Module)) brIdent(owner.name.stripSuffix("$")) + "_" + base else base
       typeNameOverride(mc) =
         if (mc.companionClass.exists && userTypeDefs.contains(mc.companionClass)) qualified + "Obj" else qualified
     }
