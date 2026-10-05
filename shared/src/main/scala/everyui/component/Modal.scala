@@ -23,6 +23,16 @@ object Modal {
   /** The dialogs up, the top one first. */
   private var layers: List[ModalLayer] = Nil
   private var puts: Int = 0
+  /** Where the focus was kept as the first dialog went up (a drawer of the app's own holding it): where it is kept
+    * again once the last has closed, rather than nowhere. */
+  private var beneath: Option[Component] = None
+
+  /** Where the focus is kept now the stack has changed: the top dialog, else what kept it before the first. */
+  private def ruling(): Option[Component] = {
+    val now = layers.headOption.map(_.sheet).orElse(beneath.filter(Focus.showing))
+    if (layers.isEmpty) beneath = None
+    now
+  }
 
   /** How many dialogs have been put up so far: a right click that put one up (a `Menu`) was answered by the app. */
   def opened: Int = puts
@@ -76,7 +86,7 @@ object Modal {
   private def forget(): Unit = layers.filterNot(layer => Focus.showing(layer.sheet)).foreach { layer =>
     layers = layers.filterNot(_ eq layer)
     layer.release()
-    if (Focus.scope().exists(_ eq layer.sheet)) Focus.scope @= (if (covered()) None else layers.headOption.map(_.sheet))
+    if (Focus.scope().exists(_ eq layer.sheet)) Focus.scope @= (if (covered()) None else ruling())
     let(layer)
     layer.after()
   }
@@ -95,6 +105,7 @@ object Modal {
     * apart. */
   def over(panel: Container, focus: Component, after: () => Unit = () => (), dismissible: Boolean = true,
            dim: Boolean = true, centre: Boolean = true, keep: Boolean = false): Unit = {
+    if (layers.isEmpty) beneath = Focus.scope()
     val sheet = new Container {
       size.width := ui.size.width
       size.height := ui.size.height
@@ -157,7 +168,7 @@ object Modal {
     layer.release()
     ui.children -= layer.sheet
     if (top) {
-      Focus.scope @= (if (covered()) None else layers.headOption.map(_.sheet))
+      Focus.scope @= (if (covered()) None else ruling())
       // back where it was; or, where that has left the screen meanwhile (a card taken off a row read again under the
       // dialog), on what took its place, rather than on nothing. Not under a cover, whose own screen has the focus
       if (!covered()) Focus.restore(layer.before)

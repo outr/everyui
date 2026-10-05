@@ -58,6 +58,8 @@ import everyui.render.Platform
   *              (`fresh=1`, `layout=<json>`, `theme=light`, `rtl=1`)
   *   offmain    a rail that glides with the focus, and a card changed off the thread that draws while the app is away:
   *              the rail glides as before once it is back (OffMainDemo)
+  *   coach      a coach-mark tour: the screen dimmed but for each stop (Spotlight), the focus held there (Focus.confine),
+  *              along a rail, OK held for a menu, OK to open, Play where only Back works, and Ask (`probe=1` walks it)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
@@ -119,5 +121,6 @@ import everyui.render.Platform
   else if (demo == "tabs") TabsDemo.run()
   else if (demo == "tabgroups") TabGroupsDemo.run()
   else if (demo == "offmain") OffMainDemo.run()
+  else if (demo == "coach") CoachDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

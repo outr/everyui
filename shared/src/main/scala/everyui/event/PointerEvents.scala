@@ -60,10 +60,14 @@ class PointerEvents(component: Component) {
     val pointed = kind == PointerKind.Enter || kind == PointerKind.Leave
     if (use) everyui.focus.Focus.used()
     if ((use && kind != PointerKind.Wheel) || pointed) Pointer.usedAt = everyui.render.Platform.ticks()
-    if (!Pointer.blocks(event)) {
+    // nor is it heard by what a coach mark holds it from: outside a confined region, or under a spotlight's dim
+    if (!Pointer.blocks(event) && everyui.focus.Focus.hears(component, kind) &&
+      everyui.coach.Spotlight.lets(component, kind, x, y)) {
       val dialogs = everyui.component.Modal.opened
       channel @= event
       if (kind == PointerKind.Menu && everyui.component.Modal.opened != dialogs) event.consume()
     }
+    // a menu held back is answered, as nothing: the page's own does not show in its place
+    else if (kind == PointerKind.Menu) event.consume()
   }
 }

@@ -33,4 +33,8 @@ object Gestures {
 
   /** `node` never the pointer's: a view that hears no touches lets them through to the views under it already. */
   def passThrough(node: RenderNode): Unit = ()
+
+  /** `node` the pointer's only where one of its children is (a spotlight's dim round its hole): a view group that hears
+    * no touches is already. */
+  def passBetween(node: RenderNode): Unit = ()
 }

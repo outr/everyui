@@ -30,7 +30,11 @@ import reactify.*
   * is entered at its stated entry, else the part of it that last had the focus, else its first. The focused component
   * taken off the screen (a card gone from a row read again, a list built over, a dialog's sheet) hands the focus to
   * what took its place ([[successor]]); with nothing to take it, or nothing focused, it goes to the screen's
-  * `defaultFocus` ([[home]]), or a dialog's first. */
+  * `defaultFocus` ([[home]]), or a dialog's first.
+  *
+  * A coach mark holds the focus in one part of the screen ([[confine]]): the arrows move only among what is in it,
+  * and from outside it they land in it; and it can hold back OK, a click and a tap, or OK held and a long press, so
+  * the viewer does just what its note says. A dialog put up over it has the focus while it is up. */
 object Focus {
   val focused: Var[Option[Component]] = Var(None)
   /** Where the focus may go: under `ui`, or under an open dialog alone, so the arrows never reach what it covers. */
@@ -120,8 +124,53 @@ object Focus {
     * screen shown in its place) holds the focus nowhere. */
   def dialog(): Option[Component] = scope().filter(showing)
 
-  /** Where the focus may go now: inside the open dialog, else anywhere under `ui`. */
-  def area(): Component = dialog().getOrElse(ui)
+  /** Where the focus may go now: inside the confined region, else inside the open dialog, else anywhere under `ui`. */
+  def area(): Component = fence().map(_.region).orElse(dialog()).getOrElse(ui)
+
+  // the regions the focus is held in, the newest first
+  private var confined: List[Confinement] = Nil
+
+  /** Hold the focus in `region` until the returned function is called: a coach mark's stop, where the viewer is to do
+    * just what its note says. The arrows move only among what is in it, by its layouts and the exits it states (an
+    * exit leading out of it goes nowhere, and an arrow with nowhere to go leaves the focus where it is); with the focus
+    * outside it, any arrow lands in it (its entry, else the part last focused, else its first), and nothing else
+    * reaches what has the focus there. Without `presses`, OK, a click and a tap in it do nothing; without `holds`, OK
+    * held does not hold (OK presses at once, where presses are let), nor does a long press, the secondary button or
+    * the menu key. A focus asked for outside it (`focus()`) is refused, as a pointer at the parts of the screen that
+    * were up when it began is: one put up afterwards (the note beside it) is pointed at as ever.
+    *
+    * A dialog put up over it has the focus and the keys while it is up, and gives the focus back inside it as it
+    * closes; one confinement over another holds the focus until it is released, and the one under it then holds it
+    * again. Back answers as ever. A Var set directly (`focused @= …`) is not checked: it is the focus layer's own. */
+  def confine(region: Component, presses: Boolean = true, holds: Boolean = true): () => Unit = {
+    val held = new Confinement(region, presses, holds, ui.children())
+    confined = held :: confined
+    () => confined = confined.filterNot(_ eq held)
+  }
+
+  /** The confinement holding the focus now: the newest, while its region is on the screen and in where the focus may
+    * go otherwise. A dialog put up elsewhere holds it instead. */
+  private def fence(): Option[Confinement] =
+    confined.headOption.filter(c => showing(c.region) && dialog().forall(d => within(c.region, d)))
+
+  /** Whether the focus may be put on `c`: inside the open dialog, if one is up, and inside the confined region. */
+  def admits(c: Component): Boolean =
+    dialog().forall(d => within(c, d)) && fence().forall(f => within(c, f.region))
+
+  /** Whether a pointer's `kind` at `c` is heard: under a confinement, nothing on the screen it holds but what is in its
+    * region is, and of that, neither a click (unless it lets presses) nor a menu asked for (unless it lets holds). The
+    * pointer leaving and lifting are heard everywhere, so nothing is left thinking itself under it or held down. */
+  def hears(c: Component, kind: PointerKind): Boolean = fence().forall { f =>
+    kind == PointerKind.Leave || kind == PointerKind.Up || !f.layers.exists(_ eq layer(c)) ||
+      (within(c, f.region) && (f.presses || kind != PointerKind.Click) && (f.holds || kind != PointerKind.Menu))
+  }
+
+  /** The part of the screen `c` is in: what it is in that sits on `ui` itself (a screen, a dialog's sheet, a note). */
+  def layer(c: Component): Component = {
+    var at = c
+    while (at.parent().exists(p => !(p eq ui))) at = at.parent().get
+    at
+  }
 
   // whether a look at a focus taken off the screen is waiting for its turn
   private val looking: Var[Boolean] = Var(false)
@@ -153,7 +202,7 @@ object Focus {
   /** The focus back on `to`, as a dialog closing gives it back: or, where `to` has left the screen since, on what took
     * its place; or where the screen starts, with nothing to go back to. */
   def restore(to: Option[Component]): Unit =
-    to.filter(showing).orElse(to.flatMap(successor)).orElse(start()).foreach(_.focus())
+    to.filter(c => showing(c) && admits(c)).orElse(to.flatMap(successor)).orElse(start()).foreach(_.focus())
 
   /** What the focus goes to when `gone` has left the screen with it: what took its place in the container it left —
     * the part now where it was, else the next, else the one before (it was the last) — else that container's entry;
@@ -191,11 +240,14 @@ object Focus {
     order.find(p => candidates(p).nonEmpty).flatMap(pick).orElse(entered(box).flatMap(pick))
   }
 
-  /** Where the focus starts over: an open dialog's entry or its first, else the screen's `defaultFocus`, else the
-    * first of all. */
-  private def start(): Option[Component] = dialog() match {
-    case Some(sheet) => pick(sheet)
-    case None => home()().filter(c => showing(c) && candidates(c).nonEmpty).flatMap(pick).orElse(pick(ui))
+  /** Where the focus starts over: the confined region's entry or its first, else an open dialog's, else the screen's
+    * `defaultFocus`, else the first of all. */
+  private def start(): Option[Component] = fence() match {
+    case Some(f) => pick(f.region)
+    case None => dialog() match {
+      case Some(sheet) => pick(sheet)
+      case None => home()().filter(c => showing(c) && candidates(c).nonEmpty).flatMap(pick).orElse(pick(ui))
+    }
   }
 
   /** Whether `c` is on the screen to be seen: under `ui`, and neither it nor anything it is inside hidden. */
@@ -335,21 +387,27 @@ object Focus {
     // what had the focus when the key came: a component that moves the focus as it handles its own key is still the one
     // that kept it, and the key does not travel on from wherever the focus went
     val target = focused()
+    // under a confinement, what the focused part does not hear: anything, while it is outside the region; OK, where
+    // presses are held back; the menu key, where holds are. Nor do the screen's hooks hear anything (a player's keys)
+    val fenced = fence()
+    val outside = fenced.exists(f => target.exists(c => !within(c, f.region)))
+    val deaf = outside || fenced.exists(f => (key == Key.Enter && !f.presses) || (key == Key.ContextMenu && !f.holds))
     // asked before it hears the key, which may change its mind (a scroll that reaches its end)
-    val kept = pressed && target.exists(_.keepsEvent(event))
+    val kept = pressed && !deaf && target.exists(_.keepsEvent(event))
     // and one the platform's own field types with or moves its caret by: heard, and then left to the platform
-    val typed = pressed && !kept && target.exists(_.typesEvent(event))
+    val typed = pressed && !deaf && !kept && target.exists(_.typesEvent(event))
     // and one typed where the focus is in something that takes typing (Container.typeInto) is that's, in its place
-    val entry = if (pressed && !kept && !typed) entryFor(target, event) else None
-    if (entry.isEmpty) target.foreach { c =>
+    val entry = if (pressed && !deaf && !kept && !typed) entryFor(target, event) else None
+    if (entry.isEmpty && !deaf) target.foreach { c =>
       if (pressed) c.event.key.down @= event else c.event.key.up @= event
     }
     // OK let go on what it went down on, which is waiting for the release to know whether it was a press or a hold: a
-    // press, unless the hold already fired. Only there — a release whose press went somewhere else is nobody's press.
+    // press, unless the hold already fired or presses are held back. Only there — a release whose press went somewhere
+    // else is nobody's press.
     if (!pressed && key == Key.Enter && holding.nonEmpty) {
       val was = holding
       holding = None
-      if (!held) was.filter(c => target.exists(_ eq c)).foreach(c =>
+      if (!held && !deaf) was.filter(c => target.exists(_ eq c)).foreach(c =>
         c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c)))
       true
     }
@@ -368,7 +426,7 @@ object Focus {
       true
     }
     // what the screen itself claims, before the focus layer makes its own use of the key
-    else if (hooked(key)) true
+    else if (fenced.isEmpty && hooked(key)) true
     // one press, one click: a held OK is a single press however long it is held, where the remote's own repeat made
     // it a click every fiftieth of a second — and once the first had opened the next screen, the rest landed on
     // whatever had the focus there, which is usually Play. Held arrows still repeat; that is how a rail is run along.
@@ -377,8 +435,8 @@ object Focus {
       holding.filter(_ => !held && Platform.ticks() - heldFrom >= 400.0).foreach(hold)
       true
     }
-    // something with a context menu waits to see how long OK is held (`Events.hold`)
-    else if (key == Key.Enter && target.exists(_.event.holdable)) target.map { c =>
+    // something with a context menu waits to see how long OK is held (`Events.hold`), unless holds are held back
+    else if (key == Key.Enter && target.exists(_.event.holdable) && !outside && fenced.forall(_.holds)) target.map { c =>
       enterHeld = true
       holding = Some(c)
       held = false
@@ -388,6 +446,11 @@ object Focus {
       Platform.after(0.5, () => if (mine == holds && !held && holding.exists(_ eq c)) hold(c))
       true
     }.getOrElse(false)
+    // held back by a confinement: the press is taken, and nothing hears it
+    else if (key == Key.Enter && deaf) {
+      enterHeld = true
+      true
+    }
     else if (key == Key.Enter) target.map { c =>
       enterHeld = true
       c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
@@ -479,7 +542,8 @@ object Focus {
       }
       child = parent
     }
-    found
+    // an exit stated out of where the focus may go (a dialog, a confined region) goes nowhere
+    found.filter(f => within(f, root))
   }
 
   /** The part of `target` the focus lands on, arriving from `from` (see [[pick]]). A container around it that states its

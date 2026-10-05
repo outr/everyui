@@ -120,8 +120,9 @@ object Path {
 
   /** A number as SVG takes it: whole where it is, and never in exponent form. */
   def number(d: Double): String = {
-    // to a thousandth of a pixel, and to a whole one far out, where a Double would be written with an exponent
-    val r = if (math.abs(d) >= 1e6) math.rint(d) else math.rint(d * 1000.0) / 1000.0
-    if (r == math.rint(r)) r.toLong.toString else r.toString
+    // to a thousandth of a pixel, and to a whole one far out, where a Double would be written with an exponent (by
+    // round rather than rint, which a Roku has no call for)
+    val r = if (math.abs(d) >= 1e6) math.round(d).toDouble else math.round(d * 1000.0).toDouble / 1000.0
+    if (r == r.toLong.toDouble) r.toLong.toString else r.toString
   }
 }

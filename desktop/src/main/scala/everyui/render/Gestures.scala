@@ -28,4 +28,8 @@ object Gestures {
   /** `node` never the pointer's: a click and the wheel go through it to what is under it (a shade drawn over a
     * table). */
   def passThrough(node: RenderNode): Unit = node.fx.setMouseTransparent(true)
+
+  /** `node` the pointer's only where one of its children is (a spotlight's dim round its hole): a pane not picked by
+    * its bounds is already. */
+  def passBetween(node: RenderNode): Unit = node.fx.setPickOnBounds(false)
 }

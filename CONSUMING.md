@@ -371,6 +371,53 @@ On every platform a keyboard's printable keys, Space and Backspace, with no Ctrl
 same way. Drop any per-key `event.key.down` typing (for example, a Bluetooth keyboard typed through each focused key)
 once the keyboard states an entry. Those keys no longer reach `event.key.down` there.
 
+### Coach marks (`Focus.confine`, `everyui.coach.Spotlight`)
+
+A tour that has the viewer do one thing at a time holds the focus in that thing and dims the rest of the screen.
+
+`Focus.confine(region, presses = true, holds = true)` holds the focus in `region` until the function it returns is
+called:
+
+- The arrows move only among what is in the region, by its layouts and the exits it states. An exit leading out of
+  it goes nowhere, and where nothing lies that way the focus stays. Nothing is found by position.
+- With the focus outside the region, any arrow lands in it (its entry, else the part last focused, else its first),
+  and nothing else reaches what has the focus there: OK does nothing.
+- `presses = false` holds back OK, a click and a tap in the region. `holds = false` holds back OK held (OK then
+  presses at once, where presses are let), a long press, the secondary button and the menu key. With presses held back
+  and holds let, a short OK does nothing and OK held still fires `event.hold`; its release is no press.
+- `focus()` on something outside the region is refused. So is the pointer at what was on the screen when the
+  confinement began; what is put up afterwards (the note beside it) is pointed at as ever. The screen's key hooks
+  (`Focus.onKey`) hear nothing while it holds; Back answers as ever.
+- A dialog put up over it has the focus and the keys while it is up, and gives the focus back inside the region as it
+  closes. A confinement over another holds until it is released, and the one under it then holds again.
+
+`Spotlight.on(targets, radius, ring, margin)` dims the whole screen but for a hole round `targets` (one hole, round
+them all, `margin` wider), and `release()` fades it out and takes it apart. The hole follows the targets as they move,
+scroll and glide. Under the dim the pointer reaches nothing: a click, a tap, a hover or the wheel. In the hole it
+reaches what is there. The dim is `Theme.backdrop` and the ring `Theme.accent` unless `shade` and `ringColor` are set.
+Change `targets` to move the hole to the next stop without a flicker. Put the note up after the spotlight, so it is
+above the dim. On a Roku the spotlight is a handful of nodes (four bands and a ring), and the hole is square under a
+rounded ring; there and on the Apple TV no corner pieces are made.
+
+NaboTV's stops, the card focused and the light on it:
+
+```scala
+val light = Spotlight.on(List(rail), radius = 14.0, ring = 3.0)
+var held = Focus.confine(rail)                    // Browse: along the rail only
+def stop(region: Component, presses: Boolean = true, holds: Boolean = true): Unit = {
+  held()
+  held = Focus.confine(region, presses, holds)
+  light.targets @= List(region)
+}
+stop(card, presses = false)                       // Hold: OK held opens its menu; a short OK does not open the title
+stop(card, holds = false)                         // Open: OK opens it, and only that
+stop(playRow, presses = false, holds = false)     // Play: lit, no arrows, no OK; Back goes home as ever
+stop(askNabo)                                     // Ask: any arrow from Home lands on it
+held(); light.release()                           // done
+```
+
+The example's `demo=coach` walks the same stops (`probe=1` walks them itself).
+
 ## General components
 
 Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:

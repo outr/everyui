@@ -72,4 +72,17 @@ object Gestures {
   /** `node` never the pointer's: a finger, a click and the wheel go through it to what is under it (a shade drawn over
     * a table). */
   def passThrough(node: RenderNode): Unit = node.el.style.setProperty("pointer-events", "none")
+
+  /** `node` the pointer's only where one of its children is: a layer over the screen laid in pieces (a spotlight's dim
+    * round its hole), whose box would otherwise take the pointer in the gaps between them. */
+  def passBetween(node: RenderNode): Unit = {
+    if (dom.document.getElementById("everyui-between") == null) {
+      val rule = dom.document.createElement("style")
+      rule.id = "everyui-between"
+      rule.textContent = "[data-everyui-between] > * { pointer-events: auto; }"
+      dom.document.head.appendChild(rule)
+    }
+    node.el.setAttribute("data-everyui-between", "")
+    passThrough(node)
+  }
 }

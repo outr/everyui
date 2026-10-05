@@ -200,10 +200,10 @@ class Component(val node: RenderNode) {
     here
   }
   /** Take the focus — unless a dialog is up and this is not in it: a screen that finishes loading behind a dialog, or
-    * a reply that lands late, must not pull the focus out from under the question being asked. Nor where this is in
-    * a dialog waiting under a cover (Modal.covered), which nobody can see. */
-  def focus(): Unit =
-    if (Focus.dialog().forall(s => Focus.within(this, s)) && !Modal.hides(this)) Focus.focused @= Some(this)
+    * a reply that lands late, must not pull the focus out from under the question being asked. Nor where the focus is
+    * confined and this is outside the region (`Focus.confine`), nor in a dialog waiting under a cover (Modal.covered),
+    * which nobody can see. */
+  def focus(): Unit = if (Focus.admits(this) && !Modal.hides(this)) Focus.focused @= Some(this)
 
   /** Whether this handles `key` itself while focused, so the focus layer leaves it be: a text field keeps Enter and
     * the arrows along its line. */
