@@ -269,6 +269,101 @@ class ConfineSpec extends FxSpec {
     }
   }
 
+  "A confinement that lets no arrow move the focus" should {
+    "keep it where it is, and take what the page itself focuses in it, a row built again" in {
+      val rows = Vector.fill(3)(card())
+      val menu = column(rows*)
+      val other = card()
+      onScreen(column(other, menu)) {
+        fx {
+          rows(1).focus()
+          Focus.confine(menu, presses = false, holds = false, arrows = false)
+        }
+        List("ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Tab", "Enter").foreach(press)
+        fx(Focus.focused()) shouldBe Some(rows(1))
+        fx(clicks.get(rows(1))) shouldBe None
+        // the details arrive and the rows are built again, the page focusing its new Play row
+        val again = Vector.fill(3)(card())
+        fx {
+          menu.children @= again
+          rows.foreach(_.dispose())
+          again.head.focus()
+        }
+        fx(Focus.focused()) shouldBe Some(again.head)
+        press("ArrowDown")
+        fx(Focus.focused()) shouldBe Some(again.head)
+        // and from outside it, an arrow still lands in it
+        fx(Focus.focused @= Some(other))
+        press("ArrowDown")
+        fx(Focus.focused()) shouldBe Some(again.head)
+      }
+    }
+  }
+
+  "The focused part taken out of a confined region" should {
+    "hand the focus to what took its place in the region" in {
+      val rows = Vector.fill(3)(card())
+      val menu = column(rows*)
+      val other = card()
+      onScreen(column(other, menu)) {
+        fx {
+          rows(1).focus()
+          Focus.confine(menu)
+        }
+        val instead = card()
+        fx {
+          menu.children @= Vector(rows(0), instead, rows(2))
+          rows(1).dispose()
+        }
+        fx(Focus.focused()) shouldBe Some(instead)
+      }
+    }
+
+    "hand it to the one before where it was the last, and to the region's first once one is back after it emptied" in {
+      val rows = Vector.fill(2)(card())
+      val menu = column(rows*)
+      val other = card()
+      onScreen(column(other, menu)) {
+        fx {
+          rows(1).focus()
+          Focus.confine(menu)
+        }
+        fx(menu.children -= rows(1))
+        fx(Focus.focused()) shouldBe Some(rows(0))
+        // emptied and filled again in two turns: the focus waits on nothing gone, and goes to the region's first
+        val later = card()
+        fx(menu.children -= rows(0))
+        fx(Focus.focused().forall(c => Focus.showing(c) || c.eq(rows(0)))) shouldBe true
+        fx(menu.children += later)
+        press("ArrowDown")
+        fx(Focus.focused()) shouldBe Some(later)
+      }
+    }
+
+    "where the region itself goes, hold nothing, and move the focus to what took its place" in {
+      val rows = Vector.fill(2)(card())
+      val menu = row(rows*)
+      val other = card()
+      val page = column(other, menu)
+      onScreen(page) {
+        fx {
+          rows(0).focus()
+          Focus.confine(menu)
+        }
+        val built = Vector.fill(2)(card())
+        val again = row(built*)
+        fx {
+          page.children @= Vector(other, again)
+          menu.dispose()
+        }
+        fx(Focus.focused().exists(c => built.exists(_ eq c))) shouldBe true
+        // nothing holds the focus there now: the page focuses what it will
+        fx(other.focus())
+        fx(Focus.focused()) shouldBe Some(other)
+      }
+    }
+  }
+
   "Confinements one over another" should {
     "hold the focus in the newest, and in the one under it once that is released" in {
       val rail = Vector.fill(4)(card())

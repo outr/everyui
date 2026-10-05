@@ -55,7 +55,9 @@ class CoachTour(rail: ScrollContainer, cards: Vector[Component], play: Component
     opened += 1
     titled = Some(c)
     Platform.log("coach opened " + c.kind)
-    if (stop == 2) go(3, play, presses = false, holds = false, "Play starts it. Press Back to come home.", Some(play))
+    // its row held, Play and Trailer both, with no arrow to move between them: nothing but Back
+    if (stop == 2) go(3, play.parent().getOrElse(play), presses = false, holds = false,
+      "Play starts it. Press Back to come home.", Some(play), arrows = false)
   })
   play.event.click.attach(_ => played += 1)
   // Back on the title's page comes home; anywhere else it ends the tour
@@ -72,13 +74,13 @@ class CoachTour(rail: ScrollContainer, cards: Vector[Component], play: Component
   rail.offset.attach(_ => if (stop == 0) check())
   tick()
 
-  /** The stop `to`: the focus on `focus` if given, then held in `region` as `presses` and `holds` say (the last stop's
-    * let go), the light on it and the note saying `says`. */
+  /** The stop `to`: the focus on `focus` if given, then held in `region` as `presses`, `holds` and `arrows` say (the
+    * last stop's let go), the light on it and the note saying `says`. */
   private def go(to: Int, region: Component, presses: Boolean, holds: Boolean, says: String,
-                 focus: Option[Component]): Unit = {
+                 focus: Option[Component], arrows: Boolean = true): Unit = {
     release()
     focus.foreach(_.focus())
-    release = Focus.confine(region, presses, holds)
+    release = Focus.confine(region, presses, holds, arrows)
     stop = to
     seen = seen :+ names(to)
     focusedAt = Focus.focused()

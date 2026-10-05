@@ -375,8 +375,8 @@ once the keyboard states an entry. Those keys no longer reach `event.key.down` t
 
 A tour that has the viewer do one thing at a time holds the focus in that thing and dims the rest of the screen.
 
-`Focus.confine(region, presses = true, holds = true)` holds the focus in `region` until the function it returns is
-called:
+`Focus.confine(region, presses = true, holds = true, arrows = true)` holds the focus in `region` until the function
+it returns is called:
 
 - The arrows move only among what is in the region, by its layouts and the exits it states. An exit leading out of
   it goes nowhere, and where nothing lies that way the focus stays. Nothing is found by position.
@@ -385,6 +385,12 @@ called:
 - `presses = false` holds back OK, a click and a tap in the region. `holds = false` holds back OK held (OK then
   presses at once, where presses are let), a long press, the secondary button and the menu key. With presses held back
   and holds let, a short OK does nothing and OK held still fires `event.hold`; its release is no press.
+- `arrows = false` lets no arrow (nor Tab) move the focus in the region: it stays where it is. What the page itself
+  focuses in it is still taken, so confine a container that stays (a menu's rows' parent) and the page may build its
+  rows again and focus the new one.
+- The focused part taken out of the region (a row built again, a card disposed) hands the focus to what took its
+  place there, else the one before, else the region's entry or first, a turn later; never to nothing or out of it.
+  The region itself taken off the screen holds nothing any more, and the focus moves on to what took its place.
 - `focus()` on something outside the region is refused. So is the pointer at what was on the screen when the
   confinement began; what is put up afterwards (the note beside it) is pointed at as ever. The screen's key hooks
   (`Focus.onKey`) hear nothing while it holds; Back answers as ever.
@@ -404,14 +410,14 @@ NaboTV's stops, the card focused and the light on it:
 ```scala
 val light = Spotlight.on(List(rail), radius = 14.0, ring = 3.0)
 var held = Focus.confine(rail)                    // Browse: along the rail only
-def stop(region: Component, presses: Boolean = true, holds: Boolean = true): Unit = {
+def stop(region: Component, presses: Boolean = true, holds: Boolean = true, arrows: Boolean = true): Unit = {
   held()
-  held = Focus.confine(region, presses, holds)
+  held = Focus.confine(region, presses, holds, arrows)
   light.targets @= List(region)
 }
 stop(card, presses = false)                       // Hold: OK held opens its menu; a short OK does not open the title
 stop(card, holds = false)                         // Open: OK opens it, and only that
-stop(playRow, presses = false, holds = false)     // Play: lit, no arrows, no OK; Back goes home as ever
+stop(menuRows, presses = false, holds = false, arrows = false)  // Play: nothing but Back, the rows built again
 stop(askNabo)                                     // Ask: any arrow from Home lands on it
 held(); light.release()                           // done
 ```

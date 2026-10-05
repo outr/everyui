@@ -136,14 +136,22 @@ object Focus {
     * outside it, any arrow lands in it (its entry, else the part last focused, else its first), and nothing else
     * reaches what has the focus there. Without `presses`, OK, a click and a tap in it do nothing; without `holds`, OK
     * held does not hold (OK presses at once, where presses are let), nor does a long press, the secondary button or
-    * the menu key. A focus asked for outside it (`focus()`) is refused, as a pointer at the parts of the screen that
-    * were up when it began is: one put up afterwards (the note beside it) is pointed at as ever.
+    * the menu key. Without `arrows`, no arrow (nor Tab) moves the focus inside it: it stays where it is, and what the
+    * page itself focuses in it (a row built again) is taken as ever. A focus asked for outside it (`focus()`) is
+    * refused, as a pointer at the parts of the screen that were up when it began is: one put up afterwards (the note
+    * beside it) is pointed at as ever.
+    *
+    * The focused part taken out of it (a row built again, a card disposed) hands the focus to what took its place in
+    * the region, else to the region's entry or first, a turn later: never to nothing, nor out of it. The region
+    * itself taken off the screen holds nothing any more, and the focus moves on to what took its place, else to where
+    * the screen starts; so confine a container that stays (a menu's rows' own parent) rather than a part the page builds again.
     *
     * A dialog put up over it has the focus and the keys while it is up, and gives the focus back inside it as it
     * closes; one confinement over another holds the focus until it is released, and the one under it then holds it
     * again. Back answers as ever. A Var set directly (`focused @= …`) is not checked: it is the focus layer's own. */
-  def confine(region: Component, presses: Boolean = true, holds: Boolean = true): () => Unit = {
-    val held = new Confinement(region, presses, holds, ui.children())
+  def confine(region: Component, presses: Boolean = true, holds: Boolean = true,
+              arrows: Boolean = true): () => Unit = {
+    val held = new Confinement(region, presses, holds, arrows, ui.children())
     confined = held :: confined
     () => confined = confined.filterNot(_ eq held)
   }
@@ -152,6 +160,9 @@ object Focus {
     * go otherwise. A dialog put up elsewhere holds it instead. */
   private def fence(): Option[Confinement] =
     confined.headOption.filter(c => showing(c.region) && dialog().forall(d => within(c.region, d)))
+
+  // whether the confinement holding the focus lets no arrow (nor Tab) move it
+  private def stilled: Boolean = fence().exists(f => !f.arrows)
 
   /** Whether the focus may be put on `c`: inside the open dialog, if one is up, and inside the confined region. */
   def admits(c: Component): Boolean =
@@ -191,7 +202,9 @@ object Focus {
   /** A focus on something no longer on the screen, moved on at once: to what took its place, or with `anywhere`,
     * failing that, to where the screen starts. */
   private def moveOn(anywhere: Boolean): Unit = focused().filterNot(showing).foreach { gone =>
-    successor(gone).orElse(if (anywhere) start() else None) match {
+    // (under a confinement, where it starts at once, whether the region is still there or not: a tour never leaves it
+    // on what is gone)
+    successor(gone).orElse(if (anywhere || confined.nonEmpty) start() else None) match {
       case Some(to) =>
         Platform.log("[focus] " + gone.kind + " left the screen, the focus goes to " + to.kind)
         focused @= Some(to)
@@ -222,7 +235,12 @@ object Focus {
         val index = if (child.parent().nonEmpty) box.get.childComponents.indexWhere(_ eq child) else child.leftIndex
         // at the top of where the focus may go (a screen, or the dialog), where it starts is the one to say, rather
         // than whichever part of the screen sits next in its tree
-        if ((box.get eq reach) || page()().exists(_ eq box.get) || box.get.parent().exists(_ eq ui)) steps = 64
+        // (a confined region is looked in, though: what took the place of a row of it rebuilt is the one to have it)
+        if (fence().exists(f => (f.region eq box.get) && showing(box.get))) {
+          found = around(box.get, index, child)
+          steps = 64
+        }
+        else if ((box.get eq reach) || page()().exists(_ eq box.get) || box.get.parent().exists(_ eq ui)) steps = 64
         else if (showing(box.get) && within(box.get, reach)) found = around(box.get, index, child)
         child = box.get
       }
@@ -474,6 +492,8 @@ object Focus {
       case Some(was) if !within(was, root) =>
         start().foreach(_.focus())
         all.nonEmpty
+      // held where it is by a confinement that lets no arrow move it
+      case Some(_) if stilled => true
       case Some(was) =>
         travel(was, root, direction) match {
           case Some(next) =>
@@ -591,6 +611,7 @@ object Focus {
   def next(): Boolean = {
     val all = candidates(area())
     if (all.isEmpty) false
+    else if (stilled && focused().exists(c => within(c, area()))) true
     else {
       var at = -1
       all.zipWithIndex.foreach { case (c, i) => if (focused().exists(_ eq c)) at = i }
@@ -604,6 +625,7 @@ object Focus {
   def previous(): Boolean = {
     val all = candidates(area())
     if (all.isEmpty) false
+    else if (stilled && focused().exists(c => within(c, area()))) true
     else {
       var at = all.length
       all.zipWithIndex.foreach { case (c, i) => if (focused().exists(_ eq c)) at = i }
