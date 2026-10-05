@@ -206,6 +206,12 @@ The loop wakes by itself, on the platform's next frame (the same one on the web)
 Motion (`Component.motion`) is run by the platform and needs no frames of the app's. Timers (`Platform.after`,
 `Platform.later`) are not frames either.
 
+Change what is drawn only on the thread that draws. What a socket, an HTTP call or a pool hands back on a thread of
+its own goes there by `Platform.later` first. On Android a change made elsewhere once stopped the loop for good (its
+frame was asked of that thread's Choreographer, which threw), and every scroll and animation after it stood still;
+the frame now goes to the main thread whatever thread asks, and the first few such wakes are logged (`frames: woken
+off the main thread`) with the stack that made them, to be moved.
+
 Work done in `update` every frame must say it needs frames, or it stops when nothing else needs them:
 
 ```scala

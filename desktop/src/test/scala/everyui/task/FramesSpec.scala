@@ -18,6 +18,9 @@ class FramesSpec extends FxSpec {
   /** What the loop does on each frame, and whether it needs the next for itself. */
   private var onFrame: () => Unit = () => ()
   private var wanted: () => Boolean = () => false
+  /** How a frame is asked for: kept to be run by `frames`, unless a case asks as a platform that fails to. */
+  private var asking: (() => Unit) => Unit = f => asked = asked :+ f
+  private val keep: (() => Unit) => Unit = f => asked = asked :+ f
 
   /** Run the frames asked for, each asking for the next if it wants one, until none is asked for or `most` have run:
     * how many ran. */
@@ -38,12 +41,35 @@ class FramesSpec extends FxSpec {
     onFrame = () => ()
     wanted = () => false
     asked = Vector.empty
+    asking = keep
     Frames.drive(woke => {
       told = told :+ woke
       onFrame()
-    }, () => wanted(), () => idled += 1, f => asked = asked :+ f)
+    }, () => wanted(), () => idled += 1, f => asking(f))
     frames()
     told = Vector.empty
+  }
+
+  /** `f` with the loop guarded as Android's is, giving up on a frame after `patience` ms; what it logs as an error
+    * kept in `errors` and its warnings in `warnings`. */
+  private var errors: Vector[String] = Vector.empty
+  private var warnings: Vector[String] = Vector.empty
+  private def guarded[T](patience: Double)(f: => T): T = {
+    val forward = everyui.scribe.forward
+    errors = Vector.empty
+    warnings = Vector.empty
+    everyui.scribe.forward = (level, message) => if (level == "error") errors = errors :+ message
+      else warnings = warnings :+ message
+    Frames.guarded = true
+    Frames.patience = patience
+    Frames.origin = () => "the spec's wake"
+    try f
+    finally {
+      Frames.guarded = false
+      Frames.patience = 1000.0
+      Frames.origin = () => null
+      everyui.scribe.forward = forward
+    }
   }
 
   override def afterAll(): Unit = {
@@ -212,6 +238,126 @@ class FramesSpec extends FxSpec {
         Frames.watched = false
         Frames.watcher = _ => ()
       }
+    }
+
+    // NaboTV on a SHIELD: a card changed on the socket's thread woke the idle loop there, where Android's Choreographer
+    // threw (no Looper), and the loop was left running with no frame asked for: nothing that needs frames moved again
+    "idle, to be woken again, when the next frame cannot be asked for" in fx {
+      fresh()
+      asking = _ => throw new IllegalStateException("The current thread must have a looper!")
+      Frames.wake()
+      Frames.running shouldBe false
+      asking = keep
+      Frames.wake()
+      Frames.running shouldBe true
+      frames() shouldBe 2
+    }
+
+    "go on after a frame that fails, logging it" in fx {
+      fresh()
+      val before = Frames.failed
+      onFrame = () => {
+        onFrame = () => ()
+        throw new IllegalStateException("a frame failed")
+      }
+      Frames.request(3)
+      frames() shouldBe 3
+      Frames.failed shouldBe before + 1
+      Frames.running shouldBe false
+      Frames.request(2)
+      frames() shouldBe 2
+    }
+
+    "ask again, once guarded, for a frame asked for that never came" in fx {
+      guarded(20.0) {
+        fresh()
+        val before = Frames.lost
+        // posted to a thread's Choreographer that never runs it
+        asking = _ => ()
+        Frames.wake()
+        asking = keep
+        // not yet overdue: waited for
+        Frames.wake()
+        asked shouldBe empty
+        Thread.sleep(40L)
+        Frames.wake()
+        Frames.lost shouldBe before + 1
+        frames() shouldBe 2
+        Frames.running shouldBe false
+        errors.size shouldBe 1
+        errors.head should include("never came")
+        errors.head should include("on waking, from the spec's wake")
+      }
+    }
+
+    "say so when a frame given up on comes after all, the thread having been held up" in fx {
+      guarded(20.0) {
+        fresh()
+        val before = Frames.lost
+        Frames.wake()
+        // the frame asked for, kept from running for longer than the loop waits, as a long build on the thread would
+        Thread.sleep(40L)
+        Frames.wake()
+        Frames.lost shouldBe before + 1
+        // that one, and the one asked in its place, which runs the loop on: two frames, no more
+        frames() shouldBe 2
+        Frames.lost shouldBe before
+        errors.size shouldBe 1
+        warnings.size shouldBe 1
+        warnings.head should include("came after all")
+        Frames.running shouldBe false
+      }
+    }
+
+    "not give up on a frame while one runs, however long it takes" in fx {
+      guarded(20.0) {
+        fresh()
+        val before = Frames.lost
+        val box = new Container
+        onFrame = () => {
+          onFrame = () => ()
+          Thread.sleep(40L)
+          box.opacity @= 0.5
+        }
+        Frames.request()
+        // the one asked for and the two after the change made in it, and no more
+        frames() shouldBe 3
+        Frames.lost shouldBe before
+      }
+    }
+
+    "run a frame on resuming, and run a loop left waiting on a frame that never came" in fx {
+      guarded(20.0) {
+        fresh()
+        Frames.resumed()
+        frames() shouldBe 1
+        asking = _ => ()
+        Frames.wake()
+        Thread.sleep(40L)
+        asking = keep
+        Frames.resumed()
+        frames() should be >= 1
+        Frames.running shouldBe false
+      }
+    }
+
+    "run a frame woken on another thread on the loop's own, where the platform hands it there" in {
+      var ranOn = ""
+      fx {
+        fresh()
+        onFrame = () => ranOn = Thread.currentThread.getName
+        // as Android's does: on the thread that draws, whichever thread asks
+        asking = f =>
+          if (javafx.application.Platform.isFxApplicationThread) keep(f)
+          else javafx.application.Platform.runLater(() => keep(f))
+      }
+      val socket = new Thread(() => new Container().backgroundColor @= Color.Red, "socket")
+      socket.start()
+      socket.join()
+      eventually(asked.nonEmpty) shouldBe true
+      fx(frames()) shouldBe 2
+      ranOn shouldBe fx(Thread.currentThread.getName)
+      fx(Frames.running) shouldBe false
     }
   }
 }

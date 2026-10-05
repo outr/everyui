@@ -1724,8 +1724,11 @@ object Platform {
     () => resumers = resumers.filterNot(_ eq f)
   }
 
-  /** Said by the platform when it happens. */
-  def resumed(): Unit = resumers.foreach(f => f())
+  /** Said by the platform when it happens: a frame first, which also runs a frame loop left waiting while away. */
+  def resumed(): Unit = {
+    everyui.task.Frames.resumed()
+    resumers.foreach(f => f())
+  }
 
   private var resumers: List[() => Unit] = Nil
 
@@ -2171,17 +2174,29 @@ object Platform {
   /** Frames on demand (`everyui.task.Frames`): the app asks for each frame it needs, and the Choreographer calls on
     * it for none while nothing moves or changes. */
   def framesOnDemand(): Boolean = true
-  /** `f` once, on the next display frame. */
-  def nextFrame(f: () => Unit): Unit = Choreographer.getInstance.postFrameCallback(new Choreographer.FrameCallback {
+  /** `f` once, on the next display frame, on the main thread whatever thread asks. A Choreographer is a thread's own:
+    * asked for on a thread without a Looper (OkHttp's, a pool's) it throws, and on one with a Looper the frame goes
+    * to that thread's, and is lost with it. Either left the frame loop waiting on a frame that never came. */
+  def nextFrame(f: () => Unit): Unit = onMainFrame(new Choreographer.FrameCallback {
     override def doFrame(frameTimeNanos: Long): Unit = f()
   })
-  def animate(tick: () => Unit): Unit = {
-    val callback = new Choreographer.FrameCallback {
-      override def doFrame(frameTimeNanos: Long): Unit = {
-        tick()
-        Choreographer.getInstance.postFrameCallback(this)
-      }
+  def animate(tick: () => Unit): Unit = onMainFrame(new Choreographer.FrameCallback {
+    override def doFrame(frameTimeNanos: Long): Unit = {
+      tick()
+      Choreographer.getInstance.postFrameCallback(this)
     }
-    Choreographer.getInstance.postFrameCallback(callback)
-  }
+  })
+
+  private lazy val mainHandler = new android.os.Handler(android.os.Looper.getMainLooper)
+  /** How many frames were asked for off the main thread, the first few logged with where from. */
+  private var offMain = 0
+
+  private def onMainFrame(callback: Choreographer.FrameCallback): Unit =
+    if (android.os.Looper.myLooper() eq android.os.Looper.getMainLooper) Choreographer.getInstance.postFrameCallback(callback)
+    else {
+      // what woke the loop changed what is drawn off the main thread, which Android does not allow: said, so it is found
+      offMain += 1
+      if (offMain <= 5) log("frames: woken off the main thread, the frame asked for there: " + new WokeFrom)
+      mainHandler.post(() => Choreographer.getInstance.postFrameCallback(callback))
+    }
 }

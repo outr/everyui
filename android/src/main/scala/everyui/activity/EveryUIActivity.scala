@@ -20,6 +20,9 @@ abstract class EveryUIActivity extends Activity {
     super.onCreate(savedInstanceState)
     Host.activity = this
     everyui.network.NetworkBackend.init()   // rapid on a thread pool, before anything starts a Task
+    // a frame the loop asked for and never had is asked for again, and logged with where the loop was woken from
+    everyui.task.Frames.guarded = true
+    everyui.task.Frames.origin = () => new everyui.render.WokeFrom
     Host.freeze = extra("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
     Host.path = extra("path").getOrElse("")
     extra("viewport").map(_.split('x')).foreach {

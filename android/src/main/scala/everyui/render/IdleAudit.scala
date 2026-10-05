@@ -10,7 +10,8 @@ import everyui.task.Frames
   *
   *  - `frames`: how many frames of the app's loop ran, whether it is running now and for how many frames without
   *    idling, the holds out (`Frames.hold`), the frames still owed (`Frames.request`, `wake`), and whether the loop
-  *    wants the next for itself, with what wants it (the screen manager's tasks, `ui`'s, the showing screen's);
+  *    wants the next for itself, with what wants it (the screen manager's tasks, `ui`'s, the showing screen's), and
+  *    how many frames it gave up waiting for (`lost`) and how many failed;
   *  - `motions`: how many nodes' motions (`Component.motion`) are running, each started and stopped also logged as
   *    it happens with what it is for;
   *  - `moving`: what each running motion is for now (its lineage as it stands), and whether its view is in the window,
@@ -77,7 +78,8 @@ object IdleAudit {
     }.getOrElse("")
     Platform.log("[idle] frames: " + ran.toString + " ran, " + (if (Frames.running) "running for " +
       Frames.streak.toString else "idle") + ", holds " + Frames.held.toString + ", owed " + Frames.owed.toString +
-      ", wants " + Frames.wants.toString + wanting + "; motions running: " + Motion.running.toString)
+      ", wants " + Frames.wants.toString + wanting + ", lost " + Frames.lost.toString + ", failed " +
+      Frames.failed.toString + "; motions running: " + Motion.running.toString)
     if (!Motion.live.isEmpty) Platform.log("[idle] moving: " +
       scala.jdk.CollectionConverters.SetHasAsScala(Motion.live).asScala.toList.take(6).map(_.state).mkString("; "))
     Platform.log("[idle] main: " + main.top(10))
