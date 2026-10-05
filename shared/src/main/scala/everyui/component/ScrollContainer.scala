@@ -170,9 +170,10 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     }
   }
 
-  /** Scroll to `to` over `seconds`, easing out as it arrives (0: at once). The web glides as its browser does. */
+  /** Scroll to `to` over `seconds`, easing out as it arrives (0: at once). The web glides as its browser does. Half as
+    * long at Reduced, and at once at Minimal (`everyui.perf.Quality`). */
   def glideTo(to: Double, seconds: Double): Unit =
-    if (seconds <= 0.0) scrollTo(to)
+    if (seconds <= 0.0 || !everyui.perf.Quality.glides) scrollTo(to)
     else if (Platform.nativeScroll()) node.scrollSmoothly(to, horizontal)
     else {
       stopGlide()
@@ -235,7 +236,7 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   /** What is out of sight is not drawn: a rail of a hundred cards would otherwise be a hundred nodes for the platform
     * to draw every frame, which a television has no time for. A child keeps its place and its size either way, and
     * half a screen of slack on each side means one is drawn before it can be seen (a whole screen each way was two
-    * more screens of cards for a Roku to draw).
+    * more screens of cards for a Roku to draw); a quarter at Reduced and a tenth at Minimal (`everyui.perf.Quality`).
     *
     * The web scrolls the node itself, and a browser already draws only what shows. */
   private def cull(c: Component): Unit = if (!culling.contains(c)) {
@@ -247,7 +248,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
       val end = start + (if (horizontal) c.size.width() else c.size.height())
       // where the viewport is over the content, from its left in a rail running from the right
       val at = if (fromRight()) content.size.width() - along - offset() else offset()
-      end > at - along * 0.5 && start < at + along * 1.5
+      val slack = everyui.perf.Quality.slack
+      end > at - along * slack && start < at + along * (1.0 + slack)
     }
   }
 

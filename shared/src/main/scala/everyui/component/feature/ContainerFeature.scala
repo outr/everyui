@@ -53,6 +53,9 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       }
       else ordered(old, current, removed, added)
       component.childListChanged(added, removed)
+      // what was made before the quality level last changed is drawn as it now has it (`everyui.perf.Quality`)
+      if (everyui.perf.Quality.changes > 0)
+        added.foreach(c => if (c.drawnAt != everyui.perf.Quality.changes) Component.requality(c))
       // only what was added is measured again, and then the container: those already here have their sizes, and
       // measuring a rail of cards again for each card added to it took a Roku seconds
       ContainerFeature.measureUnder(added.toList)

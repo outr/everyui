@@ -1321,7 +1321,9 @@ object Host {
   private def keep(uri: String, b: Bitmap): Unit = if (b != null && !bitmaps.contains(uri)) {
     bitmaps.put(uri, b)
     bitmapBytes += b.getAllocationByteCount.toLong
-    while (bitmapBytes > bitmapBudget && bitmaps.size > 1) {
+    // less of it kept on a slower device (`everyui.perf.Quality`)
+    val budget = (bitmapBudget.toDouble * everyui.perf.Quality.cache).toLong
+    while (bitmapBytes > budget && bitmaps.size > 1) {
       // a downloaded picture goes before one of the APK's own: those are decoded again whenever they are wanted, the
       // smaller ones on the thread that draws, and a theme's backdrop let go under a rail of posters was decoded again
       // each time Home was walked
@@ -1370,7 +1372,11 @@ object Host {
         connection.setConnectTimeout(10000)
         connection.setReadTimeout(20000)
         val in = connection.getInputStream
-        try BitmapFactory.decodeStream(in) finally in.close()
+        // below Full (`everyui.perf.Quality`) a picture with no transparency (a poster, a photo) is decoded in 16 bits
+        // a pixel, half the memory and half the texture to upload; one with transparency is decoded as it is all the same
+        val options = new BitmapFactory.Options()
+        if (everyui.perf.Quality.decode < 1.0) options.inPreferredConfig = Bitmap.Config.RGB_565
+        try BitmapFactory.decodeStream(in, null, options) finally in.close()
       }
     // a document the person chose (FileAccess): a photo's full size is far more than a preview needs, so it is decoded
     // scaled down by halves to no more than twice `previewSide`
@@ -1834,6 +1840,35 @@ object Platform {
     facts
   }
 
+  /** What the device says of itself at launch (`everyui.perf.Perf.device`): its model, the OpenGL ES version it draws
+    * with, its memory and what this app may use of it, its cores, and whether it calls itself a low-memory device. */
+  def deviceHint(): everyui.perf.DeviceHint = {
+    val manager = Host.activity.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[android.app.ActivityManager]
+    val memory = new android.app.ActivityManager.MemoryInfo
+    manager.getMemoryInfo(memory)
+    val gl = try Option(manager.getDeviceConfigurationInfo).map(c => "GLES " + c.getGlEsVersion) catch { case _: Throwable => None }
+    everyui.perf.DeviceHint(
+      model = Some(deviceModel()),
+      graphicsPlatform = gl,
+      ramMb = Some((memory.totalMem / (1024L * 1024L)).toInt),
+      appMemoryMb = Some(manager.getMemoryClass),
+      cores = Some(Runtime.getRuntime.availableProcessors),
+      lowRam = Some(manager.isLowRamDevice))
+  }
+  /** "low" while Android says the device is short of memory (and would start ending background processes), else
+    * "normal". */
+  def memoryLevel(): String = try {
+    val manager = Host.activity.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[android.app.ActivityManager]
+    val memory = new android.app.ActivityManager.MemoryInfo
+    manager.getMemoryInfo(memory)
+    if (memory.lowMemory) "low" else "normal"
+  } catch { case _: Throwable => "" }
+  /** The share of the heap this app may have that is in use. */
+  def memoryUsedPct(): Int = {
+    val r = Runtime.getRuntime
+    ((r.totalMemory - r.freeMemory).toDouble * 100.0 / r.maxMemory.toDouble).toInt
+  }
+
   /** What the app is showing, as a PNG in base64, no more than 1920 across; "" where it cannot be had. The app's own
     * drawing: a video on the display's own plane never passes through it, and a TextureView's draws nothing into a
     * canvas of the app's, so the picture is not in it (as a Flutter app's platform views are not in its shot). */
@@ -2127,7 +2162,11 @@ object Platform {
 
   /** Called whenever the root changes size (a rotation, a resized window). */
   /** Every key the activity sees, by the web's name, pressed or released. */
-  def onKey(f: (String, Boolean) => Boolean): Unit = Host.key = f
+  def onKey(f: (String, Boolean) => Boolean): Unit = Host.key = (name: String, pressed: Boolean) => {
+    // a press timed to the frame that answers it, where it is measured
+    if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
+    f(name, pressed)
+  }
   /** The modifiers held with the key being reported (a keyboard's; a remote holds none), as the activity reads them. */
   def modifiers(): everyui.event.Modifiers = Host.modifiers
   /** The button of the pointer event being reported: 0 the primary (a finger), 1 the middle, 2 the secondary. */

@@ -1268,6 +1268,20 @@ object Platform {
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  /** What the machine says of itself (`everyui.perf.Perf.device`): its system, the heap the app may have and its cores. */
+  def deviceHint(): everyui.perf.DeviceHint =
+    everyui.perf.DeviceHint(
+      model = Some(System.getProperty("os.name") + " " + System.getProperty("os.arch")),
+      appMemoryMb = Some((Runtime.getRuntime.maxMemory / (1024L * 1024L)).toInt),
+      cores = Some(Runtime.getRuntime.availableProcessors))
+  /** A desktop says nothing of its memory running low. */
+  def memoryLevel(): String = ""
+  /** The share of the heap the app may have that is in use. */
+  def memoryUsedPct(): Int = {
+    val r = Runtime.getRuntime
+    ((r.totalMemory - r.freeMemory).toDouble * 100.0 / r.maxMemory.toDouble).toInt
+  }
+
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 
@@ -1367,6 +1381,8 @@ object Platform {
       embedded = Host.embedOf(e.getTarget)
       // JavaFX says nothing of a repeat: a press of a key already down is one
       repeating = if (pressed) !down.add(e.getCode) else { down.remove(e.getCode); false }
+      // a press timed to the frame that answers it, where it is measured
+      if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
       try if (f(Host.keyName(e), pressed)) e.consume()
       // the embed is the one this key was meant for, and no other: a key sent later from anywhere else (a key given
       // back, one a test sends) is nobody's embed's, nor a repeat

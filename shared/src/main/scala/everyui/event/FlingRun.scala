@@ -17,9 +17,14 @@ class FlingRun(velocity: Double, by: Double => Double) {
   /** Stopped where it is: a finger put down on it, or the content scrolled some other way. */
   def stop(): Unit = over = true
 
-  /** Under way, a step a frame until it comes to rest or is stopped. */
+  /** Under way, a step a frame until it comes to rest or is stopped. Where a scroll does not glide (Minimal,
+    * `everyui.perf.Quality`) it goes all the way at once. */
   def start(): FlingRun = {
-    Platform.nextFrame(() => frame())
+    if (everyui.perf.Quality.glides) Platform.nextFrame(() => frame())
+    else {
+      by(Fling.distance(v))
+      over = true
+    }
     this
   }
 
@@ -34,7 +39,8 @@ class FlingRun(velocity: Double, by: Double => Double) {
 
   /** `ms` on: the step it goes to `by`, and whether it goes on after it. */
   def advance(ms: Double): Boolean = !over && {
-    val (step, after) = Fling.step(v, ms)
+    // as far, sooner, where animations take less time (`everyui.perf.Quality`)
+    val (step, after) = Fling.step(v, ms / everyui.perf.Quality.pace)
     v = after
     val went = if (step == 0.0) 0.0 else by(step)
     over = math.abs(v) < Fling.rest || math.abs(went) < math.abs(step) / 2.0

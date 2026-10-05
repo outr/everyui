@@ -20,12 +20,21 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   lazy val elide: Var[Elide] = own(Var(Elide.End))
   /** Whether the words are drawn cut short to fit (`maxWidth`, `maxLines`), as last measured. */
   lazy val elided: Var[Boolean] = own(Var(false))
-  /** A shadow behind the letters themselves, not the box: an edge that keeps words readable over a picture. */
-  lazy val textShadow: types.Prop[Option[everyui.Shadow]] = new types.Prop[Option[everyui.Shadow]](None, s =>
-    s match {
-      case Some(sh) => node.setTextShadow(sh.x, sh.y, sh.blur, Component.css(sh.color))
-      case None => node.setTextShadow(0.0, 0.0, 0.0, "")
-    })
+  /** A shadow behind the letters themselves, not the box: an edge that keeps words readable over a picture. None at
+    * Minimal (`everyui.perf.Quality`). */
+  lazy val textShadow: types.Prop[Option[everyui.Shadow]] = new types.Prop[Option[everyui.Shadow]](None, _ => {
+    textShadowed = true
+    drawTextShadow()
+  })
+  private var textShadowed = false
+  private def drawTextShadow(): Unit = textShadow() match {
+    case Some(sh) if everyui.perf.Quality.textEffects => node.setTextShadow(sh.x, sh.y, sh.blur, Component.css(sh.color))
+    case _ => node.setTextShadow(0.0, 0.0, 0.0, "")
+  }
+  override private[everyui] def requality(): Unit = {
+    super.requality()
+    if (textShadowed) drawTextShadow()
+  }
   /** A hard edge round the letters, where a shadow would only blur: words kept readable over bright footage, as the
     * Flutter screensaver edges them. Where a platform draws no outline, the words are drawn without one. */
   lazy val textOutline: types.Prop[Option[everyui.TextOutline]] = new types.Prop[Option[everyui.TextOutline]](None, o =>

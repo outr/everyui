@@ -52,7 +52,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** A context menu asked for on a row: the secondary button, the menu key, Shift+F10, or OK held. */
   val menu: Channel[ListPoint[T]] = Channel[ListPoint[T]]
   val clickActivates: Var[Boolean] = own(Var(!Platform.pointerSupport()))
-  /** Rows made beyond each end of what shows, so a short scroll has them ready. */
+  /** Rows made beyond each end of what shows, so a short scroll has them ready: half as many at Reduced, and one at
+    * Minimal (`everyui.perf.Quality`). */
   val overscan: Var[Int] = own(Var(4))
   /** Whether the rows are kept scrolled to their end as they come, go and are drawn at heights of their own, rather
     * than with the first that shows kept where it is: a chat's transcript while its newest message is in view. */
@@ -729,8 +730,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val width = size.width()
     val searching = source.exists(_.searching())
     blank = searching && loadingView().nonEmpty
-    val first = if (count == 0) 0 else math.max(0, indexAt(offset()) - overscan())
-    val near = if (count == 0) -1 else math.min(count - 1, indexAt(offset() + height) + overscan())
+    // fewer beyond on a slower device (`everyui.perf.Quality`)
+    val beyond = everyui.perf.Quality.overscan(overscan())
+    val first = if (count == 0) 0 else math.max(0, indexAt(offset()) - beyond)
+    val near = if (count == 0) -1 else math.min(count - 1, indexAt(offset() + height) + beyond)
     // (the rows the source is to fetch are asked for even while the loading view hides them)
     val last = if (blank) -1 else near
     val leaving = placed.filter { case (i, _) => i < first || i > last }

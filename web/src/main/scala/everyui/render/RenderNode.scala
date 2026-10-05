@@ -1523,6 +1523,30 @@ object Platform {
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  /** What the browser says of the device at launch (`everyui.perf.Perf.device`): its memory, rounded by the browser to a
+    * few sizes (`navigator.deviceMemory`, Chrome's), and its cores, where it says them. */
+  def deviceHint(): everyui.perf.DeviceHint = {
+    val navigator = dom.window.navigator.asInstanceOf[js.Dynamic]
+    val memory = navigator.deviceMemory.asInstanceOf[js.UndefOr[Double]].toOption
+    val cores = navigator.hardwareConcurrency.asInstanceOf[js.UndefOr[Double]].toOption
+    val model = deviceModel()
+    everyui.perf.DeviceHint(
+      model = if (model.isEmpty) None else Some(model),
+      ramMb = memory.map(gb => (gb * 1024.0).toInt),
+      cores = cores.map(_.toInt))
+  }
+  /** A browser says nothing of the device's memory running low. */
+  def memoryLevel(): String = ""
+  /** The share of the page's script heap in use, where the browser says (`performance.memory`, Chrome's), or -1. */
+  def memoryUsedPct(): Int = {
+    val memory = dom.window.performance.asInstanceOf[js.Dynamic].memory
+    if (js.isUndefined(memory)) -1
+    else {
+      val limit = memory.jsHeapSizeLimit.asInstanceOf[Double]
+      if (limit <= 0.0) -1 else (memory.usedJSHeapSize.asInstanceOf[Double] * 100.0 / limit).toInt
+    }
+  }
+
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 
@@ -1674,6 +1698,8 @@ object Platform {
       repeating = e.repeat
       // an input method's words being composed: Chrome and Firefox say so, and Safari's Enter that ends them says 229
       composing = e.asInstanceOf[js.Dynamic].isComposing.asInstanceOf[js.UndefOr[Boolean]].getOrElse(false) || e.keyCode == 229
+      // a press timed to the frame that answers it, where it is measured
+      if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
       // what a field of the app's types, or moves its caret by, is the field's whatever the app made of it
       if (f(e.key, pressed) && !RenderNode.fieldKey(e)) e.preventDefault()
     }

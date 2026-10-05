@@ -386,9 +386,14 @@ class RenderNode(val sg: SGNode) {
     imageUri = uri
     drawImage()
   }
+  // decoded at the size it is drawn, or smaller on a slower device (`everyui.perf.Quality`): a Poster's texture is most
+  // of what a screen of artwork costs a Roku's memory
   private def drawImage(): Unit =
     if (imageUri.isEmpty) uiSetImageSource(sg, "")
-    else if (boxWidth > 0.0 && boxHeight > 0.0) uiSetImageSized(sg, imageUri, px(boxWidth), px(boxHeight))
+    else if (boxWidth > 0.0 && boxHeight > 0.0) {
+      val share = everyui.perf.Quality.decode
+      uiSetImageSized(sg, imageUri, px(boxWidth) * share, px(boxHeight) * share)
+    }
     else uiSetImageSource(sg, imageUri)
   /** The picture in one colour, its transparency kept (a Poster's blend colour on a white picture), or as it is. */
   def setTint(hex: String): Unit = uiSetTint(sg, hex)
@@ -838,6 +843,25 @@ object Platform {
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  /** What the box says of itself at launch (`everyui.perf.Perf.device`): its model number, kind (TV or STB) and name,
+    * its graphics (opengl or directfb), and the memory the channel may use. A Roku says nothing of its cores or its RAM. */
+  def deviceHint(): everyui.perf.DeviceHint = {
+    val model = uiDeviceFact("model")
+    val graphics = uiDeviceFact("graphics")
+    val app = uiDeviceFact("appMemoryKb")
+    everyui.perf.DeviceHint(
+      model = if (model.isEmpty) None else Some(model),
+      graphicsPlatform = if (graphics.isEmpty) None else Some(graphics),
+      appMemoryMb = if (app.isEmpty) None else Some(app.toInt / 1024))
+  }
+  /** The box's general memory level: "normal", "low" or "critical" ("" where it does not say). */
+  def memoryLevel(): String = uiDeviceFact("memoryLevel")
+  /** The share of the channel's memory limit in use (roAppMemoryMonitor), or -1. */
+  def memoryUsedPct(): Int = {
+    val pct = uiDeviceFact("memoryPct")
+    if (pct.isEmpty) -1 else pct.toInt
+  }
+
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 
@@ -934,7 +958,11 @@ object Platform {
 
   /** A channel's design resolution never changes. */
   /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released. */
-  def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey(f)
+  def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey((name: String, pressed: Boolean) => {
+    // a press timed to the frame that answers it, where it is measured
+    if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
+    f(name, pressed)
+  })
   /** A remote holds no modifiers. */
   def modifiers(): everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
   /** Whether the key being reported is one held down repeating: a remote never says so. */

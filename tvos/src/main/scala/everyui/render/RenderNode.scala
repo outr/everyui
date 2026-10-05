@@ -527,6 +527,15 @@ object Platform {
   /** The hardware facts a performance report is read with: none this platform will say. */
   def deviceProfile(): List[(String, String)] = Nil
 
+  /** What the device says of itself at launch (`everyui.perf.Perf.device`): its model. */
+  def deviceHint(): everyui.perf.DeviceHint = {
+    val model = deviceModel()
+    everyui.perf.DeviceHint(model = if (model.isEmpty) None else Some(model))
+  }
+  /** Nothing is read of its memory here. */
+  def memoryLevel(): String = ""
+  def memoryUsedPct(): Int = -1
+
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 
@@ -618,7 +627,11 @@ object Platform {
 
   /** An Apple TV's screen never changes size. */
   /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released. */
-  def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey(f)
+  def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey((name: String, pressed: Boolean) => {
+    // a press timed to the frame that answers it, where it is measured
+    if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
+    f(name, pressed)
+  })
   /** A remote holds no modifiers. */
   def modifiers(): everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
   /** Whether the key being reported is one held down repeating: a remote never says so. */

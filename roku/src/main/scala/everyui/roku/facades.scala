@@ -245,6 +245,12 @@ class SGNode
 @native object uiDeviceName {
   def apply(): String = native.value
 }
+/** One fact of the device and its memory, as text ("" where it does not say): "model", "graphics" (opengl or directfb),
+  * "appMemoryKb" (what the channel may use), "memoryLevel" (normal, low, critical) or "memoryPct" (the share of its
+  * limit in use). */
+@native object uiDeviceFact {
+  def apply(name: String): String = native.value
+}
 /** This device's own address on its network. */
 @native object uiLocalAddress {
   def apply(): String = native.value

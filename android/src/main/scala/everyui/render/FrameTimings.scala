@@ -12,7 +12,7 @@ import android.view.{FrameMetrics, Window}
   * The listener is the window's, so it is attached again to each activity the app is shown in
   * ([[everyui.activity.EveryUIActivity]]), and it runs on a thread of its own, never the one it is measuring. */
 object FrameTimings {
-  @volatile private var sink: Option[(Double, Double) => Unit] = None
+  @volatile private var sinks: List[(Double, Double) => Unit] = Nil
   private var attachedTo: Option[android.app.Activity] = None
 
   private lazy val handler: android.os.Handler = {
@@ -21,18 +21,19 @@ object FrameTimings {
     new android.os.Handler(thread.getLooper)
   }
 
-  /** Hear every frame drawn from now on: `f(ms, buildMs)`. False before Android 7, which does not measure them. */
+  /** Hear every frame drawn from now on: `f(ms, buildMs)`, beside whatever else hears them (an app's report, and
+    * `everyui.perf.Perf`). False before Android 7, which does not measure them. */
   def watch(f: (Double, Double) => Unit): Boolean =
     if (android.os.Build.VERSION.SDK_INT < 24) false
     else {
-      sink = Some(f)
+      sinks = sinks :+ f
       Option(Host.activity).foreach(attach)
       true
     }
 
   /** Listen to this activity's window, where something is listening at all. */
   def attach(activity: android.app.Activity): Unit =
-    if (sink.nonEmpty && android.os.Build.VERSION.SDK_INT >= 24 && !attachedTo.exists(_ eq activity)) {
+    if (sinks.nonEmpty && android.os.Build.VERSION.SDK_INT >= 24 && !attachedTo.exists(_ eq activity)) {
       try {
         activity.getWindow.addOnFrameMetricsAvailableListener(listener, handler)
         attachedTo = Some(activity)
@@ -53,7 +54,7 @@ object FrameTimings {
           if (android.os.Build.VERSION.SDK_INT < 31) ms(FrameMetrics.TOTAL_DURATION)
           else math.min(ms(FrameMetrics.TOTAL_DURATION),
             ms(FrameMetrics.TOTAL_DURATION) - ms(FrameMetrics.GPU_DURATION) + ms(FrameMetrics.SWAP_BUFFERS_DURATION))
-        sink.foreach(f => try f(total, building) catch { case _: Throwable => () })
+        sinks.foreach(f => try f(total, building) catch { case _: Throwable => () })
       }
     }
   }

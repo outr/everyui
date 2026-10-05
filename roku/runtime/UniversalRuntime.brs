@@ -1352,6 +1352,33 @@ function uiDeviceName() as string
     return name
 end function
 
+' One fact of the device and its memory, as text, for everyui.perf: "" where the box does not say (an older firmware
+' without the call, or a simulator). The model is GetModel's number with its kind (TV or STB) and name: a Roku TV and
+' an Ultra are told apart by it. Memory is read when asked, a window at a time, never per frame.
+function uiDeviceFact(name as string) as string
+    info = CreateObject("roDeviceInfo")
+    if name = "model"
+        model = ""
+        if FindMemberFunction(info, "GetModel") <> invalid then model = info.GetModel()
+        if FindMemberFunction(info, "GetModelType") <> invalid then model = model + " " + info.GetModelType()
+        if FindMemberFunction(info, "GetModelDisplayName") <> invalid then model = model + " " + info.GetModelDisplayName()
+        return model.Trim()
+    else if name = "graphics"
+        if FindMemberFunction(info, "GetGraphicsPlatform") <> invalid then return info.GetGraphicsPlatform()
+    else if name = "memoryLevel"
+        if FindMemberFunction(info, "GetGeneralMemoryLevel") <> invalid then return LCase(info.GetGeneralMemoryLevel())
+    else
+        monitor = CreateObject("roAppMemoryMonitor")
+        if monitor = invalid then return ""
+        if name = "memoryPct" and FindMemberFunction(monitor, "GetMemoryLimitPercent") <> invalid
+            return monitor.GetMemoryLimitPercent().ToStr()
+        else if name = "appMemoryKb" and FindMemberFunction(monitor, "GetChannelAvailableMemory") <> invalid
+            return monitor.GetChannelAvailableMemory().ToStr()
+        end if
+    end if
+    return ""
+end function
+
 ' ── the network module (network/native): sockets and HTTP through Task nodes ──────
 ' The render thread cannot own an roStreamSocket or an roUrlTransfer, so each socket is an EveryUISocketTask node
 ' and each request goes to one of a few EveryUIHttpTask workers (roku/runtime/*Task.brs): their fields carry the

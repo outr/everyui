@@ -7,6 +7,7 @@ import everyui.component.types.{Prop, Semantics, WhiteSpace}
 import everyui.event.{Events, Key, KeyEvent}
 import everyui.focus.Focus
 import everyui.motion.Track
+import everyui.perf.Quality
 import everyui.render.RenderNode
 
 /** youi's `Component`, with the DOM element replaced by a [[RenderNode]] — which each backend supplies — so the
@@ -105,9 +106,13 @@ class Component(val node: RenderNode) {
   lazy val motion: Prop[List[Track]] = own(new Prop[List[Track]](Nil, t => {
     ownMotion = t.nonEmpty
     node.setMotionOwner(() => Component.lineage(this))
-    node.setMotion(t)
+    // none at Minimal (`everyui.perf.Quality`)
+    node.setMotion(if (Quality.moves) t else Nil)
   }))
   private var ownMotion = false
+  // whether it has had a shadow or a blur, which a change of `Quality.level` draws again (`requality`)
+  private var shadowed = false
+  private var blurred = false
 
   lazy val color: Prop[Color] = own(new Prop[Color](Color.Black, c => node.setColor(c.toHex)))
   lazy val backgroundColor: Prop[Color] =
@@ -121,12 +126,30 @@ class Component(val node: RenderNode) {
   /** How far it is blurred: a gaussian's deviation in pixels, as the web's `filter: blur()` takes it; 0 is sharp. The
     * web, the desktop and Android draw it (before Android 12 only on a container or a picture); elsewhere it is drawn
     * sharp. */
-  lazy val blur: Prop[Double] = own(new Prop[Double](0.0, r => node.setBlur(r)))
-  /** A soft shadow under the box (the web and the desktop). */
-  lazy val shadow: Prop[Option[Shadow]] = own(new Prop[Option[Shadow]](None, s => s match {
-    case Some(value) => node.setShadow(value.x, value.y, value.blur, Component.css(value.color))
-    case None => node.setShadow(0.0, 0.0, 0.0, "")
+  lazy val blur: Prop[Double] = own(new Prop[Double](0.0, r => {
+    blurred = true
+    drawBlur()
   }))
+  /** A soft shadow under the box (the web and the desktop; Android's elevation). */
+  lazy val shadow: Prop[Option[Shadow]] = own(new Prop[Option[Shadow]](None, _ => {
+    shadowed = true
+    drawShadow()
+  }))
+  // none below Full (`everyui.perf.Quality`)
+  private def drawBlur(): Unit = node.setBlur(if (Quality.effects) blur() else 0.0)
+  private def drawShadow(): Unit = shadow() match {
+    case Some(value) if Quality.effects => node.setShadow(value.x, value.y, value.blur, Component.css(value.color))
+    case _ => node.setShadow(0.0, 0.0, 0.0, "")
+  }
+  /** The change of `Quality.level` it was last drawn at: one made before a change and put on the screen after it is
+    * drawn again as it goes on (ContainerFeature). */
+  private[everyui] var drawnAt: Int = Quality.changes
+  /** Its shadow, blur and motion drawn again as `Quality.level` now has them (`Component.requality`). */
+  private[everyui] def requality(): Unit = {
+    if (blurred) drawBlur()
+    if (shadowed) drawShadow()
+    if (ownMotion) node.setMotion(if (Quality.moves) motion() else Nil)
+  }
   /** An edge `borderWidth` pixels wide in `borderColor`, drawn inside the box and following its corners, so a border
     * never changes a size. (A Roku Rectangle has no edge to draw.) */
   lazy val borderColor: Prop[Color] =
@@ -240,6 +263,23 @@ object Component {
   // a Var, whose previous value would hold what was made, nor a `var` here, which a Roku may not be able to set
   private[everyui] val rendering: Array[Boolean] = Array(false)
   private[everyui] val rendered: Array[List[Component]] = Array(Nil)
+
+  /** What is under `root` (and `root` itself) drawn again as `Quality.level` now has it: its shadows, blurs and motion.
+    * What was drawn at this level already is passed over, with what is under it. Walked with a list rather than by
+    * recursion (a Roku's stack is small). */
+  def requality(root: Component): Unit = {
+    val now = Quality.changes
+    var pending: List[Component] = List(root)
+    while (pending.nonEmpty) {
+      val at = pending.head
+      pending = pending.tail
+      if (at.drawnAt != now) {
+        at.drawnAt = now
+        at.requality()
+        pending = at.childComponents.toList ::: pending
+      }
+    }
+  }
 
   /** `v` kept at its value and no longer listening to what it was bound to. */
   def unbind[T](v: Val[T]): Unit = v.option.foreach(x => v.static(x))

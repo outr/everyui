@@ -1636,6 +1636,94 @@ over the rest) until it moves again. Elsewhere the platform's own bar shows the 
 `demo=busy` in the example app goes round idle, busy, and "deliver" from 0 to 100% (`title=1` for the title,
 `spin=<seconds>` to hold the spinner, `still=<seconds>` for `stillAfter`, with the progress held at 60% to show it).
 
+## Quality on a slow device (`everyui.perf`)
+
+`Quality.level` (a `Val[QualityLevel]`: `Full`, `Reduced`, `Minimal`) is how much the app draws and moves. The app
+gives it the level kept for the device at launch, and from then on the session is measured and steps itself down a
+level where it stays slow; it never steps back up within the session, and EveryUI keeps nothing of it. Where the level
+is kept, and when it changes from one launch to the next, is the app's (NaboTV's server, from the summaries it is
+sent, with the person's own choice folded in).
+
+```scala
+import everyui.perf.{Perf, Quality, QualityLevel}
+
+Quality.start(stored)                                  // the device's level (None: Full); measuring starts here
+Perf.summaries.attach(s => Api.perfSession(s))         // how this run is going, now and then and as it goes away
+follow(Quality.level, (l: QualityLevel) => particles.visible @= l == QualityLevel.Full)   // the app's own parts
+```
+
+- `start` may be called again (the server's answer come in after launch): the level given changes, but never back above
+  what the session has stepped down to. Nothing is measured, at no cost, until it is first called.
+- An app's own costly parts read `Quality.level` as it changes, or `Quality.reduced` and `Quality.minimal` where they
+  are built once. `Full` changes nothing in EveryUI's parts and costs nothing per frame; what they read is a plain field,
+  set as the level changes.
+
+What EveryUI's own parts do:
+
+| | Reduced | Minimal |
+|---|---|---|
+| animations (`to … in`, fades, slides, a screen's treatment blending; not `sleep`) | half as long | a quarter |
+| a ScrollContainer's glides (`glideTo`, `reveal`), a fling | half as long | at once |
+| a box's `shadow` and `blur` | none | none |
+| a text's `textShadow`, `motion` run by the platform | as at Full | none |
+| pictures | a Roku's Posters decoded at 3/4 of their drawn size; Android's downloads in 16 bits a pixel where they have no transparency, and its picture cache at half | Posters at half; the cache at a quarter |
+| built beyond what shows | a ScrollContainer's slack a quarter of a viewport each way (half at Full); a VirtualList's `overscan` halved | a tenth; one row |
+
+What was drawn before a change is drawn again: what is on the screen at once, and what was made before and put on the
+screen later as it goes on. A level that lowers mid-session takes effect where the app's own parts follow `level`.
+The web decodes its pictures as the browser does, at every level.
+
+What is measured (`Perf`), counted into buckets as it comes, never logged per event:
+
+- **key to response**: from a key pressed to the start of the frame after the one that drew its handling, which is when
+  that one was on the screen (`keyLatency`);
+- **the app's update** in each frame (`ScreenManager`'s update and layout; on a Roku this is the BrightScript work), and
+  the time from **frame to frame**, with the share **dropped** (`QualityPolicy.dropMs` or more);
+- **the platform's frames** where it times them: Android's FrameMetrics (`Platform.frameTimings`, which now takes more
+  than one listener). The web's frames are its `requestAnimationFrame`s;
+- **memory**: a Roku's general memory level (`roDeviceInfo.GetGeneralMemoryLevel`: normal, low, critical) and the share
+  of its limit in use (`roAppMemoryMonitor.GetMemoryLimitPercent`); Android's low-memory state and heap; Chrome's
+  script heap. Read once a window, not per frame;
+- **the device** at launch (`Perf.device`, a `DeviceHint`): a Roku's model number, kind (TV or STB) and name, its
+  graphics platform and the memory the channel may use; Android's model, OpenGL ES version, RAM, memory class, cores and
+  `isLowRamDevice`; the web's `navigator.deviceMemory` and `hardwareConcurrency`; the desktop's system, heap and
+  cores. A call the box does not have is passed over.
+
+They are read out a window at a time (`QualityPolicy.windowSeconds`, a minute): each to `Perf.windows`, a `PerfWindow`
+whose `line` is the diagnostic one (`60s keys 12 p50/p95 140/420ms update p95 38ms frame p95 66ms drop 12% of 840 mem
+normal 41% at Full`), and `Perf.current()` is the window under way, for an overlay. `perf=1` at launch logs each window.
+
+The session so far goes to `Perf.summaries` every `summarySeconds` (five minutes) and as the app goes away, so a run
+ended without warning has still said how it went; `Perf.session()` asks for it at any time. A `PerfSession` has plain
+fields only, for `given RW[PerfSession] = RW.gen`, on the Roku too; whatever was not measured is None, never 0, and
+nothing is sent before anything is measured:
+
+```scala
+case class PerfSession(sessionId: String,                 // the same from launch to exit: each summary an update
+                       at: Long,                          // ms since 1970
+                       sessionSeconds: Option[Int],
+                       keyLatencyMsP50: Option[Int], keyLatencyMsP95: Option[Int],
+                       frameDropPct: Option[Int],
+                       memoryLevel: Option[String],       // "normal", "low", "critical"
+                       evidence: Option[String],          // a line for people: windows, slow ones, the step, the device
+                       keys: Option[Int], frames: Option[Int],
+                       updateMsP95: Option[Int], frameMsP95: Option[Int], memoryUsedPct: Option[Int],
+                       platform: Option[String], model: Option[String], graphicsPlatform: Option[String],
+                       ramMb: Option[Int],
+                       levelGiven: Option[String], levelRun: Option[String], steppedDown: Option[Boolean])
+```
+
+The step down (`QualityPolicy`, every threshold in one place, `Quality.policy` to change them; placeholders that agree
+with NaboTV's server until a slow device's numbers set them): a window calls for Reduced at a 95th percentile key time
+of 300 ms (over at least 3 keys), 8% of its frames dropped (over at least 30), or memory low, and for Minimal at 600 ms,
+20%, or memory critical. Three windows in a row each calling for less than the session runs at step it down one level,
+logged in one line with the window and the device (`quality: stepped down Full -> Reduced at 184s: key p95 420ms >= 300
+(3 windows) | …`); one bad minute does not. `steps = false` measures without stepping.
+
+`demo=quality` shows the level, the window under way and the device, a button for each level, and shadowed cards, a
+glide, a turning square and a blurred one that each level draws differently (`window=5`, `slow=2` to step down soon,
+`level=Reduced` to start there, `tiles=<n>` for work to feel on a slow or throttled device).
+
 ## Relative URLs and the origin
 
 `Network.http` and `Network.webSocket` take relative URLs and resolve them against `Network.origin`:

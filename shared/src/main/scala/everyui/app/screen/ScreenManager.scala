@@ -8,6 +8,7 @@ import everyui.focus.Focus
 import everyui.keymap.Keymap
 import everyui.layout.LayoutPass
 import everyui.net.URLPath
+import everyui.perf.Perf
 import everyui.render.Platform
 import everyui.seo.SEO
 import everyui.task.TaskSupport
@@ -430,8 +431,11 @@ trait ScreenManager extends TaskSupport {
       // after an idle spell the frame is timed from what woke it, and the clock hears of the time spent idle
       val from = if (woke < 0.0 || last < 0.0) last else woke
       if (from > last) everyui.util.Clock.update((from - last) / 1000.0)
-      // the frame that has just ended, with the work it began with
-      if (last >= 0.0) frame(now - from, worked)
+      // the frame that has just ended, with the work it began with, and measured where it is (`everyui.perf.Perf`)
+      if (last >= 0.0) {
+        frame(now - from, worked)
+        if (Perf.on) Perf.frame(now - from, worked, now)
+      }
       update(if (last < 0.0) 0.0 else (now - from) / 1000.0)
       worked = Platform.ticks() - now
       last = now
