@@ -3686,7 +3686,9 @@ class RokuEmitter(
       }.traverseTree(root)(Symbol.noSymbol)
 
     /** Local `var`s read or written inside a closure, a by-name argument or a
-     *  local class are boxed, so both scopes share one cell. */
+     *  local class are boxed, so both scopes share one cell. A var in a val's or a lazy val's initialiser is as local
+     *  as one in a method: unboxed, a closure wrote a copy of its own, and QrCode's GF(256) table, built by a
+     *  `foreach` doubling such a var, came out all ones, its error correction wrong and its codes unreadable. */
     def scanBoxedVars(root: Tree): Unit = {
       val candidates = mutable.Set[Symbol]()
       var nested = 0
@@ -3694,7 +3696,8 @@ class RokuEmitter(
         override def traverseTree(t: Tree)(owner: Symbol): Unit = t match {
           case vd: ValDef =>
             val sy = vd.symbol
-            if (sy.flags.is(Flags.Mutable) && sy.owner.exists && sy.owner.flags.is(Flags.Method)) candidates += sy
+            if (sy.flags.is(Flags.Mutable) && sy.owner.exists && !sy.owner.isClassDef
+                && (sy.owner.flags.is(Flags.Method) || sy.owner.isValDef)) candidates += sy
             super.traverseTree(t)(owner)
           case id: Ident =>
             if (nested > 0 && candidates.contains(id.symbol)) boxedVars += id.symbol
