@@ -11,32 +11,43 @@ import scala.scalajs.js
   * it, as a click just inside its edge. What the tap landed on that answers a click (a field, a row, a button) keeps
   * it, unless it holds that control, as a row holds its menu's glyph. A control under a dialog, or scrolled out of its
   * list, is not reached, as its centre is not on the page to be tapped. A mouse's and a pen's clicks are left alone.
-  * Chrome on a phone moves a tap a little towards what answers clicks first (its touch adjustment); this reaches
-  * further, and the same on every browser. */
+  * Chrome on a phone moves a tap a little towards what listens for clicks first (its touch adjustment); this judges
+  * the tap where the finger went down, not where Chrome moved it, and reaches further, the same on every browser. */
 private[render] object TapReach {
   val attribute: String = "data-everyui-slop"
   private var installed = false
-  // whether the press the click comes of was a finger's
+  // whether the press the click comes of was a finger's, and where it went down
   private var finger = false
+  private var downX = 0.0
+  private var downY = 0.0
 
   def install(): Unit = if (!installed) {
     installed = true
     val capture = js.Dynamic.literal(capture = true).asInstanceOf[dom.EventListenerOptions]
-    dom.window.addEventListener("pointerdown", (e: dom.PointerEvent) => finger = e.pointerType == "touch", capture)
+    dom.window.addEventListener("pointerdown", (e: dom.PointerEvent) => {
+      finger = e.pointerType == "touch"
+      downX = e.clientX
+      downY = e.clientY
+    }, capture)
     dom.window.addEventListener("click", (e: dom.MouseEvent) => if (finger && e.isTrusted) retarget(e), capture)
   }
 
+  // the click taken to the control the finger reached, judged where the finger went down: Chrome sends a finger's click
+  // to what listens for clicks near it, so a tap just under a header's glyph went to the list below the header, a few
+  // pixels further down and out of the glyph's reach, whenever the list's top was nearer the finger than the glyph
   private def retarget(e: dom.MouseEvent): Unit = e.target match {
     case target: dom.Element =>
-      val x = e.clientX
-      val y = e.clientY
-      val controls = answering(target)
+      val x = downX
+      val y = downY
+      val landed = Option(dom.document.elementFromPoint(x, y)).getOrElse(target)
+      val controls = answering(landed)
       val marked = dom.document.querySelectorAll("[" + attribute + "]")
       val near = (0 until marked.length).toVector.map(i => marked(i)).collect { case h: html.Element => h }
-        .filter(c => controls.forall(_.contains(c)) && !c.contains(target))
         .filter(c => TapSlop.pick(x, y, Vector(box(c))).nonEmpty)
         .filter(reachable)
-      TapSlop.pick(x, y, near.map(box)).map(near).foreach { c =>
+      val already = near.indexWhere(_.contains(target))
+      TapSlop.retarget(x, y, near.map(box), near.map(c => controls.forall(_.contains(c))),
+        if (already < 0) None else Some(already)).map(near).foreach { c =>
         val r = c.getBoundingClientRect()
         e.stopPropagation()
         e.preventDefault()

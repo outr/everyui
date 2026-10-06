@@ -31,4 +31,15 @@ object TapSlop {
     }
     if (best < 0) None else Some(best)
   }
+
+  /** Which of `boxes` a finger's tap is to be taken to, if not where the platform sent its click: reached from where
+    * the finger went down (`x`, `y`), never from where a browser moved the click to (Chrome on a phone moves it a few
+    * pixels towards what listens for clicks, a list under a header, say, which can take it out of a control's reach);
+    * of those `open`, as nothing else that answers a click under the finger holds them back; and none where the click
+    * goes to the one chosen already (`already`). */
+  def retarget(x: Double, y: Double, boxes: Vector[(Double, Double, Double, Double)], open: Vector[Boolean],
+               already: Option[Int]): Option[Int] = {
+    val allowed = boxes.indices.toVector.filter(i => open(i))
+    pick(x, y, allowed.map(i => boxes(i))).map(i => allowed(i)).filterNot(i => already.contains(i))
+  }
 }

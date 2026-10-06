@@ -39,6 +39,22 @@ class TapSlopSpec extends AnyWordSpec with Matchers {
       TapSlop.pick(-6.0, 16.0, icons) shouldBe Some(0)
       TapSlop.pick(79.0, 16.0, icons) shouldBe Some(1)
     }
+    "be judged where the finger went down, not where the browser moved the click" in {
+      // Voidcraft's header: a 32-pixel Menu button at 4, 10, the conversation's list from 52 down. A finger 22 pixels
+      // under the button's centre went down at 20, 48, on the header; Chrome sent its click to the list at 20, 55, 29
+      // pixels from the centre and out of reach. From where the finger went down, the button takes it.
+      val menu = Vector((4.0, 10.0, 32.0, 32.0))
+      TapSlop.pick(20.0, 55.0, menu) shouldBe None
+      TapSlop.retarget(20.0, 48.0, menu, Vector(true), None) shouldBe Some(0)
+      // the click already on its way to it is left alone
+      TapSlop.retarget(20.0, 48.0, menu, Vector(true), Some(0)) shouldBe None
+      // where the finger landed on another control (a tab under the header) that control keeps it
+      TapSlop.retarget(20.0, 48.0, menu, Vector(false), None) shouldBe None
+      // and of two in reach, the open one nearer the finger, wherever the click was sent
+      val two = Vector((4.0, 10.0, 32.0, 32.0), (44.0, 10.0, 32.0, 32.0))
+      TapSlop.retarget(42.0, 40.0, two, Vector(true, true), Some(0)) shouldBe Some(1)
+      TapSlop.retarget(42.0, 40.0, two, Vector(true, false), Some(1)) shouldBe Some(0)
+    }
     "never reach a control that is not drawn" in {
       TapSlop.pick(0.0, 0.0, Vector((0.0, 0.0, 0.0, 0.0))) shouldBe None
       TapSlop.pick(3.0, 3.0, Vector((0.0, 0.0, 0.0, 0.0), glyph)) shouldBe None
