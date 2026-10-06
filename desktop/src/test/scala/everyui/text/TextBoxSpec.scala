@@ -175,6 +175,22 @@ class TextBoxSpec extends FxSpec {
       }
     }
 
+    "cut a button's words in a column sized to them, in a card given its width after its layout" in {
+      // Voidcraft's question card: a padded column given a width once its layout had sized it to what it holds
+      val long = fx(new Button("Proceed with the Voidcraft cleanup (Firebase key is already moved to `.env.firebase`)"))
+      val short = fx(new Button("Skip"))
+      val card = fx {
+        val c = Column(10.0, padding = 16.0)(words("A question with a title that wraps"), Column(8.0)(long, short))
+        c.size.width := 360.0
+        c
+      }
+      onScreen(card) {
+        fx(long.size.width()) should be <= (360.0 - 32.0)
+        fx(long.size.width()) should be > 300.0
+        fx(short.size.width()) shouldBe fx(new Button("Skip").size.width())
+      }
+    }
+
     "cut a chip's word to the room around it" in {
       val chip = fx(new Chip(long, Color.fromHex("1565c0")))
       onScreen(panel(160.0, chip)) {

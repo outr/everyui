@@ -32,18 +32,21 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
 
   /** Whether its width follows what it holds: a row or a column given no width, or a width bound to a child's (a
     * button's, a chip's, `size.width := label.size.width() + 20.0`). Words in it are kept to the room of what it is in. */
-  private[everyui] def followsChildren: Boolean = widthFollowsContent || (size.width.explicit && {
+  private[everyui] def followsChildren: Boolean = size.width.explicit && {
     val read = size.width.references
-    read.nonEmpty && children().exists(c => read.contains(c.size.width))
-  })
+    read.nonEmpty && (sizedToRun(read) || children().exists(c => read.contains(c.size.width)))
+  }
+  // whether the width is still the one the layout gave it, its children's reach (`contentWidth`): one given another
+  // after its layout (`Column(...)` then `size.width := 760.0`) keeps `widthFollowsContent` but has a width of its own
+  private def sizedToRun(read: Set[Val[?]]): Boolean = widthFollowsContent && read.contains(contentWidth)
 
   // Where words in this lie in their box (`TextView.textOverflow`), as of the look at boxes under way
-  // (TextView.looks), worked out once for all the words in it: its left in the box (`spaceFrom`), what lies after it
-  // inside what it is in on the way up to the box (`spaceTail`), the box's width (`spaceWidth`, 0 for no box), and what
-  // the words in it watch to be looked at again (`spaceWatch`). The box is the nearest container with a width of its
-  // own; one sized to what it holds leaves it to the one it is in. There is none where the way up meets something
-  // hidden, content that runs on past its width on purpose (`textRunsOn`), or the top of something not yet on the
-  // screen: what stops it is watched, to look again as it is shown or put on the screen.
+  // (TextView.looks), worked out once for all the words in it: where it starts in the box, from the box's start edge
+  // (`spaceFrom`), what lies after it inside what it is in on the way up to the box (`spaceTail`), the box's width
+  // (`spaceWidth`, 0 for no box), and what the words in it watch to be looked at again (`spaceWatch`). The box is the
+  // nearest container with a width of its own; one sized to what it holds leaves it to the one it is in. There is none
+  // where the way up meets something hidden, content that runs on past its width on purpose (`textRunsOn`), or the top
+  // of something not yet on the screen: what stops it is watched, to look again as it is shown or put on the screen.
   private var spaceLook: Int = -1
   private[component] var spaceFrom: Double = 0.0
   private[component] var spaceTail: Double = 0.0
@@ -69,7 +72,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
           p.space()
           spaceWatch = p.spaceWatch
           if (p.spaceWidth > 0.0) {
-            spaceFrom = p.spaceFrom + position.left()
+            spaceFrom = p.spaceFrom + p.startOf(this)
             spaceTail = p.spaceTail + p.endOf(this)
             spaceWidth = p.spaceWidth
             if (p.spaceLays) spaceWatch = p :: spaceWatch
@@ -86,12 +89,29 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     case _ => false
   }
 
+  /** Where `child` starts inside this, from its start edge (its left, or its right in a right-to-left language), as
+    * the layout puts it: in a row, past the children before it with their gaps and the padding; in a column, which puts
+    * a child too wide for it at the start, the padding; elsewhere where it is placed. */
+  private[component] def startOf(child: Component): Double = layout() match {
+    case Some(h: HorizontalLayout) =>
+      var start = padding()
+      var seen = false
+      children().foreach { c =>
+        if (c eq child) seen = true
+        else if (!seen && c.size.width() > 0.0) start = start + c.size.width() + h.spacing
+      }
+      start
+    case Some(_: VerticalLayout) => padding()
+    case _ =>
+      if (TextView.lookRtl(0)) size.width() - child.position.left() - child.size.width() else child.position.left()
+  }
+
   /** What lies after `child` inside this, as the layout puts it: in a row, the children after it with their gaps (at
     * their whole width, so words before them are cut first) and the padding; in a column or a flow, which put a child
     * too wide for them at the start on its own, the padding; placed by hand, what is left of this past the child where
     * this is sized to it, else nothing. */
   private[component] def endOf(child: Component): Double = layout() match {
-    case Some(_: HorizontalLayout) if widthFollowsContent && TextView.boxedCount(0) == 0 =>
+    case Some(_: HorizontalLayout) if TextView.boxedCount(0) == 0 && sizedToRun(size.width.references) =>
       // sized to its run, where nothing is cut to its box: what is left of the run past the child
       if (TextView.lookRtl(0)) child.position.left() else size.width() - child.position.left() - child.size.width()
     case Some(h: HorizontalLayout) =>
@@ -120,13 +140,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     words.watchesRoom(wordsWatch)
     if (spaceWidth <= 0.0) 0.0
     else {
-      val x = spaceFrom + words.position.left()
+      val from = spaceFrom + startOf(words)
       val after = spaceTail + endOf(words)
-      if (TextView.lookRtl(0)) {
-        val edge = x + words.size.width()
-        if (edge <= 0.5 || edge > spaceWidth + 0.5) 0.0 else math.max(1.0, edge - after)
-      }
-      else if (x < -0.5 || x >= spaceWidth - 0.5) 0.0 else math.max(1.0, spaceWidth - x - after)
+      if (from < -0.5 || from >= spaceWidth - 0.5) 0.0 else math.max(1.0, spaceWidth - from - after)
     }
   }
 
