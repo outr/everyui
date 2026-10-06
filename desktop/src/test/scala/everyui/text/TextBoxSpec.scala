@@ -2,7 +2,7 @@ package everyui.text
 
 import everyui.Color
 import everyui.component.{Button, Chip, Column, Container, Component, MaterialIconView, Row, ScrollContainer, TextView}
-import everyui.component.types.{Semantics, TextOverflow, WhiteSpace}
+import everyui.component.types.{Semantics, TextAlign, TextOverflow, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.{FxSpec, ui}
@@ -224,6 +224,18 @@ class TextBoxSpec extends FxSpec {
         // words that fit on a line: as on one
         fx(short.size.width()) shouldBe skipWidth
         fx(short.size.height()) shouldBe lineHeight
+        // wrapped lines start where a paragraph's do, unless the button says otherwise
+        def wordsOf(b: Button): TextView = {
+          def find(c: Component): Option[TextView] = c match {
+            case t: TextView => Some(t)
+            case _ => c.childComponents.iterator.map(find).collectFirst { case Some(t) => t }
+          }
+          find(b).get
+        }
+        fx(wordsOf(wrapped).align()) shouldBe TextAlign.Start
+        fx(wrapped.labelAlign @= TextAlign.Center)
+        fx(wordsOf(wrapped).align()) shouldBe TextAlign.Center
+        fx(wrapped.labelAlign @= TextAlign.Start)
         // the focus ring follows the box
         fx(wrapped.focus())
         settle()

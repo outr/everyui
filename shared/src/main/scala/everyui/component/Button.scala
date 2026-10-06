@@ -27,6 +27,9 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
     * they are, the last cut short; 0 wraps them onto as many as they need. A choice someone must read whole before
     * picking it wraps; wrapped, the pill becomes a box with rounded corners. */
   val labelLines: Var[Int] = own(Var(1))
+  /** Where wrapped words line up (`labelLines`): at the start, the reading direction's, as a paragraph and the
+    * one-line choices beside it do; `Center` or `End` where a design wants them so. */
+  val labelAlign: Var[TextAlign] = own(Var(TextAlign.Start))
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.
@@ -44,10 +47,10 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
     color := foreground()
   }
   letterSpacing.attach(px => words.font.letterSpacing @= px)
+  words.align := labelAlign()
   italic.attach(on => words.font.italic @= on)
   labelLines.attach { n =>
     words.whiteSpace @= (if (n == 1) WhiteSpace.NoWrap else WhiteSpace.Normal)
-    words.align @= (if (n == 1) TextAlign.Start else TextAlign.Center)
     words.maxLines @= (if (n > 1) n else 0)
     words.measureWhole(n != 1)
   }

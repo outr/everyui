@@ -1088,10 +1088,11 @@ too wide for its box, the words that come first take the cut, measured against w
 width, so a title gives way to the badge after it. A `RichText` paragraph wraps to the width it is given, as before.
 
 A `Button`'s words are one line by default, cut short at its room. `labelLines` lets them wrap within it, the button
-growing as tall as they are and its pill becoming a box with rounded corners: a choice someone must read whole before
-picking it (a chat's choices, a form's, a dialog's). 0 is as many lines as the words need, more than 1 at most that
-many with the last cut short; words that fit on one line are drawn on one. Where the platform cuts wrapped words on one
-line (the Roku, the Apple TV), so does the button. `demo=widgets` ends with a card of such choices, 360 wide.
+growing as tall as they are and its pill becoming a box with rounded corners, its lines starting where a paragraph's
+do (`labelAlign`, `Start` by default, by the reading direction): a choice someone must read whole before picking
+it (a chat's choices, a form's, a dialog's). 0 is as many lines as the words need, more than 1 at most that many with
+the last cut short; words that fit on one line are drawn on one. Where the platform cuts wrapped words on one line
+(the Roku, the Apple TV), so does the button. `demo=widgets` ends with a card of such choices, 360 wide.
 
 ```scala
 val choice = new Button("Proceed with the cleanup (the Firebase key is already moved to `.env.firebase`)", () => pick(1))
