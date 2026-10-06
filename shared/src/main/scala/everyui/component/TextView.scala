@@ -2,13 +2,20 @@ package everyui.component
 
 import everyui.{Color, Gradient}
 import everyui.component.feature.FontFeature
-import everyui.component.types.{Elide, Prop, TextAlign, TextDirection, WhiteSpace}
-import everyui.render.{Nodes, RenderNode}
+import everyui.component.types.{Elide, Prop, Semantics, TextAlign, TextDirection, TextOverflow, WhiteSpace}
+import everyui.render.{Nodes, Platform, RenderNode}
 import everyui.theme.Theme
 import reactify.Var
 
 class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
-  lazy val content: Prop[String] = own(new Prop[String](node.getText(), _ => fit()))
+  // the app's `TextOverflow.default` as the view is made, which is what it does until it is told otherwise; and whether
+  // `textOverflow` has been made (a look need not make it)
+  private val overflowAtFirst: TextOverflow = TextOverflow.default()
+  private var overflowMade = false
+  lazy val content: Prop[String] = own(new Prop[String](node.getText(), _ => {
+    followed = false
+    fit()
+  }))
   /** The widest these words may be drawn on one line: what will not fit is cut short with an ellipsis, as a title
     * beside a chip is, so whatever sits after them keeps its place. 0 for no limit. */
   lazy val maxWidth: Var[Double] = own(Var(0.0))
@@ -18,8 +25,19 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** Where words wider than `maxWidth` are cut: at the end, the default; at the start, for a path whose end says the
     * most ("…/backend/app"); or in the middle. Wrapped words cut to `maxLines` are cut at the end. */
   lazy val elide: Var[Elide] = own(Var(Elide.End))
-  /** Whether the words are drawn cut short to fit (`maxWidth`, `maxLines`), as last measured. */
+  /** Whether the words are drawn cut short to fit (`maxWidth`, `maxLines`, their box), as last measured. */
   lazy val elided: Var[Boolean] = own(Var(false))
+  /** What the words do where they are wider than their box, the room what they are in gives them (a column's width
+    * less its padding, a row's less what else is in it, the screen's): kept in it (`TextOverflow.Fit`, the default,
+    * `TextOverflow.default`), wrapped within it where they wrap and cut short with an ellipsis where they are one line;
+    * or drawn whole past it (`TextOverflow.Visible`). Words that fit are drawn just as they would be either way. Words
+    * given a width of their own (`size.width`) are left to it, and words in something sized to them (a row given no
+    * width, a button, a chip) are kept to the room that has. Cut short, they are still read whole (`semantics`). */
+  lazy val textOverflow: Prop[TextOverflow] = {
+    overflowMade = true
+    own(new Prop[TextOverflow](overflowAtFirst, _ => if (keepsToBox) TextView.check(this)))
+  }
+  private def overflow: TextOverflow = if (overflowMade) textOverflow() else overflowAtFirst
   /** A shadow behind the letters themselves, not the box: an edge that keeps words readable over a picture. None at
     * Minimal (`everyui.perf.Quality`). */
   lazy val textShadow: types.Prop[Option[everyui.Shadow]] = new types.Prop[Option[everyui.Shadow]](None, _ => {
@@ -61,16 +79,127 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     case None => node.setTextGradient(0.0, "")
   }))
 
-  // wrapped to a width that changes, the words take a different number of lines
-  size.width.attach(_ => if (size.width.explicit && whiteSpace() != WhiteSpace.NoWrap) {
-    if (maxLines() > 0) fit() else measure.trigger()
+  // wrapped to a width that changes, the words take a different number of lines; given a width of their own, words
+  // kept to their box are left to it
+  size.width.attach(_ => if (size.width.explicit) {
+    if (boxed) fit()
+    else if (whiteSpace() != WhiteSpace.NoWrap) {
+      if (maxLines() > 0) fit() else measure.trigger()
+    }
   })
   // the cut is being made, whether it was made where the words could not yet be measured as they will be drawn (off
   // the page, or in a face still loading), and whether the page holds them to their room while it waits (setTextLimit)
   private var fitting = false
   private var unfit = false
   private var held = false
-  private def limited: Boolean = maxWidth() > 0.0 || maxLines() > 0
+  private def limited: Boolean = maxWidth() > 0.0 || maxLines() > 0 || boxed
+  // how wide they are whole, where they are cut to their box (`boxShrunk`): what they are cut by follows the width they
+  // are drawn at, which the web reads a moment later
+  private var boxWhole = 0.0
+  override private[everyui] def boxShrunk: Double = math.max(0.0, boxWhole - size.width())
+  // kept to their box: cut or wrapped to it (with the room it had then, and the width drawn before and after), about to
+  // be measured against it, waiting for a look at it (TextView.check), and given up on where the box shrank with them
+  private var boxed = false
+  private var cutRoom = 0.0
+  private var drawnBefore = 0.0
+  private var drawnAfter = 0.0
+  private var toBox = false
+  private[component] var boxCheckWaits = false
+  private var followed = false
+  // the words whatever reads the page was given whole, as a name, while they were drawn cut short
+  private var described = ""
+
+  /** Whether the words are kept to their box at all: a glyph's are not. */
+  private[everyui] def keepsToBox: Boolean = true
+  // the room the box gives the words (0 for none), as it is now, measured once what they are in has settled
+  // (Container.roomOf). On the way to it the words are told which containers change it: a row they are in, whose other
+  // children leave them less room as they grow; the box itself; and where the way stops short, what stops it
+  // (something hidden, or the top of something not yet on the screen). Each of those has the words looked at again as
+  // its width or its place on the screen changes, or as it is shown (Container.watchRoomOf); a column sized to them, or
+  // a button, changes only as they do.
+  private def roomNow: Double = {
+    if (!TextView.looking(0)) TextView.look()
+    val r = parent() match {
+      case Some(p) =>
+        if (overflow == TextOverflow.Visible || size.width.explicit) 0.0
+        else if (!notHidden) {
+          // hidden, they are looked at again as they are shown
+          if (!watchingShown) {
+            watchingShown = true
+            visible.attach(_ => TextView.check(this))
+          }
+          0.0
+        }
+        else p.roomOf(this)
+      case None => 0.0
+    }
+    if (!saw) watchesRoom(Nil)
+    saw = false
+    r
+  }
+  // the containers that change the words' room, as last found, and whether the look under way has found them
+  private var watched: List[Container] = Nil
+  private var saw = false
+  private var watchingShown = false
+  /** What changes the words' room, as found now (Container.roomOf): each container they were not watching is watched,
+    * and each they no longer need let go. Mostly the same as before, which is seen without going through them twice. */
+  private[everyui] def watchesRoom(now: List[Container]): Unit = {
+    saw = true
+    var a = now
+    var b = watched
+    while (a.nonEmpty && b.nonEmpty && (a.head eq b.head)) {
+      a = a.tail
+      b = b.tail
+    }
+    if (a.nonEmpty || b.nonEmpty) {
+      watched.foreach(c => if (!now.exists(_ eq c)) c.unwatchRoomOf(this))
+      now.foreach(c => if (!watched.exists(_ eq c)) c.watchRoomOf(this))
+      watched = now
+    }
+  }
+  // put in a container or taken out, and measured again, the words look at their box again
+  override private[everyui] def containerChanged(): Unit = if (keepsToBox) TextView.check(this)
+  override private[everyui] def widthRemeasured(): Unit = if (keepsToBox) TextView.check(this)
+  // taken apart, the words are let go by what they watched on a turn of its own, all at once (Container.letGoLater): one
+  // by one, a screen of them taken apart would go through its box's list once for each
+  override def dispose(): Unit = {
+    if (!takenApart) {
+      watched.foreach(_.letGoLater())
+      watched = Nil
+      if (boxed) {
+        boxed = false
+        TextView.boxedCount(0) -= 1
+      }
+    }
+    super.dispose()
+  }
+
+  /** Looked at once the turn is over (TextView.check), with what the words are in and their own size settled: words
+    * that ran past their box are cut or wrapped to it, and words kept to it are fitted again as it changes. A box that
+    * shrank by just as much as the words were cut follows them (a width bound to theirs that the box could not see):
+    * they are drawn whole instead, until they change; and so are words fitted again and again in a moment, whatever
+    * keeps changing their room as they are. */
+  private[component] def keepToBox(): Unit = {
+    val r = roomNow
+    if (boxed) {
+      if (r > 0.0 && r < cutRoom - 0.5 && math.abs((cutRoom - r) - (drawnBefore - drawnAfter)) < 0.5) followed = true
+      if (r != cutRoom || followed) fitToBox()
+    }
+    else if (r > 0.0 && !followed && measured.width() > r + 0.5) {
+      toBox = true
+      fitToBox()
+    }
+  }
+  // fitted to the box again: more than a few dozen times in a quarter of a second is a box that cannot settle
+  private var lately = 0
+  private var lastFit = 0.0
+  private def fitToBox(): Unit = {
+    val now = Platform.ticks()
+    lately = if (now - lastFit > 250.0) 1 else lately + 1
+    lastFit = now
+    if (lately > 24) followed = true
+    fit()
+  }
 
   maxWidth.attach(_ => fit())
   maxLines.attach(_ => fit())
@@ -100,16 +229,59 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     val wanted = content()
     val limit = maxWidth()
     val lines = if (maxLines() > 0 && whiteSpace() != WhiteSpace.NoWrap) maxLines() else 0
+    // the box's room, where the words were kept to it or ran past it as last measured (keepToBox)
+    val box = if ((boxed || toBox) && !followed && !size.width.explicit) roomNow else 0.0
+    val before = measured.width()
     node.setText(wanted)
-    unfit = (limit > 0.0 || lines > 0) && !node.textMeasurable(refit)
+    val asked = limit > 0.0 || lines > 0
+    unfit = (asked || box > 0.0) && !node.textMeasurable(refit)
     // measured whole, then held to the room it has; where it cannot be measured yet, only held
     if (held) node.setTextLimit(0.0, 0)
-    held = limit > 0.0 || lines > 0
-    if (unfit) node.setTextLimit(limit, lines)
-    else {
-      cutTo(wanted, limit, lines)
-      elided @= node.getText() != wanted
+    held = asked
+    if (unfit) {
       if (held) node.setTextLimit(limit, lines)
+    }
+    else {
+      toBox = false
+      // within the box, the words are drawn just as they are
+      val was = boxed
+      val whole = if (box > 0.0 || was) node.getWidth() else 0.0
+      boxed = box > 0.0 && whole > box + 0.5
+      if (boxed != was) TextView.boxedCount(0) += (if (boxed) 1 else -1)
+      var single = limit
+      var wrapAt = 0.0
+      if (boxed) {
+        cutRoom = box
+        drawnBefore = before
+        // words that wrap wrap within it, where the platform wraps them there; a line, and words it does not, are cut
+        if (whiteSpace() != WhiteSpace.NoWrap && whiteSpace() != WhiteSpace.Pre) {
+          node.setTextLimit(box, 0)
+          if (node.getWidth() > box + 0.5) node.setTextLimit(0.0, 0) else wrapAt = box
+        }
+        if (wrapAt == 0.0) single = if (limit > 0.0 && limit < box) limit else box
+      }
+      cutTo(wanted, single, lines)
+      elided @= node.getText() != wanted
+      val kept = if (wrapAt > 0.0 && (single == 0.0 || wrapAt < single)) wrapAt else single
+      held = asked || boxed
+      if (held) node.setTextLimit(kept, lines)
+      if (boxed) drawnAfter = node.getWidth()
+      // let go of their box, they are whole already, though the web reads the width they are drawn at a moment later
+      boxWhole = if (boxed || was) whole else 0.0
+      if (elided() || described.nonEmpty) describe(wanted)
+    }
+  }
+
+  // cut short, the words are named whole for whatever reads the page (`semantics`); a name the app gave them stands
+  private def describe(wanted: String): Unit = {
+    val ours = semantics() == Semantics(label = described)
+    if (elided() && (ours || semantics() == Semantics.Plain)) {
+      described = wanted
+      semantics @= Semantics(label = wanted)
+    }
+    else if (!elided() && ours) {
+      described = ""
+      semantics @= Semantics.Plain
     }
   }
 
@@ -153,6 +325,44 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
 
 /** A line of text in one call: `TextView("Hello")`, `TextView.bound(name() + "!")`, `TextView.wrapped(long, 320.0)`. */
 object TextView {
+  // the text views to look at against their box once the turn is over (keepToBox): every one asked for in a turn, in
+  // one look, after what they are in has settled (a box bound to the words' width has followed them by then)
+  private val waiting: Array[List[TextView]] = Array(Nil)
+
+  private[component] def check(view: TextView): Unit =
+    if (!view.boxCheckWaits && !view.takenApart && (view.boxed || view.size.width() > 0.0)) {
+      view.boxCheckWaits = true
+      val first = waiting(0).isEmpty
+      waiting(0) = view :: waiting(0)
+      if (first) Platform.afterTurn(() => {
+        val views = waiting(0).reverse
+        waiting(0) = Nil
+        // one look: where each container's words lie in its box is worked out once for all of them (Container.space)
+        look()
+        looking(0) = true
+        var left = views
+        try while (left.nonEmpty) {
+          val v = left.head
+          left = left.tail
+          v.boxCheckWaits = false
+          if (!v.takenApart) v.keepToBox()
+        }
+        finally looking(0) = false
+      })
+    }
+  /** Which look at the boxes this is, and whether one is under way (check). */
+  private[component] val looks: Array[Int] = Array(0)
+  /** The reading direction, as the look under way has it. */
+  private[component] val lookRtl: Array[Boolean] = Array(false)
+  private[component] def look(): Unit = {
+    looks(0) += 1
+    lookRtl(0) = everyui.i18n.Direction.rtl()
+  }
+  /** How many text views are cut or wrapped to their box now: while none is, what follows words in a row is the rest of
+    * the row as it is drawn (Container.endOf). */
+  private[component] val boxedCount: Array[Int] = Array(0)
+  private val looking: Array[Boolean] = Array(false)
+
   /** The seam's name for an alignment: "start", "center" or "end", resolved against the platform's direction. */
   def side(align: TextAlign): String =
     if (align == TextAlign.Center) "center" else if (align == TextAlign.End) "end" else "start"

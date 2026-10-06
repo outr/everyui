@@ -125,6 +125,8 @@ class ZoomCanvas extends Container {
   cursor @= "default"
   world.size.width := size.width()
   world.size.height := size.height()
+  // its items lie where the world puts them, scaled, past the canvas as often as in it: their words are not cut to it
+  world.textRunsOn = true
   // (no size of its own, so on the web it covers nothing of the world under it: only its items take the pointer)
   flat.size.width @= 0.0
   flat.size.height @= 0.0

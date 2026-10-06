@@ -77,5 +77,10 @@ object TextFit {
       el.style.overflow = "hidden"
       el.style.textOverflow = "ellipsis"
     }
+    // and let go, the words draw as any others do: a line's glyphs reach past its box (an italic's slant, a shadow)
+    else {
+      el.style.overflow = ""
+      el.style.textOverflow = ""
+    }
   }
 }

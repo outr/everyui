@@ -1,14 +1,15 @@
 package everyui.component
 
 import everyui.component.feature.ContainerFeature
-import everyui.layout.{Layout, LayoutPass}
-import everyui.render.{Nodes, RenderNode}
+import everyui.layout.{FlowLayout, HorizontalLayout, Layout, LayoutPass, VerticalLayout}
+import everyui.render.{Nodes, Platform, RenderNode}
 import reactify.*
 
 class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   lazy val children: ContainerFeature = new ContainerFeature(this)
 
   override def dispose(): Unit = if (!takenApart) {
+    watchedBy = Nil
     val held = children()
     children.clear()
     held.foreach(c => c.dispose())
@@ -25,6 +26,163 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Whether the width follows the children (a row or a column given no width): a mirrored row then spans its own run,
     * not the width its last placement made. */
   var widthFollowsContent: Boolean = false
+  /** Whether what it holds runs on past its width on purpose (a rail's content, scrolled along): words in it are not
+    * kept to it, nor to anything it is in (`TextView.textOverflow`). */
+  private[everyui] var textRunsOn: Boolean = false
+
+  /** Whether its width follows what it holds: a row or a column given no width, or a width bound to a child's (a
+    * button's, a chip's, `size.width := label.size.width() + 20.0`). Words in it are kept to the room of what it is in. */
+  private[everyui] def followsChildren: Boolean = widthFollowsContent || (size.width.explicit && {
+    val read = size.width.references
+    read.nonEmpty && children().exists(c => read.contains(c.size.width))
+  })
+
+  // Where words in this lie in their box (`TextView.textOverflow`), as of the look at boxes under way
+  // (TextView.looks), worked out once for all the words in it: its left in the box (`spaceFrom`), what lies after it
+  // inside what it is in on the way up to the box (`spaceTail`), the box's width (`spaceWidth`, 0 for no box), and what
+  // the words in it watch to be looked at again (`spaceWatch`). The box is the nearest container with a width of its
+  // own; one sized to what it holds leaves it to the one it is in. There is none where the way up meets something
+  // hidden, content that runs on past its width on purpose (`textRunsOn`), or the top of something not yet on the
+  // screen: what stops it is watched, to look again as it is shown or put on the screen.
+  private var spaceLook: Int = -1
+  private[component] var spaceFrom: Double = 0.0
+  private[component] var spaceTail: Double = 0.0
+  private[component] var spaceWidth: Double = 0.0
+  private[component] var spaceWatch: List[Container] = Nil
+  // and what words directly in this watch: that, and this where it lays its children along a row
+  private var wordsWatch: List[Container] = Nil
+  private var spaceLays: Boolean = false
+
+  private[component] def space(): Unit = if (spaceLook != TextView.looks(0)) {
+    spaceLook = TextView.looks(0)
+    spaceLays = lays
+    spaceWidth = 0.0
+    spaceWatch = List(this)
+    if (!textRunsOn && notHidden) {
+      if (size.width.explicit && !followsChildren) {
+        spaceFrom = 0.0
+        spaceTail = 0.0
+        spaceWidth = size.width()
+      }
+      else parent().flatMap(_.asContainer) match {
+        case Some(p) =>
+          p.space()
+          spaceWatch = p.spaceWatch
+          if (p.spaceWidth > 0.0) {
+            spaceFrom = p.spaceFrom + position.left()
+            spaceTail = p.spaceTail + p.endOf(this)
+            spaceWidth = p.spaceWidth
+            if (p.spaceLays) spaceWatch = p :: spaceWatch
+          }
+        case None => ()
+      }
+    }
+    wordsWatch = if (spaceLays && spaceWidth > 0.0) this :: spaceWatch else spaceWatch
+  }
+
+  // whether this lays its children along a row: what comes after one leaves it less room as it grows
+  private def lays: Boolean = layout() match {
+    case Some(_: HorizontalLayout) => true
+    case _ => false
+  }
+
+  /** What lies after `child` inside this, as the layout puts it: in a row, the children after it with their gaps (at
+    * their whole width, so words before them are cut first) and the padding; in a column or a flow, which put a child
+    * too wide for them at the start on its own, the padding; placed by hand, what is left of this past the child where
+    * this is sized to it, else nothing. */
+  private[component] def endOf(child: Component): Double = layout() match {
+    case Some(_: HorizontalLayout) if widthFollowsContent && TextView.boxedCount(0) == 0 =>
+      // sized to its run, where nothing is cut to its box: what is left of the run past the child
+      if (TextView.lookRtl(0)) child.position.left() else size.width() - child.position.left() - child.size.width()
+    case Some(h: HorizontalLayout) =>
+      var end = padding()
+      var seen = false
+      children().foreach { c =>
+        if (c eq child) seen = true
+        else if (seen && c.size.width() > 0.0) end = end + h.spacing + c.size.width() + c.boxShrunk
+      }
+      end
+    case Some(_: VerticalLayout) => padding()
+    case Some(_: FlowLayout) => padding()
+    case _ =>
+      if (!followsChildren) 0.0
+      else if (TextView.lookRtl(0)) child.position.left()
+      else size.width() - child.position.left() - child.size.width()
+  }
+
+  override private[everyui] def asContainer: Option[Container] = Some(this)
+
+  /** The room `words`, a child of this, have in their box: from where they start (their left, or their right in a
+    * right-to-left language) to its far edge, less what lies after them; 0 where there is no box, or where they start
+    * outside it altogether (made out of sight, or placed past its edge). The words are told what to watch. */
+  override private[everyui] def roomOf(words: TextView): Double = {
+    space()
+    words.watchesRoom(wordsWatch)
+    if (spaceWidth <= 0.0) 0.0
+    else {
+      val x = spaceFrom + words.position.left()
+      val after = spaceTail + endOf(words)
+      if (TextView.lookRtl(0)) {
+        val edge = x + words.size.width()
+        if (edge <= 0.5 || edge > spaceWidth + 0.5) 0.0 else math.max(1.0, edge - after)
+      }
+      else if (x < -0.5 || x >= spaceWidth - 0.5) 0.0 else math.max(1.0, spaceWidth - x - after)
+    }
+  }
+
+  // the words whose room this changes (TextView.watchesRoom): each is looked at again as its width changes, as it is put
+  // in a container or taken out of one, and as it is shown, its width followed once the first is watched
+  private var watchedBy: List[TextView] = Nil
+  private var watchingText: Boolean = false
+  private var watchingShown: Boolean = false
+  private var watchedCount: Int = 0
+  private var compactAt: Int = 64
+  private[component] def watchRoomOf(words: TextView): Unit = {
+    watchedBy = words :: watchedBy
+    // what has been taken apart since is let go of as the list doubles
+    watchedCount += 1
+    if (watchedCount >= compactAt) {
+      watchedBy = watchedBy.filterNot(_.takenApart)
+      watchedCount = watchedBy.size
+      compactAt = math.max(64, watchedCount * 2)
+    }
+    if (!watchingText) {
+      watchingText = true
+      size.width.attach(_ => watchedBy.foreach(TextView.check))
+    }
+    // and, hidden, as it is shown
+    if (!notHidden && !watchingShown) {
+      watchingShown = true
+      visible.attach(_ => watchedBy.foreach(TextView.check))
+    }
+  }
+  private[component] def unwatchRoomOf(words: TextView): Unit = {
+    watchedBy = watchedBy.filterNot(_ eq words)
+    watchedCount = watchedCount - 1
+  }
+  override private[everyui] def containerChanged(): Unit = watchedBy.foreach(TextView.check)
+  // words it watched for taken apart: let go of on a turn of its own, with every other taken apart meanwhile
+  private var lettingGo: Boolean = false
+  private[component] def letGoLater(): Unit = if (!lettingGo) {
+    lettingGo = true
+    Platform.later(() => {
+      lettingGo = false
+      watchedBy = watchedBy.filterNot(_.takenApart)
+      watchedCount = watchedBy.size
+    })
+  }
+
+  // as much as the widest child, or every child in a row, is cut short, where this is sized to them
+  override private[everyui] def boxShrunk: Double = {
+    val kids = children()
+    if (!followsChildren) 0.0
+    else layout() match {
+      case Some(_: HorizontalLayout) => kids.foldLeft(0.0)((sum, c) => sum + c.boxShrunk)
+      case _ =>
+        val whole = kids.foldLeft(0.0)((most, c) => math.max(most, c.position.left() + c.size.width() + c.boxShrunk))
+        math.max(0.0, whole - (kids.foldLeft(0.0)((most, c) => math.max(most, c.position.left() + c.size.width()))))
+    }
+  }
 
   /** How far the children reach, plus the padding beyond them. */
   lazy val contentWidth: Val[Double] = {

@@ -34,6 +34,8 @@ class RenderNode(val fx: Node) {
   private var face: Face = Faces.OpenSansRegular
   private var fontSize: Double = 32.0
   private var wrapping: Boolean = false
+  // where words with no width of their own wrap, kept to their box (setTextLimit); 0 for nowhere
+  private var wrapLimit: Double = 0.0
   private var textColor: String = "#1c1b1f"
   private var align: String = "start"
   // which way its words run (`setTextDirection`): "" the window's, "auto" their own, "ltr" or "rtl"
@@ -486,9 +488,18 @@ class RenderNode(val fx: Node) {
 
   /** A text node breaks a word too long for its line where it must already. */
   def setWrapAnywhere(on: Boolean): Unit = ()
-  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
-    * here. */
-  def setTextLimit(width: Double, lines: Int): Unit = ()
+  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone; words that wrap and are
+    * given no width of their own wrap at `width` where they would run past it (kept to their box). */
+  def setTextLimit(width: Double, lines: Int): Unit = fx match {
+    case t: Text if wrapping && explicitWidth < 0.0 =>
+      wrapLimit = 0.0
+      applyAlign()
+      if (width > 0.0 && t.getLayoutBounds.getWidth > width) {
+        wrapLimit = width
+        applyAlign()
+      }
+    case _ => ()
+  }
   /** Words measure as they will be drawn from the moment they are set. */
   def textMeasurable(ready: () => Unit): Boolean = true
 
@@ -507,7 +518,8 @@ class RenderNode(val fx: Node) {
       case t: Text =>
         t.setNodeOrientation(orientation)
         t.setTextAlignment(side)
-        t.setWrappingWidth(if ((wrapping || centred || right) && explicitWidth > 0.0) explicitWidth else 0.0)
+        t.setWrappingWidth(if ((wrapping || centred || right) && explicitWidth > 0.0) explicitWidth
+          else if (wrapping && wrapLimit > 0.0) wrapLimit else 0.0)
       case f: RichFlow =>
         f.setNodeOrientation(orientation)
         f.setSide(side)

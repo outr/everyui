@@ -17,6 +17,8 @@ class MeasuredFeature(component: Component) {
   private[feature] var queued: Boolean = false
   private[feature] var readWidth: Double = 0.0
   private[feature] var readHeight: Double = 0.0
+  // the width last set, read without reading `width` (which, in a value being worked out, would make it depend on it)
+  private var setWidth: Double = 0.0
 
   val width: Val[Double] = w
   val height: Val[Double] = h
@@ -34,8 +36,12 @@ class MeasuredFeature(component: Component) {
   }
 
   private[feature] def set(): Unit = {
+    val wider = readWidth != setWidth
+    setWidth = readWidth
     w @= readWidth
     h @= readHeight
+    // (words look at their box again: TextView)
+    if (wider) component.widthRemeasured()
   }
 
   component.measure.on(refresh())

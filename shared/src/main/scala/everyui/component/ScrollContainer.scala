@@ -70,6 +70,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     // and a row laid out in it runs the length of what it holds: mirrored for a right-to-left language within its
     // width instead, which is itself the reach of the children just mirrored, it shrank to its first child
     content.widthFollowsContent = true
+    // what it holds runs on past the viewport, to be scrolled to: its words are not cut to the viewport
+    content.textRunsOn = true
     // its start at the viewport's: in a right-to-left language the content's right end at the viewport's right, which
     // is also where a browser's own scroll starts (content overhanging the right of a right-to-left page's scroll could
     // not be scrolled to at all)

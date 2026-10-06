@@ -44,11 +44,13 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
         c.leaves(component, old.indexWhere(_ eq c))
         ContainerFeature.forget(component, c)
         c.parent @= None
+        c.containerChanged()
       }
       if (removed.isEmpty && ContainerFeature.startsWith(current, old)) added.foreach { c =>
         // only added to the end (`+=`, `++=`, a list grown by `bind`): each node appended in turn
         component.node.append(c.node)
         c.parent @= Some(component)
+        c.containerChanged()
         c.leftParent = None
       }
       else ordered(old, current, removed, added)
@@ -80,6 +82,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       if (c.listMark) {
         if (i >= placed.size) component.node.append(c.node) else component.node.insert(c.node, i)
         c.parent @= Some(component)
+        c.containerChanged()
         c.leftParent = None
         placed = placed.patch(i, Vector(c), 0)
       }

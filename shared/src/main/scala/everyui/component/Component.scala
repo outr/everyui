@@ -72,6 +72,18 @@ class Component(val node: RenderNode) {
   /** Just before the node's size is read (MeasuredFeature): what could not be measured until now (words cut short to
     * fit, made off the page) is made ready to be. */
   private[everyui] def beforeRead(): Unit = ()
+  /** The room `words`, a child of this, have in their box (`TextView.textOverflow`), telling them what to watch to
+    * look again (`TextView.watchesRoom`). Only a container holds anything: 0, for no limit. */
+  private[everyui] def roomOf(words: TextView): Double = 0.0
+  /** This, where it is a container: what holds others (the Roku tells a class by its methods, not its type). */
+  private[everyui] def asContainer: Option[Container] = None
+  /** This was put in a container, or taken out of one (ContainerFeature), and its width measured again
+    * (MeasuredFeature): words look at their box again then. */
+  private[everyui] def containerChanged(): Unit = ()
+  private[everyui] def widthRemeasured(): Unit = ()
+  /** How much narrower this is drawn than it would be whole, for words in it cut short to their box: what comes before
+    * it in a row is kept to the room it leaves whole, so the two are not each cut for the other. */
+  private[everyui] def boxShrunk: Double = 0.0
   /** What the containers this is in follow of it. */
   private[component] var containerWatches: List[ChildWatch] = Nil
   /** A mark for a pass over lists of components (ContainerFeature), cleared by the pass that set it. */
@@ -86,9 +98,15 @@ class Component(val node: RenderNode) {
   if (Component.rendering(0)) Component.rendered(0) = this :: Component.rendered(0)
   lazy val position: PositionFeature = new PositionFeature(this)
 
+  // whether `visible` has been made: one never made is shown, and a look at whether it is need not make it
+  private var visibleMade = false
+  private[everyui] def notHidden: Boolean = !visibleMade || visible()
   /** Whether the platform draws this at all. A component that is not shown keeps its place and its size: it is out of
     * sight, not out of the layout. */
-  lazy val visible: Prop[Boolean] = own(new Prop[Boolean](true, v => node.setVisible(v)))
+  lazy val visible: Prop[Boolean] = {
+    visibleMade = true
+    own(new Prop[Boolean](true, v => node.setVisible(v)))
+  }
 
   /** How opaque it is drawn, with all it holds: 1.0 is solid, 0.0 unseen (but still there, unlike `visible`). */
   lazy val opacity: Prop[Double] = own(new Prop[Double](1.0, o => node.setOpacity(o)))

@@ -11,6 +11,8 @@ class MaterialIconView(initial: MaterialIcon = MaterialIcon.Empty, points: Doubl
   font.family @= "Material Icons"
   font.size @= points
   icon.attach(i => content @= i.glyph)
+  // a glyph is drawn whole: one cut short is nothing
+  override private[everyui] def keepsToBox: Boolean = false
 
   override def kind: String = "MaterialIconView(" + icon().name + ")"
 }

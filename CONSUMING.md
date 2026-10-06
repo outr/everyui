@@ -1055,6 +1055,48 @@ cut is measured the same way on every backend, halving the letters kept until th
 `maxLines` are cut at the end. `elided` says whether the words are drawn cut short. On the web, until the words can
 be measured, the page holds them to their room with an ellipsis at the end whatever `elide` says.
 
+### Words kept to their box (`textOverflow`)
+
+A `TextView`'s words never run past their box by default: the room what they are in gives them. That is the width of
+the nearest container with a width of its own, from where the words start (their left, or their right in a
+right-to-left language) to its far edge, less its padding where it lays its children out, and, in a row, less what
+comes after them; a row or a column given no width, and a container whose width is bound to what it holds (a
+`Button`, a `Chip`, `size.width := label.size.width() + 20.0`), is sized to the words and leaves it to the one it is
+in, up to the screen. Words wider than that room are cut short with an ellipsis where they are one line (the cut
+`maxWidth` makes, where `elide` says), and wrapped within it where they wrap (`WhiteSpace.Normal`, `PreWrap`,
+`PreLine`; the web and the desktop wrap them there, and the Android, Roku and Apple TV backends cut them on one line).
+`maxLines` and `maxWidth` still hold within the box. Words that fit are drawn exactly as before, and nothing is
+measured again for them: the box is looked at once a turn is over, after what they are in has followed them.
+
+```scala
+// a panel's rows: no rowWidth to thread through, the names cut and the descriptions wrapped at the panel's edge
+val panel = new Container { size.width := sidebar.size.width() }
+panel.children += Column(4.0, padding = 16.0)(
+  TextView("A rather long tool name that will not fit on a phone", 14.0),
+  new TextView { whiteSpace @= WhiteSpace.Normal; maxLines @= 3; content @= tool.description })
+```
+
+Words cut short are read whole: a text view with no `semantics` of its own is named by its words
+(`Semantics(label = content())`) while they are cut, and plain again once they fit. Some words are left whole: words
+given a width of their own (`size.width`, a grid's cell) are drawn as that width has them; a glyph
+(`MaterialIconView`); words in something hidden; words placed outside the box altogether, past its edge or before its
+start (made out of sight to be measured, a page waiting to slide in); words along a horizontal `ScrollContainer`, or in
+a `ZoomCanvas`'s world, which run on past the viewport on purpose; and words in a box that turns out to shrink with
+them (bound to their width through a value of its own, which the box cannot see), until their words change. In a row
+too wide for its box, the words that come first take the cut, measured against what follows them at its own whole
+width, so a title gives way to the badge after it. A `RichText` paragraph wraps to the width it is given, as before.
+
+`textOverflow @= TextOverflow.Visible` draws a text view's words whole past their box, as before; `Fit` (the default)
+keeps them in it. For an app laid out on words running past their box, `TextOverflow.default @= TextOverflow.Visible`
+before the UI is built does the same for every text view made after it.
+
+```scala
+import everyui.component.types.TextOverflow
+
+TextOverflow.default @= TextOverflow.Visible   // at start: the old behaviour, everywhere
+title.textOverflow @= TextOverflow.Visible     // or for one text view
+```
+
 ### Text direction and long words (`TextView`, `RichText`)
 
 Words the app did not write (a message, a name, a title, code) should run the way their own letters do, not the
