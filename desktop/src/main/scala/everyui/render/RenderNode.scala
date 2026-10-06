@@ -488,6 +488,8 @@ class RenderNode(val fx: Node) {
 
   /** A text node breaks a word too long for its line where it must already. */
   def setWrapAnywhere(on: Boolean): Unit = ()
+  /** Words that wrap are measured whole on one line here already, and wrap only at a width or a limit. */
+  def setTextWhole(on: Boolean): Unit = ()
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone; words that wrap and are
     * given no width of their own wrap at `width` where they would run past it (kept to their box). */
   def setTextLimit(width: Double, lines: Int): Unit = fx match {

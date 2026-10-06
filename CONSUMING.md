@@ -1064,7 +1064,8 @@ comes after them; a row or a column given no width, and a container whose width 
 `Button`, a `Chip`, `size.width := label.size.width() + 20.0`), is sized to the words and leaves it to the one it is
 in, up to the screen. Words wider than that room are cut short with an ellipsis where they are one line (the cut
 `maxWidth` makes, where `elide` says), and wrapped within it where they wrap (`WhiteSpace.Normal`, `PreWrap`,
-`PreLine`; the web and the desktop wrap them there, and the Android, Roku and Apple TV backends cut them on one line).
+`PreLine`; the web, the desktop and Android wrap them there, and the Roku and the Apple TV, whose labels wrap only at a
+width of their own, cut them on one line).
 `maxLines` and `maxWidth` still hold within the box. Words that fit are drawn exactly as before, and nothing is
 measured again for them: the box is looked at once a turn is over, after what they are in has followed them.
 
@@ -1085,6 +1086,17 @@ a `ZoomCanvas`'s world, which run on past the viewport on purpose; and words in 
 them (bound to their width through a value of its own, which the box cannot see), until their words change. In a row
 too wide for its box, the words that come first take the cut, measured against what follows them at its own whole
 width, so a title gives way to the badge after it. A `RichText` paragraph wraps to the width it is given, as before.
+
+A `Button`'s words are one line by default, cut short at its room. `labelLines` lets them wrap within it, the button
+growing as tall as they are and its pill becoming a box with rounded corners: a choice someone must read whole before
+picking it (a chat's choices, a form's, a dialog's). 0 is as many lines as the words need, more than 1 at most that
+many with the last cut short; words that fit on one line are drawn on one. Where the platform cuts wrapped words on one
+line (the Roku, the Apple TV), so does the button. `demo=widgets` ends with a card of such choices, 360 wide.
+
+```scala
+val choice = new Button("Proceed with the cleanup (the Firebase key is already moved to `.env.firebase`)", () => pick(1))
+choice.labelLines @= 0
+```
 
 `textOverflow @= TextOverflow.Visible` draws a text view's words whole past their box, as before; `Fit` (the default)
 keeps them in it. For an app laid out on words running past their box, `TextOverflow.default @= TextOverflow.Visible`

@@ -191,6 +191,70 @@ class TextBoxSpec extends FxSpec {
       }
     }
 
+    "wrap a button's words within its room where it is given lines, the button as tall as they are" in {
+      val words = "Keep the old key where it is for now, and remind me again tomorrow morning"
+      val one = fx(new Button("Skip"))
+      fx(ui.children += one)
+      settle()
+      val (skipWidth, lineHeight) = fx((one.size.width(), one.size.height()))
+      fx {
+        one.dispose()
+        ui.children.clear()
+      }
+      val wrapped = fx(new Button(words))
+      val two = fx(new Button(words))
+      val short = fx(new Button("Skip"))
+      fx {
+        wrapped.labelLines @= 0
+        two.labelLines @= 2
+        short.labelLines @= 0
+      }
+      val card = fx {
+        val c = Column(8.0, padding = 16.0)(wrapped, two, short)
+        c.size.width := 260.0
+        c
+      }
+      onScreen(card) {
+        fx(wrapped.size.width()) should be <= 228.0
+        fx(wrapped.size.height()) should be > lineHeight * 1.8
+        fx(wrapped.radius()) should be < fx(wrapped.size.height()) / 2.0
+        fx(two.size.width()) should be <= 228.0
+        fx(two.size.height()) should be <= fx(wrapped.size.height())
+        fx(two.size.height()) should be > lineHeight * 1.5
+        // words that fit on a line: as on one
+        fx(short.size.width()) shouldBe skipWidth
+        fx(short.size.height()) shouldBe lineHeight
+        // the focus ring follows the box
+        fx(wrapped.focus())
+        settle()
+        fx(wrapped.borderWidth()) should be > 0.0
+        // and back to one line, cut short
+        fx(wrapped.labelLines @= 1)
+        settle()
+        fx(wrapped.size.height()) shouldBe lineHeight
+        fx(wrapped.size.width()) should be <= 228.0
+      }
+    }
+
+    "wrap a button's words in a right-to-left language within its room" in {
+      fx(Direction.set(true))
+      try {
+        val b = fx(new Button("Keep the old key where it is for now, and remind me again tomorrow morning"))
+        fx(b.labelLines @= 0)
+        val card = fx {
+          val c = Column(8.0, padding = 16.0)(b)
+          c.size.width := 260.0
+          c
+        }
+        onScreen(card) {
+          fx(b.position.left()) should be >= 16.0
+          fx(b.position.left() + b.size.width()) should be <= 244.5
+          fx(b.size.height()) should be > 40.0
+        }
+      }
+      finally fx(Direction.set(false))
+    }
+
     "cut a chip's word to the room around it" in {
       val chip = fx(new Chip(long, Color.fromHex("1565c0")))
       onScreen(panel(160.0, chip)) {

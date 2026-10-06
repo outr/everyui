@@ -265,6 +265,8 @@ class RenderNode(val sg: SGNode) {
   def setTextAlign(align: String): Unit = ()
   def setTextDirection(value: String): Unit = ()
   def setWrapAnywhere(on: Boolean): Unit = ()
+  /** Words that wrap are measured whole on one line here already, and wrap only at a width or a limit. */
+  def setTextWhole(on: Boolean): Unit = ()
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
     * here. */
   def setTextLimit(width: Double, lines: Int): Unit = ()

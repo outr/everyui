@@ -596,6 +596,10 @@ class RenderNode(val el: html.Element) {
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) held to their room by the page until the cut is made
     * (TextFit). */
   def setTextLimit(width: Double, lines: Int): Unit = TextFit.limit(el, width, lines)
+  /** Words that wrap measured whole on one line, and wrapped only at the limit they are held to (`setTextLimit`), not at
+    * the width of what holds them: a label in a box sized to it would otherwise be squeezed with it word by word. */
+  def setTextWhole(on: Boolean): Unit =
+    if (on) el.style.width = "max-content" else if (el.style.width == "max-content") el.style.width = ""
   /** Whether the words measure as they will be drawn: on the page, in a face that has loaded (TextFit); `ready` once a
     * face they wait for has. */
   def textMeasurable(ready: () => Unit): Boolean = TextFit.ready(el, ready)

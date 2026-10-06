@@ -1,6 +1,7 @@
 package everyui.component
 
 import everyui.Color
+import everyui.component.types.{TextAlign, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
@@ -21,6 +22,11 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   val letterSpacing: Var[Double] = own(Var(0.0))
   /** Its words slanted (`FontFeature.italic`). */
   val italic: Var[Boolean] = own(Var(false))
+  /** How many lines its words may take in the room it has (`TextView.textOverflow`): 1, the default, keeps them on one
+    * line, cut short with an ellipsis where they pass it; more wraps them onto up to that many, the button as tall as
+    * they are, the last cut short; 0 wraps them onto as many as they need. A choice someone must read whole before
+    * picking it wraps; wrapped, the pill becomes a box with rounded corners. */
+  val labelLines: Var[Int] = own(Var(1))
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.
@@ -39,6 +45,12 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   }
   letterSpacing.attach(px => words.font.letterSpacing @= px)
   italic.attach(on => words.font.italic @= on)
+  labelLines.attach { n =>
+    words.whiteSpace @= (if (n == 1) WhiteSpace.NoWrap else WhiteSpace.Normal)
+    words.align @= (if (n == 1) TextAlign.Start else TextAlign.Center)
+    words.maxLines @= (if (n > 1) n else 0)
+    words.measureWhole(n != 1)
+  }
   private val icon: Option[MaterialIconView] = glyph.map(g => new MaterialIconView(g, points * 1.4))
   icon.foreach(i => i.color := foreground())
   private val line: Container = icon match {
@@ -49,7 +61,8 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   focusable @= true
   size.width := math.max(minWidth(), line.size.width() + points * 2.2)
   size.height := line.size.height() + points
-  radius := size.height() / 2.0
+  // a pill on one line; wrapped, a box with the corners one line would have
+  radius := (if (labelLines() == 1) size.height() / 2.0 else math.min(size.height() / 2.0, points * 1.2))
   line.position.center := size.center()
   line.position.middle := size.middle()
   backgroundColor := {

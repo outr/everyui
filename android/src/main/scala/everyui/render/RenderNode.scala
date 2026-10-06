@@ -28,6 +28,8 @@ class RenderNode(val view: View) {
   private var face: Face = Faces.OpenSansRegular
   private var fontSize: Double = 32.0
   private var wrapping: Boolean = false
+  // where words with no width of their own wrap, kept to their box (setTextLimit); 0 for nowhere
+  private var wrapLimit: Double = 0.0
   // where its text sits, by the reading direction (`setTextAlign`)
   private var textAlign: String = "start"
   // which way its words run (`setTextDirection`): "" the app's, "auto" their own, "ltr" or "rtl"
@@ -135,7 +137,7 @@ class RenderNode(val view: View) {
       case _: EditText => 0.0
       case t: TextView =>
         measure(t)
-        laidOutWidth
+        if (wrapping && wrapLimit > 0.0 && laidOutWidth > wrapLimit) wrapLimit else laidOutWidth
       case _ => 0.0
     }
 
@@ -162,7 +164,11 @@ class RenderNode(val view: View) {
   private def measure(t: TextView): Unit = {
     val text = t.getText
     val paint = t.getPaint
-    val at = if (wrapping) math.max(1, math.round(explicitWidth).toInt) else 0
+    // wrapped at its width, or at the limit it is held to (setTextLimit); with neither, on the lines its words make (-1)
+    val at = if (!wrapping) 0
+      else if (explicitWidth >= 0.0) math.max(1, math.round(explicitWidth).toInt)
+      else if (wrapLimit > 0.0) math.max(1, math.round(wrapLimit).toInt)
+      else -1
     if (at != laidOutAt || paint.getTextSize != laidOutSize || (paint.getTypeface ne laidOutFace) ||
       !sameText(text, laidOutText)) {
       val whole = text.toString
@@ -180,7 +186,8 @@ class RenderNode(val view: View) {
         if (wrapping) {
           // the view measures itself, rather than a StaticLayout built to look like it: a TextView breaks its lines
           // its own way, and words a layout of ours put on two lines were drawn on three
-          t.measure(android.view.View.MeasureSpec.makeMeasureSpec(at, android.view.View.MeasureSpec.EXACTLY),
+          t.measure(if (at > 0) android.view.View.MeasureSpec.makeMeasureSpec(at, android.view.View.MeasureSpec.EXACTLY)
+            else android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
             android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
           t.getMeasuredHeight.toDouble
         } else 0.0
@@ -957,9 +964,22 @@ class RenderNode(val view: View) {
 
   /** A TextView breaks a word too long for its line where it must already. */
   def setWrapAnywhere(on: Boolean): Unit = ()
-  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
-    * here. */
-  def setTextLimit(width: Double, lines: Int): Unit = ()
+  /** Words that wrap are measured whole on one line here already, and wrap only at a width or a limit. */
+  def setTextWhole(on: Boolean): Unit = ()
+  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone; words that wrap and are
+    * given no width of their own wrap at `width` where they would run past it (kept to their box), the view as wide. */
+  def setTextLimit(width: Double, lines: Int): Unit = view match {
+    case _: EditText => ()
+    case t: TextView if wrapping && explicitWidth < 0.0 =>
+      wrapLimit = 0.0
+      measure(t)
+      if (width > 0.0 && laidOutWidth > width) wrapLimit = width
+      val params = view.getLayoutParams
+      params.width = if (wrapLimit > 0.0) math.round(wrapLimit * EmbedView.scaleOf(view)).toInt
+        else ViewGroup.LayoutParams.WRAP_CONTENT
+      view.setLayoutParams(params)
+    case _ => ()
+  }
   /** Words measure as they will be drawn from the moment they are set. */
   def textMeasurable(ready: () => Unit): Boolean = true
 

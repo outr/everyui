@@ -109,6 +109,16 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   // the words whatever reads the page was given whole, as a name, while they were drawn cut short
   private var described = ""
 
+  // wrapping words measured whole, on one line, and wrapped only at their box (`measureWhole`)
+  private var wholeToBox = false
+  /** Wrapping words measured whole, on one line, and wrapped only where they pass their box: a button's label
+    * (`Button.labelLines`), in a row sized to it, which the web would otherwise wrap at that row, word by word. */
+  private[everyui] def measureWhole(on: Boolean): Unit = if (on != wholeToBox) {
+    wholeToBox = on
+    node.setTextWhole(on && !size.width.explicit)
+    measure.trigger()
+  }
+
   /** Whether the words are kept to their box at all: a glyph's are not. */
   private[everyui] def keepsToBox: Boolean = true
   // the room the box gives the words (0 for none), as it is now, measured once what they are in has settled
