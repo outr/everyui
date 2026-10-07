@@ -1815,6 +1815,8 @@ class RokuEmitter(
             case _ if fnIs(fn, "java.util.UUID", "randomUUID")           => "_uuid()"
             case _ if fnIs(fn, "java.lang.System", "currentTimeMillis")  => "_nowMillis()"
             case _ if fnIs(fn, "java.lang.System", "identityHashCode") && args.size == 1 => s"_identityHash(${emitArgVal(args.head)})"
+            // Predef's identity is its argument (`fold(error, identity)`: the function value is its eta-expansion)
+            case _ if fnIs(fn, "scala.Predef", "identity") && args.size == 1 => emitArgVal(args.head)
             // a string here is read by character, never by UTF-16 unit, so no character is half of a surrogate pair
             case _ if (fnIs(fn, "java.lang.Character", "isHighSurrogate") || fnIs(fn, "java.lang.Character", "isLowSurrogate"))
                 && args.size == 1 => "false"
