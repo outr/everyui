@@ -23,8 +23,9 @@ import reactify.*
   * Given a `source`, the rows are read from it by place instead of from `items`, and only those in view are asked
   * for: a server's millions, paged (`everyui.paging.PagedSource`). A row not here yet is drawn by `placeholder` (a
   * faint bar) rather than by the app's row, until it comes; `loadingView` shows in the list's box while the source
-  * looks for the first rows of a query, and `emptyView` where there are none. There the rows are `rowHeight` tall, a
-  * letter does not jump, and Primary+A chooses every row, those never loaded among them (`Selection.all`).
+  * looks for the first rows of a query, and `emptyView` where there are none. There the rows are `rowHeight` tall (or as
+  * tall as a `sized` source says: a log's wrapped lines), a letter does not jump, and Primary+A chooses every row,
+  * those never loaded among them (`Selection.all`).
   *
   * {{{
   *   val list = VirtualList.text(files, (f: File) => f.path, (f: File) => f.name)
@@ -38,8 +39,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
                      val source: Option[ListSource[T]] = None)
                     (makeRow: () => ListRow[T]) extends Container {
   override def kind: String = "VirtualList"
-  // rows at heights of their own are the items' alone: a source's rows are all `rowHeight` tall
+  // rows at heights of their own are the items' alone: a source's are `rowHeight` tall, or as tall as it says (`sized`)
   private val ownHeights = measuredRows && source.isEmpty
+  // rows at heights the source knows (a log's wrapped lines)
+  private def sizedSource: Boolean = source.exists(_.sized)
 
   /** How far the rows are scrolled, in pixels. */
   val offset: Var[Double] = own(Var(0.0))
@@ -51,6 +54,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   val activated: Channel[T] = Channel[T]
   /** A context menu asked for on a row: the secondary button, the menu key, Shift+F10, or OK held. */
   val menu: Channel[ListPoint[T]] = Channel[ListPoint[T]]
+  /** A finger dragged across the rows, by how far: for a list whose rows scroll sideways (a log's long lines). Up and
+    * down are the list's own. */
+  val dragAcross: Channel[Double] = Channel[Double]
   val clickActivates: Var[Boolean] = own(Var(!Platform.pointerSupport()))
   /** Rows made beyond each end of what shows, so a short scroll has them ready: half as many at Reduced, and one at
     * Minimal (`everyui.perf.Quality`). */
@@ -136,18 +142,22 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   /** Where row `index` starts, from the top of the first. */
   def top(index: Int): Double =
-    if (!ownHeights) index * rowHeight
+    if (sizedSource) source.get.top(math.max(0, math.min(index, count)))
+    else if (!ownHeights) index * rowHeight
     else {
       if (topsStale) retop()
       tops(math.max(0, math.min(index, tops.length - 1)))
     }
   def heightAt(index: Int): Double =
-    if (!ownHeights) rowHeight else heights.getOrElse(keyOf(shown(index)), rowHeight)
+    if (sizedSource) top(index + 1) - top(index)
+    else if (!ownHeights) rowHeight else heights.getOrElse(keyOf(shown(index)), rowHeight)
   /** How tall all the rows are together. */
   def total: Double = top(count)
 
   /** The row at `y` down the rows (0 at the first's top), kept within the list. */
-  def indexAt(y: Double): Int = if (count == 0) -1 else if (!ownHeights) {
+  def indexAt(y: Double): Int = if (count == 0) -1 else if (sizedSource) {
+    math.max(0, math.min(count - 1, source.get.indexAt(y)))
+  } else if (!ownHeights) {
     math.max(0, math.min(count - 1, (y / rowHeight).toInt))
   } else {
     if (topsStale) retop()
@@ -443,17 +453,20 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       caught = flinging.exists(_.gliding)
       stopFling()
       fling.clear()
-      fingerScroll(e.y)
+      fingerScroll(e.x, e.y)
     }
   }
 
   // the rows following a finger from `from`, and gliding on from how fast it went as it lifts
-  private def fingerScroll(from: Double): Unit = {
+  private def fingerScroll(fromX: Double, from: Double): Unit = {
     var at = from
+    var across = fromX
     fling.at(at, Platform.ticks())
     Pointers.track({ m =>
       scrollBy(at - m.y)
       at = m.y
+      if (m.x != across) dragAcross @= across - m.x
+      across = m.x
       fling.at(at, Platform.ticks())
     }, { _ =>
       val v = -fling.velocity(Platform.ticks())
@@ -517,7 +530,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
           else {
             pressedAt = None
             scrollBy(y - m.y)
-            fingerScroll(m.y)
+            fingerScroll(m.x, m.y)
           }
         }
       }, u => {
@@ -782,7 +795,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       row.editing @= editing().contains(key)
       row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
       row.size.width @= width
-      if (!ownHeights) row.size.height @= rowHeight
+      if (sizedSource) row.size.height @= heightAt(i)
+      else if (!ownHeights) row.size.height @= rowHeight
       row.position.top @= top(i) - offset()
       row.visible @= true
       i += 1

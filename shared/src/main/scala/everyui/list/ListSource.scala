@@ -35,6 +35,16 @@ trait ListSource[T] {
   /** Whether the rows are being looked for and none has come yet (a query not answered): the list shows its
     * `loadingView` meanwhile. Heard through `changed`. */
   def searching: Val[Boolean] = ListSource.idle
+
+  /** Whether its rows are of heights it knows without their being drawn (`top`, `indexAt`): a log's lines wrapped,
+    * each as tall as the lines it wraps onto. Otherwise each is the list's `rowHeight` tall. */
+  def sized: Boolean = false
+
+  /** Where row `index` starts, from the top of the first (`count` for the bottom of the last), where it is `sized`. */
+  def top(index: Int): Double = 0.0
+
+  /** The row at `y` down the rows, where it is `sized`. */
+  def indexAt(y: Double): Int = 0
 }
 
 object ListSource {

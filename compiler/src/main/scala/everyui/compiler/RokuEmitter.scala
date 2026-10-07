@@ -67,11 +67,16 @@ class RokuEmitter(
     }
 
     // BrightScript string literal: escape `"` by doubling; splice newlines, carriage returns and tabs, which a device
-    // refuses inside a literal (brighterscript does not).
+    // refuses inside a literal (brighterscript does not), and every other control character (an escape, a bell, the
+    // 8-bit ones) the same way: written raw, they made a file of the channel one that text tools take for binary.
     def brStr(s: String): String = {
-      val esc = s.replace("\"", "\"\"").replace("\n", "\" + Chr(10) + \"").replace("\r", "\" + Chr(13) + \"")
-        .replace("\t", "\" + Chr(9) + \"")
-      "\"" + esc + "\""
+      val out = new StringBuilder("\"")
+      s.foreach { c =>
+        if (c == '"') out.append("\"\"")
+        else if (c < ' ' || (c >= '\u007f' && c <= '\u009f')) out.append("\" + Chr(" + c.toInt.toString + ") + \"")
+        else out.append(c)
+      }
+      out.append("\"").toString
     }
 
     /** What `case x: SomeClass` tests against: the class's own name and its ancestors', between bars, so a subclass
@@ -328,12 +333,18 @@ class RokuEmitter(
       * or closure runs on (`self`), the global table (`ga`, see `injectGa`), and the packed and outer parameters. A
       * captured `args` bound as `args = env.fv_args` replaced the closure's own arguments before it read them. */
     val fnOwnNames = Set("env", "args", "self", "ga", "__more", "__outer")
-    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`) and of
-      * the names an emitted function gives its own (`fnOwnNames`). A member keeps its `brSafe` name, which the runtime
-      * and dispatch reach by string. */
+    /** BrightScript's own functions the emitted code calls (a local named `mid` hid `Mid`, which BrightScript names
+      * in any case, and the call that followed it in the function failed: "Function Call Operator ( ) attempted on
+      * non-function"). */
+    val brBuiltins = Set("len", "mid", "left", "right", "instr", "chr", "asc", "val", "str", "stri", "int", "fix", "abs",
+      "sgn", "sqr", "rnd", "exp", "log", "sin", "cos", "tan", "atn", "cdbl", "cint", "csng", "lcase", "ucase", "string",
+      "createobject", "getglobalaa", "formatjson", "parsejson", "box", "type", "substitute", "tr")
+    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`), of
+      * BrightScript's own (`brBuiltins`) and of the names an emitted function gives its own (`fnOwnNames`). A member
+      * keeps its `brSafe` name, which the runtime and dispatch reach by string. */
     def brLocal(name: String): String = {
       val s = brSafe(name)
-      if (runtimeFnNames(s.toLowerCase) || fnOwnNames(s.toLowerCase)) s + "_" else s
+      if (runtimeFnNames(s.toLowerCase) || brBuiltins(s.toLowerCase) || fnOwnNames(s.toLowerCase)) s + "_" else s
     }
     /** A term that lives in a method or a val's initialiser (a local, a parameter), not in a class. */
     def isLocalSym(s: Symbol): Boolean =
@@ -348,15 +359,29 @@ class RokuEmitter(
      *  (`Transaction.commit()` and `Transaction.commit(v)`). Overloaded members
      *  get an arity suffix so each variant keeps its own function; a name that
      *  is not overloaded is untouched, so nothing else in the output moves.
+     *  Overloads of the same arity (`append(text: String)` and
+     *  `append(event: LogEvent)`) are told apart by their parameters' types as
+     *  well: under the arity alone both were emitted as one name, twice.
      */
     def overloadSuffix(s: Symbol): String =
       if (!s.exists || !s.owner.exists) ""
       else {
+        def arity(m: Symbol): Int = m.paramSymss.flatten.count(_.isTerm)
         val sameName =
-          try s.owner.declaredMethods.count(_.name == s.name)
-          catch case _: Throwable => 1
-        if (sameName <= 1) ""
-        else "__" + s.paramSymss.flatten.count(_.isTerm).toString
+          try s.owner.declaredMethods.filter(_.name == s.name)
+          catch case _: Throwable => Nil
+        if (sameName.size <= 1) ""
+        else {
+          val n = arity(s)
+          val types =
+            if (sameName.count(m => arity(m) == n) <= 1) ""
+            else "_" + s.paramSymss.flatten.filter(_.isTerm).map { p =>
+              val t = try p.tree match { case vd: ValDef => vd.tpt.tpe.typeSymbol.name; case _ => "x" }
+                      catch case _: Throwable => "x"
+              t.filter(c => c.isLetterOrDigit)
+            }.mkString("_")
+          "__" + n.toString + types
+        }
       }
 
     /** The emitted name of a class/object member, disambiguated if overloaded. */

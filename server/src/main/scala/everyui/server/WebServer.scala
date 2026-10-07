@@ -1,6 +1,8 @@
 package everyui.server
 
-import everyui.app.durable.{ClientInfo, DemoRequest, DemoResponse, Tick}
+import everyui.app.durable.{ClientInfo, DemoRequest, DemoResponse, LogSample, Tick}
+import everyui.log.{LogBacklog, LogEvent, LogLevel, LogSubscriber}
+import everyui.log.LogWire.given
 import fabric.rw.*
 import rapid.Task
 import spice.http.durable.{DurableSocketServer, InMemoryEventLog, RpcException}
@@ -21,6 +23,11 @@ import scala.concurrent.duration.*
   * `/durable` is a Spice `DurableSocketServer` every backend's `DurableDemo` connects to: a ticker broadcasts an
   * event four times a second on channel "ticker"; RPC `{"op":"echo","say":…}` answers `{"echo":…}`; `{"op":"drop"}`
   * closes the caller's socket a moment after answering, so the client must resume with no gap.
+  *
+  * `/logs` is a pipeline's log (`LogSample`) every backend's demo=logs can stream (`socket=ws://host:8731/logs`): a
+  * line every 400 ms on channel "demo", kept by a `LogBacklog` of 5,000, so a client that drops and resumes has what it
+  * missed replayed and a new one is sent what it does not have. `--log-drops=<seconds>` closes every log socket that
+  * often, for a check of the resume.
   *
   * Run with `sbt "server/run"`, optionally `sbt "server/run 9000 web/out-js --host=0.0.0.0"` (devices on the LAN
   * need the bind on every interface).
@@ -46,6 +53,26 @@ object WebServer extends StaticHttpServer {
     }
   )
 
+  private val logs = new LogBacklog(5000)
+
+  private lazy val logSockets: DurableSocketServer[String, LogEvent, LogSubscriber] =
+    new DurableSocketServer[String, LogEvent, LogSubscriber](
+      eventLog = logs,
+      resolveChannel = (_, who) => Task.pure(who.channel),
+      onRequest = (who, request) => logs.answer(who.channel, request))
+
+  private def logLines(n: Int): Task[Unit] =
+    Task.sleep(400.millis)
+      .flatMap(_ => logSockets.broadcast("demo", LogEvent.of(LogSample.line(n), LogLevel.parse(LogSample.level(n)),
+        if (n % 3 == 0) "loader" else "upload")))
+      .flatMap(_ => logLines(n + 1))
+
+  // every log socket closed each `seconds`: the clients resume
+  private def logDrops(seconds: Int): Task[Unit] =
+    Task.sleep(seconds.seconds).map { _ =>
+      logSockets.activeSessions.foreach(s => s.listener().disconnect())
+    }.flatMap(_ => logDrops(seconds))
+
   private def ticker(n: Long): Task[Unit] =
     Task.sleep(250.millis)
       .flatMap(_ => durable.broadcast("ticker", Tick(n, System.currentTimeMillis())))
@@ -55,6 +82,7 @@ object WebServer extends StaticHttpServer {
     override def handle(exchange: spice.http.HttpExchange)
                        (using mdc: scribe.mdc.MDC): Task[spice.http.HttpExchange] =
       if (exchange.request.url.path.decoded == "/durable") durable.handle(exchange)
+      else if (exchange.request.url.path.decoded == "/logs") logSockets.handle(exchange)
       else DirectoryPath(root).apply(exchange).map(_.exchange)
   }
 
@@ -74,6 +102,8 @@ object WebServer extends StaticHttpServer {
     scribe.info(s"everyui: serving $root on http://$host:$port/ — durable sockets at ws://$host:$port/durable")
     WebServer.start().sync()
     ticker(1L).start()
+    logLines(1).start()
+    flag("log-drops").map(_.toInt).foreach(s => logDrops(s).start())
     // StaticHttpServer runs on non-daemon listener threads; park the main
     // thread so `sbt run` does not return and tear the JVM down underneath it.
     Thread.currentThread().join()

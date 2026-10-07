@@ -26,6 +26,9 @@ import everyui.render.Platform
   *              `rtl=1`, `offline=1`, `probe=1`, `author=log`)
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
+  *   logs       a pipeline's log in a LogPanel: ANSI colours, a stack trace, a progress bar drawn over itself, search,
+  *              filters and level chips (`lines=`, `rate=`, `stream=0`, `wrap=1`, `theme=light`, `probe=1`), or the example
+  *              server's log over a durable socket (`socket=ws://host:8731/logs`)
   *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus
   *              (`theme=light`, `collapsed=archive`), a few with an agent at work (`stop=<seconds>`)
   *   scale      the size the app is drawn at (UiScale), turned up and down over words, rows, a field, buttons and menus,
@@ -112,6 +115,7 @@ import everyui.render.Platform
   else if (demo == "dates") DatesDemo.run()
   else if (demo == "sliders") SlidersDemo.run()
   else if (demo == "markdown") MarkdownDemo.run()
+  else if (demo == "logs") LogsDemo.run()
   else if (demo == "richlist") RichListDemo.run()
   else if (demo == "scale") ScaleDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()

@@ -127,6 +127,10 @@ lazy val sharedSources = (file("shared") / "src" / "main" / "scala").getAbsolute
 lazy val appSources = (file("app") / "src" / "main" / "scala").getAbsoluteFile
 lazy val protocolSources = (file("app") / "protocol" / "src" / "main" / "scala").getAbsoluteFile   // the demo's wire types, shared with server/
 lazy val networkSources = (file("network") / "src" / "main" / "scala").getAbsoluteFile
+/** A log's plain model (`everyui.log.LogEvent` and its kin on the wire, LogLevel and LogClassifier): no more than Scala,
+  * in the shared layer; the network module's codecs for it (LogWire) and a server's log (LogBacklog) are compiled with it
+  * where the shared layer is not. */
+lazy val logModelSources = (file("shared") / "src" / "main" / "scala" / "everyui" / "log" / "model").getAbsoluteFile
 /** The example app's demos of what only the web, the desktop and Android run (lists, pickers): the Roku and tvOS
   * compile `app/native` in their place, which runs none of them. */
 def demoSources(backend: String): File =
@@ -225,7 +229,7 @@ lazy val networkJvm = (project in file("network/jvm"))
     name := "everyui-network",
     // the published reactify, not the source tree: nothing here needs excluding
     excludeDependencies := Nil,
-    Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice")),
+    Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice"), logModelSources),
     libraryDependencies ++= Seq(
       "com.outr" %% "spice-core" % spiceVersion,
       "com.outr" %% "spice-client-jvm" % spiceVersion,
@@ -356,6 +360,9 @@ lazy val server = (project in file("server"))
     // The web root is resolved relative to the BUILD root, not server/.
     run / baseDirectory := (ThisBuild / baseDirectory).value,
     Compile / unmanagedSourceDirectories += protocolSources,
+    // a log streamed to the example's demo=logs (LogBacklog): its plain model, their codecs and the server's log
+    Compile / unmanagedSourceDirectories ++= Seq(logModelSources, networkSources / "everyui" / "log",
+      networkBackend("spice") / "everyui" / "log"),
     Compile / run / fork := true,
     run / connectInput := true,
     serverClasspath := {
@@ -692,7 +699,7 @@ lazy val network = (project in file("network"))
     publish / skip := true,
     libraryDependencies += "com.outr" %% "spice-core" % spiceVersion,
     // the probe runs on the JVM with the desktop's backend; emitted, only what the probe reaches is kept
-    Compile / unmanagedSourceDirectories ++= Seq(baseDirectory.value / "probe" / "src" / "main" / "scala", networkBackend("jvm"), networkBackend("spice")),
+    Compile / unmanagedSourceDirectories ++= Seq(baseDirectory.value / "probe" / "src" / "main" / "scala", networkBackend("jvm"), networkBackend("spice"), logModelSources),
     libraryDependencies += "com.outr" %% "spice-client-jvm" % spiceVersion,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / run / fork := true,

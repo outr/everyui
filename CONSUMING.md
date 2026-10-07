@@ -2979,6 +2979,112 @@ monospace face in a web view of its own.
 Where no web engine runs (Roku, tvOS, a desktop without javafx-web) a line saying so shows in its place.
 `terminal/demo` is its demo (`sbt terminalDemo/demoBundle`, `terminalDesktop/run`, `terminalAndroid/packageApk`).
 
+## Logs (`everyui.log`)
+
+A log as a terminal shows it, natively on every backend: `LogView` draws lines in their ANSI colours and styles, in
+Roboto Mono, the newest at the bottom, from a few to tens of thousands of them (a `VirtualList` over the lines, which
+makes only the rows in view). `LogPanel` is the same view with a toolbar: search, filter, level chips, wrap, follow
+and clear. It is not a terminal (that is everyui-terminal): nothing is typed into it, and it runs where no web engine
+does.
+
+```scala
+import everyui.log.*
+
+val log = new LogView(LogOptions(maxLines = 50000, wrap = false, lineNumbers = true))
+log.append(chunk)                          // a stream's pieces: a line shows once its newline comes
+log.appendLine("done", at = System.currentTimeMillis(), level = Some(LogLevel.Info), source = "loader")
+log.append(event)                          // a server's LogEvent: in seq order, each seq shown once
+log.filter @= LogFilter(text = "timeout", levels = Set(LogLevel.Warn, LogLevel.Error))
+log.search @= "socket"                     // log.searchCase, log.searchRegex; log.nextMatch(), log.previousMatch()
+log.level @= (line => if (line.startsWith("!!")) Some(LogLevel.Error) else LogClassifier.classify(line))
+log.matches(); log.matchIndex()            // "3 of 41": the count, and the match it is on
+log.hidden()                               // lines the filter hides
+log.clear()
+
+val panel = new LogPanel(log)              // or the bare view
+panel.size.width := screen.size.width()
+panel.size.height := screen.size.height()
+```
+
+**What it reads** (`AnsiParser`, plain Scala, the Roku's too): SGR reset, bold, dim, italic, underline, strikethrough,
+reverse and conceal and their undoing; the sixteen colours and their bright forms; xterm's 256 (`38;5;n`, `48;5;n`)
+and colours of their own (`38;2;r;g;b`, and the `:` forms); the default colours (39, 49). The style carries on from
+line to line as a terminal's does. Everything else is dropped: cursor moves and the other CSI sequences (private
+markers among them), OSC ended by BEL or ST (an OSC 8 hyperlink becomes a link where the platform draws links), DCS,
+charset designations, the control characters. A `\r` with more after it starts the line again, so a progress bar
+drawn over itself shows its last state; tabs are set out to every eighth column. A line is read once its newline has
+come, so an escape cut between two pieces of a stream is whole by then, and a line that never ends is cut at 65,536
+characters. `AnsiParser.strip(text)` is a line's words alone.
+
+**Colours.** `theme` follows `Theme.palette` (`LogTheme.of`): the words in the palette's text on its surface, the
+sixteen tuned for a dark or a light ground, and any colour a program names (the 256 and its own too) taken towards the
+text until it reads (4.5:1) — black on a dark ground, yellow on a light one. `LogTheme.of(palette, raw = true)` draws
+xterm's colours as they are. Reverse, dim and conceal are drawn as a terminal draws them; a run's ground is a box
+behind its columns.
+
+**Lines.** `maxLines` (50,000; 5,000 on a Roku) is a ring: the oldest goes as a line comes. `lineNumbers`, `timestamps`
+(where the app or the event gives a time) and `sources` fill a gutter; `wrap` wraps at the columns that fit (each line
+as tall as the rows it takes), and without it long lines scroll sideways with the arrows, a sideways wheel or a finger.
+What comes in is read a stretch a turn (8 ms; 25 on a Roku), so a backlog of thousands never holds the screen up;
+`settle()` reads it all at once. Lines are chosen as a list's rows are, and Ctrl or Command+C copies their words,
+without escapes (`selectedText`, `copySelected()`); the context menu copies the line under it, the lines chosen, or
+chooses them all (`menuFor`).
+
+**Following.** While the newest line is in view it stays there as lines arrive (`following`); scrolled up, a reader
+keeps their place (the oldest going from above does not move it) and "Jump to latest" (with how many have come) takes
+them back down, as reaching the bottom does.
+
+**Search.** Matches are marked in the lines in view, the one it is on the strongest, and counted through every line
+shown (`matches`, `matchIndex`, `searching` while it counts), a stretch a turn, so typing never waits on a long log.
+Words in any case by default (`searchCase`), or a regular expression (`searchRegex`; one that does not compile is
+`broken`). The words searched are the lines' own, escapes taken out. The first match from the top of the view on is
+the one it is on; next and previous go round, scrolling the match into view (across too). In `LogPanel`, Enter and
+Shift+Enter, F3 and Shift+F3 and the arrows beside the count.
+
+**Filter and levels.** `filter` shows the lines holding some words (or a regular expression, in any case unless
+`caseSensitive`) and of some `levels`; markers always show. A line's level is read by `level`, `LogClassifier.classify`
+unless the app gives its own: the first word near the start of a line that names one, in capitals anywhere (scribe's
+`2026.10.07 12:00:00 [main] INFO dw.Loader:87 - …` and its two-line layout, logback's, java.util.logging's `SEVERE:`)
+or marked in any case (`[error]`, `error:`, `level=warn`, `"level":"warn"`), and logcat's letters (`E/Tag(…)`, and
+the threadtime layout). With `continuations` (on by default) a line naming none takes the level of the one before it,
+so a stack trace follows its error through a level filter. An event's level is its own.
+
+**A server's log.** `LogEvent(seq, at, level, text, source)` is a line as a server sends it: plain fields (the level by
+name, "" for none), so every backend reads it the same; its codecs are `LogWire`'s (`import everyui.log.LogWire.given`).
+`LogFeed.connect(view, url, channel)` streams one into a view over a durable socket and returns the client to close:
+
+```scala
+val client = LogFeed.connect(panel.view, "wss://example.com/logs", "pipeline")
+```
+
+The socket's own sequencing does the work: an event comes with its seq, and a connection that drops and resumes has
+what it missed replayed from the server's log. A session the server no longer holds (the first, or after a restart)
+asks for what it lacks (`LogSince` its last seq, the socket's RPC), and shows it before what arrived meanwhile. Lines
+the server no longer keeps show as a marker, "… 12 lines missed"; a server that started again (a new `epoch`) is
+marked, and its log shown from its first line.
+
+The server's side is `LogBacklog` in everyui-network (JVM): the newest `capacity` events of each channel, numbered as
+they are sent, and the `EventLog` of the Spice `DurableSocketServer` that carries them, so replays come from it:
+
+```scala
+import everyui.log.{LogBacklog, LogEvent, LogLevel, LogSubscriber}
+import everyui.log.LogWire.given
+
+val logs = new LogBacklog(10000)
+val sockets = new DurableSocketServer[String, LogEvent, LogSubscriber](eventLog = logs,
+  resolveChannel = (_, who) => Task.pure(who.channel), onRequest = (who, json) => logs.answer(who.channel, json))
+sockets.broadcast("pipeline", LogEvent.of(line, Some(LogLevel.Info), source = "loader"))
+```
+
+On the wire: the client connects with `LogSubscriber(channel)` as its info; events are `LogEvent`s whose seq is the
+socket's; a new session asks `LogSince(after, channel)` and is answered `LogBatch(events, first, last, epoch)`, the
+events after `after` still kept, the first and last seq kept, and the log's run.
+
+**On a Roku and an Apple TV**, which draw no styled runs in a paragraph, a line is a piece per colour, set at its
+columns (the face is monospaced), so the colours show there too; links do not. The example's `demo=logs` streams a
+pipeline's log into a panel (`socket=ws://host:8731/logs` streams the example server's instead), and `probe=1` times
+reading, searching and filtering a few thousand lines.
+
 ## Collections
 
 Long lists and trees, in packages of their own (`everyui.list`, `everyui.tree`). Each takes the focus as one component
@@ -3031,6 +3137,10 @@ the browser's. Shift with the secondary button always gives the browser's, and a
 ```scala
 val line = new TextView { selectable @= true }     // or on a container: everything in it
 ```
+
+Over a `source` (any `ListSource`, a server's pages or a log's lines) rows are `rowHeight` tall, unless the source
+knows its rows' heights itself without drawing them (`sized`, with `top(index)` and `indexAt(y)`: a log's wrapped
+lines). `dragAcross` reports a finger dragged across the rows, for a list whose rows scroll sideways themselves.
 
 ### Tree (`everyui.tree`)
 

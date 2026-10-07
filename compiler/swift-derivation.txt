@@ -30,11 +30,16 @@ class SwiftEmitter(
     }
 
     // BrightScript string literal: escape `"` by doubling; splice newlines, carriage returns and tabs, which a device
-    // refuses inside a literal (brighterscript does not).
+    // refuses inside a literal (brighterscript does not), and every other control character (an escape, a bell, the
+    // 8-bit ones) the same way: written raw, they made a file of the channel one that text tools take for binary.
     def brStr(s: String): String = {
-      val esc = s.replace("\"", "\"\"").replace("\n", "\" + Chr(10) + \"").replace("\r", "\" + Chr(13) + \"")
-        .replace("\t", "\" + Chr(9) + \"")
-      "\"" + esc + "\""
+      val out = new StringBuilder("\"")
+      s.foreach { c =>
+        if (c == '"') out.append("\"\"")
+        else if (c < ' ' || (c >= '\u007f' && c <= '\u009f')) out.append("\" + Chr(" + c.toInt.toString + ") + \"")
+        else out.append(c)
+      }
+      out.append("\"").toString
     }
 
     /** What `case x: SomeClass` tests against: the class's own name and its ancestors', between bars, so a subclass
@@ -203,12 +208,18 @@ class SwiftEmitter(
 
 
 @@ old
-    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`) and of
-      * the names an emitted function gives its own (`fnOwnNames`). A member keeps its `brSafe` name, which the runtime
-      * and dispatch reach by string. */
+    /** BrightScript's own functions the emitted code calls (a local named `mid` hid `Mid`, which BrightScript names
+      * in any case, and the call that followed it in the function failed: "Function Call Operator ( ) attempted on
+      * non-function"). */
+    val brBuiltins = Set("len", "mid", "left", "right", "instr", "chr", "asc", "val", "str", "stri", "int", "fix", "abs",
+      "sgn", "sqr", "rnd", "exp", "log", "sin", "cos", "tan", "atn", "cdbl", "cint", "csng", "lcase", "ucase", "string",
+      "createobject", "getglobalaa", "formatjson", "parsejson", "box", "type", "substitute", "tr")
+    /** A local's or a parameter's name: as `brSafe`, and clear of the runtime's functions (see `runtimeFnNames`), of
+      * BrightScript's own (`brBuiltins`) and of the names an emitted function gives its own (`fnOwnNames`). A member
+      * keeps its `brSafe` name, which the runtime and dispatch reach by string. */
     def brLocal(name: String): String = {
       val s = brSafe(name)
-      if (runtimeFnNames(s.toLowerCase) || fnOwnNames(s.toLowerCase)) s + "_" else s
+      if (runtimeFnNames(s.toLowerCase) || brBuiltins(s.toLowerCase) || fnOwnNames(s.toLowerCase)) s + "_" else s
     }
 @@ new
     /** A local's or a parameter's name. Swift names are case-sensitive, so no runtime function is shadowed by one. */
