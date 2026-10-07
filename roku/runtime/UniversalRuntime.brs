@@ -1286,9 +1286,11 @@ sub uiOnLifecycle(resumed as dynamic, away as dynamic)
     ga.uiAwayHook = away
 end sub
 
-sub uiSuspended()
+' Each says why, where the box says (lastSuspendOrResumeReason), and how much memory the channel is using: a suspended
+' channel over its background limit is closed by the box, and one coming back has been closed within seconds of it.
+sub uiSuspended(args as dynamic)
     ga = GetGlobalAA()
-    print "[launch] suspended"
+    print "[launch] suspended ("; uiLifeReason(args); "), memory "; uiMemoryNote()
     if ga.uiAwayHook <> invalid then RtInvoke(ga.uiAwayHook, [])
 end sub
 
@@ -1297,9 +1299,7 @@ end sub
 ' them while the channel was away, and a read of one the old list still had failed on the console.
 sub uiResumed(args as dynamic)
     ga = GetGlobalAA()
-    reason = ""
-    if args <> invalid and args.lastSuspendOrResumeReason <> invalid then reason = args.lastSuspendOrResumeReason
-    print "[launch] resumed ("; reason; ")"
+    print "[launch] resumed ("; uiLifeReason(args); "), memory "; uiMemoryNote()
     ga.uiStoreFiles = invalid
     if ga.uiResumeHook <> invalid then RtInvoke(ga.uiResumeHook, [])
     if type(args) = "roAssociativeArray"
@@ -1308,6 +1308,30 @@ sub uiResumed(args as dynamic)
     ' Instant Resume asks for this once the scene is back up; it is up already, never having been taken down
     ga.appScene.signalBeacon("AppResumeComplete")
 end sub
+
+' Why the box suspended or resumed the channel ("home", "deeplink", "screensaver"...), or "" where it does not say.
+function uiLifeReason(args as dynamic) as string
+    if type(args) <> "roAssociativeArray" then return ""
+    reason = args.lastSuspendOrResumeReason
+    if reason = invalid and type(args.launchParams) = "roAssociativeArray" then reason = args.launchParams.lastSuspendOrResumeReason
+    if reason = invalid then return ""
+    return _str(reason)
+end function
+
+' The channel's memory in a few words for the console: the share of its limit in use, what is left of it, and the
+' device's own level (normal, low, critical).
+function uiMemoryNote() as string
+    pct = uiDeviceFact("memoryPct")
+    avail = uiDeviceFact("appMemoryKb")
+    level = uiDeviceFact("memoryLevel")
+    said = ""
+    if pct <> "" then said = pct + "% of the limit"
+    if avail <> "" then said = said + ", " + Int(Val(avail) / 1024).ToStr() + " MB free"
+    if level <> "" then said = said + ", device " + level
+    if Left(said, 2) = ", " then said = Mid(said, 3)
+    if said = "" then return "unknown"
+    return said
+end function
 
 ' The first screen is up and can be used: Roku's launch beacon, which certification requires and times the launch by.
 sub uiLaunchComplete()
@@ -1504,6 +1528,11 @@ function uiDeviceFact(name as string) as string
             return monitor.GetMemoryLimitPercent().ToStr()
         else if name = "appMemoryKb" and FindMemberFunction(monitor, "GetChannelAvailableMemory") <> invalid
             return monitor.GetChannelAvailableMemory().ToStr()
+        else if name = "appLimitKb" and FindMemberFunction(monitor, "GetChannelMemoryLimit") <> invalid
+            ' the foreground limit, of the limits a box with Instant Resume names (a simulator gives one number)
+            limit = monitor.GetChannelMemoryLimit()
+            if type(limit) = "roAssociativeArray" then limit = limit.maxForegroundMemory
+            if limit <> invalid then return limit.ToStr()
         end if
     end if
     return ""

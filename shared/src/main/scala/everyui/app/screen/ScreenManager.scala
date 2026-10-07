@@ -341,10 +341,13 @@ trait ScreenManager extends TaskSupport {
         }
         shownAt = Platform.path()
         // how long the screen took to leave the last, build (the first time), lay out and arrive; a slow one is
-        // logged loud enough to forward, so a sluggish page in the wild shows up centrally and not only here
+        // logged loud enough to forward, so a sluggish page in the wild shows up centrally and not only here; with the
+        // share of its memory the app is using once it is up (where the platform says), to see where a device ran short
         val ms = Platform.ticks() - started
+        val used = Platform.memoryUsedPct()
+        val memory = if (used >= 0) ", memory " + used.toString + "%" else ""
         val note = "screen " + screen.getClass.getSimpleName + (if (remade) " rebuilt in " else " shown in ") +
-          ms.toInt.toString + "ms"
+          ms.toInt.toString + "ms" + memory
         if (ms >= 1200.0) scribe.warn(note) else scribe.info(note)
       }
   }

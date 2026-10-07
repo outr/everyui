@@ -861,11 +861,12 @@ object Platform {
   def deviceProfile(): List[(String, String)] = Nil
 
   /** What the box says of itself at launch (`everyui.perf.Perf.device`): its model number, kind (TV or STB) and name,
-    * its graphics (opengl or directfb), and the memory the channel may use. A Roku says nothing of its cores or its RAM. */
+    * its graphics (opengl or directfb), and the most memory the channel may use: its foreground limit (what it had left
+    * at that moment was read before, and read like the app's size). A Roku says nothing of its cores or its RAM. */
   def deviceHint(): everyui.perf.DeviceHint = {
     val model = uiDeviceFact("model")
     val graphics = uiDeviceFact("graphics")
-    val app = uiDeviceFact("appMemoryKb")
+    val app = uiDeviceFact("appLimitKb")
     everyui.perf.DeviceHint(
       model = if (model.isEmpty) None else Some(model),
       graphicsPlatform = if (graphics.isEmpty) None else Some(graphics),

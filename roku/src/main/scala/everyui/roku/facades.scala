@@ -258,8 +258,8 @@ class SGNode
   def apply(): String = native.value
 }
 /** One fact of the device and its memory, as text ("" where it does not say): "model", "graphics" (opengl or directfb),
-  * "appMemoryKb" (what the channel may use), "memoryLevel" (normal, low, critical) or "memoryPct" (the share of its
-  * limit in use). */
+  * "appLimitKb" (the most the channel may use, in the foreground), "appMemoryKb" (what it has left of that), "memoryLevel"
+  * (normal, low, critical) or "memoryPct" (the share of its limit in use). */
 @native object uiDeviceFact {
   def apply(name: String): String = native.value
 }
