@@ -681,6 +681,20 @@ object Platform {
     * launched with, a turn after this is asked, and any sent to it while it runs or as it is resumed. */
   def onDeepLink(f: (String, String) => Unit): Unit = uiOnDeepLink(f)
 
+  /** Each launch that reaches the app once it is running, with what it was launched with: here ECP's `/launch` (or a
+    * deep link) to the running channel, and the launch Instant Resume brings a suspended one back with. A plain return
+    * from the home screen, which says nothing of its own, is not one, and the same launch heard both ways at once is
+    * told once. `launchArg` reads its values from then on. Returns what stops it being told. */
+  def onLaunch(f: Map[String, String] => Unit): () => Unit = {
+    uiOnLaunch((params: Map[String, String]) => launched(params))
+    launchers = launchers :+ f
+    () => launchers = launchers.filterNot(_ eq f)
+  }
+
+  def launched(params: Map[String, String]): Unit = launchers.foreach(f => f(params))
+
+  private var launchers: List[Map[String, String] => Unit] = Nil
+
   /** Every error the app throws from a handler the device calls (a timer, a key, a download…) and nothing caught: the
     * message and the backtrace. The channel goes on rather than stopping. */
   def onError(f: (String, String) => Unit): Unit = uiOnError(f)

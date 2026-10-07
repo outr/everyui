@@ -2584,6 +2584,34 @@ lazy val tvos = project.in(file("tvos"))
   )
 ```
 
+## Launches (`Platform.launchArg`, `Platform.onLaunch`)
+
+`Platform.launchArg(name)` is what the app was launched with, or "": `?name=value` in a page's URL, `--name=value` on
+the desktop, `--es name value` on Android's intent, a Roku's launch parameter (`/launch/dev?name=value` over ECP, a
+deep link's `contentId` and `mediaType`, or `pkg:/<name>.txt` in a test sideload).
+
+A launch can also reach the app once it is running. `Platform.onLaunch` hears each, with what it was launched with,
+and `launchArg` reads its values from then on (on a Roku, those it names replace those of the same name; on Android,
+the new intent's extras are read). It returns what stops it being told. The launch the app started with is not one:
+read it with `launchArg` as the app starts.
+
+```scala
+Platform.onLaunch(params => params.get("open").foreach(path => App.openLink(path)))
+```
+
+- **Roku**: ECP's `/launch/dev?…` (or `/input?…`, or a deep link from Roku Search) to the running channel, which comes
+  as an `roInputEvent`, and the launch a suspended channel is brought back with (Instant Resume: `exit-app` and then a
+  launch with parameters). What the device adds of its own (`source`, `splashTime`, `lastExitOrTerminationReason`,
+  `source_ip_addr` and the like) is left out, and a plain return from the home screen, which says nothing else, is not
+  a launch. The same launch heard both ways at once is told once. A deep link (`contentId`) also goes to
+  `Platform.onDeepLink`, as before. The console says `[launch] arrived: open=/settings`.
+- **Android**: an intent to the running activity (`onNewIntent`) with string extras (`am start --es open /settings`),
+  a tap on a push notification's included. One with none (the launcher's icon again) is not one.
+- **Web, desktop, Apple TV**: nothing launches a running app again, so it is never called.
+
+`demo=launch` logs the launch it started with and each later one (`[ui] launch: later open=/settings | launchArg
+open=/settings`).
+
 ## Sign-in, autofill and password managers
 
 Every text field (`TextInput`, `TextArea`, and `InputView` beneath them) says what it asks for with `autofill`, an

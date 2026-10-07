@@ -168,11 +168,24 @@ abstract class EveryUIActivity extends Activity {
       results.nonEmpty && results.forall(_ == android.content.pm.PackageManager.PERMISSION_GRANTED))
   }
 
-  // the app, already running, brought back by a tap on one of its push notifications (everyui.push.Push)
+  // the app, already running, launched again: by a tap on one of its push notifications (everyui.push.Push), or with
+  // extras of its own (Platform.onLaunch), which launchArg reads from now on
   override def onNewIntent(intent: android.content.Intent): Unit = {
     super.onNewIntent(intent)
     setIntent(intent)
     everyui.render.PushAccess.tapped(intent)
+    everyui.render.Platform.launched(extras(intent))
+  }
+
+  /** An intent's string extras, by name. */
+  private def extras(intent: android.content.Intent): Map[String, String] = Option(intent.getExtras) match {
+    case Some(bundle) =>
+      import scala.jdk.CollectionConverters.*
+      bundle.keySet.asScala.toList.flatMap(key => bundle.get(key) match {
+        case s: String => Some(key -> s)
+        case _ => None
+      }).toMap
+    case None => Map.empty
   }
 
   // what an activity started for its answer said: the document picker's files (FileAccess.pick)

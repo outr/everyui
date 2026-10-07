@@ -2143,6 +2143,19 @@ object Platform {
     if (value == null) "" else value
   }
 
+  /** Each launch that reaches the app once it is running, with what it was launched with: here an intent to the
+    * running activity (`onNewIntent`) with extras, as their names and values. One with none (the launcher's icon
+    * again) is not one. `launchArg` reads the new intent's extras from then on. Returns what stops it being told. */
+  def onLaunch(f: Map[String, String] => Unit): () => Unit = {
+    launchers = launchers :+ f
+    () => launchers = launchers.filterNot(_ eq f)
+  }
+
+  /** Said by the activity for a new intent's string extras. */
+  def launched(params: Map[String, String]): Unit = if (params.nonEmpty) launchers.foreach(f => f(params))
+
+  private var launchers: List[Map[String, String] => Unit] = Nil
+
   /** Which of `ids`, Android package names, are installed here: only those the app's manifest names in its
     * `<queries>` can be seen from Android 11 on, the rest read as absent. */
   def installedApps(ids: List[String]): List[String] = ids.filter { id =>

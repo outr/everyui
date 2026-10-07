@@ -1090,7 +1090,7 @@ end function
 
 ' What the channel was launched with — `/launch/dev?name=value` over ECP, a deep link's contentId — or else
 ' `pkg:/<name>.txt`, which a test sideload adds (Checks roku-install --add name.txt=value): Main gathers both. ""
-' when neither has it.
+' when neither has it. A launch that reaches the channel once it runs replaces the values it names (uiArrived).
 function uiLaunchArg(name as string) as string
     params = GetGlobalAA().uiLaunchParams
     if params = invalid or not params.DoesExist(name) then return ""
@@ -1142,18 +1142,62 @@ sub uiLinked(params as dynamic)
     RtInvoke(ga.uiDeepLink, [contentId, mediaType])
 end sub
 
-' A deep link while the channel is up (the scene's inputArgs, from Main's roInputEvent).
+' A deep link or a launch while the channel is up (the scene's inputArgs, from Main's roInputEvent).
 sub uiLaunched(params as dynamic)
-    if params <> invalid and params.everyui_debug_motion <> invalid
-        ga = GetGlobalAA()
-        text = _str(params.everyui_debug_motion)
-        ga.uiMotionDebug = (text.Trim() = "1")
+    uiArrived(params)
+end sub
+
+' A launch that reached the channel once it was running: an roInputEvent (a deep link to the running channel, which
+' is how ECP's /launch reaches one), or the launch an Instant Resume brings it back with. It goes to the deep link
+' hook where it is one, and to the launch hook (Platform.onLaunch) with what it says, its values as strings; its
+' values replace those of the same name that uiLaunchArg reads. One with nothing of its own (a plain return from the
+' home screen, which says only where it came from) leaves them as they are. The same launch heard twice in a few
+' seconds, by both ways at once, is taken once.
+sub uiArrived(params as dynamic)
+    if type(params) <> "roAssociativeArray" then return
+    ga = GetGlobalAA()
+    own = {}
+    own.SetModeCaseSensitive()
+    said = ""
+    for each name in params.Keys()
+        if not uiLaunchHousekeeping(name)
+            own[name] = _str(params[name])
+            if said <> "" then said = said + "&"
+            said = said + name + "=" + own[name]
+        end if
+    end for
+    if said = "" then return
+    now = UpTime(0)
+    if ga.uiLastLaunchAt <> invalid and said = ga.uiLastLaunch and now - ga.uiLastLaunchAt < 3.0
+        print "[launch] heard again, passed over: "; said
+        return
+    end if
+    ga.uiLastLaunch = said
+    ga.uiLastLaunchAt = now
+    print "[launch] arrived: "; said
+    if ga.uiLaunchParams = invalid then ga.uiLaunchParams = {}
+    ga.uiLaunchParams.Append(own)
+    if own.everyui_debug_motion <> invalid
+        ga.uiMotionDebug = (own.everyui_debug_motion.Trim() = "1")
         ' (kept for the next cold start, which a sideload or a launch of a suspended channel cannot pass it to)
         section = CreateObject("roRegistrySection", "everyui")
         if ga.uiMotionDebug then section.Write("debug_motion", "1") else section.Delete("debug_motion")
         section.Flush()
     end if
     uiLinked(params)
+    if ga.uiLaunchHook <> invalid then RtInvoke(ga.uiLaunchHook, [own])
+end sub
+
+' What the device adds to a launch, a resume or an input event, saying where it came from (and from which address,
+' over ECP) and how the last run ended, rather than anything the launch asks for.
+function uiLaunchHousekeeping(name as string) as boolean
+    n = LCase(name)
+    return n = "source" or n = "reason" or n = "splashtime" or n = "lastexitorterminationreason" or n = "lastsuspendorresumereason" or n = "instant_on_run_mode" or n = "launchparams" or n = "source_ip_addr"
+end function
+
+' `f(params)` for each launch that reaches the channel once it is running (uiArrived).
+sub uiOnLaunch(f as dynamic)
+    GetGlobalAA().uiLaunchHook = f
 end sub
 
 ' `resumed()` when the channel is in front again, and `away()` when it goes behind another or the device's
@@ -1170,8 +1214,9 @@ sub uiSuspended()
     if ga.uiAwayHook <> invalid then RtInvoke(ga.uiAwayHook, [])
 end sub
 
-' The documents kept in cachefs: are listed again as the channel comes back: the box may have cleared them while it
-' was away, and a read of one the old list still had failed on the console (uiStoreGet).
+' The launch it is resumed with is Instant Resume's launchParams (or, on a box that does not nest them, the handler's
+' own arguments, the device's own left out). The documents kept in cachefs: are listed again: the box may have cleared
+' them while the channel was away, and a read of one the old list still had failed on the console.
 sub uiResumed(args as dynamic)
     ga = GetGlobalAA()
     reason = ""
@@ -1179,7 +1224,9 @@ sub uiResumed(args as dynamic)
     print "[launch] resumed ("; reason; ")"
     ga.uiStoreFiles = invalid
     if ga.uiResumeHook <> invalid then RtInvoke(ga.uiResumeHook, [])
-    if args <> invalid then uiLinked(args.launchParams)
+    if type(args) = "roAssociativeArray"
+        if type(args.launchParams) = "roAssociativeArray" then uiArrived(args.launchParams) else uiArrived(args)
+    end if
     ' Instant Resume asks for this once the scene is back up; it is up already, never having been taken down
     ga.appScene.signalBeacon("AppResumeComplete")
 end sub

@@ -1668,6 +1668,17 @@ object Platform {
     if (value == null) "" else value
   }
 
+  /** Each launch that reaches the app once it is running, with what it was launched with (a Roku's resume or deep
+    * link, an Android intent). Nothing launches a running app again here, so it is never called. */
+  def onLaunch(f: Map[String, String] => Unit): () => Unit = {
+    launchers = launchers :+ f
+    () => launchers = launchers.filterNot(_ eq f)
+  }
+
+  def launched(params: Map[String, String]): Unit = launchers.foreach(f => f(params))
+
+  private var launchers: List[Map[String, String] => Unit] = Nil
+
   /** Which build of the app is running: "wasm" when it was linked to WebAssembly, "js" otherwise. Fixed when the
     * app is linked, so it cannot disagree with what the page loaded; `everyui.sbt.WasmLoader`'s loader says the same
     * in `window.everyuiBuild`. For an about box or a log line. */

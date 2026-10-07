@@ -379,6 +379,10 @@ class SGNode
 @native object uiOnDeepLink {
   def apply(f: (String, String) => Unit): Unit = native.value
 }
+/** Each launch that reaches the channel once it runs (a deep link to it, a resume with parameters), as its parameters. */
+@native object uiOnLaunch {
+  def apply(f: Map[String, String] => Unit): Unit = native.value
+}
 /** What to call when the channel comes back to the front, and when it goes behind another (Instant Resume). */
 @native object uiOnLifecycle {
   def apply(resumed: () => Unit, away: () => Unit): Unit = native.value
