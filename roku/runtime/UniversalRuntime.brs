@@ -1170,11 +1170,14 @@ sub uiSuspended()
     if ga.uiAwayHook <> invalid then RtInvoke(ga.uiAwayHook, [])
 end sub
 
+' The documents kept in cachefs: are listed again as the channel comes back: the box may have cleared them while it
+' was away, and a read of one the old list still had failed on the console (uiStoreGet).
 sub uiResumed(args as dynamic)
     ga = GetGlobalAA()
     reason = ""
     if args <> invalid and args.lastSuspendOrResumeReason <> invalid then reason = args.lastSuspendOrResumeReason
     print "[launch] resumed ("; reason; ")"
+    ga.uiStoreFiles = invalid
     if ga.uiResumeHook <> invalid then RtInvoke(ga.uiResumeHook, [])
     if args <> invalid then uiLinked(args.launchParams)
     ' Instant Resume asks for this once the scene is back up; it is up already, never having been taken down
@@ -1256,8 +1259,10 @@ end function
 ' Only a document the store holds is read: asking for one it does not (most of a cache's questions, the first time)
 ' failed a read on the thread that draws and said so on the console, ten times over as a page came up. The box can
 ' clear cachefs: behind the list's back, and a document found gone (or read back empty) leaves the list, so it fails
-' one read, once, and is not asked for again. It is not looked for first: roFileSystem is to be had only on the main
-' and task threads, and on the thread that draws creating one fails and the next call on it throws.
+' one read, once, and is not asked for again. A channel back from Instant Resume lists them again (uiResumed): the box
+' may clear cachefs: while a channel is away, and a page drawn on the way back failed a read for each document gone. It
+' is not looked for first: roFileSystem is to be had only on the main and task threads, and on the thread that draws
+' creating one fails and the next call on it throws.
 function uiStoreGet(space as string, key as string) as string
     held = uiStoreHeld()
     name = uiStorePrefix(space) + uiStoreSafe(key) + ".json"
