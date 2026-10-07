@@ -36,6 +36,23 @@ class FilterPickerSpec extends FxSpec {
   }
 
   "A filtering picker" should {
+    "choose a row with one click of a mouse, the list scrolled first" in onScreen { _ =>
+      var picked: List[String] = Nil
+      val picker = fx(new FilterPicker[String](_ => Task.pure(Vector.tabulate(60)(i => "Model " + i)), identity,
+        identity, debounce = 0.0))
+      fx(picker.chosen.attach(s => picked = picked :+ s))
+      fx(picker.open())
+      eventually(picker.list.count == 60) shouldBe true
+      fx(picker.list.scrollBy(150.0))
+      val (key, x, y) = fx {
+        val i = picker.list.indexAt(picker.list.offset() + 60.0)
+        (picker.list.keyAt(i), picker.list.absoluteLeft + 40.0, picker.list.absoluteTop + picker.list.top(i) -
+          picker.list.offset() + 10.0)
+      }
+      fx(picker.list.clickAt(x, y, everyui.event.Modifiers(false, false, false, false)))
+      picked shouldBe List(key)
+      fx(Modal.showing) shouldBe false
+    }
     "ask once the typing pauses, and drop an answer to words since changed" in onScreen { _ =>
       var asked: List[String] = Nil
       var answers: Map[String, Vector[String] => Unit] = Map.empty
