@@ -21,9 +21,10 @@ import reactify.*
   * the Arabic ones right to left and the English ones left to right whichever way the app reads, and a long link, path
   * and hash break inside their bubble. Messages are Markdown: the long reply has a list, a table, code and a link, and an
   * Arabic one a list whose bullets stand on its right. What is typed in the field at the bottom is sent as yours, and
-  * answered. Sam has a picture, which a click on his avatar or name shows whole; `author=log` logs the press
-  * (`chat author <id> <message>`) in its place. `theme=light` for the light theme, `rtl=1` for right to left. Logs
-  * `chat ok` once built. */
+  * answered. Resting the pointer on a message, or the cursor with the focus on the transcript, shows Copy message
+  * beside it (`Transcript.messageActions`), where there is a clipboard. Sam has a picture, which a click on his avatar
+  * or name shows whole; `author=log` logs the press (`chat author <id> <message>`) in its place. `theme=light` for
+  * the light theme, `rtl=1` for right to left. Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))

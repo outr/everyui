@@ -84,6 +84,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private var placed: Map[Int, ListRow[T]] = Map.empty
   private var spare: List[ListRow[T]] = Nil
   private var spareStands: List[ListRow[T]] = Nil
+  // whether a row has been handed a place it did not have since the rows were last put in reading order
+  private var shuffled = false
   // whether the loading view shows in place of the rows
   private var blank = false
   private var currentAt = -1
@@ -406,6 +408,11 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   // a press on words that can be selected: the rows in the order they read, for the selection a drag makes
   event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton && Pointer.onText) inReadingOrder())
+  // and before that, as a resting pointer moves over them: put in order on the press, the row pressed was out of the page
+  // for a moment, and the browser made no click of the press (a click on a chat's message, once it had scrolled, did
+  // not put the cursor there)
+  if (Platform.selectsText() && Platform.pointerSupport())
+    event.pointer.move.attach(_ => if (shuffled) inReadingOrder())
   // (not the click a drag ends in)
   event.click.attach(e => if (!DragDrop.justEnded && !caught) clickAt(e.x, e.y, e.modifiers))
   // the secondary button: the row under it chosen (unless it already is) where it is, which is in view, and its menu
@@ -643,6 +650,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     * arriving at the other) shuffled them: a platform selects text in the nodes' order, so a drag from one row to the
     * next took in the rows made out of sight as well. Only the rows' places change; nothing else moves. */
   private[everyui] def inReadingOrder(): Unit = {
+    shuffled = false
     val all = children()
     val made = rows
     val shown = placed.toVector.sortBy(_._1).map(_._2)
@@ -738,6 +746,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val last = if (blank) -1 else near
     val leaving = placed.filter { case (i, _) => i < first || i > last }
     if (leaving.nonEmpty) {
+      shuffled = true
       leaving.values.foreach(putAway)
       placed = placed.filter { case (i, _) => i >= first && i <= last }
     }
@@ -757,6 +766,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
         case Some(r) if r.standsIn == stand => r
         case other =>
           other.foreach(putAway)
+          shuffled = true
           val r = take(stand)
           if (r.parent().isEmpty) made = r :: made
           placed = placed.updated(i, r)

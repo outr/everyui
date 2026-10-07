@@ -40,7 +40,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     own(Val(Transcript.widest(width) - Transcript.padX * 2.0)))
   // there to be read and copied: a drag selects them, on into the next message
   words.selectable @= true
-  private val bubble: Container = new Container {
+  private[chat] val bubble: Container = new Container {
     size.width := math.max(Transcript.padX * 2.0 + 8.0, words.size.width() + Transcript.padX * 2.0)
     size.height := words.size.height() + Transcript.padY * 2.0
     radius @= 14.0

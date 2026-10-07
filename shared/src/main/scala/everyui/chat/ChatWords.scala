@@ -44,6 +44,10 @@ object ChatWords {
   def hide: String = word("chat.hide", "Hide")
   def copy: String = word("chat.copy", "Copy")
   def copyMessage: String = word("chat.copyMessage", "Copy message")
+  /** Said once a message is copied. */
+  def copied: String = word("chat.copied", "Copied")
+  /** What a message's row of actions is, to a screen reader. */
+  def messageActions: String = word("chat.messageActions", "Message actions")
   def selectAll: String = word("chat.selectAll", "Select all")
   /** "About Ada", the menu's way to a message's author. */
   def about(name: String): String = word("chat.about", "About {name}").replace("{name}", name)

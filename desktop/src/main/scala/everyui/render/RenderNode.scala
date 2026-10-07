@@ -1164,8 +1164,9 @@ object Platform {
     * server refuses a bare `Java/21`. Before the first picture loads (the JDK reads it once). */
   def identify(app: String): Unit = System.setProperty("http.agent", app)
 
-  /** Whether copyText reaches a clipboard: it does. */
-  def clipboard(): Boolean = true
+  /** Whether copyText reaches a clipboard: it does, unless `--clipboard=false` on the launch tries a platform without one
+    * (a Roku, an Apple TV). */
+  def clipboard(): Boolean = !Host.args.get("clipboard").contains("false")
   /** Whether people select text with a pointer (`Component.selectable`): not here. */
   def selectsText(): Boolean = false
   def selectedText(): String = ""

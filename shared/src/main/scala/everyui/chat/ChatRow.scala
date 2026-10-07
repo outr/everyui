@@ -44,8 +44,17 @@ class ChatRow(transcript: Transcript) extends ListRow[ChatEntry] {
     }
   }
 
+  /** The message it shows, where it shows one. */
+  private[chat] def message: Option[MessageView] = view() match {
+    case Some(m: MessageView) => Some(m)
+    case _ => None
+  }
+
   semantics := item().map(e => Semantics("listitem", label = transcript.said(e))).getOrElse(Semantics.Plain)
-  item.attach(_ => rebuild())
+  item.attach { _ =>
+    rebuild()
+    transcript.rowMoved(this)
+  }
   index.attach(_ => rebuild())
 
   override def kind: String = "ChatRow"

@@ -4,7 +4,7 @@ import everyui.async.Task
 import everyui.clipboard.Clipboard
 import everyui.component.{Button, ButtonStyle, Component, Container}
 import everyui.component.types.Semantics
-import everyui.event.{Key, KeyEvent}
+import everyui.event.{Key, KeyEvent, Pointer}
 import everyui.focus.Focus
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
@@ -39,6 +39,12 @@ import reactify.*
   * press, OK held) offers what `menu` says for the entry, by default on a message Copy (the words selected), Copy
   * message and Select all (`menuFor`); over an entry it offers nothing for, and over a link, the browser's own shows.
   *
+  * Beside a message, a small row of buttons offers what `messageActions` says for it, by default Copy message where
+  * there is a clipboard (`actionsFor`): beside the one the pointer rests on, else, with the focus on the transcript, the
+  * one under its cursor (where a tap puts it). There is one row of them, drawn over the rows (`MessageActions`), so
+  * nothing moves as it comes and goes. The forward arrow on a message goes onto them (Tab too, in the page's order,
+  * after what the rows hold); an arrow out of them, Escape or Back, back to the message.
+  *
   * `render` makes a message's words from its text and the widest they may be: Markdown by default
   * (`MessageMarkdown.render`), as narrow as a short reply, or plain text (`MessageText.plain`).
   *
@@ -68,6 +74,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val onAuthor: Var[Option[AuthorPressed => Unit]] = own(Var(None))
   /** What the context menu on an entry offers: `menuFor` unless the app says otherwise; nothing, no menu. */
   val menu: Var[ChatEntry => List[MenuItem]] = own(Var((e: ChatEntry) => menuFor(e)))
+  /** What the small row of buttons beside a message offers (`MessageActions`): `actionsFor` unless the app says
+    * otherwise (Retry, Quote, Edit as well); nothing, no buttons. Asked of messages only. */
+  val messageActions: Var[ChatEntry => List[MessageAction]] = own(Var((e: ChatEntry) => actionsFor(e)))
   /** Whether earlier entries are being fetched. */
   val loading: Var[Boolean] = own(Var(false))
   /** Whether `loadOlder` has said there is nothing earlier. */
@@ -247,6 +256,78 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     }
   }
 
+  // ---- a message's actions ----
+
+  /** What the buttons beside a message offer by default: Copy message (`MessageAction.copyText`) where there is a
+    * clipboard; nothing elsewhere, and on anything but a message. */
+  def actionsFor(entry: ChatEntry): List[MessageAction] = entry match {
+    case m: ChatEntry.Message if Clipboard.copies => List(MessageAction.copyText(m))
+    case _ => Nil
+  }
+
+  // the message under the pointer, and where the pointer is down the list while it is over it (a scroll under a
+  // still pointer brings another under it)
+  private val hovered: Var[Option[String]] = own(Var(None))
+  private var pointerAt: Option[Double] = None
+  private var bar: Option[MessageActions] = None
+  // whether the cursor was last moved, or the focus brought here or onto the buttons, by a key (or a tap, where there
+  // is no pointer to rest): only then do the buttons stay by the message once the pointer has gone, a click leaving
+  // them to the pointer
+  private var keyed: Boolean = false
+  private def byKey(): Unit = keyed = !Pointer.recent
+
+  /** The buttons shown beside a message, made the first time there are any to show. */
+  def actions: Option[MessageActions] = bar
+
+  private def messageOf(key: String): Option[ChatEntry.Message] = Transcript.message(list.itemAt(list.indexOf(key)))
+
+  private def hoverAt(): Unit = {
+    val next = pointerAt.flatMap { y =>
+      val down = y - list.absoluteTop + list.offset()
+      if (list.count == 0 || down < 0.0 || down >= list.total) None
+      else Transcript.message(list.itemAt(list.indexAt(down))).map(_.id)
+    }
+    if (next != hovered()) hovered @= next
+  }
+
+  // the pointer off the rows, and off the buttons too a moment later (it goes from one to the other across the gap)
+  private def unhover(): Unit = Platform.after(0.15, () =>
+    if (pointerAt.isEmpty && !bar.exists(_.event.pointer.over()) && hovered().nonEmpty) hovered @= None)
+
+  /** Which message the buttons are beside: the one the pointer is over; else, where the keys (or a tap) brought the
+    * focus, the one they are for while it is on them, or the one under the transcript's cursor while it is on that. */
+  private def retarget(): Unit = {
+    val wanted = hovered().flatMap(messageOf).orElse {
+      if (!keyed && Platform.pointerSupport()) None
+      else if (bar.exists(_.holdsFocus)) bar.flatMap(_.message())
+      else if (list.focused()) Transcript.message(list.currentItem)
+      else None
+    }.filter(m => list.indexOf(m.id) >= 0)
+    val offered = wanted.map(m => messageActions()(m)).getOrElse(Nil)
+    if (offered.nonEmpty && bar.isEmpty) {
+      val made = new MessageActions(list, () => {
+        if (bar.exists(_.holdsFocus)) byKey()
+        retarget()
+      }, () => unhover())
+      // over the rows, under the spinner and "Jump to latest"
+      children @= children().flatMap(c => if (c eq list) List(c, made) else List(c))
+      bar = Some(made)
+    }
+    bar.foreach(_.show(if (offered.isEmpty) None else wanted, offered))
+  }
+
+  private[chat] def rowMoved(row: ChatRow): Unit = bar.foreach(_.rowMoved(row))
+
+  // a forward arrow on a message: onto its buttons
+  private def toActions(entry: ChatEntry): Option[() => Unit] = entry match {
+    case m: ChatEntry.Message if messageActions()(m).nonEmpty => Some(() => {
+      keyed = true
+      retarget()
+      bar.filter(_.showing()).flatMap(_.actionButtons.headOption).foreach(_.focus())
+    })
+    case _ => None
+  }
+
   // Ctrl or Command+C with no words selected: the message under the cursor, whole; Ctrl or Command+A: every word, as
   // Select all
   private def copyKey(e: KeyEvent): Option[() => Unit] =
@@ -304,6 +385,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private def moved(): Unit = {
     pin.scrolled(list.offset(), furthest)
     nearTop()
+    if (pointerAt.nonEmpty) hoverAt()
   }
 
   // ---- keys ----
@@ -388,7 +470,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       })
       case Key.Enter => entry.flatMap(act)
       case Key.Space => entry.flatMap(act)
-      case k if k == forward => entry.flatMap(open(_, on = true))
+      case k if k == forward => entry.flatMap(e => open(e, on = true).orElse(toActions(e)))
       case k if k == back => entry.flatMap(open(_, on = false))
       case _ => None
     }
@@ -412,6 +494,28 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   list.offset.attach(_ => moved(), Priority.Low)
   // kept at the bottom as rows arrive and grow, and as the view changes size, while it is pinned
   list.followsEnd := pin.pinned()
+  // a message's buttons follow the pointer where there is one to rest, and the cursor while the transcript has the focus
+  if (Platform.pointerSupport()) {
+    list.event.pointer.move.attach { e =>
+      pointerAt = Some(e.y)
+      hoverAt()
+    }
+    list.event.pointer.leave.attach { _ =>
+      pointerAt = None
+      unhover()
+    }
+  }
+  hovered.attach(_ => retarget())
+  list.focused.attach { on =>
+    if (on) byKey()
+    retarget()
+  }
+  list.current.attach { _ =>
+    byKey()
+    retarget()
+  }
+  shown.attach(_ => retarget())
+  messageActions.attach(_ => retarget())
   onDispose(() => {
     ticker.stop()
     kept.values.foreach(_.dispose())
@@ -450,4 +554,10 @@ object Transcript {
     * the avatar's room. */
   def widest(width: Double): Double =
     if (width < narrow) math.max(80.0, width - side * 2.0 - lead) else width * 0.75
+
+  /** `entry`, where it is a message. */
+  def message(entry: Option[ChatEntry]): Option[ChatEntry.Message] = entry match {
+    case Some(m: ChatEntry.Message) => Some(m)
+    case _ => None
+  }
 }

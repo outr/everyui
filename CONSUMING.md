@@ -1165,6 +1165,31 @@ transcript.menu @= (e => transcript.menuFor(e) ++ (e match {
 }))
 ```
 
+Every message also has a small row of buttons beside its bubble (`MessageActions`), by default Copy message (its text as
+it was written, the same as the menu's) wherever there is a clipboard (`actionsFor`). They show beside the message the
+pointer rests on, and go a moment after it leaves both the message and them; with the focus on the transcript, beside
+the message under its cursor, which a tap puts there on a touch screen, so a phone shows them on the message tapped
+until the focus goes elsewhere. They sit after everybody else's bubbles and before one's own (mirrored right to left),
+level with the bubble's top, or on its top corner, over its padding, where there is no room beside it (a phone's long
+messages); they stay in view while any of the bubble does. There is one row for the whole transcript, drawn over the
+rows and moved to the message, so nothing moves, no row changes height, and a history of thousands costs nothing more
+per row. The forward arrow (Right, Left right to left) on a message goes onto them (Tab reaches them too, in the
+page's order, after any controls the rows drawn hold); an arrow out of either end, up or down, Escape or Back, back to
+the message. Each is a button to a screen reader, named by its `label`, which is its tooltip as well. An action with
+`done` says it once run: Copy message turns to a tick for 1.5 s, its tooltip "Copied", and a screen reader reads
+"Copied" out. A Roku and an Apple TV have no clipboard, so nothing shows there and nothing is made unless the app adds
+an action of its own. `messageActions` changes what they offer, per message (Nil, none):
+
+```scala
+transcript.messageActions @= {
+  case m: ChatEntry.Message if !m.self => transcript.actionsFor(m) :+
+    MessageAction(MaterialIcon.FormatQuote, "Quote", () => quote(m))
+  case m: ChatEntry.Message => transcript.actionsFor(m) :+
+    MessageAction(MaterialIcon.Refresh, "Retry", () => resend(m), done = "Sent again")
+  case _ => Nil
+}
+```
+
 A click on a message's avatar or its author's name, and on a worker's avatar in the status bar, is an `AuthorPressed`
 (the participant, and the message's id where it was a message). `onAuthor` (on the `ChatView` or its `Transcript`) is
 the app's: None by default, which shows the author's picture whole over the screen (`AuthorPressed.showPicture`: the
