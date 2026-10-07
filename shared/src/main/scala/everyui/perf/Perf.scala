@@ -50,6 +50,10 @@ object Perf {
     every()
     scribe.info("perf: measuring session " + id + " on " + Platform.kind.toString + " " + device.line)
   }
+  else {
+    // started again (the server's level come in): the same session goes on, its id and its measures, said so in the log
+    scribe.info("perf: session " + id + " goes on, given " + Quality.givenLevel.toString + ", at " + Quality().toString)
+  }
 
   private def every(): Unit = Platform.after(Quality.policy.summarySeconds, () => {
     summarise()

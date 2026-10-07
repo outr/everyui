@@ -201,6 +201,41 @@ class QualitySpec extends FxSpec {
       slow.evidence.get should include("key p95")
       slow.sessionSeconds.get should be >= 0
     }
+    "stay one session when started again: the same id and measures, the level given, never above a step down" in {
+      fresh()
+      fx(Quality.start(None))
+      val id = fx(Perf.sessionId)
+      id should not be empty
+      fx((1 to 100).foreach(i => Perf.frame(16.0, 2.0, i * 16.0)))
+      // the server's level come in after launch
+      fx(Quality.start(Some(QualityLevel.Reduced)))
+      fx(Quality()) shouldBe QualityLevel.Reduced
+      val handed = fx(Perf.session())
+      handed.sessionId shouldBe id
+      handed.frames shouldBe Some(100)
+      handed.levelGiven shouldBe Some("Reduced")
+      // a slow run steps it down to Minimal, and Full given later leaves it there, in the same session
+      fx {
+        var t = 2000.0
+        while (t < 200000.0) {
+          Perf.keyedAt(t)
+          Perf.frame(16.0, 2.0, t + 400.0)
+          Perf.frame(16.0, 2.0, t + 900.0)
+          t += 1000.0
+        }
+      }
+      fx(Quality()) shouldBe QualityLevel.Minimal
+      val stepped = fx(Perf.session())
+      fx(Quality.start(Some(QualityLevel.Full)))
+      fx(Quality()) shouldBe QualityLevel.Minimal
+      val after = fx(Perf.session())
+      after.sessionId shouldBe id
+      after.keys shouldBe stepped.keys
+      after.frames shouldBe stepped.frames
+      after.levelGiven shouldBe Some("Full")
+      after.levelRun shouldBe Some("Minimal")
+      after.steppedDown shouldBe Some(true)
+    }
   }
 
   override def afterAll(): Unit = {

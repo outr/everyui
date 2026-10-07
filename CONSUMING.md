@@ -1739,7 +1739,9 @@ follow(Quality.level, (l: QualityLevel) => particles.visible @= l == QualityLeve
 ```
 
 - `start` may be called again (the server's answer come in after launch): the level given changes, but never back above
-  what the session has stepped down to. Nothing is measured, at no cost, until it is first called.
+  what the session has stepped down to, and the session goes on, with the same `sessionId` and what it has measured
+  (`perf: session … goes on, given Reduced, at Reduced` in the log). One run is one session. Nothing is measured, at
+  no cost, until it is first called.
 - An app's own costly parts read `Quality.level` as it changes, or `Quality.reduced` and `Quality.minimal` where they
   are built once. `Full` changes nothing in EveryUI's parts and costs nothing per frame; what they read is a plain field,
   set as the level changes.

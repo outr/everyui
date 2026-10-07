@@ -45,7 +45,8 @@ object Quality {
   /** Run at `stored` (Full for None): the level kept for this device, with whatever the person chose folded in. From
     * now on the session is measured (`Perf`), steps itself down where it is slow for long enough, and says how it has
     * gone (`Perf.summaries`). Given again later (the server's answer come in after launch), the level given changes,
-    * but never back above what the session has stepped down to. */
+    * but never back above what the session has stepped down to, and the session goes on: the same `Perf.sessionId`, and
+    * what was measured before it. One run of the app is one session, however many times it is started. */
   def start(stored: Option[QualityLevel]): Unit = {
     handed = stored.getOrElse(QualityLevel.Full)
     settle()
