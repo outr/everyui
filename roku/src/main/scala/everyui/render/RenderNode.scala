@@ -125,20 +125,17 @@ class RenderNode(val sg: SGNode) {
 
   /** The laid-out size in pixels. Text is as wide as its face makes it at exactly its size (a `Label` draws at whole
     * pixel sizes, so its own bounding rect is a few pixels off) and one shared line (everyui.font.Face) tall;
-    * anything else is SceneGraph's bounding rect. */
+    * wrapped, as many lines as the Label draws; anything else is SceneGraph's bounding rect. */
   def getWidth(): Double =
     if (richWidth >= 0.0) richWidth / uiScale()
     else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
     else math.max(if (boxWidth >= 0.0) boxWidth else 0.0, uiGetWidth(sg) / uiScale()) // (a Group is only its children)
   def getHeight(): Double =
     if (wrapping && boxWidth > 0.0 && lineHeight > 0.0) {
-      // as many lines as the Label wrapped its words into, at the width it was given: n lines are n faces tall with
-      // n - 1 gaps between them
-      val advance = if (lineAdvance > lineHeight) lineAdvance else lineHeight
-      val gap = advance - lineHeight
-      val drawn = uiGetHeight(sg) / uiScale()
-      val lines = math.max(1.0, math.round((drawn + gap) / advance).toDouble)
-      lines * advance
+      // the lines the Label puts its words on at its width, worked out as it wraps them (uiWrappedLines) rather than
+      // read from its bounding rect, which on a Roku TV came out lines short of what it drew; each is a line of its
+      // face as the Label draws one, and the spacing after it
+      uiWrappedLines(sg, fontUri, px(fontSize)) * (lineBox() + uiGetLineSpacing(sg)) / uiScale()
     }
     else if (lineHeight > 0.0) lineHeight
     else math.max(if (boxHeight >= 0.0) boxHeight else 0.0, uiGetHeight(sg) / uiScale())
@@ -474,7 +471,11 @@ class RenderNode(val sg: SGNode) {
   /** The Label's spacing between lines, set for the advance asked for at its current face and size. */
   private def spaceLines(): Unit =
     // (with no advance asked for, the face's own: the theme's spacing is far looser than any other backend's)
-    if (wrapping && lineHeight > 0.0) uiSetLineSpacing(sg, px(math.max(0.0, lineAdvance - lineHeight)))
+    if (wrapping && lineHeight > 0.0) uiSetLineSpacing(sg, math.max(0.0, px(lineAdvance) - lineBox()))
+
+  /** A line of the face at its size, in pixels, as the Label draws one, or the shared line where that is taller: a
+    * height worked out from it is never less than the Label's, nor than another backend's. */
+  private def lineBox(): Double = math.max(uiLineBox(fontUri, px(fontSize)), px(lineHeight))
   /** A link is followed by its select; there is no address to show. */
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */

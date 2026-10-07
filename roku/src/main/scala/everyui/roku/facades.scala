@@ -120,6 +120,18 @@ class SGNode
 @native object uiTextWidth {
   def apply(node: SGNode, uri: String, size: Double): Double = native.value
 }
+/** How tall one line of the face at `uri` is at `size` pixels, as a Label draws it. */
+@native object uiLineBox {
+  def apply(uri: String, size: Double): Double = native.value
+}
+/** How many lines a wrapping Label draws its text in at its width, in the face at `uri` at `size` pixels. */
+@native object uiWrappedLines {
+  def apply(label: SGNode, uri: String, size: Double): Int = native.value
+}
+/** The pixels a Label leaves between its lines. */
+@native object uiGetLineSpacing {
+  def apply(node: SGNode): Double = native.value
+}
 /** A `Group`, which draws nothing of its own (see uiFill). */
 @native object uiContainer {
   def apply(): SGNode = native.value

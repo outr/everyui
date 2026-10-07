@@ -41,6 +41,8 @@ import everyui.render.Platform
   *              that made it up is left reachable afterwards (DisposeSpec; `sgnodes all` on a Roku)
   *   textcut    words cut short to fit (maxWidth, maxLines) that were made before they were on the screen, and in a face
   *              still loading
+  *   textmeasure wrapped words over a box as tall as their measured height: a question at 26 bold in 560 and sizes 18
+  *              to 40 in 300 to 900, with blank lines, a long word and spaced lines (`page=1` to `page=3`)
   *   badge      list rows with long badges (a file's folder and counts), cut from the start to fit after the names at
   *              400 wide, whole where there is room, and cut in the middle and at the end (`rtl=1`)
   *   webview    a page of the web (WebView) that is pinged and answers: web/webview.html beside the web build, or
@@ -120,6 +122,7 @@ import everyui.render.Platform
   else if (demo == "captions") CaptionsDemo.run()
   else if (demo == "dispose") DisposeDemo.run()
   else if (demo == "textcut") TextCutDemo.run()
+  else if (demo == "textmeasure") TextMeasureDemo.run()
   else if (demo == "webview") WebViewDemo.run()
   else if (demo == "badge") BadgeDemo.run()
   else if (demo == "tabs") TabsDemo.run()

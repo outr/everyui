@@ -574,6 +574,83 @@ function uiMeasureText(text as string, uri as string, size as float) as object
     return { width: rect.width, height: rect.height }
 end function
 
+' How wide one line of `text` is in a face at a size in pixels, as the Label draws it: measured whole, in the Font node
+' the Label has, and kept (a wrapped paragraph is measured again at every width a layout tries).
+function uiLineWidth(text as string, uri as string, size as float) as float
+    ga = GetGlobalAA()
+    if ga.uiLineWidths = invalid or ga.uiLineWidths.count() > 4000
+        ga.uiLineWidths = CreateObject("roAssociativeArray")
+        ga.uiLineWidths.SetModeCaseSensitive()
+    end if
+    key = uri + "@" + Str(size) + "|" + text
+    wide = ga.uiLineWidths[key]
+    if wide = invalid
+        wide = uiMeasureText(text, uri, size).width
+        ga.uiLineWidths[key] = wide
+    end if
+    return wide
+end function
+
+' How tall one line of a face at a size in pixels is, as a Label draws it: a one-line Label's own box, which a
+' wrapping Label puts each of its lines in, `lineSpacing` apart. A wrapping Label's own bounding rect is not read: on a
+' Roku TV (OS 15.3) the heights laid out from it came out lines short of what it drew.
+function uiLineBox(uri as string, size as float) as float
+    ga = GetGlobalAA()
+    if ga.uiLineBoxes = invalid then ga.uiLineBoxes = {}
+    key = uri + "@" + Str(size)
+    tall = ga.uiLineBoxes[key]
+    if tall = invalid
+        tall = uiMeasureText("Ag", uri, size).height
+        ga.uiLineBoxes[key] = tall
+    end if
+    return tall
+end function
+
+' How many lines a wrapping Label draws its text in at its width, worked out as it wraps: each line of the text (a
+' blank one is a line) put into lines of whole words, a word going to the next line where the line measured whole with
+' it would be wider than the Label. A word wider than the Label takes the lines it would be broken over, and the next
+' word starts a line of its own. Where the Label might differ, more lines are counted rather than fewer: a line is
+' broken a pixel short of the width, and never after a hyphen, where the Label may break one. At most the Label's
+' maxLines. Text drawn in runs (uiRichText) is as many lines as it was put on.
+function uiWrappedLines(label as object, uri as string, size as float) as integer
+    if label = invalid then return 1
+    if label.text = "" and label.getChildCount() > 0 and label.hasField("uiRunsLines") then return label.uiRunsLines
+    width = label.width - 1.0
+    if width <= 0 then return 1
+    count = 0
+    for each paragraph in label.text.Replace(Chr(13), "").Split(Chr(10))
+        count = count + 1
+        line = ""
+        for each word in paragraph.Split(" ")
+            if word <> ""
+                if line <> ""
+                    joined = line + " " + word
+                    if uiLineWidth(joined, uri, size) > width
+                        count = count + 1
+                        line = ""
+                    else
+                        line = joined
+                    end if
+                end if
+                if line = ""
+                    line = word
+                    wide = uiLineWidth(word, uri, size)
+                    if wide > width then count = count - Int(-wide / width) - 1
+                end if
+            end if
+        end for
+    end for
+    if count < 1 then count = 1
+    if label.maxLines > 0 and count > label.maxLines then count = label.maxLines
+    return count
+end function
+
+' The pixels a Label leaves between its lines.
+function uiGetLineSpacing(node as object) as float
+    if node = invalid or not node.hasField("lineSpacing") then return 0.0
+    return node.lineSpacing
+end function
+
 ' Text a Roku Label cannot draw alone: in more than one script, or in one its face has no glyphs for. It is drawn as
 ' runs of one script each, Labels inside `label`, each in a face that has its glyphs (uiScriptFace), in the order they
 ' read on screen. An Arabic run is shaped and reversed (uiShapeArabic), and in a paragraph that begins right to left (its
@@ -670,8 +747,9 @@ function uiRichText(label as object, text as string, baseUri as string, weight a
     end for
     count = label.getChildCount()
     if count > index then label.removeChildrenIndex(count - index, index)
-    if not label.hasField("uiRunsWidth") then label.addField("uiRunsWidth", "float", false)
+    if not label.hasField("uiRunsWidth") then label.addFields({ uiRunsWidth: 0.0, uiRunsLines: 1 })
     label.uiRunsWidth = widest
+    label.uiRunsLines = lines.count()
     uiAlignRuns(label)
     return widest
 end function
