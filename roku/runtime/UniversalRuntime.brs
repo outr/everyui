@@ -171,8 +171,12 @@ sub uiInsert(parent as object, child as object, index as integer)
     end if
 end sub
 
+' The line to the console, and kept as the last logged (RtTurnCheck says it of a turn that was cut off).
 sub uiLog(message as dynamic)
     print "[ui] "; message
+    ga = GetGlobalAA()
+    ga.uiLastLog = message
+    ga.uiLastLogAt = UpTime(0)
 end sub
 
 ' Milliseconds since the first call — the animation clock. roTimespan is the
@@ -203,6 +207,7 @@ sub uiAnimate(tick as dynamic)
 end sub
 
 sub uiOnFrame()
+    RtTurnCheck()
     ga = GetGlobalAA()
     now = uiTicks()
     t = ga.uiTimer
@@ -267,6 +272,7 @@ sub uiOnAfter(event as object)
 end sub
 
 sub uiOnLater()
+    RtTurnCheck()
     ga = GetGlobalAA()
     ga.uiLaterArmed = false
     queue = ga.uiLaterQueue
@@ -1217,7 +1223,7 @@ sub uiLinked(params as dynamic)
     mediaType = params.mediaType
     if mediaType = invalid then mediaType = ""
     print "[launch] deep link "; contentId; " ("; mediaType; ")"
-    RtInvoke(ga.uiDeepLink, [contentId, mediaType])
+    RtGuard(ga.uiDeepLink, [contentId, mediaType])
 end sub
 
 ' A deep link or a launch while the channel is up (the scene's inputArgs, from Main's roInputEvent).
@@ -1263,7 +1269,7 @@ sub uiArrived(params as dynamic)
         section.Flush()
     end if
     uiLinked(params)
-    if ga.uiLaunchHook <> invalid then RtInvoke(ga.uiLaunchHook, [own])
+    if ga.uiLaunchHook <> invalid then RtGuard(ga.uiLaunchHook, [own])
 end sub
 
 ' What the device adds to a launch, a resume or an input event, saying where it came from (and from which address,
@@ -1291,7 +1297,7 @@ end sub
 sub uiSuspended(args as dynamic)
     ga = GetGlobalAA()
     print "[launch] suspended ("; uiLifeReason(args); "), memory "; uiMemoryNote()
-    if ga.uiAwayHook <> invalid then RtInvoke(ga.uiAwayHook, [])
+    if ga.uiAwayHook <> invalid then RtGuard(ga.uiAwayHook, [])
 end sub
 
 ' The launch it is resumed with is Instant Resume's launchParams (or, on a box that does not nest them, the handler's
@@ -1301,7 +1307,7 @@ sub uiResumed(args as dynamic)
     ga = GetGlobalAA()
     print "[launch] resumed ("; uiLifeReason(args); "), memory "; uiMemoryNote()
     ga.uiStoreFiles = invalid
-    if ga.uiResumeHook <> invalid then RtInvoke(ga.uiResumeHook, [])
+    if ga.uiResumeHook <> invalid then RtGuard(ga.uiResumeHook, [])
     if type(args) = "roAssociativeArray"
         if type(args.launchParams) = "roAssociativeArray" then uiArrived(args.launchParams) else uiArrived(args)
     end if

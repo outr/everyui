@@ -69,6 +69,8 @@ import everyui.render.Platform
   *              and blur that each level draws differently (QualityDemo; `window=5`, `slow=2` and `level=Reduced`)
   *   launch     what the app was launched with, and each launch that reaches it once it runs (Platform.onLaunch): on a
   *              Roku, ECP's `/launch/dev?open=…` to a running or suspended channel, or `/input?open=…` (LaunchDemo)
+  *   unwind     a form whose content is set once it is built, as NaboTV's last setup step: shown, or with `throw=deep` a
+  *              throw at depth in the children change, told with its backtrace (UnwindDemo)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
@@ -135,5 +137,6 @@ import everyui.render.Platform
   else if (demo == "coach") CoachDemo.run()
   else if (demo == "quality") QualityDemo.run()
   else if (demo == "launch") LaunchDemo.run()
+  else if (demo == "unwind") UnwindDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

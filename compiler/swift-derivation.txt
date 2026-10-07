@@ -1676,6 +1676,7 @@ class SwiftEmitter(
           sb += "  try"
           sb += emitInto(body, inner)
           sb += s"  catch $ex"
+          sb += s"    RtFatal($ex)"
           sb ++= emitCasesOn(ex, cases, inner, s"    throw $ex")
           sb += "  end try"
         case Some(f) =>
@@ -1687,6 +1688,7 @@ class SwiftEmitter(
           if (cases.isEmpty) sb += s"    $err = $ex"
           else {
             sb += "    try"
+            sb += s"    RtFatal($ex)"
             sb ++= emitCasesOn(ex, cases, inner, s"    throw $ex")
             sb += s"    catch ${ex}h"
             sb += s"      $err = ${ex}h"

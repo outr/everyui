@@ -3144,7 +3144,8 @@ class RokuEmitter(
     // result temp rather than returning from inside `try` (which would skip
     // `finally`); an unmatched exception is rethrown; with a finally block, an
     // exception from the body OR a handler is held, `finally` runs, then it is
-    // rethrown.
+    // rethrown. A failure of the device's own that nothing carries on from (RtFatal: the stack or the memory run out,
+    // a turn past its time) is rethrown before any case sees it, as the JVM's NonFatal leaves a StackOverflowError be.
     def emitTryStat(body: Term, cases: List[CaseDef], fin: Option[Term], sk: String): String = {
       val n = matchCounter; matchCounter += 1
       val ex = s"_ex$n"
@@ -3157,6 +3158,7 @@ class RokuEmitter(
           sb += "  try"
           sb += emitInto(body, inner)
           sb += s"  catch $ex"
+          sb += s"    RtFatal($ex)"
           sb ++= emitCasesOn(ex, cases, inner, s"    throw $ex")
           sb += "  end try"
         case Some(f) =>
@@ -3168,6 +3170,7 @@ class RokuEmitter(
           if (cases.isEmpty) sb += s"    $err = $ex"
           else {
             sb += "    try"
+            sb += s"    RtFatal($ex)"
             sb ++= emitCasesOn(ex, cases, inner, s"    throw $ex")
             sb += s"    catch ${ex}h"
             sb += s"      $err = ${ex}h"
@@ -4207,7 +4210,12 @@ class RokuEmitter(
       |    ga.appRoot = m.top.findNode("root")
       |    ga.uiLaunchParams = m.global.launchArgs
       |    m.top.setFocus(true)
-      |    rtMain()
+      |    ' the app's start, reported as any handler's error is (RtGuard) rather than stopping the channel unsaid
+      |    try
+      |        rtMain()
+      |    catch e
+      |        RtReportError(e)
+      |    end try
       |    RtAfterTurn()
       |end sub
       |
@@ -5608,6 +5616,7 @@ class RokuEmitter(
       |    try
       |        v = RtForce(env.thunk)
       |    catch e
+      |        RtFatal(e)
       |        RtInvoke(args[0], [false, e])
       |        return invalid
       |    end try
@@ -5621,6 +5630,7 @@ class RokuEmitter(
       |    try
       |        t = RtForce(env.thunk)
       |    catch e
+      |        RtFatal(e)
       |        RtInvoke(args[0], [false, e])
       |        return invalid
       |    end try
@@ -5674,6 +5684,7 @@ class RokuEmitter(
       |    try
       |        r = RtInvoke(env.f, [args[1]])
       |    catch e
+      |        RtFatal(e)
       |        RtInvoke(env.cb, [false, e])
       |        return invalid
       |    end try
@@ -5695,6 +5706,7 @@ class RokuEmitter(
       |    try
       |        nt = RtInvoke(env.f, [args[1]])
       |    catch e
+      |        RtFatal(e)
       |        RtInvoke(env.cb, [false, e])
       |        return invalid
       |    end try
@@ -5716,6 +5728,7 @@ class RokuEmitter(
       |    try
       |        nt = RtInvoke(env.f, [args[1]])
       |    catch e
+      |        RtFatal(e)
       |        RtInvoke(env.cb, [false, e])
       |        return invalid
       |    end try
@@ -5828,19 +5841,47 @@ class RokuEmitter(
       |    t.control = "start"
       |    return invalid
       |end function
-      |' `cl(args)`, for the handlers the platform calls (a timer, a frame, a key, a download, a picture, a player, the socket):
-      |' an error it throws goes to the app's error hook (UniversalRuntime's uiOnError sets it) and the console, and the
-      |' channel goes on, where it would otherwise stop (a sideloaded channel in the debugger, one from the store closing)
-      |' with nothing told to anyone.
+      |""".stripMargin + """
+      |' `cl(args)`, for the handlers the platform calls (a timer, a frame, a key, a download, a picture, a player, the socket,
+      |' a launch, a resume): an error it throws goes to the app's error hook (UniversalRuntime's uiOnError sets it) and the
+      |' console, and the channel goes on, where it would otherwise stop (a sideloaded channel in the debugger, one from the
+      |' store closing) with nothing told to anyone. It counts the handlers under way (rtGuarding), and when the turn they
+      |' began started, for RtTurnCheck.
       |function RtGuard(cl as dynamic, args as object) as dynamic
+      |    ga = GetGlobalAA()
+      |    if ga.rtGuarding = invalid or ga.rtGuarding = 0
+      |        ga.rtGuarding = 0
+      |        ga.rtTurnAt = UpTime(0)
+      |    end if
+      |    ga.rtGuarding = ga.rtGuarding + 1
       |    answer = invalid
       |    try
       |        answer = RtInvoke(cl, args)
       |    catch e
       |        RtReportError(e)
       |    end try
+      |    ga.rtGuarding = ga.rtGuarding - 1
       |    RtAfterTurn()
       |    return answer
+      |end function
+      |' At the start of a turn only the device begins (a frame, a later: a Timer's fire, never set off from inside another
+      |' turn): a handler RtGuard began on an earlier turn and never saw return was cut off, without unwinding through
+      |' RtGuard's catch or any other, as a device can stop a turn (its stack run out, a turn past its time) where it does
+      |' not throw. Said once, as an error, with how long ago that turn began and the last line it logged (uiLog), the place
+      |' to look nearest where it stopped.
+      |sub RtTurnCheck()
+      |    ga = GetGlobalAA()
+      |    if ga.rtGuarding = invalid or ga.rtGuarding = 0 then return
+      |    ga.rtGuarding = 0
+      |    message = "a turn was cut off: the handler begun " + RtSecondsAgo(ga.rtTurnAt) + " ago never returned, and no error reached it"
+      |    if ga.uiLastLogAt <> invalid and ga.rtTurnAt <> invalid and ga.uiLastLogAt >= ga.rtTurnAt
+      |        message = message + "; the last it logged, " + RtSecondsAgo(ga.uiLastLogAt) + " ago: " + _str(ga.uiLastLog)
+      |    end if
+      |    RtReportError({ _cls: "TurnCutOff", message: message })
+      |end sub
+      |function RtSecondsAgo(at as dynamic) as string
+      |    if at = invalid then return "?"
+      |    return Str(Int((UpTime(0) - at) * 1000) / 1000.0).Trim() + " s"
       |end function
       |' The end of a handler the platform called, before the scene is drawn again: what the program's runtime has to put
       |' right by then (UniversalRuntime's motions, uiMotionsSettle), called with what it keeps.
@@ -5850,15 +5891,40 @@ class RokuEmitter(
       |    if hook <> invalid then hook.fn(hook.env)
       |end sub
       |
+      |' A failure of the device's own that no program carries on from, thrown on as it is: the stack run out (&hDF), a turn
+      |' past the time the device allows it (&h23), the memory gone (&h0C, &h1A) or an exception thrown with one under way
+      |' (&hDE). A Scala `catch` (a Val's, which keeps what its function threw for its next read; Try; a task's) calls it
+      |' first, so such a failure goes on up to RtGuard and is reported, where a catch-all took it quietly. Only the device's
+      |' own carry a number with no class.
+      |sub RtFatal(e as dynamic)
+      |    if type(e) <> "roAssociativeArray" then return
+      |    if e._cls <> invalid then return
+      |    n = e.number
+      |    if n = invalid then return
+      |    if not (type(n) = "Integer" or type(n) = "roInteger") then return
+      |    if n = &hDF or n = &h23 or n = &h0C or n = &h1A or n = &hDE then throw e
+      |end sub
+      |
+      |' The error to the console, each part of it written as far as it can be (a part that cannot be written, being
+      |' something no string is made of, is said to be so rather than losing the rest), and then to the app's error hook.
       |sub RtReportError(e as dynamic)
       |    ga = GetGlobalAA()
       |    message = ""
       |    stack = ""
-      |    if type(e) = "roAssociativeArray"
-      |        if e.message <> invalid then message = _str(e.message)
-      |        if message = "" and e._cls <> invalid then message = _str(e)
-      |        if e.number <> invalid then message = message + " (&h" + StrI(e.number, 16) + ")"
-      |        if e.backtrace <> invalid
+      |    try
+      |        if type(e) = "roAssociativeArray"
+      |            if type(e.message) = "String" or type(e.message) = "roString" then message = e.message
+      |            if message = "" and e._cls <> invalid then message = _str(e._cls)
+      |            if type(e.number) = "Integer" or type(e.number) = "roInteger" then message = message + " (&h" + StrI(e.number, 16) + ")"
+      |        else
+      |            message = _str(e)
+      |        end if
+      |    catch failed
+      |        message = message + " (the rest of it could not be written)"
+      |    end try
+      |    print "[error] "; message
+      |    try
+      |        if type(e) = "roAssociativeArray" and type(e.backtrace) = "roArray"
       |            lines = []
       |            for each frame in e.backtrace
       |                lines.push(_str(frame["function"]) + " " + _str(frame.filename) + ":" + _str(frame.line_number))
@@ -5866,10 +5932,10 @@ class RokuEmitter(
       |            lines.Reverse()
       |            stack = lines.Join(Chr(10))
       |        end if
-      |    else
-      |        message = _str(e)
-      |    end if
-      |    print "[error] "; message
+      |    catch failed
+      |        stack = ""
+      |        print "[error] (its backtrace could not be written)"
+      |    end try
       |    if stack <> "" then print stack
       |    if ga.uiErrorHook = invalid or ga.uiReporting = true then return
       |    ga.uiReporting = true
@@ -6286,6 +6352,7 @@ class RokuEmitter(
       |    try
       |        r = Success(RtForce(thunk))
       |    catch e
+      |        RtFatal(e)
       |        r = Failure(e)
       |    end try
       |    return r

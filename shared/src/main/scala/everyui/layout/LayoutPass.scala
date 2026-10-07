@@ -41,19 +41,23 @@ object LayoutPass {
   /** `task`, with layout held from its start until it completes (or, if it completes later, until its start returns).
     * The outermost batch lays out what it asked for on a turn of its own (`Platform.later`), then completes: a batch
     * ends at the bottom of a chain of callbacks, whose nesting a Roku's small stack cannot also carry a screen's
-    * layout under. */
+    * layout under. A task that throws as it starts releases the batch on its way out: held, every layout after it
+    * waited for a batch that never closed, and nothing on the screen was laid out again. */
   def batched[T](task: Task[T]): Task[T] = Task.async[T] { done =>
     var open = true
     batches += 1
-    task.map { value =>
+    try {
+      task.map { value =>
+        if (open) {
+          open = false
+          release(() => done(value))
+        } else done(value)
+      }.start()
+    } finally {
       if (open) {
         open = false
-        release(() => done(value))
-      } else done(value)
-    }.start()
-    if (open) {
-      open = false
-      release(() => ())
+        release(() => ())
+      }
     }
   }
 
