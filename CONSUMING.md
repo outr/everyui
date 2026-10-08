@@ -1754,7 +1754,7 @@ What EveryUI's own parts do:
 | a ScrollContainer's glides (`glideTo`, `reveal`), a fling | half as long | at once |
 | a box's `shadow` and `blur` | none | none |
 | a text's `textShadow`, `motion` run by the platform | as at Full | none |
-| pictures | a Roku's Posters decoded at 3/4 of their drawn size; Android's downloads in 16 bits a pixel where they have no transparency, and its picture cache at half | Posters at half; the cache at a quarter |
+| pictures | Android's downloads in 16 bits a pixel where they have no transparency, and its picture cache at half; never decoded smaller than drawn | the cache at a quarter |
 | built beyond what shows | a ScrollContainer's slack a quarter of a viewport each way (half at Full); a VirtualList's `overscan` halved | a tenth; one row |
 
 What was drawn before a change is drawn again: what is on the screen at once, and what was made before and put on the

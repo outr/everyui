@@ -1395,7 +1395,7 @@ object Host {
         // below Full (`everyui.perf.Quality`) a picture with no transparency (a poster, a photo) is decoded in 16 bits
         // a pixel, half the memory and half the texture to upload; one with transparency is decoded as it is all the same
         val options = new BitmapFactory.Options()
-        if (everyui.perf.Quality.decode < 1.0) options.inPreferredConfig = Bitmap.Config.RGB_565
+        if (everyui.perf.Quality.compactPixels) options.inPreferredConfig = Bitmap.Config.RGB_565
         try BitmapFactory.decodeStream(in, null, options) finally in.close()
       }
     // a document the person chose (FileAccess): a photo's full size is far more than a preview needs, so it is decoded

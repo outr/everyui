@@ -383,13 +383,12 @@ class RenderNode(val sg: SGNode) {
     imageUri = uri
     drawImage()
   }
-  // decoded at the size it is drawn, or smaller on a slower device (`everyui.perf.Quality`): a Poster's texture is most
-  // of what a screen of artwork costs a Roku's memory
+  // decoded at the size it is drawn, at every quality level: smaller, a picture already asked at about that size (a
+  // poster) was shrunk and stretched back, blurred for little memory saved
   private def drawImage(): Unit =
     if (imageUri.isEmpty) uiSetImageSource(sg, "")
     else if (boxWidth > 0.0 && boxHeight > 0.0) {
-      val share = everyui.perf.Quality.decode
-      uiSetImageSized(sg, imageUri, px(boxWidth) * share, px(boxHeight) * share)
+      uiSetImageSized(sg, imageUri, px(boxWidth), px(boxHeight))
     }
     else uiSetImageSource(sg, imageUri)
   /** The picture in one colour, its transparency kept (a Poster's blend colour on a white picture), or as it is. */

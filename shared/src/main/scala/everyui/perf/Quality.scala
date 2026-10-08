@@ -15,8 +15,9 @@ import reactify.*
   *    Reduced and jump at Minimal;
   *  - a box's shadow and blur go from Reduced; a text's shadow, and motion run by the platform (`Component.motion`), at
   *    Minimal;
-  *  - pictures are decoded smaller (a Roku's Posters at three quarters of their size and then half, Android's
-  *    downloads in 16 bits a pixel) and fewer are kept (Android's cache at half and then a quarter);
+  *  - fewer pictures are kept (Android's cache at half and then a quarter) and Android decodes downloads in 16 bits
+  *    a pixel; a picture on the screen is never decoded smaller than it is drawn, which blurred posters asked at about
+  *    their drawn size for little memory saved;
   *  - less is built and drawn beyond what shows: a ScrollContainer's slack beyond its viewport, a VirtualList's
   *    `overscan`.
   *
@@ -100,8 +101,8 @@ object Quality {
   private[everyui] var glides: Boolean = true
   /** How much beyond its viewport a ScrollContainer draws, in viewports each way. */
   private[everyui] var slack: Double = 0.5
-  /** The share of its drawn size a picture is decoded at (a Roku's). */
-  private[everyui] var decode: Double = 1.0
+  /** Whether downloaded pictures are decoded in 16 bits a pixel where they have no transparency (Android's). */
+  private[everyui] var compactPixels: Boolean = false
   /** The share of their budget kept pictures may hold (Android's). */
   private[everyui] var cache: Double = 1.0
   /** Whether a box's shadow and blur, a text's shadow, and motion the platform runs, are drawn. */
@@ -121,7 +122,7 @@ object Quality {
     pace = if (full) 1.0 else if (least) 0.25 else 0.5
     glides = !least
     slack = if (full) 0.5 else if (least) 0.1 else 0.25
-    decode = if (full) 1.0 else if (least) 0.5 else 0.75
+    compactPixels = !full
     cache = if (full) 1.0 else if (least) 0.25 else 0.5
     effects = full
     textEffects = !least
