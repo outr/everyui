@@ -31,6 +31,9 @@ import everyui.render.Platform
   *              server's log over a durable socket (`socket=ws://host:8731/logs`)
   *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus
   *              (`theme=light`, `collapsed=archive`), a few with an agent at work (`stop=<seconds>`)
+  *   blocks     a sidebar's conversations as blocks (RichStyle.Blocks): groups, workspaces open and closed, unread
+  *              counts, long names, drags between blocks, a button to draw it as a tree (`style=tree`, `theme=light`,
+  *              `rtl=1`, `collapsed=<keys>`, `groups=<keys>`, `find=<words>`)
   *   scale      the size the app is drawn at (UiScale), turned up and down over words, rows, a field, buttons and menus,
   *              kept on the device (`scale=<factor>`, `theme=light`, `rtl=1`)
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
@@ -122,6 +125,7 @@ import everyui.render.Platform
   else if (demo == "markdown") MarkdownDemo.run()
   else if (demo == "logs") LogsDemo.run()
   else if (demo == "richlist") RichListDemo.run()
+  else if (demo == "blocks") BlocksDemo.run()
   else if (demo == "scale") ScaleDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()
   else if (demo == "italic") ItalicDemo.run()

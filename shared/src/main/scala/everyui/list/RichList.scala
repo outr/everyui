@@ -33,6 +33,10 @@ import reactify.*
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
   * and `moved` hears: never into a group that is closed.
   *
+  * `style` says how it is drawn: as a tree, by default, or (`RichStyle.Blocks`) as a sidebar's tinted blocks, a
+  * group's title a caption over its sections and each section a rounded panel, its header a bar that opens and closes
+  * it, its items under it; everything else (the cursor, the keys, the menus, search, dragging) is the same in both.
+  *
   * {{{
   *   val chats = new RichList[Chat](sections, _.id, c => RichLook(c.title, Some(c.snippet), who = Some(c.persona),
   *     time = Some(c.updated), count = c.unread, unread = c.unread > 0, mark = if (c.pinned) Some(MaterialIcon.PushPin) else None),
@@ -70,6 +74,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val accepts: Var[RichMove => Boolean] = own(Var((m: RichMove) => m.section == m.from))
   /** Items dragged into another place, where `accepts` let them. */
   val moved: Channel[RichMove] = Channel[RichMove]
+  /** How the sections are drawn: as a tree (`RichStyle.Tree`, the default) or as tinted blocks (`RichStyle.Blocks`). */
+  val style: Var[RichStyle] = own(Var(RichStyle.Tree))
 
   private val lines: Var[Vector[RichLine[T]]] = own(Var(Vector.empty))
   /** Whether any section's or group's header has a menu: then every header's count sits short of the ⋮, in one line
@@ -170,9 +176,15 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
         val open = narrowed || s.title.isEmpty || !shut.contains(s.key)
         val count = if (narrowed) items.size else s.count.getOrElse(items.size)
         val head = if (s.title.isEmpty) Vector.empty[RichLine[T]]
-          else Vector(RichLine(GroupedList.headerKey(s.key), s, None, open, count, None, nested))
-        val shown = if (open) items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0, None, nested))
+          else Vector(RichLine(GroupedList.headerKey(s.key), s, None, open, count, None, nested, blockStart = true,
+            blockEnd = !open || items.isEmpty))
+        var shown = if (open) items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0, None, nested))
           else Vector.empty[RichLine[T]]
+        // the first and the last of its block's lines (the header its first, where it has one)
+        if (shown.nonEmpty) {
+          if (head.isEmpty) shown = shown.updated(0, shown(0).copy(blockStart = true))
+          shown = shown.updated(shown.size - 1, shown(shown.size - 1).copy(blockEnd = true))
+        }
         Some((head ++ shown, count))
       }
     }

@@ -3444,6 +3444,34 @@ val sidebar = new RichList[Chat](sections, _.id, look, collapsedGroups = app.clo
 sidebar.groupMenu @= (g => if (g.key == "workspaces") List(MenuItem("New workspace…", () => create())) else Nil)
 ```
 
+RichList styles: `style` (`Var[RichStyle]`) says how the sections are drawn. `RichStyle.Tree`, the default, is all of the
+above, unchanged. `RichStyle.Blocks` draws them as a sidebar's panels:
+
+- a group's header is a plain caption over its sections ("WORKSPACES"): small, muted, in capitals, a little spaced, with
+  no chevron, icon or count; a click or Enter (and Right and Left) still closes and opens the group, and a closed one
+  shows a small ▸ at its end;
+- each section is a block, a softly tinted panel with rounded corners (`RichRow.blockRadius`, 10) set in
+  `RichRow.blockMargin` (8) from the list's sides, with `RichRow.blockPad` (6) inside it and `RichRow.blockGap` (8)
+  between blocks. Its header is a bar across the block's top (`RichRow.blockHeader`, 36 tall): its icon and title, its
+  count (always shown: a long title is cut short of it), its ⋮ where it has a menu, and a small ▾ or ▸ at its end (the
+  left, right to left). The whole bar opens and closes the block: a click or a tap anywhere on it, Enter, Right and Left.
+  Nothing is set in: the items run across the block inside its padding, at the width a tree gives them, and a section's
+  header in a group starts where one in none does. A closed block is its header bar alone, still with its count;
+- the item chosen, the cursor and the pointer are lit inside the block, rounded, rather than across the row.
+
+Everything else is as in a tree: the cursor, the keys and a remote (headers and items are rows, Up and Down move through
+them across blocks), `selected`, the search (what it finds shows in its blocks, opened), the menus and their ⋮, dragging
+(within a block, and into another where `accepts` allows it), `collapsed` and `collapsedGroups`, right to left. The rows
+stay virtual: each draws its own part of its block (the first with the block's top corners, the last with its bottom
+ones and the gap after it, those between square), a few nodes a row, made the first time the list is drawn as blocks, so
+the cost of scrolling is a tree's. The tint is the palette's `list.block` (`Theme.extra`: white at 5% in
+`Palette.dark`, black at 4% in `Palette.light`), else the text's colour at 5%, so it shows on any ground.
+
+```scala
+sidebar.style @= RichStyle.Blocks
+Theme.palette @= Theme.palette().copy(extras = Theme.palette().extras + ("list.block" -> Color.fromHex("7c4dff").withAlpha(0.06)))
+```
+
 The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,
 with a magnifier, "Search" (`Words.search`) faint inside it while it is empty, and a × once it holds something. The ×
 and Escape empty it; an empty one leaves Escape to the screen (Back). Enter goes to the list, and so does Down (Up from
