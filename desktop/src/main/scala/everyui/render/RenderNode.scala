@@ -706,6 +706,8 @@ class RenderNode(val fx: Node) {
   def setMediaText(choice: everyui.component.TextChoice): Unit = ()
   def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
   def setMediaDirect(direct: Boolean): Unit = ()
+  // an effect (AudioPlayer.effect) plays here as any sound does, mixed with the rest
+  def setMediaEffect(effect: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
   def getMediaDuration(): Double = media.map(_.duration()).getOrElse(0.0)
   def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))

@@ -276,7 +276,8 @@ lazy val roku = (project in file("roku"))
       // The shared image assets are the SAME files the web bundle serves, so the two backends are compared on
       // identical pixels; the channel's own icons and splash screens are roku/images (tools/make-icons.py).
       val root = (ThisBuild / baseDirectory).value
-      RokuChannel.assemble(outDir, root / "roku" / "runtime", Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"), Nil,
+      RokuChannel.assemble(outDir, root / "roku" / "runtime", Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"),
+        (root / "assets" / "sounds" * "*.wav").get().map(f => ("sounds/" + f.getName, f)),
         Some(baseDirectory.value / "images"))
     }
   )

@@ -71,6 +71,9 @@ import everyui.render.Platform
   *              Roku, ECP's `/launch/dev?open=…` to a running or suspended channel, or `/input?open=…` (LaunchDemo)
   *   unwind     a form whose content is set once it is built, as NaboTV's last setup step: shown, or with `throw=deep` a
   *              throw at depth in the children change, told with its backtrace (UnwindDemo)
+  *   audio      a looping track, a clip that takes the player from it and gives it back, and effects over both, the
+  *              hand-offs logged ("[ui] audio: uiMedia2 demo-clip.wav takes the player from uiMedia1 demo-music.wav");
+  *              `unfit=1` adds an effect a Roku cannot mix, reported as an error and played through the player (AudioDemo)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
@@ -138,5 +141,6 @@ import everyui.render.Platform
   else if (demo == "quality") QualityDemo.run()
   else if (demo == "launch") LaunchDemo.run()
   else if (demo == "unwind") UnwindDemo.run()
+  else if (demo == "audio") AudioDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

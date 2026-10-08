@@ -2089,7 +2089,7 @@ sub uiMediaFields(n as object)
     if ga.uiMediaSeq = invalid then ga.uiMediaSeq = 0
     ga.uiMediaSeq = ga.uiMediaSeq + 1
     n.id = "uiMedia" + ga.uiMediaSeq.ToStr()
-    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false, uiStart: 0.0, uiHeaders: [], uiSidecars: [], uiAudioLanguage: "", uiTextLanguage: "" })
+    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false, uiHandoff: false, uiStart: 0.0, uiHeaders: [], uiSidecars: [], uiAudioLanguage: "", uiTextLanguage: "" })
 end sub
 
 sub uiSetMediaSource(node as object, url as string)
@@ -2131,7 +2131,8 @@ sub uiSetMediaPlaying(node as object, playing as boolean)
             node.control = "play"
         end if
     else if node.state = "playing" or node.state = "buffering"
-        node.control = "pause"
+        ' an Audio node stops rather than pausing, its place kept: a paused one may still hold the player another needs
+        if node.subtype() = "Audio" then uiMediaYield(node) else node.control = "pause"
     end if
 end sub
 
@@ -2178,6 +2179,17 @@ sub uiOnMediaState(event as object)
     ' what a player does is otherwise invisible, and a picture of the screen shows no video to tell by
     print "[video] "; n.id; " "; state
     if state = "error" then print "[video] "; n.id; " failed: "; n.errorCode; " "; n.errorMsg; " "; n.errorStr
+    if state = "playing" then n.uiHandoff = false
+    ' refused the player just handed to it, the one before not yet let go of it: asked again, once, a moment later
+    if state = "error" and n.uiHandoff and n.errorCode = -5
+        n.uiHandoff = false
+        print "[video] "; n.id; " asks again for the player it was handed"
+        uiMediaAgain(n)
+        return
+    end if
+    if state = "error" and n.subtype() = "Audio"
+        RtReportError({ _cls: "AudioError", message: "audio: " + n.id + " failed: " + _str(n.errorCode) + " " + _str(n.errorMsg) + " (" + uiMediaUrl(n) + ")" })
+    end if
     ga = GetGlobalAA()
     if ga.uiMediaListeners = invalid then return
     f = ga.uiMediaListeners[n.id]
@@ -2198,6 +2210,157 @@ sub uiReleaseMedia(node as object)
     node.unobserveField("state")
     ga = GetGlobalAA()
     if ga.uiMediaListeners <> invalid then ga.uiMediaListeners.Delete(node.id)
+end sub
+
+' ---- turns at the player: SceneGraph plays one Audio node at a time, and a second one asked to play fails ("player:
+' only one playing instance supported"), so they take turns (everyui.audio.PlayerStack, in the Scala) ----
+
+' The player handed to another: stopped, where it had reached kept as where it starts again, its listener told nothing.
+sub uiMediaYield(node as object)
+    if node = invalid or node.content = invalid then return
+    at = node.position
+    node.control = "stop"
+    if at <> invalid and at > 0 then node.content.PlayStart = Int(at)
+    print "[video] "; node.id; " stopped at "; at; " s, its place kept"
+end sub
+
+' The player back: on from where it stopped, if it is still to play.
+sub uiMediaReclaim(node as object)
+    if node = invalid or node.content = invalid or not node.uiPlaying then return
+    node.uiHandoff = true
+    node.control = "play"
+end sub
+
+' About to play with the player just taken from another, which may not have let it go yet.
+sub uiMediaHandoff(node as object)
+    if node <> invalid then node.uiHandoff = true
+end sub
+
+' Play again in a moment, if it is still to.
+sub uiMediaAgain(node as object)
+    t = CreateObject("roSGNode", "Timer")
+    t.repeat = false
+    t.duration = 0.25
+    t.addField("uiTarget", "node", false)
+    t.uiTarget = node
+    t.observeField("fire", "uiOnMediaAgain")
+    GetGlobalAA().appScene.appendChild(t)
+    t.control = "start"
+end sub
+
+sub uiOnMediaAgain(event as object)
+    t = event.getRoSGNode()
+    n = t.uiTarget
+    GetGlobalAA().appScene.removeChild(t)
+    if n <> invalid and n.uiPlaying and n.content <> invalid then n.control = "play"
+end sub
+
+' What it plays, the address as given.
+function uiMediaUrl(node as object) as string
+    if node = invalid or node.content = invalid then return ""
+    return _str(node.content.url)
+end function
+
+' Its id, for the log.
+function uiMediaId(node as object) as string
+    if node = invalid then return ""
+    return node.id
+end function
+
+' ---- sound effects: SceneGraph's SoundEffect node, which mixes with whatever an Audio or a Video node plays ----
+' It plays a WAV on the device (pkg:/, tmp:/, cachefs:/) and nothing else, at a volume of 0 to 100 that is a share of
+' the device's menu volume, and only so many at once (its state says "toomanysounds" of one past them). Each source's
+' node is kept, loaded, for the next play, the uiEffectsKept used last at most.
+
+function uiEffectsKept() as integer
+    return 8
+end function
+
+function uiEffect(uri as string) as object
+    ga = GetGlobalAA()
+    if ga.uiEffects = invalid then ga.uiEffects = { nodes: {}, order: [] }
+    fx = ga.uiEffects
+    n = fx.nodes[uri]
+    order = []
+    for each u in fx.order
+        if u <> uri then order.Push(u)
+    end for
+    order.Push(uri)
+    if n = invalid
+        n = CreateObject("roSGNode", "SoundEffect")
+        n.addFields({ uiPending: false, uiVolume: 100 })
+        n.observeField("loadStatus", "uiOnEffectLoad")
+        n.observeField("state", "uiOnEffectState")
+        n.uri = uri
+        ga.appScene.appendChild(n)
+        fx.nodes[uri] = n
+        ' the one used longest ago let go, unless it is sounding
+        if order.Count() > uiEffectsKept()
+            old = fx.nodes[order[0]]
+            if old <> invalid and old.state <> "playing"
+                fx.nodes.Delete(order[0])
+                ga.appScene.removeChild(old)
+                order.Shift()
+            end if
+        end if
+    end if
+    fx.order = order
+    return n
+end function
+
+sub uiLoadEffect(uri as string)
+    if uri <> "" then uiEffect(uri)
+end sub
+
+sub uiPlayEffect(uri as string, volume as float)
+    if uri = "" then return
+    n = uiEffect(uri)
+    v = Int(volume * 100 + 0.5)
+    if v < 0 then v = 0
+    if v > 100 then v = 100
+    n.volume = v
+    print "[video] effect "; uri; " "; n.loadStatus; ", volume "; v
+    if n.loadStatus = "ready"
+        n.control = "play"
+    else
+        n.uiPending = true
+    end if
+end sub
+
+sub uiStopEffect(uri as string)
+    ga = GetGlobalAA()
+    if uri = "" or ga.uiEffects = invalid then return
+    n = ga.uiEffects.nodes[uri]
+    if n = invalid then return
+    n.uiPending = false
+    if n.state = "playing" then n.control = "stop"
+end sub
+
+sub uiOnEffectLoad(event as object)
+    n = event.getRoSGNode()
+    status = event.getData()
+    if status = "ready" and n.uiPending
+        n.uiPending = false
+        n.control = "play"
+    else if status = "failed"
+        n.uiPending = false
+        RtReportError({ _cls: "AudioError", message: "audio: effect " + n.uri + " failed to load" })
+    end if
+end sub
+
+sub uiOnEffectState(event as object)
+    n = event.getRoSGNode()
+    if event.getData() = "toomanysounds" then print "[video] effect "; n.uri; " not played: too many sounding at once"
+end sub
+
+' An error reported as one nothing caught is (RtReportError: "[error] …", and the app's error hook, which counts it),
+' the first time `key` is.
+sub uiReportOnce(key as string, message as string)
+    ga = GetGlobalAA()
+    if ga.uiReported = invalid then ga.uiReported = {}
+    if ga.uiReported.DoesExist(key) then return
+    ga.uiReported[key] = true
+    RtReportError({ _cls: "AudioError", message: message })
 end sub
 
 ' ── which build this is ──

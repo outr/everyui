@@ -533,6 +533,8 @@ class RenderNode(val el: html.Element) {
       webMedia.select(everyui.component.MediaTrack.Text, everyui.component.TextChoice.asTrack(choice).getOrElse(""))
   def setMediaCover(cover: Boolean): Unit = el.style.setProperty("object-fit", if (cover) "cover" else "contain")
   def setMediaDirect(direct: Boolean): Unit = ()
+  // an effect (AudioPlayer.effect) plays here as any sound does, mixed with the rest
+  def setMediaEffect(effect: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.currentTime.asInstanceOf[Double]).getOrElse(0.0)
   // a browser answers NaN until the metadata is in, and Infinity for a live stream: neither is a length
   def getMediaDuration(): Double =

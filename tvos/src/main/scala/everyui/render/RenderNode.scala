@@ -144,6 +144,8 @@ class RenderNode(val sg: SGNode) {
   def setMediaText(choice: everyui.component.TextChoice): Unit = ()
   def setMediaCover(cover: Boolean): Unit = ()
   def setMediaDirect(direct: Boolean): Unit = ()
+  // an effect (AudioPlayer.effect) is as any sound here, which plays nothing yet
+  def setMediaEffect(effect: Boolean): Unit = ()
   def getMediaPosition(): Double = 0.0
   def getMediaDuration(): Double = 0.0
   def seekMedia(seconds: Double): Unit = ()

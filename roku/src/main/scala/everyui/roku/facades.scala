@@ -387,6 +387,35 @@ class SGNode
 @native object uiReleaseMedia {
   def apply(node: SGNode): Unit = native.value
 }
+/** An Audio node's turns at the player (everyui.audio.PlayerStack): stopped where it was, the player handed to another;
+  * playing on from there; about to play having taken it (a first refusal is tried again); and its id. */
+@native object uiMediaYield {
+  def apply(node: SGNode): Unit = native.value
+}
+@native object uiMediaReclaim {
+  def apply(node: SGNode): Unit = native.value
+}
+@native object uiMediaHandoff {
+  def apply(node: SGNode): Unit = native.value
+}
+@native object uiMediaId {
+  def apply(node: SGNode): String = native.value
+}
+/** A sound effect (SceneGraph's SoundEffect, a WAV on the device): loaded to play later, played at a volume of 0 to
+  * 1, and stopped. */
+@native object uiLoadEffect {
+  def apply(uri: String): Unit = native.value
+}
+@native object uiPlayEffect {
+  def apply(uri: String, volume: Double): Unit = native.value
+}
+@native object uiStopEffect {
+  def apply(uri: String): Unit = native.value
+}
+/** An error reported as one nothing caught is (`[error] …`, the app's error hook), the first time `key` is. */
+@native object uiReportOnce {
+  def apply(key: String, message: String): Unit = native.value
+}
 /** Each deep link, as its contentId and mediaType: the launch's, and those sent while the channel runs or resumes. */
 @native object uiOnDeepLink {
   def apply(f: (String, String) => Unit): Unit = native.value

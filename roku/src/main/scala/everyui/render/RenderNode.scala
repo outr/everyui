@@ -2,6 +2,7 @@ package everyui.render
 
 import everyui.font.{Face, Faces}
 import everyui.PlatformKind
+import everyui.audio.{PlayerStack, SoundTurns}
 import everyui.event.PointerKind
 import everyui.roku.*
 
@@ -76,14 +77,14 @@ class RenderNode(val sg: SGNode) {
     else richWidth = uiRichText(sg, textValue, fontUri, fontWeight, px(fontSize), colorHex)
 
   def getX(): Double = left
-  def setX(x: Double): Unit = {
+  def setX(x: Double): Unit = if (drawn) {
     left = x
     uiSetTranslation(sg, px(left), px(top))
     if (movesPosition) animate()
   }
 
   def getY(): Double = top
-  def setY(y: Double): Unit = {
+  def setY(y: Double): Unit = if (drawn) {
     top = y
     uiSetTranslation(sg, px(left), px(top))
     if (movesPosition) animate()
@@ -92,10 +93,10 @@ class RenderNode(val sg: SGNode) {
   /** Radians, clockwise, about the node's own centre — matching youi's
     * `ImageView.rotation`, which is in TURNS (0..1); the example converts. */
   def getRotation(): Double = uiGetRotation(sg)
-  def setRotation(radians: Double): Unit = uiSetRotation(sg, radians)
+  def setRotation(radians: Double): Unit = if (drawn) uiSetRotation(sg, radians)
 
   /** Drawn larger or smaller about its own centre, the pivot the size keeps. */
-  def setScale(factor: Double): Unit = uiSetScale(sg, factor)
+  def setScale(factor: Double): Unit = if (drawn) uiSetScale(sg, factor)
 
   def setFontSize(size: Double): Unit = uiSetFontSize(sg, px(size))
 
@@ -151,23 +152,44 @@ class RenderNode(val sg: SGNode) {
   def remove(): Unit = uiRemove(sg)
 
   // ---- a Video or an Audio node (`Nodes.video`, `Nodes.audio`); SceneGraph has no volume for either and no rate, and a
-  // video letterboxes rather than filling its box ----
+  // video letterboxes rather than filling its box. An Audio node's sound is routed by its turns (SoundTurns): through
+  // the one player SceneGraph plays Audio nodes through, in turn (PlayerStack.device), or as an effect over it ----
   // the headers go on the content node the source is given, and with every request the player makes for it
   def setMediaHeaders(headers: Map[String, String]): Unit =
     uiSetMediaHeaders(sg, headers.toList.map(h => h._1 + ":" + h._2))
-  def setMediaSource(url: String): Unit = {
-    uiSetMediaSource(sg, url)
-    // captions from the start as the app chose them, else as the device has them
-    if (url.nonEmpty) showCaptions(Nil)
-  }
+  def setMediaSource(url: String): Unit =
+    if (turns.nonEmpty) turns.get.setSource(url)
+    else {
+      uiSetMediaSource(sg, url)
+      // captions from the start as the app chose them, else as the device has them
+      if (url.nonEmpty) showCaptions(Nil)
+    }
   /** Where the next source starts, in seconds: its content node's PlayStart, so the stream opens there. */
-  def setMediaStart(seconds: Double): Unit = uiSetMediaStart(sg, seconds)
+  def setMediaStart(seconds: Double): Unit = {
+    turns.foreach(_.setStart(seconds))
+    uiSetMediaStart(sg, seconds)
+  }
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit =
     uiSetMediaSidecars(sg, sidecars.map(s => List(s.url, s.label, s.language)))
-  def setMediaPlaying(playing: Boolean): Unit = uiSetMediaPlaying(sg, playing)
+  def setMediaPlaying(playing: Boolean): Unit =
+    if (turns.nonEmpty) turns.get.setPlaying(playing) else uiSetMediaPlaying(sg, playing)
   def setMediaLoop(loop: Boolean): Unit = uiSetMediaLoop(sg, loop)
   def setMediaMuted(muted: Boolean): Unit = uiSetMediaMuted(sg, muted)
-  def setMediaVolume(volume: Double): Unit = ()
+  // an Audio node has no volume; a SoundEffect has, as a share of the device's menu volume
+  def setMediaVolume(volume: Double): Unit = turns.foreach(_.setVolume(volume))
+  /** Played as a SoundEffect rather than through the player (AudioPlayer.effect), where its source is a WAV here. */
+  def setMediaEffect(on: Boolean): Unit = turns.foreach(_.setEffect(on))
+
+  // Whether anything of it is drawn, and an Audio node's turns at the player
+  private var drawn: Boolean = true
+  private var turns: Option[SoundTurns] = None
+
+  /** Sound alone (`Nodes.audio`): nothing of it is drawn, so nothing of a layout is written to it, and its sound takes
+    * its turn at the player. */
+  def soundOnly(): Unit = {
+    drawn = false
+    turns = Some(new SoundTurns(new AudioOutput(sg), PlayerStack.device))
+  }
   def setMediaRate(rate: Double): Unit = ()
   def mediaRates(): Boolean = false
   // neither what it holds nor what it waits for can be told here
@@ -274,10 +296,13 @@ class RenderNode(val sg: SGNode) {
   def seekMedia(seconds: Double): Unit = uiSeekMedia(sg, seconds)
   def onMediaEvent(f: String => Unit): Unit = uiOnMediaEvent(sg, e => {
     if (e == "ready") chooseLanguages()
+    // done with the player, which goes back to the one it was taken from
+    turns.foreach(_.heard(e))
     f(e)
   })
   def releaseMedia(): Unit = {
     uiReleaseMedia(sg)
+    turns.foreach(_.released())
     captionWatch.foreach(stop => stop())
     captionWatch = None
   }
@@ -327,9 +352,9 @@ class RenderNode(val sg: SGNode) {
   def scrolled(horizontal: Boolean): Double = 0.0
   def scrollSmoothly(to: Double, horizontal: Boolean): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
-  def setVisible(visible: Boolean): Unit = uiSetVisible(sg, visible)
-  def setOpacity(opacity: Double): Unit = uiSetOpacity(sg, opacity)
-  def setClip(width: Double, height: Double): Unit = {
+  def setVisible(visible: Boolean): Unit = if (drawn) uiSetVisible(sg, visible)
+  def setOpacity(opacity: Double): Unit = if (drawn) uiSetOpacity(sg, opacity)
+  def setClip(width: Double, height: Double): Unit = if (drawn) {
     clipWidth = width
     clipHeight = height
     uiSetClip(sg, px(width), px(height))
@@ -654,7 +679,11 @@ object Nodes {
   /** A video — a SceneGraph `Video` with no controls of its own. */
   def video(): RenderNode = new RenderNode(uiVideo())
   /** Sound — a SceneGraph `Audio`. */
-  def audio(): RenderNode = new RenderNode(uiAudio())
+  def audio(): RenderNode = {
+    val node = new RenderNode(uiAudio())
+    node.soundOnly()
+    node
+  }
   /** An image node — a SceneGraph `Poster` loading from `pkg:/`. */
   def image(uri: String, width: Double, height: Double): RenderNode =
     new RenderNode(uiImage(uri, width * uiScale(), height * uiScale()))

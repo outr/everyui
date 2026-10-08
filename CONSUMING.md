@@ -2135,6 +2135,58 @@ and with `headers` for its preflight too (`Access-Control-Allow-Headers: Authori
 
 `demo=video` plays an HLS stream, one with alternate audio and subtitles, and an `.mp4`, with `header=` and `lang=`.
 
+## Sound: players that take turns, and effects (`AudioPlayer`)
+
+Every platform but one mixes as many `AudioPlayer`s as play at once. A Roku plays one Audio node at a time: a second
+asked to play fails ("player: only one playing instance supported"). There they take turns
+(`everyui.audio.PlayerStack`): the newest to play takes the player, and the one it took it from stops where it was and
+waits; when the newcomer stops, ends or fails, the one under it plays on from where it stopped. One whose `playing` is
+turned off while it waits only leaves the stack. Each hand-off is logged:
+
+```
+[ui] audio: uiMedia5 clip.mp3 takes the player from uiMedia1 questions2.mp3
+[video] uiMedia1 stopped at 41 s, its place kept
+[ui] audio: uiMedia1 questions2.mp3 back from uiMedia5 clip.mp3
+```
+
+On a Roku an Audio node's `playing @= false` stops it with its place kept, rather than pausing it (a paused one may
+still hold the player), and plays on from there, to the second, when turned on again. A player that fails is reported
+as an error nothing caught (`[error] audio: uiMedia5 failed: -5 player: … (https://…)`), so it counts in
+`PerfSession.errors`; one refused the player it was just handed, the one before not yet having let it go, asks once
+more a quarter of a second later before it is. Video nodes do not take turns.
+
+**Effects** are the short sounds over everything else (a cheer, a groan, a click): `effect` set before the source.
+
+```scala
+val cheer = new AudioPlayer
+cheer.effect @= true
+cheer.volume @= 0.85
+cheer.source @= Platform.resolvePath("/sounds/cheer.wav")   // plays now, once
+cheer.source @= ""                                          // and again: through "" ...
+cheer.source @= Platform.resolvePath("/sounds/cheer.wav")   // ... or `playing` off and on
+```
+
+An effect plays once each time its source is set (or `playing` is turned on), from its start, and says nothing of
+its end; it never takes the player. On a Roku it is SceneGraph's SoundEffect node, which mixes with whatever an Audio
+or Video node plays, and which plays **only a WAV on the device**: a file in the channel's package (`pkg:/`), or under
+`tmp:/` or `cachefs:/`. Each source's node is kept loaded for the next play, the eight used last at most. Its volume is a
+share of the TV's own menu volume (Settings, Audio), and where that is off an effect is silent. A Roku plays only a
+few at once; one past them is logged and not played (`[video] effect … not played: too many sounding at once`).
+
+An effect a Roku cannot mix (an MP3, an address) is reported once (`[error] audio: uiMedia3 effect https://…/fx.mp3
+is not a WAV, which a SoundEffect cannot play: played through the player instead`) and played through the player in
+its turn, stopping what plays there until it is done. Elsewhere it plays as any sound does, and the log says once that
+a Roku could not mix it (`[ui] audio: effect … is not a WAV: a Roku plays it through its one player …`), so it is seen
+while building on the desktop.
+
+So an app ships its effects as WAVs in the Roku's package (16-bit PCM; mono at 22,050 Hz keeps a second of sound to
+about 43 KB) and points its effects there on the Roku, where the other platforms may go on using the MP3s they had.
+EveryUI converts nothing: the sources are only known as the app runs (often a server's files), and no decoder in the
+build would see them; and the one pure-JVM MP3 decoder (JLayer, last repackaged in April 2024) is LGPL.
+
+`demo=audio` plays a looping track, a clip that takes the player from it and gives it back, and two effects over both,
+logging each step with who has the player; `unfit=1` adds an effect from an address.
+
 ## Captions: the device's setting (`everyui.text.Captions`)
 
 `Captions.device` is the viewer's own caption setting, `Option[CaptionPreference(mode, language)]`: the mode
