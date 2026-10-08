@@ -76,8 +76,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val toggles: Val[Boolean] = own(Val(blocks() && header() && (section().nonEmpty ||
     item().exists(l => l.groupHead.nonEmpty && !l.open))))
   private val toggleRoom: Val[Double] = own(Val(if (toggles()) RichRow.toggleSize + 6.0 else 0.0))
-  // the section's action, where it has one, and whether the cursor is on it rather than on the header
-  private val actionOf: Val[Option[RichAction]] = own(Val(section().flatMap(_.action)))
+  // the section's action (or the item's), where it has one, and whether the cursor is on it rather than on the row
+  private val actionOf: Val[Option[RichAction]] = own(Val(section().flatMap(_.action).orElse(look().flatMap(_.action))))
   private val onAction: Val[Boolean] = own(Val(current() && active() && owner.atAction() && actionOf().nonEmpty))
 
   // ---- a header ----
@@ -98,7 +98,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
       badge = if (blocks()) "" else item().filter(_.header).map(_.count.toString).getOrElse("")),
     // short of the ⋮ where any header has a menu, and of the action where any section has one, so the counts keep one
     // line as the ⋮ comes and goes (in a block, short of its count, which a long title never hides, and its action)
-    if (blocks()) countStart() - (if (actionOf().nonEmpty) RichRow.headerMore else 0.0) - side()
+    if (blocks()) countStart() - (if (section().exists(_.action.nonEmpty)) RichRow.headerMore else 0.0) - side()
     else RichRow.this.size.width() - ListRow.inset - 22.0 - RichRow.inset + 8.0 - nest() -
       (if (owner.headersHaveMenus()) RichRow.headerMore - 2.0 else 0.0) -
       (if (owner.headersHaveActions()) RichRow.headerMore else 0.0), base(), 12.5)
@@ -175,13 +175,24 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     if (menuShows()) more.size.width()
     else span(time, 0.0) + span(mark, 4.0) + (if (tall()) 0.0 else span(badge, 6.0))))
   private val secondTrail: Val[Double] = own(Val(if (menuShows()) more.size.width() else span(badge, 0.0)))
+  // in a row with an action, the room its trailing pieces take whichever show (the ⋮ or the time, the mark and the badge),
+  // so the action and the title keep their places as the ⋮ comes and goes
+  private val itemAction: Val[Boolean] = own(Val(!header() && look().exists(_.action.nonEmpty)))
+  private val restTrail: Val[Double] = own(Val(if (!itemAction()) 0.0 else math.max(
+    (if (look().exists(_.time.nonEmpty)) time.size.width() else 0.0) +
+      (if (look().exists(_.mark.nonEmpty)) mark.size.width() + 4.0 else 0.0) +
+      (if (!tall() && look().exists(_.count > 0)) badge.size.width() + 6.0 else 0.0),
+    // (the ⋮'s glyph, its box reaching 6 past the end and 5 round the glyph)
+    if (item().flatMap(_.item).exists(t => owner.menu()(t).nonEmpty)) more.size.width() - 11.0 else 0.0)))
 
   val title: TextView = new TextView {
     content := look().map(_.title).getOrElse("")
     font.size @= 14.0
     font.weight := (if (unread()) FontWeight.Bold else FontWeight.Normal)
     color := Theme.text()
-    maxWidth := math.max(20.0, end() - textStart() - firstTrail() - 8.0)
+    // (short of the action, where the row has one, whether it shows or not)
+    maxWidth := math.max(20.0, end() - textStart() - (if (itemAction()) restTrail() + RichRow.headerMore else firstTrail()) -
+      8.0)
     visible := !header() && !editing()
   }
   val detail: TextView = new TextView {
@@ -321,7 +332,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
 
   // ---- a section's action and an empty section's line: made the first time a row shows one, so others have none ----
   /** The section's action (`RichSection.action`) in its header: before its count in a block, at the header's end in a
-    * tree (short of the ⋮ where any header has one); lit and ringed as the ⋮ is, and while the cursor is on it. */
+    * tree (short of the ⋮ where any header has one); or the item's (`RichLook.action`) before its time, its mark and its
+    * badge, or its ⋮. Lit and ringed as the ⋮ is, and while the cursor is on it. */
   private[list] lazy val actionButton: IconButton = new IconButton(MaterialIcon.Empty, "", () => actionOf().foreach(_.run())) {
     size.width @= RichRow.headerMore
     size.height @= RichRow.headerMore
@@ -331,7 +343,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     icon.icon := actionOf().map(_.icon).getOrElse(MaterialIcon.Empty)
     tooltip := actionOf().map(_.label).getOrElse("")
     semantics := Semantics.button(actionOf().map(_.label).getOrElse(""))
-    visible := actionOf().nonEmpty
+    visible := actionShows()
     backgroundColor := (if (focused() || event.pointer.over() || onAction()) Theme.controlLit() else Color.Clear)
     icon.color := (if (focused() || event.pointer.over() || onAction()) Theme.text() else tint())
     borderWidth := (if (onAction()) 1.0 else 0.0)
@@ -347,20 +359,26 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     position.left := ListRow.along(side(), size.width(), RichRow.this.size.width())
     position.top := middle(size.height())
   }
+  // a section's always; an item's while the pointer or the cursor is on its row, it is the one chosen on a touch screen, or
+  // always where its look says
+  private val actionShows: Val[Boolean] = own(Val(actionOf().nonEmpty && (header() || look().exists(_.actionShown) ||
+    hovered() || (current() && active()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
   private var actionMade = false
   private def makeAction(): Unit = if (!actionMade) {
     actionMade = true
     actionButton.focusable @= false
-    // (its glyph 6 short of the count in a block; in a tree, its glyph's end at the end, or the ⋮'s gap before it)
-    from(if (blocks()) countStart() - RichRow.headerMore - 3.0
+    // (a header's glyph 6 short of the count in a block; in a tree, its glyph's end at the end, or the ⋮'s gap before
+    // it; an item's glyph 6 short of its trailing pieces on the title's line, or at the end without any)
+    from(if (!header()) end() - restTrail() - (if (restTrail() > 0.0) 6.0 else 0.0) - RichRow.headerMore + 3.0
+      else if (blocks()) countStart() - RichRow.headerMore - 3.0
       else end() - (if (owner.headersHaveMenus()) RichRow.headerMore - 2.0 else 0.0) - RichRow.headerMore + 3.0,
       actionButton)
-    actionButton.position.top := middle(RichRow.headerMore)
+    actionButton.position.top := (if (header()) middle(RichRow.headerMore) else lineMiddle() - RichRow.headerMore / 2.0)
     children += actionButton
   }
   actionOf.attach(a => if (a.nonEmpty) makeAction())
   if (actionOf().nonEmpty) makeAction()
-  /** Whether `along` (from the row's start edge) is on the section's action, which a click there is for alone. */
+  /** Whether `along` (from the row's start edge) is on its action (its section's, or its item's), which a click there is for alone. */
   def onActionAt(along: Double): Boolean = actionMade && actionButton.visible() && {
     val b = actionButton
     val start = if (everyui.i18n.Direction.rtl()) size.width() - b.position.left() - b.size.width() else b.position.left()

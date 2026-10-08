@@ -3498,6 +3498,22 @@ RichSection(w.id, w.name, w.chats, icon = Some(MaterialIcon.Workspaces), group =
   empty = Some("No conversations yet"))
 ```
 
+An item can have one too: `RichLook.action` (`Option[RichAction]`, `None` by default) is a small icon button at its
+row's end on the title's line, before the time, the mark and (in a short row) the badge, or before the ⋮ while that
+shows in their place. It shows while the pointer or the cursor is on the row (on a touch screen, while it is the item
+chosen), or always where `RichLook.actionShown` (default false). A row with an action keeps its room whether it shows
+or not, the wider of the ⋮'s and the time's, so its title is cut once, short of it, and neither the title nor the
+button moves as the pointer comes and goes; a row without one is laid out as it was. A click or a tap on it runs it
+without choosing, activating or moving the cursor to the item; the keys and a remote reach it as a header's: Right
+(Left, right to left) from the row puts the cursor on it, ringed, Enter runs it, Left goes back, Up or Down move on.
+Its label is its tooltip and its accessible name. It is the same in a tree and in blocks, and mirrored right to left.
+
+```scala
+look = c => RichLook(c.title, Some(c.snippet), action = Some(RichAction(
+  if (c.starred) MaterialIcon.Star else MaterialIcon.StarBorder, if (c.starred) "Unstar" else "Star", () => star(c))),
+  actionShown = c.starred)
+```
+
 The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,
 with a magnifier, "Search" (`Words.search`) faint inside it while it is empty, and a × once it holds something. The ×
 and Escape empty it; an empty one leaves Escape to the screen (Back). Enter goes to the list, and so does Down (Up from

@@ -9,7 +9,9 @@ import everyui.font.MaterialIcon
   * milliseconds, said as how long ago: "now", "5m", "3h", "2d", "9/16"), a `count` badge ("99+" past 99, none at 0) and
   * a small `mark` (a pin, a lock). An `unread` one is in bold, its time lit. A `busy` one (an agent at work) has a ring
   * turning around its avatar (`Avatar.busy`), whether or not it is unread too, and `busyDetail` ("Running bash") is
-  * what a pointer resting on the avatar says, and said to a screen reader with the row. */
+  * what a pointer resting on the avatar says, and said to a screen reader with the row. `action` is a small button at
+  * its end, before the time (or the ⋮), that does a thing to it without choosing it (a star), shown while the pointer
+  * or the cursor is on the row, or always where `actionShown` (a starred one's filled star). */
 case class RichLook(title: String,
                     detail: Option[String] = None,
                     who: Option[Participant] = None,
@@ -20,4 +22,6 @@ case class RichLook(title: String,
                     unread: Boolean = false,
                     mark: Option[MaterialIcon] = None,
                     busy: Boolean = false,
-                    busyDetail: String = "")
+                    busyDetail: String = "",
+                    action: Option[RichAction] = None,
+                    actionShown: Boolean = false)

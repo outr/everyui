@@ -31,7 +31,9 @@ import reactify.*
   * `action` is a small button in its header, always shown, that runs it without opening or closing the section: a click
   * or a tap on it, or Right (Left, right to left) from the open section's header onto it and Enter; Left takes the
   * cursor back to the header, and Up or Down on. A section's `empty` words show on a line of their own while it is
-  * open and holds nothing, which the cursor passes over, a click does nothing to, and search never finds. With
+  * open and holds nothing, which the cursor passes over, a click does nothing to, and search never finds. An item's
+  * `RichLook.action` (a star) is a small button at its row's end, before its time, shown with the pointer or the cursor
+  * on the row or always where `actionShown`, reached and run as a section's is, and never choosing the item. With
   * `search`, a field over the list narrows it to the items `matches` finds for the words (`query`, which
   * the app can also set), under their sections, opened; an app filtering its own sections leaves it off. With
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
@@ -89,8 +91,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   /** Whether any section has an action (`RichSection.action`): then, in a tree, every header's count sits short of it,
     * in one line down the list. */
   val headersHaveActions: Val[Boolean] = own(Val(sections().exists(_.action.nonEmpty)))
-  /** Whether the cursor is on its header's action rather than the header: Right (Left, right to left) from an open
-    * section's header puts it there, where it has one, and Left back; Enter runs it. */
+  /** Whether the cursor is on its row's action rather than the row: Right (Left, right to left) from an open section's
+    * header, or from an item, puts it there, where it has one, and Left back; Enter runs it. */
   private[list] val atAction: Var[Boolean] = own(Var(false))
   val list: VirtualList[RichLine[T]] = new VirtualList[RichLine[T]](lines, _.key,
     l => if (l.empty) "" else l.item.map(t => lookOf(t).title).getOrElse(l.groupHead.map(_.title).getOrElse(l.section.title)),
@@ -130,6 +132,11 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     case None => collapse(l.section.key)
   }
   private def toggleLine(l: RichLine[T]): Unit = if (l.open) closeLine(l) else openLine(l)
+  // what a line's action is: its item's, or its section's on its header
+  private def actionOf(l: RichLine[T]): Option[RichAction] = l.item match {
+    case Some(t) => lookOf(t).action
+    case None => if (l.header && l.groupHead.isEmpty) l.section.action else None
+  }
 
   /** The cursor onto item `key`, scrolled into view, where it shows. */
   def reveal(key: String): Unit = lineOf.get(key).foreach { line =>
@@ -287,23 +294,24 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
 
   list.selection.multiple @= false
   list.clickActivates @= true
-  list.keys = (e: KeyEvent) => list.currentItem.filter(l => l.header && !e.shift && !e.ctrl && !e.meta && !e.alt)
+  // (an item's action is reached as a header's is: Right onto it, Left back)
+  list.keys = (e: KeyEvent) => list.currentItem.filter(l => !l.empty && !e.shift && !e.ctrl && !e.meta && !e.alt)
     .flatMap { line =>
       val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
       val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
-      val acts = line.groupHead.isEmpty && line.section.action.nonEmpty
-      if (e.key == forward && !line.open) Some(() => openLine(line))
+      val acts = actionOf(line).nonEmpty
+      if (e.key == forward && line.header && !line.open) Some(() => openLine(line))
       else if (e.key == forward && acts && !atAction()) Some(() => atAction @= true)
       else if (e.key == back && atAction()) Some(() => atAction @= false)
-      else if (e.key == back && line.open) Some(() => closeLine(line))
+      else if (e.key == back && line.header && line.open) Some(() => closeLine(line))
       else None
     }
-  // a click on an empty section's line does nothing, and one on a header's action is the action's alone (it has run it,
+  // a click on an empty section's line does nothing, and one on a row's action is the action's alone (it has run it,
   // and the list may hear it as well, where running it took longer than a click's climb is held)
   list.clicks = (i: Int, along: Double) => {
     val line = list(i)
     if (line.empty) true
-    else if (line.header && list.rowAt(i).exists(_.asInstanceOf[RichRow[T]].onActionAt(along))) true
+    else if (list.rowAt(i).exists(_.asInstanceOf[RichRow[T]].onActionAt(along))) true
     else if (line.header) {
       list.moveTo(i)
       atAction @= false
@@ -313,11 +321,12 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     else false
   }
   list.activated.attach(line => line.item match {
+    case _ if line.empty => ()
+    case _ if atAction() && actionOf(line).nonEmpty => actionOf(line).foreach(_.run())
     case Some(t) =>
       selected @= Some(keyOf(t))
       activated @= t
-    case None if line.empty => ()
-    case None => if (atAction() && line.groupHead.isEmpty) line.section.action.foreach(_.run()) else toggleLine(line)
+    case None => toggleLine(line)
   })
   // the cursor never rests on an empty section's line: it goes on past it the way it was going, or back where there is
   // nothing past it; and off the header's action as it moves

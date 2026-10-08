@@ -152,6 +152,8 @@ class SectionActionSpec extends FxSpec {
     }
     "run on a click or a tap without opening or closing the section, in a block and in a tree" in {
       for (style <- List(RichStyle.Blocks, RichStyle.Tree); touch <- List(false, true)) {
+        // (a click at the same pixel within Pointer.hold of one consumed is taken for it)
+        Thread.sleep(everyui.event.Pointer.hold.toLong * 2L)
         val collapsed = Var(Set("e"))
         val list = fx(made(style, collapsed))
         fx(list.list.clickActivates @= touch)
