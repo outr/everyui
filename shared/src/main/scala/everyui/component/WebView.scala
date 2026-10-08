@@ -29,6 +29,13 @@ class WebView(bridge: String, supplied: RenderNode = null)
     * YouTube's embed refuses to play for one at all. Empty is the engine's own. */
   lazy val agent: Prop[String] = own(new Prop[String]("", a => this.node.setWebAgent(a)))
 
+  /** The page kept apart from the app, as an iframe's `sandbox` keeps it: None (the default) is no sandbox at all;
+    * `Some(flags)` allows only those of the iframe's flags it names ("allow-scripts", "allow-forms", "allow-popups",
+    * "allow-same-origin"…), `Some(Set())` nothing. Set it before `source`: a change loads the page again, as an engine
+    * only honours it as a page loads. A sandboxed page is neither told (`run`) nor heard (`hear`). What each engine
+    * honours of it: CONSUMING.md, WebView; where there is no engine it is ignored, as the view is. */
+  lazy val sandbox: Prop[Option[Set[String]]] = own(new Prop[Option[Set[String]]](None, s => this.node.setWebSandbox(s)))
+
   /** Say something to the page. It is script, and it runs in the page's world, not this one's. */
   def run(script: String): Unit = this.node.runWebScript(script)
 

@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sandboxed page</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #2a1830; color: #f3e8f6; font: 16px sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+  #result { font: 14px monospace; white-space: pre; }
+</style>
+</head>
+<body>
+<div>The sandboxed page in demo=webview</div>
+<div id="result">no script ran</div>
+<script>
+  // What demo=webview's sandbox= shows. Its script, where it may run, tries to reach the app that shows it: the
+  // parent's document and origin, the cookies and the storage of the origin it was loaded from, a new window; and says
+  // what it found here and to its parent, posted to any origin, as a page may always post.
+  function attempt(f) {
+    try { var v = f(); return v === undefined ? 'undefined' : v === null ? 'null' : String(v); }
+    catch (e) { return 'blocked: ' + e.name; }
+  }
+  var found = {
+    script: 'ran',
+    origin: self.origin,
+    parentOrigin: attempt(function () { return window.parent.location.origin; }),
+    parentTitle: attempt(function () { return window.parent.document.title; }),
+    cookie: attempt(function () { return document.cookie; }),
+    localStorage: attempt(function () { return window.localStorage.getItem('everyui-sandbox-secret'); }),
+    sessionStorage: attempt(function () { return window.sessionStorage.getItem('everyui-sandbox-secret'); }),
+    popup: attempt(function () { return window.open('about:blank') ? 'opened' : 'refused'; })
+  };
+  document.getElementById('result').textContent = Object.keys(found).map(function (k) { return k + ': ' + found[k]; }).join('\n');
+  window.parent.postMessage({ sandboxProbe: found }, '*');
+</script>
+</body>
+</html>

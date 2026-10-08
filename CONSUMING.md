@@ -2972,6 +2972,43 @@ window.addEventListener('message', e => {
 `demo=webview` shows `web/webview.html` (copied beside the build), or `src=<url>` for the same page served from another
 origin.
 
+`sandbox` (`Prop[Option[Set[String]]]`, `None` by default: no sandbox, as before) keeps a page apart from the app, as
+an iframe's `sandbox` attribute does: `Some(flags)` allows only the iframe flags it names, `Some(Set())` nothing. Set
+it before `source`; a change loads the page again, since an engine honours it only as a page loads. A sandboxed page
+is neither told nor heard on any platform, whatever its flags: `run` does nothing, no bridge is lent, and what it posts
+is not heard. For a file a user opened (HTML from a workspace), sandbox it with nothing, or with scripts alone, and
+never with "allow-same-origin" beside "allow-scripts", which together let the page take its sandbox off:
+
+```scala
+val preview = new WebView("previewBridge")
+preview.sandbox @= Some(if (scriptsOn) Set("allow-scripts") else Set.empty)
+preview.source @= fileUrl
+```
+
+What each platform honours:
+
+- **The web.** The iframe's `sandbox` attribute, exactly (the flags sorted, joined by spaces), set before the frame
+  navigates and the frame sent to its `source` again as it changes. Without "allow-same-origin" the page has an origin
+  of its own (`null`): it cannot reach its parent's document or origin, `document.cookie` and `localStorage` throw, and
+  its requests are cross-origin to the app; without "allow-scripts" none of its script runs; forms, popups, top
+  navigation, modals and the rest only as their flags allow, by the browser's rules.
+- **Android.** Its WebView has no sandbox, so `WebSandbox` sets what comes nearest, again before the page loads and
+  loading it again as it changes. Sandboxed at all: the bridge taken off the page's window; file and content access,
+  geolocation and third-party cookies off; links that would leave for something other than a page (`intent:`,
+  `market:`, `file:`, `content:`…) go nowhere, the rest staying in the view. By flag: JavaScript only with
+  "allow-scripts"; DOM storage only with "allow-same-origin"; a form posted in place of the page refused (answered
+  403, empty) without "allow-forms"; a new window (`window.open`, `target="_blank"`) opening nowhere without
+  "allow-popups". It cannot give the page an origin of its own: the page keeps its address's, so that origin's
+  cookies (one store for the whole app) still go with its requests, and with "allow-scripts" its script can read the
+  ones not HttpOnly and call that origin as itself; a form sent by GET is a link to the WebView, and goes. Show a
+  sandboxed page from an origin that holds nothing of the app's, or as a `data:` address.
+- **The desktop, the Roku and the Apple TV.** No engine lends a page there (`Platform.webViews()` is false), so the
+  view is an empty box and `sandbox` is ignored with it.
+
+`demo=webview&sandbox=none` (or `scripts`, or flags by commas) shows `web/sandbox.html` sandboxed, a page that tries to
+read its parent, the cookies and the storage and says what it found, on itself and posted to its parent; its Scripts
+on and off button toggles "allow-scripts".
+
 ## Monaco (everyui-monaco)
 
 `"com.outr" %% "everyui-monaco" % "0.1.0-SNAPSHOT"` (Scala.js) is Monaco, VS Code's editor, as components: a port of

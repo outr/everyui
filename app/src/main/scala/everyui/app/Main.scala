@@ -52,7 +52,8 @@ import everyui.render.Platform
   *   badge      list rows with long badges (a file's folder and counts), cut from the start to fit after the names at
   *              400 wide, whole where there is room, and cut in the middle and at the end (`rtl=1`)
   *   webview    a page of the web (WebView) that is pinged and answers: web/webview.html beside the web build, or
-  *              `src=<url>` (the same page on another origin); an empty box where there is no engine to lend
+  *              `src=<url>` (the same page on another origin); an empty box where there is no engine to lend;
+  *              `sandbox=none|scripts|<flags>` shows web/sandbox.html sandboxed, trying to reach the app
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   dates      the date pickers: a date field and calendar, a range field and range calendar with presets, and
   *              their dialogs (`dialog=date|range`, `theme=light`, `lang=ar`, `today=`, `min=`, `max=`)

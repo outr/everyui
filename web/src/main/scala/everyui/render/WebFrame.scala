@@ -12,16 +12,22 @@ import scala.scalajs.js
   * loads. A page of another origin cannot be reached into, so the two talk only by `window.postMessage`: `run` posts
   * `{everyui: "run", script}` to it, addressed to the origin of `source` alone, for the page to act on the commands
   * it knows and nothing else, and what it posts to its parent (a string, or an object, which is heard as its JSON) is
-  * heard as its bridge's messages are. Whatever else posts to the app's window is not heard. */
+  * heard as its bridge's messages are. Whatever else posts to the app's window is not heard.
+  *
+  * A sandboxed page (`sandbox`, the iframe's own attribute) is neither told nor heard, whatever its origin: nothing is
+  * lent it, run in it or posted to it, and nothing it posts is heard. */
 class WebFrame(val frame: html.IFrame, bridge: String) {
   private var hearing: String => Unit = _ => ()
   private var origin: String = ""
   private var loaded: Boolean = false
   private var waiting: List[String] = Nil
   private var released: Boolean = false
+  private var current: String = ""
+  private var sandboxed: Boolean = false
 
   private val heard: js.Function1[dom.MessageEvent, Unit] = (e: dom.MessageEvent) =>
-    if (e.source != null && (e.source eq frame.contentWindow) && e.origin == origin) said(e.data.asInstanceOf[js.Any])
+    if (!sandboxed && e.source != null && (e.source eq frame.contentWindow) && e.origin == origin)
+      said(e.data.asInstanceOf[js.Any])
 
   frame.addEventListener("load", (_: dom.Event) => if (origin.nonEmpty) {
     loaded = true
@@ -34,6 +40,7 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
 
   /** Show this address. */
   def source(url: String): Unit = if (url.trim.nonEmpty) {
+    current = url.trim
     origin = new dom.URL(url.trim, dom.document.baseURI).origin
     loaded = false
     frame.src = url.trim
@@ -52,10 +59,24 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
 
   def hear(f: String => Unit): Unit = hearing = f
 
+  /** The frame sandboxed with `flags` allowed (None: not at all), and the page loaded again where it shows one, as a
+    * browser only honours the attribute as the frame navigates. */
+  def sandbox(flags: Option[Set[String]]): Unit = {
+    val was = Option(frame.getAttribute("sandbox"))
+    val now = flags.map(_.toList.sorted.mkString(" "))
+    sandboxed = flags.nonEmpty
+    now match {
+      case Some(s) => frame.setAttribute("sandbox", s)
+      case None => frame.removeAttribute("sandbox")
+    }
+    if (was != now && current.nonEmpty && !released) source(current)
+  }
+
   /** Say something to the page: run in it where it is the app's own origin, posted to it where it is not; kept until
     * it has loaded. */
   def run(script: String): Unit =
-    if (!loaded) waiting = script :: waiting
+    if (sandboxed) ()
+    else if (!loaded) waiting = script :: waiting
     else ownWindow match {
       case Some(w) =>
         try w.asInstanceOf[js.Dynamic].applyDynamic("eval")(script)
@@ -84,7 +105,7 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
 
   // the bridge put on the page's window, where the page is the app's own; a page loading has a new window, so again
   // each time it loads
-  private def lend(): Unit = ownWindow.foreach { w =>
+  private def lend(): Unit = if (!sandboxed) ownWindow.foreach { w =>
     val say: js.Function1[js.Any, Unit] = (message: js.Any) => said(message)
     w.asInstanceOf[js.Dynamic].updateDynamic(bridge)(js.Dynamic.literal(postMessage = say))
   }

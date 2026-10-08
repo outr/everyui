@@ -491,6 +491,7 @@ class RenderNode(val el: html.Element) {
   def setWebSource(url: String): Unit = if (webFrame != null) webFrame.source(url)
   // the browser says who is asking, and a page cannot be told otherwise
   def setWebAgent(agent: String): Unit = ()
+  def setWebSandbox(flags: Option[Set[String]]): Unit = if (webFrame != null) webFrame.sandbox(flags)
   def runWebScript(script: String): Unit = if (webFrame != null) webFrame.run(script)
   def onWebMessage(f: String => Unit): Unit = if (webFrame != null) webFrame.hear(f)
   def releaseWeb(): Unit = if (webFrame != null) webFrame.release()

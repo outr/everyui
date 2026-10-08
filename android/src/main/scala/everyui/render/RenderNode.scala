@@ -269,10 +269,7 @@ class RenderNode(val view: View) {
   // ---- a page of the web ----
 
   /** Show this address. */
-  def setWebSource(url: String): Unit = view match {
-    case w: android.webkit.WebView => if (url.trim.nonEmpty) w.loadUrl(url.trim)
-    case _ => ()
-  }
+  def setWebSource(url: String): Unit = if (webSandbox != null) webSandbox.load(url)
 
   /** Who the page is told is asking, for the loads after this one; empty is the engine's own. */
   def setWebAgent(agent: String): Unit = view match {
@@ -280,9 +277,12 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
+  /** The page sandboxed with `flags` allowed, as near as Android's WebView comes to it (WebSandbox). */
+  def setWebSandbox(flags: Option[Set[String]]): Unit = if (webSandbox != null) webSandbox.set(flags)
+
   /** Say something to the page, in its own language. */
   def runWebScript(script: String): Unit = view match {
-    case w: android.webkit.WebView => w.evaluateJavascript(script, null)
+    case w: android.webkit.WebView => if (webSandbox == null || !webSandbox.sandboxed) w.evaluateJavascript(script, null)
     case _ => ()
   }
 
@@ -293,6 +293,7 @@ class RenderNode(val view: View) {
   def releaseWeb(): Unit = webListener = _ => ()
 
   private[render] var webListener: String => Unit = _ => ()
+  private[render] var webSandbox: WebSandbox = null
 
   private[render] def webSaid(message: String): Unit = webListener(message)
 
@@ -1563,7 +1564,9 @@ object Nodes {
     view.setFocusable(false)
     view.setFocusableInTouchMode(false)
     val node = new RenderNode(view)
-    view.addJavascriptInterface(new WebBridge(node), bridge)
+    val said = new WebBridge(node)
+    view.addJavascriptInterface(said, bridge)
+    node.webSandbox = new WebSandbox(view, bridge, said)
     node
   }
 

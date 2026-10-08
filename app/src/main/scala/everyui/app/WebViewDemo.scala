@@ -14,7 +14,12 @@ import everyui.ui
   *
   * Where the page is of the app's own origin every script runs in it, the last one setting `window.evaled`; on
   * another it is posted, and the page refuses what is not a ping. `dispose=1` takes the view apart after three
-  * seconds, after which nothing the page says is heard. An empty box where there is no engine to lend. */
+  * seconds, after which nothing the page says is heard. An empty box where there is no engine to lend.
+  *
+  * `sandbox=none` shows `sandbox.html` sandboxed with nothing allowed, `sandbox=scripts` with "allow-scripts" (any other
+  * value is its flags, by commas): the page tries to read its parent, the cookies and the storage, and says what it
+  * found on itself and to its parent (`{sandboxProbe: …}`, posted to any origin). Scripts on and off toggles
+  * "allow-scripts", which loads it again. */
 object WebViewDemo {
   def run(): Unit = {
     ui.backgroundColor := Theme.background()
@@ -32,7 +37,20 @@ object WebViewDemo {
       pings += 1
       page.run("ping(" + pings.toString + ")")
     })
-    val bar = Row(spacing = 16.0)(ping, heard)
+    // sandbox=: the page sandboxed before it loads, and a toggle for its scripts
+    val sandbox = Platform.launchArg("sandbox")
+    if (sandbox.nonEmpty) page.sandbox @= Some(sandbox match {
+      case "none" => Set.empty[String]
+      case "scripts" => Set("allow-scripts")
+      case flags => flags.split(",").filter(_.nonEmpty).toSet
+    })
+    val scripts = new Button("Scripts on", () => {
+      val now = page.sandbox().getOrElse(Set.empty[String])
+      page.sandbox @= Some(if (now.contains("allow-scripts")) now - "allow-scripts" else now + "allow-scripts")
+      Platform.log("webview sandbox " + page.sandbox().map(_.toList.sorted.mkString(" ")).getOrElse("none"))
+    })
+    scripts.label := (if (page.sandbox().exists(_.contains("allow-scripts"))) "Scripts off" else "Scripts on")
+    val bar = if (sandbox.isEmpty) Row(spacing = 16.0)(ping, heard) else Row(spacing = 16.0)(ping, scripts, heard)
     bar.position.left @= 16.0
     bar.position.top @= 12.0
     page.hear { message =>
@@ -44,7 +62,7 @@ object WebViewDemo {
       }
     }
     val src = Platform.launchArg("src")
-    page.source @= (if (src.nonEmpty) src else "webview.html")
+    page.source @= (if (src.nonEmpty) src else if (sandbox.nonEmpty) "sandbox.html" else "webview.html")
     page.run("ping(0)")
     ui.children ++= List(bar, page)
     if (Platform.launchArg("dispose") == "1") Platform.after(3.0, () => {
