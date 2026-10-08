@@ -22,8 +22,12 @@ class SizeProperty(measured: Val[Double], write: Double => Unit) extends Var[Dou
   override def @=(value: Double): Unit = {
     val first = !explicitlySet
     explicitlySet = true
-    // the first explicit value must reach the node even if it equals the measured one
-    if (first && get == value) writeOut(value) else super.@=(value)
+    // the first explicit value must reach the node even if it equals the measured one, and must stop following it
+    // either way: kept bound, a spinner made 18 square, as its glyph measured, went to 0 by 0 when it was measured
+    // again hidden
+    val same = get == value
+    super.@=(value)
+    if (first && same) writeOut(value)
   }
 
   override def :=(value: => Double): Unit = {

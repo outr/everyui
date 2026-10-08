@@ -4,7 +4,7 @@ import everyui.event.{Key, PointerEvent, PointerKind}
 import everyui.focus.Focus
 import everyui.component.*
 import everyui.i18n.Direction
-import everyui.render.Nodes
+import everyui.render.{Nodes, Platform}
 import everyui.{FxSpec, ui}
 import reactify.*
 
@@ -116,8 +116,64 @@ class KitSpec extends FxSpec {
       val before = fx(ui.children().size)
       fx(finish(Left("It did not work")))
       eventually(!press.running) shouldBe true
-      spinning shouldBe List(true, false)
       fx(ui.children().size) shouldBe before + 1
+      eventually(spinning == List(true, false)) shouldBe true
+    }
+    "keep the spinner up its minimum once shown, though the work ends just after, and the answer at once" in onScreen() {
+      var events: List[(Boolean, Long)] = Nil
+      var answered = 0L
+      val press = new AsyncPress(on => events = events :+ (on -> System.nanoTime()))
+      val before = fx(ui.children().size)
+      val start = fx {
+        press.press(done => Platform.after(0.42, () => done(Left("Answered"))))
+        System.nanoTime()
+      }
+      eventually { if (answered == 0L && !press.running) answered = System.nanoTime(); answered > 0L } shouldBe true
+      def at(t: Long): Double = (t - start) / 1e9
+      at(answered) should be < 0.6
+      // answered, it is still up, and the failure is told
+      fx(events.map(_._1)) shouldBe List(true)
+      fx(ui.children().size) shouldBe before + 1
+      fx(press.spinning) shouldBe true
+      eventually(events.size == 2) shouldBe true
+      val seen = fx(events)
+      seen.map(_._1) shouldBe List(true, false)
+      val (on, off) = (seen.head._2, seen(1)._2)
+      at(on) should (be >= 0.38 and be < 0.55)
+      (off - on) / 1e9 should be >= 0.48
+      at(off) should (be >= 0.88 and be < 1.1)
+      fx(press.spinning) shouldBe false
+    }
+    "never show the spinner for work done before spinAfter" in onScreen() {
+      var spinning: List[Boolean] = Nil
+      val press = new AsyncPress(on => spinning = spinning :+ on)
+      fx(press.press(done => Platform.after(0.2, () => done(Right(())))))
+      eventually(!press.running) shouldBe true
+      // pressed again at once, the first press's timer does not show it early for the second
+      fx(press.press(done => Platform.after(0.25, () => done(Right(())))))
+      Thread.sleep(700L)
+      fx(press.running) shouldBe false
+      spinning shouldBe Nil
+    }
+    "keep spinning, once, for a press while the spinner is still up" in onScreen() {
+      var spinning: List[Boolean] = Nil
+      var finish: AsyncPress.Done = null
+      val press = new AsyncPress(on => spinning = spinning :+ on)
+      fx(press.press(done => Platform.after(0.42, () => done(Right(())))))
+      eventually(spinning == List(true) && !press.running) shouldBe true
+      // pressed again in the half second it is held up: it stays up, not shown twice, past where the first would end
+      fx(press.press(done => finish = done))
+      fx(press.running) shouldBe true
+      Thread.sleep(800L)
+      spinning shouldBe List(true)
+      fx(press.spinning) shouldBe true
+      fx(finish(Right(())))
+      // up well past its minimum, it goes at once
+      eventually(spinning == List(true, false)) shouldBe true
+      fx(press.press(done => done(Right(()))))
+      eventually(!press.running) shouldBe true
+      Thread.sleep(600L)
+      spinning shouldBe List(true, false)
     }
   }
 

@@ -458,7 +458,13 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   from the tab. The bar is read as a tab list and each tab as a tab, and the tab shown is scrolled into view.
 - `TabGroups[K]`: tabs in groups split across and down, as an editor splits its files (below).
 - `Toast.show(words, seconds, top, margin)`: one short message at a time.
-- `AsyncPress`: a press that runs slow work, with a delayed spinner, and failures toasted.
+- `AsyncPress(spin, minSpin = 0.5)`: a press that runs slow work, with a delayed spinner, and failures toasted. The
+  spinner (`spin(true)`, the app's own: a button swapped for a `Spinner`, say) shows only once the work has run
+  `AsyncPress.spinAfter` (0.4 s), so quick work looks instant, and once shown stays at least `minSpin` seconds (Material's
+  half second), so work ending just after it shows does not flash it for a frame. The work's answer applies at once (its
+  failure toasted, the button pressable again); only `spin(false)` waits out the rest. A press while it is still up keeps
+  it spinning for the new work. `running` says whether work is in flight, `spinning` whether the spinner is up. A
+  dialog's async button (`DialogAction.async`) spins the same way.
 - `Spinner` and `Ring`: an indeterminate spinner and a determinate dial.
 - `LazyRows`: a long list made as it is scrolled toward.
 - `Turns`: work split over frames.

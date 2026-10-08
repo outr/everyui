@@ -914,13 +914,17 @@ object RenderNode {
 
   /** The size of `el`, which is not in the page, as it would be laid out: lent to the page for the read, out of sight,
     * and put back where it was. A node out of the page has no box, and read 0 by 0: words measured as a screen was built
-    * before it arrived (a column as wide as its widest name) came out as nothing. */
+    * before it arrived (a column as wide as its widest name) came out as nothing. One made hidden is laid out for the
+    * read (the host is out of sight), or it read 0 by 0 and was that size as it was shown. */
   def offPage(el: html.Element): (Double, Double) = {
     val parent = el.parentNode
     val next = el.nextSibling
+    val hidden = el.style.display == "none"
+    if (hidden) el.style.display = ""
     offPageHost.appendChild(el)
     val r = el.getBoundingClientRect()
     val scale = offPageHost.getBoundingClientRect().width / 100000.0
+    if (hidden) el.style.display = "none"
     if (parent != null) parent.insertBefore(el, next) else offPageHost.removeChild(el)
     val at = if (scale > 0.0) scale else 1.0
     (r.width / at, r.height / at)

@@ -1,6 +1,8 @@
 package everyui.component
 
+import everyui.component.types.SizeProperty
 import everyui.focus.Focus
+import everyui.kit.Spinner
 import everyui.menu.{MenuItem, SplitButton}
 import everyui.{FxSpec, ui}
 import reactify.*
@@ -48,6 +50,48 @@ class HiddenSpec extends FxSpec {
         ui.children.clear()
         Focus.focused @= None
       }
+    }
+  }
+
+  "A component made hidden off the screen" should {
+    "have the size it was given as it is shown, though it is measured again while hidden" in {
+      val (spinner, holder) = fx {
+        val s = new Spinner(18.0)
+        s.visible @= false
+        val h = new Container
+        h.children += s
+        (s, h)
+      }
+      fx {
+        ui.children.clear()
+        Focus.focused @= None
+        ui.children += holder
+      }
+      try {
+        fx(spinner.measure.trigger())
+        fx(spinner.visible @= true)
+        fx((spinner.size.width(), spinner.size.height())) shouldBe (18.0, 18.0)
+        fx((spinner.node.getWidth(), spinner.node.getHeight())) shouldBe (18.0, 18.0)
+      }
+      finally fx {
+        ui.children.clear()
+        Focus.focused @= None
+      }
+    }
+  }
+
+  "A size given the value it measured" should {
+    "keep it, and stop following the measure" in {
+      val measured = Var(18.0)
+      var written: List[Double] = Nil
+      val size = new SizeProperty(measured, d => written = written :+ d)
+      fx(size @= 18.0)
+      written shouldBe List(18.0)
+      size.explicit shouldBe true
+      // measured again hidden, a web node read 0 by 0
+      fx(measured @= 0.0)
+      size() shouldBe 18.0
+      written shouldBe List(18.0)
     }
   }
 }
