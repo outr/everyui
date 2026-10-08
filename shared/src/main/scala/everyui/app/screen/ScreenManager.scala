@@ -264,11 +264,11 @@ trait ScreenManager extends TaskSupport {
   def rebuild(screen: Screen): Task[Unit] = Task.async[Unit] { done =>
     markStale(screen)
     if (!active().exists(_ eq screen)) done(())
-    else Platform.later(() =>
+    else Platform.later(() => serially(() =>
       // still showing and still to be rebuilt (else when it is next shown, or it already has been)
       if (active().exists(_ eq screen) && stale.exists(_ eq screen))
-        change(screen, push = false, Focus.focused()).map(_ => done(())).startUnit()
-      else done(()))
+        change(screen, push = false, Focus.focused()).map(_ => done(()))
+      else Task(done(()))))
   }
 
   /** The showing screen built afresh (`rebuild`). */
@@ -285,7 +285,36 @@ trait ScreenManager extends TaskSupport {
     * (`Platform.later`), since a change is asked for at the end of a chain (a key, the focus, a click, an action, a
     * task) whose nesting a Roku's small stack cannot also carry a screen's build under. */
   private def swap(screen: Screen, push: Boolean, focus: Option[Component] = None): Task[Unit] =
-    Task.async[Unit](done => Platform.later(() => change(screen, push, focus).map(_ => done(())).startUnit()))
+    Task.async[Unit](done => Platform.later(() => serially(() => change(screen, push, focus).map(_ => done(())))))
+
+  /** When the change under way began (Platform.ticks), or -1, and the changes asked for meanwhile. */
+  private var changing: Double = -1.0
+  private var queued: Vector[() => Task[Unit]] = Vector.empty
+
+  /** One change at a time: one asked for while another is under way (a second press while a screen is built over
+    * several turns) starts once that one is done, so no screen is shown half built, nor two built over each other.
+    * One not done in `ScreenManager.stallSeconds` is waited for no longer: a change that never completes (a build that
+    * threw, a turn the device cut off) holds up nothing after it. */
+  private def serially(run: () => Task[Unit]): Unit =
+    if (changing >= 0.0) queued = queued :+ run
+    else {
+      val began = Platform.ticks()
+      changing = began
+      Platform.after(ScreenManager.stallSeconds, () => if (changing == began) {
+        scribe.warn("screen change stalled: not done after " + ScreenManager.stallSeconds.toInt.toString + "s")
+        next()
+      })
+      run().map(_ => if (changing == began) next()).startUnit()
+    }
+
+  /** The change under way is done (or given up on): the next asked for, on a turn of its own. */
+  private def next(): Unit = {
+    changing = -1.0
+    queued.headOption.foreach { run =>
+      queued = queued.tail
+      Platform.later(() => serially(run))
+    }
+  }
 
   private def change(screen: Screen, push: Boolean, focus: Option[Component]): Task[Unit] = {
     val started = Platform.ticks()
@@ -296,19 +325,26 @@ trait ScreenManager extends TaskSupport {
     val carry = if (remade) Screen.onRebuild(screen) else () => ()
     val place = if (remade) focus.flatMap(f => placeOf(screen, f)) else None
     if (remade) everyui.component.Component.making @= None
-    // the leaving, the building and the arriving in one layout pass, before the focus looks for where things are
+    Screen.building(screen, remade)
+    // the leaving, the building and the arriving in one layout pass, before the focus looks for where things are; each
+    // on a turn of its own where the screen is built out of sight (its first showing; one rebuilt in sight builds and
+    // arrives in one), so no one turn holds them all: a Roku ends a turn that runs too long, and the screen never
+    // showed. Until it arrives the screen being left shows, and the one being built is in nothing that is drawn
     LayoutPass.batched(
-      active().filter(s => !(s eq screen) || remade).map(Screen.deactivate).getOrElse(Task.unit)
+      active().filter(s => !(s eq screen) || remade).map(s => Screen.deactivate(s).flatMap(_ => LayoutPass.turn))
+        .getOrElse(Task.unit)
         .flatMap { _ =>
           if (remade) Screen.rebuild(screen)
           else if (loaded.exists(_ eq screen)) Task.unit
           else {
             loaded = screen :: loaded
-            Screen.init(screen).flatMap(_ => Screen.load(screen))
+            Screen.init(screen).flatMap(_ => Screen.turn(screen)).flatMap(_ => Screen.load(screen))
+              .flatMap(_ => Screen.turn(screen))
           }
         }
         .flatMap(_ => Screen.activate(screen)))
       .map { _ =>
+        Screen.building(screen, false)
         active @= Some(screen)
         // a screen made for one showing (a title's page) is let go once nothing can return to it, and taken apart a
         // moment later, once it is out of sight: left whole, whatever in it was bound to something that lives on (a
@@ -473,4 +509,7 @@ object ScreenManager {
 
   /** How long one screen's treatment of the backdrop takes to blend into the next's. */
   val treatmentSeconds: FiniteDuration = 400.millis
+
+  /** How long a change of screen may take before it is taken to have stalled, and the next waits for it no longer. */
+  val stallSeconds: Double = 15.0
 }

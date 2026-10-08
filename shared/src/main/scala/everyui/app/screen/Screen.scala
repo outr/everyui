@@ -47,4 +47,14 @@ object Screen {
   def dispose(screen: Screen): Unit = screen.dispose()
   def rebuild(screen: Screen): Task[Unit] = screen.rebuild()
   def onRebuild(screen: Screen): () => Unit = screen.onRebuild()
+
+  /** The screen being built afresh while it shows (`ScreenManager.rebuild`), if one is. */
+  private var inSight: Option[Screen] = None
+  private[screen] def building(screen: Screen, seen: Boolean): Unit = inSight = if (seen) Some(screen) else None
+
+  /** A turn of its own for what comes next in building `screen` (`LayoutPass.turn`), so no one turn holds the whole of
+    * a long build (a Roku ends a turn that runs too long, and the screen never shows): on its first showing, which is
+    * built out of sight, its parts a turn each, and laid out once. At once while it is rebuilt in sight, where a frame
+    * drawn between the parts would show it half made. */
+  def turn(screen: Screen): Task[Unit] = if (inSight.exists(_ eq screen)) Task.unit else everyui.layout.LayoutPass.turn
 }

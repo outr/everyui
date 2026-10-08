@@ -187,6 +187,23 @@ override protected def onRebuild(): () => Unit = {
 }
 ```
 
+### A screen built over several turns
+
+A Roku stops a turn that runs too long (an Execution timeout), and the screen whose build it was never shows. So a
+screen's first showing is spread over turns of its own: the screen being left is deactivated on one, the new one's
+`init` (and so `createUI`) runs on the next, its `load` on another and its `activate` on the last; a `FormScreen`'s
+card, what `build` puts on it, and what a screen's own `createUI` adds after the form are a turn each. All of it is one
+layout pass, laid out once it has arrived, before the focus moves; until then the screen being left shows and the new
+one is in nothing drawn. A screen built afresh in sight (`rebuild()`) is built and arrives on one turn, so no frame
+shows it half made. A change asked for while another is under way starts once that one is done (or once it has taken
+`ScreenManager.stallSeconds`, when it is taken to have stalled and is waited for no longer).
+
+A screen whose own `createUI` is long can give its parts turns of their own the same way, with the layout still held:
+
+```scala
+override def createUI(): Task[Unit] = Task(header()).flatMap(_ => Screen.turn(this)).map(_ => rails())
+```
+
 ### When frames run
 
 On the web, the desktop and Android (`Frames.onDemand`) the screen manager's frame loop runs only while something

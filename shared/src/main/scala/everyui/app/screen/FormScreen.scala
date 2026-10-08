@@ -54,6 +54,9 @@ trait FormScreen extends UIScreen {
     color := Theme.text()
   })
 
+  // the card, then what the screen puts on it (`build`) on a turn of its own, and what a screen adds once the form is made
+  // (its `createUI` after this one) on another: in one turn they ran past a Roku's limit on a turn with a long form, and
+  // the screen never showed
   override def createUI(): Task[Unit] = Task {
     val top = header()
     val errorBox = new Notice(error().getOrElse(""), Theme.danger(), width)
@@ -81,8 +84,7 @@ trait FormScreen extends UIScreen {
     scroll.content.size.height := card.position.top() + card.size.height() + 24.0
     scroll.content.children += card
     container.children += scroll
-    build()
-  }
+  }.flatMap(_ => Screen.turn(this)).map(_ => build()).flatMap(_ => Screen.turn(this))
 
   private def present(c: Container): List[Component] = if (c.children().nonEmpty) List(c) else Nil
 

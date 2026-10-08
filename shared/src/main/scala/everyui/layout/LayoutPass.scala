@@ -38,14 +38,24 @@ object LayoutPass {
     finally close()
   }
 
-  /** `task`, with layout held from its start until it completes (or, if it completes later, until its start returns).
+  /** `task`, with layout held from its start until it completes (or, if it completes later, until its start returns,
+    * or the last `turn` it went on to returns: a task waiting on something else, a download say, holds nothing up).
     * The outermost batch lays out what it asked for on a turn of its own (`Platform.later`), then completes: a batch
     * ends at the bottom of a chain of callbacks, whose nesting a Roku's small stack cannot also carry a screen's
-    * layout under. A task that throws as it starts releases the batch on its way out: held, every layout after it
-    * waited for a batch that never closed, and nothing on the screen was laid out again. */
+    * layout under. A task that throws as it starts, or as it goes on after a `turn`, releases the batch on its way
+    * out: held, every layout after it waited for a batch that never closed, and nothing on the screen was laid out
+    * again. */
   def batched[T](task: Task[T]): Task[T] = Task.async[T] { done =>
     var open = true
     batches += 1
+    // let go of the batch where the task has stopped short of completing on anything but a turn of its own
+    def letGo(): Unit = if (open) {
+      if (carried > 0) waiting = waiting :+ (() => letGo())
+      else {
+        open = false
+        release(() => ())
+      }
+    }
     try {
       task.map { value =>
         if (open) {
@@ -53,11 +63,34 @@ object LayoutPass {
           release(() => done(value))
         } else done(value)
       }.start()
-    } finally {
-      if (open) {
-        open = false
-        release(() => ())
-      }
+    } finally letGo()
+  }
+
+  /** Turns under way that carry a batch across (`turn`), and the batches waiting to see whether the task they hold
+    * goes on past them. */
+  private var carried: Int = 0
+  private var waiting: List[() => Unit] = Nil
+
+  /** A turn of its own (`Platform.later`, from a fresh stack) between the parts of a long piece of work in a
+    * `batched` task, with the batch held across it: a screen built over several turns, so no one turn holds the whole
+    * of it (a Roku stops one that runs too long), still laid out once, when it is done. Outside a batch, just a turn. */
+  def turn: Task[Unit] = Task.async[Unit] { done =>
+    if (batches == 0) Platform.later(() => done(()))
+    else {
+      batches += 1
+      carried += 1
+      Platform.later(() => {
+        // the batch is the task's own again before it goes on, so its completing lays out first and completes after
+        carried -= 1
+        batches -= 1
+        if (batches == 0) flush()
+        try done(())
+        finally {
+          val asked = waiting
+          waiting = Nil
+          asked.foreach(f => f())
+        }
+      })
     }
   }
 
