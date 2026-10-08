@@ -456,6 +456,11 @@ class RenderNode(val el: html.Element) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = math.min(1.0, volume)) // a page cannot boost
   def setMediaRate(rate: Double): Unit = media.foreach(_.playbackRate = rate)
   def mediaRates(): Boolean = true
+  /** The centre of a surround source folded to stereo `db` dB over the usual, through Web Audio where the page may hear
+    * it (CenterFold), and whether that can be and is. */
+  def setMediaCenterMix(db: Double): Unit = if (media.nonEmpty) webMedia.centerMix(everyui.audio.Downmix.clamp(db))
+  def mediaCenterMixes(): Boolean = media.nonEmpty && webMedia.centerMixes
+  def mediaCenterMixing(): Boolean = media.nonEmpty && webMedia.centerMixing
   // what hls.js holds ahead; the browser's own player cannot be told
   def setMediaBuffering(named: String): Unit = if (media.nonEmpty) webMedia.buffering = named
   // the browser keeps what its own cache allows, and a page has no other store for a clip

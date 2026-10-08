@@ -45,6 +45,10 @@ object FullDemos {
       VideoDemo.run()
       true
     }
+    else if (demo == "centermix") {
+      CenterMixDemo.run()
+      true
+    }
     else if (demo == "transfer") {
       TransferDemo.run()
       true

@@ -44,6 +44,27 @@ trait MediaSupport { self: Component =>
     * keeps playing at 1 and says so through [[rates]]. */
   lazy val rate: Prop[Double] = own(new Prop[Double](1.0, r => node.setMediaRate(math.max(0.1, math.min(4.0, r)))))
 
+  /** How loud the centre of a surround stream is, folded to stereo, in dB over the usual: a film keeps its dialogue in
+    * its centre channel, and on a television's own speakers the usual fold sets it under the music and effects. 0 is
+    * the usual fold (ITU-R BS.775: the centre and the surrounds at -3 dB, the LFE left out, [[everyui.audio.Downmix]]),
+    * +3 and +6 bring the voices up over the rest, and it goes from -12 to +12; what comes out is limited, never
+    * clipped. Heard at once, as it plays.
+    *
+    * It does nothing to a stereo or mono source, nor where the output plays every channel itself (an AV receiver
+    * taking 5.1 as PCM, or the sound passed through to it encoded), nor on a platform that cannot ([[centerMixSupported]]):
+    * [[centerMixing]] says whether it is being heard. */
+  lazy val centerMix: Prop[Double] = own(new Prop[Double](0.0, db => node.setMediaCenterMix(db)))
+
+  /** Whether the platform can fold the centre in at another level for what is playing, so an app can hide the setting
+    * where it cannot: Android can (Media3's audio path); a browser can for a stream played through hls.js and a file
+    * from the page's own origin, where Web Audio may hear it, and not for a file from another one; a Roku, the
+    * Apple TV and the desktop cannot. Told again with each source. */
+  val centerMixSupported: Var[Boolean] = Var(node.mediaCenterMixes())
+
+  /** Whether [[centerMix]] is being heard now: a source with a centre among more than two channels, folded here to a
+    * stereo output. False for a stereo source, a passed-through or many-channel output, and where it is not supported. */
+  val centerMixing: Var[Boolean] = Var(false)
+
   /** How much to hold before playing, how long to wait for bytes, and how much patience a stall is given: one of
     * `responsive`, `balanced` (what an unset value means) and `slow`.
     *
@@ -188,7 +209,11 @@ trait MediaSupport { self: Component =>
     }
     if (e == "retry") retrying @= node.mediaRetry()
     else if (e == "ready") retrying @= None
-    if (e == "bands") bands @= node.mediaBands()
+    if (e == "mixing") {
+      centerMixSupported @= node.mediaCenterMixes()
+      centerMixing @= node.mediaCenterMixing()
+    }
+    else if (e == "bands") bands @= node.mediaBands()
     else if (e != "retry") listeners.foreach(_(e))
   }
   watch()
@@ -262,6 +287,7 @@ trait MediaSupport { self: Component =>
       node.setMediaMuted(muted())
       node.setMediaVolume(volume())
       node.setMediaRate(rate())
+      node.setMediaCenterMix(centerMix())
       node.setMediaPlaying(playing())
     }
   }

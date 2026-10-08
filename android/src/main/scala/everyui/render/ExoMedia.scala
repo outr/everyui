@@ -158,6 +158,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
             }))
           .setLoadControl(load)
           .build()
+        val folding = mixer
         sounding(made)
         attach(made)
         made.setRepeatMode(if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF)
@@ -256,6 +257,12 @@ class ExoMedia(frame: Option[VideoFrame]) {
               retried = Some(MediaRetry(failures, host, cause))
               listener("retry")
             }
+          // what the sound goes out as, once its track is made: folded where it is PCM and the fold took it, and not where
+          // it is sent on encoded (passed through to a receiver), when the fold is not in the path at all
+          override def onAudioTrackInitialized(time: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                                               config: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig): Unit =
+            if (player.exists(_ eq made)) mixed(androidx.media3.common.util.Util.isEncodingLinearPcm(config.encoding) &&
+              folding.exists(_.active))
         })
         if (from > 0L) made.setMediaItem(item(url), from) else made.setMediaItem(item(url))
         made.prepare()
@@ -298,23 +305,45 @@ class ExoMedia(frame: Option[VideoFrame]) {
   /** The spectrum last heard, or nothing. */
   def bands(): List[Double] = heard
 
-  /** The player's renderers, with the spectrum tap in its audio path where it was asked for. What it hears is handed
-    * over on the main thread, and only while it is still this source playing. */
-  private def renderers(url: String): DefaultRenderersFactory =
-    if (!listening) new DefaultRenderersFactory(Host.activity)
-    else {
-      val tap = new SpectrumTap(levels => Host.activity.runOnUiThread(() => if (source == url && player.nonEmpty) {
+  /** The player's renderers, its audio path first through the centre's fold ([[CenterMixer]]), and then, where it was
+    * asked for, the spectrum tap, which so hears what is played. What the tap hears is handed over on the main thread,
+    * and only while it is still this source playing. After both come the player's volume and the loudness enhancer
+    * (on the AudioTrack and its session), so a boost past full volume works on the fold, limited already. */
+  private def renderers(url: String): DefaultRenderersFactory = {
+    val fold = new CenterMixer
+    fold.db = centre
+    mixer = Some(fold)
+    val tap = if (!listening) Nil else List(new SpectrumTap(levels => Host.activity.runOnUiThread(() =>
+      if (source == url && player.nonEmpty) {
         heard = levels.toList
         listener("bands")
-      }))
-      new DefaultRenderersFactory(Host.activity) {
-        override protected def buildAudioSink(context: android.content.Context, float: Boolean,
-                                              params: Boolean): androidx.media3.exoplayer.audio.AudioSink =
-          new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-            .setAudioProcessors(Array[androidx.media3.common.audio.AudioProcessor](tap))
-            .build()
-      }
+      })))
+    new DefaultRenderersFactory(Host.activity) {
+      override protected def buildAudioSink(context: android.content.Context, float: Boolean,
+                                            params: Boolean): androidx.media3.exoplayer.audio.AudioSink =
+        new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+          .setEnableAudioOutputPlaybackParameters(params)
+          .setAudioProcessors((fold :: tap).toArray[androidx.media3.common.audio.AudioProcessor])
+          .build()
     }
+  }
+
+  /** How loud the centre of a surround stream is folded in, in dB over the usual ([[CenterMixer]]): heard at once. */
+  def setCenterMix(db: Double): Unit = {
+    centre = db
+    mixer.foreach(_.db = db)
+  }
+  private var centre = 0.0
+  private var mixer: Option[CenterMixer] = None
+  private var mixing = false
+
+  /** Whether the centre's fold is heard now: PCM going out, folded to two channels. */
+  def centerMixing(): Boolean = mixing
+
+  private def mixed(now: Boolean): Unit = if (now != mixing) {
+    mixing = now
+    listener("mixing")
+  }
 
   /** What the sound is, said to Android: a film or music, and whether it takes the sound over from other apps —
     * only what is playing as the point of the screen (it has a now-playing), never sound under something else. */
@@ -659,6 +688,8 @@ class ExoMedia(frame: Option[VideoFrame]) {
     framed = false
     relit = false
     frame.foreach(_.cues(Nil))
+    mixer = None
+    mixed(false)
   }
 
   /** Drawn by the display itself (a `SurfaceView`) or in the app's layers (a `TextureView`). A player keeps playing

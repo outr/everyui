@@ -655,6 +655,10 @@ class RenderNode(val fx: Node) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
   def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
   def mediaRates(): Boolean = true
+  // JavaFX hands over no samples to fold: its own downmix, at its own centre
+  def setMediaCenterMix(db: Double): Unit = ()
+  def mediaCenterMixes(): Boolean = false
+  def mediaCenterMixing(): Boolean = false
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
   // nowhere of its own to keep a clip: every one is fetched as it plays

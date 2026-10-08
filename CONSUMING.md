@@ -2135,6 +2135,56 @@ and with `headers` for its preflight too (`Access-Control-Allow-Headers: Authori
 
 `demo=video` plays an HLS stream, one with alternate audio and subtitles, and an `.mp4`, with `header=` and `lang=`.
 
+## A film's dialogue: the centre mix (`centerMix`)
+
+A film keeps its dialogue in the centre channel of its 5.1 or 7.1, and on a television's own speakers the usual fold
+to stereo sets it under the music and effects. `centerMix: Prop[Double]` on a `VideoView` (or an `AudioPlayer`) is
+the centre's level in that fold, in dB over the usual, as Kodi's "Downmix: Center Mix Level" is: 0 is the usual fold,
++3 and +6 bring the voices up over the rest, and it goes from -12 to +12. It is heard at once, as it plays.
+
+```scala
+video.centerMix @= 6.0
+settings.visible := video.centerMixSupported()   // hide the setting where it can do nothing
+video.centerMixing.attach(on => ...)             // whether it is being heard now
+```
+
+The fold is ITU-R BS.775's (`everyui.audio.Downmix`): each side takes its own front channel whole, the centre at
+-3 dB times 10^(dB/20), its own surrounds at -3 dB (7.1's side and back pairs alike), a 6.1's back centre at -6 dB to
+both; the LFE is left out, as BS.775 and a Dolby decoder's Lo/Ro leave it. Nothing is normalised, so at 0 dB it is as
+loud as the usual fold (a browser's own, exactly); what comes out is kept under full scale instead of clipping. It
+applies only to a source with a centre among more than two channels, played out of two: a stereo or mono source is
+untouched, and so is an output that plays every channel itself.
+
+- **Android**: the fold is done in Media3's audio path (`CenterMixer`, an AudioProcessor in the player's
+  `DefaultAudioSink`, ahead of the spectrum tap, the player's volume and the loudness enhancer), on the decoded PCM in
+  all its channels (16-bit or float) before Android would fold it. A limiter the two sides share takes its gain down
+  at once to what a peak needs to stay under -0.2 dBFS and gives it back over 0.2 s; a change of level glides over
+  20 ms. It folds where the sound goes out as two channels: speakers, headphones, Bluetooth, or an HDMI sink whose PCM
+  profiles say two (a television; Android 13's route for media, else what is connected). An HDMI sink that takes 5.1
+  as PCM (an AV receiver) gets every channel, and sound passed through still encoded (AC-3, E-AC-3 to a receiver or a
+  television that decodes it) never comes this way: `centerMixing` is false then. A level change is heard after what
+  the AudioTrack already holds. It logs `media: centre mix: 6 channels (LRCElr) at 48000 Hz folded to stereo for HDMI`,
+  and a second after each change `media: centre mix at +6.0 dB: centre in -15.0 dBFS, out left -12.1 right -12.1 dBFS,
+  limited 0.0 dB`.
+- **Web**: a Web Audio graph (`CenterFold`): the element's `MediaElementSource`, made up to 5.1 (mono to the centre,
+  stereo to the front pair), split, each channel into a side at its share, and through a soft limiter (a
+  WaveShaperNode: as it is up to 0.8, then bent towards -0.2 dBFS, never reaching it) to the destination. Taking an
+  element's sound into Web Audio cannot be undone, and Web Audio hears nothing of a cross-origin file that has not
+  allowed the page (CORS): it plays on, silent. So nothing is taken until a level other than 0 is first asked for, and
+  then only while the page may make sound, its output plays two channels, and the source is one Web Audio may hear: an
+  HLS stream through hls.js (its `blob:` is the page's own) or a file from the page's origin. A file from another
+  origin is not supported (`centerMixSupported` is false for it) and plays as ever. A centre heard alone for two
+  seconds is taken to be mono made up and played whole on both sides; `centerMixing` turns on once a centre has been
+  heard with another channel. One limit: a file from another origin that does not allow the page, played later on an
+  element already taken, plays silent, and says so (`scribe.error`); an element that will play such files after a
+  same-origin one is best left at 0.
+- **Roku, Apple TV, desktop**: not supported; `centerMixSupported` is false and the device or JavaFX folds as it
+  does.
+
+`demo=centermix` plays a 5.1 file (`src=`, `centre51.mp4` beside the page by default) with buttons for -6, 0, +3, +6
+and +12 dB; `db=` starts it there, `steps=1` walks 0, +3, +6 and 0 every four seconds, and `then=` plays another
+file twelve seconds in.
+
 ## Sound: players that take turns, and effects (`AudioPlayer`)
 
 Every platform but one mixes as many `AudioPlayer`s as play at once. A Roku plays one Audio node at a time: a second

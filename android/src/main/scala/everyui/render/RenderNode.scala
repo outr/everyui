@@ -242,6 +242,11 @@ class RenderNode(val view: View) {
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
   def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
+  /** The centre of a surround stream folded to stereo `db` decibels over the usual, in the player's audio path
+    * ([[CenterMixer]]), and whether that is heard now. */
+  def setMediaCenterMix(db: Double): Unit = media.foreach(_.setCenterMix(everyui.audio.Downmix.clamp(db)))
+  def mediaCenterMixes(): Boolean = media.nonEmpty
+  def mediaCenterMixing(): Boolean = media.exists(_.centerMixing())
   def setMediaBuffering(named: String): Unit = media.foreach(_.setBuffering(named))
   def setMediaCached(cached: Boolean): Unit = media.foreach(_.setCached(cached))
   def mediaRates(): Boolean = true

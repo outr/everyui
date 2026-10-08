@@ -192,6 +192,10 @@ class RenderNode(val sg: SGNode) {
   }
   def setMediaRate(rate: Double): Unit = ()
   def mediaRates(): Boolean = false
+  // no samples to be had: the device folds a surround stream its own way
+  def setMediaCenterMix(db: Double): Unit = ()
+  def mediaCenterMixes(): Boolean = false
+  def mediaCenterMixing(): Boolean = false
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
   // nowhere of its own to keep a clip: every one is fetched as it plays

@@ -41,6 +41,10 @@ final class WebMedia(el: html.Element) {
   private var failure = ""
   private var wanted = ("", "")
   private var listeners: List[String => Unit] = Nil
+  // the centre of a surround source, folded through Web Audio once asked for (CenterFold)
+  private var centre = 0.0
+  private var allowed = false
+  private lazy val fold = new CenterFold(el, () => tell("mixing"))
 
   el.addEventListener("error", (_: dom.Event) => refused())
 
@@ -49,7 +53,10 @@ final class WebMedia(el: html.Element) {
 
   /** Play `to`, or nothing for "". The same address again is nothing. */
   def source(to: String): Unit =
-    if (to.isEmpty) close()
+    if (to.isEmpty) {
+      close()
+      tell("mixing")
+    }
     else if (!url.contains(to)) {
       close()
       url = Some(to)
@@ -57,6 +64,22 @@ final class WebMedia(el: html.Element) {
       start = 0.0
       if (WebMedia.hls(to) && script) attach(to, opened) else native(to)
     }
+
+  /** The centre of a surround source at `db` dB over the usual (MediaSupport.centerMix). */
+  def centerMix(db: Double): Unit = {
+    centre = db
+    fold.level(db, hearable)
+  }
+
+  /** Whether what plays is Web Audio's to hear: a stream through hls.js (a `blob:` of the page's own), a file from the
+    * page's origin, or one from another that allows it. */
+  def hearable: Boolean = url.nonEmpty && (hls.nonEmpty || allowed || url.exists(WebMedia.sameOrigin))
+
+  /** Whether the centre can be folded here for what plays: Web Audio, and nothing playing or something it may hear. */
+  def centerMixes: Boolean = CenterFold.available && (url.isEmpty || hearable || WebMedia.hls(url.getOrElse("")) && script)
+
+  /** Whether the centre is being folded now. */
+  def centerMixing: Boolean = fold.mixing
 
   def play(on: Boolean): Unit = {
     playing = on
@@ -137,12 +160,40 @@ final class WebMedia(el: html.Element) {
 
   // ---- the browser's own player ----
 
-  private def native(to: String): Unit = {
+  // a file from another origin, to an element whose sound Web Audio has taken, is played as `cors` where its server
+  // allows the page, and is heard; where it does not, it plays without a sound, which is said
+  private def native(to: String): Unit =
+    if (!fold.taken || WebMedia.sameOrigin(to)) {
+      el.removeAttribute("crossorigin")
+      load(to)
+    }
+    else {
+      val at = opened
+      WebMedia.allows(to, headers, ok => if (at == opened) {
+        allowed = ok
+        if (ok) el.setAttribute("crossorigin", "anonymous")
+        else {
+          el.removeAttribute("crossorigin")
+          everyui.scribe.error("media: centre mix: " + WebMedia.origin(to) + " does not allow this page to hear what it " +
+            "sends (CORS), and this element's sound already goes through Web Audio: it plays without a sound")
+        }
+        load(to)
+      })
+    }
+
+  private def load(to: String): Unit = {
     el.setAttribute("src", to)
     // before the file has said anything, a time set is where it starts once it has (its default playback start
     // position), rather than a seek after it
     if (from > 0.0) m.currentTime = from
     if (playing) resume()
+    settled()
+  }
+
+  // a source open, through either player: the centre folded if it was asked for and can be, and the app told
+  private def settled(): Unit = {
+    fold.level(centre, hearable)
+    tell("mixing")
   }
 
   private def resume(): Unit = m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
@@ -215,6 +266,7 @@ final class WebMedia(el: html.Element) {
         el.removeAttribute("src")
         val h = js.Dynamic.newInstance(HlsScript.hls)(config())
         hls = Some(h)
+        settled()
         val events = HlsScript.hls.Events
         h.on(events.MANIFEST_PARSED, ((_: js.Any, _: js.Any) => parsed()): js.Function2[js.Any, js.Any, Unit])
         h.once(events.AUDIO_TRACKS_UPDATED, ((_: js.Any, _: js.Any) => heard(h)): js.Function2[js.Any, js.Any, Unit])
@@ -317,6 +369,8 @@ final class WebMedia(el: html.Element) {
   private def close(): Unit = {
     opened += 1
     url = None
+    allowed = false
+    fold.fresh()
     probed = false
     recovered = false
     measured = false
@@ -344,6 +398,32 @@ final class WebMedia(el: html.Element) {
 object WebMedia {
   /** Whether an address is an HLS playlist's: its path ends `.m3u8`. */
   def hls(url: String): Boolean = url.takeWhile(c => c != '?' && c != '#').toLowerCase.endsWith(".m3u8")
+
+  /** Whether `url` is the page's own to hear: from its origin, or a `blob:` or `data:` of its own. */
+  def sameOrigin(url: String): Boolean = {
+    val lower = url.toLowerCase
+    lower.startsWith("blob:") || lower.startsWith("data:") || origin(url) == dom.window.location.origin
+  }
+
+  /** The origin `url` is from, against the page's address. */
+  def origin(url: String): String =
+    scala.util.Try(js.Dynamic.newInstance(js.Dynamic.global.URL)(url, dom.window.location.href).origin.toString)
+      .getOrElse("")
+
+  /** Whether the server of `url` allows the page to read what it sends (CORS), asked with a request whose answer is
+    * let go as soon as its headers are in: `answer` hears true where it does, and false where it does not or the
+    * request fails. */
+  def allows(url: String, headers: Map[String, String], answer: Boolean => Unit): Unit = {
+    val abort = js.Dynamic.newInstance(js.Dynamic.global.AbortController)()
+    val init = js.Dynamic.literal(mode = "cors", credentials = "omit", headers = js.Dictionary(headers.toSeq*),
+      signal = abort.signal)
+    val answered: js.Function1[js.Dynamic, Unit] = r => {
+      abort.abort()
+      answer(r.ok.asInstanceOf[Boolean])
+    }
+    val failed: js.Function1[js.Any, Unit] = _ => answer(false)
+    js.Dynamic.global.fetch(url, init).`then`(answered, failed)
+  }
 
   /** Whether the browser has Media Source Extensions (Safari on an iPhone, the managed kind). */
   def mse: Boolean = {

@@ -99,6 +99,10 @@ class RenderNode(val sg: SGNode) {
   def setMediaVolume(volume: Double): Unit = ()
   def setMediaRate(rate: Double): Unit = ()
   def mediaRates(): Boolean = false
+  // nothing plays here yet, so nothing is folded
+  def setMediaCenterMix(db: Double): Unit = ()
+  def mediaCenterMixes(): Boolean = false
+  def mediaCenterMixing(): Boolean = false
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
   // nowhere of its own to keep a clip: every one is fetched as it plays
