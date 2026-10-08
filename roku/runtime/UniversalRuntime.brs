@@ -2244,14 +2244,16 @@ sub uiMediaAgain(node as object)
     t.addField("uiTarget", "node", false)
     t.uiTarget = node
     t.observeField("fire", "uiOnMediaAgain")
-    GetGlobalAA().appScene.appendChild(t)
+    scene = GetGlobalAA().appScene
+    scene.appendChild(t)
     t.control = "start"
 end sub
 
 sub uiOnMediaAgain(event as object)
     t = event.getRoSGNode()
     n = t.uiTarget
-    GetGlobalAA().appScene.removeChild(t)
+    scene = GetGlobalAA().appScene
+    scene.removeChild(t)
     if n <> invalid and n.uiPlaying and n.content <> invalid then n.control = "play"
 end sub
 
@@ -2611,7 +2613,8 @@ sub uiCaptionsWrite(node as object, mode as string)
     if node <> invalid and node.hasField("globalCaptionMode")
         node.globalCaptionMode = mode
     else
-        CreateObject("roDeviceInfo").SetCaptionsMode(mode)
+        info = CreateObject("roDeviceInfo")
+        info.SetCaptionsMode(mode)
     end if
 end sub
 
