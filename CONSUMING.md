@@ -1783,7 +1783,17 @@ What is measured (`Perf`), counted into buckets as it comes, never logged per ev
 - **key to response**: from a key pressed to the start of the frame after the one that drew its handling, which is when
   that one was on the screen (`keyLatency`);
 - **the app's update** in each frame (`ScreenManager`'s update and layout; on a Roku this is the BrightScript work), and
-  the time from **frame to frame**, with the share **dropped** (`QualityPolicy.dropMs` or more);
+  the time from **frame to frame**, with the share **dropped**: a frame that missed at least one vsync of the display's
+  own refresh, come one and a half refresh periods or more after the one before by the loop's own signal (Android's
+  Choreographer, the web's animation frames, a Roku's render Timer), the refresh being the platform's where it says
+  (`Platform.refreshRate`: Android's display, the web's animation frames, a Roku's video mode where it names a rate),
+  else 40 ms, clear of a 30 Hz display's 33 (`QualityPolicy.dropMs`); a Roku TV drawing at 30 is not dropping its
+  every frame. The same line counts the drops of the step down;
+- **what went wrong**: errors nothing caught (a frame that failed; a thread's uncaught exception on the desktop and
+  Android, the window's `error` and `unhandledrejection` on the web; on a Roku what RtGuard reports, its execution
+  timeouts and stack overflows among them), and stalls: a change of screen not done in `ScreenManager.stallSeconds`, or
+  a turn a Roku cut off. A run with either is judged no longer from then on (`quality: no longer judged in this run,
+  which had 1 error`): its frames are of whatever was left on the screen, not of how the device copes;
 - **the platform's frames** where it times them: Android's FrameMetrics (`Platform.frameTimings`, which now takes more
   than one listener). The web's frames are its `requestAnimationFrame`s;
 - **memory**: a Roku's general memory level (`roDeviceInfo.GetGeneralMemoryLevel`: normal, low, critical) and the share
@@ -1815,7 +1825,9 @@ case class PerfSession(sessionId: String,                 // the same from launc
                        updateMsP95: Option[Int], frameMsP95: Option[Int], memoryUsedPct: Option[Int],
                        platform: Option[String], model: Option[String], graphicsPlatform: Option[String],
                        ramMb: Option[Int],
-                       levelGiven: Option[String], levelRun: Option[String], steppedDown: Option[Boolean])
+                       levelGiven: Option[String], levelRun: Option[String], steppedDown: Option[Boolean],
+                       errors: Option[Int],               // errors nothing caught in the run
+                       stalled: Option[Boolean])          // a change of screen that never finished, a turn cut off
 ```
 
 The step down (`QualityPolicy`, every threshold in one place, `Quality.policy` to change them; placeholders that agree

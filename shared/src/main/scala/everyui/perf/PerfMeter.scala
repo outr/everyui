@@ -27,7 +27,7 @@ class PerfMeter(from: Double) {
   /** A key `ms` from its press to the frame drawn after it was handled. */
   def key(ms: Double): Unit = keys.add(ms)
 
-  /** A frame `ms` after the one before, `updateMs` of it the app's update; dropped at `dropMs` or more. */
+  /** A frame `ms` after the one before, `updateMs` of it the app's update; dropped at `dropMs` or more (`QualityPolicy.dropMs`). */
   def frame(ms: Double, updateMs: Double, dropMs: Double): Unit = {
     frames.add(ms)
     updates.add(updateMs)

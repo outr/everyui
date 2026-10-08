@@ -538,6 +538,14 @@ object Platform {
   def memoryLevel(): String = ""
   def memoryUsedPct(): Int = -1
 
+  /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): not
+    * read here, 0. */
+  def refreshRate(): Double = 0.0
+  /** Errors nothing caught: one ends the app here, and no run reports it. */
+  def errorsSeen(): Int = 0
+  /** Turns cut off by the platform (a Roku's): none here. */
+  def turnsCutOff(): Int = 0
+
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 

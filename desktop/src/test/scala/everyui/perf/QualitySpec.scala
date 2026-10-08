@@ -48,6 +48,13 @@ class QualitySpec extends FxSpec {
       p.wants(window(frames = 10, dropPct = 90.0)) shouldBe QualityLevel.Full
       p.why(window(keyP95 = 420.0, dropPct = 12.0)) shouldBe "key p95 420ms >= 300, drop 12% >= 8"
     }
+    "drop a frame that missed a vsync of the display's refresh, and one 40ms late where the refresh is not known" in {
+      val p = QualityPolicy()
+      p.dropMs(60.0) shouldBe 25.0
+      p.dropMs(50.0) shouldBe 30.0
+      p.dropMs(30.0) shouldBe 50.0
+      p.dropMs(0.0) shouldBe 40.0
+    }
   }
 
   "The quality level" should {
@@ -120,6 +127,61 @@ class QualitySpec extends FxSpec {
   }
 
   "The session's measures" should {
+    "count a television's 35ms frames on a 30 Hz display, and where its refresh is unknown, as drawn, not dropped" in {
+      // what NaboTV's Roku TV draws idle behind a loader: every frame was a drop at 34ms
+      def minute(hz: Double, ms: Double): PerfWindow = {
+        fresh()
+        fx(Quality.start(None))
+        val closed = fx {
+          var ws = List.empty[PerfWindow]
+          Perf.windows.attach(w => ws = ws :+ w)
+          () => ws
+        }
+        fx {
+          Perf.assumeRefresh(hz)
+          Perf.restart(0.0)
+          var t = 0.0
+          while (t < 61000.0) {
+            t += ms
+            Perf.frame(ms, 3.0, t)
+          }
+        }
+        fx(Perf.assumeRefresh(-1.0))
+        closed().last
+      }
+      minute(30.0, 35.0).dropPct shouldBe 0.0
+      minute(0.0, 35.0).dropPct shouldBe 0.0
+      minute(0.0, 45.0).dropPct shouldBe 100.0
+      minute(60.0, 35.0).dropPct shouldBe 100.0
+      minute(60.0, 17.0).dropPct shouldBe 0.0
+    }
+    "not step down in a run that had an error or stalled, and say what went wrong" in {
+      def slowRun(wrong: () => Unit): PerfSession = {
+        fresh()
+        fx(Quality.start(None))
+        fx(wrong())
+        fx {
+          var t = 2000.0
+          while (t < 200000.0) {
+            Perf.keyedAt(t)
+            Perf.frame(16.0, 2.0, t + 300.0)
+            Perf.frame(16.0, 2.0, t + 700.0)
+            t += 1000.0
+          }
+        }
+        fx(Quality()) shouldBe QualityLevel.Full
+        fx(Quality.steppedDown) shouldBe false
+        fx(Perf.session())
+      }
+      val failed = slowRun(() => everyui.task.Frames.failed += 1)
+      failed.errors shouldBe Some(1)
+      failed.stalled shouldBe Some(false)
+      failed.evidence.get should include("had 1 error")
+      val stalled = slowRun(() => Perf.stalled())
+      stalled.errors shouldBe Some(0)
+      stalled.stalled shouldBe Some(true)
+      stalled.evidence.get should include("stalled")
+    }
     "time a key to the frame after the one that drew it, and close a window each minute" in {
       fresh()
       fx(Quality.start(None))
@@ -175,6 +237,9 @@ class QualitySpec extends FxSpec {
       quiet.levelGiven shouldBe Some("Full")
       quiet.levelRun shouldBe Some("Full")
       quiet.steppedDown shouldBe Some(false)
+      quiet.errors shouldBe Some(0)
+      quiet.stalled shouldBe Some(false)
+      quiet.evidence.get should include("dropped at 40ms")
       quiet.memoryLevel shouldBe None
       quiet.platform shouldBe Some("Desktop")
       quiet.sessionId should not be empty

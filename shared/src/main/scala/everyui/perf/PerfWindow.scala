@@ -3,7 +3,7 @@ package everyui.perf
 /** A stretch of the app's use, as `Perf` measured it (`Perf.windows`, `Perf.current`): `seconds` long, ending at `at`
   * (ms since 1970); the keys pressed in it and how long, in ms, from each to the frame drawn after it was handled (the
   * half and the 95th percentile); the frames the loop ran, the app's own update in them and the time from each to the
-  * next (their 95th percentiles), and what share of them were dropped (longer than `QualityPolicy.dropMs`); where
+  * next (their 95th percentiles), and what share of them were dropped (a vsync or more late, `QualityPolicy.dropMs`); where
   * the platform times its own frames (Android), theirs; the memory as the platform calls it ("normal", "low",
   * "critical") and the share in use; and the level it ran at. -1, or "", where nothing was measured. */
 case class PerfWindow(at: Long,

@@ -1527,6 +1527,16 @@ function uiDeviceFact(name as string) as string
         if FindMemberFunction(info, "GetGraphicsPlatform") <> invalid then return info.GetGraphicsPlatform()
     else if name = "memoryLevel"
         if FindMemberFunction(info, "GetGeneralMemoryLevel") <> invalid then return LCase(info.GetGeneralMemoryLevel())
+    else if name = "refreshHz"
+        ' the rate a video mode names after its "p" ("720p50", "1080p30"); the 60 Hz modes name none ("1080p")
+        if FindMemberFunction(info, "GetVideoMode") <> invalid
+            mode = info.GetVideoMode()
+            at = Instr(1, mode, "p")
+            if at > 0
+                rate = Int(Val(Mid(mode, at + 1)))
+                if rate > 0 then return rate.ToStr()
+            end if
+        end if
     else
         monitor = CreateObject("roAppMemoryMonitor")
         if monitor = invalid then return ""

@@ -1551,6 +1551,39 @@ object Platform {
     }
   }
 
+  /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): a
+    * browser does not say, so it is read from the shortest gap between 30 animation frames running one after another
+    * (a frame's time is its vsync's, so none comes sooner than one refresh after the last), asked the first time this
+    * is; 0 until then, and in a hidden page, which runs none. */
+  def refreshRate(): Double = {
+    if (!probing) {
+      probing = true
+      probe(30, -1.0, Double.MaxValue)
+    }
+    refreshHz
+  }
+  private var probing: Boolean = false
+  private var refreshHz: Double = 0.0
+  private def probe(left: Int, last: Double, shortest: Double): Unit = dom.window.requestAnimationFrame { (at: Double) =>
+    val least = if (last >= 0.0 && at > last) math.min(shortest, at - last) else shortest
+    if (left > 0) probe(left - 1, at, least)
+    else if (least < 1000.0) refreshHz = math.max(24.0, math.min(360.0, 1000.0 / least))
+  }
+  /** How many errors nothing caught this page has seen (`error` and `unhandledrejection` on the window), counted from
+    * the first time it is asked. */
+  def errorsSeen(): Int = {
+    if (!hearing) {
+      hearing = true
+      dom.window.addEventListener("error", (_: dom.Event) => uncaught += 1)
+      dom.window.addEventListener("unhandledrejection", (_: dom.Event) => uncaught += 1)
+    }
+    uncaught
+  }
+  /** Turns cut off by the platform (a Roku's): none here. */
+  def turnsCutOff(): Int = 0
+  private var hearing: Boolean = false
+  private var uncaught: Int = 0
+
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 

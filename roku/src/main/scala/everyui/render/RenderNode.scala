@@ -697,7 +697,10 @@ object Platform {
 
   /** Every error the app throws from a handler the device calls (a timer, a key, a download…) and nothing caught: the
     * message and the backtrace. The channel goes on rather than stopping. */
-  def onError(f: (String, String) => Unit): Unit = uiOnError(f)
+  def onError(f: (String, String) => Unit): Unit = {
+    hearErrors()
+    errorHooks = errorHooks :+ f
+  }
 
   /** The first screen is up and can be used: the launch beacon a certified channel sends. */
   def launchComplete(): Unit = uiLaunchComplete()
@@ -877,6 +880,39 @@ object Platform {
   def memoryUsedPct(): Int = {
     val pct = uiDeviceFact("memoryPct")
     if (pct.isEmpty) -1 else pct.toInt
+  }
+
+  /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): the
+    * rate the video mode names (roDeviceInfo.GetVideoMode: "720p50", "1080p30"), or 0 where it names none, as the
+    * 60 Hz modes do: a Roku TV in one of those has been seen to draw its interface at 30. */
+  def refreshRate(): Double = {
+    val hz = uiDeviceFact("refreshHz")
+    if (hz.isEmpty) 0.0 else hz.toInt.toDouble
+  }
+  /** How many errors nothing caught this run has seen (RtGuard's reports: a handler's throw, the device's own stack
+    * overflow or execution timeout), with the turns RtTurnCheck found cut off, counted from the first time it or
+    * `onError` is asked. */
+  def errorsSeen(): Int = {
+    hearErrors()
+    errors
+  }
+  /** How many turns the device cut off: a handler begun on one turn that never returned (RtTurnCheck's "a turn was cut
+    * off"), the device having stopped it without a word. */
+  def turnsCutOff(): Int = {
+    hearErrors()
+    cutOff
+  }
+  private var errors: Int = 0
+  private var cutOff: Int = 0
+  private var hearing: Boolean = false
+  private var errorHooks: List[(String, String) => Unit] = Nil
+  private def hearErrors(): Unit = if (!hearing) {
+    hearing = true
+    uiOnError((message: String, stack: String) => {
+      errors += 1
+      if (message.startsWith("a turn was cut off")) cutOff += 1
+      errorHooks.foreach(f => f(message, stack))
+    })
   }
 
   /** What the app is showing, as a PNG in base64: nothing here can take one. */

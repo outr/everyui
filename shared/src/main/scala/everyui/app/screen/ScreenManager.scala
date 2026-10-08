@@ -302,6 +302,8 @@ trait ScreenManager extends TaskSupport {
       changing = began
       Platform.after(ScreenManager.stallSeconds, () => if (changing == began) {
         scribe.warn("screen change stalled: not done after " + ScreenManager.stallSeconds.toInt.toString + "s")
+        // and what the session measures from here is of a screen left as it was (`Perf.hasStalled`)
+        Perf.stalled()
         next()
       })
       run().map(_ => if (changing == began) next()).startUnit()

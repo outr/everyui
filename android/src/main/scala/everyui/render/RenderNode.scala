@@ -1889,6 +1889,31 @@ object Platform {
     ((r.totalMemory - r.freeMemory).toDouble * 100.0 / r.maxMemory.toDouble).toInt
   }
 
+  /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): the
+    * display's own (Display.getRefreshRate), or 0 where it cannot be read. */
+  def refreshRate(): Double =
+    try Host.activity.getWindowManager.getDefaultDisplay.getRefreshRate.toDouble catch { case _: Throwable => 0.0 }
+  /** How many errors nothing caught this run has seen (a thread's uncaught exception), counted from the first time it
+    * is asked: what was uncaught before still goes where it went (the handler there was, else the console). */
+  def errorsSeen(): Int = {
+    hearUncaught
+    uncaught.get
+  }
+  /** Turns cut off by the platform (a Roku's): none here. */
+  def turnsCutOff(): Int = 0
+  private val uncaught = new java.util.concurrent.atomic.AtomicInteger(0)
+  private lazy val hearUncaught: Unit = {
+    val before = Thread.getDefaultUncaughtExceptionHandler
+    Thread.setDefaultUncaughtExceptionHandler((thread: Thread, t: Throwable) => {
+      uncaught.incrementAndGet()
+      if (before != null) before.uncaughtException(thread, t)
+      else {
+        System.err.print("Exception in thread \"" + thread.getName + "\" ")
+        t.printStackTrace(System.err)
+      }
+    })
+  }
+
   /** What the app is showing, as a PNG in base64, no more than 1920 across; "" where it cannot be had. The app's own
     * drawing: a video on the display's own plane never passes through it, and a TextureView's draws nothing into a
     * canvas of the app's, so the picture is not in it (as a Flutter app's platform views are not in its shot). */

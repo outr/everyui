@@ -6,14 +6,19 @@ package everyui.perf
   * since 1970). Whatever was not measured is None, never 0.
   *
   *  - `keyLatencyMsP50`, `keyLatencyMsP95`: from a key to the frame drawn after it was handled (`keys` of them);
-  *  - `frameDropPct`: the share of `frames` that came `QualityPolicy.dropMs` or more after the one before;
+  *  - `frameDropPct`: the share of `frames` dropped: come a vsync or more late (`QualityPolicy.dropMs`, from the display's
+  *    refresh where the platform says it, else 40 ms);
   *  - `updateMsP95`, `frameMsP95`: the app's own update in a frame, and the time from frame to frame;
   *  - `memoryLevel`: "normal", "low" or "critical", where the platform says (a Roku's general memory level, Android's
   *    low-memory state), and `memoryUsedPct` of what the app may have;
   *  - the device as it said at launch (`DeviceHint`): `platform`, `model`, `graphicsPlatform`, `ramMb`;
   *  - `levelGiven`, the level `Quality.start` was given, and `levelRun`, the one it runs at now, lower where the
   *    session `steppedDown` for itself;
-  *  - `evidence`: in a line, for people, what the session saw, and why it stepped down where it did. */
+  *  - `evidence`: in a line, for people, what the session saw, and why it stepped down where it did;
+  *  - `errors`: how many errors nothing caught the run has seen (a frame that failed, a handler's uncaught throw, on a
+  *    Roku its execution timeouts and stack overflows, and the turns it cut off);
+  *  - `stalled`: whether a change of screen never finished (`ScreenManager.stallSeconds`), or the device cut a turn
+  *    off. A run with either is not one whose frames say how the device copes, and does not step itself down. */
 case class PerfSession(sessionId: String,
                        at: Long,
                        sessionSeconds: Option[Int] = None,
@@ -33,4 +38,6 @@ case class PerfSession(sessionId: String,
                        ramMb: Option[Int] = None,
                        levelGiven: Option[String] = None,
                        levelRun: Option[String] = None,
-                       steppedDown: Option[Boolean] = None)
+                       steppedDown: Option[Boolean] = None,
+                       errors: Option[Int] = None,
+                       stalled: Option[Boolean] = None)
