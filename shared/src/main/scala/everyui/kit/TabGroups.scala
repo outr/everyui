@@ -19,8 +19,9 @@ import reactify.*
   *
   * A tab's menu (the secondary button, the menu key, Shift+F10, OK held) has Close, Close Others and Close All; Open
   * Right and Open Down, which open it in a new group after the group (by the reading direction) or below it; Move
-  * Right, Left, Down and Up, to the group that way where there is one; and Unsplit, which puts the group's tabs into the
-  * group beside it; then the app's own (`tabMenu`). A tab dragged onto another group goes in among its tabs, and onto a
+  * Right, Left, Down and Up, to the group that way, or into a new one split off that way where there is none (not a
+  * group's only tab, which would only make its group again); and Unsplit, which puts the group's tabs into the group
+  * beside it; then the app's own (`tabMenu`). A tab dragged onto another group goes in among its tabs, and onto a
   * group's edge (lit as it is over it) splits the group there. A key shows in one group at a time, moved rather than
   * opened again, unless `allowsTwice` says it may show in two (a file in both halves of a split), each with its own
   * content. A group left empty closes; the last one stays.
@@ -193,6 +194,20 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     }
   }
 
+  /** `k` moved from `g` to the group that way (`vertical`: below, else after it in the reading direction; before it
+    * where not `after`), or, where there is none, into a new group split off `g` that way, as IntelliJ's Split and Move
+    * Right does. A group's only tab with nowhere that way stays: its group would only give its place to the new one. */
+  def moveBeside(g: TabGroup[K], k: K, vertical: Boolean, after: Boolean): Unit = if (canMoveBeside(g, k, vertical, after)) {
+    TabTrees.neighbour(tree, g, vertical, after) match {
+      case Some(n) => move(g, k, n)
+      case None => move(g, k, splitOff(g, vertical, after))
+    }
+  }
+
+  /** Whether `moveBeside` would move `k`: there is a group that way, or `g` has another tab to keep. */
+  def canMoveBeside(g: TabGroup[K], k: K, vertical: Boolean, after: Boolean): Boolean =
+    g.has(k) && (g.keys().size > 1 || TabTrees.neighbour(tree, g, vertical, after).nonEmpty)
+
   /** `g`'s tabs put into the group beside it, and `g` gone. */
   def unsplit(g: TabGroup[K]): Unit = TabTrees.sibling(tree, g).foreach { to =>
     val was = g.keyOf(g.shown())
@@ -213,8 +228,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   def menuFor(g: TabGroup[K], k: K): List[MenuItem] = {
     val many = groups().size > 1
     val movable = allowsTwice(k) || g.keys().size > 1
-    def to(word: String, vertical: Boolean, after: Boolean): List[MenuItem] =
-      TabTrees.neighbour(tree, g, vertical, after).toList.map(n => MenuItem(word, () => move(g, k, n)))
+    def to(word: String, vertical: Boolean, after: Boolean): List[MenuItem] = List(MenuItem(word,
+      () => moveBeside(g, k, vertical, after), enabled = canMoveBeside(g, k, vertical, after)))
     val own = List(
       MenuItem(TabGroups.closeWord, () => close(g, k)),
       MenuItem(TabGroups.closeOthersWord, () => closeOthers(g, k), enabled = g.keys().size > 1),

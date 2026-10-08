@@ -71,11 +71,13 @@ class TabGroupsSpec extends FxSpec {
         fx(g.tabMenu @= (k => List(MenuItem("Reveal " + k))))
         val first = fx(g.groups().head)
         labels(fx(g.menuFor(first, "b"))) shouldBe List("Close", "Close Others", "Close All", "Open Right", "Open Down",
-          "Reveal b")
-        // a split adds where the tab can move to, and Unsplit
+          "Move Right", "Move Left", "Move Down", "Move Up", "Reveal b")
+        // a split adds Unsplit, and a lone tab moves only where there is a group that way
         fx(g.openRight(first, "b"))
         labels(fx(g.menuFor(first, "a"))) shouldBe List("Close", "Close Others", "Close All", "Open Right", "Open Down",
-          "Move Right", "Unsplit", "Reveal a")
+          "Move Right", "Move Left", "Move Down", "Move Up", "Unsplit", "Reveal a")
+        fx(g.menuFor(first, "a").filter(_.label.startsWith("Move")).map(i => i.label -> i.enabled)) shouldBe List(
+          "Move Right" -> true, "Move Left" -> false, "Move Down" -> false, "Move Up" -> false)
         labels(fx(g.menuFor(g.groups()(1), "b"))) should contain("Move Left")
         // the keys open it on the focused tab
         fx(first.focusTab())
@@ -208,6 +210,47 @@ class TabGroupsSpec extends FxSpec {
         fx(g.closeAll(g.groups().head))
         keysOf(g) shouldBe List(Nil)
         fx(Focus.focused().exists(f => Focus.within(f, g.groups().head))) shouldBe true
+      }
+    }
+
+    "split a new group off where there is none that way, and leave a group's only tab where it would only make it again" in {
+      val views = new Views
+      val g = groupsOf(views, twice = _ == "c")
+      shown(g) {
+        var told: List[TabLayout] = Nil
+        fx(g.layoutChanged.attach(l => told = told :+ l))
+        opened(g, "a", "b", "c", "d")
+        val first = fx(g.groups().head)
+        val c = fx(first.contentOf("c")).get
+        // nowhere right: a new group after it, the tab taken along (a key that may show twice moved, not copied)
+        told = Nil
+        fx(run(g.menuFor(first, "c"), "Move Right"))
+        keysOf(g) shouldBe List(List("a", "b", "d"), List("c"))
+        fx(g.groups()(1).contentOf("c")) shouldBe Some(c)
+        views.count("c") shouldBe 1
+        fx(g.groups()(1).absoluteLeft) should be > fx(first.absoluteLeft)
+        fx(g.focusedGroup()) shouldBe fx(g.groups()(1))
+        fx(Focus.focused().exists(f => Focus.within(f, g.groups()(1)))) shouldBe true
+        told.last.parts.map(_.tabs) shouldBe List(List("a", "b", "d"), List("c"))
+        // nowhere down from the first: a new group below it
+        fx(run(g.menuFor(first, "b"), "Move Down"))
+        keysOf(g) shouldBe List(List("a", "d"), List("b"), List("c"))
+        fx(g.groups()(1).absoluteTop) should be > fx(first.absoluteTop)
+        fx(g.groups()(1).absoluteLeft) shouldBe fx(first.absoluteLeft)
+        // nowhere left of the first: a new group before it, in the first's place
+        fx(run(g.menuFor(first, "d"), "Move Left"))
+        keysOf(g) shouldBe List(List("d"), List("a"), List("b"), List("c"))
+        fx(g.groups().head.absoluteLeft) should be < fx(first.absoluteLeft)
+        // a group's only tab, with nowhere up: Move Up is shown, not enabled, and does nothing
+        val upper = fx(g.groups()(1))
+        fx(g.menuFor(upper, "a").find(_.label == "Move Up").map(_.enabled)) shouldBe Some(false)
+        fx(g.moveBeside(upper, "a", vertical = true, after = false))
+        keysOf(g) shouldBe List(List("d"), List("a"), List("b"), List("c"))
+        // but down, where b's group is, it goes, and its group closes
+        fx(run(g.menuFor(upper, "a"), "Move Down"))
+        keysOf(g) shouldBe List(List("d"), List("b", "a"), List("c"))
+        fx(Focus.focused().exists(f => Focus.within(f, g.groups()(1)))) shouldBe true
+        views.disposed shouldBe Nil
       }
     }
 
@@ -344,11 +387,16 @@ class TabGroupsSpec extends FxSpec {
         val views = new Views
         val g = groupsOf(views)
         shown(g) {
-          opened(g, "a", "b")
+          opened(g, "a", "b", "c")
           val first = fx(g.groups().head)
           fx(g.openRight(first, "b"))
           fx(g.groups()(1).absoluteLeft) should be < fx(first.absoluteLeft)
           labels(fx(g.menuFor(first, "a"))) should contain("Move Right")
+          // Move Left, with nowhere before it, splits a group off on the right, as Right is after by the reading direction
+          fx(g.moveBeside(first, "c", vertical = false, after = false))
+          keysOf(g) shouldBe List(List("c"), List("a"), List("b"))
+          fx(g.groups().head.absoluteLeft) should be > fx(first.absoluteLeft)
+          fx(g.focusedGroup()) shouldBe fx(g.groups().head)
           val (x, y) = fx((first.absoluteLeft + first.size.width() - 10.0, first.absoluteTop + 300.0))
           fx(g.landingAt(x, y).map(_._2)) shouldBe Some(TabDropZone.Start)
         }

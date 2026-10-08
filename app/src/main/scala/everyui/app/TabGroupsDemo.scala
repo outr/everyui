@@ -80,6 +80,8 @@ object TabGroupsDemo {
       choose(first, "README.md", TabGroups.openDownWord)
       choose(groups.groups()(1), "README.md", TabGroups.moveRightWord)
       choose(groups.groups().last, "notes.txt", TabGroups.unsplitWord)
+      // Move Down from the first group: into the group below it, or one split off under it where there is none
+      groups.groups().head.selected().foreach(k => choose(groups.groups().head, k, TabGroups.moveDownWord))
       val kept = groups.tabLayout
       groups.restore(TabLayout.parse(kept.json).getOrElse(TabLayout()), find)
       Platform.log("tabgroups probe " + (if (groups.tabLayout == kept) "same" else "DIFFERENT") + " " +

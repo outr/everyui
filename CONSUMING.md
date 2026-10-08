@@ -3696,8 +3696,12 @@ editor.layoutChanged.attach(l => saved @= l)
 ```
 
 A tab's menu has Close, Close Others and Close All; Open Right and Open Down, which open it in a new group after its
-group (by the reading direction: on the left, right to left) or below it; Move Right, Left, Down and Up, to the group
-that way where there is one; and Unsplit, which puts the group's tabs into the group beside it; then the app's
+group (by the reading direction: on the left, right to left) or below it; Move Right, Left, Down and Up, always on
+the menu, to the group that way, or, where there is none, into a new group split off that way (`moveBeside(g, k,
+vertical, after)`, Right being after by the reading direction as Open Right is); a group's only tab with no group that
+way shows Move there but not enabled, as it would only make its own group again (`canMoveBeside`). A move never asks
+`canClose` and takes the tab's content along (or is shown by the new group's view, for a key `sharesGroupContent`
+picks), the focus following it. Unsplit puts the group's tabs into the group beside it; then come the app's
 `tabMenu`. A tab dragged onto another group goes in among its tabs, and onto a group's edge (lit while it is over it)
 splits the group there; Escape lets it go. A key shows in one group at a time, moved rather than opened again, unless
 `allowsTwice` says it may show in two (a file in both halves of a split), each with its own content; a group's only

@@ -110,6 +110,31 @@ class TabGuardSpec extends FxSpec {
       }
     }
 
+    "move a file with nowhere that way into a new group's own view, asking nothing, the old group's view kept" in {
+      val g = groupsOf(shares = k => k.startsWith("f"))
+      val answers = new Answers
+      shown(g) {
+        fx {
+          g.canClose @= answers.ask
+          List("f1", "f2", "t1").foreach(k => g.open(k))
+        }
+        val first = fx(g.groups().head)
+        fx(first.select("f2"))
+        run(g, first, "f2", "Move Down")
+        answers.asked shouldBe Nil
+        keysOf(g) shouldBe List(List("f1", "t1"), List("f2"))
+        views shouldBe 2
+        fx(g.groups()(1).groupView.map(_.asInstanceOf[Shared].showing)) shouldBe Some(Some("f2"))
+        // the terminal taken along with its content, made once
+        run(g, first, "t1", "Move Right")
+        answers.asked shouldBe Nil
+        keysOf(g) shouldBe List(List("f1"), List("t1"), List("f2"))
+        made shouldBe List("t1")
+        fx(first.groupView.map(_.asInstanceOf[Shared].showing)) shouldBe Some(Some("f1"))
+        told should not contain "view1 disposed"
+      }
+    }
+
     "close the others and all one at a time, stopping at the first the app keeps" in {
       val g = groupsOf()
       val answers = new Answers
