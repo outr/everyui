@@ -500,6 +500,53 @@ Keymap.global.add("sidebar.shrink", "Narrower sidebar", Chord.parse("Primary+Alt
 Split across, the first side is at the start of the reading direction: on the right in a right-to-left language
 (`Direction.rtl`), with the drag and the arrows mirrored.
 
+A side can keep a length in pixels instead of a share, as an editor's sidebar keeps its width when the window is
+resized: `length = Some(SplitSide.First -> width)`, `width` a Var the app keeps and saves, which a drag writes. As the
+split grows or shrinks that side keeps its length and the other takes the change, the minimums still holding (a
+window too narrow for both shows the side shorter, and the length kept comes back as it widens); `ratio` is not read.
+`maxFirst` and `maxSecond` cap either side, in either kind of split (no cap unless set). A double-click still folds the
+collapsible side, which comes back at its length.
+
+```scala
+val sidebar = Var(Platform.setting("sidebar").toDoubleOption.getOrElse(280.0))
+sidebar.attach(w => Platform.saveSetting("sidebar", w.toString))
+val split = new SplitPane(tree, editor, length = Some(SplitSide.First -> sidebar), collapsible = Some(SplitSide.First))
+split.minFirst @= 180.0
+split.maxFirst @= 480.0
+```
+
+### ResizeHandle (`everyui.split`)
+
+The edge of a part an app lays out by hand (a sidebar between a tool rail and the main area), dragged to make the part
+wider or narrower: the same handle as SplitPane's (`SplitHandle`), so it drags the same way, lit under the pointer,
+with the resize cursor, 8 across for a pointer and 20 for a finger. `length` is the part's width (its height at its
+top or bottom) in pixels, a Var the app keeps and lays the part out by, so the part keeps its width as the window
+changes; it is kept between `min` and `max` (`minLength`, `maxLength`). `edge` is which edge of the part it is on, and
+dragged away from the part it grows: `ResizeEdge.End` for a sidebar at the start (its left right to left, where the
+drag is mirrored too), `Start` for a panel at the end, `Bottom` or `Top`. Given `collapsed`, a double-click folds the
+part and back, as a drag most of the way past `min` does, and a drag out from the folded edge brings it back; the app
+hides the part while it is folded. Made focusable (`focusable @= true`), the arrows along it move it by `step` (24)
+and Enter folds. The app places it, its middle on the edge:
+
+```scala
+import everyui.split.{ResizeEdge, ResizeHandle}
+import everyui.kit.Mirror
+
+val width = Var(Platform.setting("sidebar").toDoubleOption.getOrElse(280.0))
+width.attach(w => Platform.saveSetting("sidebar", w.toString))
+val folded = Var(false)
+val edge = new ResizeHandle(width, min = 180.0, max = 480.0, collapsed = Some(folded))
+val shown = Val(if (folded()) 0.0 else width())
+sidebar.size.width := shown()
+sidebar.visible := !folded()
+edge.size.height := ui.size.height()
+// from the reading direction's start: on the right in a right-to-left language
+Mirror.place(sidebar, () => ui.size.width(), () => rail.size.width())
+Mirror.place(edge, () => ui.size.width(), () => rail.size.width() + shown() - edge.size.width() / 2.0)
+Mirror.place(main, () => ui.size.width(), () => rail.size.width() + shown())
+main.size.width := ui.size.width() - rail.size.width() - shown()
+```
+
 ### StackedPanes (`everyui.split`)
 
 Panes one over another, each under a header that folds it away, as an editor's sidebar stacks its explorer's sections

@@ -156,5 +156,76 @@ class SplitPaneSpec extends FxSpec {
         fx(Focus.focused()) shouldBe Some(a)
       }
     }
+    "keep a side at its length in pixels as the split changes, the other side taking the change" in {
+      val width = Var(280.0)
+      val (a, b) = fx((card(), card()))
+      val split = fx(new SplitPane(a, b, length = Some(SplitSide.First -> width)))
+      onScreen(split) {
+        fx((a.size.width(), b.size.width())) shouldBe (280.0, 720.0)
+        fx(split.ratio @= 0.9)
+        fx(a.size.width()) shouldBe 280.0
+        // the window made narrower and wider: the first side keeps its width
+        fx(split.size.width @= 806.0)
+        fx((a.size.width(), b.size.width())) shouldBe (280.0, 520.0)
+        fx(split.size.width @= 1406.0)
+        fx((a.size.width(), b.size.width())) shouldBe (280.0, 1120.0)
+        // too narrow for both, the second side's minimum holds, and the width kept comes back as it widens
+        fx(split.size.width @= 306.0)
+        fx((a.size.width(), b.size.width())) shouldBe (180.0, 120.0)
+        width() shouldBe 280.0
+        fx(split.size.width @= 1006.0)
+        fx(a.size.width()) shouldBe 280.0
+        // a drag writes the width, kept to the first side's most
+        fx(split.maxFirst @= 400.0)
+        fx(pointer(split.handle, PointerKind.Down, 283.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Move, 343.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Up, 343.0, 10.0))
+        width() shouldBe 340.0
+        fx(pointer(split.handle, PointerKind.Down, 343.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Move, 643.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Up, 643.0, 10.0))
+        width() shouldBe 400.0
+        fx(a.size.width()) shouldBe 400.0
+        // the most holds as the app sets it, too
+        fx(width @= 900.0)
+        fx(a.size.width()) shouldBe 400.0
+      }
+    }
+    "keep its second side at its length, folding it by a double-click and bringing it back as it was" in {
+      val width = Var(300.0)
+      val (a, b) = fx((card(), card()))
+      val split = fx(new SplitPane(a, b, length = Some(SplitSide.Second -> width), collapsible = Some(SplitSide.Second)))
+      onScreen(split) {
+        fx((a.size.width(), b.size.width())) shouldBe (700.0, 300.0)
+        fx(split.size.width @= 1206.0)
+        fx((a.size.width(), b.size.width())) shouldBe (900.0, 300.0)
+        fx(split.minSecond @= 160.0)
+        fx(split.maxSecond @= 520.0)
+        // the second side grows as the handle goes back
+        fx(pointer(split.handle, PointerKind.Down, 903.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Move, 503.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Up, 503.0, 10.0))
+        width() shouldBe 520.0
+        fx(split.collapsed()) shouldBe false
+        // (each click pressed and let go where it is, as a pointer does)
+        for (_ <- 1 to 2) {
+          fx(pointer(split.handle, PointerKind.Down, 683.0, 10.0))
+          fx(pointer(split.handle, PointerKind.Up, 683.0, 10.0))
+          fx(pointer(split.handle, PointerKind.Click, 683.0, 10.0))
+        }
+        fx(split.collapsed()) shouldBe true
+        fx((a.size.width(), b.size.width())) shouldBe (1200.0, 0.0)
+        fx(split.toggle())
+        fx(b.size.width()) shouldBe 520.0
+        // and a pixel side is mirrored right to left as a ratio's is
+        fx(Direction.set(true))
+        fx((a.parent().get.position.left(), b.parent().get.position.left())) shouldBe (526.0, 0.0)
+        fx(pointer(split.handle, PointerKind.Down, 523.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Move, 423.0, 10.0))
+        fx(pointer(split.handle, PointerKind.Up, 423.0, 10.0))
+        width() shouldBe 420.0
+        fx(Direction.set(false))
+      }
+    }
   }
 }

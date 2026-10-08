@@ -65,6 +65,9 @@ import everyui.render.Platform
   *              `theme=light`, `rtl=1`)
   *   tabgroups  tabs in groups split across and down, as an editor splits its files: menus, drags, a layout kept
   *              (`fresh=1`, `layout=<json>`, `theme=light`, `rtl=1`)
+  *   sidebar    a workspace laid out by hand: a tool rail, a sidebar whose edge drags its width (ResizeHandle), a header,
+  *              and an editor beside an inspector kept at a width in pixels (SplitPane's `length`), both keeping their
+  *              widths as the window changes (`width=`, `inspector=`, `folded=1`, `theme=light`, `rtl=1`)
   *   panes      a sidebar as stacked panes (StackedPanes): Folders, Conversations and Log, folding to their headers,
   *              sharing the height by handles, with actions and what the app keeps shown live (`sidebar=1` for 280 wide,
   *              `theme=light`, `rtl=1`, `collapsed=<folders,chats,log>`, `weights=<w,w,w>`, `probe=1`)
@@ -148,6 +151,7 @@ import everyui.render.Platform
   else if (demo == "tabs") TabsDemo.run()
   else if (demo == "tabgroups") TabGroupsDemo.run()
   else if (demo == "panes") PanesDemo.run()
+  else if (demo == "sidebar") SidebarDemo.run()
   else if (demo == "offmain") OffMainDemo.run()
   else if (demo == "coach") CoachDemo.run()
   else if (demo == "quality") QualityDemo.run()
