@@ -1,7 +1,7 @@
 package everyui.app.screen
 
 import everyui.async.Task
-import everyui.component.{Button, Column, Component, Container}
+import everyui.component.{Button, Column, Component, Container, TextView}
 import everyui.focus.Focus
 import everyui.keymap.Keymap
 import everyui.net.URLPath
@@ -35,6 +35,8 @@ class ScreenTurnsSpec extends FxSpec {
     val rows: Container = Column(8.0)()
     var hostHeldIt: Boolean = false
     var laidOutAtArrival: Boolean = true
+    // words measured as they are made, in a build out of the page (a column as wide as its widest name, DoneStep's)
+    var namedWidth: Double = -1.0
 
     override def defaultFocus(): Component = go
 
@@ -45,6 +47,7 @@ class ScreenTurnsSpec extends FxSpec {
 
     override protected def build(): Unit = {
       stage(name + " build")
+      namedWidth = TextView("Streaming services", 18.0).size.width()
       hostHeldIt = manager.host.children().exists(_ eq container)
       rows.children ++= List(new Button("One"), new Button("Two"), new Button("Three"))
       fields.children += rows
@@ -102,6 +105,9 @@ class ScreenTurnsSpec extends FxSpec {
       fx(stages) shouldBe Vector("home deactivate" -> false, "next card" -> false, "next build" -> false,
         "next load" -> false, "next activate" -> false)
       fx(next.hostHeldIt) shouldBe false
+      // as wide as the same words made on the page, read as they were made
+      fx(next.namedWidth) should be > 0.0
+      fx(next.namedWidth) shouldBe fx(TextView("Streaming services", 18.0).size.width())
       fx(next.laidOutAtArrival) shouldBe false
       fx(next.rows.childComponents.last.position.top()) should be > 0.0
       eventually(focusAtShown().exists(_ eq next.go)) shouldBe true

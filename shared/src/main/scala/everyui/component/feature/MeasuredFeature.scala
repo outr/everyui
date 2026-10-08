@@ -23,8 +23,10 @@ class MeasuredFeature(component: Component) {
   val width: Val[Double] = w
   val height: Val[Double] = h
 
-  /** Read the node's size: now, or with the rest of the turn's where the platform batches them. */
-  def refresh(): Unit = if (Platform.measuresInBatches) MeasuredFeature.enqueue(this) else {
+  /** Read the node's size: now, or with the rest of the turn's where the platform batches them (the web). A node
+    * not in the page yet (a screen being built over turns, before it arrives) is read at once, lent to the page for it:
+    * the batch would find it still out of the page, and a size read as it is made would be 0. */
+  def refresh(): Unit = if (Platform.measuresInBatches && component.node.onPage) MeasuredFeature.enqueue(this) else {
     read()
     set()
   }

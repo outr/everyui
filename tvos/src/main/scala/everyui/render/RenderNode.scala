@@ -75,6 +75,9 @@ class RenderNode(val sg: SGNode) {
 
   /** The laid-out size in points. Text is as wide as its face makes it at exactly its size (the advance width,
     * as every backend measures it) and one shared line (everyui.font.Face) tall; anything else is what was set. */
+  /** Always: a node here is measured where it is, in the page or not (only the web's are measured in batches). */
+  def onPage: Boolean = true
+
   def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
   def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg)
 

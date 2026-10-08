@@ -40,10 +40,16 @@ class UnwindScreen extends FormScreen {
   }
 
   private def show(): Unit = {
+    // the names as wide as the widest of them and a gap, measured as they are made, as DoneStep measures them
+    val words = List("Streaming services", "Your library", "Your picks")
+    val measured = words.map(w => TextView.line(w, 18.0, Theme.muted()))
+    val named = measured.map(_.size.width()).max + 24.0
+    measured.foreach(m => m.dispose())
+    Platform.log("unwind: names measured " + named.toInt.toString + " wide")
     val summary = Column(14.0)(
-      line(MaterialIcon.LiveTv, "Streaming services", ImageView("/images/logo.png", 26.0)),
-      line(MaterialIcon.VideoLibrary, "Your library", TextView("Plex · Home", 18.0)),
-      line(MaterialIcon.BookmarkAdded, "Your picks", TextView("3 to watch, 5 liked", 18.0)))
+      line(MaterialIcon.LiveTv, "Streaming services", named, ImageView("/images/logo.png", 26.0)),
+      line(MaterialIcon.VideoLibrary, "Your library", named, TextView("Plex · Home", 18.0)),
+      line(MaterialIcon.BookmarkAdded, "Your picks", named, TextView("3 to watch, 5 liked", 18.0)))
     val around: () => Component = () => new Container {
       size.width @= 1.0
       size.height := math.max(0.0, (186.0 - summary.size.height()) / 2.0)
@@ -57,7 +63,7 @@ class UnwindScreen extends FormScreen {
   }
 
   /** A thing set up: a tick, its icon and name, and what came of it in a box as wide as every line's. */
-  private def line(icon: MaterialIcon, name: String, value: Component): Component = {
+  private def line(icon: MaterialIcon, name: String, named: Double, value: Component): Component = {
     val held = new Container {
       size.width @= 300.0
       size.height := value.size.height()
@@ -69,7 +75,7 @@ class UnwindScreen extends FormScreen {
       },
       Row(8.0, middle = true)(new MaterialIconView(icon, 20.0) {
         color := Theme.muted()
-      }, TextView.paragraph(name, 176.5, 18.0, Theme.muted())),
+      }, TextView.paragraph(name, named, 18.0, Theme.muted())),
       held)
   }
 

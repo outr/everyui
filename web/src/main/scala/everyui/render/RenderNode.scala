@@ -76,14 +76,22 @@ class RenderNode(val el: html.Element) {
 
   /** The laid-out size in pixels (text is measured with its real font), shown or not: a component keeps its size out
     * of sight, as it does on every other backend. */
-  def getWidth(): Double = {
-    val r = box()
-    if (transformed(r)) laidOut(horizontal = true) else r.width / RenderNode.drawnAt
-  }
-  def getHeight(): Double = {
-    val r = box()
-    if (transformed(r)) laidOut(horizontal = false) else r.height / RenderNode.drawnAt
-  }
+  def getWidth(): Double =
+    if (!onPage && RenderNode.movable(el)) RenderNode.offPage(el)._1
+    else {
+      val r = box()
+      if (transformed(r)) laidOut(horizontal = true) else r.width / RenderNode.drawnAt
+    }
+  def getHeight(): Double =
+    if (!onPage && RenderNode.movable(el)) RenderNode.offPage(el)._2
+    else {
+      val r = box()
+      if (transformed(r)) laidOut(horizontal = false) else r.height / RenderNode.drawnAt
+    }
+  /** Whether it is in the page: a node that is not (a screen being built, before it arrives) has no box, and is
+    * measured at once, on its own, out of sight (`RenderNode.offPage`), rather than with the turn's batch of reads
+    * (`MeasuredFeature`), which would find it still off the page. */
+  def onPage: Boolean = el.isConnected
 
   // Under `display: none` a node has no box and reads 0 by 0: a button made in a hidden panel was an empty pill once
   // the panel showed, since nothing measures it again then. What hides it is laid out, undrawn, for the read instead.
@@ -840,6 +848,40 @@ object RenderNode {
       def channel(i: Int): Double = Integer.parseInt(h.substring(i, i + 2), 16) / 255.0
       0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4) > 0.5
     }
+  }
+
+  // where a node not on the page is measured: on it, out of sight and as wide as anything, under no transform but the
+  // one the page may have, which is read off it (its width over what it was given)
+  private lazy val offPageHost: html.Element = {
+    val d = dom.document.createElement("div").asInstanceOf[html.Element]
+    d.style.position = "absolute"
+    d.style.left = "-200000px"
+    d.style.top = "0px"
+    d.style.width = "100000px"
+    d.style.height = "0px"
+    d.style.visibility = "hidden"
+    d.style.pointerEvents = "none"
+    d.setAttribute("aria-hidden", "true")
+    val app = dom.document.getElementById("app")
+    (if (app != null) app else dom.document.body).appendChild(d)
+    d
+  }
+
+  /** Whether `el` can be lent to the page to be measured: not if it is or holds a frame, which would load again. */
+  def movable(el: html.Element): Boolean = el.tagName != "IFRAME" && el.querySelector("iframe") == null
+
+  /** The size of `el`, which is not in the page, as it would be laid out: lent to the page for the read, out of sight,
+    * and put back where it was. A node out of the page has no box, and read 0 by 0: words measured as a screen was built
+    * before it arrived (a column as wide as its widest name) came out as nothing. */
+  def offPage(el: html.Element): (Double, Double) = {
+    val parent = el.parentNode
+    val next = el.nextSibling
+    offPageHost.appendChild(el)
+    val r = el.getBoundingClientRect()
+    val scale = offPageHost.getBoundingClientRect().width / 100000.0
+    if (parent != null) parent.insertBefore(el, next) else offPageHost.removeChild(el)
+    val at = if (scale > 0.0) scale else 1.0
+    (r.width / at, r.height / at)
   }
 
   def reveal(el: html.Element): Boolean = el.isConnected && el.getClientRects().length == 0 && {

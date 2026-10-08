@@ -136,6 +136,9 @@ class RenderNode(val fx: Node) {
 
   /** The laid-out size in pixels. Text is measured with its real font (its advance width) and is one shared line
     * (everyui.font.Face) tall. */
+  /** Always: a node here is measured where it is, in the page or not (only the web's are measured in batches). */
+  def onPage: Boolean = true
+
   def getWidth(): Double =
     if (explicitWidth >= 0.0) explicitWidth
     else fx match {

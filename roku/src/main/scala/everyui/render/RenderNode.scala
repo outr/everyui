@@ -126,6 +126,9 @@ class RenderNode(val sg: SGNode) {
   /** The laid-out size in pixels. Text is as wide as its face makes it at exactly its size (a `Label` draws at whole
     * pixel sizes, so its own bounding rect is a few pixels off) and one shared line (everyui.font.Face) tall;
     * wrapped, as many lines as the Label draws; anything else is SceneGraph's bounding rect. */
+  /** Always: a node here is measured where it is, in the page or not (only the web's are measured in batches). */
+  def onPage: Boolean = true
+
   def getWidth(): Double =
     if (richWidth >= 0.0) richWidth / uiScale()
     else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
