@@ -11,7 +11,7 @@ import everyui.font.MaterialIcon
   * turning around its avatar (`Avatar.busy`), whether or not it is unread too, and `busyDetail` ("Running bash") is
   * what a pointer resting on the avatar says, and said to a screen reader with the row. `action` is a small button at
   * its end, before the time (or the ⋮), that does a thing to it without choosing it (a star), shown while the pointer
-  * or the cursor is on the row, or always where `actionShown` (a starred one's filled star). */
+  * or the cursor is on the row, or always where `actionShown` (a starred one's filled star) or the action's own `shown`. */
 case class RichLook(title: String,
                     detail: Option[String] = None,
                     who: Option[Participant] = None,

@@ -1,12 +1,10 @@
 package everyui.split
 
 import everyui.component.*
-import everyui.event.{Key, PointerEvent}
+import everyui.event.Key
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.render.Platform
-import everyui.theme.Theme
-import everyui.{Color, ui}
 import reactify.*
 
 /** Two parts side by side (or, `vertical`, one over the other) with a handle between them that a pointer drags to
@@ -63,44 +61,11 @@ class SplitPane(val first: Component, val second: Component, val vertical: Boole
 
   private val firstPane: Container = SplitPane.pane(first)
   private val secondPane: Container = SplitPane.pane(second)
-  private var dragFrom: Double = 0.0
   private var dragStart: Double = 0.0
-  private var moved: Boolean = false
   private var lastClick: Double = -1000.0
 
-  /** What a pointer drags. */
-  val handle: Container = new Container {
-    // the arrows along it move it, and Enter folds a side
-    override def keepsKey(key: Key): Boolean = key == Key.Enter ||
-      (if (vertical) key == Key.ArrowUp || key == Key.ArrowDown else key == Key.ArrowLeft || key == Key.ArrowRight)
-  }
-  // whether a pointer has hold of it
-  private val grabbed: Var[Boolean] = own(Var(false))
-  private val lit: Val[Boolean] = own(Val(handle.focused() || handle.event.pointer.over() || grabbed()))
-  // the rule drawn down the middle of the handle, heavier while it is lit
-  private val line: Container = new Container {
-    backgroundColor := (if (lit()) Theme.accent() else Theme.border())
-  }
-  handle.cursor @= (if (vertical) "row-resize" else "col-resize")
-  if (vertical) {
-    line.size.width := handle.size.width()
-    line.size.height := (if (lit()) 2.0 else 1.0)
-    line.position.top := (handle.size.height() - line.size.height()) / 2.0
-  }
-  else {
-    line.size.height := handle.size.height()
-    line.size.width := (if (lit()) 2.0 else 1.0)
-    line.position.left := (handle.size.width() - line.size.width()) / 2.0
-  }
-  handle.children += line
-
-  // what catches the pointer while it drags, over the whole screen: a browser tells only what is under the pointer
-  // that it moved, and the handle is a few pixels across
-  private val catcher: Container = new Container {
-    size.width := ui.size.width()
-    size.height := ui.size.height()
-    cursor @= (if (vertical) "row-resize" else "col-resize")
-  }
+  /** What a pointer drags: the arrows along it move it, and Enter folds a side, where it takes the focus. */
+  val handle: SplitHandle = new SplitHandle(vertical)
 
   if (vertical) {
     List(firstPane, secondPane, handle).foreach(_.size.width := size.width())
@@ -146,22 +111,11 @@ class SplitPane(val first: Component, val second: Component, val vertical: Boole
     if (Focus.focused().exists(c => Focus.within(c, gone))) enter(if (gone eq firstPane) secondPane else firstPane)
   })
 
-  handle.event.pointer.down.attach { e =>
-    e.consume()
-    dragFrom = at(e)
-    dragStart = firstLength()
-    grabbed @= true
-    moved = false
-    ui.children += catcher
-  }
-  handle.event.pointer.move.attach(drag)
-  catcher.event.pointer.move.attach(drag)
-  handle.event.pointer.up.attach(e => release())
-  catcher.event.pointer.up.attach(e => release())
-  handle.event.click.attach { e =>
-    e.consume()
+  handle.pressed.attach(_ => dragStart = firstLength())
+  handle.dragged.attach(delta => resizeTo(dragStart + delta))
+  handle.clicked.attach { _ =>
     val now = Platform.ticks()
-    if (!moved && now - lastClick < SplitPane.doubleClick) {
+    if (!handle.moved && now - lastClick < SplitPane.doubleClick) {
       toggle()
       lastClick = -1000.0
     }
@@ -196,20 +150,6 @@ class SplitPane(val first: Component, val second: Component, val vertical: Boole
   // whether the handle moves the other way to the first side growing: across, in a right-to-left language
   private def mirrored: Boolean = !vertical && Direction.rtl()
 
-  private def at(e: PointerEvent): Double = if (vertical) e.y else e.x
-
-  private def drag(e: PointerEvent): Unit = if (grabbed()) {
-    e.consume()
-    val delta = (at(e) - dragFrom) * (if (mirrored) -1.0 else 1.0)
-    if (math.abs(delta) > 2.0) moved = true
-    if (moved) resizeTo(dragStart + delta)
-  }
-
-  private def release(): Unit = if (grabbed()) {
-    grabbed @= false
-    ui.children -= catcher
-  }
-
   private def enter(pane: Container): Unit = if (pane.visible()) {
     val all = Focus.candidates(pane)
     pane.remembered.filter(r => all.exists(_ eq r)).orElse(all.headOption).foreach(_.focus())
@@ -227,7 +167,7 @@ object SplitPane {
   val doubleClick: Double = 400.0
 
   /** A side's box: it clips what it holds, which it sizes to itself. */
-  private def pane(part: Component): Container = new Container {
+  private[split] def pane(part: Component): Container = new Container {
     part.size.width := size.width()
     part.size.height := size.height()
     size.width.attach(_ => node.setClip(size.width(), size.height()))

@@ -360,8 +360,9 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     position.top := middle(size.height())
   }
   // a section's always; an item's while the pointer or the cursor is on its row, it is the one chosen on a touch screen, or
-  // always where its look says
+  // always where its look or the action says
   private val actionShows: Val[Boolean] = own(Val(actionOf().nonEmpty && (header() || look().exists(_.actionShown) ||
+    actionOf().exists(_.shown) ||
     hovered() || (current() && active()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
   private var actionMade = false
   private def makeAction(): Unit = if (!actionMade) {

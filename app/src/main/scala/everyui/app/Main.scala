@@ -65,6 +65,9 @@ import everyui.render.Platform
   *              `theme=light`, `rtl=1`)
   *   tabgroups  tabs in groups split across and down, as an editor splits its files: menus, drags, a layout kept
   *              (`fresh=1`, `layout=<json>`, `theme=light`, `rtl=1`)
+  *   panes      a sidebar as stacked panes (StackedPanes): Folders, Conversations and Log, folding to their headers,
+  *              sharing the height by handles, with actions and what the app keeps shown live (`sidebar=1` for 280 wide,
+  *              `theme=light`, `rtl=1`, `collapsed=<folders,chats,log>`, `weights=<w,w,w>`, `probe=1`)
   *   offmain    a rail that glides with the focus, and a card changed off the thread that draws while the app is away:
   *              the rail glides as before once it is back (OffMainDemo)
   *   coach      a coach-mark tour: the screen dimmed but for each stop (Spotlight), the focus held there (Focus.confine),
@@ -141,6 +144,7 @@ import everyui.render.Platform
   else if (demo == "badge") BadgeDemo.run()
   else if (demo == "tabs") TabsDemo.run()
   else if (demo == "tabgroups") TabGroupsDemo.run()
+  else if (demo == "panes") PanesDemo.run()
   else if (demo == "offmain") OffMainDemo.run()
   else if (demo == "coach") CoachDemo.run()
   else if (demo == "quality") QualityDemo.run()

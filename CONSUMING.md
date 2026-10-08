@@ -500,6 +500,47 @@ Keymap.global.add("sidebar.shrink", "Narrower sidebar", Chord.parse("Primary+Alt
 Split across, the first side is at the start of the reading direction: on the right in a right-to-left language
 (`Direction.rtl`), with the drag and the arrows mirrored.
 
+### StackedPanes (`everyui.split`)
+
+Panes one over another, each under a header that folds it away, as an editor's sidebar stacks its explorer's sections
+(Folders over Conversations). A `StackedPane` is a title, an optional `icon`, header `actions` (`RichAction`s, as a
+`RichList`'s) and its content; `collapsed` and `weight` are Vars the app keeps and saves. The open panes share the
+height the headers leave by weight, none shorter than its `minHeight` (60 unless set) while there is room; the one left
+open has it all; with every pane folded the headers stack at the top. A handle sits under each open pane that has an
+open one somewhere below it, and drags the room between the two, kept to both minimums: what it leaves is written
+back to the weights (each open pane's set to its share, their total kept), so a folded pane opens again at its own
+weight. Folding and opening glide (`glide`, 160 ms; 0 for none), at once at `Quality`'s Minimal.
+
+```scala
+import everyui.split.{StackedPane, StackedPanes}
+import everyui.list.RichAction
+
+val folders = new StackedPane("Folders", fileTree, collapsed = kept.foldersClosed, weight = kept.foldersShare)
+folders.icon @= Some(MaterialIcon.Folder)
+folders.actions @= List(RichAction(MaterialIcon.CreateNewFolder, "New folder", () => newFolder()),
+  RichAction(MaterialIcon.UnfoldLess, "Collapse folders", () => fileTree.expanded @= Set.empty))
+val chats = new StackedPane("Conversations", conversations, collapsed = kept.chatsClosed, weight = kept.chatsShare)
+chats.icon @= Some(MaterialIcon.Forum)
+chats.actions @= List(RichAction(MaterialIcon.Add, "New conversation", () => startChat(), shown = true))
+chats.minHeight @= 120.0
+val sidebar = new StackedPanes(Vector(folders, chats))
+sidebar.size.width @= 280.0
+sidebar.size.height := ui.size.height()
+```
+
+- A click or a tap on a header folds the pane or opens it; so do Enter and Space with the header focused. A header
+  reads as a button with its open state (`aria-expanded` on the web), and the content as a region named by its title.
+- Actions sit at the header's end, the title cut short of their room: each shows while the pointer is over the header
+  or the focus is in it, always where it says `shown`, and always on a touch screen. A click on one runs it and folds
+  nothing. Right (Left, right to left) from a header goes onto them one by one, Enter runs one, Left goes back.
+- Down from a header goes into its pane's content where it is open and holds something to focus, else to the next
+  header; Up goes to the content of the pane above (where the focus last was there) or its header. Out of a pane's
+  content, Up goes to its header and Down to the next. Past the first and the last header the arrows are left to what
+  the stack is in (`exitFocus` on it). A pane folded with the focus in it hands the focus to its header.
+- On a touch screen the headers are 44 tall and a handle reaches 17 into the header under it for a finger (a tap there
+  still folds that header); with a mouse it is 6 across and shows the row-resize cursor. Right to left, the chevron,
+  icon and title start from the right and the actions sit on the left.
+
 ### Menu (`everyui.menu`)
 
 A list of choices: a context menu at the pointer (`Menu.at`), a menu dropped from a button (`Menu.below`), or a panel
@@ -3588,7 +3629,7 @@ RichSection(w.id, w.name, w.chats, icon = Some(MaterialIcon.Workspaces), group =
 An item can have one too: `RichLook.action` (`Option[RichAction]`, `None` by default) is a small icon button at its
 row's end on the title's line, before the time, the mark and (in a short row) the badge, or before the ⋮ while that
 shows in their place. It shows while the pointer or the cursor is on the row (on a touch screen, while it is the item
-chosen), or always where `RichLook.actionShown` (default false). A row with an action keeps its room whether it shows
+chosen), or always where `RichLook.actionShown` or the action's own `shown` (both false by default). A row with an action keeps its room whether it shows
 or not, the wider of the ⋮'s and the time's, so its title is cut once, short of it, and neither the title nor the
 button moves as the pointer comes and goes; a row without one is laid out as it was. A click or a tap on it runs it
 without choosing, activating or moving the cursor to the item; the keys and a remote reach it as a header's: Right
