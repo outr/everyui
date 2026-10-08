@@ -187,6 +187,8 @@ class RenderNode(val sg: SGNode) {
   def setClip(width: Double, height: Double): Unit = uiSetClip(sg, width, height)
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()
+  /** No reader of descriptions reaches this platform's nodes. */
+  def setDescription(text: String): Unit = ()
 
   def setPositionType(name: String): Unit = ()
 

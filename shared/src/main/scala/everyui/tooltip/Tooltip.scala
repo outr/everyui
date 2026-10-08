@@ -48,6 +48,15 @@ object Tooltip {
     target.onDispose(() => hideFor(target))
   }
 
+  /** `target`'s tip asked for by what owns it rather than by its own pointer and focus (a list's row as the pointer or
+    * the cursor rests on it): the words `text` gives, read as it shows, and nothing shown where they are None by then.
+    * After `delay`, or at once with `now` (a finger held on it, which has waited already). */
+  def askFor(target: Component, text: () => Option[String], now: Boolean = false): Unit = {
+    asked += 1
+    val mine = asked
+    if (now) showIf(target, text, mine) else Platform.after(delay(), () => showIf(target, text, mine))
+  }
+
   /** The tip showing, taken away. */
   def hide(): Unit = {
     asked += 1
@@ -58,7 +67,8 @@ object Tooltip {
   /** Whether a tip is showing, and for what. */
   def shownFor: Option[Component] = showing.map(_._1)
 
-  private def hideFor(target: Component): Unit =
+  /** The tip taken away if it is `target`'s, with one still to come for it. */
+  def hideFor(target: Component): Unit =
     if (showing.forall(_._1 eq target)) hide()
 
   private def ask(target: Component, make: () => Component): Unit = {
@@ -66,6 +76,9 @@ object Tooltip {
     val mine = asked
     Platform.after(delay(), () => if (mine == asked && Focus.showing(target)) show(target, make()))
   }
+
+  private def showIf(target: Component, text: () => Option[String], mine: Int): Unit =
+    if (mine == asked && Focus.showing(target)) text().foreach(t => show(target, words(t)))
 
   private def show(target: Component, content: Component): Unit = {
     showing.foreach(s => ui.children -= s._2)
@@ -93,7 +106,8 @@ object Tooltip {
     showing = Some((target, plate))
   }
 
-  /** Words as a tip: small, wrapping past `widest`. */
+  /** Words as a tip: small, wrapping past `widest`, a path after its slashes where it can and a word longer than that
+    * where it must. */
   private def words(text: String): Component = {
     val line = new TextView {
       font.size @= 12.5
@@ -103,10 +117,11 @@ object Tooltip {
     if (line.size.width() <= widest()) line
     else new TextView {
       whiteSpace @= WhiteSpace.Normal
+      wrapAnywhere @= true
       size.width @= widest()
       font.size @= 12.5
       color := Theme.text()
-      content @= text
+      content @= text.replace("/", "/\u200B")
     }
   }
 }

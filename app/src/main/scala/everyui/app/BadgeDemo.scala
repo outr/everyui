@@ -29,7 +29,8 @@ object BadgeDemo {
     BadgeChange("ui/M.scala", 2, 2))
 
   def decoration(c: BadgeChange, side: Elide): Decoration = Decoration(icon = Some(MaterialIcon.Description),
-    badge = c.folder, badgeElide = side, badgeTail = "+" + c.added.toString + " −" + c.removed.toString)
+    badge = c.folder, badgeElide = side, badgeTail = "+" + c.added.toString + " −" + c.removed.toString,
+    tooltip = Some(c.path))
 
   def run(): Unit = show { (wide, side) =>
     val list = VirtualList.text(Var(changes), (c: BadgeChange) => c.path, (c: BadgeChange) => c.name,

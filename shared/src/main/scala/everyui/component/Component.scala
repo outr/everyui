@@ -201,6 +201,9 @@ class Component(val node: RenderNode) {
 
   /** What a pointer resting here says; nothing where there is no pointer. */
   lazy val tooltip: Prop[String] = own(new Prop[String]("", t => node.setTooltip(t)))
+  /** What whatever reads the page hears of it after its name (a list row's tip): the web's `aria-describedby`, TalkBack's
+    * hint; nothing where the platform has no reader of descriptions. */
+  lazy val accessibleDescription: Prop[String] = own(new Prop[String]("", d => node.setDescription(d)))
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"), where there is a
     * pointer to shape; "" leaves the platform's own. */
   lazy val cursor: Prop[String] = own(new Prop[String]("", c => node.setCursor(c)))

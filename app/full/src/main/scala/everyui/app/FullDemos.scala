@@ -9,6 +9,10 @@ object FullDemos {
       TreeBadgeDemo.run()
       true
     }
+    else if (demo == "rowtips") {
+      RowTipsDemo.run()
+      true
+    }
     else if (demo == "picker") {
       PickerDemo.run()
       true

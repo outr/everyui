@@ -395,6 +395,30 @@ class RenderNode(val el: html.Element) {
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
   def setTooltip(text: String): Unit = el.title = text
+  // the hidden element holding its description, last among its own, where it has one
+  private var described: Option[html.Element] = None
+  /** What a screen reader hears of it after its name (a list row's tip): `aria-describedby` pointing at a hidden element of
+    * its own, kept after its children, which a reader of every browser takes a description from and which goes with it. */
+  def setDescription(text: String): Unit = if (text.isEmpty) {
+    described.foreach { d =>
+      if (tail eq d) tail = null
+      el.removeChild(d)
+      el.removeAttribute("aria-describedby")
+    }
+    described = None
+  } else {
+    val d = described.getOrElse {
+      val made = dom.document.createElement("div").asInstanceOf[html.Element]
+      made.id = RenderNode.describedId()
+      made.setAttribute("hidden", "")
+      el.appendChild(made)
+      if (tail == null) tail = made
+      el.setAttribute("aria-describedby", made.id)
+      described = Some(made)
+      made
+    }
+    d.textContent = text
+  }
   /** A drawing's figures (everyui.draw.Drawing): a `<path>` each in its `<svg>`, the elements kept and only their
     * attributes changed, so a row of a long list handed another item does no more than that. */
   def setFigures(figures: List[everyui.draw.Figure]): Unit = {
@@ -809,6 +833,13 @@ class RenderNode(val el: html.Element) {
 object RenderNode {
   /** SVG's namespace, which its elements are made in. */
   val svgNs: String = "http://www.w3.org/2000/svg"
+
+  private var descriptions = 0
+  /** A new id for an element holding a description (`setDescription`). */
+  private def describedId(): String = {
+    descriptions += 1
+    "everyui-described-" + descriptions.toString
+  }
 
   /** The size the app is drawn at (everyui.theme.UiScale): what a box on the screen, and a place on it, are read over. */
   def drawnAt: Double = everyui.theme.UiScale()

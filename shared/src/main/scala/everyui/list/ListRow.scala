@@ -21,6 +21,9 @@ class ListRow[T] extends Container {
   val active: Var[Boolean] = own(Var(false))
   val editing: Var[Boolean] = own(Var(false))
   val drop: Var[Option[DropPosition]] = own(Var(None))
+  /** Words for more than the row shows (`Decoration.tooltip`), which the list shows in a tip as the pointer or the
+    * cursor rests on the row and gives a screen reader as its description: a row binds it to its item's. None is no tip. */
+  val tip: Var[Option[String]] = own(Var(None))
   /** Whether the row has an item to show. */
   val present: Val[Boolean] = own(Val(item().nonEmpty))
 

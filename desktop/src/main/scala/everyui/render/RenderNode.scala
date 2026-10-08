@@ -408,6 +408,8 @@ class RenderNode(val fx: Node) {
 
   def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
+  /** No reader of descriptions reaches this platform's nodes. */
+  def setDescription(text: String): Unit = ()
   /** A drawing's figures (everyui.draw.Drawing): an SVGPath each, stroked and filled as it says. */
   def setFigures(figures: List[everyui.draw.Figure]): Unit = fx match {
     case p: Pane =>

@@ -373,6 +373,8 @@ class RenderNode(val sg: SGNode) {
       masked = Some(uiRoundClip(sg, masked, px(clipWidth), px(clipHeight), px(cornerRadius)))
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()
+  /** No reader of descriptions reaches this platform's nodes. */
+  def setDescription(text: String): Unit = ()
 
   def setPositionType(name: String): Unit = ()
 

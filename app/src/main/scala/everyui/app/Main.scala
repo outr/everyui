@@ -82,6 +82,9 @@ import everyui.render.Platform
   *              hand-offs logged ("[ui] audio: uiMedia2 demo-clip.wav takes the player from uiMedia1 demo-music.wav");
   *              `unfit=1` adds an effect a Roku cannot mix, reported as an error and played through the player (AudioDemo)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
+  *   rowtips    a project's files in a tree, each with its whole path as its tip, shown as the pointer, the cursor or
+  *              a finger rests on it (`n=<files>`, `menu=1`, `theme=light`, `rtl=1`); not on a Roku or an Apple TV
+  *              (app/full: FullDemos)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not

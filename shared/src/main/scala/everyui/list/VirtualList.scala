@@ -58,6 +58,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     * down are the list's own. */
   val dragAcross: Channel[Double] = Channel[Double]
   val clickActivates: Var[Boolean] = own(Var(!Platform.pointerSupport()))
+  /** Whether a finger held on a row shows its tip (`ListRow.tip`) where that opens no menu: on a touch screen. */
+  val holdTips: Var[Boolean] = own(Var(Platform.touchSupport() && !Platform.pointerSupport()))
   /** Rows made beyond each end of what shows, so a short scroll has them ready: half as many at Reduced, and one at
     * Minimal (`everyui.perf.Quality`). */
   val overscan: Var[Int] = own(Var(4))
@@ -97,6 +99,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private var currentAt = -1
   private var laying = false
   private var again = false
+
+  // the rows' tips (ListRow.tip)
+  private val tips = new RowTips[T](this)
 
   private val thumb = new Container {
     size.width @= 6.0
@@ -348,8 +353,13 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     })
   }
 
+  // whether the keys are moving the cursor now: its row's tip follows it then
+  private var keying = false
   event.key.down.attach { e =>
-    if (e.key != Key.Enter || !entering) action(e).foreach(f => f())
+    if (e.key != Key.Enter || !entering) {
+      keying = true
+      try action(e).foreach(f => f()) finally keying = false
+    }
   }
   event.key.up.attach { e =>
     if (e.key == Key.Enter && entering) {
@@ -433,7 +443,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       val i = indexAt(down)
       if (!selection.contains(keyAt(i))) selection.only(keyAt(i))
       current @= Some(keyAt(i))
+      val dialogs = everyui.component.Modal.opened
       menuAt(i, e.x, e.y)
+      // a finger held where that put no menu up shows the row's tip instead
+      if (holdTips() && everyui.component.Modal.opened == dialogs && !Pointer.menuAnswered) tips.heldOn(i)
     }
   }
   cursor @= "default"
@@ -787,6 +800,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       }
       val key = keyAt(i)
       row.item @= item
+      if (row.tip().nonEmpty) tips.watch(row)
       if (ownHeights) note(row)
       row.index @= i
       row.selected @= everyRow != chosen.contains(key)
@@ -1025,6 +1039,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   current.attach { c =>
     currentAt = c.map(indexOf).getOrElse(-1)
     refresh()
+    tips.cursor(keying)
   }
   // arriving, the focus lands on the row it left, else the first chosen, else the first
   focused.attach { on =>
@@ -1033,13 +1048,19 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       if (!selection.multiple()) current().foreach(k => selection.only(k))
     }
     refresh()
+    // (arriving by the keys, not the pointer)
+    tips.cursor(!Pointer.recent)
   }
   items.attach(_ => reindex())
   source.foreach(s => follow(s.changed, (_: Unit) => reindex()))
   follow(Direction.rtl, (_: Boolean) => refresh())
   selection.keys.attach(_ => refresh())
   selection.all.attach(_ => refresh())
-  offset.attach(_ => refresh())
+  offset.attach { _ =>
+    refresh()
+    tips.scrolled()
+  }
+  onDispose(() => tips.hide())
   size.width.attach(_ => clip())
   size.height.attach { _ =>
     clip()

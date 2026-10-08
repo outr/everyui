@@ -634,6 +634,10 @@ On a platform driven by a remote (`Platform.remoteNavigation()`), tips do not fo
 `Tooltip.onFocus @= true`: the focus moves with every press there, and a tip would cover the next thing along. A
 plain tip drawn by the platform itself is still `Component.tooltip`.
 
+What owns a component that is not its own pointer's or focus's (a list's row, under its cursor) asks for its tip
+itself: `Tooltip.askFor(row, () => words)`, the words read as it shows and none shown where they are None by then, and
+`Tooltip.hideFor(row)`. A list's rows have theirs from `Decoration.tooltip` (Tree).
+
 ### FilterPicker (`everyui.picker`)
 
 A field over the list of what matches it: go to a file, a symbol, a command. Each change to the words asks the app's
@@ -3386,6 +3390,25 @@ file's counts after its folder (`badge = "backend/app", badgeTail = "+1 −1"`),
 +1 −1" where one badge would have been cut to "…1 −1". The badge has the room between the label and the tail; with
 too little, the badge goes first, and the tail too where even it does not fit beside the label. `demo=badge` shows a
 commit window's changed files at 280 and 400 wide and wider.
+
+A row can have a tip, `Decoration.tooltip` (None by default): words for more than it shows, a file's whole path
+beside its name. It is a `Tooltip`, with its delay, look and place (under the row, centred on it, over it at the
+foot of the screen), a long path wrapped within `Tooltip.widest` and broken where it must be. It shows as the pointer
+rests on the row; as the cursor rests on it in a list with the focus, moved there by the keys, where the focus shows
+tips (`Tooltip.onFocus`: not where a remote drives the app); and on a touch screen at once as a finger is held on the
+row, for 2.5 s, unless that puts a menu up (`menu` answered with a `Menu`), when the menu is the hold's answer and no
+tip shows: a tip flashed before it would only be covered by it (`list.holdTips` turns holding off or on). It goes as
+the pointer leaves or presses, the cursor moves on, the list loses the focus, the rows scroll, the row is handed
+another item and with the list; the words are read as it shows, so a row a long list hands item after item shows its
+own item's, never one it showed before. They are also the row's description to a screen reader
+(`Component.accessibleDescription`: the web's `aria-describedby`, TalkBack's hint). Rows are only watched for it once
+they have had one, so a list without tips is as it was. `ListRow.tip` is what a row of its own sets for the same.
+
+```scala
+tree.decorate @= (f => Decoration(icon = Some(MaterialIcon.Description), badge = f.folder, tooltip = Some(f.path)))
+```
+
+`demo=rowtips` (app/full) shows a project's files in a tree, each with its path as its tip (`n=`, `menu=1`).
 
 A node changed in the model (`model.update(entry.copy(status = "M"))`) is dressed again at once, on the row already
 showing. Where the look comes from outside the node (a status map the app keeps), `tree.redecorate(key)` or

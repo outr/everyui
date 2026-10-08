@@ -708,6 +708,19 @@ class RenderNode(val view: View) {
   }
   def setTooltip(text: String): Unit =
     if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
+  // what TalkBack reads after the view's name, and whether accessibleFocus's delegate (which says it too) is on the view
+  private var hint = ""
+  private var focusDelegate = false
+  /** What TalkBack reads after the view's name (a list row's tip), as its hint (Android 8 on). */
+  def setDescription(text: String): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) {
+    hint = text
+    if (!focusDelegate) view.setAccessibilityDelegate(if (text.isEmpty) null else new View.AccessibilityDelegate {
+      override def onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo): Unit = {
+        super.onInitializeAccessibilityNodeInfo(host, info)
+        if (hint.nonEmpty) info.setHintText(hint)
+      }
+    })
+  }
   /** A drawing's figures (everyui.draw.Drawing), where this is one. */
   def setFigures(figures: List[everyui.draw.Figure]): Unit = view match {
     case d: DrawingView => d.figures(figures)
@@ -945,9 +958,11 @@ class RenderNode(val view: View) {
   def accessibleFocus(click: () => Unit): Unit = if (RenderNode.reading) {
     view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES)
     if (android.os.Build.VERSION.SDK_INT >= 28) view.setScreenReaderFocusable(true)
+    focusDelegate = true
     view.setAccessibilityDelegate(new View.AccessibilityDelegate {
       override def onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo): Unit = {
         super.onInitializeAccessibilityNodeInfo(host, info)
+        if (hint.nonEmpty && android.os.Build.VERSION.SDK_INT >= 26) info.setHintText(hint)
         info.setClassName("android.widget.Button")
         info.setFocusable(true)
         info.setClickable(true)
