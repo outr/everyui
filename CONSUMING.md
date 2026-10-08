@@ -3472,6 +3472,32 @@ sidebar.style @= RichStyle.Blocks
 Theme.palette @= Theme.palette().copy(extras = Theme.palette().extras + ("list.block" -> Color.fromHex("7c4dff").withAlpha(0.06)))
 ```
 
+A section can have one thing it does straight from its header ("New conversation"): `RichSection.action`
+(`Option[RichAction]`, `None` by default), a `RichAction(icon, label, run)`. It is a small icon button in the header,
+always shown, the ⋮'s size, lit as the ⋮ is under the pointer and following the theme: in a block just before the
+count (the title cut short of it), in a tree at the header's end, short of the ⋮ where any header has a menu; where
+any section has an action (`headersHaveActions`), every tree header's count sits short of it, in one line down the
+list. Right to left, it is mirrored. `label` is its tooltip and what a screen reader calls it. A click or a tap on it
+runs it and neither opens nor closes the section, whether open or closed (a click on the bar beside it still does).
+The keys and a remote reach it from the header, the list still one stop for the focus: Right (Left, right to left) on
+an open section's header puts the cursor on its action, ringed in the accent where the header was; Enter (OK) runs
+it; Left (Right) takes the cursor back to the header, and Up or Down on as before. On a closed header Right opens it
+first, as it always did; on a header with no action Right does what it did.
+
+An open section that holds nothing can say so: `RichSection.empty` (`Option[String]`, `None` by default) is a line of
+its own where its items would be ("No conversations yet"), muted, `RichRow.emptyHeight` (36) tall, inside the block in
+`RichStyle.Blocks`. It is not an item: it is never chosen or lit, a click on it does nothing, the cursor passes over
+it (sent onto it, it goes on the way it was going), and a drop onto it is into its section. Search shows only what
+it finds, so a section the words find nothing in is hidden as before, and the words never find the line. Without
+`empty`, an empty section is its header alone, as it was. Both are defaulted last parameters, so existing sections
+are unchanged.
+
+```scala
+RichSection(w.id, w.name, w.chats, icon = Some(MaterialIcon.Workspaces), group = Some(workspaces),
+  action = Some(RichAction(MaterialIcon.Add, "New conversation", () => create(w.id))),
+  empty = Some("No conversations yet"))
+```
+
 The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,
 with a magnifier, "Search" (`Words.search`) faint inside it while it is empty, and a × once it holds something. The ×
 and Escape empty it; an empty one leaves Escape to the screen (Back). Enter goes to the list, and so does Down (Up from

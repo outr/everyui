@@ -19,9 +19,14 @@ import reactify.*
   * In `RichStyle.Blocks` a group's header is a caption, and a section's lines are drawn on its block: each row draws its
   * own part of the panel, square, with its corners rounded where it is the block's first or last line (a rounded panel
   * reaching past the row, cut to it), so the block costs every row the same few nodes as it scrolls; the last also
-  * leaves the gap under the block. The cursor, the pointer and the item chosen are lit inside the block. */
+  * leaves the gap under the block. The cursor, the pointer and the item chosen are lit inside the block.
+  *
+  * A section's action (`RichSection.action`) is a small button in its header, and an open section that holds nothing
+  * shows its `empty` words on a line of their own, muted, which is never lit. */
 class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
-  private val header: Val[Boolean] = own(Val(item().exists(_.item.isEmpty)))
+  private val header: Val[Boolean] = own(Val(item().exists(_.header)))
+  /** Whether it is the line an empty section shows in place of its items. */
+  private val emptyLine: Val[Boolean] = own(Val(item().exists(_.empty)))
   private val look: Val[Option[RichLook]] = own(Val(item().flatMap(_.item).map(owner.lookOf)))
   private val tall: Val[Boolean] = own(Val(look().exists(_.detail.nonEmpty)))
   private val unread: Val[Boolean] = own(Val(look().exists(_.unread)))
@@ -31,7 +36,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   /** The group this row heads, where it is a group's header. */
   private val group: Val[Option[RichGroup]] = own(Val(item().filter(_.item.isEmpty).flatMap(_.groupHead)))
   /** The header's section, where this row is a section's header. */
-  private val section: Val[Option[RichSection[T]]] = own(Val(item().filter(l => l.item.isEmpty && l.groupHead.isEmpty)
+  private val section: Val[Option[RichSection[T]]] = own(Val(item().filter(l => l.header && l.groupHead.isEmpty)
     .map(_.section)))
   /** Whether the list draws its sections as blocks (`RichStyle.Blocks`). */
   private val blocks: Val[Boolean] = own(Val(owner.style() == RichStyle.Blocks))
@@ -45,6 +50,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     if (header()) {
       if (!blocks()) RichRow.headerHeight else if (group().nonEmpty) RichRow.captionHeight else RichRow.blockHeader
     }
+    else if (emptyLine()) RichRow.emptyHeight
     else if (tall()) RichRow.tallHeight else RichRow.shortHeight))
   private val above: Val[Double] = own(Val(if (blocks() && !header() && item().exists(_.blockStart)) RichRow.blockPad
     else 0.0))
@@ -70,6 +76,9 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val toggles: Val[Boolean] = own(Val(blocks() && header() && (section().nonEmpty ||
     item().exists(l => l.groupHead.nonEmpty && !l.open))))
   private val toggleRoom: Val[Double] = own(Val(if (toggles()) RichRow.toggleSize + 6.0 else 0.0))
+  // the section's action, where it has one, and whether the cursor is on it rather than on the header
+  private val actionOf: Val[Option[RichAction]] = own(Val(section().flatMap(_.action)))
+  private val onAction: Val[Boolean] = own(Val(current() && active() && owner.atAction() && actionOf().nonEmpty))
 
   // ---- a header ----
   private val chevron = new MaterialIconView(MaterialIcon.ExpandMore, 18.0) {
@@ -86,12 +95,13 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     Decoration(icon = if (group().nonEmpty) group().flatMap(_.icon) else section().flatMap(_.icon),
       weight = if (group().nonEmpty) FontWeight.Bold else FontWeight.SemiBold,
       color = Some(if (group().nonEmpty || blocks()) Theme.text() else Theme.muted()),
-      badge = if (blocks()) "" else item().filter(_.item.isEmpty).map(_.count.toString).getOrElse("")),
-    // short of the ⋮ where any header has a menu, so the counts keep one line as the ⋮ comes and goes (in a block, short
-    // of its count, which a long title never hides)
-    if (blocks()) countStart() - side()
+      badge = if (blocks()) "" else item().filter(_.header).map(_.count.toString).getOrElse("")),
+    // short of the ⋮ where any header has a menu, and of the action where any section has one, so the counts keep one
+    // line as the ⋮ comes and goes (in a block, short of its count, which a long title never hides, and its action)
+    if (blocks()) countStart() - (if (actionOf().nonEmpty) RichRow.headerMore else 0.0) - side()
     else RichRow.this.size.width() - ListRow.inset - 22.0 - RichRow.inset + 8.0 - nest() -
-      (if (owner.headersHaveMenus()) RichRow.headerMore - 2.0 else 0.0), base(), 12.5)
+      (if (owner.headersHaveMenus()) RichRow.headerMore - 2.0 else 0.0) -
+      (if (owner.headersHaveActions()) RichRow.headerMore else 0.0), base(), 12.5)
   heading.position.left := ListRow.along(if (blocks()) side() else ListRow.inset + 22.0 + nest(), heading.size.width(),
     size.width())
   heading.position.top := above()
@@ -212,16 +222,18 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   size.height := base() + above() + below()
   // (in a block the row draws none of it: its block's panel and the light in it do)
   backgroundColor := (if (blocks()) Color.Clear else lit())
-  borderWidth := (if (!blocks() && current() && active()) 1.0 else 0.0)
+  borderWidth := (if (!blocks() && current() && active() && !onAction()) 1.0 else 0.0)
   semantics := item().map(l => Semantics("listitem", label = l.item match {
     case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText)
+    case None if l.empty => l.section.empty.getOrElse("")
     case None => l.groupHead.map(_.title).getOrElse(l.section.title) + ", " + l.count.toString
   })).getOrElse(Semantics.Plain)
   children ++= List(chevron, heading, sectionMore, tallFace, shortFace, glyph, title, detail, mark, time, badge, more)
 
   // what the row is lit with: a drop into it, the item chosen, the cursor, the pointer over it
   private def lit(): Color =
-    if (drop().contains(DropPosition.Into)) Theme.accent().withAlpha(0.45)
+    if (emptyLine()) Color.Clear
+    else if (drop().contains(DropPosition.Into)) Theme.accent().withAlpha(0.45)
     else if (chosen()) Theme.accent().withAlpha(if (active()) 0.26 else 0.18)
     else if (current() && active()) Theme.control()
     else if (hovered()) Theme.control().withAlpha(0.6)
@@ -255,7 +267,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     size.height := math.max(0.0, base() - 4.0)
     radius @= RichRow.blockRadius - 3.0
     backgroundColor := (if (blocks()) lit() else Color.Clear)
-    borderWidth := (if (blocks() && current() && active()) 1.0 else 0.0)
+    borderWidth := (if (blocks() && current() && active() && !onAction()) 1.0 else 0.0)
     borderColor := Theme.accent()
     visible := blocks()
   }
@@ -284,7 +296,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   }
   // a section's count at its bar's end, before its ⋮ (in one line down the list where any header has one) and its ▾
   private[list] lazy val count: TextView = new TextView {
-    content := item().filter(_.item.isEmpty).map(_.count.toString).getOrElse("")
+    content := item().filter(_.header).map(_.count.toString).getOrElse("")
     font.size @= 10.5
     color := Theme.muted()
     visible := blocks() && section().nonEmpty
@@ -307,9 +319,64 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   blocks.attach(b => if (b) makeBlock())
   if (blocks()) makeBlock()
 
+  // ---- a section's action and an empty section's line: made the first time a row shows one, so others have none ----
+  /** The section's action (`RichSection.action`) in its header: before its count in a block, at the header's end in a
+    * tree (short of the ⋮ where any header has one); lit and ringed as the ⋮ is, and while the cursor is on it. */
+  private[list] lazy val actionButton: IconButton = new IconButton(MaterialIcon.Empty, "", () => actionOf().foreach(_.run())) {
+    size.width @= RichRow.headerMore
+    size.height @= RichRow.headerMore
+    radius @= RichRow.headerMore / 2.0
+    icon.position.left @= (RichRow.headerMore - 22.0) / 2.0
+    icon.position.top @= (RichRow.headerMore - 22.0) / 2.0
+    icon.icon := actionOf().map(_.icon).getOrElse(MaterialIcon.Empty)
+    tooltip := actionOf().map(_.label).getOrElse("")
+    semantics := Semantics.button(actionOf().map(_.label).getOrElse(""))
+    visible := actionOf().nonEmpty
+    backgroundColor := (if (focused() || event.pointer.over() || onAction()) Theme.controlLit() else Color.Clear)
+    icon.color := (if (focused() || event.pointer.over() || onAction()) Theme.text() else tint())
+    borderWidth := (if (onAction()) 1.0 else 0.0)
+    borderColor := Theme.accent()
+  }
+  /** The words an open section that holds nothing shows in place of its items (`RichSection.empty`), muted. */
+  private[list] lazy val emptyText: TextView = new TextView {
+    content := item().filter(_.empty).flatMap(_.section.empty).getOrElse("")
+    font.size @= 13.0
+    color := Theme.muted()
+    maxWidth := math.max(20.0, end() - side())
+    visible := emptyLine()
+    position.left := ListRow.along(side(), size.width(), RichRow.this.size.width())
+    position.top := middle(size.height())
+  }
+  private var actionMade = false
+  private def makeAction(): Unit = if (!actionMade) {
+    actionMade = true
+    actionButton.focusable @= false
+    // (its glyph 6 short of the count in a block; in a tree, its glyph's end at the end, or the ⋮'s gap before it)
+    from(if (blocks()) countStart() - RichRow.headerMore - 3.0
+      else end() - (if (owner.headersHaveMenus()) RichRow.headerMore - 2.0 else 0.0) - RichRow.headerMore + 3.0,
+      actionButton)
+    actionButton.position.top := middle(RichRow.headerMore)
+    children += actionButton
+  }
+  actionOf.attach(a => if (a.nonEmpty) makeAction())
+  if (actionOf().nonEmpty) makeAction()
+  /** Whether `along` (from the row's start edge) is on the section's action, which a click there is for alone. */
+  def onActionAt(along: Double): Boolean = actionMade && actionButton.visible() && {
+    val b = actionButton
+    val start = if (everyui.i18n.Direction.rtl()) size.width() - b.position.left() - b.size.width() else b.position.left()
+    along >= start && along <= start + b.size.width()
+  }
+  private var emptyMade = false
+  private def makeEmpty(): Unit = if (!emptyMade) {
+    emptyMade = true
+    children += emptyText
+  }
+  emptyLine.attach(e => if (e) makeEmpty())
+  if (emptyLine()) makeEmpty()
+
   override def editStart: Double = textStart() - 6.0
 
-  private def openSectionMore(): Unit = item().filter(_.item.isEmpty).foreach { l =>
+  private def openSectionMore(): Unit = item().filter(_.header).foreach { l =>
     owner.list.current @= Some(l.key)
     l.groupHead match {
       case Some(g) => owner.openGroupMenu(g, Some(sectionMore), 0.0, 0.0)
@@ -336,6 +403,8 @@ object RichRow {
   val headerMore: Double = 28.0
   val shortHeight: Double = 44.0
   val tallHeight: Double = 60.0
+  /** How tall the line an empty section shows (`RichSection.empty`) is. */
+  val emptyHeight: Double = 36.0
   /** How big the avatar is in a row with a second line, and in one without. */
   val tallLead: Double = 38.0
   val shortLead: Double = 28.0

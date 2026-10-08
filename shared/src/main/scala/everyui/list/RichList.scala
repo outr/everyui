@@ -27,7 +27,11 @@ import reactify.*
   * `menu` gives an item's context menu: asked for with the secondary button, a long press on a touch screen, the menu
   * key or a remote's options key, OK held, or the ⋮ at the row's end that shows with the pointer over it or the cursor
   * on it. `sectionMenu` gives a section's, asked for the same ways on its header, whose ⋮ shows with the pointer over
-  * it or the cursor on it, and always where there is no pointer; a header with none only opens and closes. With
+  * it or the cursor on it, and always where there is no pointer; a header with none only opens and closes. A section's
+  * `action` is a small button in its header, always shown, that runs it without opening or closing the section: a click
+  * or a tap on it, or Right (Left, right to left) from the open section's header onto it and Enter; Left takes the
+  * cursor back to the header, and Up or Down on. A section's `empty` words show on a line of their own while it is
+  * open and holds nothing, which the cursor passes over, a click does nothing to, and search never finds. With
   * `search`, a field over the list narrows it to the items `matches` finds for the words (`query`, which
   * the app can also set), under their sections, opened; an app filtering its own sections leaves it off. With
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
@@ -82,9 +86,15 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     * down the list, and in a list with none each is where it always was. */
   val headersHaveMenus: Val[Boolean] = own(Val(sections().exists(s => sectionMenu()(s).nonEmpty ||
     s.group.exists(g => groupMenu()(g).nonEmpty))))
+  /** Whether any section has an action (`RichSection.action`): then, in a tree, every header's count sits short of it,
+    * in one line down the list. */
+  val headersHaveActions: Val[Boolean] = own(Val(sections().exists(_.action.nonEmpty)))
+  /** Whether the cursor is on its header's action rather than the header: Right (Left, right to left) from an open
+    * section's header puts it there, where it has one, and Left back; Enter runs it. */
+  private[list] val atAction: Var[Boolean] = own(Var(false))
   val list: VirtualList[RichLine[T]] = new VirtualList[RichLine[T]](lines, _.key,
-    l => l.item.map(t => lookOf(t).title).getOrElse(l.groupHead.map(_.title).getOrElse(l.section.title)), RichRow.tallHeight, measuredRows = true)(() =>
-    new RichRow[T](this))
+    l => if (l.empty) "" else l.item.map(t => lookOf(t).title).getOrElse(l.groupHead.map(_.title).getOrElse(l.section.title)),
+    RichRow.tallHeight, measuredRows = true)(() => new RichRow[T](this))
   /** The field over the list that narrows it, with `search`: a search box on one line (`SearchField`). */
   val field: Option[SearchField] = if (search) Some(new SearchField(Words.search)) else None
 
@@ -175,10 +185,13 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
         // what the words find shows whether its section was closed or not
         val open = narrowed || s.title.isEmpty || !shut.contains(s.key)
         val count = if (narrowed) items.size else s.count.getOrElse(items.size)
+        // an open section that holds nothing says so where it has words for it (never while narrowed: it found nothing)
+        val saysEmpty = open && items.isEmpty && s.empty.nonEmpty
         val head = if (s.title.isEmpty) Vector.empty[RichLine[T]]
           else Vector(RichLine(GroupedList.headerKey(s.key), s, None, open, count, None, nested, blockStart = true,
-            blockEnd = !open || items.isEmpty))
-        var shown = if (open) items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0, None, nested))
+            blockEnd = !open || (items.isEmpty && !saysEmpty)))
+        var shown = if (saysEmpty) Vector(RichLine(RichList.emptyLineKey(s.key), s, None, open, 0, None, nested, empty = true))
+          else if (open) items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0, None, nested))
           else Vector.empty[RichLine[T]]
         // the first and the last of its block's lines (the header its first, where it has one)
         if (shown.nonEmpty) {
@@ -245,7 +258,9 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
         val l = list(i)
         // the start of the section on line `at`
         def startOf(at: Int): (String, Option[String]) = (list(at).section.key, firstFrom(at, list(at).section.key))
-        if (l.groupHead.nonEmpty) d.position match {
+        // onto an empty section's line is into it
+        if (l.empty) Some((l.section.key, None))
+        else if (l.groupHead.nonEmpty) d.position match {
           // before a group's header is the end of the section above it, where there is one and it is not a closed group
           case DropPosition.Before => if (i > 0 && list(i - 1).groupHead.isEmpty) Some((list(i - 1).section.key, None)) else None
           // onto or after it is the start of its first section, where it is open: never into a closed group
@@ -272,18 +287,26 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
 
   list.selection.multiple @= false
   list.clickActivates @= true
-  list.keys = (e: KeyEvent) => list.currentItem.filter(l => l.item.isEmpty && !e.shift && !e.ctrl && !e.meta && !e.alt)
+  list.keys = (e: KeyEvent) => list.currentItem.filter(l => l.header && !e.shift && !e.ctrl && !e.meta && !e.alt)
     .flatMap { line =>
       val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
       val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
+      val acts = line.groupHead.isEmpty && line.section.action.nonEmpty
       if (e.key == forward && !line.open) Some(() => openLine(line))
+      else if (e.key == forward && acts && !atAction()) Some(() => atAction @= true)
+      else if (e.key == back && atAction()) Some(() => atAction @= false)
       else if (e.key == back && line.open) Some(() => closeLine(line))
       else None
     }
-  list.clicks = (i: Int, _: Double) => {
+  // a click on an empty section's line does nothing, and one on a header's action is the action's alone (it has run it,
+  // and the list may hear it as well, where running it took longer than a click's climb is held)
+  list.clicks = (i: Int, along: Double) => {
     val line = list(i)
-    if (line.item.isEmpty) {
+    if (line.empty) true
+    else if (line.header && list.rowAt(i).exists(_.asInstanceOf[RichRow[T]].onActionAt(along))) true
+    else if (line.header) {
       list.moveTo(i)
+      atAction @= false
       toggleLine(line)
       true
     }
@@ -293,8 +316,27 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     case Some(t) =>
       selected @= Some(keyOf(t))
       activated @= t
-    case None => toggleLine(line)
+    case None if line.empty => ()
+    case None => if (atAction() && line.groupHead.isEmpty) line.section.action.foreach(_.run()) else toggleLine(line)
   })
+  // the cursor never rests on an empty section's line: it goes on past it the way it was going, or back where there is
+  // nothing past it; and off the header's action as it moves
+  private var lastAt = -1
+  list.current.attach { k =>
+    atAction @= false
+    val i = k.map(list.indexOf).getOrElse(-1)
+    if (i >= 0 && list(i).empty) {
+      val step = if (i < lastAt) -1 else 1
+      def from(dir: Int): Int = {
+        var j = i + dir
+        while (j >= 0 && j < list.count && list(j).empty) j += dir
+        if (j >= 0 && j < list.count) j else -1
+      }
+      val to = if (from(step) >= 0) from(step) else from(-step)
+      if (to >= 0) list.moveTo(to)
+    }
+    else lastAt = i
+  }
   list.commit := ((e: ListEdit[RichLine[T]]) => e.item.item match {
     case Some(t) => commit()(t, e.text)
     case None => everyui.async.Task.pure(None: Option[String])
@@ -303,6 +345,7 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   list.menu.attach { p =>
     val anchor = if (p.pointer) None else list.rowAt(list.indexOf(p.key))
     (p.item.item, p.item.groupHead) match {
+      case _ if p.item.empty => ()
       case (Some(t), _) => openMenu(t, None, p.x, p.y)
       case (None, Some(g)) => openGroupMenu(g, anchor, p.x, p.y)
       case (None, None) => openSectionMenu(p.item.section, anchor, p.x, p.y)
@@ -354,6 +397,9 @@ object RichList {
 
   /** The line of group `group`'s header, apart from any section's or item's. */
   def groupLineKey(group: String): String = "s\u0000" + group
+
+  /** The line an empty section `section` shows in place of its items (`RichSection.empty`). */
+  def emptyLineKey(section: String): String = "e\u0000" + section
 
   /** A count as a badge says it: "99+" past 99. */
   def countText(n: Int): String = if (n > 99) "99+" else n.toString

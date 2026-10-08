@@ -5,7 +5,7 @@ import everyui.component.{Button, Container, TextView}
 import everyui.component.types.FontWeight
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
-import everyui.list.{RichGroup, RichList, RichLook, RichSection, RichStyle}
+import everyui.list.{RichAction, RichGroup, RichList, RichLook, RichSection, RichStyle}
 import everyui.menu.MenuItem
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -14,8 +14,9 @@ import everyui.util.Clock
 import reactify.*
 
 /** A sidebar's conversations as blocks (`RichStyle.Blocks`): Unread on its own, three workspaces in the Workspaces
-  * group (one with a long name, closed) and two people in Personal (one closed), with unread counts, a long title, an
-  * agent at work, a search field, menus on the items and the sections, and items that drag anywhere. Wide, the list is
+  * group (one with a long name, closed), each with a + that starts a new conversation in it, and three people in
+  * Personal (one closed, and Alan Turing with none yet, saying so, and a +), with unread counts, a long title, an agent
+  * at work, a search field, menus on the items and the sections, and items that drag anywhere. Wide, the list is
   * a 280 wide sidebar beside the conversation chosen and a button that draws it as a tree and back; narrow, it fills
   * the screen. `theme=light`, `rtl=1`, `style=tree` to start as a tree, `collapsed=<keys>` and `groups=<keys>` for
   * what starts closed (Gauss's block and nabo's by default), and `find=<words>` to start narrowed. Logs `blocks ok`
@@ -51,16 +52,28 @@ object BlocksDemo {
         start - i.toLong * 47L * 60000L, unread, if (i == 1) Some("Running the tests") else None)
     })
     val sections: Var[Vector[RichSection[Chat]]] = Var(Vector.empty)
+    // a section's action: a new conversation at the top of it
+    var added = 0
+    def newChat(place: String): RichAction = RichAction(MaterialIcon.Add, "New conversation", () => {
+      added += 1
+      chats @= (place -> Chat("n-" + added.toString, "New conversation " + added.toString, "Started just now", people(0),
+        Clock.real(), 0)) +: chats()
+      Platform.log("blocks action " + place)
+    })
     def group(): Unit = {
       val all = chats()
       def in(place: String): Vector[Chat] = all.filter(_._1 == place).map(_._2)
       sections @= Vector(RichSection("unread", "Unread", all.map(_._2).filter(_.unread > 0)),
-        RichSection("everyui", "everyui", in("everyui"), icon = Some(MaterialIcon.Workspaces), group = Some(workspaces)),
-        RichSection("voidcraft", "voidcraft", in("voidcraft"), icon = Some(MaterialIcon.Workspaces), group = Some(workspaces)),
+        RichSection("everyui", "everyui", in("everyui"), icon = Some(MaterialIcon.Workspaces), group = Some(workspaces),
+          action = Some(newChat("everyui"))),
+        RichSection("voidcraft", "voidcraft", in("voidcraft"), icon = Some(MaterialIcon.Workspaces), group = Some(workspaces),
+          action = Some(newChat("voidcraft"))),
         RichSection("nabo", "nabo-tv-platform-and-every-client-of-it", in("nabo"), icon = Some(MaterialIcon.Workspaces),
-          group = Some(workspaces)),
+          group = Some(workspaces), action = Some(newChat("nabo"))),
         RichSection("ada", "Ada Lovelace", in("ada"), group = Some(personal)),
-        RichSection("gauss", "Carl Gauss", in("gauss"), group = Some(personal)))
+        RichSection("gauss", "Carl Gauss", in("gauss"), group = Some(personal)),
+        RichSection("alan", "Alan Turing", in("alan"), group = Some(personal), action = Some(newChat("alan")),
+          empty = Some("No conversations yet")))
     }
     chats.attach(_ => group())
     group()
