@@ -1,5 +1,6 @@
 package everyui.app
 
+import everyui.async.Task
 import everyui.chat.*
 import everyui.component.*
 import everyui.font.MaterialIcon
@@ -14,7 +15,9 @@ import reactify.*
   * them, pictures, short replies, and some from each of four people, built into a `ChatView` `at` seconds after the app
   * starts (1 unless given), once the page has settled. It logs `chatperf built <ms> from <tick>` for the construction
   * and the view put on the screen, then `chatperf ok <first row shown> <ms> rows <rows made>` once it has drawn.
-  * `theme=light` for the light theme, `rtl=1` for right to left. */
+  * `reply=<words>` adds the agent's answer in those words as the newest entry, and `older=<seconds>` has earlier
+  * pages come that long after they are asked for. `theme=light` for the light theme,
+  * `rtl=1` for right to left. */
 object ChatPerfDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -28,9 +31,13 @@ object ChatPerfDemo {
     val n = Platform.launchArg("n").toIntOption.getOrElse(50)
     val at = Platform.launchArg("at").toDoubleOption.getOrElse(1.0)
     Platform.after(at, () => {
-      val entries = Var(page(n, 1790000000000L))
+      // (and with reply=, the agent's answer in those words last)
+      val reply = Platform.launchArg("reply")
+      val entries = Var(page(n, 1790000000000L) ++ (if (reply.isEmpty) Vector.empty
+        else Vector(ChatEntry.message("reply", agent, self = false, reply, Some(1790000000000L),
+          meta = Some("model large")))))
       val started = Platform.ticks()
-      val chat = new ChatView(entries)
+      val chat = new ChatView(entries, older)
       chat.size.width := ui.size.width()
       chat.size.height := ui.size.height()
       ui.children += chat
@@ -43,6 +50,18 @@ object ChatPerfDemo {
           made.toString)
       })
     })
+  }
+
+  // with older=<seconds>, earlier pages of three short messages, each that long in coming, sixty of them
+  private def older: Option[() => Task[Vector[ChatEntry]]] = Platform.launchArg("older").toDoubleOption.map { wait =>
+    var pages = 0
+    () => Task.async[Vector[ChatEntry]] { done =>
+      Platform.after(wait, () => {
+        pages += 1
+        done(if (pages > 60) Vector.empty else (0 until 3).toVector.map(i => ChatEntry.message("o" + pages.toString +
+          "-" + i.toString, sam, self = false, "Earlier " + pages.toString, Some(1780000000000L + pages * 3000L + i))))
+      })
+    }
   }
 
   /** `n` entries, oldest first, one a minute up to `end`. */

@@ -140,5 +140,41 @@ class TranscriptLazySpec extends FxSpec {
         fx(t.pin.pinned()) shouldBe false
       }
     }
+
+    "keep each row on its entry, its words as they were made, as earlier pages come in above" in {
+      val entries = Var(history(4))
+      var answer: Option[Vector[ChatEntry] => Unit] = None
+      val made = scala.collection.mutable.Map.empty[String, Int]
+      val older = () => everyui.async.Task.async[Vector[ChatEntry]](done => answer = Some(done))
+      val t = fx(new Transcript(entries, Some(older), (text: Val[String], widest: Val[Double]) => {
+        made(text()) = made.getOrElse(text(), 0) + 1
+        MessageMarkdown.render(text, widest)
+      }))
+      fx {
+        t.size.width @= 900.0
+        t.size.height @= 700.0
+      }
+      onScreen(t) {
+        settle(t)
+        // what each entry shows, and the component it is drawn in
+        def shown(): Map[String, Component] = fx(t.list.rows.filter(r => r.visible() && r.item().nonEmpty)
+          .map(r => r.item().get.id -> r.children().head).toMap)
+        val before = shown()
+        before.keySet shouldBe Set("e0", "e1", "e2", "e3")
+        made.clear()
+        // three pages put before them while they show: a drag selecting a reply's words held its words' nodes, and the
+        // rows handed the entries at their places made them again under it
+        (1 to 3).foreach { p =>
+          eventually(answer.nonEmpty) shouldBe true
+          val reply = answer.get
+          answer = None
+          fx(reply((0 until 3).toVector.map(i => ChatEntry.message("o" + p + "-" + i, me, self = true, "Earlier " + p))))
+          settle(t)
+        }
+        val after = shown()
+        made.keys.filter(_.startsWith("## Step")).map(_.take(10)) shouldBe empty
+        before.filter { case (id, view) => !after.get(id).exists(_ eq view) }.keySet shouldBe empty
+      }
+    }
   }
 }

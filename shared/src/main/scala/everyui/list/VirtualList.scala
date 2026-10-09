@@ -1073,6 +1073,17 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       indexes = (0 until shown.length).toVector.map(i => keyOf(shown(i)) -> i).toMap
       topsStale = ownHeights
       guesses = new Array[Double](0)
+      // items put in before the rows made, all of them moved on by as many (an earlier page of a chat): each row
+      // keeps its item at its new place, where each was handed the item now at its own and made again (a message's
+      // words being selected by a drag were made again under the pointer, and the selection went). Items moved any
+      // other way are handed to the rows at their places, as before.
+      if (placed.nonEmpty) {
+        val shifts = placed.toList.map { case (i, r) =>
+          r.item().map(keyOf).flatMap(indexes.get).map(_ - i).getOrElse(0)
+        }
+        val by = shifts.head
+        if (by != 0 && shifts.forall(_ == by)) placed = placed.map { case (i, r) => (i + by, r) }
+      }
     }
     selection.keep(k => indexes.contains(k))
     current() match {
