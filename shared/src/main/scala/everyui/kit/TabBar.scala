@@ -2,7 +2,8 @@ package everyui.kit
 
 import everyui.component.*
 import everyui.component.types.Semantics
-import everyui.i18n.Direction
+import everyui.event.Key
+import everyui.i18n.{Direction, Words}
 import everyui.layout.HorizontalLayout
 import everyui.menu.MenuItem
 import everyui.render.Platform
@@ -21,6 +22,7 @@ import reactify.*
   *   tab.marker @= Some(dot)                            // unsaved
   *   files.closing.attach(path => askThenClose(path))   // the close button, or the app's own Ctrl+W
   *   files.tabMenu @= (path => List(MenuItem("Reveal in tree", () => tree.reveal(path))))   // a right-click
+  *   files.addMenu @= Some(() => List(MenuItem("New file", () => newFile())))   // a "+" after the last tab
   *
   *   files.add(path, name, closable = true, lead = TabLead.Icon(MaterialIcon.Description))   // led by an icon
   *   val chat = files.add("c-7", "Release plan", closable = true, lead = TabLead.Person(helper))
@@ -37,16 +39,34 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
     * Shift+F10 or OK held on the tab (`TabItem.openMenu`). The browser's own menu is kept away only from a tab that has
     * one. */
   val tabMenu: Var[String => List[MenuItem]] = Var((_: String) => Nil)
+  /** A "+" after the last tab that drops this menu, made afresh each time, as a browser's new-tab button: none (no
+    * button, the bar as it is without one) by default. It stays at the bar's end while the tabs scroll before it. */
+  val addMenu: Var[Option[() => List[MenuItem]]] = Var(None)
+  /** What the "+" is called: its tooltip and its name to a screen reader. */
+  val addLabel: Var[String] = Var(TabBar.addWord)
+
+  private var plus: Option[TabAdd] = None
+  // the way the tabs read on, and back: Right and Left, or the other way round in a right-to-left language
+  private def onward: Key = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
+  private def backward: Key = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
 
   private val scroll = new ScrollContainer(horizontal = true) {
-    size.width := width
+    // with a "+" as wide as the tabs, so it sits just after the last, and no wider than leaves it room at the end
+    size.width := (if (addMenu().isEmpty) width else math.max(0.0, math.min(width - TabAdd.width, content.size.width())))
+    position.left := (if (Direction.rtl()) width - size.width() else 0.0)
     size.height @= TabBar.height
     content.layout @= Some(HorizontalLayout(0.0))
     content.children := tabs().toVector
+
+    // on past the last tab, the "+"
+    override def focusExit(direction: Key): Option[Option[Component]] = plus match {
+      case Some(p) if direction == onward && addMenu().nonEmpty => Some(Some(p))
+      case _ => super.focusExit(direction)
+    }
   }
-  // the rule runs as far as the tabs do, from the right in a right-to-left language
+  // the rule runs as far as the tabs (and the "+") do, from the right in a right-to-left language
   private val rule = new Container {
-    size.width := math.min(width, scroll.content.size.width())
+    size.width := math.min(width, scroll.content.size.width() + (if (addMenu().isEmpty) 0.0 else TabAdd.width))
     position.left := (if (Direction.rtl()) width - size.width() else 0.0)
     size.height @= 1.0
     position.top @= TabBar.height - 1.0
@@ -64,6 +84,26 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   // the tab shown brought into view, once it is laid out, where there are more than fit
   current.attach(k => Platform.later(() => apply(k).filter(_.parent().nonEmpty).foreach(t => scroll.reveal(t))))
   tabs.attach(_ => entry(current()))
+  addMenu.attach(_ => placeAdd())
+  placeAdd()
+  onDispose(() => plus.foreach(_.dispose()))
+
+  // the "+" put on the bar while there is a menu for it, and taken off without one
+  private def placeAdd(): Unit = addMenu() match {
+    case Some(_) =>
+      val p = plus.getOrElse {
+        val made = new TabAdd(addLabel, () => addMenu().map(f => f()).getOrElse(Nil)) {
+          // back to the last tab
+          override def focusExit(direction: Key): Option[Option[Component]] =
+            if (direction == backward && tabs().nonEmpty) Some(Some(tabs().last)) else super.focusExit(direction)
+        }
+        made.position.left := (if (Direction.rtl()) scroll.position.left() - TabAdd.width else scroll.size.width())
+        plus = Some(made)
+        made
+      }
+      if (!children().exists(_ eq p)) children += p
+    case None => plus.foreach(p => if (children().exists(_ eq p)) children -= p)
+  }
 
   /** A tab `label` for `key`, added at `at` among the tabs (at the end, where it is past the last or not given), or in
     * place of the one it replaces (moved to `at` where it is given). Neither the tab shown nor the focus moves: a tab
@@ -102,10 +142,22 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
 
   /** The tab for `key`'s menu, dropped from it, where it has one. */
   def openMenu(key: String): Unit = apply(key).foreach(_.openMenu())
+
+  /** The "+"'s menu, dropped from it, where it has one. */
+  def openAddMenu(): Unit = plus.filter(p => children().exists(_ eq p)).foreach(_.open())
+
+  /** The "+", while there is a menu for it. */
+  def addButton: Option[TabAdd] = plus.filter(p => children().exists(_ eq p))
 }
 
 object TabBar {
   val height: Double = 44.0
+
+  /** What the "+" is called unless the app says (`addLabel`). */
+  def addWord: String = {
+    val said = Words("tabs.add")
+    if (said == "tabs.add") "New…" else said
+  }
 
   /** A bar of fixed tabs, each a key and its label. */
   def apply(tabs: List[(String, String)], current: Var[String], width: => Double): TabBar = {

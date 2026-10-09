@@ -6,7 +6,7 @@ import everyui.component.{Component, Container, TextView}
 import everyui.dialog.{Dialogs, SaveChoice}
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
-import everyui.kit.{GroupContent, TabGroups, TabLayout, TabLead}
+import everyui.kit.{GroupContent, TabGroup, TabGroups, TabLayout, TabLead}
 import everyui.keymap.Keymap
 import everyui.menu.MenuItem
 import everyui.render.Platform
@@ -20,9 +20,11 @@ import reactify.*
   * which group view it is and which file it shows; the terminal and the conversation have a view each, which says which
   * view it is. Each counts the seconds since it was made, so one kept shows it rather than starting again. Files may
   * show in two groups at once; the conversation and the terminal may not, and move. Main.scala and notes.txt start
-  * with unsaved work (a dot), and closing one asks Save, Don't Save or Cancel; a tab's menu marks a file saved or not. The layout is kept (`Stored`) and comes back on
-  * the next launch; `fresh=1` starts from the default, `layout=<json>` from that, and `probe=1` runs the menu's actions
-  * in turn. `theme=light`, `rtl=1`. Logs `tabgroups ok`, and the layout at each change (`tabgroups layout <json>`). */
+  * with unsaved work (a dot), and closing one asks Save, Don't Save or Cancel; a tab's menu marks a file saved or not.
+  * Each group's "+" (`addMenu`) opens a new file, terminal or conversation in that group. The layout is kept (`Stored`)
+  * and comes back on the next launch; `fresh=1` starts from the default, `layout=<json>` from that, and `probe=1` runs
+  * the menu's actions in turn, and the second group's New terminal. `add=0` leaves the "+" out, `theme=light`,
+  * `rtl=1`. Logs `tabgroups ok`, and the layout at each change (`tabgroups layout <json>`). */
 object TabGroupsDemo {
   private val helper = Participant("agent-1", "Helper")
   private val files = List("README.md", "Main.scala", "build.sbt", "notes.txt")
@@ -36,13 +38,13 @@ object TabGroupsDemo {
     if (Platform.launchArg("rtl") == "1") Direction.set(true)
     ui.backgroundColor := Theme.background()
     val groups = new TabGroups[String](k => k, view, k => k,
-      lead = k => if (k == chat) TabLead.Person(helper)
-        else TabLead.Icon(if (k == terminal) MaterialIcon.Terminal else MaterialIcon.Description),
-      allowsTwice = k => files.contains(k),
-      sharesGroupContent = k => files.contains(k),
+      lead = k => if (isChat(k)) TabLead.Person(helper)
+        else TabLead.Icon(if (isTerminal(k)) MaterialIcon.Terminal else MaterialIcon.Description),
+      allowsTwice = k => isFile(k),
+      sharesGroupContent = k => isFile(k),
       groupContent = _ => groupView())
     groups.tabMenu @= (k => List(MenuItem("Copy name", () => Platform.log("tabgroups copied " + k))) ++
-      (if (!files.contains(k)) Nil
+      (if (!isFile(k)) Nil
         else if (groups.isDirty(k)) List(MenuItem("Mark saved", () => groups.dirty(k, false)))
         else List(MenuItem("Mark changed", () => groups.dirty(k, true)))))
     groups.canClose @= { (k: String) =>
@@ -54,12 +56,28 @@ object TabGroupsDemo {
       }
     }
     List("Main.scala", "notes.txt").foreach(k => groups.dirty(k, true))
+    // each group's "+": a new file, terminal or conversation, opened in that group
+    def fresh(name: String, ext: String): String = {
+      var n = 2
+      while (groups.groups().exists(g => g.has(name + n.toString + ext))) n += 1
+      name + n.toString + ext
+    }
+    def opened(g: TabGroup[String], k: String): Unit = {
+      groups.openIn(g, k)
+      Platform.log("tabgroups new " + k + " in group " + groups.groups().indexWhere(_ eq g).toString)
+    }
+    // (add=0: none, the bars as they are without one)
+    if (Platform.launchArg("add") != "0") groups.addMenu @= Some((g: TabGroup[String]) => List(
+      MenuItem(newFileWord, () => opened(g, fresh("Untitled-", ".txt")), MaterialIcon.Description),
+      MenuItem(newTerminalWord, () => opened(g, fresh("Terminal ", "")), MaterialIcon.Terminal),
+      MenuItem(newChatWord, () => opened(g, fresh("Chat ", " with Helper")), MaterialIcon.Chat)))
     groups.commands(Keymap.global)
     groups.size.width := ui.size.width()
     groups.size.height := ui.size.height()
     ui.children += groups
     val known = (chat :: terminal :: files).toSet
-    def find(id: String): Option[String] = if (known.contains(id)) Some(id) else None
+    def find(id: String): Option[String] =
+      if (known.contains(id) || isFile(id) || isTerminal(id) || isChat(id)) Some(id) else None
     groups.restore(TabLayout.parse(Platform.launchArg("layout")).getOrElse(start), find)
     groups.layoutChanged.attach { l =>
       Platform.log("tabgroups layout " + l.json)
@@ -80,6 +98,8 @@ object TabGroupsDemo {
       choose(first, "README.md", TabGroups.openDownWord)
       choose(groups.groups()(1), "README.md", TabGroups.moveRightWord)
       choose(groups.groups().last, "notes.txt", TabGroups.unsplitWord)
+      // the second group's "+": a new terminal opened in it
+      groups.addMenu().foreach(menu => menu(groups.groups()(1)).find(_.label == newTerminalWord).foreach(_.action()))
       // Move Down from the first group: into the group below it, or one split off under it where there is none
       groups.groups().head.selected().foreach(k => choose(groups.groups().head, k, TabGroups.moveDownWord))
       val kept = groups.tabLayout
@@ -91,6 +111,13 @@ object TabGroupsDemo {
     if (Platform.freezeSeconds() >= 0.0) Platform.after(1.0, () => Platform.frozen())
     Platform.log("tabgroups ok " + groups.tabLayout.json)
   }
+
+  private val newFileWord = "New file"
+  private val newTerminalWord = "New terminal"
+  private val newChatWord = "New conversation"
+  private def isFile(k: String): Boolean = files.contains(k) || k.startsWith("Untitled-")
+  private def isTerminal(k: String): Boolean = k == terminal || k.startsWith("Terminal ")
+  private def isChat(k: String): Boolean = k == chat || k.startsWith("Chat ")
 
   // README, Main.scala and the conversation; build.sbt beside them; notes.txt under build.sbt
   private val start: TabLayout = TabLayout(ratio = 0.6, parts = List(

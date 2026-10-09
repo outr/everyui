@@ -5,6 +5,7 @@ import everyui.component.{Button, TextView}
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.{TabBar, TabLead}
+import everyui.menu.MenuItem
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -13,8 +14,9 @@ import reactify.*
 /** Tabs led by an avatar or an icon (`TabBar.add(…, lead)`), and the ring that turns around somebody at work: an
   * Overview tab with no lead, Release plan led by Helper's avatar, busy and "Running bash", Ada's led by hers and idle,
   * and Main.scala led by a file's icon; and Helper's face large under them, busy and "Thinking". A button starts and
-  * stops them both. `busy=0` starts them idle, `theme=light` for the light palette, `rtl=1` to lay it out right to
-  * left. Logs `tabs ok` once built and `tabs busy <on>` at each change. */
+  * stops them both. `add=1` puts a "+" after the last tab (`TabBar.addMenu`) whose New tab adds one at the end;
+  * `busy=0` starts them idle, `theme=light` for the light palette, `rtl=1` to lay it out right to left. Logs `tabs ok`
+  * once built, `tabs busy <on>` at each change and `tabs added <key>`. */
 object TabsDemo {
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
@@ -33,6 +35,18 @@ object TabsDemo {
     bar.add("ada", "Ada Lovelace", closable = true, lead = TabLead.Person(ada))
     bar.add("main", "Main.scala", closable = true, lead = TabLead.Icon(MaterialIcon.Description))
     bar.closing.attach(k => bar.remove(k))
+    // add=1: a "+" after the last tab, its menu opening a new tab at the end and showing it
+    if (Platform.launchArg("add") == "1") {
+      val added = Var(0)
+      bar.addMenu @= Some(() => List(MenuItem("New tab", () => {
+        added @= added() + 1
+        val k = "new-" + added().toString
+        bar.add(k, "New tab " + added().toString, closable = true)
+        shown @= k
+        bar(k).foreach(_.focus())
+        Platform.log("tabs added " + k)
+      }, MaterialIcon.Add)))
+    }
 
     val face = new Avatar(helper, 64.0)
     face.busy := busy()

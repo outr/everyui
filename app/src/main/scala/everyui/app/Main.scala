@@ -64,9 +64,9 @@ import everyui.render.Platform
   *   captions   the device's caption setting as it changes, over a video that follows it until a subtitle track is
   *              chosen (`src=<stream>`)
   *   tabs       tabs led by an avatar or an icon, and the ring around somebody at work, turning and stopped (`busy=0`,
-  *              `theme=light`, `rtl=1`)
-  *   tabgroups  tabs in groups split across and down, as an editor splits its files: menus, drags, a layout kept
-  *              (`fresh=1`, `layout=<json>`, `theme=light`, `rtl=1`)
+  *              `add=1` for a "+" after the last tab, `theme=light`, `rtl=1`)
+  *   tabgroups  tabs in groups split across and down, as an editor splits its files: menus, drags, each group's
+  *              "+", a layout kept (`fresh=1`, `layout=<json>`, `probe=1`, `add=0`, `theme=light`, `rtl=1`)
   *   sidebar    a workspace laid out by hand: a tool rail, a sidebar whose edge drags its width (ResizeHandle), a header,
   *              and an editor beside an inspector kept at a width in pixels (SplitPane's `length`), both keeping their
   *              widths as the window changes (`width=`, `inspector=`, `folded=1`, `theme=light`, `rtl=1`)

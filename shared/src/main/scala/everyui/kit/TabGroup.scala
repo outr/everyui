@@ -3,6 +3,7 @@ package everyui.kit
 import everyui.component.*
 import everyui.event.Key
 import everyui.focus.Focus
+import everyui.menu.MenuItem
 import everyui.theme.Theme
 import reactify.*
 
@@ -46,6 +47,12 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   body.children += empty
   bar.tabMenu := ((id: String) => keyOf(id).map(k => owner.menuFor(this, k)).getOrElse(Nil))
   bar.closing.attach(id => keyOf(id).foreach(k => owner.close(this, k)))
+  // the groups' "+", its menu made for this group, and what it is called
+  private def addFor(m: Option[TabGroup[K] => List[MenuItem]]): Unit = bar.addMenu @= m.map(f => () => f(this))
+  addFor(owner.addMenu())
+  follow(owner.addMenu, (m: Option[TabGroup[K] => List[MenuItem]]) => addFor(m))
+  bar.addLabel @= owner.addLabel()
+  follow(owner.addLabel, (w: String) => bar.addLabel @= w)
   // between the tabs and what the one shown shows, said rather than found by where they lie
   bar.exitAction(Key.ArrowDown, () => Focus.candidates(body).headOption.foreach(_.focus()))
   body.exitAction(Key.ArrowUp, () => focusTab())

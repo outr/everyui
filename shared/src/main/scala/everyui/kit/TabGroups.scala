@@ -27,8 +27,9 @@ import reactify.*
   * content. A group left empty closes; the last one stays.
   *
   * `focusedGroup` is the group the focus is in, or was last; `open(k)` opens a tab there, or shows it where it is
-  * open already. `commands(keymap)` puts the actions on the keyboard. `tabLayout` is how it all lies, to keep
-  * (`layoutChanged`) and `restore`.
+  * open already, and `openIn(g, k)` in `g`. With an `addMenu` each group has a "+" after its last tab dropping the menu
+  * it makes for that group, where the app opens its new tabs. `commands(keymap)` puts the actions on the keyboard.
+  * `tabLayout` is how it all lies, to keep (`layoutChanged`) and `restore`.
   *
   * A tab closes only once `canClose` lets it (the app asking whether to save it), whichever way it is closed; Close
   * Others and Close All ask one tab at a time and stop at the first that stays. `tab(k)` finds a key's tabs, and
@@ -43,6 +44,7 @@ import reactify.*
   *     .map(c => c != SaveChoice.Cancel))
   *   editor.open(readme)
   *   editor.tabMenu @= (f => List(MenuItem("Reveal in tree", () => tree.reveal(f))))
+  *   editor.addMenu @= Some(g => List(MenuItem("New file", () => editor.openIn(g, File.untitled()))))   // each group's "+"
   *   editor.commands(Keymap.global)
   * }}} */
 class TabGroups[K](val label: K => String, val content: K => Component, val id: K => String,
@@ -58,6 +60,11 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   val dirtyKeys: Var[Set[K]] = own(Var(Set.empty[K]))
   /** The app's own entries on a tab's menu, after the groups' own. */
   val tabMenu: Var[K => List[MenuItem]] = own(Var((_: K) => Nil))
+  /** A "+" after each group's last tab that drops this menu, made for the group whose "+" was pressed (where the app
+    * opens its new tabs: `openIn`), as a browser's new-tab button: none (no button) by default. */
+  val addMenu: Var[Option[TabGroup[K] => List[MenuItem]]] = own(Var(None))
+  /** What each group's "+" is called: its tooltip and its name to a screen reader. */
+  val addLabel: Var[String] = own(Var(TabBar.addWord))
   /** The groups, first to last. */
   val groups: Var[List[TabGroup[K]]] = own(Var(Nil))
   /** Heard with the layout each time it changes: a tab opened, closed, moved or shown, a split made or undone, a
@@ -92,8 +99,10 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
 
   /** `k` opened in the focused group and shown, the focus on its tab (with `focus`); or, where it shows already in
     * another group and may not show twice, shown there. */
-  def open(k: K, focus: Boolean = true): Unit = {
-    val g = focusedGroup()
+  def open(k: K, focus: Boolean = true): Unit = openIn(focusedGroup(), k, focus)
+
+  /** `k` opened in `g` and shown, as `open` opens it in the focused group: what a group's "+" menu (`addMenu`) does. */
+  def openIn(g: TabGroup[K], k: K, focus: Boolean = true): Unit = {
     val target = if (g.has(k) || allowsTwice(k)) g else groups().find(_.has(k)).getOrElse(g)
     target.add(k)
     target.select(k)

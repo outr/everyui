@@ -456,6 +456,15 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   `tabMenu` (`String => List[MenuItem]`, empty by default) gives a tab a context menu: the secondary button opens it
   at the pointer (keeping the browser's own away only where there is one), the menu key, Shift+F10 and OK held drop it
   from the tab. The bar is read as a tab list and each tab as a tab, and the tab shown is scrolled into view.
+  `addMenu` (`Option[() => List[MenuItem]]`, None by default) puts a "+" after the last tab, as a browser's new-tab
+  button, that drops the menu it makes afresh each time: just after the last tab, and kept at the bar's end while the
+  tabs scroll before it once they overflow (at the left end, right to left). A click, a tap (a 48 px target), Enter,
+  Space and OK open it under the "+" (a panel in the middle of the screen on a television), and so does Down where a
+  keyboard drives the app; it closes as menus do, the focus going back where it was or where the chosen entry puts
+  it. The arrow onward from the last tab (Right, or Left right to left) and Tab reach it, and the arrow back returns
+  to the last tab. `addLabel` (default "New…", `Words("tabs.add")`) is its tooltip and its name to a screen reader.
+  Its glyph is muted as a tab's close button is, brightening on a plate under the pointer, and it is lit as a tab is
+  while focused. With `addMenu` None there is no "+" and the bar is exactly as it was.
 - `TabGroups[K]`: tabs in groups split across and down, as an editor splits its files (below).
 - `Toast.show(words, seconds, top, margin)`: one short message at a time.
 - `AsyncPress(spin, minSpin = 0.5)`: a press that runs slow work, with a delayed spinner, and failures toasted. The
@@ -3909,6 +3918,9 @@ then disposed of as it closes; `id` names a tab for the bars and the saved layou
 val editor = new TabGroups[File](_.name, f => new FileView(f), _.path, f => TabLead.Icon(iconOf(f)), allowsTwice = _.isFile)
 editor.open(readme)                                  // in the focused group, or shown where it is open already
 editor.tabMenu @= (f => List(MenuItem("Reveal in tree", () => tree.reveal(f))))
+editor.addMenu @= Some(g => List(                   // each group's "+", its menu made for that group
+  MenuItem("New file", () => editor.openIn(g, File.untitled())),
+  MenuItem("Open…", () => pickFile(f => editor.openIn(g, f)))))
 editor.commands(Keymap.global)                       // tabs.openRight, openDown, nextGroup, previousGroup, close
 val saved: Var[TabLayout] = Stored("editor", "layout", TabLayout())(using TabLayout.codec)
 editor.restore(saved(), path => files.get(path))
@@ -3926,7 +3938,11 @@ picks), the focus following it. Unsplit puts the group's tabs into the group bes
 splits the group there; Escape lets it go. A key shows in one group at a time, moved rather than opened again, unless
 `allowsTwice` says it may show in two (a file in both halves of a split), each with its own content; a group's only
 tab that may not show twice does not open right or down. A group left empty closes, the focus going to the one in its
-place; the last stays, saying so. `focusedGroup` is the group the focus is in or was last; `open(k)` opens there.
+place; the last stays, saying so. `focusedGroup` is the group the focus is in or was last; `open(k)` opens there, and
+`openIn(g, k)` in `g`. `addMenu` (`Option[TabGroup[K] => List[MenuItem]]`, None by default) gives every group a "+"
+after its last tab (`TabBar.addMenu`, above), groups made later by a split, a move or a drag too, its menu made for the
+group whose "+" was pressed so the app opens its new tabs there with `openIn`; each "+" goes with its group, and
+`addLabel` names them all.
 `commands` puts the actions on a keymap, as Primary+\ (open right), Primary+Shift+\ (down), Primary+Alt+Right and Left
 (the next and the previous group) and Primary+W or Primary+F4 (close), which the app can `rebind`. Arrows keep to the
 focus layer's rules: Down from a bar goes into what it shows, Up comes back, and a split's arrows cross it. `tabLayout`
@@ -3959,8 +3975,9 @@ editor.canClose @= (d => if (!editor.isDirty(d)) Task.pure(true)
 ```
 
 `demo=tabgroups` has four files, a terminal and a conversation in three groups: the files in one view per group, the
-others a view each, each counting since it was made; two files hold unsaved work and ask before they close; its layout
-kept. Tabs are not dragged on a television, which has no pointer; the menu and the keys do it all there.
+others a view each, each counting since it was made; two files hold unsaved work and ask before they close; each
+group's "+" opens a new file, terminal or conversation in it; its layout kept. Tabs are not dragged on a television,
+which has no pointer; the menu and the keys do it all there.
 
 ### Tag (`everyui.kit`)
 
