@@ -1460,9 +1460,25 @@ object Platform {
     Host.scene.windowProperty.addListener((_, _, w) => watch(w))
     Host.scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => hear(e, true))
     Host.scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => hear(e, false))
-    // a mouse's back button is Back too
-    Host.scene.addEventFilter(MouseEvent.MOUSE_PRESSED, (e: MouseEvent) => if (e.getButton == javafx.scene.input.MouseButton.BACK && f("BrowserBack", true)) e.consume())
-    Host.scene.addEventFilter(MouseEvent.MOUSE_RELEASED, (e: MouseEvent) => if (e.getButton == javafx.scene.input.MouseButton.BACK && f("BrowserBack", false)) e.consume())
+    // a mouse's back and forward buttons are keys, BrowserBack (which is Back) and BrowserForward, heard over anything
+    // in the window, a web view included, and never an embed's; nor are they a press on what is under the pointer
+    def side(e: MouseEvent): Unit = {
+      val name = e.getButton match {
+        case javafx.scene.input.MouseButton.BACK => "BrowserBack"
+        case javafx.scene.input.MouseButton.FORWARD => "BrowserForward"
+        case _ => ""
+      }
+      if (name.nonEmpty) {
+        e.consume()
+        if (e.getEventType != MouseEvent.MOUSE_CLICKED) {
+          held = everyui.event.Modifiers(e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
+          embedded = ""
+          f(name, e.getEventType == MouseEvent.MOUSE_PRESSED)
+        }
+      }
+    }
+    List(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED).foreach(kind =>
+      Host.scene.addEventFilter(kind, (e: MouseEvent) => side(e)))
   }
 
   private var held = everyui.event.Modifiers(false, false, false, false)

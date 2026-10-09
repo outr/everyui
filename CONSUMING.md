@@ -346,6 +346,36 @@ double-taps.
 The browser never hands some chords to a page: Ctrl+W, Ctrl+T, Ctrl+Tab and Ctrl+N in a normal tab. They work when
 the app runs as an installed app window. Choose defaults with that in mind.
 
+### The mouse's back and forward buttons
+
+They are keys: "BrowserBack" and "BrowserForward", so a keymap binds them as it binds any chord, beside a keyboard's
+own, and a Navigate Back command takes both:
+
+```scala
+keymap.add("nav.back", "Navigate Back", Chord("BrowserBack"), Chord.parse("Primary+Alt+ArrowLeft")) { editors.back() }
+keymap.add("nav.forward", "Navigate Forward", Chord("BrowserForward"), Chord.parse("Primary+Alt+ArrowRight")) { editors.forward() }
+```
+
+A chord may hold modifiers (`Chord("BrowserBack", shift = true)`). The back button no chord takes is `Key.Back`, as a
+remote's is (a dialog closes, the screen goes back); the forward one is `Key.Other`. Neither is a press on what is
+under the pointer, and neither is an embed's: a chord on one runs over a Monaco editor, a terminal or a web view
+without `inEmbeds` or `Keymap.embed`.
+
+- **Web.** Heard on the window before anything in the page (`MouseEvent.button` 3 and 4), Monaco and the terminal
+  included, and in a `WebView` frame of the app's own origin. Where the app takes the press, the release is
+  prevented (`mouseup` and `pointerup`), and the page does not go back or forward: Chromium navigates as the button is
+  let go, and goes all the same for a press or an `auxclick` prevented. Where nothing takes it the browser does as it
+  does. A frame of another origin, or a sandboxed one, keeps the buttons from the page: over one they are the browser's.
+- **Desktop.** JavaFX's `MouseButton.BACK` and `FORWARD`, heard by the window before any node, a web view (Monaco, a
+  terminal, a `WebView`) included.
+- **Android.** A mouse's back button arrives as `KEYCODE_BACK` from the mouse (`InputDevice.SOURCE_MOUSE`), which is
+  "BrowserBack"; a remote's Back stays "Back" (both `Key.Back`). The forward button is `KEYCODE_FORWARD`. The
+  activity hears them before any view, a web view included.
+- **Roku, Apple TV.** No mouse.
+
+A guest in a web view of its own (`EmbedGuest`) prevents its page's own back and forward for them; the app has heard
+them already.
+
 ### Embeds
 
 An embed is something in the page that handles its own keys, such as a code editor. It is marked
@@ -3778,7 +3808,8 @@ list.field.foreach(_.focus())                           // Ctrl+K
 A `PointerEvent` carries its `button` (`PointerEvent.PrimaryButton`, `MiddleButton`, `SecondaryButton`; a finger is the
 primary) and the modifiers held with it (`ctrl`, `meta`, `alt`, `shift`, and `primary` for the platform's shortcut
 modifier). `click` is the primary button's everywhere; `event.pointer.menu` is the secondary's; `event.pointer.middle` is
-a middle click, which closes a closable `TabItem`.
+a middle click, which closes a closable `TabItem`. A mouse's back and forward buttons are keys, not pointer
+events ("BrowserBack", "BrowserForward": Keys, The mouse's back and forward buttons).
 
 ```scala
 row.event.click.attach(e => if (e.shift) extend() else if (e.primary) toggle() else pick())

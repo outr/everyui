@@ -108,6 +108,8 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
   private def lend(): Unit = if (!sandboxed) ownWindow.foreach { w =>
     val say: js.Function1[js.Any, Unit] = (message: js.Any) => said(message)
     w.asInstanceOf[js.Dynamic].updateDynamic(bridge)(js.Dynamic.literal(postMessage = say))
+    // the mouse's back and forward buttons over it are the app's, as over the page
+    NavButtons.listen(w)
   }
 
   private def said(message: js.Any): Unit = hearing(

@@ -1310,6 +1310,8 @@ object Host {
     val code = e.getKeyCode
     if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) "Enter"
     else if (code == KeyEvent.KEYCODE_BACK) "Back"
+    // a mouse's forward button (a keyboard's Forward key), as a browser names it
+    else if (code == KeyEvent.KEYCODE_FORWARD) "BrowserForward"
     else if (code == KeyEvent.KEYCODE_ESCAPE) "Escape"
     else if (code == KeyEvent.KEYCODE_DEL) "Backspace"
     else if (code == KeyEvent.KEYCODE_DPAD_UP) "ArrowUp"

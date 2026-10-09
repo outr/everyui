@@ -3,7 +3,7 @@ package everyui.activity
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
-import android.view.{KeyEvent, MotionEvent, ViewGroup, WindowInsets, WindowInsetsController, WindowManager}
+import android.view.{InputDevice, KeyEvent, MotionEvent, ViewGroup, WindowInsets, WindowInsetsController, WindowManager}
 import everyui.render.{Host, NodeGroup}
 
 /** The Android entry point an app's activity extends: a full-screen window whose content view is the render root,
@@ -100,24 +100,29 @@ abstract class EveryUIActivity extends Activity {
   }
 
   /** Every key to the shared layer's hook, by the web's name. Back goes there first, and is Android's (leaving the app)
-    * only when the app has nowhere to go back to; a Back the app took keeps its release, or Android would act on that. */
+    * only when the app has nowhere to go back to; a Back the app took keeps its release, or Android would act on that.
+    * A mouse's back button (its BUTTON_BACK, which Android sends as KEYCODE_BACK from the mouse) is BrowserBack: Back
+    * all the same, but told from a remote's by its source, so a keymap's chord can take it alone; its forward button
+    * (KEYCODE_FORWARD) is BrowserForward. */
   override def dispatchKeyEvent(e: KeyEvent): Boolean = {
     val hook = Host.key
     Host.modifiers = everyui.event.Modifiers(e.isCtrlPressed, e.isMetaPressed, e.isAltPressed, e.isShiftPressed)
     // a key is an embed's while its web view has the focus, but a remote's Back is always the app's: a web view does
-    // nothing with it, and passed on it would leave the app
+    // nothing with it, and passed on it would leave the app (and a mouse's back and forward buttons are the app's too)
     Host.embedded = getCurrentFocus match {
-      case embed: everyui.render.EmbedView if e.getKeyCode != KeyEvent.KEYCODE_BACK => embed.name
+      case embed: everyui.render.EmbedView if e.getKeyCode != KeyEvent.KEYCODE_BACK && e.getKeyCode != KeyEvent.KEYCODE_FORWARD =>
+        embed.name
       case _ => ""
     }
     if (hook == null || e.getAction == KeyEvent.ACTION_MULTIPLE) super.dispatchKeyEvent(e)
     else if (e.getKeyCode == KeyEvent.KEYCODE_BACK) {
+      val back = if (e.isFromSource(InputDevice.SOURCE_MOUSE)) "BrowserBack" else "Back"
       if (e.getAction == KeyEvent.ACTION_DOWN) {
-        if (e.getRepeatCount == 0) backTaken = hook("Back", true)
+        if (e.getRepeatCount == 0) backTaken = hook(back, true)
         backTaken || super.dispatchKeyEvent(e)
       }
       else {
-        hook("Back", false)
+        hook(back, false)
         val taken = backTaken
         backTaken = false
         taken || super.dispatchKeyEvent(e)

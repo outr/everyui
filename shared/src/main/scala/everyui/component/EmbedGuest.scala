@@ -9,7 +9,10 @@ package everyui.component
   * JavaScript interface on Android, a member set on the desktop), `connect`ed as the page finishes loading; what the
   * guest says before then waits for it. `container(id)` is the element a guest draws into: the one with that id, on
   * the web the embed's own box, and in a web view of its own a box filling the page, made on first asking.
-  * `hosted` says which. */
+  * `hosted` says which.
+  *
+  * A mouse's back and forward buttons are the app's, which hears them before the web view does (the desktop's window,
+  * Android's activity, as keys): the guest's page never goes back or forward for them (its `mouseup` prevented). */
 object EmbedGuest {
   /** The script. */
   val script: String =
@@ -38,6 +41,9 @@ object EmbedGuest {
       |      return c;
       |    }
       |  };
+      |  ['mouseup', 'auxclick'].forEach(function (kind) {
+      |    window.addEventListener(kind, function (e) { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+      |  });
       |})();
       |""".stripMargin
 

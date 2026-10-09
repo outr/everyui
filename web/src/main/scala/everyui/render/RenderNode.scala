@@ -1841,6 +1841,15 @@ object Platform {
     }
     dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => hear(e, true))
     dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => hear(e, false))
+    // a mouse's back and forward buttons are keys too, never an embed's (NavButtons)
+    NavButtons.hear((name, pressed, e) => {
+      held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
+      embedded = ""
+      repeating = false
+      composing = false
+      f(name, pressed)
+    })
+    NavButtons.listen(dom.window)
   }
 
   private var held = everyui.event.Modifiers(false, false, false, false)
