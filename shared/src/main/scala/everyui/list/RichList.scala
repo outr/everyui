@@ -48,6 +48,10 @@ import reactify.*
   * one it is on; a click on the text or a button never folds it. Search finds what it always did (`matches`, the title
   * and the detail): an app that wants an item's whole text found says so in `matches`.
   *
+  * An item whose `RichLook.live` is set is held somewhere else in the app (open in a tab, playing, connected): it is
+  * marked apart from `selected`, with a faint accent tint and a thin accent bar at its start edge, while the item
+  * chosen keeps its stronger tint, and one chosen and live has both that tint and the bar.
+  *
   * `style` says how it is drawn: as a tree, by default, or (`RichStyle.Blocks`) as a sidebar's tinted blocks, a
   * group's title a caption over its sections and each section a rounded panel, its header a bar that opens and closes
   * it, its items under it; everything else (the cursor, the keys, the menus, search, dragging) is the same in both.
@@ -531,12 +535,14 @@ object RichList {
     look.title.toLowerCase.contains(w) || look.detail.exists(_.toLowerCase.contains(w))
   }
 
-  /** What a screen reader says for a row: its title, detail, time, count, and whether it is unread. */
+  /** What a screen reader says for a row: its title, detail, time, count, whether it is unread or busy, and its
+    * `liveLabel` while it is live. */
   def said(look: RichLook, now: Long, timeText: (Long, Long) => String): String =
     (List(look.title) ++ look.detail.toList ++ look.time.map(t => timeText(t, now)).toList ++
       (if (look.count > 0) List(countText(look.count)) else Nil) ++
       (if (look.unread) List(unreadLabel) else Nil) ++
-      (if (look.busy) ChatWords.busy :: (if (look.busyDetail.isEmpty) Nil else List(look.busyDetail)) else Nil))
+      (if (look.busy) ChatWords.busy :: (if (look.busyDetail.isEmpty) Nil else List(look.busyDetail)) else Nil) ++
+      (if (look.live) look.liveLabel.filter(_.nonEmpty).toList else Nil))
       .mkString(", ")
 
   def moreLabel: String = word("list.more", "More")

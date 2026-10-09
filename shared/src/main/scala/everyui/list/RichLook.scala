@@ -11,7 +11,10 @@ import everyui.font.MaterialIcon
   * turning around its avatar (`Avatar.busy`), whether or not it is unread too, and `busyDetail` ("Running bash") is
   * what a pointer resting on the avatar says, and said to a screen reader with the row. `action` is a small button at
   * its end, before the time (or the ⋮), that does a thing to it without choosing it (a star), shown while the pointer
-  * or the cursor is on the row, or always where `actionShown` (a starred one's filled star) or the action's own `shown`. */
+  * or the cursor is on the row, or always where `actionShown` (a starred one's filled star) or the action's own `shown`.
+  * A `live` one is held somewhere else in the app (open in a tab, playing, connected, pinned to a pane): a faint tint
+  * of the accent behind it and a thin accent bar at its start edge, apart from the list's own choice (`selected`), which
+  * stays the stronger; `liveLabel` ("open in a tab") is said to a screen reader with the row while it is live. */
 case class RichLook(title: String,
                     detail: Option[String] = None,
                     who: Option[Participant] = None,
@@ -24,4 +27,6 @@ case class RichLook(title: String,
                     busy: Boolean = false,
                     busyDetail: String = "",
                     action: Option[RichAction] = None,
-                    actionShown: Boolean = false)
+                    actionShown: Boolean = false,
+                    live: Boolean = false,
+                    liveLabel: Option[String] = None)

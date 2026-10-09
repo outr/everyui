@@ -31,7 +31,10 @@ import scala.concurrent.duration.*
   * An item expanded (`RichList.expansion`) shows its whole text under its title's line, from where the title starts to
   * the row's end, wrapped (as Markdown unless the expansion says not), and its actions as buttons under it, the words of
   * the first in line with the text's, wrapping onto another line where they do not fit; the row is as tall as all of
-  * it, lit and ringed whole, and its text fades in as it opens (at once where Quality says glides jump). */
+  * it, lit and ringed whole, and its text fades in as it opens (at once where Quality says glides jump).
+  *
+  * A live item (`RichLook.live`) is tinted faintly in the accent where nothing else lights it, and has a thin accent bar
+  * at the row's start edge whatever lights it, made the first time a row shows one (in a block, in the margin beside it). */
 class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val header: Val[Boolean] = own(Val(item().exists(_.header)))
   /** Whether it is the line an empty section shows in place of its items. */
@@ -39,6 +42,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val look: Val[Option[RichLook]] = own(Val(item().flatMap(_.item).map(owner.lookOf)))
   private val tall: Val[Boolean] = own(Val(look().exists(_.detail.nonEmpty)))
   private val unread: Val[Boolean] = own(Val(look().exists(_.unread)))
+  /** Whether its item is live somewhere else in the app (`RichLook.live`): open in a tab, playing, connected. */
+  private[list] val live: Val[Boolean] = own(Val(look().exists(_.live)))
   /** Whether it shows the item the app has chosen (`RichList.selected`). */
   val chosen: Val[Boolean] = own(Val(item().flatMap(_.item).exists(t => owner.selected().contains(owner.keyOf(t)))))
   private val hovered: Val[Boolean] = if (Platform.pointerSupport()) event.pointer.over else own(Val(false))
@@ -260,13 +265,15 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   }, expanded = if (expands()) Some(l.expanded) else None)).getOrElse(Semantics.Plain)
   children ++= List(chevron, heading, sectionMore, tallFace, shortFace, glyph, title, detail, mark, time, badge, more)
 
-  // what the row is lit with: a drop into it, the item chosen, the cursor, the pointer over it
+  // what the row is lit with: a drop into it, the item chosen, the cursor, the pointer over it, its item live elsewhere
+  // (a live item's bar stays whatever lights it, so the item chosen and live shows both)
   private def lit(): Color =
     if (emptyLine()) Color.Clear
     else if (drop().contains(DropPosition.Into)) Theme.accent().withAlpha(0.45)
     else if (chosen()) Theme.accent().withAlpha(if (active()) 0.26 else 0.18)
     else if (current() && active()) Theme.control()
     else if (hovered()) Theme.control().withAlpha(0.6)
+    else if (live()) RichRow.liveTint()
     else Color.Clear
 
   // ---- a block (RichStyle.Blocks): made the first time the list draws them, so a tree's rows have none of it ----
@@ -411,6 +418,27 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   }
   emptyLine.attach(e => if (e) makeEmpty())
   if (emptyLine()) makeEmpty()
+
+  // ---- a live item (RichLook.live): its bar made the first time a row shows one, so others have none ----
+  /** The thin accent bar at a live item's start edge, as tall as its line less `liveInset` at each end, `liveFrom` in from
+    * the row's edge: clear of the cursor's ring in a tree, and in a block in the margin beside it, clear of an avatar's
+    * busy ring, which reaches into the block's padding. */
+  private[list] lazy val liveBar: Container = new Container {
+    size.width @= RichRow.liveWidth
+    size.height := math.max(0.0, base() + extra() - 2.0 * RichRow.liveInset)
+    radius @= RichRow.liveWidth / 2.0
+    backgroundColor := RichRow.liveEdge()
+    visible := live()
+    position.left := ListRow.along(RichRow.liveFrom, RichRow.liveWidth, RichRow.this.size.width())
+    position.top := above() + RichRow.liveInset
+  }
+  private var liveMade = false
+  private def makeLive(): Unit = if (!liveMade) {
+    liveMade = true
+    children += liveBar
+  }
+  live.attach(l => if (l) makeLive())
+  if (live()) makeLive()
 
   // ---- an expanded item (RichList.expansion): made the first time a row shows one, so others have none ----
   /** How tall the row's own line is, with the room above it in a block: the expansion goes under it. */
@@ -601,4 +629,14 @@ object RichRow {
 
   /** A block's tint: the theme's `list.block`, else the text's colour, faintly, so it shows on any ground. */
   def blockTint(): Color = Theme.extra("list.block", Theme.text().withAlpha(0.05))
+
+  /** How far a live item's bar is from the row's start edge, in a tree and in blocks alike. */
+  val liveFrom: Double = 2.0
+  /** How wide a live item's bar is (`RichLook.live`), and how far short of its line's top and bottom it stops. */
+  val liveWidth: Double = 3.0
+  val liveInset: Double = 9.0
+  /** A live item's tint: the theme's `list.live`, else the accent, faintly, well under the item chosen's. */
+  def liveTint(): Color = Theme.extra("list.live", Theme.accent().withAlpha(0.08))
+  /** A live item's bar: the theme's `list.liveBar`, else the accent. */
+  def liveEdge(): Color = Theme.extra("list.liveBar", Theme.accent())
 }

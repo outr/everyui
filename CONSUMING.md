@@ -3870,6 +3870,27 @@ memories.expandsOne @= true                               // the default: one op
 memories.matches @= ((m, words) => RichList.holds(look(m), words) || m.text.toLowerCase.contains(words.toLowerCase))
 ```
 
+An item can be marked live, held somewhere else in the app apart from the list's own choice: a conversation open in a
+tab, a track playing, a device connected, a document pinned to a pane. `RichLook.live` (false by default) draws it with
+a faint tint of the accent behind it (in a block, inside the inset light the item chosen has) and a thin accent bar
+(3 wide, 2 in from the row's start edge, the right right to left, stopping 9 short of its line's top and bottom): clear
+of the cursor's ring in a tree, and in a block in the margin beside it, clear of an avatar's busy ring. `selected`
+stays the stronger: the item chosen keeps its own tint, several times the live one's, and has no bar unless it is live
+too, when it shows both, the chosen tint and the bar. The pointer over a live row and the cursor on it light it as any
+row (the bar stays), and its busy ring, its action (★), its ⋮, its count and its expansion are as they were.
+`RichLook.liveLabel` (`Option[String]`, `None` by default: nothing said) is said to a screen reader with the row while
+it is live ("open in a tab"); say one where a live item should be heard apart. The tint is the palette's `list.live`
+(`Theme.extra`), else the accent at 8%, and the bar its `list.liveBar`, else the accent. The bar is made the first time
+a row shows a live item, so a list with none has the rows it had, and an item that is not live is drawn exactly as
+before.
+
+```scala
+look = c => RichLook(c.title, Some(c.snippet), who = Some(c.persona), live = tabs().contains(c.id),
+  liveLabel = Some("open in a tab"))
+chats.selected @= Some(current.id)                         // stronger than live; one both shows both
+Theme.palette @= Theme.palette().copy(extras = Theme.palette().extras + ("list.live" -> Color.fromHex("7c4dff").withAlpha(0.1)))
+```
+
 The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,
 with a magnifier, "Search" (`Words.search`) faint inside it while it is empty, and a × once it holds something. The ×
 and Escape empty it; an empty one leaves Escape to the screen (Back). Enter goes to the list, and so does Down (Up from

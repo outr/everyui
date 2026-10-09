@@ -20,8 +20,9 @@ import reactify.*
   * items and the sections, and items that drag anywhere. Wide, the list is
   * a 280 wide sidebar beside the conversation chosen and a button that draws it as a tree and back; narrow, it fills
   * the screen. `theme=light`, `rtl=1`, `style=tree` to start as a tree, `collapsed=<keys>` and `groups=<keys>` for
-  * what starts closed (Gauss's block and nabo's by default), and `find=<words>` to start narrowed. Logs `blocks ok`
-  * once built, and each thing done. */
+  * what starts closed (Gauss's block and nabo's by default), `find=<words>` to start narrowed, and `live=<ids>` for the
+  * conversations open in a tab (`RichLook.live`: c-0, c-1, c-4, the one chosen, and c-12 by default; `live=0` none),
+  * which an item's menu opens and closes. Logs `blocks ok` once built, and each thing done. */
 object BlocksDemo {
   private case class Chat(id: String, title: String, snippet: String, who: Participant, updated: Long, unread: Int,
                           doing: Option[String] = None, starred: Boolean = false)
@@ -84,6 +85,9 @@ object BlocksDemo {
     val collapsed: Var[Set[String]] = Var(keys("collapsed", Set("nabo", "gauss")))
     val closedGroups: Var[Set[String]] = Var(keys("groups", Set.empty))
 
+    // the conversations open in a tab
+    val tabs: Var[Set[String]] = Var(if (Platform.launchArg("live").isEmpty) Set("c-0", "c-1", "c-4", "c-12")
+      else Platform.launchArg("live").split(",").filter(_.nonEmpty).toSet)
     // a conversation's star: filled and always shown where it is starred, an outline with the pointer or the cursor on it
     def star(c: Chat): RichAction = RichAction(if (c.starred) MaterialIcon.Star else MaterialIcon.StarBorder,
       if (c.starred) "Unstar" else "Star", () => {
@@ -92,12 +96,17 @@ object BlocksDemo {
       })
     val list = new RichList[Chat](sections, _.id, c => RichLook(c.title, Some(c.snippet), Some(c.who),
       time = Some(c.updated), count = c.unread, unread = c.unread > 0, busy = c.doing.nonEmpty,
-      busyDetail = c.doing.getOrElse(""), action = Some(star(c)), actionShown = c.starred), collapsed, search = true,
+      busyDetail = c.doing.getOrElse(""), action = Some(star(c)), actionShown = c.starred, live = tabs().contains(c.id),
+      liveLabel = Some("open in a tab")), collapsed, search = true,
       collapsedGroups = closedGroups)
     list.style @= (if (Platform.launchArg("style") == "tree") RichStyle.Tree else RichStyle.Blocks)
     list.reorders @= true
     list.accepts @= ((_: everyui.list.RichMove) => true)
     list.menu @= ((c: Chat) => List(MenuItem("Rename…", () => list.rename(c.id), MaterialIcon.Edit),
+      MenuItem(if (tabs().contains(c.id)) "Close its tab" else "Open in a tab", () => {
+        tabs @= (if (tabs().contains(c.id)) tabs() - c.id else tabs() + c.id)
+        Platform.log("blocks tabs " + tabs().toList.sorted.mkString(","))
+      }, MaterialIcon.Tab),
       MenuItem("Delete", () => {
         chats @= chats().filterNot(_._2.id == c.id)
         Platform.log("blocks deleted " + c.id)

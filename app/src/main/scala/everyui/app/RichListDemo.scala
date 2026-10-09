@@ -23,8 +23,9 @@ import reactify.*
   * `stop=<seconds>` stops them. Conversations in Recent drag into another order. Wide, the list is a sidebar beside the
   * conversation chosen; narrow, it fills the screen. `theme=light` for the light palette, `rtl=1` to lay it out right to
   * left, `collapsed=<key>` to start with a section closed, `groups=<key>` with a group (workspaces, personal),
-  * `scroll=<pixels>` to start scrolled, `find=<words>` to start narrowed, and `menu=1` to open the chosen
-  * conversation's ⋮ menu. Logs `richlist ok` once built, and each thing done. */
+  * `scroll=<pixels>` to start scrolled, `find=<words>` to start narrowed, `menu=1` to open the chosen conversation's ⋮
+  * menu, and `live=<ids>` for the conversations open in a tab (`RichLook.live`: c-0, c-3, c-5, the one chosen, and c-7
+  * by default; `live=0` none). Logs `richlist ok` once built, and each thing done. */
 object RichListDemo {
   private case class Chat(id: String, title: String, snippet: String, who: Option[Participant], icon: Option[MaterialIcon],
                           updated: Long, unread: Int, pinned: Boolean, locked: Boolean,
@@ -56,7 +57,10 @@ object RichListDemo {
     order.attach(_ => group(chats, order, sections, start))
     group(chats, order, sections, start)
 
-    val list = new RichList[Chat](sections, _.id, look, collapsed, search = true, collapsedGroups = closedGroups)
+    // the conversations open in a tab
+    val live: Set[String] = if (Platform.launchArg("live").isEmpty) Set("c-0", "c-3", "c-5", "c-7")
+      else Platform.launchArg("live").split(",").filter(_.nonEmpty).toSet
+    val list = new RichList[Chat](sections, _.id, c => look(c, live), collapsed, search = true, collapsedGroups = closedGroups)
     list.reorders @= true
     list.menu @= ((c: Chat) => List(
       MenuItem("Rename…", () => list.rename(c.id), MaterialIcon.Edit),
@@ -181,10 +185,10 @@ object RichListDemo {
   private def change(chats: Var[Vector[Chat]], id: String, f: Chat => Chat): Unit =
     chats @= chats().map(c => if (c.id == id) f(c) else c)
 
-  private def look(c: Chat): RichLook = RichLook(c.title, Some(c.snippet), c.who, c.icon,
+  private def look(c: Chat, live: Set[String]): RichLook = RichLook(c.title, Some(c.snippet), c.who, c.icon,
     time = Some(c.updated), count = c.unread, unread = c.unread > 0,
     mark = if (c.locked) Some(MaterialIcon.Lock) else if (c.pinned) Some(MaterialIcon.PushPin) else None,
-    busy = c.doing.nonEmpty, busyDetail = c.doing.getOrElse(""))
+    busy = c.doing.nonEmpty, busyDetail = c.doing.getOrElse(""), live = live.contains(c.id), liveLabel = Some("open in a tab"))
 
   // what the agent is doing in the conversations it is at work in: the first, unread, and two pinned near the top of
   // Recent among them
