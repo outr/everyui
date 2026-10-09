@@ -770,8 +770,12 @@ class RenderNode(val el: html.Element) {
   def onPaste(f: String => everyui.component.types.PasteAction): Unit = Pasting.listen(el, f)
   /** The field taking the keyboard itself (a click, a tap, the browser's own Tab). */
   def onInputFocus(f: () => Unit): Unit = el.addEventListener("focus", (_: dom.Event) => f())
-  /** The field losing the keyboard. */
-  def onInputDone(f: () => Unit): Unit = el.addEventListener("blur", (_: dom.Event) => f())
+  /** The field losing the keyboard; and, where the person put the page's focus on nothing, the focus layer's let go of
+    * too (`FieldBlur`). */
+  def onInputDone(f: () => Unit): Unit = {
+    el.addEventListener("blur", (_: dom.Event) => f())
+    FieldBlur.watch(el)
+  }
   /** Enter in the field, its keyboard's action key. */
   def onInputAction(f: () => Unit): Unit =
     el.addEventListener("keydown", (e: dom.KeyboardEvent) => if (e.key == "Enter" && !e.shiftKey) f())
@@ -818,7 +822,10 @@ class RenderNode(val el: html.Element) {
   // is in it
   def focusInput(on: Boolean): Unit =
     if (on && dom.document.activeElement != el && RenderNode.embedOf(dom.document.activeElement) != "field") el.focus()
-    else if (!on && dom.document.activeElement == el) el.blur()
+    else if (!on && dom.document.activeElement == el) {
+      FieldBlur.blurring = true
+      try el.blur() finally FieldBlur.blurring = false
+    }
 
   private var rotation: Double = 0.0
   private var edge: String = ""

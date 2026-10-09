@@ -62,6 +62,11 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   /** The caret put at `at`, in characters from the start of `text`, nothing chosen. */
   def moveCaret(at: Int): Unit = node.setCaret(at)
 
+  /** The platform's focus taken again by the field this is the caret of (Component.refocus): at once, where it is being
+    * edited (`editing`); else, with a keyboard at hand (`direct`), by editing it again. */
+  private[everyui] def retake(editing: Var[Boolean], direct: Boolean): Unit =
+    if (editing()) node.focusInput(true) else if (direct) editing @= true
+
   text.attach(v => if (node.getValue() != v) node.setValue(v))
   node.onValue(v => if (text() != v) text @= v)
   node.onPaste(words => pasted().map(f => f(words)).getOrElse(PasteAction.Insert))

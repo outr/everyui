@@ -160,7 +160,12 @@ function uiScreenHeight() as float
 end function
 
 sub uiAppend(parent as object, child as object)
-    if parent <> invalid and child <> invalid then parent.appendChild(child)
+    if parent <> invalid and child <> invalid then
+        ' out of the parent it is in first, as uiInsert does: a component put in another container is moved
+        old = child.getParent()
+        if old <> invalid then old.removeChild(child)
+        parent.appendChild(child)
+    end if
 end sub
 
 sub uiInsert(parent as object, child as object, index as integer)

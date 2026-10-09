@@ -124,6 +124,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   /** Primary+Enter is its own, and the platform's field never sees it. */
   override def keepsEvent(e: KeyEvent): Boolean = native && editing() && TextArea.submit.matches(e)
 
+  override private[everyui] def refocus(): Unit = field.foreach(_.retake(editing, direct))
+
   /** While editing, the keys a box of lines types with and moves its caret by go on to the platform's field. */
   override def typesEvent(e: KeyEvent): Boolean = native && editing() && TextArea.typed(e.key)
 

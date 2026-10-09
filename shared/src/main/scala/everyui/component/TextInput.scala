@@ -45,6 +45,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   private val native = Platform.nativeInput()
   /** A keyboard at hand: the focus is the caret. */
   private val direct = Platform.keyboardSupport()
+  // the platform's field, where there is one: its focus taken again (`refocus`)
+  private var platformField: Option[InputView] = None
   private val caption = new TextView {
     content := title()
     font.size @= 12.0
@@ -93,6 +95,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     event.click.attach(_ => editing @= true)
     event.key.down.attach(k => if (k.key == Key.Enter && editing()) submitted @= value())
     children ++= List(caption, input)
+    platformField = Some(input)
   } else {
     val shown = TextView.bound(if (hidden) TextInput.mask(value().length) else value(), 16.0)
     shown.position.left @= 14.0
@@ -112,6 +115,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
       def enter(): Unit = submitted @= value()
     })
   }
+
+  override private[everyui] def refocus(): Unit = platformField.foreach(_.retake(editing, direct))
 
   /** A field being edited types Enter and the keys that move along its line, which go on to the platform's field (kept
     * from it, as they were, Backspace deleted nothing and the arrows moved no caret); the rest still move the focus. With

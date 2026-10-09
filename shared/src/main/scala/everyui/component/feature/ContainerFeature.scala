@@ -18,6 +18,8 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   private var placed: Vector[Component] = Vector.empty
   /** Whether the nodes are being placed: a change made meanwhile is placed once they are, by the same pass. */
   private var placing = false
+  /** Those already here whose nodes the change moved among the others (`ordered`). */
+  private var shifted: List[Component] = Nil
 
   attach(_ => place())
 
@@ -37,14 +39,24 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   private def change(old: Vector[Component], current: Vector[Component]): Unit = {
     val removed = ContainerFeature.missing(old, current)
     val added = ContainerFeature.missing(current, old)
+    // what came from another container, and which: once placed here, it is taken out of that one's list, as a node the
+    // DOM appends elsewhere leaves where it was (left listed there, it was "there" to whatever asked, and nothing put it
+    // back when its tab came up again)
+    val movers = added.filter(c => c.parent().exists(p => !(p eq component)))
+    val leftBy = movers.map(_.parent().get)
+    shifted = Nil
     LayoutPass.batch {
       removed.foreach { c =>
-        c.node.remove()
-        // where it was, so a focus on it (or inside it) goes to what takes its place
-        c.leaves(component, old.indexWhere(_ eq c))
-        ContainerFeature.forget(component, c)
-        c.parent @= None
-        c.containerChanged()
+        // one put in another container since is there now, its node and the focus with it: it is only off this list
+        if (c.parent().exists(p => !(p eq component))) ContainerFeature.forgetMoved(component, c)
+        else {
+          c.node.remove()
+          // where it was, so a focus on it (or inside it) goes to what takes its place
+          c.leaves(component, old.indexWhere(_ eq c))
+          ContainerFeature.forget(component, c)
+          c.parent @= None
+          c.containerChanged()
+        }
       }
       if (removed.isEmpty && ContainerFeature.startsWith(current, old)) added.foreach { c =>
         // only added to the end (`+=`, `++=`, a list grown by `bind`): each node appended in turn
@@ -54,6 +66,11 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
         c.leftParent = None
       }
       else ordered(old, current, removed, added)
+      var i = 0
+      while (i < movers.length) {
+        leftBy(i).asContainer.foreach(_.children.release(movers(i)))
+        i += 1
+      }
       component.childListChanged(added, removed)
       // what was made before the quality level last changed is drawn as it now has it (`everyui.perf.Quality`)
       if (everyui.perf.Quality.changes > 0)
@@ -64,6 +81,10 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       component.measured.refresh()
       component.requestLayout()
       if (removed.nonEmpty) everyui.focus.Focus.offScreen()
+      // the focus in what was put here or moved along, given the platform's focus again: a field's node taken off the
+      // page loses the browser's, though the focus layer's stays on it
+      if (added.nonEmpty || shifted.nonEmpty) refocus(added)
+      shifted = Nil
       // what is on the screen changed: the frame loop runs, if it was idle, and a focus waiting for this finds it
       everyui.task.Frames.wake()
     }
@@ -90,11 +111,29 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       // places than nodes, and indexing past them took the app down on returning to the games lobby)
       else if (i < placed.size && !(placed(i) eq c)) {
         component.node.insert(c.node, i)
+        shifted = c :: shifted
         placed = placed.filterNot(_ eq c).patch(i, Vector(c), 0)
       }
     }
     added.foreach(_.listMark = false)
   }
+
+  /** Where the focus is in one of `added` or of those moved along (`shifted`), and on the screen, its platform focus
+    * put back (Component.refocus): a field's node moved, or taken off the page and put back, loses the browser's
+    * focus and its caret. */
+  private def refocus(added: Vector[Component]): Unit = everyui.focus.Focus.focused().foreach { f =>
+    // the one of this container's children the focus is in, if it is in one
+    var at: Component = f
+    while (at.parent().exists(p => !(p eq component))) at = at.parent().get
+    val top = at
+    if (at.parent().nonEmpty && (added.exists(_ eq top) || shifted.exists(_ eq top)) && everyui.focus.Focus.showing(f))
+      f.refocus()
+  }
+
+  /** `child` taken off the list but not off the screen: another container has put it in itself (its change calls
+    * this), and its node with it. A list bound to what it reads (`children := …`) is left to say what it holds. */
+  private[everyui] def release(child: Component): Unit =
+    if (references.isEmpty && get.exists(_ eq child)) static(get.filterNot(_ eq child))
 
   def +=(child: Component): Unit = static(get :+ child)
   def -=(child: Component): Unit = static(get.filterNot(_ eq child))
@@ -136,7 +175,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     var leaving: List[Component] = Nil
     // `render` handed back one it had made: it keeps them, and none is taken apart
     var keeps = false
-    component.onDispose(() => leaving.foreach(_.dispose()))
+    component.onDispose(() => leaving.foreach(c => if (ContainerFeature.unplaced(c, component)) c.dispose()))
     source.attachAndFire { all =>
       // a value still in the list keeps the component it already had: a list that grows an entry at a time would
       // otherwise build every entry again, and lose everything each had loaded (a rail of artwork) with it
@@ -164,7 +203,9 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       }
       previous = rendered
       static(rendered.map(_._2).toVector)
-      val gone = if (making) spare.map(_._2) else if (keeps) Nil else leaving
+      // (not one put in another container since, which lives on there)
+      val gone = (if (making) spare.map(_._2) else if (keeps) Nil else leaving)
+        .filter(c => ContainerFeature.unplaced(c, component))
       leaving = if (making || keeps) Nil else spare.filter(_._3).map(_._2)
       if (gone.nonEmpty) {
         gone.foreach(_.dispose())
@@ -215,6 +256,24 @@ object ContainerFeature {
       at = at.get.parent()
     }
   }
+
+  /** `moved`, taken from `from` into another container: forgotten by `from` and each container it is in, up to the
+    * first that holds it still (where it went is in that one too), which goes on remembering it. */
+  def forgetMoved(from: Component, moved: Component): Unit = {
+    var at: Option[Component] = Some(from)
+    while (at.nonEmpty && !everyui.focus.Focus.within(moved, at.get)) {
+      at.get match {
+        case box: everyui.component.Container =>
+          if (box.remembered.exists(r => everyui.focus.Focus.within(r, moved))) box.remembered = None
+        case _ => ()
+      }
+      at = at.get.parent()
+    }
+  }
+
+  /** Whether `c` is to be taken apart with the list it left: it is in no other container (one moved into another
+    * lives on there). */
+  def unplaced(c: Component, list: Component): Boolean = c.parent().forall(_ eq list)
 
   /** The same value: the very one first, which is all a list kept from one change to the next needs, before `==`, which
     * on a Roku compares a value of pages of titles field by field. */

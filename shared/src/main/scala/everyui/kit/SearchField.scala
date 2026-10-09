@@ -38,6 +38,8 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
+  // the platform's field, where there is one: its focus taken again (`refocus`)
+  private var platformField: Option[InputView] = None
   private val icon = new MaterialIconView(MaterialIcon.Search, 18.0)
   icon.color := Theme.muted()
   private val clear = new MaterialIconView(MaterialIcon.Close, 18.0)
@@ -91,6 +93,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     event.click.attach(_ => editing @= true)
     event.key.down.attach(k => if (k.key == Key.Enter && editing()) submitted @= value())
     children ++= List(icon, input, clear)
+    platformField = Some(input)
   } else {
     val shown = new TextView {
       content := (if (value().isEmpty) placeholder() else value())
@@ -117,6 +120,8 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     if (!focused()) focus()
     if (native && direct) editing @= true
   }
+
+  override private[everyui] def refocus(): Unit = platformField.foreach(_.retake(editing, direct))
 
   /** Escape is its own while it holds something (it empties it); empty, Escape goes on. */
   override def keepsEvent(e: KeyEvent): Boolean = e.key == Key.Escape && value().nonEmpty

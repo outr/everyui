@@ -212,6 +212,15 @@ object Focus {
     }
   }
 
+  /** The platform's focus left `c` for nothing, by the person's doing rather than the app's: a click on the page's
+    * empty space, with the window still in front (the backend says so). Where the focus has to be on something (a
+    * remote's platform) it stays, to be seen and pressed; elsewhere it is let go of too, as the page shows it, so the
+    * field no longer looks focused and `focus()` focuses it again. A field taken off the page and put back, or a
+    * window or a tab left, is not this: the one has its focus put back as it is placed (Component.refocus), and the
+    * other has the platform give it back. */
+  def dropped(c: Component): Unit =
+    if (!Platform.remoteNavigation() && focused().exists(_ eq c) && showing(c)) focused @= None
+
   /** The focus back on `to`, as a dialog closing gives it back: or, where `to` has left the screen since, on what took
     * its place; or where the screen starts, with nothing to go back to. */
   def restore(to: Option[Component]): Unit =

@@ -156,6 +156,18 @@ with `keep = true` to be put up again. A screen made for one showing (`oneShowin
 nothing can go back to it. Taking a large tree apart runs a slice a turn (`Component.disposeGradually(roots, done)`),
 so a screen of thousands of components never outlasts a Roku's watchdog; disposing twice does nothing.
 
+### Moving a component to another container
+
+A component put in another container (`children @=`, `+=`, `++=`, `replaceMaking`, `bind`) leaves the one it was in,
+as the DOM's `appendChild` moves a node: that one's `children` no longer hold it, both are laid out again, and nothing
+is taken apart, so `slot.children().contains(chat)` is true only while the chat is there. The container it left
+changing again leaves it where it went, and a list that takes apart what leaves it (`bindMaking`, `replaceMaking`,
+`dispose`) does not take apart one that has moved on. A list bound with `:=` keeps saying what it holds, and one `bind`
+renders goes back to it at its next change while its value is still there. A focused field moved, or taken off the
+screen and put back, keeps the focus and has the platform's again (its caret) as it is placed; `focus()` on what has
+the focus already takes the platform's focus again. A click on the page's empty space lets go of the focus on the web,
+as the browser does; on a remote's platform the focus stays where it is.
+
 ### Rebuilding a screen
 
 Most changes need nothing rebuilt: text bound to `Strings` changes language, and anything bound to `Theme` changes

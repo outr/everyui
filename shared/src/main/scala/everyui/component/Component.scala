@@ -246,8 +246,16 @@ class Component(val node: RenderNode) {
   /** Take the focus — unless a dialog is up and this is not in it: a screen that finishes loading behind a dialog, or
     * a reply that lands late, must not pull the focus out from under the question being asked. Nor where the focus is
     * confined and this is outside the region (`Focus.confine`), nor in a dialog waiting under a cover (Modal.covered),
-    * which nobody can see. */
-  def focus(): Unit = if (Focus.admits(this) && !Modal.hides(this)) Focus.focused @= Some(this)
+    * which nobody can see. Asked again where it has the focus already, it takes the platform's focus again too
+    * (`refocus`). */
+  def focus(): Unit = if (Focus.admits(this) && !Modal.hides(this)) {
+    if (Focus.focused().exists(_ eq this)) refocus() else Focus.focused @= Some(this)
+  }
+
+  /** The platform's own focus put back on this, which has the focus layer's (`Focus.focused`): a field's caret, lost
+    * as its node was taken off the page and put back, or asked for again by `focus()`. Nothing, where the platform
+    * keeps no focus of its own on it. */
+  private[everyui] def refocus(): Unit = ()
 
   /** Whether this handles `key` itself while focused, so the focus layer leaves it be: a text field keeps Enter and
     * the arrows along its line. */

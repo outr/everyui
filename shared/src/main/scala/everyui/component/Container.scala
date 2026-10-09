@@ -12,7 +12,8 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     watchedBy = Nil
     val held = children()
     children.clear()
-    held.foreach(c => c.dispose())
+    // (not one another container has put in itself, which a list bound to what it reads went on naming)
+    held.foreach(c => if (ContainerFeature.unplaced(c, this)) c.dispose())
     super.dispose()
   }
 
