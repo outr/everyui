@@ -2,12 +2,16 @@ package everyui.list
 
 import everyui.Color
 import everyui.chat.{Avatar, Participant}
-import everyui.component.{Component, Container, IconButton, MaterialIconView, TextView}
-import everyui.component.types.{FontWeight, Semantics}
+import everyui.component.{Button, ButtonStyle, Component, Container, IconButton, MaterialIconView, TextView}
+import everyui.component.types.{FontWeight, Semantics, WhiteSpace}
+import everyui.easing.Easing
 import everyui.font.MaterialIcon
+import everyui.markdown.{MarkdownStyle, MarkdownView}
 import everyui.render.Platform
+import everyui.task.{PartialAnimate, TaskInstance, sequential, synchronous}
 import everyui.theme.Theme
 import reactify.*
+import scala.concurrent.duration.*
 
 /** A row of a `RichList`, handed line after line as it scrolls: a section's header (a chevron, its icon, its title, its
   * count, and a ⋮ for its menu where it has one, shown as an item's is, and always where there is no pointer), set in
@@ -22,7 +26,12 @@ import reactify.*
   * leaves the gap under the block. The cursor, the pointer and the item chosen are lit inside the block.
   *
   * A section's action (`RichSection.action`) is a small button in its header, and an open section that holds nothing
-  * shows its `empty` words on a line of their own, muted, which is never lit. */
+  * shows its `empty` words on a line of their own, muted, which is never lit.
+  *
+  * An item expanded (`RichList.expansion`) shows its whole text under its title's line, from where the title starts to
+  * the row's end, wrapped (as Markdown unless the expansion says not), and its actions as buttons under it, the words of
+  * the first in line with the text's, wrapping onto another line where they do not fit; the row is as tall as all of
+  * it, lit and ringed whole, and its text fades in as it opens (at once where Quality says glides jump). */
 class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val header: Val[Boolean] = own(Val(item().exists(_.header)))
   /** Whether it is the line an empty section shows in place of its items. */
@@ -79,6 +88,15 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   // the section's action (or the item's), where it has one, and whether the cursor is on it rather than on the row
   private val actionOf: Val[Option[RichAction]] = own(Val(section().flatMap(_.action).orElse(look().flatMap(_.action))))
   private val onAction: Val[Boolean] = own(Val(current() && active() && owner.atAction() && actionOf().nonEmpty))
+  /** Whether the item expands (`RichList.expansion`), whether it shows expanded or not. */
+  private val expands: Val[Boolean] = own(Val(item().flatMap(_.item).exists(t => owner.expansion()(t).nonEmpty)))
+  /** What the item shows expanded, where it is. */
+  private[list] val expansionOf: Val[Option[RichExpansion]] = own(Val(item().filter(_.expanded).flatMap(_.item)
+    .flatMap(t => owner.expansion()(t))))
+  // how much taller the row is for its expansion (0 until a row first shows one, and folded)
+  private val extra: Var[Double] = own(Var(0.0))
+  // whether the cursor is on one of the expansion's buttons rather than the row
+  private val onButtons: Val[Boolean] = own(Val(current() && active() && owner.atButton() >= 0 && expansionOf().nonEmpty))
 
   // ---- a header ----
   private val chevron = new MaterialIconView(MaterialIcon.ExpandMore, 18.0) {
@@ -230,15 +248,16 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   sectionMore.position.top := (if (blocks() && group().nonEmpty) captionMiddle() - sectionMore.size.height() / 2.0
     else middle(sectionMore.size.height()))
 
-  size.height := base() + above() + below()
+  size.height := base() + above() + below() + extra()
   // (in a block the row draws none of it: its block's panel and the light in it do)
   backgroundColor := (if (blocks()) Color.Clear else lit())
-  borderWidth := (if (!blocks() && current() && active() && !onAction()) 1.0 else 0.0)
+  borderWidth := (if (!blocks() && current() && active() && !onAction() && !onButtons()) 1.0 else 0.0)
+  // (an item that expands says whether it is)
   semantics := item().map(l => Semantics("listitem", label = l.item match {
     case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText)
     case None if l.empty => l.section.empty.getOrElse("")
     case None => l.groupHead.map(_.title).getOrElse(l.section.title) + ", " + l.count.toString
-  })).getOrElse(Semantics.Plain)
+  }, expanded = if (expands()) Some(l.expanded) else None)).getOrElse(Semantics.Plain)
   children ++= List(chevron, heading, sectionMore, tallFace, shortFace, glyph, title, detail, mark, time, badge, more)
 
   // what the row is lit with: a drop into it, the item chosen, the cursor, the pointer over it
@@ -275,10 +294,10 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     position.left @= RichRow.blockMargin + RichRow.blockPad / 2.0
     position.top := above() + 2.0
     size.width := math.max(0.0, RichRow.this.size.width() - 2.0 * RichRow.blockMargin - RichRow.blockPad)
-    size.height := math.max(0.0, base() - 4.0)
+    size.height := math.max(0.0, base() + extra() - 4.0)
     radius @= RichRow.blockRadius - 3.0
     backgroundColor := (if (blocks()) lit() else Color.Clear)
-    borderWidth := (if (blocks() && current() && active() && !onAction()) 1.0 else 0.0)
+    borderWidth := (if (blocks() && current() && active() && !onAction() && !onButtons()) 1.0 else 0.0)
     borderColor := Theme.accent()
     visible := blocks()
   }
@@ -393,6 +412,134 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   emptyLine.attach(e => if (e) makeEmpty())
   if (emptyLine()) makeEmpty()
 
+  // ---- an expanded item (RichList.expansion): made the first time a row shows one, so others have none ----
+  /** How tall the row's own line is, with the room above it in a block: the expansion goes under it. */
+  private[list] def headHeight: Double = above() + base()
+  // the text's width, from where the title starts to the row's end
+  private lazy val bodyWidth: Val[Double] = own(Val(math.max(40.0, end() - textStart())))
+  /** The expansion's text as Markdown. */
+  private[list] lazy val markdown: MarkdownView = new MarkdownView(style = RichRow.textStyle) {
+    content := expansionOf().filter(_.markdown).map(_.text).getOrElse("")
+    size.width := bodyWidth()
+    visible := expansionOf().exists(_.markdown)
+  }
+  /** The expansion's text as it is, where it is not Markdown. */
+  private[list] lazy val plain: TextView = new TextView {
+    content := expansionOf().filter(!_.markdown).map(_.text).getOrElse("")
+    font.size @= RichRow.textStyle.points
+    color := Theme.text()
+    whiteSpace @= WhiteSpace.Normal
+    wrapAnywhere @= true
+    size.width := bodyWidth()
+    visible := expansionOf().exists(!_.markdown)
+  }
+  private lazy val textHeight: Val[Double] = own(Val(
+    if (expansionOf().exists(_.markdown)) markdown.size.height() else if (expansionOf().nonEmpty) plain.size.height() else 0.0))
+  /** The expansion's actions as buttons, in order. */
+  private[list] val buttons: Var[Vector[Button]] = own(Var(Vector.empty))
+  // what the buttons were made for: each action's glyph, words and danger (they run whatever the expansion has now)
+  private var shapesMade: List[(MaterialIcon, String, Boolean)] = Nil
+  // the buttons' places from the start of their line, and how far down: as many in a line as fit, the next under them
+  private lazy val flow: Val[Vector[(Double, Double)]] = own(Val {
+    val room = bodyWidth() + RichRow.buttonLead
+    var x = 0.0
+    var y = 0.0
+    buttons().map { b =>
+      if (x > 0.0 && x + b.size.width() > room) {
+        x = 0.0
+        y += b.size.height() + 2.0
+      }
+      val at = (x, y)
+      x += b.size.width() + 4.0
+      at
+    }
+  })
+  // (the places read with the buttons they are for: one changes before the other has followed it)
+  private lazy val barHeight: Val[Double] = own(Val {
+    val bs = buttons()
+    val at = flow()
+    if (bs.isEmpty || at.size != bs.size) 0.0 else at(at.size - 1)._2 + bs(bs.size - 1).size.height()
+  })
+  private lazy val bodyTop: Val[Double] = own(Val(above() + base() - 2.0))
+  private lazy val barTop: Val[Double] = own(Val(bodyTop() + textHeight() + (if (textHeight() > 0.0) 6.0 else 0.0)))
+  private lazy val body: Container = new Container {
+    visible := expansionOf().nonEmpty
+    children ++= List(markdown, plain)
+  }
+  private var bodyMade = false
+  private var fading: Option[TaskInstance] = None
+  private def makeBody(): Unit = if (!bodyMade) {
+    bodyMade = true
+    from(textStart(), markdown)
+    markdown.position.top := bodyTop()
+    from(textStart(), plain)
+    plain.position.top := bodyTop()
+    extra := (if (expansionOf().isEmpty) 0.0 else barTop() + barHeight() + RichRow.bodyBelow - above() - base())
+    children += body
+    expansionOf.attach(e => showBody(e))
+    showBody(expansionOf())
+  }
+  private def showBody(e: Option[RichExpansion]): Unit = {
+    val actions = e.map(_.actions).getOrElse(Nil)
+    val shapes = actions.map(a => (a.icon, a.label, a.danger))
+    if (shapes != shapesMade) {
+      shapesMade = shapes
+      val old = buttons()
+      body.children @= Vector[Component](markdown, plain)
+      old.foreach(_.dispose())
+      buttons @= actions.indices.toVector.map(i => button(i, actions(i)))
+      body.children @= Vector[Component](markdown, plain) ++ buttons()
+    }
+    fading.foreach(_.cancel())
+    fading = None
+    body.opacity @= 1.0
+    // the item just expanded fades in; one scrolled into view expanded is simply there
+    val key = item().flatMap(_.item).map(owner.keyOf)
+    if (e.nonEmpty && key.nonEmpty && owner.opening == key) {
+      owner.opening = None
+      if (everyui.perf.Quality.glides) {
+        body.opacity @= 0.0
+        val in = PartialAnimate(() => 0.0, (t: Double) => body.opacity @= t, () => 1.0).in(RichRow.fade.millis)
+          .easing(Easing.cubicOut)
+        val run = sequential(in, synchronous(body.opacity @= 1.0)).start()
+        // (where the app runs no frame loop nothing would step it: shown at once)
+        if (!everyui.task.Frames.running) {
+          run.cancel()
+          body.opacity @= 1.0
+        }
+        else fading = Some(run)
+        // shown whole by then whatever happens, the loop held up or not
+        if (fading.nonEmpty) Platform.after(RichRow.fade.toDouble / 1000.0 + 0.4, () => if (fading.exists(_ eq run)) {
+          run.cancel()
+          fading = None
+          body.opacity @= 1.0
+        })
+      }
+    }
+  }
+  // the expansion's action `i`: its words after its glyph, in the danger colour where it is dangerous, lit and ringed
+  // while the cursor is on it as the row's action is
+  private def button(i: Int, a: RichAction): Button = {
+    val b = new Button(a.label, () => runButton(i), ButtonStyle.Text, Some(a.icon), RichRow.buttonPoints)
+    b.danger @= a.danger
+    b.focusable @= false
+    val on: Val[Boolean] = b.own(Val(current() && active() && owner.atButton() == i))
+    b.backgroundColor := (if (on() || b.event.pointer.over()) Theme.controlLit() else Color.Clear)
+    b.borderWidth := (if (on()) 1.5 else 0.0)
+    b.borderColor := Theme.accent()
+    b.position.left := ListRow.along(textStart() - RichRow.buttonLead + flow().drop(i).headOption.map(_._1).getOrElse(0.0),
+      b.size.width(), RichRow.this.size.width())
+    b.position.top := barTop() + flow().drop(i).headOption.map(_._2).getOrElse(0.0)
+    b
+  }
+  /** The expansion's action `i` run, where it has one. */
+  private[list] def runButton(i: Int): Unit = {
+    val a = expansionOf().map(_.actions).getOrElse(Nil).drop(i).headOption
+    a.foreach(_.run())
+  }
+  expansionOf.attach(e => if (e.nonEmpty) makeBody())
+  if (expansionOf().nonEmpty) makeBody()
+
   override def editStart: Double = textStart() - 6.0
 
   private def openSectionMore(): Unit = item().filter(_.header).foreach { l =>
@@ -440,6 +587,17 @@ object RichRow {
   val captionBelow: Double = 6.0
   /** How big the ▾ or ▸ at a block's header's end is. */
   val toggleSize: Double = 16.0
+
+  /** How an expanded item's text is set (`RichExpansion`): a little smaller than the title, as a sidebar's are. */
+  lazy val textStyle: MarkdownStyle = MarkdownStyle(points = 13.0, codePoints = 12.0, headings = List(1.3, 1.18, 1.08, 1.0,
+    1.0, 0.92), spacing = 8.0, indent = 18.0, cellPadding = 6.0, imageHeight = 240.0)
+  /** How big an expanded item's buttons' words are, and how far a button's edge is before its words. */
+  val buttonPoints: Double = 12.5
+  val buttonLead: Double = buttonPoints * 1.1
+  /** The room under an expanded item's buttons (or its text, without any). */
+  val bodyBelow: Double = 8.0
+  /** How long an item's text takes to fade in as it expands, in milliseconds. */
+  val fade: Long = 160L
 
   /** A block's tint: the theme's `list.block`, else the text's colour, faintly, so it shows on any ground. */
   def blockTint(): Color = Theme.extra("list.block", Theme.text().withAlpha(0.05))

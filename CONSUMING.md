@@ -3789,6 +3789,39 @@ look = c => RichLook(c.title, Some(c.snippet), action = Some(RichAction(
   actionShown = c.starred)
 ```
 
+An item can expand in place, to show all of itself and offer what can be done to it (a memory's whole text, with Pin
+and Delete). `expansion` (`Var[T => Option[RichExpansion]]`, every item `None` by default) says what an item shows
+expanded: `RichExpansion(text, actions, markdown = true)`, its whole text under its title's line, from where the
+title starts to the row's end, wrapped and never cut short (as Markdown, through a `MarkdownView` set a little smaller
+than a chat's, unless `markdown` is off: then as plain words, broken anywhere a word is wider than the row), and its
+`actions` (`RichAction`s, in order) as buttons under it, each its glyph and its label in the accent, a `danger` one
+(`RichAction.danger`, false by default) in the danger colour, the first's words in line with the text and as many in
+a line as fit. Activating an item that has one (a click or a tap on its title's line, Enter, OK) opens it rather
+than choosing it or firing `activated`, and again folds it; Escape folds it too, and does nothing on a folded row. A
+click or a tap on its text or its buttons never folds it; a button runs its action at once. `expanded`
+(`Var[Set[String]]`, by `keyOf`) holds the items open, the app's to keep and set, and `expandsOne` (true by default)
+says whether opening one folds any other or several stay open; `expandItem`, `foldItem` and `toggleItem` do it from
+the app. The row is as tall as all of it (the list measures each row), lit and ringed whole, and once it is drawn at
+its new height it is kept in view: scrolled the least that shows it whole, or so its top is at the list's top where it
+is taller than the list; folded, it is shown again where the fold left it above the view. Its text fades in as it
+opens (160 ms) where the app runs a frame loop and Quality lets things glide, and is there at once otherwise. The keys
+and a remote reach the buttons as a row's action: Right (Left, right to left) from the row puts the cursor on its
+action where it has one, then on each button in turn, ringed; Enter runs the one it is on, without folding; Left goes
+back the same way, and Up or Down move on. A screen reader hears whether the row is expanded (`Semantics.expanded`,
+`aria-expanded` on the web). Search finds what it always did, by `matches` (the title and the detail, by default): an
+expanded item that is found stays expanded, and words only in an item's text find it where the app's `matches` looks
+there too. Grouping, sections, the menus and dragging are unchanged, and a list without an `expansion` is exactly as
+it was. The same in a tree and in blocks, and mirrored right to left. `Button.danger` (`Var[Boolean]`) is the same
+colour on any button: its words, an outlined one's edge and a filled one's plate in the danger colour.
+
+```scala
+memories.expansion @= (m => Some(RichExpansion(m.text, List(
+  RichAction(MaterialIcon.PushPin, if (m.pinned) "Unpin" else "Pin", () => pin(m)),
+  RichAction(MaterialIcon.Delete, "Delete", () => delete(m), danger = true)))))
+memories.expandsOne @= true                               // the default: one open at a time
+memories.matches @= ((m, words) => RichList.holds(look(m), words) || m.text.toLowerCase.contains(words.toLowerCase))
+```
+
 The field is a `SearchField` (`everyui.kit`, `list.field: Option[SearchField]`): a search box on one line, 34 px tall,
 with a magnifier, "Search" (`Words.search`) faint inside it while it is empty, and a × once it holds something. The ×
 and Escape empty it; an empty one leaves Escape to the screen (Back). Enter goes to the list, and so does Down (Up from

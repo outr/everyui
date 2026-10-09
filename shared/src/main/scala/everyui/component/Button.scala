@@ -30,6 +30,9 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   /** Where wrapped words line up (`labelLines`): at the start, the reading direction's, as a paragraph and the
     * one-line choices beside it do; `Center` or `End` where a design wants them so. */
   val labelAlign: Var[TextAlign] = own(Var(TextAlign.Start))
+  /** Whether what it does cannot be undone (Delete): its words, an outlined one's edge and a filled one's plate in the
+    * danger colour rather than the accent. */
+  val danger: Var[Boolean] = own(Var(false))
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.
@@ -38,6 +41,7 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   private val foreground: Val[Color] = own(Val(
     if (!enabled()) Theme.muted()
     else if (style == ButtonStyle.Filled) Theme.onAccent()
+    else if (danger()) Theme.danger()
     else if (style == ButtonStyle.Tonal) Theme.text()
     else if (lit() && style == ButtonStyle.Text) Theme.text()
     else Theme.accent()))
@@ -70,13 +74,16 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   line.position.middle := size.middle()
   backgroundColor := {
     if (style == ButtonStyle.Filled)
-      (if (!enabled()) Theme.control() else if (focused()) Theme.text() else if (lit()) Theme.accentLit() else Theme.accent())
+      (if (!enabled()) Theme.control() else if (focused()) Theme.text()
+        else if (danger()) (if (lit()) Theme.danger().withAlpha(0.85) else Theme.danger())
+        else if (lit()) Theme.accentLit() else Theme.accent())
     else if (style == ButtonStyle.Tonal) (if (lit()) Theme.controlLit() else Theme.control())
     else if (lit()) Theme.controlLit()
     else Color.Clear
   }
   borderWidth := (if (ringed()) 2.5 else if (style == ButtonStyle.Outlined) 1.0 else 0.0)
-  borderColor := (if (ringed() || (lit() && style == ButtonStyle.Outlined)) Theme.accent() else Theme.border())
+  borderColor := (if (ringed()) Theme.accent() else if (danger() && style == ButtonStyle.Outlined) Theme.danger()
+    else if (lit() && style == ButtonStyle.Outlined) Theme.accent() else Theme.border())
   children += line
   tapSlop @= true
   event.click.attach { e =>

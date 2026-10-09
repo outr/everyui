@@ -39,6 +39,15 @@ import reactify.*
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
   * and `moved` hears: never into a group that is closed.
   *
+  * Items can expand in place (`expansion`): activating one that has a `RichExpansion` (a click or a tap on its title's
+  * line, Enter, OK) opens it under its title, its whole text wrapped (as Markdown) and its actions as buttons under it,
+  * rather than choosing it, and again folds it; Escape folds it too. `expanded` holds the keys of the items open, the
+  * app's to keep and set, and with `expandsOne` (the default) opening one folds any other. The row is as tall as all of
+  * it, kept in view as it grows (scrolled the least that shows it, or its top where it is taller than the list). Right
+  * (Left, right to left) takes the cursor past the item's action onto its buttons in turn, Left back, and Enter runs the
+  * one it is on; a click on the text or a button never folds it. Search finds what it always did (`matches`, the title
+  * and the detail): an app that wants an item's whole text found says so in `matches`.
+  *
   * `style` says how it is drawn: as a tree, by default, or (`RichStyle.Blocks`) as a sidebar's tinted blocks, a
   * group's title a caption over its sections and each section a rounded panel, its header a bar that opens and closes
   * it, its items under it; everything else (the cursor, the keys, the menus, search, dragging) is the same in both.
@@ -50,6 +59,8 @@ import reactify.*
   *   chats.menu @= (c => List(MenuItem("Rename…", () => rename(c)), MenuItem("Delete", () => delete(c), danger = true)))
   *   chats.activated.attach(c => open(c))
   *   chats.selected @= Some(current.id)
+  *   memories.expansion @= (m => Some(RichExpansion(m.text, List(RichAction(MaterialIcon.PushPin, "Pin", () => pin(m)),
+  *     RichAction(MaterialIcon.Delete, "Delete", () => delete(m), danger = true)))))
   * }}} */
 class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => String, val lookOf: T => RichLook,
                   val collapsed: Var[Set[String]] = Var(Set.empty[String]), search: Boolean = false,
@@ -82,6 +93,13 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val moved: Channel[RichMove] = Channel[RichMove]
   /** How the sections are drawn: as a tree (`RichStyle.Tree`, the default) or as tinted blocks (`RichStyle.Blocks`). */
   val style: Var[RichStyle] = own(Var(RichStyle.Tree))
+  /** What an item shows under its title once expanded, where it expands: none (the default) for every item, which are
+    * then activated as they always were. Asked only of the items in view, and of those expanded. */
+  val expansion: Var[T => Option[RichExpansion]] = own(Var((_: T) => None))
+  /** The keys (`keyOf`) of the items expanded: the app's to keep and set. */
+  val expanded: Var[Set[String]] = own(Var(Set.empty[String]))
+  /** Whether expanding an item folds the one expanded before (the default), rather than leaving several open. */
+  val expandsOne: Var[Boolean] = own(Var(true))
 
   private val lines: Var[Vector[RichLine[T]]] = own(Var(Vector.empty))
   /** Whether any section's or group's header has a menu: then every header's count sits short of the ⋮, in one line
@@ -94,6 +112,14 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   /** Whether the cursor is on its row's action rather than the row: Right (Left, right to left) from an open section's
     * header, or from an item, puts it there, where it has one, and Left back; Enter runs it. */
   private[list] val atAction: Var[Boolean] = own(Var(false))
+  /** Which of an expanded item's buttons the cursor is on, -1 where it is on none: Right (Left, right to left) from the
+    * item, past its action where it has one, and on through them; Left back; Enter runs it. */
+  private[list] val atButton: Var[Int] = own(Var(-1))
+  /** The item just expanded, whose text fades in as its row shows it. */
+  private[list] var opening: Option[String] = None
+  // where the pointer last went down on the rows (from the first's top), for the click it makes: one on an expanded
+  // item's text or buttons rather than its title's line
+  private var pressedAt: Option[Double] = None
   val list: VirtualList[RichLine[T]] = new VirtualList[RichLine[T]](lines, _.key,
     l => if (l.empty) "" else l.item.map(t => lookOf(t).title).getOrElse(l.groupHead.map(_.title).getOrElse(l.section.title)),
     RichRow.tallHeight, measuredRows = true)(() => new RichRow[T](this))
@@ -122,6 +148,39 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   def toggleGroup(group: String): Unit =
     if (collapsedGroups().contains(group)) expandGroup(group) else collapseGroup(group)
 
+  /** Item `key` expanded, where it expands (`expansion`): alone, where `expandsOne`; its row kept in view as it grows. */
+  def expandItem(key: String): Unit = if (!expanded().contains(key)) {
+    opening = Some(key)
+    expanded @= (if (expandsOne()) Set(key) else expanded() + key)
+    keepInView(key, RichList.settleTries, -1.0)
+  }
+  /** Item `key` folded to its row again, kept in view. */
+  def foldItem(key: String): Unit = if (expanded().contains(key)) {
+    expanded @= expanded() - key
+    keepInView(key, RichList.settleTries, -1.0)
+  }
+  def toggleItem(key: String): Unit = if (expanded().contains(key)) foldItem(key) else expandItem(key)
+
+  /** Whether item `t` expands (`expansion`). */
+  def expands(t: T): Boolean = expansion()(t).nonEmpty
+
+  // item `key`'s row shown, once it is drawn at its new height: scrolled the least that shows it whole, or that shows
+  // its top where it is taller than the list (the rows' heights are read after the turn, on the web in a batch, so it
+  // waits for the list to have the row's height, and for it to stay so a turn)
+  private def keepInView(key: String, tries: Int, was: Double): Unit = Platform.afterTurn(() => if (!takenApart) {
+    val i = lineOf.get(key).map(list.indexOf).getOrElse(-1)
+    val now = if (i < 0) -1.0 else list.rowAt(i).map(_.size.height()).getOrElse(list.heightAt(i))
+    val drawn = now == was && now == list.heightAt(i)
+    if (i >= 0 && !drawn && tries > 0) keepInView(key, tries - 1, now)
+    else if (i >= 0) {
+      val start = list.top(i)
+      val end = start + list.heightAt(i)
+      val view = list.size.height()
+      if (start < list.offset()) list.scrollTop(start)
+      else if (end > list.offset() + view) list.scrollTop(math.min(start, end - view))
+    }
+  })
+
   // a header's line opened, closed, or either: its group's, or its section's
   private def openLine(l: RichLine[T]): Unit = l.groupHead match {
     case Some(g) => expandGroup(g.key)
@@ -137,6 +196,9 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     case Some(t) => lookOf(t).action
     case None => if (l.header && l.groupHead.isEmpty) l.section.action else None
   }
+  // an expanded item's actions, shown as buttons under its text
+  private def buttonsOf(l: RichLine[T]): List[RichAction] =
+    if (!l.expanded) Nil else l.item.flatMap(t => expansion()(t)).map(_.actions).getOrElse(Nil)
 
   /** The cursor onto item `key`, scrolled into view, where it shows. */
   def reveal(key: String): Unit = lineOf.get(key).foreach { line =>
@@ -183,6 +245,10 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
     val words = query().trim
     val narrowed = words.nonEmpty
     val test = matches()
+    // the items expanded, and what they show (an expanded item has a line of its own key, kept apart from its folded
+    // line's, so each has its own height in the list, read as it was last drawn)
+    val opened = expanded()
+    val grows = expansion()
     // a section's lines (its header, and its items where it is open) and what its header says, or none where the words
     // find nothing in it
     def part(s: RichSection[T], nested: Boolean): Option[(Vector[RichLine[T]], Int)] = {
@@ -198,7 +264,12 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
           else Vector(RichLine(GroupedList.headerKey(s.key), s, None, open, count, None, nested, blockStart = true,
             blockEnd = !open || (items.isEmpty && !saysEmpty)))
         var shown = if (saysEmpty) Vector(RichLine(RichList.emptyLineKey(s.key), s, None, open, 0, None, nested, empty = true))
-          else if (open) items.map(t => RichLine(GroupedList.itemKey(s.key, keyOf(t)), s, Some(t), open, 0, None, nested))
+          else if (open) items.map { t =>
+            val k = keyOf(t)
+            val wide = opened.nonEmpty && opened.contains(k) && grows(t).nonEmpty
+            RichLine(GroupedList.itemKey(s.key, k) + (if (wide) RichList.expandedMark else ""), s, Some(t), open, 0, None,
+              nested, expanded = wide)
+          }
           else Vector.empty[RichLine[T]]
         // the first and the last of its block's lines (the header its first, where it has one)
         if (shown.nonEmpty) {
@@ -300,16 +371,34 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
       val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
       val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
       val acts = actionOf(line).nonEmpty
-      if (e.key == forward && line.header && !line.open) Some(() => openLine(line))
+      // an expanded item's buttons come after its action, on along the arrow
+      val more = buttonsOf(line).size
+      if (e.key == Key.Escape && line.expanded) Some(() => line.item.foreach(t => foldItem(keyOf(t))))
+      else if (e.key == forward && line.header && !line.open) Some(() => openLine(line))
+      else if (e.key == forward && atButton() >= 0) {
+        if (atButton() + 1 < more) Some(() => atButton @= atButton() + 1) else None
+      }
       else if (e.key == forward && acts && !atAction()) Some(() => atAction @= true)
+      else if (e.key == forward && more > 0) Some(() => {
+        atAction @= false
+        atButton @= 0
+      })
+      else if (e.key == back && atButton() > 0) Some(() => atButton @= atButton() - 1)
+      else if (e.key == back && atButton() == 0) Some(() => {
+        atButton @= -1
+        atAction @= acts
+      })
       else if (e.key == back && atAction()) Some(() => atAction @= false)
       else if (e.key == back && line.header && line.open) Some(() => closeLine(line))
       else None
     }
   // a click on an empty section's line does nothing, and one on a row's action is the action's alone (it has run it,
-  // and the list may hear it as well, where running it took longer than a click's climb is held)
+  // and the list may hear it as well, where running it took longer than a click's climb is held); one on an item that
+  // expands opens or folds it, but one on its text or its buttons while it is expanded only puts the cursor there
   list.clicks = (i: Int, along: Double) => {
     val line = list(i)
+    val pressed = pressedAt
+    pressedAt = None
     if (line.empty) true
     else if (list.rowAt(i).exists(_.asInstanceOf[RichRow[T]].onActionAt(along))) true
     else if (line.header) {
@@ -318,21 +407,36 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
       toggleLine(line)
       true
     }
-    else false
+    else line.item match {
+      case Some(t) if expands(t) =>
+        val head = list.rowAt(i).map(_.asInstanceOf[RichRow[T]].headHeight).getOrElse(list.heightAt(i))
+        if (line.expanded && pressed.exists(y => y - list.top(i) >= head)) list.current @= Some(line.key)
+        else {
+          list.moveTo(i)
+          atAction @= false
+          toggleItem(keyOf(t))
+        }
+        true
+      case _ => false
+    }
   }
+  list.event.pointer.down.attach(e => pressedAt = Some(e.y - list.absoluteTop + list.offset()))
   list.activated.attach(line => line.item match {
     case _ if line.empty => ()
     case _ if atAction() && actionOf(line).nonEmpty => actionOf(line).foreach(_.run())
+    case _ if atButton() >= 0 && line.expanded => buttonsOf(line).drop(atButton()).headOption.foreach(_.run())
+    case Some(t) if expands(t) => toggleItem(keyOf(t))
     case Some(t) =>
       selected @= Some(keyOf(t))
       activated @= t
     case None => toggleLine(line)
   })
   // the cursor never rests on an empty section's line: it goes on past it the way it was going, or back where there is
-  // nothing past it; and off the header's action as it moves
+  // nothing past it; and off the header's action (and an expanded item's buttons) as it moves
   private var lastAt = -1
   list.current.attach { k =>
     atAction @= false
+    atButton @= -1
     val i = k.map(list.indexOf).getOrElse(-1)
     if (i >= 0 && list(i).empty) {
       val step = if (i < lastAt) -1 else 1
@@ -373,6 +477,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   collapsedGroups.attach(_ => flatten())
   query.attach(_ => flatten())
   matches.attach(_ => flatten())
+  expanded.attach(_ => flatten())
+  expansion.attach(_ => flatten())
 
   private val ticker = new Ticker(RichList.tick)
   ticker.now.attach(t => now @= t)
@@ -409,6 +515,12 @@ object RichList {
 
   /** The line an empty section `section` shows in place of its items (`RichSection.empty`). */
   def emptyLineKey(section: String): String = "e\u0000" + section
+
+  /** What an expanded item's line key ends in, apart from its folded line's. */
+  val expandedMark: String = "\u0000+"
+
+  /** How many turns an item expanded or folded waits for its row to be drawn at its new height before it is kept in view. */
+  val settleTries: Int = 12
 
   /** A count as a badge says it: "99+" past 99. */
   def countText(n: Int): String = if (n > 99) "99+" else n.toString
