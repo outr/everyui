@@ -2,6 +2,7 @@ package everyui.monaco
 
 import everyui.theme.Palette
 import fabric.*
+import fabric.rw.*
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
@@ -143,6 +144,83 @@ class MonacoBridgeSpec extends MonacoFxSpec {
       fx(controller.dispose())
       later.value.get.isFailure shouldBe true
       fx(bridge.close())
+    }
+
+    "say what moved the cursor and the selection, and why, beside the plain position and selection" in {
+      val guest = fx(new FakeGuest("spec-5", answering))
+      val bridge = fx(Monaco.bridge(guest))
+      fx(bridge.attach(guest))
+      eventually()(bridge.isReady) shouldBe true
+      val controller = fx(MonacoController(initialValue = "a\nb\nc\nd\ne"))
+      fx(controller.attach(bridge, obj("editorId" -> str("9"), "uri" -> str("inmemory://model/9"), "versionId" -> num(1),
+        "value" -> str("a\nb\nc\nd\ne"))))
+      var heard: List[String] = Nil
+      var cursors: List[MonacoCursorChange] = Nil
+      var selections: List[MonacoSelectionChange] = Nil
+      fx {
+        controller.onDidChangeCursorPosition.attach(p => heard = heard :+ s"position $p")
+        controller.onDidChangeCursor.attach { c =>
+          heard = heard :+ s"cursor ${c.source}"
+          cursors = cursors :+ c
+        }
+        controller.onDidChangeCursorSelection.attach(s => heard = heard :+ s"selection ${s.position}")
+        controller.onDidChangeSelection.attach(s => selections = selections :+ s)
+      }
+      def moved(line: Int, column: Int, fields: (String, Json)*): Unit =
+        fx(guest.say("editor.cursorChange", obj((List("editorId" -> str("9"), "line" -> num(line), "column" -> num(column)) ++ fields)*)))
+      // a click, with a second cursor
+      moved(3, 2, "secondaryPositions" -> arr(obj("line" -> num(5), "column" -> num(1))), "source" -> str("mouse"),
+        "reason" -> num(3))
+      cursors.last shouldBe MonacoCursorChange(MonacoPosition(3, 2), List(MonacoPosition(5, 1)), "mouse",
+        MonacoCursorReason.Explicit)
+      cursors.last.byUser shouldBe true
+      heard shouldBe List("position MonacoPosition(3:2)", "cursor mouse")
+      fx(controller.position()) shouldBe Some(MonacoPosition(3, 2))
+      // typed; a jump within the file; the app's own move; another copy's edit moving it along; undone
+      moved(3, 3, "source" -> str("keyboard"), "reason" -> num(0))
+      moved(1, 1, "source" -> str("code.jump"), "reason" -> num(0))
+      moved(2, 1, "source" -> str("api"), "reason" -> num(0))
+      moved(4, 1, "source" -> str("modelChange"), "reason" -> num(2))
+      moved(3, 3, "source" -> str("modelChange"), "reason" -> num(5))
+      cursors.drop(1).map(c => (c.source, c.reason, c.byUser, c.isJump)) shouldBe List(
+        ("keyboard", MonacoCursorReason.NotSet, true, false),
+        ("code.jump", MonacoCursorReason.NotSet, true, true),
+        ("api", MonacoCursorReason.NotSet, false, false),
+        ("modelChange", MonacoCursorReason.RecoverFromMarkers, false, false),
+        ("modelChange", MonacoCursorReason.Undo, true, false))
+      cursors.drop(1).map(_.secondaryPositions) shouldBe List.fill(5)(Nil)
+      // what does not say why is the app's own
+      moved(5, 1)
+      cursors.last shouldBe MonacoCursorChange(MonacoPosition(5, 1), Nil, "api", MonacoCursorReason.NotSet)
+      // a selection: the plain one still read from the same message, the change with its second cursor and why
+      val first = MonacoSelection.at(MonacoPosition(1, 1), MonacoPosition(2, 2))
+      val second = MonacoSelection.collapsed(MonacoPosition(4, 1))
+      fx(guest.say("editor.selectionChange", Wire.merge(first.json, obj("editorId" -> str("9"),
+        "secondarySelections" -> arr(second.json), "source" -> str("editor.action.selectAll"), "reason" -> num(0)))))
+      fx(controller.selection()) shouldBe Some(first)
+      selections shouldBe List(MonacoSelectionChange(first, List(second), "editor.action.selectAll", MonacoCursorReason.NotSet))
+      heard.last shouldBe "selection MonacoPosition(2:2)"
+      fx(guest.say("editor.selectionChange", Wire.merge(second.json, obj("editorId" -> str("9"), "source" -> str("modelChange"),
+        "reason" -> num(2)))))
+      selections.last.byUser shouldBe false
+      // another editor's are not this one's
+      fx(guest.say("editor.cursorChange", obj("editorId" -> str("8"), "line" -> num(9), "column" -> num(9), "source" -> str("mouse"))))
+      cursors should have size 7
+      fx(controller.dispose())
+      fx(bridge.close())
+    }
+  }
+
+  "MonacoCursorReason" should {
+    "be Monaco's CursorChangeReason by number, anything else NotSet" in {
+      (0 to 7).map(MonacoCursorReason.fromWire) shouldBe Vector(MonacoCursorReason.NotSet, MonacoCursorReason.ContentFlush,
+        MonacoCursorReason.RecoverFromMarkers, MonacoCursorReason.Explicit, MonacoCursorReason.Paste,
+        MonacoCursorReason.Undo, MonacoCursorReason.Redo, MonacoCursorReason.NotSet)
+      MonacoCursorChange.byUser("api", MonacoCursorReason.NotSet) shouldBe false
+      MonacoCursorChange.byUser("modelChange", MonacoCursorReason.RecoverFromMarkers) shouldBe false
+      MonacoCursorChange.byUser("modelChange", MonacoCursorReason.Undo) shouldBe true
+      MonacoCursorChange.byUser("keyboard", MonacoCursorReason.ContentFlush) shouldBe false
+      MonacoCursorChange.byUser("editor.action.revealDefinition", MonacoCursorReason.NotSet) shouldBe true
     }
   }
 }

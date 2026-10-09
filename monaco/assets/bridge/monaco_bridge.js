@@ -171,10 +171,18 @@
       entry.eol = eol;
       emit('contentChange', payload);
     }));
+    // each with what moved it (Monaco's source) and why (its CursorChangeReason); a jump within the file, which the
+    // standalone editor makes as "api", is said as VS Code names one (entry.jumping, set by the opener)
+    function moved(source) { return entry.jumping && source === 'api' ? 'code.jump' : source || 'api'; }
     d.push(editor.onDidChangeCursorPosition(function (e) {
-      emit('cursorChange', { line: e.position.lineNumber, column: e.position.column });
+      emit('cursorChange', { line: e.position.lineNumber, column: e.position.column,
+        secondaryPositions: (e.secondaryPositions || []).map(function (p) { return { line: p.lineNumber, column: p.column }; }),
+        source: moved(e.source), reason: e.reason || 0 });
     }));
-    d.push(editor.onDidChangeCursorSelection(function (e) { emit('selectionChange', selection(e.selection)); }));
+    d.push(editor.onDidChangeCursorSelection(function (e) {
+      emit('selectionChange', Object.assign(selection(e.selection), {
+        secondarySelections: (e.secondarySelections || []).map(selection), source: moved(e.source), reason: e.reason || 0 }));
+    }));
     d.push(editor.onDidScrollChange(function (e) {
       emit('scrollChange', {
         scrollTop: e.scrollTop, scrollLeft: e.scrollLeft, scrollHeight: e.scrollHeight, scrollWidth: e.scrollWidth,
@@ -700,7 +708,8 @@
 
   // Go to definition (and a peek's "open") into a file the editor does not show: asked of the app, which opens it
   // its own way (a tab) and says whether it did; otherwise Monaco does what it does by itself. editor.setOpener turns
-  // the asking off.
+  // the asking off. One within the file the editor shows is Monaco's own, never asked of the app: Monaco selects the
+  // place a moment later, as "api", and the editor's entry says it is a jump until then (`jumping`).
   bridge._opening = true;
   handlers['editor.setOpener'] = function (a) { bridge._opening = !!a.enabled; return null; };
   var openerInstalled = false;
@@ -709,9 +718,18 @@
     openerInstalled = true;
     monaco.editor.registerEditorOpener({
       openCodeEditor: function (source, resource, where) {
-        if (!bridge._opening) return false;
         var editorId = null;
         for (var id in bridge._editors) if (bridge._editors[id].editor === source) editorId = id;
+        var shown = source.getModel();
+        if (shown && shown.uri.toString() === resource.toString()) {
+          var entry = editorId ? bridge._editors[editorId] : null;
+          if (entry) {
+            entry.jumping = true;
+            setTimeout(function () { entry.jumping = false; }, 0);
+          }
+          return false;
+        }
+        if (!bridge._opening) return false;
         var at = null;
         if (where && typeof where.startLineNumber === 'number') at = { startLine: where.startLineNumber, startColumn: where.startColumn, endLine: where.endLineNumber, endColumn: where.endColumn };
         else if (where && typeof where.lineNumber === 'number') at = { startLine: where.lineNumber, startColumn: where.column, endLine: where.lineNumber, endColumn: where.column };

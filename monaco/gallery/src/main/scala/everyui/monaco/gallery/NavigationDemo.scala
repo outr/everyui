@@ -11,7 +11,8 @@ import scala.concurrent.Future
 
 /** What a code browser needs: a model per open file (each keeping its own undo), a dirty mark and Save on
   * Primary+S (a keymap command the editor leaves to the app), go to definition, find usages, the outline, compile
-  * errors, changed-line marks and blame, and a range revealed and lit. */
+  * errors, changed-line marks and blame, a range revealed and lit, and back and forward through the places jumped
+  * from (the mouse's side buttons, Primary+Alt+Left and Right). */
 object NavigationDemo {
   val files: List[(String, String)] = List(
     "file:///demo/Greeter.scala" ->
@@ -140,11 +141,42 @@ object NavigationDemo {
         }
       }
     }
+    // where the cursor has been, as IntelliJ's Navigate Back and Forward go: the place a jump left (a Ctrl+Click's
+    // own place, the click having put the cursor there first), into this file (Monaco's own, "code.jump") or another
+    // (the tab above), gone back to by the mouse's back button or Primary+Alt+Left, and on again by its forward one
+    val backs = scala.collection.mutable.Stack.empty[(String, MonacoPosition)]
+    val forwards = scala.collection.mutable.Stack.empty[(String, MonacoPosition)]
+    var at: Option[(String, MonacoPosition)] = None
+    def jumped(): Unit = at.foreach { here =>
+      if (backs.headOption.forall(_ != here)) backs.push(here)
+      forwards.clear()
+    }
     // go to definition into the other file: its tab
     controller.onOpenLocation.attach { location =>
       log.say("opened " + name(location.uri) + " at line " + location.range.startLine)
+      jumped()
       show(location.uri, Some(location.range))
     }
+    controller.onDidChangeCursor.attach { c =>
+      log.say(s"cursor ${c.position.line}:${c.position.column} by ${c.source} (${c.reason})")
+      if (c.isJump) jumped()
+      at = Some(open() -> c.position)
+    }
+    def travel(from: scala.collection.mutable.Stack[(String, MonacoPosition)],
+               to: scala.collection.mutable.Stack[(String, MonacoPosition)], label: String): Unit = if (from.nonEmpty) {
+      at.foreach(to.push)
+      val (uri, p) = from.pop()
+      log.say(s"$label to ${name(uri)}:${p.line}:${p.column}")
+      val range = MonacoRange(p.line, p.column, p.line, p.column)
+      if (uri == open()) controller.setPosition(p).foreach(_ => controller.revealRangeInCenter(range))
+      else show(uri, Some(range))
+    }
+    val back = GalleryScreen.keymap.add("gallery.back", "Navigate Back", Chord("BrowserBack"),
+      Chord("ArrowLeft", primary = true, alt = true))(travel(backs, forwards, "back"))
+    val forward = GalleryScreen.keymap.add("gallery.forward", "Navigate Forward", Chord("BrowserForward"),
+      Chord("ArrowRight", primary = true, alt = true))(travel(forwards, backs, "forward"))
+    // Primary+Alt+Left and Right in the editor too (the mouse's buttons are never the editor's)
+    List(back, forward).foreach(_.inEmbeds @= true)
     val dirty = TextView.bound(if (controller.dirty()) "● " + name(open()) + " has unsaved changes" else name(open()) + " saved",
       12.0, if (controller.dirty()) Theme.warning() else Theme.muted())
     val save = MonacoEditor.saveCommand(GalleryScreen.keymap, Chord("S", primary = true), "gallery.save", "Save") {
@@ -166,6 +198,8 @@ object NavigationDemo {
     }
     new DemoPage(demo, body, List(tabs, dirty, reveal, outline), () => {
       GalleryScreen.keymap.remove(save.id)
+      GalleryScreen.keymap.remove(back.id)
+      GalleryScreen.keymap.remove(forward.id)
       providers.foreach(_.foreach(_.dispose()))
       files.foreach { case (uri, _) => controller.disposeMonacoModel(uri) }
       controller.dispose()

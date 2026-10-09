@@ -3155,8 +3155,40 @@ What a tick means (a partial commit, say) is the app's.
 Go to definition and a peek into another file need the app: `MonacoLanguages.registerModelResolver(uri => ...)` gives
 Monaco a file's text and language when it needs its model (the peek's lines), and
 `MonacoLanguages.registerEditorOpener((uri, range) => ...)` or the editor's `controller.onOpenLocation` opens the file
-the app's way (its tab, `switchToModel`, the range revealed); with neither, Monaco stays where it is. Every call answers as a `Future`; themes and
+the app's way (its tab, `switchToModel`, the range revealed); with neither, Monaco stays where it is. A jump within
+the file the editor shows is Monaco's own, and neither is asked. Every call answers as a `Future`; themes and
 providers are global and reach every editor, including ones made later.
+
+**Why the cursor moved.** `onDidChangeCursor` and `onDidChangeSelection` say what moved the cursor and why, beside
+`onDidChangeCursorPosition` and `onDidChangeCursorSelection` (which still say only where): a `MonacoCursorChange` is
+the position, the other cursors' (`secondaryPositions`), Monaco's `source` and its `reason` (`MonacoCursorReason`,
+Monaco's `CursorChangeReason`); a `MonacoSelectionChange` the same of the selections. What Monaco says of each move:
+
+| Move | `source` | `reason` |
+|---|---|---|
+| A click | `"mouse"` | `Explicit` |
+| An arrow, Home, End, select all | `"keyboard"` | `Explicit` |
+| Typing | `"keyboard"` | `NotSet` |
+| A command's edit (Backspace) | its id (`"deleteLeft"`) | `NotSet` |
+| Go to definition, Ctrl+Click, F12, a usage opened from a peek, within the file | `"code.jump"` | `NotSet` |
+| The app's `setPosition`, `setSelection` | `"api"` | `NotSet` |
+| Undo, redo | `"modelChange"` | `Undo`, `Redo` |
+| The app's `setValue`, `executeEdits`; another editor's edit on a shared model, or one relayed into this copy | `"modelChange"` | `RecoverFromMarkers` |
+
+`byUser` is true for the person's own moves (not `"api"`, nor a recovery or a flush), and `isJump` for a jump. A
+jump within the file is Monaco's own: the editor opener (`registerEditorOpener`, `onOpenLocation`) is asked only of
+another file. The standalone editor makes it as `"api"`; the bridge says `"code.jump"`, as VS Code names it. On the
+desktop and Android an edit made in another editor on a shared model is copied into this editor's own Monaco, and
+moves its cursor as a recovery, never as the user's. A Ctrl+Click puts the cursor where it was clicked (`"mouse"`)
+before it jumps, so the place to come back to is where the cursor was before the jump:
+
+```scala
+var here: Option[MonacoPosition] = None
+code.onDidChangeCursor.attach { c =>
+  if (c.isJump) here.foreach(p => history.push(file -> p))   // Navigate Back (the mouse's back button) comes back here
+  here = Some(c.position)
+}
+```
 
 **Shared models (an editor per tab, split views).** `MonacoModels` holds the documents by uri, as VS Code does: open a
 file once and any number of editors show it, editing one text with one undo history and one dirty state, each editor

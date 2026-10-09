@@ -75,6 +75,11 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   val onDidChangeModelContent: Channel[MonacoContentChange] = Channel[MonacoContentChange]
   val onDidChangeCursorPosition: Channel[MonacoPosition] = Channel[MonacoPosition]
   val onDidChangeCursorSelection: Channel[MonacoSelection] = Channel[MonacoSelection]
+  /** The cursor moved, with why: typed, clicked, a jump within the file, the app's own move, an edit made elsewhere
+    * (MonacoCursorChange). Heard with `onDidChangeCursorPosition`, after it. */
+  val onDidChangeCursor: Channel[MonacoCursorChange] = Channel[MonacoCursorChange]
+  /** The selection changed, with why (MonacoSelectionChange). Heard with `onDidChangeCursorSelection`, after it. */
+  val onDidChangeSelection: Channel[MonacoSelectionChange] = Channel[MonacoSelectionChange]
   val onDidScroll: Channel[MonacoScrollEvent] = Channel[MonacoScrollEvent]
   val onDidFocus: Channel[Unit] = Channel[Unit]
   val onDidBlur: Channel[Unit] = Channel[Unit]
@@ -371,10 +376,12 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
         val at = MonacoPosition(Wire.int(p, "line"), Wire.int(p, "column"))
         cursor @= Some(at)
         onDidChangeCursorPosition @= at
+        onDidChangeCursor @= MonacoController.cursorChange(at, p)
       case "editor.selectionChange" =>
         val s = p.as[MonacoSelection]
         selected @= Some(s)
         onDidChangeCursorSelection @= s
+        onDidChangeSelection @= MonacoController.selectionChange(s, p)
       case "editor.scrollChange" => onDidScroll @= p.as[MonacoScrollEvent]
       case "editor.focus" => onDidFocus @= ()
       case "editor.blur" => onDidBlur @= ()
@@ -427,4 +434,21 @@ object MonacoController {
                options: MonacoEditorOptions = MonacoEditorOptions()): MonacoController =
     new MonacoController(initialValue = model.value(), initialLanguage = model.language(), initialTheme = theme,
       initialReadOnly = readOnly, initialOptions = options, initialModel = Some(model))
+
+  /** The guest's `editor.cursorChange` read: the cursor at `at`, and the rest of what it says. One that does not say
+    * what moved it is taken for the app's move ("api"). */
+  private[monaco] def cursorChange(at: MonacoPosition, p: Json): MonacoCursorChange = MonacoCursorChange(at,
+    p.get("secondaryPositions").filter(_.isArr).map(_.asVector.toList.map(j =>
+      MonacoPosition(Wire.int(j, "line"), Wire.int(j, "column")))).getOrElse(Nil),
+    source(p), MonacoCursorReason.fromWire(Wire.int(p, "reason")))
+
+  /** The guest's `editor.selectionChange` read, its selection `s`. */
+  private[monaco] def selectionChange(s: MonacoSelection, p: Json): MonacoSelectionChange = MonacoSelectionChange(s,
+    p.get("secondarySelections").filter(_.isArr).map(_.asVector.toList.map(_.as[MonacoSelection])).getOrElse(Nil),
+    source(p), MonacoCursorReason.fromWire(Wire.int(p, "reason")))
+
+  private def source(p: Json): String = {
+    val s = Wire.string(p, "source")
+    if (s.isEmpty) MonacoCursorChange.Api else s
+  }
 }
