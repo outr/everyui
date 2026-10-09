@@ -15,7 +15,7 @@ import scala.concurrent.Future
   * from (the mouse's side buttons, Primary+Alt+Left and Right). */
 object NavigationDemo {
   val files: List[(String, String)] = List(
-    "file:///demo/Greeter.scala" ->
+    "file:///@0/demo/Greeter.scala" ->
       """package demo
         |
         |/** Says hello. F12 on a name goes to its definition; Shift+F12 finds its usages. */

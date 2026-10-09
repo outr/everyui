@@ -79,6 +79,52 @@ class MonacoCursorSpec extends MonacoFxSpec {
       } finally fx(registrations.value.foreach(_.foreach(_.foreach(_.dispose()))))
     }
 
+    "jump within the file whatever its uri holds (an @, a space, a %, a #, words not English, a Windows drive)" in {
+      val uris = List("file:///@0/ide/src/main/scala/A.scala", "file:///my dir/A b.scala", "file:///100%25/A.scala",
+        "file:///a/A.scala#part", "file:///über/Straße.scala", "file:///C:/Users/x/A.scala", "inmemory://@1/A.scala")
+      val text = "object A {\n  def thing = 1\n  val x = thing\n}\n"
+      var asked: List[String] = Nil
+      val registrations = fx(Future.sequence(List(
+        MonacoLanguages.registerDefinitionProvider("scala", MonacoDefinitionProvider(p =>
+          Future.successful(List(MonacoLocation(p.uri, MonacoRange(2, 7, 2, 12)))))),
+        MonacoLanguages.registerEditorOpener((uri, _) => { asked = asked :+ uri; true })))(using
+        scala.collection.BuildFrom.buildFromIterableOps, Monaco.uiThread))
+      try {
+        val models = fx(uris.map(u => MonacoModels.open(u, text, "scala")))
+        val controller = fx(MonacoController.forModel(models.head))
+        var changes: List[MonacoCursorChange] = Nil
+        fx(controller.onDidChangeCursor.attach(c => changes = changes :+ c))
+        val shown = editor(controller, 0.0)
+        eventually(120.0)(controller.isAttached) shouldBe true
+        models.foreach { m =>
+          withClue(m.uri + ": ") {
+            done(fx(controller.switchToModel(m.uri)))
+            eventually(10.0)(controller.uri() == m.uri) shouldBe true
+            done(fx(controller.setPosition(MonacoPosition(3, 12))))
+            eventually(10.0)(changes.lastOption.exists(_.position == MonacoPosition(3, 12))) shouldBe true
+            fx(controller.trigger("editor.action.revealDefinition"))
+            eventually(15.0)(changes.lastOption.exists(_.isJump)) shouldBe true
+            changes.last.position shouldBe MonacoPosition(2, 7)
+            done(fx(controller.getPosition())) shouldBe Some(MonacoPosition(2, 7))
+          }
+        }
+        asked shouldBe Nil
+        // the same with the editor's own model, made by createModel
+        val own = "file:///@0/own/B.scala"
+        done(fx(controller.createModel(text, "scala", Some(own))))
+        done(fx(controller.switchToModel(own)))
+        done(fx(controller.setPosition(MonacoPosition(3, 12))))
+        eventually(10.0)(changes.lastOption.exists(_.position == MonacoPosition(3, 12))) shouldBe true
+        fx(controller.trigger("editor.action.revealDefinition"))
+        eventually(15.0)(changes.lastOption.exists(_.isJump)) shouldBe true
+        changes.last.position shouldBe MonacoPosition(2, 7)
+        asked shouldBe Nil
+        fx(shown.dispose())
+        fx(controller.dispose())
+        fx(uris.foreach(MonacoModels.close))
+      } finally fx(registrations.value.foreach(_.foreach(_.foreach(_.dispose()))))
+    }
+
     "say an edit made in another editor on a shared model, relayed here, as the model's change" in {
       val text = "object A {\n  val x = 1\n  val y = 2\n}\n"
       val model = fx(MonacoModels.open("file:///cursor/A.scala", text, "scala"))

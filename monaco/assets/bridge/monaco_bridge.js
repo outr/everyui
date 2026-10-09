@@ -171,9 +171,9 @@
       entry.eol = eol;
       emit('contentChange', payload);
     }));
-    // each with what moved it (Monaco's source) and why (its CursorChangeReason); a jump within the file, which the
-    // standalone editor makes as "api", is said as VS Code names one (entry.jumping, set by the opener)
-    function moved(source) { return entry.jumping && source === 'api' ? 'code.jump' : source || 'api'; }
+    // each with what moved it (Monaco's source: "code.jump" for a jump within the file, which the opener makes) and why
+    // (its CursorChangeReason)
+    function moved(source) { return source || 'api'; }
     d.push(editor.onDidChangeCursorPosition(function (e) {
       emit('cursorChange', { line: e.position.lineNumber, column: e.position.column,
         secondaryPositions: (e.secondaryPositions || []).map(function (p) { return { line: p.lineNumber, column: p.column }; }),
@@ -708,8 +708,7 @@
 
   // Go to definition (and a peek's "open") into a file the editor does not show: asked of the app, which opens it
   // its own way (a tab) and says whether it did; otherwise Monaco does what it does by itself. editor.setOpener turns
-  // the asking off. One within the file the editor shows is Monaco's own, never asked of the app: Monaco selects the
-  // place a moment later, as "api", and the editor's entry says it is a jump until then (`jumping`).
+  // the asking off. One within the file the editor shows is never asked of the app: it is made here, at once (`jump`).
   bridge._opening = true;
   handlers['editor.setOpener'] = function (a) { bridge._opening = !!a.enabled; return null; };
   var openerInstalled = false;
@@ -720,14 +719,9 @@
       openCodeEditor: function (source, resource, where) {
         var editorId = null;
         for (var id in bridge._editors) if (bridge._editors[id].editor === source) editorId = id;
-        var shown = source.getModel();
-        if (shown && shown.uri.toString() === resource.toString()) {
-          var entry = editorId ? bridge._editors[editorId] : null;
-          if (entry) {
-            entry.jumping = true;
-            setTimeout(function () { entry.jumping = false; }, 0);
-          }
-          return false;
+        if (shows(source, resource)) {
+          try { return jump(source, where); }
+          catch (e) { console.error('[monacoBridge] a jump within the file failed; asking the app', e); }
         }
         if (!bridge._opening) return false;
         var at = null;
@@ -738,6 +732,28 @@
           .then(function (handled) { return !!handled; }, function () { return false; });
       }
     });
+  }
+
+  // Whether `editor` shows `resource`: the model Monaco itself finds for it, so a uri written two ways (an "@" kept or
+  // written %40) is one; or, for a model Monaco cannot find, the same uri as Monaco writes it.
+  function shows(editor, resource) {
+    var shown = editor.getModel();
+    if (!shown) return false;
+    var found = monaco.editor.getModel(resource);
+    return found ? found === shown : shown.uri.toString() === monaco.Uri.parse(resource.toString()).toString();
+  }
+
+  // The jump made here, as Monaco's own code editor service makes one (the place selected and in the middle), under
+  // VS Code's name for it: taken, so nothing after it is asked, and never left undone.
+  function jump(editor, where) {
+    if (where && typeof where.endLineNumber === 'number') {
+      editor.setSelection(where, 'code.jump');
+      editor.revealRangeInCenter(where, monaco.editor.ScrollType.Immediate);
+    } else if (where && typeof where.lineNumber === 'number') {
+      editor.setPosition(where, 'code.jump');
+      editor.revealPositionInCenter(where, monaco.editor.ScrollType.Immediate);
+    }
+    return true;
   }
 
   // ------------------------------------------------------------------------------------------------------------

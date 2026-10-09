@@ -3186,7 +3186,7 @@ Go to definition and a peek into another file need the app: `MonacoLanguages.reg
 Monaco a file's text and language when it needs its model (the peek's lines), and
 `MonacoLanguages.registerEditorOpener((uri, range) => ...)` or the editor's `controller.onOpenLocation` opens the file
 the app's way (its tab, `switchToModel`, the range revealed); with neither, Monaco stays where it is. A jump within
-the file the editor shows is Monaco's own, and neither is asked. Every call answers as a `Future`; themes and
+the file the editor shows is made by the bridge itself, and neither is asked (unless that jump fails). Every call answers as a `Future`; themes and
 providers are global and reach every editor, including ones made later.
 
 **Why the cursor moved.** `onDidChangeCursor` and `onDidChangeSelection` say what moved the cursor and why, beside
@@ -3206,8 +3206,11 @@ Monaco's `CursorChangeReason`); a `MonacoSelectionChange` the same of the select
 | The app's `setValue`, `executeEdits`; another editor's edit on a shared model, or one relayed into this copy | `"modelChange"` | `RecoverFromMarkers` |
 
 `byUser` is true for the person's own moves (not `"api"`, nor a recovery or a flush), and `isJump` for a jump. A
-jump within the file is Monaco's own: the editor opener (`registerEditorOpener`, `onOpenLocation`) is asked only of
-another file. The standalone editor makes it as `"api"`; the bridge says `"code.jump"`, as VS Code names it. On the
+jump within the file the editor shows (the model Monaco itself finds for the location's uri, however the uri is
+written: an `@`, a space, a `%`, a `#`, a drive letter) is made by the bridge at once, the place selected and in the
+middle as Monaco's code editor service would, under VS Code's name for it, `"code.jump"`; the editor opener
+(`registerEditorOpener`, `onOpenLocation`) is asked only of another file, or should that jump fail, so a jump is
+never dropped. On the
 desktop and Android an edit made in another editor on a shared model is copied into this editor's own Monaco, and
 moves its cursor as a recovery, never as the user's. A Ctrl+Click puts the cursor where it was clicked (`"mouse"`)
 before it jumps, so the place to come back to is where the cursor was before the jump:
