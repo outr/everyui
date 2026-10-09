@@ -142,6 +142,10 @@ object FileAccess {
   def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
     create(name, mime, done)(out => out.write(bytes))
 
+  /** A download is a save here: there are no downloads apart from it. */
+  def download(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
+    save(bytes, name, mime, done)
+
   /** Fetched straight into the document created, as it arrives. */
   def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
     create(name, mime, done) { out =>

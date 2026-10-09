@@ -23,6 +23,10 @@ object FileAccess {
   def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
     done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
 
+  /** A download is a save here: there are no downloads apart from it. */
+  def download(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
+    save(bytes, name, mime, done)
+
   def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
     done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
 

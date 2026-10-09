@@ -17,7 +17,8 @@ private[markdown] object MarkdownBlocks {
     case MdBlock.CodeBlock(language, code, _) => new CodeBlockView(language, code, ctx, width)
     case MdBlock.Quote(blocks) => new QuoteView(blocks, ctx, width, depth)
     case list: MdBlock.BulletList => new ListView(list, ctx, width, depth)
-    case table: MdBlock.TableBlock => new TableView(table, ctx, width)
+    case table: MdBlock.TableBlock =>
+      if (ctx.richTables()) everyui.render.TableAccess.markdown(table, ctx, width) else new TableView(table, ctx, width)
     case MdBlock.Rule => new Container {
       size.width := width
       size.height @= 1.0
@@ -57,7 +58,7 @@ private[markdown] object MarkdownBlocks {
   }.mkString(" ")
 
   /** Whether `view`, drawn for `was`, took `now` in place: a paragraph's or a heading's new words, a code block's new
-    * code (in the same language). */
+    * code (in the same language), a table's new rows (under the same header, where the table sorts and filters). */
   def update(view: Component, was: MdBlock, now: MdBlock): Boolean = (view, was, now) match {
     case (p: ParagraphView, MdBlock.Paragraph(_), MdBlock.Paragraph(content)) =>
       p.inlines @= content
@@ -68,6 +69,9 @@ private[markdown] object MarkdownBlocks {
     case (c: CodeBlockView, MdBlock.CodeBlock(_, _, _), MdBlock.CodeBlock(language, code, _)) if c.language == language =>
       c.code @= code
       true
+    case (t, MdBlock.TableBlock(align, header, _), next: MdBlock.TableBlock)
+      if align == next.align && header == next.header =>
+      everyui.render.TableAccess.update(t, next)
     case _ => false
   }
 }

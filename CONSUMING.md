@@ -812,6 +812,13 @@ answer.content := message().text          // may grow token by token while the a
   than one of short words, and no word is cut. Only where the widest words alone are wider than the room (long code,
   a path, a URL) does the table scroll sideways, each column then at least its even share of the room so its words
   are not left a word a line, with a shade over each edge it goes on past, gone at that end.
+- Every table sorts, filters, copies and exports as a `DataTable` does (below) where the platform has one (the web, the
+  desktop, Android), with no change in the app: it rests as the plain table, laid out alike, and becomes a `DataTable`
+  as the pointer comes over it (not while a drag is selecting words across it) or the focus reaches it, so a chat of
+  answers with tables opens as fast as it did. A table of more than 8 rows, whose filter shows at rest, and every table
+  on a touch screen, whose tools always show, is one from the start. As an answer streams in, its rows are taken in
+  place: those that did not change keep what draws them, and its sort and filter stay. `richTables` (a `Var[Boolean]`,
+  true unless `MarkdownView.richTables` says otherwise) draws a view's tables plain; a Roku and an Apple TV always do.
 - A click on a link, or Enter (a remote's OK) on a paragraph that holds links, goes to `onLink`: by default a path of
   this app is shown in place and anything else opened (`Link.follow`). A paragraph with several links offers them in a
   menu. A picture's relative URL is found against `base`, `Platform.origin()` by default (`MarkdownView.resolve`).
@@ -1496,6 +1503,8 @@ URL answers with; `mime` is an `Option` (by the name's extension when None). Eac
 `Saved(name)`, `Cancelled` (the picker closed), or `SaveFailed(message)`.
 `Files.saveLater(name, mime)(bytes)` opens the picker first and writes bytes made afterwards (a `Task[Either[String,
 Array[Byte]]]`); a server's answer is saved with `everyui.network.HttpFiles.save` (below).
+`Files.download(bytes, name, mime)` hands a file over at once: on the web straight into the browser's downloads (a Blob,
+no picker), elsewhere as `save`.
 
 ```scala
 import everyui.file.{Files, SaveResult}
@@ -3964,6 +3973,67 @@ tree.checkToggled.attach(t => println(t.keys.toString + " " + t.checked))
 tree.checked.attach(keys => commitButton.enabled @= keys.exists(isFile))
 tree.checkState("Changes/src")                        // Checked, Unchecked or Mixed
 ```
+
+### DataTable (`everyui.table`)
+
+A table of an app's rows of words that the person can sort, filter, choose from, copy and export; every Markdown table
+is one too (above). It is laid out as a Markdown table is (`TableWidths`: columns as wide as their widest cell where
+all fit, else sharing the width so cells wrap, no word ever cut, scrolling sideways only where the widest words alone
+are too wide, a shade at the edge with more beyond). Cells wrap rather than being cut, so nothing is hidden behind a
+tip. Taller than `maxHeight` (420 by default; 0 for none), the rows scroll under a header that stays, with room kept
+for the page's scrollbar on the web. A table whose words read right to left has its first column at the right.
+
+```scala
+import everyui.table.{ColumnKind, DataColumn, DataTable}
+
+val table = DataTable(Vector(DataColumn("Persona"), DataColumn("Conversations"),
+  DataColumn("Last active", kind = Some(ColumnKind.Date))), personas.map(p => Vector(p.name, p.count, p.last)))
+table.size.width := panel.size.width()
+table.name @= "personas"                  // personas.csv, personas.md
+// or from typed items:
+DataTable.of(personas)(DataColumn("Persona") -> (_.name), DataColumn("Conversations") -> (_.count.toString))
+```
+
+- **Columns**: `DataColumn(title, kind, align, runs)`. `kind` (`ColumnKind.Text`, `Number`, `Date`) is how it sorts;
+  None finds it from the cells (`CellValues.infer`: dates where every cell that says something is a date, numbers where
+  every one is a number). `align` None puts numbers at the end and anything else at the start. `cells` (a
+  `Var[Vector[Vector[DataCell]]]`; `DataCell(text, runs)`, the runs drawn where given) and `columns` can change: rows
+  whose cells did not change keep what draws them. `DataTableStyle` sets the points, the cell padding, quiet words and
+  the direction.
+- **Sort**: a click or a tap on a header, or Enter (Space) on it, sorts up, then down, then back as the rows came, an
+  arrow by the header and `aria-sort` on it. Numbers sort by value through thousands separators (either convention),
+  currencies, signs, brackets for a loss, percentages, units and k, M, B, KB, MB, GB; dates as ISO's, with or without a
+  time and zone, the slashed (month first unless it cannot be) and dotted (day first) orders, and English month names;
+  words as the language orders them (the browser's collation, numbers in words by their value on the web; the
+  platform's `Collator` on the desktop and Android). Cells with nothing (blank, a dash, "n/a") go last both ways; ties
+  keep their order. `sort` (`Option[ColumnSort]`) is the app's to read and set; `sortBy(c)` cycles.
+- **Filter**: past `filterAfter` rows (8) a search field over the table hides the rows without every word typed in it,
+  in any cell, whatever the case, "12 of 60" beside it ("60 rows" while empty). `filter` is the app's to set; `shown` is
+  the rows showing, in their order.
+- **Choose and copy**: a click on a row chooses it (again, lets it go), Shift+click the rows from the last chosen, Ctrl
+  or Command+click adds or takes away one; a tap on a touch screen adds or takes away. `selection` holds them by index
+  in `cells`. Ctrl or Command+C copies the chosen rows (or, with none, the cell the keys are on) as tab-separated lines
+  under the header, which paste into a spreadsheet (a cell with a tab, a line break or a leading quote is quoted, its
+  quotes doubled). Where words are selected with the pointer (a drag across cells on the web) those are copied, as the
+  browser copies them, and a click that ends such a drag chooses nothing.
+- **Tools**: a ⋮ button, shown while the pointer is over the table or the focus is in it, and always on a touch screen,
+  offers Copy table (the rows showing, sorted and filtered, as TSV), Copy as Markdown, Download CSV (RFC 4180, CR LF,
+  with a UTF-8 byte-order mark for spreadsheets) and Download Markdown, and Copy N rows while rows are chosen. Downloads
+  go through `Files.download`: the browser's downloads on the web, the save dialog on the desktop, Android's document
+  creator. Where there is no clipboard the copies are not offered, and where nothing can be saved, the downloads.
+  `tools @= false` hides it. `tsv()`, `csv()`, `markdown()` (of the rows showing, or of the rows given), `copy()`,
+  `copyMarkdown()`, `copySelection()`, `exportCsv()` and `exportMarkdown()` are the app's too.
+- **Keys**: the table is one stop for the focus (Tab goes on past it). The arrows move between its cells, Up from the
+  first row to the header (Left and Right swap where the columns run from the right), Home and End to the first and last
+  column (with Ctrl, row), Page Up and Down ten rows; Space or Enter chooses the row, or sorts on the header; Shift with
+  Up or Down chooses as it goes; Ctrl or Command+A chooses every row showing; Escape lets them go. A ring marks the cell
+  the keys are on while they move it. A screen reader hears a table of rows of cells and column headers, which rows are
+  chosen (`aria-selected`) and the sort.
+- **Long tables**: past 60 rows, the first 12 are made at once and the rest 16 a turn after the first page is drawn,
+  and only the widest cells of each column (by their characters and their longest words) are measured for the
+  columns' widths; a cell wider than those wraps. In headless Chromium a 500-row table took 80 to 110 ms to make, and
+  narrowing its filter a key at a time no long task (all 500 back at once, about 65 ms).
+- A Roku and an Apple TV have no `DataTable`: their Markdown tables are drawn plain, and the channel carries none of it.
 
 ### VirtualTable (`everyui.table`)
 

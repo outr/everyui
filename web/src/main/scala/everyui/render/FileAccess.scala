@@ -106,6 +106,10 @@ object FileAccess {
     toPicked(name, mime, () => download(objectUrl(blob), name, done), done)(file => written(file, blob))
   }
 
+  /** The bytes as a Blob, downloaded straight into the browser's downloads, without its save picker. */
+  def download(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
+    download(objectUrl(blobOf(bytes, mime)), name, done)
+
   /** Fetched into the file the picker chose, as it arrives; without a picker, the browser downloads it itself. */
   def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
     toPicked(name, mime, () => download(url, name, done), done)(file => dom.fetch(url).`then`[Any] { (r: dom.Response) =>

@@ -42,14 +42,27 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
                    breaks: Boolean = false) extends Container {
   /** The Markdown it shows. */
   val content: Var[String] = own(Var(initial))
-  private val stream = new MarkdownStream
+  /** Whether its tables sort, filter, copy and export (`everyui.table.DataTable`), where the platform has them (not a
+    * Roku or an Apple TV); off, each is drawn as it is. It starts as `MarkdownView.richTables` says, for every view an
+    * app makes; changed, the view is drawn again. */
+  val richTables: Var[Boolean] = own(Var(MarkdownView.richTables.get))
+  private var stream = new MarkdownStream
   private val context = MarkdownContext(style, onLink, () => base, direction = direction, measures = measures,
-    breaks = breaks)
+    breaks = breaks, richTables = () => richTables.get)
   private var drawn: Vector[MdBlock] = Vector.empty
 
   layout @= Some(VerticalLayout(style.spacing))
   content.attach(show)
   show(initial)
+  // every block drawn again, its tables the other way
+  richTables.attach { _ =>
+    val gone = children()
+    stream = new MarkdownStream
+    drawn = Vector.empty
+    children @= Vector.empty
+    gone.foreach(_.dispose())
+    show(content())
+  }
 
   /** How wide it would be drawn on its own, where it `measures`: its widest line (a list's and a quote's past their
     * indent), or none where a block takes all the width it is given (code, a table, a rule, a picture), as every block
@@ -92,6 +105,9 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
 }
 
 object MarkdownView {
+  /** Whether a view made from now on starts with tables that sort, filter, copy and export (its `richTables`). */
+  val richTables: Var[Boolean] = Var(true)
+
   /** Markdown `text` laid out `width` wide. */
   def apply(text: String, width: Double, style: MarkdownStyle = MarkdownStyle()): MarkdownView = {
     val view = new MarkdownView(text, style)

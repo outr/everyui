@@ -598,10 +598,11 @@ class RenderNode(val el: html.Element) {
     attribute("aria-label", label)
   }
 
-  /** Where a slider stands (`aria-valuenow`, its range and its words), whether a switch is on (`aria-checked`), and
-    * whether what a button opens is open (`aria-expanded`). */
+  /** Where a slider stands (`aria-valuenow`, its range and its words), whether a switch is on (`aria-checked`),
+    * whether what a button opens is open (`aria-expanded`), whether a row is chosen (`aria-selected`), and which way a
+    * column header sorts (`aria-sort`). */
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
-                       expanded: Option[Boolean]): Unit = {
+                       expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = {
     def attribute(name: String, value: Option[String]): Unit = value match {
       case Some(v) => el.setAttribute(name, v)
       case None => el.removeAttribute(name)
@@ -612,6 +613,8 @@ class RenderNode(val el: html.Element) {
     attribute("aria-valuetext", range.map(_.text))
     attribute("aria-checked", checked.map(_.toString))
     attribute("aria-expanded", expanded.map(_.toString))
+    attribute("aria-selected", selected.map(_.toString))
+    attribute("aria-sort", if (sort.isEmpty) None else Some(sort))
   }
 
   /** The focus landed here. The page keeps its own focus rather than the browser's, and says what things are by

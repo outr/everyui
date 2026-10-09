@@ -68,6 +68,10 @@ object FileAccess {
   def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
     chooseAndWrite(name, done)(file => java.nio.file.Files.write(file.toPath, bytes))
 
+  /** A download is a save here: there are no downloads apart from it. */
+  def download(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =
+    save(bytes, name, mime, done)
+
   /** Fetched straight into the file chosen, as it arrives. */
   def saveUrl(url: String, name: String, mime: String, done: SaveResult => Unit): Unit =
     chooseAndWrite(name, done) { file =>

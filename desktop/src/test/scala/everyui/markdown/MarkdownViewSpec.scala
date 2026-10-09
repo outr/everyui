@@ -27,7 +27,7 @@ class MarkdownViewSpec extends FxSpec {
       onScreen(view) {
         eventually(view.size.height() > 100.0) shouldBe true
         fx(view.children().map(_.getClass.getSimpleName).toList.take(6)) shouldBe
-          List("ParagraphView", "ParagraphView", "ListView", "CodeBlockView", "TableView", "QuoteView")
+          List("ParagraphView", "ParagraphView", "ListView", "CodeBlockView", "MarkdownTable", "QuoteView")
         fx(view.children().forall(c => c.size.width() == 420.0)) shouldBe true
         val bottom = fx(view.children().map(c => c.position.top() + c.size.height()).max)
         fx(view.size.height()) shouldBe bottom +- 1.0

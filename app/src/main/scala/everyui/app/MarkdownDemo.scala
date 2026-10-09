@@ -15,7 +15,7 @@ import reactify.*
   *   [ui] markdown streamed 3021 characters in 756 appends, 0.21 ms an append
   */
 object MarkdownDemo {
-  val sample: String = List(
+  val sample: String = (List(
     "# Markdown in EveryUI",
     "",
     "A paragraph with *emphasis*, **strong words**, ***both***, ~~struck~~, `inline code`, a [link](https://everyui.com)",
@@ -75,6 +75,7 @@ object MarkdownDemo {
     "|------|-------|",
     "| `shared/src/main/scala/everyui/markdown/TableView.scala` | Where tables are drawn |",
     "",
+  ) ++ (if (everyui.render.TableAccess.rich()) MarkdownDemo.tables else Nil) ++ List(
     "---",
     "",
     "An image, sized to fit: ![The EveryUI mark](images/everyui-mark.png)",
@@ -83,7 +84,51 @@ object MarkdownDemo {
     "",
     "#### Smaller heading",
     "",
-    "The end, with an entity &copy; and an escaped \\*star\\*.").mkString("\n")
+    "The end, with an entity &copy; and an escaped \\*star\\*.")).mkString("\n")
+
+  /** Tables an agent might answer with: sixty personas and their conversations (long enough to offer a filter and to
+    * scroll under its header), numbers, dates and currency that sort by their values, and one of many columns. Where
+    * tables sort and filter (not a Roku or an Apple TV, whose plain tables would only take long to draw sixty rows). */
+  def tables: List[String] = {
+    val names = Vector("Ada", "Grace", "Alan", "Edsger", "Barbara", "Donald", "Margaret", "Ken", "Dennis", "Frances",
+      "Leslie", "Radia")
+    val roles = Vector("Researcher", "Reviewer", "Planner", "Coder", "Tester")
+    val personas = (0 until 60).toList.map { i =>
+      val count = (i * 7919 + 13) % 2400
+      val month = 1 + (i * 5) % 12
+      val day = 1 + (i * 11) % 28
+      "| " + names(i % names.size) + " the " + roles(i % roles.size) + " | " + grouped(count) + " | " +
+        "2026-" + (if (month < 10) "0" else "") + month.toString + "-" + (if (day < 10) "0" else "") + day.toString +
+        " | " + (if (i % 9 == 4) "—" else "$" + grouped((i * 104729) % 90000)) + " |"
+    }
+    List("A long one, of sixty personas and their conversations, that offers a filter and scrolls under its header:",
+      "",
+      "| Persona | Conversations | Last active | Spend |",
+      "|---------|--------------:|-------------|------:|") ++ personas ++ List(
+      "",
+      "Numbers, dates and currency, which sort by their values:",
+      "",
+      "| Release | Shipped | Size | Change | Price |",
+      "|---------|---------|-----:|-------:|------:|",
+      "| 2.10 | Mar 3, 2026 | 1.2 GB | +4.5% | $1,299.00 |",
+      "| 2.9 | 12/28/2025 | 980 MB | −2.1% | $999.00 |",
+      "| 2.11 | 2026-06-30 | 1.4 GB | +12% | €1.149,50 |",
+      "| 3.0 beta | 9 October 2026 | 2.1 GB | (3.0%) | £849 |",
+      "| 2.8 | 2025-07-01 | 15 MB | 0% | free |",
+      "",
+      "One of many columns:",
+      "",
+      "| Model | Context | Input | Output | Cached | Vision | Tools | Streaming | Region | Notes |",
+      "|-------|--------:|------:|-------:|-------:|:------:|:-----:|:---------:|--------|-------|",
+      "| Large | 1,000,000 | $15.00 | $75.00 | $1.50 | yes | yes | yes | us-east-1 | The most capable, for long work |",
+      "| Medium | 200,000 | $3.00 | $15.00 | $0.30 | yes | yes | yes | eu-west-1 | Fast and capable |",
+      "| Small | 200,000 | $0.80 | $4.00 | $0.08 | no | yes | yes | ap-south-1 | Cheapest, for routing |",
+      "")
+  }
+
+  /** `n` with commas between its thousands. */
+  private def grouped(n: Int): String =
+    if (n < 1000) n.toString else grouped(n / 1000) + "," + (n % 1000 + 1000).toString.substring(1)
 
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light

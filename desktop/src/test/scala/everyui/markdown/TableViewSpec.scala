@@ -15,6 +15,9 @@ class TableViewSpec extends FxSpec {
 
   private def onScreen[T](view: MarkdownView)(test: TableView => T): T = {
     fx {
+      // the table as it is drawn where it neither sorts nor filters (a Roku, an Apple TV, a view that says so); the
+      // table that does is DataTableSpec's
+      view.richTables @= false
       ui.children.clear()
       ui.children += view
     }

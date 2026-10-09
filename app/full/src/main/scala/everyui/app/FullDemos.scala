@@ -61,5 +61,9 @@ object FullDemos {
       CaptureDemo.run()
       true
     }
+    else if (demo == "datatable") {
+      DataTableDemo.run()
+      true
+    }
     else false
 }

@@ -119,6 +119,8 @@ import everyui.render.Platform
   *   capture    pictures the app takes of itself (Snapshot): a panel of words, a picture, a chart and a list as a PNG,
   *              the window, and the chart at three times its size from its figures, shown and saved (`probe=1`,
   *              `scale=2`, `photo=<url>`, `theme=light`); not on a Roku or an Apple TV (app/full: FullDemos)
+  *   datatable  a DataTable of an app's rows: `n=` personas (500) sorted, filtered, chosen, copied and downloaded, and a
+  *              small one (`theme=light`, `rtl=1`, `max=<pixels>`); not on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

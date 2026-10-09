@@ -46,6 +46,12 @@ object Files {
   def save(bytes: Array[Byte], name: String, mime: Option[String] = None): Task[SaveResult] =
     Task.async[SaveResult](done => FileAccess.save(bytes, name, mime.getOrElse(FileTypes.of(name)), done))
 
+  /** `bytes` handed to the person as a file at once: on the web straight into the browser's downloads (a Blob), as a
+    * web app's Download does, without the save picker `save` opens; elsewhere it is `save` (the desktop's save dialog,
+    * Android's document creator), there being no downloads apart from it. */
+  def download(bytes: Array[Byte], name: String, mime: Option[String] = None): Task[SaveResult] =
+    Task.async[SaveResult](done => FileAccess.download(bytes, name, mime.getOrElse(FileTypes.of(name)), done))
+
   /** What `url` answers with, saved as `save` saves bytes: fetched once the person has chosen where (a browser without
     * a picker downloads it itself). A relative URL is found against `Platform.origin()`, and on the web a URL of
     * another origin must allow the page to read it (CORS), or the browser without a picker may open it instead. */
