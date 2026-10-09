@@ -1113,6 +1113,12 @@ object Platform {
 
   private var aways: List[() => Unit] = Nil
 
+  /** The app asks before it is left while `guard` answers true, or any other guard does: here its window's close asks
+    * Stay or Leave (WindowLeave). What removes it. */
+  def leaveGuard(guard: () => Boolean): () => Unit = everyui.app.LeaveGuards.add(guard)
+  /** Guarded while `flag` is set. */
+  def leaveGuardWhile(flag: reactify.Val[Boolean]): () => Unit = everyui.app.LeaveGuards.addWhile(flag)
+
   def log(message: String): Unit = println("[ui] " + message)
 
   /** A failure with its cause: the console gets the stack. */

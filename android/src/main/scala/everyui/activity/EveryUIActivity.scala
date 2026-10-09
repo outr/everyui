@@ -87,6 +87,8 @@ abstract class EveryUIActivity extends Activity {
 
   /** Whether the app took the Back being held, so its release is the app's too. */
   private var backTaken = false
+  /** Whether a Back nothing took is held to ask before the app is left (LeaveBack). */
+  private var leaveHeld = false
 
   /** A touch read over the scale the app is drawn at as it began (Host.touchScale), whatever it changes as it is heard. */
   override def dispatchTouchEvent(e: MotionEvent): Boolean = {
@@ -100,8 +102,8 @@ abstract class EveryUIActivity extends Activity {
   }
 
   /** Every key to the shared layer's hook, by the web's name. Back goes there first, and is Android's (leaving the app)
-    * only when the app has nowhere to go back to; a Back the app took keeps its release, or Android would act on that.
-    * A mouse's back button (its BUTTON_BACK, which Android sends as KEYCODE_BACK from the mouse) is BrowserBack: Back
+    * only when the app has nowhere to go back to (asked first while it is guarded: LeaveBack); a Back the app took
+    * keeps its release, or Android would act on that. A mouse's back button (its BUTTON_BACK, which Android sends as KEYCODE_BACK from the mouse) is BrowserBack: Back
     * all the same, but told from a remote's by its source, so a keymap's chord can take it alone; its forward button
     * (KEYCODE_FORWARD) is BrowserForward. */
   override def dispatchKeyEvent(e: KeyEvent): Boolean = {
@@ -118,13 +120,18 @@ abstract class EveryUIActivity extends Activity {
     else if (e.getKeyCode == KeyEvent.KEYCODE_BACK) {
       val back = if (e.isFromSource(InputDevice.SOURCE_MOUSE)) "BrowserBack" else "Back"
       if (e.getAction == KeyEvent.ACTION_DOWN) {
-        if (e.getRepeatCount == 0) backTaken = hook(back, true)
-        backTaken || super.dispatchKeyEvent(e)
+        if (e.getRepeatCount == 0) {
+          backTaken = hook(back, true)
+          leaveHeld = !backTaken && LeaveBack.holds()
+        }
+        backTaken || leaveHeld || super.dispatchKeyEvent(e)
       }
       else {
         hook(back, false)
-        val taken = backTaken
+        val taken = backTaken || leaveHeld
+        if (leaveHeld) LeaveBack.ask(this)
         backTaken = false
+        leaveHeld = false
         taken || super.dispatchKeyEvent(e)
       }
     }

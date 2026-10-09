@@ -762,6 +762,11 @@ object Platform {
 
   private var aways: List[() => Unit] = Nil
 
+  /** The app asks before it is left while a guard answers true elsewhere; a TV's Back or Home from the first screen
+    * leaves without asking, so nothing is held here. What removes it. */
+  def leaveGuard(guard: () => Boolean): () => Unit = () => ()
+  def leaveGuardWhile(flag: reactify.Val[Boolean]): () => Unit = () => ()
+
   def log(message: String): Unit = uiLog(message)
   def logError(message: String, t: Throwable): Unit = uiLog("ERROR " + message + ": " + t.getMessage)
   def ticks(): Double = uiTicks()

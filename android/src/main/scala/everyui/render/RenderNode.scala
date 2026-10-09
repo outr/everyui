@@ -1803,6 +1803,13 @@ object Platform {
 
   private var aways: List[() => Unit] = Nil
 
+  /** The app asks before it is left while `guard` answers true, or any other guard does: here Back from the first
+    * screen (one nothing in the app takes) asks Stay or Leave, and Leave sends the app to the background, as Back
+    * there does from Android 12. Home and the recent apps leave it without asking. What removes it. */
+  def leaveGuard(guard: () => Boolean): () => Unit = everyui.app.LeaveGuards.add(guard)
+  /** Guarded while `flag` is set. */
+  def leaveGuardWhile(flag: reactify.Val[Boolean]): () => Unit = everyui.app.LeaveGuards.addWhile(flag)
+
   /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): a picture dimmed, or its blue
     * pulled down for the night, the video with it. A colour matrix on the root's layer, which the video's TextureView
     * is drawn into like everything else; left off entirely when there is nothing to scale, a layer costing a pass. */

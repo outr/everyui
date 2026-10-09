@@ -7,14 +7,16 @@ import everyui.render.Host
 /** Back where the app has opted in to predictive back (Android 13 and up, the default from Android 16 for an app that
   * targets it): the system no longer sends the Back key to the activity, only to a callback registered for it, and with
   * none it closes the app. This hands it to the shared layer's hook as the key would have been, and leaves the app
-  * (to the background, as Android does itself) only when nothing took it. A class of its own, so an older Android
-  * never loads the interface it implements. */
+  * (to the background, as Android does itself) only when nothing took it, asking first while the app is guarded
+  * (LeaveBack). A class of its own, so an older Android never loads the interface it implements. */
 class BackCallback(activity: Activity) extends OnBackInvokedCallback {
   override def onBackInvoked(): Unit = {
     val hook = Host.key
     val taken = hook != null && hook("Back", true)
     if (hook != null) hook("Back", false)
-    if (!taken) activity.moveTaskToBack(true)
+    if (!taken) {
+      if (LeaveBack.holds()) LeaveBack.ask(activity) else activity.moveTaskToBack(true)
+    }
   }
 }
 

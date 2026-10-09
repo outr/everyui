@@ -25,6 +25,8 @@ import everyui.render.Platform
   *   chat       a group room in a ChatView: streaming replies, tool calls, reasoning, 2000 earlier entries (`theme=light`,
   *              `rtl=1`, `offline=1`, `probe=1`, `author=log`)
   *   chatperf   how fast a long conversation opens: `n=` entries of a coding agent's transcript, built `at=` seconds in, timed
+  *   leave      asking before the app is left (Platform.leaveGuard): `guard=on|off`, F and C set and clear a flag's guard,
+  *              G adds a guard, R removes them, P moves within the app
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   spinner    a button swapped for a spinner while its work runs (AsyncPress), the work just past spinAfter
   *              (`work=<seconds>`, `probe=1`)
@@ -166,5 +168,6 @@ import everyui.render.Platform
   else if (demo == "launch") LaunchDemo.run()
   else if (demo == "unwind") UnwindDemo.run()
   else if (demo == "audio") AudioDemo.run()
+  else if (demo == "leave") LeaveDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

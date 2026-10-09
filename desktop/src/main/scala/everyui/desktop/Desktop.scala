@@ -5,7 +5,7 @@ import javafx.scene.layout.Pane
 import javafx.scene.paint.Color
 import javafx.scene.shape.Rectangle
 import javafx.stage.Stage
-import everyui.render.Host
+import everyui.render.{Host, WindowLeave}
 
 import java.io.File
 
@@ -51,6 +51,7 @@ object Desktop {
       val iconFile = new File(Host.assets, icon)
       if (iconFile.exists) stage.getIcons.add(new javafx.scene.image.Image(iconFile.toURI.toString))
       stage.setScene(scene)
+      WindowLeave.watch(stage)
       stage.show()
 
       run()

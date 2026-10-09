@@ -1293,6 +1293,25 @@ object Platform {
 
   private var aways: List[() => Unit] = Nil
 
+  /** The app asks before it is left while `guard` answers true, or any other guard does: here the browser asks with its
+    * own "Leave site?" as the page is closed, reloaded or sent to another address (PageLeave), in its own words and
+    * only once the person has clicked or typed on the page; a move within the app (`pushPath`) is never asked. What
+    * removes it.
+    *
+    * {{{
+    *   val unguard = Platform.leaveGuard(() => signedIn())
+    *   Platform.leaveGuardWhile(editor.dirty)
+    * }}} */
+  def leaveGuard(guard: () => Boolean): () => Unit = {
+    PageLeave.follow
+    everyui.app.LeaveGuards.add(guard)
+  }
+  /** Guarded while `flag` is set, and the page's listener standing only while some guard might answer true. */
+  def leaveGuardWhile(flag: reactify.Val[Boolean]): () => Unit = {
+    PageLeave.follow
+    everyui.app.LeaveGuards.addWhile(flag)
+  }
+
   // a page hidden is one nobody is watching — another tab, the window minimised, a television's own home screen
   // over the app on webOS and Tizen — and shown again is somebody back
   dom.document.addEventListener("visibilitychange", (_: dom.Event) =>

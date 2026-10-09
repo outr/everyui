@@ -1876,6 +1876,48 @@ over the rest) until it moves again. Elsewhere the platform's own bar shows the 
 `demo=busy` in the example app goes round idle, busy, and "deliver" from 0 to 100% (`title=1` for the title,
 `spin=<seconds>` to hold the spinner, `still=<seconds>` for `stillAfter`, with the progress held at 60% to show it).
 
+## Asking before the app is left (`Platform.leaveGuard`)
+
+An app asks before its page or window goes while any of its guards answers true. `Platform.leaveGuard(() => Boolean)`
+adds a guard, asked each time the app is about to be left, and `Platform.leaveGuardWhile(flag)` one that is a
+`Val[Boolean]`; each returns what removes it. Voidcraft's, guarded while signed in, and later only while there is
+something to lose:
+
+```scala
+private var unguard: () => Unit = () => ()
+session.attach {
+  case Some(_) => unguard = Platform.leaveGuard(() => true)
+  case None => unguard(); unguard = () => ()
+}
+// or narrower:
+Platform.leaveGuard(() => editors.exists(_.dirty()) || agent.working())
+Platform.leaveGuardWhile(unsaved)   // a Var[Boolean]
+```
+
+- **Web**: the browser's own "Leave site?" as the tab is closed, the page reloaded, or another address typed or
+  followed (`Platform.navigate` included). Browsers show their own words, never the app's, and ask only once the
+  person has clicked or typed on the page; before that the page goes without asking. A move within the app
+  (`Platform.pushPath`, the history's back and forward) unloads nothing and is never asked. The `beforeunload`
+  listener stands only while a guard might answer true (any `leaveGuard`, or a `leaveGuardWhile` flag that is set),
+  since a page with one may be kept out of the browser's back and forward cache: prefer `leaveGuardWhile` for a guard
+  that is usually false.
+- **Desktop**: closing the window (its ×, the system's keys, the taskbar) asks with EveryUI's own dialog, "Leave the
+  app?", Stay or Leave, opening on Stay. Stay keeps the window. Leave closes it as the close would have: the request
+  is made again for the window's own handlers, so an app's `setOnCloseRequest` (asking its tabs with
+  `TabGroups.closeAllTabs`, say) hears it once, after Leave, and may still keep the window. `Desktop.launch` guards its
+  window; another the app opens is guarded with `WindowLeave.watch(stage)`. `Platform.quit()`, and a window the app
+  closes itself, are not asked.
+- **Android**: Back from the first screen (one nothing in the app takes) asks the same question; Leave sends the app
+  to the background, as Back there does from Android 12 (before 12, unguarded, Back finishes the activity). Home and
+  the recent apps leave without asking, as Android gives an app no say there. With no guard answering true, Back is
+  as it was.
+- **Roku, Apple TV**: nothing is asked; the guards are kept nowhere.
+
+The dialog's words are EveryUI's (`Words.leaveTitle`, `leaveMessage`, `leave`, `stay`, in its eleven languages);
+`Words.add` rewords them. A guard that throws answers false, so the app can always be left. `demo=leave` in the
+example app tries it: `guard=on` or `guard=off`, F and C to set and clear a flag's guard, G to add a guard, R to remove
+them, P to move within the app.
+
 ## Quality on a slow device (`everyui.perf`)
 
 `Quality.level` (a `Val[QualityLevel]`: `Full`, `Reduced`, `Minimal`) is how much the app draws and moves. The app
