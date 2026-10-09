@@ -3435,7 +3435,10 @@ arrow leaves it as the focus layer says (`exitFocus` on a container around it).
 
 Only the rows that show exist; as it scrolls, a row leaving one end is handed the item arriving at the other. The items
 are a `Var[Vector[T]]` the app keeps, each with a key: the cursor (`current`), the selection and the scroll are kept by
-key as items come and go. Rows are `rowHeight` tall, or `measuredRows = true` for rows as tall as each draws itself.
+key as items come and go. Rows are `rowHeight` tall, or `measuredRows = true` for rows as tall as each draws itself;
+then `estimate` (an item to a height) guesses those not drawn yet, `rowHeight` unless set, so the rows made first are about
+the ones that show and the scroll is about as long as it will be (a chat's transcript guesses its entries by their
+length: `Transcript.estimate`). On the web such rows beyond the view are made after the next frame is drawn.
 
 ```scala
 import everyui.list.{Decoration, VirtualList}

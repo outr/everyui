@@ -24,6 +24,7 @@ import everyui.render.Platform
   *   composer   a chat's composer: suggestions, attachments, @-mentions and /commands, a reply faked as busy
   *   chat       a group room in a ChatView: streaming replies, tool calls, reasoning, 2000 earlier entries (`theme=light`,
   *              `rtl=1`, `offline=1`, `probe=1`, `author=log`)
+  *   chatperf   how fast a long conversation opens: `n=` entries of a coding agent's transcript, built `at=` seconds in, timed
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   spinner    a button swapped for a spinner while its work runs (AsyncPress), the work just past spinAfter
   *              (`work=<seconds>`, `probe=1`)
@@ -131,6 +132,7 @@ import everyui.render.Platform
   else if (demo == "rows") RowsDemo.run()
   else if (demo == "composer") ComposerDemo.run()
   else if (demo == "chat") ChatDemo.run()
+  else if (demo == "chatperf") ChatPerfDemo.run()
   else if (demo == "bubbles") BubbleDemo.run()
   else if (demo == "busy") BusyDemo.run()
   else if (demo == "colors") ColorsDemo.run()

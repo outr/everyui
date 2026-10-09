@@ -155,7 +155,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
   def heightAt(index: Int): Double =
     if (sizedSource) top(index + 1) - top(index)
-    else if (!ownHeights) rowHeight else heights.getOrElse(keyOf(shown(index)), rowHeight)
+    else if (!ownHeights) rowHeight else heights.getOrElse(keyOf(shown(index)), guessAt(index))
   /** How tall all the rows are together. */
   def total: Double = top(count)
 
@@ -175,11 +175,23 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     low
   }
 
+  /** How tall a row is taken to be until it has drawn itself, where the rows are as tall as each draws (`measuredRows`):
+    * `rowHeight` unless the list is told better (a chat's message by its length), so that the rows made first are about
+    * those that show, and the scroll is about as long as it will be. Asked once for each item at each width. */
+  var estimate: T => Double = _ => rowHeight
+  // the estimates by place, while the items and the width stay as they are (0 for one not asked yet)
+  private var guesses: Array[Double] = new Array[Double](0)
+  private def guessAt(i: Int): Double = {
+    if (guesses.length != shown.length) guesses = new Array[Double](shown.length)
+    if (guesses(i) <= 0.0) guesses(i) = math.max(1.0, estimate(shown(i)))
+    guesses(i)
+  }
+
   private def retop(): Unit = {
     val next = new Array[Double](shown.length + 1)
     var i = 0
     while (i < shown.length) {
-      next(i + 1) = next(i) + heights.getOrElse(keyOf(shown(i)), rowHeight)
+      next(i + 1) = next(i) + heights.getOrElse(keyOf(shown(i)), guessAt(i))
       i += 1
     }
     tops = next
@@ -732,21 +744,45 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   // a row drawn at a height of its own: the rows after it move (the first that showed is noted first, as it was, for
   // `later` to keep it there: a row above it drawn taller or shorter must not move it)
-  private def note(row: ListRow[T]): Unit = {
+  // `later` too, once the sizes asked for are all read (MeasuredFeature.settled): until then a row made for an item is a
+  // step on the way, a message as tall as its padding with its words still to be read, and the list made more rows to
+  // fill the room it seemed to leave
+  private def note(row: ListRow[T]): Unit = if (!everyui.component.feature.MeasuredFeature.settled) later()
+    else if (record(row)) later()
+
+  // the row's height kept, where it has one and it changed
+  private def record(row: ListRow[T]): Boolean = {
     val h = row.size.height()
-    if (h > 0.0) row.item().foreach { t =>
+    h > 0.0 && row.item().exists { t =>
       val key = keyOf(t)
-      if (!heights.get(key).contains(h)) {
+      !heights.get(key).contains(h) && {
         if (held.isEmpty) held = firstShowing()
         heights = heights.updated(key, h)
         topsStale = true
-        later()
+        true
       }
     }
   }
 
   /** The rows placed again: those that can be seen, handed their items, the rest put aside. */
-  def refresh(): Unit = if (laying) again = true else {
+  def refresh(): Unit = if (laying) again = true
+    else if (!node.onPage) {
+      // out of the page (a view built before it is shown, on the web), the rows wait for the end of the turn, by which
+      // an app has put it there: made in the page, their sizes are read in the turn's one batch, where out of it each
+      // read laid the page out again (a chat's transcript of long answers took seconds). Still out of it then, they are
+      // made where they are.
+      if (!offPage) {
+        offPage = true
+        Platform.afterTurn(() => {
+          offPage = false
+          lay()
+        })
+      }
+    }
+    else lay()
+  private var offPage = false
+
+  private def lay(): Unit = if (laying) again = true else {
     laying = true
     try {
       again = true
@@ -766,8 +802,13 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     blank = searching && loadingView().nonEmpty
     // fewer beyond on a slower device (`everyui.perf.Quality`)
     val beyond = everyui.perf.Quality.overscan(overscan())
-    val first = if (count == 0) 0 else math.max(0, indexAt(offset()) - beyond)
-    val near = if (count == 0) -1 else math.min(count - 1, indexAt(offset() + height) + beyond)
+    val shownFirst = if (count == 0) 0 else indexAt(offset())
+    val shownLast = if (count == 0) -1 else indexAt(offset() + height)
+    val first = math.max(0, shownFirst - beyond)
+    val near = if (count == 0) -1 else math.min(count - 1, shownLast + beyond)
+    // where the rows are as tall as each draws and the sizes are read in a batch (a chat's messages, on the web), those
+    // beyond the view not made yet are made after the next frame is drawn, so the rows that show are drawn first
+    val later = ownHeights && Platform.measuresInBatches && !aheadDue
     // (the rows the source is to fetch are asked for even while the loading view hides them)
     val last = if (blank) -1 else near
     val leaving = placed.filter { case (i, _) => i < first || i > last }
@@ -783,39 +824,53 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val lit = focused()
     source.foreach(s => if (near >= first) s.showing(first, near))
     val stands = source.nonEmpty && placeholder().nonEmpty
+    // a row not come stands in until it does, and the row then takes its place (and back, as rows are let go)
     var i = first
+    var ahead = false
     while (i <= last) {
-      val item = itemAt(i)
-      val stand = stands && item.isEmpty
-      // a row not come stands in until it does, and the row then takes its place (and back, as rows are let go)
-      val row = placed.get(i) match {
-        case Some(r) if r.standsIn == stand => r
+      val stand = stands && itemAt(i).isEmpty
+      placed.get(i) match {
+        case Some(r) if r.standsIn == stand => ()
+        case None if later && (i < shownFirst || i > shownLast) => ahead = true
         case other =>
           other.foreach(putAway)
           shuffled = true
           val r = take(stand)
           if (r.parent().isEmpty) made = r :: made
           placed = placed.updated(i, r)
-          r
       }
-      val key = keyAt(i)
-      row.item @= item
-      if (row.tip().nonEmpty) tips.watch(row)
-      if (ownHeights) note(row)
-      row.index @= i
-      row.selected @= everyRow != chosen.contains(key)
-      row.current @= cursor.contains(key)
-      row.active @= lit
-      row.editing @= editing().contains(key)
-      row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
-      row.size.width @= width
-      if (sizedSource) row.size.height @= heightAt(i)
-      else if (!ownHeights) row.size.height @= rowHeight
-      row.position.top @= top(i) - offset()
-      row.visible @= true
       i += 1
     }
+    // the rows made join the list before they are handed their items, and are as wide as it and know their place
+    // first: what they make for an item is then made in the page, as wide as it will be drawn (where the web reads its
+    // sizes in one batch), rather than made and measured out of it at no width and made again
     if (made.nonEmpty) children ++= made.reverse
+    if (ahead) makeAhead()
+    // (what a row makes for its item goes into the page with it: its sizes are read there, with the turn's batch)
+    everyui.component.feature.MeasuredFeature.withBatch {
+      var at = first
+      while (at <= last) {
+        placed.get(at).foreach { row =>
+          val item = itemAt(at)
+          val key = keyAt(at)
+          row.size.width @= width
+          row.index @= at
+          row.item @= item
+          if (row.tip().nonEmpty) tips.watch(row)
+          if (ownHeights) note(row)
+          row.selected @= everyRow != chosen.contains(key)
+          row.current @= cursor.contains(key)
+          row.active @= lit
+          row.editing @= editing().contains(key)
+          row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
+          if (sizedSource) row.size.height @= heightAt(at)
+          else if (!ownHeights) row.size.height @= rowHeight
+          row.position.top @= top(at) - offset()
+          row.visible @= true
+        }
+        at += 1
+      }
+    }
     placeEditor(width, height)
     placeDropLine(width)
     // the drop line and the thumb last, over the rows
@@ -832,6 +887,20 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     node.setScrolled(offset(), furthest)
   }
 
+  // the rows beyond the view still to be made (see `place`): after the next frame is drawn, and while they are made
+  private var aheadWaiting = false
+  private var aheadDue = false
+  private def makeAhead(): Unit = if (!aheadWaiting) {
+    aheadWaiting = true
+    Platform.afterFirstPaint(() => {
+      aheadWaiting = false
+      if (!takenApart) {
+        aheadDue = true
+        try refresh() finally aheadDue = false
+      }
+    })
+  }
+
   private var waiting = false
   // the place kept once the rows drawn at heights of their own are all in, before anything is drawn where the platform
   // can say (Platform.afterTurn): a page drew a frame with the rows moved by heights the place had not yet been kept
@@ -842,9 +911,18 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
   private def settle(): Unit = if (waiting) {
     waiting = false
-    keepingPlace(())
-    refresh()
+    if (!everyui.component.feature.MeasuredFeature.settled && unsettled < VirtualList.settleTries) {
+      // the turn's sizes are still to be read: after them
+      unsettled += 1
+      later()
+    } else {
+      unsettled = 0
+      if (ownHeights) placed.values.foreach(r => if (!r.standsIn) record(r))
+      keepingPlace(())
+      refresh()
+    }
   }
+  private var unsettled = 0
 
   // the first row that shows and how far above the top it starts, unless the rows are at their very top
   private def firstShowing(): Option[(String, Double)] = if (count == 0 || offset() <= 0.0) None else {
@@ -994,6 +1072,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       // made in one go: a Roku's map copies itself for each key added, and 5000 rows added a key at a time took minutes
       indexes = (0 until shown.length).toVector.map(i => keyOf(shown(i)) -> i).toMap
       topsStale = ownHeights
+      guesses = new Array[Double](0)
     }
     selection.keep(k => indexes.contains(k))
     current() match {
@@ -1061,7 +1140,15 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     tips.scrolled()
   }
   onDispose(() => tips.hide())
-  size.width.attach(_ => clip())
+  size.width.attach { _ =>
+    // (an estimate is for a width: the rows above are guessed again with the first that shows kept where it is, or the
+    // end, at once, before the rows are placed for the width)
+    if (ownHeights && guesses.length > 0) keepingPlace {
+      guesses = new Array[Double](0)
+      topsStale = true
+    }
+    clip()
+  }
   size.height.attach { _ =>
     clip()
     offset @= (if (followsEnd()) furthest else math.max(0.0, math.min(furthest, offset())))
@@ -1110,6 +1197,8 @@ object VirtualList {
   /** How near an end a drag scrolls the rows, and how often, in seconds. */
   val scrollEdge: Double = 28.0
   val scrollTick: Double = 0.03
+  // how many turns a list waits for the sizes asked for to be read before it takes its rows' heights as they are
+  private[list] val settleTries: Int = 8
 
   /** A list of text rows: each item's label, dressed as `decorate` says. */
   def text[T](items: Var[Vector[T]], key: T => String, label: T => String,

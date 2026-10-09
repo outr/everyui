@@ -21,7 +21,9 @@ class ChatRow(transcript: Transcript) extends ListRow[ChatEntry] {
   backgroundColor := (if (current() && active()) Theme.accent().withAlpha(0.08) else Color.Clear)
   borderWidth := (if (current() && active()) 1.0 else 0.0)
 
-  private def rebuild(): Unit = {
+  // (the list hands a row its place and its item one after the other: a view is made once both are this entry's, not
+  // for the entry at the place it had, then again)
+  private def rebuild(): Unit = if (item().forall(e => transcript.list.itemAt(index()).exists(_ eq e))) {
     val wanted = item()
     val leading = wanted.exists(e => transcript.leads(index(), e))
     val same = if (wanted.isEmpty || madeFor.isEmpty) wanted.isEmpty && madeFor.isEmpty
@@ -38,9 +40,13 @@ class ChatRow(transcript: Transcript) extends ListRow[ChatEntry] {
       }
       madeFor = wanted
       madeLeading = leading
-      val made = wanted.map(e => transcript.viewFor(e, leading, this))
-      made.foreach(v => children += v)
-      view @= made
+      // laid out once it is in the row: in the page, where the web reads its sizes with the rest of the turn's, rather
+      // than part by part as it is made out of it, each read laying the page out again
+      everyui.layout.LayoutPass.batch {
+        val made = wanted.map(e => transcript.viewFor(e, leading, this))
+        made.foreach(v => children += v)
+        view @= made
+      }
     }
   }
 

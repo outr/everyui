@@ -114,6 +114,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   list.size.width := size.width()
   list.size.height := size.height()
+  list.estimate = (e: ChatEntry) => Transcript.estimate(e, list.size.width(), bodyLines())
   list.semantics @= Semantics("list", label = ChatWords.conversation)
   size.width @= 400.0
   size.height @= 400.0
@@ -554,6 +555,44 @@ object Transcript {
     * the avatar's room. */
   def widest(width: Double): Double =
     if (width < narrow) math.max(80.0, width - side * 2.0 - lead) else width * 0.75
+
+  /** About how tall `entry` draws in a transcript `width` wide, before it has (`VirtualList.estimate`): from the length
+    * of its lines, its code, tables and pictures, rounded up rather than down, so that a transcript opened at its newest
+    * makes about the rows that show rather than a dozen more it then puts away. */
+  def estimate(entry: ChatEntry, width: Double, bodyLines: Int): Double = entry match {
+    case m: ChatEntry.Message => groupGap + 22.0 + padY * 2.0 + estimateText(m.text(), widest(width) - padX * 2.0) +
+      (if (m.meta().nonEmpty || m.streaming()) 18.0 else 0.0)
+    case a: ChatEntry.Activity => 48.0 + (if (a.body().isEmpty) 0.0
+      else math.min(estimateText(a.body(), widest(width) - padX * 2.0 - 40.0), 20.0 * math.max(1, bodyLines)))
+    case _: ChatEntry.Thinking => 44.0
+    case _: ChatEntry.Marker => 42.0
+    case _: ChatEntry.Custom => guess
+  }
+
+  // Markdown's height in a bubble's words `across` wide, near enough: a line of words is about 7 pixels a letter and 20
+  // tall, a line of code 17, and a code block, a table's rows and a picture take what they do around them
+  private def estimateText(text: String, across: Double): Double = {
+    val perLine = math.max(8.0, across / 7.0)
+    var height = 0.0
+    var code = false
+    var at = 0
+    while (at <= text.length) {
+      var end = text.indexOf('\n', at)
+      if (end < 0) end = text.length
+      val line = text.substring(at, end).trim
+      if (line.startsWith("```")) {
+        if (!code) height += 46.0
+        code = !code
+      }
+      else if (code) height += 17.0
+      else if (line.isEmpty) height += 9.0
+      else if (line.startsWith("|")) height += 31.0
+      else if (line.startsWith("![")) height += 220.0
+      else height += 20.0 * math.ceil(line.length / perLine)
+      at = end + 1
+    }
+    height
+  }
 
   /** `entry`, where it is a message. */
   def message(entry: Option[ChatEntry]): Option[ChatEntry.Message] = entry match {
