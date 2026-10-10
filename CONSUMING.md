@@ -4194,7 +4194,9 @@ place; the last stays, saying so. `focusedGroup` is the group the focus is in or
 `openIn(g, k)` in `g`. `addMenu` (`Option[TabGroup[K] => List[MenuItem]]`, None by default) gives every group a "+"
 after its last tab (`TabBar.addMenu`, above), groups made later by a split, a move or a drag too, its menu made for the
 group whose "+" was pressed so the app opens its new tabs there with `openIn`; each "+" goes with its group, and
-`addLabel` names them all.
+`addLabel` names them all. `contentBackground` (`Option[Color]`, None for the theme's background) fills the area under
+every group's tabs, groups made later too: `Some(Color.Clear)` lets a picture behind the screen (a `Backdrop`) show
+through what the tabs show, the strip of tabs keeping the theme's background.
 `commands` puts the actions on a keymap, as Primary+\ (open right), Primary+Shift+\ (down), Primary+Alt+Right and Left
 (the next and the previous group) and Primary+W or Primary+F4 (close), which the app can `rebind`. Arrows keep to the
 focus layer's rules: Down from a bar goes into what it shows, Up comes back, and a split's arrows cross it. `tabLayout`

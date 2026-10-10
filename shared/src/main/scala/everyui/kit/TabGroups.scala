@@ -9,7 +9,7 @@ import everyui.keymap.{Chord, Command, Keymap}
 import everyui.menu.MenuItem
 import everyui.split.SplitPane
 import everyui.theme.Theme
-import everyui.{Shadow, ui}
+import everyui.{Color, Shadow, ui}
 import reactify.*
 
 /** Tabs in groups, as an editor splits its files: one group or more, each a `TabBar` over what its tab being shown
@@ -66,6 +66,10 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   val addMenu: Var[Option[TabGroup[K] => List[MenuItem]]] = own(Var(None))
   /** What each group's "+" is called: its tooltip and its name to a screen reader. */
   val addLabel: Var[String] = own(Var(TabBar.addWord))
+  /** What fills the area under each group's tabs, where its tab shows its content: the theme's background by default
+    * (None). An app showing a picture behind its screens (a `Backdrop`) sets `Some(Color.Clear)`, or a tint, and the
+    * picture shows through every group, present and future; the strip of tabs stays on the theme's background. */
+  val contentBackground: Var[Option[Color]] = own(Var(None))
   /** The groups, first to last. */
   val groups: Var[List[TabGroup[K]]] = own(Var(Nil))
   /** Heard with the layout each time it changes: a tab opened, closed, moved or shown, a split made or undone, a
