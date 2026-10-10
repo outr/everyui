@@ -2,6 +2,7 @@ package everyui.kit
 
 import everyui.component.*
 import everyui.Color
+import everyui.chat.{Avatar, Participant}
 import everyui.component.types.{FontWeight, Semantics}
 import everyui.event.Key
 import everyui.font.MaterialIcon
@@ -20,13 +21,17 @@ import reactify.*
   *
   * A `lead` goes first of all (`TabLead`): somebody's avatar, which turns a ring while the tab is `busy` (an agent at
   * work in it) and says `busyDetail` to a pointer resting on it and to a screen reader; or an icon. The avatar keeps
-  * the ring's room whether or not it is busy, so the label does not move as it starts and stops.
+  * the ring's room whether or not it is busy, so the label does not move as it starts and stops. The lead can change
+  * after the tab is made (`lead @= TabLead.Person(renamed)`), as the label can: to one of the same kind, the face or
+  * icon shown follows it in place, the tab as wide as it was; to another kind, its view is made afresh, and the tab
+  * widens or narrows by the difference (an avatar's room is 20 and its ring's outset each side, an icon 18; no lead
+  * none, nor the gap after it).
   *
   * `menu` is the tab's context menu (`TabBar.tabMenu`): the secondary button opens it at the pointer, keeping the
   * browser's own away only where there is one; the menu key, Shift+F10 and OK held (a remote's long press) drop it from
   * the tab. A tab is read as a tab (`Semantics("tab")`), by its words. */
 class TabItem(val key: String, title: String, current: Var[String], closable: Boolean = false,
-              close: String => Unit = _ => (), showOnFocus: Boolean = true, lead: TabLead = TabLead.None,
+              close: String => Unit = _ => (), showOnFocus: Boolean = true, firstLead: TabLead = TabLead.None,
               menu: String => List[MenuItem] = _ => Nil) extends Container {
   val label: Var[String] = Var(title)
   /** Whether what the tab shows is at work: a ring turns around its avatar, where it is led by one. */
@@ -37,10 +42,20 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   val marker: Var[Option[Component]] = Var(None)
 
   private def selected: Boolean = current() == key
-  /** What leads the label: the avatar in the ring's room, or the icon. */
-  val leadView: Option[Component] = lead match {
-    case TabLead.Person(who) =>
-      val face = new everyui.chat.Avatar(who, TabItem.face)
+  /** What leads the label (`TabLead`), changeable as the label is: a renamed persona's face, a new portrait. */
+  val lead: Var[TabLead] = own(Var(firstLead))
+  // who the avatar shows and which icon: the lead's view follows them in place while the lead keeps its kind
+  private val who: Var[Participant] = Var(Participant("", ""))
+  private val glyph: Var[MaterialIcon] = Var(MaterialIcon.Empty)
+  private val leads: Var[Option[Component]] = Var(None)
+  private var ledBy: String = "none"
+
+  /** What leads the label now: the avatar in the ring's room, or the icon. */
+  def leadView: Option[Component] = leads()
+
+  private def made(kind: String): Option[Component] = kind match {
+    case "person" =>
+      val face = new Avatar(who(), TabItem.face)
       face.busy := busy()
       face.busyDetail := busyDetail()
       val room = BusyRing.outset(TabItem.face)
@@ -51,11 +66,37 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
         size.height @= TabItem.face + room * 2.0
         children += face
       })
-    case TabLead.Icon(glyph) => Some(new MaterialIconView(glyph, 18.0) {
-      color := (if (selected) Theme.accent() else Theme.muted())
-    })
+    case "icon" =>
+      val view = new MaterialIconView(glyph(), 18.0) {
+        color := (if (selected) Theme.accent() else Theme.muted())
+      }
+      view.icon := glyph()
+      Some(view)
     case _ => None
   }
+
+  // a person for a person, an icon for an icon, is the same view showing the new one; another kind is made afresh
+  // and the one it replaces taken apart, once it is off the row
+  private def relead(l: TabLead): Unit = {
+    val kind = l match {
+      case TabLead.Person(p) =>
+        who @= p
+        "person"
+      case TabLead.Icon(i) =>
+        glyph @= i
+        "icon"
+      case _ => "none"
+    }
+    if (kind != ledBy) {
+      ledBy = kind
+      val old = leads()
+      leads @= made(kind)
+      old.foreach(_.dispose())
+    }
+  }
+  relead(lead())
+  lead.attach(relead)
+
   private val text = new TextView {
     content := label()
     font.size @= 16.0
@@ -73,7 +114,7 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   })
   private val row = new Container {
     layout @= Some(HorizontalLayout(6.0, middle = true))
-    children := leadView.toVector ++ icon().toVector ++ Vector(text) ++ marker().toVector ++ closeButton.toVector
+    children := leads().toVector ++ icon().toVector ++ Vector(text) ++ marker().toVector ++ closeButton.toVector
   }
   private val underline = new Container {
     size.height @= 3.0

@@ -32,7 +32,8 @@ import reactify.*
   * `tabLayout` is how it all lies, to keep (`layoutChanged`) and `restore`.
   *
   * A tab closes only once `canClose` lets it (the app asking whether to save it), whichever way it is closed; Close
-  * Others and Close All ask one tab at a time and stop at the first that stays. `tab(k)` finds a key's tabs, and
+  * Others and Close All ask one tab at a time and stop at the first that stays. `tab(k)` finds a key's tabs (to change
+  * their `label` or `lead` as what they show is renamed, `lead` answering the same for a tab made later), and
   * `dirty(k, on)` marks them with a dot. The keys `sharesGroupContent` says share one view per group show
   * `groupContent`'s for their group, told which of them it shows (`GroupContent.show`), rather than a content each: one
   * editor for a group's files, while a terminal keeps its own.

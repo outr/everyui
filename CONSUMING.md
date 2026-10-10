@@ -494,7 +494,12 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   `add(…, lead = TabLead.Person(p))` leads a tab with somebody's avatar (a conversation with an agent), and
   `TabLead.Icon(i)` with an icon (a file's type); `TabLead.None` by default, as before. A tab's `busy` and `busyDetail`
   Vars turn the busy ring (below) around its avatar, the avatar keeping the ring's room so the label never moves;
-  right to left the lead is at the label's right.
+  right to left the lead is at the label's right. A tab's `lead` is a `Var[TabLead]`, changeable once it is made as its
+  `label` is (`tab.lead @= TabLead.Person(renamed)`, or through `TabGroups.tab(k)` for a group's tabs, the groups'
+  `lead` answering the same for tabs made later): a person for a person (a new name, a new portrait) and an icon for an
+  icon show in the view they had, the tab exactly as wide; another kind is made afresh, the old view taken apart, and
+  the tab widens or narrows by the difference (an avatar's room is 20 px and the ring's outset on each side, an icon
+  18 px, and None has neither nor the 6 px gap after it). `leadView` is the view leading it now.
   `tabMenu` (`String => List[MenuItem]`, empty by default) gives a tab a context menu: the secondary button opens it
   at the pointer (keeping the browser's own away only where there is one), the menu key, Shift+F10 and OK held drop it
   from the tab. The bar is read as a tab list and each tab as a tab, and the tab shown is scrolled into view.
