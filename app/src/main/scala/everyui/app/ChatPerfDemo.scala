@@ -16,8 +16,8 @@ import reactify.*
   * starts (1 unless given), once the page has settled. It logs `chatperf built <ms> from <tick>` for the construction
   * and the view put on the screen, then `chatperf ok <first row shown> <ms> rows <rows made>` once it has drawn.
   * `reply=<words>` adds the agent's answer in those words as the newest entry, and `older=<seconds>` has earlier
-  * pages come that long after they are asked for. `theme=light` for the light theme,
-  * `rtl=1` for right to left. */
+  * pages come that long after they are asked for. `rails=1` gives the entries rails (`ChatEntry.rail`), a topic of seven
+  * at a time in `ChatDemo.topicColors`. `theme=light` for the light theme, `rtl=1` for right to left. */
 object ChatPerfDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -38,6 +38,7 @@ object ChatPerfDemo {
           meta = Some("model large")))))
       val started = Platform.ticks()
       val chat = new ChatView(entries, older)
+      if (railed) chat.rails @= true
       chat.size.width := ui.size.width()
       chat.size.height := ui.size.height()
       ui.children += chat
@@ -65,7 +66,13 @@ object ChatPerfDemo {
   }
 
   /** `n` entries, oldest first, one a minute up to `end`. */
-  def page(n: Int, end: Long): Vector[ChatEntry] = (0 until n).toVector.map(i => entry(i, end - (n - i).toLong * 60000L))
+  def page(n: Int, end: Long): Vector[ChatEntry] = (0 until n).toVector.map { i =>
+    val e = entry(i, end - (n - i).toLong * 60000L)
+    if (railed) e.rail @= Some(ChatDemo.topicColors((i / 7) % ChatDemo.topicColors.length))
+    e
+  }
+
+  private def railed: Boolean = Platform.launchArg("rails") == "1"
 
   private def entry(i: Int, time: Long): ChatEntry = i % 10 match {
     case 0 => ChatEntry.message("p" + i.toString, you, self = true, ask(i), Some(time))

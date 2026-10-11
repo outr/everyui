@@ -41,7 +41,8 @@ class MessageActions(list: VirtualList[ChatEntry], changed: () => Unit, away: ()
   }
   private val across: Val[Double] = own(Val(row().flatMap(_.message).map { v =>
     val b = v.bubble
-    val left = b.position.left()
+    // (the message drawn after the room a transcript keeps for its rails)
+    val left = v.position.left() + b.position.left()
     val width = b.size.width()
     if (fits(left, width)) beside(left, width)
     else if (after()) math.max(MessageActions.edge, left + width - size.width())
@@ -54,7 +55,8 @@ class MessageActions(list: VirtualList[ChatEntry], changed: () => Unit, away: ()
     val h = size.height()
     if (top + height <= 0.0 || top >= list.size.height()) None
     else {
-      val wanted = if (fits(b.position.left(), b.size.width())) top + math.max(0.0, math.min(4.0, (height - h) / 2.0))
+      val fitting = fits(v.position.left() + b.position.left(), b.size.width())
+      val wanted = if (fitting) top + math.max(0.0, math.min(4.0, (height - h) / 2.0))
         else top - h + Transcript.padY
       Some(math.max(MessageActions.edge, math.min(list.size.height() - h - MessageActions.edge, wanted)))
     }

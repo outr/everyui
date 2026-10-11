@@ -1,5 +1,6 @@
 package everyui.chat
 
+import everyui.Color
 import everyui.component.Component
 import reactify.*
 
@@ -18,6 +19,14 @@ import reactify.*
 sealed abstract class ChatEntry {
   def id: String
   def time: Option[Long]
+
+  /** The colour of a thin line down the entry's start edge, saying which thread or topic it is in: none (the default)
+    * draws none, and entries one after another of the same colour draw one unbroken line (`Transcript.rails`). It can
+    * be set or changed at any time, a message's thread known only after it arrives. Made the first time it is asked
+    * for, so an entry never drawn and never given one costs nothing. */
+  lazy val rail: Var[Option[Color]] = Var(None)
+  /** What a screen reader says of the rail, after the entry (the topic's name): nothing by default. */
+  lazy val railLabel: Var[Option[String]] = Var(None)
 }
 
 object ChatEntry {
@@ -73,39 +82,47 @@ object ChatEntry {
   final class Custom(val id: String, val make: () => Component, val time: Option[Long] = None) extends ChatEntry
 
   def message(id: String, author: Participant, self: Boolean, text: String = "", time: Option[Long] = None,
-              streaming: Boolean = false, meta: Option[String] = None): Message = {
+              streaming: Boolean = false, meta: Option[String] = None, rail: Option[Color] = None): Message = {
     val m = new Message(id, author, self, time)
     m.text @= text
     m.streaming @= streaming
     m.meta @= meta
-    m
+    railed(m, rail)
   }
 
   def activity(id: String, summary: String, status: ActivityStatus = ActivityStatus.Running,
                details: Option[() => Component] = None, time: Option[Long] = None,
-               lead: ActivityLead = ActivityLead.None, body: String = ""): Activity = {
+               lead: ActivityLead = ActivityLead.None, body: String = "", rail: Option[Color] = None): Activity = {
     val a = new Activity(id, details, time)
     a.summary @= summary
     a.status @= status
     a.lead @= lead
     a.body @= body
-    a
+    railed(a, rail)
   }
 
-  def thinking(id: String, started: Long, text: String = "", done: Option[Long] = None): Thinking = {
+  def thinking(id: String, started: Long, text: String = "", done: Option[Long] = None,
+               rail: Option[Color] = None): Thinking = {
     val t = new Thinking(id, started)
     t.text @= text
     t.done @= done
-    t
+    railed(t, rail)
   }
 
-  def marker(id: String, text: String, time: Option[Long] = None): Marker = {
+  def marker(id: String, text: String, time: Option[Long] = None, rail: Option[Color] = None): Marker = {
     val m = new Marker(id, time)
     m.text @= text
-    m
+    railed(m, rail)
   }
 
-  def custom(id: String, make: () => Component, time: Option[Long] = None): Custom = new Custom(id, make, time)
+  def custom(id: String, make: () => Component, time: Option[Long] = None, rail: Option[Color] = None): Custom =
+    railed(new Custom(id, make, time), rail)
+
+  // `e` with its rail, where it is given one (and the rail left unmade where it is not)
+  private def railed[E <: ChatEntry](e: E, rail: Option[Color]): E = {
+    if (rail.nonEmpty) e.rail @= rail
+    e
+  }
 
   /** A tool call's `details` as plain text: what went in, then what came out, each under a small heading, wrapped to the
     * width the transcript gives it. */

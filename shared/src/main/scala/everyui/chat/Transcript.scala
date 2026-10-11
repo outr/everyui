@@ -77,6 +77,13 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** What the small row of buttons beside a message offers (`MessageActions`): `actionsFor` unless the app says
     * otherwise (Retry, Quote, Edit as well); nothing, no buttons. Asked of messages only. */
   val messageActions: Var[ChatEntry => List[MessageAction]] = own(Var((e: ChatEntry) => actionsFor(e)))
+  /** Whether room is kept at the start edge for the entries' rails (`ChatEntry.rail`), so the rows line up whether or
+    * not theirs has one: on for a conversation of threads or topics, before it shows (turned on later, the rows draw a
+    * little narrower, the one at the top of the view kept where it is). Off, the default, the rows are as they always
+    * were, and a rail is drawn in the margin they keep anyway. */
+  val rails: Var[Boolean] = own(Var(false))
+  // the room kept for the rails, at the start edge
+  private[chat] val gutter: Val[Double] = own(Val(if (rails()) Transcript.railGutter else 0.0))
   /** Whether earlier entries are being fetched. */
   val loading: Var[Boolean] = own(Var(false))
   /** Whether `loadOlder` has said there is nothing earlier. */
@@ -96,7 +103,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     measuredRows = true)(() => new ChatRow(this))
 
   /** The widest a message's bubble, a tool call or the app's component may be in a transcript this wide. */
-  val widest: Val[Double] = own(Val(Transcript.widest(list.size.width())))
+  val widest: Val[Double] = own(Val(Transcript.widest(list.size.width() - gutter())))
 
   private val jump: Button = Button.bound(
     if (pin.unseen() > 0) ChatWords.newCount(pin.unseen()) else ChatWords.jumpToLatest,
@@ -114,7 +121,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   list.size.width := size.width()
   list.size.height := size.height()
-  list.estimate = (e: ChatEntry) => Transcript.estimate(e, list.size.width(), bodyLines())
+  list.estimate = (e: ChatEntry) => Transcript.estimate(e, list.size.width() - gutter(), bodyLines())
   list.semantics @= Semantics("list", label = ChatWords.conversation)
   size.width @= 400.0
   size.height @= 400.0
@@ -129,8 +136,13 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     Grouping.leads(if (index > 0 && index <= list.count) Some(list(index - 1)) else None, entry)
 
   /** How an entry is read out: a message by its author and words, a tool call by what it does, its body and how it
-    * stands. */
-  def said(entry: ChatEntry): String = entry match {
+    * stands; then its rail's `railLabel`, where it has one. */
+  def said(entry: ChatEntry): String = {
+    val label = entry.railLabel()
+    if (label.isEmpty) saidOf(entry) else saidOf(entry) + ", " + label.get
+  }
+
+  private def saidOf(entry: ChatEntry): String = entry match {
     case m: ChatEntry.Message => m.author.name + ": " + m.text()
     case a: ChatEntry.Activity => a.summary() + (if (a.body().isEmpty) "" else ": " + a.body()) + ", " +
       ActivityView.said(a.status())
@@ -141,13 +153,13 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   /** The view for `entry` in `row`, which is taken apart again when the row moves on. */
   private[chat] def viewFor(entry: ChatEntry, leading: Boolean, row: ChatRow): Component = entry match {
-    case m: ChatEntry.Message => new MessageView(m, leading, row.size.width(), ticker.now, render, !dayMarkers(),
+    case m: ChatEntry.Message => new MessageView(m, leading, row.inner, ticker.now, render, !dayMarkers(),
       () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()))
     case a: ChatEntry.Activity =>
-      new ActivityView(a, row.size.width(), () => a.details.map(make => keep(a.id, make)), render, bodyLines())
-    case t: ChatEntry.Thinking => new ThinkingView(t, row.size.width(), ticker.now)
-    case m: ChatEntry.Marker => new MarkerView(m, row.size.width())
-    case c: ChatEntry.Custom => new CustomView(made(c), row.size.width(), list)
+      new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), render, bodyLines())
+    case t: ChatEntry.Thinking => new ThinkingView(t, row.inner, ticker.now)
+    case m: ChatEntry.Marker => new MarkerView(m, row.inner)
+    case c: ChatEntry.Custom => new CustomView(made(c), row.inner, list)
   }
 
   private def made(c: ChatEntry.Custom): Component = keep(c.id, c.make)
@@ -183,6 +195,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private def reshow(): Unit = {
     val all = entries()
     shown @= (if (dayMarkers()) Grouping.withDays(all, dayOf, separator) else all)
+    bridge()
     val ids = all.map(_.id)
     // what arrived after the newest there was is read out; what came before it (earlier history) is not
     if (announces() && lastIds.nonEmpty) {
@@ -207,9 +220,30 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       val on = all.flatMap(e => dayOf(e).toList).toSet
       val gone = days.filter { case (day, _) => !on.contains(day) }
       if (gone.nonEmpty) {
-        gone.values.foreach(m => Component.unbind(m.text))
+        gone.values.foreach { m =>
+          Component.unbind(m.text)
+          Component.unbind(m.rail)
+        }
         days = days.filter { case (day, _) => on.contains(day) }
       }
+    }
+  }
+
+  // a day's separator between two entries of one thread carries its rail on, so that the line runs through it unbroken
+  private def bridge(): Unit = if (days.nonEmpty) {
+    val s = shown()
+    var i = 1
+    while (i < s.length - 1) {
+      val e = s(i)
+      if (Grouping.isDay(e)) {
+        val before = s(i - 1)
+        val after = s(i + 1)
+        e.rail := {
+          val r = before.rail()
+          if (r.nonEmpty && r == after.rail()) r else None
+        }
+      }
+      i += 1
     }
   }
 
@@ -544,6 +578,11 @@ object Transcript {
   /** Space above a group, and between the messages in one. */
   val groupGap: Double = 10.0
   val lineGap: Double = 2.0
+  /** An entry's rail (`ChatEntry.rail`): how wide, how far in from the start edge, and the room kept for it before the
+    * rows where the transcript keeps some (`rails`). */
+  val railWidth: Double = 3.0
+  val railInset: Double = 4.0
+  val railGutter: Double = 6.0
   /** How far an arrow scrolls through an entry taller than the view. */
   val lineStep: Double = 48.0
   /** How near the top earlier entries are asked for. */

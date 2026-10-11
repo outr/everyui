@@ -1,6 +1,7 @@
 package everyui.app
 
 import everyui.async.Task
+import everyui.Color
 import everyui.chat.*
 import everyui.component.*
 import everyui.component.types.{FontWeight, TextDirection, WhiteSpace}
@@ -24,7 +25,9 @@ import reactify.*
   * answered. Resting the pointer on a message, or the cursor with the focus on the transcript, shows Copy message
   * beside it (`Transcript.messageActions`), where there is a clipboard. Sam has a picture, which a click on his avatar
   * or name shows whole; `author=log` logs the press (`chat author <id> <message>`) in its place. `theme=light` for
-  * the light theme, `rtl=1` for right to left. Logs `chat ok` once built. */
+  * the light theme, `rtl=1` for right to left. `rails=1` gives every entry its topic's rail (`ChatEntry.rail`), one
+  * of twelve colours by the topic's index (`topicColors`), each topic begun by its marker; a reply gets its rail once
+  * it is whole. Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -61,13 +64,15 @@ object ChatDemo {
     field.position.left @= 12.0
     field.position.top @= 8.0
     field.size.width := composer.size.width() - 24.0
+    topicAt = 21
     val chat = new ChatView(entries, Some(older), working, connection, Some(composer))
+    chat.rails @= railed
     chat.size.width := ui.size.width()
     chat.size.height := ui.size.height()
     field.submitted.attach { text =>
       if (text.trim.nonEmpty) {
         field.value @= ""
-        add(entries, ChatEntry.message("you-" + Clock.real().toString, you, self = true, text, Some(Clock.real())))
+        add(entries, now(ChatEntry.message("you-" + Clock.real().toString, you, self = true, text, Some(Clock.real()))))
         Platform.after(0.8, () => reply(entries, working, scout, "Noted: \"" + text.trim + "\". I'll fold it into the plan."))
       }
     }
@@ -104,8 +109,33 @@ object ChatDemo {
 
   private def add(entries: Var[Vector[ChatEntry]], e: ChatEntry): Unit = entries @= entries() :+ e
 
+  /** A topic's rail colour, by its index, wrapping: twelve that read on the dark theme and the light. */
+  val topicColors: Vector[Color] = Vector("#e5484d", "#f76b15", "#ffb224", "#99d52a", "#30a46c", "#12a594",
+    "#05a2c2", "#0090ff", "#3e63dd", "#8e4ec6", "#d6409f", "#a18072").map(Color.fromHex)
+
+  private def railed: Boolean = Platform.launchArg("rails") == "1"
+  // the topic the conversation is in, by its index in the topic history: the earlier history's are Sprint 0 to 20
+  private var topicAt: Int = 21
+  private def topicName(index: Int): String = index match {
+    case 21 => "Release planning"
+    case 22 => "Release 2.0 plan"
+    case _ => "Sprint " + index.toString
+  }
+
+  // `e` in topic `index`, where the demo shows rails
+  private def topic[E <: ChatEntry](e: E, index: Int): E = {
+    if (railed) {
+      e.rail @= Some(topicColors(index % topicColors.length))
+      e.railLabel @= Some(topicName(index))
+    }
+    e
+  }
+  private def now[E <: ChatEntry](e: E): E = topic(e, topicAt)
+
   // entry `i` of the earlier history: a day's talk every few dozen entries, back over some weeks
-  private def past(i: Int, start: Long): ChatEntry = {
+  private def past(i: Int, start: Long): ChatEntry = topic(pastEntry(i, start), i / 97)
+
+  private def pastEntry(i: Int, start: Long): ChatEntry = {
     val time = start - 3600000L * 3L - (history - i).toLong * 900000L
     val who = i % 4 match {
       case 0 => sam
@@ -122,7 +152,7 @@ object ChatDemo {
         "and the rows it is drawn in are of different heights, as a real conversation's are." else ""), Some(time))
   }
 
-  private def opening(start: Long): Vector[ChatEntry] = Vector(
+  private def opening(start: Long): Vector[ChatEntry] = Vector[ChatEntry](
     ChatEntry.marker("topic", "Topic: Release planning", Some(start - 600000L)),
     ChatEntry.message("o1", sam, self = false, "Morning! Where are we with the release?", Some(start - 540000L)),
     ChatEntry.message("o2", sam, self = false, "I need the notes by noon.", Some(start - 530000L)),
@@ -138,11 +168,12 @@ object ChatDemo {
       Some(ChatEntry.textDetails("ls -la backend/src", "drwxr-xr-x  main\ndrwxr-xr-x  test")), Some(start - 260000L),
       ActivityLead.Icon(MaterialIcon.Terminal), "`ls -la backend/src`"),
     ChatEntry.message("o5", layla, self = false, "صباح الخير! هل ملاحظات الإصدار جاهزة؟", Some(start - 240000L)))
+    .map(e => topic(e, 21))
 
   // the conversation, played on timers
   private def play(entries: Var[Vector[ChatEntry]], working: Var[Vector[Working]], connection: Var[ConnectionState],
                    chat: ChatView): Unit = {
-    val think = ChatEntry.thinking("t1", Clock.real())
+    val think = now(ChatEntry.thinking("t1", Clock.real()))
     Platform.after(1.0, () => {
       working @= working() :+ Working("w-helper", helper, "thinking", Clock.real(), Some(() => working @= working().filterNot(_.id == "w-helper")))
       add(entries, think)
@@ -151,24 +182,24 @@ object ChatDemo {
     })
     Platform.after(5.0, () => {
       think.done @= Some(Clock.real() - think.started)
-      val search = ChatEntry.activity("a1", "Searched the repository for open TODOs",
+      val search = now(ChatEntry.activity("a1", "Searched the repository for open TODOs",
         details = Some(ChatEntry.textDetails("grep -rn TODO src/", "src/app/Main.scala:12: // TODO: remove the flag\n" +
-          "src/net/Socket.scala:88: // TODO: back off on reconnect")), time = Some(Clock.real()))
+          "src/net/Socket.scala:88: // TODO: back off on reconnect")), time = Some(Clock.real())))
       add(entries, search)
       Platform.after(2.0, () => search.status @= ActivityStatus.Succeeded)
     })
     // a message to The Oracle that goes, its words arriving after it started, and fails
     Platform.after(2.0, () => {
-      val ask = ChatEntry.activity("a0", "Message to The Oracle", lead = ActivityLead.Person(oracle),
-        time = Some(Clock.real()))
+      val ask = now(ChatEntry.activity("a0", "Message to The Oracle", lead = ActivityLead.Person(oracle),
+        time = Some(Clock.real())))
       add(entries, ask)
       Platform.after(1.0, () => ask.body @= "Are you there? The Persona needs a `name` before it can be saved.")
       Platform.after(6.0, () => ask.status @= ActivityStatus.Failed)
     })
     Platform.after(7.5, () => {
-      val tests = ChatEntry.activity("a2", "Ran the test suite", details = Some(ChatEntry.textDetails("sbt test",
+      val tests = now(ChatEntry.activity("a2", "Ran the test suite", details = Some(ChatEntry.textDetails("sbt test",
         "[error] SocketSpec: reconnects after a drop *** FAILED ***\n[info] 412 passed, 1 failed")),
-        time = Some(Clock.real()))
+        time = Some(Clock.real())))
       add(entries, tests)
       Platform.after(2.0, () => tests.status @= ActivityStatus.Failed)
     })
@@ -189,25 +220,29 @@ object ChatDemo {
     })
     Platform.after(21.0, () => working @= working().filterNot(_.id == "w-notes"))
     Platform.after(16.0, () => {
-      add(entries, ChatEntry.custom("approve-1", () => approval(chat), Some(Clock.real())))
+      add(entries, now(ChatEntry.custom("approve-1", () => approval(chat), Some(Clock.real()))))
       working @= working().filterNot(_.id == "w-scout")
     })
     Platform.after(18.0, () => {
-      add(entries, ChatEntry.message("s1", sam, self = false, "Nice. Let's aim for Thursday then.", Some(Clock.real())))
-      add(entries, ChatEntry.marker("rename", "Topic renamed: Release 2.0 plan", Some(Clock.real())))
+      add(entries, now(ChatEntry.message("s1", sam, self = false, "Nice. Let's aim for Thursday then.",
+        Some(Clock.real()))))
+      // a new topic, from its marker on
+      topicAt = 22
+      add(entries, now(ChatEntry.marker("rename", "Topic renamed: Release 2.0 plan", Some(Clock.real()))))
       working @= working().filterNot(_.id == "w-sam")
     })
     Platform.after(19.0, () => {
-      add(entries, ChatEntry.message("l1", layla, self = false, "ممتاز. سأراجع SocketSpec بعد الظهر وأرسل لكم النتيجة.",
-        Some(Clock.real())))
-      add(entries, ChatEntry.message("l2", layla, self = false, "الخميس مناسب لي.", Some(Clock.real())))
-      add(entries, ChatEntry.message("l3", layla, self = false, "قبل الإصدار:\n\n- إصلاح `SocketSpec`\n- مراجعة " +
-        "**ملاحظات** الإصدار", Some(Clock.real())))
+      add(entries, now(ChatEntry.message("l1", layla, self = false,
+        "ممتاز. سأراجع SocketSpec بعد الظهر وأرسل لكم النتيجة.", Some(Clock.real()))))
+      add(entries, now(ChatEntry.message("l2", layla, self = false, "الخميس مناسب لي.", Some(Clock.real()))))
+      add(entries, now(ChatEntry.message("l3", layla, self = false, "قبل الإصدار:\n\n- إصلاح `SocketSpec`\n- مراجعة " +
+        "**ملاحظات** الإصدار", Some(Clock.real()))))
     })
-    Platform.after(20.0, () => add(entries, ChatEntry.message("you-log", you, self = true, "The failing run's log: " +
+    Platform.after(20.0, () => add(entries, now(ChatEntry.message("you-log", you, self = true,
+      "The failing run's log: " +
       "https://ci.example.com/builds/2026-09-29/release-2.0/artifacts/logs/socket-spec-reconnect-after-drop-full-output.log " +
       "and the fix goes in src/main/scala/everyui/network/transport/reconnect/SocketReconnectPolicyWithExponentialBackoff.scala " +
-      "(a00a382f6b789870a62db369bf580a006d7f1c2e).", Some(Clock.real()))))
+      "(a00a382f6b789870a62db369bf580a006d7f1c2e).", Some(Clock.real())))))
     if (Platform.launchArg("offline") == "1") connection @= ConnectionState.Offline(Some("the server is not answering"),
       Some(() => connection @= ConnectionState.Connecting))
   }
@@ -221,6 +256,8 @@ object ChatDemo {
     stream(m.text, text, 0, 6, () => {
       m.streaming @= false
       m.meta @= Some("model large · " + (text.length / 4).toString + " tokens")
+      // its thread known once it is whole
+      now(m)
       if (job.nonEmpty) working @= working().filterNot(_.id == job)
     })
   }

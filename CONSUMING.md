@@ -1475,6 +1475,33 @@ ChatEntry.activity("c-10", "Ran a command", ActivityStatus.Succeeded, lead = Act
 call.status @= ActivityStatus.Failed       // the ring stops, a cross on the face's corner
 ```
 
+### Threads (`ChatEntry.rail`, `Transcript.rails`)
+
+Any entry (a message, a tool call, reasoning, a note, the app's component) can have a rail: a thin line in a colour of
+the app's down its start edge (the left, the right right to left), saying which thread or topic it is in. `rail` is a
+`Var[Option[Color]]`, None by default, which draws nothing; set at any time, a message's thread known only after it
+arrives, and changed or taken away. The line is 3 pixels wide, 4 in from the edge, and as tall as the entry's whole row,
+the space above it too, so entries one after another of the same colour draw one unbroken line, and the colour changes
+where the thread does (put the app's marker there, in the new thread's colour, to say so). A day's separator between two
+entries of one thread carries its line on. `railLabel` (None by default) is what a screen reader says of it, after the
+entry ("Ada: Morning!, Release planning"), since a colour alone tells it nothing. Every factory takes `rail`.
+
+`rails` (on the `Transcript`, or the `ChatView`) keeps 6 pixels of room at the start edge for the lines, every row drawn
+after it, so the entries with a rail and those without line up. Set it before the conversation shows, for one with
+threads; set later, the rows draw a little narrower, and the entry at the top of the view stays where it is. Off, the
+default, every row is drawn exactly as it was before rails, and a rail is drawn in the 12-pixel margin the rows keep at
+either side anyway, 5 pixels from an avatar. A row makes its line the first time it shows an entry with a rail, so a
+transcript without them makes nothing more, and the rail of an entry never drawn is never made.
+
+```scala
+val topicColors = Vector("#e5484d", "#f76b15", "#ffb224", "#99d52a", "#30a46c", "#12a594", "#05a2c2", "#0090ff",
+  "#3e63dd", "#8e4ec6", "#d6409f", "#a18072").map(Color.fromHex)
+chat.rails @= true
+ChatEntry.marker("t-3", "Topic: Release 2.0", rail = Some(topicColors(3 % 12)))
+reply.rail @= Some(topicColors(topic.index % 12))     // once its thread is known
+reply.railLabel @= Some(topic.name)
+```
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its
