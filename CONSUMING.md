@@ -1377,6 +1377,11 @@ click is theirs alone, so it neither moves the transcript's cursor nor starts a 
 the focus of its own (the transcript is one, its cursor on the entries); the keyboard and a remote reach the author
 through the message's menu, whose About entry does the same.
 
+Everybody else's bubble is the theme's control colour, drawn whole; `MessageView.othersOpacity` (1 by default) draws
+less of it, for an app that shows a picture behind its conversations and wants it through those bubbles as through
+one's own (a wash of the accent): about 0.8 keeps the words easy to read. It is the app's, every conversation following
+it, the bubbles shown too; the words, and the code and tables in a message, are drawn as they are.
+
 ```scala
 chat.onAuthor @= Some(p => showProfile(p.participant.id))
 ```

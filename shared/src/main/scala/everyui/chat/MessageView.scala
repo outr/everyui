@@ -102,7 +102,16 @@ object MessageView {
     c.cursor := (if (answers) "pointer" else "default")
   }
 
-  /** A bubble's colour: one's own a wash of the accent, everybody else's the control colour; the text colour reads on
-    * either, in a light theme and a dark one. */
-  def fill(self: Boolean): Color = if (self) Theme.accent().withAlpha(0.2) else Theme.control()
+  /** How much of everybody else's bubble is drawn, 0 to 1: all of it (1, the default), or less where the app shows a
+    * picture behind its conversations and wants it through their bubbles as through one's own, about 0.8 keeping the
+    * words on them easy to read. The words, and the code and tables in a message, are drawn as they are. */
+  val othersOpacity: Var[Double] = Var(1.0)
+
+  /** A bubble's colour: one's own a wash of the accent, everybody else's the control colour (`othersOpacity` of it);
+    * the text colour reads on either, in a light theme and a dark one. */
+  def fill(self: Boolean): Color = if (self) Theme.accent().withAlpha(0.2) else {
+    val c = Theme.control()
+    val o = math.max(0.0, math.min(1.0, othersOpacity()))
+    if (o >= 1.0) c else c.withAlpha(c.alpha * o)
+  }
 }
