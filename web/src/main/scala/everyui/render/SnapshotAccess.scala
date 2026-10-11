@@ -49,7 +49,7 @@ object SnapshotAccess {
       val path = js.Dynamic.newInstance(js.Dynamic.global.Path2D)(f.path.svg)
       f.fill.foreach { c =>
         g.fillStyle = c.toRGBA
-        g.fill(path)
+        g.fill(path, if (f.evenOdd) "evenodd" else "nonzero")
       }
       f.stroke.foreach { c =>
         g.strokeStyle = c.toRGBA

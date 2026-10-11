@@ -21,7 +21,8 @@ import reactify.*
   * `row`'s: by default the item's `labelOf` with what the query matched lit (`Match.spans`), and `detailOf` after it.
   *
   * Given `segments`, a row of chips over the list narrows the matches to one group (`groupOf`), on top of the query:
-  * a model picker's providers, say. The first segment is chosen to begin with, and `Segment.all` shows every match.
+  * a model picker's providers, say, each with an icon before its words if it likes (`SegmentIcon`). The first segment
+  * is chosen to begin with, and `Segment.all` shows every match.
   * A click or a tap chooses a chip; from the field, Tab and Shift+Tab go round the segments, and on a remote the
   * chips sit between the field and the list, Left and Right along them and OK choosing.
   *
@@ -31,7 +32,8 @@ import reactify.*
   *   }
   *
   *   new FilterPicker[Model](q => models.find(q), _.id, _.name, _.provider,
-  *     segments = List(Segment.all("All"), Segment("local", "Local"), Segment("anthropic", "Anthropic")),
+  *     segments = List(Segment.all("All"), Segment("local", "Local", Some(SegmentIcon(MaterialIcon.Computer))),
+  *       Segment("acme", "Acme", Some(SegmentIcon.Url("/providers/acme.svg")))),
   *     groupOf = _.providerKey).open()
   * }}} */
 class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labelOf: T => String,

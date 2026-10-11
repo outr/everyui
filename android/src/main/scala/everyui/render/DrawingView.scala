@@ -39,6 +39,7 @@ object DrawingView {
   /** A figure's path as Android draws one. */
   def path(f: Figure): Path = {
     val p = new Path
+    if (f.evenOdd) p.setFillType(Path.FillType.EVEN_ODD)
     f.path.ops.foreach { op =>
       val v = op.values.map(_.toFloat).toArray
       op.kind match {

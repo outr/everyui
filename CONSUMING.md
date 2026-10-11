@@ -780,13 +780,43 @@ go round the segments while the focus stays in the field; on a remote the chips 
 list, Left and Right along them and OK choosing.
 
 ```scala
-import everyui.picker.Segment
+import everyui.picker.{Segment, SegmentIcon}
+import everyui.font.MaterialIcon
 
 new FilterPicker[Model](q => models.find(q), _.id, _.name, _.providerName,
-  segments = List(Segment.all("All"), Segment("local", "Local"), Segment("anthropic", "Anthropic"),
-    Segment("openai", "OpenAI"), Segment("fireworks", "Fireworks.ai")),
+  segments = List(Segment.all("All"),
+    Segment("local", "This machine", Some(SegmentIcon(MaterialIcon.Computer))),
+    Segment("acme", "Acme", Some(SegmentIcon.Url("/providers/acme.svg"))),
+    Segment("shapes", "Shapes", Some(SegmentIcon.Path("M12 2 2 22h20Z")))),
   groupOf = _.provider).open()
 ```
+
+A segment may have an icon before its words (`Segment(key, label, icon)`, None by default): a provider's logo, a kind
+of file, a machine. It is drawn in the chip's colour for its words, whatever colours the icon has of its own, so it
+follows the theme, dark or light, the chip chosen and the focus. It is 14 pixels square (its ink, which a 24 box
+leaves a margin round, about the height of the words' capitals and a little more), centred in the chip, 6 pixels
+before the words, at the start of the chip and so on its right in a right-to-left language; the chip is that 20
+pixels wider and no taller. A chip without an icon is exactly as it was. `SegmentIcon` is one of:
+
+- `SegmentIcon(icon)` (`SegmentIcon.Material`): a glyph of the bundled Material Icons, shown wherever fonts are,
+  the Roku and the Apple TV too.
+- `SegmentIcon.Path(d, width = 24, height = 24, left = 0, top = 0, evenOdd = false)`: SVG path data (a `<path>`'s
+  `d`, every command, arcs and all) in its viewBox, filled; `evenOdd` for SVG's `fill-rule="evenodd"`.
+- `SegmentIcon.Url(url)`: a monochrome SVG file, read once (`everyui.draw.VectorIcon.load`) and kept for every chip
+  that shows it; the chip shows its words at once, the icon's room kept, and the icon once the file has come. On the web
+  the page fetches it: from its own origin (`/providers/acme.svg`, or relative to the page), or from another only if
+  that origin allows it (CORS), since the page reads the file to draw it; a file the browser may not read, or that is
+  missing, leaves the room empty, and the console says `VectorIcon: no SVG could be read from …`. On the desktop and
+  Android it is an http(s) URL, or a path of the app's own assets (`Platform.resolvePath`).
+
+What of an SVG file is drawn (`everyui.draw.VectorArt.parse`): its viewBox (or width and height), and each `<path>`,
+`<circle>`, `<ellipse>`, `<rect>`, `<line>`, `<polygon>` and `<polyline>`, filled unless its fill is `none` and
+stroked where it has a stroke, by the `fill-rule` and `stroke-width` it has or takes from the `<svg>` and `<g>` round it
+(attributes or `style`). Anything in `<defs>`, a clip, a mask or a `<title>` is not drawn. A `transform`, `<use>`,
+gradients and `<text>` are not followed, so an icon with them should be flattened to plain paths first; one-colour icon
+sets (simple-icons, Material's SVGs, Lucide) are drawn as they are. Path icons are drawn as vectors on the web (inline
+SVG), the desktop (JavaFX shapes) and Android (a canvas), crisp at any scale. A Roku and an Apple TV draw no paths:
+there a chip with a `Path` or `Url` icon shows its words alone, as one without an icon does.
 
 ### Markdown (`everyui.markdown`)
 

@@ -419,6 +419,7 @@ class RenderNode(val fx: Node) {
         shape.setFill(f.fill.map(RenderNode.paintOf).orNull)
         shape.setStroke(f.stroke.map(RenderNode.paintOf).orNull)
         shape.setStrokeWidth(f.width)
+        if (f.evenOdd) shape.setFillRule(javafx.scene.shape.FillRule.EVEN_ODD)
         shape.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND)
         shape.setStrokeLineJoin(javafx.scene.shape.StrokeLineJoin.ROUND)
         shape.setMouseTransparent(true)
@@ -1206,10 +1207,23 @@ object Platform {
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
 
-  /** A text file under the assets (a translation), by the URI `resolvePath` makes, or "" if it is not there. */
-  def readText(path: String, done: String => Unit): Unit = done(
-    try java.nio.file.Files.readString(java.nio.file.Paths.get(new java.net.URI(path)))
-    catch { case _: Exception => "" })
+  /** A text file under the assets (a translation), by the URI `resolvePath` makes, at once; or one at an http(s) URL
+    * (an SVG icon), read off the thread that draws and answered on it; "" if it is not there. */
+  def readText(path: String, done: String => Unit): Unit =
+    if (path.startsWith("http://") || path.startsWith("https://")) offThread(() => {
+      val text =
+        try {
+          val connection = new java.net.URI(path).toURL.openConnection()
+          connection.setConnectTimeout(10000)
+          connection.setReadTimeout(30000)
+          val in = connection.getInputStream
+          try new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8) finally in.close()
+        } catch { case _: Exception => "" }
+      later(() => done(text))
+    })
+    else done(
+      try java.nio.file.Files.readString(java.nio.file.Paths.get(new java.net.URI(path)))
+      catch { case _: Exception => "" })
 
   /** The character at a Unicode code point, as a string. */
   def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))

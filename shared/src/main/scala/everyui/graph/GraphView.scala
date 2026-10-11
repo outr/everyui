@@ -742,7 +742,8 @@ object GraphView {
   private[graph] def together(figures: List[Figure]): List[Figure] = {
     var groups: Vector[(Figure, Vector[PathOp])] = Vector.empty
     figures.foreach { f =>
-      val at = groups.indexWhere(g => g._1.fill == f.fill && g._1.stroke == f.stroke && g._1.width == f.width)
+      val at = groups.indexWhere(g => g._1.fill == f.fill && g._1.stroke == f.stroke && g._1.width == f.width &&
+        g._1.evenOdd == f.evenOdd)
       if (at < 0) groups = groups :+ ((f, f.path.ops))
       else groups = groups.updated(at, (groups(at)._1, groups(at)._2 ++ f.path.ops))
     }

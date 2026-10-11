@@ -39,6 +39,12 @@ final class Path(val ops: Vector[PathOp]) {
 
   def isEmpty: Boolean = ops.isEmpty
 
+  /** The path `scale` times its size, then moved `dx` across and `dy` down: art drawn in a box of its own (an icon's
+    * 24 by 24) fitted to where it shows. */
+  def placed(scale: Double, dx: Double, dy: Double): Path = new Path(ops.map { op =>
+    op.copy(values = op.values.zipWithIndex.map { case (v, i) => if (i % 2 == 0) v * scale + dx else v * scale + dy })
+  })
+
   /** The path in dashes: `on` pixels drawn, then `off` left out, all along it (curves followed in short steps), each
     * dash a line of its own, so every backend draws it the same way; and a platform that draws only straight strokes
     * (a Roku) still draws the dashes of a line across or down. A dashed edge, a planned box's outline. */

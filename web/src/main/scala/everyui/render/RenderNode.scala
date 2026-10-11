@@ -431,6 +431,7 @@ class RenderNode(val el: html.Element) {
         shape.setAttribute("d", f.path.svg)
         shape.setAttribute("fill", f.fill.map(_.toHex).getOrElse("none"))
         shape.setAttribute("fill-opacity", f.fill.map(_.alpha.toString).getOrElse("1"))
+        shape.setAttribute("fill-rule", if (f.evenOdd) "evenodd" else "nonzero")
         shape.setAttribute("stroke", f.stroke.map(_.toHex).getOrElse("none"))
         shape.setAttribute("stroke-opacity", f.stroke.map(_.alpha.toString).getOrElse("1"))
         shape.setAttribute("stroke-width", f.width.toString)
@@ -1540,7 +1541,8 @@ object Platform {
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
 
-  /** A text file served with the page (a translation), or "" if it cannot be had. */
+  /** A text file served with the page (a translation, an SVG icon), or at another origin that allows the page to read
+    * it (CORS); "" if it cannot be had. */
   def readText(path: String, done: String => Unit): Unit = {
     val text: js.Function1[js.Dynamic, js.Any] = r => if (r.ok.asInstanceOf[Boolean]) r.text() else ""
     val ok: js.Function1[js.Any, Unit] = t => done(t.toString)

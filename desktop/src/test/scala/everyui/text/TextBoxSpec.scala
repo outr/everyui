@@ -20,11 +20,17 @@ class TextBoxSpec extends FxSpec {
     font.size @= 14.0
   }
 
-  /** A panel `width` wide at the screen's left, holding `parts` placed by hand. */
-  private def panel(width: Double, parts: Component*): Container = new Container {
-    size.width @= width
-    size.height @= 200.0
-    children ++= parts
+  /** A panel `width` wide at the screen's left, holding `parts` placed by hand, made on the FX thread as every component
+    * is: made on the spec's own, it took its parts while the FX thread looked at their words' box, and the look the
+    * words asked for as they were put in it could be lost between the two threads (TextView.check's list), leaving them
+    * waiting for one that never came, drawn whole past the panel. */
+  private def panel(width: Double, parts: Component*): Container = {
+    def made: Container = new Container {
+      size.width @= width
+      size.height @= 200.0
+      children ++= parts
+    }
+    if (javafx.application.Platform.isFxApplicationThread) made else fx(made)
   }
 
   // a few turns for the look at the box (afterTurn) and what it lays out again

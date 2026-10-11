@@ -1860,23 +1860,36 @@ object Platform {
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
 
-  /** A text file among the APK's assets (a translation), or "" if it is not there. */
-  def readText(path: String, done: String => Unit): Unit = done(
+  /** A text file among the APK's assets (a translation), at once; or one at an http(s) URL (an SVG icon), read off the
+    * thread that draws and answered on it; "" if it is not there. */
+  def readText(path: String, done: String => Unit): Unit =
+    if (path.startsWith("http://") || path.startsWith("https://")) offThread(() => {
+      val text =
+        try {
+          val connection = new java.net.URL(path).openConnection()
+          connection.setConnectTimeout(10000)
+          connection.setReadTimeout(30000)
+          textOf(connection.getInputStream)
+        } catch { case _: Exception => "" }
+      later(() => done(text))
+    })
+    else done(try textOf(Host.activity.getAssets.open(path)) catch { case _: Exception => "" })
+
+  // all of a stream, as UTF-8, closed after
+  private def textOf(in: java.io.InputStream): String = {
+    // not InputStream.readAllBytes: Android has no such method before API 33, and the televisions this runs
+    // on are older than that
     try {
-      val in = Host.activity.getAssets.open(path)
-      // not InputStream.readAllBytes: Android has no such method before API 33, and the televisions this runs
-      // on are older than that
-      try {
-        val out = new java.io.ByteArrayOutputStream()
-        val buffer = new Array[Byte](8192)
-        var read = in.read(buffer)
-        while (read != -1) {
-          out.write(buffer, 0, read)
-          read = in.read(buffer)
-        }
-        new String(out.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
-      } finally in.close()
-    } catch { case _: Exception => "" })
+      val out = new java.io.ByteArrayOutputStream()
+      val buffer = new Array[Byte](8192)
+      var read = in.read(buffer)
+      while (read != -1) {
+        out.write(buffer, 0, read)
+        read = in.read(buffer)
+      }
+      new String(out.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
+    } finally in.close()
+  }
 
   /** The character at a Unicode code point, as a string. */
   def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))
