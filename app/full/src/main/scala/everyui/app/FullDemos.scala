@@ -53,6 +53,10 @@ object FullDemos {
       CenterMixDemo.run()
       true
     }
+    else if (demo == "listening") {
+      ListeningDemo.run()
+      true
+    }
     else if (demo == "transfer") {
       TransferDemo.run()
       true

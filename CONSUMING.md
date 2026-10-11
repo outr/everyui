@@ -2428,6 +2428,64 @@ and +12 dB; `db=` starts it there, `steps=1` walks 0, +3, +6 and 0 every four se
 file twelve seconds in, and `muted=1` plays it muted (still measured where it is decoded here; a bitstream passed
 through is not the player's to mute).
 
+## Listening aids: voice clarity and night mode (`voiceClarity`, `nightMode`)
+
+Two more aids for hearing what is said, beside the centre mix, and unlike it they work on any source, stereo and mono
+as much as surround. Each is a level from 0 (off, as it starts) to 1 on a `VideoView` (or an `AudioPlayer`), heard at
+once as it plays, gliding to a new level over 20 ms rather than clicking.
+
+```scala
+video.voiceClarity @= 0.5                           // the voices' band lifted, the rumble cut
+video.nightMode @= 1.0                              // the loud brought down, the quiet up
+settings.visible := video.voiceClaritySupported()   // and nightModeSupported: hide them where they do nothing
+video.voiceClarityOn.attach(on => ...)              // and nightModeOn: whether each is being heard now
+```
+
+- **Voice clarity** (`everyui.audio.VoiceClarity`) is an equaliser of three of RBJ's filters on every channel but the
+  LFE: a high-pass at 90 Hz (Butterworth, 12 dB an octave), a dip of 3 dB about 300 Hz (Q 1) and a lift of 6 dB
+  about 2.8 kHz (Q 1, about an octave and a third wide), each in proportion to the level (at 0.5 the lift is 3 dB, the
+  dip 1.5 and the high-pass at 45 Hz). A level rather than a number of dB, because the three go together.
+- **Night mode** (`everyui.audio.NightMode`) is a compressor that hears every channel as one (the loudest of them, as
+  a root mean square over 5 ms), so a burst on one side brings every channel down together and the picture of the
+  sound does not move. The level sets its threshold (-20 to -30 dBFS) and ratio (1:1 to 4:1) together, with a 6 dB
+  soft knee, an attack of 5 ms and a release of 200 ms, and a makeup gain that leaves what is at -20 dBFS as it was:
+  at 1, dialogue at about -27 comes up 5 dB, a quiet passage at -45 up 7.5, and a full-scale burst down 15.
+
+The order is fixed: the centre mix (folded or lifted) first, then voice clarity, then night mode, then a limiter that
+keeps every sample under -0.2 dBFS (the centre mix's, for any number of channels: its gain falls at once to what a
+peak needs and comes back over 0.2 s), since both can make a peak louder (`everyui.audio.ListeningAids`). With both at
+0 nothing is touched: every sample passes as it came.
+
+- **Android**: `ListeningProcessor`, an AudioProcessor in the player's `DefaultAudioSink` right after the centre mix's
+  `CenterMixer` (and before the spectrum tap, the player's volume and the loudness enhancer), on the decoded PCM,
+  16-bit or float, in all its channels: two where the centre mix folded, all of them where it did not. It is in the path
+  whenever the sound is PCM, so either aid is heard as soon as it is asked for; at 0 it copies every byte through.
+  Sound the output would take still encoded (AC-3, E-AC-3 to a receiver or a television) is decoded here instead while
+  either aid is above 0, where there is a decoder for it, exactly as for a centre mix other than 0, and passed through
+  again once all three are back at 0; where there is no decoder for it, `voiceClaritySupported` and
+  `nightModeSupported` are false. A level change is heard after what the AudioTrack already holds. A second after each
+  change it logs `media: listening aids at voice clarity 1.00, night mode 0.00: in -24.4 dBFS, out -18.5 dBFS, night
+  mode +0.0 to +0.0 dB, limited 0.0 dB`, and again two seconds later, settled.
+- **Web**: in the centre mix's Web Audio graph (`CenterFold`, one graph and one `MediaElementSource` for an element,
+  whichever of the three asked first), between its fold and its limiter (`ListeningNodes`): voice clarity as three
+  BiquadFilterNodes (the same RBJ filters) and night mode as a DynamicsCompressorNode set as close to the shared one as
+  it goes, with a gain after it that makes up as the shared one does. The browser's compressor hears peaks rather than
+  a root mean square, starts its knee at its threshold, looks 6 ms ahead (the sound comes 6 ms later while the graph is
+  in) and quickens its release as it reduces, so its threshold is set 3 dB higher and half a knee lower: a steady tone
+  settles within about 0.3 dB of the shared curve, and the timing differs a little. The rules for taking the element are
+  the centre mix's: nothing is taken until a level other than 0 is first asked for, and then only while the page may
+  make sound, its output plays two channels, and the source is one Web Audio may hear (an HLS stream through hls.js or
+  a file from the page's origin); a file from another origin is not supported and plays as ever. A second after each
+  change it logs `media: listening aids at voice clarity 1.00, night mode 0.00: in left -24.4 right -24.4 dBFS, out left
+  -18.5 right -18.5 dBFS, night mode -0.4 dB and +0.0 made up, peak out -15.4 dBFS` (the browser's reduction, then the
+  shared makeup).
+- **Roku, Apple TV, desktop**: not supported; `voiceClaritySupported` and `nightModeSupported` are false.
+
+`demo=listening` plays a stereo file (`src=`, `listening.mp4` beside the page by default) with buttons for each aid
+off, at half and at full; `clarity=` and `night=` start it there, `db=` sets a centre mix ahead of them, `steps=1`
+walks clarity on and off, then night mode, both, and neither, every four seconds, and `muted=1` plays it muted (still
+measured where it is decoded here).
+
 ## Sound: players that take turns, and effects (`AudioPlayer`)
 
 Every platform but one mixes as many `AudioPlayer`s as play at once. A Roku plays one Audio node at a time: a second

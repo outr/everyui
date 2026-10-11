@@ -193,7 +193,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
           override def onTracksChanged(tracks: Tracks): Unit =
             if (tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.isTypeSupported(C.TRACK_TYPE_AUDIO) && reachable) {
               Platform.log("media: centre mix: no sound here to reach, none of it playable")
-              mixed(false, false)
+              mixed(false, false, false)
             }
           override def onIsPlayingChanged(on: Boolean): Unit = session.foreach(_.state(on))
           override def onPositionDiscontinuity(was: Player.PositionInfo, now: Player.PositionInfo, reason: Int): Unit =
@@ -313,14 +313,19 @@ class ExoMedia(frame: Option[VideoFrame]) {
   /** The spectrum last heard, or nothing. */
   def bands(): List[Double] = heard
 
-  /** The player's renderers, its audio path first through the centre's fold ([[CenterMixer]]), and then, where it was
-    * asked for, the spectrum tap, which so hears what is played. What the tap hears is handed over on the main thread,
-    * and only while it is still this source playing. After both come the player's volume and the loudness enhancer
-    * (on the AudioTrack and its session), so a boost past full volume works on the fold, limited already. */
+  /** The player's renderers, its audio path first through the centre's fold ([[CenterMixer]]), then the listening aids
+    * ([[ListeningProcessor]]), and then, where it was asked for, the spectrum tap, which so hears what is played. What
+    * the tap hears is handed over on the main thread, and only while it is still this source playing. After them come
+    * the player's volume and the loudness enhancer (on the AudioTrack and its session), so a boost past full volume
+    * works on the fold, limited already. */
   private def renderers(url: String): DefaultRenderersFactory = {
     val fold = new CenterMixer
     fold.db = centre
     mixer = Some(fold)
+    val aids = new ListeningProcessor
+    aids.clarity = clarity
+    aids.night = night
+    aidsPath = Some(aids)
     val tap = if (!listening) Nil else List(new SpectrumTap(levels => Host.activity.runOnUiThread(() =>
       if (source == url && player.nonEmpty) {
         heard = levels.toList
@@ -331,9 +336,10 @@ class ExoMedia(frame: Option[VideoFrame]) {
                                             params: Boolean): androidx.media3.exoplayer.audio.AudioSink = {
         val made = new CenterGate(new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
           .setEnableAudioOutputPlaybackParameters(params)
-          .setAudioProcessors((fold :: tap).toArray[androidx.media3.common.audio.AudioProcessor])
+          .setAudioProcessors((fold :: aids :: tap).toArray[androidx.media3.common.audio.AudioProcessor])
           .build())
         made.force(centre)
+        made.aids(aiding)
         gate = Some(made)
         made
       }
@@ -368,6 +374,26 @@ class ExoMedia(frame: Option[VideoFrame]) {
     mixer.foreach(_.db = db)
     gate.foreach(_.force(db))
   }
+  /** Voice clarity and night mode, 0 to 1 each ([[ListeningProcessor]]): heard at once. Either above 0 has sound the
+    * output would take encoded decoded here instead ([[CenterGate]]), as the centre mix does. */
+  def setAids(c: Double, n: Double): Unit = {
+    clarity = c
+    night = n
+    aidsPath.foreach { p =>
+      p.clarity = c
+      p.night = n
+    }
+    gate.foreach(_.aids(aiding))
+  }
+  private var clarity = 0.0
+  private var night = 0.0
+  private def aiding: Boolean = clarity > 0.0 || night > 0.0
+  private var aidsPath: Option[ListeningProcessor] = None
+  private var aided = false
+
+  /** Whether the listening aids are in the path of what is heard now: PCM going out, through [[ListeningProcessor]]. */
+  def aidsHeard(): Boolean = aided
+
   private var centre = 0.0
   private var mixer: Option[CenterMixer] = None
   private var gate: Option[CenterGate] = None
@@ -383,11 +409,13 @@ class ExoMedia(frame: Option[VideoFrame]) {
     * where there is a decoder for it here. */
   def centerMixSupported(): Boolean = reachable
 
-  private def mixed(now: Boolean, can: Boolean): Unit = if (now != mixing || can != reachable) {
-    mixing = now
-    reachable = can
-    listener("mixing")
-  }
+  private def mixed(now: Boolean, can: Boolean, aids: Boolean): Unit =
+    if (now != mixing || can != reachable || aids != aided) {
+      mixing = now
+      reachable = can
+      aided = aids
+      listener("mixing")
+    }
 
   /** What the sound goes out as, once its track is made, said and told: folded or lifted where it is PCM and the
     * mixer took it; and, for sound that came encoded, whether it was decoded here for the centre or passed on. */
@@ -399,12 +427,12 @@ class ExoMedia(frame: Option[VideoFrame]) {
       val (kind, _) = CenterMixer.output()
       if (!pcm) Platform.log("media: centre mix: " + CenterGate.named(f) + " passed through to " + kind + " as it is" +
         (if (!can) ", with no decoder for it here: the centre cannot be reached"
-        else if (centre != 0.0) "" else ", while the centre is at 0"))
+        else if (centre != 0.0 || aiding) "" else ", while the centre and the listening aids are at 0"))
       else if (gate.exists(g => g.forcing && g.passed.contains(String.valueOf(f.sampleMimeType))))
         Platform.log("media: centre mix: decoding " + CenterGate.named(f) + " here for " + kind +
           ", rather than passing it through")
     }
-    mixed(pcm && mixer.exists(_.active), can)
+    mixed(pcm && mixer.exists(_.active), can, pcm && aidsPath.exists(_.active))
   }
 
   /** What the sound is, said to Android: a film or music, and whether it takes the sound over from other apps —
@@ -751,9 +779,10 @@ class ExoMedia(frame: Option[VideoFrame]) {
     relit = false
     frame.foreach(_.cues(Nil))
     mixer = None
+    aidsPath = None
     gate = None
     coming = None
-    mixed(false, true)
+    mixed(false, true, false)
   }
 
   /** Drawn by the display itself (a `SurfaceView`) or in the app's layers (a `TextureView`). A player keeps playing

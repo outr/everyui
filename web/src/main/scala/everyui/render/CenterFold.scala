@@ -1,6 +1,6 @@
 package everyui.render
 
-import everyui.audio.Downmix
+import everyui.audio.{Downmix, ListeningAids, NightMode}
 import org.scalajs.dom
 import org.scalajs.dom.html
 
@@ -10,21 +10,23 @@ import scala.scalajs.js.typedarray.Float32Array
 /** A `video` or `audio` element's sound folded to stereo through Web Audio, its centre at the level asked for
   * (MediaSupport.centerMix, [[Downmix]]): the element's source, made up to 5.1 the way Web Audio makes up channels
   * (mono to the centre, stereo to the front pair), split, each channel into the left and the right at its share, and
-  * through [[Downmix.softClip]] (a WaveShaperNode) to the page's AudioContext.
+  * through the listening aids ([[ListeningNodes]], MediaSupport.voiceClarity and nightMode) and [[Downmix.softClip]] (a
+  * WaveShaperNode) to the page's AudioContext: one graph for an element, whichever of the three asked for it.
   *
   * Once an element's sound is taken into Web Audio it never comes out again, and Web Audio hears nothing of media
   * from another origin that has not allowed it (CORS): it plays on, silent. So it is taken only when a centre other
-  * than the usual is first asked for, while the context may make sound (a browser keeps a page quiet until it is
-  * used), the output plays two channels (a page whose output plays 5.1 is left to play it), and what plays is
-  * [[WebMedia]]'s to hear: a stream through hls.js (Media Source Extensions, a `blob:` of the page's own) or a file
-  * from the page's origin. Until then the element plays as ever, and back at 0 dB it is the browser's own fold. A
-  * file from another origin that comes to an element already taken is asked whether it allows the page (`cors`),
-  * and played as such where it does.
+  * than the usual, or either aid, is first asked for, while the context may make sound (a browser keeps a page quiet
+  * until it is used), the output plays two channels (a page whose output plays 5.1 is left to play it), and what
+  * plays is [[WebMedia]]'s to hear: a stream through hls.js (Media Source Extensions, a `blob:` of the page's own)
+  * or a file from the page's origin. Until then the element plays as ever, and back at 0 dB, with the aids at 0, it
+  * is the browser's own fold. A file from another origin that comes to an element already taken is asked whether it
+  * allows the page (`cors`), and played as such where it does.
   *
   * Five analysers listen to the channels: once a centre has been heard with another channel the source is known to
   * be a surround one, and [[mixing]]; a centre heard alone for [[CenterFold.MonoSeconds]] is mono made up, and goes
   * to both sides whole, as the browser would play it. A second after each change of level it says how loud the
-  * centre went in and each side came out (`media: centre mix …`). */
+  * centre went in and each side came out (`media: centre mix …`), and a second after each change of an aid how loud
+  * each side went into the aids and came out (`media: listening aids …`). */
 final class CenterFold(el: html.Element, changed: () => Unit) {
   private var db = 0.0
   private var graph: Option[js.Dynamic] = None
@@ -36,9 +38,19 @@ final class CenterFold(el: html.Element, changed: () => Unit) {
   private var tellAt = 0.0
   private var meters: List[js.Dynamic] = Nil
   private var gains: Map[String, js.Dynamic] = Map.empty
+  // the listening aids, between the fold and the limiter, and when to say what they did
+  private var clarity = 0.0
+  private var night = 0.0
+  private var aids: Option[ListeningNodes] = None
+  private var aidsAt = 0.0
+  // the loudest sample out since the aids last changed
+  private var loudest = 0.0
 
   /** Whether it is taken into Web Audio. */
   def taken: Boolean = graph.nonEmpty
+
+  /** Whether the listening aids are in what is heard: taken, with the aids in its graph. */
+  def aidsHeard: Boolean = aids.nonEmpty
 
   /** Whether the centre is being folded at the level asked for: a surround source heard through the graph. */
   def mixing: Boolean = graph.nonEmpty && surround && !mono
@@ -47,13 +59,32 @@ final class CenterFold(el: html.Element, changed: () => Unit) {
   def level(to: Double, hearable: Boolean): Unit = {
     db = to
     if (graph.isEmpty) {
-      if (to != 0.0 && hearable) take()
+      if (wanted && hearable) take()
     }
     else {
       shares()
       tellAt = now() + 1000.0
     }
   }
+
+  /** Voice clarity at `c` and night mode at `n` (0 to 1 each), for a source `hearable`: taken into Web Audio, as for
+    * the centre, once either is first asked for ([[ListeningNodes]]). */
+  def listening(c: Double, n: Double, hearable: Boolean): Unit = {
+    val moved = c != clarity || n != night
+    clarity = c
+    night = n
+    aids match {
+      case Some(nodes) => if (moved) {
+        nodes.set(c, n)
+        aidsAt = now() + 1000.0
+        loudest = 0.0
+      }
+      case None => if (wanted && hearable) take()
+    }
+  }
+
+  // anything asked of it: the centre at another level, or either aid
+  private def wanted: Boolean = db != 0.0 || clarity != 0.0 || night != 0.0
 
   /** A new source: what it is is heard afresh. */
   def fresh(): Unit = {
@@ -76,7 +107,7 @@ final class CenterFold(el: html.Element, changed: () => Unit) {
       waking = true
       ctx.resume().asInstanceOf[js.Promise[Any]].`then`[Unit]((_: Any) => {
         waking = false
-        if (ctx.state.asInstanceOf[String] == "running" && graph.isEmpty && db != 0.0) build(ctx)
+        if (ctx.state.asInstanceOf[String] == "running" && graph.isEmpty && wanted) build(ctx)
       }, js.defined((_: Any) => waking = false))
     }
   }
@@ -118,18 +149,30 @@ final class CenterFold(el: html.Element, changed: () => Unit) {
       }
       bend.curve = curve
       bend.oversample = "none"
-      merge.connect(into)
+      // the listening aids between the fold and the limiter
+      val nodes = new ListeningNodes(ctx)
+      nodes.set(clarity, night)
+      merge.connect(nodes.input)
+      nodes.output.connect(into)
+      aids = Some(nodes)
       into.connect(bend)
       bend.connect(ctx.destination)
       // what is heard: each channel in, and each side out
       val out = ctx.createChannelSplitter(2)
       bend.connect(out)
-      meters = List(0, 1, 2, 4, 5).map(c => meter(ctx, split, c)) ++ List(0, 1).map(c => meter(ctx, out, c))
+      // and the two sides of the fold, before the aids
+      val folded = ctx.createChannelSplitter(2)
+      merge.connect(folded)
+      meters = List(0, 1, 2, 4, 5).map(c => meter(ctx, split, c)) ++ List(0, 1).map(c => meter(ctx, out, c)) ++
+        List(0, 1).map(c => meter(ctx, folded, c))
       graph = Some(source)
       tellAt = now() + 1000.0
+      aidsAt = if (clarity != 0.0 || night != 0.0) now() + 1000.0 else 0.0
       Platform.log("media: centre mix: the sound taken into Web Audio, folded to stereo with the centre at " +
-        Downmix.signed(db) + " dB")
+        Downmix.signed(db) + " dB, voice clarity at " + ListeningAids.said(clarity) + " and night mode at " +
+        ListeningAids.said(night))
       listen()
+      changed()
     } catch {
       case t: Throwable =>
         Platform.log("media: centre mix: Web Audio would not take the sound (" + t.toString + "): played as it is")
@@ -183,6 +226,27 @@ final class CenterFold(el: html.Element, changed: () => Unit) {
         ": centre in " + Downmix.decibels(centre) + " dBFS, out left " + Downmix.decibels(levels(5)) + " right " +
         Downmix.decibels(levels(6)) + " dBFS")
     }
+    if (aids.nonEmpty) loudest = math.max(loudest, math.max(peak(meters(5)), peak(meters(6))))
+    if (aidsAt > 0.0 && now() >= aidsAt) {
+      aidsAt = 0.0
+      Platform.log("media: listening aids at voice clarity " + ListeningAids.said(clarity) + ", night mode " +
+        ListeningAids.said(night) + ": in left " + Downmix.decibels(levels(7)) + " right " +
+        Downmix.decibels(levels(8)) + " dBFS, out left " + Downmix.decibels(levels(5)) + " right " +
+        Downmix.decibels(levels(6)) + " dBFS, night mode " + Downmix.signed(aids.map(_.reduction).getOrElse(0.0)) +
+        " dB and " + Downmix.signed(NightMode.makeup(night)) + " made up, peak out " + Downmix.decibels(loudest) + " dBFS")
+    }
+  }
+
+  private def peak(a: js.Dynamic): Double = {
+    val data = new Float32Array(a.fftSize.asInstanceOf[Int])
+    a.getFloatTimeDomainData(data)
+    var most = 0.0
+    var i = 0
+    while (i < data.length) {
+      most = math.max(most, math.abs(data(i).toDouble))
+      i += 1
+    }
+    most
   }
 
   private def rms(a: js.Dynamic): Double = {

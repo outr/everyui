@@ -7,9 +7,10 @@ import everyui.audio.CenterRoute
 
 /** The player's audio sink, but for sound the output would take still encoded (AC-3, E-AC-3 and its Atmos, DTS,
   * TrueHD, passed through to an AV receiver or a television to decode) while the centre mix is at a level other than
-  * 0 ([[force]]): then it says it cannot take it, so the renderer decodes it here, to PCM in all its channels, and
-  * [[CenterMixer]] can reach its centre ([[CenterRoute.decodeHere]]). A format with no decoder for it here passes as
-  * ever. At 0 nothing is refused, so a receiver gets its bitstream exactly as before.
+  * 0 ([[force]]), or while a listening aid is above 0 ([[aids]], [[ListeningProcessor]]): then it says it cannot take
+  * it, so the renderer decodes it here, to PCM in all its channels, and [[CenterMixer]] can reach its centre
+  * ([[CenterRoute.decodeHere]]) and the aids its samples. A format with no decoder for it here passes as ever. With all
+  * three at 0 nothing is refused, so a receiver gets its bitstream exactly as before.
   *
   * What the sink is asked changes nothing already playing: [[CenterAudioRenderer]] watches [[changes]] and decides
   * again at once. */
@@ -25,8 +26,16 @@ class CenterGate(sink: AudioSink) extends ForwardingAudioSink(sink) {
     if (forcing != was) changes += 1
   }
 
+  /** Whether a listening aid is above 0: it has sound the output takes encoded decoded here too, as the centre does. */
+  def aids(on: Boolean): Unit = {
+    val was = forcing
+    aided = on
+    if (forcing != was) changes += 1
+  }
+  @volatile private var aided = false
+
   /** Whether sound the output takes encoded is decoded here, where it can be. */
-  def forcing: Boolean = CenterRoute.decodeHere(level, passes = true, decodable = true)
+  def forcing: Boolean = aided || CenterRoute.decodeHere(level, passes = true, decodable = true)
 
   /** Whether `format` would go out encoded, as it came, were nothing refused. Asked on the player's thread. */
   def passes(format: Format): Boolean = {
@@ -40,8 +49,7 @@ class CenterGate(sink: AudioSink) extends ForwardingAudioSink(sink) {
   @volatile var passed: Set[String] = Set.empty
 
   /** Whether `format`, which the output would take as it is, is decoded here now. */
-  def refuses(format: Format): Boolean = forcing &&
-    CenterRoute.decodeHere(level, passes(format), CenterGate.decodable(format))
+  def refuses(format: Format): Boolean = forcing && passes(format) && CenterGate.decodable(format)
 
   override def supportsFormat(format: Format): Boolean = !refuses(format) && super.supportsFormat(format)
 

@@ -71,6 +71,52 @@ trait MediaSupport { self: Component =>
     * supported. */
   val centerMixing: Var[Boolean] = Var(false)
 
+  /** How much clearer voices are made, 0 (off, as it starts) to 1: an equaliser ([[everyui.audio.VoiceClarity]]) that
+    * lifts the band speech is understood by (6 dB about 2.8 kHz at full), takes a little off the low middle that
+    * muddies it (3 dB about 300 Hz) and cuts the rumble under it (a high-pass at 90 Hz), each part in proportion to
+    * the level. Unlike [[centerMix]] it works on any source, stereo and mono as much as surround: on every channel but
+    * the LFE, after the centre is mixed. What comes out is limited, never clipped. Heard at once, gliding there.
+    * [[voiceClarityOn]] says whether it is being heard. */
+  lazy val voiceClarity: Prop[Double] = own(new Prop[Double](0.0, c => aids(c, nightMode())))
+
+  /** How far the loud is brought down and the quiet up, 0 (off, as it starts) to 1: night mode, a compressor
+    * ([[everyui.audio.NightMode]]) hearing every channel together, so a film can be heard without waking the house.
+    * At 1 it starts at -30 dBFS with a ratio of 4:1 and leaves what is at -20 as it was, so dialogue comes up a few
+    * dB, quiet passages up to 7.5, and a full-scale burst down 15; a level between is gentler. It comes after
+    * [[voiceClarity]], and what comes out is limited, never clipped. Heard at once, gliding there. [[nightModeOn]]
+    * says whether it is being heard. */
+  lazy val nightMode: Prop[Double] = own(new Prop[Double](0.0, n => aids(voiceClarity(), n)))
+
+  /** Whether the platform can make voices clearer in what is playing, so an app can hide the setting where it cannot:
+    * where [[centerMixSupported]] says the centre can be reached (Android; a browser for hls.js and its own origin's
+    * files), and not on a Roku, the Apple TV or the desktop. Told again with each source. */
+  val voiceClaritySupported: Var[Boolean] = Var(node.mediaAidsSupported())
+
+  /** Whether [[voiceClarity]] is being heard now: above 0, and the sound going through it. */
+  val voiceClarityOn: Var[Boolean] = Var(false)
+
+  /** Whether the platform can bring the loud down and the quiet up in what is playing: where
+    * [[voiceClaritySupported]] says it can. */
+  val nightModeSupported: Var[Boolean] = Var(node.mediaAidsSupported())
+
+  /** Whether [[nightMode]] is being heard now: above 0, and the sound going through it. */
+  val nightModeOn: Var[Boolean] = Var(false)
+
+  private def aids(clarity: Double, night: Double): Unit = {
+    node.setMediaAids(clarity, night)
+    aidsHeard()
+  }
+
+  // what the platform says of the aids now
+  private def aidsHeard(): Unit = {
+    val can = node.mediaAidsSupported()
+    val heard = node.mediaAidsHeard()
+    voiceClaritySupported @= can
+    nightModeSupported @= can
+    voiceClarityOn @= heard && voiceClarity() > 0.0
+    nightModeOn @= heard && nightMode() > 0.0
+  }
+
   /** How much to hold before playing, how long to wait for bytes, and how much patience a stall is given: one of
     * `responsive`, `balanced` (what an unset value means) and `slow`.
     *
@@ -218,6 +264,7 @@ trait MediaSupport { self: Component =>
     if (e == "mixing") {
       centerMixSupported @= node.mediaCenterMixes()
       centerMixing @= node.mediaCenterMixing()
+      aidsHeard()
     }
     else if (e == "bands") bands @= node.mediaBands()
     else if (e != "retry") listeners.foreach(_(e))
@@ -294,6 +341,7 @@ trait MediaSupport { self: Component =>
       node.setMediaVolume(volume())
       node.setMediaRate(rate())
       node.setMediaCenterMix(centerMix())
+      aids(voiceClarity(), nightMode())
       node.setMediaPlaying(playing())
     }
   }

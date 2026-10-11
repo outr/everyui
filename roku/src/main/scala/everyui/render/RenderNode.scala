@@ -196,6 +196,9 @@ class RenderNode(val sg: SGNode) {
   def setMediaCenterMix(db: Double): Unit = ()
   def mediaCenterMixes(): Boolean = false
   def mediaCenterMixing(): Boolean = false
+  def setMediaAids(clarity: Double, night: Double): Unit = ()
+  def mediaAidsSupported(): Boolean = false
+  def mediaAidsHeard(): Boolean = false
   // neither what it holds nor what it waits for can be told here
   def setMediaBuffering(named: String): Unit = ()
   // nowhere of its own to keep a clip: every one is fetched as it plays

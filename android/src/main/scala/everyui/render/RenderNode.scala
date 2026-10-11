@@ -247,6 +247,12 @@ class RenderNode(val view: View) {
   def setMediaCenterMix(db: Double): Unit = media.foreach(_.setCenterMix(everyui.audio.Downmix.clamp(db)))
   def mediaCenterMixes(): Boolean = media.exists(_.centerMixSupported())
   def mediaCenterMixing(): Boolean = media.exists(_.centerMixing())
+  /** Voice clarity and night mode, 0 to 1 each, after the centre in the player's audio path ([[ListeningProcessor]]):
+    * where the centre mix can reach what is playing, and heard while the sound goes out as PCM through them. */
+  def setMediaAids(clarity: Double, night: Double): Unit =
+    media.foreach(_.setAids(everyui.audio.VoiceClarity.clamp(clarity), everyui.audio.NightMode.clamp(night)))
+  def mediaAidsSupported(): Boolean = media.exists(_.centerMixSupported())
+  def mediaAidsHeard(): Boolean = media.exists(_.aidsHeard())
   def setMediaBuffering(named: String): Unit = media.foreach(_.setBuffering(named))
   def setMediaCached(cached: Boolean): Unit = media.foreach(_.setCached(cached))
   def mediaRates(): Boolean = true

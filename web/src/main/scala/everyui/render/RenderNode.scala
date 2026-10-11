@@ -485,6 +485,12 @@ class RenderNode(val el: html.Element) {
   def setMediaCenterMix(db: Double): Unit = if (media.nonEmpty) webMedia.centerMix(everyui.audio.Downmix.clamp(db))
   def mediaCenterMixes(): Boolean = media.nonEmpty && webMedia.centerMixes
   def mediaCenterMixing(): Boolean = media.nonEmpty && webMedia.centerMixing
+  /** Voice clarity and night mode, 0 to 1 each, in the same Web Audio graph as the centre ([[ListeningNodes]]): where
+    * the centre can be mixed, and heard once the sound is taken into it. */
+  def setMediaAids(clarity: Double, night: Double): Unit =
+    if (media.nonEmpty) webMedia.aids(everyui.audio.VoiceClarity.clamp(clarity), everyui.audio.NightMode.clamp(night))
+  def mediaAidsSupported(): Boolean = media.nonEmpty && webMedia.centerMixes
+  def mediaAidsHeard(): Boolean = media.nonEmpty && webMedia.aidsHeard
   // what hls.js holds ahead; the browser's own player cannot be told
   def setMediaBuffering(named: String): Unit = if (media.nonEmpty) webMedia.buffering = named
   // the browser keeps what its own cache allows, and a page has no other store for a clip

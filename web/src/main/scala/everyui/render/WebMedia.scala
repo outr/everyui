@@ -41,8 +41,10 @@ final class WebMedia(el: html.Element) {
   private var failure = ""
   private var wanted = ("", "")
   private var listeners: List[String => Unit] = Nil
-  // the centre of a surround source, folded through Web Audio once asked for (CenterFold)
+  // the centre of a surround source and the listening aids, through Web Audio once asked for (CenterFold)
   private var centre = 0.0
+  private var clarity = 0.0
+  private var night = 0.0
   private var allowed = false
   private lazy val fold = new CenterFold(el, () => tell("mixing"))
 
@@ -80,6 +82,17 @@ final class WebMedia(el: html.Element) {
 
   /** Whether the centre is being folded now. */
   def centerMixing: Boolean = fold.mixing
+
+  /** Voice clarity at `c` and night mode at `n`, 0 to 1 each (MediaSupport.voiceClarity and nightMode), in the same
+    * graph as the centre ([[ListeningNodes]]). */
+  def aids(c: Double, n: Double): Unit = {
+    clarity = c
+    night = n
+    fold.listening(c, n, hearable)
+  }
+
+  /** Whether the aids are in what is heard now: the sound taken into Web Audio. */
+  def aidsHeard: Boolean = fold.aidsHeard
 
   def play(on: Boolean): Unit = {
     playing = on
@@ -193,6 +206,7 @@ final class WebMedia(el: html.Element) {
   // a source open, through either player: the centre folded if it was asked for and can be, and the app told
   private def settled(): Unit = {
     fold.level(centre, hearable)
+    fold.listening(clarity, night, hearable)
     tell("mixing")
   }
 
