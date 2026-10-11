@@ -2362,20 +2362,52 @@ The fold is ITU-R BS.775's (`everyui.audio.Downmix`): each side takes its own fr
 -3 dB times 10^(dB/20), its own surrounds at -3 dB (7.1's side and back pairs alike), a 6.1's back centre at -6 dB to
 both; the LFE is left out, as BS.775 and a Dolby decoder's Lo/Ro leave it. Nothing is normalised, so at 0 dB it is as
 loud as the usual fold (a browser's own, exactly); what comes out is kept under full scale instead of clipping. It
-applies only to a source with a centre among more than two channels, played out of two: a stereo or mono source is
-untouched, and so is an output that plays every channel itself.
+applies only to a source with a centre among more than two channels: a stereo or mono source is untouched.
 
-- **Android**: the fold is done in Media3's audio path (`CenterMixer`, an AudioProcessor in the player's
+Where the output plays every channel itself (an AV receiver taking 5.1 or 7.1 as PCM) nothing is folded: the centre
+is lifted in place by the same decibels (`Downmix.lift`, 10^(dB/20), a negative level lowering it), gliding over the
+same 20 ms, and every other channel goes to the receiver exactly as it came, so its own bass management and room
+correction work as ever. The limiter is the centre's alone, so a raised centre never ducks the music and effects
+around it: it keeps the centre under -0.2 dBFS (or under what it came in at, where that was louder still) and gives
+back over 0.2 s, and it only ever takes back what the centre was raised by. At 0 dB every sample passes bit for bit.
+Which it is, fold or lift, is decided from what the output says it takes as PCM (`everyui.audio.CenterRoute`): two
+channels folds, more (or an output that does not say) lifts.
+
+- **Android**: the fold and the lift are done in Media3's audio path (`CenterMixer`, an AudioProcessor in the player's
   `DefaultAudioSink`, ahead of the spectrum tap, the player's volume and the loudness enhancer), on the decoded PCM in
-  all its channels (16-bit or float) before Android would fold it. A limiter the two sides share takes its gain down
-  at once to what a peak needs to stay under -0.2 dBFS and gives it back over 0.2 s; a change of level glides over
-  20 ms. It folds where the sound goes out as two channels: speakers, headphones, Bluetooth, or an HDMI sink whose PCM
-  profiles say two (a television; Android 13's route for media, else what is connected). An HDMI sink that takes 5.1
-  as PCM (an AV receiver) gets every channel, and sound passed through still encoded (AC-3, E-AC-3 to a receiver or a
-  television that decodes it) never comes this way: `centerMixing` is false then. A level change is heard after what
-  the AudioTrack already holds. It logs `media: centre mix: 6 channels (LRCElr) at 48000 Hz folded to stereo for HDMI`,
-  and a second after each change `media: centre mix at +6.0 dB: centre in -15.0 dBFS, out left -12.1 right -12.1 dBFS,
-  limited 0.0 dB`.
+  all its channels (16-bit or float) before Android would fold it. For the fold, a limiter the two sides share takes
+  its gain down at once to what a peak needs to stay under -0.2 dBFS and gives it back over 0.2 s; a change of level
+  glides over 20 ms. It folds where the sound goes out as two channels: speakers, headphones, Bluetooth, or an HDMI
+  sink whose PCM profiles say two (a television; Android 13's route for media, else what is connected), and lifts for
+  an HDMI sink that takes 5.1 or 7.1 as PCM (an AV receiver). A level change is heard after what the AudioTrack already
+  holds.
+
+  **Sound the output would take still encoded** (AC-3, E-AC-3, E-AC-3 with Atmos, DTS, TrueHD, passed through to a
+  receiver or a television to decode) never reaches the player's audio path, so while `centerMix` is not 0 it is
+  decoded here instead (`CenterGate`, the sink saying it cannot take the format while the level is not 0, so Media3
+  picks the device's decoder), wherever the device has a decoder for it: AC-3 and E-AC-3 on most Android TV devices
+  (E-AC-3 with Atmos as its 5.1 or 7.1 bed), AAC always, TrueHD and DTS only where a decoder is listed. The receiver
+  then gets the decoded channels as multichannel PCM, the centre lifted (or, over a link that takes only two channels
+  as PCM, such as ARC or optical, the fold). What is lost meanwhile is what only the receiver's own decoder makes of a
+  bitstream: Atmos's height channels and objects and DTS:X's, which go as their bed, and the receiver's own Dolby or
+  DTS processing; the receiver shows PCM. At 0 (the default) nothing is refused, and a receiver gets its bitstream
+  exactly as before, Atmos and DTS:X untouched. A format with no decoder here stays passed through, and
+  `centerMixSupported` is false for it (and for sound that can be neither decoded nor passed through).
+
+  The switch happens where it is playing, both ways, the position kept: on the change from 0 the audio renderer
+  (`CenterAudioRenderer`) takes the format it is playing as though it had just come, Media3's own way through a change
+  of format mid-stream, so the next sample is decoded (or passed); the sink plays out what it holds and makes a new
+  AudioTrack. Going to PCM leaves a gap of a fraction of a second; going back to the bitstream, when the level is set to
+  0 again, about a second on the Google TV Streamer, as the output reopens for it (and the receiver or television
+  locks onto the bitstream again). An app whose viewers step through 0 often may rather keep a small level than 0.
+
+  It logs which: `media: centre mix: 5.1 (LRCElr) at 48000 Hz folded to stereo for HDMI` or `... lifted in 5.1 for
+  HDMI of 8 channels`, `media: centre mix: decoding E-AC-3 in 6 channels here from now` and `... passing E-AC-3 in 6
+  channels through as it is from now` at a switch, `media: centre mix: decoding E-AC-3 in 6 channels here for HDMI,
+  rather than passing it through` or `... passed through to HDMI as it is, while the centre is at 0` (or `with no
+  decoder for it here`) as each AudioTrack is made, and a second after each change `media: centre mix at +6.0 dB:
+  centre in -15.0 dBFS, out left -12.1 right -12.1 dBFS, limited 0.0 dB` (lifted: `media: centre mix at +6.0 dB,
+  lifted: centre in -15.0 dBFS, out -9.0 dBFS, limited 0.0 dB`).
 - **Web**: a Web Audio graph (`CenterFold`): the element's `MediaElementSource`, made up to 5.1 (mono to the centre,
   stereo to the front pair), split, each channel into a side at its share, and through a soft limiter (a
   WaveShaperNode: as it is up to 0.8, then bent towards -0.2 dBFS, never reaching it) to the destination. Taking an
@@ -2392,8 +2424,9 @@ untouched, and so is an output that plays every channel itself.
   does.
 
 `demo=centermix` plays a 5.1 file (`src=`, `centre51.mp4` beside the page by default) with buttons for -6, 0, +3, +6
-and +12 dB; `db=` starts it there, `steps=1` walks 0, +3, +6 and 0 every four seconds, and `then=` plays another
-file twelve seconds in.
+and +12 dB; `db=` starts it there, `steps=1` walks 0, +3, +6 and 0 every four seconds, `then=` plays another
+file twelve seconds in, and `muted=1` plays it muted (still measured where it is decoded here; a bitstream passed
+through is not the player's to mute).
 
 ## Sound: players that take turns, and effects (`AudioPlayer`)
 

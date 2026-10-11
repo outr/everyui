@@ -11,15 +11,17 @@ import reactify.*
   * it is heard (`centerMixing`) under them. `src=` gives the file (by default `centre51.mp4` beside the page: the web
   * only hears a file from the page's own origin, or one that allows it), `db=` the level it starts at, and `steps=1`
   * walks 0, +3, +6 and back to 0 by itself, four seconds each, for a device with no one at its remote, and `then=`
-  * plays another file twelve seconds in. Logs
+  * plays another file twelve seconds in; `muted=1` plays it muted (the levels are still measured and said where it is
+  * decoded here; sound passed through encoded is not the player's to mute). Logs
   * `centermix db=<level> supported=<on> mixing=<on>` at each change; the platform says how loud the centre went in
-  * and each side came out (`media: centre mix …`). */
+  * and each side (or, lifted in place, the centre) came out (`media: centre mix …`). */
 object CenterMixDemo {
   def run(): Unit = {
     ui.backgroundColor := Theme.background()
     val video = new VideoView
     video.cover @= false
     video.loop @= true
+    video.muted @= Platform.launchArg("muted") == "1"
     video.centerMix @= Platform.launchArg("db").toDoubleOption.getOrElse(0.0)
     def said(): Unit = Platform.log("centermix db=" + video.centerMix() + " supported=" + video.centerMixSupported() +
       " mixing=" + video.centerMixing())
@@ -34,8 +36,8 @@ object CenterMixDemo {
         () => video.centerMix @= db)
     }
     val status = TextView.bound((if (video.centerMixSupported()) "Supported here" else "Not supported here") +
-      (if (video.centerMixing()) ", folding the centre" else ", not folding: " +
-        (if (video.centerMixSupported()) "stereo, or an output that plays every channel" else "nothing to fold with")),
+      (if (video.centerMixing()) ", reaching the centre" else ", not reaching it: " +
+        (if (video.centerMixSupported()) "stereo, or passed through as it is" else "out of reach here")),
       14.0, Theme.muted())
 
     video.position.left @= 16.0

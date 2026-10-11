@@ -5,7 +5,9 @@ import org.scalatest.wordspec.AnyWordSpec
 
 /** The fold of surround sound to stereo with its centre at a chosen level (MediaSupport.centerMix), apart from any
   * player: BS.775's shares, the centre at 0, +3 and +6 dB, the limiter under full scale on the loudest input, stereo
-  * content passing as it was, 5.1, 6.1 and 7.1 laid out as Android numbers them, and the curve a browser bends with. */
+  * content passing as it was, 5.1, 6.1 and 7.1 laid out as Android numbers them, and the curve a browser bends with;
+  * the centre lifted in place for an output that plays every channel, the rest exactly as it came; and the route
+  * (fold, lift, decode here) from what the output takes, given as an Android device gives it. */
 class DownmixSpec extends AnyWordSpec with Matchers {
   private val rate = 48000
   private val s = 1.0 / math.sqrt(2.0)
@@ -163,6 +165,166 @@ class DownmixSpec extends AnyWordSpec with Matchers {
       ((d.centerShare - s) / (Downmix.centerGain(6.0) - s)) shouldBe 0.63 +- 0.02
       folded(d, frames(6, rate)((c, _) => if (c == 2) 0.5 else 0.0))
       d.centerShare shouldBe Downmix.centerGain(6.0) +- 1e-6
+    }
+  }
+
+  "A Downmix lifting in place" should {
+    /** `in` lifted, every channel out. */
+    def lifted(d: Downmix, in: Array[Float]): Array[Float] = {
+      val out = new Array[Float](in.length)
+      d.lift(in, in.length / d.channels, out)
+      out
+    }
+    /** One channel's root mean square from frame `from` on. */
+    def level(out: Array[Float], channels: Int, channel: Int, from: Int): Double = {
+      var sum = 0.0
+      var n = 0
+      var f = from
+      while (f * channels + channel < out.length) {
+        val x = out(f * channels + channel).toDouble
+        sum += x * x
+        n += 1
+        f += 1
+      }
+      math.sqrt(sum / n)
+    }
+    val busy: (Int, Int) => Double = (c, f) => sine(f, 0.05 + 0.04 * c, 200.0 + 110.0 * c)
+
+    "give its gain as 10^(dB/20), not the fold's share" in {
+      Downmix.liftGain(0.0) shouldBe 1.0
+      Downmix.liftGain(6.0) shouldBe 1.9953 +- 0.0001
+      Downmix.liftGain(-6.0) shouldBe 0.5012 +- 0.0001
+      Downmix.liftGain(40.0) shouldBe Downmix.liftGain(12.0)
+      Downmix.layout(6) shouldBe "5.1"
+      Downmix.layout(8) shouldBe "7.1"
+      Downmix.layout(2) shouldBe ""
+    }
+    "raise and lower the centre by its decibels, in 5.1 and in 7.1" in {
+      List(6, 8).foreach { channels =>
+        List(3.0, 6.0, 12.0, -6.0, -12.0).foreach { db =>
+          val d = new Downmix(channels, rate)
+          d.center(db)
+          val in = frames(channels, rate)((c, f) => if (c == 2) sine(f, 0.1) else busy(c, f))
+          val out = lifted(d, in)
+          // after the glide
+          val gain = level(out, channels, 2, rate / 2) / level(in, channels, 2, rate / 2)
+          20.0 * math.log10(gain) shouldBe db +- 0.01
+        }
+      }
+    }
+    "pass every sample exactly as it came at 0 dB, the loudest too" in {
+      val d = new Downmix(8, rate)
+      val random = new scala.util.Random(3)
+      val in = frames(8, rate)((_, _) => random.nextDouble() * 2.0 - 1.0)
+      lifted(d, in).toList shouldBe in.toList
+      in(2) = 1.0f
+      lifted(d, in).toList shouldBe in.toList
+      // and once more after a while at +6, set back
+      d.center(6.0)
+      lifted(d, in)
+      d.center(0.0)
+      lifted(d, frames(8, rate)((c, f) => if (c == 2) sine(f, 0.1) else 0.0))
+      lifted(d, in).toList shouldBe in.toList
+    }
+    "leave every channel but the centre untouched, at any centre" in {
+      List(-12.0, 6.0, 12.0).foreach { db =>
+        val d = new Downmix(6, rate)
+        d.center(db)
+        val in = frames(6, rate)((c, f) => if (c == 2) sine(f, 0.9) else busy(c, f))
+        val out = lifted(d, in)
+        (0 until rate).foreach { f =>
+          (0 until 6).filter(_ != 2).foreach(c => out(f * 6 + c) shouldBe in(f * 6 + c))
+        }
+      }
+    }
+    "never take a full-scale centre past full scale at +12 dB, nor below where it came in" in {
+      val d = new Downmix(6, rate)
+      d.center(12.0)
+      val random = new scala.util.Random(11)
+      val in = frames(6, rate)((_, _) => if (random.nextBoolean()) 1.0 else -1.0)
+      val out = lifted(d, in)
+      val centre = (0 until rate).map(f => math.abs(out(f * 6 + 2).toDouble))
+      centre.max should be <= 1.0 + 1e-6
+      centre.min should be >= 1.0 - 1e-6
+      // a full-scale sine raised 12 dB: kept under the ceiling, and its loudest at the ceiling
+      val d2 = new Downmix(6, rate)
+      d2.center(12.0)
+      val out2 = lifted(d2, frames(6, rate)((c, f) => if (c == 2) sine(f, Downmix.Ceiling, 100.0) else 0.0))
+      val centre2 = (0 until rate).map(f => math.abs(out2(f * 6 + 2).toDouble))
+      centre2.max should be <= Downmix.Ceiling + 1e-6
+      centre2.max should be >= Downmix.Ceiling - 0.01
+      d2.limiting should be < 0.3
+      // a quiet one under it at +6 is raised the whole 6 dB, the limiter given back
+      val out3 = lifted(d2, frames(6, rate)((c, f) => if (c == 2) sine(f, 0.1) else 0.0))
+      d2.limiting should be > 0.99
+      level(out3, 6, 2, rate * 9 / 10) shouldBe (0.1 * s * Downmix.liftGain(12.0)) +- 0.003
+    }
+    "glide to a new centre rather than step to it" in {
+      val d = new Downmix(6, rate)
+      val steady = frames(6, 1)((c, _) => if (c == 2) 0.5 else 0.0)
+      lifted(d, steady)
+      d.center(6.0)
+      lifted(d, steady)
+      // one frame moves it a little of the way
+      (d.centerLift - 1.0) should be < 0.01
+      (1 until (rate * Downmix.GlideSeconds).toInt).foreach(_ => lifted(d, steady))
+      // one glide time: about two thirds of the way
+      ((d.centerLift - 1.0) / (Downmix.liftGain(6.0) - 1.0)) shouldBe 0.63 +- 0.02
+      lifted(d, frames(6, rate)((c, _) => if (c == 2) 0.2 else 0.0))
+      d.centerLift shouldBe Downmix.liftGain(6.0) +- 1e-6
+    }
+    "say how loud the centre went in and came out" in {
+      val d = new Downmix(6, rate)
+      d.center(6.0)
+      lifted(d, frames(6, rate)((c, f) => if (c == 2) sine(f, 0.25) else 0.0))
+      d.heard()
+      lifted(d, frames(6, rate)((c, f) => if (c == 2) sine(f, 0.25) else 0.0))
+      d.heard() shouldBe "centre in -15.1 dBFS, out -9.1 dBFS, limited 0.0 dB"
+    }
+  }
+
+  "A CenterRoute" should {
+    "fold for an output of two channels and lift for one of more, or one that does not say" in {
+      CenterRoute.of(6, 2) shouldBe CenterRoute.Fold
+      CenterRoute.of(8, 2) shouldBe CenterRoute.Fold
+      CenterRoute.of(6, 1) shouldBe CenterRoute.Fold
+      CenterRoute.of(6, 6) shouldBe CenterRoute.Lift
+      CenterRoute.of(8, 8) shouldBe CenterRoute.Lift
+      CenterRoute.of(6, 8) shouldBe CenterRoute.Lift
+      CenterRoute.of(6, 0) shouldBe CenterRoute.Lift
+      // nothing to do for stereo, mono and quad, whatever the output
+      CenterRoute.of(2, 8) shouldBe CenterRoute.Leave
+      CenterRoute.of(1, 2) shouldBe CenterRoute.Leave
+      CenterRoute.of(4, 2) shouldBe CenterRoute.Leave
+    }
+    "read an output's PCM channels from its profiles, a bitstream's not counted" in {
+      val stereo = Seq(0x3, 0xc)
+      val surround = Seq(0x3, 0xfc, 0x63f)   // stereo, 5.1 and 7.1 as Android writes them
+      // a television: stereo PCM, and AC-3 and E-AC-3 to decode itself
+      CenterRoute.pcmChannels(Seq(2 -> Seq(0xc), 5 -> Seq(0xfc), 6 -> Seq(0xfc)), Nil) shouldBe 2
+      // a receiver taking 7.1 as PCM, float and 16-bit
+      CenterRoute.pcmChannels(Seq(2 -> stereo, 4 -> surround, 7 -> Seq(0x63f)), Nil) shouldBe 8
+      // one that takes 5.1 only as a bitstream (an optical or ARC link)
+      CenterRoute.pcmChannels(Seq(2 -> Seq(0xc), 5 -> Seq(0xfc)), Seq(6)) shouldBe 2
+      // no profiles (before Android 12): its channel counts, else nothing known
+      CenterRoute.pcmChannels(Nil, Seq(2, 6, 8)) shouldBe 8
+      CenterRoute.pcmChannels(Nil, Nil) shouldBe 0
+      CenterRoute.of(6, CenterRoute.pcmChannels(Seq(2 -> stereo, 4 -> surround), Nil)) shouldBe CenterRoute.Lift
+      CenterRoute.of(6, CenterRoute.pcmChannels(Seq(2 -> Seq(0xc), 5 -> Seq(0xfc)), Nil)) shouldBe CenterRoute.Fold
+    }
+    "decode here what the output takes encoded only while the centre is not at 0, and only with a decoder" in {
+      // at 0 a receiver gets its bitstream as ever
+      CenterRoute.decodeHere(0.0, passes = true, decodable = true) shouldBe false
+      CenterRoute.decodeHere(Double.NaN, passes = true, decodable = true) shouldBe false
+      CenterRoute.decodeHere(3.0, passes = true, decodable = true) shouldBe true
+      CenterRoute.decodeHere(-6.0, passes = true, decodable = true) shouldBe true
+      // no decoder here (TrueHD, DTS on most devices): passed through, and the centre out of reach
+      CenterRoute.decodeHere(6.0, passes = true, decodable = false) shouldBe false
+      CenterRoute.supported(encoded = true, decodable = false) shouldBe false
+      // what the output cannot take encoded is decoded here anyway
+      CenterRoute.decodeHere(6.0, passes = false, decodable = true) shouldBe false
+      CenterRoute.supported(encoded = true, decodable = true) shouldBe true
+      CenterRoute.supported(encoded = false, decodable = false) shouldBe true
     }
   }
 

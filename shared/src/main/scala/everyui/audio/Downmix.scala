@@ -13,6 +13,12 @@ package everyui.audio
   * under [[Downmix.Ceiling]], and comes back over [[Downmix.ReleaseSeconds]]; a change of centre glides over
   * [[Downmix.GlideSeconds]] rather than clicking.
   *
+  * Where the output plays every channel itself (an AV receiver taking 5.1 or 7.1 as PCM), nothing is folded: [[lift]]
+  * raises or lowers the centre in place by the same decibels (10^(dB/20), [[Downmix.liftGain]]), with the same glide,
+  * and leaves every other channel exactly as it came. Its limiter is the centre's alone, so a raised centre never
+  * ducks the music and effects around it: it keeps the centre under [[Downmix.Ceiling]], or under what the centre came
+  * in at where that was louder still, so it never takes the centre below where it was.
+  *
   * The channels are in the order Android, a WAV file and Media3 give them ([[Downmix.roles]]). Two channels or one,
   * or more without a centre (a quad), are none of its business: [[Downmix.applies]] says so, and they are not given
   * to it. Not thread safe: one is fed from the one thread that plays it. Written as loops over indices, for the
@@ -22,6 +28,7 @@ package everyui.audio
   *   val fold = new Downmix(6, 48000)
   *   fold.center(6.0)
   *   fold.mix(frames, count, stereo)   // interleaved in, two to a frame out
+  *   fold.lift(frames, count, frames)  // or the centre raised in place, every channel out
   * }}} */
 final class Downmix(val channels: Int, val rate: Int) {
   /** What each channel is. */
@@ -41,6 +48,8 @@ final class Downmix(val channels: Int, val rate: Int) {
   private var leftSum: Double = 0.0
   private var rightSum: Double = 0.0
   private var least: Double = 1.0
+  // whether what went through was lifted rather than folded, for what heard says
+  private var lifted: Boolean = false
 
   /** The centre at `db` decibels over its usual -3 dB (0 is the usual fold), within [[Downmix.Lowest]] and
     * [[Downmix.Highest]]. Heard from the next frame, gliding there. */
@@ -85,15 +94,60 @@ final class Downmix(val channels: Int, val rate: Int) {
       f += 1
     }
     frames += count
+    lifted = false
+  }
+
+  /** The centre's gain in [[lift]] now, after its glide: 1 where it is as it came. */
+  def centerLift: Double = shared / Downmix.Center
+
+  /** `count` frames of `in` (interleaved, [[channels]] samples to a frame, -1 to 1) into `out` as they came, every
+    * channel, but for the centre raised or lowered by the decibels [[center]] was given (10^(dB/20)) and kept by its
+    * own limiter under [[Downmix.Ceiling]] (or what it came in at, where that was louder). `out` may be `in`. At 0 dB
+    * every sample goes out exactly as it came in. */
+  def lift(in: Array[Float], count: Int, out: Array[Float]): Unit = {
+    var f = 0
+    while (f < count) {
+      val at = f * channels
+      var i = 0
+      while (i < channels) {
+        out(at + i) = in(at + i)
+        i += 1
+      }
+      shared += (wanted - shared) * glide
+      // the glide's last step taken, so a centre set back to 0 dB comes out exactly as it went in
+      if (math.abs(wanted - shared) < 1e-9) shared = wanted
+      if (centre >= 0) {
+        val c = in(at + centre).toDouble
+        val raised = shared / Downmix.Center
+        val peak = math.abs(c * raised)
+        gain += (1.0 - gain) * release
+        val ceiling = math.max(Downmix.Ceiling, math.abs(c))
+        if (peak * gain > ceiling) gain = ceiling / peak
+        // it takes back only what the centre was raised by, never more: at 0 dB or under, nothing
+        val held = math.max(gain, math.min(1.0, 1.0 / raised))
+        val y = c * raised * held
+        out(at + centre) = y.toFloat
+        centreSum += c * c
+        leftSum += y * y
+        if (held < least) least = held
+      }
+      f += 1
+    }
+    frames += count
+    lifted = true
   }
 
   /** How loud the centre went in and each side came out since this was last asked, in dB of full scale (root mean
-    * square: a full-scale sine is -3), and the most the limiter took off, in dB; then counted afresh. */
+    * square: a full-scale sine is -3), and the most the limiter took off, in dB; then counted afresh. Lifted, it says
+    * how loud the centre came out instead of each side. */
   def heard(): String = {
     val n = math.max(1L, frames).toDouble
-    val said = "centre in " + Downmix.decibels(math.sqrt(centreSum / n)) + " dBFS, out left " +
-      Downmix.decibels(math.sqrt(leftSum / n)) + " right " + Downmix.decibels(math.sqrt(rightSum / n)) +
-      " dBFS, limited " + Downmix.decibels(least) + " dB"
+    val out =
+      if (lifted) " dBFS, out " + Downmix.decibels(math.sqrt(leftSum / n))
+      else " dBFS, out left " + Downmix.decibels(math.sqrt(leftSum / n)) + " right " +
+        Downmix.decibels(math.sqrt(rightSum / n))
+    val said = "centre in " + Downmix.decibels(math.sqrt(centreSum / n)) + out + " dBFS, limited " +
+      Downmix.decibels(least) + " dB"
     frames = 0L
     centreSum = 0.0
     leftSum = 0.0
@@ -138,6 +192,19 @@ object Downmix {
 
   /** The centre's share of each side with it raised `db` decibels: the usual -3 dB times 10^(db/20). */
   def centerGain(db: Double): Double = Center * math.pow(10.0, clamp(db) / 20.0)
+
+  /** The centre's gain in place ([[Downmix.lift]]) with it raised `db` decibels: 10^(db/20). */
+  def liftGain(db: Double): Double = math.pow(10.0, clamp(db) / 20.0)
+
+  /** What a stream of `channels` is called: "5.1" for 6, "7.1" for 8, and so on; "" for one it does not know. */
+  def layout(channels: Int): String =
+    if (channels == 3) "3.0"
+    else if (channels == 4) "4.0"
+    else if (channels == 5) "5.0"
+    else if (channels == 6) "5.1"
+    else if (channels == 7) "6.1"
+    else if (channels == 8) "7.1"
+    else ""
 
   /** A channel's share of the left side (the centre's apart). */
   def left(role: Char): Double =

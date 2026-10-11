@@ -158,7 +158,6 @@ class ExoMedia(frame: Option[VideoFrame]) {
             }))
           .setLoadControl(load)
           .build()
-        val folding = mixer
         sounding(made)
         attach(made)
         made.setRepeatMode(if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF)
@@ -189,6 +188,13 @@ class ExoMedia(frame: Option[VideoFrame]) {
             else if (state == Player.STATE_ENDED && !looping) listener("ended")
           }
           override def onRenderedFirstFrame(): Unit = framed = true
+          // sound there is but none of it playable here, neither decoded nor passed through (DTS on a device with no
+          // decoder for it and an output that does not take it): nothing for the centre mix to reach
+          override def onTracksChanged(tracks: Tracks): Unit =
+            if (tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.isTypeSupported(C.TRACK_TYPE_AUDIO) && reachable) {
+              Platform.log("media: centre mix: no sound here to reach, none of it playable")
+              mixed(false, false)
+            }
           override def onIsPlayingChanged(on: Boolean): Unit = session.foreach(_.state(on))
           override def onPositionDiscontinuity(was: Player.PositionInfo, now: Player.PositionInfo, reason: Int): Unit =
             session.foreach(_.state(made.isPlaying))
@@ -257,12 +263,14 @@ class ExoMedia(frame: Option[VideoFrame]) {
               retried = Some(MediaRetry(failures, host, cause))
               listener("retry")
             }
-          // what the sound goes out as, once its track is made: folded where it is PCM and the fold took it, and not where
-          // it is sent on encoded (passed through to a receiver), when the fold is not in the path at all
+          // what the sound goes out as, once its track is made ([[track]]), and what it came in as before any decoder
           override def onAudioTrackInitialized(time: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
                                                config: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig): Unit =
-            if (player.exists(_ eq made)) mixed(androidx.media3.common.util.Util.isEncodingLinearPcm(config.encoding) &&
-              folding.exists(_.active))
+            if (player.exists(_ eq made)) track(config)
+          override def onAudioInputFormatChanged(time: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                                                 format: androidx.media3.common.Format,
+                                                 reuse: androidx.media3.exoplayer.DecoderReuseEvaluation): Unit =
+            if (player.exists(_ eq made)) coming = Some(format)
         })
         if (from > 0L) made.setMediaItem(item(url), from) else made.setMediaItem(item(url))
         made.prepare()
@@ -320,29 +328,83 @@ class ExoMedia(frame: Option[VideoFrame]) {
       })))
     new DefaultRenderersFactory(Host.activity) {
       override protected def buildAudioSink(context: android.content.Context, float: Boolean,
-                                            params: Boolean): androidx.media3.exoplayer.audio.AudioSink =
-        new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                                            params: Boolean): androidx.media3.exoplayer.audio.AudioSink = {
+        val made = new CenterGate(new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
           .setEnableAudioOutputPlaybackParameters(params)
           .setAudioProcessors((fold :: tap).toArray[androidx.media3.common.audio.AudioProcessor])
-          .build()
+          .build())
+        made.force(centre)
+        gate = Some(made)
+        made
+      }
+      // Media3's audio renderer, made to decide again when the gate changes
+      override protected def buildAudioRenderers(context: android.content.Context, mode: Int,
+                                                 selector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                                                 fallback: Boolean, sink: androidx.media3.exoplayer.audio.AudioSink,
+                                                 handler: android.os.Handler,
+                                                 events: androidx.media3.exoplayer.audio.AudioRendererEventListener,
+                                                 out: java.util.ArrayList[androidx.media3.exoplayer.Renderer]): Unit = {
+        val from = out.size()
+        super.buildAudioRenderers(context, mode, selector, fallback, sink, handler, events, out)
+        sink match {
+          case g: CenterGate =>
+            var i = from
+            while (i < out.size()) {
+              if (out.get(i).getClass == classOf[androidx.media3.exoplayer.audio.MediaCodecAudioRenderer])
+                out.set(i, new CenterAudioRenderer(context, getCodecAdapterFactory, selector, fallback, handler, events, g))
+              i += 1
+            }
+          case _ => ()
+        }
+      }
     }
   }
 
-  /** How loud the centre of a surround stream is folded in, in dB over the usual ([[CenterMixer]]): heard at once. */
+  /** How loud the centre of a surround stream is, in dB over the usual ([[CenterMixer]]): heard at once. Anything but
+    * 0 has sound the output would take encoded decoded here instead ([[CenterGate]]), and 0 has it passed through
+    * again, each switched where it is playing. */
   def setCenterMix(db: Double): Unit = {
     centre = db
     mixer.foreach(_.db = db)
+    gate.foreach(_.force(db))
   }
   private var centre = 0.0
   private var mixer: Option[CenterMixer] = None
+  private var gate: Option[CenterGate] = None
   private var mixing = false
+  private var reachable = true
+  // the sound's format as it comes in, before any decoder: what tells E-AC-3 passed through from E-AC-3 decoded here
+  private var coming: Option[androidx.media3.common.Format] = None
 
-  /** Whether the centre's fold is heard now: PCM going out, folded to two channels. */
+  /** Whether the centre is folded or lifted now: PCM going out, through [[CenterMixer]]. */
   def centerMixing(): Boolean = mixing
 
-  private def mixed(now: Boolean): Unit = if (now != mixing) {
+  /** Whether the centre mix can reach what is playing: anything decoded here, and sound the output takes encoded only
+    * where there is a decoder for it here. */
+  def centerMixSupported(): Boolean = reachable
+
+  private def mixed(now: Boolean, can: Boolean): Unit = if (now != mixing || can != reachable) {
     mixing = now
+    reachable = can
     listener("mixing")
+  }
+
+  /** What the sound goes out as, once its track is made, said and told: folded or lifted where it is PCM and the
+    * mixer took it; and, for sound that came encoded, whether it was decoded here for the centre or passed on. */
+  private def track(config: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig): Unit = {
+    val pcm = androidx.media3.common.util.Util.isEncodingLinearPcm(config.encoding)
+    val encoded = coming.filter(f => !androidx.media3.common.MimeTypes.AUDIO_RAW.equals(f.sampleMimeType))
+    val can = encoded.forall(f => everyui.audio.CenterRoute.supported(encoded = true, CenterGate.decodable(f)))
+    encoded.foreach { f =>
+      val (kind, _) = CenterMixer.output()
+      if (!pcm) Platform.log("media: centre mix: " + CenterGate.named(f) + " passed through to " + kind + " as it is" +
+        (if (!can) ", with no decoder for it here: the centre cannot be reached"
+        else if (centre != 0.0) "" else ", while the centre is at 0"))
+      else if (gate.exists(g => g.forcing && g.passed.contains(String.valueOf(f.sampleMimeType))))
+        Platform.log("media: centre mix: decoding " + CenterGate.named(f) + " here for " + kind +
+          ", rather than passing it through")
+    }
+    mixed(pcm && mixer.exists(_.active), can)
   }
 
   /** What the sound is, said to Android: a film or music, and whether it takes the sound over from other apps —
@@ -689,7 +751,9 @@ class ExoMedia(frame: Option[VideoFrame]) {
     relit = false
     frame.foreach(_.cues(Nil))
     mixer = None
-    mixed(false)
+    gate = None
+    coming = None
+    mixed(false, true)
   }
 
   /** Drawn by the display itself (a `SurfaceView`) or in the app's layers (a `TextureView`). A player keeps playing

@@ -44,25 +44,31 @@ trait MediaSupport { self: Component =>
     * keeps playing at 1 and says so through [[rates]]. */
   lazy val rate: Prop[Double] = own(new Prop[Double](1.0, r => node.setMediaRate(math.max(0.1, math.min(4.0, r)))))
 
-  /** How loud the centre of a surround stream is, folded to stereo, in dB over the usual: a film keeps its dialogue in
-    * its centre channel, and on a television's own speakers the usual fold sets it under the music and effects. 0 is
-    * the usual fold (ITU-R BS.775: the centre and the surrounds at -3 dB, the LFE left out, [[everyui.audio.Downmix]]),
+  /** How loud the centre of a surround stream is, in dB over the usual: a film keeps its dialogue in its centre
+    * channel, and on a television's own speakers the usual fold to stereo sets it under the music and effects. 0 is
+    * the usual (ITU-R BS.775's fold: the centre and the surrounds at -3 dB, the LFE left out, [[everyui.audio.Downmix]]),
     * +3 and +6 bring the voices up over the rest, and it goes from -12 to +12; what comes out is limited, never
     * clipped. Heard at once, as it plays.
     *
-    * It does nothing to a stereo or mono source, nor where the output plays every channel itself (an AV receiver
-    * taking 5.1 as PCM, or the sound passed through to it encoded), nor on a platform that cannot ([[centerMixSupported]]):
-    * [[centerMixing]] says whether it is being heard. */
+    * Played out of two channels it is folded to stereo with the centre at that level; where the output plays every
+    * channel itself (an AV receiver taking 5.1 or 7.1 as PCM), nothing is folded and the centre is raised in place by
+    * the same decibels. On Android, sound the output would take still encoded (AC-3, E-AC-3 to a receiver or a
+    * television) is decoded here instead while this is not 0, where there is a decoder for it, so the receiver gets the
+    * decoded channels (an Atmos or DTS:X stream its bed, without its heights); at 0 it is passed through as ever. It
+    * does nothing to a stereo or mono source, nor where the platform cannot ([[centerMixSupported]]): [[centerMixing]]
+    * says whether it is being heard. */
   lazy val centerMix: Prop[Double] = own(new Prop[Double](0.0, db => node.setMediaCenterMix(db)))
 
-  /** Whether the platform can fold the centre in at another level for what is playing, so an app can hide the setting
-    * where it cannot: Android can (Media3's audio path); a browser can for a stream played through hls.js and a file
-    * from the page's own origin, where Web Audio may hear it, and not for a file from another one; a Roku, the
-    * Apple TV and the desktop cannot. Told again with each source. */
+  /** Whether the platform can reach the centre of what is playing, so an app can hide the setting where it cannot:
+    * Android can (Media3's audio path), but for sound passed through encoded that it has no decoder for (DTS or TrueHD
+    * on most devices); a browser can for a stream played through hls.js and a file from the page's own origin, where
+    * Web Audio may hear it, and not for a file from another one; a Roku, the Apple TV and the desktop cannot. Told
+    * again with each source. */
   val centerMixSupported: Var[Boolean] = Var(node.mediaCenterMixes())
 
-  /** Whether [[centerMix]] is being heard now: a source with a centre among more than two channels, folded here to a
-    * stereo output. False for a stereo source, a passed-through or many-channel output, and where it is not supported. */
+  /** Whether [[centerMix]] is being heard now: a source with a centre among more than two channels, decoded here and
+    * folded to stereo or lifted in place. False for a stereo source, sound passed through encoded, and where it is not
+    * supported. */
   val centerMixing: Var[Boolean] = Var(false)
 
   /** How much to hold before playing, how long to wait for bytes, and how much patience a stall is given: one of

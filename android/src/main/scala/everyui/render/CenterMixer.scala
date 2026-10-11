@@ -3,28 +3,31 @@ package everyui.render
 import android.media.{AudioDeviceInfo, AudioManager}
 import androidx.media3.common.C
 import androidx.media3.common.audio.{AudioProcessor, BaseAudioProcessor}
-import everyui.audio.Downmix
+import everyui.audio.{CenterRoute, Downmix}
 
 import java.nio.{ByteBuffer, ByteOrder}
 
-/** A film's surround sound folded to two channels here, in the player's audio path, rather than by Android after it,
-  * so its centre can be heard at the level asked for ([[Downmix]], MediaSupport.centerMix): in at `db` decibels over
-  * the usual, changed as it plays.
+/** A film's centre heard at the level asked for ([[Downmix]], MediaSupport.centerMix), in the player's audio path
+  * rather than by Android after it: folded to two channels with the centre at `db` decibels over the usual where the
+  * output plays two, or every channel kept and the centre raised in place by `db` where it plays more (an AV receiver
+  * taking 5.1 or 7.1 as PCM), changed as it plays ([[CenterRoute]]).
   *
   * It takes the sound where Media3 hands it on, decoded and still in all its channels (the decoder is asked for as
-  * many as there are, and the sink's processors come before its AudioTrack), as 16-bit or float PCM. It folds only a
-  * stream with a centre among more than two channels, and only where what is playing goes out as two: a television's
-  * speakers, headphones, a phone. Where the output plays every channel itself (an AV receiver over HDMI taking 5.1),
-  * the stream passes by as it is, and so it does everywhere else; and sound sent out still encoded (AC-3 or E-AC-3
-  * passed through to a receiver) never comes this way at all. [[active]] says whether it is folding.
+  * many as there are, and the sink's processors come before its AudioTrack), as 16-bit or float PCM, and only a
+  * stream with a centre among more than two channels; the rest passes by as it is. Sound sent out still encoded (AC-3
+  * or E-AC-3 passed through) never comes this way, which is why [[CenterGate]] has it decoded while `db` is not 0.
+  * [[active]] says whether it is folding or lifting.
   *
-  * Each time it starts folding, and each time `db` changes, it says a second later how loud the centre went in and
-  * each side came out (`media: centre mix …`). Fed on the player's audio thread. */
+  * Each time it starts, and each time `db` changes, it says a second later how loud the centre went in and each side
+  * (or the centre) came out (`media: centre mix …`). Fed on the player's audio thread. */
 class CenterMixer extends BaseAudioProcessor {
   /** The centre's level over the usual, in dB: read at each buffer, so a change is heard at once. */
   @volatile var db: Double = 0.0
-  /** Whether it folds what it was last set up for: said as it is set up, before the AudioTrack is made for it. */
+  /** Whether it folds or lifts what it was last set up for: said as it is set up, before the AudioTrack is made for
+    * it. */
   @volatile var active: Boolean = false
+  /** What it does with what it was last set up for. */
+  @volatile var route: CenterRoute = CenterRoute.Leave
 
   private var fold: Option[Downmix] = None
   private var input: Array[Float] = new Array[Float](0)
@@ -35,24 +38,20 @@ class CenterMixer extends BaseAudioProcessor {
 
   override protected def onConfigure(format: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat = {
     val pcm = format.encoding == C.ENCODING_PCM_16BIT || format.encoding == C.ENCODING_PCM_FLOAT
-    if (!pcm || !Downmix.applies(format.channelCount)) {
-      active = false
-      AudioProcessor.AudioFormat.NOT_SET
-    }
-    else {
-      val (kind, out) = CenterMixer.output()
-      if (out == 2) {
-        active = true
-        Platform.log("media: centre mix: " + format.channelCount.toString + " channels (" +
-          Downmix.roles(format.channelCount) + ") at " + format.sampleRate.toString + " Hz folded to stereo for " + kind)
+    val (kind, out) = if (pcm && Downmix.applies(format.channelCount)) CenterMixer.output() else ("", 0)
+    route = if (pcm) CenterRoute.of(format.channelCount, out) else CenterRoute.Leave
+    active = route != CenterRoute.Leave
+    val stream = Downmix.layout(format.channelCount) + " (" + Downmix.roles(format.channelCount) + ") at " +
+      format.sampleRate.toString + " Hz"
+    route match {
+      case CenterRoute.Fold =>
+        Platform.log("media: centre mix: " + stream + " folded to stereo for " + kind)
         new AudioProcessor.AudioFormat(format.sampleRate, 2, format.encoding)
-      }
-      else {
-        active = false
-        Platform.log("media: centre mix: " + format.channelCount.toString + " channels left as they are, for " + kind +
-          (if (out == 0) ", whose channels are not known" else " of " + out.toString + " channels"))
-        AudioProcessor.AudioFormat.NOT_SET
-      }
+      case CenterRoute.Lift =>
+        Platform.log("media: centre mix: " + stream + " lifted in " + Downmix.layout(format.channelCount) + " for " +
+          kind + (if (out == 0) ", whose channels are not known" else " of " + out.toString + " channels"))
+        format
+      case CenterRoute.Leave => AudioProcessor.AudioFormat.NOT_SET
     }
   }
 
@@ -68,17 +67,20 @@ class CenterMixer extends BaseAudioProcessor {
   override protected def onReset(): Unit = {
     fold = None
     active = false
+    route = CenterRoute.Leave
   }
 
   override def queueInput(buffer: ByteBuffer): Unit = fold match {
     case Some(f) if buffer.hasRemaining =>
       val float = inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT
+      val lifting = route == CenterRoute.Lift
       val size = if (float) 4 else 2
       val in = buffer.order(ByteOrder.nativeOrder())
       val frames = in.remaining() / (size * f.channels)
       val samples = frames * f.channels
+      val outs = if (lifting) samples else frames * 2
       if (input.length < samples) input = new Array[Float](samples)
-      if (output.length < frames * 2) output = new Array[Float](frames * 2)
+      if (output.length < outs) output = new Array[Float](outs)
       var i = 0
       while (i < samples) {
         input(i) = if (float) in.getFloat() else in.getShort() / 32768.0f
@@ -93,16 +95,19 @@ class CenterMixer extends BaseAudioProcessor {
         f.heard()
         tellAt = counted + f.rate
       }
-      f.mix(input, frames, output)
+      if (lifting) f.lift(input, frames, output) else f.mix(input, frames, output)
       counted += frames
       if (tellAt > 0L && counted >= tellAt) {
         tellAt = 0L
-        Platform.log("media: centre mix at " + Downmix.signed(now) + " dB: " + f.heard())
+        Platform.log("media: centre mix at " + Downmix.signed(now) + " dB" + (if (lifting) ", lifted" else "") + ": " +
+          f.heard())
       }
-      val out = replaceOutputBuffer(frames * 2 * size)
+      val out = replaceOutputBuffer(outs * size)
       var o = 0
-      while (o < frames * 2) {
+      while (o < outs) {
         if (float) out.putFloat(output(o))
+        // lifted, a sample goes back on the scale it came in on, so every channel but the centre is as it was
+        else if (lifting) out.putShort(math.max(-32768, math.min(32767, math.round(output(o) * 32768.0f))).toShort)
         else out.putShort(math.round(output(o) * 32767.0f).toShort)
         o += 1
       }
@@ -165,25 +170,17 @@ object CenterMixer {
     else "output type " + kind.toString
 
   /** The most channels the device says it takes as PCM (its profiles from Android 12, its channel counts before), or
-    * 0 where it says nothing. A Dolby or DTS profile is what it takes encoded, and does not count. */
+    * 0 where it says nothing ([[CenterRoute.pcmChannels]]). */
   private def pcmChannels(d: AudioDeviceInfo): Int = {
-    val profiled = if (android.os.Build.VERSION.SDK_INT >= 31) {
-      // 16-bit, float, 24-bit packed and 32-bit PCM
-      val pcm = Set(2, 4, 21, 22)
-      val profiles = d.getAudioProfiles
-      var most = 0
-      var i = 0
-      while (i < profiles.size()) {
-        val p = profiles.get(i)
-        if (pcm.contains(p.getFormat)) {
-          p.getChannelMasks.foreach(m => most = math.max(most, Integer.bitCount(m)))
-          p.getChannelIndexMasks.foreach(m => most = math.max(most, Integer.bitCount(m)))
+    val profiles =
+      if (android.os.Build.VERSION.SDK_INT >= 31) {
+        val list = d.getAudioProfiles
+        (0 until list.size()).map { i =>
+          val p = list.get(i)
+          (p.getFormat, (p.getChannelMasks ++ p.getChannelIndexMasks).toSeq)
         }
-        i += 1
       }
-      most
-    } else 0
-    if (profiled > 0) profiled
-    else d.getChannelCounts.foldLeft(0)(math.max)
+      else Nil
+    CenterRoute.pcmChannels(profiles, d.getChannelCounts.toSeq)
   }
 }
