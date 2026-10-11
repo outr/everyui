@@ -7,7 +7,7 @@ import everyui.{Color, FxSpec, ui}
 /** What fills the area under each group's tabs (`TabGroups.contentBackground`): the theme's background by default, the
   * group's own as before; a colour given (clear, for a picture behind) taken by the area under the tabs of every group,
   * those there and those made after, the strip of tabs keeping the theme's; and the theme's again once it is taken
-  * back. */
+  * back; and a strip given its own colour (`barBackground`) the same way. */
 class TabBackgroundSpec extends FxSpec {
   private def groups(): TabGroups[String] = fx {
     val g = new TabGroups[String](k => k, _ => new Container, k => k)
@@ -48,6 +48,24 @@ class TabBackgroundSpec extends FxSpec {
       fx(g.groups().size) should be(2)
       fx(g.contentBackground @= None)
       val bg = fx(Theme.background())
+      fx(g.groups()).foreach(group => colours(group) should be((bg, bg, bg)))
+      fx(ui.children.clear())
+    }
+    "give every group's strip its own colour, the area under the tabs the theme's unless given its own" in {
+      val g = groups()
+      val first = fx(g.groups().head)
+      val bg = fx(Theme.background())
+      val strip = bg.withAlpha(0.8)
+      fx(g.barBackground @= Some(strip))
+      colours(first) should be((Color.Clear, strip, bg))
+      fx(g.split(first, "b", vertical = false))
+      fx(g.groups().size) should be(2)
+      val made = fx(g.groups().find(_ ne first).get)
+      colours(made) should be((Color.Clear, strip, bg))
+      fx(g.contentBackground @= Some(Color.Clear))
+      fx(g.groups()).foreach(group => colours(group) should be((Color.Clear, strip, Color.Clear)))
+      fx(g.barBackground @= None)
+      fx(g.contentBackground @= None)
       fx(g.groups()).foreach(group => colours(group) should be((bg, bg, bg)))
       fx(ui.children.clear())
     }

@@ -68,8 +68,13 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   val addLabel: Var[String] = own(Var(TabBar.addWord))
   /** What fills the area under each group's tabs, where its tab shows its content: the theme's background by default
     * (None). An app showing a picture behind its screens (a `Backdrop`) sets `Some(Color.Clear)`, or a tint, and the
-    * picture shows through every group, present and future; the strip of tabs stays on the theme's background. */
+    * picture shows through every group, present and future; the strip of tabs stays on the theme's background
+    * unless `barBackground` gives it its own. */
   val contentBackground: Var[Option[Color]] = own(Var(None))
+  /** What fills each group's strip of tabs: the theme's background by default (None), or a colour given for every
+    * group, present and future, one with some alpha letting a picture behind the screen show through it as
+    * `contentBackground` does under the tabs. The tab shown keeps its own fill and mark over it. */
+  val barBackground: Var[Option[Color]] = own(Var(None))
   /** The groups, first to last. */
   val groups: Var[List[TabGroup[K]]] = own(Var(Nil))
   /** Heard with the layout each time it changes: a tab opened, closed, moved or shown, a split made or undone, a

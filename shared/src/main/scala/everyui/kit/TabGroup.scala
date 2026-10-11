@@ -43,16 +43,18 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   private var shared: Option[GroupContent[K]] = None
   private var told: Option[K] = None
 
-  backgroundColor := (if (owner.contentBackground().isEmpty) Theme.background() else Color.Clear)
-  // given its own, the area under the tabs takes it and the strip keeps the theme's, made once one is first given
+  backgroundColor := (if (owner.contentBackground().isEmpty && owner.barBackground().isEmpty) Theme.background()
+    else Color.Clear)
+  // given their own, the strip and the area under the tabs each take theirs, or the theme's, made once one is first given
   private var apart = false
   private def part(c: Option[Color]): Unit = if (c.nonEmpty && !apart) {
     apart = true
-    bar.backgroundColor := Theme.background()
+    bar.backgroundColor := owner.barBackground().getOrElse(Theme.background())
     body.backgroundColor := owner.contentBackground().getOrElse(Theme.background())
   }
-  part(owner.contentBackground())
+  part(owner.contentBackground().orElse(owner.barBackground()))
   follow(owner.contentBackground, (c: Option[Color]) => part(c))
+  follow(owner.barBackground, (c: Option[Color]) => part(c))
   children ++= List(bar, body)
   body.children += empty
   bar.tabMenu := ((id: String) => keyOf(id).map(k => owner.menuFor(this, k)).getOrElse(Nil))
