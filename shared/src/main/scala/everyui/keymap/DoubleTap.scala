@@ -32,7 +32,7 @@ class DoubleTap {
       modifier = m
       downs = 1
       ups = 0
-      started = Platform.ticks()
+      started = DoubleTap.ticks()
     }
   }
 
@@ -52,10 +52,13 @@ class DoubleTap {
       }
     }
 
-  private def within(): Boolean = Platform.ticks() - started <= Keymap.doubleTapWindow()
+  private def within(): Boolean = DoubleTap.ticks() - started <= Keymap.doubleTapWindow()
 }
 
 object DoubleTap {
+  /** The time now (ms) the window is measured on: the platform's, or a spec's own, moved on as it says. */
+  private[everyui] var ticks: () => Double = () => Platform.ticks()
+
   /** The modifier a key is, by the web's name ("Control", "Shift", "Alt", "Meta"), "" for any other key. */
   def modifierOf(name: String): String =
     if (name == "Control" || name == "Shift" || name == "Alt" || name == "Meta") name

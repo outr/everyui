@@ -20,6 +20,11 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   private var placing = false
   /** Those already here whose nodes the change moved among the others (`ordered`). */
   private var shifted: List[Component] = Nil
+  /** The list a `+=` or `++=` is growing, and what it grows it to, while it does: a change from the one to the other
+    * that adds only components in no container finds what came at the end, rather than reading the whole list twice
+    * over, which for lines added one at a time in a batch read every line again for each. */
+  private var grownFrom: Vector[Component] = Vector.empty
+  private var grownTo: Vector[Component] = Vector.empty
 
   attach(_ => place())
 
@@ -37,8 +42,10 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   }
 
   private def change(old: Vector[Component], current: Vector[Component]): Unit = {
-    val removed = ContainerFeature.missing(old, current)
-    val added = ContainerFeature.missing(current, old)
+    val end = if ((old eq grownFrom) && (current eq grownTo)) current.drop(old.length) else Vector.empty[Component]
+    val grown = end.nonEmpty && end.forall(c => c.parent().isEmpty && !c.takenApart)
+    val removed = if (grown) Vector.empty[Component] else ContainerFeature.missing(old, current)
+    val added = if (grown) end else ContainerFeature.missing(current, old)
     // what came from another container, and which: once placed here, it is taken out of that one's list, as a node the
     // DOM appends elsewhere leaves where it was (left listed there, it was "there" to whatever asked, and nothing put it
     // back when its tab came up again)
@@ -58,7 +65,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
           c.containerChanged()
         }
       }
-      if (removed.isEmpty && ContainerFeature.startsWith(current, old)) added.foreach { c =>
+      if (grown || (removed.isEmpty && ContainerFeature.startsWith(current, old))) added.foreach { c =>
         // only added to the end (`+=`, `++=`, a list grown by `bind`): each node appended in turn
         component.node.append(c.node)
         c.parent @= Some(component)
@@ -135,10 +142,20 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
   private[everyui] def release(child: Component): Unit =
     if (references.isEmpty && get.exists(_ eq child)) static(get.filterNot(_ eq child))
 
-  def +=(child: Component): Unit = static(get :+ child)
+  def +=(child: Component): Unit = grow(get :+ child)
   def -=(child: Component): Unit = static(get.filterNot(_ eq child))
-  def ++=(seq: Seq[Component]): Unit = static(get ++ seq)
+  def ++=(seq: Seq[Component]): Unit = grow(get ++ seq)
   def clear(): Unit = static(Vector.empty)
+
+  private def grow(to: Vector[Component]): Unit = {
+    grownFrom = get
+    grownTo = to
+    try static(to)
+    finally {
+      grownFrom = Vector.empty
+      grownTo = Vector.empty
+    }
+  }
 
   /** The children become `parts`, and each that is not among them is taken apart (Component.dispose, a slice a turn:
     * `Component.disposeGradually`), never to be shown again: a board drawn afresh for each question, a page's rows

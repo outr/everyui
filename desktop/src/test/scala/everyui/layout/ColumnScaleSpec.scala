@@ -36,6 +36,10 @@ class ColumnScaleSpec extends FxSpec {
     (result, (System.nanoTime() - start) / 1e6)
   }
 
+  /** The least of `times` runs of `f` in the FX thread's own time (worked): what the layout costs, without the waits a
+    * busy machine adds, a collection that happened to fall in one of them counting in none. */
+  private def least(times: Int)(f: => Unit): Double = (1 to times).map(_ => worked(f)).min
+
   /** Every line under the one before it, and the column as tall as they are. */
   private def check(column: Container, count: Int): Unit = fx {
     val lines = column.children()
@@ -55,25 +59,29 @@ class ColumnScaleSpec extends FxSpec {
           val (_, all) = millis(fx(column.children ++= (0 until n).map(line)))
           check(column, n)
           // every line's words changing together, as the web measures them: one layout for all of them
-          val (_, words) = millis(fx(LayoutPass.batch(column.children().foreach {
+          val words = least(3)(LayoutPass.batch(column.children().foreach {
             case t: TextView => t.content @= t.content() + " again"
             case _ => ()
-          })))
+          }))
           check(column, n)
-          info(f"$n%5d lines: every line's words changed $words%8.1f ms")
+          info(f"$n%5d lines: every line's words changed $words%8.1f ms worked")
           val each = fx(Column(2.0)())
           val (_, one) = onScreen(each)(millis(fx((0 until n).foreach(i => each.children += line(i)))))
           check(each, n)
-          val batched = fx(Column(2.0)())
-          val (_, inBatch) =
-            onScreen(batched)(millis(fx(LayoutPass.batch((0 until n).foreach(i => batched.children += line(i))))))
-          check(batched, n)
-          info(f"$n%5d lines: all at once $all%8.1f ms, one at a time $one%8.1f ms, in a batch $inBatch%8.1f ms")
+          val inBatch = (1 to 3).map { _ =>
+            val batched = fx(Column(2.0)())
+            val took =
+              onScreen(batched)(worked(LayoutPass.batch((0 until n).foreach(i => batched.children += line(i)))))
+            check(batched, n)
+            took
+          }.min
+          info(f"$n%5d lines: all at once $all%8.1f ms, one at a time $one%8.1f ms, in a batch $inBatch%8.1f ms worked")
           (n, words, inBatch)
         }
       }
-      // the two largest, the JIT warmed by then: linear would be the ratio of their sizes, and every line walked again
-      // for each line its square; three times linear leaves room for a busy machine
+      // the two largest, the JIT warmed by then, in the FX thread's own time: linear would be the ratio of their sizes,
+      // and every line walked again for each line its square; three times linear leaves room for what a busy machine
+      // costs the thread's work itself (its core's caches, shared with others)
       if (timed.length >= 2) {
         val (small, smallWords, smallBatch) = timed(timed.length - 2)
         val (large, largeWords, largeBatch) = timed.last

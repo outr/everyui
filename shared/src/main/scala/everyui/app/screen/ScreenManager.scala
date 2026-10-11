@@ -492,11 +492,11 @@ trait ScreenManager extends TaskSupport {
         reported = now
       }
     }, () => needsFrames, () => if (!ticking && everyui.util.Clock.watched) {
-      // idle, with something bound to the clock: a frame when it next moves on
+      // idle, with something bound to the clock: a frame when it next moves on, if anything still follows it then
       ticking = true
       Platform.after(everyui.util.Clock.untilTick, () => {
         ticking = false
-        Frames.request()
+        if (everyui.util.Clock.watched) Frames.request()
       })
     })
   }

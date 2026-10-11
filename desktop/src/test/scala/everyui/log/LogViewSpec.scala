@@ -371,7 +371,7 @@ class LogViewSpec extends FxSpec {
         val searching = System.nanoTime()
         fx(v.search @= "wells from")
         eventually(!v.searching()) shouldBe true
-        // (eventually gives up after two seconds)
+        // (eventually gives up after ten seconds)
         val searched = (System.nanoTime() - searching) / 1e6
         fx(v.matches()) shouldBe 50000
         val filtering = System.nanoTime()

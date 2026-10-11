@@ -70,11 +70,12 @@ class ConfineSpec extends FxSpec {
     Focus.key(key, false)
   }
 
-  /** OK held down for `seconds`, the hold's timer let run, then let go. */
-  private def hold(seconds: Double): Unit = {
+  /** OK held down for `seconds`, the hold's timer let run, then let go: once `fired` holds, where the hold is to fire,
+    * as a busy machine can run the timer later than `seconds`. */
+  private def hold(seconds: Double, fired: => Boolean = true): Unit = {
     fx(Focus.key("Enter", true))
     Thread.sleep((seconds * 1000.0).toLong)
-    fx(())
+    eventually(fired) shouldBe true
     fx(Focus.key("Enter", false))
   }
 
@@ -224,7 +225,7 @@ class ConfineSpec extends FxSpec {
         press("ArrowRight")
         fx(Focus.focused()) shouldBe Some(target)
         // held: the hold fires, and its release is no press
-        hold(0.8)
+        hold(0.8, holds.get(target).nonEmpty)
         fx((holds.get(target), clicks.get(target), Modal.showing)) shouldBe ((Some(1), None, true))
         fx(Focus.focused()) shouldBe Some(entry)
         press("Enter")

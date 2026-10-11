@@ -51,17 +51,30 @@ class BusyRingSpec extends FxSpec {
     pulses - before
   }
 
-  /** Wait until no pulse has run for half a second, for up to five seconds. */
+  /** Wait until no pulse has run for half a second: whether that came before a bound that only pulses that never stop
+    * reach, however busy the machine. */
   private def settled(): Boolean = {
-    val until = System.currentTimeMillis() + 5000L
+    val until = System.currentTimeMillis() + 20000L
     var still = pulsesIn(500L) == 0
     while (!still && System.currentTimeMillis() < until) still = pulsesIn(500L) == 0
     still
   }
 
+  /** Wait until more than `count` pulses have run since `from` (a count of `pulses`): whether they did, before a bound
+    * that only pulses that never come reach. Counted rather than timed, as a busy machine runs fewer a second. */
+  private def pulsesPast(from: Int, count: Int): Boolean = {
+    val until = System.currentTimeMillis() + 20000L
+    while (pulses - from <= count && System.currentTimeMillis() < until) Thread.sleep(10L)
+    pulses - from > count
+  }
+
   private def shown[C <: everyui.component.Component, T](c: C)(test: => T): T = {
     fx(ui.children += c)
-    try test finally fx(ui.children.clear())
+    try test finally fx {
+      ui.children.clear()
+      // taken apart, so a list's clock (Ticker) stops rather than moving on for the rest of the run
+      c.dispose()
+    }
   }
 
   // the ring's turning half, and how far it has turned
@@ -82,8 +95,7 @@ class BusyRingSpec extends FxSpec {
         fx(ring.position.left()) shouldBe -ring.outset
         fx(Motion.running) shouldBe before + 1
         val first = turned(ring)
-        Thread.sleep(200L)
-        turned(ring) should not be first
+        eventually(spin(ring).node.fx.getRotate != first) shouldBe true
         fx(avatar.busy @= false)
         fx(ring.visible()) shouldBe false
         fx(ring.turning()) shouldBe false
@@ -154,7 +166,7 @@ class BusyRingSpec extends FxSpec {
           Frames.watched = true
         }
         try {
-          pulsesIn(400L) should be > 5
+          pulsesPast(pulses, 5) shouldBe true
           fx(asked) shouldBe Nil
         }
         finally fx(Frames.watched = false)

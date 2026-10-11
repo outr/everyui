@@ -50,10 +50,22 @@ class FrameLoopSpec extends FxSpec {
     Manager.frames - before
   }
 
-  /** Wait until no frame has run for half a second. */
-  private def settled(): Unit = {
-    val until = System.currentTimeMillis() + 5000L
-    while (framesIn(500L) > 0 && System.currentTimeMillis() < until) ()
+  /** Wait until no frame has run for half a second: whether that came before a bound that only a loop that never
+    * stops reaches, however busy the machine. */
+  private def settled(): Boolean = {
+    val until = System.currentTimeMillis() + 20000L
+    var still = framesIn(500L) == 0
+    while (!still && System.currentTimeMillis() < until) still = framesIn(500L) == 0
+    still
+  }
+
+  /** Wait until more than `count` frames have run since `from` (a count of `Manager.frames`): whether they did, before
+    * a bound that only frames that never come reach. Counted rather than timed, as a busy machine runs fewer frames a
+    * second. */
+  private def framesPast(from: Int, count: Int): Boolean = {
+    val until = System.currentTimeMillis() + 20000L
+    while (Manager.frames - from <= count && System.currentTimeMillis() < until) Thread.sleep(10L)
+    Manager.frames - from > count
   }
 
   override def beforeAll(): Unit = {
@@ -82,69 +94,82 @@ class FrameLoopSpec extends FxSpec {
 
   "A screen manager's frames" should {
     "stop while nothing changes or moves" in {
-      settled()
+      settled() shouldBe true
       framesIn(600L) shouldBe 0
       fx(Frames.running) shouldBe false
     }
 
     "run for a change to what is shown, and stop after" in {
-      settled()
+      settled() shouldBe true
+      val before = Manager.frames
       fx(still.words.color @= Color.Red)
-      framesIn(300L) should (be >= 1 and be <= 4)
-      framesIn(400L) shouldBe 0
+      // every frame the change runs, counted until they stop: the one that draws it, the one after, and no more than
+      // a couple the change itself has after it
+      framesPast(before, 0) shouldBe true
+      settled() shouldBe true
+      Manager.frames - before should (be >= 1 and be <= 4)
     }
 
     "run through an animation, and stop when it ends" in {
-      settled()
+      settled() shouldBe true
       fx(still.words.opacity.to(0.5).in(400.millis).start())
-      Thread.sleep(700L)
-      fx(still.words.opacity()) shouldBe 0.5
-      settled()
+      eventually(still.words.opacity() == 0.5) shouldBe true
+      settled() shouldBe true
       fx(Frames.running) shouldBe false
     }
 
     "run for a screen that says it needs them, until it no longer does" in {
-      settled()
+      settled() shouldBe true
+      val before = Manager.frames
       fx {
         still.counting @= true
         Frames.request()
       }
-      framesIn(500L) should be > 10
+      // far more than the one asked for
+      framesPast(before, 10) shouldBe true
       fx(still.updates) should be > 10
       fx(still.counting @= false)
-      settled()
+      settled() shouldBe true
       framesIn(400L) shouldBe 0
     }
 
     "run once or so a second for words that follow the clock, and stop once none does" in {
-      settled()
+      settled() shouldBe true
       val started = Clock.real()
       val ticking = fx {
         val t = TextView.bound(Format.elapsed(started, None))
         ui.children += t
         t
       }
-      Thread.sleep(300L)
-      val before = fx(ticking.content())
-      val ran = framesIn(3000L)
-      // the clock's frame and the two its words changing take, each second
+      // the frames from the words' first change to their fourth, counted rather than timed: the clock's frame and the
+      // two its words changing take, each time it moves on, whenever the machine gets to them
+      var shown = fx(ticking.content())
+      eventually(ticking.content() != shown) shouldBe true
+      val (from, at) = (Manager.frames, System.nanoTime())
+      (1 to 3).foreach { _ =>
+        shown = fx(ticking.content())
+        eventually(ticking.content() != shown) shouldBe true
+      }
+      val ran = Manager.frames - from
       ran should (be >= 3 and be <= 15)
-      fx(ticking.content()) should not be before
+      // and a second apart, give or take how late each change is seen
+      (System.nanoTime() - at) / 1e9 should be >= 2.0
       fx {
         ui.children -= ticking
         ticking.dispose()
       }
       fx(Clock.watched) shouldBe false
-      settled()
+      settled() shouldBe true
       framesIn(1500L) shouldBe 0
     }
 
     "run every frame while held" in {
-      settled()
+      settled() shouldBe true
+      val before = Manager.frames
       val hold = fx(Frames.hold())
-      framesIn(500L) should be > 20
+      framesPast(before, 20) shouldBe true
       fx(hold.release())
-      settled()
+      settled() shouldBe true
       framesIn(400L) shouldBe 0
     }
   }

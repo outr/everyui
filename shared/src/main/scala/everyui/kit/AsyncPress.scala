@@ -22,8 +22,8 @@ class AsyncPress(spin: Boolean => Unit, minSpin: Double = AsyncPress.minSpin) {
     busy = true
     presses += 1
     val at = presses
-    if (shownAt < 0L) Platform.after(AsyncPress.spinAfter, () => if (busy && presses == at && shownAt < 0L) {
-      shownAt = System.currentTimeMillis()
+    if (shownAt < 0L) AsyncPress.after(AsyncPress.spinAfter, () => if (busy && presses == at && shownAt < 0L) {
+      shownAt = AsyncPress.clock()
       spin(true)
     })
     var settled = false
@@ -42,12 +42,12 @@ class AsyncPress(spin: Boolean => Unit, minSpin: Double = AsyncPress.minSpin) {
 
   // the spinner taken down once it has been up `minSpin`, unless another press has it by then
   private def settle(at: Int): Unit = if (shownAt >= 0L) {
-    val left = minSpin - (System.currentTimeMillis() - shownAt) / 1000.0
+    val left = minSpin - (AsyncPress.clock() - shownAt) / 1000.0
     if (left <= 0.0) {
       shownAt = -1L
       spin(false)
     }
-    else Platform.after(left, () => if (!busy && presses == at && shownAt >= 0L) {
+    else AsyncPress.after(left, () => if (!busy && presses == at && shownAt >= 0L) {
       shownAt = -1L
       spin(false)
     })
@@ -71,4 +71,8 @@ object AsyncPress {
   /** How long the spinner stays once shown, at the least (Material's half second): work ending just after it shows
     * would otherwise flash it for a frame. */
   val minSpin: Double = 0.5
+
+  /** The clock (ms) and the timer the presses keep: the platform's, or a spec's own, moved on as it says. */
+  private[everyui] var clock: () => Long = () => System.currentTimeMillis()
+  private[everyui] var after: (Double, () => Unit) => Unit = (seconds, f) => Platform.after(seconds, f)
 }

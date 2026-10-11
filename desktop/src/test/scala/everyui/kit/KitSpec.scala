@@ -103,8 +103,43 @@ class KitSpec extends FxSpec {
     }
   }
 
+  // The presses' time (AsyncPress.clock, AsyncPress.after), kept by the spec: what is due runs as `advance` passes it,
+  // in the order it is due, each on a turn of its own; what the work asks for later runs on the turn after. Exactly
+  // when each thing happens is then what the press makes of it, however late a busy machine would run a real timer.
+  @volatile private var now = 0.0
+  @volatile private var due: Vector[(Double, () => Unit)] = Vector.empty
+
+  private def timed[T](test: => T): T = {
+    now = 0.0
+    due = Vector.empty
+    AsyncPress.clock = () => math.round(now * 1000.0)
+    AsyncPress.after = (seconds, f) => due = due :+ (now + seconds -> f)
+    try onScreen()(test)
+    finally {
+      AsyncPress.clock = () => System.currentTimeMillis()
+      AsyncPress.after = (seconds, f) => Platform.after(seconds, f)
+    }
+  }
+
+  /** `seconds` passed, what fell due in them run. */
+  private def advance(seconds: Double): Unit = {
+    val until = now + seconds
+    var next = fx(due.filter(_._1 <= until + 1e-9).sortBy(_._1).headOption)
+    while (next.nonEmpty) {
+      val (at, f) = next.get
+      fx {
+        due = due.filterNot(_._2 eq f)
+        now = at
+        f()
+      }
+      fx(())
+      next = fx(due.filter(_._1 <= until + 1e-9).sortBy(_._1).headOption)
+    }
+    now = until
+  }
+
   "An async press" should {
-    "ignore a press while one runs, spin only when it is slow, and toast a failure" in onScreen() {
+    "ignore a press while one runs, spin only when it is slow, and toast a failure" in timed {
       var spinning: List[Boolean] = Nil
       var finish: AsyncPress.Done = null
       var pressed = 0
@@ -112,67 +147,69 @@ class KitSpec extends FxSpec {
       fx(press.press { done => pressed += 1; finish = done })
       fx(press.press { _ => pressed += 1 })
       pressed shouldBe 1
-      eventually(spinning == List(true)) shouldBe true
+      advance(0.39)
+      spinning shouldBe Nil
+      advance(0.01)
+      spinning shouldBe List(true)
       val before = fx(ui.children().size)
       fx(finish(Left("It did not work")))
-      eventually(!press.running) shouldBe true
+      fx(press.running) shouldBe false
       fx(ui.children().size) shouldBe before + 1
-      eventually(spinning == List(true, false)) shouldBe true
+      advance(0.49)
+      spinning shouldBe List(true)
+      advance(0.01)
+      spinning shouldBe List(true, false)
     }
-    "keep the spinner up its minimum once shown, though the work ends just after, and the answer at once" in onScreen() {
-      var events: List[(Boolean, Long)] = Nil
-      var answered = 0L
-      val press = new AsyncPress(on => events = events :+ (on -> System.nanoTime()))
+    "keep the spinner up its minimum once shown, though the work ends just after, and the answer at once" in timed {
+      var events: List[(Boolean, Double)] = Nil
+      val press = new AsyncPress(on => events = events :+ (on -> now))
       val before = fx(ui.children().size)
-      val start = fx {
-        press.press(done => Platform.after(0.42, () => done(Left("Answered"))))
-        System.nanoTime()
-      }
-      eventually { if (answered == 0L && !press.running) answered = System.nanoTime(); answered > 0L } shouldBe true
-      def at(t: Long): Double = (t - start) / 1e9
-      at(answered) should be < 0.6
-      // answered, it is still up, and the failure is told
-      fx(events.map(_._1)) shouldBe List(true)
+      fx(press.press(done => AsyncPress.after(0.42, () => done(Left("Answered")))))
+      advance(0.42)
+      // answered at once, while it is still up, and the failure is told
+      fx(press.running) shouldBe false
+      fx(events) shouldBe List(true -> 0.4)
       fx(ui.children().size) shouldBe before + 1
       fx(press.spinning) shouldBe true
-      eventually(events.size == 2) shouldBe true
-      val seen = fx(events)
-      seen.map(_._1) shouldBe List(true, false)
-      val (on, off) = (seen.head._2, seen(1)._2)
-      at(on) should (be >= 0.38 and be < 0.55)
-      (off - on) / 1e9 should be >= 0.48
-      at(off) should (be >= 0.88 and be < 1.1)
+      advance(1.0)
+      // up its half second from when it showed, and no longer
+      fx(events.map(_._1)) shouldBe List(true, false)
+      fx(events(1)._2) shouldBe 0.9 +- 1e-9
       fx(press.spinning) shouldBe false
     }
-    "never show the spinner for work done before spinAfter" in onScreen() {
+    "never show the spinner for work done before spinAfter" in timed {
       var spinning: List[Boolean] = Nil
       val press = new AsyncPress(on => spinning = spinning :+ on)
-      fx(press.press(done => Platform.after(0.2, () => done(Right(())))))
-      eventually(!press.running) shouldBe true
+      fx(press.press(done => AsyncPress.after(0.2, () => done(Right(())))))
+      advance(0.2)
+      fx(press.running) shouldBe false
       // pressed again at once, the first press's timer does not show it early for the second
-      fx(press.press(done => Platform.after(0.25, () => done(Right(())))))
-      Thread.sleep(700L)
+      fx(press.press(done => AsyncPress.after(0.25, () => done(Right(())))))
+      advance(0.7)
       fx(press.running) shouldBe false
       spinning shouldBe Nil
     }
-    "keep spinning, once, for a press while the spinner is still up" in onScreen() {
+    "keep spinning, once, for a press while the spinner is still up" in timed {
       var spinning: List[Boolean] = Nil
       var finish: AsyncPress.Done = null
       val press = new AsyncPress(on => spinning = spinning :+ on)
-      fx(press.press(done => Platform.after(0.42, () => done(Right(())))))
-      eventually(spinning == List(true) && !press.running) shouldBe true
+      fx(press.press(done => AsyncPress.after(0.42, () => done(Right(())))))
+      advance(0.42)
+      spinning shouldBe List(true)
+      fx(press.running) shouldBe false
       // pressed again in the half second it is held up: it stays up, not shown twice, past where the first would end
       fx(press.press(done => finish = done))
       fx(press.running) shouldBe true
-      Thread.sleep(800L)
+      advance(0.8)
       spinning shouldBe List(true)
       fx(press.spinning) shouldBe true
       fx(finish(Right(())))
       // up well past its minimum, it goes at once
-      eventually(spinning == List(true, false)) shouldBe true
+      fx(())
+      spinning shouldBe List(true, false)
       fx(press.press(done => done(Right(()))))
-      eventually(!press.running) shouldBe true
-      Thread.sleep(600L)
+      fx(press.running) shouldBe false
+      advance(0.6)
       spinning shouldBe List(true, false)
     }
   }

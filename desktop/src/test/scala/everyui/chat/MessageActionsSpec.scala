@@ -123,10 +123,14 @@ class MessageActionsSpec extends FxSpec {
         val (al2, _, aw2, _) = box(t)
         al2 + aw2 shouldBe (ol - MessageActions.gap +- 0.5)
         rows(t) shouldBe before
-        // from the row onto the buttons is still the message
-        leave(t)
-        fx(Pointer.consumed = None)
-        fx(bar(t).event.pointer.heard(bar(t).event.pointer.enter, PointerKind.Enter, al2 + 4.0, 0.0))
+        // from the row onto the buttons is still the message: off the one and onto the other on one turn, across the gap
+        // in less than the moment the buttons wait for, which turns of their own could take longer than on a busy machine
+        fx {
+          Pointer.consumed = None
+          t.list.event.pointer.heard(t.list.event.pointer.leave, PointerKind.Leave, t.list.absoluteLeft - 10.0, 0.0)
+          Pointer.consumed = None
+          bar(t).event.pointer.heard(bar(t).event.pointer.enter, PointerKind.Enter, al2 + 4.0, 0.0)
+        }
         Thread.sleep(300L)
         fx(shows(t, "m3")) shouldBe true
         // and off both, gone

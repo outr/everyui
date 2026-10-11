@@ -66,7 +66,7 @@ class SectionMenuSpec extends FxSpec {
     case _ => Nil
   })
 
-  private def onScreen[T](list: RichList[String])(test: => T): T = {
+  private def onScreen[T](list: RichList[String], keep: Boolean = false)(test: => T): T = {
     fx {
       ui.children.clear()
       ui.children += list
@@ -76,6 +76,9 @@ class SectionMenuSpec extends FxSpec {
       while (Modal.showing) Modal.close()
       Direction.set(false)
       ui.children.clear()
+      // taken apart, unless it is to be shown again, so its clock (Ticker) stops: left running, it moved on every twenty
+      // seconds for the rest of the run, and woke the frame loop of the specs after
+      if (!keep) list.dispose()
       Focus.focused @= None
     }
   }
@@ -162,7 +165,7 @@ class SectionMenuSpec extends FxSpec {
     }
     "leave a header without one as it was, and draw a section's icon before its title" in {
       val plain = fx(new RichList[String](three, s => s, s => RichLook(s)))
-      val width = onScreen(plain) {
+      val width = onScreen(plain, keep = true) {
         fx(plain.list.moveTo(0))
         fx(row(plain, 0).sectionMore.visible()) shouldBe false
         fx(row(plain, 0).size.height()) shouldBe RichRow.headerHeight

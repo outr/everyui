@@ -98,6 +98,8 @@ class ComposerSpec extends FxSpec {
       fx(chat.status.radius()) shouldBe 18.0
       fx(chat.composerSlot @= None)
       fx(chat.status.radius()) shouldBe 0.0
+      // taken apart, so its transcript's clock (Ticker) stops rather than moving on every second for the rest of the run
+      fx(chat.dispose())
     }
   }
 

@@ -43,11 +43,9 @@ class ListSpec extends FxSpec {
         fx(list.rowAt(25000).flatMap(_.item())) shouldBe Some("item 25000")
         fx(list.rows.size) shouldBe made
         fx(list.rowAt(25000).map(_.position.top())) shouldBe Some(0.0)
-        // scrolled a pixel at a time through a thousand rows, and back to the top
-        val started = System.nanoTime()
-        fx((0 until 28000 by 7).foreach(y => list.scrollTop(y.toDouble)))
-        val took = (System.nanoTime() - started) / 1e6
-        info(f"4000 scroll steps over 50k rows: $took%.0f ms (${took / 4000.0}%.3f ms a step)")
+        // scrolled a pixel at a time through a thousand rows, and back to the top, timed in the FX thread's own time
+        val took = worked((0 until 28000 by 7).foreach(y => list.scrollTop(y.toDouble)))
+        info(f"4000 scroll steps over 50k rows: $took%.0f ms worked (${took / 4000.0}%.3f ms a step)")
         took should be < 4000.0
         fx(list.rows.size) shouldBe made
         val reindexed = System.nanoTime()

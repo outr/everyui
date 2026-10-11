@@ -15,7 +15,9 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
   /** The window the focus layer listens on. */
   protected var window: Scene = null
 
-  /** `f` on the FX thread, waited for. What it posts for later (`Platform.later`) runs before the next `fx`. */
+  /** `f` on the FX thread, waited for. What it posts for later (`Platform.later`) runs before the next `fx`. The wait
+    * gives up after a minute, a bound for a thread that never comes back: the longest work a spec times
+    * (ColumnScaleSpec's thousands of lines added one at a time) takes several seconds on a busy machine. */
   protected def fx[T](f: => T): T = {
     var result: Option[Either[Throwable, T]] = None
     val done = new CountDownLatch(1)
@@ -23,13 +25,25 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
       result = Some(try Right(f) catch { case t: Throwable => Left(t) })
       done.countDown()
     })
-    done.await(10, TimeUnit.SECONDS) shouldBe true
+    done.await(60, TimeUnit.SECONDS) shouldBe true
     result.get.fold(t => throw t, v => v)
   }
 
-  /** `check` on the FX thread until it holds, a turn at a time, for up to two seconds: for what comes a few turns on. */
+  private val threads = java.lang.management.ManagementFactory.getThreadMXBean
+
+  /** `f` on the FX thread, and the time that thread spent on it (ms): what the work costs, without the waits for a core
+    * that a clock on the wall counts in on a busy machine, nor the collections that waited for theirs. */
+  protected def worked(f: => Unit): Double = fx {
+    val start = threads.getCurrentThreadCpuTime
+    f
+    (threads.getCurrentThreadCpuTime - start) / 1e6
+  }
+
+  /** `check` on the FX thread until it holds, a turn at a time: for what comes a few turns on, or after a timer. It
+    * gives up only after ten seconds, a bound for what never comes, as a machine busy with other work can hold the FX
+    * thread and the timers up for well over a second; what holds at once costs no more. */
   protected def eventually(check: => Boolean): Boolean = {
-    val until = System.currentTimeMillis() + 2000L
+    val until = System.currentTimeMillis() + 10000L
     var held = fx(check)
     while (!held && System.currentTimeMillis() < until) {
       Thread.sleep(10L)

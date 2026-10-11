@@ -2,9 +2,9 @@ package everyui.focus
 
 import everyui.component.{Component, Container}
 import everyui.event.{Keys, KeyEvent as UIKeyEvent}
-import everyui.keymap.{Chord, Keymap}
+import everyui.keymap.{Chord, DoubleTap, Keymap}
 import everyui.layout.HorizontalLayout
-import everyui.render.{Host, Nodes}
+import everyui.render.{Host, Nodes, Platform}
 import everyui.{FxSpec, ui}
 import javafx.scene.input.{KeyCode, KeyEvent}
 import javafx.scene.layout.Pane
@@ -35,10 +35,15 @@ class KeymapSpec extends FxSpec {
     c
   }
 
+  /** The time a double-tap's window is measured on (DoubleTap.ticks), moved on only where a case says: two taps one
+    * after the other are within any window, however long the FX thread takes to hear each on a busy machine. */
+  @volatile private var now = 0.0
+
   /** Three cards in a row on the screen, the first focused, and fresh keymaps; all taken away after. */
   private def onScreen[T](test: Vector[Component] => T): T = {
     val cards = Vector.fill(3)(card())
     fx {
+      DoubleTap.ticks = () => now
       ui.children.clear()
       val r = new Container
       r.layout @= Some(HorizontalLayout(10.0))
@@ -48,6 +53,7 @@ class KeymapSpec extends FxSpec {
       reached = Nil
     }
     try test(cards) finally fx {
+      DoubleTap.ticks = () => Platform.ticks()
       Keymap.global.commands @= Nil
       Keymap.shown @= (() => None)
       Keymap.embeds @= Map.empty
@@ -262,7 +268,7 @@ class KeymapSpec extends FxSpec {
         Keymap.global.add("palette", "Palette", Chord.doubleTap("Control"))(ran += 1)
       }
       tap(KeyCode.CONTROL)
-      Thread.sleep(200L)
+      now += 200.0
       tap(KeyCode.CONTROL)
       ran shouldBe 0
       // the slow second tap starts another, which a quick third completes

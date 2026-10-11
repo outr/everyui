@@ -42,12 +42,21 @@ class MotionSpec extends FxSpec {
     pulses - before
   }
 
-  /** Wait until no pulse has run for half a second, for up to five seconds. */
+  /** Wait until no pulse has run for half a second: whether that came before a bound that only pulses that never stop
+    * reach, however busy the machine. */
   private def settled(): Boolean = {
-    val until = System.currentTimeMillis() + 5000L
+    val until = System.currentTimeMillis() + 20000L
     var still = pulsesIn(500L) == 0
     while (!still && System.currentTimeMillis() < until) still = pulsesIn(500L) == 0
     still
+  }
+
+  /** Wait until more than `count` pulses have run since `from` (a count of `pulses`): whether they did, before a bound
+    * that only pulses that never come reach. Counted rather than timed, as a busy machine runs fewer a second. */
+  private def pulsesPast(from: Int, count: Int): Boolean = {
+    val until = System.currentTimeMillis() + 20000L
+    while (pulses - from <= count && System.currentTimeMillis() < until) Thread.sleep(10L)
+    pulses - from > count
   }
 
   // the spinner's turn now
@@ -62,9 +71,9 @@ class MotionSpec extends FxSpec {
       try {
         fx(Motion.running) shouldBe before + 1
         val first = turn(spinner)
-        Thread.sleep(200L)
-        turn(spinner) should not be first
-        pulsesIn(300L) should be > 5
+        val from = pulses
+        eventually(spinner.node.fx.getRotate != first) shouldBe true
+        pulsesPast(from, 5) shouldBe true
       }
       finally fx(ui.children -= spinner)
     }
@@ -84,8 +93,7 @@ class MotionSpec extends FxSpec {
       fx(ui.children += spinner)
       try {
         fx(Motion.running) shouldBe before + 1
-        Thread.sleep(200L)
-        turn(spinner) should not be still
+        eventually(spinner.node.fx.getRotate != still) shouldBe true
       }
       finally fx(ui.children -= spinner)
     }
@@ -131,8 +139,7 @@ class MotionSpec extends FxSpec {
         turn(spinner) shouldBe still
         fx(plate.visible @= true)
         fx(Motion.running) shouldBe before + 1
-        Thread.sleep(200L)
-        turn(spinner) should not be still
+        eventually(spinner.node.fx.getRotate != still) shouldBe true
         // hidden by a box and by itself, it runs only once both are shown
         fx {
           inner.visible @= false

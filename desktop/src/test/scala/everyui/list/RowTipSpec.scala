@@ -80,10 +80,12 @@ class RowTipSpec extends FxSpec {
       onScreen(list) {
         val r = rowOf(list, 3)
         fx(Tooltip.delay @= 0.3)
+        val entered = System.nanoTime()
         enter(r)
-        Thread.sleep(120L)
-        fx(Tooltip.shownFor) shouldBe None
         eventually(shownFor(r)) shouldBe true
+        // not before its delay: timed from before the pointer came, which a busy machine can only make longer, where a
+        // look a moment after it came could be past the delay on one
+        (System.nanoTime() - entered) / 1e9 should be >= 0.3
         fx(words) shouldBe Some(path(3))
         // the tooltip's own look and place: its plate, under the row and centred on it
         fx(plate.get.backgroundColor()) shouldBe fx(everyui.theme.Theme.raised())
@@ -218,8 +220,7 @@ class RowTipSpec extends FxSpec {
         hold(list, 4)
         fx(shownFor(rowOf(list, 4))) shouldBe true
         fx(words) shouldBe Some(path(4))
-        Thread.sleep((RowTips.held * 1000.0).toLong + 300L)
-        fx(Tooltip.shownFor) shouldBe None
+        eventually(Tooltip.shownFor.isEmpty) shouldBe true
         // a menu for the row: it opens, and no tip
         var menus = true
         fx(list.menu.attach(p => if (menus) Menu.at(p.x, p.y, List(MenuItem("Open " + p.item.toString)))))

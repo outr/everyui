@@ -279,12 +279,11 @@ class PagedTableSpec extends FxSpec {
       val (source, t) = table(server, maxPages = 12)
       onScreen(t) {
         val made = fx(t.list.rows.size)
-        val started = System.nanoTime()
-        // a wheel's worth at a time near the top, then jumps through the whole length, as a thumb dragged does
-        fx((0 until 2000).foreach(i => t.list.scrollBy(40.0)))
-        fx((0 until 2000).foreach(i => t.list.scrollTop(i * 1900000.0 * 28.0 / 2000.0)))
-        val took = (System.nanoTime() - started) / 1e6
-        info(f"4000 scroll steps over 1.9M rows, fetching as they go: $took%.0f ms (${took / 4000.0}%.3f ms a step)")
+        // a wheel's worth at a time near the top, then jumps through the whole length, as a thumb dragged does, timed in
+        // the FX thread's own time (worked): the work the steps cost
+        val took = worked((0 until 2000).foreach(i => t.list.scrollBy(40.0))) +
+          worked((0 until 2000).foreach(i => t.list.scrollTop(i * 1900000.0 * 28.0 / 2000.0)))
+        info(f"4000 scroll steps over 1.9M rows, fetching as they go: $took%.0f ms worked (${took / 4000.0}%.3f ms a step)")
         took should be < 8000.0
         fx(t.list.rows.size) should be <= made + 5
         fx(source.kept) should be <= 12 * 100

@@ -29,6 +29,8 @@ class SearchFieldSpec extends FxSpec {
     }
     try test finally fx {
       ui.children.clear()
+      // taken apart, so a list's clock (Ticker) stops rather than moving on for the rest of the run
+      c.dispose()
       Focus.focused @= None
     }
   }
