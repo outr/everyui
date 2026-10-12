@@ -44,7 +44,10 @@ object WebApp {
   val registration: String = "if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');\n"
 
   /** The service worker: the network first, what it fetched kept in a cache named by `version` for when it is not
-    * there, and older caches cleared once this one is in charge. And push notifications (`everyui.push.Push`): a
+    * there, and older caches cleared once this one is in charge. The app's page (`./`) is kept as it installs, so a
+    * page opened at any of the app's paths while the server is away (a restart) is the app's page, the first visit
+    * too; what is neither fetched nor kept is answered 503, a page saying so and trying again every 3 s for a page
+    * opened, never no answer at all (which the browser shows as its own error, and does not try again). And push notifications (`everyui.push.Push`): a
     * push's JSON payload, `{"title", "body", "path"}`, goes to a window of the app that is in sight, which shows it its
     * own way, and otherwise is shown as a notification; a tap on one focuses a window of the app and tells it
     * (`everyui.push.Push.opened`, and the app goes to the path), or opens the app at the path when none is open. A path
@@ -52,17 +55,26 @@ object WebApp {
     * with the same key and handed to the open windows (`everyui.push.Push.tokens`). */
   def worker(version: String): String =
     s"""const CACHE = 'everyui-$version';
-       |self.addEventListener('install', () => self.skipWaiting());
+       |self.addEventListener('install', e => e.waitUntil(
+       |  caches.open(CACHE).then(c => c.add('./')).catch(() => {}).then(() => self.skipWaiting())));
        |self.addEventListener('activate', e => e.waitUntil(
        |  caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
        |    .then(() => self.clients.claim())));
+       |const unreachable = navigate => navigate
+       |  ? new Response('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="3">' +
+       |      '<title>Not reachable</title><p style="font:16px system-ui;margin:2em">The server is not reachable. ' +
+       |      'Trying again…</p>', { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+       |  : new Response('', { status: 503, statusText: 'Service Unavailable' });
        |self.addEventListener('fetch', e => {
        |  const request = e.request;
        |  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+       |  const navigate = request.mode === 'navigate';
        |  e.respondWith(fetch(request).then(response => {
        |    if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(c => c.put(request, copy)); }
        |    return response;
-       |  }).catch(() => caches.match(request).then(hit => hit || caches.match('./'))));
+       |  }).catch(() => caches.match(request)
+       |    .then(hit => hit || (navigate ? caches.match('./') : undefined))
+       |    .then(hit => hit || unreachable(navigate))));
        |});
        |const windows = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true });
        |const tell = (client, data) => client.postMessage(data);

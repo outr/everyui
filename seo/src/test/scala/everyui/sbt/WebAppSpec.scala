@@ -30,6 +30,14 @@ class WebAppSpec extends AnyWordSpec with Matchers {
       read(new File(out, "sw.js")) should include("const CACHE = 'everyui-abc123';")
     }
 
+    "keep the app's page as it installs, and always answer: the page for a page opened, else a 503" in {
+      val worker = read(new File(out, "sw.js"))
+      worker should include("c.add('./')")
+      worker should include("navigate ? caches.match('./') : undefined")
+      worker should include("hit || unreachable(navigate)")
+      worker should include("status: 503")
+    }
+
     "answer pushes, taps and renewed subscriptions in the worker" in {
       val worker = read(new File(out, "sw.js"))
       worker should include("addEventListener('push'")
