@@ -97,7 +97,8 @@ object ChatDemo {
 
   // `queue=1`: a Composer whose messages wait while a reply comes (Composer.queueWhileBusy), each reply streaming for
   // some seconds, so several typed meanwhile are queued and then go one reply at a time; `afterstop=drain` lets Stop
-  // go on with the queue rather than pausing it. Logs `chat queue sent <words>` as each goes and `chat queue stopped`.
+  // go on with the queue rather than pausing it. Logs `chat queue sent <words>` as each goes, `chat queue stopped`, and
+  // `chat queue action stop tools` for the app's action on the paused queue (Stop tools).
   private def queued(entries: Var[Vector[ChatEntry]], working: Var[Vector[Working]]): Composer = {
     val turn: Var[Int] = Var(0)
     val busy: Var[Boolean] = Var(false)
@@ -137,6 +138,9 @@ object ChatDemo {
     if (Platform.launchArg("afterstop") == "drain") composer.queueAfterStop @= QueueAfterStop.Drain
     composer.busy := busy()
     composer.placeholder @= "Message the room"
+    // an app's own action on the paused queue's line, after the composer's
+    composer.queueActions @= List(QueueAction("Stop tools", () => Platform.log("chat queue action stop tools"),
+      Some(MaterialIcon.StopCircle)))
     // `seed=1`: a queue kept from before a reload, paused until it is resumed, one of its messages with two files
     if (Platform.launchArg("seed") == "1") {
       composer.queue @= List(Draft("Kept from before the reload", Nil), Draft("With the two logs from last night",

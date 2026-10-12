@@ -10,8 +10,9 @@ import reactify.*
 /** A composer that queues what is sent while a reply comes (`queueWhileBusy`), on the desktop backend's real nodes
   * with real JavaFX key events: messages queued, edited back into the field and queued again into their place, taken
   * off, moved by the keys and by a drag, sent one per idle through `onSend` (never two for a flicker of `busy`, nor
-  * before the app has started the last one's reply), paused by Stop or drained after it, said to a screen reader, and
-  * a composer with it off as it always was. */
+  * before the app has started the last one's reply), paused by Stop or drained after it, the paused line's Send next,
+  * Clear queue and the app's actions (in a ⋮ menu where narrow, by the keys), said to a screen reader, and a composer
+  * with it off as it always was. */
 class ComposerQueueSpec extends FxSpec {
   private var sent: List[String] = Nil
   private var stops = 0
@@ -85,6 +86,23 @@ class ComposerQueueSpec extends FxSpec {
     fx(c.busy @= true)
     List("A", "B", "C").foreach(w => write(c, w))
     c
+  }
+
+  // A, B and C queued, then paused by Stop, the reply over
+  private def paused(): Composer = {
+    val c = three()
+    fx(c.stop())
+    fx(c.busy @= false)
+    c
+  }
+
+  // (read on the FX thread, as `chips` is)
+  private def line(c: Composer): DraftQueue = under[DraftQueue](c).head
+
+  // the words on one of the line's actions (a button's), or the ⋮'s name
+  private def labelOf(c: everyui.component.Component): String = c match {
+    case b: everyui.component.Button => b.label()
+    case other => other.semantics().label
   }
 
   "A message sent while a reply comes" should {
@@ -318,6 +336,157 @@ class ComposerQueueSpec extends FxSpec {
     }
   }
 
+  "A paused queue's line" should {
+    "send exactly one with Send next, and stay paused" in {
+      val c = paused()
+      click(fx(line(c).sendNextButton))
+      sent shouldBe List("A")
+      texts(c) shouldBe List("B", "C")
+      fx(c.queuePaused()) shouldBe true
+      // nothing more until that message's reply has come and gone: the button is out of use, and a press does nothing
+      fx(line(c).sendNextButton.enabled()) shouldBe false
+      click(fx(line(c).sendNextButton))
+      fx(c.sendNext())
+      Thread.sleep(300L)
+      sent shouldBe List("A")
+      fx(c.announced.head) shouldBe "Paused, 2 messages queued"
+    }
+    "send them one by one with Send next pressed after each reply, the focus kept and then back in the field" in {
+      val c = paused()
+      fx(line(c).sendNextButton.focus())
+      List("A", "B", "C").foreach { w =>
+        fx(line(c).sendNextButton.enabled()) shouldBe true
+        press(KeyCode.ENTER)
+        sent.last shouldBe w
+        fx(c.queuePaused()) shouldBe (w != "C")
+        if (w != "C") fx(Focus.focused()) shouldBe Some(line(c).sendNextButton)
+        reply(c)
+        Thread.sleep(150L)
+      }
+      sent shouldBe List("A", "B", "C")
+      texts(c) shouldBe Nil
+      // the queue gone, and the line with it: the focus back where the person writes
+      fx(under[DraftQueue](c)).isEmpty shouldBe true
+      fx(Focus.focused()) shouldBe Some(c.field)
+    }
+    "take every message off with Clear queue, at once and sending none, the focus back in the field" in {
+      val c = paused()
+      fx(line(c).clearButton.focus())
+      press(KeyCode.ENTER)
+      texts(c) shouldBe Nil
+      fx(c.queuePaused()) shouldBe false
+      fx(under[DraftQueue](c)).isEmpty shouldBe true
+      fx(Focus.focused()) shouldBe Some(c.field)
+      fx(c.announced.head) shouldBe "No messages queued"
+      Thread.sleep(300L)
+      sent shouldBe Nil
+    }
+    "show the app's actions after its own, and do them" in {
+      val c = paused()
+      fx(c.size.width @= 900.0)
+      var done: List[String] = Nil
+      fx(c.queueActions @= List(QueueAction("Stop tools", () => done = done :+ "tools"),
+        QueueAction("Later", () => done = done :+ "later", Some(everyui.font.MaterialIcon.Schedule))))
+      val shown = fx(line(c).shown.map(labelOf))
+      shown shouldBe List("Resume", "Send next", "Clear queue", "Stop tools", "Later")
+      click(fx(line(c).shown(3)))
+      click(fx(line(c).shown(4)))
+      done shouldBe List("tools", "later")
+      // changed, they are made again
+      fx(c.queueActions @= List(QueueAction("Only", () => done = done :+ "only")))
+      fx(line(c).shown.map(labelOf)) shouldBe List("Resume", "Send next", "Clear queue", "Only")
+      texts(c) shouldBe List("A", "B", "C")
+    }
+    "fit on one line, Resume kept and the rest in order in a ⋮ menu where narrow" in {
+      val c = paused()
+      var done: List[String] = Nil
+      fx(c.queueActions @= List(QueueAction("Stop running commands", () => done = done :+ "stop")))
+      fx(c.size.width @= 360.0)
+      val q = fx(line(c))
+      val shown = fx(q.shown)
+      shown.head shouldBe q.resumeButton
+      shown.last shouldBe q.moreButton
+      val kept = shown.drop(1).dropRight(1)
+      val all = fx(q.rest())
+      fx(kept) shouldBe all.take(kept.length)
+      kept.length should be < all.length
+      // every part within the line, on it, and none over the words
+      fx {
+        val bar = q.resumeButton.parent().get
+        bar.position.left() + bar.size.width() should be <= (q.size.width() + 0.5)
+        shown.map(s => s.position.left() + s.size.width()).max should be <= (bar.size.width() + 0.5)
+        val words = under[everyui.component.TextView](q).find(_.content().startsWith("Paused")).get
+        words.position.left() + words.size.width() should be <= bar.position.left()
+        shown.foreach(s => s.size.height() should be <= 30.0)
+      }
+      // the menu has the rest, in order; the last chosen does it
+      click(fx(q.moreButton))
+      val menu = fx(everyui.component.Modal.top.collect { case m: everyui.menu.Menu => m }).get
+      fx(menu.rows.map(_.item.label)) shouldBe fx(all.drop(kept.length).map(labelOf))
+      fx(menu.rows.last.chosen @= (()))
+      done shouldBe List("stop")
+      fx(everyui.component.Modal.showing) shouldBe false
+      // wide again, every action on the line, and no ⋮
+      fx(c.size.width @= 900.0)
+      fx(q.shown.map(labelOf)) shouldBe List("Resume", "Send next", "Clear queue", "Stop running commands")
+      // narrow again, Clear queue from the menu: the line gone with the queue, the focus back in the field
+      fx(c.size.width @= 360.0)
+      fx(q.moreButton.focus())
+      click(fx(q.moreButton))
+      val again = fx(everyui.component.Modal.top.collect { case m: everyui.menu.Menu => m }).get
+      fx(again.rows.find(_.item.label == "Clear queue").get.chosen @= (()))
+      texts(c) shouldBe Nil
+      fx(Focus.focused()) shouldBe Some(c.field)
+    }
+    "be reached by the keys: Up from the first chip to Resume, along by Left and Right, and Down to the chip" in {
+      val c = paused()
+      fx(c.queueActions @= List(QueueAction("Stop tools", () => ())))
+      fx(chips(c).head.focus())
+      press(KeyCode.UP)
+      fx(Focus.focused()) shouldBe Some(line(c).resumeButton)
+      val along = (1 to 3).map { _ =>
+        press(KeyCode.RIGHT)
+        fx(Focus.focused().map(labelOf).getOrElse(""))
+      }
+      along shouldBe Vector("Send next", "Clear queue", "Stop tools")
+      press(KeyCode.LEFT)
+      fx(Focus.focused().map(labelOf)) shouldBe Some("Clear queue")
+      press(KeyCode.DOWN)
+      focusedChip(c) shouldBe 0
+      press(KeyCode.DOWN)
+      press(KeyCode.DOWN)
+      press(KeyCode.DOWN)
+      fx(Focus.focused()) shouldBe Some(c.field)
+      // and in the tree's order (Tab), the line before the chips
+      val stops = fx(Focus.candidates(line(c)).toList)
+      stops.take(4).map(s => fx(labelOf(s))) shouldBe List("Resume", "Send next", "Clear queue", "Stop tools")
+      stops.drop(4) shouldBe fx(chips(c))
+    }
+    "be named to a screen reader, the ⋮ too, in the language in use" in {
+      val c = paused()
+      fx(c.size.width @= 300.0)
+      fx(line(c).moreButton.semantics().label) shouldBe "More queue actions"
+      fx(line(c).moreButton.parent().nonEmpty) shouldBe true
+      val was = fx(Strings.language())
+      try {
+        fx(Strings.language @= Language("de", "Deutsch", "German"))
+        ChatWords.sendNext shouldBe "Nächste senden"
+        ChatWords.clearQueue shouldBe "Warteschlange leeren"
+        fx(Strings.language @= Language("ar", "العربية", "Arabic"))
+        ChatWords.clearQueue shouldBe "مسح قائمة الانتظار"
+      }
+      finally fx(Strings.language @= was)
+    }
+    "show nothing while the queue is not paused" in {
+      val c = three()
+      fx(c.queueActions @= List(QueueAction("Stop tools", () => ())))
+      val q = fx(line(c))
+      fx(List(q.resumeButton, q.sendNextButton, q.clearButton, q.moreButton).map(b => Focus.showing(b))) shouldBe
+        List(false, false, false, false)
+      fx(Focus.candidates(q).toList) shouldBe fx(chips(c))
+    }
+  }
+
   "A screen reader" should {
     "hear how many are queued as it changes, and that it is paused" in {
       val c = three()
@@ -397,6 +566,8 @@ class ComposerQueueSpec extends FxSpec {
       fx(c.size.width @= 600.0)
       fx((c.size.height(), c.field.position.top(), c.children().length)) shouldBe ((57.0, 8.0, 1))
       val off = fx(tree(c))
+      fx(c.queueActions @= List(QueueAction("Stop tools", () => ())))
+      fx(tree(c)) shouldBe off
       fx(c.queueWhileBusy @= true)
       fx(tree(c)) shouldBe off
     }

@@ -241,6 +241,9 @@ class TranscriptRailSpec extends FxSpec {
       onScreen(t) {
         settle(t)
         fx {
+          // no pointer used just now (the window's under the pointer the suite's earlier specs moved): the keys moved
+          // the cursor, so the buttons show beside the message under it
+          everyui.event.Pointer.usedAt = -1.0e9
           t.list.focus()
           t.list.current @= Some("m7")
         }

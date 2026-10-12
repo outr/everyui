@@ -1580,9 +1580,29 @@ composer.queueAfterStop @= QueueAfterStop.Drain     // Pause, the default for no
   "Paused · 2 messages queued" with Resume (`resume()`), and nothing goes until Resume, or until the person sends
   another message, which goes first, the queue following it. `QueueAfterStop.Drain` lets the queue go on after Stop as
   after any reply. `queuePaused` says which, and the app may set it.
-- `edit(draft)`, `unqueue(draft)` and `resume()` do from the app what the chips do.
+- **The paused line's actions**: after Resume come **Send next**, which sends the queue's next message only, through
+  the same path a drain takes (so it is out of use while a reply, or a message the composer sent that has not yet been
+  seen to start and end, is under way: never two at once), the rest staying paused; and **Clear queue**, which takes
+  every message off at once and asks nothing, as the chips show what goes (EveryUI has no undo for a toast to offer;
+  an app that wants one can keep `queue()` before and set it back). Then the app's own, `queueActions`:
+
+  ```scala
+  composer.queueActions @= List(
+    QueueAction("Stop running commands", () => tools.stopAll(), Some(MaterialIcon.StopCircle)))
+  ```
+
+  Where they do not all fit beside the line's words (a phone), Resume stays and the rest go, in their order, into a ⋮
+  menu at its end, never wrapped or cut. Up from the first chip goes to Resume, Left and Right along the actions (the
+  other way round in a right-to-left language), Down back to the first chip; each is a named button to a screen
+  reader, the ⋮ "More queue actions", and the count is said again as Send next or Clear queue changes it. An action
+  that ends the line (Resume, the last message sent, Clear queue) puts the focus back in the field. None show while
+  the queue is not paused.
+- `edit(draft)`, `unqueue(draft)`, `resume()`, `sendNext()` and `clearQueue()` do from the app what the queue's own
+  controls do. No callback says which was pressed: a message Send next sends reaches `onSend`, as every drained one
+  does, so a send and a removal are already told apart, and `queue` shows every change.
 - On a Roku or an Apple TV, where a message is written on the platform's keyboard, it is off unless the app turns it
-  on. `demo=chat&queue=1` shows it, each reply streaming for some seconds (`afterstop=drain` to go on after Stop).
+  on. `demo=chat&queue=1` shows it, each reply streaming for some seconds (`afterstop=drain` to go on after Stop,
+  `seed=1` for a paused queue), with an app action, "Stop tools", on the paused line.
 
 ### Files (`everyui.file`)
 

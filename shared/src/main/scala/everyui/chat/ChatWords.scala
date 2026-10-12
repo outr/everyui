@@ -61,6 +61,11 @@ object ChatWords {
       Map("n" -> n.toString))
   def queuePaused: String = word("chat.queuePaused", "Paused")
   def resume: String = word("chat.resume", "Resume")
+  /** A paused queue's next message sent, the rest still paused. */
+  def sendNext: String = word("chat.sendNext", "Send next")
+  def clearQueue: String = word("chat.clearQueue", "Clear queue")
+  /** The ⋮ holding the queue's actions that do not fit beside it. */
+  def queueMore: String = word("chat.queueMore", "More queue actions")
   /** The Send beside Stop while a reply is coming. */
   def addToQueue: String = word("chat.addToQueue", "Add to queue")
   def edit: String = word("chat.edit", "Edit")

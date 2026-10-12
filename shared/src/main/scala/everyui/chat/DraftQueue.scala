@@ -1,31 +1,69 @@
 package everyui.chat
 
-import everyui.component.{Button, ButtonStyle, Component, Container, ScrollContainer, TextView}
+import everyui.component.{Button, ButtonStyle, Component, Container, IconButton, Row, ScrollContainer, TextView}
 import everyui.event.{Key, KeyEvent}
 import everyui.focus.Focus
 import everyui.font.MaterialIcon
 import everyui.kit.Mirror
+import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
 
 /** A [[Composer]]'s queue as it shows over its field: a line saying how many messages wait (and, while the queue is
-  * `paused`, that it is, with Resume), then a [[QueueChip]] for each, in the order they will go, which scrolls past
-  * `maxHeight`. A chip is dragged by its handle into another place, or moved with Alt+Up and Alt+Down; the arrows go
-  * from chip to chip, and Down from the last (or Escape from any) to `field`. What a chip asks for, an edit or a
-  * removal, is the composer's (`edit`, `remove`); a move it makes itself, on `queue`. */
+  * `paused`, that it is, with its actions), then a [[QueueChip]] for each, in the order they will go, which scrolls
+  * past `maxHeight`. A chip is dragged by its handle into another place, or moved with Alt+Up and Alt+Down; the arrows
+  * go from chip to chip, and Down from the last (or Escape from any) to `field`. What a chip asks for, an edit or a
+  * removal, is the composer's (`edit`, `remove`); a move it makes itself, on `queue`.
+  *
+  * Paused, the line ends in Resume, Send next (while `nextReady`), Clear queue and the app's `actions`, in that order;
+  * where they do not all fit beside the words, Resume stays and those after it that do not fit go, in order, into a ⋮
+  * menu at the end. Left and Right go along them, Down to the first chip and Up from it to Resume. */
 class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[Double], field: Component,
-                 edit: Draft => Unit, remove: Draft => Unit, resume: () => Unit) extends Container {
+                 edit: Draft => Unit, remove: Draft => Unit, resume: () => Unit, sendNext: () => Unit,
+                 nextReady: Val[Boolean], clear: () => Unit, actions: Val[List[QueueAction]]) extends Container {
   private val header = new Container
-  private val label = TextView.bound(if (paused()) ChatWords.queuePaused + " · " + ChatWords.queued(queue().length)
-    else ChatWords.queued(queue().length), 12.0, if (paused()) Theme.text() else Theme.muted())
+  private val said: Val[String] = own(Val(if (paused()) ChatWords.queuePaused + " · " + ChatWords.queued(queue().length)
+    else ChatWords.queued(queue().length)))
+  private val label = TextView.bound(said(), 12.0, if (paused()) Theme.text() else Theme.muted())
+  // the same words whole and out of sight: the room they ask, by which the actions that fit are chosen, whatever the
+  // line is cut to
+  private val whole = TextView.bound(said(), 12.0)
   /** What sends the queue on again while it is paused. */
-  val resumeButton: Button = new Button(ChatWords.resume, () => {
-    // it leaves as the queue goes on: the focus, if it had it, back to the field
-    val had = resumeButton.focused()
-    resume()
-    if (had) field.focus()
-  }, ButtonStyle.Text, Some(MaterialIcon.PlayArrow), 11.5)
+  val resumeButton: Button = action(ChatWords.resume, Some(MaterialIcon.PlayArrow), () => resume())
+  /** What sends the queue's next message while it is paused, the rest still waiting. */
+  val sendNextButton: Button = action(ChatWords.sendNext, Some(MaterialIcon.Send), () => sendNext())
+  /** What takes every message off the queue. */
+  val clearButton: Button = action(ChatWords.clearQueue, Some(MaterialIcon.ClearAll), () => clear())
+  /** The actions after Resume that do not fit beside the words, as a menu. */
+  val moreButton: IconButton = new IconButton(MaterialIcon.MoreVert, ChatWords.queueMore, () => more()) {
+    size.width @= 26.0
+    size.height @= 26.0
+    radius @= 13.0
+    icon.position.left @= 2.0
+    icon.position.top @= 2.0
+  }
+  // the app's actions as buttons, made again as they change
+  private val appButtons: Var[List[Button]] = own(Var(Nil))
+  /** Every action after Resume, in order: Send next, Clear queue, and the app's. */
+  val rest: Val[List[Button]] = own(Val(sendNextButton :: clearButton :: appButtons()))
+  /** How many of `rest` show beside Resume: as many as fit, in order, with room for the ⋮ where any do not. */
+  val fitting: Val[Int] = own(Val {
+    val widths = rest().map(_.size.width() + DraftQueue.spacing)
+    val room = size.width() - whole.size.width() - 8.0 - resumeButton.size.width()
+    if (widths.sum <= room) widths.length
+    else {
+      val left = room - DraftQueue.spacing - moreButton.size.width()
+      var n = 0
+      var used = 0.0
+      while (n < widths.length && used + widths(n) <= left) {
+        used += widths(n)
+        n += 1
+      }
+      n
+    }
+  })
+  private val bar = Row(DraftQueue.spacing, middle = true)()
   /** The chips, scrolled past `maxHeight`. */
   val list: ScrollContainer = new ScrollContainer
   private val divider = new Container
@@ -41,16 +79,23 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
   header.size.width := size.width()
   header.size.height @= 26.0
   label.position.middle := header.size.middle()
-  label.maxWidth := math.max(40.0, size.width() - (if (paused()) resumeButton.size.width() + 8.0 else 0.0))
+  label.maxWidth := math.max(40.0, size.width() - (if (paused()) bar.size.width() + 8.0 else 0.0))
   Mirror.place(label, () => header.size.width(), () => 2.0)
-  resumeButton.position.middle := header.size.middle()
-  Mirror.place(resumeButton, () => header.size.width(), () => header.size.width() - resumeButton.size.width())
-  header.children += label
+  whole.visible @= false
+  sendNextButton.enabled := nextReady()
+  bar.position.middle := header.size.middle()
+  Mirror.place(bar, () => header.size.width(), () => header.size.width() - bar.size.width())
+  header.children ++= List(label, whole)
+  actions.attach(_ => made())
+  made()
+  rest.attach(_ => arrange())
+  fitting.attach(_ => arrange())
+  arrange()
   paused.attach { on =>
-    if (on) header.children += resumeButton else header.children -= resumeButton
+    if (on) header.children += bar else header.children -= bar
     build()
   }
-  if (paused()) header.children += resumeButton
+  if (paused()) header.children += bar
 
   list.position.top @= 28.0
   list.size.width := size.width()
@@ -188,5 +233,49 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
     else place()
   }
 
+  /** What shows on the line now: Resume, those of `rest` that fit, and the ⋮ where any do not. */
+  def shown: List[Component] = bar.children().toList
+
+  // an action on the line: the focus, if it was on the line and the action took that away (the queue resumed, sent or
+  // cleared), back to the field
+  private def action(words: String, glyph: Option[MaterialIcon], run: () => Unit): Button =
+    new Button(words, () => acted(run), ButtonStyle.Text, glyph, 11.5)
+
+  private def acted(run: () => Unit): Unit = {
+    val inside = Focus.focused().exists(f => (moreButton :: resumeButton :: rest()).exists(_ eq f))
+    run()
+    if (inside && !Focus.focused().exists(f => Focus.showing(f))) field.focus()
+  }
+
+  // the app's actions made into buttons, the last ones let go
+  private def made(): Unit = {
+    val was = appButtons()
+    appButtons @= actions().map(a => action(a.label, a.icon, a.action))
+    was.foreach { b =>
+      bar.children -= b
+      b.dispose()
+    }
+  }
+
+  // the line's actions as many as fit, in order, the ⋮ after them where any do not
+  private def arrange(): Unit = {
+    val all = rest()
+    val n = fitting()
+    bar.children @= ((resumeButton :: all.take(n)) ++ (if (n < all.length) List(moreButton) else Nil)).toVector
+  }
+
+  // the actions that did not fit, as a menu under the ⋮, in their order
+  private def more(): Unit = {
+    val app = actions().map(a => MenuItem(a.label, () => acted(a.action), a.icon.getOrElse(MaterialIcon.Empty)))
+    val items = MenuItem(ChatWords.sendNext, () => acted(() => sendNext()), MaterialIcon.Send, nextReady()) ::
+      MenuItem(ChatWords.clearQueue, () => acted(() => clear()), MaterialIcon.ClearAll) :: app
+    Menu.below(moreButton, items.drop(fitting()))
+  }
+
   override def kind: String = "DraftQueue"
+}
+
+object DraftQueue {
+  /** The room between two of the line's actions. */
+  val spacing: Double = 2.0
 }

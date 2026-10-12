@@ -35,7 +35,9 @@ import reactify.*
   *    and then fall again before the next, or, if it does not rise within `queueStartWait`, takes it that the message
   *    started no reply. A message sent at rest counts the same, so what is written while its reply starts is queued
   *    behind it. Stop pauses the queue (`queueAfterStop`): it waits, saying so with Resume, until it is resumed or
-  *    another message is sent, which goes first.
+  *    another message is sent, which goes first. Paused, its line also has Send next (the next message only, the queue
+  *    still paused), Clear queue (at once, unasked: what it takes off is in sight) and the app's `queueActions`; where
+  *    they do not fit beside its words, Resume stays and the rest go, in order, into a ⋮ menu.
   *  - '''A suggestion''' (`suggestion`, the app's guess at the next message) shows in the accent colour in the empty
   *    field, in the placeholder's place. Tab or Right takes it (`onAcceptSuggestion` hears it and it is written in,
   *    the caret after it), Escape or typing anything puts it away until the next suggestion. Where there is no Tab
@@ -119,6 +121,9 @@ class Composer(onSend: Draft => Unit,
   val queueStartWait: Var[Double] = own(Var(3.0))
   /** The most room the queue's messages take before they scroll. */
   val queueMaxHeight: Var[Double] = own(Var(136.0))
+  /** The app's own actions on a paused queue ("Stop running commands"), on its line after Resume, Send next and Clear
+    * queue, in order; those that do not fit beside its words go into a ⋮ menu at its end. */
+  val queueActions: Var[List[QueueAction]] = own(Var(Nil))
 
   /** Whether the controls are a phone's. */
   val compact: Val[Boolean] = own(Val(size.width() < compactWidth()))
@@ -207,9 +212,13 @@ class Composer(onSend: Draft => Unit,
   // whether the next queued message may go: the composer idle, nothing it sent still to start and end, not paused
   private val drainable: Val[Boolean] = own(Val(queueWhileBusy() && enabled() && !busy() && !awaiting() &&
     !queuePaused() && queue().nonEmpty))
+  // whether Send next may send the queue's next message now: as a drain would, but paused or not
+  private val nextReady: Val[Boolean] = own(Val(queueWhileBusy() && enabled() && !busy() && !awaiting() &&
+    queue().nonEmpty))
   private lazy val queueView: DraftQueue = {
     queueMade = true
-    val q = new DraftQueue(queue, queuePaused, queueMaxHeight, field, d => edit(d), d => unqueue(d), () => resume())
+    val q = new DraftQueue(queue, queuePaused, queueMaxHeight, field, d => edit(d), d => unqueue(d), () => resume(),
+      () => sendNext(), nextReady, () => clearQueue(), queueActions)
     q.position.left := pad()
     q.position.top := pad()
     q.size.width := card.size.width() - pad() * 2.0
@@ -463,6 +472,13 @@ class Composer(onSend: Draft => Unit,
 
   /** A paused queue sent on again: its next message goes once the composer is idle. */
   def resume(): Unit = queuePaused @= false
+
+  /** The queue's next message sent now, as it would go once the composer is idle, the rest of the queue left as it was
+    * (paused, it stays paused): only while nothing the composer sent is still to start and end, so never two at once. */
+  def sendNext(): Unit = if (nextReady()) drain()
+
+  /** Every queued message taken off, never to be sent. */
+  def clearQueue(): Unit = if (enabled()) queue @= Nil
 
   /** A queued message taken back out of the queue into the field, to edit: what the field held, if anything, takes
     * its place in the queue rather than being lost, and sent again while the composer is holding, it goes back where
