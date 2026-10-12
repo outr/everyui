@@ -12,7 +12,9 @@ import everyui.event.{Key, KeyEvent}
   *    line too, and the Send button sends. Primary+Enter sends everywhere.
   *  - Enter that ends an input method's composition (`composing`) is the input method's: it never sends.
   *  - While a reply is coming (`busy`) or the composer is out of use, Enter is kept and does nothing: the words stay
-  *    as they are to send when the reply is done, and no stray new line is typed into them.
+  *    as they are to send when the reply is done, and no stray new line is typed into them. Where the composer queues
+  *    messages while a reply comes (`queueing`), Enter sends there as it does at rest, and the composer queues it.
+  *  - Up with the caret at the field's very start, where a queue shows above it (`queued`), goes to the queue.
   *  - Nothing happens while the field is not being typed in (a remote's focus only lighting it). */
 object ComposerKeys {
   def action(e: KeyEvent, state: ComposerState, composing: Boolean = false): ComposerAction = {
@@ -25,8 +27,9 @@ object ComposerKeys {
     else if (state.completing && plain && e.key == Key.Escape) ComposerAction.Close
     else if (state.suggesting && plain && (e.key == Key.Tab || e.key == Key.ArrowRight)) ComposerAction.Accept
     else if (state.suggesting && plain && e.key == Key.Escape) ComposerAction.Dismiss
+    else if (state.queued && state.atStart && plain && e.key == Key.ArrowUp) ComposerAction.ToQueue
     else if (e.key != Key.Enter || e.shift || e.alt || (state.touch && !primary) || (!plain && !primary)) ComposerAction.Pass
-    else if (!state.enabled || state.busy || !state.sendable) ComposerAction.Hold
+    else if (!state.enabled || (state.busy && !state.queueing) || !state.sendable) ComposerAction.Hold
     else ComposerAction.Send
   }
 }

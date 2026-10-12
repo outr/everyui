@@ -1323,6 +1323,7 @@ object Host {
     else if (code == KeyEvent.KEYCODE_FORWARD) "BrowserForward"
     else if (code == KeyEvent.KEYCODE_ESCAPE) "Escape"
     else if (code == KeyEvent.KEYCODE_DEL) "Backspace"
+    else if (code == KeyEvent.KEYCODE_FORWARD_DEL) "Delete"
     else if (code == KeyEvent.KEYCODE_DPAD_UP) "ArrowUp"
     else if (code == KeyEvent.KEYCODE_DPAD_DOWN) "ArrowDown"
     else if (code == KeyEvent.KEYCODE_DPAD_LEFT) "ArrowLeft"

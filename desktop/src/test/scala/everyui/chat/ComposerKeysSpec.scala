@@ -63,6 +63,37 @@ class ComposerKeysSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "A composer that queues" should {
+    val queueing = ready.copy(busy = true, queueing = true)
+    "send with Enter while a reply comes, for the composer to queue, and hold an empty one" in {
+      ComposerKeys.action(key("Enter"), queueing) shouldBe ComposerAction.Send
+      ComposerKeys.action(key("Enter"), queueing.copy(sendable = false)) shouldBe ComposerAction.Hold
+      ComposerKeys.action(key("Enter"), queueing.copy(enabled = false)) shouldBe ComposerAction.Hold
+    }
+    "go up to the queue from the very start of the field, and only there" in {
+      val queued = ComposerState(queued = true, atStart = true)
+      ComposerKeys.action(key("ArrowUp"), queued) shouldBe ComposerAction.ToQueue
+      ComposerKeys.action(key("ArrowUp"), queued.copy(atStart = false)) shouldBe ComposerAction.Pass
+      ComposerKeys.action(key("ArrowUp"), queued.copy(queued = false)) shouldBe ComposerAction.Pass
+      ComposerKeys.action(key("ArrowUp", alt = true), queued) shouldBe ComposerAction.Pass
+      ComposerKeys.action(key("ArrowUp"), queued.copy(completing = true)) shouldBe ComposerAction.Previous
+    }
+  }
+
+  "A queued message's chip" should {
+    "act on Delete, Backspace, E, Escape and Alt with Up or Down, and leave the rest" in {
+      List[KeyEvent](key("Delete"), key("Backspace"), key("e"), key("E", shift = true), key("Escape"), key("ArrowUp", alt = true),
+        key("ArrowDown", alt = true)).map(e => QueueChip.keeps(e)) shouldBe List.fill(7)(true)
+      List[KeyEvent](key("ArrowUp"), key("ArrowDown"), key("Enter"), key("Tab"), key("e", ctrl = true), key("x"),
+        key("ArrowLeft", alt = true)).map(e => QueueChip.keeps(e)) shouldBe List.fill(7)(false)
+    }
+    "show the first line of its words, else its first file's name" in {
+      QueueChip.firstLine(Draft("  \n Hello there \nsecond", Nil)) shouldBe "Hello there"
+      QueueChip.firstLine(Draft("Hello there\nsecond", Nil)) shouldBe "Hello there"
+      QueueChip.firstLine(Draft("", List(Attachment.pasted("a log")))) shouldBe "a log.txt"
+    }
+  }
+
   "The word at the caret" should {
     val triggers = List(CompletionTrigger('@'), CompletionTrigger('/', atStart = true))
     "start with a trigger after a space or at the start" in {

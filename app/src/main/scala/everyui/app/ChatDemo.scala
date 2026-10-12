@@ -27,7 +27,8 @@ import reactify.*
   * or name shows whole; `author=log` logs the press (`chat author <id> <message>`) in its place. `theme=light` for
   * the light theme, `rtl=1` for right to left. `rails=1` gives every entry its topic's rail (`ChatEntry.rail`), one
   * of twelve colours by the topic's index (`topicColors`), each topic begun by its marker; a reply gets its rail once
-  * it is whole. Logs `chat ok` once built. */
+  * it is whole. `queue=1` writes with a Composer whose messages queue while a reply comes (`afterstop=drain` to go on
+  * after Stop, `seed=1` to start with a paused queue). Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -55,16 +56,20 @@ object ChatDemo {
         done((from until to).toVector.map(i => past(i, start)))
       })
     }
-    val field = new TextInput("Message the room")
-    val composer = new Container {
-      size.height @= 72.0
-      backgroundColor := Theme.surface()
-      children += field
-    }
-    field.position.left @= 12.0
-    field.position.top @= 8.0
-    field.size.width := composer.size.width() - 24.0
     topicAt = 21
+    val queueing = Platform.launchArg("queue") == "1"
+    val field = new TextInput("Message the room")
+    val composer: Component = if (queueing) queued(entries, working) else {
+      val bar = new Container {
+        size.height @= 72.0
+        backgroundColor := Theme.surface()
+        children += field
+      }
+      field.position.left @= 12.0
+      field.position.top @= 8.0
+      field.size.width := bar.size.width() - 24.0
+      bar
+    }
     val chat = new ChatView(entries, Some(older), working, connection, Some(composer))
     chat.rails @= railed
     chat.size.width := ui.size.width()
@@ -81,10 +86,70 @@ object ChatDemo {
         Platform.log("chat author " + p.participant.id + " " + p.messageId.getOrElse("-")))
     ui.children += chat
     chat.focus()
+    composer match {
+      case c: Composer => c.focusField()
+      case _ => ()
+    }
     play(entries, working, connection, chat)
     if (Platform.launchArg("probe") == "1") probe(chat)
     Platform.log("chat ok " + chat.size.width().toInt.toString + "x" + chat.size.height().toInt.toString)
   }
+
+  // `queue=1`: a Composer whose messages wait while a reply comes (Composer.queueWhileBusy), each reply streaming for
+  // some seconds, so several typed meanwhile are queued and then go one reply at a time; `afterstop=drain` lets Stop
+  // go on with the queue rather than pausing it. Logs `chat queue sent <words>` as each goes and `chat queue stopped`.
+  private def queued(entries: Var[Vector[ChatEntry]], working: Var[Vector[Working]]): Composer = {
+    val turn: Var[Int] = Var(0)
+    val busy: Var[Boolean] = Var(false)
+    val composer = new Composer(d => {
+      Platform.log("chat queue sent " + d.text.replace("\n", "\\n") + " files=" + d.attachments.length.toString)
+      add(entries, now(ChatEntry.message("you-" + Clock.real().toString, you, self = true, d.text, Some(Clock.real()))))
+      busy @= true
+      turn @= turn() + 1
+      val mine = turn()
+      working @= working() :+ Working("w-queue", scout, "replying", Clock.real())
+      Platform.after(0.6, () => if (turn() == mine) {
+        val m = now(ChatEntry.message(scout.id + "-" + Clock.real().toString, scout, self = false, time = Some(Clock.real()),
+          streaming = true))
+        add(entries, m)
+        val text = "Noted: \"" + d.text.trim + "\". " + ChatDemo.longReply
+        // a few letters every 50 ms: several seconds to the end, unless Stop ends it first
+        def on(at: Int): Unit = if (turn() == mine) {
+          if (at >= text.length) {
+            m.streaming @= false
+            working @= working().filterNot(_.id == "w-queue")
+            busy @= false
+          }
+          else Platform.after(0.05, () => {
+            m.text @= text.substring(0, math.min(text.length, at + 5))
+            on(at + 5)
+          })
+        }
+        on(0)
+      })
+    }, onStop = () => {
+      Platform.log("chat queue stopped")
+      turn @= turn() + 1
+      working @= working().filterNot(_.id == "w-queue")
+      busy @= false
+    })
+    composer.queueWhileBusy @= true
+    if (Platform.launchArg("afterstop") == "drain") composer.queueAfterStop @= QueueAfterStop.Drain
+    composer.busy := busy()
+    composer.placeholder @= "Message the room"
+    // `seed=1`: a queue kept from before a reload, paused until it is resumed, one of its messages with two files
+    if (Platform.launchArg("seed") == "1") {
+      composer.queue @= List(Draft("Kept from before the reload", Nil), Draft("With the two logs from last night",
+        List(Attachment.pasted("build log\nok"), Attachment.pasted("test log\n1 failed"))))
+      composer.queuePaused @= true
+    }
+    composer
+  }
+
+  /** The body of a reply in `queue=1`: long enough to take several seconds to stream. */
+  val longReply: String = "I'll fold it into the plan. The reconnect test comes first, since it is the one thing " +
+    "holding the release; then the two TODOs, which are small; then the notes, which Sam needs by noon. If anything " +
+    "else turns up while I work through them I'll say so here before I start on it, rather than after."
 
   // twice a second, where the transcript stands: whether it is pinned, how far down of how far, what shows first
   private def probe(chat: ChatView): Unit = Platform.after(0.5, () => {

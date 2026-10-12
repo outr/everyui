@@ -1,6 +1,6 @@
 package everyui.chat
 
-import everyui.i18n.Words
+import everyui.i18n.{Icu, Words}
 
 /** What the chat components say, in the language in use: an app gives its translations with `Words.add` under these
   * keys ("chat.jumpToLatest", …), and English is said where none is given. */
@@ -51,4 +51,29 @@ object ChatWords {
   def selectAll: String = word("chat.selectAll", "Select all")
   /** "About Ada", the menu's way to a message's author. */
   def about(name: String): String = word("chat.about", "About {name}").replace("{name}", name)
+
+  // a composer's queue (Composer.queueWhileBusy): these come in Words' eleven languages
+  private def said(key: String, english: String, args: Map[String, String]): String =
+    Icu.format(word(key, english), args)
+  /** "2 messages queued", over the queue and to a screen reader as it changes. */
+  def queued(n: Int): String =
+    said("chat.queued", "{n, plural, =0{No messages queued} =1{1 message queued} other{# messages queued}}",
+      Map("n" -> n.toString))
+  def queuePaused: String = word("chat.queuePaused", "Paused")
+  def resume: String = word("chat.resume", "Resume")
+  /** The Send beside Stop while a reply is coming. */
+  def addToQueue: String = word("chat.addToQueue", "Add to queue")
+  def edit: String = word("chat.edit", "Edit")
+  def remove: String = word("chat.remove", "Remove")
+  /** "2 files", going with a queued message. */
+  def fileCount(n: Int): String = said("chat.files", "{n, plural, =1{1 file} other{# files}}", Map("n" -> n.toString))
+  /** "Queued message 2 of 3: Hello", a queued message to a screen reader. */
+  def queuedItem(i: Int, n: Int, text: String): String =
+    said("chat.queuedItem", "Queued message {i} of {n}: {text}", Map("i" -> i.toString, "n" -> n.toString, "text" -> text))
+  /** What the keys do on a queued message. */
+  def queuedHelp: String = word("chat.queuedHelp", "Enter edits it, Delete removes it, Alt+Up or Alt+Down moves it")
+  /** "Moved to 1 of 3", once a queued message is moved. */
+  def moved(i: Int, n: Int): String = said("chat.moved", "Moved to {i} of {n}", Map("i" -> i.toString, "n" -> n.toString))
+  /** A queued message's handle. */
+  def reorder: String = word("chat.reorder", "Drag to reorder")
 }

@@ -1546,6 +1546,44 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
 `ComposerKeys.action` is the key rule on its own, `TriggerWord` the word a completion replaces, and `ComposerWords`
 what the composer says, for a translation.
 
+**Queued messages.** With `queueWhileBusy` on (off by default, and off the composer is exactly as it was), a message
+sent while a reply is coming waits its turn instead of Enter doing nothing:
+
+```scala
+composer.queueWhileBusy @= true
+composer.busy := chat.replying()
+composer.queue @= saved.load()                      // List[Draft]: read it, seed it, clear it; a reload can keep it
+composer.queue.attach(q => saved.store(q))
+composer.queueAfterStop @= QueueAfterStop.Drain     // Pause, the default for now, or Drain
+```
+
+- While `busy`, Enter (or the Send beside Stop, which stays) puts the draft, words and files, at the end of `queue`,
+  and the field is empty for the next. An empty draft queues nothing.
+- The queue shows over the field (`DraftQueue`), a chip for each in the order they go: the first line of its words,
+  cut short to fit, and how many files go with it. Its handle drags it into another place; Edit takes it back into the
+  field; × takes it off. Past `queueMaxHeight` (136) the chips scroll. A screen reader hears "2 messages queued" as the
+  count changes (in EveryUI's eleven languages, under `chat.*` keys in `Words`).
+- **Edit with words in the field**: what the field held is not lost, nor sent: it takes the edited message's place in
+  the queue, and the edited message, queued again, goes back where it was (before the message that followed it). Sent
+  while the composer is at rest, it is sent as any message is. Emptied and written again, it goes to the end.
+- **Keys**: Up at the very start of the field goes to the last chip; Up and Down go from chip to chip, and Down from
+  the last (or Escape from any) back to the field. On a chip, Enter or E edits it, Delete or Backspace takes it off
+  (the focus to the chip that took its place), and Alt+Up and Alt+Down move it (said: "Moved to 1 of 3").
+- **Draining**, one message per reply: once `busy` falls and stays down for `queueSettle` (0.3 s; a fall that rises
+  again sooner is a flicker inside one reply), the composer sends the queue's next message through `onSend`. From
+  every `onSend` it counts itself busy until it has seen `busy` rise and then fall again, so it never sends two before
+  the app has started the first one's reply; if `busy` does not rise within `queueStartWait` (3 s: a message to a
+  person, which starts no reply), it takes the message as done. A message sent at rest counts the same, so what is
+  written while its reply is starting is queued behind it, and while messages wait (`holding`) a new one goes to the
+  end rather than past them.
+- **Stop** with a queue pauses it by default (`queueAfterStop = QueueAfterStop.Pause`): the queue stays, its line says
+  "Paused · 2 messages queued" with Resume (`resume()`), and nothing goes until Resume, or until the person sends
+  another message, which goes first, the queue following it. `QueueAfterStop.Drain` lets the queue go on after Stop as
+  after any reply. `queuePaused` says which, and the app may set it.
+- `edit(draft)`, `unqueue(draft)` and `resume()` do from the app what the chips do.
+- On a Roku or an Apple TV, where a message is written on the platform's keyboard, it is off unless the app turns it
+  on. `demo=chat&queue=1` shows it, each reply streaming for some seconds (`afterstop=drain` to go on after Stop).
+
 ### Files (`everyui.file`)
 
 Files from the person, on the web, the desktop and Android: the platform's own picker, and files dragged onto a

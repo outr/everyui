@@ -23,6 +23,19 @@ import reactify.*
   *    (`touch`) Enter starts a new line and the Send button sends. An input method's Enter chooses its words and never
   *    sends. While a reply is coming (`busy`) the field can still be written in, Enter does nothing (so nothing half
   *    written goes out after a reply the person has not read), and Send is Stop, heard by `onStop`.
+  *  - '''Queued messages''' (`queueWhileBusy`, off by default): while a reply comes, Enter (or the Send beside Stop)
+  *    puts the draft, words and files, at the end of `queue`, and the field is empty for the next. The queue shows
+  *    over the field ([[DraftQueue]]), a chip for each in the order they go: the first line of its words and how many
+  *    files, a handle to drag it into another place (or Alt+Up and Alt+Down), Edit (Enter or E) and Remove (Delete or
+  *    Backspace). Edit takes it back into the field; what the field held goes into its place in the queue rather than
+  *    being lost, and the edited message queued again goes back where it was. Up at the start of the field goes to the
+  *    queue and Down from its last message, or Escape, comes back. A screen reader hears how many wait as it changes.
+  *    Once `busy` falls and stays down for `queueSettle` (a fall that rises again sooner is a flicker), the composer
+  *    sends the queue's next message through `onSend`, one at a time: from each `onSend` it waits for `busy` to rise
+  *    and then fall again before the next, or, if it does not rise within `queueStartWait`, takes it that the message
+  *    started no reply. A message sent at rest counts the same, so what is written while its reply starts is queued
+  *    behind it. Stop pauses the queue (`queueAfterStop`): it waits, saying so with Resume, until it is resumed or
+  *    another message is sent, which goes first.
   *  - '''A suggestion''' (`suggestion`, the app's guess at the next message) shows in the accent colour in the empty
   *    field, in the placeholder's place. Tab or Right takes it (`onAcceptSuggestion` hears it and it is written in,
   *    the caret after it), Escape or typing anything puts it away until the next suggestion. Where there is no Tab
@@ -89,6 +102,23 @@ class Composer(onSend: Draft => Unit,
     * land, other words land in their place, nothing does, or they go with the message as a file, a chip as a dropped
     * file is (`longAsFile` for a log or a stack trace). None, the default, lets every paste land. */
   val pasted: Var[Option[String => ComposerPaste]] = own(Var(None))
+  /** Whether a message sent while a reply is coming waits in `queue` for its own turn, rather than Enter doing nothing.
+    * Off, the default, the composer is as it always was. */
+  val queueWhileBusy: Var[Boolean] = own(Var(false))
+  /** The messages waiting, the next first: the app may read it, seed it (a reload keeping it) or clear it. */
+  val queue: Var[List[Draft]] = own(Var(Nil))
+  /** What Stop does to a queue: pauses it (for now the default) or lets it go on. */
+  val queueAfterStop: Var[QueueAfterStop] = own(Var(QueueAfterStop.Pause))
+  /** Whether the queue is paused, after Stop: it waits until it is resumed (`resume`), or another message is sent. */
+  val queuePaused: Var[Boolean] = own(Var(false))
+  /** How long `busy` must stay false before the next queued message goes, in seconds: a fall that rises again sooner
+    * is a flicker within one reply, not its end. */
+  val queueSettle: Var[Double] = own(Var(0.3))
+  /** How long after `onSend` the composer waits for `busy` to rise, in seconds, before taking it that the message
+    * started no reply at all (a message to a person). */
+  val queueStartWait: Var[Double] = own(Var(3.0))
+  /** The most room the queue's messages take before they scroll. */
+  val queueMaxHeight: Var[Double] = own(Var(136.0))
 
   /** Whether the controls are a phone's. */
   val compact: Val[Boolean] = own(Val(size.width() < compactWidth()))
@@ -121,6 +151,20 @@ class Composer(onSend: Draft => Unit,
   private var parked: List[Component] = Nil
   // the attachments as they were, to see which left
   private var held: List[Attachment] = Nil
+  // the queue's messages as they were, to see which left it
+  private var waiting: List[Draft] = Nil
+  // while a message moves between the field and the queue (an edit), its files are in neither for a moment
+  private var shuffling = false
+  // a message the composer sent whose reply has not yet been seen to start and end: the next waits for it
+  private val awaiting: Var[Boolean] = own(Var(false))
+  private var risen = false
+  private var settles = 0
+  private var waits = 0
+  // the queued message the one being edited stood before, so that queued again it goes back into its place
+  private var returning: Option[Draft] = None
+  // what the queue said to a screen reader, newest first (for the specs: the desktop's announce says nothing)
+  private[chat] var announced: List[String] = Nil
+  private var queueMade = false
 
   /** The box of lines. */
   val field: ComposerField = new ComposerField(e => ComposerKeys.action(e, state(), Platform.keyComposing()), act,
@@ -153,8 +197,35 @@ class Composer(onSend: Draft => Unit,
   /** Whether the suggestion is a chip rather than words in the field. */
   private val asChip: Boolean = touch || remote
 
+  /** Whether what is sent now goes into the queue: while a reply comes, while one just asked for has not been seen to
+    * start and end, and while messages already wait to go (unless the queue is paused). */
+  val holding: Val[Boolean] =
+    own(Val(queueWhileBusy() && (busy() || awaiting() || (queue().nonEmpty && !queuePaused()))))
+  // the queue shows over the field, and the Send beside Stop while a reply comes
+  private val queueShown: Val[Boolean] = own(Val(queueWhileBusy() && queue().nonEmpty))
+  private val queueing: Val[Boolean] = own(Val(queueWhileBusy() && busy()))
+  // whether the next queued message may go: the composer idle, nothing it sent still to start and end, not paused
+  private val drainable: Val[Boolean] = own(Val(queueWhileBusy() && enabled() && !busy() && !awaiting() &&
+    !queuePaused() && queue().nonEmpty))
+  private lazy val queueView: DraftQueue = {
+    queueMade = true
+    val q = new DraftQueue(queue, queuePaused, queueMaxHeight, field, d => edit(d), d => unqueue(d), () => resume())
+    q.position.left := pad()
+    q.position.top := pad()
+    q.size.width := card.size.width() - pad() * 2.0
+    q
+  }
+  private lazy val queueButton: SendButton = {
+    val b = new SendButton(ChatWords.addToQueue, words.stop)
+    b.usable := enabled() && sendable()
+    b.pressed.attach(_ => send())
+    b
+  }
+  private val queueSpace: Val[Double] = own(Val(if (queueShown()) queueView.size.height() + gap else 0.0))
+
   private def state(): ComposerState = ComposerState(touch, enabled(), busy(), field.editing(), sendable(),
-    suggesting() && !asChip, popup.nonEmpty)
+    suggesting() && !asChip, popup.nonEmpty, queueWhileBusy(), queueShown(),
+    queueShown() && field.field.exists(_.caret == 0))
 
   size.width @= width
 
@@ -234,7 +305,7 @@ class Composer(onSend: Draft => Unit,
   }
   private val chipShown: Val[Boolean] = own(Val(asChip && suggesting()))
 
-  // --- the card: tray, chips, then the line --------------------------------------------------------------------------
+  // --- the card: the queue, tray, chips, then the line ---------------------------------------------------------------
   chips.layout @= Some(FlowLayout(6.0, 6.0))
   chips.size.width := card.size.width() - pad() * 2.0
   card.size.width := size.width()
@@ -245,14 +316,14 @@ class Composer(onSend: Draft => Unit,
 
   private val trayShown: Val[Boolean] = own(Val(crowded() && trayOpen()))
   private val chipsShown: Val[Boolean] = own(Val(attachments().nonEmpty))
-  private val lineTop: Val[Double] = own(Val(pad() + (if (trayShown()) tray.size.height() + gap else 0.0) +
-    (if (chipsShown()) chips.size.height() + gap else 0.0)))
+  private val lineTop: Val[Double] = own(Val(pad() + queueSpace() +
+    (if (trayShown()) tray.size.height() + gap else 0.0) + (if (chipsShown()) chips.size.height() + gap else 0.0)))
   private val line: Val[Double] = own(Val(math.max(field.size.height(), lineHeight)))
 
   tray.position.left := pad()
-  tray.position.top := pad()
+  tray.position.top := pad() + queueSpace()
   chips.position.left := pad()
-  chips.position.top := pad() + (if (trayShown()) tray.size.height() + gap else 0.0)
+  chips.position.top := pad() + queueSpace() + (if (trayShown()) tray.size.height() + gap else 0.0)
   start.position.left := pad()
   start.position.top := lineTop() + line() - (lineHeight + start.size.height()) / 2.0
   end.position.left := card.size.width() - pad() - end.size.width()
@@ -305,8 +376,8 @@ class Composer(onSend: Draft => Unit,
   leading.children.attach(_ => arrange())
   trailing.children.attach(_ => arrange())
   attachments.attach { list =>
-    // what left the draft (taken off, sent, or cleared by the app) lets its picture go
-    held.filterNot(a => list.exists(_ eq a)).foreach(a => a.preview.foreach(p => Files.release(p)))
+    // what left the draft (taken off, sent, or cleared by the app) lets its picture go, unless it waits in the queue
+    if (!shuffling) letGo(held)
     held = list
     val was = chips.children()
     chips.children.clear()
@@ -314,6 +385,36 @@ class Composer(onSend: Draft => Unit,
     chips.children ++= list.map(a => new AttachmentChip(a, words.remove, () => remove(a)))
   }
   arrange()
+
+  // --- the queue -------------------------------------------------------------------------------------------------
+  queueShown.attach { on =>
+    // first in the card, so the focus reaches its messages before the field
+    if (on) card.children @= queueView +: card.children()
+    else if (queueMade) card.children -= queueView
+  }
+  queueing.attach(_ => arrange())
+  queue.attach { q =>
+    // a message that left the queue (sent, taken off, or cleared by the app) lets its files' pictures go
+    if (!shuffling) letGo(waiting.flatMap(_.attachments))
+    val before = waiting.length
+    waiting = q
+    if (q.isEmpty) queuePaused @= false
+    if (queueWhileBusy() && q.length != before) say(if (queuePaused()) ChatWords.queuePaused + ", " +
+      ChatWords.queued(q.length) else ChatWords.queued(q.length))
+  }
+  queuePaused.attach(on =>
+    if (on && queueWhileBusy()) say(ChatWords.queuePaused + ", " + ChatWords.queued(queue().length)))
+  // the reply to what it sent seen to start, and then to end; a rise also stops a next message about to go
+  busy.attach { on =>
+    if (on) {
+      risen = true
+      settles += 1
+    }
+    else if (awaiting() && risen) awaiting @= false
+  }
+  drainable.attach(on => if (on) settle())
+  // the person clearing the field after an edit: what they write next is a message of its own, for the queue's end
+  sendable.attach(on => if (!on) returning = None)
 
   // --- files dropped on it ---------------------------------------------------------------------------------------
   if (!remote) Files.dropTarget(this)(over => dropping @= over && enabled())(files => if (enabled()) add(files))
@@ -328,20 +429,113 @@ class Composer(onSend: Draft => Unit,
   /** The field given the focus: where the person writes next. */
   def focusField(): Unit = field.focus()
 
-  /** The draft sent, if there is one to send and the composer may: `onSend` hears it, and the field is empty. */
-  def send(): Unit = if (enabled() && !busy() && sendable()) {
+  /** The draft sent, if there is one to send and the composer may: `onSend` hears it, and the field is empty. Where
+    * messages are queued (`queueWhileBusy`) and the composer is `holding`, it goes into the queue instead: at its end,
+    * or, for a message taken back out of it to edit, into the place it left. */
+  def send(): Unit = if (enabled() && sendable() && (!busy() || queueWhileBusy())) {
     val draft = Draft(text(), attachments())
+    val queued = holding()
+    val back = returning
+    returning = None
     closeCompletions()
+    // into the queue before the field empties, so its files' pictures are kept for it
+    if (queued) enqueue(draft, back)
     text @= ""
     attachments @= Nil
     trayOpen @= false
     // back to the field from the Send button, to write the next
     field.focus()
-    onSend(draft)
+    if (!queued) {
+      if (queueWhileBusy()) {
+        begin()
+        // a message sent while the queue is paused goes first, and the queue goes on after it
+        queuePaused @= false
+      }
+      onSend(draft)
+    }
   }
 
-  /** The reply asked to stop, while one is coming. */
-  def stop(): Unit = if (busy()) onStop()
+  /** The reply asked to stop, while one is coming. A queue is then paused (`queueAfterStop`), or goes on. */
+  def stop(): Unit = if (busy()) {
+    if (queueWhileBusy() && queue().nonEmpty && queueAfterStop() == QueueAfterStop.Pause) queuePaused @= true
+    onStop()
+  }
+
+  /** A paused queue sent on again: its next message goes once the composer is idle. */
+  def resume(): Unit = queuePaused @= false
+
+  /** A queued message taken back out of the queue into the field, to edit: what the field held, if anything, takes
+    * its place in the queue rather than being lost, and sent again while the composer is holding, it goes back where
+    * it was. */
+  def edit(draft: Draft): Unit = if (enabled()) {
+    val q = queue()
+    val at = q.indexWhere(_ eq draft)
+    if (at >= 0) {
+      val current = if (sendable()) Some(Draft(text(), attachments())) else None
+      val rest = q.filterNot(_ eq draft)
+      closeCompletions()
+      shuffling = true
+      try {
+        queue @= (current match {
+          case Some(c) => rest.take(at) ++ (c :: rest.drop(at))
+          case None => rest
+        })
+        text @= draft.text
+        attachments @= draft.attachments
+      }
+      finally shuffling = false
+      returning = current.orElse(if (at < rest.length) Some(rest(at)) else None)
+      field.focus()
+      if (!touch) field.editing @= true
+      field.field.foreach(f => Platform.later(() => f.moveCaret(draft.text.length)))
+    }
+  }
+
+  /** A queued message taken off the queue, never to be sent. */
+  def unqueue(draft: Draft): Unit = if (enabled()) queue @= queue().filterNot(_ eq draft)
+
+  // `draft` into the queue: before `before` where that still waits, else at the end
+  private def enqueue(draft: Draft, before: Option[Draft]): Unit = {
+    val q = queue()
+    val at = before.map(b => q.indexWhere(_ eq b)).getOrElse(-1)
+    queue @= (if (at < 0) q :+ draft else q.take(at) ++ (draft :: q.drop(at)))
+  }
+
+  // a message sent: the next waits until `busy` is seen to rise and fall, or, if it never rises, `queueStartWait`
+  private def begin(): Unit = {
+    risen = false
+    awaiting @= true
+    waits += 1
+    val mine = waits
+    Platform.after(queueStartWait(), () => if (mine == waits && awaiting() && !risen) awaiting @= false)
+  }
+
+  // the next queued message sent once the composer has stayed idle for `queueSettle`
+  private def settle(): Unit = {
+    settles += 1
+    val mine = settles
+    Platform.after(queueSettle(), () => if (mine == settles && drainable()) drain())
+  }
+
+  // the queue's next message sent, starting its own reply: one each time the composer is idle
+  private def drain(): Unit = queue().headOption.foreach { next =>
+    begin()
+    queue @= queue().tail
+    onSend(next)
+  }
+
+  // the files of `before` in neither the field nor the queue now let their pictures go
+  private def letGo(before: List[Attachment]): Unit = {
+    val queued = queue()
+    before.filterNot(a => attachments().exists(_ eq a) || queued.exists(_.attachments.exists(_ eq a)))
+      .foreach(a => a.preview.foreach(p => Files.release(p)))
+  }
+
+  // a change to the queue said to a screen reader
+  private def say(said: String): Unit = {
+    announced = said :: announced
+    Platform.announce(said)
+  }
 
   /** The suggestion written into the field, the caret after it. */
   def acceptSuggestion(): Unit = if (suggesting()) suggestion().foreach { s =>
@@ -389,7 +583,7 @@ class Composer(onSend: Draft => Unit,
                stopChord: Chord = Composer.stopChord): Unit = {
     // made whole rather than by `add(...)(run)`, whose chords and by-name action a Roku cannot tell apart
     val sending = keymap.add(new Command(id + ".send", words.send, List(sendChord), () => send()))
-    sending.enabled := enabled() && !busy() && sendable()
+    sending.enabled := enabled() && (!busy() || queueWhileBusy()) && sendable()
     val stopping = keymap.add(new Command(id + ".stop", words.stop, List(stopChord), () => stop()))
     stopping.enabled := busy()
   }
@@ -403,6 +597,7 @@ class Composer(onSend: Draft => Unit,
     case ComposerAction.Previous => if (completions().nonEmpty) lit @= (lit() + completions().length - 1) % completions().length
     case ComposerAction.Complete => choose(lit())
     case ComposerAction.Close => closeCompletions()
+    case ComposerAction.ToQueue => if (queueShown()) queueView.focusLast()
     case _ => ()
   }
 
@@ -423,6 +618,7 @@ class Composer(onSend: Draft => Unit,
       if (leading.children().nonEmpty) start.children += leading
     }
     if (trailing.children().nonEmpty) end.children += trailing
+    if (queueing()) end.children += queueButton
     end.children += sendButton
   }
 

@@ -1381,14 +1381,17 @@ object Platform {
   private val lessMotion = "(prefers-reduced-motion: reduce)"
 
   /** `words` read out by a screen reader when it next can, not cutting in on what it is reading (a new message in a
-    * chat): a polite live region, made on first use, off the screen. The same words again are still read. */
+    * chat): a polite live region, made on first use, clipped to nothing at the page's corner. Not pushed off the
+    * page's edge: in a right-to-left page on a phone, a region far off its left widened the page the browser lays out,
+    * and everything moved off the screen. The same words again are still read. */
   def announce(words: String): Unit = {
     val region = Option(dom.document.getElementById("everyui-announce")).getOrElse {
       val made = dom.document.createElement("div").asInstanceOf[html.Element]
       made.id = "everyui-announce"
       made.setAttribute("aria-live", "polite")
       made.setAttribute("role", "status")
-      made.style.cssText = "position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden"
+      made.style.cssText = "position:absolute;left:0;top:0;width:1px;height:1px;margin:-1px;padding:0;border:0;" +
+        "overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap"
       dom.document.body.appendChild(made)
       made
     }
@@ -1873,8 +1876,11 @@ object Platform {
       composing = e.asInstanceOf[js.Dynamic].isComposing.asInstanceOf[js.UndefOr[Boolean]].getOrElse(false) || e.keyCode == 229
       // a press timed to the frame that answers it, where it is measured
       if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
-      // what a field of the app's types, or moves its caret by, is the field's whatever the app made of it
-      if (f(e.key, pressed) && !RenderNode.fieldKey(e)) e.preventDefault()
+      // what a field of the app's types, or moves its caret by, is the field's whatever the app made of it: the field the
+      // key came to, asked before the app hears it, since a key the app takes may put the focus in a field (E on a
+      // queued message edits it in the composer's field), which must not then type it as well
+      val typed = RenderNode.fieldKey(e)
+      if (f(e.key, pressed) && !typed) e.preventDefault()
     }
     dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => hear(e, true))
     dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => hear(e, false))
