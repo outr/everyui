@@ -31,6 +31,15 @@ import reactify.*
   * it makes for that group, where the app opens its new tabs. `commands(keymap)` puts the actions on the keyboard.
   * `tabLayout` is how it all lies, to keep (`layoutChanged`) and `restore`.
   *
+  * `maximize(g)` shows one group alone, taking the whole area (VS Code's Maximize Group, IntelliJ's Hide Other
+  * Splits): the others, and the handles between them, are hidden, not closed, every tab, the tab each shows, its
+  * content and every split's ratio kept, and `unmaximize()` lays them out again as they were; `maximized` says which.
+  * Whatever would land where the person cannot see it lays them out again first: opening a tab in a hidden group (or
+  * one open there already), a split, a move to another group, an unsplit, a drag onto a group's edge, a `restore`, and
+  * the maximized group's last tab closing. A tab opened into the maximized group itself, and one reordered among its
+  * tabs, leave it maximized. `tabLayout` is the whole layout either way, so neither changes it or tells
+  * `layoutChanged`.
+  *
   * A tab closes only once `canClose` lets it (the app asking whether to save it), whichever way it is closed; Close
   * Others and Close All ask one tab at a time and stop at the first that stays. `tab(k)` finds a key's tabs (to change
   * their `label` or `lead` as what they show is renamed, `lead` answering the same for a tab made later), and
@@ -84,6 +93,9 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   private var tree: TabTree[K] = TabTree.Leaf(new TabGroup[K](this))
   /** The group the focus is in, or was in last. */
   val focusedGroup: Var[TabGroup[K]] = own(Var(TabTrees.groups(tree).head))
+  private val alone: Var[Option[TabGroup[K]]] = own(Var(None))
+  /** The group shown alone, taking the whole area, the others hidden (`maximize`); None while every group shows. */
+  val maximized: Val[Option[TabGroup[K]]] = own(Val(alone()))
   private var root: Component = TabTrees.groups(tree).head
   private var quiet = false
 
@@ -111,9 +123,11 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     * another group and may not show twice, shown there. */
   def open(k: K, focus: Boolean = true): Unit = openIn(focusedGroup(), k, focus)
 
-  /** `k` opened in `g` and shown, as `open` opens it in the focused group: what a group's "+" menu (`addMenu`) does. */
+  /** `k` opened in `g` and shown, as `open` opens it in the focused group: what a group's "+" menu (`addMenu`) does.
+    * Where that is a group hidden by `maximize`, the groups are laid out again first. */
   def openIn(g: TabGroup[K], k: K, focus: Boolean = true): Unit = {
     val target = if (g.has(k) || allowsTwice(k)) g else groups().find(_.has(k)).getOrElse(g)
+    if (!alone().forall(_ eq target)) unmaximize()
     target.add(k)
     target.select(k)
     if (focus) target.focusTab()
@@ -185,7 +199,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   def isDirty(k: K): Boolean = dirtyKeys().contains(k)
 
   /** `k` opened in a new group after `g` (`vertical`: below it): a second view of it where it may show twice, else
-    * moved there. Nothing happens to a group's only tab that may not show twice. */
+    * moved there. Nothing happens to a group's only tab that may not show twice. A group maximized, every group
+    * shows again first. */
   def split(g: TabGroup[K], k: K, vertical: Boolean, after: Boolean = true): Unit =
     if (g.has(k) && (allowsTwice(k) || g.keys().size > 1)) {
       val made = splitOff(g, vertical, after)
@@ -197,13 +212,15 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   def openRight(g: TabGroup[K], k: K): Unit = split(g, k, vertical = false)
   def openDown(g: TabGroup[K], k: K): Unit = split(g, k, vertical = true)
 
-  /** `k` moved from `g` into `to` (at `at` among its tabs), with its content, and shown there. */
+  /** `k` moved from `g` into `to` (at `at` among its tabs), with its content, and shown there. Into another group
+    * while one is maximized, the groups are laid out again first; among `g`'s own tabs, they stay as they are. */
   def move(g: TabGroup[K], k: K, to: TabGroup[K], at: Int = -1): Unit = if (g.has(k)) {
     if (to eq g) {
       g.reorder(k, at)
       g.select(k)
     }
     else {
+      unmaximize()
       val had = Focus.focused().exists(c => Focus.within(c, g))
       if (to.has(k)) g.take(k).foreach(_.dispose()) else to.add(k, at, g.take(k))
       to.select(k)
@@ -227,8 +244,10 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   def canMoveBeside(g: TabGroup[K], k: K, vertical: Boolean, after: Boolean): Boolean =
     g.has(k) && (g.keys().size > 1 || TabTrees.neighbour(tree, g, vertical, after).nonEmpty)
 
-  /** `g`'s tabs put into the group beside it, and `g` gone. */
+  /** `g`'s tabs put into the group beside it, and `g` gone. A group maximized, every group shows again
+    * first. */
   def unsplit(g: TabGroup[K]): Unit = TabTrees.sibling(tree, g).foreach { to =>
+    unmaximize()
     val was = g.keyOf(g.shown())
     g.keys().foreach(k => if (to.has(k)) g.take(k).foreach(_.dispose()) else to.add(k, content = g.take(k)))
     was.foreach(to.select)
@@ -236,9 +255,40 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     closeGroup(g, had = false)
   }
 
-  /** The focus on the next group's tab (the first after the last), or the one before with `back`. */
+  /** `g` shown alone, taking the whole area: every other group, and the handles between them, hidden, not closed, their
+    * tabs, the tab each shows, its content and every split's ratio kept as they were until `unmaximize`. The focus goes
+    * into `g` where it was in another. Nothing happens where `g` is the only group. */
+  def maximize(g: TabGroup[K]): Unit = if (groups().size > 1 && groups().exists(_ eq g) && !alone().exists(_ eq g)) {
+    alone @= Some(g)
+    calmly()
+    focusedGroup @= g
+    if (!Focus.focused().exists(c => Focus.within(c, g))) g.focusTab()
+  }
+
+  /** Every group laid out again, as it was before `maximize`, nested ratios and all. */
+  def unmaximize(): Unit = if (alone().nonEmpty) {
+    alone @= None
+    calmly()
+  }
+
+  /** The focused group maximized, or every group shown again where one is. */
+  def toggleMaximized(): Unit = if (alone().nonEmpty) unmaximize() else maximize(focusedGroup())
+
+  // laid out afresh without telling `layoutChanged`, the layout being the same
+  private def calmly(): Unit = {
+    val was = quiet
+    quiet = true
+    place()
+    quiet = was
+  }
+
+  /** The groups showing: the one maximized, or all. */
+  private def showing: List[TabGroup[K]] = alone().map(g => List(g)).getOrElse(groups())
+
+  /** The focus on the next group's tab (the first after the last), or the one before with `back`; with a group
+    * maximized there is no other. */
   def nextGroup(back: Boolean = false): Unit = {
-    val all = groups()
+    val all = showing
     val i = all.indexWhere(_ eq focusedGroup())
     if (all.size > 1) all((i + (if (back) all.size - 1 else 1)) % all.size).focusTab()
   }
@@ -258,14 +308,17 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
       MenuItem(TabGroups.openDownWord, () => openDown(g, k), enabled = movable)) ++
       to(TabGroups.moveRightWord, vertical = false, after = true) ++ to(TabGroups.moveLeftWord, vertical = false, after = false) ++
       to(TabGroups.moveDownWord, vertical = true, after = true) ++ to(TabGroups.moveUpWord, vertical = true, after = false) ++
-      (if (many) List(MenuItem(TabGroups.unsplitWord, () => unsplit(g))) else Nil)
+      (if (!many) Nil else List(MenuItem(TabGroups.unsplitWord, () => unsplit(g)),
+        if (alone().nonEmpty) MenuItem(TabGroups.unmaximizeWord, () => unmaximize())
+        else MenuItem(TabGroups.maximizeWord, () => maximize(g))))
     val app = tabMenu()(k)
     if (app.isEmpty) own else own ++ (MenuItem.separator :: app)
   }
 
-  /** The actions on `keymap`, as `prefix`.openRight, .openDown, .nextGroup, .previousGroup and .close, on the tab shown
-    * in the focused group, run by chords an app can `rebind`: Primary+\ to open right, Primary+Shift+\ down,
-    * Primary+Alt+Right and Left to the next and the previous group, and Primary+W or Primary+F4 to close. */
+  /** The actions on `keymap`, as `prefix`.openRight, .openDown, .nextGroup, .previousGroup, .close and .maximize, on
+    * the tab shown in the focused group, run by chords an app can `rebind`: Primary+\ to open right, Primary+Shift+\
+    * down, Primary+Alt+Right and Left to the next and the previous group, Primary+W or Primary+F4 to close, and
+    * Primary+Shift+Enter to maximize the focused group, or show every group again (`toggleMaximized`). */
   def commands(keymap: Keymap, prefix: String = "tabs"): List[Command] = {
     def shown(f: (TabGroup[K], K) => Unit): () => Unit = () => {
       val g = focusedGroup()
@@ -280,7 +333,9 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
       new Command(prefix + ".previousGroup", TabGroups.previousGroupWord,
         List(Chord("ArrowLeft", primary = true, alt = true)), () => nextGroup(back = true)),
       new Command(prefix + ".close", TabGroups.closeWord, List(Chord("W", primary = true), Chord("F4", primary = true)),
-        shown(close))).map(c => keymap.add(c))
+        shown(close)),
+      new Command(prefix + ".maximize", TabGroups.maximizeWord, List(Chord("Enter", primary = true, shift = true)),
+        () => toggleMaximized())).map(c => keymap.add(c))
   }
 
   // ---- the layout ----
@@ -311,6 +366,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
         case one => one.headOption
       }
     tree = build(l).getOrElse(TabTree.Leaf(new TabGroup[K](this)))
+    alone @= None
     quiet = false
     place()
     old.foreach { g =>
@@ -336,6 +392,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     val made = new TabGroup[K](this)
     val ratio = Var(0.5)
     ratio.attach(_ => changed())
+    alone @= None
     tree = TabTrees.replace(tree, g, leaf =>
       if (after) TabTree.Split(vertical, ratio, leaf, TabTree.Leaf(made)) else TabTree.Split(vertical, ratio, TabTree.Leaf(made), leaf))
     place()
@@ -346,6 +403,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   private def closeGroup(g: TabGroup[K], had: Boolean): Unit = TabTrees.without(tree, g) match {
     case Some(rest) =>
       val next = TabTrees.sibling(tree, g)
+      // the maximized group gone, or only one left, every group shows again
+      if (alone().exists(a => (a eq g) || TabTrees.groups(rest).size < 2)) alone @= None
       tree = rest
       place()
       g.disposeContents()
@@ -370,7 +429,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
       case TabTree.Leaf(g) => g
       case TabTree.Split(v, r, a, b) => new SplitPane(render(a), render(b), vertical = v, ratio = r)
     }
-    root = render(tree)
+    root = alone().getOrElse(render(tree))
     root.size.width := size.width()
     root.size.height := size.height()
     groups @= TabTrees.groups(tree)
@@ -475,7 +534,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
 
   /** Where a tab let go at `x`, `y` lands: the group under it, into it (at a place among its tabs) or at an edge. */
   private[kit] def landingAt(x: Double, y: Double): Option[(TabGroup[K], TabDropZone, Int)] =
-    groups().find(g => x >= g.absoluteLeft && x < g.absoluteLeft + g.size.width() && y >= g.absoluteTop &&
+    showing.find(g => x >= g.absoluteLeft && x < g.absoluteLeft + g.size.width() && y >= g.absoluteTop &&
       y < g.absoluteTop + g.size.height()).map { g =>
       val across = (x - g.absoluteLeft) / math.max(1.0, g.size.width())
       val down = (y - g.absoluteTop - TabBar.height) / math.max(1.0, g.body.size.height())
@@ -526,6 +585,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   onDispose(() => {
     escape()
     groups().foreach(_.disposeContents())
+    // the groups a maximized one hides are not among its children to go with it
+    alone().foreach(a => groups().filterNot(_ eq a).foreach(_.dispose()))
   })
 
   override def kind: String = "TabGroups"
@@ -554,6 +615,9 @@ object TabGroups {
   def unsplitWord: String = word("tabs.unsplit", "Unsplit")
   def nextGroupWord: String = word("tabs.nextGroup", "Next Group")
   def previousGroupWord: String = word("tabs.previousGroup", "Previous Group")
+  /** A group maximized (`maximize`), and every group shown again (`unmaximize`), as the menu says them. */
+  def maximizeWord: String = word("tabs.maximize", "Hide Other Groups")
+  def unmaximizeWord: String = word("tabs.unmaximize", "Show All Groups")
   /** The dot after the label of a tab holding unsaved work (`TabGroups.dirty`). */
   def dirtyDot(): Component = new Container {
     size.width @= 8.0

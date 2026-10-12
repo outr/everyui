@@ -7,7 +7,7 @@ import everyui.dialog.{Dialogs, SaveChoice}
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.{GroupContent, TabGroup, TabGroups, TabLayout, TabLead}
-import everyui.keymap.Keymap
+import everyui.keymap.{Chord, Keymap}
 import everyui.menu.MenuItem
 import everyui.render.Platform
 import everyui.store.Stored
@@ -23,8 +23,10 @@ import reactify.*
   * with unsaved work (a dot), and closing one asks Save, Don't Save or Cancel; a tab's menu marks a file saved or not.
   * Each group's "+" (`addMenu`) opens a new file, terminal or conversation in that group. The layout is kept (`Stored`)
   * and comes back on the next launch; `fresh=1` starts from the default, `layout=<json>` from that, and `probe=1` runs
-  * the menu's actions in turn, and the second group's New terminal. `add=0` leaves the "+" out, `theme=light`,
-  * `rtl=1`. Logs `tabgroups ok`, and the layout at each change (`tabgroups layout <json>`). */
+  * the menu's actions in turn, and the second group's New terminal. M (or Primary+Shift+Enter) shows the focused
+  * group alone, or every group again, as its tabs' menu does (Hide Other Groups, Show All Groups), logging
+  * `tabgroups maximized <group> <layout>`; `maximized=<i>` starts with that group alone. `add=0` leaves the "+" out,
+  * `theme=light`, `rtl=1`. Logs `tabgroups ok`, and the layout at each change (`tabgroups layout <json>`). */
 object TabGroupsDemo {
   private val helper = Participant("agent-1", "Helper")
   private val files = List("README.md", "Main.scala", "build.sbt", "notes.txt")
@@ -72,6 +74,10 @@ object TabGroupsDemo {
       MenuItem(newTerminalWord, () => opened(g, fresh("Terminal ", "")), MaterialIcon.Terminal),
       MenuItem(newChatWord, () => opened(g, fresh("Chat ", " with Helper")), MaterialIcon.Chat)))
     groups.commands(Keymap.global)
+    // M too, beside Primary+Shift+Enter: the focused group alone, or every group again
+    Keymap.global.add("tabgroups.maximize", TabGroups.maximizeWord, Chord("m"))(groups.toggleMaximized())
+    groups.maximized.attach(m => Platform.log("tabgroups maximized " +
+      m.map(g => groups.groups().indexWhere(_ eq g).toString).getOrElse("none") + " " + groups.tabLayout.json))
     groups.size.width := ui.size.width()
     groups.size.height := ui.size.height()
     ui.children += groups
@@ -89,6 +95,9 @@ object TabGroupsDemo {
         Platform.log("tabgroups restored " + l.json)
       }).startUnit()
     groups.focusedGroup().focusTab()
+    // maximized=<i>: that group alone from the start
+    Platform.launchArg("maximized").toIntOption.filter(i => i >= 0 && i < groups.groups().size)
+      .foreach(i => groups.maximize(groups.groups()(i)))
     // probe=1: the menu's actions run in turn, as a remote would choose them, and the layout read back from its JSON
     if (Platform.launchArg("probe") == "1") Platform.after(1.0, () => {
       val first = groups.groups().head

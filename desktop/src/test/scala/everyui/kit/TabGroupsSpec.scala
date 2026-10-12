@@ -75,7 +75,7 @@ class TabGroupsSpec extends FxSpec {
         // a split adds Unsplit, and a lone tab moves only where there is a group that way
         fx(g.openRight(first, "b"))
         labels(fx(g.menuFor(first, "a"))) shouldBe List("Close", "Close Others", "Close All", "Open Right", "Open Down",
-          "Move Right", "Move Left", "Move Down", "Move Up", "Unsplit", "Reveal a")
+          "Move Right", "Move Left", "Move Down", "Move Up", "Unsplit", "Hide Other Groups", "Reveal a")
         fx(g.menuFor(first, "a").filter(_.label.startsWith("Move")).map(i => i.label -> i.enabled)) shouldBe List(
           "Move Right" -> true, "Move Left" -> false, "Move Down" -> false, "Move Up" -> false)
         labels(fx(g.menuFor(g.groups()(1), "b"))) should contain("Move Left")
@@ -324,7 +324,7 @@ class TabGroupsSpec extends FxSpec {
         val keys = fx(new Keymap)
         val commands = fx(g.commands(keys))
         commands.map(_.id) shouldBe List("tabs.openRight", "tabs.openDown", "tabs.nextGroup", "tabs.previousGroup",
-          "tabs.close")
+          "tabs.close", "tabs.maximize")
         fx(keys("tabs.nextGroup").get.run())
         fx(g.focusedGroup()) shouldBe first
         fx(keys("tabs.close").get.run())

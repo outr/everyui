@@ -4364,7 +4364,7 @@ editor.tabMenu @= (f => List(MenuItem("Reveal in tree", () => tree.reveal(f))))
 editor.addMenu @= Some(g => List(                   // each group's "+", its menu made for that group
   MenuItem("New file", () => editor.openIn(g, File.untitled())),
   MenuItem("Open…", () => pickFile(f => editor.openIn(g, f)))))
-editor.commands(Keymap.global)                       // tabs.openRight, openDown, nextGroup, previousGroup, close
+editor.commands(Keymap.global)                       // tabs.openRight, openDown, nextGroup, previousGroup, close, maximize
 val saved: Var[TabLayout] = Stored("editor", "layout", TabLayout())(using TabLayout.codec)
 editor.restore(saved(), path => files.get(path))
 editor.layoutChanged.attach(l => saved @= l)
@@ -4390,10 +4390,11 @@ every group's tabs, groups made later too: `Some(Color.Clear)` lets a picture be
 through what the tabs show, the strip of tabs keeping the theme's background; `barBackground` (the same, for every group's strip of
 tabs) gives the strip one too, a colour with some alpha letting the picture through it, the tab shown keeping its mark.
 `commands` puts the actions on a keymap, as Primary+\ (open right), Primary+Shift+\ (down), Primary+Alt+Right and Left
-(the next and the previous group) and Primary+W or Primary+F4 (close), which the app can `rebind`. Arrows keep to the
-focus layer's rules: Down from a bar goes into what it shows, Up comes back, and a split's arrows cross it. `tabLayout`
-is how it all lies, a `TabLayout` tree (the groups' tabs by id and the one shown; the splits' direction and share),
-plain enough for fabric (`given RW[TabLayout] = RW.gen`) and kept as JSON without it (`TabLayout.codec`);
+(the next and the previous group), Primary+W or Primary+F4 (close) and Primary+Shift+Enter (maximize, below), which
+the app can `rebind`. Arrows keep to the focus layer's rules: Down from a bar goes into what it shows, Up comes back,
+and a split's arrows cross it. `tabLayout` is how it all lies, a `TabLayout` tree (the groups' tabs by id and the one
+shown; the splits' direction and share), plain enough for fabric (`given RW[TabLayout] = RW.gen`) and kept as JSON
+without it (`TabLayout.codec`);
 `layoutChanged` tells each change and `restore` lays a kept one out again, leaving out what it no longer finds.
 A tab closes only once `canClose` (`K => Task[Boolean]`, always true by default) lets it, by the ×, the menu, the keys
 and `closeAllTabs()`: the app asks as it likes (`Dialogs.saveChanges`) and a tab it answers false for stays. It is asked
@@ -4402,6 +4403,28 @@ order, and stop at the first that stays, those before it closed. A close asked a
 nothing. Disposing of the groups asks nothing (it cannot wait): an app closing its window asks `closeAllTabs()` first.
 `tab(k)` finds a key's tabs in every group, and `dirty(k, on)` puts a dot after their label (`isDirty`, `dirtyKeys`), on
 tabs opened later too.
+
+One group can be shown alone over the whole area, as VS Code maximizes a group and IntelliJ hides the other splits:
+`maximize(g)` hides every other group and the handles between them, closing nothing (their tabs, the tab each shows,
+each content alive off the screen as a tab not shown is, and every split's ratio, nested ones too, kept as they were),
+and `unmaximize()` lays them out again exactly as they were; `toggleMaximized()` does one or the other for the focused
+group. `maximized` (`Val[Option[TabGroup[K]]]`) says which, for an app's own menu ("Restore") or a mark; nothing is
+maximized while there is one group. The tab's menu has Hide Other Groups after Unsplit while there are two groups or
+more, and Show All Groups while one is maximized (`TabGroups.maximizeWord`, `unmaximizeWord`, in EveryUI's eleven
+languages); `commands` adds `tabs.maximize` on Primary+Shift+Enter, which toggles it. Whatever would land where the
+person cannot see it lays every group out again first: `open` or `openIn` into a hidden group (or of a key open in
+one already that may not show twice), a split (Open Right and Down, a drag onto the group's edge), a move to another
+group (`move`, Move Right and the rest), Unsplit, `restore`, and the maximized group's last tab closing (it closes, and
+the rest show); so does the hidden groups closing until it is the only one. A tab opened into the maximized group
+itself, and one reordered among its tabs (by a drag, which lands only in the group that shows), leave it maximized.
+While it is, the focus stays in it (it moves in as it is maximized), and the next and previous group go nowhere else.
+Maximizing is not a change of layout: `tabLayout` stays the whole layout, as a saved one should, and `layoutChanged`
+is not told either way; hear `maximized` instead.
+
+```scala
+editor.tabMenu @= (f => List(if (editor.maximized().nonEmpty) MenuItem("Restore", () => editor.unmaximize())
+  else MenuItem("Focused", () => editor.groups().find(_.has(f)).foreach(editor.maximize))))   // after the groups' own
+```
 
 The keys `sharesGroupContent` picks show one view per group rather than a content each: `groupContent` makes a
 `GroupContent[K]` for a group the first time it shows such a key, `show(k)` tells it which it shows now and `hide()`
@@ -4422,8 +4445,9 @@ editor.canClose @= (d => if (!editor.isDirty(d)) Task.pure(true)
 
 `demo=tabgroups` has four files, a terminal and a conversation in three groups: the files in one view per group, the
 others a view each, each counting since it was made; two files hold unsaved work and ask before they close; each
-group's "+" opens a new file, terminal or conversation in it; its layout kept. Tabs are not dragged on a television,
-which has no pointer; the menu and the keys do it all there.
+group's "+" opens a new file, terminal or conversation in it; its layout kept; M or Primary+Shift+Enter shows the
+focused group alone, or every group again (`maximized=<i>` starts with that group alone). Tabs are not dragged on a
+television, which has no pointer; the menu and the keys do it all there.
 
 ### Tag (`everyui.kit`)
 
