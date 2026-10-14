@@ -12,7 +12,8 @@ import reactify.*
 
 /** A row of a [[Menu]], `width` wide: a slot for the tick or the icon, the label (and its detail under it), and at the
   * right the shortcut, the note, or the way into a submenu. It lights under the focus, which a pointer resting on it
-  * brings; `chosen` hears it clicked or entered, and `opened` the arrow into its submenu. A separator is a rule. */
+  * brings, and stays lit while it is the menu's current choice (`active`); `chosen` hears it clicked or entered, and
+  * `opened` the arrow into its submenu. A separator is a rule. */
 class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Container {
   /** A click, a tap or OK on it. */
   val chosen: Channel[Unit] = Channel[Unit]
@@ -72,7 +73,7 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Cont
   else {
     focusable @= item.enabled
     size.height := words.size.height() + points * 0.9
-    backgroundColor := (if (focused()) Theme.controlLit() else Color.Clear)
+    backgroundColor := (if (focused() || item.active) Theme.controlLit() else Color.Clear)
     radius @= points * 0.35
     lead.foreach { l =>
       l.color := ink()

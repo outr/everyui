@@ -262,6 +262,27 @@ class MenuSpec extends FxSpec {
       fx(menu.position.top()) shouldBe 94.0
       fx(menu.position.left()) shouldBe 50.0
     }
+    "open on its current choice, and keep it lit while the focus is elsewhere" in onScreen { card =>
+      val menu = fx(Menu.below(card, List(MenuItem("List"), MenuItem("Grid", active = true), MenuItem("Columns"))))
+      def lit(i: Int): Boolean = fx(menu.rows(i).backgroundColor() == everyui.theme.Theme.controlLit())
+      focusedLabel shouldBe Some("Grid")
+      lit(0) shouldBe false
+      lit(1) shouldBe true
+      press("ArrowDown")
+      focusedLabel shouldBe Some("Columns")
+      lit(1) shouldBe true
+      lit(2) shouldBe true
+      lit(0) shouldBe false
+      fx(menu.rows.head.event.pointer.enter @= PointerEvent(PointerKind.Enter, 0.0, 0.0))
+      focusedLabel shouldBe Some("List")
+      lit(0) shouldBe true
+      lit(1) shouldBe true
+      lit(2) shouldBe false
+    }
+    "open on its first entry with no current choice" in onScreen { _ =>
+      fx(Menu.show(List(MenuItem("One"), MenuItem("Two"))))
+      focusedLabel shouldBe Some("One")
+    }
     "open where the pointer asks for it" in onScreen { card =>
       fx(Menu.context(card)(List(MenuItem("Rename"))))
       fx(card.event.pointer.menu @= PointerEvent(PointerKind.Menu, 300.0, 200.0))
