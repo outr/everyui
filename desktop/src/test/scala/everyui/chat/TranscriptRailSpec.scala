@@ -215,7 +215,7 @@ class TranscriptRailSpec extends FxSpec {
         ChatEntry.message("n" + i, if (i % 3 == 0) me else ada, self = i % 3 == 0, "Message " + i +
           (if (i % 4 == 0) ": long enough to wrap onto a second line in a transcript this narrow." else ""),
           rail = Some(if (i / 7 % 2 == 0) red else blue))))
-      val t = transcript(entries, width = 390.0, height = 600.0)
+      val t = transcript(entries, width = 620.0, height = 600.0)
       onScreen(t) {
         settle(t)
         fx(t.list.scrollBy(-2000.0))

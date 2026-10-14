@@ -1368,6 +1368,14 @@ a bubble's words may be, so a short reply makes a narrow bubble, with code, a ta
 that; the line breaks it was typed with kept; and a streaming message parsed again from its last block alone.
 `render = MessageText.plain` shows plain text instead.
 
+A transcript narrower than a phone's (`Transcript.narrow`, 600 px) draws as a phone's, by itself as the width crosses
+it: everybody else's avatar goes small (`smallAvatar`, 20 px) at the start of the line with their name, and every bubble,
+tool call, reasoning and the app's component starts just inside the 12-pixel side margin (`Transcript.indent`), as wide as
+all the width less the margins (`widest`: 366 at 390). An app's card sized by `transcript.widest()` follows. Wider, it
+is as it always was. "Jump to latest" is a small round button with a down arrow in the bottom end corner (`JumpButton`;
+the bottom left right to left), with how many have arrived on a badge on its corner and in its name ("Jump to latest,
+3 new"); it goes once the transcript is at the bottom, so it never covers the newest entry's own buttons there.
+
 A message's words (its Markdown's code blocks and tables too) can be selected and copied where the platform selects text
 (the web): a drag selects them, across lines and on across messages, Ctrl or Cmd+C copies them, and a plain click still
 puts the transcript's cursor on the message it lands on, without scrolling. With nothing selected, Ctrl or Cmd+C copies
@@ -1503,7 +1511,8 @@ entry ("Ada: Morning!, Release planning"), since a colour alone tells it nothing
 after it, so the entries with a rail and those without line up. Set it before the conversation shows, for one with
 threads; set later, the rows draw a little narrower, and the entry at the top of the view stays where it is. Off, the
 default, every row is drawn exactly as it was before rails, and a rail is drawn in the 12-pixel margin the rows keep at
-either side anyway, 5 pixels from an avatar. A row makes its line the first time it shows an entry with a rail, so a
+either side anyway, 5 pixels from an avatar. Narrower than a phone's no room is kept either way: the rails draw in that
+margin, and the rows keep the width. A row makes its line the first time it shows an entry with a rail, so a
 transcript without them makes nothing more, and the rail of an entry never drawn is never made.
 
 ```scala

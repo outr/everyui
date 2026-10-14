@@ -13,7 +13,10 @@ import reactify.*
   * avatar, the name and when it was said (`now` keeps "5m" current); the rest of the group sit close under it. Under
   * the bubble go the app's `meta` line and, while the words are still arriving, a small spinner. When it was said has
   * its date too unless the transcript names the days (`dated`). The words can be selected and copied
-  * (`Component.selectable`). A click on the avatar or the name is `pressAuthor`, under the hand where it `answers`. */
+  * (`Component.selectable`). A click on the avatar or the name is `pressAuthor`, under the hand where it `answers`.
+  *
+  * On a phone (`width` under `Transcript.narrow`) everybody else's avatar goes small at the start of the name's line,
+  * and the bubble under them takes all the width but the side margins. */
 class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: Val[Long],
                   render: (Val[String], Val[Double]) => Component, dated: Boolean = true,
                   pressAuthor: () => Unit = () => (), answers: => Boolean = false) extends Container {
@@ -63,26 +66,47 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   private val footer: Container = Row(6.0, middle = true)(spinner, meta)
   footer.visible := m.streaming() || m.meta().nonEmpty
 
-  // along the row: the start edge, past the avatar, for everybody else's; the end edge for one's own
+  // whether it is drawn as on a phone: the avatar small beside the name, the bubble the width less the margins
+  private val narrow: Val[Boolean] = own(Val(width < Transcript.narrow))
+  // whether the small avatar shares the header's line
+  private val faceInLine: Val[Boolean] = own(Val(narrow() && !m.self && leads))
+
+  // along the row: the start edge, past the avatar where it has its own room, for everybody else's; the end edge for
+  // one's own
   private def at(length: Double): Double =
     if (m.self) ListRow.along(width - Transcript.side - length, length, width)
-    else ListRow.along(Transcript.side + Transcript.lead, length, width)
+    else ListRow.along(Transcript.indent(width), length, width)
 
-  private val headerHeight: Val[Double] = own(Val(if (leads) header.size.height() + 3.0 else 0.0))
-  header.position.left := at(header.size.width())
-  header.position.top @= top
+  // the header's line: as tall as the small avatar where it is in it
+  private val lineHeight: Val[Double] = own(Val(if (faceInLine()) math.max(header.size.height(), Transcript.smallAvatar)
+    else header.size.height()))
+  private val headerHeight: Val[Double] = own(Val(if (leads) lineHeight() + 3.0 else 0.0))
+  header.position.left := (if (!faceInLine()) at(header.size.width())
+    else ListRow.along(Transcript.side + Transcript.smallAvatar + Transcript.smallGap, header.size.width(), width))
+  header.position.top := top + (lineHeight() - header.size.height()) / 2.0
   bubble.position.left := at(bubble.size.width())
   bubble.position.top := top + headerHeight()
   footer.position.left := at(footer.size.width())
   footer.position.top := bubble.position.top() + bubble.size.height() + 3.0
 
-  if (!m.self && leads) {
-    val face = new Avatar(m.author, Transcript.avatar)
-    face.position.left := ListRow.along(Transcript.side, Transcript.avatar, width)
-    face.position.top @= top
-    children += face
-    MessageView.pressable(face, pressAuthor, answers)
+  // the avatar, where the message leads its group: large in its own room, or small beside the name on a phone, made
+  // again as the width crosses from one to the other
+  private var face: Option[Avatar] = None
+  private def faced(small: Boolean): Unit = if (!m.self && leads) {
+    face.foreach { f =>
+      children -= f
+      f.dispose()
+    }
+    val d = if (small) Transcript.smallAvatar else Transcript.avatar
+    val made = new Avatar(m.author, d)
+    made.position.left := ListRow.along(Transcript.side, d, width)
+    made.position.top := (if (small) top + (lineHeight() - d) / 2.0 else top)
+    MessageView.pressable(made, pressAuthor, answers)
+    children += made
+    face = Some(made)
   }
+  faced(narrow())
+  narrow.attach(small => faced(small))
   if (!m.self) MessageView.pressable(name, pressAuthor, answers)
   size.width := width
   size.height := footer.position.top() + (if (footer.visible()) footer.size.height() + 2.0 else -3.0)

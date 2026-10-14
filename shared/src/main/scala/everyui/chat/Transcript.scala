@@ -2,14 +2,14 @@ package everyui.chat
 
 import everyui.async.Task
 import everyui.clipboard.Clipboard
-import everyui.component.{Button, ButtonStyle, Component, Container}
+import everyui.component.{Component, Container}
 import everyui.component.types.Semantics
 import everyui.event.{Key, KeyEvent, Pointer}
 import everyui.focus.Focus
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.Spinner
-import everyui.list.VirtualList
+import everyui.list.{ListRow, VirtualList}
 import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -80,10 +80,11 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** Whether room is kept at the start edge for the entries' rails (`ChatEntry.rail`), so the rows line up whether or
     * not theirs has one: on for a conversation of threads or topics, before it shows (turned on later, the rows draw a
     * little narrower, the one at the top of the view kept where it is). Off, the default, the rows are as they always
-    * were, and a rail is drawn in the margin they keep anyway. */
+    * were, and a rail is drawn in the margin they keep anyway. Narrower than a phone's (`Transcript.narrow`) no room is
+    * kept either way: the rails draw in that margin, and the rows keep all the width. */
   val rails: Var[Boolean] = own(Var(false))
-  // the room kept for the rails, at the start edge
-  private[chat] val gutter: Val[Double] = own(Val(if (rails()) Transcript.railGutter else 0.0))
+  // the room kept for the rails, at the start edge (none on a phone: they draw in the side margin)
+  private[chat] val gutter: Val[Double] = own(Val(Transcript.gutter(size.width(), rails())))
   /** Whether earlier entries are being fetched. */
   val loading: Var[Boolean] = own(Var(false))
   /** Whether `loadOlder` has said there is nothing earlier. */
@@ -105,13 +106,12 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** The widest a message's bubble, a tool call or the app's component may be in a transcript this wide. */
   val widest: Val[Double] = own(Val(Transcript.widest(list.size.width() - gutter())))
 
-  private val jump: Button = Button.bound(
-    if (pin.unseen() > 0) ChatWords.newCount(pin.unseen()) else ChatWords.jumpToLatest,
-    () => toLatest(), ButtonStyle.Filled, Some(MaterialIcon.ArrowDownward), 12.5)
+  private[chat] val jump: JumpButton = new JumpButton(pin.unseen, () => toLatest())
   jump.visible := !pin.pinned() && entries().nonEmpty
-  jump.shadow @= Some(everyui.Shadow(0.0, 2.0, 8.0, everyui.Color.Black.withAlpha(0.3)))
-  jump.position.left := (size.width() - jump.size.width()) / 2.0
-  jump.position.top := size.height() - jump.size.height() - 12.0
+  // in the bottom end corner, clear of the middle where the newest entry's buttons are (and gone once at the bottom)
+  jump.position.left := ListRow.along(size.width() - JumpButton.margin - JumpButton.diameter, JumpButton.diameter,
+    size.width())
+  jump.position.top := size.height() - JumpButton.diameter - JumpButton.margin
 
   private val spinner: Spinner = new Spinner(18.0, () => Theme.accent())
   spinner.visible := loading()
@@ -571,6 +571,10 @@ object Transcript {
   /** An avatar's size, and the room it and the gap after it take before everybody else's bubbles. */
   val avatar: Double = 32.0
   val lead: Double = 40.0
+  /** An avatar's size on a phone (`narrow`), where it sits small at the start of the name's line, the bubble under
+    * both, and the gap between it and the name. */
+  val smallAvatar: Double = 20.0
+  val smallGap: Double = 6.0
   /** Space inside a bubble: across and down. */
   val padX: Double = 12.0
   val padY: Double = 8.0
@@ -586,20 +590,33 @@ object Transcript {
   val lineStep: Double = 48.0
   /** How near the top earlier entries are asked for. */
   val loadAhead: Double = 600.0
-  /** Below this width, a phone's: bubbles take nearly all of it. */
+  /** Below this width, a phone's: everything in the flow takes all of it but the side margins, the avatar goes small
+    * beside the name, and no room is kept for the rails. */
   val narrow: Double = 600.0
 
-  /** The widest a bubble may be in a transcript `width` wide: three quarters of it, or on a phone all but the edges and
-    * the avatar's room. */
+  /** Where everybody else's bubbles, tool calls, reasoning and the app's components start along a row `width` wide:
+    * past the avatar's room, or on a phone (`narrow`) just inside the side margin. */
+  def indent(width: Double): Double = if (width < narrow) side else side + lead
+
+  /** The widest a bubble may be in a transcript `width` wide: three quarters of it, or on a phone all but the side
+    * margins. */
   def widest(width: Double): Double =
-    if (width < narrow) math.max(80.0, width - side * 2.0 - lead) else width * 0.75
+    if (width < narrow) math.max(80.0, width - side * 2.0) else width * 0.75
+
+  /** The room kept before the rows for the rails in a transcript `width` wide that keeps some (`rails`): none where
+    * the rows would then be a phone's, the rails drawing in the side margin. */
+  def gutter(width: Double, rails: Boolean): Double =
+    if (rails && width - railGutter >= narrow) railGutter else 0.0
+
+  // a leading message's header (its name and time, and on a phone the small avatar), near enough
+  private def headerGuess(width: Double): Double = if (width < narrow) smallAvatar + 4.0 else 22.0
 
   /** About how tall `entry` draws in a transcript `width` wide, before it has (`VirtualList.estimate`): from the length
     * of its lines, its code, tables and pictures, rounded up rather than down, so that a transcript opened at its newest
     * makes about the rows that show rather than a dozen more it then puts away. */
   def estimate(entry: ChatEntry, width: Double, bodyLines: Int): Double = entry match {
-    case m: ChatEntry.Message => groupGap + 22.0 + padY * 2.0 + estimateText(m.text(), widest(width) - padX * 2.0) +
-      (if (m.meta().nonEmpty || m.streaming()) 18.0 else 0.0)
+    case m: ChatEntry.Message => groupGap + headerGuess(width) + padY * 2.0 +
+      estimateText(m.text(), widest(width) - padX * 2.0) + (if (m.meta().nonEmpty || m.streaming()) 18.0 else 0.0)
     case a: ChatEntry.Activity => 48.0 + (if (a.body().isEmpty) 0.0
       else math.min(estimateText(a.body(), widest(width) - padX * 2.0 - 40.0), 20.0 * math.max(1, bodyLines)))
     case _: ChatEntry.Thinking => 44.0

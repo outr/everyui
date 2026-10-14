@@ -14,7 +14,7 @@ class CustomView(val component: Component, width: => Double, list: Component) ex
     case p: Container => p.children -= component
     case _ => ()
   }
-  component.position.left := ListRow.along(Transcript.side + Transcript.lead, component.size.width(), width)
+  component.position.left := ListRow.along(Transcript.indent(width), component.size.width(), width)
   component.position.top @= Transcript.groupGap
   size.width := width
   size.height := component.size.height() + Transcript.groupGap * 2.0

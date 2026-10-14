@@ -67,7 +67,7 @@ class ThinkingView(t: ChatEntry.Thinking, width: => Double, now: Val[Long]) exte
     t.expanded @= !t.expanded()
   }
 
-  box.position.left := ListRow.along(Transcript.side + Transcript.lead, box.size.width(), width)
+  box.position.left := ListRow.along(Transcript.indent(width), box.size.width(), width)
   box.position.top @= Transcript.lineGap + 2.0
   size.width := width
   size.height := box.size.height() + Transcript.lineGap * 2.0 + 2.0

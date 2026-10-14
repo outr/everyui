@@ -78,13 +78,14 @@ class TranscriptSpec extends FxSpec {
         settle(t)
         fx(t.list.offset()) shouldBe offset
         fx(t.pin.unseen()) shouldBe 3
-        fx(t.children().collectFirst { case b: Button if b.visible() => b.label() }) shouldBe Some("3 new")
+        fx(Option(t.jump).filter(_.visible()).map(_.label())) shouldBe Some("Jump to latest, 3 new")
+        fx(t.jump.badge.visible()) shouldBe true
         // the jump takes it back down, pinned
         fx(t.toLatest())
         settle(t)
         fx(atBottom(t)) shouldBe true
         fx(t.pin.pinned()) shouldBe true
-        fx(t.children().exists { case b: Button => b.visible(); case _ => false }) shouldBe false
+        fx(t.jump.visible()) shouldBe false
         // scrolling down to the bottom pins it again too
         fx(t.list.scrollBy(-300.0))
         fx(t.pin.pinned()) shouldBe false

@@ -216,7 +216,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   }
   onDispose(() => if (leading().nonEmpty) status.dispose())
 
-  box.position.left := ListRow.along(Transcript.side + Transcript.lead, box.size.width(), width)
+  box.position.left := ListRow.along(Transcript.indent(width), box.size.width(), width)
   box.position.top @= Transcript.lineGap + 2.0
   size.width := width
   size.height := box.size.height() + Transcript.lineGap * 2.0 + 2.0
