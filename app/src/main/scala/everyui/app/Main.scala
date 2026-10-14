@@ -170,6 +170,7 @@ import everyui.render.Platform
   else if (demo == "coach") CoachDemo.run()
   else if (demo == "quality") QualityDemo.run()
   else if (demo == "launch") LaunchDemo.run()
+  else if (demo == "lifecycle") LifecycleDemo.run()
   else if (demo == "unwind") UnwindDemo.run()
   else if (demo == "audio") AudioDemo.run()
   else if (demo == "leave") LeaveDemo.run()

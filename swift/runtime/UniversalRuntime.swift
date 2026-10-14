@@ -803,3 +803,25 @@ func uiCaptionsUnlisten(_ id: V) -> V {
     NotificationCenter.default.removeObserver(observer)
     return .vNull
 }
+
+// MARK: - lifecycle
+
+var uiLifecycleObservers: [NSObjectProtocol] = []
+
+/// `away()` when the application resigns active (another app opened over it, the TV's home screen or app switcher,
+/// the device going to sleep) or goes into the background, and `resumed()` when it is active again, on the main
+/// queue; the Scala side (Presence) tells each once. Heard from the first call; a later one changes nothing.
+func uiOnLifecycle(_ resumed: V, _ away: V) -> V {
+    if !uiLifecycleObservers.isEmpty { return .vNull }
+    let centre = NotificationCenter.default
+    for name in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification] {
+        uiLifecycleObservers.append(centre.addObserver(forName: name, object: nil, queue: .main) { _ in
+            _ = try? RtInvoke(away, rtArr([]))
+        })
+    }
+    uiLifecycleObservers.append(centre.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil,
+                                                   queue: .main) { _ in
+        _ = try? RtInvoke(resumed, rtArr([]))
+    })
+    return .vNull
+}

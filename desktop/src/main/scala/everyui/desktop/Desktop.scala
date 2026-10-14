@@ -5,6 +5,7 @@ import javafx.scene.layout.Pane
 import javafx.scene.paint.Color
 import javafx.scene.shape.Rectangle
 import javafx.stage.Stage
+import everyui.app.Presence
 import everyui.render.{Host, WindowLeave}
 
 import java.io.File
@@ -52,6 +53,11 @@ object Desktop {
       if (iconFile.exists) stage.getIcons.add(new javafx.scene.image.Image(iconFile.toURI.toString))
       stage.setScene(scene)
       WindowLeave.watch(stage)
+      // a window minimised is one nobody is watching, as a page hidden is, and restored is somebody back; another
+      // window in front of it, or its focus lost, is neither
+      val presence = new Presence(() => everyui.render.Platform.away(), () => everyui.render.Platform.resumed())
+      stage.iconifiedProperty.addListener((_, _, iconified) =>
+        if (iconified.booleanValue) presence.hidden() else presence.shown())
       stage.show()
 
       run()

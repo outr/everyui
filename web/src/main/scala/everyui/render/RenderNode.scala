@@ -1288,7 +1288,8 @@ object Platform {
 
   def toCorner(): Boolean = false
 
-  /** What to do when the app is at the front again after being away: the page shown again. */
+  /** What to do when the app is at the front again after being away: the page shown again, or brought back from the
+    * back/forward cache. Not as it is first loaded, which is a launch. */
   def onResume(f: () => Unit): () => Unit = {
     resumers = resumers :+ f
     () => resumers = resumers.filterNot(_ eq f)
@@ -1330,9 +1331,14 @@ object Platform {
   }
 
   // a page hidden is one nobody is watching — another tab, the window minimised, a television's own home screen
-  // over the app on webOS and Tizen — and shown again is somebody back
+  // over the app on webOS and Tizen, the page left for another — and shown again, or brought back from the
+  // back/forward cache, is somebody back; told once each way (Presence). Never its focus: devtools or another window
+  // in front leaves the page in sight
+  private val presence = new everyui.app.Presence(() => away(), () => resumed())
   dom.document.addEventListener("visibilitychange", (_: dom.Event) =>
-    if (dom.document.visibilityState == "hidden") away() else resumed())
+    if (dom.document.visibilityState == "hidden") presence.hidden() else presence.shown())
+  dom.window.addEventListener("pagehide", (_: dom.Event) => presence.hidden())
+  dom.window.addEventListener("pageshow", (e: dom.PageTransitionEvent) => if (e.persisted) presence.shown())
 
   def log(message: String): Unit = dom.console.log("[ui] " + message)
 

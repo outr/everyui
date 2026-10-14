@@ -3159,6 +3159,36 @@ Platform.onLaunch(params => params.get("open").foreach(path => App.openLink(path
 `demo=launch` logs the launch it started with and each later one (`[ui] launch: later open=/settings | launchArg
 open=/settings`).
 
+## Away and back (`Platform.onAway`, `Platform.onResume`)
+
+`Platform.onAway(f)` is told when nobody can see the app any more, and `Platform.onResume(f)` when somebody can again
+after it was away; each returns what stops it being told. An app that hands the viewer to another app or site and asks
+"did you watch it?" on the way back asks in `onResume`, and stops asking in `onAway`. Everywhere, away is told once on
+leaving and resumed once on coming back, however many of the platform's signals say so (`everyui.app.Presence`), a
+return is never told without a leaving before it, and the launch is not a return: the first time the app is seen
+says nothing.
+
+```scala
+Platform.onAway(() => handedOver.foreach(_ => asking @= false))
+Platform.onResume(() => handedOver.foreach(show => askWatched(show)))
+```
+
+- **Web**: away when the page is hidden (`visibilitychange`: another tab in front, the window minimised, a television's
+  own home screen over the app on webOS and Tizen) or left (`pagehide`); resumed when it is shown again, or brought
+  back from the back/forward cache (`pageshow` with `persisted`). A page left and loaded afresh on the way back is a
+  launch, not a return: keep what the app needs to ask (the show handed over) in `everyui.store`, and ask from there as
+  it starts. Focus is never used: devtools or another window in front of a page still in sight is not away.
+- **Android**: away when the activity stops (another app has the screen, the device sleeps), not when it pauses (a
+  dialog or picture-in-picture over it); resumed when it resumes after that.
+- **Apple TV**: away when the application resigns active (another app opened over it with a URL, the TV's home screen
+  or app switcher, the device sleeping) or goes into the background; resumed when it is active again.
+- **Desktop**: away when the window is minimised, resumed when it is restored. Another window in front, or the focus
+  lost, is neither.
+- **Roku**: Instant Resume's resume handler is resumed, and the channel suspended away; a channel otherwise starts
+  afresh each time.
+
+`demo=lifecycle` logs each (`[ui] lifecycle: away 1`, `[ui] lifecycle: resumed 1`) and writes the counts on the screen.
+
 ## Sign-in, autofill and password managers
 
 Every text field (`TextInput`, `TextArea`, and `InputView` beneath them) says what it asks for with `autofill`, an

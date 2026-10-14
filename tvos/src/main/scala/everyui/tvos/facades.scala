@@ -245,3 +245,8 @@ class SGNode
 @native object uiCaptionsUnlisten {
   def apply(id: Int): Unit = native.value
 }
+/** `resumed()` when the application is active again and `away()` when it resigns active or goes into the background
+  * (UIApplication's notifications), from the first call on; a later call changes nothing. */
+@native object uiOnLifecycle {
+  def apply(resumed: () => Unit, away: () => Unit): Unit = native.value
+}

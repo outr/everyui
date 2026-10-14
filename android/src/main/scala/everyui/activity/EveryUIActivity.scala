@@ -211,20 +211,17 @@ abstract class EveryUIActivity extends Activity {
     * everything again on its way back read it all twice on the way in. */
   override def onResume(): Unit = {
     super.onResume()
-    if (stopped) {
-      stopped = false
-      everyui.render.Platform.resumed()
-    }
+    presence.shown()
   }
 
-  /** Whether it has been out of sight since it was last in front. */
-  private var stopped = false
+  /** Whether it has been out of sight since it was last in front, told once each way. */
+  private val presence = new everyui.app.Presence(() => everyui.render.Platform.away(),
+    () => everyui.render.Platform.resumed())
 
   /** Nobody can see it now — another app has the screen, or the device is going to sleep. Stop rather than pause,
     * which a picture-in-picture or a dialog over the top also brings, and neither means nobody is watching. */
   override def onStop(): Unit = {
-    stopped = true
-    everyui.render.Platform.away()
+    presence.hidden()
     super.onStop()
   }
 

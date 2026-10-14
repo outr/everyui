@@ -1094,8 +1094,8 @@ object Platform {
 
   def toCorner(): Boolean = false
 
-  /** What to do when the app is at the front again after being away. Nothing here says so yet, so nothing is ever
-    * called: a caller must not depend on it as its only way of noticing somebody is back. */
+  /** What to do when the app is at the front again after being away: its window restored after it was minimised
+    * (Desktop.launch), told once and never at launch. Another window in front of it is not away. */
   def onResume(f: () => Unit): () => Unit = {
     resumers = resumers :+ f
     () => resumers = resumers.filterNot(_ eq f)

@@ -385,9 +385,10 @@ object Platform {
 
   def toCorner(): Boolean = false
 
-  /** What to do when the app is at the front again after being away. Nothing here says so yet, so nothing is ever
-    * called: a caller must not depend on it as its only way of noticing somebody is back. */
+  /** What to do when the app is at the front again after being away: active again after it resigned (another app
+    * opened over it, the TV's own home screen or app switcher, the device asleep), told once and never at launch. */
   def onResume(f: () => Unit): () => Unit = {
+    listen()
     resumers = resumers :+ f
     () => resumers = resumers.filterNot(_ eq f)
   }
@@ -399,6 +400,7 @@ object Platform {
   /** What to do when the app goes away from the front: another app has the screen, or the device is going to sleep.
     * A player wants to know, because nobody is watching it now. Returns what stops it being told. */
   def onAway(f: () => Unit): () => Unit = {
+    listen()
     aways = aways :+ f
     () => aways = aways.filterNot(_ eq f)
   }
@@ -407,6 +409,16 @@ object Platform {
   def away(): Unit = aways.foreach(f => f())
 
   private var aways: List[() => Unit] = Nil
+
+  // the application resigning active or going into the background is away, and active again is back: once each
+  // (Presence), heard from the first app that asks
+  private val presence = new everyui.app.Presence(() => away(), () => resumed())
+  private var listening = false
+
+  private def listen(): Unit = if (!listening) {
+    listening = true
+    uiOnLifecycle(() => presence.shown(), () => presence.hidden())
+  }
 
   /** The app asks before it is left while a guard answers true elsewhere; a TV's Back or Home from the first screen
     * leaves without asking, so nothing is held here. What removes it. */
