@@ -85,7 +85,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val query: Var[String] = own(Var(""))
   /** Whether an item is one the words find: by default, one whose title or detail holds them, in any case. */
   val matches: Var[(T, String) => Boolean] = own(Var((t: T, words: String) => RichList.holds(lookOf(t), words)))
-  /** The time the items' times are said against ("5m" ago), moved on every `RichList.tick` seconds. */
+  /** The time the items' times are said against ("5m" ago), moved on every `RichList.tick` seconds while
+    * the list is on the screen, and at once as it comes back (`Ticker`). */
   val now: Var[Long] = own(Var(everyui.util.Clock.real()))
   /** How an item's time is said, seen at a moment: by default how long ago (`ChatTime.ago`). */
   var timeText: (Long, Long) => String = (time: Long, at: Long) => ChatTime.ago(time, at)
@@ -484,9 +485,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   expanded.attach(_ => flatten())
   expansion.attach(_ => flatten())
 
-  private val ticker = new Ticker(RichList.tick)
+  private val ticker = Ticker.of(this, RichList.tick)
   ticker.now.attach(t => now @= t)
-  onDispose(() => ticker.stop())
 
   field.foreach { f =>
     f.value.attach(v => if (query() != v) query @= v)

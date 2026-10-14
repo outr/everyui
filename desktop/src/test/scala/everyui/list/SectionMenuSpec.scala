@@ -76,8 +76,7 @@ class SectionMenuSpec extends FxSpec {
       while (Modal.showing) Modal.close()
       Direction.set(false)
       ui.children.clear()
-      // taken apart, unless it is to be shown again, so its clock (Ticker) stops: left running, it moved on every twenty
-      // seconds for the rest of the run, and woke the frame loop of the specs after
+      // taken apart, done with, unless it is to be shown again (its clock, a Ticker, rests already, off the screen)
       if (!keep) list.dispose()
       Focus.focused @= None
     }

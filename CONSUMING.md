@@ -230,7 +230,13 @@ The loop wakes by itself, on the platform's next frame (the same one on the web)
 - an animation started on a `TaskSupport` (`x.to(1.0).in(…).start()`), for as long as it runs. A paused one needs
   none;
 - a listener on a `TaskSupport`'s `delta`, for as long as it listens;
-- the clock: while anything reads `Clock.now` (`Format.elapsed`) or listens to `Clock.tick`, a frame a second.
+- the clock: while anything reads `Clock.now` (`Format.elapsed`) or listens to `Clock.tick`, a frame a second;
+- a `Ticker` (a `Transcript`'s "5m" and live elapsed times, every second; a `RichList`'s times, every 20 s) moving on.
+  Made with an owner (`Ticker.of(owner, seconds)`, as those two make theirs), it moves on only while the owner is on
+  the screen (`OnScreen`: in `ui`, nothing it is in hidden) and the app at the front (`Platform.onAway`, `onResume`):
+  a chat or list kept aside without being disposed of (in a tab not shown, taken out of its place) sets no timer and
+  wakes nothing, and as it comes back it reads the clock at once, so its times are right the moment they show, and
+  moves on from there. `stop()` ends one for good, as its owner disposed of does.
 
 Motion (`Component.motion`) is run by the platform and needs no frames of the app's. Timers (`Platform.after`,
 `Platform.later`) are not frames either.
@@ -3972,7 +3978,7 @@ Enter or a double click on a result activates it. `collapsed` holds the closed g
 The list down the side of a chat, mail or contacts app, virtualised (thousands scroll as ten do). Each item is drawn as
 its `RichLook` says: an avatar (a `chat.Participant`: their picture, or their initial on their colour) or an icon, a
 title and an optional second line, and at the end how long ago (`time`, epoch millis: "now", "5m", "3h", "2d", "9/16",
-kept current), a `count` badge ("99+") and a small `mark` (a pin, a lock); `unread` is bold with its time lit. `busy`
+kept current while the list is on the screen, and said again the moment it is back: `Ticker`), a `count` badge ("99+") and a small `mark` (a pin, a lock); `unread` is bold with its time lit. `busy`
 turns the busy ring around the avatar (an agent at work in it, unread or not), with `busyDetail` ("Running bash") said
 by the avatar to a pointer and with the row to a screen reader; rows reused as the list scrolls start and stop it. Items
 sit in `RichSection`s under headers (title and count) that open and close, the closed ones' keys in `collapsed`, which

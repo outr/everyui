@@ -44,8 +44,7 @@ class RichListSpec extends FxSpec {
     try test finally fx {
       while (everyui.component.Modal.showing) everyui.component.Modal.close()
       ui.children.clear()
-      // taken apart, so its clock (Ticker) stops: left running, it moved on every twenty seconds for the rest of the run,
-      // and woke the frame loop of the specs after
+      // taken apart, done with (its clock, a Ticker, rests already, off the screen)
       list.dispose()
       Focus.focused @= None
     }

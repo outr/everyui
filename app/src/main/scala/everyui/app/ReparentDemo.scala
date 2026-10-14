@@ -98,8 +98,12 @@ object ReparentDemo {
     backgroundColor := Theme.surface()
   }
 
+  // the opening message said a little under five minutes ago, and the first conversation still thinking, so the times
+  // each view shows move on while it shows (and only then: `Ticker`)
   private def view(id: String, opening: String): ChatView = {
     val someone = Participant("u-" + id, "Sam")
-    new ChatView(Var(Vector(ChatEntry.message(id + "-1", someone, self = false, opening))), None)
+    val at = everyui.util.Clock.real()
+    val opened = ChatEntry.message(id + "-1", someone, self = false, opening, time = Some(at - 290000L))
+    new ChatView(Var[Vector[ChatEntry]](Vector(opened) ++ (if (id == "one") Vector(ChatEntry.thinking(id + "-t", at)) else Vector.empty)), None)
   }
 }

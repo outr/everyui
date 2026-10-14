@@ -1,10 +1,13 @@
 package everyui.app.screen
 
 import everyui.async.Task
+import everyui.chat.{ChatEntry, Ticker, Transcript}
 import everyui.component.TextView
 import everyui.focus.Focus
 import everyui.keymap.Keymap
+import everyui.list.{RichList, RichLook, RichSection}
 import everyui.net.*
+import everyui.render.Platform
 import everyui.task.*
 import everyui.util.{Clock, Format}
 import everyui.{Color, FxSpec, ui}
@@ -38,6 +41,8 @@ class FrameLoopSpec extends FxSpec {
       if (counting()) updates += 1
     }
     override def defaultFocus(): TextView = words
+    /** What it shows. */
+    def held: everyui.component.Container = container
     override def createUI(): Task[Unit] = Task(container.children += words)
   }
 
@@ -161,6 +166,55 @@ class FrameLoopSpec extends FxSpec {
       fx(Clock.watched) shouldBe false
       settled() shouldBe true
       framesIn(1500L) shouldBe 0
+    }
+
+    "run no frames for a transcript and a rich list kept off the screen without being disposed of" in {
+      settled() shouldBe true
+      // the list's times moved on every second, as the transcript's are, and said to the second, so each tick changes
+      // what both show while they are on the screen
+      Ticker.after = (s, f) => Platform.after(math.min(s, 1.0), f)
+      val started = Clock.real()
+      try {
+        val (transcript, list) = fx {
+          val transcript = new Transcript(Var[Vector[ChatEntry]](Vector(ChatEntry.thinking("t1", started))))
+          transcript.size.width @= 400.0
+          transcript.size.height @= 300.0
+          val list = new RichList[String](Var(Vector(RichSection("s", "S", Vector("a")))), identity,
+            (s: String) => RichLook(s, time = Some(started)))
+          list.timeText = (t: Long, at: Long) => ((at - t) / 1000L).toString + "s"
+          list.position.top @= 320.0
+          still.held.children ++= List(transcript, list)
+          (transcript, list)
+        }
+        // on the screen: frames as the times move on
+        val shownAt = Manager.frames
+        val listSaid = fx(list.now())
+        eventually(list.now() != listSaid && transcript.ticker.now() > started) shouldBe true
+        framesPast(shownAt, 1) shouldBe true
+        // taken out of their place, and not disposed of: once the frames their going runs are done, none at all
+        fx {
+          still.held.children -= transcript
+          still.held.children -= list
+        }
+        settled() shouldBe true
+        framesIn(2500L) shouldBe 0
+        val (transcriptLeft, listLeft) = fx((transcript.ticker.now(), list.now()))
+        // back: the times read at once, before any tick, and moving on from there
+        val back = Clock.real()
+        fx(still.held.children ++= List(transcript, list))
+        fx(transcript.ticker.now()) should be >= back
+        fx(list.now()) should be >= back
+        fx(transcript.ticker.now()) should be > transcriptLeft
+        fx(list.now()) should be > listLeft
+        fx {
+          still.held.children -= transcript
+          still.held.children -= list
+          transcript.dispose()
+          list.dispose()
+        }
+        settled() shouldBe true
+      }
+      finally fx(Ticker.after = (s, f) => Platform.after(s, f))
     }
 
     "run every frame while held" in {

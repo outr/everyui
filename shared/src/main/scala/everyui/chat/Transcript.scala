@@ -64,8 +64,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val bodyLines: Var[Int] = own(Var(3))
   /** Whether a new message from somebody else is read out by a screen reader. */
   val announces: Var[Boolean] = own(Var(true))
-  /** The clock "5m" and a live elapsed time follow. */
-  val ticker: Ticker = new Ticker(1.0)
+  /** The clock "5m" and a live elapsed time follow, moving on while this is on the screen. */
+  val ticker: Ticker = Ticker.of(this, 1.0)
   /** Whether it is kept at the newest entry, and how many have arrived below while it is not. */
   val pin: BottomPin = new BottomPin()
   /** What a press on a message's avatar or author's name does (a click, a tap, or the author's entry in its context
@@ -552,7 +552,6 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   shown.attach(_ => retarget())
   messageActions.attach(_ => retarget())
   onDispose(() => {
-    ticker.stop()
     kept.values.foreach(_.dispose())
     kept = Map.empty
   })
