@@ -151,10 +151,38 @@
     return { editorId: editorId, uri: uriOf(model), versionId: model.getVersionId(), value: model.getValue() };
   };
 
+  // Monaco puts its context views (a button's tooltip from its hover service; the context menu, in a shadow root under
+  // a host of its own) in the editor's elements and places them by the window's coordinates, as in VS Code, whose
+  // workbench root holds them. Here those elements are in the app's box for the editor: it clips them to the box, its
+  // right edge wraps them (the tooltip above the find widget's close button grew a line down over the button, so the
+  // pointer left the button, which flickered and could not be clicked), and under the app's UiScale (a CSS scale) the
+  // coordinates are not the box's own, so they land off by the scale. So they float in one layer over the page
+  // instead, unclipped and at the page's own size, where the window's coordinates are the layer's; a Monaco
+  // component, for the theme's colours.
+  var floating = null;
+  function floatOut(element) {
+    if (!element || element.__everyuiFloats) return;
+    element.__everyuiFloats = true;
+    element.appendChild = function (node) {
+      var list = node.classList;
+      if (!list || !(list.contains('context-view') || list.contains('shadow-root-host'))) return Node.prototype.appendChild.call(this, node);
+      if (!floating) {
+        floating = document.createElement('div');
+        floating.className = 'everyui-monaco-floating monaco-component';
+        document.body.appendChild(floating);
+      }
+      return floating.appendChild(node);
+    };
+  }
+
   // What every editor (a diff's two included) tells the app, `ids` naming it.
   function wireEditor(entry, editor, prefix, ids) {
     function emit(type, payload) { bridge.emit(prefix + type, Object.assign({}, ids, payload || {})); }
+    floatOut(editor.getContainerDomNode());
     var d = entry.disposers;
+    // the menu's host goes in the editor's view, made anew with each model
+    floatOut(editor.getDomNode());
+    d.push(editor.onDidChangeModel(function () { floatOut(editor.getDomNode()); }));
     d.push(editor.onDidChangeModelContent(function (e) {
       var model = editor.getModel();
       var eol = model.getEOL();
