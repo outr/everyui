@@ -285,7 +285,7 @@ plugin the build writes the faces into the page (see [The faces](#the-faces-ever
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; }
     #app { width: 100%; height: 100%; overflow: hidden; }
@@ -297,6 +297,13 @@ plugin the build writes the faces into the page (see [The faces](#the-faces-ever
 </body>
 </html>
 ```
+
+On a phone the app is laid out in what the on-screen keyboard leaves showing: `ui` is as tall as the browser's visual
+viewport (`window.visualViewport`), so what sits at its bottom (a chat's composer) stays just above the keyboard, and a
+field being written in is brought into view in whatever scrolls it as the keyboard opens. The page is kept at its top,
+so nothing is left shifted once the keyboard closes. iOS Safari always puts its keyboard over the page and says so only
+in the visual viewport; `interactive-widget=resizes-content` asks Chrome on Android to make the window itself shorter
+instead, so it never moves the page to show the field first.
 
 A build without the plugin writes the bundled faces' rules itself, with the files in `fonts/` next to the page (copy
 `assets/fonts/*.ttf` from this repository, and `assets/images` if the app uses them):

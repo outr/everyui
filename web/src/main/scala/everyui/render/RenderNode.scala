@@ -1785,9 +1785,10 @@ object Platform {
     }.getOrElse(WebAssets.url("fonts/" + file))
   }
 
-  /** The window in the app's units: its CSS pixels over the size the app is drawn at (everyui.theme.UiScale). */
+  /** The window in the app's units: its CSS pixels over the size the app is drawn at (everyui.theme.UiScale), less
+    * what a phone's on-screen keyboard covers (VisibleArea). */
   def screenWidth(): Double = dom.window.innerWidth.toDouble / RenderNode.drawnAt
-  def screenHeight(): Double = dom.window.innerHeight.toDouble / RenderNode.drawnAt
+  def screenHeight(): Double = VisibleArea.height() / RenderNode.drawnAt
   /** Screen pixels to a layout unit: the browser's device pixel ratio (2 on a HiDPI screen, often 1.5 or 2 on a
     * television whose page is laid out smaller than its panel), times the size the app is drawn at. */
   def pixelRatio(): Double =
@@ -1933,7 +1934,8 @@ object Platform {
     agent.contains("Mac OS") || agent.contains("Macintosh") || agent.contains("iPhone") || agent.contains("iPad")
   }
 
-  def onResize(f: () => Unit): Unit = dom.window.addEventListener("resize", (_: dom.Event) => f())
+  /** `f` told whenever the screen changes: the window resized, a phone's keyboard opened or closed. */
+  def onResize(f: () => Unit): Unit = VisibleArea.onChange(f)
 
   // The same four the Roku backend reaches through BrightScript intrinsics.
   /** A number from 0 up to 1, at random. */
