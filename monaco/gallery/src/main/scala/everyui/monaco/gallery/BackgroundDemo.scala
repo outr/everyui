@@ -10,7 +10,7 @@ object BackgroundDemo {
   val code: String =
     """// Toggle "Transparent" to show the gradient the app draws behind the editor. It:
       |//   1. makes the editor with MonacoEditor(transparent = true), so its box has no ground of its own;
-      |//   2. defines MonacoTheme.transparent() and sets it, clearing every surface of the editor.
+      |//   2. defines MonacoTheme.transparent() and sets it, clearing the editor's own ground (its widgets stay solid).
       |//
       |// The tokens keep their colours: the clear theme inherits them from its base ("vs-dark").
       |

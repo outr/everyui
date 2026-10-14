@@ -17,26 +17,61 @@ object MonacoTheme {
   /** The name `MonacoThemes.followPalette` defines its theme under. */
   val PaletteName: String = "everyui"
 
-  /** Every surface that could cover what is behind the editor made clear, the tokens left to `base`: for an editor
-    * over a picture (with a clear embed behind it). */
-  def transparent(base: String = "vs-dark"): MonacoTheme = MonacoTheme(base, colors = Map(
-    "editor.background" -> "#00000000", "editor.lineHighlightBackground" -> "#00000000",
-    "editorGutter.background" -> "#00000000", "editorLineNumber.background" -> "#00000000",
-    "minimap.background" -> "#00000000", "editorOverviewRuler.background" -> "#00000000",
-    "editorWidget.background" -> "#00000000", "editorHoverWidget.background" -> "#00000000",
-    "editorSuggestWidget.background" -> "#00000000", "scrollbarSlider.background" -> "#30808080",
-    "scrollbarSlider.hoverBackground" -> "#40808080"))
+  private val Clear = "#00000000"
+
+  /** The editor's own ground made clear (its background, gutter, line highlight, minimap and overview ruler), the
+    * tokens left to `base`: for an editor over a picture (with a clear embed behind it). What floats over the code
+    * stays solid, so no text shows through it: the widgets keep `base`'s, and the sticky scroll and a problem's peek
+    * (which would take the clear ground) take `base`'s ground. */
+  def transparent(base: String = "vs-dark"): MonacoTheme = {
+    val ground = base match {
+      case "vs" => "#FFFFFE"
+      case "hc-black" => "#000000"
+      case "hc-light" => "#FFFFFF"
+      case _ => "#1E1E1E"
+    }
+    MonacoTheme(base, colors = Map(
+      "editor.background" -> Clear, "editor.lineHighlightBackground" -> Clear,
+      "editorGutter.background" -> Clear, "editorLineNumber.background" -> Clear,
+      "minimap.background" -> Clear, "editorOverviewRuler.background" -> Clear,
+      "scrollbarSlider.background" -> "#30808080", "scrollbarSlider.hoverBackground" -> "#40808080",
+      "editorStickyScroll.background" -> ground, "editorStickyScrollGutter.background" -> ground,
+      "editorMarkerNavigation.background" -> ground))
+  }
+
+  /** What floats over the code, solid: the widgets (hover, suggest, find, parameter hints, the action list, menus,
+    * the quick input), the sticky scroll, a problem's peek and the peek view. Each would otherwise take the editor's
+    * clear ground, or a colour of Monaco's own. */
+  private def floating(ground: String, raised: String, lit: String): Map[String, String] = Map(
+    "editorWidget.background" -> raised,
+    "editorHoverWidget.background" -> raised,
+    "editorSuggestWidget.background" -> raised,
+    "editorActionList.background" -> raised,
+    "menu.background" -> raised,
+    "quickInput.background" -> raised,
+    "editorMarkerNavigation.background" -> raised,
+    "peekViewTitle.background" -> raised,
+    "peekViewResult.background" -> raised,
+    "peekViewEditor.background" -> ground,
+    "peekViewEditorGutter.background" -> ground,
+    "peekViewEditorStickyScroll.background" -> ground,
+    "peekViewEditorStickyScrollGutter.background" -> ground,
+    "editorStickyScroll.background" -> ground,
+    "editorStickyScrollGutter.background" -> ground,
+    "editorStickyScrollHover.background" -> lit)
 
   /** The editor in the app's colours: `vs-dark` or `vs` by how dark the palette's ground is, its surfaces, text,
     * accent and states in Monaco's places. The tokens keep the base's colours, unless `tokens` maps the palette onto
     * them too (the accent for keywords, success for strings, info for types, warning for numbers, muted italic for
-    * comments). `clear` leaves the editor's own ground see-through. */
+    * comments). `clear` leaves the editor's own ground see-through (its background, gutter, minimap and overview
+    * ruler), and keeps what floats over the code solid (`floating`) in the palette's surfaces. */
   def fromPalette(p: Palette, tokens: Boolean = false, clear: Boolean = false): MonacoTheme = {
     def hex(c: Color): String = c.toHex
     def alpha(c: Color, a: Int): String = c.withAlpha(a / 255.0).toHexAlpha
     val dark = luminance(p.background) < 0.5
-    val ground = if (clear) "#00000000" else hex(p.surface)
-    val raised = if (clear) "#00000000" else hex(p.raised)
+    val ground = if (clear) Clear else hex(p.surface)
+    val raised = hex(p.raised)
+    val under = if (clear) Clear else raised
     MonacoTheme(if (dark) "vs-dark" else "vs",
       rules = if (!tokens) Nil else List(
         MonacoTokenRule("keyword", Some(p.accent.toHex.drop(1))),
@@ -65,8 +100,8 @@ object MonacoTheme {
         "editorHoverWidget.background" -> raised,
         "editorSuggestWidget.background" -> raised,
         "editorSuggestWidget.selectedBackground" -> alpha(p.accent, 0x40),
-        "minimap.background" -> raised,
-        "editorOverviewRuler.background" -> raised,
+        "minimap.background" -> under,
+        "editorOverviewRuler.background" -> under,
         "editorWidget.border" -> alpha(p.border, 0x80),
         "list.hoverBackground" -> hex(p.controlLit),
         "editorError.foreground" -> hex(p.danger),
@@ -75,7 +110,8 @@ object MonacoTheme {
         "diffEditor.insertedTextBackground" -> alpha(p.success, 0x33),
         "diffEditor.removedTextBackground" -> alpha(p.danger, 0x33),
         "diffEditor.insertedLineBackground" -> alpha(p.success, 0x1a),
-        "diffEditor.removedLineBackground" -> alpha(p.danger, 0x1a)))
+        "diffEditor.removedLineBackground" -> alpha(p.danger, 0x1a)) ++
+        (if (clear) floating(hex(p.surface), raised, hex(p.controlLit)) else Map.empty))
   }
 
   /** Relative luminance, 0 (black) to 1 (white), as WCAG weighs the channels. */

@@ -64,5 +64,32 @@ class WireSpec extends AnyWordSpec with Matchers {
       MonacoTheme.fromPalette(Palette.light, tokens = true).rules.map(_.token) should contain("keyword")
       MonacoTheme.fromPalette(Palette.dark, clear = true).colors("editor.background") shouldBe "#00000000"
     }
+    "clear only the editor's own ground, keeping what floats over the code solid" in {
+      val ground = List("editor.background", "editorGutter.background", "minimap.background",
+        "editorOverviewRuler.background")
+      val floating = List("editorWidget.background", "editorHoverWidget.background", "editorSuggestWidget.background",
+        "editorActionList.background", "menu.background", "quickInput.background", "editorMarkerNavigation.background",
+        "peekViewTitle.background", "peekViewResult.background", "peekViewEditor.background",
+        "peekViewEditorGutter.background", "peekViewEditorStickyScroll.background",
+        "peekViewEditorStickyScrollGutter.background", "editorStickyScroll.background",
+        "editorStickyScrollGutter.background", "editorStickyScrollHover.background")
+      def opaque(c: String): Boolean = c.length == 7 || c.toLowerCase.endsWith("ff")
+      List(Palette.dark, Palette.light).foreach { p =>
+        val theme = MonacoTheme.fromPalette(p, clear = true)
+        ground.foreach(k => theme.colors(k) shouldBe "#00000000")
+        floating.foreach(k => withClue(k)(opaque(theme.colors(k)) shouldBe true))
+        theme.colors("editorStickyScroll.background") shouldBe p.surface.toHex
+        theme.colors("editorHoverWidget.background") shouldBe p.raised.toHex
+        val solid = MonacoTheme.fromPalette(p)
+        solid.colors("editor.background") shouldBe p.surface.toHex
+        solid.colors.keySet should contain noneOf ("editorStickyScroll.background", "peekViewEditor.background")
+      }
+      val transparent = MonacoTheme.transparent()
+      ground.foreach(k => transparent.colors(k) shouldBe "#00000000")
+      transparent.colors.keySet should contain noneOf ("editorWidget.background", "editorHoverWidget.background",
+        "editorSuggestWidget.background")
+      transparent.colors("editorStickyScroll.background") shouldBe "#1E1E1E"
+      MonacoTheme.transparent("vs").colors("editorStickyScroll.background") shouldBe "#FFFFFE"
+    }
   }
 }

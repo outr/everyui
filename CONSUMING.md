@@ -3468,6 +3468,14 @@ the app's way (its tab, `switchToModel`, the range revealed); with neither, Mona
 the file the editor shows is made by the bridge itself, and neither is asked (unless that jump fails). Every call answers as a `Future`; themes and
 providers are global and reach every editor, including ones made later.
 
+**Over a picture.** `MonacoThemes.followPalette(clear = true)` (or `MonacoTheme.transparent()`, with
+`new MonacoEditor(controller, transparent = true)`) clears the editor's own ground: its background, the gutter, the
+minimap and the overview ruler, in the editor and in both sides of the diff editor, so the picture shows behind the
+code. What floats over the code stays solid, so no text ever shows through it: the hover, suggest, parameter hints,
+find, the context menu and action list, the quick input, the sticky scroll (`followPalette` in the palette's
+`surface`, the rest in its `raised`; `transparent()` in its base's own colours), a problem's peek and the peek view.
+The diff editor's "hidden lines" bands stay clear, as nothing lies under them.
+
 **Why the cursor moved.** `onDidChangeCursor` and `onDidChangeSelection` say what moved the cursor and why, beside
 `onDidChangeCursorPosition` and `onDidChangeCursorSelection` (which still say only where): a `MonacoCursorChange` is
 the position, the other cursors' (`secondaryPositions`), Monaco's `source` and its `reason` (`MonacoCursorReason`,
