@@ -81,6 +81,27 @@ class ComposerSpec extends FxSpec {
       fx(c.suggesting()) shouldBe false
       fx(Focus.focused()) shouldBe Some(c.field)
     }
+    "on a touch screen be a chip a finger reaches across more than 44 pixels, though it is drawn 32 tall" in {
+      val c = fx {
+        val t = new Composer(_ => (), touch = true)
+        ui.children.clear()
+        Focus.focused @= None
+        ui.children += t
+        t.size.width @= 390.0
+        t.suggestion @= Some("Tell me more")
+        t
+      }
+      val slops = fx(under[everyui.component.Component](c).filter(_.tapSlop()))
+      val chip = slops.find(_.semantics().label.startsWith("Suggestion")).get
+      val boxes = fx(slops.map(s => (s.absoluteLeft, s.absoluteTop, s.size.width(), s.size.height())))
+      val (left, top, width, height) = boxes(slops.indexOf(chip))
+      height shouldBe 32.0
+      val x = left + width / 2.0
+      // 7 past each edge it is still the chip's, before any of the composer's other controls: 46 across in all
+      List(top - 7.0, top + height / 2.0, top + height + 7.0)
+        .foreach(y => everyui.event.TapSlop.pick(x, y, boxes).map(slops) shouldBe Some(chip))
+      everyui.event.TapSlop.pick(x, top - 25.0, boxes) shouldBe None
+    }
     "leave Tab to move the focus when there is none" in {
       val c = make()
       press(KeyCode.TAB)
