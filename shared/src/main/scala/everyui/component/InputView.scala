@@ -28,8 +28,11 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   lazy val action: Prop[String] = own(new Prop[String]("done", a => node.setInputAction(a)))
   /** What it asks for (`Autofill`: a sign-in, a name, an email address, a phone number, an address, a card; `Off` for
     * none of these), so the platform's autofill and a password manager know to fill it, and a phone shows the keyboard
-    * for it. None, the default, says nothing, and the platform guesses. A password hint hides what is typed. */
+    * for it. None, the default, says nothing, and the platform guesses, unless the app says for every such field
+    * (`Autofill.fallback`). A password hint hides what is typed. */
   val autofill: Var[Option[Autofill]] = own(Var(None))
+  /** What it asks for in the end: `autofill`, else the app's `Autofill.fallback`. */
+  val asked: Val[Option[Autofill]] = own(Val(Autofill.resolve(autofill())))
   /** A username field that also offers the site's passkeys in its autofill (the web's `webauthn`), for a WebAuthn
     * request with conditional mediation to sign in with (the app's own, until EveryUI has one). */
   val passkey: Var[Boolean] = own(Var(false))
@@ -51,7 +54,7 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
 
   private def hint(): Unit =
-    node.setAutofill(autofill().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey(), literal())
+    node.setAutofill(asked().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey(), literal())
 
   /** Choose all of what it holds, so what is typed next replaces it (a value being changed rather than added to). */
   def selectAll(): Unit = node.selectAllInput()
@@ -70,11 +73,13 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   text.attach(v => if (node.getValue() != v) node.setValue(v))
   node.onValue(v => if (text() != v) text @= v)
   node.onPaste(words => pasted().map(f => f(words)).getOrElse(PasteAction.Insert))
-  autofill.attach(_ => hint())
+  asked.attach(_ => hint())
   passkey.attach(_ => hint())
   section.attach(_ => hint())
   fieldName.attach(_ => hint())
   literal.attach(_ => hint())
+  // said at once where the app says for every field, so a field made after `Autofill.fallback` is set says it too
+  if (asked().nonEmpty) hint()
 
   override def kind: String = "InputView"
 }

@@ -1,7 +1,7 @@
 package everyui.kit
 
 import everyui.component.{Container, InputView, MaterialIconView, TextView}
-import everyui.component.types.Semantics
+import everyui.component.types.{Autofill, Semantics}
 import everyui.event.{Key, KeyEvent}
 import everyui.font.MaterialIcon
 import everyui.list.ListRow
@@ -103,7 +103,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     shown.maxWidth := wordsWidth()
     shown.position.left := ListRow.along(SearchField.lead, shown.size.width(), size.width())
     shown.position.top := (size.height() - shown.size.height()) / 2.0
-    event.click.attach(_ => Platform.editField(placeholder(), value(), false, "", v => {
+    event.click.attach(_ => Platform.editField(placeholder(), value(), false, Autofill.resolve(None).map(Autofill.token).getOrElse(""), v => {
       value @= v
       submitted @= v
     }))

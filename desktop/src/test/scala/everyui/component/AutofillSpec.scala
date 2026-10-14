@@ -45,6 +45,47 @@ class AutofillSpec extends FxSpec {
       fx(input.autofill @= Some(Autofill.Username))
       fx(inputOf(input).autofill()) shouldBe Some(Autofill.Username)
     }
+    "resolve a field's own hint before the app's fallback" in {
+      try {
+        Autofill.resolve(None) shouldBe None
+        Autofill.resolve(Some(Autofill.Email)) shouldBe Some(Autofill.Email)
+        Autofill.fallback @= Some(Autofill.Off)
+        Autofill.resolve(None) shouldBe Some(Autofill.Off)
+        Autofill.resolve(Some(Autofill.Username)) shouldBe Some(Autofill.Username)
+      } finally Autofill.fallback @= None
+    }
+    "hold every unhinted field off once the app says so, made before or after, its own hint winning" in {
+      try {
+        val (before, hinted, area, search) = fx((new TextInput("Name"), new TextInput("Email"), new TextArea("Message"),
+          new everyui.kit.SearchField))
+        fx(hinted.autofill @= Some(Autofill.Username))
+        fx(inputOf(before).asked()) shouldBe None
+        fx(Autofill.fallback @= Some(Autofill.Off))
+        fx(inputOf(before).asked()) shouldBe Some(Autofill.Off)
+        fx(inputOf(area).asked()) shouldBe Some(Autofill.Off)
+        fx(inputOf(search).asked()) shouldBe Some(Autofill.Off)
+        fx(inputOf(hinted).asked()) shouldBe Some(Autofill.Username)
+        val after = fx(new TextInput("Later"))
+        fx(inputOf(after).asked()) shouldBe Some(Autofill.Off)
+        // its own hint wins, and dropping it gives the field back to the fallback
+        fx(after.autofill @= Some(Autofill.Email))
+        fx(inputOf(after).asked()) shouldBe Some(Autofill.Email)
+        fx(after.autofill @= None)
+        fx(inputOf(after).asked()) shouldBe Some(Autofill.Off)
+        fx(Autofill.fallback @= None)
+        fx(inputOf(before).asked()) shouldBe None
+        fx(inputOf(hinted).asked()) shouldBe Some(Autofill.Username)
+      } finally fx(Autofill.fallback @= None)
+    }
+    "leave a disposed field no longer following the fallback" in {
+      try {
+        val input = fx(new TextInput("Name"))
+        val field = inputOf(input)
+        fx(input.dispose())
+        fx(Autofill.fallback @= Some(Autofill.Off))
+        fx(field.asked()) shouldBe None
+      } finally fx(Autofill.fallback @= None)
+    }
     "name a text input's field by its label" in {
       val input = fx(new TextInput("Email"))
       fx(inputOf(input).semantics()) shouldBe Semantics(label = "Email")

@@ -132,6 +132,13 @@
         return !paste;
       });
       term.open(container);
+      // the textarea xterm types through is never a sign-in: the markers that keep the browser's autofill and the
+      // password managers out of it, as an EveryUI field held `Autofill.Off` has
+      if (term.textarea) {
+        term.textarea.setAttribute('autocomplete', 'off');
+        ['data-1p-ignore', 'data-lpignore', 'data-bwignore'].forEach(function (a) { term.textarea.setAttribute(a, 'true'); });
+        term.textarea.setAttribute('data-form-type', 'other');
+      }
       entry.term = term;
       entry.fit = fit;
       fitNow(entry);

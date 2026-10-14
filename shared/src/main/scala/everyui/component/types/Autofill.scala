@@ -1,5 +1,7 @@
 package everyui.component.types
 
+import reactify.*
+
 /** What a text field asks for, so the platform's autofill and a password manager can fill it: a sign-in, a person's
   * name, an email address, a phone number, an address, a card. `Off` keeps them out of a field that is none of these
   * (a search box, notes, a guest's name). The web says it as the field's `autocomplete`, with a `name` and an `id` to
@@ -16,6 +18,19 @@ enum Autofill {
 }
 
 object Autofill {
+  /** What a field with no hint of its own (`autofill` None) asks for, for the whole app: None, the default, says
+    * nothing, and the platform and the password managers guess; `Some(Off)` keeps them out of every field not said to
+    * be for something, where an app's only sign-in says what its fields are and the rest (a chat's composer, a
+    * search box, a filter) are never to be offered a saved login. A field's own hint always wins. Fields already made
+    * follow a change.
+    * {{{
+    * Autofill.fallback @= Some(Autofill.Off)
+    * }}} */
+  val fallback: Var[Option[Autofill]] = Var(None)
+
+  /** What a field hinted `hint` asks for in the end: its own hint, else the app's `fallback`. */
+  def resolve(hint: Option[Autofill]): Option[Autofill] = hint.orElse(fallback())
+
   /** Whether it asks for a password, which is hidden as it is typed. */
   def secret(autofill: Autofill): Boolean = autofill == Autofill.CurrentPassword || autofill == Autofill.NewPassword
 

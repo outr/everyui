@@ -175,11 +175,36 @@
     };
   }
 
+  // The editor's own fields (its hidden textarea, or the element EditContext types into, and the find widget's) are
+  // never a sign-in: they carry the markers that keep the browser's autofill and the password managers out (1Password,
+  // LastPass, Bitwarden, Dashlane), as an EveryUI field held `Autofill.Off` does, and so does any Monaco makes later.
+  var editable = 'textarea, input, [contenteditable], .native-edit-context';
+  function keepAutofillOut(root) {
+    function mark(el) {
+      if (el.getAttribute('data-1p-ignore') === 'true') return;
+      el.setAttribute('autocomplete', 'off');
+      ['data-1p-ignore', 'data-lpignore', 'data-bwignore'].forEach(function (a) { el.setAttribute(a, 'true'); });
+      el.setAttribute('data-form-type', 'other');
+    }
+    function sweep(node) {
+      if (node.nodeType !== 1) return;
+      if (node.matches(editable)) mark(node);
+      if (node.firstElementChild) node.querySelectorAll(editable).forEach(mark);
+    }
+    sweep(root);
+    var observer = new MutationObserver(function (changes) {
+      for (var i = 0; i < changes.length; i++) changes[i].addedNodes.forEach(sweep);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    return { dispose: function () { observer.disconnect(); } };
+  }
+
   // What every editor (a diff's two included) tells the app, `ids` naming it.
   function wireEditor(entry, editor, prefix, ids) {
     function emit(type, payload) { bridge.emit(prefix + type, Object.assign({}, ids, payload || {})); }
     floatOut(editor.getContainerDomNode());
     var d = entry.disposers;
+    d.push(keepAutofillOut(editor.getContainerDomNode()));
     // the menu's host goes in the editor's view, made anew with each model
     floatOut(editor.getDomNode());
     d.push(editor.onDidChangeModel(function () { floatOut(editor.getDomNode()); }));
