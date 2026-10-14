@@ -40,9 +40,10 @@ import reactify.*
   *    they do not fit beside its words, Resume stays and the rest go, in order, into a ⋮ menu.
   *  - '''A suggestion''' (`suggestion`, the app's guess at the next message) shows in the accent colour in the empty
   *    field, in the placeholder's place. Tab or Right takes it (`onAcceptSuggestion` hears it and it is written in,
-  *    the caret after it), Escape or typing anything puts it away until the next suggestion. Where there is no Tab
-  *    or Right (a touch screen, a remote) it is a chip above the field instead, taken with a tap or OK. A screen
-  *    reader is told a suggestion has come, and how to take it.
+  *    the caret after it); typing puts it away while there is anything in the field, and it is back once the field is
+  *    emptied again; Escape, taking it, or sending what was written puts it away until the next suggestion. Where
+  *    there is no Tab or Right (a touch screen, a remote) it is a chip above the field instead, taken with a tap or OK.
+  *    A screen reader is told a suggestion has come, and how to take it.
   *  - '''Files''': the attach button opens the platform's picker (`Files.pick`) and files dropped on the composer
   *    come too, each a chip to take off again. What `accept` names (the picker's types: "image/\*", ".txt"), `allow`
   *    agrees to and `maxSize` fits is added; anything else is refused with a word saying why. A picture's preview
@@ -137,7 +138,8 @@ class Composer(onSend: Draft => Unit,
   /** How round the card's corners are: 18 when compact, else 20. ChatView rounds its status bar to match. */
   val cornerRadius: Val[Double] = own(Val(if (compact()) 18.0 else 20.0))
 
-  // the suggestion put away for this turn: by typing, by Escape, or by taking it
+  // the suggestion put away for this turn: by Escape, by taking it, or by sending what was written; typing only hides
+  // it while the field has something in it (`suggesting`)
   private val dismissed: Var[Boolean] = own(Var(false))
   private val dropping: Var[Boolean] = own(Var(false))
   private val trayOpen: Var[Boolean] = own(Var(false))
@@ -242,7 +244,6 @@ class Composer(onSend: Draft => Unit,
   field.value.attach(v => if (text() != v) text @= v)
   text.attach { v =>
     if (field.value() != v) field.value @= v
-    if (v.nonEmpty) dismissed @= true
     if (complete.nonEmpty && !remote) Platform.later(() => lookup())
   }
   suggestion.attach(_ => dismissed @= false)
@@ -449,6 +450,7 @@ class Composer(onSend: Draft => Unit,
     closeCompletions()
     // into the queue before the field empties, so its files' pictures are kept for it
     if (queued) enqueue(draft, back)
+    if (draft.text.nonEmpty) dismissed @= true
     text @= ""
     attachments @= Nil
     trayOpen @= false

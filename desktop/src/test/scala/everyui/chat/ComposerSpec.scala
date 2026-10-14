@@ -67,19 +67,38 @@ class ComposerSpec extends FxSpec {
       eventually(c.field.field.get.caret == 12) shouldBe true
       fx(Focus.focused()) shouldBe Some(c.field)
     }
-    "be put away by typing, for that turn, and come back with the next" in {
+    "be hidden by typing, and back once the field is emptied again" in {
       val c = make()
       fx(c.suggestion @= Some("Tell me more"))
       fx(c.text @= "x")
       fx(c.suggesting()) shouldBe false
+      fx(c.field.hint()) shouldBe "Message"
+      fx(c.text @= "")
+      fx(c.suggesting()) shouldBe true
+      fx(c.field.hint()) shouldBe ""
+    }
+    "be put away by Escape, by taking it, or by sending, until the next" in {
+      val c = make()
+      fx(c.suggestion @= Some("Tell me more"))
+      press(KeyCode.ESCAPE)
+      fx(c.suggesting()) shouldBe false
+      fx(Focus.focused()) shouldBe Some(c.field)
+      fx(c.text @= "x")
       fx(c.text @= "")
       fx(c.suggesting()) shouldBe false
       fx(c.field.hint()) shouldBe "Message"
       fx(c.suggestion @= Some("And then?"))
       fx(c.suggesting()) shouldBe true
-      press(KeyCode.ESCAPE)
+      press(KeyCode.TAB)
+      fx(c.text @= "")
       fx(c.suggesting()) shouldBe false
-      fx(Focus.focused()) shouldBe Some(c.field)
+      fx(c.suggestion @= Some("Why?"))
+      fx(c.text @= "Hello")
+      fx(c.send())
+      fx(c.text()) shouldBe ""
+      fx(c.suggesting()) shouldBe false
+      fx(c.suggestion @= Some("Go on"))
+      fx(c.suggesting()) shouldBe true
     }
     "on a touch screen be a chip a finger reaches across more than 44 pixels, though it is drawn 32 tall" in {
       val c = fx {
