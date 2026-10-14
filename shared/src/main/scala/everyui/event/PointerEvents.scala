@@ -48,7 +48,7 @@ class PointerEvents(component: Component) {
   private[everyui] def heard(channel: Channel[PointerEvent], kind: PointerKind, x: Double, y: Double): Unit = {
     val held = everyui.render.Platform.modifiers()
     val event = PointerEvent(kind, x, y, everyui.render.Platform.pointerButton(), held.ctrl, held.meta, held.alt,
-      held.shift)
+      held.shift, kind != PointerKind.Wheel && everyui.render.Platform.pointerFinger())
     // a hand on the pointer is somebody using the app as surely as a key is: a finger scrolling a list on a phone,
     // or a mouse moving over a desktop window, holds a screensaver off just as a remote does
     val use = kind == PointerKind.Down || kind == PointerKind.Move || kind == PointerKind.Wheel ||

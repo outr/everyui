@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.easing.Easing
-import everyui.event.{Fling, FlingRun, Key, Pointer, PointerEvent}
+import everyui.event.{Flick, Key, Pointer, PointerEvent}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.Color
@@ -50,8 +50,12 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   private var glideRun: Option[TaskInstance] = None
   private var glideAim: Double = 0.0
   private var glideAt: Double = 0.0
-  // a flick carrying the content on after the finger lifted, on a touch screen
-  private var flung: Option[FlingRun] = None
+  // the content following a finger, and gliding on once it lifts
+  private val flick = new Flick((d: Double) => {
+    val was = offset()
+    offset @= math.max(0.0, math.min(furthest(), was + d))
+    offset() - was
+  })
 
   /** How much room `reveal` leaves around what it brings into view: enough for whatever sits beside it and should be
     * seen with it (a rail's name, above its titles). */
@@ -109,35 +113,27 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     event.pointer.wheel.attach(e => scrollBy(if (horizontal && e.x != 0.0) (if (fromRight()) -e.x else e.x) else e.y))
     var dragFrom: Option[Double] = None
     var dragOffset = 0.0
-    // and on a touch screen a flick carries on once the finger lifts, slowing as a phone's own scrolling does
-    val flicks = Platform.touchSupport() && !Platform.pointerSupport()
-    val fling = new Fling
+    // and a finger's flick carries on once it lifts, slowing as a phone's own scrolling does: whether it is a finger
+    // is each press's own (`PointerEvent.finger`), so a touch laptop's finger flicks and its mouse drags
+    var finger = false
+    // where the pointer is along the drag, the way the offset runs against it (back along a rail from the right)
+    def along(e: PointerEvent): Double = if (!horizontal) e.y else if (fromRight()) -e.x else e.x
     event.pointer.down.attach { e =>
-      if (flicks) stopGlide()
-      val at = if (horizontal) e.x else e.y
-      dragFrom = Some(at)
+      finger = e.finger
+      // a finger put down stops whatever is moving the content; a press of the mouse, a glide it flicked
+      if (finger) stopGlide() else flick.stop()
+      dragFrom = Some(along(e))
       dragOffset = offset()
-      fling.clear()
-      fling.at(at, Platform.ticks())
+      flick.down(along(e))
     }
     event.pointer.move.attach { e =>
       dragFrom.foreach { from =>
-        val moved = (if (horizontal) e.x else e.y) - from
-        scrollTo(dragOffset + (if (fromRight()) moved else -moved))
-        fling.at(if (horizontal) e.x else e.y, Platform.ticks())
+        scrollTo(dragOffset - (along(e) - from))
+        flick.at(along(e))
       }
     }
     event.pointer.up.attach { _ =>
-      val v = fling.velocity(Platform.ticks())
-      if (flicks && dragFrom.nonEmpty && v != 0.0) {
-        val run = new FlingRun(if (fromRight()) v else -v, (d: Double) => {
-          val was = offset()
-          offset @= math.max(0.0, math.min(furthest(), was + d))
-          offset() - was
-        })
-        flung = Some(run)
-        run.start()
-      }
+      if (finger && dragFrom.nonEmpty) flick.lift()
       dragFrom = None
     }
     // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and
@@ -192,8 +188,7 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   private def stopGlide(): Unit = {
     glideRun.foreach(_.cancel())
     glideRun = None
-    flung.foreach(_.stop())
-    flung = None
+    flick.stop()
   }
 
   /** Where `reveal` puts what it brings into view, as a share of the room the viewport has around it: 0 at the start,

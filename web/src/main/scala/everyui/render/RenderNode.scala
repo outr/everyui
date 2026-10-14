@@ -1907,11 +1907,16 @@ object Platform {
 
   /** The button of the pointer event being reported: 0 the primary, 1 the middle, 2 the secondary. */
   def pointerButton(): Int = button
+  private var finger = false
+  /** Whether the pointer event being reported is a finger on the screen (`PointerEvent.finger`): its pointer type,
+    * whatever the device has besides (a touch laptop, a tablet with a trackpad, a browser's phone emulation). */
+  def pointerFinger(): Boolean = finger
 
-  /** A pointer event about to be heard: its button and the modifiers held with it. */
+  /** A pointer event about to be heard: its button, the modifiers held with it, and whether a finger made it. */
   private[render] def pointed(e: dom.MouseEvent): Unit = {
     held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
     button = if (e.button == 1 || e.button == 2) e.button else 0
+    finger = e.asInstanceOf[js.Dynamic].pointerType.asInstanceOf[js.UndefOr[String]].contains("touch")
   }
   private var embedded = ""
 

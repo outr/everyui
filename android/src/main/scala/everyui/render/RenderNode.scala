@@ -620,6 +620,8 @@ class RenderNode(val view: View) {
     // what the pointer holds, for the event about to be heard: a finger is the primary button; a mouse says its own
     val buttons = e.getButtonState
     Host.pointerButton = if ((buttons & MotionEvent.BUTTON_SECONDARY) != 0) 2 else if ((buttons & MotionEvent.BUTTON_TERTIARY) != 0) 1 else 0
+    // a finger or a stylus on the screen, not a mouse or a trackpad's pointer
+    Host.pointerFinger = e.getToolType(0) != MotionEvent.TOOL_TYPE_MOUSE
     val meta = e.getMetaState
     Host.modifiers = everyui.event.Modifiers((meta & android.view.KeyEvent.META_CTRL_ON) != 0,
       (meta & android.view.KeyEvent.META_META_ON) != 0, (meta & android.view.KeyEvent.META_ALT_ON) != 0,
@@ -1306,6 +1308,8 @@ object Host {
   var modifiers: everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
   /** The button of the pointer event being reported (`Platform.pointerButton`). */
   var pointerButton: Int = 0
+  /** Whether the pointer event being reported is a touch on the screen (`Platform.pointerFinger`). */
+  var pointerFinger: Boolean = false
   /** The embed the key the activity is reporting is meant for (`Platform.keyEmbed`). */
   var embedded: String = ""
   /** Whether the key the activity is reporting is one held down repeating (`Platform.keyRepeat`). */
@@ -2292,6 +2296,8 @@ object Platform {
   def modifiers(): everyui.event.Modifiers = Host.modifiers
   /** The button of the pointer event being reported: 0 the primary (a finger), 1 the middle, 2 the secondary. */
   def pointerButton(): Int = Host.pointerButton
+  /** Whether the pointer event being reported is a finger (or a stylus) on the screen (`PointerEvent.finger`). */
+  def pointerFinger(): Boolean = Host.pointerFinger
   /** The embed the key being reported is meant for, "" for none: the one whose web view has the focus
     * (`Host.embedded`, as the activity reads it; never for Back, which is the app's). */
   def keyEmbed(): String = Host.embedded

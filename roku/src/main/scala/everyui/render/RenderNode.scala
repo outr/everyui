@@ -1072,6 +1072,8 @@ object Platform {
   def keyComposing(): Boolean = false
   /** The button of the pointer event being reported: none here, so always the primary (0). */
   def pointerButton(): Int = 0
+  /** No finger touches a television. */
+  def pointerFinger(): Boolean = false
   /** Every key is the focus layer's: nothing here handles its own. */
   def keyEmbed(): String = ""
   /** No shortcuts are made on a remote. */

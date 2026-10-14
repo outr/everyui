@@ -382,7 +382,8 @@ class RenderNode(val fx: Node) {
 
   private def pointed(e: MouseEvent): Unit = {
     val button = if (e.getButton == MouseButton.MIDDLE) 1 else if (e.getButton == MouseButton.SECONDARY) 2 else 0
-    Platform.pointed(button, e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
+    // a touch screen's finger comes as the mouse, made from the touch
+    Platform.pointed(button, e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown, e.isSynthesized)
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
@@ -1509,11 +1510,16 @@ object Platform {
 
   /** The button of the pointer event being reported: 0 the primary, 1 the middle, 2 the secondary. */
   def pointerButton(): Int = button
+  private var finger = false
+  /** Whether the pointer event being reported is a finger on a touch screen (`PointerEvent.finger`). */
+  def pointerFinger(): Boolean = finger
 
-  /** A pointer event about to be heard: its button and the modifiers held with it. */
-  private[render] def pointed(pressed: Int, ctrl: Boolean, meta: Boolean, alt: Boolean, shift: Boolean): Unit = {
+  /** A pointer event about to be heard: its button, the modifiers held with it, and whether a finger made it. */
+  private[render] def pointed(pressed: Int, ctrl: Boolean, meta: Boolean, alt: Boolean, shift: Boolean,
+                              touched: Boolean = false): Unit = {
     held = everyui.event.Modifiers(ctrl, meta, alt, shift)
     button = pressed
+    finger = touched
   }
   /** The modifiers held with the key being reported. */
   def modifiers(): everyui.event.Modifiers = held

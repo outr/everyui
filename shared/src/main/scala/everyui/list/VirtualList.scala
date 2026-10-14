@@ -1,7 +1,7 @@
 package everyui.list
 
 import everyui.component.{Component, Container}
-import everyui.event.{Fling, FlingRun, Key, KeyEvent, Modifiers, Pointer, PointerEvent}
+import everyui.event.{Flick, Key, KeyEvent, Modifiers, Pointer, PointerEvent}
 import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -202,17 +202,20 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
 
   private def furthest: Double = math.max(0.0, total - size.height())
 
-  // a flick carrying the rows on after the finger lifted, and whether the finger last put down caught one
-  private val fling = new Fling
-  private var flinging: Option[FlingRun] = None
+  // the rows following a finger, and gliding on once it lifts; and whether the press last put down caught a glide
+  private val flick = new Flick((d: Double) => {
+    val was = offset()
+    scrollBy(d)
+    offset() - was
+  })
   private var caught = false
 
   /** A flick still carrying the rows on stops where it is: the app scrolling them itself, its newest row brought into
-    * view, say. A row brought into view, the wheel and a finger put down stop it already. */
-  def stopFling(): Unit = {
-    flinging.foreach(_.stop())
-    flinging = None
-  }
+    * view, say. A row brought into view, the wheel and a press put down stop it already. */
+  def stopFling(): Unit = flick.stop()
+
+  /** Whether a flick is still carrying the rows on, after the finger that flicked them lifted. */
+  def gliding: Boolean = flick.gliding
 
   /** Scrolled `delta` pixels on from where it is, from the place kept first where rows above it were just drawn at
     * heights of their own. A row whose place is still to be kept keeps it, moved by as far as this went: a flick or a
@@ -466,45 +469,33 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     stopFling()
     scrollBy(e.y)
   }
-  // a finger drags the rows along where there is no mouse to wheel them, one for one, each move from the last (so rows
-  // put in above while it drags, an earlier page of a chat, do not move what is under it), and a flick carries on once
-  // it lifts, slowing as a phone's own lists do. Up and down are the list's, never the page's: a page given them took
-  // the finger for its own pan a few pixels in, and the list heard no more of it.
-  private val fingers = Platform.touchSupport() && !Platform.pointerSupport()
-  if (fingers) {
-    node.setTouchScrolls(true)
-    event.pointer.down.attach { e =>
-      // a finger put down on rows still gliding stops them, and is no tap on the row under it
-      caught = flinging.exists(_.gliding)
-      stopFling()
-      fling.clear()
-      fingerScroll(e.x, e.y)
-    }
+  // a finger drags the rows along, one for one, each move from the last (so rows put in above while it drags, an
+  // earlier page of a chat, do not move what is under it), and a flick carries on once it lifts, slowing as a phone's
+  // own lists do. Whether it is a finger is each press's own (`PointerEvent.finger`), not the device's: a touch laptop,
+  // a tablet with a trackpad and a browser's phone emulation have both, and a mouse there drags as a mouse does. Up and
+  // down are the list's, never the page's: a page given them took the finger for its own pan a few pixels in, and the
+  // list heard no more of it.
+  node.setTouchScrolls(true)
+  event.pointer.down.attach { e =>
+    // a finger put down on rows still gliding stops them, and is no tap on the row under it; any press stops them
+    caught = e.finger && flick.gliding
+    stopFling()
+    // (a row that can be dragged is held a moment first, and scrolls only once the finger moves: see below)
+    if (e.finger && e.button == PointerEvent.PrimaryButton && !dragsRow(e)) fingerScroll(e.x, e.y)
   }
 
   // the rows following a finger from `from`, and gliding on from how fast it went as it lifts
   private def fingerScroll(fromX: Double, from: Double): Unit = {
     var at = from
     var across = fromX
-    fling.at(at, Platform.ticks())
+    flick.down(at)
     Pointers.track({ m =>
       scrollBy(at - m.y)
       at = m.y
       if (m.x != across) dragAcross @= across - m.x
       across = m.x
-      fling.at(at, Platform.ticks())
-    }, { _ =>
-      val v = -fling.velocity(Platform.ticks())
-      if (v != 0.0) {
-        val run = new FlingRun(v, (d: Double) => {
-          val was = offset()
-          scrollBy(d)
-          offset() - was
-        })
-        flinging = Some(run)
-        run.start()
-      }
-    })
+      flick.at(at)
+    }, _ => flick.lift())
   }
   thumb.event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton) {
     e.consume()
@@ -540,18 +531,22 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
   private var pressedAt: Option[(Int, Double, Double)] = None
 
-  event.pointer.down.attach { e =>
+  // whether a press at `e` may drag a row out (not from words that can be selected, where a drag selects them)
+  private def dragsRow(e: PointerEvent): Boolean = {
     val down = e.y - absoluteTop + offset()
-    // (not from words that can be selected, where a drag selects them)
-    if (e.button == PointerEvent.PrimaryButton && draggable() && !Platform.remoteNavigation() && editing().isEmpty &&
-      !Pointer.onText && down >= 0.0 && down < total) {
-      pressedAt = Some((indexAt(down), e.x, e.y))
+    e.button == PointerEvent.PrimaryButton && draggable() && !Platform.remoteNavigation() && editing().isEmpty &&
+      !Pointer.onText && down >= 0.0 && down < total
+  }
+
+  event.pointer.down.attach { e =>
+    if (dragsRow(e)) {
+      pressedAt = Some((indexAt(e.y - absoluteTop + offset()), e.x, e.y))
       val pressed = Platform.ticks()
       Pointers.track(m => pressedAt.foreach { case (i, x, y) =>
         if (DragDrop.dragging().nonEmpty) DragDrop.move(m.x, m.y)
         else if (math.abs(m.x - x) + math.abs(m.y - y) > VirtualList.dragStart) {
           // a finger drags a row only once held on it a moment, as a phone's lists have it; moved at once, it scrolls
-          if (!fingers || Platform.ticks() - pressed >= VirtualList.holdSeconds * 1000.0) startDrag(i, m.x, m.y)
+          if (!e.finger || Platform.ticks() - pressed >= VirtualList.holdSeconds * 1000.0) startDrag(i, m.x, m.y)
           else {
             pressedAt = None
             scrollBy(y - m.y)
