@@ -9,14 +9,16 @@ import everyui.theme.Theme
 import reactify.*
 
 /** A row of a `DataTable`, its header's (`index` -1) or the row of cells at `index`: a cell a column, laid out in the
-  * table's columns as it shares its width, the header on the raised colour with an arrow by the column its rows are
-  * sorted by, a rule above every other row, and a chosen row washed in the selection's colour. The cells of the columns
-  * in `sized` are also measured out of sight on one line and a word to a line, for how wide their columns are to be. A
-  * row the filter hides takes no room (and so no place in the table's column of rows). */
+  * table's columns as it shares its width, the header on the look's band with an arrow by the column its rows are
+  * sorted by, every second row striped where the look says (by where it shows, sorted and filtered), and a chosen row
+  * washed in the selection's colour. The cells of the columns in `sized` are also measured out of sight on one line and
+  * a word to a line, for how wide their columns are to be. A row the filter hides takes no room (and so no place in
+  * the table's column of rows). */
 private[table] class DataRow(table: DataTable, val index: Int, val content: Vector[DataCell], val sized: Set[Int])
   extends Container {
   private val header = index < 0
-  private val pad = table.style.cellPadding
+  private val look = table.style.look
+  private val pad = look.vertical(header)
   val cells: Vector[RichText] = content.indices.toVector.map(cell)
   /** The cells on one line, and a word to a line, where they are measured. */
   val lines: Vector[Option[RichText]] =
@@ -34,21 +36,22 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
   size.width := (if (shown()) table.across() else 0.0)
   size.height := (if (shown()) tall() else 0.0)
   visible := shown()
-  if (header) backgroundColor := Theme.raised()
-  else backgroundColor := ListRow.fill(table.selection().contains(index), current = false, active = table.active(),
-    into = false)
+  if (header) backgroundColor := look.header()
+  // a chosen row washed in the selection's colour, else striped by where it shows
+  else backgroundColor := (if (table.selection().contains(index)) ListRow.fill(selected = true, current = false,
+    active = table.active(), into = false) else look.rowFill(table.places().lift(index).getOrElse(-1)))
   cells.indices.foreach { c =>
     val cell = cells(c)
     cell.position.left := table.cellLeft(c, cell.size.width(), header)
     cell.position.top @= pad
   }
-  // a rule across above every row but the header; in the header, a rule down before every column but the first (the
-  // body's are the table's own): all put in at once
-  children ++= (if (header) Vector.empty else Vector(new Container {
+  // where the look rules the cells, a rule across above every row but the header, and in the header a rule down before
+  // every column but the first (the body's are the table's own): all put in at once
+  children ++= (if (header || !look.rules) Vector.empty else Vector(new Container {
     backgroundColor := Theme.border()
     size.width := table.across()
     size.height @= 1.0
-  })) ++ cells ++ (if (!header) Vector.empty else (1 until content.size).toVector.map(c => new Container {
+  })) ++ cells ++ (if (!header || !look.rules) Vector.empty else (1 until content.size).toVector.map(c => new Container {
     backgroundColor := Theme.border()
     position.left := table.ruleAt(c)
     size.width @= 1.0
@@ -92,7 +95,7 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
     size.width := table.cellWidth(c, header)
     // its lines, where it wraps, aligned as the column
     align := table.aligns().lift(c).getOrElse(TextAlign.Start)
-    runs @= DataRow.runs(content(c), header)
+    runs @= DataRow.runs(content(c), header, look.headerWeight)
   }
 
   // a cell measured, on one line or a word to a line: what a body's measures is told to the table as it is measured
@@ -102,9 +105,9 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
 }
 
 private[table] object DataRow {
-  /** What `cell` draws: its runs, or its words as they are (bold in a header). */
-  def runs(cell: DataCell, header: Boolean): List[TextRun] =
+  /** What `cell` draws: its runs, or its words as they are (of `weight` in a header). */
+  def runs(cell: DataCell, header: Boolean, weight: Int): List[TextRun] =
     if (cell.runs.nonEmpty) cell.runs
     else if (cell.text.isEmpty) Nil
-    else List(TextRun(cell.text, weight = if (header) 700 else 0))
+    else List(TextRun(cell.text, weight = if (header) weight else 0))
 }

@@ -46,16 +46,23 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
     * Roku or an Apple TV); off, each is drawn as it is. It starts as `MarkdownView.richTables` says, for every view an
     * app makes; changed, the view is drawn again. */
   val richTables: Var[Boolean] = own(Var(MarkdownView.richTables.get))
+  /** How its tables are drawn (`TableLook`): by default a header band, every second row striped and rounded corners,
+    * in the theme's colours. It starts as `MarkdownView.tableLook` says, for every view an app makes; changed, the
+    * view is drawn again. */
+  val tableLook: Var[TableLook] = own(Var(MarkdownView.tableLook.get))
   private var stream = new MarkdownStream
   private val context = MarkdownContext(style, onLink, () => base, direction = direction, measures = measures,
-    breaks = breaks, richTables = () => richTables.get)
+    breaks = breaks, richTables = () => richTables.get, tableLook = () => tableLook.get)
   private var drawn: Vector[MdBlock] = Vector.empty
 
   layout @= Some(VerticalLayout(style.spacing))
   content.attach(show)
   show(initial)
-  // every block drawn again, its tables the other way
-  richTables.attach { _ =>
+  // every block drawn again, its tables the other way or drawn anew
+  richTables.attach(_ => redraw())
+  tableLook.attach(_ => redraw())
+
+  private def redraw(): Unit = {
     val gone = children()
     stream = new MarkdownStream
     drawn = Vector.empty
@@ -107,6 +114,8 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
 object MarkdownView {
   /** Whether a view made from now on starts with tables that sort, filter, copy and export (its `richTables`). */
   val richTables: Var[Boolean] = Var(true)
+  /** How a view made from now on draws its tables (its `tableLook`). */
+  val tableLook: Var[TableLook] = Var(TableLook())
 
   /** Markdown `text` laid out `width` wide. */
   def apply(text: String, width: Double, style: MarkdownStyle = MarkdownStyle()): MarkdownView = {

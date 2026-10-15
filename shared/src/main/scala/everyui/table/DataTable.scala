@@ -13,7 +13,7 @@ import everyui.i18n.Direction
 import everyui.kit.{SearchField, Toast}
 import everyui.layout.{Layout, LayoutPass, VerticalLayout}
 import everyui.list.ListRow
-import everyui.markdown.TableWidths
+import everyui.markdown.{TableLook, TableWidths}
 import everyui.menu.{Menu, MenuItem}
 import everyui.render.{Gestures, Platform}
 import everyui.theme.Theme
@@ -22,11 +22,12 @@ import reactify.*
 /** A table of rows of words that the person can sort, filter, copy and export: an app's own data (`DataTable(columns,
   * rows)`, or `DataTable.of(items)(columns)` from typed items), and every Markdown table (`MarkdownView`).
   *
-  * It is laid out as a Markdown table always was (`TableWidths`): its header on the raised colour, its rows ruled under
-  * it, each column as wide as its widest cell on one line where all fit, else sharing the width so a column of phrases
-  * wraps more than one of short words, no word ever cut; only where the widest words alone are wider than it does it
-  * scroll sideways, a shade at each edge with more beyond it. Cells wrap within their columns rather than being cut,
-  * so there is nothing hidden for a tip to show. Taller than `maxHeight`, its rows scroll under a header that stays.
+  * It is laid out as a Markdown table always was (`TableWidths`), and drawn as its style's `look` says (`TableLook`: by
+  * default a header band, every second row striped, rounded corners and no rules between the cells): each column as
+  * wide as its widest cell on one line where all fit, else sharing the width so a column of phrases wraps more than one
+  * of short words, no word ever cut; only where the widest words alone are wider than it does it scroll sideways, a
+  * shade at each edge with more beyond it. Cells wrap within their columns rather than being cut, so there is nothing
+  * hidden for a tip to show. Taller than `maxHeight`, its rows scroll under a header that stays.
   * A table whose words read right to left has its first column at the right.
   *
   *   - Sort: a click or a tap on a header (or Enter on it) sorts the rows by that column, up, then down, then back as
@@ -83,7 +84,8 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   /** What a click on a link in a cell does: by default a path of this app is shown in place, anything else opened. */
   var onLink: String => Unit = href => Link.follow(href, newTab = !RichText.inApp(href))
 
-  private val pad = style.cellPadding
+  private val look = style.look
+  private val pad = look.across
   private val columnCount: Val[Int] = own(Val(columns().size))
   // the rows, by their index in `cells`, as they are made; and a count that changes as they are
   private var slots: Vector[Option[DataRow]] = Vector.empty
@@ -148,13 +150,13 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   // one (the web): over the room's end (its left in a right-to-left page), never over the last column's words. By all the
   // rows, not those the filter shows, so filtering never changes the columns' widths (and so every cell's lines)
   private val gutter: Val[Double] = own(Val(if (Platform.nativeScroll() && maxHeight() > 0.0 &&
-    cells().size * (style.points * 1.2 + pad * 2.0) > maxHeight()) DataTable.gutter else 0.0))
+    cells().size * (style.points * 1.2 + look.down * 2.0) > maxHeight()) DataTable.gutter else 0.0))
   private val widths: Val[Vector[Double]] = own(Val(TableWidths(least(), most(), size.width() - gutter())))
   private val starts: Val[Vector[Double]] = own(Val(widths().scanLeft(0.0)(_ + _).dropRight(1)))
   private[table] val across: Val[Double] = own(Val(widths().foldLeft(0.0)(_ + _) + gutter()))
   private val headHeight: Val[Double] = own(Val(Option(head()).map(_.size.height()).getOrElse(0.0)))
 
-  // the rows, in a column, under the header; and the rules down between the columns, over them
+  // the rows, in a column, under the header; and the rules down between the columns, over them, where the look rules them
   private val body = new Container {
     layout @= Some(VerticalLayout(0.0))
   }
@@ -162,12 +164,19 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private val rows = new ScrollContainer
   private val grid: Container = new Container {
     semantics @= Semantics("table")
-    borderWidth @= 1.0
-    borderColor := Theme.border()
+    radius @= look.radius
     focusable @= true
 
     override def keepsEvent(e: KeyEvent): Boolean = action(e).nonEmpty
   }
+  // the table's edge, over the header and the rows
+  private val edge = TableLook.edge(look)
+  /** Where each row shows, by its index in `cells`: its place among the rows showing (0 the first), or -1 where the
+    * filter hides it. Found only where the rows are striped. */
+  private[table] val places: Val[Vector[Int]] = own(Val(if (!look.zebra) Vector.empty else {
+    val at = shown().zipWithIndex.toMap
+    Vector.tabulate(cells().size)(i => at.getOrElse(i, -1))
+  }))
   /** Whether the focus is on the table itself, and so its choice drawn in the accent. */
   private[table] val active: Val[Boolean] = own(Val(grid.focused()))
   private val scroll = new ScrollContainer(horizontal = true, followsDirection = mirrored)
@@ -223,7 +232,8 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   rows.position.top := headHeight()
   grid.size.width := across()
   grid.size.height := headHeight() + rows.size.height()
-  grid.children ++= List(rows, ring)
+  TableLook.clip(grid, edge)
+  grid.children ++= List(rows, edge, ring)
   scroll.content.children += grid
   scroll.size.width := math.min(size.width(), across())
   // the scrollbar under the table where the page draws one, never over its last row
@@ -378,7 +388,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
 
   /** `cell` of column `c` measured out of sight with the others, on one line or a word to a line (`words`). */
   private[table] def twin(cell: DataCell, c: Int, words: Boolean, header: Boolean): RichText = {
-    val shown = DataRow.runs(cell, header)
+    val shown = DataRow.runs(cell, header, look.headerWeight)
     val text = new RichText {
       whiteSpace @= (if (words) WhiteSpace.Pre else WhiteSpace.NoWrap)
       font.size @= style.points
@@ -445,7 +455,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     val gone = slots.flatten
     slots = Vector.empty
     gone.foreach(_.dispose())
-    lines.children.replaceMaking((1 until columnCount()).toVector.map(c => new Container {
+    lines.children.replaceMaking((1 until (if (look.rules) columnCount() else 1)).toVector.map(c => new Container {
       backgroundColor := Theme.border()
       position.left := ruleAt(c)
       size.width @= 1.0

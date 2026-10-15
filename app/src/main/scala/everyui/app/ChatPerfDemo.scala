@@ -17,7 +17,8 @@ import reactify.*
   * and the view put on the screen, then `chatperf ok <first row shown> <ms> rows <rows made>` once it has drawn.
   * `reply=<words>` adds the agent's answer in those words as the newest entry, and `older=<seconds>` has earlier
   * pages come that long after they are asked for. `rails=1` gives the entries rails (`ChatEntry.rail`), a topic of seven
-  * at a time in `ChatDemo.topicColors`. `theme=light` for the light theme, `rtl=1` for right to left. */
+  * at a time in `ChatDemo.topicColors`. `theme=light` for the light theme, `rtl=1` for right to left, `picture=1` for a
+  * picture behind the conversation, the others' bubbles letting it through as an app's picture theme does. */
 object ChatPerfDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -39,6 +40,15 @@ object ChatPerfDemo {
       val started = Platform.ticks()
       val chat = new ChatView(entries, older)
       if (railed) chat.rails @= true
+      if (Platform.launchArg("picture") == "1") {
+        val picture = new Backdrop
+        picture.source @= "/images/header-gradient.png"
+        picture.size.width := ui.size.width()
+        picture.size.height := ui.size.height()
+        ui.children += picture
+        chat.backgroundColor := everyui.Color.Clear
+        MessageView.othersOpacity @= 0.8
+      }
       chat.size.width := ui.size.width()
       chat.size.height := ui.size.height()
       ui.children += chat

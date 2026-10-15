@@ -32,7 +32,7 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
   /** The `DataTable` made in place of the plain table, if it is not yet: the focus on this goes to it. */
   def engage(): Unit = if (rich.isEmpty) {
     val made = new DataTable(MarkdownTable.columns(block, ctx), MarkdownTable.cells(block, ctx),
-      DataTableStyle(MarkdownTable.points(ctx), ctx.style.cellPadding, ctx.quiet, ctx.direction), width)
+      DataTableStyle(MarkdownTable.points(ctx), ctx.tableLook(), ctx.quiet, ctx.direction), width)
     // as tall as its rows: a table in a page or a message never scrolls up and down within it, only sideways
     made.maxHeight @= 0.0
     made.onLink = ctx.onLink
@@ -89,7 +89,8 @@ private[everyui] object MarkdownTable {
   def columns(table: MdBlock.TableBlock, ctx: MarkdownContext): Vector[DataColumn] =
     table.align.indices.toVector.map { c =>
       val content = table.header.lift(c).getOrElse(Nil)
-      DataColumn(MdInline.plain(content), align = Some(table.align(c)), runs = runs(content, ctx, 700))
+      DataColumn(MdInline.plain(content), align = Some(table.align(c)),
+        runs = runs(content, ctx, ctx.tableLook().headerWeight))
     }
 
   def cells(table: MdBlock.TableBlock, ctx: MarkdownContext): Vector[Vector[DataCell]] =

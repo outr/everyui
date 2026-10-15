@@ -873,7 +873,10 @@ answer.content := message().text          // may grow token by token while the a
   this app is shown in place and anything else opened (`Link.follow`). A paragraph with several links offers them in a
   menu. A picture's relative URL is found against `base`, `Platform.origin()` by default (`MarkdownView.resolve`).
 - `MarkdownStyle` sets the sizes: the body's points, code's, the headings' scale, the gap between blocks, the list
-  indent, a table cell's padding and the tallest picture. The colours are the theme's; a palette's `extras` can name
+  indent and the tallest picture. How its tables are drawn is `tableLook` (a `Var[TableLook]`, below under `DataTable`),
+  which starts as `MarkdownView.tableLook` says: a header band, every second row striped, rounded corners, no rules, its
+  alignment row honoured (start, centred, end, mirrored where the table reads right to left). The colours are the
+  theme's; a palette's `extras` can name
   "markdown.link", "markdown.code" and "markdown.quote", and "code.keyword", "code.string", "code.comment",
   "code.number" and "code.type" for the code.
 - Headings, lists and their items, tables, rows and cells, and pictures carry their `Semantics`; a picture's alt text
@@ -4353,8 +4356,18 @@ DataTable.of(personas)(DataColumn("Persona") -> (_.name), DataColumn("Conversati
   None finds it from the cells (`CellValues.infer`: dates where every cell that says something is a date, numbers where
   every one is a number). `align` None puts numbers at the end and anything else at the start. `cells` (a
   `Var[Vector[Vector[DataCell]]]`; `DataCell(text, runs)`, the runs drawn where given) and `columns` can change: rows
-  whose cells did not change keep what draws them. `DataTableStyle` sets the points, the cell padding, quiet words and
-  the direction.
+  whose cells did not change keep what draws them. `DataTableStyle` sets the points, the look, quiet words and the
+  direction.
+- **Look**: `TableLook` is how a table is drawn, a Markdown table's as well (`MarkdownView.tableLook`). By default its
+  header is on a band of its own, a faint wash of the accent, in semibold words with 10 pixels above and below them;
+  every second row under it (by where it shows, sorted and filtered) is striped with a fainter wash of the text; there
+  are no rules between the cells; its edge is a thin line in the border colour with 8-pixel corners, the header and
+  rows cut to them; and a cell's words stand 12 pixels in from its sides and 8 from its top and bottom. The band and
+  stripes are tints rather than solid colours, so a picture or a translucent bubble shows through them, and a palette's
+  `extras` can name them ("table.header", "table.stripe"). `TableLook(zebra, radius, header, stripe, rules, across,
+  down, headerDown, headerWeight)` changes any of it; `TableLook.ruled` is the look tables had before: square, every
+  cell ruled, the header on the raised colour in bold, 8 pixels round the words. On the desktop (JavaFX), whose clip is
+  a rectangle, the header band's corners are square inside the rounded edge.
 - **Sort**: a click or a tap on a header, or Enter (Space) on it, sorts up, then down, then back as the rows came, an
   arrow by the header and `aria-sort` on it. Numbers sort by value through thousands separators (either convention),
   currencies, signs, brackets for a loss, percentages, units and k, M, B, KB, MB, GB; dates as ISO's, with or without a

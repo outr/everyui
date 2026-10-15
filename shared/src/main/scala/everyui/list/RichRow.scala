@@ -618,7 +618,7 @@ object RichRow {
 
   /** How an expanded item's text is set (`RichExpansion`): a little smaller than the title, as a sidebar's are. */
   lazy val textStyle: MarkdownStyle = MarkdownStyle(points = 13.0, codePoints = 12.0, headings = List(1.3, 1.18, 1.08, 1.0,
-    1.0, 0.92), spacing = 8.0, indent = 18.0, cellPadding = 6.0, imageHeight = 240.0)
+    1.0, 0.92), spacing = 8.0, indent = 18.0, imageHeight = 240.0)
   /** How big an expanded item's buttons' words are, and how far a button's edge is before its words. */
   val buttonPoints: Double = 12.5
   val buttonLead: Double = buttonPoints * 1.1
