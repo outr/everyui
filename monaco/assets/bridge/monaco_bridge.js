@@ -157,9 +157,23 @@
   // right edge wraps them (the tooltip above the find widget's close button grew a line down over the button, so the
   // pointer left the button, which flickered and could not be clicked), and under the app's UiScale (a CSS scale) the
   // coordinates are not the box's own, so they land off by the scale. So they float in one layer over the page
-  // instead, unclipped and at the page's own size, where the window's coordinates are the layer's; a Monaco
-  // component, for the theme's colours.
+  // instead, unclipped and unscaled, where the window's coordinates are the layer's; a Monaco component, for the
+  // theme's colours. What they hold is drawn at the app's size (everyui-monaco.css); the menu's shadow root is given
+  // the same rules as it is made, before the menu is first laid out in it.
   var floating = null;
+  var scaledMenu = '.monaco-menu > .monaco-action-bar { zoom: var(--everyui-ui-scale, 1); } ' +
+    '.monaco-submenu { zoom: calc(1 / var(--everyui-ui-scale, 1)); }';
+  var scaledMenuSheet = null;
+  function scaleMenus(root) {
+    if (typeof CSSStyleSheet === 'function' && 'adoptedStyleSheets' in root && CSSStyleSheet.prototype.replaceSync) {
+      if (!scaledMenuSheet) { scaledMenuSheet = new CSSStyleSheet(); scaledMenuSheet.replaceSync(scaledMenu); }
+      root.adoptedStyleSheets = root.adoptedStyleSheets.concat([scaledMenuSheet]);
+    } else {
+      var style = document.createElement('style');
+      style.textContent = scaledMenu;
+      root.appendChild(style);
+    }
+  }
   function floatOut(element) {
     if (!element || element.__everyuiFloats) return;
     element.__everyuiFloats = true;
@@ -171,6 +185,12 @@
         floating.className = 'everyui-monaco-floating monaco-component';
         document.body.appendChild(floating);
       }
+      // the menu's host is handed over before its shadow root is made
+      if (list.contains('shadow-root-host') && !node.shadowRoot) node.attachShadow = function (init) {
+        var root = Element.prototype.attachShadow.call(this, init);
+        scaleMenus(root);
+        return root;
+      };
       return floating.appendChild(node);
     };
   }

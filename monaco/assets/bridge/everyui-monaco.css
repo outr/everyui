@@ -9,6 +9,13 @@
 .everyui-monaco-error-glyph::before { content: ''; display: block; width: 10px; height: 10px; margin: 4px 0 0 4px; border-radius: 50%; background: #f85149; }
 /* the layer Monaco's tooltips and menus float in, over the page (monaco_bridge.js, floatOut) */
 .everyui-monaco-floating { position: fixed; left: 0; top: 0; right: 0; height: 0; z-index: 2147483000; }
+/* drawn at the app's size, UiScale, which the web backend gives the page as --everyui-ui-scale: zoomed below every box
+   Monaco measures to place them, so its sums, in the window's pixels, still hold (a tooltip's rows, a menu's items; a
+   submenu, placed by the window's pixels inside its zoomed menu, back at the page's size around its own items). The
+   menu's rules are in its shadow root too (monaco_bridge.js, floatOut). */
+.everyui-monaco-floating .monaco-hover-content > *, .everyui-monaco-floating .monaco-hover > .hover-row,
+.everyui-monaco-floating .monaco-menu > .monaco-action-bar { zoom: var(--everyui-ui-scale, 1); }
+.everyui-monaco-floating .monaco-submenu { zoom: calc(1 / var(--everyui-ui-scale, 1)); }
 /* the diff editor's checkboxes (MonacoDiffController.showChecks) */
 .everyui-check { cursor: pointer; }
 .everyui-check::before { content: ''; display: block; box-sizing: border-box; width: 12px; height: 12px; margin: 3px 0 0 3px; border-radius: 2px; border: 1.5px solid rgba(160, 160, 160, 0.9); }

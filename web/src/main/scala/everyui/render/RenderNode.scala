@@ -1797,10 +1797,9 @@ object Platform {
   /** The app drawn `factor` times its size (everyui.theme.UiScale), as the browser's zoom draws a page: the root
     * scaled from its top left and laid out in the window over it, its edges the window's. The browser's own zoom is
     * under it, multiplied. Under a transform a node's box on the screen is scaled with it, and so is read over it
-    * (`getWidth`); a pointer's place too. */
+    * (`getWidth`); a pointer's place too. The page's stylesheets have it too, as `--everyui-ui-scale` on the page's
+    * root, for what a guest draws over the page outside the app's root (Monaco's tooltips and menus). */
   def setUiScale(factor: Double): Unit = {
-    // and to the page's stylesheets, for what a guest draws over the page outside the app's root (Monaco's tooltips
-    // and menus)
     dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("--everyui-ui-scale", factor.toString)
     val app = dom.document.getElementById("app").asInstanceOf[html.Element]
     if (app != null) {
