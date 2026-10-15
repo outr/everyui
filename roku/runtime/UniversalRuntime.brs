@@ -1533,13 +1533,14 @@ function uiDeviceFact(name as string) as string
     else if name = "memoryLevel"
         if FindMemberFunction(info, "GetGeneralMemoryLevel") <> invalid then return LCase(info.GetGeneralMemoryLevel())
     else if name = "refreshHz"
-        ' the rate a video mode names after its "p" ("720p50", "1080p30"); the 60 Hz modes name none ("1080p")
+        ' the rate a video mode names after its "p" ("720p50", "1080p30"); the 60 Hz modes name none ("1080p"), and are 60
         if FindMemberFunction(info, "GetVideoMode") <> invalid
             mode = info.GetVideoMode()
             at = Instr(1, mode, "p")
             if at > 0
                 rate = Int(Val(Mid(mode, at + 1)))
                 if rate > 0 then return rate.ToStr()
+                if Mid(mode, at + 1) = "" then return "60"
             end if
         end if
     else

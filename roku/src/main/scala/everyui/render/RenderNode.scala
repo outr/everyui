@@ -931,8 +931,8 @@ object Platform {
   }
 
   /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): the
-    * rate the video mode names (roDeviceInfo.GetVideoMode: "720p50", "1080p30"), or 0 where it names none, as the
-    * 60 Hz modes do: a Roku TV in one of those has been seen to draw its interface at 30. */
+    * rate the video mode names (roDeviceInfo.GetVideoMode: "720p50", "1080p30"), 60 for a mode that names none after
+    * its "p" ("1080p"), as Matt ruled, and 0 where the mode says nothing of it. */
   def refreshRate(): Double = {
     val hz = uiDeviceFact("refreshHz")
     if (hz.isEmpty) 0.0 else hz.toInt.toDouble
