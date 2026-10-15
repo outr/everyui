@@ -859,7 +859,9 @@ answer.content := message().text          // may grow token by token while the a
   cells' words wrap, each column between its widest word and its widest cell, a column of long phrases giving up more
   than one of short words, and no word is cut. Only where the widest words alone are wider than the room (long code,
   a path, a URL) does the table scroll sideways, each column then at least its even share of the room so its words
-  are not left a word a line, with a shade over each edge it goes on past, gone at that end.
+  are not left a word a line, with a shade over each edge it goes on past, gone at that end. A table is always as
+  tall as its rows (a `DataTable` made of one has no `maxHeight`): the wheel turned down over it scrolls the page or the
+  chat it is in, and only a sideways turn (or Shift with the wheel) scrolls it, as a code block does.
 - Every table sorts, filters, copies and exports as a `DataTable` does (below) where the platform has one (the web, the
   desktop, Android), with no change in the app: it rests as the plain table, laid out alike, and becomes a `DataTable`
   as the pointer comes over it (not while a drag is selecting words across it) or the focus reaches it, so a chat of

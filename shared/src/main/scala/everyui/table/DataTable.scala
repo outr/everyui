@@ -226,10 +226,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   grid.children ++= List(rows, ring)
   scroll.content.children += grid
   scroll.size.width := math.min(size.width(), across())
-  scroll.size.height := grid.size.height()
+  // the scrollbar under the table where the page draws one, never over its last row
+  scroll.size.height := grid.size.height() + scroll.scrollbarRoom()
   scroll.position.left := gridLeft()
   scroll.position.top := barHeight()
-  size.height := barHeight() + grid.size.height()
+  size.height := barHeight() + scroll.size.height()
   children ++= List(twins, scroll, leftShade, rightShade)
 
   ring.visible := ringShown() && grid.focused()

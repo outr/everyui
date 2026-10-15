@@ -81,10 +81,11 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
   grid.size.height := down()
   scroll.content.children += grid
   scroll.size.width := math.min(width, across())
-  scroll.size.height := down()
+  // as tall as its rows, and the scrollbar under them where the page draws one
+  scroll.size.height := down() + scroll.scrollbarRoom()
   scroll.focusable := across() > width
   size.width := width
-  size.height := down()
+  size.height := scroll.size.height()
   children ++= List(twins, scroll, leftShade, rightShade)
 
   private def left(c: Int): Double = (0 until c).foldLeft(0.0)((x, i) => x + widths()(i))

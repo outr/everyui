@@ -64,12 +64,19 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   /** The scrollbar's colour, where the platform draws one (the web: a thin one, on a clear track). */
   lazy val scrollbar: Prop[Color] = own(new Prop[Color](Theme.border(), c => node.setScrollbarColor(Component.css(c))))
 
+  /** The room a rail's own scrollbar takes along its foot while it has more than shows, which what holds it adds to
+    * its height so the scrollbar is under the content rather than over it: where the page draws one (the web,
+    * but for a touch screen alone: `ScrollContainer.barRoom`), else 0 (a phone's lies over the content and fades, and the
+    * other backends draw none). The content is that much shorter than the viewport, so a rail never scrolls up and down. */
+  val scrollbarRoom: Val[Double] = own(Val(if (horizontal && ScrollContainer.drawsBar &&
+    content.size.width() > size.width() + 0.5) ScrollContainer.barRoom else 0.0))
+
   node.setScrollable(!horizontal, horizontal)
   node.setScrollbarColor(Component.css(scrollbar()))
   // across, the content is the viewport's size; along, as long as what it holds reaches, unless it is given a length (a
   // content with no length draws nothing on Android, which clips a view to its box)
   if (horizontal) {
-    content.size.height := size.height
+    content.size.height := math.max(0.0, size.height() - scrollbarRoom())
     content.size.width := content.contentWidth()
     // and a row laid out in it runs the length of what it holds: mirrored for a right-to-left language within its
     // width instead, which is itself the reach of the children just mirrored, it shrank to its first child
@@ -109,8 +116,16 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     furthest.attach(most => if (offset() > most) offset @= most)
     // anything else setting the offset takes over from a glide
     offset.attach(at => if (glideRun.nonEmpty && at != glideAt) stopGlide())
-    // a sideways wheel and a drag move the content as they go, which is back along a rail from the right
-    event.pointer.wheel.attach(e => scrollBy(if (horizontal && e.x != 0.0) (if (fromRight()) -e.x else e.x) else e.y))
+    // the wheel moves it along its length, back along a rail from the right: a rail only by a sideways turn (or Shift
+    // with the wheel), so a wheel turned down over it goes on to scroll what it is in, as a browser's does
+    event.pointer.wheel.attach { e =>
+      if (!horizontal) scrollBy(e.y)
+      else {
+        val across = if (e.x != 0.0) e.x else if (e.shift) e.y else 0.0
+        if (across != 0.0) scrollBy(if (fromRight()) -across else across)
+      }
+    }
+    // a drag moves the content as it goes
     var dragFrom: Option[Double] = None
     var dragOffset = 0.0
     // and a finger's flick carries on once it lifts, slowing as a phone's own scrolling does: whether it is a finger
@@ -297,4 +312,12 @@ object ScrollContainer {
 
   /** How long a ScrollContainer's `reveal` glides unless it says otherwise, in seconds (0: it jumps). */
   val revealGlideDefault: Var[Double] = Var(0.0)
+
+  /** How much room a rail keeps under its content for the page's scrollbar where it draws one: the web's thin one is
+    * 8 to 11 pixels. */
+  val barRoom: Double = 12.0
+
+  // whether the platform draws a scrollbar a rail must keep room for: the web's, but where only a finger points (a
+  // phone's lies over the content and fades)
+  private def drawsBar: Boolean = Platform.nativeScroll() && !(Platform.touchSupport() && !Platform.pointerSupport())
 }

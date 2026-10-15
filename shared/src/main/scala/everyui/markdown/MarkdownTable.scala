@@ -10,7 +10,8 @@ import reactify.*
   * `everyui.render.TableAccess`), made only once it is wanted: at rest it is the table as it is drawn (`TableView`),
   * which a `DataTable` lays out alike, so a chat of answers with tables opens as fast as it did; the pointer coming
   * over it (unless it is selecting words), or the focus, makes the `DataTable` in its place. One whose filter shows at
-  * rest (past `filterAfter` rows), or on a touch screen, whose tools always show, is a `DataTable` at once. */
+  * rest (past `filterAfter` rows), or on a touch screen, whose tools always show, is a `DataTable` at once. Either way it is
+  * as tall as its rows: the wheel turned down over it scrolls what it is in. */
 private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Double) extends Container {
   private var block = table
   private val view: Var[Component] = own(Var(new Container))
@@ -32,6 +33,8 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
   def engage(): Unit = if (rich.isEmpty) {
     val made = new DataTable(MarkdownTable.columns(block, ctx), MarkdownTable.cells(block, ctx),
       DataTableStyle(MarkdownTable.points(ctx), ctx.style.cellPadding, ctx.quiet, ctx.direction), width)
+    // as tall as its rows: a table in a page or a message never scrolls up and down within it, only sideways
+    made.maxHeight @= 0.0
     made.onLink = ctx.onLink
     made.hovered := event.pointer.over()
     rich = Some(made)
