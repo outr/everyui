@@ -1526,6 +1526,32 @@ reply.rail @= Some(topicColors(topic.index % 12))     // once its thread is know
 reply.railLabel @= Some(topic.name)
 ```
 
+### Who is working, in the transcript (`ChatView.workingInline`)
+
+By default each `Working` is one line in the status bar over the composer, cut short where what they are doing is
+long. `chat.workingInline @= true` shows them in the transcript instead, a row each after the newest entry
+(`Transcript.working`, which the `ChatView` fills from its `working`), laid out as everybody else's messages are: their
+avatar, a ring turning around it, and their name with how long they have been at it (live, paused while the transcript
+is off the screen); under them what they are doing, wrapped in a quiet box and cut to `transcript.workingLines` lines
+(3), with Show more to open it whole and Show less to close it again ("chat.showMore", "chat.showLess", in Words'
+eleven languages); and after the box, where the work has a `cancel`, the same X as the status bar's, named "Cancel".
+On a phone (`Transcript.narrow`) the avatar goes small beside the name and the box starts at the side margin; right to
+left it all mirrors. The status bar then says only how the connection stands, and takes no room while connected.
+
+The rows are not entries: they are not in `entries`, never counted as new by "Jump to latest", never read out as they
+arrive, offered no menu or message buttons, and their words are not selected or copied with the messages'. A transcript
+at the bottom stays there as they come, grow, open and go; one scrolled up stays where it is. The transcript's cursor
+reaches them like any row, and a screen reader hears "Helix, busy, consult …". Enter goes in, onto Show more and the X,
+an arrow up or down comes back out, and the forward and back arrows open and close the words. A `Working` changed under
+the same `id` (what they are doing moved on) updates its row in place. Off, the default, the chat is exactly as it
+was. `demo=chat&working=inline` shows it.
+
+```scala
+val chat = new ChatView(shown, loadOlder, working, connection, Some(composer))
+chat.workingInline @= true
+chat.transcript.workingLines @= 4      // optional: more lines before Show more
+```
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

@@ -31,4 +31,10 @@ object Grouping {
 
   /** Whether `entry` is a day's separator (`withDays`) rather than one of the app's. */
   def isDay(entry: ChatEntry): Boolean = entry.id.startsWith("\u0000day:")
+
+  /** The key the transcript's row for somebody at work (`Transcript.working`) is known by: never an entry's own id. */
+  def workKey(id: String): String = "\u0000work:" + id
+
+  /** Whether `entry` is the transcript's row for somebody at work (`workKey`) rather than one of the app's. */
+  def isWork(entry: ChatEntry): Boolean = entry.id.startsWith("\u0000work:")
 }

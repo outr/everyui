@@ -42,6 +42,9 @@ object ChatWords {
   def loadingOlder: String = word("chat.loadingOlder", "Loading earlier messages")
   def show: String = word("chat.show", "Show")
   def hide: String = word("chat.hide", "Hide")
+  /** Words cut short opened whole, and closed again: these come in Words' eleven languages. */
+  def showMore: String = word("chat.showMore", "Show more")
+  def showLess: String = word("chat.showLess", "Show less")
   def copy: String = word("chat.copy", "Copy")
   def copyMessage: String = word("chat.copyMessage", "Copy message")
   /** Said once a message is copied. */

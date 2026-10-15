@@ -16,6 +16,9 @@ class StatusBar(working: Var[Vector[Working]], connection: Var[ConnectionState],
   /** What a press on a worker's avatar does: their picture unless the conversation says otherwise (`ChatView` hands on
     * its transcript's `onAuthor`). */
   val onAuthor: Var[Option[AuthorPressed => Unit]] = own(Var(None))
+  /** Whether it says who is working: on by default; off where they show in the transcript instead
+    * (`ChatView.workingInline`), leaving it the connection alone. */
+  val showsWorking: Var[Boolean] = own(Var(true))
 
   private val column: Container = Column(2.0)()
   column.position.left := everyui.list.ListRow.along(StatusBar.inset, column.size.width(), size.width())
@@ -74,7 +77,7 @@ class StatusBar(working: Var[Vector[Working]], connection: Var[ConnectionState],
     val was = column.children()
     column.children.clear()
     was.foreach(_.dispose())
-    val all = working()
+    val all = if (showsWorking()) working() else Vector.empty
     val work = if (all.size <= 2) all.map(workLine)
       else if (expanded()) countLine(all) +: all.map(workLine)
       else Vector(countLine(all))
@@ -84,9 +87,10 @@ class StatusBar(working: Var[Vector[Working]], connection: Var[ConnectionState],
   size.height := (if (column.children().isEmpty) 0.0 else column.size.height() + 8.0)
   backgroundColor := Theme.surface()
   children += column
-  follow(working, (_: Vector[Working]) => rebuild())
+  follow(working, (_: Vector[Working]) => if (showsWorking()) rebuild())
   follow(connection, (_: ConnectionState) => rebuild())
   expanded.attach(_ => rebuild())
+  showsWorking.attach(_ => rebuild())
   rebuild()
 
   override def kind: String = "StatusBar"

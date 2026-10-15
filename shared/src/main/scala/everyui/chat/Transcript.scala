@@ -89,9 +89,19 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val loading: Var[Boolean] = own(Var(false))
   /** Whether `loadOlder` has said there is nothing earlier. */
   val exhausted: Var[Boolean] = own(Var(loadOlder.isEmpty))
+  /** Who is at work, each a row at the end, after the newest entry (`WorkingView`, as `ChatView.workingInline` has
+    * it): their avatar and name, for how long, what they are doing (cut to `workingLines` lines until opened) and a
+    * control to cancel it where it can be. Empty by default. They are not entries: kept at the bottom while it is
+    * pinned, as entries are, but never counted as new, read out as they arrive, offered a menu or copied. */
+  val working: Var[Vector[Working]] = own(Var(Vector.empty))
+  /** How many lines of what somebody at work is doing show before Show more. */
+  val workingLines: Var[Int] = own(Var(3))
 
-  // what the list shows: the entries with a separator for each day
+  // what the list shows: the entries with a separator for each day, then who is at work
   private val shown: Var[Vector[ChatEntry]] = own(Var(Vector.empty))
+  // the entries with their separators, and who is at work, by their rows' keys
+  private var dated: Vector[ChatEntry] = Vector.empty
+  private var slots: Vector[WorkingSlot] = Vector.empty
   // (immutable maps: a Roku keeps one keyed by strings as an associative array, and has no mutable one)
   private var days: Map[String, ChatEntry.Marker] = Map.empty
   private var dayOfEntry: Map[String, Option[String]] = Map.empty
@@ -121,7 +131,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   list.size.width := size.width()
   list.size.height := size.height()
-  list.estimate = (e: ChatEntry) => Transcript.estimate(e, list.size.width() - gutter(), bodyLines())
+  list.estimate = (e: ChatEntry) =>
+    if (Grouping.isWork(e)) Transcript.workGuess else Transcript.estimate(e, list.size.width() - gutter(), bodyLines())
   list.semantics @= Semantics("list", label = ChatWords.conversation)
   size.width @= 400.0
   size.height @= 400.0
@@ -143,6 +154,10 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   }
 
   private def saidOf(entry: ChatEntry): String = entry match {
+    case w: ChatEntry.Marker if Grouping.isWork(w) => slotOf(w).map { s =>
+      val work = s.working()
+      work.who.name + ", " + ChatWords.busy + ", " + work.what
+    }.getOrElse("")
     case m: ChatEntry.Message => m.author.name + ": " + m.text()
     case a: ChatEntry.Activity => a.summary() + (if (a.body().isEmpty) "" else ": " + a.body()) + ", " +
       ActivityView.said(a.status())
@@ -158,6 +173,13 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case a: ChatEntry.Activity =>
       new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), render, bodyLines())
     case t: ChatEntry.Thinking => new ThinkingView(t, row.inner, ticker.now)
+    case w: ChatEntry.Marker if Grouping.isWork(w) && slotOf(w).nonEmpty =>
+      val s = slotOf(w).get
+      val view = new WorkingView(s, row.inner, ticker.now, workingLines(),
+        () => pressAuthor(AuthorPressed(s.working().who, None)), AuthorPressed.answers(s.working().who, onAuthor()))
+      view.exitFocus(Key.ArrowUp, list)
+      view.exitFocus(Key.ArrowDown, list)
+      view
     case m: ChatEntry.Marker => new MarkerView(m, row.inner)
     case c: ChatEntry.Custom => new CustomView(made(c), row.inner, list)
   }
@@ -194,8 +216,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   private def reshow(): Unit = {
     val all = entries()
-    shown @= (if (dayMarkers()) Grouping.withDays(all, dayOf, separator) else all)
-    bridge()
+    dated = if (dayMarkers()) Grouping.withDays(all, dayOf, separator) else all
+    showAll()
     val ids = all.map(_.id)
     // what arrived after the newest there was is read out; what came before it (earlier history) is not
     if (announces() && lastIds.nonEmpty) {
@@ -227,6 +249,28 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
         days = days.filter { case (day, _) => on.contains(day) }
       }
     }
+  }
+
+  private def showAll(): Unit = {
+    shown @= dated ++ slots.map(_.entry)
+    bridge()
+  }
+
+  private def slotOf(entry: ChatEntry): Option[WorkingSlot] = slots.find(_.entry eq entry)
+
+  // who is at work, each kept by id (what they are doing changed in place), the rows shown again where who it is changed
+  private def atWork(): Unit = {
+    val now = working()
+    val was = slots
+    slots = now.map { w =>
+      was.find(_.working().id == w.id) match {
+        case Some(s) =>
+          if (s.working() != w) s.working @= w
+          s
+        case None => new WorkingSlot(w)
+      }
+    }
+    if (slots.map(_.entry.id) != was.map(_.entry.id)) showAll()
   }
 
   // a day's separator between two entries of one thread carries its rail on, so that the line runs through it unbroken
@@ -285,7 +329,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   }
 
   list.menu.attach { p =>
-    val items = menu()(p.item)
+    val items = if (Grouping.isWork(p.item)) Nil else menu()(p.item)
     if (items.nonEmpty) {
       if (Platform.remoteNavigation()) Menu.show(items) else Menu.at(p.x, p.y, items)
     }
@@ -473,13 +517,27 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   /** Enter on an entry: a tool call or reasoning opened or closed, the app's component gone into. */
   private def act(entry: ChatEntry): Option[() => Unit] = entry match {
+    case w: ChatEntry.Marker if Grouping.isWork(w) => workView(w).flatMap(v => Focus.candidates(v).headOption)
+      .map(c => () => c.focus())
     case a: ChatEntry.Activity if a.opens => Some(() => a.expanded @= !a.expanded())
     case t: ChatEntry.Thinking => Some(() => t.expanded @= !t.expanded())
     case c: ChatEntry.Custom => Some(() => Focus.candidates(made(c)).headOption.foreach(_.focus()))
     case _ => None
   }
 
+  // the view drawn for somebody at work, where its row is drawn
+  private def workView(w: ChatEntry): Option[WorkingView] =
+    list.rowAt(list.indexOf(w.id)).flatMap {
+      case r: ChatRow => r.shown match {
+        case Some(v: WorkingView) => Some(v)
+        case _ => None
+      }
+      case _ => None
+    }
+
   private def open(entry: ChatEntry, on: Boolean): Option[() => Unit] = entry match {
+    case w: ChatEntry.Marker if Grouping.isWork(w) => slotOf(w).filter(s => s.expanded() != on &&
+      (s.expanded() || workView(w).exists(_.words.elided()))).map(s => () => s.expanded @= on)
     case a: ChatEntry.Activity if a.opens && a.expanded() != on => Some(() => a.expanded @= on)
     case t: ChatEntry.Thinking if t.expanded() != on => Some(() => t.expanded @= on)
     case _ => None
@@ -520,6 +578,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   // ---- following ----
 
   follow(entries, (_: Vector[ChatEntry]) => reshow())
+  follow(working, (_: Vector[Working]) => atWork())
   dayMarkers.attach { _ =>
     reshow()
     list.redecorateAll()
@@ -566,6 +625,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 object Transcript {
   /** A row's height before it has drawn itself. */
   val guess: Double = 64.0
+  /** About how tall a row for somebody at work (`working`) draws, with a line of what they are doing. */
+  val workGuess: Double = 68.0
   /** Space at either side of the rows. */
   val side: Double = 12.0
   /** An avatar's size, and the room it and the gap after it take before everybody else's bubbles. */

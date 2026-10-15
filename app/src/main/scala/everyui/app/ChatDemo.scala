@@ -28,7 +28,9 @@ import reactify.*
   * the light theme, `rtl=1` for right to left. `rails=1` gives every entry its topic's rail (`ChatEntry.rail`), one
   * of twelve colours by the topic's index (`topicColors`), each topic begun by its marker; a reply gets its rail once
   * it is whole. `queue=1` writes with a Composer whose messages queue while a reply comes (`afterstop=drain` to go on
-  * after Stop, `seed=1` to start with a paused queue). Logs `chat ok` once built. */
+  * after Stop, `seed=1` to start with a paused queue). `working=inline` shows who is working in the transcript
+  * (`ChatView.workingInline`) rather than over the composer, the release notes' worker with a long brief, cut to three
+  * lines. Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -72,6 +74,7 @@ object ChatDemo {
     }
     val chat = new ChatView(entries, Some(older), working, connection, Some(composer))
     chat.rails @= railed
+    chat.workingInline @= inline
     chat.size.width := ui.size.width()
     chat.size.height := ui.size.height()
     field.submitted.attach { text =>
@@ -183,6 +186,11 @@ object ChatDemo {
     "#05a2c2", "#0090ff", "#3e63dd", "#8e4ec6", "#d6409f", "#a18072").map(Color.fromHex)
 
   private def railed: Boolean = Platform.launchArg("rails") == "1"
+  private def inline: Boolean = Platform.launchArg("working") == "inline"
+  private val notesBrief: String = "drafting the release notes · modelId: helper-large, systemPrompt: You are an expert " +
+    "in release engineering who reads the whole history of a project before answering, weighs every open pull " +
+    "request, and writes the notes for a release in the voice of the team, plainly, with the risks first and the " +
+    "thanks last."
   // the topic the conversation is in, by its index in the topic history: the earlier history's are Sprint 0 to 20
   private var topicAt: Int = 21
   private def topicName(index: Int): String = index match {
@@ -284,8 +292,8 @@ object ChatDemo {
     Platform.after(13.0, () => {
       working @= working() :+ Working("w-scout", scout, "reading 14 files", Clock.real(), Some(() => working @= working().filterNot(_.id == "w-scout")))
       working @= working() :+ Working("w-sam", sam, "reviewing", Clock.real())
-      working @= working() :+ Working("w-notes", helper, "drafting the release notes", Clock.real(),
-        Some(() => working @= working().filterNot(_.id == "w-notes")))
+      working @= working() :+ Working("w-notes", helper, if (inline) notesBrief else "drafting the release notes",
+        Clock.real(), Some(() => working @= working().filterNot(_.id == "w-notes")))
     })
     Platform.after(21.0, () => working @= working().filterNot(_.id == "w-notes"))
     Platform.after(16.0, () => {

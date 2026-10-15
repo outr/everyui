@@ -6,11 +6,11 @@ import everyui.event.Key
 import everyui.theme.Theme
 import reactify.*
 
-/** A whole conversation: the transcript, a status bar over the composer (who is working, and the connection while it
-  * is not connected), and the composer, which is the app's (`composer`: whatever it types with; none where the
-  * conversation is only read, as on a television). Everything it shows is plain reactive data, and everything it does
-  * goes to the app's callbacks (a working agent's cancel, the connection's retry), so it knows nothing of what is at
-  * the other end.
+/** A whole conversation: the transcript, a status bar over the composer (who is working, unless they show in the
+  * transcript, `workingInline`, and the connection while it is not connected), and the composer, which is the app's
+  * (`composer`: whatever it types with; none where the conversation is only read, as on a television). Everything it
+  * shows is plain reactive data, and everything it does goes to the app's callbacks (a working agent's cancel, the
+  * connection's retry), so it knows nothing of what is at the other end.
   *
   * {{{
   *   val chat = new ChatView(entries, loadOlder = Some(() => server.before(entries().headOption)),
@@ -34,6 +34,13 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   /** Whether the transcript keeps room at the start edge for the entries' rails (`ChatEntry.rail`,
     * `Transcript.rails`). */
   def rails: Var[Boolean] = transcript.rails
+  /** Whether who is working shows in the transcript, a row each after the newest entry, laid out as everybody else's
+    * messages are, with what they are doing wrapped (cut to a few lines, with Show more), for how long, and the
+    * control to cancel it (`Transcript.working`), rather than a line each in the status bar, which then says only how
+    * the connection stands. Off by default. */
+  val workingInline: Var[Boolean] = own(Var(false))
+  transcript.working := (if (workingInline()) working() else Vector.empty)
+  status.showsWorking := !workingInline()
   /** What types the messages: the app's, filling the width at the bottom; none, and the transcript takes the room. */
   val composerSlot: Var[Option[Component]] = own(Var(composer))
 
