@@ -12,8 +12,8 @@ import reactify.*
 
 /** A row of a [[Menu]], `width` wide: a slot for the tick or the icon, the label (and its detail under it), and at the
   * right the shortcut, the note, or the way into a submenu. It lights under the focus, which a pointer resting on it
-  * brings, and stays lit while it is the menu's current choice (`active`); `chosen` hears it clicked or entered, and
-  * `opened` the arrow into its submenu. A separator is a rule. */
+  * brings, and stays half lit while it is the menu's current choice (`active`); `chosen` hears it clicked or entered,
+  * and `opened` the arrow into its submenu. A separator is a rule. */
 class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Container {
   /** A click, a tap or OK on it. */
   val chosen: Channel[Unit] = Channel[Unit]
@@ -73,7 +73,7 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Cont
   else {
     focusable @= item.enabled
     size.height := words.size.height() + points * 0.9
-    backgroundColor := (if (focused() || item.active) Theme.controlLit() else Color.Clear)
+    backgroundColor := MenuRow.fill(focused(), item.active)
     radius @= points * 0.35
     lead.foreach { l =>
       l.color := ink()
@@ -106,4 +106,14 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Cont
 object MenuRow {
   /** The arrow into a submenu: the way the page reads on (Right, or Left in a right-to-left language). */
   def inward: Key = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
+
+  /** A row's ground: lit under the focus; half lit for the menu's current choice (`MenuItem.active`) while the focus is
+    * elsewhere, so that the focus is always the plainest to see; clear otherwise. */
+  def fill(focused: Boolean, active: Boolean): Color =
+    if (focused) Theme.controlLit()
+    else if (active) {
+      val lit = Theme.controlLit()
+      lit.withAlpha(lit.alpha * 0.5)
+    }
+    else Color.Clear
 }

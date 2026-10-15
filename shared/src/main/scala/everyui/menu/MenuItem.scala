@@ -7,8 +7,8 @@ import everyui.keymap.{Chord, Command}
   * it, and after it a `shortcut` hint (a chord, as a keymap names it) or a `note`. A `checked` entry shows whether it is
   * on; one with a `submenu` opens it rather than doing anything itself. A disabled one is shown but cannot be chosen;
   * a `danger` one is drawn in the warning colour; a `separator` is a rule between groups. An `active` entry is the
-  * current choice of a "pick one of these" menu (a view, a sort, a language): lit as the focused entry is, and staying
-  * lit while the focus is elsewhere, and the one focused as the menu opens. */
+  * current choice of a "pick one of these" menu (a view, a sort, a language): the one focused as the menu opens, and
+  * half lit while the focus is elsewhere, so the focus stays the plainest to see. */
 case class MenuItem(label: String,
                     action: () => Unit = () => (),
                     icon: MaterialIcon = MaterialIcon.Empty,
