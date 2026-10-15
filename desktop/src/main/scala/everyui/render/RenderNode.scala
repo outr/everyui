@@ -210,6 +210,7 @@ class RenderNode(val fx: Node) {
   def setRadius(r: Double): Unit = {
     radius = r
     paintBackground()
+    roundClip()
   }
   /** An edge `width` pixels wide, inside the box. */
   def setBorder(width: Double, hex: String): Unit = {
@@ -408,7 +409,18 @@ class RenderNode(val fx: Node) {
   }
   def setOpacity(opacity: Double): Unit = fx.setOpacity(opacity)
 
-  def setClip(width: Double, height: Double): Unit = fx.setClip(new Rectangle(width, height))
+  /** What shows of it cut to `width` by `height`, with its corners rounded as its own are (`setRadius`), as the web's
+    * overflow is: a header band or a picture in a rounded box does not show square corners inside it. */
+  def setClip(width: Double, height: Double): Unit = {
+    fx.setClip(new Rectangle(width, height))
+    roundClip()
+  }
+  private def roundClip(): Unit = fx.getClip match {
+    case r: Rectangle =>
+      r.setArcWidth(radius * 2.0)
+      r.setArcHeight(radius * 2.0)
+    case _ => ()
+  }
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
   /** No reader of descriptions reaches this platform's nodes. */
   def setDescription(text: String): Unit = ()

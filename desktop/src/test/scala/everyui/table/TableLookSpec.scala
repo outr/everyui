@@ -102,6 +102,11 @@ class TableLookSpec extends FxSpec {
         val g = fx(grid(t))
         fx(g.radius()) shouldBe 8.0
         fx(g.borderWidth()) shouldBe 0.0
+        // the header band and the stripes are cut to the rounded corners here too, not to a square
+        fx(g.node.fx.getClip match {
+          case r: javafx.scene.shape.Rectangle => (r.getArcWidth, r.getArcHeight)
+          case other => other
+        }) shouldBe ((16.0, 16.0))
         val edge = fx(g.children().last)
         fx(edge.radius()) shouldBe 8.0
         fx(edge.borderWidth()) shouldBe 1.0
