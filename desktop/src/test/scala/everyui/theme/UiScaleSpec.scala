@@ -15,7 +15,8 @@ import reactify.*
   * root drawn at it, a pointer's place read back over it, so a click is where it lands and a menu opens there; the
   * keys a browser zooms with; and kept on the device across a new binding. */
 class UiScaleSpec extends FxSpec {
-  private val space = "everyui-uiscale-spec"
+  // a space of this run's own: the store is the home folder's, shared by every JVM running these specs at once
+  private val space = "everyui-uiscale-spec-" + java.util.UUID.randomUUID()
 
   private def onScreen[T](parts: Component*)(test: => T): T = {
     fx {
@@ -37,6 +38,7 @@ class UiScaleSpec extends FxSpec {
     fx(UiScale.reset())
     fx(())
     fx(Store.clear(space).start())
+    new java.io.File(System.getProperty("user.home"), "." + Host.app.toLowerCase + "/store/" + space).delete()
     super.afterAll()
   }
 

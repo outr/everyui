@@ -19,6 +19,8 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
     * gives up after a minute, a bound for a thread that never comes back: the longest work a spec times
     * (ColumnScaleSpec's thousands of lines added one at a time) takes several seconds on a busy machine. */
   protected def fx[T](f: => T): T = {
+    // a toolkit that never started (no display) holds runLater forever: fail instead, so the run goes on
+    if (!FxSpec.started) fail("JavaFX did not start")
     var result: Option[Either[Throwable, T]] = None
     val done = new CountDownLatch(1)
     javafx.application.Platform.runLater(() => {
@@ -72,7 +74,10 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
 
   override def beforeAll(): Unit = {
     val started = new CountDownLatch(1)
-    try javafx.application.Platform.startup(() => started.countDown())
+    try javafx.application.Platform.startup(() => {
+      FxSpec.started = true
+      started.countDown()
+    })
     catch { case _: IllegalStateException => started.countDown() }
     started.await(10, TimeUnit.SECONDS)
     fx {
@@ -88,4 +93,9 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
         javafx.scene.input.KeyCode.SHIFT, false, false, false, false))
     }
   }
+}
+
+object FxSpec {
+  /** Whether the JavaFX thread has come up in this JVM, once for every spec. */
+  @volatile private var started: Boolean = false
 }

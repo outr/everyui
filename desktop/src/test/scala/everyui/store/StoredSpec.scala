@@ -2,6 +2,7 @@ package everyui.store
 
 import everyui.FxSpec
 import everyui.async.Task
+import everyui.render.Host
 import reactify.*
 
 import java.util.concurrent.TimeUnit
@@ -25,10 +26,13 @@ class StoredSpec extends FxSpec {
     def answerWith(found: Option[T]): Unit = fx(answer(found))
   }
 
-  private val space = "everyui-stored-spec"
+  // a space of this run's own: the store is the home folder's, shared by every JVM running these specs at once, and
+  // another run clearing a fixed space between this one's write and read is what the read would find
+  private val space = "everyui-stored-spec-" + java.util.UUID.randomUUID()
 
   override def afterAll(): Unit = {
     fx(Store.clear(space).start())
+    new java.io.File(System.getProperty("user.home"), "." + Host.app.toLowerCase + "/store/" + space).delete()
     super.afterAll()
   }
 
