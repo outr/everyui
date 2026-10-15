@@ -146,7 +146,7 @@ class RowActionSpec extends FxSpec {
           val list = fx(made(style))
           var activated: List[String] = Nil
           fx {
-            list.list.clickActivates @= touch
+            list.list.clickActivates @= Some(touch)
             list.activated.attach(t => activated = activated :+ t)
           }
           onScreen(list) {

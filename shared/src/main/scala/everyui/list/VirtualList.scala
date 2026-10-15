@@ -49,17 +49,24 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** The key of the row under the cursor. */
   val current: Var[Option[String]] = own(Var(None))
   val selection: Selection = new Selection(!Platform.remoteNavigation())
-  /** A row activated: Enter on it (let go, since a held OK asks for its menu), a double click, or a single click where
-    * `clickActivates` (a touch screen). */
+  /** A row activated: Enter on it (let go, since a held OK asks for its menu), a double click, or a single click that
+    * activates (`clickActivates`: a finger's tap). */
   val activated: Channel[T] = Channel[T]
   /** A context menu asked for on a row: the secondary button, the menu key, Shift+F10, or OK held. */
   val menu: Channel[ListPoint[T]] = Channel[ListPoint[T]]
   /** A finger dragged across the rows, by how far: for a list whose rows scroll sideways (a log's long lines). Up and
     * down are the list's own. */
   val dragAcross: Channel[Double] = Channel[Double]
-  val clickActivates: Var[Boolean] = own(Var(!Platform.pointerSupport()))
-  /** Whether a finger held on a row shows its tip (`ListRow.tip`) where that opens no menu: on a touch screen. */
-  val holdTips: Var[Boolean] = own(Var(Platform.touchSupport() && !Platform.pointerSupport()))
+  /** Whether a single click activates the row it puts the cursor on, as a tap does on a phone, rather than only
+    * choosing it (a double click activates either way). None, by default, lets each click say: a finger's tap
+    * activates, on any device, a touch laptop's as much as a phone's, while a mouse's click chooses, unless the device
+    * has no pointer of its own (a phone, a television), where every click activates. `Some(true)` makes every click
+    * activate, a mouse's too (a picker's choice, made and done with), and `Some(false)` none, a finger's neither. */
+  val clickActivates: Var[Option[Boolean]] = own(Var(None))
+  /** Whether a finger held on a row shows its tip (`ListRow.tip`) where that opens no menu. None, by default, lets
+    * each hold say: a finger's does, on any device, as does any on a touch screen with no pointer of its own (a
+    * phone); `Some` says for every hold. */
+  val holdTips: Var[Option[Boolean]] = own(Var(None))
   /** Rows made beyond each end of what shows, so a short scroll has them ready: half as many at Reduced, and one at
     * Minimal (`everyui.perf.Quality`). */
   val overscan: Var[Int] = own(Var(4))
@@ -408,18 +415,19 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private var lastClick = -1
   private var lastClickAt = 0.0
 
-  /** A click at `x`, `y` in the root's coordinates: the row under it, picked as the modifiers held say. */
-  private[everyui] def clickAt(x: Double, y: Double, held: Modifiers): Unit = {
+  /** A click at `x`, `y` in the root's coordinates: the row under it, picked as the modifiers held say; `finger` is a
+    * finger's tap (`PointerEvent.finger`), which activates it where `clickActivates` leaves it to each click. */
+  private[everyui] def clickAt(x: Double, y: Double, held: Modifiers, finger: Boolean = false): Unit = {
     val down = y - absoluteTop + offset()
     if (down >= 0.0 && down < total && !blank) {
       val i = indexAt(down)
       val along = if (Direction.rtl()) absoluteLeft + size.width() - x else x - absoluteLeft
-      if (!clicks(i, along)) press(i, held)
+      if (!clicks(i, along)) press(i, held, finger)
     }
   }
 
-  /** Row `index` clicked with `held` down. */
-  private[everyui] def press(index: Int, held: Modifiers): Unit = if (index >= 0 && index < count) {
+  /** Row `index` clicked with `held` down, by a finger's tap where `tap`. */
+  private[everyui] def press(index: Int, held: Modifiers, tap: Boolean = false): Unit = if (index >= 0 && index < count) {
     val key = keyAt(index)
     val multi = selection.multiple()
     val now = Platform.ticks()
@@ -437,9 +445,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     }
     else {
       moveTo(index)
-      if (double || clickActivates()) activate(index)
+      if (double || activates(tap)) activate(index)
     }
   }
+
+  // whether a single click activates its row: as the app says, else a finger's tap, or any where there is no pointer
+  private def activates(finger: Boolean): Boolean = clickActivates().getOrElse(finger || !Platform.pointerSupport())
 
   // a press on words that can be selected: the rows in the order they read, for the selection a drag makes
   event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton && Pointer.onText) inReadingOrder())
@@ -449,7 +460,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   if (Platform.selectsText() && Platform.pointerSupport())
     event.pointer.move.attach(_ => if (shuffled) inReadingOrder())
   // (not the click a drag ends in)
-  event.click.attach(e => if (!DragDrop.justEnded && !caught) clickAt(e.x, e.y, e.modifiers))
+  event.click.attach(e => if (!DragDrop.justEnded && !caught) clickAt(e.x, e.y, e.modifiers, e.finger))
   // the secondary button: the row under it chosen (unless it already is) where it is, which is in view, and its menu
   // asked for; the page's own menu shows unless something answered (Pointer.menuAnswered)
   event.pointer.menu.attach { e =>
@@ -460,8 +471,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       current @= Some(keyAt(i))
       val dialogs = everyui.component.Modal.opened
       menuAt(i, e.x, e.y)
-      // a finger held where that put no menu up shows the row's tip instead
-      if (holdTips() && everyui.component.Modal.opened == dialogs && !Pointer.menuAnswered) tips.heldOn(i)
+      // a finger held where that put no menu up shows the row's tip instead (any hold, on a phone)
+      val tip = holdTips().getOrElse(e.finger || (Platform.touchSupport() && !Platform.pointerSupport()))
+      if (tip && everyui.component.Modal.opened == dialogs && !Pointer.menuAnswered) tips.heldOn(i)
     }
   }
   cursor @= "default"

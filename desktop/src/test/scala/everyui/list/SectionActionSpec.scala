@@ -158,7 +158,7 @@ class SectionActionSpec extends FxSpec {
         Thread.sleep(everyui.event.Pointer.hold.toLong * 2L)
         val collapsed = Var(Set("e"))
         val list = fx(made(style, collapsed))
-        fx(list.list.clickActivates @= touch)
+        fx(list.list.clickActivates @= Some(touch))
         onScreen(list) {
           fx(list.list.moveTo(at(list, "a1")))
           click(row(list, "#a").actionButton)

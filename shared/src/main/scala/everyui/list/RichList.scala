@@ -369,7 +369,7 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   }
 
   list.selection.multiple @= false
-  list.clickActivates @= true
+  list.clickActivates @= Some(true)
   // (an item's action is reached as a header's is: Right onto it, Left back)
   list.keys = (e: KeyEvent) => list.currentItem.filter(l => !l.empty && !e.shift && !e.ctrl && !e.meta && !e.alt)
     .flatMap { line =>

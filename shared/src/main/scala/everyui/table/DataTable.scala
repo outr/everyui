@@ -35,10 +35,10 @@ import reactify.*
   *   - Filter: past `filterAfter` rows a field over the table hides the rows without every word typed in it (in any
   *     cell, whatever the case), "12 of 60" beside it.
   *   - Choose: a click on a row chooses it (again, it is let go), Shift+click the rows from the last one chosen to it,
-  *     Ctrl or Command+click adds or takes away one; a tap on a touch screen adds or takes away. Ctrl or Command+C
-  *     copies the rows chosen (or, with none, the cell the keys are on) as tab-separated lines under the header, so they
-  *     paste into a spreadsheet; where the page has words selected with the pointer (a drag across cells, on the web)
-  *     those are copied instead, as the browser copies them.
+  *     Ctrl or Command+click adds or takes away one; a finger's tap adds or takes away, on any device. Ctrl or
+  *     Command+C copies the rows chosen (or, with none, the cell the keys are on) as tab-separated lines under the
+  *     header, so they paste into a spreadsheet; where the page has words selected with the pointer (a drag across
+  *     cells, on the web) those are copied instead, as the browser copies them.
   *   - Copy and export: the tools' button (⋮), shown while the pointer is over the table or the focus is in it, and
   *     always on a touch screen, copies the rows showing (sorted and filtered) as tab-separated lines or as Markdown,
   *     or hands them over as a CSV or a Markdown file (`Files.download`: the browser's downloads on the web, the save
@@ -621,7 +621,9 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     else if (!Platform.selectsText() || Platform.selectedText().isEmpty) {
       if (e.shift && anchor.nonEmpty) chooseTo(row)
       else {
-        if (e.primary || touch) selection @= (if (selection().contains(row)) selection() - row else selection() + row)
+        // a finger's tap adds or takes away, as Ctrl or Command does, on a touch laptop as on a phone
+        val toggles = e.primary || e.finger || touch
+        if (toggles) selection @= (if (selection().contains(row)) selection() - row else selection() + row)
         else selection @= (if (selection() == Set(row)) Set.empty else Set(row))
         anchor = Some(row)
       }

@@ -99,7 +99,7 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   list.activated.attach(choose)
   // one click chooses, with a mouse too: it is a choice to make and be done with, not a list to pick rows in (where a
   // click only puts the cursor on a row and a double click opens it)
-  list.clickActivates @= true
+  list.clickActivates @= Some(true)
   matches.attach(_ => narrow())
   segment.attach(_ => narrow())
   if (segments.isEmpty) {

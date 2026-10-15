@@ -1799,6 +1799,9 @@ object Platform {
     * under it, multiplied. Under a transform a node's box on the screen is scaled with it, and so is read over it
     * (`getWidth`); a pointer's place too. */
   def setUiScale(factor: Double): Unit = {
+    // and to the page's stylesheets, for what a guest draws over the page outside the app's root (Monaco's tooltips
+    // and menus)
+    dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("--everyui-ui-scale", factor.toString)
     val app = dom.document.getElementById("app").asInstanceOf[html.Element]
     if (app != null) {
       if (factor == 1.0) {
@@ -1911,12 +1914,19 @@ object Platform {
   /** Whether the pointer event being reported is a finger on the screen (`PointerEvent.finger`): its pointer type,
     * whatever the device has besides (a touch laptop, a tablet with a trackpad, a browser's phone emulation). */
   def pointerFinger(): Boolean = finger
+  // whether the last press heard was a finger's
+  private var pressedByFinger = false
 
-  /** A pointer event about to be heard: its button, the modifiers held with it, and whether a finger made it. */
+  /** A pointer event about to be heard: its button, the modifiers held with it, and whether a finger made it. A click
+    * or a context menu is a pointer event of its own in today's browsers, saying what made it (none, from the keys);
+    * a browser where it is a plain mouse event says nothing, and it is taken to be the last press's: a tap's click is
+    * a finger's. */
   private[render] def pointed(e: dom.MouseEvent): Unit = {
     held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
     button = if (e.button == 1 || e.button == 2) e.button else 0
-    finger = e.asInstanceOf[js.Dynamic].pointerType.asInstanceOf[js.UndefOr[String]].contains("touch")
+    val kind = e.asInstanceOf[js.Dynamic].pointerType.asInstanceOf[js.UndefOr[String]]
+    finger = kind.map(_ == "touch").getOrElse(pressedByFinger)
+    if (e.`type` == "pointerdown") pressedByFinger = finger
   }
   private var embedded = ""
 

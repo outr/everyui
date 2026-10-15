@@ -358,8 +358,9 @@ class RenderNode(val fx: Node) {
     fx.setPickOnBounds(true)
     fx.addEventHandler(javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
       (e: javafx.scene.input.ContextMenuEvent) => {
+        // a finger's, where the press it came of was (a touch held), never the menu key's
         Platform.pointed(2, Platform.modifiers().ctrl, Platform.modifiers().meta, Platform.modifiers().alt,
-          Platform.modifiers().shift)
+          Platform.modifiers().shift, !e.isKeyboardTrigger && Platform.pointerFinger())
         f(Host.unscaled(e.getSceneX), Host.unscaled(e.getSceneY))
       })
   }

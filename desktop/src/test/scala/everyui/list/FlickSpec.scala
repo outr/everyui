@@ -108,7 +108,7 @@ class FlickSpec extends FxSpec {
       val l = list()
       var activated: List[String] = Nil
       fx {
-        l.clickActivates @= true
+        l.clickActivates @= Some(true)
         l.activated.attach(s => activated = activated :+ s)
       }
       onScreen(l, glides = true) {
@@ -132,7 +132,7 @@ class FlickSpec extends FxSpec {
       val l = list()
       var activated: List[String] = Nil
       fx {
-        l.clickActivates @= true
+        l.clickActivates @= Some(true)
         l.activated.attach(s => activated = activated :+ s)
       }
       onScreen(l, glides = true) {
@@ -150,7 +150,7 @@ class FlickSpec extends FxSpec {
       val l = list()
       var activated: List[String] = Nil
       fx {
-        l.clickActivates @= true
+        l.clickActivates @= Some(true)
         l.activated.attach(s => activated = activated :+ s)
       }
       onScreen(l) {

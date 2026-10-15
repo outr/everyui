@@ -216,7 +216,7 @@ class RowTipSpec extends FxSpec {
     "show at once for a finger held on a row where that opens no menu, for a while, and not where it opens one" in {
       val list = fx(made(20))
       onScreen(list) {
-        fx(list.holdTips @= true)
+        fx(list.holdTips @= Some(true))
         hold(list, 4)
         fx(shownFor(rowOf(list, 4))) shouldBe true
         fx(words) shouldBe Some(path(4))
@@ -232,7 +232,7 @@ class RowTipSpec extends FxSpec {
         fx(Tooltip.shownFor) shouldBe None
         fx(Modal.close())
         // where a finger is not what holds (the secondary button), no tip either
-        fx(list.holdTips @= false)
+        fx(list.holdTips @= Some(false))
         menus = false
         hold(list, 6)
         Thread.sleep(150L)

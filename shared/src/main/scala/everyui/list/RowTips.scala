@@ -21,11 +21,12 @@ private[list] class RowTips[T](list: VirtualList[T]) {
     watched = row :: watched
     row.accessibleDescription := row.tip().getOrElse("")
     if (Platform.pointerSupport()) {
-      row.event.pointer.enter.attach { _ =>
+      // (a finger coming onto a row, on a touch laptop, is no pointer resting on it: a finger held shows its tip)
+      row.event.pointer.enter.attach(e => if (!e.finger) {
         pointedAt = Some(row)
         byCursor = false
         Tooltip.askFor(row, () => row.tip())
-      }
+      })
       row.event.pointer.leave.attach { _ =>
         if (pointedAt.exists(_ eq row)) pointedAt = None
         if (!byCursor) Tooltip.hideFor(row)
