@@ -3,6 +3,7 @@ package everyui.markdown
 import everyui.component.{Component, Container, MaterialIconView, TextView}
 import everyui.component.types.{Semantics, TextDirection}
 import everyui.font.MaterialIcon
+import everyui.i18n.Words
 import everyui.layout.VerticalLayout
 import everyui.theme.Theme
 import reactify.*
@@ -50,7 +51,7 @@ class ListView(list: MdBlock.BulletList, ctx: MarkdownContext, width: => Double,
       val box = new MaterialIconView(if (done) MaterialIcon.CheckBox else MaterialIcon.CheckBoxOutlineBlank,
         style.points * 1.15)
       box.color := (if (done) Theme.accent() else Theme.muted())
-      box.semantics @= Semantics("checkbox", label = if (done) "done" else "not done")
+      box.semantics @= Semantics("checkbox", label = Words(if (done) "markdown.done" else "markdown.notDone"))
       box.position.top @= style.points * 0.14
       place(box, style.indent - box.size.width() - 5.0)
       box

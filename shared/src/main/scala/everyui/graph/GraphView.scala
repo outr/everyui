@@ -5,6 +5,7 @@ import everyui.component.Component
 import everyui.component.types.Semantics
 import everyui.draw.{Drawing, Figure, Hit, Path, PathOp}
 import everyui.event.{Key, KeyEvent, Keys}
+import everyui.i18n.Words
 import everyui.render.Platform
 import everyui.spatial.{Rect, Size}
 import everyui.task.TaskInstance
@@ -114,7 +115,7 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
     * together) has plain lines. */
   val directed: Var[Boolean] = own(Var(true))
   /** What the graph is, to whatever reads the screen. */
-  val description: Var[String] = own(Var("Graph"))
+  val description: Var[String] = own(Var(Words("graph.graph")))
 
   /** How the nodes are laid out: in layers along the flow, or where forces settle them. */
   val mode: Var[GraphMode] = own(Var(GraphMode.Layered))

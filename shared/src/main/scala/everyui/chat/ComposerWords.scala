@@ -1,8 +1,13 @@
 package everyui.chat
 
-/** What a [[Composer]] says, for a screen reader and on its controls, in English unless an app passes its own. */
-case class ComposerWords(send: String = "Send", stop: String = "Stop", attach: String = "Attach files",
-                         more: String = "More", remove: String = "Remove", drop: String = "Drop files to attach",
-                         suggestion: String = "Suggestion", accept: String = "Tab or Right arrow accepts it",
-                         tooLarge: String = "is too large to attach", notAccepted: String = "cannot be attached here",
-                         unavailable: String = "unavailable")
+import everyui.i18n.Words
+
+/** What a [[Composer]] says, for a screen reader and on its controls: by default in the language in use (Words'
+  * "composer.send", … in its eleven languages), unless an app passes its own. */
+case class ComposerWords(send: String = Words("composer.send"), stop: String = Words("composer.stop"),
+                         attach: String = Words("composer.attach"), more: String = Words("composer.more"),
+                         remove: String = Words("composer.remove"), drop: String = Words("composer.drop"),
+                         suggestion: String = Words("composer.suggestion"), accept: String = Words("composer.accept"),
+                         tooLarge: String = Words("composer.tooLarge"),
+                         notAccepted: String = Words("composer.notAccepted"),
+                         unavailable: String = Words("composer.unavailable"))

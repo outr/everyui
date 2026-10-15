@@ -545,11 +545,6 @@ object RichList {
       (if (look.live) look.liveLabel.filter(_.nonEmpty).toList else Nil))
       .mkString(", ")
 
-  def moreLabel: String = word("list.more", "More")
-  def unreadLabel: String = word("list.unread", "unread")
-
-  private def word(key: String, english: String): String = {
-    val said = Words(key)
-    if (said == key) english else said
-  }
+  def moreLabel: String = Words("list.more")
+  def unreadLabel: String = Words("list.unread")
 }

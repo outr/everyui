@@ -65,12 +65,12 @@ object ChatTime {
       else DateText.mediumDate(year, month, date)
     }
 
-  /** A span of `millis` as "12s", "1m 9s" or "2h 5m". */
+  /** A span of `millis` as "12s", "1m 9s" or "2h 5m", in the language in use. */
   def span(millis: Long): String = {
     val seconds = math.max(0L, millis) / 1000L
-    if (seconds < 60L) seconds.toString + "s"
-    else if (seconds < 3600L) (seconds / 60L).toString + "m " + (seconds % 60L).toString + "s"
-    else (seconds / 3600L).toString + "h " + ((seconds % 3600L) / 60L).toString + "m"
+    if (seconds < 60L) ChatWords.spanSeconds(seconds)
+    else if (seconds < 3600L) ChatWords.spanMinutes(seconds / 60L, seconds % 60L)
+    else ChatWords.spanHours(seconds / 3600L, (seconds % 3600L) / 60L)
   }
 
   /** The weekday of a date, 1 (Monday) to 7, by its days from 1970-01-01 (a Thursday). */

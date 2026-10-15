@@ -2,6 +2,7 @@ package everyui.color
 
 import everyui.Color
 import everyui.component.{Component, Container, TextInput, TextView}
+import everyui.i18n.Words
 import everyui.layout.{FlowLayout, HorizontalLayout, VerticalLayout}
 import everyui.theme.Theme
 import reactify.*
@@ -156,12 +157,13 @@ object ColorPicker {
   /** How tall its fields are (TextInput's height). */
   val fieldHeight: Double = 56.0
 
-  val hueLabel: String = "Hue"
-  val saturationLabel: String = "Saturation"
-  val valueLabel: String = "Brightness"
-  val alphaLabel: String = "Opacity"
-  val hexLabel: String = "Hex"
-  val recentLabel: String = "Recent"
+  /** What its parts are called, in the language in use (Words' "color.hue", …). */
+  def hueLabel: String = Words("color.hue")
+  def saturationLabel: String = Words("color.saturation")
+  def valueLabel: String = Words("color.brightness")
+  def alphaLabel: String = Words("color.opacity")
+  def hexLabel: String = Words("color.hex")
+  def recentLabel: String = Words("color.recent")
 
   /** The colours chosen lately, the latest first: every picker's unless it is given its own. Save and restore it as
     * the app likes (everyui.store). */

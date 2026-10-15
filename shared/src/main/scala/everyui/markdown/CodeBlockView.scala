@@ -3,6 +3,7 @@ package everyui.markdown
 import everyui.component.{Container, IconButton, RichText, ScrollContainer, TextView}
 import everyui.component.types.{Semantics, TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
+import everyui.i18n.Words
 import everyui.kit.Highlight
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -20,7 +21,7 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
   private val header = if (language.nonEmpty || Platform.clipboard()) 30.0 else 0.0
 
   private val name = TextView(language, points * 0.85, Theme.muted())
-  private val copy = new IconButton(MaterialIcon.ContentCopy, "Copy", () => Platform.copyText(code()))
+  private val copy = new IconButton(MaterialIcon.ContentCopy, Words("markdown.copy"), () => Platform.copyText(code()))
   private val text = new RichText {
     font.family @= "Roboto Mono"
     font.size @= points

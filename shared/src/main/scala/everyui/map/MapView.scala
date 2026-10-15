@@ -3,6 +3,7 @@ package everyui.map
 import everyui.{Color, Shadow}
 import everyui.component.{Component, Container, IconButton, Link, TextView}
 import everyui.font.MaterialIcon
+import everyui.i18n.Words
 import everyui.map.MapFeature.{ClusterFeature, ShapeFeature}
 import everyui.render.Platform
 import everyui.spatial.Rect
@@ -117,8 +118,8 @@ class MapView extends Container {
   private var legendShown: Option[Component] = None
   private var creditLink: Option[Link] = None
 
-  private val zoomIn = new IconButton(MaterialIcon.Add, "Zoom in", () => zoomBy(1.0))
-  private val zoomOut = new IconButton(MaterialIcon.Remove, "Zoom out", () => zoomBy(-1.0))
+  private val zoomIn = new IconButton(MaterialIcon.Add, Words("map.zoomIn"), () => zoomBy(1.0))
+  private val zoomOut = new IconButton(MaterialIcon.Remove, Words("map.zoomOut"), () => zoomBy(-1.0))
   private val buttons = new Container {
     size.width @= 36.0
     size.height @= 68.0
