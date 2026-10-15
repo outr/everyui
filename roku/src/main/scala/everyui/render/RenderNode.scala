@@ -828,6 +828,15 @@ object Platform {
   def watchReduceMotion(f: Boolean => Unit): Unit = ()
   def announce(words: String): Unit = ()
   def setTitle(title: String): Unit = ()
+  /** A count of what is new on the app's icon: no badge is shown here. */
+  def setBadge(count: Int): Unit = ()
+  /** Whether the person lets the app show notifications (`showNotice`): there are none here, so never. */
+  def notificationPermission: reactify.Val[everyui.Permission] = noNotices
+  private val noNotices = reactify.Var[everyui.Permission](everyui.Permission.Refused)
+  /** Asking for notifications: there is nothing to ask for here. */
+  def askNotificationPermission(): Unit = ()
+  /** A notification: none is shown here. */
+  def showNotice(notice: everyui.push.Notice, onClick: () => Unit): Unit = ()
   /** Whether copyText reaches a clipboard: a channel has none, so a caller offers something else or nothing. */
   def clipboard(): Boolean = false
   /** Whether people select text with a pointer (`Component.selectable`): not here. */

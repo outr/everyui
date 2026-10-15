@@ -49,5 +49,15 @@ class WebAppSpec extends AnyWordSpec with Matchers {
       worker should include("addEventListener('pushsubscriptionchange'")
       worker should include("everyui: 'subscription'")
     }
+
+    "tell a page its window's id, and hand a click on the page's own notification back to the window that showed it" in {
+      val worker = read(new File(out, "sw.js"))
+      worker should include("e.data.everyui === 'client'")
+      worker should include("id: e.source.id")
+      worker should include("data.everyui === 'notice') return notice(e, data)")
+      worker should include("self.clients.get(data.client)")
+      worker should include("tell(shower, { everyui: 'notice', key: data.key }); return shower.focus();")
+      worker should include("ours.forEach(c => tell(c, { everyui: 'notice', key: data.key }))")
+    }
   }
 }

@@ -1376,6 +1376,19 @@ object Platform {
   def navigate(url: String): Unit = dom.window.location.assign(url)
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
+  /** A count of what is new (the unread), on the tab's icon: a red circle with the count over the page's own icon
+    * ("9+" over 9), and the page's icon back as it was at 0; an installed app's badge too, where the browser has one
+    * (`FaviconBadge`). The app keeps the count; this only shows it. */
+  def setBadge(count: Int): Unit = FaviconBadge.set(count)
+  /** Whether the person lets the app show notifications (`showNotice`): followed as they change it in the browser. */
+  def notificationPermission: reactify.Val[everyui.Permission] = Notices.permission
+  /** The browser's prompt for notifications. Only from a click or a key the person made (never as the page loads), or
+    * the browser refuses without asking; `notificationPermission` changes with the answer. */
+  def askNotificationPermission(): Unit = Notices.ask()
+  /** `notice` shown as a notification, through the page's service worker where it has one, so it shows while the tab
+    * is in the background; nothing while the permission is not given, or while the person is looking at the page and
+    * `notice.onlyWhenHidden`. A click on it brings the app's window to the front and runs `onClick` (`Notices`). */
+  def showNotice(notice: everyui.push.Notice, onClick: () => Unit): Unit = Notices.show(notice, onClick)
 
   /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): the page told `prefers-reduced-motion`. */
   def reduceMotion(): Boolean = dom.window.matchMedia(lessMotion).matches

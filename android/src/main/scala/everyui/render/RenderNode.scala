@@ -1842,6 +1842,18 @@ object Platform {
     val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
     if (on) Host.activity.getWindow.addFlags(flag) else Host.activity.getWindow.clearFlags(flag)
   }
+  /** A count of what is new on the app's icon: none set here, a launcher showing a dot or a count for the app's
+    * notifications (`showNotice`) on its own. */
+  def setBadge(count: Int): Unit = ()
+  /** Whether the person lets the app show notifications (`showNotice`): read again as the app comes back to the front.
+    * Refused on a television, which shows none. */
+  def notificationPermission: reactify.Val[everyui.Permission] = Notices.permission
+  /** The system's prompt for notifications (Android 13 and later; before, they are on unless the person turned them
+    * off); best from something the person did. `notificationPermission` changes with the answer. */
+  def askNotificationPermission(): Unit = Notices.ask()
+  /** `notice` posted as a notification; nothing while the permission is not given, or while the app is in front and
+    * `notice.onlyWhenHidden`. A tap on it brings the app to the front and runs `onClick` (`Notices`). */
+  def showNotice(notice: everyui.push.Notice, onClick: () => Unit): Unit = Notices.show(notice, onClick)
 
   /** Whether copyText reaches a clipboard: it does. */
   def clipboard(): Boolean = true

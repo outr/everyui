@@ -2424,6 +2424,57 @@ while it lasts) and send it, so the server always has the current one. `Push.uns
 
 `demo=platform` allows notifications, subscribes (`vapid=<public key>`), and shows what arrives or is tapped.
 
+## The app's own notifications and the unread badge (`Platform.showNotice`, `Platform.setBadge`)
+
+A mail or chat app tells of what is new while the person is elsewhere: a notification it shows itself, from what it
+heard over its own connection (no push service, unlike [Push notifications](#push-notifications-everyuipush)), and a
+count of the unread on its icon. The app keeps the count and decides what to say; EveryUI shows it.
+
+```scala
+import everyui.Permission
+import everyui.push.Notice
+import everyui.render.Platform
+
+Platform.setBadge(unread)                                   // 0 clears it
+val allow = new Button("Allow notifications", () => Platform.askNotificationPermission())  // from a click only
+Platform.notificationPermission.attachAndFire(p => allow.visible @= p == Permission.NotAsked)
+Platform.showNotice(Notice(sender, preview, tag = "conversation:" + id), () => open(id))
+```
+
+- `setBadge(count)`: on the web the tab's icon is drawn again with a red circle and the count over its top-right
+  corner ("9+" over 9), from the page's own icon (`<link rel="icon">`, an SVG one where the page has one, PNG or any
+  other the browser draws); an icon on another origin that does not allow it to be read, or none, gives the circle
+  alone. At 0 the page's own icon links are put back, the same elements where they stood. An installed app's badge
+  (`navigator.setAppBadge`, `clearAppBadge`) is set too where the browser has one. On a Mac's desktop app, the Dock
+  icon's badge; elsewhere (Windows, Linux, Android, a Roku, an Apple TV) nothing: an Android launcher shows a dot or
+  count for the app's notifications on its own. The title's "(3)" stays the app's (`setTitle`).
+- `notificationPermission`: a `Val[everyui.Permission]`, `Granted`, `Refused` or `NotAsked`, followed as the person
+  changes it in the browser's settings (the Permissions API's change, and read again whenever the page comes back into
+  sight), or on Android as the app comes back to the front. `Refused` where there are none: the desktop, a Roku, an
+  Apple TV, an Android TV, a browser without the Notifications API.
+- `askNotificationPermission()`: the browser's prompt, and the Val changes with the answer. Call it only from a click
+  or a key the person made, ideally once they know what the notifications are for; a browser refuses a prompt the page
+  asks for on its own, and some stop asking. Android 13 and later show the system's prompt (`POST_NOTIFICATIONS` in the
+  manifest); before, notifications are on unless the person turned them off.
+- `showNotice(notice, onClick)`: a `Notice(title, body = "", tag = "", icon = "", onlyWhenHidden = true)`. Nothing is
+  shown without the permission. `tag` replaces an earlier notification with the same tag (one per conversation), and
+  the click of the latest is the one kept; "" stands each on its own. `icon` is a picture's URL ("" for the
+  browser's or app's own). `onlyWhenHidden` (the default) shows it only while the person is not looking: on the web
+  while the page is hidden or another window has the focus, on Android while the app is not in front. A click brings
+  the app's window to the front and runs `onClick`.
+
+  On the web it is shown through the page's service worker where there is one (`WebApp.write`'s, [An installable web
+  app](#an-installable-web-app)), so it shows and answers while the tab is in the background; otherwise as the page's
+  own `Notification`. The worker hands a click back to the window that showed it (the page asks the worker which it
+  is), or, for a page of an older worker or one it cannot find, tells every window of the app and focuses the one most
+  recently in front; with none open it opens the app, and that click runs nothing, the page that asked being gone. A
+  page served with an older `sw.js` still shows notices, but its clicks only focus a window: rebuild with this
+  `WebApp.write`. On Android it is posted on the channel push uses ("everyui.push", "Notifications"), and a tap on one
+  after the app was closed only opens it. The desktop, a Roku and an Apple TV show nothing.
+
+No flashing title: a changing tab title is the app's to do, if it wants one. `demo=platform` allows notices, shows one
+now or while away (tagged, so each replaces the last), and counts unread on the badge.
+
 ## Location (`everyui.location`)
 
 `Location.current()` answers where the device is, once, and `Location.watch(distance)` follows it as it moves until

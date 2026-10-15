@@ -52,7 +52,11 @@ object WebApp {
     * own way, and otherwise is shown as a notification; a tap on one focuses a window of the app and tells it
     * (`everyui.push.Push.opened`, and the app goes to the path), or opens the app at the path when none is open. A path
     * off the app's own origin opens the app's start instead. A subscription the browser renews is subscribed again
-    * with the same key and handed to the open windows (`everyui.push.Push.tokens`). */
+    * with the same key and handed to the open windows (`everyui.push.Push.tokens`). A notification a page showed itself
+    * (`Platform.showNotice`) is answered by the page: a click on it focuses the window that showed it, which the page
+    * learnt by asking the worker its id (`{everyui: "client"}`), and hands it the click (`{everyui: "notice", key}`);
+    * where that window is not known, every window of the app is told, the one most recently in front focused, and with
+    * none open the app is opened. */
   def worker(version: String): String =
     s"""const CACHE = 'everyui-$version';
        |self.addEventListener('install', e => e.waitUntil(
@@ -88,8 +92,21 @@ object WebApp {
        |    return self.registration.showNotification(message.title, { body: message.body, data: message });
        |  }));
        |});
+       |self.addEventListener('message', e => {
+       |  if (e.data && e.data.everyui === 'client' && e.source) tell(e.source, { everyui: 'client', id: e.source.id });
+       |});
+       |const notice = (e, data) => e.waitUntil(
+       |  (data.client ? self.clients.get(data.client) : Promise.resolve(undefined)).then(shower => windows().then(list => {
+       |    const ours = list.filter(c => c.url.startsWith(self.registration.scope));
+       |    if (shower) { tell(shower, { everyui: 'notice', key: data.key }); return shower.focus(); }
+       |    if (!ours.length) return self.clients.openWindow(self.registration.scope);
+       |    ours.forEach(c => tell(c, { everyui: 'notice', key: data.key }));
+       |    return ours[0].focus();
+       |  })));
        |self.addEventListener('notificationclick', e => {
        |  e.notification.close();
+       |  const data = e.notification.data;
+       |  if (data && data.everyui === 'notice') return notice(e, data);
        |  const message = e.notification.data || { title: e.notification.title, body: e.notification.body, path: null };
        |  let url = new URL(message.path || './', self.registration.scope);
        |  if (url.origin !== self.location.origin) url = new URL('./', self.registration.scope);

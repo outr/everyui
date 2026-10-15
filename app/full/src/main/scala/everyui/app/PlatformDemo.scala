@@ -7,7 +7,7 @@ import everyui.location.{Location, LocationAnswer, LocationWatch}
 import everyui.clipboard.Clipboard
 import everyui.file.{Files, SaveResult}
 import everyui.passkey.{PasskeyResult, Passkeys}
-import everyui.push.{Push, PushAnswer}
+import everyui.push.{Notice, Push, PushAnswer}
 import everyui.{Permission, PlatformKind}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -19,7 +19,9 @@ import reactify.*
   * a passkey made and signed in with, by a click or from the username field's autofill, with options made here as a
   * server would (`rp=<domain>` names the site, which Android needs) and the credential's JSON logged whole; push
   * notifications, allowed, subscribed to with `vapid=<public key>` (a key of the demo's own otherwise, which nothing
-  * can send with), and what arrives while open or is tapped; where the device is, once and followed 25 m at a time.
+  * can send with), and what arrives while open or is tapped; the app's own notices (tagged "demo", so each replaces the
+  * last; one "while away" shows only while the app is out of sight) and its unread badge; where the device is, once and
+  * followed 25 m at a time.
   * Each section says whether the platform has it.
   * `theme=light` shows the light palette. */
 class PlatformDemo {
@@ -31,6 +33,9 @@ class PlatformDemo {
   private val autofills: Var[String] = Var("")
   private val pushed: Var[String] = Var("Not subscribed")
   private val allowed: Var[String] = Var("")
+  private val noticed: Var[String] = Var("No notice shown yet")
+  private val noticeAllowed: Var[String] = Var("")
+  private var unread = 0
   private val located: Var[String] = Var("Not asked yet")
   private val followed: Var[String] = Var("")
   private var following: Option[LocationWatch] = None
@@ -69,6 +74,13 @@ class PlatformDemo {
         }
       }.start(), ButtonStyle.Filled),
       new Button("Unsubscribe", () => Push.unsubscribe().map(_ => tell(pushed, "push unsubscribe", "Unsubscribed")).start())),
+    section("Notices and the unread badge", Platform.kind == PlatformKind.Web ||
+      (Platform.kind == PlatformKind.Android && !Platform.remoteNavigation()), noticed, noticeAllowed)(
+      new Button("Allow notices", () => Platform.askNotificationPermission()),
+      new Button("Notice now", () => notice(onlyWhenHidden = false), ButtonStyle.Filled),
+      new Button("Notice while away", () => notice(onlyWhenHidden = true)),
+      new Button("One more unread", () => badge(unread + 1)),
+      new Button("All read", () => badge(0))),
     section("Location", Location.supported, located, followed)(
       new Button("Where am I?", () => Location.current().map(a => tell(located, "location current", where(a))).start(),
         ButtonStyle.Filled),
@@ -85,6 +97,7 @@ class PlatformDemo {
     m.path.map(p => " (" + p + ")").getOrElse("")))
   Push.opened.attach(m => tell(pushed, "push opened", "Tapped: " + m.title + m.path.map(p => " (" + p + ")").getOrElse("")))
   Push.tokens.attach(t => tell(pushed, "push renewed", "Renewed (" + t.service + "): " + t.value.take(90) + "…"))
+  Platform.notificationPermission.attachAndFire(p => noticeAllowed @= "notices " + allowedWords(p))
   permission()
 
   private val scroll = new ScrollContainer {
@@ -190,6 +203,23 @@ class PlatformDemo {
     allowed @= "notifications " + (if (p == Permission.Granted) "allowed" else if (p == Permission.Refused) "refused"
       else "not asked for yet")
   }.start()
+
+  private def allowedWords(p: Permission): String =
+    if (p == Permission.Granted) "allowed" else if (p == Permission.Refused) "refused" else "not asked for yet"
+
+  /** A notice tagged "demo", so each replaces the last; a click on it is said. */
+  private def notice(onlyWhenHidden: Boolean): Unit = {
+    val time = Platform.localDateTime(System.currentTimeMillis())
+    Platform.showNotice(Notice("A notice from EveryUI", "Shown at " + time, tag = "demo", onlyWhenHidden = onlyWhenHidden),
+      () => tell(noticed, "notice clicked", "Clicked the notice shown at " + time))
+    tell(noticed, "notice shown", "Asked to show one at " + time + (if (onlyWhenHidden) ", if the app is out of sight" else ""))
+  }
+
+  private def badge(count: Int): Unit = {
+    unread = count
+    Platform.setBadge(count)
+    tell(noticed, "badge", count.toString + " unread")
+  }
 
   private def save(): Unit = {
     val words = "Notes from EveryUI\nsaved at " + Platform.localDateTime(System.currentTimeMillis()) + "\n"

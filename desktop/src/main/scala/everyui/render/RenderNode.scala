@@ -1175,6 +1175,16 @@ object Platform {
   def announce(words: String): Unit = ()
   /** A desktop keeps its own screen timing. */
   def keepAwake(on: Boolean): Unit = ()
+  /** A count of what is new on the app's icon: on a Mac its Dock icon's badge (`java.awt.Taskbar`), "9+" over 9;
+    * elsewhere none, a window's taskbar having no simple one. */
+  def setBadge(count: Int): Unit = DockBadge.set(count)
+  /** Whether the person lets the app show notifications (`showNotice`): there are none here, so never. */
+  def notificationPermission: reactify.Val[everyui.Permission] = noNotices
+  private val noNotices = reactify.Var[everyui.Permission](everyui.Permission.Refused)
+  /** Asking for notifications: there is nothing to ask for here. */
+  def askNotificationPermission(): Unit = ()
+  /** A notification: none is shown here. */
+  def showNotice(notice: everyui.push.Notice, onClick: () => Unit): Unit = ()
   /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): the root multiplied by a flat
     * colour of the three, or left alone. */
   def tint(red: Double, green: Double, blue: Double): Boolean = {
