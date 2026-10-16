@@ -9,7 +9,7 @@ import everyui.map.MapFeature.{ClusterFeature, MarkerFeature}
   * of each square of the world (`MapCluster.cell` pixels at the whole zoom below the view's) that has enough of them
   * are drawn as one. */
 private[map] class MarkerLayer(map: MapView) {
-  val layer: Container = new Container
+  val layer: Container = everyui.layout.Overlaps.allow(new Container)
 
   private var singles: Vector[MarkerSpot] = Vector.empty
   // the components made, by their spots' ids, those out of view (oldest first), and what the last frame drew

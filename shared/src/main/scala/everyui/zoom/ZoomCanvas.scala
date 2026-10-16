@@ -85,11 +85,11 @@ class ZoomCanvas extends Container {
 
   /** What a canvas built on this one draws itself, over the items and under the focus ring, placed in the canvas's
     * own pixels as the view moves: a map's tiles, shapes and markers. */
-  val layer: Container = new Container
+  val layer: Container = everyui.layout.Overlaps.allow(new Container)
 
   // what scales, laid out in the world's units under one transform; and what is laid out at its size on the screen
-  private val world = new Container
-  private val flat = new Container
+  private val world = everyui.layout.Overlaps.allow(new Container)
+  private val flat = everyui.layout.Overlaps.allow(new Container)
   private val ring = new Container {
     borderWidth @= 2.0
     borderColor := Theme.accent()

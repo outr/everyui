@@ -496,6 +496,55 @@ held(); light.release()                           // done
 
 The example's `demo=coach` walks the same stops (`probe=1` walks them itself).
 
+## Rows and columns that fill the rest (`Component.flex`, `Fill`, `Panel`)
+
+`Column` and `Row` (`VerticalLayout`, `HorizontalLayout`) put each child at its own size. A child with a `flex` above
+0 is given the room left instead: where the column's height (the row's width) is its own, set or bound to what it sits
+in, the other children keep their sizes and the filling child takes what they leave, less the padding and the gaps. So
+a header that grows (a filter wrapped to a second line, a taller field) pushes the body down and shrinks it, and the two
+never overlap; nothing is worked out from a guessed height. It is laid out again as the column is resized, as any child's
+size changes and as a `flex` changes.
+
+```scala
+import everyui.component.{Fill, Panel}
+
+// a filter over a tree that fills the rest of the panel
+val panel = Panel(filter, tree, spacing = 8.0, padding = 12.0)    // = Column(8.0, 12.0)(filter, Fill(tree))
+panel.size.width := host.size.width()
+panel.size.height := host.size.height()
+filter.size.width := panel.size.width() - 24.0
+tree.size.width := panel.size.width() - 24.0
+```
+
+- `Fill(child, flex = 1.0)` sets `child.flex` and gives the child back, for use inside `Column(...)(...)` and
+  `Row(...)(...)`. Several filling children share the room in proportion to their `flex` (1 and 2 take a third and two
+  thirds). None is made smaller than nothing: where the others take all the room, a filling child has none.
+- The layout sets the filling child's size along the column (or row), replacing whatever it was bound to. Its size
+  across is its own, as for any child: bind it.
+- A column sized to its children (`Column(...)` given no height, or a height bound to its children's) has no room left
+  over to give, and its height would follow the very child it sized: a child with a `flex` keeps its own size there.
+  Give the column its height to make the child fill.
+- With no `flex` anywhere, rows and columns lay out exactly as before.
+- A right-to-left row mirrors as it always has, the filling child included.
+
+### Seeing overlaps while building (`everyui.layout.Overlaps`)
+
+`Overlaps.warn @= true` (off by default, and free while off) looks the screen over after each layout pass and every
+second, and says once, through `scribe.warn`, each pair of siblings drawn over each other, with their kinds, boxes and
+where they are; again only if their boxes change:
+
+```
+WARN overlap: TextArea (16,16 388x58) and VirtualList (16,62 388x622) in ProvidersPanel < Container < ui$
+```
+
+It reports any overlap between neighbours in a row, a column, a flow or a grid, and, among children an app places by
+hand (a plain `Container`, or a kind of the app's own), two that overlap in part, neither wholly inside the other (a
+picture behind words is layered on purpose). It leaves out what is hidden or has no size, what is marked as layered on
+purpose (`Overlaps.allow(c)`: then neither `c` against its siblings nor the children it places by hand against one
+another; a dialog's sheet, a map's pins and a graph's canvas are marked), and the parts EveryUI's own components place
+by hand (a list's scrollbar over its rows). On a Roku only rows, columns, flows and grids are looked at.
+`Overlaps.check(root)` looks now and answers the pairs. The example app turns it on with `overlaps=1` on the launch.
+
 ## General components
 
 Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:

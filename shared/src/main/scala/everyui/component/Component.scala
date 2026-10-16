@@ -180,6 +180,27 @@ class Component(val node: RenderNode) {
   lazy val whiteSpace: Prop[WhiteSpace] =
     own(new Prop[WhiteSpace](WhiteSpace.NoWrap, ws => node.setWhiteSpace(ws.value), () => measure.trigger()))
 
+  // whether `flex` has been made: one never made is 0, and a layout looking at every child's need not make it
+  private var flexMade = false
+  /** Its share of the room left in the row or column it is in (`HorizontalLayout`, `VerticalLayout`). At 0, the
+    * default, it keeps its own size. Above 0, where the row's width or the column's height is its own (set, or bound to
+    * what it sits in, rather than following what it holds), the others keep their sizes and this is given what they
+    * leave, less the padding and the gaps: a body under a header, as tall as the panel has room for below it, that
+    * shrinks as the header grows. Children with a `flex` share the room in proportion (1 and 2 take a third and two
+    * thirds), and none is made smaller than nothing: where the others leave no room, it has none. Where the row or
+    * column is sized to what it holds, there is nothing left over, and this keeps the size it has. The layout sets its
+    * size along the row or column, replacing what it was bound to; across it, its size is its own as before. */
+  lazy val flex: Var[Double] = {
+    flexMade = true
+    val share = own(Var(0.0))
+    share.attach(_ => parent().foreach(_.requestLayout()))
+    share
+  }
+  /** Its `flex`, 0 where it has none, without making one. */
+  private[everyui] def flexShare: Double = if (flexMade) flex() else 0.0
+  /** Whether it is meant to lie over what is beside it (`everyui.layout.Overlaps.allow`): a dialog's sheet, a badge. */
+  private[everyui] var overlays: Boolean = false
+
   lazy val effectiveWidth: Val[Double] = own(Val(size.width()))
   lazy val effectiveHeight: Val[Double] = own(Val(size.height()))
 

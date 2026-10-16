@@ -10,6 +10,8 @@ import everyui.render.Platform
   * `@main` and calls it from the generated scene, and Scala.js links it as the module initializer, so there can
   * only be one.
   *
+  * `overlaps=1` turns the overlap check on (`Overlaps.warn`) whatever runs.
+  *
   *   animation  youi's AnimationExample, in youi's example app (the default)
   *   durable    the network module's example: a durable socket to `socket=<url>` (tools/check.sh)
   *   input      the input model: focus, the arrows, Enter and the pointer (`probe=1` drives it itself)
@@ -29,6 +31,8 @@ import everyui.render.Platform
   *              G adds a guard, R removes them, P moves within the app
   *   reparent   a focused field moved between containers, and a chat's composer between two conversations' views: Alt+M,
   *              Alt+T, Alt+F, Alt+C, Alt+K and Alt+L (ReparentDemo)
+  *   fill       a filter that wraps over a list that fills the rest (Panel, `Component.flex`), the overlap check on; `bad=1`
+  *              places the list by hand under a guessed height instead, which the check reports (FillDemo)
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   spinner    a button swapped for a spinner while its work runs (AsyncPress), the work just past spinAfter
   *              (`work=<seconds>`, `probe=1`)
@@ -124,6 +128,8 @@ import everyui.render.Platform
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")
+  // any demo, with the overlap check on (`overlaps=1`)
+  if (Platform.launchArg("overlaps") == "1") everyui.layout.Overlaps.warn @= true
   if (demo == "hello") HelloWorld.run()
   else if (demo == "bench") ReactifyBench.run()
   else if (demo == "easings") EasingTable.run()
@@ -175,5 +181,6 @@ import everyui.render.Platform
   else if (demo == "audio") AudioDemo.run()
   else if (demo == "leave") LeaveDemo.run()
   else if (demo == "reparent") ReparentDemo.run()
+  else if (demo == "fill") FillDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }

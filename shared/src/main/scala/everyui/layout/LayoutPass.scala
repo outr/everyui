@@ -120,6 +120,8 @@ object LayoutPass {
           next.placeNow()
         }
       }
+      // and, where an app asks, looked over for what now lies over its neighbour
+      Overlaps.laidOut()
     } finally flushing = false
   }
 

@@ -107,6 +107,8 @@ object Modal {
            dim: Boolean = true, centre: Boolean = true, keep: Boolean = false): Unit = {
     if (layers.isEmpty) beneath = Focus.scope()
     val sheet = new Container {
+      // over the screen on purpose (`Overlaps`)
+      overlays = true
       size.width := ui.size.width
       size.height := ui.size.height
       if (dim) backgroundColor := Theme.backdrop()

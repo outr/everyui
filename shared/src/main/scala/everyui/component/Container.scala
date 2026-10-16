@@ -27,6 +27,19 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Whether the width follows the children (a row or a column given no width): a mirrored row then spans its own run,
     * not the width its last placement made. */
   var widthFollowsContent: Boolean = false
+  /** Whether the height was bound to the children's reach by the layout (a row or a column given no height). */
+  private var heightFollowsContent: Boolean = false
+
+  /** Whether its height is its own: set, or bound to something other than what it holds (the screen, what it sits
+    * in). A column shares it out among its children with a `flex`; one sized to its children has none to share. */
+  private[everyui] def ownsHeight: Boolean = size.height.explicit && {
+    val read = size.height.references
+    read.isEmpty || !((heightFollowsContent && read.contains(contentHeight)) || children().exists(c => read.contains(c.size.height)))
+  }
+
+  /** Whether its width is its own, as `ownsHeight` is for its height: what a row shares out among its children with a
+    * `flex`. */
+  private[everyui] def ownsWidth: Boolean = size.width.explicit && !followsChildren
   /** Whether what it holds runs on past its width on purpose (a rail's content, scrolled along): words in it are not
     * kept to it, nor to anything it is in (`TextView.textOverflow`). */
   private[everyui] var textRunsOn: Boolean = false
@@ -379,6 +392,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     l.foreach { lay =>
       follow()
       if (!size.height.explicit) {
+        heightFollowsContent = true
         val content = contentHeight
         size.height := content()
       }
