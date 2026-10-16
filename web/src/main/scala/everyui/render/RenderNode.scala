@@ -299,11 +299,15 @@ class RenderNode(val el: html.Element) {
     })
     else {
       val name = if (kind == PointerKind.Click) "click" else "pointer" + kind.toString.toLowerCase
+      // a click made of a press on one thing and a release on another is not one (PressOwner)
+      if (kind == PointerKind.Click) PressOwner.mark(el)
       el.addEventListener(name, (e: dom.MouseEvent) => {
-        Platform.pointed(e)
-        // the middle button is the app's (a tab closed), not the browser's scrolling
-        if (kind == PointerKind.Down && e.button == 1) e.preventDefault()
-        f(e.clientX / RenderNode.heardAt(e), e.clientY / RenderNode.heardAt(e))
+        if (kind != PointerKind.Click || !PressOwner.splits(e)) {
+          Platform.pointed(e)
+          // the middle button is the app's (a tab closed), not the browser's scrolling
+          if (kind == PointerKind.Down && e.button == 1) e.preventDefault()
+          f(e.clientX / RenderNode.heardAt(e), e.clientY / RenderNode.heardAt(e))
+        }
       })
       // something that answers a click is clickable: the hand (unless it has a shape of its own, a split's handle's),
       // and no text selection under it

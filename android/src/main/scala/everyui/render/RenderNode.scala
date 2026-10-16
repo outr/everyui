@@ -590,6 +590,7 @@ class RenderNode(val view: View) {
     * secondary button; a mouse or a hover drives enter/leave. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = {
     pointer += kind -> f
+    if (kind == PointerKind.Click) PressOwner.mark(view)
     if (kind == PointerKind.Wheel) view.setOnGenericMotionListener { (_, e) =>
       if (e.getAction == MotionEvent.ACTION_SCROLL) {
         f(-e.getAxisValue(MotionEvent.AXIS_HSCROLL) * 40.0, -e.getAxisValue(MotionEvent.AXIS_VSCROLL) * 40.0)
@@ -634,6 +635,8 @@ class RenderNode(val view: View) {
   // long press does anywhere on Android: where it went down, after the platform's long-press time, unless it moved
   // further than a tap may or was lifted first. What it asked for is not also a click as it lifts.
   private var pressFrom: (Float, Float) = (0f, 0f)
+  // where the touch went down
+  private var downAt: (Float, Float) = (0f, 0f)
   private var pressHeld: Option[Runnable] = None
   private var pressedLong = false
   private def letGo(): Unit = {
@@ -645,6 +648,7 @@ class RenderNode(val view: View) {
     val action = e.getActionMasked
     if (action == MotionEvent.ACTION_DOWN) {
       fire(PointerKind.Down, e)
+      downAt = (e.getRawX, e.getRawY)
       pressedLong = false
       letGo()
       if (pointer.contains(PointerKind.Menu)) {
@@ -676,7 +680,10 @@ class RenderNode(val view: View) {
       letGo()
       fire(PointerKind.Up, e)
       val inside = e.getX >= 0 && e.getY >= 0 && e.getX <= view.getWidth && e.getY <= view.getHeight
-      if (inside && !pressedLong) fire(PointerKind.Click, e)
+      // nor where it moved further than a tap may, onto something in it that answers a click itself (PressOwner)
+      val slop = android.view.ViewConfiguration.get(view.getContext).getScaledTouchSlop
+      val moved = math.abs(e.getRawX - downAt._1) > slop || math.abs(e.getRawY - downAt._2) > slop
+      if (inside && !pressedLong && !(moved && PressOwner.elsewhere(view, e.getRawX, e.getRawY))) fire(PointerKind.Click, e)
     }
     else if (action == MotionEvent.ACTION_CANCEL) {
       letGo()

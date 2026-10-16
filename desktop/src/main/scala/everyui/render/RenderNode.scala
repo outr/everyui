@@ -369,8 +369,11 @@ class RenderNode(val fx: Node) {
     val kinds = Map(PointerKind.Down -> MouseEvent.MOUSE_PRESSED, PointerKind.Up -> MouseEvent.MOUSE_RELEASED, PointerKind.Move -> MouseEvent.MOUSE_MOVED,
       PointerKind.Enter -> MouseEvent.MOUSE_ENTERED, PointerKind.Leave -> MouseEvent.MOUSE_EXITED, PointerKind.Click -> MouseEvent.MOUSE_CLICKED)
     fx.setPickOnBounds(true)   // a transparent Pane is not hit-tested unless told to be
+    // a click made of a press on one thing and a release on another is not one (PressOwner)
+    if (kind == PointerKind.Click) PressOwner.mark(fx)
     // a click is the primary button's, as a browser's is: the others have their own uses (a menu, a tab closed)
-    fx.addEventHandler(kinds(kind), (e: MouseEvent) => if (kind != PointerKind.Click || e.getButton == MouseButton.PRIMARY) {
+    fx.addEventHandler(kinds(kind), (e: MouseEvent) => if (kind != PointerKind.Click ||
+      (e.getButton == MouseButton.PRIMARY && !PressOwner.splits(e))) {
       pointed(e)
       f(Host.unscaled(e.getSceneX), Host.unscaled(e.getSceneY))
     })
