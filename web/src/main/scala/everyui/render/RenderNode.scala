@@ -606,8 +606,8 @@ class RenderNode(val el: html.Element) {
   }
 
   /** Where a slider stands (`aria-valuenow`, its range and its words), whether a switch is on (`aria-checked`),
-    * whether what a button opens is open (`aria-expanded`), whether a row is chosen (`aria-selected`), and which way a
-    * column header sorts (`aria-sort`). */
+    * whether a toggle button is pressed (`aria-pressed`), whether what a button opens is open (`aria-expanded`),
+    * whether a row is chosen (`aria-selected`), and which way a column header sorts (`aria-sort`). */
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = {
     def attribute(name: String, value: Option[String]): Unit = value match {
@@ -618,7 +618,10 @@ class RenderNode(val el: html.Element) {
     attribute("aria-valuemin", range.map(_.min.toString))
     attribute("aria-valuemax", range.map(_.max.toString))
     attribute("aria-valuetext", range.map(_.text))
-    attribute("aria-checked", checked.map(_.toString))
+    // a button's checked is whether it stays pressed (a toggle button), a switch's whether it is on
+    val button = el.getAttribute("role") == "button"
+    attribute("aria-checked", if (button) None else checked.map(_.toString))
+    attribute("aria-pressed", if (button) checked.map(_.toString) else None)
     attribute("aria-expanded", expanded.map(_.toString))
     attribute("aria-selected", selected.map(_.toString))
     attribute("aria-sort", if (sort.isEmpty) None else Some(sort))
@@ -1006,6 +1009,12 @@ object RenderNode {
     val tag = el.tagName.toLowerCase
     tag == "input" || tag == "textarea" || tag == "select" || el.asInstanceOf[html.Element].isContentEditable
   }
+
+  /** A key's name, the DOM's (`KeyboardEvent.key`); but a letter or a digit held with both Command and Option, which
+    * types nothing, by its key ("c") rather than the character Option makes of it on a Mac ("ç"), so that a chord of
+    * Cmd+Alt and a letter (`everyui.keymap.Chord`) matches there. */
+  def keyName(e: dom.KeyboardEvent): String =
+    if (e.metaKey && e.altKey && "Key[A-Z]|Digit[0-9]".r.matches(e.code)) e.code.last.toLower.toString else e.key
 
   /** Whether `e` is a key the page's focused field types or edits with (a character, Backspace, Delete, the caret's
     * keys along the line), which the browser must be left to act on whatever the app made of it: kept from the field,
@@ -1902,7 +1911,7 @@ object Platform {
       // key came to, asked before the app hears it, since a key the app takes may put the focus in a field (E on a
       // queued message edits it in the composer's field), which must not then type it as well
       val typed = RenderNode.fieldKey(e)
-      if (f(e.key, pressed) && !typed) e.preventDefault()
+      if (f(RenderNode.keyName(e), pressed) && !typed) e.preventDefault()
     }
     dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => hear(e, true))
     dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => hear(e, false))

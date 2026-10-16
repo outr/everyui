@@ -9,10 +9,10 @@ import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
 
-/** A search box on one line, `SearchField.height` tall: a magnifier at its start, what it holds (or `placeholder`,
-  * faint, while it is empty) and, once it holds something, a × that empties it. Escape empties it too; an empty one lets
-  * Escape go on to the screen (Back). `value` is what it holds, both ways; Enter fires `submitted`. It is one stop for
-  * the focus, whose edge it lights: the × is the pointer's, Escape the keys'.
+/** A search box on one line, `SearchField.height` tall: a magnifier (or `glyph`) at its start, what it holds (or
+  * `placeholder`, faint, while it is empty) and, once it holds something, a × that empties it. Escape empties it too;
+  * an empty one lets Escape go on to the screen (Back). `value` is what it holds, both ways; Enter fires `submitted`. It
+  * is one stop for the focus, whose edge it lights: the × is the pointer's, Escape the keys'.
   *
   * Where the platform has a text field of its own (a browser, a desktop, a phone) the words are typed into that, the
   * caret there as the focus arrives where a keyboard is at hand, and on Enter or a tap where the keyboard is on the
@@ -25,7 +25,8 @@ import reactify.*
   *   search.value.attach(words => results @= find(words))
   *   search.exitFocus(Key.ArrowDown, list)
   * }}} */
-class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.0) extends Container {
+class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.0,
+                  glyph: MaterialIcon = MaterialIcon.Search) extends Container {
   val value: Var[String] = own(Var(""))
   /** What it says while empty. */
   val placeholder: Var[String] = own(Var(hint))
@@ -35,12 +36,15 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
   /** Holds words meant as they are typed (a pattern, a path, an identifier), never spell-checked, corrected or
     * capitalized (`InputView.literal`). */
   val literal: Var[Boolean] = own(Var(false))
+  /** What it asks for, so the platform's autofill and a password manager know (`Autofill`): None says nothing, which
+    * is the app's `Autofill.fallback`; `Some(Autofill.Off)` holds it out of them. */
+  val autofill: Var[Option[Autofill]] = own(Var(None))
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
   // the platform's field, where there is one: its focus taken again (`refocus`)
   private var platformField: Option[InputView] = None
-  private val icon = new MaterialIconView(MaterialIcon.Search, 18.0)
+  private val icon = new MaterialIconView(glyph, 18.0)
   icon.color := Theme.muted()
   private val clear = new MaterialIconView(MaterialIcon.Close, 18.0)
   clear.color := Theme.muted()
@@ -80,6 +84,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     input.position.top := (size.height() - 20.0) / 2.0
     input.placeholder := placeholder()
     input.literal := literal()
+    input.autofill := autofill()
     input.semantics := Semantics(label = placeholder())
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
@@ -103,7 +108,8 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     shown.maxWidth := wordsWidth()
     shown.position.left := ListRow.along(SearchField.lead, shown.size.width(), size.width())
     shown.position.top := (size.height() - shown.size.height()) / 2.0
-    event.click.attach(_ => Platform.editField(placeholder(), value(), false, Autofill.resolve(None).map(Autofill.token).getOrElse(""), v => {
+    event.click.attach(_ => Platform.editField(placeholder(), value(), false,
+      Autofill.resolve(autofill()).map(Autofill.token).getOrElse(""), v => {
       value @= v
       submitted @= v
     }))

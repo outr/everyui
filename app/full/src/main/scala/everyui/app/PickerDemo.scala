@@ -4,7 +4,7 @@ import everyui.async.Task
 import everyui.component.{Button, ButtonStyle, TextView}
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
-import everyui.picker.{FilterPicker, Match, Segment, SegmentIcon}
+import everyui.picker.{FilterPicker, Match, PickerField, PickerToggle, Segment, SegmentIcon}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -15,7 +15,10 @@ import reactify.*
   * words: Local a Material icon, Quillon and Orrery path data (Orrery's filled even-odd), and Brightfold an SVG file
   * served beside the page (images/brightfold.svg: fill="currentColor", two paths, a ring that is a hole only by the
   * even-odd rule). It opens at once; `theme=light` shows the light palette, `rtl=1` reads from the right, `icons=0`
-  * leaves the icons off, `q=` puts words in the field and `segment=` chooses a segment by its key.
+  * leaves the icons off, `q=` puts words in the field and `segment=` chooses a segment by its key. `find=1` shows a
+  * Search Everywhere in its place (All, Files, Conversations, Messages), its Files with Match case, Regex and Whole
+  * word and a file mask, which its search follows; `on=crw` turns those three on to begin with, and `mask=` fills the
+  * mask.
   * Logs `picker chose <model>` when one is chosen. */
 object PickerDemo {
   // (name, provider's key, provider's name)
@@ -43,14 +46,17 @@ object PickerDemo {
     if (Platform.launchArg("rtl") == "1") Direction.set(true)
     ui.backgroundColor := Theme.background()
     val chose = Var("")
-    val open = new Button("Choose a model", () => show(chose), style = ButtonStyle.Filled)
-    val said = TextView.bound(if (chose().isEmpty) "No model chosen" else "Model: " + chose(), 14.0, Theme.muted())
+    val finding = Platform.launchArg("find") == "1"
+    val open = new Button(if (finding) "Search everywhere" else "Choose a model",
+      () => if (finding) find(chose) else show(chose), style = ButtonStyle.Filled)
+    val said = TextView.bound(if (chose().isEmpty) (if (finding) "Nothing chosen" else "No model chosen")
+      else (if (finding) "Chose: " else "Model: ") + chose(), 14.0, Theme.muted())
     open.position.left @= 24.0
     open.position.top @= 24.0
     said.position.left @= 24.0
     said.position.top := open.position.top() + open.size.height() + 12.0
     ui.children ++= List(open, said)
-    Platform.after(0.2, () => show(chose))
+    Platform.after(0.2, () => if (finding) find(chose) else show(chose))
   }
 
   private def show(chose: Var[String]): Unit = {
@@ -60,6 +66,65 @@ object PickerDemo {
     picker.chosen.attach { m =>
       chose @= m._1
       Platform.log("picker chose " + m._1)
+    }
+    picker.open(Platform.launchArg("q"))
+    val segment = Platform.launchArg("segment")
+    if (segment.nonEmpty) picker.segment @= segment
+  }
+
+  // what Search Everywhere finds: (words, kind, where), all made up
+  private val everything: Vector[(String, String, String)] = Vector(
+    ("val picker = new FilterPicker", "file", "app/Picker.scala:12"),
+    ("FilterPicker.show(query)", "file", "app/Main.scala:40"),
+    ("class PickerSpec", "file", "test/PickerSpec.scala:9"), ("# Filter pickers", "file", "docs/pickers.md:1"),
+    ("filterPicker.open()", "file", "web/main.js:88"), ("Picker toggles", "conversation", "Yesterday"),
+    ("Planning the filter picker", "conversation", "Monday"), ("the picker filters by file", "message", "Ada, 10:42"),
+    ("PICKER is case sensitive?", "message", "Lin, 09:15"))
+  private val kinds = Map("file" -> "Files", "conversation" -> "Conversations", "message" -> "Messages")
+  private val matchCase = Var(false)
+  private val regex = Var(false)
+  private val whole = Var(false)
+  private val mask = Var("")
+
+  /** Whether `text` holds `q` as the Files options say: its case or not, a pattern or words, whole words or any. */
+  private def holds(text: String, q: String): Boolean = q.isEmpty || {
+    val pattern = (if (regex()) q else java.util.regex.Pattern.quote(q))
+    val bounded = if (whole()) "\\b" + pattern + "\\b" else pattern
+    try java.util.regex.Pattern.compile(bounded, if (matchCase()) 0 else java.util.regex.Pattern.CASE_INSENSITIVE)
+      .matcher(text).find()
+    catch { case _: Throwable => false }
+  }
+
+  /** Whether `path` is one the mask lets in: "*.scala, !test/" (a suffix after a star, a part of the path otherwise; a
+    * "!" keeps it out). */
+  private def masked(path: String): Boolean = {
+    val parts = mask().split(",").map(_.trim).filter(_.nonEmpty).toList
+    def hit(p: String): Boolean =
+      if (p.startsWith("*")) path.takeWhile(_ != ':').endsWith(p.drop(1)) else path.contains(p)
+    val (out, in) = parts.partition(_.startsWith("!"))
+    (in.isEmpty || in.exists(hit)) && !out.exists(p => hit(p.drop(1)))
+  }
+
+  private def find(chose: Var[String]): Unit = {
+    val on = Platform.launchArg("on")
+    matchCase @= on.contains("c")
+    regex @= on.contains("r")
+    whole @= on.contains("w")
+    mask @= Platform.launchArg("mask")
+    val files = Set("file")
+    lazy val picker: FilterPicker[(String, String, String)] = new FilterPicker[(String, String, String)](q =>
+      Task.pure(everything.filter { case (words, kind, where) =>
+        if (kind == "file" && picker.segment() == "file") holds(words, q) && masked(where)
+        else Match.spans(q, words).nonEmpty
+      }), e => e._1 + e._3, _._1, e => kinds(e._2) + " · " + e._3, placeholder = "Search everywhere",
+      segments = List(Segment.all("All"), Segment("file", "Files"), Segment("conversation", "Conversations"),
+        Segment("message", "Messages")), groupOf = _._2,
+      toggles = List(PickerToggle.matchCase(matchCase, files), PickerToggle.regex(regex, files),
+        PickerToggle.wholeWord(whole, files)),
+      extraField = Some(PickerField.fileMask(mask, files)))
+    picker.chosen.attach { e =>
+      chose @= e._1
+      Platform.log("picker chose " + e._1)
     }
     picker.open(Platform.launchArg("q"))
     val segment = Platform.launchArg("segment")

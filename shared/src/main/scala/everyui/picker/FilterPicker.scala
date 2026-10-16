@@ -2,9 +2,13 @@ package everyui.picker
 
 import everyui.async.Task
 import everyui.component.*
+import everyui.component.types.Autofill
 import everyui.event.Key
-import everyui.i18n.Words
-import everyui.layout.FlowLayout
+import everyui.font.MaterialIcon
+import everyui.i18n.{Direction, Words}
+import everyui.keymap.{Chord, Command, Keymap}
+import everyui.kit.{Mirror, SearchField}
+import everyui.layout.{FlowLayout, HorizontalLayout}
 import everyui.list.{ListRow, VirtualList}
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -26,6 +30,14 @@ import reactify.*
   * A click or a tap chooses a chip; from the field, Tab and Shift+Tab go round the segments, and on a remote the
   * chips sit between the field and the list, Left and Right along them and OK choosing.
   *
+  * Given `toggles`, options the query reads (Match case, a regular expression, whole words: `PickerToggle`) are toggle
+  * buttons at the field's end, and given `extraField`, a second, smaller field under it (a file mask: `PickerField`),
+  * each shown only for its segments. Turning an option over, or typing in the second field (once the typing pauses),
+  * asks the query again, and so does choosing a chip that shows or hides one, since the options in force have
+  * changed. An option's chord (Alt+C, or Cmd+Option+C on a Mac, for Match case) turns it over from anywhere in the
+  * picker, and its tooltip says so; on a remote the options are Right of the field (Left, right to left) and the
+  * second field is below it, before the chips.
+  *
   * {{{
   *   FilterPicker.show[File](q => index.search(q), _.path, _.name, _.folder, placeholder = "Go to file") { f =>
   *     open(f)
@@ -35,12 +47,18 @@ import reactify.*
   *     segments = List(Segment.all("All"), Segment("local", "Local", Some(SegmentIcon(MaterialIcon.Computer))),
   *       Segment("acme", "Acme", Some(SegmentIcon.Url("/providers/acme.svg")))),
   *     groupOf = _.providerKey).open()
+  *
+  *   lazy val find: FilterPicker[Hit] = new FilterPicker[Hit](q => search(q, find.segment(), matchCase(), mask()),
+  *     _.id, _.name, _.where, segments = List(Segment.all("All"), Segment("files", "Files")), groupOf = _.kind,
+  *     toggles = List(PickerToggle.matchCase(matchCase, Set("files"))),
+  *     extraField = Some(PickerField.fileMask(mask, Set("files"))))
   * }}} */
 class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labelOf: T => String,
                       detailOf: T => String = (_: T) => "", placeholder: String = Words.search,
                       width: Double = FilterPicker.width, debounce: Double = FilterPicker.debounce,
                       row: Option[Var[String] => ListRow[T]] = None, segments: List[Segment] = Nil,
-                      groupOf: T => String = (_: T) => "") extends Container {
+                      groupOf: T => String = (_: T) => "", toggles: List[PickerToggle] = Nil,
+                      extraField: Option[PickerField] = None) extends Container {
   /** A match chosen. */
   val chosen: Channel[T] = Channel[T]
   /** The words in the field. */
@@ -64,6 +82,23 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
       (key == Key.ArrowUp || key == Key.ArrowDown || key == Key.PageUp || key == Key.PageDown)) ||
       (key == Key.Tab && segments.size > 1)
   }
+  // words to find with, never a sign-in's: kept out of autofill and the password managers
+  field.autofill @= Some(Autofill.Off)
+  /** The options' toggle buttons, at the field's end: those for the segment chosen. Empty without `toggles`. */
+  val toggleBar: Container = new Container {
+    layout @= Some(HorizontalLayout(4.0, middle = true))
+    children ++= toggles.map(button)
+  }
+  /** The second field, under the field, where there is one: shown for its segments. */
+  val extraInput: Option[SearchField] = extraField.map { f =>
+    new SearchField(f.placeholder, across - 16.0, MaterialIcon.FilterList) {
+      literal @= true
+      autofill @= Some(Autofill.Off)
+      value @= f.text()
+      tooltip @= f.placeholder + FilterPicker.said(f.chord)
+      visible := f.shows(segment())
+    }
+  }
   /** The segments' chips, between the field and the list, wrapping to more rows where they are many; empty without
     * segments. */
   val chips: Container = new Container {
@@ -81,6 +116,18 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     visible := answered().nonEmpty && shown().isEmpty
   }
   private val rows: Val[Double] = own(Val(math.max(1, math.min(FilterPicker.rowsShown, shown().size)).toDouble))
+  // where the chips (or the list) start: under the field, and under the second field where it shows
+  private val below: Val[Double] = own(Val(field.size.height() + 16.0 +
+    extraInput.filter(_.visible()).map(_.size.height() + 8.0).getOrElse(0.0)))
+  // the options the query reads, those the segment chosen shows
+  private def inForce: List[String] =
+    toggles.filter(_.shows(segment())).map(_.key) ++ extraField.filter(_.shows(segment())).map(_.key)
+  private var forced = inForce
+  /** The options' chords, in force while it is up. */
+  private lazy val commands: List[Command] =
+    toggles.flatMap(t => t.chord.map(c => command(t.key, t.name, c, t.shows, () => t.on @= !t.on()))) ++
+      extraField.flatMap(f => f.chord.map(c => command(f.key, f.placeholder, c, f.shows,
+        () => extraInput.foreach(_.focus()))))
 
   field.value.attach(v => if (words() != v) words @= v)
   words.attach { w =>
@@ -102,6 +149,24 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   list.clickActivates @= Some(true)
   matches.attach(_ => narrow())
   segment.attach(_ => narrow())
+  // an option turned over, or the second field's words changed, ask again; the app's query reads them
+  toggles.foreach(t => follow(t.on, (_: Boolean) => ask(words())))
+  extraField.foreach { f =>
+    extraInput.foreach { e =>
+      e.value.attach(v => if (f.text() != v) f.text @= v)
+      follow(f.text, (v: String) => if (e.value() != v) e.value @= v)
+      // Enter there chooses, as in the field; where a remote's keyboard hands the words back with Enter, it does not
+      if (Platform.nativeInput()) e.submitted.attach(_ => list.currentItem.foreach(choose))
+    }
+    follow(f.text, (_: String) => ask(words()))
+  }
+  segment.attach { _ =>
+    if (inForce != forced) {
+      forced = inForce
+      ask(words())
+    }
+    wire()
+  }
   if (segments.isEmpty) {
     field.exitFocus(Key.ArrowDown, list)
     list.exitFocus(Key.ArrowUp, field)
@@ -114,13 +179,26 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     segment.attach(_ => chip.foreach(chips.entryFocus))
     chip.foreach(chips.entryFocus)
   }
+  wire()
 
   field.position.left @= 8.0
   field.position.top @= 8.0
+  if (toggles.nonEmpty) {
+    // the field short of the options at its end: the field's start on the right and the options on its left, right
+    // to left
+    field.size.width := across - 16.0 - (if (toggleBar.size.width() > 0.0) toggleBar.size.width() + 6.0 else 0.0)
+    Mirror.place(field, () => across, () => 8.0)
+    Mirror.place(toggleBar, () => across, () => across - 8.0 - toggleBar.size.width())
+    toggleBar.position.top := 8.0 + (field.size.height() - toggleBar.size.height()) / 2.0
+  }
+  extraInput.foreach { e =>
+    e.position.left @= 8.0
+    e.position.top := field.size.height() + 16.0
+  }
   chips.position.left @= 12.0
-  chips.position.top := field.size.height() + 16.0
+  chips.position.top := below()
   list.position.left @= 4.0
-  list.position.top := field.size.height() + 16.0 + (if (segments.isEmpty) 0.0 else chips.size.height() + 10.0)
+  list.position.top := below() + (if (segments.isEmpty) 0.0 else chips.size.height() + 10.0)
   list.size.width @= across - 8.0
   list.size.height := rows() * list.rowHeight
   empty.position.left @= 20.0
@@ -132,13 +210,17 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   borderColor := Theme.border()
   radius @= 10.0
   shadow @= Some(Shadow(0.0, 8.0, 32.0, Color.Black.withAlpha(0.5)))
-  children ++= List(field, chips, list, empty)
+  children ++= (field :: (if (toggles.isEmpty) Nil else List(toggleBar))) ++ extraInput.toList ++
+    List(chips, list, empty)
 
   /** Put it up, a fifth of the way down the screen, with `initial` in the field. */
   def open(initial: String = ""): Unit = {
     position.left := (ui.size.width() - size.width()) / 2.0
     position.top := math.max(16.0, ui.size.height() * 0.12)
-    Modal.show(this, field, dim = false, centre = false)
+    Modal.show(this, field, dim = false, centre = false,
+      after = () => Keymap.global.commands @= Keymap.global.commands().filterNot(c => commands.exists(_ eq c)))
+    // the options' chords ahead of the app's own while it is up, as the keys of what is in front
+    if (commands.nonEmpty) Keymap.global.commands @= commands ++ Keymap.global.commands()
     if (words() == initial) ask(initial) else words @= initial
   }
 
@@ -156,6 +238,46 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
       }
     }.start()
     if (debounce <= 0.0) run() else Platform.after(debounce, run)
+  }
+
+  /** An option's toggle button, shown for its segments, its chord in its tooltip. */
+  private def button(t: PickerToggle): ToggleButton =
+    new ToggleButton(t.on, t.name, t.icon, if (t.icon == MaterialIcon.Empty) t.label else "") {
+      tooltip @= t.name + FilterPicker.said(t.chord)
+      visible := t.shows(segment())
+      // a hidden one takes no room in the row
+      size.width := (if (t.shows(segment())) ToggleButton.side else 0.0)
+    }
+
+  /** An option's chord, which runs `run` while the segment chosen `shows` the option. */
+  private def command(key: String, name: String, chord: Chord, shows: String => Boolean, run: () => Unit): Command = {
+    val c = new Command("picker." + key, name, List(chord), run)
+    c.enabled := shows(segment())
+    c
+  }
+
+  /** The arrows' ways between the field, the options, the second field, the chips and the list, as the segment chosen
+    * shows them: Right of the field to the options (Left, right to left), and down from either to the second field,
+    * then the chips, then the list. Without options or a second field, the ways are as they were. */
+  private def wire(): Unit = if (toggles.nonEmpty || extraField.nonEmpty) {
+    val bar = if (toggles.exists(_.shows(segment()))) Some(toggleBar) else None
+    val extra: Option[Container] = extraInput.filter(_ => extraField.exists(_.shows(segment())))
+    val next: Container = if (segments.isEmpty) list else chips
+    val onward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
+    val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
+    field.dropExit(onward)
+    bar.foreach { b =>
+      field.exitFocus(onward, b)
+      b.exitFocus(back, field)
+      b.exitFocus(Key.ArrowUp, field)
+      b.exitFocus(Key.ArrowDown, extra.getOrElse(next))
+    }
+    field.exitFocus(Key.ArrowDown, extra.getOrElse(next))
+    extra.foreach { e =>
+      e.exitFocus(Key.ArrowUp, field)
+      e.exitFocus(Key.ArrowDown, next)
+    }
+    next.exitFocus(Key.ArrowUp, extra.getOrElse(field))
   }
 
   /** The chip of the segment chosen. */
@@ -191,6 +313,9 @@ object FilterPicker {
   val debounce: Double = 0.12
   /** How many rows show before the list scrolls. */
   val rowsShown: Int = 12
+
+  /** What a tooltip says after an option's name: its chord, " (Alt+C)"; nothing without one. */
+  def said(chord: Option[Chord]): String = chord.map(c => " (" + c.label + ")").getOrElse("")
 
   /** A picker put up at once; `choose` hears what is chosen. */
   def show[T](query: String => Task[Vector[T]], keyOf: T => String, labelOf: T => String,

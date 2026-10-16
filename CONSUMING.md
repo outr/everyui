@@ -880,6 +880,60 @@ sets (simple-icons, Material's SVGs, Lucide) are drawn as they are. Path icons a
 SVG), the desktop (JavaFX shapes) and Android (a canvas), crisp at any scale. A Roku and an Apple TV draw no paths:
 there a chip with a `Path` or `Url` icon shows its words alone, as one without an icon does.
 
+Options travel with the query, as in an IDE's find box: `toggles` (a `PickerToggle` each: Match case, Regex, Whole
+word) are toggle buttons at the field's end, and `extraField` (a `PickerField`: a file mask) is a smaller field under
+it. Each shows only while one of its `segments` is the chip chosen (every chip, where its `segments` is empty). The app
+owns their `Var`s and reads them in `query`; turning an option over, or a change to the second field's words (once the
+typing pauses, as the main field's do), asks the query again, and so does choosing a chip that shows or hides an
+option, since what is in force has changed. `lazy val` lets `query` read the picker's own `segment`:
+
+```scala
+import everyui.picker.{FilterPicker, PickerField, PickerToggle, Segment}
+import reactify.*
+
+// kept by the app, so the options are as they were left the next time the picker opens
+val matchCase = Var(false)
+val regex = Var(false)
+val wholeWord = Var(false)
+val mask = Var("")          // "*.scala, !*Spec.scala"
+val files = Set("files")
+
+lazy val find: FilterPicker[Hit] = new FilterPicker[Hit](q =>
+  if (find.segment() == "files") search.files(q, matchCase(), regex(), wholeWord(), mask())
+  else search.everywhere(q),
+  _.id, _.title, _.where,
+  segments = List(Segment.all("All"), Segment("files", "Files"), Segment("conversations", "Conversations"),
+    Segment("messages", "Messages")),
+  groupOf = _.kind,
+  toggles = List(PickerToggle.matchCase(matchCase, files), PickerToggle.regex(regex, files),
+    PickerToggle.wholeWord(wholeWord, files)),
+  extraField = Some(PickerField.fileMask(mask, files)))
+find.chosen.attach(hit => open(hit))
+find.open()
+```
+
+- `PickerToggle(key, label, on, tooltip = "", chord = None, segments = Set.empty, icon = MaterialIcon.Empty)`: `label`
+  is what the button shows ("Aa", ".*", "W"), or `icon` in its place; `tooltip` is its name, for a screen reader and
+  the tooltip, which says the chord after it ("Match case (Alt+C)"). `matchCase`, `regex` and `wholeWord` are ready
+  made, in all eleven languages (`PickerWords`, Words' "picker.*").
+- `PickerField(key, placeholder, text, segments = Set.empty, chord = None)`: `placeholder` is its name too.
+  `PickerField.fileMask` says "File mask", and Alt+F goes to it.
+- Chords: `PickerToggle.mnemonic(letter)` is Alt and the letter, or Cmd+Option and the letter on a Mac, where Option
+  and a letter types a character (VS Code's choice): Alt+C, Alt+R and Alt+W for the three ready made, in force only
+  while the picker is up and the option shows, from anywhere in it (the field, an option, the chips, the list), ahead of
+  the app's global keymap (a screen's own keymap is asked first). On a Mac, Cmd+Option and a letter is named by its key
+  on the web and the desktop, not by the character Option makes ("ç"), so `Chord("C", meta = true, alt = true)`
+  matches there. A browser keeps a few of these for itself (Chrome on a Mac opens its tools on Cmd+Option+C), so an
+  app may give its own: `PickerToggle.matchCase(on).copy(chord = Some(Chord.parse("Alt+Shift+C")))`.
+- Layout: the options sit at the field's end, on its middle, and the field is short of them by their width and a gap
+  (on its left, right to left); the second field is under the field, as wide as it was, and the chips move down under
+  it. While the chosen chip shows neither, the picker is exactly as it is without them. A picker given neither is as it
+  was before them, its field kept out of autofill (`Autofill.Off`, as the second field is too).
+- The focus: the options are toggle buttons (`ToggleButton`, `Semantics.toggle`: `aria-pressed` on the web) and Enter
+  or OK turns one over. Tab goes from an option to the next and on to the second field (from the field, Tab still goes
+  round the segments). On a remote, Right goes from the field to the options (Left, right to left), Down from either
+  to the second field, then the chips, then the list, and Up back.
+
 ### Markdown (`everyui.markdown`)
 
 `MarkdownView` draws Markdown with EveryUI's own components, so it looks the same on the web, the desktop and Android:

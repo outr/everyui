@@ -6,6 +6,7 @@ import everyui.color.ColorPicker
 import everyui.date.DateWords
 import everyui.list.RichList
 import everyui.log.LogWords
+import everyui.picker.PickerWords
 import everyui.table.TableWords
 
 /** EveryUI's own words come in every language it ships, each with the same placeholders as the English. */
@@ -16,7 +17,7 @@ class WordsSpec extends FxSpec {
     "moveDown", "moveUp", "unsplit", "nextGroup", "previousGroup", "maximize", "unmaximize", "none").map("tabs." + _)
   /** The families of words that were English alone until they were given to Words, and how many each has. */
   private val families = List("chat." -> 48, "composer." -> 11, "date." -> 20, "log." -> 22, "table." -> 14,
-    "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3)
+    "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4)
 
   /** The names of a message's arguments: `{n}`, `{n, plural, …}`, not a plural's own branches. */
   private def arguments(message: String): Set[String] = "\\{(\\w+)[,}]".r.findAllMatchIn(message).map(_.group(1)).toSet
@@ -47,7 +48,8 @@ class WordsSpec extends FxSpec {
     RichList.moreLabel, RichList.unreadLabel, ColorPicker.hueLabel, ColorPicker.saturationLabel,
     ColorPicker.valueLabel, ColorPicker.alphaLabel, ColorPicker.hexLabel, ColorPicker.recentLabel,
     Words("map.zoomIn"), Words("map.zoomOut"), Words("graph.graph"), Words("markdown.copy"), Words("markdown.done"),
-    Words("markdown.notDone")) ++ {
+    Words("markdown.notDone"), PickerWords.matchCase, PickerWords.regex, PickerWords.wholeWord,
+    PickerWords.fileMask) ++ {
     val c = ComposerWords()
     List(c.send, c.stop, c.attach, c.more, c.remove, c.drop, c.suggestion, c.accept, c.tooLarge, c.notAccepted,
       c.unavailable)

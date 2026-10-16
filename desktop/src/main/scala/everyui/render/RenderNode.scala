@@ -895,7 +895,7 @@ object Host {
   val embedKey: String = "everyui-embed"
 
   /** A JavaFX key by the web's name: the remote's keys by their names, Alt+Left as the browser's back, anything typed
-    * by its text. */
+    * by its text (a letter held with Cmd and Option by its key). */
   def keyName(e: KeyEvent): String = {
     val named = Map(KeyCode.ENTER -> "Enter", KeyCode.ESCAPE -> "Escape", KeyCode.UP -> "ArrowUp", KeyCode.DOWN -> "ArrowDown",
       KeyCode.LEFT -> "ArrowLeft", KeyCode.RIGHT -> "ArrowRight", KeyCode.TAB -> "Tab", KeyCode.BACK_SPACE -> "Backspace", KeyCode.SPACE -> " ",
@@ -906,6 +906,9 @@ object Host {
       KeyCode.CONTROL -> "Control", KeyCode.SHIFT -> "Shift", KeyCode.ALT -> "Alt", KeyCode.META -> "Meta",
       KeyCode.COMMAND -> "Meta", KeyCode.WINDOWS -> "Meta")
     if (e.isAltDown && e.getCode == KeyCode.LEFT) "BrowserBack"
+    // a letter or a digit held with both Command and Option types nothing: named by its key, not the character Option
+    // makes of it on a Mac, so a chord of Cmd+Alt and a letter matches there
+    else if (e.isMetaDown && e.isAltDown && (e.getCode.isLetterKey || e.getCode.isDigitKey)) e.getCode.getName.toLowerCase
     else named.getOrElse(e.getCode, if (e.getText.nonEmpty) e.getText else e.getCode.getName)
   }
 

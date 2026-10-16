@@ -39,6 +39,9 @@ object Semantics {
   def slider(label: String, range: SemanticRange): Semantics = Semantics("slider", label = label, range = Some(range))
   /** A control that is on or off, named `label`. */
   def switch(label: String, on: Boolean): Semantics = Semantics("switch", label = label, checked = Some(on))
+  /** A button that stays pressed or not (a find box's Match case), named `label`: a button whose `checked` is whether it
+    * is pressed, which the web says as `aria-pressed`. */
+  def toggle(label: String, pressed: Boolean): Semantics = Semantics("button", label = label, checked = Some(pressed))
   /** A button that opens and closes a part, named `label`, saying whether the part is open. */
   def disclosure(label: String, open: Boolean): Semantics = Semantics("button", label = label, expanded = Some(open))
   /** A part of the page that stands out enough to be found by its name, `label` (a pane under its title). */
