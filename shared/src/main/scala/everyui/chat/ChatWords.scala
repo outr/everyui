@@ -50,6 +50,8 @@ object ChatWords {
   def showLess: String = word("chat.showLess")
   def copy: String = word("chat.copy")
   def copyMessage: String = word("chat.copyMessage")
+  /** A message's text copied as it was written, its Markdown and all. */
+  def copyMarkdown: String = word("chat.copyMarkdown")
   /** Said once a message is copied. */
   def copied: String = word("chat.copied")
   /** What a message's row of actions is, to a screen reader. */

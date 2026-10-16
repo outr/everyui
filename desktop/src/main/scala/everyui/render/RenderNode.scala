@@ -452,6 +452,8 @@ class RenderNode(val fx: Node) {
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
+  /** What it is when selected words are copied (`Component.copyAs`): no text is selected here, so nothing to do. */
+  def setCopyAs(tag: String): Unit = ()
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"); "" for the default. */
   def setCursor(name: String): Unit = fx.setCursor(name match {
     case "col-resize" | "ew-resize" => javafx.scene.Cursor.H_RESIZE
@@ -1235,8 +1237,17 @@ object Platform {
   /** Whether people select text with a pointer (`Component.selectable`): not here. */
   def selectsText(): Boolean = false
   def selectedText(): String = ""
+  /** The words selected, as HTML and as text (`Clipboard.selection`): none here. */
+  def selectedRich(): Option[(String, String)] = None
   def copyText(text: String): Unit = {
     val content = new ClipboardContent()
+    content.putString(text)
+    Clipboard.getSystemClipboard.setContent(content)
+  }
+  /** `html` and `text` on the clipboard together: an email or a document pastes the HTML, a plain field the text. */
+  def copyRich(html: String, text: String): Unit = {
+    val content = new ClipboardContent()
+    content.putHtml(html)
     content.putString(text)
     Clipboard.getSystemClipboard.setContent(content)
   }

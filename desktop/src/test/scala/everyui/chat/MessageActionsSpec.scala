@@ -12,7 +12,7 @@ import reactify.*
 
 /** The buttons beside a message in a transcript, on the desktop's real nodes: shown as the pointer rests on a message and
   * gone once it leaves, beside the bubble on the side away from its edge (mirrored right to left) or on its corner where
-  * there is no room, with nothing in the rows moving; Copy message putting the words on the clipboard as written, with
+  * there is no room, with nothing in the rows moving; Copy message putting the words on the clipboard as they read, with
   * a tick for a moment; an app's own per message; the keys in and out; nothing where there is no clipboard; and one
   * row of buttons, following the rows as they are handed one message after another down 320. What the machine's
   * clipboard held before is put back after. */
@@ -177,7 +177,7 @@ class MessageActionsSpec extends FxSpec {
       }
     }
 
-    "copy the message as written, with a tick for a moment" in {
+    "copy the message as it reads, plain and as HTML, with a tick for a moment" in {
       val entries = Var[Vector[ChatEntry]](Vector(
         ChatEntry.message("m0", ada, self = false, "**Bold** and `code`, as written\non two lines")))
       val t = transcript(entries, 800.0)
@@ -190,7 +190,9 @@ class MessageActionsSpec extends FxSpec {
           Pointer.consumed = None
           copy.event.click @= everyui.event.PointerEvent(PointerKind.Click, copy.absoluteLeft + 4.0, copy.absoluteTop + 4.0)
         }
-        eventually(copied == "**Bold** and `code`, as written\non two lines") shouldBe true
+        eventually(copied == "Bold and code, as written\non two lines") shouldBe true
+        fx(javafx.scene.input.Clipboard.getSystemClipboard.getHtml) shouldBe
+          "<p><strong>Bold</strong> and <code>code</code>, as written<br>\non two lines</p>"
         fx(copy.icon.icon()) shouldBe MaterialIcon.Check
         fx(copy.tooltip()) shouldBe ChatWords.copied
         fx(copy.semantics().label) shouldBe ChatWords.copied

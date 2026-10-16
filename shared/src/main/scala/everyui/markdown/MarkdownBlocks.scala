@@ -8,7 +8,26 @@ import reactify.*
   * content in place. */
 private[markdown] object MarkdownBlocks {
   /** `block` drawn `width` wide; `depth` is how deep in lists it is. */
-  def make(block: MdBlock, ctx: MarkdownContext, width: => Double, depth: Int = 0): Component = block match {
+  def make(block: MdBlock, ctx: MarkdownContext, width: => Double, depth: Int = 0): Component = {
+    val view = drawn(block, ctx, width, depth)
+    view.copyAs @= copyAs(block)
+    view
+  }
+
+  /** What `block` is when words selected across it are copied (`Component.copyAs`). */
+  def copyAs(block: MdBlock): String = block match {
+    case MdBlock.Paragraph(_) => "p"
+    case MdBlock.Heading(level, _) => "h" + math.max(1, math.min(6, level)).toString
+    case MdBlock.CodeBlock(_, _, _) | MdBlock.Html(_) => "pre"
+    case MdBlock.Quote(_) => "blockquote"
+    case MdBlock.BulletList(ordered, start, _, _) =>
+      if (!ordered) "ul" else if (start == 1) "ol" else "ol " + start.toString
+    case MdBlock.Rule => "hr"
+    case MdBlock.TableBlock(_, _, _) => ""
+    case MdBlock.Definitions(_) => "none"
+  }
+
+  private def drawn(block: MdBlock, ctx: MarkdownContext, width: => Double, depth: Int): Component = block match {
     case MdBlock.Paragraph(content) => new ParagraphView(content, ctx, width, ctx.style.points)
     case MdBlock.Heading(level, content) =>
       val heading = new ParagraphView(content, ctx, width, ctx.style.heading(level), 700)

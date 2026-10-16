@@ -16,7 +16,7 @@ class WordsSpec extends FxSpec {
   private val tabs = List("add", "close", "closeOthers", "closeAll", "openRight", "openDown", "moveRight", "moveLeft",
     "moveDown", "moveUp", "unsplit", "nextGroup", "previousGroup", "maximize", "unmaximize", "none").map("tabs." + _)
   /** The families of words that were English alone until they were given to Words, and how many each has. */
-  private val families = List("chat." -> 48, "composer." -> 11, "date." -> 20, "log." -> 22, "table." -> 14,
+  private val families = List("chat." -> 49, "composer." -> 11, "date." -> 20, "log." -> 22, "table." -> 14,
     "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4)
 
   /** The names of a message's arguments: `{n}`, `{n, plural, …}`, not a plural's own branches. */
@@ -29,7 +29,7 @@ class WordsSpec extends FxSpec {
     ChatWords.thinking, ChatWords.thoughtFor("12s"), ChatWords.input, ChatWords.output, ChatWords.running,
     ChatWords.busy, ChatWords.succeeded, ChatWords.failed, ChatWords.connecting, ChatWords.offline,
     ChatWords.loadingOlder, ChatWords.show, ChatWords.hide, ChatWords.showMore, ChatWords.showLess, ChatWords.copy,
-    ChatWords.copyMessage, ChatWords.copied, ChatWords.messageActions, ChatWords.selectAll, ChatWords.about("Ada"),
+    ChatWords.copyMessage, ChatWords.copyMarkdown, ChatWords.copied, ChatWords.messageActions, ChatWords.selectAll, ChatWords.about("Ada"),
     ChatWords.queued(2), ChatWords.queuePaused, ChatWords.resume, ChatWords.sendNext, ChatWords.clearQueue,
     ChatWords.queueMore, ChatWords.addToQueue, ChatWords.edit, ChatWords.remove, ChatWords.fileCount(2),
     ChatWords.queuedItem(1, 2, "Hi"), ChatWords.queuedHelp, ChatWords.moved(1, 2), ChatWords.reorder,

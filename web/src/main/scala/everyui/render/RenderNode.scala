@@ -246,6 +246,10 @@ class RenderNode(val el: html.Element) {
     runs.foreach { run =>
       val span = dom.document.createElement(if (run.href.nonEmpty) "a" else "span").asInstanceOf[html.Element]
       span.textContent = run.text
+      // what it is when it is copied (RichCopy): bold, slanted, struck, code
+      val marks = (if (run.weight >= 600) "b" else "") + (if (run.italic) "i" else "") + (if (run.strike) "s" else "") +
+        (if (run.family.toLowerCase.contains("mono")) "c" else "")
+      if (marks.nonEmpty) span.setAttribute("data-run", marks)
       if (run.family.nonEmpty) span.style.fontFamily = RenderNode.families(run.family)
       if (run.weight > 0) span.style.fontWeight = run.weight.toString
       if (run.italic) span.style.fontStyle = "italic"
@@ -346,6 +350,13 @@ class RenderNode(val el: html.Element) {
 
   /** Every word in it selected, as the browser's Select All selects a page's. */
   def selectText(): Unit = dom.window.getSelection().selectAllChildren(el)
+
+  /** What it is when selected words are copied (`Component.copyAs`): its `data-copy`, which `RichCopy` reads off the
+    * page as a copy is made. */
+  def setCopyAs(tag: String): Unit = {
+    if (tag.isEmpty) el.removeAttribute("data-copy") else el.setAttribute("data-copy", tag)
+    if (tag.nonEmpty) RichCopy.listen()
+  }
 
   /** The node scrolls its own overflow: the browser's scrollbar, wheel, touch and keys. */
   def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = {
@@ -1545,6 +1556,11 @@ object Platform {
   def selectsText(): Boolean = !remoteNavigation()
   /** The words selected on the page, or "". */
   def selectedText(): String = Option(dom.window.getSelection()).map(_.toString).getOrElse("")
+  /** The words selected as clean HTML and plain prose, where they lie in views that say how they copy
+    * (`Component.copyAs`, `RichCopy`). */
+  def selectedRich(): Option[(String, String)] = RichCopy.selection()
+  /** `html` and `text` on the clipboard together (`RichCopy.write`). */
+  def copyRich(html: String, text: String): Unit = RichCopy.write(html, text)
   def copyText(text: String): Unit = {
     val clipboard = dom.window.navigator.asInstanceOf[js.Dynamic].clipboard
     if (!js.isUndefined(clipboard)) clipboard.writeText(text)

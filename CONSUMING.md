@@ -1872,6 +1872,21 @@ if (Clipboard.readable) paste.event.click.attach(_ => Clipboard.read().map(_.for
   Android 12 on tells the person it was read.
 - **Roku, Apple TV**: no clipboard; `readable` and `copies` are false, and a read answers None.
 
+`Clipboard.copyRich(html, text)` puts both flavours on it at once: an email or a document pastes the HTML, a terminal
+or a plain field the text (the web's `navigator.clipboard.write` with a `ClipboardItem`, falling back to `writeText`;
+JavaFX's `putHtml` and `putString`; Android's `ClipData.newHtmlText`). `Clipboard.copyMarkdown(markdown)` is built on
+it: the Markdown as clean semantic HTML (`MarkdownHtml`: `p`, `strong`, `em`, `h1`–`h6`, lists, `a href`, `code`,
+`pre`, `blockquote`, `hr`, tables, and no style, class, colour or font) and as readable prose (`MarkdownPlain`: a blank
+line between paragraphs, "- " and "1. " items, the marks gone, a link as "words (url)", a table's cells apart by
+tabs). A chat's Copy message (`MessageAction.copyText`) copies a message so; `MessageAction.copyMarkdownSource` is
+Copy as Markdown, the text as it was written, for an app to add to `Transcript.messageActions`.
+
+On the web, words selected across components that say what they are when copied (`Component.copyAs`: "p", "h2",
+"ul", "li", "pre", "table", "td", … or "none" to be left out) copy the same way, with Ctrl or Cmd+C or the browser's
+Copy, rather than as the page's styled HTML: a Markdown view's blocks and a `DataTable`'s rows and cells say so, so a
+selection in a chat's messages pastes as its paragraphs, lists and tables, cut to the words selected.
+`Clipboard.selection()` answers the same two flavours for a context menu's Copy.
+
 ### Pasting (`pasted`)
 
 The app decides what a paste becomes before it lands. `pasted` on an `InputView`, a `TextInput` and a `TextArea` is

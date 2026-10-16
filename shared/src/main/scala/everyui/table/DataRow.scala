@@ -31,6 +31,7 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
   // the arrow by the column the rows are sorted by, made once they first are
   private var arrow: Option[MaterialIconView] = None
 
+  copyAs @= "tr"
   if (header) semantics @= Semantics("row")
   else semantics := Semantics("row", selected = Some(table.selection().contains(index)))
   size.width := (if (shown()) table.across() else 0.0)
@@ -91,6 +92,7 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
     if (header) semantics := Semantics("columnheader", sort = table.sort().filter(_.column == c)
       .map(s => if (s.ascending) "ascending" else "descending").getOrElse(""))
     else semantics @= Semantics("cell")
+    copyAs @= (if (header) "th" else "td")
     direction @= table.style.direction
     size.width := table.cellWidth(c, header)
     // its lines, where it wraps, aligned as the column

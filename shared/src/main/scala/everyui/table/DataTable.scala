@@ -164,6 +164,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private val rows = new ScrollContainer
   private val grid: Container = new Container {
     semantics @= Semantics("table")
+    copyAs @= "table"
     radius @= look.radius
     focusable @= true
 

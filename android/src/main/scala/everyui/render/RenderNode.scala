@@ -749,6 +749,8 @@ class RenderNode(val view: View) {
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
+  /** What it is when selected words are copied (`Component.copyAs`): no text is selected here, so nothing to do. */
+  def setCopyAs(tag: String): Unit = ()
   /** A mouse on Android keeps its own arrow. */
   def setCursor(name: String): Unit = ()
 
@@ -1876,9 +1878,16 @@ object Platform {
   /** Whether people select text with a pointer (`Component.selectable`): not here. */
   def selectsText(): Boolean = false
   def selectedText(): String = ""
+  /** The words selected, as HTML and as text (`Clipboard.selection`): none here. */
+  def selectedRich(): Option[(String, String)] = None
   def copyText(text: String): Unit = {
     val manager = Host.activity.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[android.content.ClipboardManager]
     manager.setPrimaryClip(android.content.ClipData.newPlainText("everyui", text))
+  }
+  /** `html` and `text` on the clipboard together: an app that takes styled words pastes the HTML, any other the text. */
+  def copyRich(html: String, text: String): Unit = {
+    val manager = Host.activity.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[android.content.ClipboardManager]
+    manager.setPrimaryClip(android.content.ClipData.newHtmlText("everyui", text, html))
   }
 
   /** No address bar: no path to show, push or follow. */

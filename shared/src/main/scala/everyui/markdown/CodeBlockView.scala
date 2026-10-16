@@ -46,6 +46,9 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
   name.position.left @= pad
   name.position.top := (header - name.size.height()) / 2.0
   name.visible @= language.nonEmpty
+  // what is over the code is not of it
+  name.copyAs @= "none"
+  copy.copyAs @= "none"
   copy.visible @= Platform.clipboard()
   copy.position.left := size.width() - copy.size.width() - 4.0
   copy.position.top @= 0.0

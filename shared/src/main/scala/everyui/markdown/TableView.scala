@@ -50,6 +50,7 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
   private val down: Val[Double] = own(Val(heights.foldLeft(0.0)((h, r) => h + r())))
   private val grid = new Container {
     semantics @= Semantics("table")
+    copyAs @= "table"
     radius @= look.radius
   }
   private val edge = TableLook.edge(look)
@@ -65,6 +66,7 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
   cells.indices.foreach { r =>
     val row = new Container {
       semantics @= Semantics("row")
+      copyAs @= "tr"
       backgroundColor := (if (r == 0) look.header() else look.rowFill(r - 1))
     }
     row.position.top := top(r)
@@ -154,6 +156,7 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
     color := (if (ctx.quiet) Theme.muted() else Theme.text())
     follow = ctx.onLink
     semantics @= Semantics(if (r == 0) "columnheader" else "cell")
+    copyAs @= (if (r == 0) "th" else "td")
     direction @= ctx.direction
     size.width := math.min(inner(c), most()(c) - pad * 2.0)
     // its lines, where it wraps, aligned as the column

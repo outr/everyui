@@ -58,7 +58,7 @@ class TranscriptCopySpec extends FxSpec {
         fx(t.focus())
         fx(t.list.current @= Some("m1"))
         ctrl(KeyCode.C, "c")
-        eventually(copied == "**Bold** words, as written") shouldBe true
+        eventually(copied == "Bold words, as written") shouldBe true
         // a click on the first message puts the cursor there, where it is
         val first = fx(t.list.indexOf("m0"))
         val offset = fx(t.list.offset())
@@ -81,7 +81,7 @@ class TranscriptCopySpec extends FxSpec {
         labels shouldBe List(ChatWords.copyMessage)
         fx(Focus.focused().collect { case r: MenuRow => r.item.action() })
         fx(Modal.close())
-        eventually(copied == "**Bold** words, as written") shouldBe true
+        eventually(copied == "Bold words, as written") shouldBe true
         // over the day's separator, nothing of the app's: the platform's own
         fx(t.list(0).isInstanceOf[ChatEntry.Marker]) shouldBe true
         val onDay = fx {

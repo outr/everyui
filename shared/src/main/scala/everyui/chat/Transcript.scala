@@ -38,6 +38,9 @@ import reactify.*
   * Command+A selects every word, as Select all does. The context menu (the secondary button, the menu key, a long
   * press, OK held) offers what `menu` says for the entry, by default on a message Copy (the words selected), Copy
   * message and Select all (`menuFor`); over an entry it offers nothing for, and over a link, the browser's own shows.
+  * A message copied whole goes on the clipboard as clean HTML and as plain prose (`MessageAction.copy`), so it pastes
+  * into an email as its words rather than its Markdown; words selected on the web copy the same way
+  * (`Component.copyAs`).
   *
   * Beside a message, a small row of buttons offers what `messageActions` says for it, by default Copy message where
   * there is a clipboard (`actionsFor`): beside the one the pointer rests on, else, with the focus on the transcript, the
@@ -312,16 +315,22 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   // ---- copying ----
 
   /** What a context menu on `entry` offers by default: on a message, where there is a clipboard, Copy (the words
-    * selected, where the platform selects them: only while some are), Copy message (its text, as it was written) and
-    * Select all (the words of the entries drawn), and About the author (`onAuthor`) where a press on them does
-    * anything; nothing on anything else. */
+    * selected, where the platform selects them: only while some are, as the Copy key copies them), Copy message (its
+    * words, as `MessageAction.copy` puts them) and Select all (the words of the entries drawn), and About the author
+    * (`onAuthor`) where a press on them does anything; nothing on anything else. */
   def menuFor(entry: ChatEntry): List[MenuItem] = entry match {
     case m: ChatEntry.Message if Clipboard.copies =>
-      val whole = MenuItem(ChatWords.copyMessage, () => Clipboard.copy(m.text()))
+      val whole = MenuItem(ChatWords.copyMessage, () => MessageAction.copy(m))
       if (!Platform.selectsText()) whole :: authorItem(m)
       else {
         val selected = Platform.selectedText()
-        List(MenuItem(ChatWords.copy, () => Clipboard.copy(selected), enabled = selected.nonEmpty), whole,
+        // as the Copy key copies them: clean HTML and prose where they lie in Markdown
+        val rich = Clipboard.selection()
+        val copy = () => rich match {
+          case Some(r) => Clipboard.copyRich(r._1, r._2)
+          case None => Clipboard.copy(selected)
+        }
+        List(MenuItem(ChatWords.copy, copy, enabled = selected.nonEmpty), whole,
           MenuItem(ChatWords.selectAll, () => list.selectText())) ++ authorItem(m)
       }
     case m: ChatEntry.Message => authorItem(m).drop(1)
@@ -338,7 +347,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   // ---- a message's actions ----
 
   /** What the buttons beside a message offer by default: Copy message (`MessageAction.copyText`) where there is a
-    * clipboard; nothing elsewhere, and on anything but a message. */
+    * clipboard; nothing elsewhere, and on anything but a message. An app can add Copy as Markdown
+    * (`MessageAction.copyMarkdownSource`), the text as it was written. */
   def actionsFor(entry: ChatEntry): List[MessageAction] = entry match {
     case m: ChatEntry.Message if Clipboard.copies => List(MessageAction.copyText(m))
     case _ => Nil
@@ -414,7 +424,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     else if (e.name.toLowerCase == "a" && Platform.selectsText()) Some(() => list.selectText())
     else if (e.name.toLowerCase != "c" || !Clipboard.copies || Platform.selectedText().nonEmpty) None
     else list.currentItem match {
-      case Some(m: ChatEntry.Message) => Some(() => Clipboard.copy(m.text()))
+      case Some(m: ChatEntry.Message) => Some(() => MessageAction.copy(m))
       case _ => None
     }
 

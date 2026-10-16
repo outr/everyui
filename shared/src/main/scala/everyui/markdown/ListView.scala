@@ -39,6 +39,9 @@ class ListView(list: MdBlock.BulletList, ctx: MarkdownContext, width: => Double,
     val mark = marker(it, i)
     row.size.width := size.width()
     row.semantics @= Semantics.listItem
+    row.copyAs @= "li"
+    // the bullet or number is the list's, not the words'
+    mark.copyAs @= "none"
     body.position.left := (if (rtl) 0.0 else style.indent)
     row.size.height := math.max(body.size.height(), mark.size.height())
     row.children ++= List(mark, body)

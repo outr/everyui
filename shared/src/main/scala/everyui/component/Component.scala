@@ -242,6 +242,14 @@ class Component(val node: RenderNode) {
     * stays unselectable, and a plain click does what it did. Where the platform lets people select text (the web,
     * `Platform.selectsText`); elsewhere it changes nothing. */
   lazy val selectable: Prop[Boolean] = own(new Prop[Boolean](false, s => node.setSelectable(s)))
+  /** What this is when words selected across it are copied: an HTML block's tag — "p", "h1" to "h6", "pre",
+    * "blockquote", "ul", "ol" ("ol 3" numbered from 3), "li", "hr", "table", "tr", "th" or "td" — or "none" to be left
+    * out (a list's bullet, a code block's Copy button). Where a selection touches such components, the web copies it
+    * as clean HTML of those blocks, with the bold, slant, code and links of their words and nothing of their look, and
+    * as plain prose (`Clipboard.selection`), in place of the page's own styled copy; "" (the default) is a component
+    * with nothing to say, whose words go as a paragraph of their own. Elsewhere no text is selected, and it changes
+    * nothing. */
+  lazy val copyAs: Prop[String] = own(new Prop[String]("", tag => node.setCopyAs(tag)))
   /** What this is to whatever reads the page rather than looking at it (`Semantics`): a heading, the main content, a
     * set of links. On the web it is the element's ARIA role, level and label, with a slider's value and a switch's
     * state; elsewhere, where the platform has one, its accessibility role. */

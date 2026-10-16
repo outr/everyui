@@ -2,8 +2,8 @@ package everyui.clipboard
 
 import everyui.FxSpec
 
-/** The clipboard on the desktop: what is copied is read back, and a clipboard with no text reads as None. Whatever the
-  * machine's clipboard held before is put back after. */
+/** The clipboard on the desktop: what is copied is read back, HTML and text together and Markdown as both, and a
+  * clipboard with no text reads as None. Whatever the machine's clipboard held before is put back after. */
 class ClipboardSpec extends FxSpec {
   private var before: Option[java.util.Map[javafx.scene.input.DataFormat, AnyRef]] = None
 
@@ -38,6 +38,24 @@ class ClipboardSpec extends FxSpec {
     "read back what was copied" in {
       fx(Clipboard.copy("everyui clipboard spec"))
       read() shouldBe Some("everyui clipboard spec")
+    }
+
+    "copy HTML and text together" in {
+      fx(Clipboard.copyRich("<p><strong>Hi</strong></p>", "Hi"))
+      fx(javafx.scene.input.Clipboard.getSystemClipboard.getHtml) shouldBe "<p><strong>Hi</strong></p>"
+      fx(javafx.scene.input.Clipboard.getSystemClipboard.getString) shouldBe "Hi"
+      read() shouldBe Some("Hi")
+    }
+
+    "copy Markdown as clean HTML and as prose" in {
+      fx(Clipboard.copyMarkdown("**Total:** 3 < 4\n\n- one\n- [two](https://x.io)"))
+      fx(javafx.scene.input.Clipboard.getSystemClipboard.getHtml) shouldBe
+        "<p><strong>Total:</strong> 3 &lt; 4</p>\n<ul>\n<li>one</li>\n<li><a href=\"https://x.io\">two</a></li>\n</ul>"
+      read() shouldBe Some("Total: 3 < 4\n\n- one\n- two (https://x.io)")
+    }
+
+    "have no selection to copy on the desktop" in {
+      fx(Clipboard.selection()) shouldBe None
     }
 
     "read None where it holds no text" in {
