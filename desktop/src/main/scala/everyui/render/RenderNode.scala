@@ -452,6 +452,7 @@ class RenderNode(val fx: Node) {
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
+  def holdsSelection(): Boolean = false
   /** What it is when selected words are copied (`Component.copyAs`): no text is selected here, so nothing to do. */
   def setCopyAs(tag: String): Unit = ()
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"); "" for the default. */

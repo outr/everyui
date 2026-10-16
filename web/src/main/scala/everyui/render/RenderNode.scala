@@ -351,6 +351,13 @@ class RenderNode(val el: html.Element) {
   /** Every word in it selected, as the browser's Select All selects a page's. */
   def selectText(): Unit = dom.window.getSelection().selectAllChildren(el)
 
+  /** Whether words are selected and the selection reaches into it. */
+  def holdsSelection(): Boolean = {
+    val s = dom.window.getSelection()
+    s != null && !s.isCollapsed && s.rangeCount > 0 &&
+      s.getRangeAt(0).asInstanceOf[js.Dynamic].intersectsNode(el).asInstanceOf[Boolean]
+  }
+
   /** What it is when selected words are copied (`Component.copyAs`): its `data-copy`, which `RichCopy` reads off the
     * page as a copy is made. */
   def setCopyAs(tag: String): Unit = {

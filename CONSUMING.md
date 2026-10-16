@@ -1595,6 +1595,11 @@ Oracle: Hello…, done"). `body` is a short text under the summary, shown withou
 command run): Markdown drawn as the transcript draws a message's words (its `render`), selectable, and cut to
 `transcript.bodyLines` lines (3); one cut short opens (a click, Enter) to be read whole, details or not. Both are
 reactive, like `summary` and `status`, so a body can arrive as the call settles; with neither, the line is as it was.
+Where the platform selects text (the web), what an opened call shows is selectable too, whoever made it
+(`ChatEntry.textDetails` or the app's own): a drag across its words selects them, on into the messages around it, and
+a copy keeps their structure (`textDetails` copies its headings as paragraphs and its text as code; a Markdown view's
+blocks as they are tagged). A drag that selects some, or a click among them, opens or closes nothing; a click on the
+summary still does.
 
 ```scala
 val call = ChatEntry.activity("c-9", "Message to The Oracle", lead = ActivityLead.Person(oracle),

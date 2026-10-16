@@ -12,7 +12,8 @@ import reactify.*
 /** A tool call in the transcript, `width` wide: one line in a quiet box (a spinner while it runs, a tick or a cross once
   * it has, what it does, and a chevron where there is more), which a click (or Enter, from the transcript) opens onto
   * its details. `details` hands over what the entry's `details` made, the first time it is opened: the transcript keeps
-  * it, so it is not made again, and takes it back (`release`) before this is taken apart.
+  * it, so it is not made again, and takes it back (`release`) before this is taken apart. Their words are selectable,
+  * whoever made them, and a drag that selects some opens or closes nothing.
   *
   * Where the entry has a `lead`, it goes first in place of the status mark: somebody's avatar, a ring turning around it
   * while the call runs (`Avatar.busy`), or an icon with a spinner on its corner while it runs; once it has, a tick or a
@@ -184,13 +185,22 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   holder.position.left @= Transcript.padX
   holder.position.top := inner() + 12.0
   holder.visible := open()
+  // what an opened call shows is there to be read and copied, as its body is: where words are selected, a click in it
+  // (a word's double click, a selection let go) leaves it open, and a drag from it onto the summary is no click
+  // (a press is the innermost clickable thing's it lands on)
+  holder.selectable @= true
+  if (Platform.selectsText()) holder.event.click.attach(_.consume())
   holder.size.height := holder.children().headOption.map(_.size.height()).getOrElse(0.0)
   // what is wider than the box is cut at its edge
   holder.size.width.attach(_ => holder.node.setClip(holder.size.width(), holder.size.height()))
   holder.size.height.attach(_ => holder.node.setClip(holder.size.width(), holder.size.height()))
+  // what was selected as the button went down: a drag that selected words in it, the body's or the details', is not a
+  // click that opens or closes it, while a click on the summary with words left selected from before is
+  private var selectedBefore = ""
+  if (Platform.selectsText()) box.event.pointer.down.attach(_ => selectedBefore = Platform.selectedText())
   box.event.click.attach { e =>
-    // (a drag that selected the body's words is not a click that opens or closes it)
-    if (a.opens && !(hasBody() && Platform.selectsText() && Platform.selectedText().nonEmpty)) {
+    if (a.opens && !(Platform.selectsText() && box.node.holdsSelection() &&
+      Platform.selectedText() != selectedBefore)) {
       e.consume()
       a.expanded @= !a.expanded()
     }
@@ -248,13 +258,16 @@ object ActivityView {
   val icon: Double = 20.0
   val badge: Double = 14.0
 
-  /** Input and output as plain text under small headings, wrapped to the width it is given (its parent's). */
+  /** Input and output as plain text under small headings, wrapped to the width it is given (its parent's). Words
+    * selected across them copy as the headings' paragraphs and the text's code blocks. */
   def textDetails(input: String, output: String): Component = {
     def heading(words: String): TextView = new TextView {
       content @= words
       font.size @= 11.0
       font.weight @= FontWeight.SemiBold
       color := Theme.muted()
+      // a copy across input and output says which is which
+      copyAs @= "p"
     }
     def body(words: String): TextView = new TextView {
       content @= words
@@ -263,6 +276,7 @@ object ActivityView {
       direction @= TextDirection.Auto
       wrapAnywhere @= true
       color := Theme.text()
+      copyAs @= "pre"
     }
     val in = body(input)
     val out = body(output)
