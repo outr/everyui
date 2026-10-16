@@ -34,6 +34,14 @@ object Autofill {
   /** Whether it asks for a password, which is hidden as it is typed. */
   def secret(autofill: Autofill): Boolean = autofill == Autofill.CurrentPassword || autofill == Autofill.NewPassword
 
+  /** Whether what it asks for reads left to right in every language: a sign-in, a code, an email address, a phone
+    * number, a web address (`InputView.direction`). */
+  def leftToRight(autofill: Autofill): Boolean = autofill match {
+    case Autofill.Username | Autofill.CurrentPassword | Autofill.NewPassword | Autofill.OneTimeCode | Autofill.Email |
+         Autofill.Tel | Autofill.Url => true
+    case _ => false
+  }
+
   /** Its name in the web's `autocomplete` vocabulary ("name", "email", "tel", "current-password", "off"), which
     * Android's hints and Apple's content types are mapped from: the seam's word for it. */
   def token(autofill: Autofill): String = autofill match {

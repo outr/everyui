@@ -1027,15 +1027,15 @@ class RenderNode(val view: View) {
     * first letter reads from, so a Latin line in Arabic sat on the left. A field is mirrored with the root already, so
     * its start stays logical. */
   private[render] def applyAlign(): Unit = view match {
-    case e: EditText => e.setTextAlignment(if (textAlign == "center") View.TEXT_ALIGNMENT_CENTER
-      else if (textAlign == "end") View.TEXT_ALIGNMENT_VIEW_END else View.TEXT_ALIGNMENT_VIEW_START)
+    case e: EditText =>
+      // words given a direction of their own (a path, an address, a query by its first letter) start on their own side
+      e.setTextDirection(RenderNode.textDirection(textDirection))
+      val own = textDirection.nonEmpty
+      e.setTextAlignment(if (textAlign == "center") View.TEXT_ALIGNMENT_CENTER
+        else if (textAlign == "end") { if (own) View.TEXT_ALIGNMENT_TEXT_END else View.TEXT_ALIGNMENT_VIEW_END }
+        else if (own) View.TEXT_ALIGNMENT_TEXT_START else View.TEXT_ALIGNMENT_VIEW_START)
     case t: TextView =>
-      t.setTextDirection(textDirection match {
-        case "auto" => if (Host.rtl) View.TEXT_DIRECTION_FIRST_STRONG_RTL else View.TEXT_DIRECTION_FIRST_STRONG_LTR
-        case "ltr" => View.TEXT_DIRECTION_LTR
-        case "rtl" => View.TEXT_DIRECTION_RTL
-        case _ => View.TEXT_DIRECTION_INHERIT
-      })
+      t.setTextDirection(RenderNode.textDirection(textDirection))
       val rtl = everyui.text.Bidi.rightToLeft(textDirection, t.getText.toString, Host.rtl)
       val side = if (textAlign == "center") android.view.Gravity.CENTER_HORIZONTAL
         else if ((textAlign == "end") != rtl) android.view.Gravity.RIGHT else android.view.Gravity.LEFT
@@ -1073,6 +1073,15 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** A view's text direction for `setTextDirection`'s value: "auto" by the first letter with one (the app's where
+    * there is none), "ltr", "rtl", or the app's for "". */
+  def textDirection(value: String): Int = value match {
+    case "auto" => if (Host.rtl) View.TEXT_DIRECTION_FIRST_STRONG_RTL else View.TEXT_DIRECTION_FIRST_STRONG_LTR
+    case "ltr" => View.TEXT_DIRECTION_LTR
+    case "rtl" => View.TEXT_DIRECTION_RTL
+    case _ => View.TEXT_DIRECTION_INHERIT
+  }
+
   /** The Autofill Framework's hint for an `autocomplete` token: View's own constants where it has one, else androidx's
     * `HintConstants` (the same strings, which every service knows); "" where neither names it. */
   def autofillHint(token: String): String = token match {

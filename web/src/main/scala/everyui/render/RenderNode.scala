@@ -1109,7 +1109,7 @@ object Nodes {
     val style = dom.document.createElement("style")
     style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }" +
       // a scroll run from its left in every language, and what it holds in the page's direction
-      " .everyui-ltr { direction: ltr; } .everyui-ltr > * { direction: var(--everyui-dir, ltr); }" + RenderNode.autofillStyle
+      " .everyui-ltr { direction: ltr; } .everyui-ltr > :not([dir]) { direction: var(--everyui-dir, ltr); }" + RenderNode.autofillStyle
     dom.document.head.appendChild(style)
     new RenderNode(app)
   }

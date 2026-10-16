@@ -1,6 +1,6 @@
 package everyui.component
 
-import everyui.component.types.{Autofill, PasteAction, Semantics}
+import everyui.component.types.{Autofill, PasteAction, Semantics, TextDirection}
 import everyui.event.Key
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -32,6 +32,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   /** Holds text meant as it is typed (a path, a command, code), never spell-checked, corrected or capitalized
     * (`InputView.literal`). */
   val literal: Var[Boolean] = own(Var(false))
+  /** Which way its words run (`InputView.direction`): by default the app's, left to right where `literal`. */
+  val direction: Var[TextDirection] = own(Var(TextDirection.Inherit))
   /** Its name to autofill and password managers (`InputView.fieldName`); empty, it is named by its hint. */
   val fieldName: Var[String] = own(Var(""))
   /** Shows `value`, to be focused, chosen and copied, but not changed (`InputView.readOnly`); where the platform has
@@ -80,6 +82,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.fieldName := fieldName()
     input.readOnly := readOnly()
     input.literal := literal()
+    input.direction := direction()
     input.pasted := pasted()
     // named by its label, which is drawn beside it rather than being its own
     input.semantics := Semantics(label = title())

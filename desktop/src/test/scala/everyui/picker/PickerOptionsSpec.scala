@@ -2,7 +2,7 @@ package everyui.picker
 
 import everyui.async.Task
 import everyui.component.*
-import everyui.component.types.Autofill
+import everyui.component.types.{Autofill, TextDirection}
 import everyui.event.{Key, KeyEvent, Keys, PointerEvent, PointerKind}
 import everyui.focus.Focus
 import everyui.i18n.Direction
@@ -169,6 +169,21 @@ class PickerOptionsSpec extends FxSpec {
       fx(find.picker.field.autofill()) shouldBe Some(Autofill.Off)
       fx(find.picker.extraInput.get.autofill()) shouldBe Some(Autofill.Off)
       fx(find.picker.extraInput.get.tooltip()) shouldBe "File mask (Alt+F)"
+    }
+    "hold the file mask literal, its words left to right in a right-to-left language" in onScreen {
+      val find = new Find
+      fx(Direction.set(true))
+      fx(find.picker.open())
+      fx(find.picker.segment @= "file")
+      val extra = find.picker.extraInput.get
+      fx(extra.literal()) shouldBe true
+      fx(extra.value @= "*.scala")
+      val inner = fx(extra.children().collectFirst { case i: InputView => i }.get)
+      fx(inner.runs()) shouldBe TextDirection.LeftToRight
+      fx(inner.node.fx.getNodeOrientation) shouldBe javafx.geometry.NodeOrientation.LEFT_TO_RIGHT
+      fx(find.picker.field.value @= "ملف")
+      val main = fx(find.picker.field.children().collectFirst { case i: InputView => i }.get)
+      fx(main.runs()) shouldBe TextDirection.Inherit
     }
     "be reached by the arrows: Right of the field to the options, then down to the second field, the chips, the list" in
       onScreen {

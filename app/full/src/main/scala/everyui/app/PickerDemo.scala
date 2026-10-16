@@ -3,7 +3,7 @@ package everyui.app
 import everyui.async.Task
 import everyui.component.{Button, ButtonStyle, TextView}
 import everyui.font.MaterialIcon
-import everyui.i18n.Direction
+import everyui.i18n.{Direction, Language, Strings}
 import everyui.picker.{FilterPicker, Match, PickerField, PickerToggle, Segment, SegmentIcon}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -14,11 +14,11 @@ import reactify.*
   * Quillon, Orrery, Brightfold, all made up) on top of what is typed. Each provider's chip has an icon before its
   * words: Local a Material icon, Quillon and Orrery path data (Orrery's filled even-odd), and Brightfold an SVG file
   * served beside the page (images/brightfold.svg: fill="currentColor", two paths, a ring that is a hole only by the
-  * even-odd rule). It opens at once; `theme=light` shows the light palette, `rtl=1` reads from the right, `icons=0`
-  * leaves the icons off, `q=` puts words in the field and `segment=` chooses a segment by its key. `find=1` shows a
-  * Search Everywhere in its place (All, Files, Conversations, Messages), its Files with Match case, Regex and Whole
-  * word and a file mask, which its search follows; `on=crw` turns those three on to begin with, and `mask=` fills the
-  * mask.
+  * even-odd rule). It opens at once; `theme=light` shows the light palette, `rtl=1` reads from the right, `lang=ar`
+  * is in Arabic, `icons=0` leaves the icons off, `q=` puts words in the field and `segment=` chooses a segment by its
+  * key. `find=1` shows a Search Everywhere in its place (All, Files, Conversations, Messages), its Files with Match
+  * case, Regex and Whole word and a file mask, which its search follows; `on=crw` turns those three on to begin with,
+  * and `mask=` fills the mask.
   * Logs `picker chose <model>` when one is chosen. */
 object PickerDemo {
   // (name, provider's key, provider's name)
@@ -44,6 +44,10 @@ object PickerDemo {
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
     if (Platform.launchArg("rtl") == "1") Direction.set(true)
+    if (Platform.launchArg("lang") == "ar") {
+      Strings.language @= Language("ar", "العربية", "Arabic", rtl = true)
+      Direction.set(true)
+    }
     ui.backgroundColor := Theme.background()
     val chose = Var("")
     val finding = Platform.launchArg("find") == "1"

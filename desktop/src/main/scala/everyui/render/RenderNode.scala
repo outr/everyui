@@ -546,10 +546,18 @@ class RenderNode(val fx: Node) {
       case f: RichFlow =>
         f.setNodeOrientation(orientation)
         f.setSide(side)
-      case f: TextField =>
-        // a right-to-left field is mirrored already, so its alignment stays logical: left is where it starts
-        f.setAlignment(if (centred) Pos.CENTER else if (align == "end") Pos.CENTER_RIGHT else Pos.CENTER_LEFT)
-        f.setNodeOrientation(if (Host.rtl) NodeOrientation.RIGHT_TO_LEFT else NodeOrientation.LEFT_TO_RIGHT)
+      case f: TextInputControl =>
+        // a field turns whole with the way its words run (the window's, or their own), so its alignment stays
+        // logical: left is where it starts; where it sits is the layout's
+        val turned = if (everyui.text.Bidi.rightToLeft(textDirection, f.getText, Host.rtl)) NodeOrientation.RIGHT_TO_LEFT
+          else NodeOrientation.LEFT_TO_RIGHT
+        f match {
+          case t: TextField =>
+            t.setAlignment(if (centred) Pos.CENTER else if (align == "end") Pos.CENTER_RIGHT else Pos.CENTER_LEFT)
+            t.setNodeOrientation(turned)
+          // a box of lines keeps the window's unless given its own (JavaFX's wrapping of right-to-left lines: RtlText)
+          case _ => f.setNodeOrientation(if (textDirection.isEmpty) NodeOrientation.INHERIT else turned)
+        }
       case _ => ()
     }
   }
@@ -580,7 +588,11 @@ class RenderNode(val fx: Node) {
   /** Every edit of a text field, with its new contents. */
   def onValue(f: String => Unit): Unit = fx match {
     case field: TextInputControl => field.textProperty.addListener(new ChangeListener[String] {
-      override def changed(o: ObservableValue[? <: String], was: String, now: String): Unit = f(now)
+      override def changed(o: ObservableValue[? <: String], was: String, now: String): Unit = {
+        // words running by their own first letter turn the field as they change
+        if (textDirection == "auto") applyAlign()
+        f(now)
+      }
     })
     case _ => ()
   }

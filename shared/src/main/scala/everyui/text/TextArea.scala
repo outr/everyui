@@ -1,7 +1,7 @@
 package everyui.text
 
 import everyui.component.*
-import everyui.component.types.{Autofill, PasteAction, Semantics, WhiteSpace}
+import everyui.component.types.{Autofill, PasteAction, Semantics, TextDirection, WhiteSpace}
 import everyui.event.{Key, KeyEvent}
 import everyui.keymap.Chord
 import everyui.render.Platform
@@ -47,6 +47,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   /** Holds text meant as it is typed (code, a script), never spell-checked, corrected or capitalized
     * (`InputView.literal`). */
   val literal: Var[Boolean] = own(Var(false))
+  /** Which way its words run (`InputView.direction`): by default the app's, left to right where `literal`. */
+  val direction: Var[TextDirection] = own(Var(TextDirection.Inherit))
   val readOnly: Var[Boolean] = own(Var(false))
   /** What a paste becomes before it lands (`InputView.pasted`); None lets it land. */
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
@@ -91,6 +93,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     input.readOnly := readOnly()
     input.pasted := pasted()
     input.literal := literal()
+    input.direction := direction()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)
