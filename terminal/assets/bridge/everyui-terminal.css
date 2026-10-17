@@ -1,9 +1,12 @@
 /* everyui-terminal: the box a terminal draws into, and the room round its cells. The box's ground is the theme's (the
-   embed draws it), so xterm's own viewport, black unless told, is clear; its native scroll bar is hidden, since the
+   embed draws it), so xterm's own viewport, black unless told, is clear, and so is the ground xterm paints behind its
+   rows: a translucent theme is painted once, by the embed, and shows what is behind it. Cell backgrounds a program sets,
+   the selection and the cursor are drawn over it as xterm draws them. The native scroll bar is hidden, since the
    terminal scrolls with a bar of its own. */
 .everyui-terminal .xterm { height: 100%; box-sizing: border-box;
   padding: calc(4px * var(--everyui-ui-scale, 1)) 0 0 calc(8px * var(--everyui-ui-scale, 1)); }
 .everyui-terminal .xterm .xterm-viewport { background-color: transparent !important; scrollbar-width: none; }
+.everyui-terminal .xterm .xterm-scrollable-element { background-color: transparent !important; }
 .everyui-terminal .xterm .xterm-viewport::-webkit-scrollbar { display: none; }
 /* Under UiScale the app's root is drawn larger or smaller with a CSS scale, and xterm reads a pointer's place in the
    window's pixels but its cells in its own, so a click lands rows away from where it was made, further toward the

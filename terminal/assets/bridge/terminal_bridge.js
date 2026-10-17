@@ -99,6 +99,9 @@
         macOptionIsMeta: !!options.optionIsMeta,
         screenReaderMode: !!options.screenReader,
         allowProposedApi: false,
+        // a translucent ground kept translucent: read only by a GPU renderer, not the DOM renderer this bundle draws
+        // with, so it costs nothing, opaque or not, and never needs the terminal made again
+        allowTransparency: true,
         theme: options.theme || {}
       });
       var fit = new window.FitAddon.FitAddon();
