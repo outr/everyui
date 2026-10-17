@@ -11,8 +11,9 @@ import everyui.theme.Theme
 import reactify.*
 
 /** A strip of tabs on a rule, `width` wide, scrolling along when there are more than fit: a page's sections, an
-  * editor's open files. `current` is the key of the one shown. With `showOnFocus` a tab shows itself as the focus
-  * lands on it, as moving along a TV's tab bar does; without, only a click or Enter shows one.
+  * editor's open files. `current` is the key of the one shown, and closing it shows the one shown before it (`remove`).
+  * With `showOnFocus` a tab shows itself as the focus lands on it, as moving along a TV's tab bar does; without, only a
+  * click or Enter shows one.
   *
   * {{{
   *   val bar = TabBar(List("overview" -> "Overview", "cast" -> "Cast"), section, width)   // fixed sections
@@ -46,6 +47,9 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   val addLabel: Var[String] = Var(TabBar.addWord)
 
   private var plus: Option[TabAdd] = None
+  // the keys shown, the latest first, however `current` came to change: where the tab shown goes, the one before it
+  private var history: List[String] = List(current())
+  current.attach(k => history = k :: history.filterNot(_ == k))
   // the way the tabs read on, and back: Right and Left, or the other way round in a right-to-left language
   private def onward: Key = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
   private def backward: Key = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
@@ -127,14 +131,31 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
     add(key, label, closable, if (i < 0) -1 else i + 1, lead)
   }
 
-  /** The tab for `key` taken off the strip. Where it was the one shown, the tab now in its place is shown, else the one
-    * before it; the focus on it goes the same way. */
+  /** The tab for `key` taken off the strip. Where it was the one shown, the one shown before it is shown again, as a
+    * browser does; with none of those left (a bar laid out afresh), the tab now in its place, else the one before it.
+    * The focus on it goes the same way. */
   def remove(key: String): Unit = {
     val gone = apply(key)
     val was = tabs().indexWhere(_.key == key)
     tabs @= tabs().filterNot(_.key == key)
-    if (current() == key && tabs().nonEmpty) current @= tabs()(math.min(math.max(0, was), tabs().length - 1)).key
+    history = history.filterNot(_ == key)
+    if (current() == key && tabs().nonEmpty) current @= history.find(k => apply(k).nonEmpty)
+      .getOrElse(tabs()(math.min(math.max(0, was), tabs().length - 1)).key)
     gone.foreach(_.dispose())
+  }
+
+  /** The tab for `key` moved to `at` among the others (to the end, where it is past the last or not given), the same
+    * tab, so what is shown and the order they were shown in stay as they were. */
+  def move(key: String, at: Int = -1): Unit = apply(key).foreach { tab =>
+    val rest = tabs().filterNot(_.key == key)
+    tabs @= rest.patch(if (at >= 0) math.min(at, rest.length) else rest.length, List(tab), 0)
+  }
+
+  /** The keys of the tabs open, the one shown first and then the rest in the order they were last shown; a tab not
+    * shown since the bar was made comes after, in its place along the strip. */
+  def recent: List[String] = {
+    val seen = history.filter(k => apply(k).nonEmpty)
+    seen ++ tabs().map(_.key).filterNot(seen.contains)
   }
 
   /** The tab for `key`. */

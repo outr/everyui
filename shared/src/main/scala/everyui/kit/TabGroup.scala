@@ -104,13 +104,8 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
 
   /** `k` moved to `at` among the tabs. */
   def reorder(k: K, at: Int): Unit = if (has(k)) {
-    val content = made.get(k)
-    val was = shown()
-    made = made - k
-    bar.remove(owner.id(k))
-    keys @= keys().filterNot(_ == k)
-    add(k, at, content)
-    shown @= was
+    bar.move(owner.id(k), at)
+    keys @= bar.tabs().flatMap(t => keys().find(x => owner.id(x) == t.key)).toVector
   }
 
   /** The view this group shows its tabs that share one in, once it has shown one. */
