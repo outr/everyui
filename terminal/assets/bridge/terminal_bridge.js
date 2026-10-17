@@ -80,7 +80,8 @@
   handlers['create'] = function (id, payload) {
     if (bridge.terminals[id]) return;
     var options = JSON.parse(payload || '{}');
-    var entry = { term: null, fit: null, waiting: [], keep: options.keep || [], observer: null, disposed: false };
+    var entry = { term: null, fit: null, waiting: [], keep: options.keep || [], observer: null, disposed: false,
+                  fontSize: options.fontSize, scale: uiScale() };
     bridge.terminals[id] = entry;
     var container = window.everyuiEmbed.container(id);
     if (!container) throw new Error('no element "' + id + '"');
@@ -90,7 +91,7 @@
       if (entry.disposed) return;
       var term = new window.Terminal({
         fontFamily: options.fontFamily,
-        fontSize: options.fontSize,
+        fontSize: options.fontSize * entry.scale,
         lineHeight: options.lineHeight || 1.0,
         scrollback: options.scrollback,
         cursorBlink: !!options.cursorBlink,
@@ -131,7 +132,11 @@
                         : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && letter === 'v');
         return !paste;
       });
-      term.open(container);
+      // drawn at the window's pixels inside the app's scale (everyui-terminal.css), where a pointer is read
+      var box = document.createElement('div');
+      box.className = 'everyui-terminal-unscaled';
+      container.appendChild(box);
+      term.open(box);
       // the textarea xterm types through is never a sign-in: the markers that keep the browser's autofill and the
       // password managers out of it, as an EveryUI field held `Autofill.Off` has
       if (term.textarea) {
@@ -144,7 +149,7 @@
       fitNow(entry);
       if (window.ResizeObserver) {
         entry.observer = new ResizeObserver(function () { fitNow(entry); });
-        entry.observer.observe(container);
+        entry.observer.observe(box);
       }
       bridge.emit('ready', id, term.cols + ',' + term.rows);
       var waiting = entry.waiting;
@@ -158,11 +163,31 @@
     else open();
   };
 
+  // The size the app is drawn at (everyui.theme.UiScale), 1 in a page of its own.
+  function uiScale() {
+    var factor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--everyui-ui-scale'));
+    return factor > 0 ? factor : 1;
+  }
+
+  // The text sized by the size the app is drawn at, as the box it is in is drawn back at the window's pixels.
   function fitNow(entry) {
     if (!entry.term || !entry.fit) return;
+    var scale = uiScale();
+    if (scale !== entry.scale) {
+      entry.scale = scale;
+      entry.term.options.fontSize = entry.fontSize * scale;
+    }
     var el = entry.term.element && entry.term.element.parentElement;
     if (el && (el.clientWidth === 0 || el.clientHeight === 0)) return;
     try { entry.fit.fit(); } catch (e) { console.error('[terminalBridge] fit failed', e); }
+  }
+
+  // A change of the size the app is drawn at, which Platform.setUiScale sets on the page's root: the box need not change
+  // size with it (a terminal filling a screen that grows as the app is drawn smaller), so the observer may not hear it.
+  if (window.MutationObserver) {
+    new MutationObserver(function () {
+      for (var id in bridge.terminals) fitNow(bridge.terminals[id]);
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
   }
 
   // Where the terminal is laid out by the page itself (a web view of its own), the window's size is its.
@@ -194,7 +219,10 @@
     var options = JSON.parse(payload || '{}');
     withTerminal(id, function (e) {
       if (options.theme) e.term.options.theme = options.theme;
-      if (options.fontSize) e.term.options.fontSize = options.fontSize;
+      if (options.fontSize) {
+        e.fontSize = options.fontSize;
+        e.term.options.fontSize = options.fontSize * e.scale;
+      }
       if (options.fontFamily) e.term.options.fontFamily = options.fontFamily;
       fitNow(e);
     });

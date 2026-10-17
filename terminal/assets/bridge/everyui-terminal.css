@@ -1,6 +1,13 @@
 /* everyui-terminal: the box a terminal draws into, and the room round its cells. The box's ground is the theme's (the
    embed draws it), so xterm's own viewport, black unless told, is clear; its native scroll bar is hidden, since the
    terminal scrolls with a bar of its own. */
-.everyui-terminal .xterm { height: 100%; padding: 4px 0 0 8px; box-sizing: border-box; }
+.everyui-terminal .xterm { height: 100%; box-sizing: border-box;
+  padding: calc(4px * var(--everyui-ui-scale, 1)) 0 0 calc(8px * var(--everyui-ui-scale, 1)); }
 .everyui-terminal .xterm .xterm-viewport { background-color: transparent !important; scrollbar-width: none; }
 .everyui-terminal .xterm .xterm-viewport::-webkit-scrollbar { display: none; }
+/* Under UiScale the app's root is drawn larger or smaller with a CSS scale, and xterm reads a pointer's place in the
+   window's pixels but its cells in its own, so a click lands rows away from where it was made, further toward the
+   bottom. The terminal is drawn back at the window's pixels here, its text sized up by the bridge to match, so the two
+   agree. The page's root carries the size the app is drawn at (--everyui-ui-scale); a page of its own has none. */
+.everyui-terminal .everyui-terminal-unscaled { width: calc(100% * var(--everyui-ui-scale, 1));
+  height: calc(100% * var(--everyui-ui-scale, 1)); scale: calc(1 / var(--everyui-ui-scale, 1)); transform-origin: 0 0; }
