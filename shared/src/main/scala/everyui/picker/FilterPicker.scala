@@ -2,7 +2,7 @@ package everyui.picker
 
 import everyui.async.Task
 import everyui.component.*
-import everyui.component.types.Autofill
+import everyui.component.types.{Autofill, WhiteSpace}
 import everyui.event.Key
 import everyui.font.MaterialIcon
 import everyui.i18n.{Direction, Words}
@@ -38,6 +38,12 @@ import reactify.*
   * picker, and its tooltip says so; on a remote the options are Right of the field (Left, right to left) and the
   * second field is below it, before the chips.
   *
+  * Given a `heading`, its words are a muted line under the field (and the second field), over the chips and the list
+  * they speak of: what is in effect among the choices ("Current: Auto"), say, where the button that opened the picker
+  * shows only an icon. It wraps to the picker's width and follows its value; with no words it is not drawn and takes
+  * no room. It is a label, never focused and no row of the list, and the field, which has the focus, says it after
+  * its name.
+  *
   * {{{
   *   FilterPicker.show[File](q => index.search(q), _.path, _.name, _.folder, placeholder = "Go to file") { f =>
   *     open(f)
@@ -46,7 +52,7 @@ import reactify.*
   *   new FilterPicker[Model](q => models.find(q), _.id, _.name, _.provider,
   *     segments = List(Segment.all("All"), Segment("local", "Local", Some(SegmentIcon(MaterialIcon.Computer))),
   *       Segment("acme", "Acme", Some(SegmentIcon.Url("/providers/acme.svg")))),
-  *     groupOf = _.providerKey).open()
+  *     groupOf = _.providerKey, heading = Some(Val("Current: " + current().name))).open()
   *
   *   lazy val find: FilterPicker[Hit] = new FilterPicker[Hit](q => search(q, find.segment(), matchCase(), mask()),
   *     _.id, _.name, _.where, segments = List(Segment.all("All"), Segment("files", "Files")), groupOf = _.kind,
@@ -58,7 +64,7 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
                       width: Double = FilterPicker.width, debounce: Double = FilterPicker.debounce,
                       row: Option[Var[String] => ListRow[T]] = None, segments: List[Segment] = Nil,
                       groupOf: T => String = (_: T) => "", toggles: List[PickerToggle] = Nil,
-                      extraField: Option[PickerField] = None) extends Container {
+                      extraField: Option[PickerField] = None, heading: Option[Val[String]] = None) extends Container {
   /** A match chosen. */
   val chosen: Channel[T] = Channel[T]
   /** The words in the field. */
@@ -106,6 +112,18 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     size.width @= across - 24.0
     children ++= segments.map(s => new SegmentChip(s, segment))
   }
+  /** The heading's line, under the field (and the second field), over the chips and the list: muted words wrapped to
+    * the picker's width, drawn only while there are words. Never focused, and no row of the list. */
+  val headingLine: Option[TextView] = heading.map { h =>
+    new TextView {
+      whiteSpace @= WhiteSpace.Normal
+      size.width @= across - 24.0
+      font.size @= 13.0
+      color := Theme.muted()
+      content := h()
+      visible := h().nonEmpty
+    }
+  }
   val list: VirtualList[T] = new VirtualList[T](shown, keyOf, labelOf)(() =>
     row.map(make => make(words)).getOrElse(new HighlightRow[T](labelOf,
       (t: T) => Match.spans(words(), labelOf(t)).getOrElse(Nil), detailOf)))
@@ -116,9 +134,12 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     visible := answered().nonEmpty && shown().isEmpty
   }
   private val rows: Val[Double] = own(Val(math.max(1, math.min(FilterPicker.rowsShown, shown().size)).toDouble))
-  // where the chips (or the list) start: under the field, and under the second field where it shows
+  // where the heading (or the chips, or the list) starts: under the field, and under the second field where it shows
   private val below: Val[Double] = own(Val(field.size.height() + 16.0 +
     extraInput.filter(_.visible()).map(_.size.height() + 8.0).getOrElse(0.0)))
+  // where the chips (or the list) start: under the heading where it has words
+  private val under: Val[Double] = own(Val(below() +
+    headingLine.filter(_.content().nonEmpty).map(_.size.height() + 8.0).getOrElse(0.0)))
   // the options the query reads, those the segment chosen shows
   private def inForce: List[String] =
     toggles.filter(_.shows(segment())).map(_.key) ++ extraField.filter(_.shows(segment())).map(_.key)
@@ -195,10 +216,16 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     e.position.left @= 8.0
     e.position.top := field.size.height() + 16.0
   }
+  headingLine.foreach { l =>
+    l.position.left @= 12.0
+    l.position.top := below()
+  }
+  // the field, which has the focus, says the heading after its name; the line itself is plain words
+  heading.foreach(h => field.accessibleDescription := h())
   chips.position.left @= 12.0
-  chips.position.top := below()
+  chips.position.top := under()
   list.position.left @= 4.0
-  list.position.top := below() + (if (segments.isEmpty) 0.0 else chips.size.height() + 10.0)
+  list.position.top := under() + (if (segments.isEmpty) 0.0 else chips.size.height() + 10.0)
   list.size.width @= across - 8.0
   list.size.height := rows() * list.rowHeight
   empty.position.left @= 20.0
@@ -211,7 +238,7 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   radius @= 10.0
   shadow @= Some(Shadow(0.0, 8.0, 32.0, Color.Black.withAlpha(0.5)))
   children ++= (field :: (if (toggles.isEmpty) Nil else List(toggleBar))) ++ extraInput.toList ++
-    List(chips, list, empty)
+    headingLine.toList ++ List(chips, list, empty)
 
   /** Put it up, a fifth of the way down the screen, with `initial` in the field. */
   def open(initial: String = ""): Unit = {

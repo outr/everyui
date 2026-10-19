@@ -934,6 +934,13 @@ find.open()
   round the segments). On a remote, Right goes from the field to the options (Left, right to left), Down from either
   to the second field, then the chips, then the list, and Up back.
 
+A `heading` (`Option[Val[String]]`, None by default) is one muted line saying what is in effect among the choices,
+where nothing else shows it by name: `heading = Some(Val("Current: " + current().name))`, or
+`Some(Val("Showing: src/main/scala"))`. It sits under the field (and the second field), over the chips and the list it
+speaks of, so the field is where it always is; it wraps to the picker's width and follows its value, and while it has
+no words it is not drawn and takes no room. It is a label: never focused, on a remote too, and no row of the list or
+its count. The field says it after its name (`accessibleDescription`: `aria-describedby` on the web, TalkBack's hint).
+
 ### Markdown (`everyui.markdown`)
 
 `MarkdownView` draws Markdown with EveryUI's own components, so it looks the same on the web, the desktop and Android:
