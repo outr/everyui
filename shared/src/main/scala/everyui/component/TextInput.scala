@@ -86,6 +86,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.pasted := pasted()
     // named by its label, which is drawn beside it rather than being its own
     input.semantics := Semantics(label = title())
+    // and described as it is, since the focus a screen reader follows is the platform's field
+    input.accessibleDescription := accessibleDescription()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)

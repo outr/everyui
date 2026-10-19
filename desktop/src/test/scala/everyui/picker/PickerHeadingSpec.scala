@@ -78,6 +78,9 @@ class PickerHeadingSpec extends FxSpec {
       fx(words @= "Showing: src/main/scala")
       fx(line.content()) shouldBe "Showing: src/main/scala"
       fx(p.field.accessibleDescription()) shouldBe "Showing: src/main/scala"
+      // and the platform's field in it, which is where a screen reader is
+      fx(p.field.children().toList.collect { case i: InputView => i.accessibleDescription() }) shouldBe
+        List("Showing: src/main/scala")
       // many words wrap within the picker, the chips and the list moved down under them
       fx(words @= List.fill(30)("Showing: src/main/scala").mkString(" "))
       eventually(line.size.height() > one * 2.0) shouldBe true
