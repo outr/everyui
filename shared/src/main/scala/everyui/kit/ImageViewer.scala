@@ -16,7 +16,8 @@ import scala.concurrent.duration.*
   * across as a page does in a fifth of a second, and which of how many at the foot. The ones either side are fetched
   * while one is looked at, so the next is there to slide in. `sources` are the pictures' addresses, at the size to show
   * them; `closed` hears it go (Back, Escape, or a click outside the picture). */
-class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => ()) {
+class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => (),
+                  download: Option[Int => Unit] = None) {
   private val index: Var[Int] = Var(start)
 
   def open(): Unit = {
@@ -60,13 +61,32 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
     counter.position.top @= 6.0
     pill.position.left := (wide - pill.size.width()) / 2.0
     pill.position.top := tall - 12.0 - pill.size.height()
+    val downloading = Var(false)
+    val save = new IconButton(everyui.font.MaterialIcon.Download, "Download image", () => {
+      download match {
+        case Some(action) => action(index())
+        case None if !downloading() =>
+          downloading @= true
+          everyui.file.Files.saveUrl(sources(index()), "image.png").map { result =>
+            downloading @= false
+            result match {
+              case everyui.file.SaveResult.SaveFailed(why) => Toast.show(why)
+              case _ => ()
+            }
+          }.startUnit()
+        case _ => ()
+      }
+    }, Some(Color.White))
+    save.position.left @= wide - 44.0
+    save.position.top @= 12.0
+    save.backgroundColor @= Color.Black.withAlpha(0.65)
     val panel = new Container {
       size.width @= wide
       size.height @= tall
       backgroundColor @= Color.Black
       focusable @= true
       override def keepsKey(key: Key): Boolean = key == Key.ArrowLeft || key == Key.ArrowRight
-      children ++= List(leaving, view, pill)
+      children ++= List(leaving, view, pill, save)
     }
     panel.event.key.down.attach { k =>
       val step = if (k.key == Key.ArrowRight) 1 else if (k.key == Key.ArrowLeft) -1 else 0
