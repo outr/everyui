@@ -86,6 +86,9 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
 
   // a cell drawn: its words on one line where its column has room, else wrapped to the column
   private def cell(c: Int): RichText = new RichText {
+    // The grid handles row clicks, so its DOM is unselectable. Cell text explicitly opts back in:
+    // a drag copies words while a plain click still chooses the row (or sorts the header).
+    selectable @= true
     font.size @= table.style.points
     color := (if (table.style.quiet) Theme.muted() else Theme.text())
     follow = href => table.onLink(href)

@@ -160,7 +160,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private val body = new Container {
     layout @= Some(VerticalLayout(0.0))
   }
-  private val lines = new Container
+  private val lines = new Container {
+    // This decoration spans the entire body, including tables without rules. It must not intercept
+    // the pointer over the cells underneath it, or their words cannot be selected or links followed.
+    Gestures.passThrough(node)
+  }
   private val rows = new ScrollContainer
   private val grid: Container = new Container {
     semantics @= Semantics("table")
@@ -628,7 +632,9 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private def clicked(e: PointerEvent): Unit = at(e).foreach { case (row, c) =>
     ringShown @= false
     cursor @= ((row, c))
-    if (row < 0) sortBy(c)
+    if (row < 0) {
+      if (!Platform.selectsText() || Platform.selectedText().isEmpty) sortBy(c)
+    }
     // the end of a drag across words selects them, and chooses nothing
     else if (!Platform.selectsText() || Platform.selectedText().isEmpty) {
       if (e.shift && anchor.nonEmpty) chooseTo(row)
