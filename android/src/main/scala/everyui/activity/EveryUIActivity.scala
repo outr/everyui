@@ -18,6 +18,7 @@ abstract class EveryUIActivity extends Activity {
 
   override def onCreate(savedInstanceState: Bundle): Unit = {
     super.onCreate(savedInstanceState)
+    ServiceRuntime.init(this)
     Host.activity = this
     everyui.network.NetworkBackend.init()   // rapid on a thread pool, before anything starts a Task
     // a frame the loop asked for and never had is asked for again, and logged with where the loop was woken from
@@ -230,7 +231,7 @@ abstract class EveryUIActivity extends Activity {
     * channel, so leaving the app ends the process and the next launch starts fresh. */
   override def onDestroy(): Unit = {
     super.onDestroy()
-    if (isFinishing) android.os.Process.killProcess(android.os.Process.myPid())
+    if (isFinishing && !ServiceRuntime.active) android.os.Process.killProcess(android.os.Process.myPid())
   }
 
   private def extra(name: String): Option[String] = Option(getIntent.getStringExtra(name))

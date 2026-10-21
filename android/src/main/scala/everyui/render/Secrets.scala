@@ -14,7 +14,7 @@ import javax.crypto.spec.GCMParameterSpec
 object Secrets {
   private val Alias = "everyui-secrets"
   private lazy val store: android.content.SharedPreferences =
-    Host.activity.getSharedPreferences("everyui-secrets", Context.MODE_PRIVATE)
+    everyui.activity.ServiceRuntime.context.getSharedPreferences("everyui-secrets", Context.MODE_PRIVATE)
 
   private def key(): SecretKey = {
     val keys = KeyStore.getInstance("AndroidKeyStore")

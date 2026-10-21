@@ -78,3 +78,8 @@
 # (Push.supported is false without it); what of it the backend compiles against reaches for the rest of Firebase
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.gms.**
+
+# Scala libraries compiled with offset-based lazy vals also look up their storage by name (e.g. fabric.rw.package$).
+# These have no $lzyHandle for the rule above to match. Keep the storage of reachable classes, not whole libraries.
+-keepclassmembers class ** { *** *$lzy*; }
+-keepclassmembers class ** { *** *bitmap*; }
