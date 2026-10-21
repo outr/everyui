@@ -263,7 +263,8 @@ class Component(val node: RenderNode) {
   lazy val disabled: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setDisabled(d)))
 
   lazy val event: Events = new Events(this)
-  /** Whether the focus can land here: by a click, `focus()`, or the arrows from a neighbour (everyui.focus.Focus). */
+  /** Whether the focus can land here: by `focus()`, the arrows from a neighbour or Tab (everyui.focus.Focus), and a
+    * click where a remote moves the focus or this takes it from a click (`clickFocus`). */
   lazy val focusable: Var[Boolean] = own(Var(false))
   /** Whether the focus is here: set by the focus layer as it moves (`Focus.listen`). */
   lazy val focused: Val[Boolean] = focusedNow
@@ -272,6 +273,27 @@ class Component(val node: RenderNode) {
     here @= Focus.focused.get.exists(_ eq this) // read once, untracked: it follows the focus layer, not the focus
     here
   }
+  /** Whether the focus here is to be drawn: always, where a remote moves it; elsewhere only while the keys are moving
+    * it (`Focus.visible`), as a browser draws `:focus-visible`, so a button clicked is not left lit. A ring, a border
+    * or a fill that shows the focus follows this; a field, whose caret shows however it was focused, follows
+    * `focused`. */
+  lazy val focusShown: Val[Boolean] = if (everyui.render.Platform.remoteNavigation()) focused else focusShownNow
+  // set by the focus layer as the focus or the keys' use of it changes, once something has asked for it
+  private[everyui] var showsFocus: Boolean = false
+  private[everyui] lazy val focusShownNow: Var[Boolean] = {
+    val here = Var(false)
+    here @= Focus.focused.get.exists(_ eq this) && Focus.visible.get // read once, untracked, as `focusedNow` is
+    showsFocus = true
+    here
+  }
+  /** Whether a click or a tap gives this the focus where a pointer moves it (no remote): set by what is typed into or
+    * worked by the keys (a field, an editor, a list, a table, a slider, a map). A button, a chip, a tab or a panel
+    * clicked takes no focus, and the click takes it from where it was. A remote's platform focuses whatever is
+    * clicked, as ever. */
+  lazy val clickFocus: Var[Boolean] = own(Var(false))
+  /** Whether this is typed into: a field, an editor. Where a pointer moves the focus, a screen starts with the focus
+    * on its `defaultFocus` only when that is typed into, and keys pressed in it are not the keys moving the focus. */
+  def takesTyping: Boolean = false
   /** Take the focus — unless a dialog is up and this is not in it: a screen that finishes loading behind a dialog, or
     * a reply that lands late, must not pull the focus out from under the question being asked. Nor where the focus is
     * confined and this is outside the region (`Focus.confine`), nor in a dialog waiting under a cover (Modal.covered),

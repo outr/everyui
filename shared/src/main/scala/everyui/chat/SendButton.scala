@@ -17,7 +17,7 @@ class SendButton(sendLabel: String, stopLabel: String, points: Double = 36.0) ex
   /** A press, while it is usable. */
   val pressed: Channel[Unit] = Channel[Unit]
 
-  private val lit: Val[Boolean] = own(Val(usable() && (focused() || event.pointer.over())))
+  private val lit: Val[Boolean] = own(Val(usable() && (focusShown() || event.pointer.over())))
   private val glyph = new MaterialIconView(MaterialIcon.Send, points * 0.55)
 
   focusable @= true
@@ -28,8 +28,8 @@ class SendButton(sendLabel: String, stopLabel: String, points: Double = 36.0) ex
   // a glyph is its size square, so it is placed by its size rather than by what it measures as it changes
   glyph.position.left @= points * 0.225
   glyph.position.top @= points * 0.225
-  glyph.color := (if (!usable()) Theme.muted() else if (focused()) Theme.background() else Theme.onAccent())
-  backgroundColor := (if (!usable()) Theme.control() else if (focused()) Theme.text() else if (lit()) Theme.accentLit()
+  glyph.color := (if (!usable()) Theme.muted() else if (focusShown()) Theme.background() else Theme.onAccent())
+  backgroundColor := (if (!usable()) Theme.control() else if (focusShown()) Theme.text() else if (lit()) Theme.accentLit()
     else Theme.accent())
   tooltip := (if (stopping()) stopLabel else sendLabel)
   semantics := Semantics.button(if (stopping()) stopLabel else sendLabel)

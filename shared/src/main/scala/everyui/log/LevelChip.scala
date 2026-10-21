@@ -25,8 +25,8 @@ class LevelChip(val level: LogLevel, on: => Boolean, turn: () => Unit) extends C
   radius @= 12.0
   borderWidth @= 1.0
   borderColor := (if (shows()) LevelChip.colour(level).withAlpha(0.6) else Theme.border())
-  backgroundColor := (if (shows()) LevelChip.colour(level).withAlpha(if (focused()) 0.3 else 0.14)
-    else if (focused() || event.pointer.over()) Theme.controlLit() else Color.Clear)
+  backgroundColor := (if (shows()) LevelChip.colour(level).withAlpha(if (focusShown()) 0.3 else 0.14)
+    else if (focusShown() || event.pointer.over()) Theme.controlLit() else Color.Clear)
   semantics := Semantics.switch(LogLevel.name(level), shows())
   tapSlop @= true
   children += words

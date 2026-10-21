@@ -24,7 +24,7 @@ class SplitHandle(val vertical: Boolean) extends Container {
   val ruled: Var[Boolean] = own(Var(true))
   /** Where the rule lies across it, from its top (or its start): in its middle where this is less than 0. */
   val ruleAt: Var[Double] = own(Var(-1.0))
-  val lit: Val[Boolean] = own(Val(focused() || event.pointer.over() || grabbed()))
+  val lit: Val[Boolean] = own(Val(focusShown() || event.pointer.over() || grabbed()))
   /** A press on it, before any drag. */
   val pressed: Channel[PointerEvent] = Channel[PointerEvent]
   /** How far it has been dragged from where it was pressed, in pixels along the way it moves. */

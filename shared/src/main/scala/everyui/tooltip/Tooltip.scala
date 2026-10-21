@@ -8,10 +8,11 @@ import everyui.theme.Theme
 import everyui.{Color, Shadow, ui}
 import reactify.*
 
-/** A tip beside a component, for as long as the pointer rests on it or the focus is on it: words, or anything the app
-  * makes (a key's chord beside its name, a preview). It comes after `delay` seconds, so a pointer passing over does
-  * not raise it, and goes as the pointer leaves, presses, or the focus moves on. It sits under the component, centred
-  * on it, or over it where under has no room, and never off the screen. One shows at a time.
+/** A tip beside a component, for as long as the pointer rests on it or the focus is drawn on it
+  * (`Component.focusShown`: the keys brought it there): words, or anything the app makes (a key's chord beside its
+  * name, a preview). It comes after `delay` seconds, so a pointer passing over does not raise it, and goes
+  * as the pointer leaves, presses, or the focus moves on. It sits under the component, centred on it, or over it where
+  * under has no room, and never off the screen. One shows at a time.
   *
   * On a platform driven by a remote it shows for the focus only where the app asks (`onFocus`): there the focus moves
   * with every press, and a tip following it would cover the next thing along. Where a pointer rests, the platform's
@@ -41,7 +42,8 @@ object Tooltip {
     target.event.pointer.enter.attach(_ => ask(target, make))
     target.event.pointer.leave.attach(_ => hideFor(target))
     target.event.pointer.down.attach(_ => hideFor(target))
-    target.focused.attach { on =>
+    // the focus drawn, not merely there: a button a click or a screen focused raises no tip, a key arriving at it does
+    target.focusShown.attach { on =>
       if (on && onFocus() && !over()) ask(target, make)
       else if (!on && !over()) hideFor(target)
     }

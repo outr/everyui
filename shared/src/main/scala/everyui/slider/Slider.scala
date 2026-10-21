@@ -36,9 +36,10 @@ class Slider(val value: Var[Double], min: Double = 0.0, max: Double = 1.0, step:
   private val keyed: Var[Boolean] = own(Var(false))
   private val dragged: Var[Boolean] = own(Var(false))
   private val track = new SliderTrack(range, vertical, range.min, value(), !disabled())
-  private val thumb = new SliderThumb(SliderTrack.thumb(!disabled()), dragged(), focused(), !disabled(), bubble, vertical)
+  private val thumb = new SliderThumb(SliderTrack.thumb(!disabled()), dragged(), focusShown(), !disabled(), bubble, vertical)
 
   focusable := !disabled()
+  clickFocus @= true
   if (vertical) {
     size.width @= Slider.thickness
     size.height @= length

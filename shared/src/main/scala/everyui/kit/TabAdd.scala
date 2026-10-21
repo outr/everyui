@@ -28,13 +28,13 @@ class TabAdd(words: Var[String], items: () => List[MenuItem]) extends Container 
   val icon: MaterialIconView = new MaterialIconView(MaterialIcon.Add, TabAdd.glyph) {
     position.left @= (TabAdd.width - TabAdd.glyph) / 2.0
     position.top @= (TabBar.height - TabAdd.glyph) / 2.0
-    color := (if (lit || TabAdd.this.focused()) Theme.text() else Theme.muted())
+    color := (if (lit || TabAdd.this.focusShown()) Theme.text() else Theme.muted())
   }
 
   focusable @= true
   size.width @= TabAdd.width
   size.height @= TabBar.height
-  backgroundColor := (if (focused()) Theme.controlLit() else Color.Clear)
+  backgroundColor := (if (focusShown()) Theme.controlLit() else Color.Clear)
   tooltip := words()
   // a glyph says nothing to a screen reader: what it does does
   semantics := Semantics.button(words())

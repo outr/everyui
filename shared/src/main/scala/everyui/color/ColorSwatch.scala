@@ -15,8 +15,8 @@ class ColorSwatch(val colour: Color, chosen: => Boolean, side: Double = ColorSwa
   size.width @= side
   size.height @= side
   radius @= 6.0
-  borderWidth := (if (focused()) 2.5 else if (chosen) 2.0 else 1.0)
-  borderColor := (if (focused() || chosen) Theme.accent() else Theme.border())
+  borderWidth := (if (focusShown()) 2.5 else if (chosen) 2.0 else 1.0)
+  borderColor := (if (focusShown() || chosen) Theme.accent() else Theme.border())
   semantics @= Semantics.button(ColorText.hex(colour, alpha = true))
   tooltip @= ColorText.hex(colour, alpha = true)
   if (colour.alphaInt < 255) {

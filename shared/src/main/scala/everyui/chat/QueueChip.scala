@@ -40,9 +40,9 @@ class QueueChip(val draft: Draft, edit: () => Unit, remove: () => Unit, keys: Ke
   focusable @= true
   size.height @= QueueChip.height
   radius @= 8.0
-  backgroundColor := (if (focused() || event.pointer.over()) Theme.controlLit() else Theme.surface())
-  borderWidth := (if (focused()) 2.0 else 1.0)
-  borderColor := (if (focused()) Theme.accent() else Theme.border())
+  backgroundColor := (if (focusShown() || event.pointer.over()) Theme.controlLit() else Theme.surface())
+  borderWidth := (if (focusShown()) 2.0 else 1.0)
+  borderColor := (if (focusShown()) Theme.accent() else Theme.border())
   semantics := Semantics.button(ChatWords.queuedItem(index() + 1, count(), QueueChip.said(draft)) + ". " +
     ChatWords.queuedHelp)
 

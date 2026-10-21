@@ -101,5 +101,10 @@ trait UIScreen extends Screen with PathActivation {
 
   def defaultFocus(): Component
 
+  /** Whether the screen starts with the focus on `defaultFocus` where a pointer is used, though that is no field:
+    * there a screen shown starts with nothing focused (nothing lit), unless the keys are moving the focus or it starts
+    * at something typed into (`Focus.starts`). A remote's platform always starts there. */
+  def startsFocused: Boolean = false
+
   def createUI(): Task[Unit]
 }

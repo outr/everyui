@@ -19,7 +19,7 @@ class CalendarDay(calendar: Calendar, index: Int, cellWidth: Double, cellHeight:
   private val allowed: Val[Boolean] = own(Val(calendar.allowed(date())))
   private val mark: Val[DayMark] = own(Val(if (inMonth()) calendar.mark(date()) else DayMark.plain))
   private val today: Val[Boolean] = own(Val(date() == calendar.today))
-  private val lit: Val[Boolean] = own(Val(allowed() && (focused() || event.pointer.over())))
+  private val lit: Val[Boolean] = own(Val(allowed() && (focusShown() || event.pointer.over())))
   private val diameter: Double = math.min(cellWidth, cellHeight) - 4.0
   private val band = new Container
   private val circle = new Container
@@ -48,8 +48,8 @@ class CalendarDay(calendar: Calendar, index: Int, cellWidth: Double, cellHeight:
   circle.position.left @= (cellWidth - diameter) / 2.0
   circle.position.top @= (cellHeight - diameter) / 2.0
   circle.backgroundColor := (if (mark().selected) Theme.accent() else if (lit()) Theme.controlLit() else Color.Clear)
-  circle.borderWidth := (if (focused()) 2.5 else if (today()) 1.0 else 0.0)
-  circle.borderColor := (if (focused() && mark().selected) Theme.text() else Theme.accent())
+  circle.borderWidth := (if (focusShown()) 2.5 else if (today()) 1.0 else 0.0)
+  circle.borderColor := (if (focusShown() && mark().selected) Theme.text() else Theme.accent())
 
   number.content := date().day.toString
   number.font.size @= calendar.points

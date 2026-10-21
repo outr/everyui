@@ -40,6 +40,8 @@ class BackAddressSpec extends FxSpec {
     fx {
       ui.children.clear()
       Focus.focused @= None
+      // the focus moved by the keys: where a pointer is used, Back puts it back only then (Focus.restores)
+      Focus.visible @= true
       Platform.pushPath("/")
       Manager.run(home)
     }
@@ -53,6 +55,7 @@ class BackAddressSpec extends FxSpec {
       Focus.focused @= None
       Focus.home @= (() => None)
       Focus.page @= (() => None)
+      Focus.visible @= false
       Keymap.shown @= (() => None)
       ScreenManager.running = None
     }

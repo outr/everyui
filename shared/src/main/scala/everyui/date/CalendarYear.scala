@@ -15,7 +15,7 @@ class CalendarYear(calendar: Calendar, index: Int, cellWidth: Double, cellHeight
   val year: Val[Int] = own(Val(calendar.yearsFrom() + index))
   private val allowed: Val[Boolean] = own(Val(calendar.min.forall(_.year <= year()) && calendar.max.forall(_.year >= year())))
   private val current: Val[Boolean] = own(Val(year() == calendar.active().year))
-  private val lit: Val[Boolean] = own(Val(allowed() && (focused() || event.pointer.over())))
+  private val lit: Val[Boolean] = own(Val(allowed() && (focusShown() || event.pointer.over())))
   private val pill = new Container
   private val words = new TextView
 
@@ -31,8 +31,8 @@ class CalendarYear(calendar: Calendar, index: Int, cellWidth: Double, cellHeight
   pill.position.left := (cellWidth - pill.size.width()) / 2.0
   pill.position.top := (cellHeight - pill.size.height()) / 2.0
   pill.backgroundColor := (if (current()) Theme.accent() else if (lit()) Theme.controlLit() else Color.Clear)
-  pill.borderWidth := (if (focused()) 2.5 else if (year() == calendar.today.year) 1.0 else 0.0)
-  pill.borderColor := (if (focused() && current()) Theme.text() else Theme.accent())
+  pill.borderWidth := (if (focusShown()) 2.5 else if (year() == calendar.today.year) 1.0 else 0.0)
+  pill.borderColor := (if (focusShown() && current()) Theme.text() else Theme.accent())
 
   words.content := year().toString
   words.font.size @= calendar.points

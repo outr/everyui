@@ -167,6 +167,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     copyAs @= "table"
     radius @= look.radius
     focusable @= true
+    clickFocus @= true
 
     override def keepsEvent(e: KeyEvent): Boolean = action(e).nonEmpty
   }
@@ -599,9 +600,9 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     tapSlop @= true
     tooltip @= TableWords.actions
     semantics @= Semantics.button(TableWords.actions)
-    backgroundColor := (if (focused() || event.pointer.over()) Theme.controlLit()
+    backgroundColor := (if (focusShown() || event.pointer.over()) Theme.controlLit()
       else if (!barred() && !beside()) Theme.raised() else Color.Clear)
-    glyph.color := (if (focused() || event.pointer.over()) Theme.text() else Theme.muted())
+    glyph.color := (if (focusShown() || event.pointer.over()) Theme.text() else Theme.muted())
     glyph.position.left := (DataTable.toolSize - glyph.size.width()) / 2.0
     glyph.position.top := (DataTable.toolSize - glyph.size.height()) / 2.0
     children += glyph

@@ -165,8 +165,8 @@ changing again leaves it where it went, and a list that takes apart what leaves 
 `dispose`) does not take apart one that has moved on. A list bound with `:=` keeps saying what it holds, and one `bind`
 renders goes back to it at its next change while its value is still there. A focused field moved, or taken off the
 screen and put back, keeps the focus and has the platform's again (its caret) as it is placed; `focus()` on what has
-the focus already takes the platform's focus again. A click on the page's empty space lets go of the focus on the web,
-as the browser does; on a remote's platform the focus stays where it is.
+the focus already takes the platform's focus again. A click on the page's empty space lets go of the focus where a
+pointer is used, as a browser does; on a remote's platform the focus stays where it is (see "Two focus models").
 
 ### Rebuilding a screen
 
@@ -344,6 +344,43 @@ Keymap.listed   // every command in force, with its label and chords, for a shor
 ```
 
 Tab and Shift+Tab move the focus through the screen in tree order.
+
+### Two focus models: a remote's and a pointer's
+
+Where a remote moves the focus (`Platform.remoteNavigation()`: Roku, Apple TV, Android TV, a TV browser, the desktop
+run with `--remote=true`), something always has the focus and it is always drawn. A click focuses what it lands on, a
+screen starts at its `defaultFocus` and comes back to where it was left, and the focus taken off the screen goes to
+what took its place (`Focus.successor`), else to where the screen starts.
+
+Everywhere else (a desktop browser, the JavaFX desktop, a phone or a tablet) the focus behaves as it does on a web page:
+
+- A click focuses only what is typed into or worked by the keys: `TextInput`, `TextArea`, `SearchField`, an embed
+  (Monaco, the terminal), a `VirtualList` (and so a `Tree`, a `RichList`, a log), a `DataTable`, a slider, a colour
+  area, a `ZoomCanvas` or a map. They set `clickFocus @= true`; anything focusable of an app's own that is worked by
+  the keys sets it too. A button, a chip, a tab, a header or a panel clicked takes no focus, and the click lets the
+  focus go from where it was, as a click on the page's empty space does (a field so clicked away from loses its
+  caret). The click itself is heard as ever, and the keymap's shortcuts work with nothing focused.
+- The focus is drawn only while the keys are moving it (`Focus.visible`, the browser's `:focus-visible`). Tab, an
+  arrow, Enter, Page Up and Down, Home and End on what has the focus, or any key the focus moves on, set it; a pointer
+  put down clears it. What draws a focus ring, border or fill follows `focusShown` rather than `focused`; a field
+  follows `focused`, since its caret shows however it was focused. A list's row draws its cursor while `cursorShown`.
+- A screen shown has nothing focused, unless the keys are moving the focus, its `defaultFocus` is typed into
+  (`takesTyping`: a field, an editor), or the screen says so (`override def startsFocused = true`). Back puts the focus
+  back where it was only while the keys are moving it.
+- The focus taken off the screen goes nowhere, unless the keys are moving it, when it goes to what took its place as
+  on a remote; a field built again in its own place keeps it. With nothing focused, an arrow is the page's to scroll
+  by, and Tab starts at the first part.
+- A dialog still takes the focus as it opens, and gives it back as it closes, drawn only while the keys are moving it.
+  A tip follows the focus only where it is drawn (`Tooltip.onFocus`).
+
+```scala
+val board = new Container {
+  focusable @= true
+  clickFocus @= true                                  // worked by the arrows once clicked
+  borderWidth := (if (focusShown()) 2.0 else 0.0)     // drawn only for the keys
+}
+```
+
 
 A double-tap is a modifier on its own, pressed and released twice in quick succession. It works in any binding:
 
@@ -790,9 +827,9 @@ key, as `Arb.parse` reads an ARB).
 
 ### Tooltip (`everyui.tooltip`)
 
-A tip beside a component while the pointer rests on it or the focus is on it: words, or a component the app makes. It
-comes after `Tooltip.delay` (0.6 s), goes as the pointer leaves or presses or the focus moves on, sits under the
-component (over it where under has no room) and never off the screen. One shows at a time.
+A tip beside a component while the pointer rests on it or the focus is drawn on it (`focusShown`): words, or a
+component the app makes. It comes after `Tooltip.delay` (0.6 s), goes as the pointer leaves or presses or the focus
+moves on, sits under the component (over it where under has no room) and never off the screen. One shows at a time.
 
 ```scala
 import everyui.tooltip.Tooltip

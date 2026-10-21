@@ -34,7 +34,19 @@ import reactify.*
   *
   * A coach mark holds the focus in one part of the screen ([[confine]]): the arrows move only among what is in it,
   * and from outside it they land in it; and it can hold back OK, a click and a tap, or OK held and a long press, so
-  * the viewer does just what its note says. A dialog put up over it has the focus while it is up. */
+  * the viewer does just what its note says. A dialog put up over it has the focus while it is up.
+  *
+  * There are two models of the focus, one for each way of moving it. Where a remote moves it
+  * (`Platform.remoteNavigation()`), all of the above holds as said: something always has the focus, it is always
+  * drawn, a click focuses what it lands on, and a screen starts at its `defaultFocus`. Everywhere else a pointer moves
+  * it as much as the keys do, and it behaves as it does on a web page. A click focuses only what is typed into or
+  * worked by the keys (`Component.clickFocus`: a field, an editor, a list, a table), and otherwise lets the focus go
+  * ([[clicked]]), as a press nothing took on what has no focus does ([[pointerUp]]). The focus is drawn only while the
+  * keys are moving it ([[visible]], the browser's `:focus-visible`: `Component.focusShown`). A screen starts with
+  * nothing focused unless it starts at a field ([[starts]]), and a focus put back (a screen returned to, a dialog
+  * closed) is put back only where it was ([[restores]]). The focus taken off the screen goes nowhere, and with nothing
+  * focused an arrow is left to the page; while the keys are moving the focus, it moves on and arrows start it, as on a
+  * remote. */
 object Focus {
   val focused: Var[Option[Component]] = Var(None)
   /** Where the focus may go: under `ui`, or under an open dialog alone, so the arrows never reach what it covers. */
@@ -47,6 +59,11 @@ object Focus {
   /** How many times the app has been used — a key pressed, a pointer put down, moved or scrolled: what an app watches
     * to know somebody is there (a screensaver's idle time). */
   val activity: Var[Long] = Var(0L)
+  /** Whether the keys are moving the focus, where a pointer is used (no remote): what the focus is drawn by
+    * (`Component.focusShown`), as a browser's `:focus-visible`. A key that moves the focus or works what has it (Tab,
+    * an arrow, Enter, Page Up and Down, Home and End, any key the focus moves on) sets it; a pointer put down clears
+    * it. Where a remote moves the focus, it is always drawn, and this is not asked. */
+  val visible: Var[Boolean] = Var(false)
 
   /** Somebody used the app just now. */
   def used(): Unit = {
@@ -63,15 +80,97 @@ object Focus {
     // (the one it left kept here, rather than reactify's `changes`: its previous value is an Option of this Option,
     // which a Roku holds flattened, so the first focus of all, from none, went unheard there)
     focused.attach { now =>
-      marked.foreach(_.focusedNow @= false)
-      now.foreach(_.focusedNow @= true)
+      moves += 1
+      marked.foreach { c =>
+        c.focusedNow @= false
+        if (c.showsFocus) c.focusShownNow @= false
+      }
+      now.foreach { c =>
+        c.focusedNow @= true
+        if (c.showsFocus) c.focusShownNow @= visible()
+      }
       marked = now
       now.foreach(remember)
       // a screen reader (TalkBack) reads out where the focus has landed, and can press it
       now.foreach(c => c.node.accessibleFocus(() => c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))))
     }
     if (Platform.remoteNavigation()) Platform.after(WatchSeconds, () => watch())
+    else {
+      visible.attach(v => marked.foreach(c => if (c.showsFocus) c.focusShownNow @= v))
+      // every press heard at the root as well, where nothing under it listens (the page's empty space): on a turn of
+      // its own, once `ui` is made
+      Platform.later(() => {
+        ui.event.pointer.down
+        ui.event.pointer.up
+      })
+    }
   }
+
+  // how many times the focus has moved, to know whether a press or a key moved it
+  private var moves = 0
+
+  /** Whether a click on `c` gives it the focus: wherever a remote moves the focus, and elsewhere where `c` takes it
+    * from a click (`Component.clickFocus`). */
+  def clickFocuses(c: Component): Boolean = Platform.remoteNavigation() || c.clickFocus()
+
+  // the press going on, where a pointer is used: where it went down, how many moves the focus had made by then, and
+  // whether a click took it (focused what it landed on, or let the focus go)
+  private var pressing = false
+  private var pressedX = 0.0
+  private var pressedY = 0.0
+  private var pressedMoves = 0
+  private var pressTaken = false
+  private var lastDown: Option[PointerEvent] = None
+  private var lastDownAt = 0.0
+
+  /** A pointer went down (`PointerEvents`, once for each component it climbs through). Where a pointer is used, the
+    * keys are no longer moving the focus (`visible`). */
+  private[everyui] def pointerDown(e: PointerEvent): Unit =
+    if (!Platform.remoteNavigation() && !(lastDown.contains(e) && Platform.ticks() - lastDownAt < everyui.event.Pointer.hold)) {
+      lastDown = Some(e)
+      lastDownAt = Platform.ticks()
+      visible @= false
+      pressing = true
+      pressedX = e.x
+      pressedY = e.y
+      pressedMoves = moves
+      pressTaken = false
+    }
+
+  /** The pointer let go. Once its click has been heard, a press that no click took, that moved no focus, and that was
+    * not on what has the focus (the page's empty space, words, a card that is no control) lets the focus go, as a
+    * browser's does: a field so pressed away from no longer has the caret. Not under a coach mark, whose region holds
+    * the focus. */
+  private[everyui] def pointerUp(): Unit = if (pressing) {
+    pressing = false
+    Platform.later(() => if (!pressTaken && moves == pressedMoves && confined.isEmpty) focused().foreach { c =>
+      val on = pressedX >= c.absoluteLeft && pressedX < c.absoluteLeft + c.size.width() &&
+        pressedY >= c.absoluteTop && pressedY < c.absoluteTop + c.size.height()
+      if (!on && showing(c)) focused @= None
+    })
+  }
+
+  /** A click landed on `c`, which takes the focus from it (`clickFocuses`) or not: where it does not, the focus is let
+    * go (unless it is on `c` already: a menu's row the pointer focused), so a button clicked is not left focused and a
+    * field clicked away from loses the caret. What the click then does may put the focus somewhere itself (Send back
+    * to the field written in). */
+  private[everyui] def clicked(c: Component, takes: Boolean): Unit = {
+    pressTaken = true
+    if (!takes && !focused().exists(_ eq c) && confined.isEmpty) focused @= None
+  }
+
+  /** A press a drag took (`PointerDrag`, `Pointers.track`: a slider, a column's edge, a scrollbar): it lets no focus
+    * go as it ends. */
+  private[everyui] def dragging(): Unit = pressTaken = true
+
+  /** Whether the focus is put back where it was (a screen returned to, a dialog closed): wherever a remote moves it,
+    * and elsewhere while the keys are moving it (`visible`). */
+  def restores: Boolean = Platform.remoteNavigation() || visible()
+
+  /** Whether a screen shown starts with the focus on `c`, its `defaultFocus`: wherever a remote moves it; elsewhere
+    * while the keys are moving it, or where `c` is typed into, or the screen asks (`always`). So a page opened with
+    * the pointer has nothing lit, unless it starts at a field. */
+  def starts(c: Component, always: Boolean): Boolean = restores || always || c.takesTyping
 
   // How often the focus is checked for, on a platform with only a remote to move it; and whether the last check
   // found it lost, since a screen that has just taken its rows down to build them again puts its own focus back a
@@ -202,9 +301,13 @@ object Focus {
   /** A focus on something no longer on the screen, moved on at once: to what took its place, or with `anywhere`,
     * failing that, to where the screen starts. */
   private def moveOn(anywhere: Boolean): Unit = focused().filterNot(showing).foreach { gone =>
+    // Where a pointer is used and the keys are not moving the focus, nothing takes its place, as on a web page: but a
+    // field built again in its place, the same kind and typed into, is the same field to whoever is writing in it
+    if (!restores && confined.isEmpty)
+      focused @= successor(gone).filter(s => gone.takesTyping && s.takesTyping && s.kind == gone.kind)
     // (under a confinement, where it starts at once, whether the region is still there or not: a tour never leaves it
     // on what is gone)
-    successor(gone).orElse(if (anywhere || confined.nonEmpty) start() else None) match {
+    else successor(gone).orElse(if (anywhere || confined.nonEmpty) start() else None) match {
       case Some(to) =>
         Platform.log("[focus] " + gone.kind + " left the screen, the focus goes to " + to.kind)
         focused @= Some(to)
@@ -222,9 +325,13 @@ object Focus {
     if (!Platform.remoteNavigation() && focused().exists(_ eq c) && showing(c)) focused @= None
 
   /** The focus back on `to`, as a dialog closing gives it back: or, where `to` has left the screen since, on what took
-    * its place; or where the screen starts, with nothing to go back to. */
+    * its place; or where the screen starts, with nothing to go back to. Where a pointer is used, never to where the
+    * screen starts (nothing had the focus, and nothing has it), and to what took the place of `to` only while the keys
+    * are moving the focus (`visible`); drawn as the focus is. */
   def restore(to: Option[Component]): Unit =
-    to.filter(c => showing(c) && admits(c)).orElse(to.flatMap(successor)).orElse(start()).foreach(_.focus())
+    if (!Platform.remoteNavigation())
+      to.filter(c => showing(c) && admits(c)).orElse(if (visible()) to.flatMap(successor) else None).foreach(_.focus())
+    else to.filter(c => showing(c) && admits(c)).orElse(to.flatMap(successor)).orElse(start()).foreach(_.focus())
 
   /** What the focus goes to when `gone` has left the screen with it: what took its place in the container it left —
     * the part now where it was, else the next, else the one before (it was the last) — else that container's entry;
@@ -383,6 +490,8 @@ object Focus {
     val event = KeyEvent(key, name, held.ctrl, held.meta, held.alt, held.shift)
     val embed = Platform.keyEmbed()
     if (pressed) used() else everyui.task.Frames.wake()
+    val was = moves
+    if (pressed) keyed(event)
     // heard before anything else might take the key
     val tapped = Keymap.tap(event, pressed, Platform.keyRepeat())
     val taken =
@@ -390,8 +499,22 @@ object Focus {
       else if (embed.nonEmpty) pressed && Keymap.run(event, embed)
       else if (pressed && Keymap.run(event)) true
       else focusKey(key, event, pressed)
+    if (pressed) movedBy(was)
     taken || Keymap.keepsAlt(event)
   }
+
+  // Where a pointer is used, a key that moves the focus or works what has it: the keys are moving the focus from now
+  // (`visible`), so it is drawn. Tab from anywhere; the others where something not typed into has the focus (in a
+  // field they move its caret).
+  private def keyed(e: KeyEvent): Unit = if (!Platform.remoteNavigation() && !visible()) {
+    val working = focused().exists(c => !c.takesTyping) && (Keys.isArrow(e.key) || e.key == Key.Enter ||
+      e.key == Key.PageUp || e.key == Key.PageDown || e.name == "Home" || e.name == "End")
+    if (e.key == Key.Tab || working) visible @= true
+  }
+
+  // and a key the focus moved on as it was handled (a shortcut to a list, Escape closing a dialog): the same
+  private def movedBy(was: Int): Unit =
+    if (!Platform.remoteNavigation() && moves != was && focused().nonEmpty && !visible()) visible @= true
 
   /** A key an embed had and gives back, pressed as though it had never been the embed's: an editor's Escape with no
     * popup of its own to close, which is then Back (or a command's). `name` is the web's name for it. Whether
@@ -400,7 +523,9 @@ object Focus {
                shift: Boolean = false): Boolean = {
     val event = KeyEvent(Keys.of(name), name, ctrl, meta, alt, shift)
     used()
+    val was = moves
     val taken = Keymap.run(event) || focusKey(event.key, event, true)
+    movedBy(was)
     // its release was the embed's: a press given back is a whole press
     enterHeld = false
     taken
@@ -495,6 +620,9 @@ object Focus {
     val root = area()
     val all = candidates(root)
     focused() match {
+      // where a pointer is used, with nothing focused and the keys not moving the focus, the arrow is the page's (or a
+      // list's) to scroll by
+      case None if !restores => false
       case None =>
         start().foreach(_.focus())
         all.nonEmpty

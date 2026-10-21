@@ -7,7 +7,7 @@ import everyui.ui
   * press until it lets go, wherever it goes meanwhile, and `end` hears that it let go. While it drags, a sheet over the
   * whole screen catches it, since a platform tells only what is under the pointer that it moved. `take` says whether a
   * press there is the drag's (not while the target is disabled, say); one it takes puts the focus on the target, where
-  * the target takes the focus.
+  * a click would (`Focus.clickFocuses`).
   *
   * {{{
   * new PointerDrag(bar, (x, _) => value @= x / bar.size.width(), () => save(value()))
@@ -32,7 +32,8 @@ class PointerDrag(target: Component, place: (Double, Double) => Unit, end: () =>
   private def press(e: PointerEvent): Unit =
     if (e.button == PointerEvent.PrimaryButton && !grabbed && take(e.x - target.absoluteLeft, e.y - target.absoluteTop)) {
       e.consume()
-      if (target.focusable() && !target.focused()) target.focus()
+      everyui.focus.Focus.dragging()
+      if (target.focusable() && everyui.focus.Focus.clickFocuses(target) && !target.focused()) target.focus()
       grabbed = true
       ui.children += catcher
       at(e)

@@ -82,6 +82,7 @@ class Embed(val name: String, val site: EmbedSite = null, fallback: => Component
 
   if (live) {
     focusable @= true
+    clickFocus @= true
     focused.attach { on =>
       node.focusEmbed(on)
       if (!fromGuest) guestFocus(on)
@@ -102,6 +103,8 @@ class Embed(val name: String, val site: EmbedSite = null, fallback: => Component
     if (live) node.releaseEmbed()
     super.dispose()
   }
+
+  override def takesTyping: Boolean = live
 
   override def kind: String = "Embed(" + name + ")"
 }

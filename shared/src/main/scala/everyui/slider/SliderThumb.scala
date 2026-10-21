@@ -19,8 +19,8 @@ class SliderThumb(fill: => everyui.Color, pressed: => Boolean, lit: => Boolean, 
   size.height @= SliderThumb.halo
   radius @= SliderThumb.halo / 2.0
   backgroundColor := Theme.accent().withAlpha(
-    if (!enabled) 0.0 else if (pressed) 0.24 else if (lit || focused()) SliderThumb.focusGlow else if (event.pointer.over()) 0.08 else 0.0)
-  borderWidth := (if (enabled && (lit || focused())) 2.0 else 0.0)
+    if (!enabled) 0.0 else if (pressed) 0.24 else if (lit || focusShown()) SliderThumb.focusGlow else if (event.pointer.over()) 0.08 else 0.0)
+  borderWidth := (if (enabled && (lit || focusShown())) 2.0 else 0.0)
   borderColor := Theme.accent()
 
   dot.size.width @= SliderThumb.disc

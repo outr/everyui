@@ -8,8 +8,9 @@ import reactify.*
 /** One row of a `VirtualList`, made once and handed item after item as the list scrolls: bind what it shows to `item`
   * (`content := item().map(_.name).getOrElse("")`) rather than reading it once. The list sets the rest: where it is
   * (`index`), whether it is chosen (`selected`), under the cursor (`current`), in a list that has the focus
-  * (`active`), being renamed (`editing`: hide the label, an editor sits over it), and how a drag would drop onto it
-  * (`drop`). The row's own background and edge show the selection and the cursor.
+  * (`active`), with the focus drawn (`cursorShown`: the keys moving it, or a remote), being renamed (`editing`: hide
+  * the label, an editor sits over it), and how a drag would drop onto it (`drop`). The row's own background and edge
+  * show the selection, and the cursor while the focus is drawn.
   *
   * Over a source (a server's paged rows), a row not come yet is drawn by the list's `placeholder` instead, unless the
   * list has none: then this row shows it with no item (`present` false). */
@@ -19,6 +20,7 @@ class ListRow[T] extends Container {
   val selected: Var[Boolean] = own(Var(false))
   val current: Var[Boolean] = own(Var(false))
   val active: Var[Boolean] = own(Var(false))
+  val cursorShown: Var[Boolean] = own(Var(false))
   val editing: Var[Boolean] = own(Var(false))
   val drop: Var[Option[DropPosition]] = own(Var(None))
   /** Words for more than the row shows (`Decoration.tooltip`), which the list shows in a tip as the pointer or the
@@ -33,8 +35,8 @@ class ListRow[T] extends Container {
   /** Where an editor over this row starts, from its start edge (the right, right to left): where the label does. */
   def editStart: Double = ListRow.inset
 
-  backgroundColor := ListRow.fill(selected(), current(), active(), drop().contains(DropPosition.Into))
-  borderWidth := (if (current() && active()) 1.0 else 0.0)
+  backgroundColor := ListRow.fill(selected(), current() && cursorShown(), active(), drop().contains(DropPosition.Into))
+  borderWidth := (if (current() && cursorShown()) 1.0 else 0.0)
   borderColor := Theme.accent()
 
   override def kind: String = "ListRow"

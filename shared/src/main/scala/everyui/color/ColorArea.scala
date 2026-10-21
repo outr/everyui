@@ -24,6 +24,7 @@ class ColorArea(hsv: Var[Hsv], width: Double, height: Double) extends Container 
   private val knob = new ColorThumb(hsv().color(false))
 
   focusable @= true
+  clickFocus @= true
   size.width @= width
   size.height @= height
   radius @= 8.0
@@ -35,7 +36,7 @@ class ColorArea(hsv: Var[Hsv], width: Double, height: Double) extends Container 
   }
   white.gradient @= Some(Gradient(90.0, Color.White, Color.White.withAlpha(0.0)))
   black.gradient @= Some(Gradient(0.0, Color.Black, Color.Black.withAlpha(0.0)))
-  borderWidth := (if (focused()) (if (adjusting()) 3.0 else 2.0) else 0.0)
+  borderWidth := (if (focusShown()) (if (adjusting()) 3.0 else 2.0) else 0.0)
   borderColor := Theme.accent()
   semantics := Semantics("slider", label = ColorPicker.saturationLabel + " " + ColorText.percent(hsv().saturation) + ", " +
     ColorPicker.valueLabel + " " + ColorText.percent(hsv().value))

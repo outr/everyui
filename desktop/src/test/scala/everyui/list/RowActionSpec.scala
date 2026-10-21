@@ -80,6 +80,8 @@ class RowActionSpec extends FxSpec {
     fx {
       ui.children.clear()
       ui.children += list
+      // the cursor moved as the keys move it, which is when it is drawn where a pointer is used too (Focus.visible)
+      Focus.visible @= true
       list.focus()
     }
     try test finally fx {
@@ -88,6 +90,7 @@ class RowActionSpec extends FxSpec {
       // taken apart, done with (its clock, a Ticker, rests already, off the screen)
       list.dispose()
       Focus.focused @= None
+      Focus.visible @= false
     }
   }
 

@@ -18,7 +18,7 @@ class Tab(label: String, screen: Screen, manager: ScreenManager) extends Contain
   radius @= 6.0
   size.width := text.size.width + 24.0
   size.height := text.size.height + 12.0
-  backgroundColor := (if (focused() || event.pointer.over()) Theme.raised() else Color.Clear)
+  backgroundColor := (if (focusShown() || event.pointer.over()) Theme.raised() else Color.Clear)
   children += text
   event.click.attach(_ => manager.show(screen).startUnit())
 }

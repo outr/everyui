@@ -20,7 +20,7 @@ class JumpButton(unseen: Val[Int], press: () => Unit) extends Container {
   private val arrow: MaterialIconView = new MaterialIconView(MaterialIcon.ArrowDownward, JumpButton.icon)
   arrow.position.left @= (JumpButton.diameter - JumpButton.icon) / 2.0
   arrow.position.top @= (JumpButton.diameter - JumpButton.icon) / 2.0
-  arrow.color := (if (focused() || event.pointer.over()) Theme.accent() else Theme.text())
+  arrow.color := (if (focusShown() || event.pointer.over()) Theme.accent() else Theme.text())
 
   private val count: TextView = new TextView {
     content := (if (unseen() > 99) "99+" else unseen().toString)
@@ -47,7 +47,7 @@ class JumpButton(unseen: Val[Int], press: () => Unit) extends Container {
   size.width @= JumpButton.diameter
   size.height @= JumpButton.diameter
   radius @= JumpButton.diameter / 2.0
-  backgroundColor := (if (focused() || event.pointer.over()) Theme.controlLit() else Theme.raised())
+  backgroundColor := (if (focusShown() || event.pointer.over()) Theme.controlLit() else Theme.raised())
   borderWidth @= 1.0
   borderColor := Theme.border()
   shadow @= Some(everyui.Shadow(0.0, 2.0, 8.0, Color.Black.withAlpha(0.3)))

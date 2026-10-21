@@ -19,10 +19,11 @@ class ColorSlider(label: String, width: Double, at: => Double, stops: => List[Co
   private val knob = new ColorThumb(thumb)
 
   focusable @= true
+  clickFocus @= true
   size.width @= width
   size.height @= ColorSlider.height
   radius @= ColorSlider.height / 2.0
-  borderWidth := (if (focused()) 2.0 else 0.0)
+  borderWidth := (if (focusShown()) 2.0 else 0.0)
   borderColor := Theme.accent()
   semantics := Semantics("slider", label = label + " " + said)
 

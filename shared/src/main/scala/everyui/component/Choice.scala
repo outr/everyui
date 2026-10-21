@@ -18,11 +18,11 @@ class Choice(label: String, chosen: Boolean, choose: () => Unit) extends Contain
   size.width := text.size.width + 20.0
   size.height := text.size.height + 8.0
   backgroundColor := {
-    if (chosen) (if (focused()) Theme.text() else Theme.accent())
-    else if (focused() || event.pointer.over()) Theme.controlLit()
+    if (chosen) (if (focusShown()) Theme.text() else Theme.accent())
+    else if (focusShown() || event.pointer.over()) Theme.controlLit()
     else Theme.control()
   }
-  borderWidth := (if (focused() && !chosen) 2.5 else 0.0)
+  borderWidth := (if (focusShown() && !chosen) 2.5 else 0.0)
   borderColor := Theme.accent()
   children += text
   tapSlop @= true

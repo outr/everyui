@@ -18,7 +18,7 @@ class TextScroll extends ScrollContainer {
     size.width @= 3.0
     size.height := TextScroll.this.size.height()
     radius @= 1.5
-    backgroundColor := (if (TextScroll.this.focused()) Theme.accent() else Color.Clear)
+    backgroundColor := (if (TextScroll.this.focusShown()) Theme.accent() else Color.Clear)
   }
   children += mark
   // the words stand clear of the rail (TextScroll.framed keeps their width)

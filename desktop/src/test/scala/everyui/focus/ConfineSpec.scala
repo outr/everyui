@@ -159,31 +159,36 @@ class ConfineSpec extends FxSpec {
     }
 
     "hold the pointer back outside it, and let it in it, and a part put up after it" in {
-      val rail = Vector.fill(3)(card())
-      val railRow = row(rail*)
-      val other = card()
-      onScreen(column(other, railRow)) {
-        val release = fx {
-          rail(0).focus()
-          Focus.confine(railRow)
+      // a coach mark's tour, run on a remote: where a pointer is used, a card clicked takes no focus
+      val was = fx(everyui.render.Host.args)
+      fx(everyui.render.Host.args = was + ("remote" -> "true"))
+      try {
+        val rail = Vector.fill(3)(card())
+        val railRow = row(rail*)
+        val other = card()
+        onScreen(column(other, railRow)) {
+          val release = fx {
+            rail(0).focus()
+            Focus.confine(railRow)
+          }
+          val note = card()
+          fx(ui.children += note)
+          mouse(other, MouseEvent.MOUSE_CLICKED)
+          mouse(other, MouseEvent.MOUSE_ENTERED)
+          menuAsked(other)
+          fx((clicks.get(other), hovers.get(other), menus.get(other))) shouldBe ((None, None, None))
+          fx(Focus.focused()) shouldBe Some(rail(0))
+          mouse(rail(1), MouseEvent.MOUSE_CLICKED)
+          mouse(rail(1), MouseEvent.MOUSE_ENTERED)
+          fx((clicks.get(rail(1)), hovers.get(rail(1)))) shouldBe ((Some(1), Some(1)))
+          fx(Focus.focused()) shouldBe Some(rail(1))
+          mouse(note, MouseEvent.MOUSE_CLICKED)
+          fx(clicks.get(note)) shouldBe Some(1)
+          fx(release())
+          mouse(other, MouseEvent.MOUSE_CLICKED)
+          fx(clicks.get(other)) shouldBe Some(1)
         }
-        val note = card()
-        fx(ui.children += note)
-        mouse(other, MouseEvent.MOUSE_CLICKED)
-        mouse(other, MouseEvent.MOUSE_ENTERED)
-        menuAsked(other)
-        fx((clicks.get(other), hovers.get(other), menus.get(other))) shouldBe ((None, None, None))
-        fx(Focus.focused()) shouldBe Some(rail(0))
-        mouse(rail(1), MouseEvent.MOUSE_CLICKED)
-        mouse(rail(1), MouseEvent.MOUSE_ENTERED)
-        fx((clicks.get(rail(1)), hovers.get(rail(1)))) shouldBe ((Some(1), Some(1)))
-        fx(Focus.focused()) shouldBe Some(rail(1))
-        mouse(note, MouseEvent.MOUSE_CLICKED)
-        fx(clicks.get(note)) shouldBe Some(1)
-        fx(release())
-        mouse(other, MouseEvent.MOUSE_CLICKED)
-        fx(clicks.get(other)) shouldBe Some(1)
-      }
+      } finally fx(everyui.render.Host.args = was)
     }
   }
 

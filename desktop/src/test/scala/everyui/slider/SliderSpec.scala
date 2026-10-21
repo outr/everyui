@@ -197,7 +197,9 @@ class SliderSpec extends FxSpec {
         pointer(sw, PointerKind.Up, 10.0, 10.0)
         fx(sw.on()) shouldBe true
         fx(sw.semantics()) shouldBe everyui.component.types.Semantics.switch("Wi-Fi", true)
-        focusedOn(sw) shouldBe true
+        // a tap takes no focus where a pointer is used, as a button's does not: OK and Space need it given
+        focusedOn(sw) shouldBe false
+        fx(sw.focus())
         press(KeyCode.ENTER)
         fx(sw.on()) shouldBe false
         press(KeyCode.SPACE)

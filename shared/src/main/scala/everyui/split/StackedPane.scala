@@ -56,9 +56,9 @@ class StackedPane(heading: String, val content: Component, val collapsed: Var[Bo
   val focusIn: Val[Boolean] = own(Val(header.focused() || buttons().exists(_.focused())))
   header.size.width := size.width()
   header.size.height := headerHeight()
-  header.backgroundColor := (if (header.focused()) Theme.control() else if (hovered()) Theme.control().withAlpha(0.6)
+  header.backgroundColor := (if (header.focusShown()) Theme.control() else if (hovered()) Theme.control().withAlpha(0.6)
     else Color.Clear)
-  header.borderWidth := (if (header.focused()) 1.0 else 0.0)
+  header.borderWidth := (if (header.focusShown()) 1.0 else 0.0)
   header.borderColor := Theme.accent()
   header.semantics := Semantics.disclosure(title(), !collapsed())
 

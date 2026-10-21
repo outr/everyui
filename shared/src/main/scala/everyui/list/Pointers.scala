@@ -13,6 +13,8 @@ object Pointers {
   /** `move` on each move until the pointer is let go, then `up`. A newer one replaces it. */
   def track(move: PointerEvent => Unit, up: PointerEvent => Unit): Unit = {
     listen()
+    // the press is the drag's: as it ends, it lets no focus go (Focus.pointerUp)
+    everyui.focus.Focus.dragging()
     moving = Some(move)
     ending = Some(up)
   }

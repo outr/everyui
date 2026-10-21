@@ -77,9 +77,9 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     case None => section().exists(s => owner.sectionMenu()(s).nonEmpty)
   }))
   private val sectionMenuShows: Val[Boolean] = own(Val(headerHasMenu() &&
-    (hovered() || (current() && active()) || !Platform.pointerSupport())))
+    (hovered() || (current() && cursorShown()) || !Platform.pointerSupport())))
   private val menuShows: Val[Boolean] = own(Val(!header() && item().flatMap(_.item).exists(t => owner.menu()(t).nonEmpty) &&
-    (hovered() || (current() && active()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
+    (hovered() || (current() && cursorShown()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
   private val lead: Val[Double] = own(Val(if (tall()) RichRow.tallLead else RichRow.shortLead))
   private val hasLead: Val[Boolean] = own(Val(look().exists(l => l.who.nonEmpty || l.icon.nonEmpty)))
   /** Where the title starts, from the start edge. */
@@ -256,7 +256,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   size.height := base() + above() + below() + extra()
   // (in a block the row draws none of it: its block's panel and the light in it do)
   backgroundColor := (if (blocks()) Color.Clear else lit())
-  borderWidth := (if (!blocks() && current() && active() && !onAction() && !onButtons()) 1.0 else 0.0)
+  borderWidth := (if (!blocks() && current() && cursorShown() && !onAction() && !onButtons()) 1.0 else 0.0)
   // (an item that expands says whether it is)
   semantics := item().map(l => Semantics("listitem", label = l.item match {
     case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText)
@@ -271,7 +271,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     if (emptyLine()) Color.Clear
     else if (drop().contains(DropPosition.Into)) Theme.accent().withAlpha(0.45)
     else if (chosen()) Theme.accent().withAlpha(if (active()) 0.26 else 0.18)
-    else if (current() && active()) Theme.control()
+    else if (current() && cursorShown()) Theme.control()
     else if (hovered()) Theme.control().withAlpha(0.6)
     else if (live()) RichRow.liveTint()
     else Color.Clear
@@ -304,7 +304,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     size.height := math.max(0.0, base() + extra() - 4.0)
     radius @= RichRow.blockRadius - 3.0
     backgroundColor := (if (blocks()) lit() else Color.Clear)
-    borderWidth := (if (blocks() && current() && active() && !onAction() && !onButtons()) 1.0 else 0.0)
+    borderWidth := (if (blocks() && current() && cursorShown() && !onAction() && !onButtons()) 1.0 else 0.0)
     borderColor := Theme.accent()
     visible := blocks()
   }
@@ -370,8 +370,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     tooltip := actionOf().map(_.label).getOrElse("")
     semantics := Semantics.button(actionOf().map(_.label).getOrElse(""))
     visible := actionShows()
-    backgroundColor := (if (focused() || event.pointer.over() || onAction()) Theme.controlLit() else Color.Clear)
-    icon.color := (if (focused() || event.pointer.over() || onAction()) Theme.text() else tint())
+    backgroundColor := (if (focusShown() || event.pointer.over() || onAction()) Theme.controlLit() else Color.Clear)
+    icon.color := (if (focusShown() || event.pointer.over() || onAction()) Theme.text() else tint())
     borderWidth := (if (onAction()) 1.0 else 0.0)
     borderColor := Theme.accent()
   }
@@ -389,7 +389,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   // always where its look or the action says
   private val actionShows: Val[Boolean] = own(Val(actionOf().nonEmpty && (header() || look().exists(_.actionShown) ||
     actionOf().exists(_.shown) ||
-    hovered() || (current() && active()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
+    hovered() || (current() && cursorShown()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
   private var actionMade = false
   private def makeAction(): Unit = if (!actionMade) {
     actionMade = true

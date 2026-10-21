@@ -39,7 +39,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   layout @= Some(VerticalLayout(0.0))
   focusable := links().nonEmpty
   radius @= 4.0
-  backgroundColor := (if (focused()) Theme.controlLit() else Color.Clear)
+  backgroundColor := (if (focusShown()) Theme.controlLit() else Color.Clear)
   inlines.attach(_ => build())
   build()
 

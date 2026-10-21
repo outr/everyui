@@ -60,6 +60,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
   }
 
   focusable @= true
+  clickFocus @= true
   radius @= 8.0
   size.width @= width
   size.height @= SearchField.height
@@ -140,6 +141,8 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
   override def typesEvent(e: KeyEvent): Boolean =
     native && editing() && (e.key == Key.Enter || e.key == Key.ArrowLeft || e.key == Key.ArrowRight ||
       e.key == Key.Space || e.key == Key.Backspace)
+
+  override def takesTyping: Boolean = true
 
   override def kind: String = "SearchField"
 }

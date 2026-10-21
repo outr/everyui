@@ -44,9 +44,9 @@ class ScaleControl(label: String = "") extends Container {
   radius @= 8.0
   size.width @= ScaleControl.width
   size.height @= ScaleControl.height
-  borderWidth := (if (focused()) 2.0 else 1.0)
-  borderColor := (if (focused()) Theme.accent() else Theme.border())
-  backgroundColor := (if (focused()) Theme.controlLit() else Theme.raised())
+  borderWidth := (if (focusShown()) 2.0 else 1.0)
+  borderColor := (if (focusShown()) Theme.accent() else Theme.border())
+  backgroundColor := (if (focusShown()) Theme.controlLit() else Theme.raised())
   semantics := Semantics.slider(label, SemanticRange(UiScale(), UiScale.steps().min, UiScale.steps().max,
     UiScale.percent(UiScale())))
   less.position.left := ListRow.along(0.0, ScaleControl.height, size.width())

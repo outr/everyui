@@ -36,8 +36,8 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.
-  private val lit: Val[Boolean] = own(Val(enabled() && (focused() || event.pointer.over())))
-  private val ringed: Val[Boolean] = own(Val(focused() && style != ButtonStyle.Filled))
+  private val lit: Val[Boolean] = own(Val(enabled() && (focusShown() || event.pointer.over())))
+  private val ringed: Val[Boolean] = own(Val(focusShown() && style != ButtonStyle.Filled))
   private val foreground: Val[Color] = own(Val(
     if (!enabled()) Theme.muted()
     else if (style == ButtonStyle.Filled) Theme.onAccent()
@@ -74,7 +74,7 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   line.position.middle := size.middle()
   backgroundColor := {
     if (style == ButtonStyle.Filled)
-      (if (!enabled()) Theme.control() else if (focused()) Theme.text()
+      (if (!enabled()) Theme.control() else if (focusShown()) Theme.text()
         else if (danger()) (if (lit()) Theme.danger().withAlpha(0.85) else Theme.danger())
         else if (lit()) Theme.accentLit() else Theme.accent())
     else if (style == ButtonStyle.Tonal) (if (lit()) Theme.controlLit() else Theme.control())

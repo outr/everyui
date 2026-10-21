@@ -11,7 +11,7 @@ import reactify.*
   * whether it is pressed. A click, a tap, or Enter on it turns it over. */
 class ToggleButton(on: Var[Boolean], name: String, glyph: MaterialIcon = MaterialIcon.Empty, letters: String = "")
   extends Container {
-  private val lit: Val[Boolean] = own(Val(focused() || event.pointer.over()))
+  private val lit: Val[Boolean] = own(Val(focusShown() || event.pointer.over()))
   private val ink: Val[Color] = own(Val(if (on()) Theme.accent() else if (lit()) Theme.text() else Theme.muted()))
   private val mark: Component =
     if (letters.isEmpty) new MaterialIconView(glyph, 20.0) {

@@ -60,6 +60,9 @@ class PointerEvents(component: Component) {
     val pointed = kind == PointerKind.Enter || kind == PointerKind.Leave
     if (use) everyui.focus.Focus.used()
     if ((use && kind != PointerKind.Wheel) || pointed) Pointer.usedAt = everyui.render.Platform.ticks()
+    // a press ends the keys' moving of the focus, and may let it go (Focus.pointerDown, pointerUp)
+    if (kind == PointerKind.Down) everyui.focus.Focus.pointerDown(event)
+    else if (kind == PointerKind.Up) everyui.focus.Focus.pointerUp()
     // nor is it heard by what a coach mark holds it from: outside a confined region, or under a spotlight's dim
     if (!Pointer.blocks(event) && everyui.focus.Focus.hears(component, kind) &&
       everyui.coach.Spotlight.lets(component, kind, x, y)) {

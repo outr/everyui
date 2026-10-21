@@ -10,15 +10,19 @@ class Events(component: Component) {
   lazy val pointer: PointerEvents = new PointerEvents(component)
   lazy val key: KeyEvents = new KeyEvents
 
-  /** A click focuses the focusable component it lands on, the innermost one: a list does not take the focus from a
-    * field in one of its rows that the same click focused, or that the press focused as it went down. */
+  /** A click is the innermost focusable component's it lands on: a list does not take the focus from a field in one of
+    * its rows that the same click focused, or that the press focused as it went down. It focuses it where a remote
+    * moves the focus or it takes the focus from a click (`Component.clickFocus`: a field, a list); elsewhere (a
+    * button, a tab) the focus is let go of (`Focus.clicked`). */
   lazy val click: Channel[PointerEvent] = {
     val channel = pointer.channel(PointerKind.Click)
     FocusMoves.watch()
     channel.attach { e =>
       if (component.focusable() && !Pointer.focusedBy(e) && !heldInside) {
-        component.focus()
-        if (Focus.focused().contains(component)) Pointer.focused(e)
+        val takes = Focus.clickFocuses(component)
+        Focus.clicked(component, takes)
+        if (takes) component.focus()
+        if (!takes || Focus.focused().contains(component)) Pointer.focused(e)
       }
     }
     channel

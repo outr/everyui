@@ -121,6 +121,7 @@ class ZoomCanvas extends Container {
   private var grabbed: Option[ZoomGrab] = None
 
   focusable @= true
+  clickFocus @= true
   touchDrags @= true
   cursor @= "default"
   world.size.width := size.width()

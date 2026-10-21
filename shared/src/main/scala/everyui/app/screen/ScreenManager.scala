@@ -24,10 +24,11 @@ import scala.concurrent.duration.*
   *
   * Showing a screen puts the one it replaces on the history, and Back (`Key.Back`: a remote's back button, a TV
   * browser's, a mouse's) returns to it, with the focus where it was (a screen shown afresh starts at its
-  * `defaultFocus`); at the first screen Back is the platform's, which leaves the app. On the web
-  * the browser's own history is that history: showing a screen pushes its path, Back is the browser's back, and the
-  * browser's back or forward shows the screen that claims the new path. `run` starts on the screen claiming the page's
-  * path, or the first. */
+  * `defaultFocus`; where a pointer is used, both only while the keys are moving the focus, and otherwise nothing is
+  * focused unless the screen starts at a field: `Focus.starts`); at the first screen Back is the platform's, which
+  * leaves the app. On the web the browser's own history is that history: showing a screen pushes its path, Back is the
+  * browser's back, and the browser's back or forward shows the screen that claims the new path. `run`
+  * starts on the screen claiming the page's path, or the first. */
 trait ScreenManager extends TaskSupport {
   val active: Var[Option[Screen]] = Var(None)
   /** What the shown screen says about itself (`Screen.seo`), followed as it changes: the screen changing, or what the
@@ -363,12 +364,16 @@ trait ScreenManager extends TaskSupport {
         val carried = Focus.focused().filter(f => !before.exists(_ eq f) && Focus.showing(f))
         screen match {
           case _ if carried.nonEmpty => ()
+          // where a pointer is used, the focus is put back only for the keys, and starts only at a field (Focus.starts)
           case u: UIScreen =>
-            val target = focus.filter(Focus.showing).orElse(place.flatMap(p => standing(u.screenRoot, p)))
-              .getOrElse(u.defaultFocus())
-            if (Focus.showing(target)) target.focus()
+            val back = if (!Focus.restores) None
+              else focus.filter(Focus.showing).orElse(place.flatMap(p => standing(u.screenRoot, p)))
+            val start = u.defaultFocus()
+            val target = back.getOrElse(start)
+            if (back.isEmpty && !Focus.starts(start, u.startsFocused)) ()
+            else if (Focus.showing(target)) target.focus()
             else pendingFocus = Some(screen -> target)
-          case _ => focus.filter(Focus.showing).foreach(_.focus())
+          case _ => if (Focus.restores) focus.filter(Focus.showing).foreach(_.focus())
         }
         // run with `focusAudit`, each screen names what no arrow can reach from where it starts
         if (Platform.launchArg("focusAudit").nonEmpty) Platform.after(2.0, () =>

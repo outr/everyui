@@ -70,6 +70,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   val field: Option[InputView] = if (native) Some(new InputView(false, multiline = true)) else None
 
   focusable @= true
+  clickFocus @= true
   radius @= 8.0
   size.width @= width
   size.height := (if (grow) math.max(minHeight, math.min(maxHeight, lines())) else minHeight)
@@ -131,6 +132,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
 
   /** While editing, the keys a box of lines types with and moves its caret by go on to the platform's field. */
   override def typesEvent(e: KeyEvent): Boolean = native && editing() && TextArea.typed(e.key)
+
+  override def takesTyping: Boolean = true
 
   override def kind: String = "TextArea"
 }

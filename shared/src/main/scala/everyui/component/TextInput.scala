@@ -60,6 +60,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   }
 
   focusable @= true
+  clickFocus @= true
   radius @= 10.0
   size.width @= width
   size.height @= 56.0
@@ -131,6 +132,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   override def typesEvent(e: everyui.event.KeyEvent): Boolean =
     native && editing() && (e.key == Key.Enter || e.key == Key.ArrowLeft || e.key == Key.ArrowRight || e.key == Key.Space ||
       e.key == Key.Backspace || (direct && (e.key == Key.ArrowUp || e.key == Key.ArrowDown)))
+
+  override def takesTyping: Boolean = true
 }
 
 object TextInput {

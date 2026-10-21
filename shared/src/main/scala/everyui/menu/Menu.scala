@@ -217,7 +217,10 @@ object Menu {
     * a button pressed for its menu): else to what had it as it opened, `anchor` most often. */
   def below(anchor: Component, items: List[MenuItem], dismissed: () => Unit = () => ()): Menu = {
     // asked before the menu takes the focus, which moves it again
-    val back = if (Pointer.recent && Focus.focused().exists(_ eq anchor)) FocusMoves.before else None
+    // (or, where a click takes no focus, let it go from there: Focus.clicked)
+    val back = if (Pointer.recent && (Focus.focused().exists(_ eq anchor) ||
+      (Focus.focused().isEmpty && !Platform.remoteNavigation()))) FocusMoves.before
+      else None
     val menu = new Menu(items)
     val left = anchor.absoluteLeft
     val top = anchor.absoluteTop

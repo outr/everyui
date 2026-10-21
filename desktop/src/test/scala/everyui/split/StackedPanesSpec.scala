@@ -246,7 +246,9 @@ class StackedPanesSpec extends FxSpec {
         fx(m.panes(2).header.semantics()) shouldBe everyui.component.types.Semantics.disclosure("Pane 2", open = false)
         fx(m.panes(2).body.semantics().role) shouldBe "region"
         fx(m.panes(2).body.semantics().label) shouldBe "Pane 2"
-        fx(Focus.focused()) shouldBe Some(m.panes(2).header)
+        // a header clicked takes no focus where a pointer is used: Enter and Space need it given
+        fx(Focus.focused()) shouldBe None
+        fx(m.panes(2).header.focus())
         press("Enter")
         m.closed(2)() shouldBe false
         fx(m.panes(2).header.semantics().expanded) shouldBe Some(true)

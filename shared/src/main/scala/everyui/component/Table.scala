@@ -36,7 +36,7 @@ class Table[T](columns: List[TableColumn[T]], onRow: T => Unit = (_: T) => ()) e
     size.height := math.max(40.0, contentHeight() + 10.0)
     radius @= 6.0
     focusable @= true
-    backgroundColor := (if (focused() || event.pointer.over()) Theme.raised() else Color.Clear)
+    backgroundColor := (if (focusShown() || event.pointer.over()) Theme.raised() else Color.Clear)
     children ++= place(columns.map(_.cell(value)))
     event.click.attach(_ => onRow(value))
   }

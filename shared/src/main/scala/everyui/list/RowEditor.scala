@@ -42,6 +42,7 @@ class RowEditor(initial: String) extends Container {
   }
 
   focusable @= true
+  clickFocus @= true
   stopFocus(Key.ArrowUp, Key.ArrowDown, Key.ArrowLeft, Key.ArrowRight)
   backgroundColor := Theme.surface()
   borderWidth @= 1.0
@@ -70,6 +71,8 @@ class RowEditor(initial: String) extends Container {
 
   /** The caret out of it, as it goes. */
   def stop(): Unit = input.node.focusInput(false)
+
+  override def takesTyping: Boolean = true
 
   override def kind: String = "RowEditor"
 }

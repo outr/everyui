@@ -117,6 +117,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   focusable @= true
+  clickFocus @= true
   size.width @= 320.0
   size.height @= 400.0
 
@@ -829,6 +830,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     val everyRow = selection.all()
     val cursor = current()
     val lit = focused()
+    val shown = focusShown()
     source.foreach(s => if (near >= first) s.showing(first, near))
     val stands = source.nonEmpty && placeholder().nonEmpty
     // a row not come stands in until it does, and the row then takes its place (and back, as rows are let go)
@@ -868,6 +870,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
           row.selected @= everyRow != chosen.contains(key)
           row.current @= cursor.contains(key)
           row.active @= lit
+          row.cursorShown @= shown
           row.editing @= editing().contains(key)
           row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
           if (sizedSource) row.size.height @= heightAt(at)
@@ -1148,6 +1151,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     // (arriving by the keys, not the pointer)
     tips.cursor(!Pointer.recent)
   }
+  // the cursor drawn as the keys come to move the focus, and no longer once a pointer is put down (Focus.visible)
+  if (!Platform.remoteNavigation()) focusShown.attach(_ => refresh())
   items.attach(_ => reindex())
   source.foreach(s => follow(s.changed, (_: Unit) => reindex()))
   follow(Direction.rtl, (_: Boolean) => refresh())

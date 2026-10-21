@@ -50,8 +50,8 @@ class Switch(label: String = "", val on: Var[Boolean] = Var(false), width: Optio
   }
   size.height @= Switch.height
   opacity := (if (disabled()) 0.38 else 1.0)
-  backgroundColor := (if (!disabled() && (focused() || event.pointer.over())) Theme.controlLit() else Color.Clear)
-  borderWidth := (if (focused()) 2.5 else 0.0)
+  backgroundColor := (if (!disabled() && (focusShown() || event.pointer.over())) Theme.controlLit() else Color.Clear)
+  borderWidth := (if (focusShown()) 2.5 else 0.0)
   borderColor := Theme.accent()
   semantics := Semantics.switch(label, on())
 

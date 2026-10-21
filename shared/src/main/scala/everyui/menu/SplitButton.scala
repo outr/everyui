@@ -33,8 +33,8 @@ class SplitButton(label: String, action: () => Unit, alternatives: => List[MenuI
     size.height := main.size.height()
     size.width := main.size.height() * 0.9
     radius := size.height() / 2.0
-    backgroundColor := (if (focused() || event.pointer.over()) Theme.controlLit() else Theme.control())
-    borderWidth := (if (focused()) 2.5 else 0.0)
+    backgroundColor := (if (focusShown() || event.pointer.over()) Theme.controlLit() else Theme.control())
+    borderWidth := (if (focusShown()) 2.5 else 0.0)
     borderColor := Theme.accent()
     icon.color := Theme.text()
     icon.position.left := (size.width() - icon.size.width()) / 2.0

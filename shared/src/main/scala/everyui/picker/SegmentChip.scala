@@ -13,7 +13,7 @@ import reactify.*
 class SegmentChip(val segment: Segment, chosen: Var[String]) extends Container {
   private def lit: Boolean = chosen() == segment.key
   /** The colour of its words, and of its icon. */
-  val ink: Val[Color] = own(Val(if (lit) Theme.onAccent() else if (focused()) Theme.text() else Theme.muted()))
+  val ink: Val[Color] = own(Val(if (lit) Theme.onAccent() else if (focusShown()) Theme.text() else Theme.muted()))
   /** The segment's icon, where it has one this platform draws. */
   val icon: Option[Component] = segment.icon.flatMap(_.view(SegmentChip.iconPoints))
   // how much further in the words start for the icon before them
@@ -44,9 +44,9 @@ class SegmentChip(val segment: Segment, chosen: Var[String]) extends Container {
   }
   radius @= SegmentChip.height / 2.0
   borderWidth @= 1.0
-  borderColor := (if (lit) Theme.accent() else if (focused()) Theme.accent() else Theme.border())
-  backgroundColor := (if (lit) (if (focused()) Theme.accentLit() else Theme.accent())
-    else if (focused()) Theme.controlLit() else Color.Clear)
+  borderColor := (if (lit) Theme.accent() else if (focusShown()) Theme.accent() else Theme.border())
+  backgroundColor := (if (lit) (if (focusShown()) Theme.accentLit() else Theme.accent())
+    else if (focusShown()) Theme.controlLit() else Color.Clear)
   tapSlop @= true
   event.click.attach { e =>
     e.consume()

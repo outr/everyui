@@ -8,8 +8,10 @@ import everyui.{FxSpec, ui}
   * the field, whether the click focused the field or the press did as it went down, and still takes it when clicked
   * anywhere else. */
 class ClickFocusSpec extends FxSpec {
+  // a field or a list: what a click focuses where a pointer is used
   private class Box extends Container {
     focusable @= true
+    clickFocus @= true
   }
 
   /** One click climbing from `inner` out through `outer`, as every backend delivers it. */

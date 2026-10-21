@@ -58,7 +58,10 @@ class RangeSlider(val start: Var[Double], val end: Var[Double], min: Double = 0.
   track.size.height := size.height()
   place(startThumb, start())
   place(endThumb, end())
-  List(startThumb, endThumb).foreach(t => t.focusable := !disabled())
+  List(startThumb, endThumb).foreach { t =>
+    t.focusable := !disabled()
+    t.clickFocus @= true
+  }
   startThumb.semantics := Semantics.slider(label, SemanticRange(start(), range.min, end(), format(start())))
   endThumb.semantics := Semantics.slider(label, SemanticRange(end(), start(), range.max, format(end())))
   children ++= List(track, startThumb, endThumb)

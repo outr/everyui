@@ -44,8 +44,8 @@ class Checkbox(label: String, initial: Boolean = false, note: Option[String] = N
   // a compact one given no width of its own is as wide as its label, with room for the ring past its end
   if (compact && width == Checkbox.width) size.width := start + title.size.width() + 8.0 else size.width @= width
   size.height := line + detail.map(_.size.height() + 4.0).getOrElse(0.0)
-  backgroundColor := (if (focused() || event.pointer.over()) Theme.controlLit() else Color.Clear)
-  borderWidth := (if (focused()) (if (compact) 2.0 else 2.5) else 0.0)
+  backgroundColor := (if (focusShown() || event.pointer.over()) Theme.controlLit() else Color.Clear)
+  borderWidth := (if (focusShown()) (if (compact) 2.0 else 2.5) else 0.0)
   borderColor := Theme.accent()
   children ++= List(box, title)
   detail.foreach(d => children += d)

@@ -226,7 +226,9 @@ class PickerOptionsSpec extends FxSpec {
         // with the options hidden, the ways are the chips' again, and something keeps the focus
         fx(buttons(2).focus())
         val messages = fx(find.picker.chips.children()(3))
-        click(messages)
+        // (the chip worked by the keys: a click takes no focus where a pointer is used)
+        fx(messages.focus())
+        press("Enter")
         fx(find.picker.segment()) shouldBe "message"
         fx(Focus.focused().exists(f => Focus.within(f, find.picker))) shouldBe true
         fx(find.picker.field.focus())

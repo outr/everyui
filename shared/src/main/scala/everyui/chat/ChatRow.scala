@@ -22,8 +22,8 @@ class ChatRow(transcript: Transcript) extends ListRow[ChatEntry] {
   private var madeLeading = false
 
   size.height := view().map(_.size.height()).getOrElse(0.0)
-  backgroundColor := (if (current() && active()) Theme.accent().withAlpha(0.08) else Color.Clear)
-  borderWidth := (if (current() && active()) 1.0 else 0.0)
+  backgroundColor := (if (current() && cursorShown()) Theme.accent().withAlpha(0.08) else Color.Clear)
+  borderWidth := (if (current() && cursorShown()) 1.0 else 0.0)
 
   // (the list hands a row its place and its item one after the other: a view is made once both are this entry's, not
   // for the entry at the place it had, then again)

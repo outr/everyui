@@ -31,13 +31,20 @@ class SplitButtonSpec extends FxSpec {
       try {
         press("Enter")
         did shouldBe List("commit")
-        fx(b.more.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0))
+        // a pointer's click, which takes no focus to the arrow where a pointer is used, and the menu goes back where the
+        // focus was as it closes
+        fx {
+          everyui.event.Pointer.usedAt = everyui.render.Platform.ticks()
+          b.more.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0)
+          everyui.event.Pointer.usedAt = -1.0e9
+        }
         focusedLabel shouldBe Some("Commit and Push…")
         val menu = fx(Focus.focused().get.parent().flatMap(_.parent()).flatMap(_.parent()).flatMap(_.parent()).get)
         fx(menu.position.top()) shouldBe fx(b.absoluteTop + b.size.height() + 4.0)
         press("Enter")
         did shouldBe List("commit", "push")
-        fx(Focus.focused()) shouldBe Some(b.more)
+        fx(Focus.focused()) shouldBe Some(b.main)
+        fx(b.more.focus())
         press("ArrowDown")
         focusedLabel shouldBe Some("Commit and Push…")
         press("ArrowDown")
