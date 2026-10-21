@@ -1,6 +1,6 @@
 package everyui.monaco
 
-import everyui.component.Embed
+import everyui.component.{Button, Container, Embed, TextView}
 import everyui.focus.Focus
 import everyui.keymap.{Chord, Command, Keymap}
 import everyui.kit.CodeView
@@ -35,6 +35,20 @@ class MonacoEditor(val controller: MonacoController = MonacoController(), transp
   private var editorId = ""
   private var making = false
   private var disposed = false
+  private lazy val loadError: Container = {
+    val panel = new Container
+    panel.position.left @= 16.0
+    panel.position.top @= 32.0
+    panel.size.width := math.max(0.0, size.width() - 32.0)
+    panel.size.height @= 100.0
+    val message = TextView("The editor couldn't load. Check your connection and try again.")
+    message.maxWidth := panel.size.width()
+    val retry = new Button("Retry editor", () => { panel.visible @= false; make() })
+    retry.position.top := message.size.height() + 12.0
+    panel.children ++= List(message, retry)
+    children += panel
+    panel
+  }
 
   if (live) {
     if (!transparent) backgroundColor := Theme.surface()
@@ -42,6 +56,13 @@ class MonacoEditor(val controller: MonacoController = MonacoController(), transp
     follow(controller.onHandBack, (key: (String, Boolean)) => handBack(key._1, shift = key._2))
     if (onChanged != null) follow(controller.onDidChangeContent, (text: String) => onChanged(text))
     onSize((width, height) => if (editorId.nonEmpty) layout(width, height) else make())
+    // Showing the same-sized box does not fire onSize. Monaco still needs a layout after being hidden,
+    // especially when wrapping or the enclosing pane changed while its DOM had no measurable box.
+    visible.attach(on => if (on) Platform.after(0.0, () => {
+      if (!disposed && Focus.showing(this)) {
+        if (editorId.nonEmpty) layout(size.width(), size.height()) else make()
+      }
+    }))
   }
 
   /** Whether its editor has been made. */
@@ -68,6 +89,7 @@ class MonacoEditor(val controller: MonacoController = MonacoController(), transp
           editorId = Wire.string(created, "editorId")
           if (disposed) to.call("editor.dispose", obj("editorId" -> str(editorId)))
           else {
+            loadError.visible @= false
             controller.attach(to, created)
             layout(size.width(), size.height())
             if (focused()) controller.focus()
@@ -76,6 +98,7 @@ class MonacoEditor(val controller: MonacoController = MonacoController(), transp
           making = false
           done()
           Platform.log("[monaco] the editor could not be made: " + t.getMessage)
+          if (!disposed) loadError.visible @= true
       }
     }
   }

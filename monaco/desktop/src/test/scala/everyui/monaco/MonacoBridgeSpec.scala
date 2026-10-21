@@ -21,6 +21,20 @@ class MonacoBridgeSpec extends MonacoFxSpec {
   private def result[T](f: Future[T]): Option[scala.util.Try[T]] = f.value
 
   "A bridge" should {
+    "fail queued editor creation when loading fails, allowing a new bridge to retry" in {
+      val guest = fx(new FakeGuest("spec-load-failure", (m, a) => if (m == "bridge.init") None else answering(m, a)))
+      val bridge = fx(Monaco.bridge(guest))
+      fx(bridge.attach(guest))
+      val creation = fx(bridge.call("editor.create"))
+      fx(guest.say("_return", obj("callId" -> str(guest.ids.head), "error" -> str("editor.main load timeout"))))
+      eventually()(creation.isCompleted) shouldBe true
+      creation.value.get.isFailure shouldBe true
+      fx(bridge.isClosed) shouldBe true
+      val retry = fx(Monaco.bridge(guest))
+      (retry eq bridge) shouldBe false
+      fx(retry.close())
+    }
+
     "load Monaco first, holding calls made meanwhile, and give it the themes and providers already given" in {
       var loads = 0
       val guest = fx(new FakeGuest("spec-1", (m, a) => if (m == "bridge.init") { loads += 1; None } else answering(m, a)))

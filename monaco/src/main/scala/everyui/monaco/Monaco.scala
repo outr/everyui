@@ -29,7 +29,8 @@ object Monaco {
 
   /** Where the editor's files are: served next to the app's page on the web (`everyui-monaco/<version>/`, relative to
     * it, or a whole address), read from the classpath on the desktop, and from the APK's assets on Android. */
-  var site: EmbedSite = EmbedSite("monaco", "everyui-monaco/" + version, "host.html", List("bridge/monaco_bridge.js"))
+  var site: EmbedSite = EmbedSite("monaco", "everyui-monaco/" + version, "host.html",
+    List("bridge/monaco_bridge.js?v=load-recovery-1"))
 
   /** Seconds a call waits for its answer before failing. */
   var callTimeout: Double = 15.0

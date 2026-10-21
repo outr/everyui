@@ -26,6 +26,11 @@ class MonacoDiffEditor(val controller: MonacoDiffController = MonacoDiffControll
     guestFocus = on => if (controller.isAttached) { if (on) controller.focus() else controller.blur() }
     follow(controller.onHandBack, (key: (String, Boolean)) => handBack(key._1, shift = key._2))
     onSize((width, height) => if (diffId.nonEmpty) layout(width, height) else make())
+    visible.attach(on => if (on) Platform.after(0.0, () => {
+      if (!disposed && Focus.showing(this)) {
+        if (diffId.nonEmpty) layout(size.width(), size.height()) else make()
+      }
+    }))
   }
 
   def made: Boolean = diffId.nonEmpty

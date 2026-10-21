@@ -112,15 +112,18 @@ class MonacoBridge(val runtime: String) {
   private def start(): Unit = {
     started = true
     import Monaco.uiThread
-    send("bridge.init", obj("base" -> str(Monaco.site.root), "version" -> str(Monaco.version)), Monaco.loadTimeout)
+    send("bridge.init", obj("base" -> str(Monaco.site.root), "version" -> str(Monaco.version),
+      "loadTimeout" -> num(Monaco.loadTimeout)), Monaco.loadTimeout + 5.0)
       .flatMap(_ => Future.sequence(MonacoThemes.replay(this) ++ MonacoLanguages.replay(this)))
       .onComplete { result =>
         result.failed.foreach(t => Platform.log("[monaco] did not load: " + t.getMessage))
         readyNow = result.isSuccess
         if (result.isSuccess) loaded.trySuccess(()) else loaded.tryFailure(result.failed.get)
-        val calls = waiting.reverse
-        waiting = Nil
-        if (result.isSuccess) calls.foreach(f => f()) else close()
+        if (result.isSuccess) {
+          val calls = waiting.reverse
+          waiting = Nil
+          calls.foreach(f => f())
+        } else close() // close must fail the queued calls too; dropping them leaves a permanently blank editor
       }
   }
 

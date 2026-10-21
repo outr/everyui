@@ -97,7 +97,9 @@
 
       function start() {
         try {
-          window.require.config({ paths: { vs: base + 'vs' } });
+          // RequireJS defaults to seven seconds, much less than the host's load timeout. The editor's
+          // dependency chunks can take longer on a cold cache or a mobile connection.
+          window.require.config({ paths: { vs: base + 'vs' }, waitSeconds: args.loadTimeout || 120 });
           window.require(['vs/editor/editor.main'], function (m) {
             if (!window.monaco) window.monaco = m;
             installOpener();
@@ -105,7 +107,9 @@
             resolve({ version: args.version || null });
             bridge.emit('bridge.ready', {});
           }, function (err) {
-            reject(new Error('monaco: editor.main did not load: ' + (err && err.message || err)));
+            var failure = new Error('monaco: editor.main did not load: ' + (err && err.message || err));
+            failure.requireModules = err && err.requireModules;
+            reject(failure);
           });
         } catch (e) { reject(e); }
       }
@@ -118,6 +122,14 @@
         loader.onerror = function () { reject(new Error('monaco: could not load ' + loader.src)); };
         document.head.appendChild(loader);
       }
+    });
+    bridge._loading = bridge._loading.catch(function (err) {
+      bridge._loading = null;
+      // Failed AMD modules otherwise stay failed forever, including after the user presses Retry.
+      if (window.require && window.require.undef && err.requireModules) {
+        err.requireModules.forEach(function (id) { window.require.undef(id); });
+      }
+      throw err;
     });
     return bridge._loading;
   };
