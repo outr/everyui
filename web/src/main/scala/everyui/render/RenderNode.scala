@@ -228,7 +228,8 @@ class RenderNode(val el: html.Element) {
 
   /** Where a link goes (the node is an `<a>`, `Nodes.link`), in a new tab with `newTab`. */
   def setHref(href: String, newTab: Boolean): Unit = {
-    el.setAttribute("href", href)
+    if (everyui.component.NavigationUrl.safe(href)) el.setAttribute("href", href)
+    else el.removeAttribute("href")
     if (newTab) {
       el.setAttribute("target", "_blank")
       el.setAttribute("rel", "noopener")
@@ -264,7 +265,7 @@ class RenderNode(val el: html.Element) {
         span.style.padding = "0.08em 0.35em"
         span.style.borderRadius = "5px"
       }
-      if (run.href.nonEmpty) {
+      if (run.href.nonEmpty && everyui.component.NavigationUrl.safe(run.href)) {
         span.setAttribute("href", run.href)
         span.className = "everyui-link"
         val inApp = run.href.startsWith("/") && !run.href.startsWith("//")
@@ -1402,9 +1403,10 @@ object Platform {
   /** The DOM scrolls a scrollable node itself. */
   def nativeScroll(): Boolean = true
   /** `url` in a new tab. */
-  def openUrl(url: String): Unit = dom.window.open(url, "_blank")
+  def openUrl(url: String): Unit =
+    if (everyui.component.NavigationUrl.safe(url)) { dom.window.open(url, "_blank", "noopener,noreferrer"); () }
   /** Leave for `url`, in this tab. */
-  def navigate(url: String): Unit = dom.window.location.assign(url)
+  def navigate(url: String): Unit = if (everyui.component.NavigationUrl.safe(url)) dom.window.location.assign(url)
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
   /** A count of what is new (the unread), on the tab's icon: a red circle with the count over the page's own icon

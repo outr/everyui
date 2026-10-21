@@ -27,7 +27,8 @@ class Link(target: String = "", newTab: Boolean = false) extends Container(Nodes
 object Link {
   /** Show `href`'s screen if this app has one, or go there. */
   def follow(href: String, newTab: Boolean = false): Unit =
-    if (newTab) Platform.openUrl(href)
+    if (!NavigationUrl.safe(href)) ()
+    else if (newTab) Platform.openUrl(href)
     else if (!ScreenManager.navigate(href)) Platform.navigate(href)
 
   /** A link around `content`. */

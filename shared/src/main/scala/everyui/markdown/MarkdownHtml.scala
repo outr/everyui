@@ -63,7 +63,9 @@ object MarkdownHtml {
     case MdInline.Strong(c) => "<strong>" + inlines(c, breaks) + "</strong>"
     case MdInline.Strike(c) => "<del>" + inlines(c, breaks) + "</del>"
     case MdInline.CodeSpan(code) => "<code>" + escape(code) + "</code>"
-    case MdInline.Hyperlink(href, _, c) => "<a href=\"" + escape(href) + "\">" + inlines(c, breaks) + "</a>"
+    case MdInline.Hyperlink(href, _, c) =>
+      if (everyui.component.NavigationUrl.safe(href)) "<a href=\"" + escape(href) + "\">" + inlines(c, breaks) + "</a>"
+      else inlines(c, breaks)
     case MdInline.Picture(src, _, alt) => "<img src=\"" + escape(src) + "\" alt=\"" + escape(alt) + "\">"
     case MdInline.SoftBreak => if (breaks) "<br>\n" else "\n"
     case MdInline.HardBreak => "<br>\n"
