@@ -63,11 +63,22 @@ class TerminalWebViewSpec extends TerminalFxSpec {
         eventually(5.0)(sent.toString == "a\u0003\u001b[A\r") shouldBe true
       }
 
+
       // a chord the app keeps runs its command and never reaches the shell
       fx(key(view, KeyCode.EQUALS, "=", "=", ctrl = true))
       eventually(2.0)(bigger == 1) shouldBe true
       Thread.sleep(300L)
       sent.toString shouldBe "a\u0003\u001b[A\r"
+
+      fx { sent.clear(); TerminalArrow.values.foreach(t.arrow) }
+      eventually(5.0)(sent.toString == "\u001b[A\u001b[B\u001b[D\u001b[C") shouldBe true
+      fx(t.write("\u001b[?1h\u001b[?2004h"))
+      eventually(5.0)(script(view, s"$term.modes.applicationCursorKeysMode") == true) shouldBe true
+      fx { sent.clear(); TerminalArrow.values.foreach(t.arrow) }
+      // Arrows are keys, never bracketed-paste text, even when the program enabled bracketed paste.
+      eventually(5.0)(sent.toString == "\u001bOA\u001bOB\u001bOD\u001bOC") shouldBe true
+      fx(t.write("\u001b[?1l\u001b[?2004l"))
+
 
       // narrower: fewer columns, told
       fx(t.size.width @= 500.0)

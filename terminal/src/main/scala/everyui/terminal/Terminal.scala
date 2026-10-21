@@ -104,6 +104,8 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
 
   /** `text` pasted, as though from the clipboard: sent on through `onInput`, bracketed where the program asked. */
   def paste(text: String): Unit = say("paste", text)
+  /** An arrow pressed through a toolbar or remote: sent as keyboard input, in the program's cursor-key mode. */
+  def arrow(key: TerminalArrow): Unit = say("arrow", key.toString)
   /** The selection onto the platform's clipboard, if there is one. */
   def copy(): Unit = say("copy")
   def selectAll(): Unit = say("selectAll")
@@ -113,6 +115,8 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
   /** Back to how it was made: the screen and the scrollback emptied, every mode the program set undone. */
   def reset(): Unit = say("reset")
   def scrollToBottom(): Unit = say("scrollToBottom")
+  /** Measure its grid again after a hidden tab is brought back or its enclosing pane changes. */
+  def refit(): Unit = say("fit")
   /** Scrolled `lines` down (up, for fewer than none). */
   def scrollLines(lines: Int): Unit = say("scrollLines", lines.toString)
 
@@ -151,9 +155,9 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
   private def receive(name: String, payload: String): Unit =
     if (name == "input") onInput @= payload
     else if (name == "binary") onBinary @= payload.toCharArray.map(_.toByte)
-    else if (name == "resize" || name == "ready") TerminalWire.size(payload).foreach { s =>
+    else if (name == "resize" || name == "ready" || name == "resume") TerminalWire.size(payload).foreach { s =>
       if (name == "ready") ready @= true
-      if (!dimensions().contains(s)) {
+      if (!dimensions().contains(s) || name == "resume") {
         dimensions @= Some(s)
         onResize @= s
       }
@@ -189,7 +193,7 @@ object Terminal {
   /** Where the terminal's files are: served next to the app's page on the web (`everyui-terminal/<version>/`, relative
     * to it, or a whole address), read from the classpath on the desktop, and from the APK's assets on Android. */
   var site: EmbedSite = EmbedSite(embedName, "everyui-terminal/" + version, "host.html",
-    List("xterm.js", "addon-fit.js", "addon-web-links.js", "bridge/terminal_bridge.js"))
+    List("xterm.js", "addon-fit.js", "addon-web-links.js", "bridge/terminal_bridge.js?v=touch-scroll-1"))
 
   /** What shows where no web engine can run a terminal. */
   var unavailable: String = "A terminal needs a web engine, which this device does not have."

@@ -81,7 +81,7 @@
     if (bridge.terminals[id]) return;
     var options = JSON.parse(payload || '{}');
     var entry = { term: null, fit: null, waiting: [], keep: options.keep || [], observer: null, disposed: false,
-                  fontSize: options.fontSize, scale: uiScale() };
+                  fontSize: options.fontSize, scale: uiScale(), fitFrame: 0, resume: false, id: id };
     bridge.terminals[id] = entry;
     var container = window.everyuiEmbed.container(id);
     if (!container) throw new Error('no element "' + id + '"');
@@ -140,6 +140,7 @@
       box.className = 'everyui-terminal-unscaled';
       container.appendChild(box);
       term.open(box);
+      installTouchScroll(entry, term);
       // the textarea xterm types through is never a sign-in: the markers that keep the browser's autofill and the
       // password managers out of it, as an EveryUI field held `Autofill.Off` has
       if (term.textarea) {
@@ -151,7 +152,7 @@
       entry.fit = fit;
       fitNow(entry);
       if (window.ResizeObserver) {
-        entry.observer = new ResizeObserver(function () { fitNow(entry); });
+        entry.observer = new ResizeObserver(function () { scheduleFit(entry); });
         entry.observer.observe(box);
       }
       bridge.emit('ready', id, term.cols + ',' + term.rows);
@@ -166,6 +167,60 @@
     else open();
   };
 
+  // xterm's touch viewport scrolls its local buffer. With mouse reporting enabled (tmux), history belongs to
+  // the remote program instead. Translate a vertical finger drag to the same wheel reports as a touchpad.
+  // Taps, long presses, multiple fingers and ordinary shell scrollback keep their existing handling.
+  function installTouchScroll(entry, term) {
+    var gesture = null;
+    var element = term.element;
+    function start(e) {
+      gesture = e.touches.length === 1 && term.modes.mouseTrackingMode !== 'none' ? {
+        id: e.touches[0].identifier, x: e.touches[0].clientX, y: e.touches[0].clientY,
+        lastY: e.touches[0].clientY, pending: 0, dragging: false, time: Date.now()
+      } : null;
+    }
+    function move(e) {
+      if (!gesture) return;
+      if (e.touches.length !== 1 || term.modes.mouseTrackingMode === 'none' || term.hasSelection()) {
+        gesture = null;
+        return;
+      }
+      var touch = e.touches[0];
+      if (touch.identifier !== gesture.id) { gesture = null; return; }
+      if (!gesture.dragging) {
+        var dx = Math.abs(touch.clientX - gesture.x), dy = Math.abs(touch.clientY - gesture.y);
+        if (Date.now() - gesture.time > 500 || (dx > 8 && dx > dy)) { gesture = null; return; }
+        if (dy < 8) return;
+        gesture.dragging = true;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      var screen = element.querySelector('.xterm-screen');
+      var height = screen && screen.getBoundingClientRect().height / term.rows;
+      if (!(height > 0)) return;
+      gesture.pending += gesture.lastY - touch.clientY;
+      gesture.lastY = touch.clientY;
+      var lines = Math.trunc(gesture.pending / height);
+      if (!lines) return;
+      gesture.pending -= lines * height;
+      // Dispatch on xterm itself so its protocol/coordinates and mouse encoding remain authoritative,
+      // without also scrolling the inner viewport or synthesizing keyboard input into the shell.
+      element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true,
+        clientX: touch.clientX, clientY: touch.clientY, deltaY: lines, deltaMode: 1 }));
+    }
+    function end() { gesture = null; }
+    element.addEventListener('touchstart', start, { capture: true, passive: true });
+    element.addEventListener('touchmove', move, { capture: true, passive: false });
+    element.addEventListener('touchend', end, true);
+    element.addEventListener('touchcancel', end, true);
+    entry.disposeTouchScroll = function () {
+      element.removeEventListener('touchstart', start, true);
+      element.removeEventListener('touchmove', move, true);
+      element.removeEventListener('touchend', end, true);
+      element.removeEventListener('touchcancel', end, true);
+    };
+  }
+
   // The size the app is drawn at (everyui.theme.UiScale), 1 in a page of its own.
   function uiScale() {
     var factor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--everyui-ui-scale'));
@@ -174,7 +229,7 @@
 
   // The text sized by the size the app is drawn at, as the box it is in is drawn back at the window's pixels.
   function fitNow(entry) {
-    if (!entry.term || !entry.fit) return;
+    if (entry.disposed || !entry.term || !entry.fit) return;
     var scale = uiScale();
     if (scale !== entry.scale) {
       entry.scale = scale;
@@ -185,25 +240,73 @@
     try { entry.fit.fit(); } catch (e) { console.error('[terminalBridge] fit failed', e); }
   }
 
+  // Width and height can change on separate layout turns. Measure once at the next paint rather than
+  // sending both intermediate grids to a remote full-screen program, which clears and repaints on each resize.
+  function scheduleFit(entry) {
+    if (entry.disposed || entry.fitFrame) return;
+    entry.fitFrame = window.requestAnimationFrame(function () {
+      entry.fitFrame = 0;
+      fitNow(entry);
+      if (entry.resume) {
+        entry.resume = false;
+        var el = entry.term && entry.term.element;
+        if (el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0) {
+          entry.term.refresh(0, entry.term.rows - 1);
+          // Even an unchanged grid must be reasserted after sleep/reconnect: the remote PTY may have
+          // been resized by another view while this browser was suspended.
+          bridge.emit('resume', entry.id, entry.term.cols + ',' + entry.term.rows);
+        }
+      }
+    });
+  }
+
+  function resumed() {
+    if (document.hidden) return;
+    for (var id in bridge.terminals) {
+      var entry = bridge.terminals[id];
+      if (entry.term && entry.term.element.getBoundingClientRect().width > 0) {
+        entry.resume = true;
+        scheduleFit(entry);
+      }
+    }
+  }
+  document.addEventListener('visibilitychange', resumed);
+  window.addEventListener('focus', resumed);
+  window.addEventListener('pageshow', resumed);
+  // OS sleep can preserve both focus and visibility. A delayed heartbeat catches that path too.
+  var lastHeartbeat = Date.now();
+  window.setInterval(function () {
+    var now = Date.now();
+    if (now - lastHeartbeat > 30000) resumed();
+    lastHeartbeat = now;
+  }, 10000);
+
   // A change of the size the app is drawn at, which Platform.setUiScale sets on the page's root: the box need not change
   // size with it (a terminal filling a screen that grows as the app is drawn smaller), so the observer may not hear it.
   if (window.MutationObserver) {
     new MutationObserver(function () {
-      for (var id in bridge.terminals) fitNow(bridge.terminals[id]);
+      for (var id in bridge.terminals) scheduleFit(bridge.terminals[id]);
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
   }
 
   // Where the terminal is laid out by the page itself (a web view of its own), the window's size is its.
   if (window.everyuiEmbed.hosted) {
     window.addEventListener('resize', function () {
-      for (var id in bridge.terminals) fitNow(bridge.terminals[id]);
+      for (var id in bridge.terminals) scheduleFit(bridge.terminals[id]);
     });
   }
 
   handlers['write'] = function (id, data) { withTerminal(id, function (e) { e.term.write(data); }); };
   handlers['paste'] = function (id, text) { withTerminal(id, function (e) { e.term.paste(text); }); };
-  handlers['fit'] = function (id) { withTerminal(id, fitNow); };
-  handlers['focus'] = function (id) { withTerminal(id, function (e) { e.term.focus(); }); };
+  handlers['arrow'] = function (id, key) {
+    var final = { Up: 'A', Down: 'B', Left: 'D', Right: 'C' }[key];
+    if (!final) return;
+    withTerminal(id, function (e) {
+      e.term.input('\x1b' + (e.term.modes.applicationCursorKeysMode ? 'O' : '[') + final, true);
+    });
+  };
+  handlers['fit'] = function (id) { withTerminal(id, scheduleFit); };
+  handlers['focus'] = function (id) { withTerminal(id, function (e) { scheduleFit(e); e.term.focus(); }); };
   handlers['blur'] = function (id) { withTerminal(id, function (e) { e.term.blur(); }); };
   handlers['clear'] = function (id) { withTerminal(id, function (e) { e.term.clear(); }); };
   handlers['reset'] = function (id) { withTerminal(id, function (e) { e.term.reset(); }); };
@@ -227,7 +330,7 @@
         e.term.options.fontSize = options.fontSize * e.scale;
       }
       if (options.fontFamily) e.term.options.fontFamily = options.fontFamily;
-      fitNow(e);
+      scheduleFit(e);
     });
   };
   handlers['dispose'] = function (id) {
@@ -236,6 +339,8 @@
     entry.disposed = true;
     delete bridge.terminals[id];
     if (entry.observer) entry.observer.disconnect();
+    if (entry.fitFrame) window.cancelAnimationFrame(entry.fitFrame);
+    if (entry.disposeTouchScroll) entry.disposeTouchScroll();
     if (entry.term) entry.term.dispose();
   };
 })();
