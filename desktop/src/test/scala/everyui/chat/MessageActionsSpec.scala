@@ -277,6 +277,51 @@ class MessageActionsSpec extends FxSpec {
       }
     }
 
+    "open from a tap on a phone, and stay for their message until a tap lands elsewhere" in {
+      val was = fx(Host.args)
+      fx(Host.args = was + ("pointer" -> "false"))
+      try {
+        val entries = Var(talk(6))
+        val t = transcript(entries, 360.0)
+        var more = ""
+        // an app's own first, as Voidcraft's menu of more is
+        fx(t.messageActions @= {
+          case m: ChatEntry.Message => MessageAction(MaterialIcon.MoreVert, "More", () => more = m.id) :: t.actionsFor(m)
+          case _ => Nil
+        })
+        // a finger put down at `x`, `y` on `c` and lifted, heard by it and by the page under it, and its click
+        def tap(c: Component, x: Double, y: Double): Unit = fx {
+          Pointer.consumed = None
+          c.event.pointer.heard(c.event.pointer.down, PointerKind.Down, x, y)
+          ui.event.pointer.heard(ui.event.pointer.down, PointerKind.Down, x, y)
+          ui.event.pointer.heard(ui.event.pointer.up, PointerKind.Up, x, y)
+          c.event.click @= everyui.event.PointerEvent(PointerKind.Click, x, y, finger = true)
+        }
+        onScreen(t) {
+          settle(t)
+          // a tap on a message: the list takes the focus, its cursor on the message, and the buttons show by it
+          val (_, rowTop, _, _) = bubble(t, "m1")
+          tap(t.list, t.list.absoluteLeft + 60.0, t.list.absoluteTop + rowTop + 10.0)
+          fx(t.list.current @= Some("m1"))
+          eventually(shows(t, "m1")) shouldBe true
+          // a tap on the first button: it does what it says, and they stay by the message with the cursor where it was
+          val first = fx(bar(t).actionButtons.head)
+          tap(first, fx(first.absoluteLeft) + 4.0, fx(first.absoluteTop) + 4.0)
+          more shouldBe "m1"
+          eventually(shows(t, "m1")) shouldBe true
+          fx(t.list.current()) shouldBe Some("m1")
+          // and on the second
+          val copy = fx(bar(t).actionButtons(1))
+          tap(copy, fx(copy.absoluteLeft) + 4.0, fx(copy.absoluteTop) + 4.0)
+          eventually(copied == "Message 1") shouldBe true
+          fx(shows(t, "m1")) shouldBe true
+          // a tap anywhere else: gone
+          tap(ui, 2.0, 1000.0)
+          eventually(!bar(t).showing()) shouldBe true
+        }
+      } finally fx(Host.args = was)
+    }
+
     "show nothing, and make nothing, where there is no clipboard" in {
       val was = fx(Host.args)
       fx(Host.args = was + ("clipboard" -> "false"))

@@ -364,6 +364,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   // them to the pointer
   private var keyed: Boolean = false
   private def byKey(): Unit = keyed = !Pointer.recent
+  // whether the last press was on the buttons: they stay for their message while it lets the focus go (a tap on a
+  // button takes none) and while what it does (a menu) has it, until a press lands anywhere else
+  private var pressedBar: Boolean = false
 
   /** The buttons shown beside a message, made the first time there are any to show. */
   def actions: Option[MessageActions] = bar
@@ -389,6 +392,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     val wanted = hovered().flatMap(messageOf).orElse {
       if (!keyed && Platform.pointerSupport()) None
       else if (bar.exists(_.holdsFocus)) bar.flatMap(_.message())
+      else if (pressedBar) bar.flatMap(_.message())
       else if (list.focused()) Transcript.message(list.currentItem)
       else None
     }.filter(m => list.indexOf(m.id) >= 0)
@@ -401,6 +405,14 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       // over the rows, under the spinner and "Jump to latest"
       children @= children().flatMap(c => if (c eq list) List(c, made) else List(c))
       bar = Some(made)
+      follow(everyui.ui.event.pointer.down, (e: everyui.event.PointerEvent) => {
+        val on = made.showing() && e.x >= made.absoluteLeft && e.x < made.absoluteLeft + made.size.width() &&
+          e.y >= made.absoluteTop && e.y < made.absoluteTop + made.size.height()
+        if (on != pressedBar) {
+          pressedBar = on
+          if (!on) Platform.later(() => retarget())
+        }
+      })
     }
     bar.foreach(_.show(if (offered.isEmpty) None else wanted, offered))
   }

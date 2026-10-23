@@ -1172,9 +1172,10 @@ object Platform {
 
   /** The window's content size. */
   def kind: PlatformKind = PlatformKind.Desktop
-  def pointerSupport(): Boolean = true
-  def touchSupport(): Boolean = false
-  /** A window has a pointer and a keyboard; `--remote=true` or `--keyboard=false` on the launch tries a TV's behaviour. */
+  /** A window has a pointer and a keyboard; `--pointer=false` on the launch tries a phone's touch, and `--remote=true` or
+    * `--keyboard=false` a TV's behaviour. */
+  def pointerSupport(): Boolean = !Host.args.get("pointer").contains("false")
+  def touchSupport(): Boolean = Host.args.get("pointer").contains("false")
   def remoteNavigation(): Boolean = Host.args.get("remote").contains("true")
   def keyboardSupport(): Boolean = !remoteNavigation() && !Host.args.get("keyboard").contains("false")
 
