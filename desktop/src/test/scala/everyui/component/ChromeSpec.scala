@@ -59,8 +59,12 @@ class ChromeSpec extends FxSpec {
         fx(full.size.height()) shouldBe 28.0
         fx(small.size.width()) should be < 150.0
         fx(full.size.width()) shouldBe 400.0
-        fx(small.focus())
-        fx(small.borderWidth()) shouldBe 2.0
+        // its ring, drawn as the keys brought the focus there (not left to what an earlier spec did)
+        fx {
+          Focus.visible @= true
+          small.focus()
+        }
+        try fx(small.borderWidth()) shouldBe 2.0 finally fx(Focus.visible @= false)
       }
     }
   }

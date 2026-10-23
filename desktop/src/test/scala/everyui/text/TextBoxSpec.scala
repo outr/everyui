@@ -3,6 +3,7 @@ package everyui.text
 import everyui.Color
 import everyui.component.{Button, Chip, Column, Container, Component, MaterialIconView, Row, ScrollContainer, TextView}
 import everyui.component.types.{Semantics, TextAlign, TextOverflow, WhiteSpace}
+import everyui.focus.Focus
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.{FxSpec, ui}
@@ -242,10 +243,13 @@ class TextBoxSpec extends FxSpec {
         fx(wrapped.labelAlign @= TextAlign.Center)
         fx(wordsOf(wrapped).align()) shouldBe TextAlign.Center
         fx(wrapped.labelAlign @= TextAlign.Start)
-        // the focus ring follows the box
-        fx(wrapped.focus())
+        // the focus ring follows the box, drawn as the keys brought the focus there (not left to what an earlier spec did)
+        fx {
+          Focus.visible @= true
+          wrapped.focus()
+        }
         settle()
-        fx(wrapped.borderWidth()) should be > 0.0
+        try fx(wrapped.borderWidth()) should be > 0.0 finally fx(Focus.visible @= false)
         // and back to one line, cut short
         fx(wrapped.labelLines @= 1)
         settle()
