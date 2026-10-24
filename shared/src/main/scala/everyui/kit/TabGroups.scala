@@ -47,6 +47,11 @@ import reactify.*
   * `groupContent`'s for their group, told which of them it shows (`GroupContent.show`), rather than a content each: one
   * editor for a group's files, while a terminal keeps its own.
   *
+  * A tab not shown is taken off the screen, its content alive, unless `keepsMounted` says it keeps its place: then it
+  * stays where it is, hidden, and is shown again as it is chosen. A page of the web (`WebView`, a frame), a video or a
+  * canvas wants that, since one taken off and put back loads or starts again, losing where it was scrolled to, what
+  * was typed and who signed in. Each kept costs what it holds while it is not shown.
+  *
   * {{{
   *   val editor = new TabGroups[File](_.name, f => new TerminalView(f), _.path, allowsTwice = _ => true,
   *     sharesGroupContent = _.isText, groupContent = _ => new EditorView)
@@ -61,7 +66,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
                    val lead: K => TabLead = (_: K) => TabLead.None,
                    val allowsTwice: K => Boolean = (_: K) => false,
                    val sharesGroupContent: K => Boolean = (_: K) => false,
-                   val groupContent: TabGroup[K] => GroupContent[K] = (_: TabGroup[K]) => GroupContent.empty[K])
+                   val groupContent: TabGroup[K] => GroupContent[K] = (_: TabGroup[K]) => GroupContent.empty[K],
+                   val keepsMounted: K => Boolean = (_: K) => false)
   extends Container {
   /** Whether `k` may close: asked before its last tab closes, by the ×, the menu, the keys and `closeAllTabs`, and
     * answered by the app as it likes (asking whether to save it); a tab it answers false for stays. Always, by default. */

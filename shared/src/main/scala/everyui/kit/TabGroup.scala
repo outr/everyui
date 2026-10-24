@@ -10,7 +10,8 @@ import reactify.*
 
 /** One group of a `TabGroups`: a `TabBar` over what its tab being shown shows. Each tab's content is made the first
   * time it is shown and kept, the tabs not shown off the screen but alive, until the tab closes (disposed of) or moves
-  * to another group (taken along). An empty group says so, and that is where the focus lands in it. */
+  * to another group (taken along). A tab that keeps its place (`TabGroups.keepsMounted`) stays where it is, hidden. An
+  * empty group says so, and that is where the focus lands in it. */
 class TabGroup[K](owner: TabGroups[K]) extends Container {
   /** Its tabs, in order. */
   val keys: Var[Vector[K]] = own(Var(Vector.empty[K]))
@@ -38,6 +39,9 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   empty.position.middle := body.size.height() / 2.0
 
   private var made: Map[K, Component] = Map.empty
+  // the contents of the tabs that stay in place while another shows (`TabGroups.keepsMounted`), in the order they were
+  // first shown, which never changes: a frame moved in the page loads again
+  private var mounted: Vector[Component] = Vector.empty
   /** The one view this group shows its tabs that share one in (`TabGroups.sharesGroupContent`), once it has shown one,
     * and the tab it was last told it shows. */
   private var shared: Option[GroupContent[K]] = None
@@ -96,7 +100,11 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   def take(k: K): Option[Component] = if (!has(k)) None else {
     val content = made.get(k)
     made = made - k
-    content.foreach(c => body.children -= c)
+    content.foreach { c =>
+      body.children -= c
+      mounted = mounted.filterNot(_ eq c)
+      c.visible @= true
+    }
     bar.remove(owner.id(k))
     keys @= keys().filterNot(_ == k)
     content
@@ -117,7 +125,8 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   /** The focus on the tab being shown, or on the empty group's words. */
   def focusTab(): Unit = bar(shown()).map(_.focus()).getOrElse(empty.focus())
 
-  // what the tab being shown shows, made the first time; the rest off the screen, alive
+  // what the tab being shown shows, made the first time; the rest off the screen, alive, or where they keep their place
+  // (`TabGroups.keepsMounted`), there but hidden
   private def show(): Unit = {
     // (read afresh: `selected` may not have heard the change yet)
     val on = keys().find(k => owner.id(k) == shown())
@@ -147,7 +156,10 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
       told = None
       shared.foreach(_.hide())
     }
-    val keep = Vector(empty) ++ content.toVector
+    on.foreach(k => if (!owner.sharesGroupContent(k) && owner.keepsMounted(k))
+      content.foreach(c => if (!mounted.exists(_ eq c)) mounted = mounted :+ c))
+    mounted.foreach(c => c.visible @= content.exists(_ eq c))
+    val keep = Vector(empty) ++ mounted ++ content.toVector.filterNot(c => mounted.exists(_ eq c))
     if (body.children().size != keep.size || !body.children().zip(keep).forall { case (a, b) => a eq b })
       body.children @= keep
     owner.changed()
@@ -162,6 +174,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   private[kit] def disposeContents(): Unit = {
     made.values.foreach(_.dispose())
     made = Map.empty
+    mounted = Vector.empty
     shared.foreach(_.dispose())
     shared = None
     told = None
