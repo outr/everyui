@@ -57,7 +57,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   /** Its lines made again where they are no longer the same lines and pictures; otherwise their words follow
     * `inlines` where they stand. */
   private def build(): Unit = {
-    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks)
+    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions())
     val now = parts.map(p => p.image.map(i => "i" + i.src).getOrElse("t")).mkString("|")
     if (now != shape) {
       shape = now
@@ -88,7 +88,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     wrapAnywhere @= true
     follow = ctx.onLink
     runs := {
-      val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks)
+      val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions())
       if (i < parts.size) parts(i).runs else Nil
     }
   }

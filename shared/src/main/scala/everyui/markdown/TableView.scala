@@ -24,7 +24,7 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
   private val columns = table.align.size
   private val contents: Vector[Vector[List[TextRun]]] = (table.header :: table.rows).toVector.zipWithIndex.map { r =>
     r._1.toVector.map(content => MarkdownRuns.parts(content, points, if (r._2 == 0) look.headerWeight else 400,
-      ctx.breaks).flatMap(_.runs))
+      ctx.breaks, ctx.mentions()).flatMap(_.runs))
   }
   // its columns from the right where its words read right to left, as a DataTable finds it from its header
   private val mirrored = everyui.text.Bidi.rightToLeft(ctx.direction.value,

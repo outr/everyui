@@ -50,9 +50,12 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
     * in the theme's colours. It starts as `MarkdownView.tableLook` says, for every view an app makes; changed, the
     * view is drawn again. */
   val tableLook: Var[TableLook] = own(Var(MarkdownView.tableLook.get))
+  /** The names "@" and a name is drawn as a mention of (`Mentions`: in the mention colour on a faint wash, not in code
+    * or a link): a chat's people, say. Changed, its paragraphs follow in place. */
+  val mentions: Var[Set[String]] = own(Var(Set.empty[String]))
   private var stream = new MarkdownStream
   private val context = MarkdownContext(style, onLink, () => base, direction = direction, measures = measures,
-    breaks = breaks, richTables = () => richTables.get, tableLook = () => tableLook.get)
+    breaks = breaks, richTables = () => richTables.get, tableLook = () => tableLook.get, mentions = () => mentions())
   private var drawn: Vector[MdBlock] = Vector.empty
 
   layout @= Some(VerticalLayout(style.spacing))
@@ -129,6 +132,10 @@ object MarkdownView {
 
   def link(): Color = Theme.extra("markdown.link", Theme.accent())
   def codeBackground(): Color = Theme.extra("markdown.code", Theme.raised())
+  /** A mention's colour, and the faint wash behind it (`mentions`): `Theme.extra` "markdown.mention" and
+    * "markdown.mentionWash" where the palette names them, else the accent, and the accent faintly. */
+  def mention(): Color = Theme.extra("markdown.mention", Theme.accent())
+  def mentionWash(): Color = Theme.extra("markdown.mentionWash", Theme.accent().withAlpha(0.14))
   def quoteBar(): Color = Theme.extra("markdown.quote", Theme.border())
 
   /** `url` found against `base`: a URL with a scheme (or a `data:` one) as it is; `//host/path` in the base's scheme;

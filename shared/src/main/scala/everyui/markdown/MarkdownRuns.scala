@@ -4,13 +4,15 @@ import everyui.text.TextRun
 import everyui.theme.Theme
 
 /** A paragraph's pieces as the runs a `RichText` draws: emphasis slanted, strong bold, strikethrough struck, code in
-  * the monospaced face on its wash, links in the link colour and underlined. A hard break starts a new line and a
+  * the monospaced face on its wash, links in the link colour and underlined, and a mention of one of `mentions`
+  * (`Mentions`) in the mention colour on its wash, outside code and links. A hard break starts a new line and a
   * picture stands on a line of its own (`MdPart`). */
 private[markdown] object MarkdownRuns {
   /** The lines of `content`, set at `points` with `weight` as the words' own; with `breaks`, each line break of the
-    * text starts a new line too, as a chat's messages have it. */
-  def parts(content: List[MdInline], points: Double, weight: Int, breaks: Boolean = false): List[MdPart] = {
-    val out = new MarkdownRuns(points, breaks)
+    * text starts a new line too, as a chat's messages have it; "@" and one of `mentions` drawn as a mention. */
+  def parts(content: List[MdInline], points: Double, weight: Int, breaks: Boolean = false,
+            mentions: Set[String] = Set.empty): List[MdPart] = {
+    val out = new MarkdownRuns(points, breaks, mentions)
     out.add(content, TextRun("", weight = weight))
     out.done()
   }
@@ -31,7 +33,7 @@ private[markdown] object MarkdownRuns {
 }
 
 /** Runs gathered a line at a time (`MarkdownRuns.parts`). */
-private[markdown] class MarkdownRuns(points: Double, breaks: Boolean) {
+private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: Set[String]) {
   private var lines: List[MdPart] = Nil
   private var line: List[TextRun] = Nil
 
@@ -46,8 +48,36 @@ private[markdown] class MarkdownRuns(points: Double, breaks: Boolean) {
     lines.reverse.filter(p => p.image.nonEmpty || p.runs.exists(_.text.trim.nonEmpty))
   }
 
-  def add(content: List[MdInline], style: TextRun): Unit = content.foreach {
-    case MdInline.Text(t) => line = style.copy(text = t) :: line
+  def add(content: List[MdInline], style: TextRun): Unit = if (mentions.isEmpty) content.foreach(one(_, style)) else {
+    var rest = content
+    while (rest.nonEmpty) {
+      // words that run on from one piece to the next taken together, so a mention split between them is still one
+      var words = ""
+      var more = true
+      while (more && rest.nonEmpty) rest.head match {
+        case MdInline.Text(t) =>
+          words = words + t
+          rest = rest.tail
+        case _ => more = false
+      }
+      if (words.nonEmpty) text(words, style)
+      if (rest.nonEmpty) {
+        one(rest.head, style)
+        rest = rest.tail
+      }
+    }
+  }
+
+  // words, a mention in them drawn as one (not in a link, which is drawn as a link)
+  private def text(words: String, style: TextRun): Unit =
+    if (mentions.isEmpty || style.href.nonEmpty) line = style.copy(text = words) :: line
+    else Mentions.split(words, mentions).foreach { case (part, named) =>
+      line = (if (named) style.copy(text = part, color = MarkdownView.mention().toHex,
+        background = MarkdownView.mentionWash().toHexAlpha) else style.copy(text = part)) :: line
+    }
+
+  private def one(inline: MdInline, style: TextRun): Unit = inline match {
+    case MdInline.Text(t) => text(t, style)
     case MdInline.SoftBreak => if (breaks) lineEnd() else line = style.copy(text = " ") :: line
     case MdInline.HardBreak => lineEnd()
     case MdInline.Emphasis(inside) => add(inside, style.copy(italic = true))

@@ -61,6 +61,19 @@ import reactify.*
 class Transcript(val entries: Var[Vector[ChatEntry]],
                  val loadOlder: Option[() => Task[Vector[ChatEntry]]] = None,
                  val render: (Val[String], Val[Double]) => Component = MessageMarkdown.render) extends Container {
+  /** The names a message mentions as "@" and the name ("@Ada", "@Matt Hicks", whatever its case), drawn in the mention
+    * colour on a faint wash where its words are Markdown (`MessageMarkdown`, the default `render`), not in code or a
+    * link (`everyui.markdown.Mentions`): the conversation's people, say, given again as they come and go. */
+  val mentions: Var[Set[String]] = own(Var(Set.empty[String]))
+  // the words as `render` makes them, following `mentions` where they are Markdown
+  private val words: (Val[String], Val[Double]) => Component = (text, widest) => {
+    val made = render(text, widest)
+    made match {
+      case m: MessageMarkdown => m.view.mentions := mentions()
+      case _ => ()
+    }
+    made
+  }
   /** Whether a separator names the day wherever it changes between entries. */
   val dayMarkers: Var[Boolean] = own(Var(true))
   /** How many lines of a tool call's `body` show before it is opened. */
@@ -171,10 +184,10 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   /** The view for `entry` in `row`, which is taken apart again when the row moves on. */
   private[chat] def viewFor(entry: ChatEntry, leading: Boolean, row: ChatRow): Component = entry match {
-    case m: ChatEntry.Message => new MessageView(m, leading, row.inner, ticker.now, render, !dayMarkers(),
+    case m: ChatEntry.Message => new MessageView(m, leading, row.inner, ticker.now, words, !dayMarkers(),
       () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()))
     case a: ChatEntry.Activity =>
-      new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), render, bodyLines())
+      new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), words, bodyLines())
     case t: ChatEntry.Thinking => new ThinkingView(t, row.inner, ticker.now)
     case w: ChatEntry.Marker if Grouping.isWork(w) && slotOf(w).nonEmpty =>
       val s = slotOf(w).get

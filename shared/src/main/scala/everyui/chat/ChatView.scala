@@ -31,6 +31,8 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   /** What a press on an author's avatar or name does, in the transcript and the status bar: the app's handler, or with
     * none their picture over the screen (`AuthorPressed.showPicture`). */
   def onAuthor: Var[Option[AuthorPressed => Unit]] = transcript.onAuthor
+  /** The names a message mentions as "@" and the name, drawn as mentions (`Transcript.mentions`). */
+  def mentions: Var[Set[String]] = transcript.mentions
   /** Whether the transcript keeps room at the start edge for the entries' rails (`ChatEntry.rail`,
     * `Transcript.rails`). */
   def rails: Var[Boolean] = transcript.rails

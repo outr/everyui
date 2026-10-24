@@ -97,5 +97,5 @@ private[everyui] object MarkdownTable {
     table.rows.toVector.map(_.toVector.map(content => DataCell(MdInline.plain(content), runs(content, ctx, 400))))
 
   private def runs(content: List[MdInline], ctx: MarkdownContext, weight: Int): List[TextRun] =
-    MarkdownRuns.parts(content, points(ctx), weight, ctx.breaks).flatMap(_.runs)
+    MarkdownRuns.parts(content, points(ctx), weight, ctx.breaks, ctx.mentions()).flatMap(_.runs)
 }
