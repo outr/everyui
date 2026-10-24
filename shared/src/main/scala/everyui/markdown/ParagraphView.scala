@@ -19,7 +19,12 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
                     weight: Int = 400) extends Container {
   /** What it shows. */
   val inlines: Var[List[MdInline]] = own(Var(content))
-  private val links: Val[List[(String, String)]] = own(Val(MarkdownRuns.links(inlines())))
+  // its links, and the mentions a press on answers (`MarkdownContext.pressesMentions`), each once
+  private val links: Val[List[(String, String)]] = own(Val(MarkdownRuns.links(inlines()) ++
+    (if (!ctx.pressesMentions()) Nil
+      else MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), pressable = true).flatMap(_.runs)
+        .filter(r => everyui.component.RichText.acts(r.href)).map(r => (r.text, r.href))
+        .foldLeft(List.empty[(String, String)])((out, l) => if (out.exists(_._2 == l._2)) out else out :+ l))))
   private var shape = ""
   // where the view measures (`MarkdownContext.measures`): each line again on one line, out of sight and taking no room
   private val twins: Container = new Container {
@@ -49,15 +54,15 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   /** Its link followed, or its links offered to choose from. */
   def openLinks(): Unit = {
     val all = links()
-    if (all.size == 1) ctx.onLink(all.head._2)
+    if (all.size == 1) ctx.press(all.head._2, this)
     else if (all.size > 1) Menu.below(this, all.map(l => MenuItem(if (l._1.trim.isEmpty) l._2 else l._1,
-      () => ctx.onLink(l._2), detail = l._2)))
+      () => ctx.press(l._2, this), detail = if (everyui.component.RichText.acts(l._2)) "" else l._2)))
   }
 
   /** Its lines made again where they are no longer the same lines and pictures; otherwise their words follow
     * `inlines` where they stand. */
   private def build(): Unit = {
-    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions())
+    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions())
     val now = parts.map(p => p.image.map(i => "i" + i.src).getOrElse("t")).mkString("|")
     if (now != shape) {
       shape = now
@@ -86,9 +91,9 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     color := (if (ctx.quiet) Theme.muted() else Theme.text())
     direction @= ctx.direction
     wrapAnywhere @= true
-    follow = ctx.onLink
+    follow = href => ctx.press(href, this)
     runs := {
-      val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions())
+      val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions())
       if (i < parts.size) parts(i).runs else Nil
     }
   }

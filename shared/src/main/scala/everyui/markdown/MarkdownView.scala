@@ -53,9 +53,15 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
   /** The names "@" and a name is drawn as a mention of (`Mentions`: in the mention colour on a faint wash, not in code
     * or a link): a chat's people, say. Changed, its paragraphs follow in place. */
   val mentions: Var[Set[String]] = own(Var(Set.empty[String]))
+  /** What a press on a mention does (a click, a tap, or Enter on its paragraph), with the name as `mentions` has it and
+    * the words it was pressed in, to show something by: none, and a mention is only drawn, not pressed. */
+  val onMention: Var[Option[(String, Component) => Unit]] = own(Var(None))
   private var stream = new MarkdownStream
-  private val context = MarkdownContext(style, onLink, () => base, direction = direction, measures = measures,
-    breaks = breaks, richTables = () => richTables.get, tableLook = () => tableLook.get, mentions = () => mentions())
+  // (a link that is the app's to answer, which only a mention is here, never followed as an address)
+  private val context = MarkdownContext(style, href => if (!everyui.component.RichText.acts(href)) onLink(href),
+    () => base, direction = direction, measures = measures, breaks = breaks, richTables = () => richTables.get,
+    tableLook = () => tableLook.get, mentions = () => mentions(), pressesMentions = () => onMention().nonEmpty,
+    onMention = (name, at) => onMention.get.foreach(_(name, at)))
   private var drawn: Vector[MdBlock] = Vector.empty
 
   layout @= Some(VerticalLayout(style.spacing))

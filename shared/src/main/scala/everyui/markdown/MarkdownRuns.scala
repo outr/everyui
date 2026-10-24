@@ -9,10 +9,11 @@ import everyui.theme.Theme
   * picture stands on a line of its own (`MdPart`). */
 private[markdown] object MarkdownRuns {
   /** The lines of `content`, set at `points` with `weight` as the words' own; with `breaks`, each line break of the
-    * text starts a new line too, as a chat's messages have it; "@" and one of `mentions` drawn as a mention. */
+    * text starts a new line too, as a chat's messages have it; "@" and one of `mentions` drawn as a mention, and as a
+    * link to the name where it is `pressable` (`Mentions.href`). */
   def parts(content: List[MdInline], points: Double, weight: Int, breaks: Boolean = false,
-            mentions: Set[String] = Set.empty): List[MdPart] = {
-    val out = new MarkdownRuns(points, breaks, mentions)
+            mentions: Set[String] = Set.empty, pressable: Boolean = false): List[MdPart] = {
+    val out = new MarkdownRuns(points, breaks, mentions, pressable)
     out.add(content, TextRun("", weight = weight))
     out.done()
   }
@@ -33,7 +34,7 @@ private[markdown] object MarkdownRuns {
 }
 
 /** Runs gathered a line at a time (`MarkdownRuns.parts`). */
-private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: Set[String]) {
+private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: Set[String], pressable: Boolean) {
   private var lines: List[MdPart] = Nil
   private var line: List[TextRun] = Nil
 
@@ -73,7 +74,9 @@ private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: 
     if (mentions.isEmpty || style.href.nonEmpty) line = style.copy(text = words) :: line
     else Mentions.split(words, mentions).foreach { case (part, named) =>
       line = (if (named) style.copy(text = part, color = MarkdownView.mention().toHex,
-        background = MarkdownView.mentionWash().toHexAlpha) else style.copy(text = part)) :: line
+        background = MarkdownView.mentionWash().toHexAlpha,
+        href = if (pressable) Mentions.nameOf(part, mentions).map(Mentions.href).getOrElse("") else "")
+        else style.copy(text = part)) :: line
     }
 
   private def one(inline: MdInline, style: TextRun): Unit = inline match {

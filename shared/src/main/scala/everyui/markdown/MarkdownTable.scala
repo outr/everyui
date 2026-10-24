@@ -35,7 +35,7 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
       DataTableStyle(MarkdownTable.points(ctx), ctx.tableLook(), ctx.quiet, ctx.direction), width)
     // as tall as its rows: a table in a page or a message never scrolls up and down within it, only sideways
     made.maxHeight @= 0.0
-    made.onLink = ctx.onLink
+    made.onLink = href => ctx.press(href, made)
     made.hovered := event.pointer.over()
     rich = Some(made)
     focusable @= false
@@ -97,5 +97,6 @@ private[everyui] object MarkdownTable {
     table.rows.toVector.map(_.toVector.map(content => DataCell(MdInline.plain(content), runs(content, ctx, 400))))
 
   private def runs(content: List[MdInline], ctx: MarkdownContext, weight: Int): List[TextRun] =
-    MarkdownRuns.parts(content, points(ctx), weight, ctx.breaks, ctx.mentions()).flatMap(_.runs)
+    MarkdownRuns.parts(content, points(ctx), weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions())
+      .flatMap(_.runs)
 }

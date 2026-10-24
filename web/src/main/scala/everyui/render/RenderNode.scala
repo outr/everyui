@@ -283,6 +283,16 @@ class RenderNode(val el: html.Element) {
         // its right click is the browser's, whatever menu the app has around it: open in a new tab, copy the address
         span.addEventListener("contextmenu", (e: dom.MouseEvent) => e.stopPropagation())
       }
+      // the app's to answer (a mention): pressed as a link is, but no address, to open or to copy
+      else if (everyui.component.RichText.acts(run.href)) {
+        span.setAttribute("role", "link")
+        span.style.cursor = "pointer"
+        span.addEventListener("click", (e: dom.MouseEvent) => {
+          e.stopPropagation()
+          e.preventDefault()
+          follow(run.href)
+        })
+      }
       el.appendChild(span)
     }
   }

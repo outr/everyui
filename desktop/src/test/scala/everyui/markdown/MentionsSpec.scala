@@ -1,6 +1,6 @@
 package everyui.markdown
 
-import everyui.chat.{ChatEntry, Participant, Transcript}
+import everyui.chat.{ChatEntry, MentionPressed, Participant, Transcript}
 import everyui.component.{Component, RichText}
 import everyui.focus.Focus
 import everyui.text.TextRun
@@ -92,6 +92,85 @@ class MentionsSpec extends FxSpec {
       onScreen(view) {
         eventually(mentioned(view).nonEmpty) shouldBe true
         fx(mentioned(view)) should contain("@Helix")
+      }
+    }
+  }
+
+  // the drawn words `text` under `c` clicked, as the desktop's own click on them
+  private def click(c: Component, text: String): Unit = fx {
+    val node = texts(c).flatMap(r => {
+      val flow = r.node.fx.asInstanceOf[everyui.render.RichFlow]
+      (0 until flow.getChildren.size).map(flow.getChildren.get).collect { case t: javafx.scene.text.Text => t }
+    }).find(_.getText == text).get
+    javafx.event.Event.fireEvent(node, new javafx.scene.input.MouseEvent(
+      javafx.scene.input.MouseEvent.MOUSE_CLICKED, 0, 0, 0, 0, javafx.scene.input.MouseButton.PRIMARY, 1,
+      false, false, false, false, true, false, false, true, false, false, null))
+  }
+
+  "A pressed mention" should {
+    "be a link only where something answers it, and answer a click with the name as given, never followed" in {
+      var followed: List[String] = Nil
+      var pressed: List[(String, Component)] = Nil
+      val view = fx(new MarkdownView("Ask @helix and [docs](https://docs.example).", onLink = h => followed = followed :+ h))
+      fx {
+        view.size.width @= 500.0
+        view.mentions @= names
+      }
+      onScreen(view) {
+        eventually(mentioned(view) == List("@helix")) shouldBe true
+        fx(texts(view).flatMap(_.runs()).filter(_.text == "@helix").map(_.href)) shouldBe List("")
+        fx(view.onMention @= Some((n: String, at: Component) => pressed = pressed :+ (n -> at)))
+        eventually(texts(view).flatMap(_.runs()).exists(_.href == Mentions.href("Helix"))) shouldBe true
+        // still drawn as a mention, not as a link
+        fx(texts(view).flatMap(_.runs()).find(_.text == "@helix").exists(r => !r.underline &&
+          r.color == MarkdownView.mention().toHex)) shouldBe true
+        click(view, "@helix")
+        pressed.map(_._1) shouldBe List("Helix")
+        pressed.head._2.isInstanceOf[RichText] shouldBe true
+        followed shouldBe Nil
+        // the link beside it still goes where it goes
+        click(view, "docs")
+        followed shouldBe List("https://docs.example")
+        pressed.size shouldBe 1
+        // and none answering again: only drawn
+        fx(view.onMention @= None)
+        eventually(texts(view).flatMap(_.runs()).filter(_.text == "@helix").forall(_.href.isEmpty)) shouldBe true
+      }
+    }
+
+    "be reached from the keys: its paragraph focused, and Enter pressing it" in {
+      var pressed: List[String] = Nil
+      val view = fx(new MarkdownView("Over to @Matt Hicks."))
+      fx {
+        view.size.width @= 500.0
+        view.mentions @= names
+        view.onMention @= Some((n: String, _: Component) => pressed = pressed :+ n)
+      }
+      onScreen(view) {
+        val para = fx(view.children().head.asInstanceOf[ParagraphView])
+        eventually(para.focusable()) shouldBe true
+        fx(para.openLinks())
+        pressed shouldBe List("Matt Hicks")
+      }
+    }
+
+    "tell a transcript's app whom, in which entry, and where" in {
+      val ada = Participant("u-ada", "Ada Lovelace")
+      val entries = Var(Vector[ChatEntry](ChatEntry.message("m0", ada, self = false, "Thanks @Helix")))
+      val t = fx(new Transcript(entries))
+      var pressed: List[MentionPressed] = Nil
+      fx {
+        t.size.width @= 600.0
+        t.size.height @= 400.0
+        t.mentions @= Set("Helix")
+        t.onMention @= Some((p: MentionPressed) => pressed = pressed :+ p)
+      }
+      onScreen(t) {
+        (1 to 5).foreach(_ => fx(t.list.refresh()))
+        eventually(texts(t).flatMap(_.runs()).exists(_.href == Mentions.href("Helix"))) shouldBe true
+        click(t, "@Helix")
+        pressed.map(p => (p.name, p.entry.id)) shouldBe List(("Helix", "m0"))
+        fx(pressed.head.at.size.width()) should be > 0.0
       }
     }
   }

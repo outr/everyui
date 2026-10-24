@@ -3,7 +3,8 @@ package everyui.markdown
 /** Where words name somebody: "@" and one of the names that count (a name may hold spaces: "@Matt Hicks"), the "@" at
   * the start of the words or after anything but a letter or a digit (not an email address), and the name ending the
   * words or followed by anything but a letter or a digit. A name is matched whatever its case, the longest that fits
-  * first, so "@Matt Hicks" is not taken for "@Matt". */
+  * first, so "@Matt Hicks" is not taken for "@Matt". Where the app answers a press on one, it is drawn as a link to the
+  * name (`href`), pressed as a link is. */
 object Mentions {
   /** `text` cut into its stretches, each with whether it is a mention ("@" and the name, as they were written). */
   def split(text: String, names: Set[String]): List[(String, Boolean)] =
@@ -29,6 +30,22 @@ object Mentions {
 
   /** Whether `text` names anybody in `names`. */
   def any(text: String, names: Set[String]): Boolean = split(text, names).exists(_._2)
+
+  /** The one of `names` that `mention` ("@" and a name, as it was written) is, as the names have it. */
+  def nameOf(mention: String, names: Set[String]): Option[String] = {
+    val wanted = (if (mention.startsWith("@")) mention.substring(1) else mention).toLowerCase
+    names.find(_.toLowerCase == wanted)
+  }
+
+  /** What a mention of `name` that can be pressed is a link to (`everyui.component.RichText.action`): the app's to
+    * answer. */
+  def href(name: String): String = everyui.component.RichText.action + "mention:" + name
+
+  /** The name a mention's link (`href`) is to, where `link` is one. */
+  def pressed(link: String): Option[String] = {
+    val start = everyui.component.RichText.action + "mention:"
+    if (link.startsWith(start)) Some(link.substring(start.length)) else None
+  }
 
   private def word(c: Char): Boolean = c.isLetterOrDigit
 

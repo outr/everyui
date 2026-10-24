@@ -52,6 +52,13 @@ object RichText {
   /** Whether `href` is a path on this site rather than somewhere else. */
   def inApp(href: String): Boolean = href.startsWith("/") && !href.startsWith("//")
 
+  /** What a run's `href` begins with where a press on it is the app's to answer rather than an address to go to (a
+    * mention, say): followed as a link is, by a click, a tap or Enter, but never opened (on the web no `<a href>`). */
+  val action: String = "everyui-action:"
+
+  /** Whether `href` is the app's to answer (`action`). */
+  def acts(href: String): Boolean = href.startsWith(action)
+
   /** `runs` wrapped to `width` at `points`, a line `lineHeight` times the size tall (0 for the face's own). */
   def apply(runs: List[TextRun], width: Double, points: Double = 16.0, lineHeight: Double = 0.0): RichText = {
     val text = new RichText

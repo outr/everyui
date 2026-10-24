@@ -33,6 +33,8 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   def onAuthor: Var[Option[AuthorPressed => Unit]] = transcript.onAuthor
   /** The names a message mentions as "@" and the name, drawn as mentions (`Transcript.mentions`). */
   def mentions: Var[Set[String]] = transcript.mentions
+  /** What a press on a mention does (`Transcript.onMention`). */
+  def onMention: Var[Option[MentionPressed => Unit]] = transcript.onMention
   /** Whether the transcript keeps room at the start edge for the entries' rails (`ChatEntry.rail`,
     * `Transcript.rails`). */
   def rails: Var[Boolean] = transcript.rails
