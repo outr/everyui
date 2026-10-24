@@ -457,9 +457,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton && Pointer.onText) inReadingOrder())
   // and before that, as a resting pointer moves over them: put in order on the press, the row pressed was out of the page
   // for a moment, and the browser made no click of the press (a click on a chat's message, once it had scrolled, did
-  // not put the cursor there)
-  if (Platform.selectsText() && Platform.pointerSupport())
-    event.pointer.move.attach(_ => if (shuffled) inReadingOrder())
+  // not put the cursor there). By any mouse, not only where one is the main pointer: a touch laptop's, a headless
+  // browser's; not a finger, whose moves are a scroll, and whose tap is judged where it went down
+  if (Platform.selectsText())
+    event.pointer.move.attach(e => if (shuffled && !e.finger) inReadingOrder())
   // (not the click a drag ends in)
   event.click.attach(e => if (!DragDrop.justEnded && !caught) clickAt(e.x, e.y, e.modifiers, e.finger))
   // the secondary button: the row under it chosen (unless it already is) where it is, which is in view, and its menu
