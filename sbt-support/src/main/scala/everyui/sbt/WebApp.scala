@@ -44,8 +44,10 @@ object WebApp {
   val registration: String = "if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');\n"
 
   /** The service worker: the network first, what it fetched kept in a cache named by `version` for when it is not
-    * there, and older caches cleared once this one is in charge. The app's page (`./`) is kept as it installs, so a
-    * page opened at any of the app's paths while the server is away (a restart) is the app's page, the first visit
+    * there, and older caches cleared once this one is in charge. Only whole answers (200) are kept: a video, a sound
+    * and any request for part of a file (a `Range`, answered 206) are left to the browser, streamed and never kept.
+    * The app's page (`./`) is kept as it installs, so a page opened at any of the app's paths while the server is away
+    * (a restart) is the app's page, the first visit
     * too; what is neither fetched nor kept is answered 503, a page saying so and trying again every 3 s for a page
     * opened, never no answer at all (which the browser shows as its own error, and does not try again). And push notifications (`everyui.push.Push`): a
     * push's JSON payload, `{"title", "body", "path"}`, goes to a window of the app that is in sight, which shows it its
@@ -72,9 +74,14 @@ object WebApp {
        |self.addEventListener('fetch', e => {
        |  const request = e.request;
        |  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+       |  // a video or a sound, or any request for part of a file: the browser's own, streamed and never kept
+       |  if (request.headers.has('range') || request.destination === 'video' || request.destination === 'audio') return;
        |  const navigate = request.mode === 'navigate';
        |  e.respondWith(fetch(request).then(response => {
-       |    if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(c => c.put(request, copy)); }
+       |    if (response.status === 200) {
+       |      const copy = response.clone();
+       |      caches.open(CACHE).then(c => c.put(request, copy)).catch(() => {});
+       |    }
        |    return response;
        |  }).catch(() => caches.match(request)
        |    .then(hit => hit || (navigate ? caches.match('./') : undefined))
