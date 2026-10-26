@@ -34,7 +34,11 @@ import scala.concurrent.duration.*
   * it, lit and ringed whole, and its text fades in as it opens (at once where Quality says glides jump).
   *
   * A live item (`RichLook.live`) is tinted faintly in the accent where nothing else lights it, and has a thin accent bar
-  * at the row's start edge whatever lights it, made the first time a row shows one (in a block, in the margin beside it). */
+  * at the row's start edge whatever lights it, made the first time a row shows one (in a block, in the margin beside it).
+  *
+  * While the list's items can be dragged (`RichList.dragsItems`) an item's row has a grip at its start, in room of its
+  * own before its avatar or icon, so nothing shifts as it shows: with the pointer over the row or the cursor on it, and
+  * on every row on a touch screen. */
 class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private val header: Val[Boolean] = own(Val(item().exists(_.header)))
   /** Whether it is the line an empty section shows in place of its items. */
@@ -80,10 +84,16 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     (hovered() || (current() && cursorShown()) || !Platform.pointerSupport())))
   private val menuShows: Val[Boolean] = own(Val(!header() && item().flatMap(_.item).exists(t => owner.menu()(t).nonEmpty) &&
     (hovered() || (current() && cursorShown()) || (chosen() && Platform.touchSupport() && !Platform.pointerSupport()))))
+  // the room a grip takes at an item's start while its list drags them (`RichList.dragsItems`), shown or not, so the
+  // row never shifts as it comes and goes
+  private val gripRoom: Val[Double] = own(Val(if (item().exists(_.item.nonEmpty) && owner.dragsItems()) RichRow.gripRoom
+    else 0.0))
+  // where an item's avatar or icon starts, from the start edge: past its grip's room
+  private val itemStart: Val[Double] = own(Val(side() + gripRoom()))
   private val lead: Val[Double] = own(Val(if (tall()) RichRow.tallLead else RichRow.shortLead))
   private val hasLead: Val[Boolean] = own(Val(look().exists(l => l.who.nonEmpty || l.icon.nonEmpty)))
   /** Where the title starts, from the start edge. */
-  private val textStart: Val[Double] = own(Val(side() + (if (hasLead()) lead() + 10.0 else 0.0)))
+  private val textStart: Val[Double] = own(Val(itemStart() + (if (hasLead()) lead() + 10.0 else 0.0)))
   // the end edge the trailing pieces line up against, clear of the list's scroll thumb
   private val end: Val[Double] = own(Val(size.width() - side()))
   // a block's ▾ or ▸, at a header's end: a section's always, a group's caption only while it is closed
@@ -146,7 +156,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     visible := wanted && look().exists(_.who.nonEmpty)
     busy := wanted && look().exists(_.busy)
     busyDetail := look().map(_.busyDetail).getOrElse("")
-    position.left := ListRow.along(side(), diameter, RichRow.this.size.width())
+    position.left := ListRow.along(itemStart(), diameter, RichRow.this.size.width())
     position.top := middle(diameter)
   }
   val tallFace: Avatar = face(RichRow.tallLead, tall())
@@ -155,7 +165,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     icon := look().flatMap(l => if (l.who.isEmpty) l.icon else None).getOrElse(MaterialIcon.Empty)
     color := look().flatMap(_.iconColor).getOrElse(Theme.muted())
     visible := look().exists(l => l.who.isEmpty && l.icon.nonEmpty)
-    position.left := ListRow.along(side() + (lead() - 22.0) / 2.0, 22.0, RichRow.this.size.width())
+    position.left := ListRow.along(itemStart() + (lead() - 22.0) / 2.0, 22.0, RichRow.this.size.width())
     position.top := middle(22.0)
   }
 
@@ -440,6 +450,25 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   live.attach(l => if (l) makeLive())
   if (live()) makeLive()
 
+  // ---- an item that can be dragged (RichList.dragsItems): its grip made the first time a row shows one ----
+  /** The grip at the start of an item's row while its list drags them: muted, in its own room before the avatar, shown
+    * while the pointer is over the row or the cursor is on it, and on every row where there is no pointer. The whole
+    * row drags, the grip only says so. */
+  private[list] lazy val grip: MaterialIconView = new MaterialIconView(MaterialIcon.DragIndicator, RichRow.gripSize) {
+    color := Theme.muted()
+    visible := gripRoom() > 0.0 && (hovered() || (current() && cursorShown()) ||
+      (Platform.touchSupport() && !Platform.pointerSupport()))
+    position.left := ListRow.along(side() - RichRow.gripBefore, RichRow.gripSize, RichRow.this.size.width())
+    position.top := middle(RichRow.gripSize)
+  }
+  private var gripMade = false
+  private def makeGrip(): Unit = if (!gripMade) {
+    gripMade = true
+    children += grip
+  }
+  gripRoom.attach(g => if (g > 0.0) makeGrip())
+  if (gripRoom() > 0.0) makeGrip()
+
   // ---- an expanded item (RichList.expansion): made the first time a row shows one, so others have none ----
   /** How tall the row's own line is, with the room above it in a block: the expansion goes under it. */
   private[list] def headHeight: Double = above() + base()
@@ -639,4 +668,10 @@ object RichRow {
   def liveTint(): Color = Theme.extra("list.live", Theme.accent().withAlpha(0.08))
   /** A live item's bar: the theme's `list.liveBar`, else the accent. */
   def liveEdge(): Color = Theme.extra("list.liveBar", Theme.accent())
+
+  /** How big an item's grip is (`RichList.dragsItems`), how far before where the row's pieces start it begins (clear of
+    * a live item's bar), and the room it takes before them. */
+  val gripSize: Double = 16.0
+  val gripBefore: Double = 4.0
+  val gripRoom: Double = 14.0
 }

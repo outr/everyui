@@ -37,7 +37,8 @@ import reactify.*
   * `search`, a field over the list narrows it to the items `matches` finds for the words (`query`, which
   * the app can also set), under their sections, opened; an app filtering its own sections leaves it off. With
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
-  * and `moved` hears: never into a group that is closed.
+  * and `moved` hears: never into a group that is closed. Each item then shows a grip at its row's start (with the pointer
+  * over it or the cursor on it, and always on a touch screen) that says it can be dragged.
   *
   * Items can expand in place (`expansion`): activating one that has a `RichExpansion` (a click or a tap on its title's
   * line, Enter, OK) opens it under its title, its whole text wrapped (as Markdown) and its actions as buttons under it,
@@ -96,6 +97,9 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   val accepts: Var[RichMove => Boolean] = own(Var((m: RichMove) => m.section == m.from))
   /** Items dragged into another place, where `accepts` let them. */
   val moved: Channel[RichMove] = Channel[RichMove]
+  /** Whether its items can be dragged now: `reorders` on and the list not narrowed by words. Each item's row then has a
+    * grip at its start (`RichRow`). */
+  val dragsItems: Val[Boolean] = own(Val(reorders() && query().trim.isEmpty))
   /** How the sections are drawn: as a tree (`RichStyle.Tree`, the default) or as tinted blocks (`RichStyle.Blocks`). */
   val style: Var[RichStyle] = own(Var(RichStyle.Tree))
   /** What an item shows under its title once expanded, where it expands: none (the default) for every item, which are
@@ -469,7 +473,7 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
       case (None, None) => openSectionMenu(p.item.section, anchor, p.x, p.y)
     }
   }
-  list.draggable := reorders() && query().trim.isEmpty
+  list.draggable := dragsItems()
   list.accepts := ((d: Drop) => moveFor(d).exists(m => accepts()(m)))
   list.dropped.attach(d => moveFor(d).filter(m => accepts()(m)).foreach(m => moved @= m))
   list.dragLabel @= ((rows: Vector[RichLine[T]]) => rows.headOption.flatMap(_.item).map(t => lookOf(t).title).getOrElse("") +
