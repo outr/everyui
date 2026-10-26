@@ -25,7 +25,9 @@ import scala.concurrent.duration.*
   * and has enough in hand to play to its end without stopping: in one step, or with `crossfade` the picture fading
   * off it, so there is never a flash or an empty box. It is cropped as the picture is (`alignX`, `alignY`), only one
   * of the two is seen once it is up, and a pointer goes through it. It pauses while the app is away from the front
-  * and plays on as it comes back. The picture stays, or comes back, where the video fails to load or play
+  * and plays on as it comes back, and rests, paused for real with the picture in its place, once nobody has used the app
+  * for `idleSeconds` (a playing video keeps a computer's screensaver off), playing on at the next key, pointer, touch
+  * or scroll, the picture kept until it moves. The picture stays, or comes back, where the video fails to load or play
   * (`videoFailed`), where people ask for less motion (`everyui.motion.ReduceMotion`), and once `videoSource` is
   * empty again; an app that lets people turn background videos off empties it. Elsewhere it keeps the picture. */
 class Backdrop extends Container {
@@ -49,6 +51,13 @@ class Backdrop extends Container {
   val videoShown: Var[Boolean] = own(Var(false))
   /** Whether the video asked for could not be played: the picture stays. False again once another is asked for. */
   val videoFailed: Var[Boolean] = own(Var(false))
+  /** How long, in seconds, with nobody using the app (no key, pointer, touch or scroll: `Focus.activity`) before the video
+    * is paused and the picture shown in its place, until the next use: a video playing keeps a computer's screensaver,
+    * its lock and its dimming from ever coming on, so one left playing to an empty room would hold them off for good.
+    * `Backdrop.idleDefault` (five minutes) unless the app says; 0 or less never pauses for it. */
+  val idleSeconds: Var[Double] = own(Var(Backdrop.idleDefault))
+  /** Whether the video is paused because nobody has used the app for `idleSeconds`: the picture shows meanwhile. */
+  val videoResting: Var[Boolean] = own(Var(false))
 
   private val view = new ImageView
   private var shown: Image = Image.empty
@@ -60,6 +69,9 @@ class Backdrop extends Container {
   // the video the wait is for, so a wait for one since changed does nothing
   private var waitingFor = ""
   private var stopListening: List[() => Unit] = Nil
+  // when the app was last used, and which wait for the idle time is the current one (a wait since replaced does nothing)
+  private var usedAt = Platform.ticks()
+  private var idleWait = 0
 
   children += view
   source.attach { requested =>
@@ -68,6 +80,9 @@ class Backdrop extends Container {
     load(requested, requested, 0)
   }
   videoSource.attach(_ => playVideo())
+  idleSeconds.attach(_ => idleFrom(usedAt))
+  // somebody using the app: the idle time starts again, and a video resting plays on
+  follow(everyui.focus.Focus.activity, (_: Long) => used())
   if (Backdrop.plays()) everyui.motion.ReduceMotion.on.attach(_ => playVideo())
 
   /** No picture asked for any more, so a load or a retry still on its way shows nothing, and then taken apart. */
@@ -75,6 +90,7 @@ class Backdrop extends Container {
     source @= ""
     videoSource @= ""
     stopListening.foreach(stop => stop())
+    idleWait += 1
     stopListening = Nil
     super.dispose()
   }
@@ -149,6 +165,7 @@ class Backdrop extends Container {
   private def playVideo(): Unit = {
     val wanted = if (Backdrop.plays() && !everyui.motion.ReduceMotion()) videoSource() else ""
     videoFailed @= false
+    videoResting @= false
     if (wanted.isEmpty) {
       waitingFor = ""
       backToPicture()
@@ -160,8 +177,12 @@ class Backdrop extends Container {
       backToPicture()
       val v = video.getOrElse(makeVideo())
       waitingFor = wanted
+      // (one already open, as one resting is, shows once it moves on from where it stands)
+      val from = if (v.source() == wanted) v.playhead() else 0.0
       if (v.source() != wanted) v.source @= wanted
-      watchThrough(wanted, 0)
+      v.playing @= true
+      watchThrough(wanted, 0, from)
+      idleFrom(usedAt)
     }
   }
 
@@ -182,19 +203,28 @@ class Backdrop extends Container {
       }
       else heard(v.source(), failedNow = true)
     })
+    // the pointer moved, put down or scrolled anywhere over the app counted as a use (`Focus.activity`), though nothing
+    // under it listens for it: the app's root hears it all
+    List(everyui.ui.event.pointer.move, everyui.ui.event.pointer.down, everyui.ui.event.pointer.wheel)
+      .foreach(c => follow(c, (_: everyui.event.PointerEvent) => ()))
     // behind the picture
     children @= v +: children()
     video = Some(v)
-    stopListening = List(Platform.onAway(() => v.playing @= false), Platform.onResume(() => v.playing @= true))
+    // paused while the app is away from the front (the page hidden), and on again as it comes back, which is somebody
+    // there; a video resting stays resting until it is used
+    stopListening = List(Platform.onAway(() => v.playing @= false), Platform.onResume(() => {
+      if (!videoResting()) v.playing @= true
+    }))
     v
   }
 
-  // the video `wanted` asked, a beat at a time, whether it is playing with enough in hand to play through
-  private def watchThrough(wanted: String, tries: Int): Unit = Platform.after(Backdrop.throughCheck, () =>
+  // the video `wanted` asked, a beat at a time, whether it is playing (past `from`, where it stood) with enough in hand to
+  // play through
+  private def watchThrough(wanted: String, tries: Int, from: Double): Unit = Platform.after(Backdrop.throughCheck, () =>
     if (waitingFor == wanted) video.foreach { v =>
-      if (v.source() == wanted && v.videoSize.nonEmpty && v.node.mediaPlaysThrough() && v.playhead() > 0.0)
+      if (v.source() == wanted && v.videoSize.nonEmpty && v.node.mediaPlaysThrough() && v.playhead() > from)
         heard(wanted, failedNow = false)
-      else if (tries < Backdrop.throughTries) watchThrough(wanted, tries + 1)
+      else if (tries < Backdrop.throughTries) watchThrough(wanted, tries + 1, from)
       // never ready: the picture stays
       else heard(wanted, failedNow = true)
     })
@@ -242,6 +272,39 @@ class Backdrop extends Container {
     }
   }
 
+  // somebody used the app: a video resting plays on, kept behind the picture until it is moving again
+  private def used(): Unit = {
+    usedAt = Platform.ticks()
+    if (videoResting()) video.foreach { v =>
+      videoResting @= false
+      waitingFor = v.source()
+      v.playing @= true
+      watchThrough(v.source(), 0, v.playhead())
+    }
+    idleFrom(usedAt)
+  }
+
+  // the wait for nobody having used the app for `idleSeconds` since `at`, while a video is wanted
+  private def idleFrom(at: Double): Unit = {
+    idleWait += 1
+    val mine = idleWait
+    val idle = idleSeconds()
+    if (idle > 0.0 && video.exists(_.source().nonEmpty) && !videoResting()) {
+      val left = math.max(0.0, idle - (Platform.ticks() - at) / 1000.0)
+      Platform.after(left + 0.05, () => if (mine == idleWait) {
+        if ((Platform.ticks() - usedAt) / 1000.0 >= idle) rest() else idleFrom(usedAt)
+      })
+    }
+  }
+
+  // nobody there: the video paused for real (which lets the screensaver come on) and the picture back in its place
+  private[everyui] def rest(): Unit = video.filter(v => v.source().nonEmpty && !videoResting()).foreach { v =>
+    videoResting @= true
+    waitingFor = ""
+    v.playing @= false
+    backToPicture()
+  }
+
   // the picture up again, in front, and the video out of sight behind it
   private def backToPicture(): Unit = {
     videoFading.foreach(_.cancel())
@@ -272,4 +335,6 @@ object Backdrop {
   /** How often a video starting is asked whether it can play through, and how many times before it is given up. */
   private val throughCheck: Double = 0.25
   private val throughTries: Int = 240
+  /** How long a backdrop's video plays with nobody using the app before it rests (`idleSeconds`): five minutes. */
+  val idleDefault: Double = 300.0
 }

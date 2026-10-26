@@ -8,9 +8,9 @@ import reactify.*
 
 /** A backdrop's video (`Backdrop.videoSource`), for checking a backend plays one behind a screen: the picture `src` at
   * once, and the looping `video` in its place once it can play through, cut or (`crossfade=1`) faded. A button turns
-  * the video off and on, as an app's setting would; what it shows is said in its corner, and in the log. `late=1` puts the
-  * backdrop on the screen a second after its video was asked for, as a screen manager starting does, and `move=1` takes
-  * it off and puts it back just after. */
+  * the video off and on, as an app's setting would; what it shows is said in its corner, and in the log. `idle=<s>` is
+  * how long nobody uses it before the video rests. `late=1` puts the backdrop on the screen a second after its video was
+  * asked for, as a screen manager starting does, and `move=1` takes it off and puts it back just after. */
 object BackdropDemo {
   def run(): Unit = {
     def arg(name: String, otherwise: String): String = {
@@ -23,10 +23,12 @@ object BackdropDemo {
     back.size.height := ui.size.height()
     back.crossfade @= arg("crossfade", "0") == "1"
     back.source @= arg("src", "backgrounds/void-blue-veil.jpg")
+    back.idleSeconds @= arg("idle", Backdrop.idleDefault.toString).toDouble
     back.videoSource @= video
 
     val said = new TextView {
-      content := (if (back.videoShown()) "video" else if (back.videoFailed()) "picture (the video failed)" else "picture")
+      content := (if (back.videoShown()) "video" else if (back.videoFailed()) "picture (the video failed)"
+        else if (back.videoResting()) "picture (the video rests: nobody is using the app)" else "picture")
       font.size @= 14.0
       color := Theme.text()
       position.left @= 24.0
@@ -34,6 +36,7 @@ object BackdropDemo {
     }
     back.videoShown.attach(on => Platform.log("backdrop " + (if (on) "video" else "picture")))
     back.videoFailed.attach(f => if (f) Platform.log("backdrop video failed"))
+    back.videoResting.attach(r => if (r) Platform.log("backdrop video resting"))
     val toggle = new Button("Background video", () => back.videoSource @= (if (back.videoSource().isEmpty) video else ""))
     toggle.position.left @= 24.0
     toggle.position.top @= 56.0
