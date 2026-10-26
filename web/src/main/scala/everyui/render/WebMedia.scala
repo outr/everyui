@@ -49,6 +49,12 @@ final class WebMedia(el: html.Element) {
   private lazy val fold = new CenterFold(el, () => tell("mixing"))
 
   el.addEventListener("error", (_: dom.Event) => refused())
+  // the browser pausing it of itself while it is meant to play: taken off the page (a media element is paused as it is
+  // removed, and never started again by being put back), or started while it was off the page, which a browser
+  // refuses; it plays on once it is on the page again, and the page is in sight. A pause while it is on the page (a
+  // media key, the browser's own controls) is the person's, and stands
+  el.addEventListener("pause", (_: dom.Event) => if (meantToPlay && !el.isConnected) onThePage())
+  el.addEventListener("playing", (_: dom.Event) => tries = 0)
 
   /** Hear `error`, and `retry` while hls.js retries a load; the element's own events are heard where they happen. */
   def listen(f: String => Unit): Unit = listeners = listeners :+ f
@@ -210,7 +216,29 @@ final class WebMedia(el: html.Element) {
     tell("mixing")
   }
 
-  private def resume(): Unit = m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => ())
+  private def resume(): Unit = m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => if (meantToPlay) onThePage())
+
+  // whether it is meant to be playing and is not: something to play, asked to play, not at its end and not failed
+  private def meantToPlay: Boolean = url.nonEmpty && playing && failure.isEmpty && m.paused.asInstanceOf[Boolean] &&
+    !m.ended.asInstanceOf[Boolean]
+  // how many times it was started again on the page without playing: a browser refusing it for good is let be
+  private var tries = 0
+  private var waitingForPage = false
+
+  /** Started again once it is on the page with the page in sight, looked at every few frames until it is. */
+  private def onThePage(): Unit = if (!waitingForPage && tries < WebMedia.restarts) {
+    waitingForPage = true
+    dom.window.setTimeout(() => {
+      waitingForPage = false
+      if (meantToPlay) {
+        if (el.isConnected && dom.document.visibilityState != "hidden") {
+          tries += 1
+          resume()
+        }
+        else onThePage()
+      }
+    }, WebMedia.restartWait)
+  }
 
   // the element's own error: a source it cannot play may be HLS it does not know by its address, so the server is
   // asked what it is, once, before the error is said; hls.js's errors are its own
@@ -383,6 +411,7 @@ final class WebMedia(el: html.Element) {
   private def close(): Unit = {
     opened += 1
     url = None
+    tries = 0
     allowed = false
     fold.fresh()
     probed = false
@@ -410,6 +439,11 @@ final class WebMedia(el: html.Element) {
 }
 
 object WebMedia {
+  /** How many times a source the browser paused of itself is started again before it is let be, and how long each wait
+    * for it to be on the page in sight is, in ms. */
+  private val restarts: Int = 20
+  private val restartWait: Int = 120
+
   /** Whether an address is an HLS playlist's: its path ends `.m3u8`. */
   def hls(url: String): Boolean = url.takeWhile(c => c != '?' && c != '#').toLowerCase.endsWith(".m3u8")
 
