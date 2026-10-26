@@ -48,7 +48,8 @@ import reactify.*
   *    come too, each a chip to take off again. What `accept` names (the picker's types: "image/\*", ".txt"), `allow`
   *    agrees to and `maxSize` fits is added; anything else is refused with a word saying why. A picture's preview
   *    is let go (`Files.release`) once its file leaves the draft, taken off or sent: an app that shows a sent picture
-  *    reads its `bytes`. A platform with no picker (a Roku, an Apple TV, a television) shows no button.
+  *    reads its `bytes`. A platform with no picker (a Roku, an Apple TV, a television) shows no button, and an app
+  *    turns files off altogether with `attachable` (a visitor's conversation, words only).
   *  - '''Pasting''' (`pasted`): the app decides what a paste becomes before it lands, words or a file: a paste of a
   *    log or a whole file can go with the message as a chip named after its first line (`ComposerPaste.longAsFile`),
   *    rather than flooding it. What `accept`, `allow` and `maxSize` refuse is refused as a dropped file is.
@@ -92,6 +93,10 @@ class Composer(onSend: Draft => Unit,
   val busy: Var[Boolean] = own(Var(false))
   /** Whether it is in use at all. */
   val enabled: Var[Boolean] = own(Var(true))
+  /** Whether files can go with a message (the default): off, there is no attach button (on the line, or in the tray behind
+    * "+"), files dropped on it are not taken, a paste `pasted` would make a file lands as words, and `pick` does nothing.
+    * Files already attached stay until sent or taken off; the app clears `attachments` where it wants them gone. */
+  val attachable: Var[Boolean] = own(Var(true))
   /** What the empty field says. */
   val placeholder: Var[String] = own(Var("Message"))
   /** The app's guess at the next message, shown in the empty field (or as a chip) until it is taken or put away. */
@@ -253,8 +258,11 @@ class Composer(onSend: Draft => Unit,
     case Some(f) => f(words) match {
       case ComposerPaste.AsText(action) => action
       case ComposerPaste.Attach(a) =>
-        if (enabled()) attach(a)
-        PasteAction.Ignore
+        if (!attachable()) PasteAction.Insert
+        else {
+          if (enabled()) attach(a)
+          PasteAction.Ignore
+        }
     }
     case None => PasteAction.Insert
   })
@@ -383,6 +391,7 @@ class Composer(onSend: Draft => Unit,
   }
   crowded.attach(_ => arrange())
   trayOpen.attach(_ => arrange())
+  attachable.attach(_ => arrange())
   leading.children.attach(_ => arrange())
   trailing.children.attach(_ => arrange())
   attachments.attach { list =>
@@ -427,7 +436,8 @@ class Composer(onSend: Draft => Unit,
   sendable.attach(on => if (!on) returning = None)
 
   // --- files dropped on it ---------------------------------------------------------------------------------------
-  if (!remote) Files.dropTarget(this)(over => dropping @= over && enabled())(files => if (enabled()) add(files))
+  if (!remote) Files.dropTarget(this)(over => dropping @= over && enabled() && attachable())(files =>
+    if (enabled() && attachable()) add(files))
 
   // --- where the arrows go, for a remote and for the parts that are not the field --------------------------------------
   field.exitFocus(Key.ArrowRight, sendButton)
@@ -570,7 +580,7 @@ class Composer(onSend: Draft => Unit,
   def dismissSuggestion(): Unit = dismissed @= true
 
   /** The platform's picker, for files to go with the message. */
-  def pick(): Unit = if (enabled() && pickable) {
+  def pick(): Unit = if (enabled() && pickable && attachable()) {
     trayOpen @= false
     Files.pick(accept, multiple = true).map(files => add(files)).startUnit()
   }
@@ -627,12 +637,12 @@ class Composer(onSend: Draft => Unit,
     if (crowded()) {
       start.children += moreButton
       if (trayOpen()) {
-        if (pickable) tray.children += trayAttach
+        if (pickable && attachable()) tray.children += trayAttach
         tray.children += leading
       }
     }
     else {
-      if (pickable) start.children += attachButton
+      if (pickable && attachable()) start.children += attachButton
       if (leading.children().nonEmpty) start.children += leading
     }
     if (trailing.children().nonEmpty) end.children += trailing

@@ -89,6 +89,17 @@ class ComposerPasteSpec extends FxSpec {
       paste(c, "hi there")
       fx(c.text()) shouldBe "hi there"
     }
+    "land as words where it would be a file but the composer takes none (attachable false)" in {
+      val c = make(accept = List(".txt"), maxSize = Some(100000L))
+      fx {
+        c.pasted @= Some(ComposerPaste.longAsFile(1500))
+        c.attachable @= false
+      }
+      paste(c, trace)
+      fx(c.attachments()) shouldBe Nil
+      chips(c) shouldBe Vector.empty
+      fx(c.text()) shouldBe trace
+    }
     "become a text file's chip where it is long, named after its first line, the field left as it was" in {
       val c = make(accept = List("image/*", ".txt"), maxSize = Some(100000L))
       fx(c.pasted @= Some(ComposerPaste.longAsFile(1500)))

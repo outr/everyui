@@ -237,6 +237,61 @@ class ComposerSpec extends FxSpec {
       fx(c.attachments()) shouldBe Nil
     }
   }
+
+  "A composer with files off (attachable false)" should {
+    // the attach button on its line, and the one in its tray behind "+"
+    def attachButtons(c: Composer): Int = under[everyui.component.IconButton](c)
+      .count(_.icon.icon() == everyui.font.MaterialIcon.AttachFile) +
+      under[everyui.component.Button](c).count(_.label() == ComposerWords().attach)
+    "show no attach button, and bring it back when turned on, the composer not made again" in {
+      val c = make()
+      fx(attachButtons(c)) shouldBe 1
+      fx(c.attachable @= false)
+      fx(attachButtons(c)) shouldBe 0
+      fx(c.attachable @= true)
+      fx(attachButtons(c)) shouldBe 1
+    }
+    "show none in the tray behind \"+\" on a phone, the app's own controls still there" in {
+      val c = make()
+      val mine = fx(new everyui.component.IconButton(everyui.font.MaterialIcon.Mic, "Talk"))
+      fx {
+        c.leading.children += mine
+        c.size.width @= 360.0
+      }
+      val more = fx(under[everyui.component.IconButton](c).find(_.icon.icon() == everyui.font.MaterialIcon.Add).get)
+      fx(more.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0))
+      // open, the tray holds the attach button and the app's own; with files off, only the app's
+      fx(attachButtons(c)) shouldBe 1
+      fx(c.attachable @= false)
+      fx(under[everyui.component.IconButton](c).exists(_ eq mine)) shouldBe true
+      fx(attachButtons(c)) shouldBe 0
+    }
+    "take no file dropped on it, and keep the files already attached" in {
+      val c = make()
+      val dir = java.nio.file.Files.createTempDirectory("composer")
+      val f = dir.resolve("a.png").toFile
+      java.nio.file.Files.write(f.toPath, Array.fill[Byte](10)(65))
+      fx(c.add(List(everyui.file.PickedFile("a.png", 10L, "image/png", Task.pure(Array.fill[Byte](10)(65))))))
+      fx(c.attachments().map(_.name)) shouldBe List("a.png")
+      fx(c.attachable @= false)
+      fx(c.attachments().map(_.name)) shouldBe List("a.png")
+      val board = fx(DragboardHelper.createDragboard(new ComposerSpec.Board(List(f))))
+      val target = c.node.fx
+      def drag(kind: javafx.event.EventType[DragEvent]): DragEvent =
+        new DragEvent(kind, board, 10.0, 10.0, 10.0, 10.0, TransferMode.COPY, null, null, null)
+      val before = fx(c.children().head.asInstanceOf[everyui.component.Container].children().length)
+      fx(javafx.event.Event.fireEvent(target, drag(DragEvent.DRAG_ENTERED)))
+      // no veil saying where to drop
+      fx(c.children().head.asInstanceOf[everyui.component.Container].children().length) shouldBe before
+      fx(javafx.event.Event.fireEvent(target, drag(DragEvent.DRAG_OVER)))
+      fx(javafx.event.Event.fireEvent(target, drag(DragEvent.DRAG_DROPPED)))
+      fx(c.attachments().map(_.name)) shouldBe List("a.png")
+      press(KeyCode.ENTER)
+      sent.map(_.attachments.map(_.name)) shouldBe List(List("a.png"))
+      f.delete()
+      dir.toFile.delete()
+    }
+  }
 }
 
 object ComposerSpec {
