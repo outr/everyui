@@ -514,6 +514,9 @@ class RenderNode(val el: html.Element) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.volume = math.min(1.0, volume)) // a page cannot boost
   def setMediaRate(rate: Double): Unit = media.foreach(_.playbackRate = rate)
   def mediaRates(): Boolean = true
+  /** Whether the media has enough in hand to play to its end without stopping, as the browser judges it: its
+    * `canplaythrough` (HAVE_ENOUGH_DATA). A `Backdrop` waits for it before its video takes the picture's place. */
+  def mediaPlaysThrough(): Boolean = media.exists(_.readyState.asInstanceOf[Int] >= 4)
   /** The centre of a surround source folded to stereo `db` dB over the usual, through Web Audio where the page may hear
     * it (CenterFold), and whether that can be and is. */
   def setMediaCenterMix(db: Double): Unit = if (media.nonEmpty) webMedia.centerMix(everyui.audio.Downmix.clamp(db))
@@ -1432,6 +1435,9 @@ object Platform {
     * is in the background; nothing while the permission is not given, or while the person is looking at the page and
     * `notice.onlyWhenHidden`. A click on it brings the app's window to the front and runs `onClick` (`Notices`). */
   def showNotice(notice: everyui.push.Notice, onClick: () => Unit): Unit = Notices.show(notice, onClick)
+
+  /** Whether a `Backdrop` plays a video behind a screen (`videoSource`): a browser does, muted, inline and looping. */
+  def backdropVideo(): Boolean = true
 
   /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): the page told `prefers-reduced-motion`. */
   def reduceMotion(): Boolean = dom.window.matchMedia(lessMotion).matches

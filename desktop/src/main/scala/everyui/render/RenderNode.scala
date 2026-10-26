@@ -691,6 +691,8 @@ class RenderNode(val fx: Node) {
   def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
   def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
   def mediaRates(): Boolean = true
+  /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): said once it plays here. */
+  def mediaPlaysThrough(): Boolean = true
   // JavaFX hands over no samples to fold: its own downmix, at its own centre
   def setMediaCenterMix(db: Double): Unit = ()
   def mediaCenterMixes(): Boolean = false
@@ -1202,6 +1204,9 @@ object Platform {
   }
   /** Words for a screen reader to read out (a new message in a chat): no reader of roles or descriptions reaches this
     * platform's nodes (`setSemantics`), so nothing is said. */
+  /** Whether a `Backdrop` plays a video behind a screen (`videoSource`): not here, where it keeps its picture. */
+  def backdropVideo(): Boolean = false
+
   /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): no setting is read here, so never. */
   def reduceMotion(): Boolean = false
   /** The setting as it changes: it never does here. */

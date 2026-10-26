@@ -192,6 +192,8 @@ class RenderNode(val sg: SGNode) {
   }
   def setMediaRate(rate: Double): Unit = ()
   def mediaRates(): Boolean = false
+  /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): said once it plays here. */
+  def mediaPlaysThrough(): Boolean = true
   // no samples to be had: the device folds a surround stream its own way
   def setMediaCenterMix(db: Double): Unit = ()
   def mediaCenterMixes(): Boolean = false
@@ -825,6 +827,9 @@ object Platform {
   def afterFirstPaint(f: () => Unit): Unit = f()
 
   /** Words for a screen reader to read out (a new message in a chat): a channel's nodes are not read, so nothing is. */
+  /** Whether a `Backdrop` plays a video behind a screen (`videoSource`): not here, where it keeps its picture. */
+  def backdropVideo(): Boolean = false
+
   /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): a Roku has no such setting, so never. */
   def reduceMotion(): Boolean = false
   /** The setting as it changes: it never does here. */

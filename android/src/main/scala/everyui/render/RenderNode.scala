@@ -256,6 +256,8 @@ class RenderNode(val view: View) {
   def setMediaBuffering(named: String): Unit = media.foreach(_.setBuffering(named))
   def setMediaCached(cached: Boolean): Unit = media.foreach(_.setCached(cached))
   def mediaRates(): Boolean = true
+  /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): said once it plays here. */
+  def mediaPlaysThrough(): Boolean = true
   def mediaBandwidth(): Long = media.map(_.bandwidth()).getOrElse(0L)
   def mediaBuffering(): Boolean = media.exists(_.buffering())
   def mediaSize(): (Double, Double) = media.map(_.size()).getOrElse((0.0, 0.0))
@@ -1775,6 +1777,9 @@ object Platform {
   def afterFirstPaint(f: () => Unit): Unit = f()
 
   def setTitle(title: String): Unit = Host.activity.setTitle(title)
+  /** Whether a `Backdrop` plays a video behind a screen (`videoSource`): not here, where it keeps its picture. */
+  def backdropVideo(): Boolean = false
+
   /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): animations removed, or their duration scale
     * set to none, in the accessibility or developer settings. */
   def reduceMotion(): Boolean =

@@ -99,6 +99,8 @@ class RenderNode(val sg: SGNode) {
   def setMediaVolume(volume: Double): Unit = ()
   def setMediaRate(rate: Double): Unit = ()
   def mediaRates(): Boolean = false
+  /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): said once it plays here. */
+  def mediaPlaysThrough(): Boolean = true
   // nothing plays here yet, so nothing is folded
   def setMediaCenterMix(db: Double): Unit = ()
   def mediaCenterMixes(): Boolean = false
@@ -476,6 +478,9 @@ object Platform {
   def beforePaint(f: () => Unit): Unit = f()
   /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
   def afterFirstPaint(f: () => Unit): Unit = f()
+
+  /** Whether a `Backdrop` plays a video behind a screen (`videoSource`): not here, where it keeps its picture. */
+  def backdropVideo(): Boolean = false
 
   /** Whether people ask for less motion (`everyui.motion.ReduceMotion`): Reduce Motion in Accessibility. */
   def reduceMotion(): Boolean = uiReduceMotion()

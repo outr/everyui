@@ -138,6 +138,7 @@ import everyui.render.Platform
   else if (demo == "input") InputDemo.run()
   else if (demo == "widgets") WidgetsDemo.run()
   else if (demo == "blur") BlurDemo.run()
+  else if (demo == "backdrop") BackdropDemo.run()
   else if (demo == "hidden") HiddenDemo.run()
   else if (demo == "autofill") AutofillDemo.run()
   else if (demo == "rtlscroll") RtlScrollDemo.run()
