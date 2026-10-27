@@ -36,6 +36,12 @@ class WebView(bridge: String, supplied: RenderNode = null)
     * honours of it: CONSUMING.md, WebView; where there is no engine it is ignored, as the view is. */
   lazy val sandbox: Prop[Option[Set[String]]] = own(new Prop[Option[Set[String]]](None, s => this.node.setWebSandbox(s)))
 
+  /** Whether nothing of its own is behind the page: off (the default), a page that draws no ground of its own shows on
+    * black, as a video's letterbox wants; on, what is behind the view shows through wherever the page is transparent
+    * (`html, body { background: transparent }`, its colour scheme the app's so the browser backs it with nothing
+    * either): a page laid over the app's own backdrop. Where there is no engine it is ignored, as the view is. */
+  lazy val clear: Prop[Boolean] = own(new Prop[Boolean](false, c => this.node.setWebClear(c)))
+
   /** Say something to the page. It is script, and it runs in the page's world, not this one's. */
   def run(script: String): Unit = this.node.runWebScript(script)
 

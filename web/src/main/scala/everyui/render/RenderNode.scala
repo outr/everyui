@@ -559,6 +559,8 @@ class RenderNode(val el: html.Element) {
   // the browser says who is asking, and a page cannot be told otherwise
   def setWebAgent(agent: String): Unit = ()
   def setWebSandbox(flags: Option[Set[String]]): Unit = if (webFrame != null) webFrame.sandbox(flags)
+  /** The frame itself drawn clear rather than black, so a transparent page shows what is behind it. */
+  def setWebClear(clear: Boolean): Unit = if (webFrame != null) el.style.background = if (clear) "transparent" else "#000"
   def runWebScript(script: String): Unit = if (webFrame != null) webFrame.run(script)
   def onWebMessage(f: String => Unit): Unit = if (webFrame != null) webFrame.hear(f)
   def releaseWeb(): Unit = if (webFrame != null) webFrame.release()

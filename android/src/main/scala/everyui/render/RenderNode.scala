@@ -288,6 +288,13 @@ class RenderNode(val view: View) {
   /** The page sandboxed with `flags` allowed, as near as Android's WebView comes to it (WebSandbox). */
   def setWebSandbox(flags: Option[Set[String]]): Unit = if (webSandbox != null) webSandbox.set(flags)
 
+  /** The view drawn clear rather than black, so a transparent page shows what is behind it. */
+  def setWebClear(clear: Boolean): Unit = view match {
+    case w: android.webkit.WebView =>
+      w.setBackgroundColor(if (clear) android.graphics.Color.TRANSPARENT else android.graphics.Color.BLACK)
+    case _ => ()
+  }
+
   /** Say something to the page, in its own language. */
   def runWebScript(script: String): Unit = view match {
     case w: android.webkit.WebView => if (webSandbox == null || !webSandbox.sandboxed) w.evaluateJavascript(script, null)

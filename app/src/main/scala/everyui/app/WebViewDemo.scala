@@ -19,7 +19,8 @@ import everyui.ui
   * `sandbox=none` shows `sandbox.html` sandboxed with nothing allowed, `sandbox=scripts` with "allow-scripts" (any other
   * value is its flags, by commas): the page tries to read its parent, the cookies and the storage, and says what it
   * found on itself and to its parent (`{sandboxProbe: …}`, posted to any origin). Scripts on and off toggles
-  * "allow-scripts", which loads it again. */
+  * "allow-scripts", which loads it again. `clear=1` draws the view clear (`WebView.clear`), so a page with no ground of
+  * its own shows the app's behind it rather than black. */
 object WebViewDemo {
   def run(): Unit = {
     ui.backgroundColor := Theme.background()
@@ -61,6 +62,8 @@ object WebViewDemo {
         page.run("window.evaled = true; ping(99)")
       }
     }
+    // clear=1: nothing of the view's own behind the page, so a transparent page shows the app behind it
+    page.clear @= Platform.launchArg("clear") == "1"
     val src = Platform.launchArg("src")
     page.source @= (if (src.nonEmpty) src else if (sandbox.nonEmpty) "sandbox.html" else "webview.html")
     page.run("ping(0)")
