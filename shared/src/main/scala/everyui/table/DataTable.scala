@@ -15,6 +15,7 @@ import everyui.layout.{Layout, LayoutPass, VerticalLayout}
 import everyui.list.ListRow
 import everyui.markdown.{TableLook, TableWidths}
 import everyui.menu.{Menu, MenuItem}
+import everyui.paging.PagedSource
 import everyui.render.{Gestures, Platform}
 import everyui.theme.Theme
 import reactify.*
@@ -54,6 +55,20 @@ import reactify.*
   * of each column (by their characters and their longest words) are measured for the columns' widths, so a long table
   * does not hold the page up as it is made, nor as it is filtered: a cell wider than those measured wraps.
   *
+  * Past `DataTable.virtualAfter` rows (with a `maxHeight`, so its rows scroll), only the rows that show are made, each
+  * as tall as it is drawn, a row not yet drawn taken to be a line tall: a table of a hundred thousand rows costs what
+  * one of fifty does, its filter, sort, copies and exports still over every row.
+  *
+  * A table of a server's rows, a page at a time (`DataTable.paged`, over a `PagedSource` of rows of cells, a file read a
+  * page at a time as much as a server's results), is drawn and worked the same way, what has not come yet a grey bar
+  * in each cell. Its filter field is offered where the source can be searched (`PagedSource.searchable`), its words
+  * going to the source (`PagedSource.query`), which finds the matches as it likes, saying how far it has got
+  * ("Searching… 38%") and how many it found where it knows; a heading sorts the rows where the source can sort by it
+  * (`PagedSource.sortable`, by the column's `key`). What is copied is the rows that have come, and says so; an export
+  * is every row matching, read from the source a page at a time into the file the person chose (`Files.saveStream`),
+  * never held whole, its progress beside the filter with a button to stop it; and the rows that have come can be
+  * exported alone. The columns are as wide as the first page's cells want.
+  *
   * {{{
   *   val table = DataTable(Vector(DataColumn("Persona"), DataColumn("Conversations"), DataColumn("Last active")),
   *     personas.map(p => Vector(p.name, p.count.toString, p.last)))
@@ -61,7 +76,8 @@ import reactify.*
   *   table.name @= "personas"           // personas.csv
   * }}} */
 class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells: Vector[Vector[DataCell]] = Vector.empty,
-                val style: DataTableStyle = DataTableStyle(), initialWidth: => Double = 600.0) extends Container {
+                val style: DataTableStyle = DataTableStyle(), initialWidth: => Double = 600.0,
+                val source: Option[PagedSource[Vector[DataCell]]] = None) extends Container {
   /** The columns: changed, the table is drawn again. */
   val columns: Var[Vector[DataColumn]] = own(Var(initialColumns))
   /** The rows' cells, a row a vector, as many as there are columns (missing ones empty): changed, the rows that did
@@ -83,12 +99,28 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   val name: Var[String] = own(Var("table"))
   /** What a click on a link in a cell does: by default a path of this app is shown in place, anything else opened. */
   var onLink: String => Unit = href => Link.follow(href, newTab = !RichText.inApp(href))
+  /** Whether only the rows that show are made: a table of a server's rows, or one past `DataTable.virtualAfter` rows
+    * whose rows scroll (`maxHeight`). */
+  val windowed: Val[Boolean] = own(Val(source.nonEmpty || (maxHeight() > 0.0 && cells().size > DataTable.virtualAfter)))
+  /** How many rows an export of a server's rows has written so far, while it runs. */
+  private val written: Var[Option[Int]] = own(Var(None))
+  val exporting: Val[Option[Int]] = written
+  private var stopExport = false
+  // moved on as the source's rows come and go, for what reads them to follow
+  private val sourced: Var[Int] = own(Var(0))
 
   private val look = style.look
   private val pad = look.across
   private val columnCount: Val[Int] = own(Val(columns().size))
   // the rows, by their index in `cells`, as they are made; and a count that changes as they are
   private var slots: Vector[Option[DataRow]] = Vector.empty
+  // where only the rows that show are made (`windowed`): each row's height, measured where it was drawn
+  private val heights = new RowHeights(DataTable.lineHeight(style))
+  // what is drawn at each place: the row there, its cells, and what draws them (a row, or a grey bar a cell)
+  private var window: Map[Int, (Int, Option[Vector[DataCell]], Container)] = Map.empty
+  // the first page's cells, for a server's rows' columns' widths and what each holds
+  private var firstRows: Vector[Vector[DataCell]] = Vector.empty
+  private var filling = false
   private val made: Var[Int] = own(Var(0))
   private var making = 0
   // the words of each row, in lower case, for the filter
@@ -126,13 +158,15 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   // the rows in the order they are sorted, those the filter hides among them
   private val ordered: Val[Vector[Int]] = own(Val {
     val all = cells()
-    sort() match {
+    // (a server's rows come sorted)
+    if (source.nonEmpty) Vector.empty[Int] else sort() match {
       case Some(s) if s.column < columnCount() =>
         CellValues.order(all.map(r => r.lift(s.column).map(_.text).getOrElse("")), kindOf(s.column), s.ascending)
       case _ => all.indices.toVector
     }
   })
-  /** The rows in the order they show: sorted where the table is, and those the filter hides left out. */
+  /** The rows in the order they show: sorted where the table is, and those the filter hides left out. Of a table of a
+    * server's rows, none: they are the source's (`loaded` has those that have come). */
   val shown: Val[Vector[Int]] = own(Val {
     val pass = passing()
     ordered().filter(i => i >= pass.size || pass(i))
@@ -150,15 +184,16 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   // one (the web): over the room's end (its left in a right-to-left page), never over the last column's words. By all the
   // rows, not those the filter shows, so filtering never changes the columns' widths (and so every cell's lines)
   private val gutter: Val[Double] = own(Val(if (Platform.nativeScroll() && maxHeight() > 0.0 &&
-    cells().size * (style.points * 1.2 + look.down * 2.0) > maxHeight()) DataTable.gutter else 0.0))
+    rowTotal * DataTable.lineHeight(style) > maxHeight()) DataTable.gutter else 0.0))
   private val widths: Val[Vector[Double]] = own(Val(TableWidths(least(), most(), size.width() - gutter())))
   private val starts: Val[Vector[Double]] = own(Val(widths().scanLeft(0.0)(_ + _).dropRight(1)))
   private[table] val across: Val[Double] = own(Val(widths().foldLeft(0.0)(_ + _) + gutter()))
   private val headHeight: Val[Double] = own(Val(Option(head()).map(_.size.height()).getOrElse(0.0)))
 
   // the rows, in a column, under the header; and the rules down between the columns, over them, where the look rules them
+  // (only the rows that show, each placed where it starts, where it makes no more)
   private val body = new Container {
-    layout @= Some(VerticalLayout(0.0))
+    layout := (if (windowed()) None else Some(VerticalLayout(0.0)))
   }
   private val lines = new Container {
     // This decoration spans the entire body, including tables without rules. It must not intercept
@@ -197,7 +232,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private val saves: Boolean = Files.savable
   // whether the tools are wanted at all, the filter is offered, and the pointer is over it or the focus in it
   private val offered: Val[Boolean] = own(Val(tools() && (copies || saves)))
-  private val filtering: Val[Boolean] = own(Val(cells().size > filterAfter()))
+  // (a server's rows by the server, where it can be searched)
+  private val filtering: Val[Boolean] = own(Val(source match {
+    case Some(s) => s.searchable()
+    case None => cells().size > filterAfter()
+  }))
   /** Whether the pointer is over it as what holds it knows (a Markdown table made under the pointer, which hears no
     * pointer come in). */
   private[everyui] val hovered: Var[Boolean] = own(Var(false))
@@ -206,7 +245,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   // room beside the table for its tools, where it is narrower than its width
   private val beside: Val[Boolean] = own(Val(size.width() - across() >= DataTable.toolSize + 6.0))
   // the line over the table: the filter, or the tools on a touch screen with no room beside the table
-  private val barred: Val[Boolean] = own(Val(filtering() || (touch && offered() && !beside())))
+  private val barred: Val[Boolean] = own(Val(filtering() || written().nonEmpty || (touch && offered() && !beside())))
   private val barHeight: Val[Double] = own(Val(if (barred()) SearchField.height + 8.0 else 0.0))
   private val leftShade = shade(true)
   private val rightShade = shade(false)
@@ -254,11 +293,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   ring.size.width := columnWidth(cursor()._2)
   ring.position.top := {
     val (row, _) = cursor()
-    if (row < 0) 0.0 else slots.lift(row).flatten.map(r => headHeight() + r.position.top() - rows.offset()).getOrElse(0.0)
+    if (row < 0) 0.0 else rowOf(row).map(r => headHeight() + r.position.top() - rows.offset()).getOrElse(0.0)
   }
   ring.size.height := {
     val (row, _) = cursor()
-    if (row < 0) headHeight() else slots.lift(row).flatten.map(_.size.height()).getOrElse(0.0)
+    if (row < 0) headHeight() else rowOf(row).map(_.size.height()).getOrElse(0.0)
   }
 
   drawHead()
@@ -267,6 +306,46 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   cells.attach(_ => build())
   filter.attach(v => LayoutPass.batch(query @= v))
   columns.attach(_ => drawHead())
+  // only the rows that show, made again as the rows scroll, as the room for them changes, and from the start as the
+  // table turns from making every row to making those that show, or back
+  rows.offset.attach(_ => fill())
+  rows.size.height.attach(_ => fill())
+  // (the filter hides a row by its taking no room where every row is made; where only those showing are, they change)
+  shown.attach(_ => if (windowed() && source.isEmpty) arrange())
+  windowed.attach(_ => {
+    dropWindow()
+    val gone = slots.flatten
+    slots = Vector.empty
+    gone.foreach(_.dispose())
+    build()
+  })
+  source.foreach { s =>
+    // rows come, or go: drawn where they show, and the columns sized by the first page to come
+    follow(s.changed, (_: Unit) => {
+      sourced @= sourced() + 1
+      if (samples.isEmpty) sampleFirst()
+      fill()
+    })
+    // a new query, or sort: from the top, and nothing chosen
+    follow(s.reset, (_: Unit) => {
+      selection @= Set.empty
+      anchor = None
+      if (cursor()._1 >= 0) cursor @= ((-1, cursor()._2))
+      dropWindow()
+      heights.reset(s.count)
+      rows.scrollTo(0.0)
+      fill()
+    })
+    // the filter's words to the source a beat after the last key, so a word typed is one search, not one a letter
+    var typed = 0
+    filter.attach { v =>
+      typed += 1
+      val mine = typed
+      Platform.after(DataTable.searchWait, () => if (mine == typed && s.query() != v.trim) s.query @= v.trim)
+    }
+    // and its sort: the source's, by the column's key
+    sort.attach(now => s.sort @= now.map(o => Sorting(keyOf(o.column), o.ascending)))
+  }
   build()
   // the tools and the filter, made once they are first wanted
   barred.attach(on => if (on) showBar())
@@ -278,16 +357,25 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   grid.event.key.down.attach(k => pressed(k))
   grid.focused.attach(on => if (!on) ringShown @= false)
 
-  /** Rows sorted by column `c`: up, or down where they already are up, or as they came where they are down. */
-  def sortBy(c: Int): Unit = if (c >= 0 && c < columnCount()) sort @= (sort() match {
+  /** Rows sorted by column `c`: up, or down where they already are up, or as they came where they are down. A server's
+    * rows only by a column it can sort by (`sorts`). */
+  def sortBy(c: Int): Unit = if (c >= 0 && c < columnCount() && sorts(c)) sort @= (sort() match {
     case Some(ColumnSort(k, true)) if k == c => Some(ColumnSort(c, ascending = false))
     case Some(ColumnSort(k, false)) if k == c => None
     case _ => Some(ColumnSort(c))
   })
 
-  /** What column `c` holds: as its column says, else as its cells are found to (`CellValues.infer`). */
+  /** Whether the rows can be sorted by column `c`: in memory, by any; of a server's, by those it says it can sort by
+    * (`PagedSource.sortable`, by the column's `keyOf`). */
+  def sorts(c: Int): Boolean = source.forall(_.sortable().contains(keyOf(c)))
+
+  /** What a server knows column `c` by: its `key`, else its index. */
+  def keyOf(c: Int): String = columns().lift(c).map(_.key).filter(_.nonEmpty).getOrElse(c.toString)
+
+  /** What column `c` holds: as its column says, else as its cells are found to (`CellValues.infer`): of a server's
+    * rows, as the first page's are. */
   def kindOf(c: Int): ColumnKind = columns().lift(c).flatMap(_.kind).getOrElse {
-    val all = cells()
+    val all = if (source.nonEmpty) firstRows else cells()
     if (!(kindsFor eq all)) {
       kinds = columns().indices.toVector.map(k => CellValues.infer(all.map(r => r.lift(k).map(_.text).getOrElse(""))))
       kindsFor = all
@@ -302,45 +390,125 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   /** The header's words, a column a cell. */
   def headerTexts: Vector[String] = columns().map(_.title)
 
-  /** Row `i`'s words, a column a cell. */
+  /** Row `i`'s words, a column a cell: of a server's rows, where it has come (else none). */
   def rowTexts(i: Int): Vector[String] = {
-    val row = cells().lift(i).getOrElse(Vector.empty)
+    val row = lineOf(i).getOrElse(Vector.empty)
     (0 until columnCount()).toVector.map(c => row.lift(c).map(_.text).getOrElse(""))
   }
 
-  /** `which` rows (the rows showing, unless it says), tab-separated under the header, for a spreadsheet's paste. */
-  def tsv(which: Vector[Int] = shown()): String = TableText.tsv(headerTexts, which.map(rowTexts))
+  /** `which` rows (the rows showing, unless it says: of a server's, those that have come), tab-separated under the
+    * header, for a spreadsheet's paste. A column not `exported` is left out of this and of every copy and export. */
+  def tsv(which: Vector[Int] = everyRow): String = TableText.tsv(outHeader, which.map(outRow))
   /** `which` rows as a Markdown table. */
-  def markdown(which: Vector[Int] = shown()): String =
-    TableText.markdown(headerTexts, which.map(rowTexts), (0 until columnCount()).toVector.map(alignOf))
+  def markdown(which: Vector[Int] = everyRow): String = TableText.markdown(outHeader, which.map(outRow), outAligns)
   /** `which` rows as comma-separated lines (RFC 4180). */
-  def csv(which: Vector[Int] = shown()): String = TableText.csv(headerTexts, which.map(rowTexts))
-  /** The rows chosen, in the order they show. */
-  def chosen: Vector[Int] = shown().filter(selection().contains)
+  def csv(which: Vector[Int] = everyRow): String = TableText.csv(outHeader, which.map(outRow))
+  /** The rows chosen, in the order they show: of a server's, those of them that have come. */
+  def chosen: Vector[Int] =
+    if (source.nonEmpty) selection().toVector.sorted.filter(i => lineOf(i).nonEmpty) else shown().filter(selection().contains)
+  /** Of a table of a server's rows, those that have come, in order; of any other, the rows showing. */
+  def loaded: Vector[Int] = source match {
+    case Some(s) =>
+      sourced()
+      s.here.map(r => s.indexOf(s.keyOf(r))).filter(_ >= 0).sorted
+    case None => shown()
+  }
 
-  /** The rows showing on the clipboard, tab-separated under the header. */
-  def copy(): Unit = copied(tsv(), shown().size)
+  /** The rows showing on the clipboard, tab-separated under the header: of a server's, those that have come. */
+  def copy(): Unit = copied(tsv(), everyRow.size)
   /** The rows showing on the clipboard as a Markdown table. */
-  def copyMarkdown(): Unit = copied(markdown(), shown().size)
+  def copyMarkdown(): Unit = copied(markdown(), everyRow.size)
   /** The rows chosen on the clipboard, tab-separated under the header. */
   def copySelection(): Unit = copied(tsv(chosen), chosen.size)
   /** The rows showing handed over as a CSV file (`name`.csv), a byte-order mark first so that a spreadsheet reads it
-    * as UTF-8. */
-  def exportCsv(): Unit = Files.download(("﻿" + csv()).getBytes("UTF-8"), name() + ".csv", Some("text/csv")).start()
-  /** The rows showing handed over as a Markdown file (`name`.md). */
-  def exportMarkdown(): Unit = Files.download(markdown().getBytes("UTF-8"), name() + ".md", Some("text/markdown")).start()
+    * as UTF-8: of a server's rows, every row matching, read a page at a time into the file chosen (`exportAll`). */
+  def exportCsv(): Unit = source match {
+    case Some(s) => exportAll(s, name() + ".csv", "text/csv", DataTable.byteOrderMark + TableText.csvLine(outHeader),
+      TableText.csvLine)
+    case None => Files.download((DataTable.byteOrderMark + csv()).getBytes("UTF-8"), name() + ".csv", Some("text/csv")).start()
+  }
+  /** The rows showing handed over as a Markdown file (`name`.md): of a server's, every row matching. */
+  def exportMarkdown(): Unit = source match {
+    case Some(s) => exportAll(s, name() + ".md", "text/markdown", TableText.markdownHead(outHeader, outAligns),
+      TableText.markdownLine)
+    case None => Files.download(markdown().getBytes("UTF-8"), name() + ".md", Some("text/markdown")).start()
+  }
+  /** The rows that have come handed over as a CSV file, as they are: of a server's rows. */
+  def exportLoaded(): Unit =
+    Files.download((DataTable.byteOrderMark + csv(loaded)).getBytes("UTF-8"), name() + ".csv", Some("text/csv")).start()
+  /** An export of every row under way stopped: the file it was writing let go. */
+  def stopExporting(): Unit = if (written().nonEmpty) stopExport = true
 
   /** The table's tools, as its button offers them: the rows chosen copied, where some are; the rows showing copied,
-    * and downloaded. */
+    * and downloaded. Of a server's rows, the rows that have come copied and downloaded, and every row matching
+    * downloaded; while that runs, a way to stop it. */
   def actions: List[MenuItem] = {
     val some = chosen
+    val paged = source.nonEmpty
     (if (copies && some.nonEmpty) List(MenuItem(TableWords.copyRows(some.size), () => copySelection(),
       MaterialIcon.ContentCopy)) else Nil) ++
-      (if (copies) List(MenuItem(TableWords.copy, () => copy(), MaterialIcon.ContentCopy),
-        MenuItem(TableWords.copyMarkdown, () => copyMarkdown(), MaterialIcon.Code)) else Nil) ++
+      (if (copies) List(MenuItem(if (paged) TableWords.copyLoaded(loaded.size) else TableWords.copy, () => copy(),
+        MaterialIcon.ContentCopy), MenuItem(if (paged) TableWords.copyLoadedMarkdown else TableWords.copyMarkdown,
+        () => copyMarkdown(), MaterialIcon.Code)) else Nil) ++
       (if (copies && saves) List(MenuItem.separator) else Nil) ++
-      (if (saves) List(MenuItem(TableWords.exportCsv, () => exportCsv(), MaterialIcon.Download),
-        MenuItem(TableWords.exportMarkdown, () => exportMarkdown(), MaterialIcon.Description)) else Nil)
+      (if (saves && written().nonEmpty) List(MenuItem(TableWords.stopExport, () => stopExporting(), MaterialIcon.Close))
+      else if (saves) List(MenuItem(TableWords.exportCsv, () => exportCsv(), MaterialIcon.Download),
+        MenuItem(TableWords.exportMarkdown, () => exportMarkdown(), MaterialIcon.Description)) ++
+        (if (paged) List(MenuItem(TableWords.exportLoaded, () => exportLoaded(), MaterialIcon.Download)) else Nil)
+      else Nil)
+  }
+
+  // the rows a copy or an export takes unless it is told: those showing, or of a server's, those that have come
+  private def everyRow: Vector[Int] = if (source.nonEmpty) loaded else shown()
+  // the columns copied and exported, their header, a row's words and their alignments
+  private def out: Vector[Int] = columns().indices.toVector.filter(c => columns()(c).exported)
+  private def outHeader: Vector[String] = {
+    val all = headerTexts
+    out.map(c => all.lift(c).getOrElse(""))
+  }
+  private def outRow(i: Int): Vector[String] = {
+    val all = rowTexts(i)
+    out.map(c => all.lift(c).getOrElse(""))
+  }
+  private def outAligns: Vector[TextAlign] = out.map(alignOf)
+
+  /** Every row of `s`'s query, in its order, read a page at a time (`PagedSource.walk`) into the file the person chose
+    * (`Files.saveStream`), `head` first and a `line` a row: never held whole, how many have been written said as it
+    * goes (`exporting`), and stopped by `stopExporting`, the file then let go. */
+  private def exportAll(s: PagedSource[Vector[DataCell]], file: String, mime: String, head: String,
+                        line: Vector[String] => String): Unit = if (written().isEmpty) {
+    stopExport = false
+    written @= Some(0)
+    val columnsOut = out
+    Files.saveStream(file, Some(mime)) { sink =>
+      sink.write(head.getBytes("UTF-8")).flatMap { ok =>
+        if (!ok) everyui.async.Task.pure(Left(TableWords.exportStopped): Either[String, Unit])
+        else s.walk { page =>
+          if (stopExport) everyui.async.Task.pure(false)
+          else {
+            val text = new StringBuilder
+            page.foreach(r => text.append(line(columnsOut.map(c => r.lift(c).map(_.text).getOrElse("")))))
+            sink.write(text.toString.getBytes("UTF-8")).map { more =>
+              written @= written().map(_ + page.size)
+              more && !stopExport
+            }
+          }
+        }.map {
+          case Left(why) => Left(why)
+          case Right(_) => if (stopExport) Left(TableWords.exportStopped) else Right(())
+        }
+      }
+    }.map { result =>
+      val count = written().getOrElse(0)
+      val stopped = stopExport
+      written @= None
+      stopExport = false
+      result match {
+        case everyui.file.SaveResult.Saved(_) => Toast.show(TableWords.exported(count), seconds = 3.0)
+        case everyui.file.SaveResult.SaveFailed(why) => Toast.show(if (stopped) TableWords.exportStopped else why, seconds = 4.0)
+        case _ => ()
+      }
+    }.start()
   }
 
   private def copied(text: String, count: Int): Unit = {
@@ -349,6 +517,152 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   }
 
   // ---- where the parts go, for the rows ----
+
+  // ---- the rows, wherever they come from ----
+
+  /** Row `id`'s cells, as many as there are columns (missing ones empty): of a server's rows, where it has come. */
+  private def lineOf(id: Int): Option[Vector[DataCell]] = source match {
+    case Some(s) => s.at(id)
+    case None => cells().lift(id)
+  }
+  /** How many rows show (read in a binding, it follows them): of a server's, as many as it says there are. */
+  private def rowTotal: Int = source match {
+    case Some(s) =>
+      sourced()
+      s.count
+    case None => cells().size
+  }
+  /** How many rows show, in their order, which row is at a place among them, and where a row is among them. */
+  private def placeCount: Int = source match {
+    case Some(s) => s.count
+    case None => shown().size
+  }
+  private def idAt(place: Int): Int = if (source.nonEmpty) place else shown().lift(place).getOrElse(-1)
+  private def placeOf(id: Int): Int = if (source.nonEmpty) id else shown().indexOf(id)
+  /** Where row `id` shows among the rows showing, for its stripe: -1 where it does not. */
+  private[table] def stripeOf(id: Int): Int = if (source.nonEmpty) id else places().lift(id).getOrElse(-1)
+
+  /** The row drawn for row `id`, where one is. */
+  private def rowOf(id: Int): Option[Container] =
+    if (windowed()) window.values.collectFirst { case w if w._1 == id && w._3.isInstanceOf[DataRow] => w._3 }
+    else slots.lift(id).flatten
+
+  // ---- a long table, or a server's rows: only the rows that show, each where it starts ----
+
+
+  /** The rows that show made, and those that no longer do let go: from the place at the top of the rows' scroll to the
+    * one at its foot, `overscan` more each way, each placed where the rows before it end; a server asked for what is
+    * near. A row drawn and kept keeps what draws it. */
+  private def fill(): Unit = if (windowed() && !takenApart && !filling) {
+    filling = true
+    try {
+      val n = placeCount
+      heights.resize(n)
+      val view = math.max(heights.estimate, if (maxHeight() > 0.0) math.max(rows.size.height(), maxHeight() - headHeight())
+        else rows.size.height())
+      val top = heights.rowAt(rows.offset())
+      val foot = heights.rowAt(rows.offset() + view)
+      val first = math.max(0, top - DataTable.overscan)
+      val last = math.min(n - 1, foot + DataTable.overscan)
+      source.foreach(s => if (n > 0) s.showing(top, foot))
+      var next: Map[Int, (Int, Option[Vector[DataCell]], Container)] = Map.empty
+      var changed = false
+      window.foreach { case (place, (id, content, drawn)) =>
+        val now = if (place >= first && place <= last) idAt(place) else -1
+        if (now == id && now >= 0 && lineOf(id).map(padded) == content) next = next.updated(place, (id, content, drawn))
+        else {
+          drawn.dispose()
+          changed = true
+        }
+      }
+      var place = first
+      while (place <= last && n > 0) {
+        if (!next.contains(place)) {
+          val id = idAt(place)
+          if (id >= 0) {
+            val content = lineOf(id).map(padded)
+            val drawn: Container = content match {
+              case Some(c) => new DataRow(this, id, c, Set.empty)
+              case None => placeholder()
+            }
+            val at = place
+            drawn.size.height.attach(h => measured(at, drawn, h))
+            next = next.updated(place, (id, content, drawn))
+            changed = true
+          }
+        }
+        place += 1
+      }
+      window = next
+      // what is already drawn told again how tall it is, for a measure let go as the rows changed
+      window.foreach { case (p, (_, _, drawn)) => if (drawn.size.height() > 0.0) heights.measure(p, drawn.size.height()) }
+      if (changed) body.children @= window.toVector.sortBy(_._1).map(_._2._3)
+      placeWindow()
+    } finally filling = false
+  }
+
+  /** Each row drawn placed where the rows before it end, the rows as tall as they are together. */
+  private def placeWindow(): Unit = {
+    window.foreach { case (p, (_, _, drawn)) => drawn.position.top @= heights.top(p) }
+    body.size.height @= heights.total
+  }
+
+  /** The row drawn at `place` measured `height` tall: where it was taken to be another height, those after it move,
+    * and where it is above the top of what shows, the scroll with them, so what shows stays still. */
+  private def measured(place: Int, drawn: Container, height: Double): Unit =
+    if (height > 0.0 && window.get(place).exists(_._3 eq drawn)) {
+      val above = heights.top(place) + heights.heightOf(place) <= rows.offset() + 0.5
+      val change = heights.measure(place, height)
+      if (change != 0.0) {
+        placeWindow()
+        if (above) rows.scrollTo(rows.offset() + change)
+        // fewer rows may fill what shows now, or more be wanted
+        Platform.later(() => fill())
+      }
+    }
+
+  /** Everything drawn let go, and every measure with it. */
+  private def dropWindow(): Unit = {
+    window.values.foreach(_._3.dispose())
+    window = Map.empty
+    heights.reset(0)
+    if (windowed()) body.children @= Vector.empty
+  }
+
+  // `row` as long as there are columns, a missing cell empty
+  private def padded(row: Vector[DataCell]): Vector[DataCell] = {
+    val n = columnCount()
+    if (row.size == n) row else (0 until n).toVector.map(c => row.lift(c).getOrElse(DataCell("")))
+  }
+
+  /** A row that has not come: a grey bar in each cell, a line tall. */
+  private def placeholder(): Container = new Container {
+    size.width := across()
+    size.height @= heights.estimate
+    children ++= (0 until columnCount()).toVector.map(c => new Container {
+      backgroundColor := Theme.muted().withAlpha(0.18)
+      radius @= 3.0
+      size.height @= math.round(style.points * 0.7).toDouble
+      size.width := math.max(8.0, (columnWidth(c) - pad * 2.0) * 0.6)
+      position.left := columnLeft(c) + pad
+      position.top @= (heights.estimate - math.round(style.points * 0.7)) / 2.0
+    })
+  }
+
+  /** The columns of a server's rows sized by the first page to come, as a long table's are by its widest cells. */
+  private def sampleFirst(): Unit = source.foreach { s =>
+    val rowsNow = s.here
+    if (rowsNow.nonEmpty) {
+      firstRows = rowsNow.map(padded)
+      aligns @= (0 until columnCount()).toVector.map(alignOf)
+      MeasuredFeature.withBatch(LayoutPass.batch {
+        samples = DataTable.sample(firstRows.map(_.map(_.text))).map { case (i, c) =>
+          (c, twin(firstRows(i)(c), c, words = false, header = false), twin(firstRows(i)(c), c, words = true, header = false))
+        }
+        placeTwins()
+      })
+    }
+  }
 
   /** Whether row `i` gets past the filter. */
   private[table] def passes(i: Int): Boolean = {
@@ -473,16 +787,26 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   /** The rows as the cells are now: a row whose cells did not change keeps what draws it. Up to `eager` rows are made
     * at once, each cell measured with its row; a longer table makes its first `lead` at once and the rest a page a
     * turn after them, and measures only the widest of each column's cells (`sample`), apart from the rows. */
-  private def build(): Unit = {
+  private def build(): Unit = if (source.nonEmpty) {
+    // a server's rows: measured by the first page, drawn as they show
+    letGo(samples.flatMap(s => Vector(s._2, s._3)))
+    samples = Vector.empty
+    aligns @= (0 until columnCount()).toVector.map(alignOf)
+    sampleFirst()
+    dropWindow()
+    fill()
+  } else {
     val all = cells()
     val n = columnCount()
     val content = all.map(r => (0 until n).toVector.map(c => r.lift(c).getOrElse(DataCell(""))))
     haystacks = content.map(_.map(_.text).mkString("\u0001").toLowerCase)
     aligns @= (0 until n).toVector.map(alignOf)
-    val whole = content.size <= DataTable.eager
+    val drawsAll = !windowed()
+    val whole = content.size <= DataTable.eager && drawsAll
     val every = if (whole) (0 until n).toSet else Set.empty[Int]
     val old = slots
-    slots = content.indices.toVector.map(i => old.lift(i).flatten.filter(r => r.content == content(i) && r.sized == every))
+    slots = if (!drawsAll) Vector.empty
+      else content.indices.toVector.map(i => old.lift(i).flatten.filter(r => r.content == content(i) && r.sized == every))
     val kept = slots.flatten.toSet
     old.flatten.filterNot(kept.contains).foreach(_.dispose())
     letGo(samples.flatMap(s => Vector(s._2, s._3)))
@@ -494,13 +818,14 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
       if (!whole) samples = DataTable.sample(content.map(_.map(_.text))).map { case (i, c) =>
         (c, twin(content(i)(c), c, words = false, header = false), twin(content(i)(c), c, words = true, header = false))
       }
-      content.indices.foreach(i => if (slots(i).isEmpty && (whole || i < DataTable.lead))
+      if (drawsAll) content.indices.foreach(i => if (slots(i).isEmpty && (whole || i < DataTable.lead))
         slots = slots.updated(i, Some(new DataRow(this, i, content(i), every))))
       placeTwins()
       making += 1
       made @= made() + 1
     })
-    if (slots.exists(_.isEmpty)) later(making, content)
+    if (drawsAll && slots.exists(_.isEmpty)) later(making, content)
+    if (!drawsAll) fill()
   }
 
   // the rows not made yet, a page a turn: measured by what was made first, they measure nothing themselves
@@ -522,7 +847,15 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     })
 
   // the rows made, in their order
-  private def arrange(): Unit = body.children @= ordered().flatMap(i => slots.lift(i).flatten)
+  // (only those that show, where a long table makes no more: each place's row may be another now, so every measure goes)
+  private def arrange(): Unit =
+    if (windowed()) {
+      if (source.isEmpty) {
+        heights.reset(placeCount)
+        fill()
+      }
+    }
+    else body.children @= ordered().flatMap(i => slots.lift(i).flatten)
 
   /** The shade over its `leftSide` edge, there while the table goes on past that edge. A finger, a click and the
     * wheel go through it to the table. */
@@ -547,6 +880,26 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
 
   // ---- the filter and the tools ----
 
+  /** What the line over the table says of its rows: how many, or how many of how many the filter shows; of a server's,
+    * how far its search has got, how many it found where it knows, else how many so far; while an export of every row
+    * runs, how many it has written. Read in a binding, it follows them. */
+  private def counted(): String = written() match {
+    case Some(n) => TableWords.exporting(n)
+    case None => source match {
+      case Some(s) =>
+        sourced()
+        s.progress() match {
+          case Some(p) => TableWords.searching(math.round(p * 100.0).toInt)
+          case None => s.total() match {
+            case Some(n) => TableWords.rows(n)
+            case None => if (s.searching()) "" else if (s.countKnown) TableWords.rows(s.reached) else TableWords.rowsSoFar(s.reached)
+          }
+        }
+      case None =>
+        if (filter().trim.isEmpty) TableWords.rows(cells().size) else TableWords.shownOf(shown().size, cells().size)
+    }
+  }
+
   private def showBar(): Unit = if (bar.isEmpty) {
     val search = new SearchField(TableWords.filter, 220.0)
     search.value.attach(v => filter @= v)
@@ -555,9 +908,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     val count = new TextView {
       font.size @= 12.5
       color := Theme.muted()
-      content := (if (filter().trim.isEmpty) TableWords.rows(cells().size)
-        else TableWords.shownOf(shown().size, cells().size))
+      content := counted()
     }
+    // an export of every row stopped from beside its count
+    val stop = new everyui.component.IconButton(MaterialIcon.Close, TableWords.stopExport, () => stopExporting())
+    stop.visible := written().nonEmpty
     val line = new Container {
       size.height @= SearchField.height
     }
@@ -566,10 +921,14 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     search.size.width := math.max(120.0, math.min(240.0, size.width() - count.size.width() - DataTable.toolSize - 24.0))
     search.visible := filtering()
     search.position.left := ListRow.along(0.0, search.size.width(), line.size.width())
-    count.visible := filtering()
-    count.position.left := ListRow.along(search.size.width() + 10.0, count.size.width(), line.size.width())
+    count.visible := filtering() || written().nonEmpty
+    // after the field, or at the start where there is none
+    val countAt: Val[Double] = own(Val(if (filtering()) search.size.width() + 10.0 else 0.0))
+    count.position.left := ListRow.along(countAt(), count.size.width(), line.size.width())
     count.position.top := (SearchField.height - count.size.height()) / 2.0
-    line.children ++= List(search, count)
+    stop.position.left := ListRow.along(countAt() + count.size.width() + 4.0, stop.size.width(), line.size.width())
+    stop.position.top := (SearchField.height - stop.size.height()) / 2.0
+    line.children ++= List(search, count, stop)
     bar = Some(line)
     children += line
     placeTools()
@@ -650,10 +1009,9 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
 
   // the rows from the last chosen to `row`, as they show
   private def chooseTo(row: Int): Unit = {
-    val order = shown()
-    val from = order.indexOf(anchor.getOrElse(row))
-    val to = order.indexOf(row)
-    if (from >= 0 && to >= 0) selection @= order.slice(math.min(from, to), math.max(from, to) + 1).toSet
+    val from = placeOf(anchor.getOrElse(row))
+    val to = placeOf(row)
+    if (from >= 0 && to >= 0) selection @= (math.min(from, to) to math.max(from, to)).map(idAt).filter(_ >= 0).toSet
   }
 
   private def pressed(k: KeyEvent): Unit = action(k).foreach { act =>
@@ -666,8 +1024,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     * shortcut's A and C choose every row showing and copy. */
   private def action(k: KeyEvent): Option[() => Unit] = {
     val (row, c) = cursor()
-    val order = shown()
-    val at = order.indexOf(row)
+    // where the keys are among the rows showing, how many there are, and the row at a place (of a server's rows, any
+    // place, come or not)
+    val count = placeCount
+    val at = if (row < 0) -1 else placeOf(row)
+    def order(place: Int): Int = idAt(place)
     val primary = if (Platform.commandKey()) k.meta else k.ctrl
     val letter = k.name.toLowerCase
     val forward = if (mirrored) Key.ArrowLeft else Key.ArrowRight
@@ -688,17 +1049,17 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
       })
       else None
     }
-    else if (primary && !k.alt && letter == "a") Some(() => selection @= order.toSet)
-    else if (k.ctrl && !k.alt && !k.meta && (letter == "home" || letter == "end") && order.nonEmpty)
-      go(if (letter == "home") order.head else order.last, c)
+    else if (primary && !k.alt && letter == "a") Some(() => selection @= (if (source.nonEmpty) loaded else shown()).toSet)
+    else if (k.ctrl && !k.alt && !k.meta && (letter == "home" || letter == "end") && count > 0)
+      go(if (letter == "home") order(0) else order(count - 1), c)
     else if (k.ctrl || k.meta || k.alt) None
-    else if (k.key == Key.ArrowDown && at < order.size - 1) go(order(at + 1), c, k.shift)
+    else if (k.key == Key.ArrowDown && at < count - 1) go(order(at + 1), c, k.shift)
     else if (k.key == Key.ArrowUp && at > 0) go(order(at - 1), c, k.shift)
     else if (k.key == Key.ArrowUp && at == 0 && !k.shift) go(-1, c)
     else if (k.key == forward && c < columnCount() - 1) go(row, c + 1)
     else if (k.key == back && c > 0) go(row, c - 1)
-    else if (k.key == Key.PageDown && at < order.size - 1)
-      go(order(math.min(order.size - 1, math.max(0, at) + DataTable.pageKeys)), c, k.shift)
+    else if (k.key == Key.PageDown && at < count - 1)
+      go(order(math.min(count - 1, math.max(0, at) + DataTable.pageKeys)), c, k.shift)
     else if (k.key == Key.PageUp && at > 0) go(order(math.max(0, at - DataTable.pageKeys)), c, k.shift)
     else if (letter == "home" && c > 0) go(row, 0)
     else if (letter == "end" && c < columnCount() - 1) go(row, columnCount() - 1)
@@ -714,11 +1075,13 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   /** The cell the keys are on brought into view: its row down the rows, its column across the table. */
   private def reveal(): Unit = {
     val (row, c) = cursor()
-    slots.lift(row).flatten.foreach { r =>
-      val top = r.position.top()
+    // (where only the rows that show are made, where the row starts whether it is drawn or not)
+    val reach: Option[(Double, Double)] =
+      if (windowed()) Some(placeOf(row)).filter(_ >= 0).map(p => (heights.top(p), heights.heightOf(p)))
+      else slots.lift(row).flatten.map(r => (r.position.top(), r.size.height()))
+    reach.foreach { case (top, tall) =>
       if (top < rows.offset()) rows.scrollTo(top)
-      else if (top + r.size.height() > rows.offset() + rows.size.height())
-        rows.scrollTo(top + r.size.height() - rows.size.height())
+      else if (top + tall > rows.offset() + rows.size.height()) rows.scrollTo(top + tall - rows.size.height())
     }
     // how far along the scroll the column starts, from the scroll's own start
     val along = if (fromRight()) across() - columnLeft(c) - columnWidth(c) else columnLeft(c)
@@ -738,8 +1101,33 @@ object DataTable {
   val eager: Int = 60
   val lead: Int = 12
   val page: Int = 16
+  /** How many rows a table has, with a `maxHeight`, before it makes only the rows that show; and how many more it makes
+    * each way beyond them, so a scroll finds them made. */
+  val virtualAfter: Int = 400
+  val overscan: Int = 8
+  /** How long after the last key a filter's words go to a server, in seconds. */
+  val searchWait: Double = 0.3
+  /** What a CSV file starts with, so a spreadsheet reads it as UTF-8. */
+  val byteOrderMark: String = "﻿"
   /** How far Page Up and Page Down move. */
   val pageKeys: Int = 10
+
+  /** How tall a row of one line is taken to be before it is drawn, in `style`. */
+  def lineHeight(style: DataTableStyle): Double = math.ceil(style.points * 1.2 + style.look.down * 2.0)
+
+  /** A table of a server's rows, a page at a time: `source`'s rows of cells, under `columns`. Searched where the source
+    * can be (`PagedSource.searchable`), sorted by the headings it can sort by (`PagedSource.sortable`), and drawn the
+    * rows that show at a time; `maxHeight` is the room its rows scroll in.
+    * {{{
+    *   val rows = new PagedSource[Vector[DataCell]](_.head.text, pageSize = 200, paging = Paging.InOrder)(request =>
+    *     reader.page(request.cursor, request.query, request.live, request.progress))
+    *   rows.searchable @= true
+    *   val table = DataTable.paged(columns, rows)
+    *   table.maxHeight := panel.size.height() - 48.0
+    * }}} */
+  def paged(columns: Vector[DataColumn], source: PagedSource[Vector[DataCell]], style: DataTableStyle = DataTableStyle(),
+            width: => Double = 600.0): DataTable =
+    new DataTable(columns, Vector.empty, style, width, Some(source))
   /** How wide a shade is at an edge the table goes on past. */
   val shadeWidth: Double = 18.0
   /** The room kept for the page's scrollbar beside rows that scroll. */

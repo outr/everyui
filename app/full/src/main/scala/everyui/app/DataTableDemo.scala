@@ -4,7 +4,9 @@ import everyui.component.{Button, ButtonStyle, Row, ScrollContainer, TextView}
 import everyui.component.types.TextAlign
 import everyui.i18n.Direction
 import everyui.render.Platform
-import everyui.table.{ColumnKind, DataColumn, DataTable}
+import everyui.async.Task
+import everyui.paging.{Page, PagedSource}
+import everyui.table.{ColumnKind, DataCell, DataColumn, DataTable}
 import everyui.theme.{Palette, Theme}
 import everyui.ui
 import reactify.*
@@ -12,7 +14,8 @@ import reactify.*
 /** A `DataTable` of an app's own rows: `n=` personas (500 by default) with their conversations, spend, share, when each
   * was last active and a note, sorted by a header, filtered, chosen, copied and downloaded; a small table of a few
   * rows under it, which offers no filter. `theme=light` and `rtl=1` as elsewhere; `max=<pixels>` sets its tallest, and
-  * `at=<seconds>` makes the tables that long after the page.
+  * `at=<seconds>` makes the tables that long after the page. `paged=1` gives it a server's `n` personas (200,000 by
+  * default) a page at a time instead, searched and sorted there.
   * It logs how long the table took to make and to filter:
   *
   *   [ui] datatable 500 rows made in 92.4 ms
@@ -79,12 +82,54 @@ object DataTableDemo {
     if (at.isEmpty) show(page, width, left) else Platform.after(at.toDouble, () => show(page, width, left))
   }
 
+  // the `i`th persona's row as a server gives it: its number first, which keys it, shown and never exported
+  private def numbered(i: Int): Vector[DataCell] = (DataCell((i + 1).toString) +: row(i).map(DataCell(_)))
+
+  /** `n` personas as a server would give them, a page at a time a fifth of a second after it is asked: searched by the
+    * words in a persona's name, a scan that says how far it has got, and sorted by the persona, up or down. */
+  private def served(n: Int): PagedSource[Vector[DataCell]] = {
+    val source = new PagedSource[Vector[DataCell]](_.head.text, pageSize = 100)(request =>
+      Task.async[Either[String, Page[Vector[DataCell]]]] { done =>
+        val words = request.query.toLowerCase
+        // the scan through every persona for the words, in steps that say how far it has got
+        def step(at: Int, found: Vector[Int]): Unit = if (request.live()) {
+          if (at >= n) {
+            val ordered = if (request.sort.exists(!_.ascending)) found.reverse else found
+            done(Right(Page(ordered.slice(request.offset, request.offset + request.limit).map(i => numbered(i)),
+              Some(found.size))))
+          }
+          else {
+            val upTo = math.min(n, at + n / 5 + 1)
+            val more = (at until upTo).filter(i => row(i).head.toLowerCase.contains(words))
+            request.progress(upTo.toDouble / n)
+            Platform.after(0.15, () => step(upTo, found ++ more))
+          }
+        }
+        if (words.isEmpty) Platform.after(0.2, () => if (request.live()) {
+          val ids = request.offset until math.min(n, request.offset + request.limit)
+          val ordered = if (request.sort.exists(!_.ascending)) ids.map(i => n - 1 - i) else ids
+          done(Right(Page(ordered.toVector.map(i => numbered(i)), Some(n))))
+        })
+        else step(0, Vector.empty)
+      })
+    source.searchable @= true
+    source.sortable @= Set("persona")
+    source
+  }
+
   /** The tables made and put on `page`, timed. */
   private def show(page: ScrollContainer, width: Val[Double], left: Val[Double]): Unit = {
-    val n = Option(Platform.launchArg("n")).filter(_.nonEmpty).map(_.toInt).getOrElse(500)
-    val rows = (0 until n).toVector.map(row)
+    val paged = Platform.launchArg("paged") == "1"
+    val n = Option(Platform.launchArg("n")).filter(_.nonEmpty).map(_.toInt).getOrElse(if (paged) 200000 else 500)
     val start = Platform.ticks()
-    val table = DataTable(columns, rows)
+    val table = if (paged) {
+      val source = served(n)
+      val t = DataTable.paged(DataColumn("#", kind = Some(ColumnKind.Number), exported = false) +:
+        columns.updated(0, columns(0).copy(key = "persona")), source)
+      t.maxHeight @= 520.0
+      t
+    }
+    else DataTable(columns, (0 until n).toVector.map(row))
     table.name @= "personas"
     Option(Platform.launchArg("max")).filter(_.nonEmpty).foreach(m => table.maxHeight @= m.toDouble)
     table.size.width := width()

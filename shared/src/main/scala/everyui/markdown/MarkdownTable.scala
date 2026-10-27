@@ -33,8 +33,9 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
   def engage(): Unit = if (rich.isEmpty) {
     val made = new DataTable(MarkdownTable.columns(block, ctx), MarkdownTable.cells(block, ctx),
       DataTableStyle(MarkdownTable.points(ctx), ctx.tableLook(), ctx.quiet, ctx.direction), width)
-    // as tall as its rows: a table in a page or a message never scrolls up and down within it, only sideways
-    made.maxHeight @= 0.0
+    // as tall as its rows: a table in a page or a message never scrolls up and down within it, only sideways; but a
+    // very long one (an agent's thousands of rows) scrolls within its own height, and only the rows that show are made
+    made.maxHeight @= MarkdownTable.heightFor(block)
     made.onLink = href => ctx.press(href, made)
     made.hovered := event.pointer.over()
     rich = Some(made)
@@ -48,7 +49,10 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
   def take(next: MdBlock.TableBlock): Unit = {
     block = next
     rich match {
-      case Some(t) => t.cells @= MarkdownTable.cells(next, ctx)
+      case Some(t) =>
+        // (its height first: a table grown past the long ones' count turns to making the rows that show before them)
+        t.maxHeight @= MarkdownTable.heightFor(next)
+        t.cells @= MarkdownTable.cells(next, ctx)
       case None => show(new TableView(next, ctx, width))
     }
   }
@@ -69,6 +73,12 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
 private[everyui] object MarkdownTable {
   /** How many rows a table has before its filter shows at rest, and it is a `DataTable` from the start. */
   val filterAfter: Int = 8
+  /** How tall a very long table (past `DataTable.virtualAfter` rows) is, its rows scrolling within it. */
+  val longHeight: Double = 480.0
+
+  /** How tall `table` is drawn before its rows scroll: as tall as its rows (0), or `longHeight` where it is very long. */
+  def heightFor(table: MdBlock.TableBlock): Double =
+    if (table.rows.size > everyui.table.DataTable.virtualAfter) longHeight else 0.0
   // whether the platform is touched rather than pointed at: the tools always show there
   private def touch: Boolean = Platform.touchSupport() && !Platform.pointerSupport()
 

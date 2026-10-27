@@ -19,6 +19,12 @@ import reactify.*
   * app's filter changed), starts again from the first page: what was kept is let go, and an answer to the query before
   * is dropped when it comes. A page that fails is not asked for again until `retry()`; `error` says why.
   *
+  * A source can be searched through it where it says so (`searchable`, `query`, sent with each request) and sorted by
+  * the columns it names (`sortable`): a `DataTable` of its rows (`DataTable.paged`) offers only those. A request that
+  * takes a while says how far it has got (`PageRequest.progress`, heard as `progress`) and stops once it is no longer
+  * wanted (`PageRequest.live`); `walk` reads every row of the query in order, a page at a time, for an export; `close`
+  * is done with it.
+  *
   * {{{
   *   val source = new PagedSource[Entity](_.id, pageSize = 100)(request => Task.async { done =>
   *     api.list(filters(), request.offset, request.limit, request.sort)(
@@ -40,6 +46,13 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
   val ahead: Var[Int] = Var(math.max(1, pageSize / 2))
   /** How many pages may be asked for at once. */
   val concurrent: Var[Int] = Var(2)
+  /** The words the rows must match, where the source is searched (`searchable`): sent with every request
+    * (`PageRequest.query`), and a change asks again from the first page, as a new sort does. */
+  val query: Var[String] = Var("")
+  /** Whether the server can be searched by `query`: a table offers its filter field only then. */
+  val searchable: Var[Boolean] = Var(false)
+  /** The columns (by key) the server can sort by: a table offers to sort by those headings alone. */
+  val sortable: Var[Set[String]] = Var(Set.empty)
 
   private val counted: Var[Option[Int]] = Var(None)
   private val waiting: Var[Boolean] = Var(true)
@@ -53,9 +66,14 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
   val loading: Val[Boolean] = busy
   /** Why the last page to fail failed, until `retry` or a new query. */
   val error: Val[Option[String]] = failure
+  private val scanned: Var[Option[Double]] = Var(None)
+  /** How far a request that takes a while has got (0 to 1), as its server says (`PageRequest.progress`), while it is
+    * under way: "Searching… 38%". None once it has answered, and for a query that has not said. */
+  val progress: Val[Option[Double]] = scanned
 
   // the query's number: an answer to one before is dropped
   private var generation = 0
+  private var closed = false
   private var pages: Map[Int, Vector[T]] = Map.empty
   // when each page was last in view, for letting go of the one out of view longest
   private var used: Map[Int, Int] = Map.empty
@@ -74,6 +92,7 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
   private var cursored = false
 
   sort.attach(_ => invalidate())
+  query.attach(_ => invalidate())
 
   /** How many rows there are: the count, or what has come and a page of placeholders after it while there is more; a
     * page of placeholders while the first answer is awaited. */
@@ -92,6 +111,12 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
   }
 
   def here: Vector[T] = pages.keys.toVector.sorted.flatMap(p => pages(p))
+
+  /** How far the rows that have come reach: the place after the furthest. */
+  def reached: Int = extent
+
+  /** Whether every row of the query has come to be counted: the last page has, or the server said how many. */
+  def countKnown: Boolean = !waiting() && (!more || total().nonEmpty)
 
   /** How many rows are kept now: never more than `maxPages` pages' worth, beyond what one view needs. */
   def kept: Int = pages.values.map(_.size).sum
@@ -139,6 +164,7 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
     failure @= None
     busy @= false
     waiting @= true
+    scanned @= None
     reset @= (())
     changed @= (())
     dispatch()
@@ -150,6 +176,53 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
     failure @= None
     dispatch()
   }
+
+  /** Done with: nothing more is asked for, a request under way is told it is no longer wanted (`PageRequest.live`), and
+    * whatever it answers is dropped. */
+  def close(): Unit = {
+    closed = true
+    generation += 1
+    flying = Set.empty
+    if (busy()) busy @= false
+    scanned @= None
+  }
+
+  /** Every row of the query as it is now (its words and its sort), read from the first page in order, a page at a time
+    * apart from what the view keeps: each page handed to `each`, which answers whether to go on once it has done with
+    * it, so no more than a page is held. For an export of every row. It ends at the last page (one short of a page,
+    * one with no `next` where the server pages by cursor, or the count reached), when `each` answers false, or when the
+    * source is closed; it answers how many rows were handed over, or why a page failed. A request it makes is `live`
+    * while it goes on, whatever the view does meanwhile. */
+  def walk(each: Vector[T] => Task[Boolean]): Task[Either[String, Int]] = {
+    val words = query()
+    val order = sort()
+    var stopped = false
+    def from(offset: Int, cursor: Option[String], first: Boolean): Task[Either[String, Int]] =
+      if (closed) Task.pure(Right(offset))
+      else fetch(PageRequest(offset, pageSize, order, cursor, words, () => !stopped && !closed)).flatMap {
+        case Left(why) =>
+          stopped = true
+          Task.pure(Left(why))
+        case Right(page) =>
+          val end = offset + page.rows.length
+          val last = page.rows.isEmpty || (if (page.next.nonEmpty) false
+            else if (cursor.nonEmpty && !first) true
+            else page.rows.length < pageSize || page.total.exists(_ <= end))
+          each(page.rows).flatMap { more =>
+            if (!more) stopped = true
+            // the next page a turn later: an export never holds the screen up, nor a source that answers at once the stack
+            if (!more || last || closed) Task.pure(Right(end))
+            else Task.async[Either[String, Int]](done =>
+              everyui.render.Platform.later(() => from(end, page.next, first = false).map(done).start()))
+          }
+      }
+    from(0, None, first = true)
+  }
+
+  // what page `offset` is asked for with, for the query whose number is `asked`
+  private def request(offset: Int, cursor: Option[String], asked: Int): PageRequest =
+    PageRequest(offset, pageSize, sort(), cursor, query(), () => asked == generation && !closed,
+      (done: Double) => if (asked == generation && !closed) scanned @= Some(math.max(0.0, math.min(1.0, done))))
 
   /** `item` put in place of the row with its key, where that row is here: a change the app made on the server. */
   def replace(item: T): Unit = keys.get(keyOf(item)).foreach { i =>
@@ -164,7 +237,7 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
     if (paging == Paging.InOrder || counted().isEmpty) starts.contains(page) || page * pageSize < extent
     else page * pageSize < counted().getOrElse(0)
 
-  private def dispatch(): Unit = {
+  private def dispatch(): Unit = if (!closed) {
     var i = 0
     while (flying.size < concurrent() && i < wanted.length) {
       val page = wanted(i)
@@ -177,13 +250,14 @@ class PagedSource[T](val keyOf: T => String, val pageSize: Int = 100, val paging
     val asked = generation
     flying += page
     if (!busy()) busy @= true
-    fetch(PageRequest(page * pageSize, pageSize, sort(), starts.getOrElse(page, None))).map { answer =>
+    fetch(request(page * pageSize, starts.getOrElse(page, None), asked)).map { answer =>
       if (asked == generation) arrived(page, answer)
     }.start()
   }
 
   private def arrived(page: Int, answer: Either[String, Page[T]]): Unit = {
     flying -= page
+    if (scanned().nonEmpty) scanned @= None
     answer match {
       case Left(message) =>
         failed += page

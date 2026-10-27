@@ -40,7 +40,7 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
   if (header) backgroundColor := look.header()
   // a chosen row washed in the selection's colour, else striped by where it shows
   else backgroundColor := (if (table.selection().contains(index)) ListRow.fill(selected = true, current = false,
-    active = table.active(), into = false) else look.rowFill(table.places().lift(index).getOrElse(-1)))
+    active = table.active(), into = false) else look.rowFill(table.stripeOf(index)))
   cells.indices.foreach { c =>
     val cell = cells(c)
     cell.position.left := table.cellLeft(c, cell.size.width(), header)

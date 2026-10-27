@@ -28,4 +28,18 @@ object TableWords {
   def copied(n: Int): String = if (n == 1) word("table.copiedRow") else said("table.copied", Map("n" -> n.toString))
   /** "Copied", a cell. */
   def copiedCell: String = word("table.copiedCell")
+  /** "Copy loaded rows (1,200)", of a table of a server's rows, of which only some have come. */
+  def copyLoaded(n: Int): String = said("table.copyLoaded", Map("n" -> n.toString))
+  def copyLoadedMarkdown: String = word("table.copyLoadedMarkdown")
+  def exportLoaded: String = word("table.exportLoaded")
+  /** "Downloading… 12,400 rows", an export of every row under way. */
+  def exporting(n: Int): String = said("table.exporting", Map("rows" -> rows(n)))
+  def stopExport: String = word("table.stopExport")
+  /** "Downloaded 12,400 rows". */
+  def exported(n: Int): String = said("table.exported", Map("rows" -> rows(n)))
+  def exportStopped: String = word("table.exportStopped")
+  /** "Searching… 38%", as far as a server's search has got. */
+  def searching(percent: Int): String = said("table.searching", Map("p" -> percent.toString))
+  /** "1,200 rows so far", where a server's rows have not all been counted. */
+  def rowsSoFar(n: Int): String = said("table.rowsSoFar", Map("rows" -> rows(n)))
 }
