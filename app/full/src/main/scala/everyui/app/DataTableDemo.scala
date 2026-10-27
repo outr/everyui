@@ -16,6 +16,7 @@ import reactify.*
   * rows under it, which offers no filter. `theme=light` and `rtl=1` as elsewhere; `max=<pixels>` sets its tallest, and
   * `at=<seconds>` makes the tables that long after the page. `paged=1` gives it a server's `n` personas (200,000 by
   * default) a page at a time instead, searched and sorted there.
+  * `edit=1` lets its cells be typed over, on a double-click or F2.
   * It logs how long the table took to make and to filter:
   *
   *   [ui] datatable 500 rows made in 92.4 ms
@@ -131,6 +132,12 @@ object DataTableDemo {
     }
     else DataTable(columns, (0 until n).toVector.map(row))
     table.name @= "personas"
+    // edit=1: its cells typed over on a double-click, what was typed logged
+    if (Platform.launchArg("edit") == "1") {
+      table.editable @= true
+      table.edited.attach(e => Platform.log("datatable edited row " + e.row.toString + " column " + e.column.toString +
+        ": " + e.before + " -> " + e.text))
+    }
     Option(Platform.launchArg("max")).filter(_.nonEmpty).foreach(m => table.maxHeight @= m.toDouble)
     table.size.width := width()
     table.position.left := left()

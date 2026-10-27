@@ -46,6 +46,9 @@ import reactify.*
   *     or hands them over as a CSV or a Markdown file (`Files.download`: the browser's downloads on the web, the save
   *     dialog on the desktop and Android). Where the platform has no clipboard the copies are not offered, nor the
   *     files where it cannot save one.
+  *   - Edit: where it is `editable`, a double-click or a double tap on a cell (of a column that is `editable`), or F2
+  *     on the one the keys are on, types over it in place: Enter or leaving the field keeps it where the app's
+  *     `commit` takes it (`edited` hears it), Escape keeps what it was.
   *   - Keys: the table takes the focus as one stop (Tab goes on past it). The arrows move between its cells (Up from the
   *     first row reaches the header), Home and End to the first and last column (with Ctrl, row), Page Up and Down a
   *     page of rows; Space or Enter chooses the row (Enter on a header sorts), Shift with Up or Down chooses as it
@@ -99,6 +102,19 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   val name: Var[String] = own(Var("table"))
   /** What a click on a link in a cell does: by default a path of this app is shown in place, anything else opened. */
   var onLink: String => Unit = href => Link.follow(href, newTab = !RichText.inApp(href))
+  /** Whether its cells can be typed over in place (a double-click or a double tap on one, or F2 on the one the keys are
+    * on), those of the columns that are `editable`: off, the default, they are only read. */
+  val editable: Var[Boolean] = own(Var(false))
+  /** Whether what was typed over a cell is taken: None takes it, `Some(why)` refuses it, saying why under the field,
+    * which stays. By default everything typed is taken. Taken, it is in the row's cell (the source's row, for a server's,
+    * where its key is unchanged) and `edited` hears it: an app saves it there. */
+  val commit: Var[CellEdit => everyui.async.Task[Option[String]]] =
+    own(Var((_: CellEdit) => everyui.async.Task.pure(None: Option[String])))
+  /** A cell typed over, once it is taken. */
+  val edited: Channel[CellEdit] = Channel[CellEdit]
+  // the cell being typed over, and what lets it go; and the last click, for a second on the same cell
+  private var editing: Option[() => Unit] = None
+  private var lastClick: Option[(Int, Int, Double)] = None
   /** Whether only the rows that show are made: a table of a server's rows, or one past `DataTable.virtualAfter` rows
     * whose rows scroll (`maxHeight`). */
   val windowed: Val[Boolean] = own(Val(source.nonEmpty || (maxHeight() > 0.0 && cells().size > DataTable.virtualAfter)))
@@ -328,6 +344,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     })
     // a new query, or sort: from the top, and nothing chosen
     follow(s.reset, (_: Unit) => {
+      stopEditing()
       selection @= Set.empty
       anchor = None
       if (cursor()._1 >= 0) cursor @= ((-1, cursor()._2))
@@ -763,6 +780,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
 
   /** The header made for the columns, and every row again under them. */
   private def drawHead(): Unit = {
+    stopEditing()
     val was = Option(head())
     val fresh = MeasuredFeature.withBatch(LayoutPass.batch {
       val row = new DataRow(this, -1, columns().map(col => DataCell(col.title, col.runs)), columns().indices.toSet)
@@ -991,7 +1009,13 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private def clicked(e: PointerEvent): Unit = at(e).foreach { case (row, c) =>
     ringShown @= false
     cursor @= ((row, c))
-    if (row < 0) {
+    // a second click on the same cell soon after the first edits it, where it can be (the first chose its row), before
+    // the words it selects on the web are asked about
+    val now = Platform.ticks()
+    val twice = row >= 0 && lastClick.exists(l => l._1 == row && l._2 == c && now - l._3 < DataTable.doubleClick)
+    lastClick = if (twice) None else Some((row, c, now))
+    if (twice && edits(row, c)) edit(row, c)
+    else if (row < 0) {
       if (!Platform.selectsText() || Platform.selectedText().isEmpty) sortBy(c)
     }
     // the end of a drag across words selects them, and chooses nothing
@@ -1039,7 +1063,10 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
       if (extend) chooseTo(r)
       reveal()
     })
-    if (primary && !k.alt && letter == "c" && copies) {
+    // F2 edits the cell the keys are on, where it can be
+    if (k.key == Key.Other && k.name == "F2" && !k.ctrl && !k.meta && !k.alt && row >= 0 && edits(row, c))
+      Some(() => edit(row, c))
+    else if (primary && !k.alt && letter == "c" && copies) {
       // words selected with the pointer are the browser's to copy
       if (Platform.selectsText() && Platform.selectedText().nonEmpty) None
       else if (chosen.nonEmpty) Some(() => copySelection())
@@ -1070,6 +1097,68 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     })
     else if (k.key == Key.Escape && selection().nonEmpty) Some(() => selection @= Set.empty)
     else None
+  }
+
+  // ---- typing over a cell ----
+
+  /** Whether cell `c` of row `row` can be typed over: the table `editable`, the column too, and the row come. */
+  def edits(row: Int, c: Int): Boolean =
+    editable() && row >= 0 && columns().lift(c).exists(_.editable) && lineOf(row).nonEmpty
+
+  /** Cell `c` of row `row` typed over in place, where it can be (`edits`): a field over it with its words, chosen to
+    * be typed over. Enter, or leaving it, keeps what was typed where `commit` takes it (and `edited` hears it), and
+    * shows why where it will not; Escape keeps the words it had. Words not changed are nothing to commit. */
+  def edit(row: Int, c: Int): Unit = if (edits(row, c)) {
+    stopEditing()
+    cursor @= ((row, c))
+    reveal()
+    val before = rowTexts(row).lift(c).getOrElse("")
+    val editor = new everyui.list.RowEditor(before)
+    editor.visible := rowOf(row).nonEmpty
+    editor.position.left := columnLeft(c)
+    editor.size.width := math.max(DataTable.toolSize * 2.0, columnWidth(c))
+    editor.position.top := headHeight() + rowOf(row).map(_.position.top()).getOrElse(0.0) - rows.offset()
+    editor.size.height := math.max(DataTable.editHeight, rowOf(row).map(_.size.height()).getOrElse(0.0))
+    var done = false
+    def finish(text: String, left: Boolean): Unit = if (!done) {
+      if (text == before) close()
+      else {
+        val change = CellEdit(row, c, before, text)
+        commit()(change).map {
+          case None =>
+            close()
+            take(change)
+            edited @= change
+          case Some(why) =>
+            editor.error @= why
+            if (!left) editor.start()
+        }.start()
+      }
+    }
+    def close(): Unit = if (!done) {
+      done = true
+      editing = None
+      grid.children -= editor
+      editor.dispose()
+      grid.focus()
+    }
+    editor.submitted.attach(t => finish(t, left = false))
+    editor.left.attach(t => finish(t, left = true))
+    editor.cancelled.attach(_ => close())
+    editing = Some(() => close())
+    grid.children += editor
+    editor.start()
+  }
+
+  /** The cell being typed over left as it was, where one is. */
+  def stopEditing(): Unit = editing.foreach(stop => stop())
+
+  // what was typed taken in: into the row's cell, in the table's own rows or in the source's (where its key is unchanged)
+  private def take(change: CellEdit): Unit = source match {
+    case Some(s) => s.at(change.row).foreach(r => s.replace(padded(r).updated(change.column, DataCell(change.text))))
+    case None => cells().lift(change.row).foreach { r =>
+      cells @= cells().updated(change.row, padded(r).updated(change.column, DataCell(change.text)))
+    }
   }
 
   /** The cell the keys are on brought into view: its row down the rows, its column across the table. */
@@ -1105,6 +1194,10 @@ object DataTable {
     * each way beyond them, so a scroll finds them made. */
   val virtualAfter: Int = 400
   val overscan: Int = 8
+  /** How soon a second click on a cell after the first is a double-click, in ms, and how tall the field a cell is typed
+    * over in is at least. */
+  val doubleClick: Double = 400.0
+  val editHeight: Double = 28.0
   /** How long after the last key a filter's words go to a server, in seconds. */
   val searchWait: Double = 0.3
   /** What a CSV file starts with, so a spreadsheet reads it as UTF-8. */

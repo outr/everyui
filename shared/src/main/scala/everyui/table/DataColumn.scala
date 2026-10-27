@@ -10,6 +10,7 @@ import everyui.text.TextRun
   *
   * `key` is what a server knows the column by, for a table of its rows (`DataTable.paged`): its sort is asked by it
   * (`PagedSource.sortable`), and empty is the column's index. `exported` off leaves the column out of what is copied and
-  * exported, a row's number beside the data, say: it is shown, sorted and filtered by all the same. */
+  * exported, a row's number beside the data, say: it is shown, sorted and filtered by all the same. `editable` off keeps
+  * its cells from being typed over where the table is `editable`. */
 case class DataColumn(title: String, kind: Option[ColumnKind] = None, align: Option[TextAlign] = None,
-                      runs: List[TextRun] = Nil, key: String = "", exported: Boolean = true)
+                      runs: List[TextRun] = Nil, key: String = "", exported: Boolean = true, editable: Boolean = true)
