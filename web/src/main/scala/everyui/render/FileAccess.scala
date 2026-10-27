@@ -132,6 +132,42 @@ object FileAccess {
     }
   }
 
+  /** The picker first, while the click that asked is still fresh; then each piece written into the file chosen as it
+    * comes, the next asked for once it is in. Without a picker the browser keeps the pieces (a Blob's parts, which it
+    * may keep on disk) and downloads them once `write` is done. */
+  def saveStream(name: String, mime: String, write: everyui.file.FileSink => Task[Either[String, Unit]],
+                 done: SaveResult => Unit): Unit = {
+    val downloaded = () => {
+      val parts = js.Array[dom.BlobPart]()
+      val kept = new everyui.file.FileSink {
+        def write(bytes: Array[Byte]): Task[Boolean] = Task {
+          parts.push(bytes.toTypedArray.buffer.asInstanceOf[dom.BlobPart])
+          true
+        }
+      }
+      write(kept).map {
+        case Right(_) => download(objectUrl(new dom.Blob(parts, new dom.BlobPropertyBag { `type` = mime })), name, done)
+        case Left(why) => done(SaveResult.SaveFailed(why))
+      }.start()
+    }
+    toPicked(name, mime, downloaded, done) { file =>
+      var broken = false
+      val sink = new everyui.file.FileSink {
+        def write(bytes: Array[Byte]): Task[Boolean] = if (broken) Task.pure(false) else Task.async[Boolean](told =>
+          file.write(bytes.toTypedArray).asInstanceOf[js.Promise[Any]].`then`[Unit]((_: Any) => told(true))
+            .`catch`[Unit] { (_: Any) =>
+              broken = true
+              told(false)
+            })
+      }
+      new js.Promise[Any]((resolve, reject) => write(sink).map {
+        case Right(_) if !broken => resolve(())
+        case Right(_) => reject("The file could not be written")
+        case Left(why) => reject(why)
+      }.start()).`then`[Any]((_: Any) => file.close().asInstanceOf[js.Promise[Any]])
+    }
+  }
+
   private def blobOf(bytes: Array[Byte], mime: String): dom.Blob =
     new dom.Blob(js.Array(bytes.toTypedArray.buffer), new dom.BlobPropertyBag { `type` = mime })
 

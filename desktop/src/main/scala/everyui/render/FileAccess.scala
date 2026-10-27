@@ -91,6 +91,50 @@ object FileAccess {
       }.start()
     }
 
+  /** The file chosen, written a piece at a time as the pieces come, each off the thread that draws; what `write` answers
+    * at the end keeps it, or deletes it. */
+  def saveStream(name: String, mime: String, write: everyui.file.FileSink => Task[Either[String, Unit]],
+                 done: SaveResult => Unit): Unit =
+    chooseSave(name) match {
+      case None => done(SaveResult.Cancelled)
+      case Some(file) =>
+        var broken: Option[String] = None
+        val out = try Right(new java.io.BufferedOutputStream(new java.io.FileOutputStream(file), 1 << 16))
+          catch { case t: Exception => Left(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)) }
+        out match {
+          case Left(why) => done(SaveResult.SaveFailed(why))
+          case Right(stream) =>
+            val sink = new everyui.file.FileSink {
+              def write(bytes: Array[Byte]): Task[Boolean] = Task.async[Boolean](told => Platform.offThread(() => {
+                val ok = broken.isEmpty && (try {
+                  stream.write(bytes)
+                  true
+                } catch {
+                  case t: Exception =>
+                    broken = Some(Option(t.getMessage).getOrElse(t.getClass.getSimpleName))
+                    false
+                })
+                Platform.later(() => told(ok))
+              }))
+            }
+            write(sink).map { answer =>
+              Platform.offThread(() => {
+                try stream.close() catch { case t: Exception => if (broken.isEmpty) broken = Some(String.valueOf(t.getMessage)) }
+                val result = (answer, broken) match {
+                  case (Right(_), None) => SaveResult.Saved(Some(file.getPath))
+                  case (Left(why), _) =>
+                    file.delete()
+                    SaveResult.SaveFailed(why)
+                  case (_, Some(why)) =>
+                    file.delete()
+                    SaveResult.SaveFailed(why)
+                }
+                Platform.later(() => done(result))
+              })
+            }.start()
+        }
+    }
+
   /** Where a save goes: the system's save dialog over the window, suggesting `name` (with its extension offered beside
     * any file), or None when the person closes it. A spec puts a file of its own here. */
   private[everyui] var chooseSave: String => Option[java.io.File] = name => {

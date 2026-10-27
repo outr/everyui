@@ -177,6 +177,37 @@ object FileAccess {
       }
     }
 
+  /** The document created, written a piece at a time: the pieces made on the thread that draws are handed, one by one,
+    * to the writing off it, each told once it is written; what `write` answers at the end keeps the document, or
+    * deletes it. */
+  def saveStream(name: String, mime: String, write: everyui.file.FileSink => Task[Either[String, Unit]],
+                 done: SaveResult => Unit): Unit =
+    create(name, mime, done) { out =>
+      // a piece to write and who to tell, or the end and what it answered
+      val handed = new java.util.concurrent.LinkedBlockingQueue[Either[Either[String, Unit], (Array[Byte], Boolean => Unit)]]()
+       var broken = false
+      val sink = new everyui.file.FileSink {
+        def write(bytes: Array[Byte]): Task[Boolean] =
+          if (broken) Task.pure(false) else Task.async[Boolean](told => handed.put(Right((bytes, told))))
+      }
+      Platform.later(() => write(sink).map(answer => handed.put(Left(answer))).start())
+      var end: Option[Either[String, Unit]] = None
+      while (end.isEmpty) handed.take() match {
+        case Left(answer) => end = Some(answer)
+        case Right((bytes, told)) =>
+          val ok = !broken && (try {
+            out.write(bytes)
+            true
+          } catch { case _: java.io.IOException => false })
+          if (!ok) broken = true
+          Platform.later(() => told(ok))
+      }
+      end match {
+        case Some(Left(why)) => throw new java.io.IOException(why)
+        case _ => if (broken) throw new java.io.IOException("The file could not be written")
+      }
+    }
+
   /** The system's document creator, suggesting `name` of type `mime`; what the person creates is written by `write`. */
   private def create(name: String, mime: String, done: SaveResult => Unit)(write: java.io.OutputStream => Unit): Unit = {
     saving.foreach(s => s._2(SaveResult.Cancelled))

@@ -33,4 +33,8 @@ object FileAccess {
   /** The bytes are never made: there is nowhere for them to go. */
   def saveLater(name: String, mime: String, bytes: Task[Either[String, Array[Byte]]], done: SaveResult => Unit): Unit =
     done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
+
+  def saveStream(name: String, mime: String, write: everyui.file.FileSink => Task[Either[String, Unit]],
+                 done: SaveResult => Unit): Unit =
+    done(SaveResult.SaveFailed("Nowhere to save a file on this platform"))
 }

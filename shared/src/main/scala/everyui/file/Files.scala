@@ -69,6 +69,20 @@ object Files {
   def saveLater(name: String, mime: Option[String] = None)(bytes: Task[Either[String, Array[Byte]]]): Task[SaveResult] =
     Task.async[SaveResult](done => FileAccess.saveLater(name, mime.getOrElse(FileTypes.of(name)), bytes, done))
 
+  /** A file written a piece at a time, never held whole: the picker opens first (from the click, as a browser wants it),
+    * then `write` is handed where the file goes and writes what it has, each piece waited for (`FileSink.write`) before
+    * the next, for a file too big to make in one go (an export of every row a server has). What it answers ends the
+    * file: `Right` keeps it, `Left(why)` lets it go (the desktop and Android delete it) and answers `SaveFailed(why)`.
+    * Where the browser has no picker the pieces are kept by the browser as they come (a Blob's parts) and downloaded
+    * once `write` is done.
+    *
+    * {{{
+    *   Files.saveStream("rows.csv")(sink => pages.foldLeft(Task.pure(true))((ok, page) =>
+    *     ok.flatMap(more => if (more) sink.write(csv(page)) else Task.pure(false))).map(_ => Right(()))).start()
+    * }}} */
+  def saveStream(name: String, mime: Option[String] = None)(write: FileSink => Task[Either[String, Unit]]): Task[SaveResult] =
+    Task.async[SaveResult](done => FileAccess.saveStream(name, mime.getOrElse(FileTypes.of(name)), write, done))
+
   private def absolute(url: String): String = {
     val origin = everyui.render.Platform.origin()
     if (url.contains("://") || url.startsWith("blob:") || url.startsWith("data:") || origin.isEmpty) url
