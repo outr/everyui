@@ -12,7 +12,7 @@ import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.{SearchField, Toast}
 import everyui.layout.{Layout, LayoutPass, VerticalLayout}
-import everyui.list.ListRow
+import everyui.list.{ListRow, Pointers}
 import everyui.markdown.{TableLook, TableWidths}
 import everyui.menu.{Menu, MenuItem}
 import everyui.paging.PagedSource
@@ -46,6 +46,8 @@ import reactify.*
   *     or hands them over as a CSV or a Markdown file (`Files.download`: the browser's downloads on the web, the save
   *     dialog on the desktop and Android). Where the platform has no clipboard the copies are not offered, nor the
   *     files where it cannot save one.
+  *   - Widths: the handle at each heading's end is dragged to make its column wider or narrower (`widths`, by column
+  *     key, the app's to keep), and a double-click on it fits the column to its cells.
   *   - Edit: where it is `editable`, a double-click or a double tap on a cell (of a column that is `editable`), or F2
   *     on the one the keys are on, types over it in place: Enter or leaving the field keeps it where the app's
   *     `commit` takes it (`edited` hears it), Escape keeps what it was.
@@ -112,6 +114,13 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     own(Var((_: CellEdit) => everyui.async.Task.pure(None: Option[String])))
   /** A cell typed over, once it is taken. */
   val edited: Channel[CellEdit] = Channel[CellEdit]
+  /** The columns' widths as the person set them, by column key (`keyOf`): dragging the handle at a heading's end sets
+    * one, a double-click on it fits the column to its cells, and the app may keep them and give them back. A column not
+    * in it is as wide as the table shares its width (`TableWidths`); wider together than the table, the columns scroll
+    * sideways. */
+  val widths: Var[Map[String, Double]] = own(Var(Map.empty))
+  // a drag on a handle just ended, whose release is not a click on the heading under it
+  private var resizing = false
   // the cell being typed over, and what lets it go; and the last click, for a second on the same cell
   private var editing: Option[() => Unit] = None
   private var lastClick: Option[(Int, Int, Double)] = None
@@ -130,6 +139,8 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private val columnCount: Val[Int] = own(Val(columns().size))
   // the rows, by their index in `cells`, as they are made; and a count that changes as they are
   private var slots: Vector[Option[DataRow]] = Vector.empty
+  // the handles at the headings' ends, made with the columns
+  private[table] var handles: Vector[Container] = Vector.empty
   // where only the rows that show are made (`windowed`): each row's height, measured where it was drawn
   private val heights = new RowHeights(DataTable.lineHeight(style))
   // what is drawn at each place: the row there, its cells, and what draws them (a row, or a grey bar a cell)
@@ -201,9 +212,14 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   // rows, not those the filter shows, so filtering never changes the columns' widths (and so every cell's lines)
   private val gutter: Val[Double] = own(Val(if (Platform.nativeScroll() && maxHeight() > 0.0 &&
     rowTotal * DataTable.lineHeight(style) > maxHeight()) DataTable.gutter else 0.0))
-  private val widths: Val[Vector[Double]] = own(Val(TableWidths(least(), most(), size.width() - gutter())))
-  private val starts: Val[Vector[Double]] = own(Val(widths().scanLeft(0.0)(_ + _).dropRight(1)))
-  private[table] val across: Val[Double] = own(Val(widths().foldLeft(0.0)(_ + _) + gutter()))
+  // each column as wide as the person set it (`widths`), else as the table shares its width
+  private val laidOut: Val[Vector[Double]] = own(Val {
+    val set = widths()
+    val shared = TableWidths(least(), most(), size.width() - gutter())
+    shared.indices.toVector.map(c => set.get(keyOf(c)).map(w => math.max(DataTable.narrowest, w)).getOrElse(shared(c)))
+  })
+  private val starts: Val[Vector[Double]] = own(Val(laidOut().scanLeft(0.0)(_ + _).dropRight(1)))
+  private[table] val across: Val[Double] = own(Val(laidOut().foldLeft(0.0)(_ + _) + gutter()))
   private val headHeight: Val[Double] = own(Val(Option(head()).map(_.size.height()).getOrElse(0.0)))
 
   // the rows, in a column, under the header; and the rules down between the columns, over them, where the look rules them
@@ -691,9 +707,9 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private[table] def columnLeft(c: Int): Double = {
     val s = starts()
     val before = if (Direction.rtl()) gutter() else 0.0
-    if (c >= s.size) 0.0 else before + (if (mirrored) across() - gutter() - s(c) - widths()(c) else s(c))
+    if (c >= s.size) 0.0 else before + (if (mirrored) across() - gutter() - s(c) - laidOut()(c) else s(c))
   }
-  private[table] def columnWidth(c: Int): Double = widths().lift(c).getOrElse(0.0)
+  private[table] def columnWidth(c: Int): Double = laidOut().lift(c).getOrElse(0.0)
   /** Where the rule before column `c` goes. */
   private[table] def ruleAt(c: Int): Double = if (mirrored) columnLeft(c) + columnWidth(c) - 1.0 else columnLeft(c)
   // the room for column `c`'s words
@@ -788,7 +804,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
       placeTwins()
       row
     })
-    grid.children @= fresh +: grid.children().filterNot(c => was.exists(_ eq c))
+    // a handle at each heading's end, over the header, made again with the columns
+    val oldHandles = handles
+    handles = columns().indices.toVector.map(handle)
+    grid.children @= (fresh +: grid.children().filterNot(c => was.exists(_ eq c) || oldHandles.exists(_ eq c))) ++ handles
+    oldHandles.foreach(_.dispose())
     was.foreach(_.dispose())
     val gone = slots.flatten
     slots = Vector.empty
@@ -1016,7 +1036,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     lastClick = if (twice) None else Some((row, c, now))
     if (twice && edits(row, c)) edit(row, c)
     else if (row < 0) {
-      if (!Platform.selectsText() || Platform.selectedText().isEmpty) sortBy(c)
+      if (!resizing && (!Platform.selectsText() || Platform.selectedText().isEmpty)) sortBy(c)
     }
     // the end of a drag across words selects them, and chooses nothing
     else if (!Platform.selectsText() || Platform.selectedText().isEmpty) {
@@ -1097,6 +1117,49 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     })
     else if (k.key == Key.Escape && selection().nonEmpty) Some(() => selection @= Set.empty)
     else None
+  }
+
+  // ---- the columns' widths ----
+
+  /** Column `c` made `width` wide, as the person dragged it (`widths`). */
+  def resize(c: Int, width: Double): Unit = if (c >= 0 && c < columnCount())
+    widths @= widths() + (keyOf(c) -> math.max(DataTable.narrowest, width))
+
+  /** Column `c` as wide as its widest cell on one line, of those measured (the widest of the rows, of a server's those
+    * of its first page), its heading's among them: what a double-click on its handle does. */
+  def fit(c: Int): Unit = most().lift(c).foreach(w => resize(c, w))
+
+  /** Every column as the table shares its width again. */
+  def resetWidths(): Unit = widths @= Map.empty
+
+  /** The handle at column `c`'s heading's end (its left, where the columns run from the right): dragged, the column is
+    * as wide as the drag says; a double-click fits it to its cells. Its clicks are its own, never a sort. */
+  private def handle(c: Int): Container = new Container {
+    size.width @= DataTable.grip
+    size.height := headHeight()
+    position.left := (if (mirrored) columnLeft(c) - DataTable.grip / 2.0 else columnLeft(c) + columnWidth(c) - DataTable.grip / 2.0)
+    this.cursor @= "col-resize"
+    private var lastAt = -1.0
+    event.click.attach { e =>
+      e.consume()
+      val now = Platform.ticks()
+      if (now - lastAt < DataTable.doubleClick) {
+        lastAt = -1.0
+        fit(c)
+      }
+      else lastAt = now
+    }
+    event.pointer.down.attach { e =>
+      if (e.button == PointerEvent.PrimaryButton) {
+        e.consume()
+        val from = e.x
+        val was = columnWidth(c)
+        Pointers.track(m => {
+          resizing = true
+          resize(c, was + (if (mirrored) from - m.x else m.x - from))
+        }, _ => Platform.later(() => resizing = false))
+      }
+    }
   }
 
   // ---- typing over a cell ----
@@ -1197,6 +1260,9 @@ object DataTable {
   /** How soon a second click on a cell after the first is a double-click, in ms, and how tall the field a cell is typed
     * over in is at least. */
   val doubleClick: Double = 400.0
+  /** How wide a column's resize handle is, and the narrowest a column is dragged. */
+  val grip: Double = 6.0
+  val narrowest: Double = 32.0
   val editHeight: Double = 28.0
   /** How long after the last key a filter's words go to a server, in seconds. */
   val searchWait: Double = 0.3
