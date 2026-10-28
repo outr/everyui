@@ -110,6 +110,10 @@ class Composer(onSend: Draft => Unit,
     * land, other words land in their place, nothing does, or they go with the message as a file, a chip as a dropped
     * file is (`longAsFile` for a log or a stack trace). None, the default, lets every paste land. */
   val pasted: Var[Option[String => ComposerPaste]] = own(Var(None))
+  /** Whether an emoji's name typed between colons (`:tada:`) becomes the emoji as its closing colon is typed, with a
+    * list of the emoji whose names start with what follows a colon, after two letters, as completions are listed; and
+    * Backspace just after one gives the name back. On, the default; a remote never offers it. */
+  val emojiShortcodes: Var[Boolean] = own(Var(true))
   /** Whether a message sent while a reply is coming waits in `queue` for its own turn, rather than Enter doing nothing.
     * Off, the default, the composer is as it always was. */
   val queueWhileBusy: Var[Boolean] = own(Var(false))
@@ -158,6 +162,11 @@ class Composer(onSend: Draft => Unit,
   private val lit: Var[Int] = own(Var(0))
   private var word: Option[TriggerWord] = None
   private var asked = 0
+  // the message as it was before the last change, and the last name turned into its emoji: where, the emoji, the name
+  private var before = ""
+  private var converted: Option[(Int, String, String)] = None
+  // whether the composer is turning a name into its emoji, or back, itself
+  private var turning = false
   private var popup: Option[CompletionPopup] = None
   // the app's controls made unfocusable while it is out of use, to be given their focus back
   private var parked: List[Component] = Nil
@@ -249,7 +258,10 @@ class Composer(onSend: Draft => Unit,
   field.value.attach(v => if (text() != v) text @= v)
   text.attach { v =>
     if (field.value() != v) field.value @= v
-    if (complete.nonEmpty && !remote) Platform.later(() => lookup())
+    val was = before
+    before = v
+    if (!remote && emojiShortcodes() && !turning) shortcodes(was, v)
+    if ((complete.nonEmpty || emojiShortcodes()) && !remote) Platform.later(() => lookup())
   }
   suggestion.attach(_ => dismissed @= false)
   field.hint := (if (suggesting() && !asChip) "" else placeholder())
@@ -617,7 +629,7 @@ class Composer(onSend: Draft => Unit,
   }
 
   // what a key the field was asked about does
-  private def act(action: ComposerAction): Unit = action match {
+  private[chat] def act(action: ComposerAction): Unit = action match {
     case ComposerAction.Send => send()
     case ComposerAction.Accept => acceptSuggestion()
     case ComposerAction.Dismiss => dismissSuggestion()
@@ -669,16 +681,79 @@ class Composer(onSend: Draft => Unit,
     }
   }
 
-  // the completions for the word at the caret, asked of the app; an answer for a word since changed is dropped
-  private def lookup(): Unit = complete.foreach { f =>
+  // the completions for the word at the caret: the emoji whose names start with what follows a colon (two letters on),
+  // else the app's; an answer for a word since changed is dropped
+  private def lookup(): Unit = {
     val caret = field.field.map(_.caret).getOrElse(text().length)
-    asked += 1
-    val mine = asked
-    TriggerWord.at(text(), caret, triggers) match {
+    val named = if (!emojiShortcodes()) None
+      else TriggerWord.at(text(), caret, List(CompletionTrigger(':'))).filter(w => w.prefix.length >= 2 &&
+        w.prefix.forall(everyui.emoji.Emoji.nameChar) && !text().substring(w.start + 1, w.end).contains(':'))
+    named match {
       case Some(w) if enabled() && field.focused() =>
+        asked += 1
         word = Some(w)
-        f(w.trigger, w.prefix).map(found => if (mine == asked) showCompletions(found)).startUnit()
-      case _ => closeCompletions()
+        showCompletions(everyui.emoji.Emoji.search(w.prefix, 8).map(e => Completion(e.emoji + "  :" +
+          e.shortcodes.headOption.getOrElse("") + ":", e.emoji)))
+      case _ => complete match {
+        case Some(f) =>
+          asked += 1
+          val mine = asked
+          TriggerWord.at(text(), caret, triggers) match {
+            case Some(w) if enabled() && field.focused() =>
+              word = Some(w)
+              f(w.trigger, w.prefix).map(found => if (mine == asked) showCompletions(found)).startUnit()
+            case _ => closeCompletions()
+          }
+        case None => closeCompletions()
+      }
+    }
+  }
+
+  // `next` in place of the message, the caret at `caret`, a turn after the change it answers (the platform's field is
+  // still making it), where nothing has changed the message since
+  private def swap(was: String, next: String, caret: Int, turned: Option[(Int, String, String)]): Unit =
+    Platform.later(() => if (text() == was) {
+      turning = true
+      try text @= next finally turning = false
+      converted = turned
+      field.field.foreach(f => Platform.later(() => f.moveCaret(caret)))
+    })
+
+  /** A colon just typed after an emoji's name (`:tada` and then `:`) turns the name into the emoji, the caret after it;
+    * Backspace just after that gives the name back, colons and all, for typing on. `was` is the message before the
+    * change, `now` after it. */
+  private def shortcodes(was: String, now: String): Unit = {
+    val last = converted
+    converted = None
+    // Backspace (or any taking away) just after one turned into its emoji: the name back
+    last match {
+      // (the whole of it taken, or where the platform takes a character at a time, a part of it)
+      case Some((at, emoji, name)) if now.length < was.length && was.startsWith(emoji, at) && {
+        val tail = was.substring(at + emoji.length)
+        now.startsWith(was.substring(0, at)) && now.endsWith(tail) && now.length - tail.length < at + emoji.length
+      } =>
+        val back = ":" + name + ":"
+        val tail = was.substring(at + emoji.length)
+        swap(now, now.substring(0, at) + back + tail, at + back.length, None)
+      case _ =>
+        // one colon typed, closing a name: where it went, found by what changed (the field says where its caret is only
+        // once the change has been heard)
+        var at = 0
+        while (at < was.length && at < now.length && was.charAt(at) == now.charAt(at)) at += 1
+        val caret = at + 1
+        val typed = now.length == was.length + 1 && at < now.length && now.charAt(at) == ':' &&
+          now.substring(at + 1) == was.substring(at)
+        if (typed) {
+          var start = caret - 2
+          while (start >= 0 && everyui.emoji.Emoji.nameChar(now.charAt(start))) start -= 1
+          if (start >= 0 && now.charAt(start) == ':' && (start == 0 || !now.charAt(start - 1).isLetterOrDigit)) {
+            everyui.emoji.Emoji.named(now, start).filter(_._2 == caret).foreach { case (emoji, _) =>
+              val name = now.substring(start + 1, caret - 1)
+              val turned = now.substring(0, start) + emoji + now.substring(caret)
+              swap(now, turned, start + emoji.length, Some((start, emoji, name)))
+            }
+          }
+        }
     }
   }
 
