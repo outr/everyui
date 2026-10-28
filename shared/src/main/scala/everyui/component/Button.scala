@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.Color
-import everyui.component.types.{TextAlign, WhiteSpace}
+import everyui.component.types.{TextAlign, TextOverflow, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
@@ -22,11 +22,13 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   val letterSpacing: Var[Double] = own(Var(0.0))
   /** Its words slanted (`FontFeature.italic`). */
   val italic: Var[Boolean] = own(Var(false))
-  /** How many lines its words may take in the room it has (`TextView.textOverflow`): 1, the default, keeps them on one
-    * line, cut short with an ellipsis where they pass it; more wraps them onto up to that many, the button as tall as
-    * they are, the last cut short; 0 wraps them onto as many as they need. A choice someone must read whole before
-    * picking it wraps; wrapped, the pill becomes a box with rounded corners. */
-  val labelLines: Var[Int] = own(Var(1))
+  /** How many lines its words may take in the room it has (`TextView.textOverflow`): 0, the default, wraps them onto as
+    * many as they need where they pass it, the button as tall as they are (Matt's ruling of 2026-10-27: words wrap by
+    * default); more wraps them onto up to that many, the last cut short; 1 keeps them on one line, cut short with an
+    * ellipsis where they pass it, the default where the app cuts words by default (`TextOverflow.default` set to
+    * `Ellipsis`). Words that fit are on one line, a pill, as ever; wrapped, the pill becomes a box with rounded
+    * corners. */
+  val labelLines: Var[Int] = own(Var(if (TextOverflow.default() == TextOverflow.Ellipsis) 1 else 0))
   /** Where wrapped words line up (`labelLines`): at the start, the reading direction's, as a paragraph and the
     * one-line choices beside it do; `Center` or `End` where a design wants them so. */
   val labelAlign: Var[TextAlign] = own(Var(TextAlign.Start))
@@ -53,11 +55,21 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   letterSpacing.attach(px => words.font.letterSpacing @= px)
   words.align := labelAlign()
   italic.attach(on => words.font.italic @= on)
-  labelLines.attach { n =>
-    words.whiteSpace @= (if (n == 1) WhiteSpace.NoWrap else WhiteSpace.Normal)
+  // its words on one line, cut; on up to that many; or on as many as they need
+  private def lined(n: Int): Unit = {
+    // (as many as they need: on one line as ever until they pass their room, then wrapped by the words themselves, so
+    // words that fit are drawn exactly as they were)
+    words.whiteSpace @= (if (n > 1) WhiteSpace.Normal else WhiteSpace.NoWrap)
+    // one line asked for: cut short, as asked; as many as they need: wrapped, unless the app draws words whole
+    words.textOverflow @=
+      (if (n == 1) TextOverflow.Ellipsis
+      else if (n == 0 && TextOverflow.default() != TextOverflow.Visible) TextOverflow.Wrap
+      else TextOverflow.default())
     words.maxLines @= (if (n > 1) n else 0)
-    words.measureWhole(n != 1)
+    words.measureWhole(n > 1)
   }
+  lined(labelLines())
+  labelLines.attach(lined)
   private val icon: Option[MaterialIconView] = glyph.map(g => new MaterialIconView(g, points * 1.4))
   icon.foreach(i => i.color := foreground())
   private val line: Container = icon match {

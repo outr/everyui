@@ -38,7 +38,8 @@ class TreeRow[T](tree: Tree[T]) extends ListRow[TreeLine[T]] {
     TreeRow.this.size.width() - start() - Tree.chevron - 2.0 - boxed(), TreeRow.this.size.height())
   label.position.left := ListRow.along(start() + Tree.chevron + 2.0 + boxed(), label.size.width(), size.width())
   children ++= List(chevron, box, label)
-  tip := item().flatMap(_.value).flatMap(v => tree.decorate()(v).tooltip)
+  // the app's words for it, else its own where they are cut short
+  tip := item().flatMap(_.value).flatMap(v => tree.decorate()(v).tooltip).orElse(label.cut())
 
   override def editStart: Double = start() + Tree.chevron + 2.0 + boxed() + label.textStart
   override def kind: String = "TreeRow"

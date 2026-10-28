@@ -292,6 +292,9 @@ class RenderNode(val sg: SGNode) {
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
     * here. */
   def setTextLimit(width: Double, lines: Int): Unit = ()
+  /** Whether words held to a limit wrap at it here: not yet (no wrap width reaches the label), so words too wide for
+    * their room are cut short with an ellipsis, as they were, rather than run past it. */
+  def wrapsToLimit(): Boolean = false
   /** Words measure as they will be drawn from the moment they are set. */
   def textMeasurable(ready: () => Unit): Boolean = true
 

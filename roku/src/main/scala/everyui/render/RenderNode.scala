@@ -46,6 +46,8 @@ class RenderNode(val sg: SGNode) {
   // The size last set, which the border follows; -1 until set.
   private var boxWidth: Double = -1.0
   private var boxHeight: Double = -1.0
+  // the width words wrapped to fit their room are held to (`setTextLimit`), or 0: the Label wraps at it
+  private var textLimit: Double = 0.0
   // A square border: four thin rectangles along the edges, since a SceneGraph Rectangle draws none of its own.
   private var edges: Vector[SGNode] = Vector.empty
   private var edgeWidth: Double = 0.0
@@ -132,10 +134,14 @@ class RenderNode(val sg: SGNode) {
 
   def getWidth(): Double =
     if (richWidth >= 0.0) richWidth / uiScale()
-    else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
+    else if (fontSize > 0.0) {
+      // (held to its limit, the Label wraps within it)
+      val whole = uiTextWidth(sg, fontUri, fontSize)
+      if (textLimit > 0.0) math.min(whole, textLimit) else whole
+    }
     else math.max(if (boxWidth >= 0.0) boxWidth else 0.0, uiGetWidth(sg) / uiScale()) // (a Group is only its children)
   def getHeight(): Double =
-    if (wrapping && boxWidth > 0.0 && lineHeight > 0.0) {
+    if (wrapping && (boxWidth > 0.0 || textLimit > 0.0) && lineHeight > 0.0) {
       // the lines the Label puts its words on at its width, worked out as it wraps them (uiWrappedLines) rather than
       // read from its bounding rect, which on a Roku TV came out lines short of what it drew; each is a line of its
       // face as the Label draws one, and the spacing after it
@@ -613,7 +619,19 @@ class RenderNode(val sg: SGNode) {
   def setTextWhole(on: Boolean): Unit = ()
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
     * here. */
-  def setTextLimit(width: Double, lines: Int): Unit = ()
+  /** Words that wrap held to `width`: the Label given that width, at which it wraps them (a line's room, where words wrap
+    * by default rather than end in an ellipsis); 0, or words that fit, let go of it. `lines` is cut by the text itself
+    * (TextView). */
+  def setTextLimit(width: Double, lines: Int): Unit = if (fontSize > 0.0) {
+    val was = textLimit
+    textLimit = if (wrapping && width > 0.0 && uiTextWidth(sg, fontUri, fontSize) > width) width else 0.0
+    if (textLimit != was) {
+      uiSetWidth(sg, px(if (textLimit > 0.0) textLimit else math.max(0.0, boxWidth)))
+      if (richWidth >= 0.0) drawText()
+    }
+  }
+  /** Whether words held to a limit wrap at it here: they do, the Label given its width. */
+  def wrapsToLimit(): Boolean = true
   /** Words measure as they will be drawn from the moment they are set. */
   def textMeasurable(ready: () => Unit): Boolean = true
 

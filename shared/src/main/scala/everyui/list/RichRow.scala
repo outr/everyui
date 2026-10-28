@@ -64,12 +64,15 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   // where the pieces start from either edge: inside the block's padding in a block
   private val side: Val[Double] = own(Val(if (blocks()) RichRow.blockMargin + RichRow.blockPad else RichRow.inset))
   // how tall the row's own line is, and the room a block leaves above and below it (its padding, and the gap after it)
+  // how tall an item's words are, with the room round them: a title or a detail that wraps (words wrap by default) makes
+  // its row taller, the list measuring each row
+  private val wordsTall: Var[Double] = own(Var(0.0))
   private val base: Val[Double] = own(Val(
     if (header()) {
       if (!blocks()) RichRow.headerHeight else if (group().nonEmpty) RichRow.captionHeight else RichRow.blockHeader
     }
     else if (emptyLine()) RichRow.emptyHeight
-    else if (tall()) RichRow.tallHeight else RichRow.shortHeight))
+    else math.max(if (tall()) RichRow.tallHeight else RichRow.shortHeight, wordsTall())))
   private val above: Val[Double] = own(Val(if (blocks() && !header() && item().exists(_.blockStart)) RichRow.blockPad
     else 0.0))
   private val below: Val[Double] = own(Val(if (blocks() && item().exists(_.blockEnd))
@@ -139,6 +142,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     size.width())
   heading.position.top := above()
   heading.visible := header() && !(blocks() && group().nonEmpty)
+  // a header is a line tall: its title cut short is read whole in its tip
+  tip := (if (header()) heading.cut() else None)
   /** The header's ⋮, opening its section's (or group's) menu: a little smaller than an item's, to fit the header. */
   val sectionMore: IconButton = new IconButton(MaterialIcon.MoreVert, RichList.moreLabel, () => openSectionMore()) {
     size.width @= RichRow.headerMore
@@ -235,6 +240,10 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     maxWidth := math.max(20.0, end() - textStart() - secondTrail() - 8.0)
     visible := tall()
   }
+
+  wordsTall := (if (header() || emptyLine()) 0.0
+    else if (tall()) title.size.height() + detail.size.height() + 2.0 + RichRow.wordsPad
+    else title.size.height() + RichRow.wordsPad)
 
   // the title's line in the middle of a short row, the two lines together in the middle of a tall one
   private val titleTop: Val[Double] = own(Val(
@@ -619,6 +628,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
 
 object RichRow {
   val inset: Double = 12.0
+  /** The room above and below an item's words, which a row that grows for them keeps. */
+  val wordsPad: Double = 22.0
   val headerHeight: Double = 30.0
   /** How far a section's header in a group is set in under the group's: its chevron under the group's title. */
   val nest: Double = 22.0

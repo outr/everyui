@@ -16,8 +16,9 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     followed = false
     fit()
   }))
-  /** The widest these words may be drawn on one line: what will not fit is cut short with an ellipsis, as a title
-    * beside a chip is, so whatever sits after them keeps its place. 0 for no limit. */
+  /** The widest these words may be drawn: what will not fit on a line wraps onto another (`TextOverflow.Wrap`, the
+    * default), or is cut short with an ellipsis (`TextOverflow.Ellipsis`), as a title beside a chip is, so whatever sits
+    * after them keeps its place. 0 for no limit. */
   lazy val maxWidth: Var[Double] = own(Var(0.0))
   /** The most lines wrapped words may take: what will not fit is cut short at a word with an ellipsis, as a synopsis
     * under an episode's name is. 0 for no limit. */
@@ -28,14 +29,17 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** Whether the words are drawn cut short to fit (`maxWidth`, `maxLines`, their box), as last measured. */
   lazy val elided: Var[Boolean] = own(Var(false))
   /** What the words do where they are wider than their box, the room what they are in gives them (a column's width
-    * less its padding, a row's less what else is in it, the screen's): kept in it (`TextOverflow.Fit`, the default,
-    * `TextOverflow.default`), wrapped within it where they wrap and cut short with an ellipsis where they are one line;
-    * or drawn whole past it (`TextOverflow.Visible`). Words that fit are drawn just as they would be either way. Words
+    * less its padding, a row's less what else is in it, the screen's), or than `maxWidth`: wrapped within it
+    * (`TextOverflow.Wrap`, the default, `TextOverflow.default`), taking as many lines as they need; cut short with an
+    * ellipsis where they are one line (`TextOverflow.Ellipsis`); or drawn whole past it (`TextOverflow.Visible`). Words that fit are drawn just as they would be either way. Words
     * given a width of their own (`size.width`) are left to it, and words in something sized to them (a row given no
     * width, a button, a chip) are kept to the room that has. Cut short, they are still read whole (`semantics`). */
   lazy val textOverflow: Prop[TextOverflow] = {
     overflowMade = true
-    own(new Prop[TextOverflow](overflowAtFirst, _ => if (keepsToBox) TextView.check(this)))
+    own(new Prop[TextOverflow](overflowAtFirst, _ => if (keepsToBox) {
+      fit()
+      TextView.check(this)
+    }))
   }
   private def overflow: TextOverflow = if (overflowMade) textOverflow() else overflowAtFirst
   /** A shadow behind the letters themselves, not the box: an edge that keeps words readable over a picture. None at
@@ -236,9 +240,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   }
 
   private def cut(): Unit = {
+    // words wrapped to fit their room before are put back as they were, to be measured whole again
+    if (wrappedToFit) unwrap()
     val wanted = content()
     val limit = maxWidth()
-    val lines = if (maxLines() > 0 && whiteSpace() != WhiteSpace.NoWrap) maxLines() else 0
+    val lines = if (maxLines() > 0 && (whiteSpace() != WhiteSpace.NoWrap || wraps)) maxLines() else 0
     // the box's room, where the words were kept to it or ran past it as last measured (keepToBox)
     val box = if ((boxed || toBox) && !followed && !size.width.explicit) roomNow else 0.0
     val before = measured.width()
@@ -249,6 +255,8 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     if (held) node.setTextLimit(0.0, 0)
     held = asked
     if (unfit) {
+      // (wrapping words wrap at the limit already, where they can be measured nothing more is known)
+      if (held && wraps && limit > 0.0) wrapToFit()
       if (held) node.setTextLimit(limit, lines)
     }
     else {
@@ -270,6 +278,18 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
         }
         if (wrapAt == 0.0) single = if (limit > 0.0 && limit < box) limit else box
       }
+      // wrapped by default rather than cut (TextOverflow.Wrap): a line wider than its room, the box's or its `maxWidth`,
+      // takes another, a word too long for one broken where it must be; `maxLines` still cuts what passes it
+      if (wraps) {
+        val room = if (single > 0.0) single else if (wrapAt > 0.0) wrapAt else if (limit > 0.0) limit else 0.0
+        if (room > 0.0 && node.getWidth() > room + 0.5) {
+          wrapToFit()
+          node.setTextLimit(room, 0)
+          wrapAt = room
+          single = 0.0
+        }
+        else if (room > 0.0 && wrapAt == 0.0) single = 0.0
+      }
       cutTo(wanted, single, lines)
       elided @= node.getText() != wanted
       val kept = if (wrapAt > 0.0 && (single == 0.0 || wrapAt < single)) wrapAt else single
@@ -280,6 +300,28 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       boxWhole = if (boxed || was) whole else 0.0
       if (elided() || described.nonEmpty) describe(wanted)
     }
+  }
+
+  // whether words too wide wrap rather than end in an ellipsis (`TextOverflow.Wrap`): not words laid out as they are
+  // written (`WhiteSpace.Pre`, code), which keep their lines, nor where the platform cannot wrap words at a width (an
+  // Apple TV, for now), where they are cut as before rather than run past their room
+  private def wraps: Boolean = overflow == TextOverflow.Wrap && whiteSpace() != WhiteSpace.Pre && node.wrapsToLimit()
+  // whether the words are wrapped to fit their room, where they would otherwise be on one line
+  private var wrappedToFit = false
+
+  /** The words let wrap where they are on one line, and a word too long for a line broken, to fit their room. */
+  private def wrapToFit(): Unit = if (!wrappedToFit) {
+    wrappedToFit = true
+    if (whiteSpace() == WhiteSpace.NoWrap) node.setWhiteSpace(WhiteSpace.Normal.value)
+    node.setWrapAnywhere(true)
+  }
+
+  /** The words as they were set, before they were wrapped to fit. */
+  private def unwrap(): Unit = {
+    wrappedToFit = false
+    node.setTextLimit(0.0, 0)
+    node.setWhiteSpace(whiteSpace().value)
+    node.setWrapAnywhere(wrapAnywhere())
   }
 
   // cut short, the words are named whole for whatever reads the page (`semantics`); a name the app gave them stands

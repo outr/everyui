@@ -37,6 +37,10 @@ class CompletionPopup(val completions: Vector[Completion], val lit: Var[Int], wi
     line.backgroundColor := (if (lit() == i) Theme.controlLit() else Color.Clear)
     label.position.left @= pad
     label.position.middle := line.size.middle()
+    // a completion is a line tall: cut short, and read whole in its tip
+    label.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+    detail.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+    line.tooltip := (if (label.elided() || detail.elided()) (label.content() + "  " + detail.content()).trim else "")
     label.maxWidth := line.size.width() * 0.6
     detail.position.left := label.position.left() + label.size.width() + pad
     detail.position.middle := line.size.middle()

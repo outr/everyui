@@ -31,6 +31,9 @@ class StatusBar(working: Var[Vector[Working]], connection: Var[ConnectionState],
       color := colour
     }
     view.maxWidth := math.max(60.0, size.width() - StatusBar.inset * 2.0 - 120.0)
+    // a status bar is a line tall: its words cut short, and read whole in its tip
+    view.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+    view.tooltip := (if (view.elided()) view.content() else "")
     view
   }
 

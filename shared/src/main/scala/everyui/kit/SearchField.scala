@@ -110,6 +110,8 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
       font.size @= 14.0
     }
     shown.maxWidth := wordsWidth()
+    // a field is a line tall: what it shows is cut short at its end
+    shown.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
     shown.position.left := ListRow.along(SearchField.lead, shown.size.width(), size.width())
     shown.position.top := (size.height() - shown.size.height()) / 2.0
     event.click.attach(_ => Platform.editField(placeholder(), value(), false,

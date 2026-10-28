@@ -89,6 +89,9 @@ class StackedPane(heading: String, val content: Component, val collapsed: Var[Bo
     font.weight @= FontWeight.SemiBold
     color := Theme.text()
     maxWidth := math.max(20.0, header.size.width() - textStart() - actionsRoom() - 8.0)
+    // a header is a line tall beside its actions: its title is cut short, and read whole in its tip
+    textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+    tooltip := (if (elided()) title() else "")
     position.top := (headerHeight() - size.height()) / 2.0
   }
   Mirror.place(chevron, () => header.size.width(), () => StackedPane.inset)

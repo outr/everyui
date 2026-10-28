@@ -38,7 +38,7 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
   private val inset: Double = points * 0.3
   /** As wide as its widest entry asks, and never narrower than `Menu.minWidth`. */
   private val across: Var[Double] = own(Var(Menu.minWidth()))
-  val rows: List[MenuRow] = items.map(i => new MenuRow(i, across() - inset * 2.0, points))
+  val rows: List[MenuRow] = items.map(i => new MenuRow(i, across() - inset * 2.0, points, Menu.widest - inset * 2.0))
   private val column = new Container {
     layout @= Some(VerticalLayout(0.0))
     children ++= rows
@@ -57,7 +57,7 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
   // the submenu this opened, while it is up
   private var opened: Option[Menu] = None
 
-  across := math.max(Menu.minWidth(), rows.map(_.natural()).foldLeft(0.0)(math.max) + inset * 2.0)
+  across := math.min(math.max(Menu.minWidth(), rows.map(_.natural()).foldLeft(0.0)(math.max) + inset * 2.0), Menu.widest)
   heading.foreach { h =>
     Mirror.place(h, () => size.width(), () => points * 1.2)
     h.position.top @= points
@@ -191,6 +191,8 @@ object Menu {
   val textSize: Var[Double] = Var(14.0)
   /** The least width of a menu. */
   val minWidth: Var[Double] = Var(200.0)
+  /** The widest a menu is drawn: the screen's width less a margin each side, its entries wrapping within it. */
+  def widest: Double = math.max(Menu.minWidth(), ui.size.width() - 16.0)
   /** How long the pointer rests on an entry with a submenu before it opens, in seconds. */
   val hoverDelay: Var[Double] = Var(0.3)
 

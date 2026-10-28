@@ -42,6 +42,10 @@ class GraphNode(label: Val[String], detail: Val[Option[String]], look: Val[NodeL
   name.font.weight @= FontWeight.SemiBold
   name.maxWidth := math.max(0.0, size.width() - 28.0)
   more.maxWidth := math.max(0.0, size.width() - 28.0)
+  // a node is a box of its own size: its words cut short, and read whole in its tip
+  name.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+  more.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+  tooltip := (if (name.elided() || more.elided()) (name.content() + "  " + more.content()).trim else "")
   more.visible := detail().nonEmpty
   name.position.left @= 16.0
   more.position.left @= 16.0

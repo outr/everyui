@@ -44,6 +44,9 @@ class AttachmentChip(val attachment: Attachment, removeLabel: String, remove: ()
     font.size @= points
     color := Theme.text()
     maxWidth @= points * 12.0
+    // a chip is a line tall: its name cut short, and read whole in its tip
+    textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+    tooltip := (if (elided()) attachment.name else "")
   }
   private val weight = new TextView {
     content @= Attachment.sizeText(attachment.size)

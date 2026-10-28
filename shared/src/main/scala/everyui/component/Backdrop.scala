@@ -264,6 +264,13 @@ class Backdrop extends Container {
           v.opacity @= 1.0
           view.visible @= false
         }
+        // and done by when it should be whatever holds the loop up, so the picture never stays over the video
+        else Platform.after(Backdrop.fadeIn.toMillis / 1000.0 + 0.4, () => if (videoFading.exists(_ eq run)) {
+          run.cancel()
+          videoFading = None
+          v.opacity @= 1.0
+          view.visible @= false
+        })
       }
       else {
         v.opacity @= 1.0

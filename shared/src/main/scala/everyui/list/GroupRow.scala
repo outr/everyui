@@ -31,6 +31,8 @@ class GroupRow[T](results: GroupedList[T]) extends ListRow[GroupLine[T]] {
   line.spans := item().flatMap(_.item).map(results.spansOf).getOrElse(Nil)
   line.lead := item().flatMap(_.item).map(results.leadOf).getOrElse("")
   children ++= List(chevron, title, line)
+  // a header's words read whole in its tip where they are cut short (a row is a line tall)
+  tip := (if (header()) title.cut() else None)
 
   override def kind: String = "GroupRow"
 }

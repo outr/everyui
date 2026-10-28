@@ -69,5 +69,9 @@ object FullDemos {
       DataTableDemo.run()
       true
     }
+    else if (demo == "wrap") {
+      WrapDemo.run()
+      true
+    }
     else false
 }

@@ -61,6 +61,9 @@ class QueueChip(val draft: Draft, edit: () => Unit, remove: () => Unit, keys: Ke
   clip.visible @= attached > 0
   fileCount.visible @= attached > 0
   // the room at the end: Remove, Edit, then the files
+  // a queued message's chip is a line tall, its first line cut short and read whole in its tip (pressed, it is edited)
+  words.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+  words.tooltip := (if (words.elided()) words.content() else "")
   words.maxWidth := math.max(20.0, size.width() - 26.0 - 8.0 - 4.0 - 54.0 -
     (if (attached > 0) 6.0 + fileCount.size.width() + 2.0 + 14.0 else 0.0))
   Mirror.place(handle, () => size.width(), () => 0.0)

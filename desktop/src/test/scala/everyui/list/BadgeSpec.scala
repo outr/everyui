@@ -205,6 +205,8 @@ class BadgeSpec extends FxSpec {
         content @= folder
         font.size @= 12.0
         elide @= side
+        // (cut, as asked: words wrap by default)
+        textOverflow @= everyui.component.types.TextOverflow.Ellipsis
         maxWidth @= 120.0
       })
       fx(ui.children += v)

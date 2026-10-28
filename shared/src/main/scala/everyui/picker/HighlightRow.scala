@@ -17,6 +17,8 @@ class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T
     runs := item().map(t => HighlightRow.runs(text(t), spans(t), points)).getOrElse(Nil)
   }
   private val note = new TextView {
+    // (on the row's one line, cut at its end: the tip has it whole)
+    textOverflow @= everyui.component.types.TextOverflow.Ellipsis
     font.size @= points * 0.9
     color := Theme.muted()
     content := item().map(detail).getOrElse("")
@@ -28,6 +30,9 @@ class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T
   note.position.top := (size.height() - note.size.height()) / 2.0
   size.width.attach(_ => node.setClip(size.width(), size.height()))
   children ++= List(label, note)
+  // a picker's row is a line tall, its words cut at its end: where they run past it, they are read whole in its tip
+  tip := item().filter(_ => note.position.left() + note.size.width() > size.width() - ListRow.inset)
+    .map(t => (text(t) :: List(detail(t)).filter(_.nonEmpty)).mkString("  "))
 }
 
 object HighlightRow {

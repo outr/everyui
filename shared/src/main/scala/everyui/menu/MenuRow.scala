@@ -14,7 +14,7 @@ import reactify.*
   * right the shortcut, the note, or the way into a submenu. It lights under the focus, which a pointer resting on it
   * brings, and stays half lit while it is the menu's current choice (`active`); `chosen` hears it clicked or entered,
   * and `opened` the arrow into its submenu. A separator is a rule. */
-class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Container {
+class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => Double = 0.0) extends Container {
   /** A click, a tap or OK on it. */
   val chosen: Channel[Unit] = Channel[Unit]
   /** The arrow pressed into its submenu. */
@@ -52,6 +52,13 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double) extends Cont
         color := Theme.muted()
       }
     }
+
+  // its words wrapped within the widest a row may be (the screen's, less the menu's edges), less the slot and what
+  // trails them: a menu on a phone wraps a long entry rather than running off the screen (words wrap by default)
+  private val wordsRoom: Val[Double] = own(Val(if (widest <= 0.0) 0.0 else math.max(points * 4.0,
+    widest - pad * 2.0 - slot - trail.map(t => points * 2.0 + t.size.width()).getOrElse(0.0))))
+  label.maxWidth := wordsRoom()
+  detail.foreach(d => d.maxWidth := wordsRoom())
 
   /** How wide it would be with the room it asks for: what the menu is made as wide as, for its widest row. */
   val natural: Val[Double] = own(Val(

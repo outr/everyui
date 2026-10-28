@@ -519,6 +519,8 @@ class RenderNode(val fx: Node) {
   def setTextWhole(on: Boolean): Unit = ()
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone; words that wrap and are
     * given no width of their own wrap at `width` where they would run past it (kept to their box). */
+  /** Whether words held to a limit (`setTextLimit`) wrap at it here: they do. */
+  def wrapsToLimit(): Boolean = true
   def setTextLimit(width: Double, lines: Int): Unit = fx match {
     case t: Text if wrapping && explicitWidth < 0.0 =>
       wrapLimit = 0.0

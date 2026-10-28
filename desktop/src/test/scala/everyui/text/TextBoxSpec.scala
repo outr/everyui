@@ -9,10 +9,21 @@ import everyui.i18n.Direction
 import everyui.{FxSpec, ui}
 import reactify.*
 
-/** Words kept to their box (`TextView.textOverflow`): the room what they are in gives them. Words that run past it
-  * are cut short with an ellipsis on one line and wrapped where they wrap, and read whole; words that fit are drawn
-  * exactly as before; `TextOverflow.Visible`, on a text view or for the app, draws them whole past it as before. */
+/** Words kept to their box (`TextView.textOverflow`) where the app asks for an ellipsis (`TextOverflow.Ellipsis`, for
+  * every view it makes): the room what they are in gives them. Words that run past it are cut short with an ellipsis on
+  * one line and wrapped where they wrap, and read whole; words that fit are drawn exactly as before;
+  * `TextOverflow.Visible`, on a text view or for the app, draws them whole past it as before. Wrapping by default is
+  * TextWrapSpec's. */
 class TextBoxSpec extends FxSpec {
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    fx(TextOverflow.default @= TextOverflow.Ellipsis)
+  }
+  override def afterAll(): Unit = {
+    fx(TextOverflow.default @= TextOverflow.Wrap)
+    super.afterAll()
+  }
+
   private val long = "A rather long line of words that will not fit in a narrow panel at all"
   private val short = "Short words"
 
@@ -428,7 +439,7 @@ class TextBoxSpec extends FxSpec {
           fx(button.size.width()) should be > 400.0
         }
       }
-      finally fx(TextOverflow.default @= TextOverflow.Fit)
+      finally fx(TextOverflow.default @= TextOverflow.Ellipsis)
     }
   }
 }

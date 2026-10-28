@@ -689,6 +689,8 @@ class RenderNode(val el: html.Element) {
   def setWrapAnywhere(on: Boolean): Unit = el.style.setProperty("overflow-wrap", if (on) "anywhere" else "")
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) held to their room by the page until the cut is made
     * (TextFit). */
+  /** Whether words held to a limit (`setTextLimit`) wrap at it here: they do. */
+  def wrapsToLimit(): Boolean = true
   def setTextLimit(width: Double, lines: Int): Unit = TextFit.limit(el, width, lines)
   /** Words that wrap measured whole on one line, and wrapped only at the limit they are held to (`setTextLimit`), not at
     * the width of what holds them: a label in a box sized to it would otherwise be squeezed with it word by word. */

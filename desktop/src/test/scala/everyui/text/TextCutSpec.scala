@@ -1,12 +1,22 @@
 package everyui.text
 
 import everyui.component.{Row, TextView}
-import everyui.component.types.WhiteSpace
+import everyui.component.types.{TextOverflow, WhiteSpace}
 import everyui.{FxSpec, ui}
 
-/** Words cut short to fit (`TextView.maxWidth`, `maxLines`): cut where they were made off the screen, cut again when
-  * their face or size changes after the words were set, and measured as cut. */
+/** Words cut short to fit (`TextView.maxWidth`, `maxLines`) where the app asks for an ellipsis (`TextOverflow.Ellipsis`):
+  * cut where they were made off the screen, cut again when their face or size changes after the words were set, and
+  * measured as cut. */
 class TextCutSpec extends FxSpec {
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    fx(TextOverflow.default @= TextOverflow.Ellipsis)
+  }
+  override def afterAll(): Unit = {
+    fx(TextOverflow.default @= TextOverflow.Wrap)
+    super.afterAll()
+  }
+
   private val name = "A fairly long name · 180 eps"
 
   "Words cut short to fit" should {

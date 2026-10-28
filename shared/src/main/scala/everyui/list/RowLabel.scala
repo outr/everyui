@@ -1,6 +1,7 @@
 package everyui.list
 
 import everyui.component.{Container, MaterialIconView, TextView}
+import everyui.component.types.TextOverflow
 import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
@@ -21,6 +22,8 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
   private val iconRoom: Val[Double] = own(Val(if (look.icon.nonEmpty) points + 10.0 else 0.0))
   val label: TextView = new TextView {
     content := text
+    // a list row is a line tall and cannot grow: its words are cut short, and read whole in its tip (`cut`)
+    textOverflow @= TextOverflow.Ellipsis
     font.size @= points
     font.weight := look.weight
     color := look.color.getOrElse(Theme.text())
@@ -33,6 +36,7 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
   /** The badge's tail, never cut: at the end where it fits beside the text, else not drawn, nor the badge. */
   private[everyui] val tail: TextView = new TextView {
     content := look.badgeTail
+    textOverflow @= TextOverflow.Ellipsis
     font.size @= points - 2.0
     color := look.badgeColor.getOrElse(Theme.muted())
     // held to the room as the badge is, so it is measured as drawn (on the web once its face has loaded), and not drawn
@@ -47,6 +51,7 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
   private val badgeRoom: Val[Double] = own(Val(room() - tailSpan()))
   private[everyui] val badge: TextView = new TextView {
     content := look.badge
+    textOverflow @= TextOverflow.Ellipsis
     font.size @= points - 2.0
     color := look.badgeColor.getOrElse(Theme.muted())
     elide := look.badgeElide
@@ -68,6 +73,18 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
 
   /** Where the text starts, from the start edge. */
   def textStart: Double = iconRoom()
+
+  /** What the row shows, whole, where any of it is cut short: its words, its badge and its tail, for the row's tip (a
+    * list row is a line tall, and its words cut short are read there). None where it is all drawn. */
+  val cut: Val[Option[String]] = own(Val {
+    val words = text
+    val badgeWords = look.badge
+    val tailWords = look.badgeTail
+    val short = label.elided() || (badgeWords.nonEmpty && (badge.elided() || !badge.visible())) ||
+      (tailWords.nonEmpty && !tail.visible())
+    if (!short || words.isEmpty) None
+    else Some((List(words) ++ List(badgeWords, tailWords).filter(_.nonEmpty)).mkString("  "))
+  })
 }
 
 object RowLabel {
