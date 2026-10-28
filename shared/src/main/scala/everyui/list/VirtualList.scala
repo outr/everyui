@@ -63,6 +63,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     * has no pointer of its own (a phone, a television), where every click activates. `Some(true)` makes every click
     * activate, a mouse's too (a picker's choice, made and done with), and `Some(false)` none, a finger's neither. */
   val clickActivates: Var[Option[Boolean]] = own(Var(None))
+  /** Which items are the one in use, of a "pick one of these" list (the model a conversation runs on, the topic shown):
+    * their rows are drawn as it (`ListRow.inUse`), apart from the cursor and the selection. None, by default. */
+  val inUse: Var[T => Boolean] = own(Var((_: T) => false))
   /** Whether a finger held on a row shows its tip (`ListRow.tip`) where that opens no menu. None, by default, lets
     * each hold say: a finger's does, on any device, as does any on a touch screen with no pointer of its own (a
     * phone); `Some` says for every hold. */
@@ -872,6 +875,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
           row.current @= cursor.contains(key)
           row.active @= lit
           row.cursorShown @= shown
+          row.inUse @= item.exists(inUse())
           row.editing @= editing().contains(key)
           row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
           if (sizedSource) row.size.height @= heightAt(at)
@@ -1137,6 +1141,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   editing.attach(_ => refresh())
+  inUse.attach(_ => refresh())
   current.attach { c =>
     currentAt = c.map(indexOf).getOrElse(-1)
     refresh()

@@ -12,8 +12,8 @@ import reactify.*
 
 /** A row of a [[Menu]], `width` wide: a slot for the tick or the icon, the label (and its detail under it), and at the
   * right the shortcut, the note, or the way into a submenu. It lights under the focus, which a pointer resting on it
-  * brings, and stays half lit while it is the menu's current choice (`active`); `chosen` hears it clicked or entered,
-  * and `opened` the arrow into its submenu. A separator is a rule. */
+  * brings, and stays half lit while it is the menu's current choice (`active`), ringed in the accent with its words
+  * in it; `chosen` hears it clicked or entered, and `opened` the arrow into its submenu. A separator is a rule. */
 class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => Double = 0.0) extends Container {
   /** A click, a tap or OK on it. */
   val chosen: Channel[Unit] = Channel[Unit]
@@ -23,7 +23,8 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
   private val pad: Double = points * 0.85
   private val slot: Double = points * 1.4
   private val ink: Val[Color] = own(Val(
-    if (!item.enabled) Theme.muted().withAlpha(0.6) else if (item.danger) Theme.warning() else Theme.text()))
+    if (!item.enabled) Theme.muted().withAlpha(0.6) else if (item.danger) Theme.warning()
+    else if (item.active) Theme.accent() else Theme.text()))
 
   private val lead: Option[MaterialIconView] =
     if (item.checked.contains(true)) Some(new MaterialIconView(MaterialIcon.Check, points * 1.15))
@@ -81,6 +82,11 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
     focusable @= item.enabled
     size.height := words.size.height() + points * 0.9
     backgroundColor := MenuRow.fill(focused(), item.active)
+    // the current choice ringed in the accent, its words in it too: plainer than a mark before it
+    if (item.active) {
+      borderWidth @= MenuRow.ring
+      borderColor := Theme.accent()
+    }
     radius @= points * 0.35
     lead.foreach { l =>
       l.color := ink()
@@ -113,6 +119,9 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
 object MenuRow {
   /** The arrow into a submenu: the way the page reads on (Right, or Left in a right-to-left language). */
   def inward: Key = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
+
+  /** How thick the accent ring round the current choice is (`MenuItem.active`). */
+  val ring: Double = 1.5
 
   /** A row's ground: lit under the focus; half lit for the menu's current choice (`MenuItem.active`) while the focus is
     * elsewhere, so that the focus is always the plainest to see; clear otherwise. */

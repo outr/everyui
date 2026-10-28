@@ -49,7 +49,7 @@ object WrapDemo {
     table.size.width := width()
     lazy val menu: Button = new Button("Open a menu of long items", () => Menu.below(menu, List(
       MenuItem("An item whose label is far too long for any menu on a phone", () => ()),
-      MenuItem("Short", () => (), detail = "with a detail under it that also runs on past the edge"),
+      MenuItem("Short", () => (), active = true, detail = "with a detail under it that also runs on past the edge"),
       MenuItem("Delete everything you made today and yesterday too", () => (), danger = true))))
     val toast = new Button("Show a toast", () =>
       Toast.show("A message long enough to need a second line, and a third, on a phone held upright", seconds = 8.0))

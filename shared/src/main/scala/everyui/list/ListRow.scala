@@ -23,6 +23,10 @@ class ListRow[T] extends Container {
   val cursorShown: Var[Boolean] = own(Var(false))
   val editing: Var[Boolean] = own(Var(false))
   val drop: Var[Option[DropPosition]] = own(Var(None))
+  /** Whether its item is the one in use of a "pick one of these" list (`VirtualList.inUse`): drawn in an accent ring
+    * on a faint accent ground, which the cursor's ground covers while it is on the row; a row's words follow it in the
+    * accent too (`HighlightRow`'s do). */
+  val inUse: Var[Boolean] = own(Var(false))
   /** Words for more than the row shows (`Decoration.tooltip`), which the list shows in a tip as the pointer or the
     * cursor rests on the row and gives a screen reader as its description: a row binds it to its item's. None is no tip. */
   val tip: Var[Option[String]] = own(Var(None))
@@ -35,8 +39,9 @@ class ListRow[T] extends Container {
   /** Where an editor over this row starts, from its start edge (the right, right to left): where the label does. */
   def editStart: Double = ListRow.inset
 
-  backgroundColor := ListRow.fill(selected(), current() && cursorShown(), active(), drop().contains(DropPosition.Into))
-  borderWidth := (if (current() && cursorShown()) 1.0 else 0.0)
+  backgroundColor := ListRow.fill(selected(), current() && cursorShown(), active(), drop().contains(DropPosition.Into),
+    inUse())
+  borderWidth := (if (inUse()) ListRow.inUseRing else if (current() && cursorShown()) 1.0 else 0.0)
   borderColor := Theme.accent()
 
   override def kind: String = "ListRow"
@@ -51,12 +56,17 @@ object ListRow {
   /** Space before the label. */
   val inset: Double = 8.0
 
+  /** How thick the ring round the row in use is (`inUse`). */
+  val inUseRing: Double = 1.5
+
   /** A row's background: the accent, faintly, where it is chosen in a list with the focus; the lit control colour where
-    * it is chosen in one without, or under the cursor, or a drop would go into it. */
-  def fill(selected: Boolean, current: Boolean, active: Boolean, into: Boolean): Color =
+    * it is chosen in one without, or under the cursor, or a drop would go into it; the accent, fainter still, where it
+    * is the one in use. */
+  def fill(selected: Boolean, current: Boolean, active: Boolean, into: Boolean, inUse: Boolean = false): Color =
     if (into) Theme.accent().withAlpha(0.45)
     else if (selected && active) Theme.accent().withAlpha(0.3)
     else if (selected) Theme.controlLit()
     else if (current && active) Theme.control()
+    else if (inUse) Theme.accent().withAlpha(0.12)
     else Color.Clear
 }

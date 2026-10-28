@@ -44,6 +44,11 @@ import reactify.*
   * no room. It is a label, never focused and no row of the list, and the field, which has the focus, says it after
   * its name.
   *
+  * Given `inUse`, the matches it holds for the one in use (the model a conversation runs on, the topic shown) are drawn
+  * apart from the rest, in an accent ring on a faint accent ground, their words in the accent (`ListRow.inUse`), and
+  * the cursor starts on the first of them while no words narrow the list. Rows of the app's own (`row`) get the ring
+  * and the ground, and read `inUse` for their words.
+  *
   * {{{
   *   FilterPicker.show[File](q => index.search(q), _.path, _.name, _.folder, placeholder = "Go to file") { f =>
   *     open(f)
@@ -64,7 +69,8 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
                       width: Double = FilterPicker.width, debounce: Double = FilterPicker.debounce,
                       row: Option[Var[String] => ListRow[T]] = None, segments: List[Segment] = Nil,
                       groupOf: T => String = (_: T) => "", toggles: List[PickerToggle] = Nil,
-                      extraField: Option[PickerField] = None, heading: Option[Val[String]] = None) extends Container {
+                      extraField: Option[PickerField] = None, heading: Option[Val[String]] = None,
+                      inUse: T => Boolean = (_: T) => false) extends Container {
   /** A match chosen. */
   val chosen: Channel[T] = Channel[T]
   /** The words in the field. */
@@ -168,6 +174,7 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   // one click chooses, with a mouse too: it is a choice to make and be done with, not a list to pick rows in (where a
   // click only puts the cursor on a row and a double click opens it)
   list.clickActivates @= Some(true)
+  list.inUse @= inUse
   matches.attach(_ => narrow())
   segment.attach(_ => narrow())
   // an option turned over, or the second field's words changed, ask again; the app's query reads them
@@ -323,7 +330,8 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   private def narrow(): Unit = {
     val key = segment()
     shown @= (if (key.isEmpty) matches() else matches().filter(t => groupOf(t) == key))
-    if (shown().nonEmpty) list.moveTo(0)
+    // the cursor on the one in use while no words narrow them, else on the first
+    if (shown().nonEmpty) list.moveTo(if (words().trim.nonEmpty) 0 else math.max(0, shown().indexWhere(inUse)))
   }
 
   private def choose(t: T): Unit = {
@@ -346,9 +354,10 @@ object FilterPicker {
 
   /** A picker put up at once; `choose` hears what is chosen. */
   def show[T](query: String => Task[Vector[T]], keyOf: T => String, labelOf: T => String,
-              detailOf: T => String = (_: T) => "", placeholder: String = Words.search, initial: String = "")
+              detailOf: T => String = (_: T) => "", placeholder: String = Words.search, initial: String = "",
+              inUse: T => Boolean = (_: T) => false)
              (choose: T => Unit): FilterPicker[T] = {
-    val picker = new FilterPicker[T](query, keyOf, labelOf, detailOf, placeholder)
+    val picker = new FilterPicker[T](query, keyOf, labelOf, detailOf, placeholder, inUse = inUse)
     picker.chosen.attach(choose)
     picker.open(initial)
     picker

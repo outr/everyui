@@ -282,6 +282,26 @@ class MenuSpec extends FxSpec {
       // half lit is still lit, and plainly less than the focus
       fx(MenuRow.fill(focused = false, active = true).alpha) shouldBe fx(everyui.theme.Theme.controlLit().alpha * 0.5) +- (1.0 / 255.0)
     }
+    "ring its current choice in the accent, its words in it, and no other" in onScreen { card =>
+      val menu = fx(Menu.below(card, List(MenuItem("List"), MenuItem("Grid", active = true), MenuItem("Columns"))))
+      def ring(i: Int): Double = fx(menu.rows(i).borderWidth())
+      ring(1) shouldBe MenuRow.ring
+      fx(menu.rows(1).borderColor()) shouldBe everyui.theme.Theme.accent()
+      ring(0) shouldBe 0.0
+      ring(2) shouldBe 0.0
+      def words(i: Int): Option[everyui.Color] = fx {
+        def all(c: Component): List[Component] = c :: (c match {
+          case k: Container => k.children().toList.flatMap(all)
+          case _ => Nil
+        })
+        all(menu.rows(i)).collectFirst { case t: TextView if t.content() == menu.rows(i).item.label => t.color() }
+      }
+      words(1) shouldBe Some(everyui.theme.Theme.accent())
+      words(0) shouldBe Some(everyui.theme.Theme.text())
+      // the focus moved off it, it keeps its ring
+      press("ArrowDown")
+      ring(1) shouldBe MenuRow.ring
+    }
     "open on its first entry with no current choice" in onScreen { _ =>
       fx(Menu.show(List(MenuItem("One"), MenuItem("Two"))))
       focusedLabel shouldBe Some("One")

@@ -8,12 +8,15 @@ import everyui.theme.Theme
 import reactify.*
 
 /** A picker's row: the item's `text` with the runs `spans` names lit in the accent and bold (what the query matched),
-  * and its `detail` after it, muted (a file's folder, a symbol's kind). */
+  * and its `detail` after it, muted (a file's folder, a symbol's kind). The one in use (`ListRow.inUse`) is in the
+  * accent, in its ring. */
 class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T => String = (_: T) => "",
                       points: Double = 14.0) extends ListRow[T] {
   private val label = new RichText {
     whiteSpace @= WhiteSpace.NoWrap
     font.size @= points
+    // the one in use in the accent, its ring and ground the row's own (`ListRow.inUse`)
+    color := (if (inUse()) Theme.accent() else Theme.text())
     runs := item().map(t => HighlightRow.runs(text(t), spans(t), points)).getOrElse(Nil)
   }
   private val note = new TextView {

@@ -49,7 +49,8 @@ object PickerDemo {
       Direction.set(true)
     }
     ui.backgroundColor := Theme.background()
-    val chose = Var("")
+    // the one in use to begin with (`using=`), drawn apart in the picker
+    val chose = Var(Platform.launchArg("using"))
     val finding = Platform.launchArg("find") == "1"
     val open = new Button(if (finding) "Search everywhere" else "Choose a model",
       () => if (finding) find(chose) else show(chose), style = ButtonStyle.Filled)
@@ -66,7 +67,8 @@ object PickerDemo {
   private def show(chose: Var[String]): Unit = {
     val picker = new FilterPicker[(String, String, String)](
       q => Task.pure(models.filter(m => Match.spans(q, m._1).nonEmpty)), _._1, _._1, _._3,
-      placeholder = "Choose a model", segments = segments(Platform.launchArg("icons") != "0"), groupOf = _._2)
+      placeholder = "Choose a model", segments = segments(Platform.launchArg("icons") != "0"), groupOf = _._2,
+      inUse = _._1 == chose())
     picker.chosen.attach { m =>
       chose @= m._1
       Platform.log("picker chose " + m._1)
