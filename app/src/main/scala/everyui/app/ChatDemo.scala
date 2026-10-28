@@ -30,7 +30,8 @@ import reactify.*
   * it is whole. `queue=1` writes with a Composer whose messages queue while a reply comes (`afterstop=drain` to go on
   * after Stop, `seed=1` to start with a paused queue). `working=inline` shows who is working in the transcript
   * (`ChatView.workingInline`) rather than over the composer, the release notes' worker with a long brief, cut to three
-  * lines. Logs `chat ok` once built. */
+  * lines. Helper's first message links a file shared in the room (`demo-file:plan.md`), which the app answers
+  * (`Link.handle`), logging `chat file plan.md`. Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -93,6 +94,11 @@ object ChatDemo {
           case None => rest :+ ChatReaction(r.emoji, count, r.on, List("You"))
         })
       }
+    }
+    // a file shared in the room, linked by a scheme of the app's own: the app answers it (`Link.handle`)
+    Link.handle("demo-file") { href =>
+      Platform.log("chat file " + href.stripPrefix("demo-file:"))
+      true
     }
     chat.rails @= railed
     chat.workingInline @= inline
@@ -255,7 +261,7 @@ object ChatDemo {
     ChatEntry.message("o1", sam, self = false, "Morning! Where are we with the release?", Some(start - 540000L)),
     ChatEntry.message("o2", sam, self = false, "I need the notes by noon.", Some(start - 530000L)),
     ChatEntry.message("o3", you, self = true, "Close. Helper, can you check what is left?", Some(start - 300000L)),
-    ChatEntry.message("o4", helper, self = false, "On it. I'll look through the open issues and the test runs first.",
+    ChatEntry.message("o4", helper, self = false, "On it. I'll look through the open issues and the test runs first, as [the plan](demo-file:plan.md) says.",
       Some(start - 280000L), meta = Some("model small · 212 tokens · 1.4s")),
     ChatEntry.activity("o-msg", "Message to The Oracle", ActivityStatus.Succeeded,
       Some(ChatEntry.textDetails("message_conversation \"The Oracle\"", "delivered")), Some(start - 270000L),

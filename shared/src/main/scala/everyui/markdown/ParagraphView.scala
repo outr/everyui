@@ -56,7 +56,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     val all = links()
     if (all.size == 1) ctx.press(all.head._2, this)
     else if (all.size > 1) Menu.below(this, all.map(l => MenuItem(if (l._1.trim.isEmpty) l._2 else l._1,
-      () => ctx.press(l._2, this), detail = if (everyui.component.RichText.acts(l._2)) "" else l._2)))
+      () => ctx.press(l._2, this), detail = if (everyui.component.Link.appOwn(l._2)) "" else l._2)))
   }
 
   /** Its lines made again where they are no longer the same lines and pictures; otherwise their words follow
