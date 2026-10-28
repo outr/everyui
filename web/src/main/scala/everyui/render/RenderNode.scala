@@ -1022,9 +1022,14 @@ object RenderNode {
     "linear-gradient(" + angle.toString + "deg, " +
       everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
   /** A CSS font-family for `family`: it, then the fallback faces (`Faces.fallbackFaces`), for what it has nothing to
-    * draw with. */
+    * draw with, then the system's colour emoji faces (`emojiFaces`), so an emoji anywhere draws in colour. */
   def families(family: String): String =
-    ("'" + family + "'" :: everyui.font.Faces.fallbackFaces().toList.map(f => "'" + f.family + "'")).mkString(", ")
+    ("'" + family + "'" :: everyui.font.Faces.fallbackFaces().toList.map(f => "'" + f.family + "'")).mkString(", ") +
+      ", " + emojiFaces
+
+  /** The systems' colour emoji faces, by name: macOS's and iOS's, Windows', Android's and Linux's. An app that wants
+    * its own where a system has none registers one as a fallback face (`Faces.fallback`), drawn before these. */
+  val emojiFaces: String = "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'"
 
 
   /** The embed keys at `el` (the page's focused element) belong to, "" for none: the name given by the nearest element
@@ -1262,7 +1267,7 @@ object Nodes {
     el.style.background = "transparent"
     el.style.setProperty("resize", "none")
     // the family a text node starts with, until the app's (`Theme.family`) is set: a textarea's own is monospace
-    el.style.fontFamily = "system-ui, sans-serif"
+    el.style.fontFamily = "system-ui, " + RenderNode.emojiFaces + ", sans-serif"
     el.style.setProperty("box-sizing", "border-box")
     el.style.setProperty("user-select", "text")
     new RenderNode(el)

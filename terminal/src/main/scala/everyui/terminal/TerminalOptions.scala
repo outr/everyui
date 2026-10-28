@@ -22,5 +22,6 @@ case class TerminalOptions(fontSize: Double = 13.0,
 
 object TerminalOptions {
   /** EveryUI's monospace face, then each platform's own. */
-  val monospace: String = "'Roboto Mono', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace"
+  val monospace: String = "'Roboto Mono', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', " +
+    "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', monospace"
 }

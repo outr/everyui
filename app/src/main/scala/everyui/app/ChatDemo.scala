@@ -73,6 +73,27 @@ object ChatDemo {
       bar
     }
     val chat = new ChatView(entries, Some(older), working, connection, Some(composer))
+    // reactions, kept here as an app's store would keep them: the demo's two first messages reacted to, and a press
+    // answered by changing the message's
+    chat.reactionsEnabled @= true
+    entries().foreach {
+      case m: ChatEntry.Message if m.id == "o1" => m.reactions @= List(ChatReaction("\ud83d\udc4d", 2, mine = true, List("You", "Helper")))
+      case m: ChatEntry.Message if m.id == "o4" => m.reactions @= List(ChatReaction("\ud83c\udf89", 1, mine = false, List("Sam")),
+        ChatReaction("\ud83d\udc40", 3, mine = false, List("Sam", "Layla", "Helper")))
+      case _ => ()
+    }
+    chat.onReact.attach { r =>
+      Platform.log("chat reacted " + r.entryId + " " + r.emoji + " " + r.on.toString)
+      entries().collectFirst { case m: ChatEntry.Message if m.id == r.entryId => m }.foreach { m =>
+        val was = m.reactions().find(_.emoji == r.emoji)
+        val count = was.map(_.count).getOrElse(0) + (if (r.on) 1 else -1)
+        val rest = m.reactions().filterNot(_.emoji == r.emoji)
+        m.reactions @= (if (count <= 0) rest else was match {
+          case Some(x) => m.reactions().map(y => if (y.emoji == r.emoji) x.copy(count = count, mine = r.on) else y)
+          case None => rest :+ ChatReaction(r.emoji, count, r.on, List("You"))
+        })
+      }
+    }
     chat.rails @= railed
     chat.workingInline @= inline
     chat.size.width := ui.size.width()

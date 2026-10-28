@@ -68,7 +68,8 @@ object Emoji {
     val plain = untoned(emoji)
     if (tone < 1 || tone > 5 || !entry(plain).exists(_.skinTones)) plain
     else {
-      val first = plain.offsetByCodePoints(0, 1)
+      // (its first character: two UTF-16 units where it is past the first plane, as nearly every emoji is)
+      val first = if (plain.nonEmpty && plain.charAt(0) >= '\ud800' && plain.charAt(0) <= '\udbff') 2 else 1
       val rest = plain.substring(first)
       plain.substring(0, first) + tones(tone - 1) + (if (rest.startsWith("️")) rest.substring(1) else rest)
     }

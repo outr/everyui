@@ -15,11 +15,17 @@ import reactify.*
   * its date too unless the transcript names the days (`dated`). The words can be selected and copied
   * (`Component.selectable`). A click on the avatar or the name is `pressAuthor`, under the hand where it `answers`.
   *
+  * Where the transcript shows reactions (`reacting`), the message's (`ChatEntry.Message.reactions`) go under the bubble
+  * as small pills, an emoji and how many, the person's own lit, who reacted in each one's tip: a click on one adds the
+  * person's or takes it away (`react`), and a "+" after them opens a picker for another (`addReaction`).
+  *
   * On a phone (`width` under `Transcript.narrow`) everybody else's avatar goes small at the start of the name's line,
   * and the bubble under them takes all the width but the side margins. */
 class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: Val[Long],
                   render: (Val[String], Val[Double]) => Component, dated: Boolean = true,
-                  pressAuthor: () => Unit = () => (), answers: => Boolean = false) extends Container {
+                  pressAuthor: () => Unit = () => (), answers: => Boolean = false,
+                  reacting: => Boolean = false, react: (String, Boolean) => Unit = (_: String, _: Boolean) => (),
+                  addReaction: Component => Unit = (_: Component) => ()) extends Container {
   private val top: Double = if (leads) Transcript.groupGap else Transcript.lineGap
 
   private val name: TextView = new TextView {
@@ -64,6 +70,79 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     maxWidth := Transcript.widest(width)
   }
   private val footer: Container = Row(6.0, middle = true)(spinner, meta)
+
+  // the reactions under the bubble, made while the transcript shows them: on one line as wide as they are, or wrapped
+  // at the bubble's widest
+  private val reacted: Container = new Container {
+    layout @= Some(everyui.layout.FlowLayout(4.0, 4.0))
+  }
+  private val reactionsShown: Val[Boolean] = own(Val(reacting && m.reactions().nonEmpty))
+  private def pills(): Unit = if (reacting) {
+    val made: Vector[Component] = m.reactions().toVector.map(pill) :+ adder()
+    reacted.children.replaceMaking(made)
+  }
+  private def pill(r: ChatReaction): Component = new Container {
+    private val glyph = new TextView {
+      content @= r.emoji
+      font.size @= 14.0
+    }
+    private val count = new TextView {
+      content @= r.count.toString
+      font.size @= 12.0
+      font.weight @= (if (r.mine) FontWeight.SemiBold else FontWeight.Normal)
+      color := (if (r.mine) Theme.accent() else Theme.muted())
+    }
+    private val line = Row(4.0, middle = true)(glyph, count)
+    size.width := line.size.width() + 16.0
+    size.height @= MessageView.pillHeight
+    radius @= MessageView.pillHeight / 2.0
+    borderWidth @= 1.0
+    borderColor := (if (r.mine) Theme.accent() else Theme.border())
+    backgroundColor := (if (r.mine) Theme.accent().withAlpha(0.18) else if (event.pointer.over()) Theme.controlLit()
+      else Theme.control())
+    tooltip @= r.who.mkString(", ")
+    semantics @= everyui.component.types.Semantics.button(r.emoji + " " + r.count.toString)
+    cursor @= "pointer"
+    line.position.left @= 8.0
+    line.position.middle := size.middle()
+    children += line
+    event.click.attach { e =>
+      e.consume()
+      react(r.emoji, !r.mine)
+    }
+  }
+  // the "+" after them, for another
+  private def adder(): Component = new Container {
+    private val glyph = new everyui.component.MaterialIconView(everyui.font.MaterialIcon.AddReaction, 15.0)
+    glyph.color := Theme.muted()
+    size.width @= MessageView.pillHeight + 8.0
+    size.height @= MessageView.pillHeight
+    radius @= MessageView.pillHeight / 2.0
+    borderWidth @= 1.0
+    borderColor := Theme.border()
+    backgroundColor := (if (event.pointer.over()) Theme.controlLit() else everyui.Color.Clear)
+    tooltip @= everyui.emoji.EmojiWords.addReaction
+    semantics @= everyui.component.types.Semantics.button(everyui.emoji.EmojiWords.addReaction)
+    cursor @= "pointer"
+    glyph.position.center := size.center()
+    glyph.position.middle := size.middle()
+    children += glyph
+    private val self = this
+    event.click.attach { e =>
+      e.consume()
+      addReaction(self)
+    }
+  }
+  // on one line where they fit, else wrapped at the widest a bubble is
+  private val reactedAcross: Val[Double] = own(Val(math.min(Transcript.widest(width),
+    reacted.children().foldLeft(0.0)((w, c) => w + c.size.width() + 4.0))))
+  reacted.size.width := reactedAcross()
+  reacted.visible := reactionsShown()
+  m.reactions.attach(_ => pills())
+  // (shown once the transcript shows them, made then)
+  private val reacts: Val[Boolean] = own(Val(reacting))
+  reacts.attach(_ => pills())
+  pills()
   footer.visible := m.streaming() || m.meta().nonEmpty
 
   // whether it is drawn as on a phone: the avatar small beside the name, the bubble the width less the margins
@@ -87,7 +166,10 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   bubble.position.left := at(bubble.size.width())
   bubble.position.top := top + headerHeight()
   footer.position.left := at(footer.size.width())
-  footer.position.top := bubble.position.top() + bubble.size.height() + 3.0
+  reacted.position.left := at(reacted.size.width())
+  reacted.position.top := bubble.position.top() + bubble.size.height() + 4.0
+  footer.position.top := (if (reactionsShown()) reacted.position.top() + reacted.size.height() + 3.0
+    else bubble.position.top() + bubble.size.height() + 3.0)
 
   // the avatar, where the message leads its group: large in its own room, or small beside the name on a phone, made
   // again as the width crosses from one to the other
@@ -110,7 +192,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   if (!m.self) MessageView.pressable(name, pressAuthor, answers)
   size.width := width
   size.height := footer.position.top() + (if (footer.visible()) footer.size.height() + 2.0 else -3.0)
-  children ++= List(header, bubble, footer)
+  children ++= List(header, bubble, reacted, footer)
 
   override def kind: String = "MessageView(" + m.id + ")"
 }
@@ -130,6 +212,9 @@ object MessageView {
     * picture behind its conversations and wants it through their bubbles as through one's own, about 0.8 keeping the
     * words on them easy to read. The words, and the code and tables in a message, are drawn as they are. */
   val othersOpacity: Var[Double] = Var(1.0)
+
+  /** How tall a reaction's pill is. */
+  val pillHeight: Double = 24.0
 
   /** A bubble's colour: one's own a wash of the accent, everybody else's the control colour (`othersOpacity` of it);
     * the text colour reads on either, in a light theme and a dark one. */

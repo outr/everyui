@@ -32,12 +32,15 @@ sealed abstract class ChatEntry {
 object ChatEntry {
   /** Something somebody said. `self` is the person using the app, whose messages sit at the end edge (right, in a
     * left-to-right language); everybody else's sit at the start, under their avatar and name. `text` grows while
-    * `streaming`, and `meta` is an optional line under it from the app (the model, tokens, how long it took). */
+    * `streaming`, and `meta` is an optional line under it from the app (the model, tokens, how long it took). Its
+    * `reactions` (`ChatReaction`) show under it where the transcript shows them. */
   final class Message(val id: String, val author: Participant, val self: Boolean, val time: Option[Long] = None)
     extends ChatEntry {
     val text: Var[String] = Var("")
     val streaming: Var[Boolean] = Var(false)
     val meta: Var[Option[String]] = Var(None)
+    /** What people reacted to it with, the app's to keep (`Transcript.reactionsEnabled` shows them). */
+    val reactions: Var[List[ChatReaction]] = Var(Nil)
   }
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it

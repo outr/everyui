@@ -114,6 +114,9 @@ class Composer(onSend: Draft => Unit,
     * list of the emoji whose names start with what follows a colon, after two letters, as completions are listed; and
     * Backspace just after one gives the name back. On, the default; a remote never offers it. */
   val emojiShortcodes: Var[Boolean] = own(Var(true))
+  /** Whether a button beside Send opens an emoji picker (`everyui.emoji.EmojiPicker`), the one chosen put in at the
+    * caret. On, the default; a remote never shows it. */
+  val emojiPicker: Var[Boolean] = own(Var(true))
   /** Whether a message sent while a reply is coming waits in `queue` for its own turn, rather than Enter doing nothing.
     * Off, the default, the composer is as it always was. */
   val queueWhileBusy: Var[Boolean] = own(Var(false))
@@ -199,6 +202,8 @@ class Composer(onSend: Draft => Unit,
   }
   private val attachButton = new IconButton(MaterialIcon.AttachFile, words.attach, () => pick())
   private val moreButton = new IconButton(MaterialIcon.Add, words.more, () => trayOpen @= !trayOpen())
+  private lazy val emojiButton: IconButton = new IconButton(MaterialIcon.InsertEmoticon, everyui.emoji.EmojiWords.emoji,
+    () => everyui.emoji.EmojiPicker.open(emojiButton, emoji => insert(emoji)))
   private val trayAttach = new Button(words.attach, () => pick(), ButtonStyle.Text, Some(MaterialIcon.AttachFile), 13.0)
   private val sendButton = new SendButton(words.send, words.stop)
   private val start = Row(4.0, middle = true)()
@@ -299,6 +304,7 @@ class Composer(onSend: Draft => Unit,
 
   // --- the controls ----------------------------------------------------------------------------------------------
   attachButton.disabled := !enabled()
+  emojiButton.disabled := !enabled()
   moreButton.disabled := !enabled()
   trayAttach.enabled := enabled()
   moreButton.icon.icon := (if (trayOpen()) MaterialIcon.Close else MaterialIcon.Add)
@@ -406,6 +412,7 @@ class Composer(onSend: Draft => Unit,
   attachable.attach(_ => arrange())
   leading.children.attach(_ => arrange())
   trailing.children.attach(_ => arrange())
+  emojiPicker.attach(_ => arrange())
   attachments.attach { list =>
     // what left the draft (taken off, sent, or cleared by the app) lets its picture go, unless it waits in the queue
     if (!shuffling) letGo(held)
@@ -577,6 +584,16 @@ class Composer(onSend: Draft => Unit,
     Platform.announce(said)
   }
 
+  /** `words` put in the message at the caret (in place of what is chosen in it), the caret after them, the field
+    * focused: an emoji the picker chose, or anything an app puts in. */
+  def insert(words: String): Unit = if (enabled()) {
+    val now = text()
+    val caret = math.max(0, math.min(now.length, field.field.map(_.caret).getOrElse(now.length)))
+    text @= now.substring(0, caret) + words + now.substring(caret)
+    field.focus()
+    field.field.foreach(f => Platform.later(() => f.moveCaret(caret + words.length)))
+  }
+
   /** The suggestion written into the field, the caret after it. */
   def acceptSuggestion(): Unit = if (suggesting()) suggestion().foreach { s =>
     dismissed @= true
@@ -657,6 +674,7 @@ class Composer(onSend: Draft => Unit,
       if (pickable && attachable()) start.children += attachButton
       if (leading.children().nonEmpty) start.children += leading
     }
+    if (emojiPicker() && !remote) end.children += emojiButton
     if (trailing.children().nonEmpty) end.children += trailing
     if (queueing()) end.children += queueButton
     end.children += sendButton
@@ -719,6 +737,11 @@ class Composer(onSend: Draft => Unit,
       field.field.foreach(f => Platform.later(() => f.moveCaret(caret)))
     })
 
+  // whether `now` is `was` with all or a part of `emoji`, at `at`, taken away (and nothing else)
+  private def backspaced(was: String, now: String, at: Int, emoji: String): Boolean =
+    now.length < was.length && was.startsWith(emoji, at) && now.startsWith(was.substring(0, at)) &&
+      now.endsWith(was.substring(at + emoji.length)) && now.length - (was.length - at - emoji.length) < at + emoji.length
+
   /** A colon just typed after an emoji's name (`:tada` and then `:`) turns the name into the emoji, the caret after it;
     * Backspace just after that gives the name back, colons and all, for typing on. `was` is the message before the
     * change, `now` after it. */
@@ -728,21 +751,20 @@ class Composer(onSend: Draft => Unit,
     // Backspace (or any taking away) just after one turned into its emoji: the name back
     last match {
       // (the whole of it taken, or where the platform takes a character at a time, a part of it)
-      case Some((at, emoji, name)) if now.length < was.length && was.startsWith(emoji, at) && {
-        val tail = was.substring(at + emoji.length)
-        now.startsWith(was.substring(0, at)) && now.endsWith(tail) && now.length - tail.length < at + emoji.length
-      } =>
+      case Some((at, emoji, name)) if backspaced(was, now, at, emoji) =>
         val back = ":" + name + ":"
         val tail = was.substring(at + emoji.length)
         swap(now, now.substring(0, at) + back + tail, at + back.length, None)
       case _ =>
-        // one colon typed, closing a name: where it went, found by what changed (the field says where its caret is only
-        // once the change has been heard)
+        // a colon typed, closing a name: where it went, found by what changed (the field says where its caret is only
+        // once the change has been heard, and a page may say a few keys at once): the last colon among what was typed
         var at = 0
         while (at < was.length && at < now.length && was.charAt(at) == now.charAt(at)) at += 1
-        val caret = at + 1
-        val typed = now.length == was.length + 1 && at < now.length && now.charAt(at) == ':' &&
-          now.substring(at + 1) == was.substring(at)
+        val added = now.length - was.length
+        val inserted = added >= 1 && now.substring(at + added) == was.substring(at)
+        val colon = if (inserted) now.lastIndexOf(':', at + added - 1) else -1
+        val caret = colon + 1
+        val typed = colon >= at
         if (typed) {
           var start = caret - 2
           while (start >= 0 && everyui.emoji.Emoji.nameChar(now.charAt(start))) start -= 1

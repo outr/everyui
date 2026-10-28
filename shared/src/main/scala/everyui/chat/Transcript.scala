@@ -98,6 +98,13 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** What the small row of buttons beside a message offers (`MessageActions`): `actionsFor` unless the app says
     * otherwise (Retry, Quote, Edit as well); nothing, no buttons. Asked of messages only. */
   val messageActions: Var[ChatEntry => List[MessageAction]] = own(Var((e: ChatEntry) => actionsFor(e)))
+  /** Whether messages' reactions (`ChatEntry.Message.reactions`) show under them, a click on one adding the person's or
+    * taking it away, and the buttons beside a message offer Add reaction (an emoji picker): what is pressed is heard
+    * (`onReact`), and the app updates `reactions` from its store. Off, the default: a transcript of an app with none (a
+    * guest's) shows nothing of them. */
+  val reactionsEnabled: Var[Boolean] = own(Var(false))
+  /** A reaction pressed: added (`on`) or taken away, on which message. */
+  val onReact: Channel[Reacted] = Channel[Reacted]
   /** Whether room is kept at the start edge for the entries' rails (`ChatEntry.rail`), so the rows line up whether or
     * not theirs has one: on for a conversation of threads or topics, before it shows (turned on later, the rows draw a
     * little narrower, the one at the top of the view kept where it is). Off, the default, the rows are as they always
@@ -190,7 +197,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** The view for `entry` in `row`, which is taken apart again when the row moves on. */
   private[chat] def viewFor(entry: ChatEntry, leading: Boolean, row: ChatRow): Component = entry match {
     case m: ChatEntry.Message => new MessageView(m, leading, row.inner, ticker.now, words(m), !dayMarkers(),
-      () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()))
+      () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()),
+      reactionsEnabled(), (emoji: String, on: Boolean) => onReact @= Reacted(m.id, emoji, on),
+      (at: Component) => pickReaction(m, at))
     case a: ChatEntry.Activity =>
       new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), words(a), bodyLines())
     case t: ChatEntry.Thinking => new ThinkingView(t, row.inner, ticker.now)
@@ -372,6 +381,19 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case _ => Nil
   }
 
+  // what the buttons beside `entry` offer: the app's, and Add reaction where reactions show
+  private def offeredFor(entry: ChatEntry): List[MessageAction] = messageActions()(entry) ++ (entry match {
+    case m: ChatEntry.Message if reactionsEnabled() => List(MessageAction(everyui.font.MaterialIcon.AddReaction,
+      everyui.emoji.EmojiWords.addReaction, () => pickReaction(m, bar.getOrElse(this))))
+    case _ => Nil
+  })
+
+  /** An emoji picker under `at` for a reaction to `m`: the one chosen added, or the person's taken away where it is
+    * theirs already (`onReact`). */
+  def pickReaction(m: ChatEntry.Message, at: Component): Unit =
+    everyui.emoji.EmojiPicker.open(at, emoji =>
+      onReact @= Reacted(m.id, emoji, !m.reactions().exists(r => r.mine && r.emoji == emoji)))
+
   // the message under the pointer, and where the pointer is down the list while it is over it (a scroll under a
   // still pointer brings another under it)
   private val hovered: Var[Option[String]] = own(Var(None))
@@ -414,7 +436,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       else if (list.focused()) Transcript.message(list.currentItem)
       else None
     }.filter(m => list.indexOf(m.id) >= 0)
-    val offered = wanted.map(m => messageActions()(m)).getOrElse(Nil)
+    val offered = wanted.map(offeredFor).getOrElse(Nil)
     if (offered.nonEmpty && bar.isEmpty) {
       val made = new MessageActions(list, () => {
         if (bar.exists(_.holdsFocus)) byKey()
@@ -439,7 +461,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   // a forward arrow on a message: onto its buttons
   private def toActions(entry: ChatEntry): Option[() => Unit] = entry match {
-    case m: ChatEntry.Message if messageActions()(m).nonEmpty => Some(() => {
+    case m: ChatEntry.Message if offeredFor(m).nonEmpty => Some(() => {
       keyed = true
       retarget()
       bar.filter(_.showing()).flatMap(_.actionButtons.headOption).foreach(_.focus())
@@ -650,6 +672,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   }
   shown.attach(_ => retarget())
   messageActions.attach(_ => retarget())
+  reactionsEnabled.attach(_ => retarget())
   onDispose(() => {
     kept.values.foreach(_.dispose())
     kept = Map.empty

@@ -35,6 +35,10 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   def mentions: Var[Set[String]] = transcript.mentions
   /** What a press on a mention does (`Transcript.onMention`). */
   def onMention: Var[Option[MentionPressed => Unit]] = transcript.onMention
+  /** Whether messages' reactions show, and can be added and taken away (`Transcript.reactionsEnabled`). */
+  def reactionsEnabled: Var[Boolean] = transcript.reactionsEnabled
+  /** A reaction pressed (`Transcript.onReact`). */
+  def onReact: Channel[Reacted] = transcript.onReact
   /** Whether the transcript keeps room at the start edge for the entries' rails (`ChatEntry.rail`,
     * `Transcript.rails`). */
   def rails: Var[Boolean] = transcript.rails
