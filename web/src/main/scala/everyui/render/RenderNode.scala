@@ -352,11 +352,16 @@ class RenderNode(val el: html.Element) {
     }
   }
 
-  // whether `target` is in this with nothing that answers a click between
+  // whether `target` is in this with nothing that answers a click between: a link in the words answers one (a press on
+  // it is a click, not a selection begun, so a list does not put its rows in reading order under it, which moved the
+  // row in the page between the press and the release, and the browser then had no click to give)
   private def onWords(target: dom.EventTarget): Boolean = {
     var at = target.asInstanceOf[dom.Node]
-    while (at != null && at != el && !(at.isInstanceOf[html.Element] &&
-      at.asInstanceOf[html.Element].style.getPropertyValue("user-select") == "none")) at = at.parentNode
+    while (at != null && at != el && !(at.isInstanceOf[html.Element] && {
+      val e = at.asInstanceOf[html.Element]
+      e.style.getPropertyValue("user-select") == "none" || e.classList.contains("everyui-link") ||
+        e.getAttribute("role") == "link"
+    })) at = at.parentNode
     at == el
   }
 
