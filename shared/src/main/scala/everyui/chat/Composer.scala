@@ -3,6 +3,7 @@ package everyui.chat
 import everyui.async.Task
 import everyui.component.*
 import everyui.component.types.{PasteAction, Semantics, WhiteSpace}
+import everyui.menu.MenuItem
 import everyui.event.{Key, KeyEvent}
 import everyui.file.{Files, PickedFile}
 import everyui.focus.Focus
@@ -117,6 +118,13 @@ class Composer(onSend: Draft => Unit,
   /** Whether a button beside Send opens an emoji picker (`everyui.emoji.EmojiPicker`), the one chosen put in at the
     * caret. On, the default; a remote never shows it. */
   val emojiPicker: Var[Boolean] = own(Var(true))
+  /** Whether the emoji picker is offered in the "+" menu rather than by a button of its own beside Send. Off, the
+    * default. */
+  val emojiInMenu: Var[Boolean] = own(Var(false))
+  /** The app's entries in the "+" menu at the start of the line, after its own (Upload files where files can go, Mention
+    * someone where the app completes mentions, Emoji where `emojiInMenu`): Import a chat, Add a web page, Start a poll.
+    * The "+" shows only where the menu would hold something. */
+  val plusItems: Var[List[ComposerItem]] = own(Var(Nil))
   /** Whether a message sent while a reply is coming waits in `queue` for its own turn, rather than Enter doing nothing.
     * Off, the default, the composer is as it always was. */
   val queueWhileBusy: Var[Boolean] = own(Var(false))
@@ -200,11 +208,13 @@ class Composer(onSend: Draft => Unit,
     font.size @= points
     color := Theme.accent()
   }
-  private val attachButton = new IconButton(MaterialIcon.AttachFile, words.attach, () => pick())
+  // the "+" at the start of the line, opening the menu of what can go with a message; on a phone, its entry in the tray
+  private lazy val plusButton: IconButton = new IconButton(MaterialIcon.Add, words.add, () => openPlus(plusButton))
   private val moreButton = new IconButton(MaterialIcon.Add, words.more, () => trayOpen @= !trayOpen())
   private lazy val emojiButton: IconButton = new IconButton(MaterialIcon.InsertEmoticon, everyui.emoji.EmojiWords.emoji,
     () => everyui.emoji.EmojiPicker.open(emojiButton, emoji => insert(emoji)))
-  private val trayAttach = new Button(words.attach, () => pick(), ButtonStyle.Text, Some(MaterialIcon.AttachFile), 13.0)
+  private lazy val trayPlus: Button =
+    new Button(words.add, () => openPlus(trayPlus), ButtonStyle.Text, Some(MaterialIcon.Add), 13.0)
   private val sendButton = new SendButton(words.send, words.stop)
   private val start = Row(4.0, middle = true)()
   private val end = Row(4.0, middle = true)()
@@ -303,10 +313,10 @@ class Composer(onSend: Draft => Unit,
   }
 
   // --- the controls ----------------------------------------------------------------------------------------------
-  attachButton.disabled := !enabled()
+  plusButton.disabled := !enabled()
   emojiButton.disabled := !enabled()
   moreButton.disabled := !enabled()
-  trayAttach.enabled := enabled()
+  trayPlus.enabled := enabled()
   moreButton.icon.icon := (if (trayOpen()) MaterialIcon.Close else MaterialIcon.Add)
   sendButton.usable := enabled() && (busy() || sendable())
   sendButton.stopping := busy()
@@ -413,6 +423,8 @@ class Composer(onSend: Draft => Unit,
   leading.children.attach(_ => arrange())
   trailing.children.attach(_ => arrange())
   emojiPicker.attach(_ => arrange())
+  emojiInMenu.attach(_ => arrange())
+  plusShown.attach(_ => arrange())
   attachments.attach { list =>
     // what left the draft (taken off, sent, or cleared by the app) lets its picture go, unless it waits in the queue
     if (!shuffling) letGo(held)
@@ -462,7 +474,7 @@ class Composer(onSend: Draft => Unit,
   field.exitFocus(Key.ArrowRight, sendButton)
   sendButton.exitFocus(Key.ArrowLeft, field)
   chip.exitFocus(Key.ArrowDown, field)
-  attachButton.exitFocus(Key.ArrowRight, field)
+  plusButton.exitFocus(Key.ArrowRight, field)
   moreButton.exitFocus(Key.ArrowRight, field)
 
   /** The field given the focus: where the person writes next. */
@@ -608,6 +620,45 @@ class Composer(onSend: Draft => Unit,
   /** The suggestion put away until the next one. */
   def dismissSuggestion(): Unit = dismissed @= true
 
+  /** What the "+" menu holds: Upload files where files can go (`attachable`, and a picker), Mention someone where the
+    * app completes mentions (an "@" trigger), Emoji where it is offered there (`emojiInMenu`), then the app's
+    * (`plusItems`), a rule between the two. */
+  def plusEntries: List[MenuItem] = {
+    val own = (if (pickable && attachable()) List(MenuItem(words.upload, () => pick(), MaterialIcon.AttachFile))
+      else Nil) ++
+      (if (mentions) List(MenuItem(words.mention, () => mention(), MaterialIcon.AlternateEmail)) else Nil) ++
+      (if (emojiPicker() && emojiInMenu()) List(MenuItem(everyui.emoji.EmojiWords.emoji,
+        () => everyui.emoji.EmojiPicker.open(plusAnchor, emoji => insert(emoji)), MaterialIcon.InsertEmoticon)) else Nil)
+    val apps = plusItems().map(i => if (i.separator) MenuItem.separator
+      else MenuItem(i.label, i.action, i.icon.getOrElse(MaterialIcon.Empty), detail = i.detail))
+    own ++ (if (own.nonEmpty && apps.nonEmpty) List(MenuItem.separator) else Nil) ++ apps
+  }
+  // whether the "+" has anything to offer, as what it offers changes
+  private lazy val plusShown: Val[Boolean] = own(Val {
+    attachable()
+    plusItems()
+    emojiInMenu()
+    emojiPicker()
+    !remote && plusEntries.nonEmpty
+  })
+  // whether the app completes mentions: an "@" among its triggers
+  private def mentions: Boolean = complete.nonEmpty && triggers.exists(_.char == '@')
+  // where the "+" opened from, for what it opens in turn
+  private var plusAnchor: Component = this
+
+  /** The "+" menu opened from `anchor`: over it where there is no room under it, as at the foot of a page. */
+  private def openPlus(anchor: Component): Unit = if (enabled()) {
+    plusAnchor = anchor
+    everyui.menu.Menu.below(anchor, plusEntries)
+  }
+
+  /** An "@" put in at the caret, a space before it where it would touch a word, and the mentions listed. */
+  def mention(): Unit = {
+    val now = text()
+    val caret = math.max(0, math.min(now.length, field.field.map(_.caret).getOrElse(now.length)))
+    insert(if (caret > 0 && !now.charAt(caret - 1).isWhitespace) " @" else "@")
+  }
+
   /** The platform's picker, for files to go with the message. */
   def pick(): Unit = if (enabled() && pickable && attachable()) {
     trayOpen @= false
@@ -666,15 +717,15 @@ class Composer(onSend: Draft => Unit,
     if (crowded()) {
       start.children += moreButton
       if (trayOpen()) {
-        if (pickable && attachable()) tray.children += trayAttach
+        if (plusShown()) tray.children += trayPlus
         tray.children += leading
       }
     }
     else {
-      if (pickable && attachable()) start.children += attachButton
+      if (plusShown()) start.children += plusButton
       if (leading.children().nonEmpty) start.children += leading
     }
-    if (emojiPicker() && !remote) end.children += emojiButton
+    if (emojiPicker() && !emojiInMenu() && !remote) end.children += emojiButton
     if (trailing.children().nonEmpty) end.children += trailing
     if (queueing()) end.children += queueButton
     end.children += sendButton

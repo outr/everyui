@@ -239,19 +239,21 @@ class ComposerSpec extends FxSpec {
   }
 
   "A composer with files off (attachable false)" should {
-    // the attach button on its line, and the one in its tray behind "+"
-    def attachButtons(c: Composer): Int = under[everyui.component.IconButton](c)
-      .count(_.icon.icon() == everyui.font.MaterialIcon.AttachFile) +
-      under[everyui.component.Button](c).count(_.label() == ComposerWords().attach)
-    "show no attach button, and bring it back when turned on, the composer not made again" in {
+    // Upload files in the "+" menu
+    def uploads(c: Composer): Boolean = c.plusEntries.exists(_.label == ComposerWords().upload)
+    // the "+" on its line, and the one in its tray behind the phone's "+"
+    def plusButtons(c: Composer): Int = under[everyui.component.IconButton](c)
+      .count(b => b.icon.icon() == everyui.font.MaterialIcon.Add && b.tooltip() == ComposerWords().add) +
+      under[everyui.component.Button](c).count(_.label() == ComposerWords().add)
+    "offer no upload, and offer it again when turned on, the composer not made again" in {
       val c = make()
-      fx(attachButtons(c)) shouldBe 1
+      fx(uploads(c)) shouldBe true
       fx(c.attachable @= false)
-      fx(attachButtons(c)) shouldBe 0
+      fx(uploads(c)) shouldBe false
       fx(c.attachable @= true)
-      fx(attachButtons(c)) shouldBe 1
+      fx(uploads(c)) shouldBe true
     }
-    "show none in the tray behind \"+\" on a phone, the app's own controls still there" in {
+    "offer none from the tray behind \"+\" on a phone, the app's own controls still there" in {
       val c = make()
       val mine = fx(new everyui.component.IconButton(everyui.font.MaterialIcon.Mic, "Talk"))
       fx {
@@ -260,11 +262,11 @@ class ComposerSpec extends FxSpec {
       }
       val more = fx(under[everyui.component.IconButton](c).find(_.icon.icon() == everyui.font.MaterialIcon.Add).get)
       fx(more.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0))
-      // open, the tray holds the attach button and the app's own; with files off, only the app's
-      fx(attachButtons(c)) shouldBe 1
+      // open, the tray holds the "+" (Mention someone stays in it) and the app's own; with files off, no upload
+      fx(plusButtons(c)) shouldBe 1
       fx(c.attachable @= false)
       fx(under[everyui.component.IconButton](c).exists(_ eq mine)) shouldBe true
-      fx(attachButtons(c)) shouldBe 0
+      fx(uploads(c)) shouldBe false
     }
     "take no file dropped on it, and keep the files already attached" in {
       val c = make()
