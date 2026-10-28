@@ -1,7 +1,7 @@
 package everyui.chat
 
 import everyui.component.{Component, Container, MaterialIconView, Row, TextView}
-import everyui.component.types.{FontWeight, Semantics, TextDirection, WhiteSpace}
+import everyui.component.types.{FontWeight, Semantics, TextDirection, TextOverflow, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.kit.{BusyRing, Spinner}
 import everyui.list.ListRow
@@ -44,12 +44,30 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   private val leading: Var[Option[Component]] = own(Var(None))
   private val markWidth: Val[Double] = own(Val(if (leading().isEmpty) 16.0 else ActivityView.room))
 
+  // the summary's room on its line, and the summary measured whole, on one line and out of sight: one that fits is as
+  // wide as it is, and the card with it; one that does not is as wide as the room, wrapped within it (words wrap by
+  // default), so the card is as wide as it may be rather than following its words as they wrap, narrower each time
+  private val summaryRoom: Val[Double] =
+    own(Val(math.max(20.0, widest() - Transcript.padX * 2.0 - markWidth() - 16.0 - (if (a.opens) 18.0 else 0.0))))
+  private val wholeSummary: TextView = new TextView {
+    content := a.summary()
+    direction @= TextDirection.Auto
+    font.size @= 13.0
+    textOverflow @= TextOverflow.Visible
+  }
+  private val measuring: Container = new Container {
+    size.width @= 0.0
+    size.height @= 0.0
+    visible @= false
+    children += wholeSummary
+  }
   private val summary: TextView = new TextView {
     content := a.summary()
     direction @= TextDirection.Auto
     font.size @= 13.0
     color := Theme.text()
-    maxWidth := widest() - Transcript.padX * 2.0 - markWidth() - 18.0 - 16.0
+    whiteSpace := (if (wholeSummary.size.width() > summaryRoom() + 0.5) WhiteSpace.Normal else WhiteSpace.NoWrap)
+    size.width := math.min(wholeSummary.size.width(), summaryRoom())
   }
   private val chevron: MaterialIconView = new MaterialIconView(MaterialIcon.ExpandMore, 18.0)
   chevron.icon := (if (a.expanded()) MaterialIcon.ExpandLess else MaterialIcon.ExpandMore)
@@ -230,7 +248,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   box.position.top @= Transcript.lineGap + 2.0
   size.width := width
   size.height := box.size.height() + Transcript.lineGap * 2.0 + 2.0
-  children += box
+  children ++= List(box, measuring)
 
   /** The details put back where the transcript keeps them, so taking this apart does not take them with it. */
   def release(): Unit = shown.foreach { c =>
