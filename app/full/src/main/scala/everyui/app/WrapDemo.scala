@@ -55,7 +55,13 @@ object WrapDemo {
       Toast.show("A message long enough to need a second line, and a third, on a phone held upright", seconds = 8.0))
     val dialog = new Button("Open a dialog", () => {
       lazy val panel: DialogPanel = new DialogPanel("A dialog's title that is long enough to wrap onto two lines",
-        List(TextView.wrapped(long, 300.0)), List(DialogAction("Keep what I wrote and close", () => panel.close()),
+        List(everyui.component.Column(10.0)(TextView.wrapped(long, 300.0), {
+          val s = new everyui.component.Select(List("Continue with Helix", "Continue with Scout"))
+          s.size.width @= 520.0
+          s.size.height @= 40.0
+          s
+        }, new everyui.text.TextArea("Paste a chat: \"User:\" and \"Assistant:\" (or names) before each turn",
+          width = 520.0, minHeight = 120.0))), List(DialogAction("Keep what I wrote and close", () => panel.close()),
           DialogAction("Throw it all away and start again", () => panel.close(), default = true, danger = true)))
       panel.open()
     })
