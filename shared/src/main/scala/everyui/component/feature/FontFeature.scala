@@ -4,7 +4,8 @@ import everyui.component.Component
 import everyui.component.types.{FontWeight, Prop}
 import everyui.theme.Theme
 
-/** youi's `FontFeature`: family, weight, size (pixels) and slant. Setting a weight converted from a Google Fonts weight
+/** youi's `FontFeature`: family, weight, size (pixels) and slant, and a variable face's axes (`opticalSizing`,
+  * `variations`). Setting a weight converted from a Google Fonts weight
   * sets the family too. */
 class FontFeature(component: Component) {
   /** The theme's family (`Theme.family`, as it is when the text is made) until this names its own. */
@@ -49,14 +50,49 @@ class FontFeature(component: Component) {
   // what italic is, read without making it: most text is upright
   private var slanted: Boolean = false
 
+  /** Whether a variable face shapes its letters for the size they are drawn at (its `opsz` axis): `None`, the
+    * platform's way (a browser's `font-optical-sizing: auto`); `Some(false)` the face's default axis whatever the size,
+    * as Flutter and most native text draw it; `Some(true)` sized. Words measure as they are drawn, the axis included.
+    * The app's default for text made from then on is `FontFeature.opticalSizing`. Only the web has the axis to set;
+    * elsewhere the platform's own drawing stands.
+    * {{{
+    * FontFeature.opticalSizing @= Some(false)   // at start: every word drawn and measured as Flutter does
+    * }}} */
+  lazy val opticalSizing: Prop[Option[Boolean]] = component.own(new Prop[Option[Boolean]](optical, o => {
+    optical = o
+    applyAxes()
+  }, () => component.measure.trigger()))
+  // what opticalSizing is, read without making it
+  private var optical: Option[Boolean] = FontFeature.opticalSizing()
+  /** A variable face's axes set by their tags (`"wdth" -> 87.5`, `"GRAD" -> 50`), as CSS `font-variation-settings`;
+    * weight and slant are `weight` and `italic`'s. Empty, the default, sets none. Words measure as they are drawn.
+    * Only the web sets them so far. */
+  lazy val variations: Prop[Map[String, Double]] = component.own(new Prop[Map[String, Double]](Map.empty, v => {
+    varied = v
+    applyAxes()
+  }, () => component.measure.trigger()))
+  // what variations is, read without making it: most text sets none
+  private var varied: Map[String, Double] = Map.empty
+
+  private def applyAxes(): Unit = component.node.setFontAxes(optical.map(on => if (on) "auto" else "none").getOrElse(""),
+    varied.toList.map { case (tag, value) => "'" + tag + "' " + value.toString }.mkString(", "))
+
   private def applyFont(): Unit = {
     component.node.setFont(family(), weight().value, size())
     if (slanted) component.node.setItalic(true)
     if (lineHeight() > 0.0) component.node.setLineHeight(lineHeight() * size())
     // spacing given in ems where the platform takes them is kept in pixels as the size changes
     if (spacing != 0.0) component.node.setLetterSpacing(spacing)
+    // (a shorthand a platform sets for a field puts the axes back to its own: set again after it)
+    if (optical.nonEmpty || varied.nonEmpty) applyAxes()
   }
 
   // The defaults reach the node too, so a text view that never sets a font still lays out by the shared line box.
   applyFont()
+}
+
+object FontFeature {
+  /** Whether text made from now on sizes a variable face for its size (`FontFeature.opticalSizing` of each): `None`,
+    * the default, leaves it to the platform. Set it before the screens are made. */
+  val opticalSizing: reactify.Var[Option[Boolean]] = reactify.Var(None)
 }

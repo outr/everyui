@@ -135,11 +135,56 @@ class Component(val node: RenderNode) {
   lazy val color: Prop[Color] = own(new Prop[Color](Color.Black, c => node.setColor(c.toHex)))
   lazy val backgroundColor: Prop[Color] =
     own(new Prop[Color](Color.Clear, c => node.setBackgroundColor(Component.css(c))))
-  /** A gradient over the whole box, on top of the background colour; a backend that draws none fills with its first
-    * stop. */
-  lazy val gradient: Prop[Option[Gradient]] = own(new Prop[Option[Gradient]](None, g => g match {
-    case Some(value) => node.setGradient(value.angle, value.encoded)
+  /** A gradient over the whole box, on top of the background colour, linear or radial (`Gradient.radial`, drawn again
+    * as the box changes size); a backend that draws none fills with its first stop. */
+  lazy val gradient: Prop[Option[Gradient]] = own(new Prop[Option[Gradient]](None, g => {
+    if (g.exists(_.radial.nonEmpty)) sized()
+    drawGradient()
+  }))
+  private def drawGradient(): Unit = gradient() match {
+    case Some(value) => value.radial match {
+      case Some(r) =>
+        val (x, y, radius) = Component.circle(r, size.width(), size.height())
+        node.setRadialGradient(x, y, radius, size.width(), size.height(), value.encoded)
+      case None => node.setGradient(value.angle, value.encoded)
+    }
     case None => node.setGradient(0.0, "")
+  }
+  /** How much of it shows, by the alpha of a gradient over it (`Gradient`, linear or radial): where the gradient is
+    * opaque it is drawn, where it is clear nothing is, the box's children with it (CSS's `mask-image`): a field of
+    * dots fading out from a point. Only the web masks; elsewhere it is drawn whole. */
+  lazy val mask: Prop[Option[Gradient]] = own(new Prop[Option[Gradient]](None, g => {
+    if (g.exists(_.radial.nonEmpty)) sized()
+    drawMask()
+  }))
+  private def drawMask(): Unit = mask() match {
+    case Some(value) => value.radial match {
+      case Some(r) =>
+        val (x, y, radius) = Component.circle(r, size.width(), size.height())
+        node.setMask(0.0, x, y, radius, value.encoded)
+      case None => node.setMask(value.angle, 0.0, 0.0, -1.0, value.encoded)
+    }
+    case None => node.setMask(0.0, 0.0, 0.0, -1.0, "")
+  }
+  // a radial gradient or mask is drawn in pixels: drawn again as the box changes size, once one is set
+  private var sizing = false
+  private def sized(): Unit = if (!sizing) {
+    sizing = true
+    val again = () => {
+      if (gradient().exists(_.radial.nonEmpty)) drawGradient()
+      if (mask().exists(_.radial.nonEmpty)) drawMask()
+    }
+    size.width.attach(_ => again())
+    size.height.attach(_ => again())
+  }
+  /** What shows through it blurred, a gaussian's deviation in pixels, while its own content stays sharp: a pane of
+    * frosted glass over what is behind it (CSS's `backdrop-filter`, Flutter's `BackdropFilter`). Its background should
+    * be translucent for anything to show. Only the web blurs behind; elsewhere what is behind shows sharp, so a design
+    * that needs the glass to read gives the pane a fill that reads without it. None below Full
+    * (`everyui.perf.Quality`). */
+  lazy val backdropBlur: Prop[Double] = own(new Prop[Double](0.0, _ => {
+    blurred = true
+    drawBlur()
   }))
   /** How far it is blurred: a gaussian's deviation in pixels, as the web's `filter: blur()` takes it; 0 is sharp. The
     * web, the desktop and Android draw it (before Android 12 only on a container or a picture); elsewhere it is drawn
@@ -153,11 +198,30 @@ class Component(val node: RenderNode) {
     shadowed = true
     drawShadow()
   }))
+  /** More shadows under the box, layered under `shadow` (the first on top, as CSS lists them): a card's tight shadow
+    * and its wide soft one, each with its own spread. The web draws every layer; elsewhere the first of `shadow` and
+    * these is drawn, as `Shadow` says. */
+  lazy val shadows: Prop[List[Shadow]] = own(new Prop[List[Shadow]](Nil, _ => {
+    shadowed = true
+    drawShadow()
+  }))
   // none below Full (`everyui.perf.Quality`)
-  private def drawBlur(): Unit = node.setBlur(if (Quality.effects) blur() else 0.0)
-  private def drawShadow(): Unit = shadow() match {
-    case Some(value) if Quality.effects => node.setShadow(value.x, value.y, value.blur, Component.css(value.color))
-    case _ => node.setShadow(0.0, 0.0, 0.0, "")
+  private def drawBlur(): Unit = {
+    node.setBlur(if (Quality.effects) blur() else 0.0)
+    if (backdropBlur() > 0.0 || backdropBlurred) {
+      backdropBlurred = true
+      node.setBackdropBlur(if (Quality.effects) backdropBlur() else 0.0)
+    }
+  }
+  private var backdropBlurred = false
+  private def drawShadow(): Unit = {
+    val all = if (Quality.effects) shadow().toList ++ shadows() else Nil
+    all.headOption match {
+      case Some(value) => node.setShadow(value.x, value.y, value.blur, Component.css(value.color))
+      case None => node.setShadow(0.0, 0.0, 0.0, "")
+    }
+    // layers, or a spread: what only the web draws, over the first
+    if (all.size > 1 || all.exists(_.spread != 0.0)) node.setShadowLayers(Shadow.encode(all))
   }
   /** The change of `Quality.level` it was last drawn at: one made before a change and put on the screen after it is
     * drawn again as it goes on (ContainerFeature). */
@@ -450,5 +514,9 @@ object Component {
   }
 
   /** A colour as the seam takes it: `"#rrggbb"`, `"#rrggbbaa"` when translucent, or `""` for none. */
+  /** A radial shape in a box `width` by `height`: its centre and its radius, in pixels. */
+  def circle(r: everyui.RadialShape, width: Double, height: Double): (Double, Double, Double) =
+    (r.x * width, r.y * height, r.radius * math.min(width, height))
+
   def css(c: Color): String = if (c.alphaInt == 0) "" else if (c.alphaInt < 255) c.toHexAlpha else c.toHex
 }

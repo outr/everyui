@@ -73,5 +73,9 @@ object FullDemos {
       WrapDemo.run()
       true
     }
+    else if (demo == "effects") {
+      EffectsDemo.run()
+      true
+    }
     else false
 }

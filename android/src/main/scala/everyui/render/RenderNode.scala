@@ -386,7 +386,26 @@ class RenderNode(val view: View) {
   private var gradient: Array[Int] = Array.empty
   private var orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
   /** A linear gradient over the box (`everyui.Gradient`'s encoding, its stops evenly spaced here), or none for `""`. */
+  /** A radial gradient, its centre `x`, `y` and its radius in pixels (the box `width` by `height`), its stops from the
+    * centre out: the platform's own radial drawable. */
+  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit = {
+    setGradient(0.0, stops)
+    radial = if (stops.isEmpty) None
+      else Some(((if (width > 0.0) x / width else 0.5).toFloat, (if (height > 0.0) y / height else 0.5).toFloat,
+        math.max(0.01, radius * Host.scale).toFloat))
+    paintBackground()
+  }
+  // a radial gradient's centre (fractions of the box) and radius (pixels), where the gradient is one
+  private var radial: Option[(Float, Float, Float)] = None
+  /** No mask: drawn whole. */
+  def setMask(angle: Double, x: Double, y: Double, radius: Double, stops: String): Unit = ()
+  /** The first layer is drawn, as the view's elevation (`setShadow`). */
+  def setShadowLayers(layers: String): Unit = ()
+  /** What is behind shows sharp: a view blurs only its own drawing. */
+  def setBackdropBlur(radius: Double): Unit = ()
+
   def setGradient(angle: Double, stops: String): Unit = {
+    radial = None
     val decoded = everyui.Gradient.decode(stops)
     gradient = decoded.map { case (hex, _) => RenderNode.color(hex) }.toArray
     gradientAt = decoded.map(_._2).toArray
@@ -489,6 +508,9 @@ class RenderNode(val view: View) {
 
   /** Extra space after each letter, in pixels. Android spaces letters in ems, so it is the pixels over the size (which
     * `FontFeature` sets first); the measured width takes it. */
+  /** A variable face's optical sizing and axes: a browser's to set (`FontFeature.opticalSizing`); drawn here as the
+    * platform draws the face. */
+  def setFontAxes(opticalSizing: String, variations: String): Unit = ()
   def setLetterSpacing(px: Double): Unit = view match {
     case t: TextView =>
       t.setLetterSpacing(if (fontSize > 0.0) (px / fontSize).toFloat else 0f)
@@ -565,7 +587,7 @@ class RenderNode(val view: View) {
 
   private def paintBackground(): Unit = {
     val quarter = ((math.round(gradientAngle / 90.0) % 4 + 4) % 4).toInt
-    if (gradient.length >= 2 && radius == 0f && borderWidth == 0 && math.abs(gradientAngle / 90.0 - math.round(gradientAngle / 90.0)) < 0.01)
+    if (gradient.length >= 2 && radial.isEmpty && radius == 0f && borderWidth == 0 && math.abs(gradientAngle / 90.0 - math.round(gradientAngle / 90.0)) < 0.01)
       view.setBackground(RenderNode.strip(gradient, gradientAt, quarter))
     else paintShape()
     // the app's own ground, opaque, over the whole window: the window's launch background under it is never seen
@@ -585,7 +607,14 @@ class RenderNode(val view: View) {
     val drawable = new android.graphics.drawable.GradientDrawable()
     if (gradient.length >= 2) {
       drawable.setOrientation(orientation)
-      drawable.setColors(gradient)
+      // where the stops lie, on Android 10 on; before it evenly apart
+      if (android.os.Build.VERSION.SDK_INT >= 29) drawable.setColors(gradient, gradientAt.map(_.toFloat))
+      else drawable.setColors(gradient)
+      radial.foreach { case (cx, cy, r) =>
+        drawable.setGradientType(android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT)
+        drawable.setGradientCenter(cx, cy)
+        drawable.setGradientRadius(r)
+      }
     }
     else drawable.setColor(if (gradient.length == 1) gradient(0) else background)
     drawable.setCornerRadius(radius)
@@ -914,9 +943,14 @@ class RenderNode(val view: View) {
   }
   /** Out of use, or back in it: a field takes no typing and TalkBack reads it as disabled. Other views are only drawn
     * dimmed by the app: disabling one would stop the touches that move the focus to it. */
-  def setDisabled(disabled: Boolean): Unit = view match {
-    case e: EditText => e.setEnabled(!disabled)
-    case _ => ()
+  // out of use (`Component.disabled`): TalkBack reads a button so, though it stays where the focus can reach it
+  private var outOfUse = false
+  def setDisabled(disabled: Boolean): Unit = {
+    outOfUse = disabled
+    view match {
+      case e: EditText => e.setEnabled(!disabled)
+      case _ => ()
+    }
   }
   /** Read-only, or editable again: the field's words can be chosen and copied, but it takes no typing or paste and
     * brings up no keyboard, and TalkBack reads it as a field that cannot be edited (`FieldView.readOnly`). */
@@ -994,6 +1028,7 @@ class RenderNode(val view: View) {
         super.onInitializeAccessibilityNodeInfo(host, info)
         if (hint.nonEmpty && android.os.Build.VERSION.SDK_INT >= 26) info.setHintText(hint)
         info.setClassName("android.widget.Button")
+        if (outOfUse) info.setEnabled(false)
         info.setFocusable(true)
         info.setClickable(true)
         info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)

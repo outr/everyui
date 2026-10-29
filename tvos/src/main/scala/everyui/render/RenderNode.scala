@@ -238,6 +238,16 @@ class RenderNode(val sg: SGNode) {
   /** No edge: a SceneGraph Rectangle has none to draw. */
   def setBorder(width: Double, hex: String): Unit = ()
   /** A gradient is its first colour here. */
+  /** A radial gradient: filled with its first stop, as a linear one is. */
+  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit =
+    setGradient(0.0, stops)
+  /** No mask: drawn whole. */
+  def setMask(angle: Double, x: Double, y: Double, radius: Double, stops: String): Unit = ()
+  /** No shadow is drawn. */
+  def setShadowLayers(layers: String): Unit = ()
+  /** What is behind shows sharp. */
+  def setBackdropBlur(radius: Double): Unit = ()
+
   def setGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setBackgroundColor(Nodes.firstStop(stops))
   /** The letters in the gradient's first colour. */
   def setTextGradient(angle: Double, stops: String): Unit = if (stops.nonEmpty) setColor(Nodes.firstStop(stops))
@@ -254,6 +264,9 @@ class RenderNode(val sg: SGNode) {
   /** Lines keep the face's own spacing. */
   def setLineHeight(px: Double): Unit = ()
   /** Extra space after each letter, in points: UIKit's kern, which the measured width takes. */
+  /** A variable face's optical sizing and axes: a browser's to set (`FontFeature.opticalSizing`); drawn here as the
+    * platform draws the face. */
+  def setFontAxes(opticalSizing: String, variations: String): Unit = ()
   def setLetterSpacing(px: Double): Unit = uiSetLetterSpacing(sg, px)
   /** Slanted: UIKit's italic of the face where it has one, else its upright letters slanted; the measured width is
     * the slanted words'. Upright again is the face set afresh. */

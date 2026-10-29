@@ -461,6 +461,16 @@ class RenderNode(val sg: SGNode) {
   private var gradientAngle: Double = 0.0
   private var gradientShape: Option[SGNode] = None
   /** A gradient: drawn as a strip behind a square box, and as its first colour in a rounded one (see `paint`). */
+  /** A radial gradient: filled with its first stop, as a linear one's colour. */
+  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit =
+    setGradient(0.0, if (stops.isEmpty) "" else stops.split(",")(0))
+  /** No mask: drawn whole. */
+  def setMask(angle: Double, x: Double, y: Double, radius: Double, stops: String): Unit = ()
+  /** No shadow is drawn. */
+  def setShadowLayers(layers: String): Unit = ()
+  /** What is behind shows sharp. */
+  def setBackdropBlur(radius: Double): Unit = ()
+
   def setGradient(angle: Double, stops: String): Unit = {
     gradientHex = RenderNode.firstStop(stops)
     gradientStops = stops
@@ -501,6 +511,9 @@ class RenderNode(val sg: SGNode) {
   /** A Roku draws nothing blurred. */
   def setBlur(radius: Double): Unit = ()
   /** A Label spaces no letters: they sit as the face sets them, and the width is theirs. */
+  /** A variable face's optical sizing and axes: a browser's to set (`FontFeature.opticalSizing`); drawn here as the
+    * platform draws the face. */
+  def setFontAxes(opticalSizing: String, variations: String): Unit = ()
   def setLetterSpacing(px: Double): Unit = ()
   /** Slanted: a SceneGraph font cannot be slanted, so the words are drawn, and measured, in the family's registered
     * italic face where there is one, and upright where not. */

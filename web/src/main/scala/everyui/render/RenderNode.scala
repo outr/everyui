@@ -161,6 +161,37 @@ class RenderNode(val el: html.Element) {
   }
 
   /** A linear gradient over the box (`everyui.Gradient`'s encoding), or none for `""`. */
+  /** A radial gradient, its centre `x`, `y` and its radius in pixels (the box `width` by `height`), its stops from the
+    * centre out. */
+  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit =
+    el.style.backgroundImage = if (stops.isEmpty) "none" else RenderNode.radialGradient(x, y, radius, stops)
+  /** How much of it shows, by a gradient's alpha (CSS `mask-image`): linear at `angle` where `radius` is negative, else
+    * radial about `x`, `y`; none for `""`. */
+  def setMask(angle: Double, x: Double, y: Double, radius: Double, stops: String): Unit = {
+    val image = if (stops.isEmpty) "" else if (radius < 0.0) RenderNode.linearGradient(angle, stops)
+      else RenderNode.radialGradient(x, y, radius, stops)
+    if (image.isEmpty) {
+      el.style.removeProperty("mask-image")
+      el.style.removeProperty("-webkit-mask-image")
+    } else {
+      el.style.setProperty("mask-image", image)
+      el.style.setProperty("-webkit-mask-image", image)
+    }
+  }
+  /** Every shadow layer, each with its spread (`Shadow.encode`), in place of the one `setShadow` drew. */
+  def setShadowLayers(layers: String): Unit = {
+    drop = everyui.Shadow.decode(layers).map { case (x, y, blur, spread, hex) =>
+      x.toString + "px " + y.toString + "px " + blur.toString + "px " + spread.toString + "px " + hex
+    }.mkString(", ")
+    paintShadows()
+  }
+  /** What shows through it blurred (CSS `backdrop-filter`), its own content sharp; 0 for none. */
+  def setBackdropBlur(radius: Double): Unit = {
+    val value = if (radius <= 0.0) "" else "blur(" + radius.toString + "px)"
+    el.style.setProperty("backdrop-filter", value)
+    el.style.setProperty("-webkit-backdrop-filter", value)
+  }
+
   def setGradient(angle: Double, stops: String): Unit =
     el.style.backgroundImage = if (stops.isEmpty) "none" else RenderNode.linearGradient(angle, stops)
 
@@ -220,6 +251,15 @@ class RenderNode(val el: html.Element) {
   def setLineHeight(px: Double): Unit = el.style.lineHeight = px.toString + "px"
 
   /** Extra space after each letter, in pixels (0 for the face's own); the box, and so the measured width, takes it. */
+  /** A variable face's optical sizing ("auto", "none", or "" for the page's) and axes (`font-variation-settings`,
+    * "" for none), set on the node itself: a field's own font shorthand (the browser's for an input) would otherwise
+    * put them back to auto, and words are measured by their box, so they measure as they are drawn. */
+  def setFontAxes(opticalSizing: String, variations: String): Unit = {
+    if (opticalSizing.isEmpty) el.style.removeProperty("font-optical-sizing")
+    else el.style.setProperty("font-optical-sizing", opticalSizing)
+    if (variations.isEmpty) el.style.removeProperty("font-variation-settings")
+    else el.style.setProperty("font-variation-settings", variations)
+  }
   def setLetterSpacing(px: Double): Unit = el.style.letterSpacing = if (px == 0.0) "" else px.toString + "px"
 
   /** Slanted or upright: CSS font-style, drawn in the family's italic face where one is registered and slanted by the
@@ -1024,6 +1064,10 @@ object RenderNode {
   }
 
   /** CSS for `everyui.Gradient`'s encoding. */
+  /** A CSS radial gradient: a circle `radius` pixels about `x`, `y`, its stops from the centre out. */
+  def radialGradient(x: Double, y: Double, radius: Double, stops: String): String =
+    "radial-gradient(circle " + math.max(0.01, radius).toString + "px at " + x.toString + "px " + y.toString + "px, " +
+      everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
   def linearGradient(angle: Double, stops: String): String =
     "linear-gradient(" + angle.toString + "deg, " +
       everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"

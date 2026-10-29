@@ -220,6 +220,20 @@ class RenderNode(val fx: Node) {
   }
   private var gradient: Option[Paint] = None
   /** A linear gradient over the box (`everyui.Gradient`'s encoding), or none for `""`. */
+  /** A radial gradient, its centre `x`, `y` and its radius in pixels, its stops from the centre out. */
+  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit = {
+    gradient = if (stops.isEmpty) None else Some(new javafx.scene.paint.RadialGradient(0.0, 0.0, x, y,
+      math.max(0.01, radius), false, CycleMethod.NO_CYCLE,
+      everyui.Gradient.decode(stops).map { case (hex, at) => new Stop(at, Color.web(hex)) }*))
+    paintBackground()
+  }
+  /** No mask: drawn whole. */
+  def setMask(angle: Double, x: Double, y: Double, radius: Double, stops: String): Unit = ()
+  /** The first layer is drawn (`setShadow`), without its spread: JavaFX's shadow takes none. */
+  def setShadowLayers(layers: String): Unit = ()
+  /** What is behind shows sharp: JavaFX blurs only a node's own drawing. */
+  def setBackdropBlur(radius: Double): Unit = ()
+
   def setGradient(angle: Double, stops: String): Unit = {
     gradient = RenderNode.linearGradient(angle, stops)
     paintBackground()
@@ -294,6 +308,9 @@ class RenderNode(val fx: Node) {
   def setLineHeight(px: Double): Unit = ()
   /** Extra space after each letter, in pixels: JavaFX spaces no letters, so the words take the spaced width and their
     * letters sit as the face sets them (`LetterSpacing`). */
+  /** A variable face's optical sizing and axes: a browser's to set (`FontFeature.opticalSizing`); drawn here as the
+    * platform draws the face. */
+  def setFontAxes(opticalSizing: String, variations: String): Unit = ()
   def setLetterSpacing(px: Double): Unit = letterSpacing = px
   private var letterSpacing: Double = 0.0
   private var runs: List[everyui.text.TextRun] = Nil

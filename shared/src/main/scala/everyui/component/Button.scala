@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.Color
-import everyui.component.types.{TextAlign, TextOverflow, WhiteSpace}
+import everyui.component.types.{Semantics, TextAlign, TextOverflow, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
@@ -14,6 +14,9 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
              glyph: Option[MaterialIcon] = None, points: Double = 13.0) extends Container {
   /** What it says; bind it to change it. */
   val label: Var[String] = own(Var(name))
+  /** Whether it does anything. A disabled one is muted, does nothing, and says so to whatever reads the page (the web's
+    * `aria-disabled`, `Component.disabled`); the focus still reaches it, so a focused button turned off leaves the
+    * focus where it was, and a screen reader can still find it and say why. */
   val enabled: Var[Boolean] = own(Var(true))
   /** At least this wide, its content centred: a button as wide as the form it ends. */
   val minWidth: Var[Double] = own(Var(0.0))
@@ -77,6 +80,11 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
     case None => Row(points * 0.6, middle = true)(words)
   }
 
+  // a button to whatever reads the page (the web's role, so a screen reader and a test runner find one), named by its
+  // words, as IconButton is by its tip
+  semantics @= Semantics.button()
+  // out of use, as whatever reads the page hears it
+  disabled := !enabled()
   focusable @= true
   size.width := math.max(minWidth(), line.size.width() + points * 2.2)
   size.height := line.size.height() + points
