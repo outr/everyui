@@ -4,6 +4,7 @@ import everyui.async.Task
 import everyui.component.{Button, Component, Container}
 import everyui.event.{PointerEvent, PointerKind}
 import everyui.focus.Focus
+import everyui.menu.MenuItem
 import everyui.{FxSpec, ui}
 import reactify.*
 
@@ -114,6 +115,49 @@ class TabEmptyGroupSpec extends FxSpec {
           plain.restore(l, k => Some(k))
         }
         keysOf(plain) shouldBe List(List("a", "b"))
+      }
+    }
+
+    "be left by a group's only tab moved where no group lies, into a new group split off that way" in {
+      val g = groupsOf(keep = true)
+      shown(g) {
+        fx(g.open("a"))
+        val first = fx(g.groups().head)
+        def entry(in: TabGroup[String], label: String): MenuItem = g.menuFor(in, "a").find(_.label == label).get
+        List("Move Right", "Move Left", "Move Down", "Move Up", "Open Right", "Open Down")
+          .map(l => fx(entry(first, l).enabled)) shouldBe List.fill(6)(true)
+        fx(entry(first, "Move Right").action())
+        keysOf(g) shouldBe List(Nil, List("a"))
+        fx(g.groups().head) should be theSameInstanceAs first
+        fx(g.tabLayout.vertical) shouldBe false
+        fx(closer(first).nonEmpty) shouldBe true
+        fx(focusedIn(g.groups()(1))) shouldBe true
+        // and down from there, where nothing lies below: the new group under it
+        val second = fx(g.groups()(1))
+        fx(g.moveBeside(second, "a", vertical = true, after = true))
+        keysOf(g) shouldBe List(Nil, Nil, List("a"))
+        val l = fx(g.tabLayout)
+        l.vertical shouldBe false
+        l.parts.head.tabs shouldBe Nil
+        l.parts(1).vertical shouldBe true
+        l.parts(1).groups.map(_.tabs) shouldBe List(Nil, List("a"))
+      }
+      // before it, the other way
+      val h = groupsOf(keep = true)
+      shown(h) {
+        fx(h.open("a"))
+        fx(h.moveBeside(h.groups().head, "a", vertical = false, after = false))
+        keysOf(h) shouldBe List(List("a"), Nil)
+      }
+      // without the option, it stays where it is
+      val plain = groupsOf(keep = false)
+      shown(plain) {
+        fx(plain.open("a"))
+        val only = fx(plain.groups().head)
+        fx(plain.menuFor(only, "a").filter(i => i.label.startsWith("Move") || i.label.startsWith("Open"))
+          .map(_.enabled)) shouldBe List.fill(6)(false)
+        fx(plain.moveBeside(only, "a", vertical = false, after = true))
+        keysOf(plain) shouldBe List(List("a"))
       }
     }
 
