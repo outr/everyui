@@ -24,7 +24,8 @@ import reactify.*
   * beside it; then the app's own (`tabMenu`). A tab dragged onto another group goes in among its tabs, and onto a
   * group's edge (lit as it is over it) splits the group there. A key shows in one group at a time, moved rather than
   * opened again, unless `allowsTwice` says it may show in two (a file in both halves of a split), each with its own
-  * content. A group left empty closes; the last one stays.
+  * content. A group left empty closes; the last one stays. With `keepEmptyGroups` it stays instead, an empty pane (one
+  * group over another kept as the person laid them out) saying so, with a button closing it (`closeGroup`).
   *
   * `focusedGroup` is the group the focus is in, or was last; `open(k)` opens a tab there, or shows it where it is
   * open already, and `openIn(g, k)` in `g`. With an `addMenu` each group has a "+" after its last tab dropping the menu
@@ -90,6 +91,10 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     * group, present and future, one with some alpha letting a picture behind the screen show through it as
     * `contentBackground` does under the tabs. The tab shown keeps its own fill and mark over it. */
   val barBackground: Var[Option[Color]] = own(Var(None))
+  /** Whether a group whose last tab closes, or moves away, stays as an empty pane, which only `closeGroup` (its button)
+    * closes, and an empty group in a layout `restore`d is kept: off by default, a group left empty closing. Turned off,
+    * groups empty already stay until they are closed or given a tab. */
+  val keepEmptyGroups: Var[Boolean] = own(Var(false))
   /** The groups, first to last. */
   val groups: Var[List[TabGroup[K]]] = own(Var(Nil))
   /** Heard with the layout each time it changes: a tab opened, closed, moved or shown, a split made or undone, a
@@ -141,7 +146,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   }
 
   /** `k` closed in `g`, once `canClose` says it may be (asked where this is its last tab open), its content disposed
-    * of; a group left empty closes, unless it is the last. Asked again while the answer is awaited, it does nothing. */
+    * of; a group left empty closes, unless it is the last or `keepEmptyGroups` keeps it. Asked again while the answer
+    * is awaited, it does nothing. */
   def close(g: TabGroup[K], k: K): Unit = closeInTurn(g, List(k), _ => ())
 
   /** Every other tab of `g` closed, one at a time, in order, each asked of `canClose` in turn: the first it will not let
@@ -150,6 +156,11 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
 
   /** Every tab of `g` closed, as `closeOthers` closes them, and `g` with them where none stays. */
   def closeAll(g: TabGroup[K]): Unit = closeInTurn(g, g.keys().toList, _ => ())
+
+  /** `g` closed, its tabs first as `closeAll` closes them, and then the group where every one has, unless it is the
+    * last: what an empty group's button does where `keepEmptyGroups` keeps it. */
+  def closeGroup(g: TabGroup[K]): Unit = closeInTurn(g, g.keys().toList, all =>
+    if (all && g.keys().isEmpty && groups().exists(_ eq g)) removeGroup(g, Focus.focused().exists(c => Focus.within(c, g))))
 
   /** Every tab of every group closed, group by group, as `closeAll` closes them: true once all have, false at the first
     * that stays. What an app asks before it lets its window go: disposing of this asks nothing, as it cannot wait. */
@@ -189,7 +200,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   private def discard(g: TabGroup[K], k: K): Unit = if (g.has(k)) {
     val had = Focus.focused().exists(c => Focus.within(c, g))
     g.take(k).foreach(_.dispose())
-    if (g.keys().isEmpty) closeGroup(g, had) else if (had) g.focusTab()
+    if (g.keys().isEmpty && !keepEmptyGroups()) removeGroup(g, had) else if (had) g.focusTab()
   }
 
   /** The tab of `k` in each group it shows in, first to last: one, unless it may show twice. */
@@ -231,7 +242,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
       if (to.has(k)) g.take(k).foreach(_.dispose()) else to.add(k, at, g.take(k))
       to.select(k)
       to.focusTab()
-      if (g.keys().isEmpty) closeGroup(g, had = false)
+      if (g.keys().isEmpty && !keepEmptyGroups()) removeGroup(g, had = false)
       else if (had && !Focus.focused().exists(c => Focus.within(c, to))) g.focusTab()
     }
   }
@@ -258,7 +269,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     g.keys().foreach(k => if (to.has(k)) g.take(k).foreach(_.dispose()) else to.add(k, content = g.take(k)))
     was.foreach(to.select)
     to.focusTab()
-    closeGroup(g, had = false)
+    removeGroup(g, had = false)
   }
 
   /** `g` shown alone, taking the whole area: every other group, and the handles between them, hidden, not closed, their
@@ -350,14 +361,15 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   def tabLayout: TabLayout = snapshot(tree)
 
   /** It laid out as `l` says, each tab's id found by `find` (one it no longer finds is left out); what was open is
-    * closed. A layout with no tabs at all leaves one empty group. */
+    * closed. A layout with no tabs at all leaves one empty group; a group none of whose tabs is found is left out, or
+    * kept empty with `keepEmptyGroups`. */
   def restore(l: TabLayout, find: String => Option[K]): Unit = {
     quiet = true
     val old = groups()
     def build(t: TabLayout): Option[TabTree[K]] =
       if (t.isGroup) {
         val ks = t.tabs.flatMap(find)
-        if (ks.isEmpty) None else {
+        if (ks.isEmpty && !keepEmptyGroups()) None else {
           val g = new TabGroup[K](this)
           ks.foreach(k => g.add(k))
           ks.find(k => id(k) == t.selected).orElse(ks.headOption).foreach(g.select)
@@ -406,7 +418,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   }
 
   /** `g` gone, unless it is the last; the focus, where it was in it (`had`), on the group that takes its place. */
-  private def closeGroup(g: TabGroup[K], had: Boolean): Unit = TabTrees.without(tree, g) match {
+  private def removeGroup(g: TabGroup[K], had: Boolean): Unit = TabTrees.without(tree, g) match {
     case Some(rest) =>
       val next = TabTrees.sibling(tree, g)
       // the maximized group gone, or only one left, every group shows again
@@ -619,6 +631,8 @@ object TabGroups {
   def moveDownWord: String = word("tabs.moveDown", "Move Down")
   def moveUpWord: String = word("tabs.moveUp", "Move Up")
   def unsplitWord: String = word("tabs.unsplit", "Unsplit")
+  /** What an empty group's button says, where `keepEmptyGroups` keeps it (`closeGroup`). */
+  def closeGroupWord: String = word("tabs.closeGroup", "Close Group")
   def nextGroupWord: String = word("tabs.nextGroup", "Next Group")
   def previousGroupWord: String = word("tabs.previousGroup", "Previous Group")
   /** A group maximized (`maximize`), and every group shown again (`unmaximize`), as the menu says them. */

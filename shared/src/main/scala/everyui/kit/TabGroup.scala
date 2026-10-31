@@ -11,7 +11,8 @@ import reactify.*
 /** One group of a `TabGroups`: a `TabBar` over what its tab being shown shows. Each tab's content is made the first
   * time it is shown and kept, the tabs not shown off the screen but alive, until the tab closes (disposed of) or moves
   * to another group (taken along). A tab that keeps its place (`TabGroups.keepsMounted`) stays where it is, hidden. An
-  * empty group says so, and that is where the focus lands in it. */
+  * empty group says so, and that is where the focus lands in it; one `TabGroups.keepEmptyGroups` keeps, while there is
+  * another, has a button under its words closing it, which takes the focus instead. */
 class TabGroup[K](owner: TabGroups[K]) extends Container {
   /** Its tabs, in order. */
   val keys: Var[Vector[K]] = own(Var(Vector.empty[K]))
@@ -37,6 +38,12 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   }
   empty.position.center := body.size.width() / 2.0
   empty.position.middle := body.size.height() / 2.0
+  private val closer: Button = new Button(TabGroups.closeGroupWord, () => owner.closeGroup(this), ButtonStyle.Text) {
+    visible := keys().isEmpty && owner.keepEmptyGroups() && owner.groups().size > 1
+  }
+  closer.position.center := body.size.width() / 2.0
+  // (over the body rather than in it, which holds the words and the tabs' contents)
+  closer.position.top := body.position.top() + empty.position.top() + empty.size.height() + 8.0
 
   private var made: Map[K, Component] = Map.empty
   // the contents of the tabs that stay in place while another shows (`TabGroups.keepsMounted`), in the order they were
@@ -59,7 +66,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   part(owner.contentBackground().orElse(owner.barBackground()))
   follow(owner.contentBackground, (c: Option[Color]) => part(c))
   follow(owner.barBackground, (c: Option[Color]) => part(c))
-  children ++= List(bar, body)
+  children ++= List(bar, body, closer)
   body.children += empty
   bar.tabMenu := ((id: String) => keyOf(id).map(k => owner.menuFor(this, k)).getOrElse(Nil))
   bar.closing.attach(id => keyOf(id).foreach(k => owner.close(this, k)))
@@ -122,8 +129,8 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   /** The content made for `k` here, where it has been shown: none for a tab that shares the group's view. */
   def contentOf(k: K): Option[Component] = made.get(k)
 
-  /** The focus on the tab being shown, or on the empty group's words. */
-  def focusTab(): Unit = bar(shown()).map(_.focus()).getOrElse(empty.focus())
+  /** The focus on the tab being shown, or on the empty group's button, or its words where it has none. */
+  def focusTab(): Unit = bar(shown()).map(_.focus()).getOrElse(if (closer.visible()) closer.focus() else empty.focus())
 
   // what the tab being shown shows, made the first time; the rest off the screen, alive, or where they keep their place
   // (`TabGroups.keepsMounted`), there but hidden
