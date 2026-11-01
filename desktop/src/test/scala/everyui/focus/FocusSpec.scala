@@ -8,6 +8,9 @@ import everyui.{FxSpec, ui}
 /** The focus taken off the screen with what it was on: it goes to what took its place, never to nothing, and Back
   * still answers wherever it was. Run on the JavaFX thread, against the desktop backend's real nodes. */
 class FocusSpec extends FxSpec {
+  // the focus as the keys move it, which these are about
+  override protected def keyed: Boolean = true
+
   private def card(): Component = {
     val c = new Component(Nodes.container())
     c.focusable @= true

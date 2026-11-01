@@ -17,6 +17,9 @@ import reactify.*
   * change asked for while another is under way waits for it; a screen rebuilt in sight is rebuilt and arrives in one
   * turn, so no frame shows it half made. */
 class ScreenTurnsSpec extends FxSpec {
+  // the focus as the keys move it, which these are about
+  override protected def keyed: Boolean = true
+
   /** Each stage as it ran, and whether it ran on the same turn as the stage before it. */
   private var stages: Vector[(String, Boolean)] = Vector.empty
   private var sameTurn: Boolean = false

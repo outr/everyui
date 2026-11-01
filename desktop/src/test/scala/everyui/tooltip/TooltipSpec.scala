@@ -9,6 +9,9 @@ import everyui.{FxSpec, ui}
 /** Tips: after the pointer rests or the focus stays, placed under what they belong to or over it at the foot of the
   * screen, gone as the pointer leaves or the focus moves on. */
 class TooltipSpec extends FxSpec {
+  // the focus as the keys move it, which these are about
+  override protected def keyed: Boolean = true
+
   private def card(left: Double, top: Double): Component = {
     val c = new Component(Nodes.container())
     c.focusable @= true

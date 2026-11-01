@@ -17,6 +17,9 @@ import java.lang.ref.WeakReference
   * placed again; the focus goes to what stands where it was; and `onRebuild` carries across what lives only in the
   * built UI. A screen not showing is rebuilt when Back returns to it. */
 class RebuildSpec extends FxSpec {
+  // the focus as the keys move it, which these are about
+  override protected def keyed: Boolean = true
+
   private val word: Var[String] = Var("One")
 
   private class Board(val manager: ScreenManager, name: String) extends ScrollScreen {

@@ -88,7 +88,10 @@ class SegmentIconSpec extends FxSpec {
           fx(path.ink()) shouldBe fx(Theme.onAccent())
           fill shouldBe fx(RenderNode.paintOf(Theme.onAccent()))
           fx(glyph.icon.get.color()) shouldBe fx(Theme.muted())
+          // focused where a pointer is used, it is not lit (Matt's ruling of 2026-10-21); the keys moving the focus, it is
           fx(glyph.focus())
+          fx(glyph.icon.get.color()) shouldBe fx(Theme.muted())
+          fx(Focus.visible @= true)
           fx(glyph.icon.get.color()) shouldBe fx(Theme.text())
           agree(glyph) shouldBe true
           val before = fx(Theme.palette())
@@ -100,7 +103,10 @@ class SegmentIconSpec extends FxSpec {
             fill shouldBe RenderNode.paintOf(Palette.light.muted)
             fx(glyph.icon.get.color()) shouldBe Palette.light.onAccent
             agree(path) && agree(glyph) shouldBe true
-          } finally fx(Theme.palette @= before)
+          } finally fx {
+            Theme.palette @= before
+            Focus.visible @= false
+          }
       }
     "put the icon at the right and the words before it in a right-to-left language" in
       chips(Segment("a", "Alpha", Some(leaf)), Segment("b", "Alpha")) { (all, _) =>

@@ -11,6 +11,9 @@ import reactify.*
 /** The general components: tabs, toasts, a press that takes a while, work in turns, rows made as they are neared,
   * lines that close up, parts that mirror, and words that scroll. */
 class KitSpec extends FxSpec {
+  // the focus as the keys move it, which these are about
+  override protected def keyed: Boolean = true
+
   private def click(c: Component): Unit = c.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0)
 
   /** `parts` under `ui` for the test, taken away after. */

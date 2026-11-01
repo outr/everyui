@@ -15,6 +15,10 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
   /** The window the focus layer listens on. */
   protected var window: Scene = null
 
+  /** Whether the spec's focus moves as the keys move it (`Focus.visible`: drawn, put on a screen's `defaultFocus`, moved
+    * on to a successor), rather than as a pointer leaves it, the default (Matt's ruling of 2026-10-21). */
+  protected def keyed: Boolean = false
+
   /** `f` on the FX thread, waited for. What it posts for later (`Platform.later`) runs before the next `fx`. The wait
     * gives up after a minute, a bound for a thread that never comes back: the longest work a spec times
     * (ColumnScaleSpec's thousands of lines added one at a time) takes several seconds on a busy machine. */
@@ -91,6 +95,8 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
       // backend reads the modifiers held from
       javafx.event.Event.fireEvent(window, new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_RELEASED, "", "",
         javafx.scene.input.KeyCode.SHIFT, false, false, false, false))
+      // nor the focus left shown by the keys a spec before this one pressed: it starts as the spec says
+      everyui.focus.Focus.visible @= keyed
     }
   }
 }

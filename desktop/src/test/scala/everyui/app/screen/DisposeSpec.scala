@@ -18,6 +18,9 @@ import java.lang.ref.WeakReference
   * on once more (another screen, and so another focus) before it looks, and a board is checked once two more have
   * followed it. */
 class DisposeSpec extends FxSpec {
+  // the focus as the keys move it, which these are about
+  override protected def keyed: Boolean = true
+
   private object Manager extends ScreenManager
   private lazy val home = new DisposePlain(Manager, "Home", "/")
   private lazy val calendar = new DisposePlain(Manager, "Calendar", "/calendar")
