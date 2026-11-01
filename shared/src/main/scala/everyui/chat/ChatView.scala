@@ -42,6 +42,9 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   /** Whether the transcript keeps room at the start edge for the entries' rails (`ChatEntry.rail`,
     * `Transcript.rails`). */
   def rails: Var[Boolean] = transcript.rails
+  /** The entry with id `entryId` brought into view, earlier entries fetched until it is there (`Transcript.reveal`). */
+  def reveal(entryId: String, align: Double = 0.0, found: Boolean => Unit = _ => ()): Unit =
+    transcript.reveal(entryId, align, found)
   /** Whether who is working shows in the transcript, a row each after the newest entry, laid out as everybody else's
     * messages are, with what they are doing wrapped (cut to a few lines, with Show more), for how long, and the
     * control to cancel it (`Transcript.working`), rather than a line each in the status bar, which then says only how

@@ -243,13 +243,18 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     * is let go: they are to show from here now.) */
   def scrollTop(to: Double): Unit = {
     held = None
+    aimed = None
     offset @= math.max(0.0, math.min(furthest, to))
   }
 
-  /** Row `index` brought to `align` of the view: 0 at the top, 0.5 in the middle, 1 at the bottom. */
+  /** Row `index` brought to `align` of the view: 0 at the top, 0.5 in the middle, 1 at the bottom, and kept there as
+    * the rows around it draw at heights of their own, until the rows are scrolled some other way. */
   def scrollTo(index: Int, align: Double = 0.0): Unit = if (index >= 0 && index < count) {
     stopFling()
-    scrollTop(top(index) - (size.height() - heightAt(index)) * align)
+    val to = top(index) - (size.height() - heightAt(index)) * align
+    scrollTop(to)
+    // (where the rows end before it could get there, the first that shows is kept instead, as ever)
+    if (offset() == to) aimed = Some((keyAt(index), align))
   }
 
   /** Scrolled the least that shows all of row `index`. */
@@ -945,17 +950,21 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     Some((keyAt(i), top(i) - offset()))
   }
   private var held: Option[(String, Double)] = None
+  // the row `scrollTo` brought to a place of the view, and where (its `align`), while the rows are not scrolled since
+  private var aimed: Option[(String, Double)] = None
 
   /** `change` made with the first row that shows kept where it is, when it is still in the list: where it was before
-    * rows were drawn at heights of their own, if they were since. */
+    * rows were drawn at heights of their own, if they were since; or the row `scrollTo` brought into view, where it
+    * was brought. */
   private def keepingPlace(change: => Unit): Unit = {
     val anchor = held.orElse(firstShowing())
     held = None
     change
     if (ownHeights) retop()
     // set once, where it ends up: whatever follows the scroll hears one move, not a step on the way
-    val kept = if (followsEnd()) furthest else anchor.flatMap { case (key, dy) => Some(indexOf(key)).filter(_ >= 0)
-      .map(i => top(i) - dy) }.getOrElse(offset())
+    val kept = if (followsEnd()) furthest else aimed.flatMap { case (key, align) => Some(indexOf(key)).filter(_ >= 0)
+      .map(i => top(i) - (size.height() - heightAt(i)) * align) }.orElse(anchor.flatMap { case (key, dy) =>
+      Some(indexOf(key)).filter(_ >= 0).map(i => top(i) - dy) }).getOrElse(offset())
     offset @= math.max(0.0, math.min(furthest, kept))
   }
 

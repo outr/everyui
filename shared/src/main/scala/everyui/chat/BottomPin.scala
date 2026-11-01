@@ -26,10 +26,13 @@ class BottomPin(slack: Double = 8.0) {
     if (bottom && !pinned()) {
       pinned @= true
       unseen @= 0
-    } else if (!bottom && pinned()) {
-      seen = ids.lastOption
-      pinned @= false
-    }
+    } else if (!bottom) letGo()
+  }
+
+  /** Let go, as a scroll up does: what arrives from now on is counted until the bottom is reached again. */
+  def letGo(): Unit = if (pinned()) {
+    seen = ids.lastOption
+    pinned @= false
   }
 
   /** The entries' ids as they are now, oldest first. */

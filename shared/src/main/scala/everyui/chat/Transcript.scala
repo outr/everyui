@@ -26,6 +26,7 @@ import reactify.*
   * stays where it is, and a "Jump to latest" control (with how many have arrived meanwhile) takes it back down, as
   * reaching the bottom does. Near the top it asks `loadOlder` for earlier entries, puts them before the rest without
   * moving what is on the screen, and shows a spinner while they come; an empty answer means there are no more.
+  * `reveal` takes it to an entry by its id (the first unread, a search's hit), fetching earlier ones until it is there.
   *
   * The transcript takes the focus: Up and Down move through the entries (scrolling through one taller than the view a
   * line at a time), Page Up and Page Down scroll a page, Home and End go to either end, and Enter opens or closes a tool
@@ -492,6 +493,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     list.current @= (if (list.count > 0) Some(list.keyAt(list.count - 1)) else None)
   }
 
+  // what waits for the earlier entries being fetched to come (`reveal`)
+  private var awaiting: List[() => Unit] = Nil
+
   private def older(): Unit = loadOlder.foreach { fetch =>
     if (!loading() && !exhausted()) {
       loading @= true
@@ -499,8 +503,43 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
         loading @= false
         if (earlier.isEmpty) exhausted @= true
         else prepend(earlier)
+        val waiting = awaiting
+        awaiting = Nil
+        waiting.foreach(_())
       }.start()
     }
+  }
+
+  // each reveal asked for: the latest is the one carried on
+  private var revealing = 0
+
+  /** The entry with id `entryId` brought into view at `align` of it (0 its top at the top, the default; 0.5 its middle
+    * in the middle), the cursor put on it, and the transcript let go of the bottom, as a scroll up lets it go ("Jump to
+    * latest" shows until it is scrolled back down), unless the bottom is where the entry is: the first unread message
+    * under its marker, a search's hit, a link to a message. One not among the entries yet is looked for in earlier
+    * ones, asked of `loadOlder` as near the top, until it comes or there are no more. `found` hears whether it was
+    * brought into view: false where it is nowhere, or where another reveal was asked for meanwhile, which takes over. */
+  def reveal(entryId: String, align: Double = 0.0, found: Boolean => Unit = _ => ()): Unit = {
+    revealing += 1
+    val ask = revealing
+    def seek(): Unit = {
+      val i = list.indexOf(entryId)
+      if (ask != revealing) found(false)
+      else if (i >= 0) {
+        pin.letGo()
+        list.scrollTo(i, align)
+        list.current @= Some(entryId)
+        // (where it lies at the bottom, kept there again)
+        pin.scrolled(list.offset(), furthest)
+        found(true)
+      }
+      else if (exhausted()) found(false)
+      else {
+        awaiting = awaiting :+ (() => seek())
+        older()
+      }
+    }
+    seek()
   }
 
   /** `earlier` put before the entries, what shows kept where it is (unless it is kept at the bottom). */
