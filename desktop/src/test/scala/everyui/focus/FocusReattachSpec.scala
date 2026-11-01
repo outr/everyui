@@ -62,22 +62,50 @@ class FocusReattachSpec extends FxSpec {
         fx(a.children().contains(input)) shouldBe false
       }
     }
-    "have it back once put on the screen again, a turn after it was taken off" in {
-      val (a, b, input) = fx((box(), box(), new TextArea("Message")))
+    "have it back once put on the screen again, a turn after it was taken off, the keys moving the focus or not" in {
+      List(false, true).foreach { keys =>
+        val (a, b, input) = fx((box(), box(), new TextArea("Message")))
+        onScreen(a, b) {
+          fx {
+            Focus.visible @= keys
+            a.children += input
+            input.focus()
+          }
+          caret(input) shouldBe true
+          fx(a.children -= input)
+          // the platform's focus gone with the node, as a browser takes it
+          fx(Host.root.requestFocus())
+          caret(input) shouldBe false
+          // while it is gone, where a pointer is used, nothing has the focus (Matt's ruling of 2026-10-21); the keys
+          // moving it, it stays on the field
+          fx(Focus.focused()) shouldBe (if (keys) Some(input) else None)
+          fx(b.children += input)
+          fx(Focus.focused()) shouldBe Some(input)
+          caret(input) shouldBe true
+          fx(input.editing()) shouldBe true
+        }
+      }
+      fx(Focus.visible @= false)
+    }
+    "not take the focus back, put on the screen again, where something else was focused while it was gone" in {
+      val (a, b, input, other) = fx((box(), box(), new TextArea("Message"), new TextInput("Name")))
       onScreen(a, b) {
         fx {
+          Focus.visible @= false
           a.children += input
+          b.children += other
           input.focus()
         }
-        caret(input) shouldBe true
         fx(a.children -= input)
-        // the platform's focus gone with the node, as a browser takes it
-        fx(Host.root.requestFocus())
-        caret(input) shouldBe false
-        fx(Focus.focused()) shouldBe Some(input)
-        fx(b.children += input)
-        caret(input) shouldBe true
-        fx(input.editing()) shouldBe true
+        fx(Focus.focused()) shouldBe None
+        fx(other.focus())
+        fx(a.children += input)
+        fx(Focus.focused()) shouldBe Some(other)
+        // nor later, once the focus has gone elsewhere and been let go
+        fx(a.children -= input)
+        fx(Focus.focused @= None)
+        fx(a.children += input)
+        fx(Focus.focused()) shouldBe None
       }
     }
     "have it back as the container it is in is put on the screen again" in {

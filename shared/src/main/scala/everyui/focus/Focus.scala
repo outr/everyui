@@ -282,6 +282,9 @@ object Focus {
     at
   }
 
+  // the field that left the screen with the focus where a pointer is used, and the count of focus moves it left at
+  private var parked: Option[(Component, Int)] = None
+
   // whether a look at a focus taken off the screen is waiting for its turn
   private val looking: Var[Boolean] = Var(false)
 
@@ -303,8 +306,12 @@ object Focus {
   private def moveOn(anywhere: Boolean): Unit = focused().filterNot(showing).foreach { gone =>
     // Where a pointer is used and the keys are not moving the focus, nothing takes its place, as on a web page: but a
     // field built again in its place, the same kind and typed into, is the same field to whoever is writing in it
-    if (!restores && confined.isEmpty)
+    if (!restores && confined.isEmpty) {
       focused @= successor(gone).filter(s => gone.takesTyping && s.takesTyping && s.kind == gone.kind)
+      // and a field written in that is only being moved (taken off and put back a turn or more later) has it back
+      // (`placed`)
+      parked = if (focused().isEmpty && gone.takesTyping) Some((gone, moves)) else None
+    }
     // (under a confinement, where it starts at once, whether the region is still there or not: a tour never leaves it
     // on what is gone)
     else successor(gone).orElse(if (anywhere || confined.nonEmpty) start() else None) match {
@@ -312,6 +319,18 @@ object Focus {
         Platform.log("[focus] " + gone.kind + " left the screen, the focus goes to " + to.kind)
         focused @= Some(to)
       case None => ()
+    }
+  }
+
+  /** Something was put on the screen. Where a pointer is used, a field the focus left the screen with, put back with
+    * nothing focused since, has the focus again, and the platform's (`Component.refocus`): the field that moved, a
+    * conversation's composer put into the view of another, is still the one being written in. */
+  private[everyui] def placed(): Unit = parked.foreach { case (field, at) =>
+    if (moves != at || field.takenApart) parked = None
+    else if (showing(field)) {
+      parked = None
+      focused @= Some(field)
+      field.refocus()
     }
   }
 

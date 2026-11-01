@@ -91,6 +91,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       // the focus in what was put here or moved along, given the platform's focus again: a field's node taken off the
       // page loses the browser's, though the focus layer's stays on it
       if (added.nonEmpty || shifted.nonEmpty) refocus(added)
+      if (added.nonEmpty) everyui.focus.Focus.placed()
       shifted = Nil
       // what is on the screen changed: the frame loop runs, if it was idle, and a focus waiting for this finds it
       everyui.task.Frames.wake()
