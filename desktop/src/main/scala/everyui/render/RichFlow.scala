@@ -75,7 +75,8 @@ class RichFlow extends TextFlow {
     val fonts = shown.map(run => face(run, rtl))
     val width = getPrefWidth
     val words = if (rtl && width > 0.0) RtlText.lines(shown.map(_.text).zip(fonts), width) else shown.map(_.text)
-    getChildren.setAll(shown.indices.map(i => piece(shown(i), words(i), fonts(i)))*)
+    getChildren.setAll(shown.indices.map(i =>
+      if (shown(i).image.nonEmpty) picture(shown(i), fonts(i)) else piece(shown(i), words(i), fonts(i)))*)
   }
 
   // the face `run` is drawn in: its own, or the paragraph's; for right-to-left words, one that has their letters
@@ -86,6 +87,34 @@ class RichFlow extends TextFlow {
     val points = if (run.size > 0.0) run.size else size
     val font = RichFlow.font(named, heavy, run.italic || italic, points)
     if (rtl && run.family.isEmpty) RtlText.covering(font) else font
+  }
+
+  // a run's picture (`TextRun.image`): a square as tall as the letters, the picture fitted in it, set as low under the
+  // line as the web sets it, so the lines are as tall before it loads as after; its words are what is read out and shown
+  // on a hover
+  private def picture(run: TextRun, font: Font): javafx.scene.Node = {
+    val side = font.getSize * TextRun.pictureEm
+    val view = new javafx.scene.image.ImageView(RichFlow.picture(run.image))
+    view.setFitWidth(side)
+    view.setFitHeight(side)
+    view.setPreserveRatio(true)
+    view.setSmooth(true)
+    val box = new javafx.scene.layout.StackPane(view) {
+      override def getBaselineOffset: Double = side - font.getSize * 0.3
+    }
+    box.setMinSize(side, side)
+    box.setPrefSize(side, side)
+    box.setMaxSize(side, side)
+    box.setAccessibleText(run.text)
+    javafx.scene.control.Tooltip.install(box, new javafx.scene.control.Tooltip(run.text))
+    if (run.href.nonEmpty) {
+      box.setCursor(javafx.scene.Cursor.HAND)
+      box.setOnMouseClicked(e => if (e.getButton == javafx.scene.input.MouseButton.PRIMARY) {
+        e.consume()
+        follow(run.href)
+      })
+    }
+    box
   }
 
   private def piece(run: TextRun, words: String, font: Font): Text = {
@@ -108,6 +137,13 @@ class RichFlow extends TextFlow {
 }
 
 object RichFlow {
+  // the runs' pictures by address, loaded once, behind the drawing: a custom emoji is in many messages
+  private val pictures = scala.collection.mutable.HashMap.empty[String, javafx.scene.image.Image]
+
+  /** The picture at `uri`, loading in the background the first time it is wanted. */
+  def picture(uri: String): javafx.scene.image.Image =
+    pictures.getOrElseUpdate(uri, new javafx.scene.image.Image(uri, true))
+
   /** A bundled face (its own italic where it has one) at `size`, or the system's where `family` is none. */
   def font(family: String, weight: Int, italic: Boolean, size: Double): Font =
     if (family.isEmpty) FontWeights("System", weight, italic, size)

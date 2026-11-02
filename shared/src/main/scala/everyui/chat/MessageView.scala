@@ -82,10 +82,12 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     reacted.children.replaceMaking(made)
   }
   private def pill(r: ChatReaction): Component = new Container {
-    private val glyph = new TextView {
-      content @= r.emoji
-      font.size @= 14.0
-    }
+    // one of the app's own emoji (its `:name:`) as its picture
+    private val glyph: Component = everyui.emoji.CustomEmoji.of(r.emoji)
+      .map(e => new everyui.emoji.CustomEmojiView(e, 17.0)).getOrElse(new TextView {
+        content @= r.emoji
+        font.size @= 14.0
+      })
     private val count = new TextView {
       content @= r.count.toString
       font.size @= 12.0

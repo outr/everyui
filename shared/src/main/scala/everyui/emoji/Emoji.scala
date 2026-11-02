@@ -33,26 +33,40 @@ object Emoji {
   /** The emoji `code` names (without its colons, in any case): `"tada"` is 🎉. */
   def lookup(code: String): Option[String] = byCode.get(code.toLowerCase).map(_.emoji)
 
-  /** The entry for `emoji`, whatever its skin tone. */
-  def entry(emoji: String): Option[EmojiEntry] = byEmoji.get(bare(emoji))
+  /** The entry for `emoji`, whatever its skin tone: one of the app's own (`CustomEmoji`) by its `:name:`. */
+  def entry(emoji: String): Option[EmojiEntry] = CustomEmoji.of(emoji).map(custom).orElse(byEmoji.get(bare(emoji)))
+
+  /** One of the app's own as an entry: its `:name:` the emoji, its name its one shortcode, the words of its group what
+    * it is found by too, and its group's category, after every one of `categories` (`customCategory`). */
+  def custom(e: CustomEmoji): EmojiEntry = EmojiEntry(e.code, List(e.name),
+    e.group.toLowerCase.split("\\s+").toList.filter(_.nonEmpty), customCategory(e.group), skinTones = false)
+
+  /** The category of the app's own emoji in `group`: after every one of `categories`, in the order of
+    * `CustomEmoji.groups`. */
+  def customCategory(group: String): Int = categories.size + math.max(0, CustomEmoji.groups.indexOf(group))
+
+  /** The one of the app's own `entry` is, where it is one. */
+  def customOf(entry: EmojiEntry): Option[CustomEmoji] = CustomEmoji.of(entry.emoji)
 
   /** The first name `emoji` is known by, without its colons: `"👍"` is `"+1"`. Its skin tone, where it has one, is
     * not in the name. */
   def shortcode(emoji: String): Option[String] = entry(emoji).flatMap(_.shortcodes.headOption)
 
   /** The emoji whose names or words start with what `query` holds, each of its words, best first: a name that is the
-    * query, then names that start with it, then words that do; at most `limit`. Empty for no query. */
+    * query, then names that start with it, then words that do; at most `limit`. Empty for no query. The app's own
+    * (`CustomEmoji`) are among them, before the others that rank with them. */
   def search(query: String, limit: Int = 60): Vector[EmojiEntry] = {
     val words = query.trim.toLowerCase.split("[\\s:]+").toVector.filter(_.nonEmpty)
     if (words.isEmpty) Vector.empty
     else {
-      def names(e: EmojiEntry): List[String] = e.shortcodes.flatMap(n => n :: n.split("[_-]").toList)
+      def codes(e: EmojiEntry): List[String] = e.shortcodes.map(_.toLowerCase)
+      def names(e: EmojiEntry): List[String] = codes(e).flatMap(n => n :: n.split("[_-]").toList)
       def all(e: EmojiEntry, w: String): Boolean = names(e).exists(_.startsWith(w)) || e.words.exists(_.startsWith(w))
-      val found = Emoji.all.filter(e => words.forall(w => all(e, w)))
+      val found = (CustomEmoji.all().map(custom) ++ Emoji.all).filter(e => words.forall(w => all(e, w)))
       val first = words.head
       def rank(e: EmojiEntry): Int =
-        if (e.shortcodes.contains(first)) 0
-        else if (e.shortcodes.exists(_.startsWith(first))) 1
+        if (codes(e).contains(first)) 0
+        else if (codes(e).exists(_.startsWith(first))) 1
         else if (names(e).exists(_.startsWith(first))) 2
         else 3
       found.sortBy(rank).take(limit)

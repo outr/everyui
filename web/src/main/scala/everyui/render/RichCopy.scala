@@ -250,6 +250,9 @@ object RichCopy {
         val s = cut(x, range)
         if (s.nonEmpty) pieces = (s, marks, href) :: pieces
       }
+      // a run's picture (a custom emoji) as its words, its `:name:`
+      case img: html.Image if img.className == "everyui-run-picture" && reaches(range, img) =>
+        if (img.alt.nonEmpty) pieces = (img.alt, marks, href) :: pieces
       case el: html.Element if taken(el, range) =>
         if (pieces.nonEmpty && !isRun(el) && pieces.head._2 != "\n") pieces = ("", "\n", "") :: pieces
         val run = Option(el.getAttribute("data-run")).getOrElse("")

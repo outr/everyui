@@ -6,8 +6,8 @@ import everyui.theme.Theme
 import everyui.{Color, Shadow}
 import reactify.*
 
-/** The list a [[Composer]] offers for the word being typed, `width` wide: each completion's label, and its detail
-  * muted after it, the lit one (`lit`, which the composer moves with Up and Down) in the lit colour. It takes no focus:
+/** The list a [[Composer]] offers for the word being typed, `width` wide: each completion's label, its picture before
+  * it where it has one, and its detail muted after it, the lit one (`lit`, which the composer moves with Up and Down) in the lit colour. It takes no focus:
   * the keys stay in the composer's field. A pointer resting on a row lights it, and a click chooses it (`chosen`). */
 class CompletionPopup(val completions: Vector[Completion], val lit: Var[Int], width: => Double, points: Double = 14.0)
   extends Container {
@@ -35,7 +35,14 @@ class CompletionPopup(val completions: Vector[Completion], val lit: Var[Int], wi
       semantics @= Semantics("option", label = c.label + c.detail.map(d => ", " + d).getOrElse(""))
     }
     line.backgroundColor := (if (lit() == i) Theme.controlLit() else Color.Clear)
-    label.position.left @= pad
+    // its picture, where it has one, before the label
+    val picture = c.picture.map(source => new PictureSquare(source, points * 1.3, ""))
+    picture.foreach { p =>
+      p.position.left @= pad
+      p.position.middle := line.size.middle()
+      line.children += p
+    }
+    label.position.left @= picture.map(_ => pad * 2.0 + points * 1.3).getOrElse(pad)
     label.position.middle := line.size.middle()
     // a completion is a line tall: cut short, and read whole in its tip
     label.textOverflow @= everyui.component.types.TextOverflow.Ellipsis

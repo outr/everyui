@@ -286,7 +286,22 @@ class RenderNode(val el: html.Element) {
     el.textContent = ""
     runs.foreach { run =>
       val span = dom.document.createElement(if (run.href.nonEmpty) "a" else "span").asInstanceOf[html.Element]
-      span.textContent = run.text
+      if (run.image.isEmpty) span.textContent = run.text
+      else {
+        // a picture in place of the words, a square as tall as the letters, so the lines are the same before it loads;
+        // its words are what is read out, shown on a hover and copied (RichCopy)
+        val img = dom.document.createElement("img").asInstanceOf[html.Image]
+        img.src = run.image
+        img.alt = run.text
+        img.title = run.text
+        img.setAttribute("draggable", "false")
+        img.className = "everyui-run-picture"
+        img.style.width = everyui.text.TextRun.pictureEm.toString + "em"
+        img.style.height = everyui.text.TextRun.pictureEm.toString + "em"
+        img.style.setProperty("object-fit", "contain")
+        img.style.verticalAlign = "-0.3em"
+        span.appendChild(img)
+      }
       // what it is when it is copied (RichCopy): bold, slanted, struck, code
       val marks = (if (run.weight >= 600) "b" else "") + (if (run.italic) "i" else "") + (if (run.strike) "s" else "") +
         (if (run.family.toLowerCase.contains("mono")) "c" else "")

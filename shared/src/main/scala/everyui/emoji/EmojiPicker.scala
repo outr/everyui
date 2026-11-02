@@ -13,7 +13,8 @@ import everyui.ui
 import reactify.*
 
 /** A grid of emoji to choose from: a field over it searching their names and words (`Emoji.search`), a tab for each
-  * category and one for those this device used last (kept between runs), and a skin tone for those that take one, kept
+  * category and one for those this device used last (kept between runs), one for each group of the app's own emoji
+  * (`CustomEmoji`, drawn as their pictures and chosen as their `:name:`), and a skin tone for those that take one, kept
   * too. A click or a tap on one, or Enter on the one the arrows light, chooses it (`chosen`). Under the grid, the name
   * of the one lit or under the pointer (`:tada:`). Only one category, or what the search finds, is made at a time.
   *
@@ -41,6 +42,8 @@ class EmojiPicker(columns: Int = EmojiPicker.columns) extends Container {
     val q = query().trim
     if (q.nonEmpty) Emoji.search(q, 200)
     else if (category() < 0) EmojiPicker.recent().flatMap(e => Emoji.entry(e).toVector)
+    else if (category() >= Emoji.categories.size)
+      CustomEmoji.all().map(Emoji.custom).filter(_.category == category())
     else Emoji.all.filter(_.category == category())
   })
   // the one the arrows light, by its place among those showing, and the one under the pointer
@@ -67,17 +70,21 @@ class EmojiPicker(columns: Int = EmojiPicker.columns) extends Container {
       tone @= (tone() + 1) % 6
     }
   }
-  // a tab for those used last and one for each category, led by an emoji of its own
+  // a tab for those used last, one for each category, led by an emoji of its own, and one for each group of the app's
+  // own emoji (`CustomEmoji`), led by its first
+  private val groups: Vector[String] = CustomEmoji.groups
   private val tabFaces: Vector[(Int, String)] = Vector(-1 -> "🕘") ++
     Vector("😀", "👋", "🐶", "🍎", "✈️", "⚽", "💡",
-      "❤️", "🏳️").zipWithIndex.map { case (face, i) => i -> face }
+      "❤️", "🏳️").zipWithIndex.map { case (face, i) => i -> face } ++
+    groups.map(g => Emoji.customCategory(g) -> CustomEmoji.all().find(_.group == g).map(_.code).getOrElse(""))
   private val tabs: Vector[Container] = tabFaces.map { case (c, face) =>
-    val name = if (c < 0) EmojiWords.recent else EmojiWords.category(c)
+    val name = if (c < 0) EmojiWords.recent else if (c >= Emoji.categories.size) groups(c - Emoji.categories.size)
+      else EmojiWords.category(c)
     new Container {
-      private val glyph = new TextView {
+      private val glyph = CustomEmoji.of(face).map(e => new CustomEmojiView(e, 18.0)).getOrElse(new TextView {
         content @= face
         font.size @= 16.0
-      }
+      })
       size.width @= across / tabFaces.size
       size.height @= cell * 0.9
       radius @= 6.0
@@ -166,10 +173,12 @@ class EmojiPicker(columns: Int = EmojiPicker.columns) extends Container {
   }
 
   private def made(e: EmojiEntry, i: Int): Container = new Container {
-    private val glyph = new TextView {
-      content @= Emoji.withTone(e.emoji, tone())
-      font.size @= EmojiPicker.points
-    }
+    // one of the app's own as its picture, as large as the others are drawn
+    private val glyph = Emoji.customOf(e).map(c => new CustomEmojiView(c, EmojiPicker.points * 1.2))
+      .getOrElse(new TextView {
+        content @= Emoji.withTone(e.emoji, tone())
+        font.size @= EmojiPicker.points
+      })
     size.width @= cell
     size.height @= cell
     radius @= 6.0

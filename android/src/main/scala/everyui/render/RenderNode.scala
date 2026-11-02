@@ -553,6 +553,8 @@ class RenderNode(val view: View) {
             else Typeface.ITALIC), from, to)
           if (run.size > 0.0) span(new android.text.style.AbsoluteSizeSpan(math.round(run.size).toInt), from, to)
           run.letterSpacing.foreach(px => span(new SpacingSpan(px), from, to))
+          // a picture in place of the words, drawn again once it is in
+          if (run.image.nonEmpty) span(new PictureSpan(run.image, () => t.invalidate()), from, to)
           if (run.strike) span(new android.text.style.StrikethroughSpan(), from, to)
           if (run.underline) span(new android.text.style.UnderlineSpan(), from, to)
           // a link followed by a tap on it; its colour and underline are the run's own

@@ -1,5 +1,6 @@
 package everyui.markdown
 
+import everyui.emoji.CustomEmoji
 import everyui.text.TextRun
 import everyui.theme.Theme
 
@@ -49,10 +50,12 @@ private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: 
     lines.reverse.filter(p => p.image.nonEmpty || p.runs.exists(_.text.trim.nonEmpty))
   }
 
-  def add(content: List[MdInline], style: TextRun): Unit = if (mentions.isEmpty) content.foreach(one(_, style)) else {
+  def add(content: List[MdInline], style: TextRun): Unit =
+    if (mentions.isEmpty && CustomEmoji.all().isEmpty) content.foreach(one(_, style)) else {
     var rest = content
     while (rest.nonEmpty) {
-      // words that run on from one piece to the next taken together, so a mention split between them is still one
+      // words that run on from one piece to the next taken together, so a mention or an emoji's name split between
+      // them (`:party_parrot:`, cut at its underscore) is still one
       var words = ""
       var more = true
       while (more && rest.nonEmpty) rest.head match {
@@ -69,14 +72,21 @@ private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: 
     }
   }
 
-  // words, a mention in them drawn as one (not in a link, which is drawn as a link)
+  // words, a mention in them drawn as one (not in a link, which is drawn as a link), and the app's own emoji named in
+  // them as their pictures
   private def text(words: String, style: TextRun): Unit =
-    if (mentions.isEmpty || style.href.nonEmpty) line = style.copy(text = words) :: line
+    if (mentions.isEmpty || style.href.nonEmpty) pictured(words, style)
     else Mentions.split(words, mentions).foreach { case (part, named) =>
-      line = (if (named) style.copy(text = part, color = MarkdownView.mention().toHex,
+      if (named) line = style.copy(text = part, color = MarkdownView.mention().toHex,
         background = MarkdownView.mentionWash().toHexAlpha,
-        href = if (pressable) Mentions.nameOf(part, mentions).map(Mentions.href).getOrElse("") else "")
-        else style.copy(text = part)) :: line
+        href = if (pressable) Mentions.nameOf(part, mentions).map(Mentions.href).getOrElse("") else "") :: line
+      else pictured(part, style)
+    }
+
+  // words with each of the app's own emoji they name (`CustomEmoji`) as its picture, its name its words
+  private def pictured(words: String, style: TextRun): Unit =
+    CustomEmoji.split(words).foreach { case (part, emoji) =>
+      line = emoji.map(e => style.copy(text = part, image = e.source)).getOrElse(style.copy(text = part)) :: line
     }
 
   private def one(inline: MdInline, style: TextRun): Unit = inline match {

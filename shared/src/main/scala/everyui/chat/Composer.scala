@@ -113,7 +113,9 @@ class Composer(onSend: Draft => Unit,
   val pasted: Var[Option[String => ComposerPaste]] = own(Var(None))
   /** Whether an emoji's name typed between colons (`:tada:`) becomes the emoji as its closing colon is typed, with a
     * list of the emoji whose names start with what follows a colon, after two letters, as completions are listed; and
-    * Backspace just after one gives the name back. On, the default; a remote never offers it. */
+    * Backspace just after one gives the name back. The app's own (`everyui.emoji.CustomEmoji`) are listed too, by their
+    * pictures, and stay as their names, which a message draws as their pictures. On, the default; a remote never offers
+    * it. */
   val emojiShortcodes: Var[Boolean] = own(Var(true))
   /** Whether a button beside Send opens an emoji picker (`everyui.emoji.EmojiPicker`), the one chosen put in at the
     * caret. On, the default; a remote never shows it. */
@@ -761,8 +763,11 @@ class Composer(onSend: Draft => Unit,
       case Some(w) if enabled() && field.focused() =>
         asked += 1
         word = Some(w)
-        showCompletions(everyui.emoji.Emoji.search(w.prefix, 8).map(e => Completion(e.emoji + "  :" +
-          e.shortcodes.headOption.getOrElse("") + ":", e.emoji)))
+        // one of the app's own as its picture and its name, which is what goes in
+        showCompletions(everyui.emoji.Emoji.search(w.prefix, 8).map(e => everyui.emoji.Emoji.customOf(e) match {
+          case Some(c) => Completion(c.code, c.code, picture = Some(c.source))
+          case None => Completion(e.emoji + "  :" + e.shortcodes.headOption.getOrElse("") + ":", e.emoji)
+        }))
       case _ => complete match {
         case Some(f) =>
           asked += 1
