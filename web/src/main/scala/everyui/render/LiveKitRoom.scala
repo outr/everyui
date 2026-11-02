@@ -244,15 +244,19 @@ object LiveKitRoom {
       case _ => CallEnd.Lost
     }
 
-  /** Why joining failed (a ConnectionError's reason, or whatever else was thrown). */
+  /** Why joining failed (a ConnectionError's reason, or whatever else was thrown). Its `reason`, a number, and not
+    * its `reasonName`: the client wraps a server's refusal (a 401 for a token it did not sign) in an error of its own,
+    * "could not establish signal connection", taking on the refusal's reason but keeping its own name for it. */
   def failed(e: Any): CallEnd = {
     val d = e.asInstanceOf[js.Dynamic]
     val said =
       if (defined(d.asInstanceOf[js.Any]) && defined(d.message)) String.valueOf(d.message) else String.valueOf(e)
+    val reason = if (defined(d.reason) && js.typeOf(d.reason) == "number") d.reason.asInstanceOf[Double].toInt else -1
     if (WebErrors.name(e) != "ConnectionError") CallEnd.Failed(WebErrors.message(e))
-    else text(d.reasonName) match {
-      case "NotAllowed" => CallEnd.Refused(said)
-      case "Cancelled" | "LeaveRequest" => CallEnd.Left
+    else reason match {
+      // ConnectionErrorReason: NotAllowed 0, Cancelled 3, LeaveRequest 4
+      case 0 => CallEnd.Refused(said)
+      case 3 | 4 => CallEnd.Left
       case _ => CallEnd.Failed(said)
     }
   }
