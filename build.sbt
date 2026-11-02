@@ -218,7 +218,10 @@ lazy val web = (project in file("web"))
     ),
     Compile / resourceGenerators += fontResources.taskValue,
     // hls.js, for a browser with no HLS of its own: served next to the page (project/HlsAssets.scala)
-    Compile / resourceGenerators += Def.task(HlsAssets.generate(streams.value.log.info(_), (Compile / resourceManaged).value)).taskValue
+    Compile / resourceGenerators += Def.task(HlsAssets.generate(streams.value.log.info(_), (Compile / resourceManaged).value)).taskValue,
+    // LiveKit's client, for a call (everyui.call): served next to the page, loaded once a call connects
+    // (project/LiveKitAssets.scala)
+    Compile / resourceGenerators += Def.task(LiveKitAssets.generate(streams.value.log.info(_), (Compile / resourceManaged).value)).taskValue
   )
 
 // --- network, published: the module and its backend, for the JVM and the browser ------------------------------

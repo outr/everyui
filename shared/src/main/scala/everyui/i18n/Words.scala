@@ -149,7 +149,9 @@ object Words {
     "color.hue" -> "Hue", "color.saturation" -> "Saturation", "color.brightness" -> "Brightness",
     "color.opacity" -> "Opacity", "color.hex" -> "Hex", "color.recent" -> "Recent",
     "map.zoomIn" -> "Zoom in", "map.zoomOut" -> "Zoom out", "graph.graph" -> "Graph",
-    "markdown.copy" -> "Copy", "markdown.done" -> "done", "markdown.notDone" -> "not done")
+    "markdown.copy" -> "Copy", "markdown.done" -> "done", "markdown.notDone" -> "not done",
+    "call.muted" -> "Muted", "call.speaking" -> "speaking", "call.screenOf" -> "{name}'s screen",
+    "call.microphone" -> "Microphone {n}", "call.camera" -> "Camera {n}", "call.speaker" -> "Speaker {n}")
 
   private lazy val german: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Abbrechen", "close" -> "Schließen",
     "done" -> "Fertig", "yes" -> "Ja",
@@ -233,7 +235,9 @@ object Words {
     "color.hue" -> "Farbton", "color.saturation" -> "Sättigung", "color.brightness" -> "Helligkeit",
     "color.opacity" -> "Deckkraft", "color.hex" -> "Hex", "color.recent" -> "Zuletzt verwendet",
     "map.zoomIn" -> "Vergrößern", "map.zoomOut" -> "Verkleinern", "graph.graph" -> "Graph",
-    "markdown.copy" -> "Kopieren", "markdown.done" -> "erledigt", "markdown.notDone" -> "nicht erledigt")
+    "markdown.copy" -> "Kopieren", "markdown.done" -> "erledigt", "markdown.notDone" -> "nicht erledigt",
+    "call.muted" -> "Stummgeschaltet", "call.speaking" -> "spricht", "call.screenOf" -> "Bildschirm von {name}",
+    "call.microphone" -> "Mikrofon {n}", "call.camera" -> "Kamera {n}", "call.speaker" -> "Lautsprecher {n}")
 
   private lazy val spanish: Map[String, String] = Map("ok" -> "Aceptar", "cancel" -> "Cancelar", "close" -> "Cerrar",
     "done" -> "Listo", "yes" -> "Sí",
@@ -317,7 +321,9 @@ object Words {
     "color.hue" -> "Tono", "color.saturation" -> "Saturación", "color.brightness" -> "Brillo",
     "color.opacity" -> "Opacidad", "color.hex" -> "Hex", "color.recent" -> "Recientes",
     "map.zoomIn" -> "Acercar", "map.zoomOut" -> "Alejar", "graph.graph" -> "Grafo",
-    "markdown.copy" -> "Copiar", "markdown.done" -> "hecho", "markdown.notDone" -> "sin hacer")
+    "markdown.copy" -> "Copiar", "markdown.done" -> "hecho", "markdown.notDone" -> "sin hacer",
+    "call.muted" -> "Silenciado", "call.speaking" -> "hablando", "call.screenOf" -> "Pantalla de {name}",
+    "call.microphone" -> "Micrófono {n}", "call.camera" -> "Cámara {n}", "call.speaker" -> "Altavoz {n}")
 
   private lazy val french: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuler", "close" -> "Fermer",
     "done" -> "Terminé", "yes" -> "Oui",
@@ -402,7 +408,9 @@ object Words {
     "color.hue" -> "Teinte", "color.saturation" -> "Saturation", "color.brightness" -> "Luminosité",
     "color.opacity" -> "Opacité", "color.hex" -> "Hex", "color.recent" -> "Récentes",
     "map.zoomIn" -> "Zoom avant", "map.zoomOut" -> "Zoom arrière", "graph.graph" -> "Graphe",
-    "markdown.copy" -> "Copier", "markdown.done" -> "fait", "markdown.notDone" -> "à faire")
+    "markdown.copy" -> "Copier", "markdown.done" -> "fait", "markdown.notDone" -> "à faire",
+    "call.muted" -> "Micro coupé", "call.speaking" -> "parle", "call.screenOf" -> "Écran de {name}",
+    "call.microphone" -> "Micro {n}", "call.camera" -> "Caméra {n}", "call.speaker" -> "Haut-parleur {n}")
 
   private lazy val italian: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annulla", "close" -> "Chiudi",
     "done" -> "Fine", "yes" -> "Sì", "no" -> "No",
@@ -483,7 +491,9 @@ object Words {
     "color.hue" -> "Tonalità", "color.saturation" -> "Saturazione", "color.brightness" -> "Luminosità",
     "color.opacity" -> "Opacità", "color.hex" -> "Hex", "color.recent" -> "Recenti",
     "map.zoomIn" -> "Aumenta zoom", "map.zoomOut" -> "Riduci zoom", "graph.graph" -> "Grafo",
-    "markdown.copy" -> "Copia", "markdown.done" -> "fatto", "markdown.notDone" -> "da fare")
+    "markdown.copy" -> "Copia", "markdown.done" -> "fatto", "markdown.notDone" -> "da fare",
+    "call.muted" -> "Microfono disattivato", "call.speaking" -> "sta parlando", "call.screenOf" -> "Schermo di {name}",
+    "call.microphone" -> "Microfono {n}", "call.camera" -> "Videocamera {n}", "call.speaker" -> "Altoparlante {n}")
 
   private lazy val dutch: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuleren", "close" -> "Sluiten",
     "done" -> "Klaar", "yes" -> "Ja",
@@ -567,7 +577,9 @@ object Words {
     "color.hue" -> "Tint", "color.saturation" -> "Verzadiging", "color.brightness" -> "Helderheid",
     "color.opacity" -> "Dekking", "color.hex" -> "Hex", "color.recent" -> "Recent gebruikt",
     "map.zoomIn" -> "Inzoomen", "map.zoomOut" -> "Uitzoomen", "graph.graph" -> "Graaf",
-    "markdown.copy" -> "Kopiëren", "markdown.done" -> "klaar", "markdown.notDone" -> "niet klaar")
+    "markdown.copy" -> "Kopiëren", "markdown.done" -> "klaar", "markdown.notDone" -> "niet klaar",
+    "call.muted" -> "Gedempt", "call.speaking" -> "spreekt", "call.screenOf" -> "Scherm van {name}",
+    "call.microphone" -> "Microfoon {n}", "call.camera" -> "Camera {n}", "call.speaker" -> "Luidspreker {n}")
 
   private lazy val portuguese: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Cancelar", "close" -> "Fechar",
     "done" -> "Concluído", "yes" -> "Sim",
@@ -648,7 +660,9 @@ object Words {
     "color.hue" -> "Matiz", "color.saturation" -> "Saturação", "color.brightness" -> "Brilho",
     "color.opacity" -> "Opacidade", "color.hex" -> "Hex", "color.recent" -> "Recentes",
     "map.zoomIn" -> "Aumentar zoom", "map.zoomOut" -> "Diminuir zoom", "graph.graph" -> "Grafo",
-    "markdown.copy" -> "Copiar", "markdown.done" -> "concluído", "markdown.notDone" -> "não concluído")
+    "markdown.copy" -> "Copiar", "markdown.done" -> "concluído", "markdown.notDone" -> "não concluído",
+    "call.muted" -> "Silenciado", "call.speaking" -> "falando", "call.screenOf" -> "Tela de {name}",
+    "call.microphone" -> "Microfone {n}", "call.camera" -> "Câmera {n}", "call.speaker" -> "Alto-falante {n}")
 
   private lazy val turkish: Map[String, String] = Map("ok" -> "Tamam", "cancel" -> "İptal", "close" -> "Kapat",
     "done" -> "Bitti", "yes" -> "Evet",
@@ -727,7 +741,9 @@ object Words {
     "color.hue" -> "Ton", "color.saturation" -> "Doygunluk", "color.brightness" -> "Parlaklık",
     "color.opacity" -> "Opaklık", "color.hex" -> "Hex", "color.recent" -> "Son kullanılanlar",
     "map.zoomIn" -> "Yakınlaştır", "map.zoomOut" -> "Uzaklaştır", "graph.graph" -> "Çizge",
-    "markdown.copy" -> "Kopyala", "markdown.done" -> "tamamlandı", "markdown.notDone" -> "tamamlanmadı")
+    "markdown.copy" -> "Kopyala", "markdown.done" -> "tamamlandı", "markdown.notDone" -> "tamamlanmadı",
+    "call.muted" -> "Sesi kapalı", "call.speaking" -> "konuşuyor", "call.screenOf" -> "Ekran: {name}",
+    "call.microphone" -> "Mikrofon {n}", "call.camera" -> "Kamera {n}", "call.speaker" -> "Hoparlör {n}")
 
   // Arabic counts: =2 is the dual, few (3 to 10) a plural, many (11 to 99) and other (100 and up) a singular.
   private lazy val arabic: Map[String, String] = Map("ok" -> "موافق", "cancel" -> "إلغاء", "close" -> "إغلاق",
@@ -812,7 +828,9 @@ object Words {
     "color.hue" -> "تدرج اللون", "color.saturation" -> "التشبع", "color.brightness" -> "السطوع",
     "color.opacity" -> "العتامة", "color.hex" -> "Hex", "color.recent" -> "الأخيرة",
     "map.zoomIn" -> "تكبير", "map.zoomOut" -> "تصغير", "graph.graph" -> "مخطط",
-    "markdown.copy" -> "نسخ", "markdown.done" -> "مكتمل", "markdown.notDone" -> "غير مكتمل")
+    "markdown.copy" -> "نسخ", "markdown.done" -> "مكتمل", "markdown.notDone" -> "غير مكتمل",
+    "call.muted" -> "مكتوم", "call.speaking" -> "يتحدث", "call.screenOf" -> "شاشة {name}",
+    "call.microphone" -> "الميكروفون {n}", "call.camera" -> "الكاميرا {n}", "call.speaker" -> "مكبر الصوت {n}")
 
   private lazy val chinese: Map[String, String] = Map("ok" -> "确定", "cancel" -> "取消", "close" -> "关闭",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -885,7 +903,9 @@ object Words {
     "color.hue" -> "色相", "color.saturation" -> "饱和度", "color.brightness" -> "亮度", "color.opacity" -> "不透明度",
     "color.hex" -> "十六进制", "color.recent" -> "最近使用",
     "map.zoomIn" -> "放大", "map.zoomOut" -> "缩小", "graph.graph" -> "图",
-    "markdown.copy" -> "复制", "markdown.done" -> "已完成", "markdown.notDone" -> "未完成")
+    "markdown.copy" -> "复制", "markdown.done" -> "已完成", "markdown.notDone" -> "未完成",
+    "call.muted" -> "已静音", "call.speaking" -> "正在讲话", "call.screenOf" -> "{name} 的屏幕", "call.microphone" -> "麦克风 {n}",
+    "call.camera" -> "摄像头 {n}", "call.speaker" -> "扬声器 {n}")
 
   private lazy val traditionalChinese: Map[String, String] = Map("ok" -> "確定", "cancel" -> "取消", "close" -> "關閉",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -958,5 +978,7 @@ object Words {
     "color.hue" -> "色相", "color.saturation" -> "飽和度", "color.brightness" -> "亮度", "color.opacity" -> "不透明度",
     "color.hex" -> "十六進位", "color.recent" -> "最近使用",
     "map.zoomIn" -> "放大", "map.zoomOut" -> "縮小", "graph.graph" -> "圖",
-    "markdown.copy" -> "複製", "markdown.done" -> "已完成", "markdown.notDone" -> "未完成")
+    "markdown.copy" -> "複製", "markdown.done" -> "已完成", "markdown.notDone" -> "未完成",
+    "call.muted" -> "已靜音", "call.speaking" -> "正在說話", "call.screenOf" -> "{name} 的螢幕", "call.microphone" -> "麥克風 {n}",
+    "call.camera" -> "攝影機 {n}", "call.speaker" -> "喇叭 {n}")
 }

@@ -2689,6 +2689,95 @@ Both ask for the permission where it has not been given; `Location.permission` (
 
 `demo=platform` finds where the device is and follows it 25 m at a time.
 
+## Calls (`everyui.call`)
+
+A `Call` puts this person in a room of a media server with others: their sound plays by itself, their cameras and
+screens are drawn by `VideoTile` and `ScreenShareView`, and this person sends their microphone, camera and screen as
+they choose. The app's server mints the token that lets them in and keeps whatever it knows of the room; EveryUI needs
+nothing on the server. The engine is pluggable (`CallEngine`): the platform's is LiveKit's in a browser, and an app can
+give a `Call` one of its own for another server.
+
+```scala
+import everyui.call.*
+
+val call = new Call
+call.state.attach {
+  case CallState.Ended(CallEnd.Refused(why)) => Toast.show("Could not join: " + why)
+  case CallState.Ended(_) => bar.visible @= false
+  case _ =>
+}
+call.connect("wss://calls.example.com", tokenFromServer, microphone = true)
+
+mute.event.click.attach(_ => call.setMicrophone(!call.microphone(), why => why.foreach(r => Toast.show(r.toString))))
+camera.event.click.attach(_ => call.setCamera(!call.camera()))
+share.event.click.attach(_ => call.setScreen(!call.screen()))
+leave.event.click.attach(_ => call.leave())
+// a click lets the sound play where the browser held it back
+unblock.visible := call.audioBlocked()
+unblock.event.click.attach(_ => call.startAudio())
+
+// a tile kept for each identity while they are in the room, and taken apart once they leave
+grid.children.bindMaking(call.everyone().map(_.identity))(id => new VideoTile(call, id,
+  face = p => Participant(p.identity, p.shownName, avatars.get(p.identity))))
+val stage = new ScreenShareView(call)
+stage.visible := stage.sharing()
+```
+
+- **Who is there.** `participants` (everyone else) and `local` (this person, once in), as the room last told of them:
+  `speaking` and its `level`, `microphone`, their `camera` and `screen` tracks while they send them (one turned off is
+  not given, so its tile shows the face), and `quality` (excellent, good, poor, lost). `everyone` is this person,
+  then the others.
+- **Where it stands.** `state`: `Idle`, `Connecting`, `Connected`, `Reconnecting` (the network went; it carries on once
+  the room is reached again), and `Ended(why)`: `Left`, `Removed`, `Replaced` (the same person joined elsewhere),
+  `Closed`, `Lost`, `Refused(message)` (the token was not taken), `Unavailable`, `Failed(message)`. A call is joined
+  once; a new `Call` joins again.
+- **Sending.** `setMicrophone`, `setCamera` and `setScreen` answer why not (`MediaRefusal`: `ByPerson`, `ByPolicy`,
+  `NoDevice`, `InUse`, `Unavailable`, `Failed`), and asked before the room is reached they are done once it is.
+  `microphone`, `camera` and `screen` say what is sent, including the browser's own "Stop sharing". A screen's sound
+  is shared with it where the browser offers it (a tab's).
+- **Hearing.** Every remote sound plays in a hidden `<audio>` of its own, through `MediaDevices.speaker`;
+  `audible @= false` keeps them all silent, still in the call. A browser may hold sound back until the page has been
+  used (`audioBlocked`): `startAudio()` from a click lets it.
+- **Tiles.** `VideoTile(call, identity)` draws their camera (this person's own as in a mirror), or their face
+  (`face`: an `everyui.chat.Participant`, so their picture or their letter on their colour), their name in the corner
+  with a crossed-out microphone while theirs is off, and a ring (`ringColor`, `ringWidth`) while they speak; a screen
+  reader hears their name and whether they are muted or speaking. `ScreenShareView(call)` shows whoever shares a
+  screen first, whole inside its box, or a named sharer's. The app sizes both. `CallVideo` is the picture alone.
+
+### Devices and permission (`MediaDevices`)
+
+`microphones`, `cameras` and `speakers` list what the device has; `microphone`, `camera` and `speaker` choose one by
+id (None is the system's own), kept on the device, and a call in progress follows a new choice at once.
+`microphoneAccess` and `cameraAccess` say whether the app may use them (`Permission`, and once refused, the
+`MediaRefusal`), following what calls find and what the person changes in the site's settings. A browser gives the
+labels only once the person has let the page use a device, so `ask` puts its prompt up (from a click, once the person
+knows what for), and the lists fill in. A "check your microphone" step is a meter:
+
+```scala
+MediaDevices.ask(microphone = true, camera = true)(why => why.foreach(r => explain(r)))
+val meter = MediaDevices.meter()              // the chosen microphone
+level.size.width := 200.0 * meter.level()     // 0 to 1, -60 dB to 0 dB
+...
+meter.stop()
+```
+
+Safari and Firefox on Android choose no speaker (`speakersChosen` false, `speakers` empty): the sound goes where the
+system sends it.
+
+**Where it runs.** In a browser on a secure context (https, or localhost). The desktop, Android, the Roku and the
+Apple TV have no engine yet: `Call.supported` is false, a call ends as it connects with `CallEnd.Unavailable`, and
+`MediaDevices` lists nothing.
+
+**Shipping it.** LiveKit's browser client (livekit-client 2.23.0, the whole client in one script) comes in the
+everyui-web jar under `everyui-livekit/<version>/`, copied out beside the page by `everyuiWebGuests` as hls.js is,
+and loaded by a `<script src>` the first time a call connects, never from a CDN. A Content-Security-Policy needs:
+
+```
+script-src 'self'; connect-src <the LiveKit server's wss: and https: origins>; media-src 'self' blob: mediastream:
+```
+
+Served somewhere other than next to the page, the web's `everyui.render.LiveKitScript.root` says where.
+
 ## Video on the web: HLS through hls.js
 
 A `VideoView` (or an `AudioPlayer`) whose `source` is an HLS stream plays in every major browser. Where the browser

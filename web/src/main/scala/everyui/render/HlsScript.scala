@@ -21,10 +21,6 @@ object HlsScript {
     * (WebAssets), or a whole address. */
   var root: String = "everyui-hls/" + version
 
-  private var loaded = false
-  private var loading = false
-  private var waiting: List[Boolean => Unit] = Nil
-
   /** The `Hls` class, once the script has loaded. */
   def hls: js.Dynamic = dom.window.asInstanceOf[js.Dynamic].Hls
 
@@ -33,38 +29,10 @@ object HlsScript {
 
   /** `f` with whether hls.js is in the page: at once where it is (loaded here before, or by the page itself), else
     * once its script has loaded or failed to. A failure is tried again by the next source that needs it. */
-  def load(f: Boolean => Unit): Unit =
-    if (loaded || !js.isUndefined(hls)) {
-      loaded = true
-      f(true)
-    }
-    else {
-      waiting = f :: waiting
-      if (!loading) {
-        loading = true
-        val tag = dom.document.createElement("script").asInstanceOf[dom.html.Script]
-        tag.src = file("hls.min.js")
-        tag.addEventListener("load", (_: dom.Event) => done(!js.isUndefined(hls)))
-        tag.addEventListener("error", (_: dom.Event) => {
-          Platform.log("[video] could not load " + tag.src)
-          tag.parentNode.removeChild(tag)
-          done(false)
-        })
-        dom.document.head.appendChild(tag)
-      }
-    }
+  def load(f: Boolean => Unit): Unit = script.load(f)
 
-  private def done(ok: Boolean): Unit = {
-    loaded = ok
-    loading = false
-    val told = waiting.reverse
-    waiting = Nil
-    told.foreach(f => f(ok))
-  }
+  private val script = new PageScript("video", () => !js.isUndefined(hls), () => file("hls.min.js"))
 
-  // a whole address, resolved against the page's base (its <base href>) rather than left to each user: hls.js resolves
-  // its workerPath against the page's own address, which on a deep route (/play/show/1973) a single-page host answers
-  // with the page itself
-  private def file(name: String): String =
-    new dom.URL(WebAssets.url((if (root.endsWith("/")) root else root + "/") + name), dom.document.baseURI).href
+  // a whole address (PageScript.file): hls.js resolves its workerPath against the page's own address
+  private def file(name: String): String = PageScript.file(root, name)
 }
