@@ -81,6 +81,14 @@ object PushAccess {
         .`catch`[Unit]((_: Any) => done())
     }
 
+  /** The notifications the page's service worker shows with `tag` closed. */
+  def close(tag: String): Unit = if (supported()) registration {
+    case None => ()
+    case Some(r) => r.getNotifications(js.Dynamic.literal(tag = tag)).asInstanceOf[js.Promise[js.Array[js.Dynamic]]]
+      .`then`[Unit]((shown: js.Array[js.Dynamic]) => shown.foreach(_.close()))
+      .`catch`[Unit]((_: Any) => ())
+  }
+
   /** The page's service worker registration once it is running, or None where the page registered none. */
   private def registration(found: Option[js.Dynamic] => Unit): Unit =
     workers.getRegistration().asInstanceOf[js.Promise[js.UndefOr[js.Dynamic]]]
@@ -101,6 +109,8 @@ object PushAccess {
   private def message(m: js.Dynamic): PushMessage = {
     val text = (v: js.Dynamic) => if (v == null || js.isUndefined(v)) "" else String.valueOf(v)
     val path = text(m.path)
-    PushMessage(text(m.title), text(m.body), if (path.isEmpty) None else Some(path))
+    val tag = text(m.tag)
+    PushMessage(text(m.title), text(m.body), if (path.isEmpty) None else Some(path), if (tag.isEmpty) None else Some(tag),
+      (m.renotify: Any) == true)
   }
 }

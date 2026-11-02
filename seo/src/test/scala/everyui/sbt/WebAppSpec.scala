@@ -50,6 +50,58 @@ class WebAppSpec extends AnyWordSpec with Matchers {
       worker should include("everyui: 'subscription'")
     }
 
+    "show a push with a tag in place of the one shown with it, and close those of a tag a push closes" in {
+      // the worker run in Node, a browser's registration and windows stood in for: what it shows, what it closes, and
+      // what it tells a window in sight
+      val harness = new File(out, "harness.js")
+      Files.write(harness.toPath, ("""const handlers = {};
+        |const shown = [];
+        |const log = [];
+        |let windows = [];
+        |global.self = {
+        |  addEventListener: (kind, f) => { handlers[kind] = f; },
+        |  location: { origin: 'https://app.test' },
+        |  registration: {
+        |    scope: 'https://app.test/',
+        |    showNotification: (title, options) => {
+        |      if (options.tag) shown.splice(0, shown.length, ...shown.filter(n => n.tag !== options.tag));
+        |      const n = { title, tag: options.tag || null, renotify: !!options.renotify,
+        |        close: () => { shown.splice(shown.indexOf(n), 1); log.push('closed ' + n.title); } };
+        |      shown.push(n);
+        |      log.push('shown ' + title + (n.tag ? ' #' + n.tag : '') + (n.renotify ? ' again' : ''));
+        |      return Promise.resolve();
+        |    },
+        |    getNotifications: (filter) => Promise.resolve(shown.filter(n => !filter || !filter.tag || n.tag === filter.tag))
+        |  },
+        |  clients: { matchAll: () => Promise.resolve(windows), claim: () => Promise.resolve() }
+        |};
+        |global.caches = { open: () => Promise.resolve({ add: () => Promise.resolve() }), keys: () => Promise.resolve([]) };
+        |require('./sw.js');
+        |const push = payload => new Promise(done => {
+        |  const waits = [];
+        |  handlers.push({ data: { json: () => payload, text: () => JSON.stringify(payload) }, waitUntil: p => waits.push(p) });
+        |  Promise.all(waits).then(done);
+        |});
+        |(async () => {
+        |  await push({ title: 'Ada', body: 'one', tag: 'c1' });
+        |  await push({ title: 'Ada', body: 'two', tag: 'c1' });
+        |  await push({ title: 'Ada', body: 'three', tag: 'c1', renotify: true });
+        |  await push({ title: 'Grace', body: 'hi', tag: 'c2' });
+        |  await push({ title: 'Plain', body: 'untagged' });
+        |  await push({ close: 'c1' });
+        |  windows = [{ focused: true, visibilityState: 'visible', postMessage: d => log.push('told ' + d.message.tag) }];
+        |  await push({ title: 'Grace', body: 'seen', tag: 'c2', close: 'c2' });
+        |  log.push('left ' + shown.map(n => n.title).join(','));
+        |  console.log(log.join('\n'));
+        |})();
+        |""".stripMargin).getBytes(UTF_8))
+      val node = new ProcessBuilder("node", harness.getName).directory(out).redirectErrorStream(true).start()
+      val printed = new String(node.getInputStream.readAllBytes(), UTF_8).trim
+      node.waitFor() shouldBe 0
+      printed.split("\n").toList shouldBe List("shown Ada #c1", "shown Ada #c1", "shown Ada #c1 again", "shown Grace #c2",
+        "shown Plain", "closed Ada", "closed Grace", "told c2", "left Plain")
+    }
+
     "tell a page its window's id, and hand a click on the page's own notification back to the window that showed it" in {
       val worker = read(new File(out, "sw.js"))
       worker should include("e.data.everyui === 'client'")

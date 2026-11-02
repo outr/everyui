@@ -9,13 +9,18 @@ import everyui.push.PushMessage
 class PushService extends FirebaseMessagingService {
   override def onNewToken(token: String): Unit = PushAccess.renewed(token)
 
-  /** A data message's "title", "body" and "path"; a notification message (heard here only while the app is in front)
-    * has its title and body under "notification" instead. */
+  /** A data message's "title", "body", "path", "tag" and "renotify"; a notification message (heard here only while
+    * the app is in front) has its title, body and tag under "notification" instead. One with "close" takes away what
+    * shows with that tag first, in silence, and is nothing more where it has no title and no body. */
   override def onMessageReceived(message: RemoteMessage): Unit = {
     val data = message.getData
     val shown = Option(message.getNotification)
     val text = (key: String, fallback: Option[String]) => Option(data.get(key)).orElse(fallback).getOrElse("")
-    PushAccess.arrived(this, PushMessage(text("title", shown.flatMap(n => Option(n.getTitle))),
-      text("body", shown.flatMap(n => Option(n.getBody))), Option(data.get("path")).filter(_.nonEmpty)))
+    val closing = text("close", None)
+    if (closing.nonEmpty) PushAccess.withdraw(this, closing)
+    val pushed = PushMessage(text("title", shown.flatMap(n => Option(n.getTitle))),
+      text("body", shown.flatMap(n => Option(n.getBody))), Option(data.get("path")).filter(_.nonEmpty),
+      Option(text("tag", shown.flatMap(n => Option(n.getTag)))).filter(_.nonEmpty), text("renotify", None) == "true")
+    if (closing.isEmpty || pushed.title.nonEmpty || pushed.body.nonEmpty) PushAccess.arrived(this, pushed)
   }
 }

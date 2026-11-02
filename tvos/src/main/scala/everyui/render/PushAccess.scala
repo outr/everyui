@@ -18,4 +18,6 @@ object PushAccess {
   def subscribe(key: String, done: PushAnswer => Unit): Unit = done(PushAnswer.PushUnsupported)
 
   def unsubscribe(done: () => Unit): Unit = done()
+
+  def close(tag: String): Unit = ()
 }

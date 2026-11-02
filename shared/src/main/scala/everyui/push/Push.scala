@@ -53,6 +53,10 @@ object Push {
   /** No more pushes to this app: the subscription (or token) let go. */
   def unsubscribe(): Task[Unit] = Task.async[Unit](done => PushAccess.unsubscribe(() => done(())))
 
+  /** The notifications the system shows on this device with `tag` (`PushMessage.tag`) taken away: the conversation
+    * they are for read here. Nothing where there are none, or no push. */
+  def close(tag: String): Unit = if (tag.nonEmpty) PushAccess.close(tag)
+
   /** A notification tapped: `opened` hears it, then the running screens go to its path. */
   private[everyui] def tapped(message: PushMessage): Unit = {
     opened @= message

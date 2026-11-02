@@ -51,8 +51,10 @@ object WebApp {
     * too; what is neither fetched nor kept is answered 503, a page saying so and trying again every 3 s for a page
     * opened, never no answer at all (which the browser shows as its own error, and does not try again). And push notifications (`everyui.push.Push`): a
     * push's JSON payload, `{"title", "body", "path"}`, goes to a window of the app that is in sight, which shows it its
-    * own way, and otherwise is shown as a notification; a tap on one focuses a window of the app and tells it
-    * (`everyui.push.Push.opened`, and the app goes to the path), or opens the app at the path when none is open. A path
+    * own way, and otherwise is shown as a notification, in place of the one shown with its `tag` where it has one
+    * (sounding again only with `renotify`); a push of `{"close": tag}` closes those shown with that tag; a tap on one
+    * focuses a window of the app and tells it (`everyui.push.Push.opened`, and the app goes to the path), or opens the
+    * app at the path when none is open. A path
     * off the app's own origin opens the app's start instead. A subscription the browser renews is subscribed again
     * with the same key and handed to the open windows (`everyui.push.Push.tokens`). A notification a page showed itself
     * (`Platform.showNotice`) is answered by the page: a click on it focuses the window that showed it, which the page
@@ -92,11 +94,19 @@ object WebApp {
        |self.addEventListener('push', e => {
        |  let m = {};
        |  try { m = e.data ? e.data.json() : {}; } catch (x) { m = { body: e.data.text() }; }
-       |  const message = { title: String(m.title || ''), body: String(m.body || ''), path: m.path ? String(m.path) : null };
-       |  e.waitUntil(windows().then(list => {
+       |  const message = { title: String(m.title || ''), body: String(m.body || ''), path: m.path ? String(m.path) : null,
+       |    tag: m.tag ? String(m.tag) : null, renotify: m.renotify === true };
+       |  // those shown with a tag taken away (read elsewhere), and nothing more where that is all the push is
+       |  const closing = m.close ? self.registration.getNotifications({ tag: String(m.close) })
+       |    .then(shown => shown.forEach(n => n.close())) : Promise.resolve();
+       |  if (m.close && !m.title && !m.body) return e.waitUntil(closing);
+       |  e.waitUntil(closing.then(() => windows()).then(list => {
        |    const seen = list.find(c => c.focused || c.visibilityState === 'visible');
        |    if (seen) return tell(seen, { everyui: 'push', message });
-       |    return self.registration.showNotification(message.title, { body: message.body, data: message });
+       |    // one with a tag in place of the one shown with it, sounding again only where it says so
+       |    const options = { body: message.body, data: message };
+       |    if (message.tag) { options.tag = message.tag; options.renotify = message.renotify; }
+       |    return self.registration.showNotification(message.title, options);
        |  }));
        |});
        |self.addEventListener('message', e => {

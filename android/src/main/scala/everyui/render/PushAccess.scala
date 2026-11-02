@@ -18,6 +18,8 @@ import everyui.push.{Push, PushAnswer, PushMessage, PushToken}
   * the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). */
 object PushAccess {
   private val channel = "everyui.push"
+  // the id every notification with a tag is shown under: its tag tells it from the others
+  private val tagged = 0
   private val notifications = "android.permission.POST_NOTIFICATIONS"
   private lazy val main = new Handler(Looper.getMainLooper)
 
@@ -65,7 +67,8 @@ object PushAccess {
     if (intent != null && (intent.hasExtra("everyui.push") || intent.hasExtra("google.message_id"))) {
       val text = (names: List[String]) => names.flatMap(n => Option(intent.getStringExtra(n))).headOption.getOrElse("")
       Push.tapped(PushMessage(text(List("everyui.push.title", "gcm.notification.title")),
-        text(List("everyui.push.body", "gcm.notification.body")), Option(intent.getStringExtra("path")).filter(_.nonEmpty)))
+        text(List("everyui.push.body", "gcm.notification.body")), Option(intent.getStringExtra("path")).filter(_.nonEmpty),
+        Option(intent.getStringExtra("everyui.push.tag")).orElse(Option(intent.getStringExtra("tag"))).filter(_.nonEmpty)))
     }
 
   private def inFront(): Boolean = {
@@ -75,6 +78,12 @@ object PushAccess {
   }
 
   private def manager(context: Context): NotificationManager = context.getSystemService(classOf[NotificationManager])
+
+  /** The notifications shown with `tag` taken away. */
+  def close(tag: String): Unit = if (Host.activity != null) withdraw(Host.activity, tag)
+
+  /** The notifications shown with `tag` taken away: `Push.close`, or a message of `{"close": tag}` (`PushService`). */
+  def withdraw(context: Context, tag: String): Unit = manager(context).cancel(tag, tagged)
 
   private def show(context: Context, message: PushMessage): Unit = {
     val notify = manager(context)
@@ -88,6 +97,7 @@ object PushAccess {
       .putExtra("everyui.push.title", message.title)
       .putExtra("everyui.push.body", message.body)
     message.path.foreach(p => launch.putExtra("path", p))
+    message.tag.foreach(t => launch.putExtra("everyui.push.tag", t))
     val info = context.getApplicationInfo
     val notification = new Notification.Builder(context, channel)
       .setSmallIcon(info.icon)
@@ -95,9 +105,14 @@ object PushAccess {
       .setContentText(message.body)
       .setStyle(new Notification.BigTextStyle().bigText(message.body))
       .setAutoCancel(true)
+      // in place of the one shown with its tag, sounding again only where it says so
+      .setOnlyAlertOnce(message.tag.nonEmpty && !message.renotify)
       .setContentIntent(PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
       .build()
-    try notify.notify(id, notification)
+    try message.tag match {
+      case Some(tag) => notify.notify(tag, tagged, notification)
+      case None => notify.notify(id, notification)
+    }
     catch { case t: SecurityException => android.util.Log.w("everyui", "notification not posted: " + t.getMessage) }
   }
 }
