@@ -2564,6 +2564,38 @@ while it lasts) and send it, so the server always has the current one. `Push.uns
 
 `path` is the app's own path, where a tap takes the person; one off the app's origin opens the app at its start.
 
+**Grouping and closing.** Two more keys group a conversation's notifications: `"tag": "c42"` shows one in place of
+the one with that tag already showing, rather than beside it, and `"renotify": true` has the replacement sound again
+(without it, it changes quietly). An open app closes its own as they are read: `Push.close("c42")`. For the devices
+where the app is not open, the server sends a close push, the tag alone:
+
+```json
+{"close": "c42"}
+```
+
+The app's service worker (web) and `PushService` (Android) close what shows with that tag and show nothing. On Android
+that costs nothing. A browser holds a push that shows nothing against the site:
+
+- **Chrome** (and Edge) lets one pass now and then, and past that shows a notice of its own ("This site has been
+  updated in the background"). A close that leaves another of the app's notifications showing is not counted.
+- **Firefox** allows a few, more as the person visits the site, and then ends the subscription.
+- **Safari** ends the subscription after a few, however rarely they come.
+
+So a server sends a browser a close push only where it pays, and keeps them about one for each notification shown:
+
+- only to a subscription it sent a notification with that tag to, not yet closed (forget it once the close is sent,
+  or once the tag's newest notification is older than the TTL);
+- never to Safari's (an endpoint on `push.apple.com`): there the notification stays until the person sees it, or
+  until an open page closes it;
+- with a short `TTL` (60 to 600 s: a close that cannot be delivered soon is not worth delivering) and
+  `Urgency: high`, so it is delivered to a sleeping device at once;
+- optionally with a `Topic` header naming the conversation (at most 32 URL-safe base64 characters, so a hash of
+  the tag), on the notification pushes and the close alike: the push service then keeps only the newest of a topic
+  still waiting for a browser that is away, so a conversation read before it was delivered is not shown at all.
+
+Every Web Push library takes `TTL`, `Urgency` and `Topic` as options. A subscription a browser ends is answered by
+the push service with 404 or 410 at the next send; delete it then, and the app sends a new one as it starts.
+
 - **Web**: the Push API through the service worker `WebApp.write` installs ([An installable web app](#an-installable-web-app)),
   which shows a push as a notification when no window of the app is in sight, hands it to the page otherwise, focuses
   a window of the app (or opens one at the path) when a notification is tapped, and subscribes again when the browser
