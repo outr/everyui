@@ -35,7 +35,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     override def absoluteTop: Double = super.absoluteTop - natively(false)
   }
   /** How far the content is scrolled from its start, in pixels: a rail's start is its right end in a right-to-left
-    * language, so it stays on its first items at 0 however it grows or narrows. */
+    * language, so it stays on its first items at 0 however it grows or narrows. Set, it scrolls there at once, as
+    * `scrollTo` does, on every platform (the web's own scroll too), and holds as far as it could go. */
   val offset: Var[Double] = own(Var(0.0))
   // a rail in a right-to-left language, which runs from the right unless it runs from its left in every language
   private val fromRight: Val[Boolean] = own(Val(horizontal && followsDirection && Direction.rtl()))
@@ -102,7 +103,18 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   }
   children += content
   // the web scrolls the node itself (a wheel, a finger, the scrollbar, a smooth scroll): the offset follows it there
-  if (Platform.nativeScroll()) node.onScrolled(() => offset @= node.scrolled(horizontal))
+  // and the offset set (by the app, as anywhere else) scrolls the node there, as far as it goes: an offset the node
+  // cannot reach is what it reached, so it never reads as where the page is not
+  if (Platform.nativeScroll()) {
+    node.onScrolled(() => offset @= node.scrolled(horizontal))
+    offset.attach { at =>
+      if (math.abs(at - node.scrolled(horizontal)) >= 0.5) {
+        if (horizontal) node.setScrollLeft(at) else node.setScrollTop(at)
+        val reached = node.scrolled(horizontal)
+        if (math.abs(at - reached) >= 0.5) offset @= reached
+      }
+    }
+  }
 
   // a focus moved by the keys, a remote or the app is brought into view; on the web one a pointer just moved is not,
   // since it lands where it was clicked or hovered, which is already in view
