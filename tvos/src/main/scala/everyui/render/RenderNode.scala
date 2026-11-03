@@ -282,6 +282,9 @@ class RenderNode(val sg: SGNode) {
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
   def setOptions(labels: List[String]): Unit = ()
+  /** A drop-down's look, its open list in the theme's colours: a browser's only, a drop-down drawing itself here. */
+  def setDropDown(background: String, text: String, highlight: String, chosen: String, edge: String,
+                  inset: Double): Unit = ()
   /** Styled runs are drawn as the label's own style, their words run together. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(r => r.text).mkString)
   /** Labels sit where they are placed. */

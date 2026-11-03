@@ -58,9 +58,6 @@ class RenderNode(val el: html.Element) {
     if (!textFilled) el.style.color = hex
     // a field keeps its colour through the browser's autofill look, which would paint its words in its own
     if (el.isInstanceOf[html.Input] || el.isInstanceOf[html.TextArea]) el.style.setProperty("--everyui-fill", hex)
-    // a drop-down's list is the browser's, drawn light unless told the page is dark: its options, in the select's own
-    // light words, were all but invisible on white in a dark theme. Light words say the page is dark
-    if (el.isInstanceOf[html.Select]) el.style.setProperty("color-scheme", if (RenderNode.light(hex)) "dark" else "light")
   }
 
   /** A bundled face (index.html's `@font-face` rules): family, CSS weight,
@@ -786,6 +783,22 @@ class RenderNode(val el: html.Element) {
     }
     setValue(chosen)
   }
+  /** A drop-down's look: its words set in `inset` from its edges (the select fills its box, so a click anywhere on it
+    * opens it and its list lines up with it), and its open list in the theme's colours (`"#rrggbb"`), for the page's
+    * rules (`RenderNode.selectStyle`): its options on `background` in `text`, the one under the pointer or the keys on
+    * `highlight`, the chosen one in `chosen`, the list's edge `edge`. The browser is told whether the list is dark
+    * (`color-scheme`), for what it draws of its own: a select's own background is clear, which left its list white
+    * under the theme's light words. */
+  def setDropDown(background: String, text: String, highlight: String, chosen: String, edge: String,
+                  inset: Double): Unit = {
+    el.style.setProperty("padding-inline", inset.toString + "px")
+    el.style.setProperty("--everyui-list", background)
+    el.style.setProperty("--everyui-list-text", text)
+    el.style.setProperty("--everyui-list-lit", highlight)
+    el.style.setProperty("--everyui-list-chosen", chosen)
+    el.style.setProperty("--everyui-list-edge", edge)
+    el.style.setProperty("color-scheme", if (RenderNode.light(background)) "light" else "dark")
+  }
   def setPlaceholder(text: String): Unit = el.setAttribute("placeholder", text)
   /** What the keyboard's enter key says it does ("done", "search", "next", "go", "send"). */
   def setInputAction(action: String): Unit = el.setAttribute("enterkeyhint", action)
@@ -1154,6 +1167,33 @@ object RenderNode {
         s" #app input:$s, #app textarea:$s { animation: everyui-autofill 1ms; -webkit-text-fill-color: var(--everyui-fill, currentColor);" +
           " caret-color: var(--everyui-fill, auto); transition: background-color 0s 86400s, color 0s 86400s; }").mkString
 
+  /** The page's rules for a drop-down's open list, in the colours its select names (`setListColors`): in every browser
+    * its options on the list's colour in its words (what a browser drawing its own list takes of them); where the
+    * list can be drawn by the page (`appearance: base-select`, Chromium's), drawn as a menu of the theme is, raised on
+    * an edge with a shadow, the option under the pointer or the keys lit, the chosen one in the accent. */
+  val selectStyle: String = {
+    val s = "#app select.everyui-select"
+    s" $s option { background-color: var(--everyui-list); color: var(--everyui-list-text); }" +
+      " @supports (appearance: base-select) {" +
+      s" $s, $s::picker(select) { appearance: base-select; }" +
+      // its words in the middle of its box, as the browser's own has them, and a chevron at its end that turns over
+      // while it is open
+      s" $s { align-items: center; }" +
+      s" $s::picker-icon { content: ''; width: 0.4em; height: 0.4em; margin-inline: auto 0.2em;" +
+      " border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;" +
+      " transform: translateY(-25%) rotate(45deg); transition: transform 0.15s; }" +
+      s" $s:open::picker-icon { transform: translateY(25%) rotate(225deg); }" +
+      s" $s::picker(select) { background: var(--everyui-list); color: var(--everyui-list-text);" +
+      " border: 1px solid var(--everyui-list-edge); border-radius: 0.5em; padding: 0.25em; margin-block: 0.25em;" +
+      // drawn above the page, out of its scale (`Platform.setUiScale`): its words scaled as the box's are
+      " font-size: calc(100% * var(--everyui-ui-scale, 1));" +
+      " box-shadow: 0 6px 24px rgb(0 0 0 / 45%); }" +
+      s" $s option { padding: 0.375em 0.625em; border-radius: 0.375em; background-color: transparent;" +
+      " outline: none; }" +
+      s" $s option:hover, $s option:focus-visible { background-color: var(--everyui-list-lit); }" +
+      s" $s option:checked { color: var(--everyui-list-chosen); } }"
+  }
+
   /** A click the browser should keep: another button, or a modifier asking for a new tab or window. */
   def modified(e: dom.MouseEvent): Boolean = e.button != 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
 }
@@ -1219,7 +1259,8 @@ object Nodes {
     val style = dom.document.createElement("style")
     style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }" +
       // a scroll run from its left in every language, and what it holds in the page's direction
-      " .everyui-ltr { direction: ltr; } .everyui-ltr > :not([dir]) { direction: var(--everyui-dir, ltr); }" + RenderNode.autofillStyle
+      " .everyui-ltr { direction: ltr; } .everyui-ltr > :not([dir]) { direction: var(--everyui-dir, ltr); }" +
+      RenderNode.autofillStyle + RenderNode.selectStyle
     dom.document.head.appendChild(style)
     new RenderNode(app)
   }
@@ -1307,11 +1348,16 @@ object Nodes {
   /** A drop-down — a `<select>` — with no box of its own, its words in the node's own font and colour. */
   def select(): RenderNode = {
     val el = dom.document.createElement("select").asInstanceOf[html.Element]
+    el.className = "everyui-select"
+    // the family a text node starts with, until the app's (`Theme.family`) is set: a select drawn by the page has the
+    // page's, a serif
+    el.style.fontFamily = "system-ui, " + RenderNode.emojiFaces + ", sans-serif"
     el.style.position = "absolute"
     el.style.left = "0px"
     el.style.top = "0px"
     el.style.border = "none"
     el.style.outline = "none"
+    el.style.padding = "0px"
     el.style.margin = "0px"
     el.style.background = "transparent"
     el.style.setProperty("box-sizing", "border-box")

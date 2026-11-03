@@ -7,9 +7,10 @@ import everyui.theme.Theme
 import reactify.*
 
 /** One of a list of `options`, chosen from a drop-down: the page's own `<select>` on the web (its keyboard, its list,
-  * its accessibility); elsewhere the chosen option's words, a click, a tap or Enter moving to the next. `selected` is
-  * the chosen option's index. Give it a size: it is drawn in a box of its own (`boxed`), its words set in from the box's
-  * edge, so it is seen to be something to choose from. */
+  * its accessibility), its open list drawn in the theme as a Menu is where the browser lets the page draw it
+  * (Chromium's), and on the theme's colours where it draws its own; elsewhere the chosen option's words, a click, a
+  * tap or Enter moving to the next. `selected` is the chosen option's index. Give it a size: it is drawn in a box of
+  * its own (`boxed`), its words set in from the box's edge, so it is seen to be something to choose from. */
 class Select(options: => List[String]) extends Container {
   override def kind: String = "Select"
 
@@ -31,10 +32,18 @@ class Select(options: => List[String]) extends Container {
   borderColor := Theme.border()
   radius := (if (boxed()) Select.radius else 0.0)
   backgroundColor := (if (boxed()) Theme.control() else everyui.Color.Clear)
-  field.position.left := inset()
-  field.size.width := math.max(0.0, size.width() - inset() * 2.0)
+  // the page's select fills the box, its words set in by the browser, so a click anywhere on it opens it and its list
+  // lines up with it; elsewhere the words are set in
+  field.position.left := (if (native) 0.0 else inset())
+  field.size.width := (if (native) size.width() else math.max(0.0, size.width() - inset() * 2.0))
   if (native) {
     field.size.height := size.height()
+    // the open list in the theme's colours, as a Menu is drawn: raised on its edge, the option under the pointer or
+    // the keys lit, the chosen one in the accent; following the theme as it changes
+    own(Val((Theme.raised(), Theme.text(), Theme.controlLit(), Theme.accent(), Theme.border(), inset())))
+      .attachAndFire { case (list, words, lit, chosen, edge, in) =>
+        field.node.setDropDown(list.toHex, words.toHex, lit.toHex, chosen.toHex, edge.toHex, in)
+      }
     choices.attachAndFire { labels =>
       field.node.setOptions(labels)
       field.node.setValue(selected().toString)

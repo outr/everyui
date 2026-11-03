@@ -331,6 +331,9 @@ class RenderNode(val fx: Node) {
   def setHref(href: String, newTab: Boolean): Unit = ()
   /** A drop-down draws itself here (`everyui.component.Select`): the node is its words. */
   def setOptions(labels: List[String]): Unit = ()
+  /** A drop-down's look, its open list in the theme's colours: a browser's only, a drop-down drawing itself here. */
+  def setDropDown(background: String, text: String, highlight: String, chosen: String, edge: String,
+                  inset: Double): Unit = ()
   /** Styled runs: each in its own style in a `RichFlow` (`Nodes.richText`, a `RichText`'s node). A plain `Text` is one
     * style, so there they are drawn as the paragraph's own, their words run together, underlined where every word of
     * them is (a subtitle underlined whole), since a line under part of it cannot be. */
