@@ -192,6 +192,15 @@ class PasteSpec extends FxSpec {
     try {
       eventually(control.getSkin != null) shouldBe true
       test
-    } finally fx(stage.close())
+    } finally fx {
+      // its caret stopped: the keys and the clicks fired at it set it blinking, focused or not (a window under Xvfb is
+      // never focused, so never loses it either), and it blinked on after the window closed, JavaFX pulsing for it
+      // through every spec after this one (MotionSpec's and BusyRingSpec's idle JavaFX)
+      control.getSkin match {
+        case skin: javafx.scene.control.skin.TextInputControlSkin[?] => skin.setCaretAnimating(false)
+        case _ => ()
+      }
+      stage.close()
+    }
   }
 }
