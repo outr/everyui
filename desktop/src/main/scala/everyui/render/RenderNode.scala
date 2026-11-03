@@ -1430,11 +1430,25 @@ object Platform {
   }
   /** Turns cut off by the platform (a Roku's): none here. */
   def turnsCutOff(): Int = 0
+  /** `f` told the message and the stack of every exception a thread throws and nothing catches, before it goes where
+    * it went (the handler there was: Android's crash, else the console). */
+  def onUncaught(f: (String, String) => Unit): Unit = {
+    hearUncaught
+    uncaughtHooks = uncaughtHooks :+ f
+  }
+  /** `t`'s stack as the JVM prints it, with what caused it. */
+  def stackOf(t: Throwable): String = {
+    val out = new java.io.StringWriter
+    t.printStackTrace(new java.io.PrintWriter(out))
+    out.toString
+  }
+  @volatile private var uncaughtHooks: List[(String, String) => Unit] = Nil
   private val uncaught = new java.util.concurrent.atomic.AtomicInteger(0)
   private lazy val hearUncaught: Unit = {
     val before = Thread.getDefaultUncaughtExceptionHandler
     Thread.setDefaultUncaughtExceptionHandler((thread: Thread, t: Throwable) => {
       uncaught.incrementAndGet()
+      uncaughtHooks.foreach(f => try f(t.toString, stackOf(t)) catch { case _: Throwable => () })
       if (before != null) before.uncaughtException(thread, t)
       else {
         System.err.print("Exception in thread \"" + thread.getName + "\" ")

@@ -180,9 +180,13 @@ object Frames {
     catch {
       case t: Throwable =>
         failed += 1
-        // its stack to the platform's log, and the failure to wherever problems are sent
-        Platform.logError("frames: a frame failed", t)
-        try everyui.scribe.forward("error", "frames: a frame failed: " + t.toString) catch { case _: Throwable => () }
+        // its stack to the platform's log, and the failure to what hears the app's problems (Errors), or else to
+        // wherever problems are sent (scribe.forward)
+        if (everyui.error.Errors.listening) everyui.error.Errors.report("a frame", t)
+        else {
+          Platform.logError("frames: a frame failed", t)
+          try everyui.scribe.forward("error", "frames: a frame failed: " + t.toString) catch { case _: Throwable => () }
+        }
     }
     stepping = false
     chained = true

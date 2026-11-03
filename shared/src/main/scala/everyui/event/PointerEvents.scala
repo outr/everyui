@@ -38,13 +38,18 @@ class PointerEvents(component: Component) {
     enter.attach(_ => state @= true)
     leave.attach(_ => state @= false)
     // over it only where the pointer coming onto it would be heard (a coach mark's fence); off it always
-    component.node.onOver(on => if (!on || everyui.focus.Focus.hears(component, PointerKind.Enter)) state @= on)
+    component.node.onOver(on =>
+      everyui.error.Errors.guard("pointer over on " + everyui.focus.Focus.named(component), ())(
+        if (!on || everyui.focus.Focus.hears(component, PointerKind.Enter)) state @= on))
     state
   }
 
   def channel(kind: PointerKind): Channel[PointerEvent] = {
     val channel = Channel[PointerEvent]
-    component.node.onPointer(kind, (x, y) => heard(channel, kind, x, y))
+    // a handler that throws is told as this event's, on this component (Errors.guard)
+    component.node.onPointer(kind, (x, y) =>
+      everyui.error.Errors.guard("pointer " + kind + " on " + everyui.focus.Focus.named(component), ())(
+        heard(channel, kind, x, y)))
     channel
   }
 

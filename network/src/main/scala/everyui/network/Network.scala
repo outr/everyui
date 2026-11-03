@@ -82,6 +82,9 @@ object Network {
     * is where a call that took 15s reveals itself. It must never throw (a throw here is swallowed) and must not
     * itself log through a path that loops back. Default: nothing. */
   var observe: (HttpCall, Either[Throwable, HttpResult], Long) => Unit = (_, _, _) => ()
+  /** Where requests are never handed to [[observe]], by their address before any query (relative or whole, as they are
+    * asked for): a log's own endpoint (`RemoteLog`), whose send would be timed, reported, and sent again. */
+  @volatile var unobserved: Set[String] = Set.empty
 
   /** Basic HTTP: one request, the whole response as text; a relative URL is on the origin (`resolve`). Spice's HttpClient where it runs; the platform's stack
     * (roUrlTransfer, URLSession) elsewhere. Each request is timed and its outcome handed to [[observe]]. */
@@ -89,9 +92,15 @@ object Network {
     val started = System.currentTimeMillis()
     NetworkBackend.http(call.copy(url = resolve(call.url))).attempt.map { result =>
       val outcome: Either[Throwable, HttpResult] = result.fold(t => Left(t), value => Right(value))
-      try observe(call, outcome, System.currentTimeMillis() - started) catch { case _: Throwable => () }
+      val ms = System.currentTimeMillis() - started
+      if (observed(call.url)) try observe(call, outcome, ms) catch { case _: Throwable => () }
       result.fold(t => throw t, value => value)
     }
+  }
+
+  private def observed(url: String): Boolean = unobserved.isEmpty || {
+    val bare = url.takeWhile(c => c != '?' && c != '#')
+    !unobserved.exists(u => u == bare || (u.indexOf("://") < 0 && bare.endsWith(u)))
   }
 
   def get(url: String): Task[HttpResult] = http(HttpCall("GET", url))

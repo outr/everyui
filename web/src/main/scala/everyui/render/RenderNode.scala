@@ -1912,6 +1912,23 @@ object Platform {
     if (left > 0) probe(left - 1, at, least)
     else if (least < 1000.0) refreshHz = math.max(24.0, math.min(360.0, 1000.0 / least))
   }
+  /** `f` told the message and the stack of every error nothing caught (`error` on the window), and of every promise
+    * rejected with nothing to hear it (`unhandledrejection`: "promise: " and its reason). */
+  def onUncaught(f: (String, String) => Unit): Unit = {
+    dom.window.addEventListener("error", (e: dom.ErrorEvent) => f(e.message, jsStack(e.asInstanceOf[js.Dynamic].error)))
+    dom.window.addEventListener("unhandledrejection", (e: dom.Event) => {
+      val reason = e.asInstanceOf[js.Dynamic].reason
+      f("promise: " + WebErrors.message(reason), jsStack(reason))
+    })
+  }
+  /** `t`'s stack as the browser keeps it (a Scala.js throwable is a JS error), with what caused it. */
+  def stackOf(t: Throwable): String = {
+    val own = jsStack(t.asInstanceOf[js.Dynamic])
+    val cause = t.getCause
+    if (cause == null || (cause eq t)) own else own + "\nCaused by: " + cause.toString + "\n" + stackOf(cause)
+  }
+  private def jsStack(error: js.Dynamic): String =
+    if (js.isUndefined(error) || error == null || js.isUndefined(error.stack)) "" else String.valueOf(error.stack)
   /** How many errors nothing caught this page has seen (`error` and `unhandledrejection` on the window), counted from
     * the first time it is asked. */
   def errorsSeen(): Int = {

@@ -787,6 +787,11 @@ object Platform {
     errorHooks = errorHooks :+ f
   }
 
+  /** What nothing caught, as `onError` hears it: the message and the device's backtrace. */
+  def onUncaught(f: (String, String) => Unit): Unit = onError(f)
+  /** A throwable's stack: none to be had here, where the device's own backtrace comes with `onError`. */
+  def stackOf(t: Throwable): String = ""
+
   /** The first screen is up and can be used: the launch beacon a certified channel sends. */
   def launchComplete(): Unit = uiLaunchComplete()
 

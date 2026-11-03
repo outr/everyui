@@ -74,7 +74,10 @@ object Focus {
   /** Take the platform's keys: `ui` calls it as it starts, since the Roku compiler runs no statement in an object's
     * body. */
   def listen(): Unit = {
-    Platform.onKey((name, pressed) => key(name, pressed))
+    // a key whose handling throws is told as that key's, on what had the focus, and taken (Errors.guard)
+    Platform.onKey((name, pressed) => everyui.error.Errors.guard(
+      "key " + name + (if (pressed) " down" else " up") + focused().map(c => " on " + named(c)).getOrElse(""), true)(
+      key(name, pressed)))
     // only the component the focus leaves and the one it lands on hear of it, rather than every component on the
     // screen working out for itself whether it is the one (a home screen of rails is a hundred and more)
     // (the one it left kept here, rather than reactify's `changes`: its previous value is an Option of this Option,
@@ -867,7 +870,7 @@ object Focus {
   }
 
   // a component as a person would point at it: the first words or icon shown in it, else the nearest ones around it
-  private def named(c: Component): String = {
+  private[everyui] def named(c: Component): String = {
     val own = shownIn(c)
     if (own.nonEmpty) c.kind + " " + own
     else {

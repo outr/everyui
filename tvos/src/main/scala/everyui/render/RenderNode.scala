@@ -618,6 +618,10 @@ object Platform {
   def refreshRate(): Double = 0.0
   /** Errors nothing caught: one ends the app here, and no run reports it. */
   def errorsSeen(): Int = 0
+  /** What nothing caught: not heard here, where one ends the app. */
+  def onUncaught(f: (String, String) => Unit): Unit = ()
+  /** A throwable's stack: none to be had here. */
+  def stackOf(t: Throwable): String = ""
   /** Turns cut off by the platform (a Roku's): none here. */
   def turnsCutOff(): Int = 0
 

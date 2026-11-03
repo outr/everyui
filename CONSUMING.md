@@ -779,6 +779,19 @@ Menu.show(items, "Sort by")          // a television's menu
 Menu.textSize @= 18.0                // set once, larger on a television
 ```
 
+A box ticked before something else in the menu is picked keeps the menu open: `MenuItem.toggle(label, on, toggle)`
+is ticked as the `Val[Boolean]` `on` is, and choosing it (a click, OK, or Space) hands `toggle` the other of `on`
+and leaves the menu, and any it is in, open, the focus on it. The tick follows `on`, not the click, so a `toggle`
+that refuses leaves it as it was, and the app changing `on` changes it in place. Escape, a click outside, or a plain
+entry still close them all. Any entry may keep the menu open (`keepOpen = true`), and follow a value with its tick
+(`on = Some(value)`).
+
+```scala
+MenuItem.sub("Send to workspace", List(
+  MenuItem.toggle("Archive from inbox", archive, archive @= _),
+  MenuItem.separator) ++ workspaces.map(w => MenuItem(w.name, () => send(w, archive()))))
+```
+
 `Modal.show` and `Modal.over` take `dim = false` (leave what is under the dialog as it is) and `centre = false` (the
 caller places the panel), which is how menus sit where they were opened. A panel is taken apart a turn after it closes,
 as one made for its showing; `keep = true` leaves it whole, to be put up again.
@@ -4133,6 +4146,49 @@ events after `after` still kept, the first and last seq kept, and the log's run.
 columns (the face is monospaced), so the colours show there too; links do not. The example's `demo=logs` streams a
 pipeline's log into a panel (`socket=ws://host:8731/logs` streams the example server's instead), and `probe=1` times
 reading, searching and filtering a few thousand lines.
+
+## Errors, to the server (`everyui.error.Errors`, `everyui.network.RemoteLog`)
+
+`Errors.onProblem(f)` hears every error in the app as a `Problem(where, message, stack)`:
+
+- what nothing caught, as the platform hears it (`Platform.onUncaught`): the window's `error` and
+  `unhandledrejection` on the web, a thread's uncaught exception on the desktop and Android (the handler there was
+  still runs after it, so Android's crash reporting is unchanged), and a Roku's own report of a handler's throw, with
+  its backtrace. `where` is `"uncaught"`. tvOS hears none yet.
+- what EveryUI catches where it calls the app's code, with where it was: a pointer event's handlers
+  (`"pointer Click on Button Save"`), a key's (`"key Enter down on Card Inbox"`, the click it makes included), and a
+  frame's (`"a frame"`: a task, an animation). A value set by a click whose listeners or bindings throw is that
+  click's.
+- a rapid Task of the app's own, by `handleError(Reported(where, fallback))`. A Task that fails with nothing to hear it
+  is not reported by itself: rapid has no hook for it.
+
+Until something listens nothing is caught that was not before: an event's throw goes where it went. Once something
+listens, an event that throws is told and the app goes on, as a web page does. `Errors.report(where, t)` tells one
+of the app's own.
+
+`RemoteLog` sends them to the app's server, fire and forget: a JSON POST to its endpoint with `level`, `message`, and,
+where it has them, `where`, `stack`, `platform`, `route` (`Platform.path()`) and `build`, plus the app's own `fields`.
+Its `headers` and `fields` are asked afresh for each line, so a token that changes is current. A send's failure is
+dropped, never logged, and nothing it does while sending is sent. Its endpoint is never handed to `Network.observe`
+(`Network.unobserved`). It sends no more than `perMinute` lines a minute (20). A line is sent once in `repeatMs`
+(a minute) with its ids and numbers taken out (`LogThrottle.normal`: "card 812 failed" and "card 813 failed" are one
+line). A message is cut to 2000 characters, a stack to 8000.
+
+```scala
+import everyui.network.{RemoteLog, Reported}
+
+val log = new RemoteLog("/api/client/log",
+  headers = () => session.token().map(t => "Authorization" -> ("Bearer " + t)).toList,
+  fields = () => List("deviceId" -> str(deviceId)),
+  build = buildSha)                                 // to read a minified stack against the source maps kept for it
+  .install(warnings = true, requests = true)        // problems always; scribe's warn/error; failed or slow requests
+log.info("signed in")
+load(id).handleError(Reported("load " + id, Nil)).map(show).startUnit()
+```
+
+`install(warnings = true)` chains onto `everyui.scribe.forward`. `install(requests = true)` chains onto
+`Network.observe`: a failed request is sent as a warning, and one that took `slowMs` (3000) or more as info. What was
+there before still runs first. Keep each web build's source maps by its `build`, to decode a minified stack later.
 
 ## Collections
 
