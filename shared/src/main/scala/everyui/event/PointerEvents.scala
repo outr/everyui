@@ -29,11 +29,16 @@ class PointerEvents(component: Component) {
     channel
   }
 
-  /** Whether the pointer is over the component. */
+  /** Whether the pointer is over the component: as it comes onto it and goes off it, and as what is under a still
+    * pointer moves (a card a list moved up under it is over, the one it moved away is not), where `enter` and `leave`
+    * are the pointer's own moves only, so what takes the focus as the pointer comes onto it does not take it from the
+    * keys scrolling it under a still pointer. */
   lazy val over: Val[Boolean] = {
     val state = Var(false)
     enter.attach(_ => state @= true)
     leave.attach(_ => state @= false)
+    // over it only where the pointer coming onto it would be heard (a coach mark's fence); off it always
+    component.node.onOver(on => if (!on || everyui.focus.Focus.hears(component, PointerKind.Enter)) state @= on)
     state
   }
 

@@ -27,10 +27,16 @@ class RenderNode(val el: html.Element) {
   def setText(text: String): Unit = el.textContent = text
 
   def getX(): Double = px(el.style.left)
-  def setX(x: Double): Unit = el.style.left = x.toString + "px"
+  def setX(x: Double): Unit = {
+    el.style.left = x.toString + "px"
+    WebHover.changed()
+  }
 
   def getY(): Double = px(el.style.top)
-  def setY(y: Double): Unit = el.style.top = y.toString + "px"
+  def setY(y: Double): Unit = {
+    el.style.top = y.toString + "px"
+    WebHover.changed()
+  }
 
   /** Radians, clockwise, about the node's own centre — the DOM's `rotate()`
     * is already centre-pivoted by default (`transform-origin: 50% 50%`). */
@@ -47,8 +53,10 @@ class RenderNode(val el: html.Element) {
   }
 
   private var scaled: Double = 1.0
-  private def transform(): Unit =
+  private def transform(): Unit = {
     el.style.transform = "rotate(" + rotation.toString + "rad) scale(" + scaled.toString + ")"
+    WebHover.changed()
+  }
 
   def setFontSize(size: Double): Unit = el.style.fontSize = size.toString + "px"
 
@@ -137,13 +145,23 @@ class RenderNode(val el: html.Element) {
         case _: Throwable => false
       })
     if (!moved) el.insertBefore(child, before)
+    WebHover.changed()
   }
 
   /** Detach from the parent, if attached. */
-  def remove(): Unit = if (el.parentNode != null) el.parentNode.removeChild(el)
+  def remove(): Unit = if (el.parentNode != null) {
+    el.parentNode.removeChild(el)
+    WebHover.changed()
+  }
 
-  def setWidth(width: Double): Unit = el.style.width = width.toString + "px"
-  def setHeight(height: Double): Unit = el.style.height = height.toString + "px"
+  def setWidth(width: Double): Unit = {
+    el.style.width = width.toString + "px"
+    WebHover.changed()
+  }
+  def setHeight(height: Double): Unit = {
+    el.style.height = height.toString + "px"
+    WebHover.changed()
+  }
 
   /** `"#rrggbb"`, or `""` for transparent. */
   def setBackgroundColor(hex: String): Unit =
@@ -351,6 +369,9 @@ class RenderNode(val el: html.Element) {
   }
 
   /** CSS `position`; `""` is static. */
+  /** Whether the mouse is over it, told again as what is under a still mouse moves (WebHover): `over`'s, beside its
+    * enter and leave. */
+  def onOver(told: Boolean => Unit): Unit = WebHover.watch(el, told)
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * place in the app's units: the viewport's over the size the app is drawn at. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit =
@@ -478,6 +499,7 @@ class RenderNode(val el: html.Element) {
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = {
     el.style.display = if (visible) "" else "none"
+    WebHover.changed()
     // no longer laid out only to be measured (RenderNode.reveal)
     if (el.style.visibility.nonEmpty) el.style.visibility = ""
   }

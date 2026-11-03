@@ -352,6 +352,8 @@ class RenderNode(val sg: SGNode) {
     roundClip()
   }
   /** SceneGraph places every node by its translation, so there is no position type to set. */
+  /** Whether the pointer is over it as what is under a still one moves: the platform's enter and leave alone here. */
+  def onOver(told: Boolean => Unit): Unit = ()
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind.toString, f)
 

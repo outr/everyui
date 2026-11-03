@@ -628,6 +628,8 @@ class RenderNode(val view: View) {
   }
 
   /** Every node is placed by its translation, so there is no position type to set. */
+  /** Whether the pointer is over it as what is under a still one moves: the platform's enter and leave alone here. */
+  def onOver(told: Boolean => Unit): Unit = ()
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", "menu") with its root coordinates.
     * Touches drive down/move/up, a click on an up that stays on the view, and the menu on a long press or a mouse's
     * secondary button; a mouse or a hover drives enter/leave. */
