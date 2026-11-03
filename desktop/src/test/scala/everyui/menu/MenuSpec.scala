@@ -245,6 +245,62 @@ class MenuSpec extends FxSpec {
       eventually(dismissed == 1) shouldBe true
       fx(Focus.focused()) shouldBe Some(card)
     }
+    "tick a box in a submenu and stay open, its tick following the app, until something else is chosen" in onScreen {
+      card =>
+      val archive = reactify.Var(false)
+      var refuse = false
+      var sent = ""
+      var dismissed = 0
+      val menu = fx(Menu.at(100.0, 100.0, List(MenuItem("Open"), MenuItem.sub("Send to", List(
+        MenuItem.toggle("Archive", archive, on => if (!refuse) archive @= on),
+        MenuItem.separator,
+        MenuItem("Work", () => sent = "work:" + archive())))), () => dismissed += 1))
+      def box: MenuRow = Focus.focused().collect { case r: MenuRow => r }.get
+      def tick: Boolean = fx {
+        var found = false
+        var pending: List[Component] = List(box)
+        while (pending.nonEmpty) {
+          pending.head match {
+            case v: MaterialIconView if v.icon() == everyui.font.MaterialIcon.Check => found = true
+            case _ => ()
+          }
+          pending = pending.head.childComponents.toList ++ pending.tail
+        }
+        found
+      }
+      press("ArrowDown")
+      press("ArrowRight")
+      focusedLabel shouldBe Some("Archive")
+      tick shouldBe false
+      press("Enter")
+      archive() shouldBe true
+      fx(Modal.showing) shouldBe true
+      focusedLabel shouldBe Some("Archive")
+      tick shouldBe true
+      press(" ")
+      archive() shouldBe false
+      tick shouldBe false
+      fx(box.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0))
+      archive() shouldBe true
+      tick shouldBe true
+      // the app refusing leaves the tick as the app holds it
+      refuse = true
+      press("Enter")
+      archive() shouldBe true
+      tick shouldBe true
+      // the app changing it changes the tick where it is
+      fx(archive @= false)
+      tick shouldBe false
+      fx(archive @= true)
+      fx(menu.rows.size) shouldBe 2
+      focusedLabel shouldBe Some("Archive")
+      press("ArrowDown")
+      press("Enter")
+      sent shouldBe "work:true"
+      fx(Modal.showing) shouldBe false
+      dismissed shouldBe 0
+      fx(Focus.focused()) shouldBe Some(card)
+    }
     "show a command's chord, a tick, and drop from its anchor" in onScreen { card =>
       val command = new Command("file.save", "Save", List(Chord("S", primary = true)), () => ())
       val menu = fx(Menu.below(card, List(MenuItem.command(command), MenuItem.check("Wrap", on = true, _ => ()))))

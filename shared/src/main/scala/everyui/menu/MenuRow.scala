@@ -26,8 +26,12 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
     if (!item.enabled) Theme.muted().withAlpha(0.6) else if (item.danger) Theme.warning()
     else if (item.active) Theme.accent() else Theme.text()))
 
+  // a tick that follows the app (`MenuItem.on`) is there however it starts, shown as it is on
   private val lead: Option[MaterialIconView] =
-    if (item.checked.contains(true)) Some(new MaterialIconView(MaterialIcon.Check, points * 1.15))
+    if (item.on.nonEmpty) Some(new MaterialIconView(item.icon, points * 1.15) {
+      icon := (if (item.ticked) MaterialIcon.Check else item.icon)
+    })
+    else if (item.checked.contains(true)) Some(new MaterialIconView(MaterialIcon.Check, points * 1.15))
     else if (item.icon.nonEmpty) Some(new MaterialIconView(item.icon, points * 1.15))
     else None
   private val label = new TextView {
@@ -106,12 +110,16 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
         e.consume()
         chosen @= (())
       }
-      event.key.down.attach(k => if (k.key == MenuRow.inward && item.submenu.nonEmpty) opened @= (()))
+      event.key.down.attach { k =>
+        if (k.key == MenuRow.inward && item.submenu.nonEmpty) opened @= (())
+        else if (k.key == Key.Space && item.keepOpen) chosen @= (())
+      }
     }
   }
 
-  /** Right opens its submenu, where it has one. */
-  override def keepsKey(key: Key): Boolean = key == MenuRow.inward && item.submenu.nonEmpty
+  /** Right opens its submenu, where it has one; Space chooses one that keeps the menu open, as a box is ticked. */
+  override def keepsKey(key: Key): Boolean =
+    (key == MenuRow.inward && item.submenu.nonEmpty) || (key == Key.Space && item.keepOpen)
 
   override def kind: String = "MenuRow(" + item.label + ")"
 }

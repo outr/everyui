@@ -20,7 +20,8 @@ import reactify.*
   * `Menu.hoverDelay`) opens a submenu beside its entry, and Left, Back or Escape closes it, back on that entry; Back or
   * a click outside closes a menu, and the focus goes back where it was. The pointer resting on an entry moves the focus
   * to it, and over the menu a submenu opened from, another entry switches submenus and a plain one closes it; a click
-  * outside every menu closes them all. `dismissed` hears the menus closed with nothing chosen.
+  * outside every menu closes them all. An entry that `keepOpen`s (a box ticked, `MenuItem.toggle`) does its work and
+  * leaves every menu open, its tick following the app. `dismissed` hears the menus closed with nothing chosen.
   *
   * {{{
   *   Menu.context(fileRow) {
@@ -86,6 +87,8 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
       row.chosen.attach(_ => open(row))
       row.opened.attach(_ => open(row))
     }
+    // one that keeps the menu open does its work where it is, the focus staying on it
+    else if (row.item.keepOpen) row.chosen.attach(_ => row.item.action())
     else row.chosen.attach(_ => choose(row.item))
     row.event.pointer.enter.attach(_ => pointedAt(row))
     row.event.pointer.leave.attach(_ => if (pointed.exists(_ eq row)) pointed = None)
