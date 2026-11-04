@@ -337,6 +337,28 @@ class TextBoxSpec extends FxSpec {
       }
     }
 
+    "cut a line given a width of its own, narrower than it, to that width, and leave one that fits" in {
+      val cut = fx(words(long))
+      fx(cut.size.width @= 112.0)
+      val fits = fx(words(short))
+      fx(fits.size.width @= 300.0)
+      fx(fits.position.top @= 40.0)
+      onScreen(panel(400.0, cut, fits)) {
+        fx(cut.node.getText()) should endWith("…")
+        fx(cut.elided()) shouldBe true
+        fx(cut.node.textWidth()) should be <= 112.5
+        fx(cut.node.textWidth()) should be > 80.0
+        fx(cut.semantics()) shouldBe Semantics(label = long)
+        fx(fits.node.getText()) shouldBe short
+        fx(fits.elided()) shouldBe false
+        // and whole again once it is as wide as they are
+        fx(cut.size.width @= 900.0)
+        settle()
+        fx(cut.node.getText()) shouldBe long
+        fx(cut.elided()) shouldBe false
+      }
+    }
+
     "leave words along a rail, which scrolls, whole" in {
       val names = fx((1 to 8).map(_ => words(long)))
       val rail = fx(new ScrollContainer(horizontal = true))

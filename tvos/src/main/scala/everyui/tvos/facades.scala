@@ -192,6 +192,10 @@ class SGNode
 @native object uiSetClip {
   def apply(node: SGNode, width: Double, height: Double): Unit = native.value
 }
+/** Let what the node holds show past it again (`uiSetClip` undone). */
+@native object uiClearClip {
+  def apply(node: SGNode): Unit = native.value
+}
 /** Whether the node and everything under it is drawn. */
 @native object uiSetVisible {
   def apply(node: SGNode, visible: Boolean): Unit = native.value

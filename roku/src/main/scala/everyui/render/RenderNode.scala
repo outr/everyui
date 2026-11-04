@@ -140,6 +140,11 @@ class RenderNode(val sg: SGNode) {
       if (textLimit > 0.0) math.min(whole, textLimit) else whole
     }
     else math.max(if (boxWidth >= 0.0) boxWidth else 0.0, uiGetWidth(sg) / uiScale()) // (a Group is only its children)
+  /** How wide the words are whole, whatever width the Label is given or held to. */
+  def textWidth(): Double =
+    if (richWidth >= 0.0) richWidth / uiScale()
+    else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
+    else 0.0
   def getHeight(): Double =
     if (wrapping && (boxWidth > 0.0 || textLimit > 0.0) && lineHeight > 0.0) {
       // the lines the Label puts its words on at its width, worked out as it wraps them (uiWrappedLines) rather than
@@ -374,10 +379,18 @@ class RenderNode(val sg: SGNode) {
   def setVisible(visible: Boolean): Unit = if (drawn) uiSetVisible(sg, visible)
   def setOpacity(opacity: Double): Unit = if (drawn) uiSetOpacity(sg, opacity)
   def setClip(width: Double, height: Double): Unit = if (drawn) {
+    ownClip = true
     clipWidth = width
     clipHeight = height
     uiSetClip(sg, px(width), px(height))
     roundClip()
+  }
+
+  // cut to its box by its container (`Container.clipsToBox`): to a rectangle, its corners left square, where a
+  // MaskGroup for every card would cost the device too much; never undoing a clip of its own (`setClip`)
+  private var ownClip = false
+  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = if (drawn && !ownClip) {
+    if (on) uiSetClip(sg, px(width), px(height)) else uiSetClip(sg, 0.0, 0.0)
   }
 
   /** A clip with rounded corners (a poster's): SceneGraph clips only to a rectangle, so the children go into a MaskGroup

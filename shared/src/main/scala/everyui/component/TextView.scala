@@ -31,9 +31,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** What the words do where they are wider than their box, the room what they are in gives them (a column's width
     * less its padding, a row's less what else is in it, the screen's), or than `maxWidth`: wrapped within it
     * (`TextOverflow.Wrap`, the default, `TextOverflow.default`), taking as many lines as they need; cut short with an
-    * ellipsis where they are one line (`TextOverflow.Ellipsis`); or drawn whole past it (`TextOverflow.Visible`). Words that fit are drawn just as they would be either way. Words
-    * given a width of their own (`size.width`) are left to it, and words in something sized to them (a row given no
-    * width, a button, a chip) are kept to the room that has. Cut short, they are still read whole (`semantics`). */
+    * ellipsis where they are one line (`TextOverflow.Ellipsis`); or drawn whole past it (`TextOverflow.Visible`). Words
+    * that fit are drawn just as they would be either way. Words given a width of their own (`size.width`) are kept
+    * to it rather than to their box, a line wider than it wrapped within it or cut to it as the rest are, and words in
+    * something sized to them (a row given no width, a button, a chip) are kept to the room that has. Cut short, they
+    * are still read whole (`semantics`). */
   lazy val textOverflow: Prop[TextOverflow] = {
     overflowMade = true
     own(new Prop[TextOverflow](overflowAtFirst, _ => if (keepsToBox) {
@@ -84,13 +86,21 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   }))
 
   // wrapped to a width that changes, the words take a different number of lines; given a width of their own, words
-  // kept to their box are left to it
+  // kept to their box are left to it, and a line is kept to that width (`ownRoom`)
   size.width.attach(_ => if (size.width.explicit) {
     if (boxed) fit()
     else if (whiteSpace() != WhiteSpace.NoWrap) {
       if (maxLines() > 0) fit() else measure.trigger()
     }
+    else if (ownRoom > 0.0 || wrappedToFit || elided()) fit()
   })
+  /** The room a line of words given a width of their own has: that width, where nothing else holds them to less
+    * (`maxWidth`, `maxLines`) and they are not let run past it (`TextOverflow.Visible`); 0 for none. Wider than it,
+    * they wrap within it (the platform wraps words at a width of their own everywhere), or are cut short to it with an
+    * ellipsis (`TextOverflow.Ellipsis`): a heading in a card the card has narrowed. */
+  private def ownRoom: Double =
+    if (size.width.explicit && whiteSpace() == WhiteSpace.NoWrap && keepsToBox && overflow != TextOverflow.Visible &&
+      maxWidth() <= 0.0 && maxLines() <= 0) size.width() else 0.0
   // the cut is being made, whether it was made where the words could not yet be measured as they will be drawn (off
   // the page, or in a face still loading), and whether the page holds them to their room while it waits (setTextLimit)
   private var fitting = false
@@ -247,10 +257,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     val lines = if (maxLines() > 0 && (whiteSpace() != WhiteSpace.NoWrap || wraps)) maxLines() else 0
     // the box's room, where the words were kept to it or ran past it as last measured (keepToBox)
     val box = if ((boxed || toBox) && !followed && !size.width.explicit) roomNow else 0.0
+    val own = ownRoom
     val before = measured.width()
     node.setText(wanted)
     val asked = limit > 0.0 || lines > 0
-    unfit = (asked || box > 0.0) && !node.textMeasurable(refit)
+    unfit = (asked || box > 0.0 || own > 0.0) && !node.textMeasurable(refit)
     // measured whole, then held to the room it has; where it cannot be measured yet, only held
     if (held) node.setTextLimit(0.0, 0)
     held = asked
@@ -291,6 +302,9 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
         else if (room > 0.0 && wrapAt == 0.0) single = 0.0
       }
       cutTo(wanted, single, lines)
+      if (own > 0.0 && node.textWidth() > own + 0.5) {
+        if (wraps) wrapToFit() else cutTo(wanted, own, 0, whole = true)
+      }
       elided @= node.getText() != wanted
       val kept = if (wrapAt > 0.0 && (single == 0.0 || wrapAt < single)) wrapAt else single
       held = asked || boxed
@@ -337,8 +351,10 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     }
   }
 
-  private def cutTo(wanted: String, limit: Double, lines: Int): Unit = {
-    if (limit > 0.0 && node.getWidth() > limit) {
+  // (`whole`: measured whole, as words given a width of their own are, where the node is as wide as that)
+  private def cutTo(wanted: String, limit: Double, lines: Int, whole: Boolean = false): Unit = {
+    def wide: Double = if (whole) node.textWidth() else node.getWidth()
+    if (limit > 0.0 && wide > limit) {
       // the most letters kept, found in as many measures as halvings: a Roku measures each one
       val side = elide()
       var fewest = 0
@@ -346,7 +362,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       while (fewest < most) {
         val half = (fewest + most + 1) / 2
         node.setText(TextView.kept(wanted, half, side))
-        if (node.getWidth() <= limit) fewest = half else most = half - 1
+        if (wide <= limit) fewest = half else most = half - 1
       }
       node.setText(TextView.kept(wanted, fewest, side))
     }

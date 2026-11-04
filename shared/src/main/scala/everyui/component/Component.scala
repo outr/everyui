@@ -132,14 +132,25 @@ class Component(val node: RenderNode) {
   private var shadowed = false
   private var blurred = false
 
+  // whether it draws a box: a background, a gradient over it, an edge (`Container.clipsToBox`)
+  private var filled = false
+  private var graded = false
+  private var edged = false
+  private[everyui] def drawsBox: Boolean = filled || graded || edged
   lazy val color: Prop[Color] = own(new Prop[Color](Color.Black, c => node.setColor(c.toHex)))
   lazy val backgroundColor: Prop[Color] =
-    own(new Prop[Color](Color.Clear, c => node.setBackgroundColor(Component.css(c))))
+    own(new Prop[Color](Color.Clear, c => {
+      node.setBackgroundColor(Component.css(c))
+      filled = c.alphaInt > 0
+      boxDrawn()
+    }))
   /** A gradient over the whole box, on top of the background colour, linear or radial (`Gradient.radial`, drawn again
     * as the box changes size); a backend that draws none fills with its first stop. */
   lazy val gradient: Prop[Option[Gradient]] = own(new Prop[Option[Gradient]](None, g => {
     if (g.exists(_.radial.nonEmpty)) sized()
     drawGradient()
+    graded = g.nonEmpty
+    boxDrawn()
   }))
   private def drawGradient(): Unit = gradient() match {
     case Some(value) => value.radial match {
@@ -235,8 +246,15 @@ class Component(val node: RenderNode) {
   /** An edge `borderWidth` pixels wide in `borderColor`, drawn inside the box and following its corners, so a border
     * never changes a size. (A Roku Rectangle has no edge to draw.) */
   lazy val borderColor: Prop[Color] =
-    own(new Prop[Color](Color.Clear, c => node.setBorder(borderWidth(), Component.css(c))))
-  lazy val borderWidth: Prop[Double] = own(new Prop[Double](0.0, w => node.setBorder(w, Component.css(borderColor()))))
+    own(new Prop[Color](Color.Clear, c => paintEdge(borderWidth(), c)))
+  lazy val borderWidth: Prop[Double] = own(new Prop[Double](0.0, w => paintEdge(w, borderColor())))
+  private def paintEdge(width: Double, color: Color): Unit = {
+    node.setBorder(width, Component.css(color))
+    edged = width > 0.0 && color.alphaInt > 0
+    boxDrawn()
+  }
+  /** It has drawn a box, or stopped: a container clips what it holds to one (`Container.clipsToBox`). */
+  private[everyui] def boxDrawn(): Unit = ()
   /** Rounded corners, in pixels (the Roku's Rectangle has none). */
   lazy val radius: Prop[Double] = own(new Prop[Double](0.0, r => node.setRadius(r)))
   /** In turns, as youi has it (1.0 is a full revolution). */

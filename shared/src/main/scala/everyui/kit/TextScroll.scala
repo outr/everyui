@@ -43,6 +43,7 @@ object TextScroll {
     new Container {
       size.width @= across
       size.height := scroll.size.height()
+      clipsToBox @= Some(false)
       children += scroll
     }
   }

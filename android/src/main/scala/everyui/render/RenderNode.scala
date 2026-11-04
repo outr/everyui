@@ -144,6 +144,15 @@ class RenderNode(val view: View) {
       case _ => 0.0
     }
 
+  /** How wide the words are whole, on their lines, whatever width the view is given. */
+  def textWidth(): Double = view match {
+    case _: EditText => 0.0
+    case t: TextView =>
+      measure(t)
+      laidOutWidth
+    case _ => 0.0
+  }
+
   def getHeight(): Double =
     if (explicitHeight >= 0.0) explicitHeight
     else view match {
@@ -763,7 +772,15 @@ class RenderNode(val view: View) {
   def setOpacity(opacity: Double): Unit = view.setAlpha(opacity.toFloat)
 
   def setClip(width: Double, height: Double): Unit = view match {
-    case g: ViewGroup => g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)
+    case g: ViewGroup =>
+      ownClip = true
+      g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)
+    case _ => ()
+  }
+  // cut to its box by its container (`Container.clipsToBox`), as `setClip` cuts it, never undoing a clip of its own
+  private var ownClip = false
+  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = view match {
+    case g: ViewGroup if !ownClip => g.setClipChildren(on); g.setClipToPadding(on); g.setClipToOutline(on)
     case _ => ()
   }
   def setTooltip(text: String): Unit =

@@ -598,6 +598,12 @@ func uiSetClip(_ node: V, _ width: V, _ height: V) -> V {
     return .vNull
 }
 
+/// What a view holds shown past it again: `uiSetClip` undone.
+func uiClearClip(_ node: V) -> V {
+    view(node)?.clipsToBounds = false
+    return .vNull
+}
+
 /// Whether a view and everything under it is drawn: what a scroll has out of sight costs nothing.
 func uiSetVisible(_ node: V, _ visible: V) -> V {
     if case .vBool(let shown) = visible { view(node)?.isHidden = !shown }

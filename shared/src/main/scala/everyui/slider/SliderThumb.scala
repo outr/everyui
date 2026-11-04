@@ -48,6 +48,8 @@ class SliderThumb(fill: => everyui.Color, pressed: => Boolean, lit: => Boolean, 
   words.position.top := (SliderThumb.tip - words.size.height()) / 2.0
   tip.children += words
   children ++= List(dot, tip)
+  // the tip stands out past the halo
+  clipsToBox @= Some(false)
 
   override def keepsEvent(e: KeyEvent): Boolean = keeps(e)
 

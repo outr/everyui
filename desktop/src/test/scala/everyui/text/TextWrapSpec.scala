@@ -52,6 +52,22 @@ class TextWrapSpec extends FxSpec {
         fx(t.size.height()) should be > oneLine() * 2.0
       }
     }
+    "wrap a line given a width of its own, narrower than it, within that width: a heading in a narrowed card" in {
+      val t = fx(words(long))
+      fx(t.size.width @= 112.0)
+      onScreen(panel(400.0, t)) {
+        fx(t.content()) shouldBe long
+        fx(t.node.getText()) shouldBe long
+        fx(t.elided()) shouldBe false
+        fx(t.size.width()) shouldBe 112.0
+        fx(t.size.height()) should be > oneLine() * 2.0
+        fx(t.node.textWidth()) should be <= 112.5
+        // given room for them again, the words go back on one line
+        fx(t.size.width @= 900.0)
+        settle()
+        fx(t.size.height()) shouldBe oneLine()
+      }
+    }
     "draw words that fit exactly as before" in {
       val fits = fx(words("Short words"))
       val alone = fx(words("Short words"))

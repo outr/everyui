@@ -43,6 +43,7 @@ class JumpButton(unseen: Val[Int], press: () => Unit) extends Container {
   badge.position.left := ListRow.along(JumpButton.diameter - badge.size.width() + 4.0, badge.size.width(),
     JumpButton.diameter)
   badge.position.top @= -4.0
+  clipsToBox @= Some(false)
 
   size.width @= JumpButton.diameter
   size.height @= JumpButton.diameter

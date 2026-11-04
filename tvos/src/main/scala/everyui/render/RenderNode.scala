@@ -79,6 +79,8 @@ class RenderNode(val sg: SGNode) {
   def onPage: Boolean = true
 
   def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
+  /** How wide the words are whole, whatever width the view is given: as they are measured. */
+  def textWidth(): Double = getWidth()
   def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg)
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
@@ -192,7 +194,15 @@ class RenderNode(val sg: SGNode) {
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = uiSetVisible(sg, visible)
   def setOpacity(opacity: Double): Unit = uiSetOpacity(sg, opacity)
-  def setClip(width: Double, height: Double): Unit = uiSetClip(sg, width, height)
+  def setClip(width: Double, height: Double): Unit = {
+    ownClip = true
+    uiSetClip(sg, width, height)
+  }
+  // cut to its box by its container (`Container.clipsToBox`), never undoing a clip of its own (`setClip`)
+  private var ownClip = false
+  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = if (!ownClip) {
+    if (on) uiSetClip(sg, width, height) else uiClearClip(sg)
+  }
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()
   /** No reader of descriptions reaches this platform's nodes. */

@@ -58,6 +58,8 @@ class Avatar(who: => Participant, diameter: Double = 32.0) extends Container {
   private def ringed(on: Boolean): Unit = if (on && ring.isEmpty) {
     val made = new BusyRing(diameter, busy())
     ring = Some(made)
+    // it goes around the face, outside its box
+    clipsToBox @= Some(false)
     children += made
   }
   busy.attach(ringed)

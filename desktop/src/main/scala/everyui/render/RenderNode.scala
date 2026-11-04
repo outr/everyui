@@ -147,6 +147,13 @@ class RenderNode(val fx: Node) {
       case _ => 0.0
     }
 
+  /** How wide the words are whole, on their lines, whatever width the node is given. */
+  def textWidth(): Double = fx match {
+    case t: Text => t.getLayoutBounds.getWidth + LetterSpacing.width(letterSpacing, t.getText)
+    case f: RichFlow => f.across() + LetterSpacing.width(letterSpacing, runs)
+    case _ => 0.0
+  }
+
   def getHeight(): Double =
     if (explicitHeight >= 0.0) explicitHeight
     else fx match {
@@ -289,6 +296,7 @@ class RenderNode(val fx: Node) {
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
     dropShadow = if (hex.isEmpty) None else Some(new javafx.scene.effect.DropShadow(blur, x, y, Color.web(hex)))
     paintEffect()
+    clipToBox()
   }
   /** A gaussian blur, its kernel three times the spread wide (as far as JavaFX goes), over the shadow if there is one. */
   def setBlur(radius: Double): Unit = {
@@ -441,8 +449,28 @@ class RenderNode(val fx: Node) {
     fx.setClip(new Rectangle(width, height))
     roundClip()
   }
+  // cut to its box by its container (`Container.clipsToBox`) while it casts no shadow, as JavaFX cuts a node's own
+  // effect with its clip. To a rectangle, its corners left square: Prism cuts to one as it draws, where a rounded
+  // clip is drawn through a mask, slower, and its edge drawn again over the box's own. A clip of its own (`setClip`)
+  // is left as it is.
+  private var boxClip: Rectangle = null
+  private var boxWanted = false
+  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = {
+    boxWanted = on
+    if (boxClip == null) boxClip = new Rectangle(width, height)
+    else {
+      boxClip.setWidth(width)
+      boxClip.setHeight(height)
+    }
+    clipToBox()
+  }
+  private def clipToBox(): Unit =
+    if (boxWanted && dropShadow.isEmpty) {
+      if (fx.getClip == null) fx.setClip(boxClip)
+    }
+    else if (boxClip != null && (fx.getClip eq boxClip)) fx.setClip(null)
   private def roundClip(): Unit = fx.getClip match {
-    case r: Rectangle =>
+    case r: Rectangle if !(r eq boxClip) =>
       r.setArcWidth(radius * 2.0)
       r.setArcHeight(radius * 2.0)
     case _ => ()

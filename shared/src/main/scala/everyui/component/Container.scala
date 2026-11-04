@@ -2,6 +2,7 @@ package everyui.component
 
 import everyui.component.feature.ContainerFeature
 import everyui.layout.{FlowLayout, HorizontalLayout, Layout, LayoutPass, VerticalLayout}
+import everyui.component.types.Prop
 import everyui.render.{Nodes, Platform, RenderNode}
 import reactify.*
 
@@ -43,6 +44,38 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Whether what it holds runs on past its width on purpose (a rail's content, scrolled along): words in it are not
     * kept to it, nor to anything it is in (`TextView.textOverflow`). */
   private[everyui] var textRunsOn: Boolean = false
+
+  /** Whether what it holds is cut to its box, its corners rounded with it. By default (`None`) a container that draws
+    * a box clips: a background, a gradient or an edge, so words or a picture too big for a card stay in it, and once it
+    * has drawn one it goes on clipping, as a highlight comes and goes. `Some(false)` lets what it holds hang out of it
+    * (a badge on its corner, a thumb past its track, a child's shadow at its edge), `Some(true)` clips one that draws
+    * none. A clip a component makes of its own (a scroll's, a list's) is not undone by it. */
+  lazy val clipsToBox: Prop[Option[Boolean]] = own(new Prop[Option[Boolean]](None, c => {
+    clipAsked = c
+    clipBox()
+  }))
+  // what the app asked (`clipsToBox`, read without making it), whether it has drawn a box, and whether it is cut to it
+  private var clipAsked: Option[Boolean] = None
+  private var boxed = false
+  private var boxClipped = false
+  private var boxSized = false
+  override private[everyui] def boxDrawn(): Unit = if (!boxed && drawsBox) {
+    boxed = true
+    clipBox()
+  }
+  private def clipBox(): Unit = {
+    val on = clipAsked.getOrElse(boxed)
+    if (on != boxClipped) {
+      boxClipped = on
+      // the desktop and the Roku clip to a size: followed once it clips at all
+      if (on && !boxSized) {
+        boxSized = true
+        size.width.attach(_ => if (boxClipped) node.setBoxClip(true, size.width(), size.height()))
+        size.height.attach(_ => if (boxClipped) node.setBoxClip(true, size.width(), size.height()))
+      }
+      node.setBoxClip(on, size.width(), size.height())
+    }
+  }
 
   /** Whether its width follows what it holds: a row or a column given no width, or a width bound to a child's (a
     * button's, a chip's, `size.width := label.size.width() + 20.0`). Words in it are kept to the room of what it is in. */

@@ -1464,14 +1464,16 @@ panel.children += Column(4.0, padding = 16.0)(
 ```
 
 Words cut short are read whole: a text view with no `semantics` of its own is named by its words
-(`Semantics(label = content())`) while they are cut, and plain again once they fit. Some words are left whole: words
-given a width of their own (`size.width`, a grid's cell) are drawn as that width has them; a glyph
-(`MaterialIconView`); words in something hidden; words placed outside the box altogether, past its edge or before its
-start (made out of sight to be measured, a page waiting to slide in); words along a horizontal `ScrollContainer`, or in
-a `ZoomCanvas`'s world, which run on past the viewport on purpose; and words in a box that turns out to shrink with
-them (bound to their width through a value of its own, which the box cannot see), until their words change. In a row
-too wide for its box, the words that come first take the cut, measured against what follows them at its own whole
-width, so a title gives way to the badge after it. A `RichText` paragraph wraps to the width it is given, as before.
+(`Semantics(label = content())`) while they are cut, and plain again once they fit. Words given a width of their own
+(`size.width`, a grid's cell) are kept to that width rather than to their box: one line wider than it wraps within it,
+or is cut short to it where the app asked for `Ellipsis` (a heading in a card that has narrowed to its smallest). Some
+words are left whole: a glyph (`MaterialIconView`); words in something hidden; words placed outside the box
+altogether, past its edge or before its start (made out of sight to be measured, a page waiting to slide in); words
+along a horizontal `ScrollContainer`, or in a `ZoomCanvas`'s world, which run on past the viewport on purpose; and
+words in a box that turns out to shrink with them (bound to their width through a value of its own, which the box
+cannot see), until their words change. In a row too wide for its box, the words that come first take the cut,
+measured against what follows them at its own whole width, so a title gives way to the badge after it. A `RichText`
+paragraph wraps to the width it is given, as before.
 
 A `Button`'s words are one line by default, cut short at its room. `labelLines` lets them wrap within it, the button
 growing as tall as they are and its pill becoming a box with rounded corners, its lines starting where a paragraph's
@@ -1494,6 +1496,25 @@ import everyui.component.types.TextOverflow
 
 TextOverflow.default @= TextOverflow.Visible   // at start: the old behaviour, everywhere
 title.textOverflow @= TextOverflow.Visible     // or for one text view
+```
+
+### What spills out of a box (`clipsToBox`)
+
+A `Container` that draws a box (a background colour, a gradient, or an edge) cuts what it holds to that box by
+default, so words or a picture too big for a card stay inside it; once it has drawn one it goes on cutting, as a hover
+highlight comes and goes. A container that draws nothing leaves what it holds alone. `clipsToBox @= Some(false)` lets
+what it holds hang out of it on purpose (a badge on a corner, a value tip over a slider's thumb, a ring around an
+avatar: EveryUI's own do this), and `Some(true)` cuts one that draws no box. A clip a component makes of its own (a
+scroll's, a list's) is never undone by it.
+
+The web cuts with `overflow: clip`, which makes no scroll box (nothing in the card is scrolled into sight within it as
+it takes the focus) and leaves the box's own shadow whole, its rounded corners included; a browser without `clip` draws
+it whole as before. The desktop, the Roku and the Apple TV cut to the box's rectangle, its corners square; on the
+desktop a box that casts a shadow is not cut, as JavaFX would cut the shadow with it. Android cuts to its outline.
+
+```scala
+val card = new Container { backgroundColor @= Theme.raised(); radius @= 12.0 }   // cuts what spills out of it
+val avatar = new Container { backgroundColor @= colour; clipsToBox @= Some(false) } // its badge hangs off the corner
 ```
 
 ### Text direction and long words (`TextView`, `RichText`)

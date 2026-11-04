@@ -87,6 +87,9 @@ class RenderNode(val el: html.Element) {
       val r = box()
       if (transformed(r)) laidOut(horizontal = true) else r.width / RenderNode.drawnAt
     }
+  /** How wide the words are whole, whatever width the element is given: what they take of the line, past it if they run
+    * on (`scrollWidth`), read where it is in the page. */
+  def textWidth(): Double = if (onPage) el.scrollWidth / RenderNode.drawnAt else getWidth()
   def getHeight(): Double =
     if (!onPage && RenderNode.movable(el)) RenderNode.offPage(el)._2
     else {
@@ -507,6 +510,15 @@ class RenderNode(val el: html.Element) {
 
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
+  /** Cut to its box by its container (`Container.clipsToBox`): `overflow: clip`, which unlike `hidden` makes no scroll
+    * box, so nothing in it is scrolled into sight within it as it takes the focus, and its own shadow is drawn whole. A
+    * clip of its own (`setClip`, a scroll's) is never undone; a browser without `clip` shows it whole, as before. */
+  def setBoxClip(on: Boolean, width: Double, height: Double): Unit =
+    if (on) {
+      val unset = el.style.overflow.isEmpty && el.style.overflowX.isEmpty && el.style.overflowY.isEmpty
+      if (unset) el.style.overflow = "clip"
+    }
+    else if (el.style.overflow == "clip") el.style.overflow = ""
   def setTooltip(text: String): Unit = el.title = text
   // the hidden element holding its description, last among its own, where it has one
   private var described: Option[html.Element] = None
