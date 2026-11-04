@@ -105,8 +105,29 @@ class Component(val node: RenderNode) {
     * sight, not out of the layout. */
   lazy val visible: Prop[Boolean] = {
     visibleMade = true
-    own(new Prop[Boolean](true, v => node.setVisible(v)))
+    own(new Prop[Boolean](true, v => {
+      node.setVisible(v)
+      if (collapsesMade) roomChanged()
+    }))
   }
+
+  private var collapsesMade = false
+  /** Whether, while it is hidden (`visible` false), it takes no room either: left out of its column, row or flow and
+    * out of its container's size, as a child with no size is, and back in its place as it is shown again. Off by
+    * default, so a hidden child keeps its place, as something that comes and goes (a spinner, a badge) wants; on, a
+    * form's field shown only later leaves no gap until it is. */
+  lazy val collapses: Var[Boolean] = {
+    collapsesMade = true
+    val v = own(Var(false))
+    v.attach(_ => roomChanged())
+    v
+  }
+
+  /** Whether it takes no room now: hidden, and collapsing while hidden. */
+  private[everyui] def roomless: Boolean = collapsesMade && collapses() && !notHidden
+
+  // the containers it is in told its room changed, as a change of size tells them
+  private def roomChanged(): Unit = containerWatches.foreach(w => w.container.childWatched(w, true))
 
   /** How opaque it is drawn, with all it holds: 1.0 is solid, 0.0 unseen (but still there, unlike `visible`). */
   lazy val opacity: Prop[Double] = own(new Prop[Double](1.0, o => node.setOpacity(o)))

@@ -574,6 +574,16 @@ tree.size.width := panel.size.width() - 24.0
 - With no `flex` anywhere, rows and columns lay out exactly as before.
 - A right-to-left row mirrors as it always has, the filling child included.
 
+**A hidden child's room.** `visible := false` hides a child but keeps its place, as something that comes and goes (a
+spinner, a badge) wants, so its neighbours don't move. With `collapses @= true`, a child takes no room while it is
+hidden: it is left out of its column, row or flow, and out of its container's size, as a child with no size is, and it
+takes its place back as it shows. A form's field shown only later then leaves no gap until it shows:
+
+```scala
+otherReason.collapses @= true
+otherReason.visible := reason() == Reason.Other
+```
+
 ### Seeing overlaps while building (`everyui.layout.Overlaps`)
 
 `Overlaps.warn @= true` (off by default, and free while off) looks the screen over after each layout pass and every
@@ -3684,7 +3694,9 @@ manifest names; `everyuiAndroidRules` has the rest. A shipping build passes its 
 **Site-absolute paths off the web.** On the desktop and Android, an `ImageView`'s, a video's or a `WebView`'s
 site-absolute source (`/images/logo.png`, `/api/portrait/3`) is read from the app's own files where it has one there:
 `assets/` on the desktop, the APK's assets on Android. Otherwise it is read from the app's server, `Platform.origin()`
-(the "everyui.origin" setting, which `Network.origin` is set from), where the app has one. A picture that cannot be
+(the "everyui.origin" setting, which `Network.origin` is set from), where the app has one. The same goes for
+`Platform.resolvePath`, which `Image(url)`, `Avatar`, `Backdrop`, `VectorIcon` and the others go through, and a query
+(`?v=3`) is left out of the look for a packaged file. A picture that cannot be
 had, missing from both, is a picture that failed to load, never an exception out of whatever asked for it.
 
 ### The Roku

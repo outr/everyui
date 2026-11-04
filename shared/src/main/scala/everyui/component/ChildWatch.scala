@@ -21,8 +21,9 @@ private[component] class ChildWatch(val container: Container, val child: Compone
   private val onLeft = left.on(container.childWatched(this, false))
   private val onTop = top.on(container.childWatched(this, false))
 
-  def reachX: Double = left() + width()
-  def reachY: Double = top() + height()
+  // a child taking no room (`Component.roomless`) reaches nowhere
+  def reachX: Double = if (child.roomless) 0.0 else left() + width()
+  def reachY: Double = if (child.roomless) 0.0 else top() + height()
 
   def stop(): Unit = {
     width.reactions -= onWidth

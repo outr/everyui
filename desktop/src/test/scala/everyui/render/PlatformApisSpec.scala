@@ -93,6 +93,9 @@ class PlatformApisSpec extends FxSpec {
     "read a site-absolute path from its own files, and a picture that cannot be had as one that failed" in {
       Host.address("/fonts/OpenSans-Regular.ttf") shouldBe
         new java.io.File(Host.assets, "fonts/OpenSans-Regular.ttf").toURI.toString
+      Host.address("/fonts/OpenSans-Regular.ttf?v=2") shouldBe
+        new java.io.File(Host.assets, "fonts/OpenSans-Regular.ttf").toURI.toString
+      Platform.resolvePath("/fonts/OpenSans-Regular.ttf") shouldBe Host.address("/fonts/OpenSans-Regular.ttf")
       Host.address("https://x.example.com/a.png") shouldBe "https://x.example.com/a.png"
       val missing = fx(Host.image("/api/portrait/none.png"))
       missing.isError shouldBe true

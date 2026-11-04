@@ -22,10 +22,13 @@ case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) exte
     var run = 0.0
     var inRow = 0
     children.foreach { child =>
-      if (child.size.height() > tallest) tallest = child.size.height()
+      if (!child.roomless && child.size.height() > tallest) tallest = child.size.height()
       // a zero-WIDTH child takes no horizontal room and books no gap, whatever its height: an empty leading icon
       // must not push a label off-centre. The run must count the same children the positioning pass below advances for.
-      if (child.size.width() > 0.0 || (shared && child.flexShare > 0.0)) { run = run + child.size.width(); inRow += 1 }
+      if (!child.roomless && (child.size.width() > 0.0 || (shared && child.flexShare > 0.0))) {
+        run = run + child.size.width()
+        inRow += 1
+      }
     }
     if (inRow > 0) run = run + spacing * (inRow - 1)
     // mirrored within the run the children make when the container follows them, else within its own width (which a
@@ -39,7 +42,8 @@ case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) exte
       child.position.left @= (if (rtl) width - x - child.size.width() else x)
       child.position.top @= (if (middle) pad + (tallest - child.size.height()) / 2.0 else pad)
       // a child with no width takes no room and no gap: what a row has nothing to show is left out of it
-      if (child.size.width() > 0.0 || (shared && child.flexShare > 0.0)) x = x + child.size.width() + spacing
+      if (!child.roomless && (child.size.width() > 0.0 || (shared && child.flexShare > 0.0)))
+        x = x + child.size.width() + spacing
     }
   }
 }

@@ -23,7 +23,7 @@ case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extend
     // the room left down a column with a height of its own, to the children with a `flex`
     val shared = Layout.share(container, children, spacing, across = false)
     var widest = 0.0
-    children.foreach(child => if (child.size.width() > widest) widest = child.size.width())
+    children.foreach(child => if (!child.roomless && child.size.width() > widest) widest = child.size.width())
     // within the widest child when the container follows its children, else within its own width
     val inner = if (container.widthFollowsContent || !container.size.width.explicit) widest else container.size.width() - pad * 2.0
     val rtl = Direction.rtl()
@@ -35,7 +35,8 @@ case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extend
         else pad)
       child.position.top @= y
       // a child with no size takes no room and no gap: an optional line is left out of the column entirely
-      if (Layout.shows(child) || (shared && child.flexShare > 0.0)) y = y + child.size.height() + spacing
+      if (Layout.shows(child) || (shared && child.flexShare > 0.0 && !child.roomless))
+        y = y + child.size.height() + spacing
     }
   }
 }

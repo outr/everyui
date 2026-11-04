@@ -1616,7 +1616,8 @@ object Host {
   def address(uri: String): String =
     if (!uri.startsWith("/") || uri.startsWith("//")) uri
     else {
-      val packaged = uri.stripPrefix("/")
+      // a packaged file by its path alone: a query (`?v=3`) is the server's to read
+      val packaged = uri.stripPrefix("/").takeWhile(c => c != '?' && c != '#')
       val origin = Platform.origin()
       if (origin.isEmpty || packagedHere(packaged)) packaged else origin.stripSuffix("/") + uri
     }
@@ -2681,7 +2682,9 @@ object Platform {
   def cos(x: Double): Double = math.cos(x)
 
   /** A site-absolute asset path (`/images/icon.png`) is that path inside the APK's assets. */
-  def resolvePath(path: String): String = path.stripPrefix("/")
+  /** A site-absolute path (`/images/icon.png`, `/api/portrait/3`): the APK's asset at that path where it holds one,
+    * else the app's server's (`Host.address`). */
+  def resolvePath(path: String): String = if (path.startsWith("/")) Host.address(path) else path
 
   /** Decode `uri` and report its natural size. */
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit =

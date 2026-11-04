@@ -967,7 +967,7 @@ object Host {
   def address(uri: String): String =
     if (!uri.startsWith("/") || uri.startsWith("//")) uri
     else {
-      val packaged = new File(assets, uri.stripPrefix("/"))
+      val packaged = new File(assets, uri.stripPrefix("/").takeWhile(c => c != '?' && c != '#'))
       val origin = Platform.origin()
       if (packaged.isFile || origin.isEmpty) packaged.toURI.toString else origin.stripSuffix("/") + uri
     }
@@ -1822,8 +1822,10 @@ object Platform {
   def sin(x: Double): Double = math.sin(x)
   def cos(x: Double): Double = math.cos(x)
 
-  /** A site-absolute asset path (`/images/icon.png`), as a file URL under the assets directory. */
-  def resolvePath(path: String): String = new File(Host.assets, path.stripPrefix("/")).toURI.toString
+  /** A site-absolute path: the app's own file under `assets` where it has one, else its server's (`Host.address`). */
+  def resolvePath(path: String): String =
+    if (path.startsWith("/") && !path.startsWith("//")) Host.address(path)
+    else new File(Host.assets, path).toURI.toString
 
   /** Load `uri` and report its natural size: at once from a file, once it arrives from the network (0 x 0 if it
     * cannot). */

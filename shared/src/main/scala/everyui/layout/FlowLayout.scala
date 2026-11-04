@@ -23,7 +23,7 @@ case class FlowLayout(horizontalSpacing: Double = 0.0, verticalSpacing: Double =
     val full = container.size.width()
     children.foreach { child =>
       val w = child.size.width()
-      if (x > pad && width > 0.0 && x + w > width) {
+      if (Layout.shows(child) && x > pad && width > 0.0 && x + w > width) {
         x = pad
         y = y + rowHeight + verticalSpacing
         rowHeight = 0.0
