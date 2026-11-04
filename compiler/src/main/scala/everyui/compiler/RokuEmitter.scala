@@ -3096,10 +3096,23 @@ class RokuEmitter(
       in.replaceAll(re, java.util.regex.Matcher.quoteReplacement(value))
     }
 
+    /** A case only an instance of a class nothing in the program constructs can match: it never runs, so its body is
+      * not emitted, as a call on such a class is not (Spice's binary frame, which no Roku socket gives, copied with a
+      * ByteBuffer the Roku has none of). A wildcard, a literal or an alternative is never so: null may still reach it. */
+    def neverMatches(p: Tree): Boolean = pruning && (p match {
+      case Bind(_, inner)                                      => neverMatches(inner)
+      case Unapply(_, _, _) | TypedOrTest(_, _) | Typed(_, _) =>
+        val c = patternClass(p)
+        c.exists && allClassDefs.contains(c) && !reachableClasses.contains(c)
+      case _                                                   => false
+    })
+
     // The if/elseif chain matching `subj` against `cases`. `noMatch` is the
     // statement for when nothing matches: a MatchError for `match`, a rethrow
     // for `catch`.
-    def emitCasesOn(subj: String, cases: List[CaseDef], sk: String, noMatch: String): List[String] = {
+    def emitCasesOn(subj: String, all: List[CaseDef], sk: String, noMatch: String): List[String] = {
+      val cases = all.filterNot(cd => neverMatches(cd.pattern))
+      if (cases.isEmpty) return if (noMatch.nonEmpty) List(noMatch) else Nil
       val sb = mutable.ListBuffer[String]()
       var exhaustive = false
       var first = true
@@ -3866,6 +3879,11 @@ class RokuEmitter(
           case dd: DefDef if dd.symbol == m => dd
           case vd: ValDef if vd.symbol == m => vd
         })
+      // a case class's own companion `apply`, which only a call by name runs (Scala 3's companion is no function): kept
+      // as any apply is, it would make the class live wherever its companion is named, a pattern's `unapply` alone
+      def caseApply(c: Symbol, dd: DefDef): Boolean =
+        dd.name == "apply" && dd.symbol.flags.is(Flags.Synthetic) && c.flags.is(Flags.Module) &&
+          (try c.companionClass.flags.is(Flags.Case) catch case _: Throwable => false)
       def activate(m: Symbol): Unit = {
         memberTree(m).foreach(queue += _)
         if (m.isDefDef) {
@@ -3873,6 +3891,7 @@ class RokuEmitter(
           if (virtualKeys.add(key))
             for (c <- reachableClasses.toList; cd <- allClassDefs.get(c))
               cd.body.foreach {
+                case dd: DefDef if caseApply(c, dd) => ()
                 case dd: DefDef if dd.symbol != m && dd.name == key._1 && arity(dd.symbol) == key._2 => markMember(dd.symbol)
                 case _ => ()
               }
@@ -3899,6 +3918,7 @@ class RokuEmitter(
             case _ => ()
           }
           cd.body.foreach {
+            case dd: DefDef if caseApply(c, dd) => ()
             case dd: DefDef if runtimeNames(dd.name) || virtualKeys((dd.name, arity(dd.symbol))) => markMember(dd.symbol)
             case _ => ()
           }
@@ -5125,6 +5145,12 @@ class RokuEmitter(
       |function Tuple2(a = invalid as dynamic, b = invalid as dynamic) as object : return { _1: a, _2: b } : end function
       |function Tuple3(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic) as object : return { _1: a, _2: b, _3: c } : end function
       |function Tuple4(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic, d = invalid as dynamic) as object : return { _1: a, _2: b, _3: c, _4: d } : end function
+      |function Tuple5(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic, d = invalid as dynamic, e = invalid as dynamic) as object
+      |  return { _1: a, _2: b, _3: c, _4: d, _5: e }
+      |end function
+      |function Tuple6(a = invalid as dynamic, b = invalid as dynamic, c = invalid as dynamic, d = invalid as dynamic, e = invalid as dynamic, f = invalid as dynamic) as object
+      |  return { _1: a, _2: b, _3: c, _4: d, _5: e, _6: f }
+      |end function
       |function wrapRefArray(a = invalid as dynamic) as dynamic : return a : end function
       |function wrapIntArray(a = invalid as dynamic) as dynamic : return a : end function
       |function wrapLongArray(a = invalid as dynamic) as dynamic : return a : end function
