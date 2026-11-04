@@ -3699,6 +3699,11 @@ site-absolute source (`/images/logo.png`, `/api/portrait/3`) is read from the ap
 (`?v=3`) is left out of the look for a packaged file. A picture that cannot be
 had, missing from both, is a picture that failed to load, never an exception out of whatever asked for it.
 
+**A picture's size.** An `ImageView` takes each picture's own size as its `image` is set (`sizedByPicture`, on by
+default). A view the app sizes itself, such as an avatar or a picture fitted to a box, turns that off
+(`sizedByPicture @= false`) and keeps its size whatever picture comes. `Avatar`, `ImageViewer`, `AttachmentChip` and
+`ImageView(source, height)` do so.
+
 ### The Roku
 
 The Roku runs no JVM: the app is compiled against everyui-roku (keeping its trees with `-Yretain-trees`), then

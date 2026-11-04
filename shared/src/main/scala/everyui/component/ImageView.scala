@@ -10,11 +10,18 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
     val v = Var[Image](Image.empty)
     v.attach { i =>
       if (holding()) node.setImageSource(i.source)
-      size.width @= i.width
-      size.height @= i.height
+      if (sizedByPicture()) {
+        size.width @= i.width
+        size.height @= i.height
+      }
     }
     v
   }
+
+  /** Whether it takes its picture's own size as the picture is set: on by default. Off for a view the app sizes itself
+    * (an avatar, a picture fitted to a box), which keeps its size whatever comes, and never, as a picture that came in
+    * the middle of another change once was, drawn at the picture's own size after the app had set its own. */
+  lazy val sizedByPicture: Var[Boolean] = own(Var(true))
 
   /** Whether the picture is drawn at all. A view out of sight lets its picture go (a rail scrolled far past keeps a
     * poster apiece otherwise, which on a television is most of the memory the app takes) and takes it up again as it
@@ -63,6 +70,7 @@ object ImageView {
     * it has loaded: a logo, say. */
   def apply(source: String, height: Double): ImageView = {
     val view = new ImageView
+    view.sizedByPicture @= false
     everyui.image.Image(source).map { loaded =>
       view.image @= loaded
       view.size.width @= (if (loaded.height > 0.0) loaded.width * height / loaded.height else 0.0)

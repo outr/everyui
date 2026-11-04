@@ -38,6 +38,7 @@ class Avatar(who: => Participant, diameter: Double = 32.0) extends Container {
   letter.position.center := diameter / 2.0
   letter.position.middle := diameter / 2.0
   private val picture: ImageView = new ImageView {
+    sizedByPicture @= false
     radius @= diameter / 2.0
     size.width @= diameter
     size.height @= diameter

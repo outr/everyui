@@ -28,6 +28,7 @@ class AttachmentChip(val attachment: Attachment, removeLabel: String, remove: ()
       if (loaded.width > 0.0 && loaded.height > 0.0) {
         val scale = math.min(side / loaded.width, side / loaded.height)
         val picture = new ImageView
+        picture.sizedByPicture @= false
         picture.image @= loaded
         picture.alt @= attachment.name
         picture.size.width @= loaded.width * scale

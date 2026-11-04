@@ -26,6 +26,8 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
     val view = new ImageView
     // the picture being left, sliding out as the next slides in
     val leaving = new ImageView
+    view.sizedByPicture @= false
+    leaving.sizedByPicture @= false
     def fit(image: Image, into: ImageView, offset: Double): Double = {
       val scale = math.min(1.0, math.min(wide / math.max(1.0, image.width), tall / math.max(1.0, image.height)))
       into.image @= image
