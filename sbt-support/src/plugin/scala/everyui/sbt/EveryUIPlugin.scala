@@ -46,6 +46,7 @@ object EveryUIPlugin extends AutoPlugin {
     @transient val everyuiAppleInfoPlist = taskKey[File]("The Info.plist the Apple app is packaged with: EveryUI's template, out of the everyui-tvos jar, unless the app gives its own")
     @transient val everyuiCommit = taskKey[Option[String]]("The EveryUI commit the everyui jars on the classpath were published from (their manifest's EveryUI-Commit, \"-dirty\" after it if the tree had uncommitted changes), or None where there is none: for recording which EveryUI a build has")
     @transient val everyuiAndroidRules =taskKey[File]("The Android backend's shrinker rules, taken out of the everyui-android jar, for AndroidApk.build")
+    @transient val everyuiEmbedAssets = taskKey[File]("The files of the embeds on the classpath (everyui-monaco-android's Monaco, everyui-terminal-android's xterm.js: everyui-monaco/<version>/, everyui-terminal/<version>/), taken out of their jars: a directory whose contents go into an APK's assets as they are; empty where there are none")
   }
   import autoImport.*
 
@@ -134,6 +135,16 @@ object EveryUIPlugin extends AutoPlugin {
     everyuiAndroidRules := Def.uncached {
       unpack(jar(classpath.value, "everyui-android"), "everyui/android", target.value / "everyui-android") /
         "proguard-rules.pro"
+    },
+    // each embed's files under its own directory, as its EmbedSite asks for them (EmbedClient reads the APK's assets)
+    everyuiEmbedAssets := Def.uncached {
+      val out = target.value / "everyui-embeds"
+      IO.delete(out)
+      classpath.value.filter(f => Seq("everyui-monaco", "everyui-terminal").exists(a => f.getName.startsWith(a + "-")))
+        .foreach(jar => IO.unzip(jar, out, (entry: String) =>
+          (entry.startsWith("everyui-monaco/") || entry.startsWith("everyui-terminal/")) && !entry.endsWith("/")))
+      IO.createDirectory(out)
+      out
     }
   )
 }

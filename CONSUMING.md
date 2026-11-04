@@ -15,6 +15,11 @@ EveryUI is published locally for now: run `sbt publishLocal` in this repository,
 | `"com.outr" %% "everyui-network" % "0.1.0-SNAPSHOT"` | HTTP and DurableSocket, with Spice as the core: the web's, and a server's | JVM and Scala.js |
 | `"com.outr" %% "everyui-seo" % "0.1.0-SNAPSHOT"` | what an app's server writes for search and answer engines | JVM and Scala.js |
 | `"com.outr" %% "everyui-monaco" % "0.1.0-SNAPSHOT"` | Monaco as EveryUI components | Scala.js |
+| `"com.outr" %% "everyui-monaco-desktop" % "0.1.0-SNAPSHOT"` | the same, over everyui-desktop's web view | JVM (desktop) |
+| `"com.outr" %% "everyui-monaco-android" % "0.1.0-SNAPSHOT"` | the same, over everyui-android's web view | JVM (Android) |
+| `"com.outr" %% "everyui-terminal" % "0.1.0-SNAPSHOT"` | a terminal (xterm.js) as an EveryUI component | Scala.js |
+| `"com.outr" %% "everyui-terminal-desktop" % "0.1.0-SNAPSHOT"` | the same, over everyui-desktop's web view | JVM (desktop) |
+| `"com.outr" %% "everyui-terminal-android" % "0.1.0-SNAPSHOT"` | the same, over everyui-android's web view | JVM (Android) |
 | `"com.outr" %% "everyui-compiler" % "0.1.0-SNAPSHOT"` | Scala 3 TASTy to BrightScript and Swift, run by the plugin | JVM |
 | `"com.outr" %% "everyui-compiler-api" % "0.1.0-SNAPSHOT"` | `@native`, for a facade over a Roku or Apple TV global (comes with everyui-roku and everyui-tvos) | JVM |
 | `addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")` | an app's build: web targets, and packaging for every other platform | sbt 2 |
@@ -3549,6 +3554,7 @@ The plugin's tasks, on every project:
 | `everyuiFonts` | EveryUI's fonts (and Material Icons' codepoints), out of the backend on the classpath, with the app's own (`everyuiAppFonts`): a directory to copy into the app's `fonts/` |
 | `everyuiAppFonts` | the app's own font files (a face it registers with `Faces.register`), a setting, empty by default: copied in by `everyuiFonts` and `everyuiWebFonts`, and a name one of EveryUI's has fails the build |
 | `everyuiAndroidRules` | the Android backend's shrinker rules, out of everyui-android, for `AndroidApk.build` |
+| `everyuiEmbedAssets` | the files of the embeds on the classpath (everyui-monaco-android's Monaco, everyui-terminal-android's xterm.js), out of their jars: a directory whose contents go into an APK's assets as they are |
 | `everyuiCompiler` | the Roku and Swift compiler (everyui-compiler at `everyuiVersion`, fetched with the build's resolvers) and what it runs with |
 | `everyuiEmitLibraries` | what the compiler compiles through with the app: everyui-roku or everyui-tvos, reactify, and Spice's durable client |
 | `everyuiRokuRuntime` | the Roku runtime (BrightScript and SceneGraph), out of everyui-roku, for `RokuChannel.assemble` |
@@ -4322,9 +4328,17 @@ which defines the page's global `define` and `require`: a UMD library loaded aft
 instead of a global. Link the bundle as `ModuleKind.NoModule` (as above), and load such libraries before the first
 editor is made.
 
-**Android and the desktop** compile it from source like the rest of their backends: add `monaco/src/main/scala`, fabric-io,
-and the resources (`MonacoAssets.generate` in `project/`); on Android put `everyui-monaco/<version>/` under the APK's
-assets. The desktop needs `javafx-web` and `desktop/web/src/main/scala` (FxWebGuest).
+**Android and the desktop.** Depend on the platform's own artifact beside its backend:
+`"com.outr" %% "everyui-monaco-desktop" % everyuiVersion.value` or `"com.outr" %% "everyui-monaco-android" %
+everyuiVersion.value`. Each is compiled against its backend and carries Monaco's files.
+- **Desktop**: the files are read from the classpath, so nothing is copied. The app adds JavaFX's web view to its
+  JavaFX, as `EveryUILibraries.javafx("base", "graphics", "controls", "media", "web")`. Without it the editor shows
+  its text read-only.
+- **Android**: the files go into the APK's assets. sbt-everyui's `everyuiEmbedAssets` takes them out of the jar into a
+  directory whose contents are copied into the assets as they are, beside the fonts:
+  `IO.copyDirectory(everyuiEmbedAssets.value, assets)`. The page loads from those assets inside the app, so the
+  manifest needs nothing beyond `INTERNET`, which any app with a server has. Turn on cleartext only for a dev server
+  over plain http.
 
 ## Terminal (everyui-terminal)
 
@@ -4368,9 +4382,10 @@ does it for every web guest on the classpath (Monaco too). The scripts load with
 already in the page. The terminal is set in Roboto Mono, the page's own on the web (`fonts/`), and in the platform's
 monospace face in a web view of its own.
 
-**Android and the desktop** compile it from source like Monaco: add `terminal/src/main/scala` and the resources
-(`TerminalAssets.generate` in `project/`); on Android put
-`everyui-terminal/<version>/` under the APK's assets. The desktop needs `javafx-web` and `desktop/web/src/main/scala`.
+**Android and the desktop.** As Monaco: depend on `everyui-terminal-desktop` or `everyui-terminal-android` at
+`everyuiVersion.value` beside the backend.
+- **Desktop**: the app adds javafx-web.
+- **Android**: the files go into the APK's assets from `everyuiEmbedAssets`, the same task and directory as Monaco's.
 Where no web engine runs (Roku, tvOS, a desktop without javafx-web) a line saying so shows in its place.
 `terminal/demo` is its demo (`sbt terminalDemo/demoBundle`, `terminalDesktop/run`, `terminalAndroid/packageApk`).
 

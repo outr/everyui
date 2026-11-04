@@ -535,12 +535,13 @@ lazy val desktopPublished = (project in file("published/desktop"))
   .settings(
     name := "everyui-desktop",
     excludeDependencies := Nil,   // the published reactify
-    Compile / unmanagedSourceDirectories ++= publishedSources("desktop", "jvm", spice = true),
+    // with the web view's guest (desktop/web), which runs only where the app adds javafx-web (WebGuest)
+    Compile / unmanagedSourceDirectories ++= publishedSources("desktop", "jvm", spice = true) :+ desktopWebSources,
     libraryDependencies ++= Seq(
       "com.outr" %% "reactify" % reactifyVersion,
       "com.outr" %% "spice-client-jvm" % spiceVersion,
       "org.typelevel" %% "fabric-io" % fabricVersion),   // the network module and the store's codec use it
-    libraryDependencies ++= EveryUILibraries.javafx().map(_ % Provided),
+    libraryDependencies ++= EveryUILibraries.javafx("base", "graphics", "controls", "media", "web").map(_ % Provided),
     Compile / resourceGenerators += fontResources.taskValue
   )
 
@@ -663,7 +664,8 @@ lazy val checks = (project in file("checks"))
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
     web, networkJvm, networkJs, monaco, terminal, sbtEveryui, seoJs,
-    desktopPublished, androidPublished, rokuPublished, tvosPublished)
+    desktopPublished, androidPublished, rokuPublished, tvosPublished, monacoDesktopPublished, monacoAndroidPublished,
+    terminalDesktopPublished, terminalAndroidPublished)
   .settings(
     name := "everyui",
     publish / skip := true,
@@ -772,7 +774,7 @@ lazy val monacoGallery = (project in file("monaco/gallery"))
 lazy val monacoDesktop = (project in file("monaco/desktop"))
   .dependsOn(reactive)
   .settings(
-    name := "everyui-monaco-desktop",
+    name := "everyui-monaco-desktop-gallery",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true) ++ Seq((file("desktop") / "src" / "main" / "scala").getAbsoluteFile, desktopWebSources, monacoSources,
       monacoGallerySources, (file("monaco") / "gallery" / "desktop" / "src" / "main" / "scala").getAbsoluteFile),
@@ -792,7 +794,7 @@ lazy val monacoDesktop = (project in file("monaco/desktop"))
 lazy val monacoAndroid = (project in file("monaco/android"))
   .settings(
     Compile / unmanagedSourceDirectories += reactifySources,
-    name := "everyui-monaco-android",
+    name := "everyui-monaco-android-gallery",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true) ++ Seq(
       (file("android") / "src" / "main" / "scala").getAbsoluteFile, monacoSources, monacoGallerySources,
@@ -889,7 +891,7 @@ lazy val terminalDemo = (project in file("terminal/demo"))
 lazy val terminalDesktop = (project in file("terminal/desktop"))
   .dependsOn(reactive)
   .settings(
-    name := "everyui-terminal-desktop",
+    name := "everyui-terminal-desktop-demo",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("jvm", spice = true) ++ Seq((file("desktop") / "src" / "main" / "scala").getAbsoluteFile,
       desktopWebSources, terminalSources, terminalDemoSources, (file("terminal") / "demo" / "desktop" / "src" / "main" / "scala").getAbsoluteFile),
@@ -909,7 +911,7 @@ lazy val terminalDesktop = (project in file("terminal/desktop"))
 lazy val terminalAndroid = (project in file("terminal/android"))
   .settings(
     Compile / unmanagedSourceDirectories += reactifySources,
-    name := "everyui-terminal-android",
+    name := "everyui-terminal-android-demo",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true) ++ Seq(
       (file("android") / "src" / "main" / "scala").getAbsoluteFile, terminalSources, terminalDemoSources,
@@ -947,3 +949,61 @@ lazy val terminalAndroid = (project in file("terminal/android"))
         version.value, 1, AndroidApk.debug)
     }
   )
+
+// --- monaco and terminal, published for the desktop and Android ---------------------------------------------------
+// Each compiled against its backend's jar (provided: the app depends on the backend itself), with Monaco's or xterm's
+// files as resources under everyui-monaco/<version>/ and everyui-terminal/<version>/: read from the classpath on the
+// desktop, and taken out into an APK's assets by sbt-everyui's everyuiEmbedAssets on Android.
+//
+//   sbt monacoDesktopPublished/publishLocal   everyui-monaco-desktop
+//   sbt monacoAndroidPublished/publishLocal   everyui-monaco-android
+//   sbt terminalDesktopPublished/publishLocal everyui-terminal-desktop
+//   sbt terminalAndroidPublished/publishLocal everyui-terminal-android
+def embedDesktop(sources: File, resources: Def.Initialize[Task[Seq[File]]]): Seq[Setting[?]] = Seq(
+  excludeDependencies := Nil,   // the published reactify, as the backends have it
+  libraryDependencies += "com.outr" %% "reactify" % reactifyVersion % Provided,
+  Compile / unmanagedSourceDirectories += sources,
+  libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
+  libraryDependencies ++= EveryUILibraries.javafx().map(_ % Provided),
+  Compile / resourceGenerators += resources.taskValue
+)
+
+def embedAndroid(sources: File, resources: Def.Initialize[Task[Seq[File]]]): Seq[Setting[?]] = Seq(
+  excludeDependencies := Nil,   // the published reactify, as the backends have it
+  libraryDependencies += "com.outr" %% "reactify" % reactifyVersion % Provided,
+  Compile / unmanagedSourceDirectories += sources,
+  libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
+  resolvers += EveryUILibraries.google,
+  libraryDependencies ++= (EveryUILibraries.android ++ EveryUILibraries.firebase).map(_ % Provided),
+  androidAars := Aars.open(streams.value.log.info(_),
+    update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
+  Compile / unmanagedJars ++= Def.uncached(androidAars.value
+    .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
+  Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
+  Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals", "-encoding", "UTF-8"),
+  Compile / resourceGenerators += resources.taskValue
+)
+
+lazy val monacoDesktopPublished = (project in file("published/monaco-desktop"))
+  .dependsOn(desktopPublished % Provided)
+  .settings(published)
+  .settings(name := "everyui-monaco-desktop")
+  .settings(embedDesktop(monacoSources, monacoResources))
+
+lazy val monacoAndroidPublished = (project in file("published/monaco-android"))
+  .dependsOn(androidPublished % Provided)
+  .settings(published)
+  .settings(name := "everyui-monaco-android")
+  .settings(embedAndroid(monacoSources, monacoResources))
+
+lazy val terminalDesktopPublished = (project in file("published/terminal-desktop"))
+  .dependsOn(desktopPublished % Provided)
+  .settings(published)
+  .settings(name := "everyui-terminal-desktop")
+  .settings(embedDesktop(terminalSources, terminalResources))
+
+lazy val terminalAndroidPublished = (project in file("published/terminal-android"))
+  .dependsOn(androidPublished % Provided)
+  .settings(published)
+  .settings(name := "everyui-terminal-android")
+  .settings(embedAndroid(terminalSources, terminalResources))
