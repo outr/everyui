@@ -60,8 +60,29 @@ object FileAccess {
       if (mime.startsWith("image/")) Some(file.toPath.toUri.toString) else None)
   }
 
-  /** Done with a picked file's `preview`: nothing is held for one here. */
-  def release(preview: String): Unit = ()
+  /** Done with a picked file's `preview` (the file's own, which is kept), or a `source`, whose file is deleted. */
+  def release(preview: String): Unit = if (sources.contains(preview)) {
+    sources = sources - preview
+    try new java.io.File(new java.net.URI(preview)).delete() catch { case _: Exception => false }
+    ()
+  }
+
+  /** `bytes` written to a file of the app's own (deleted by `release`, or as the app exits), as its address. */
+  def source(bytes: Array[Byte], mime: String): String = {
+    val file = java.io.File.createTempFile("everyui-", "." + FileTypes.extensionOf(mime), sourceDir)
+    file.deleteOnExit()
+    java.nio.file.Files.write(file.toPath, bytes)
+    val address = file.toURI.toString
+    sources = sources + address
+    address
+  }
+
+  private lazy val sourceDir: java.io.File = {
+    val dir = java.nio.file.Files.createTempDirectory("everyui-sources").toFile
+    dir.deleteOnExit()
+    dir
+  }
+  private var sources: Set[String] = Set.empty
 
   def savable(): Boolean = true
 

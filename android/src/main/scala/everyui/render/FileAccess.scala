@@ -134,8 +134,41 @@ object FileAccess {
     PickedFile(name, size, mime, bytes, if (mime.startsWith("image/")) Some(uri.toString) else None)
   }
 
-  /** Done with a picked file's `preview`: nothing is held for one here. */
-  def release(preview: String): Unit = ()
+  /** Done with a picked file's `preview` (the content's own address, which holds nothing), or a `source`, whose file
+    * is deleted. */
+  def release(preview: String): Unit = sources.get(preview).foreach { file =>
+    sources = sources - preview
+    mimes = mimes - preview
+    file.delete()
+  }
+
+  /** `bytes` written to a file in the app's cache (deleted by `release`, and with the rest as the app starts again),
+    * as its address: a picture and a player read it as a file; a WebView is handed what it holds (WebSandbox.load), as
+    * it reads no file sandboxed. */
+  def source(bytes: Array[Byte], mime: String): String = {
+    val file = java.io.File.createTempFile("everyui-", "." + FileTypes.extensionOf(mime), sourceDir)
+    java.nio.file.Files.write(file.toPath, bytes)
+    val address = android.net.Uri.fromFile(file).toString
+    sources = sources + (address -> file)
+    mimes = mimes + (address -> mime)
+    address
+  }
+
+  /** What a `source` holds, and its type, where `address` is one. */
+  private[render] def held(address: String): Option[(Array[Byte], String)] = sources.get(address).flatMap { file =>
+    try Some((java.nio.file.Files.readAllBytes(file.toPath), mimes.getOrElse(address, "text/html")))
+    catch { case _: java.io.IOException => None }
+  }
+
+  // the files of the last run gone as this one makes its first
+  private lazy val sourceDir: java.io.File = {
+    val dir = new java.io.File(Host.activity.getCacheDir, "everyui-sources")
+    Option(dir.listFiles()).foreach(_.foreach(_.delete()))
+    dir.mkdirs()
+    dir
+  }
+  private var sources: Map[String, java.io.File] = Map.empty
+  private var mimes: Map[String, String] = Map.empty
 
   def savable(): Boolean = !Platform.remoteNavigation()
 

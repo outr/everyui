@@ -180,6 +180,10 @@ class SGNode
 @native object uiLocalDateTime {
   def apply(millis: Double): String = native.value
 }
+/** The time zone the device is in, as IANA names it ("America/Chicago"). */
+@native object uiTimeZone {
+  def apply(): String = native.value
+}
 /** A pointer event of `kind` on the node, if the platform has a pointer. */
 @native object uiOnPointer {
   def apply(node: SGNode, kind: String, f: (Double, Double) => Unit): Unit = native.value

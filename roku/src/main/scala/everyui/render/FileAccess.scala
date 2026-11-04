@@ -18,6 +18,9 @@ object FileAccess {
   /** Done with a picked file's `preview`: nothing is held for one here. */
   def release(preview: String): Unit = ()
 
+  /** Nothing is shown from bytes here. */
+  def source(bytes: Array[Byte], mime: String): String = ""
+
   def savable(): Boolean = false
 
   def save(bytes: Array[Byte], name: String, mime: String, done: SaveResult => Unit): Unit =

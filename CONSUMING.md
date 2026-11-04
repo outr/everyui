@@ -1891,6 +1891,37 @@ if (Files.savable) Files.save(csv.getBytes("UTF-8"), "report.csv", Some("text/cs
 
 A relative URL is found against `Platform.origin()`.
 
+**Bytes shown as a source.** `Files.source(bytes, mime)` is an address that an `ImageView`, a `VideoView`, an
+`AudioPlayer` or a `WebView` (HTML, a PDF where the engine shows one) can show `bytes` from. It works however large
+the bytes are, where a `data:` address would be too long: a file read from another machine, an email's sanitized HTML,
+or a rendered preview. `Files.release(source)` lets it go once nothing shows it.
+
+- **Web**: an object URL (`blob:`).
+- **Desktop**: a file of the app's own, deleted on release or as the app exits.
+- **Android**: a file in the app's cache, deleted on release (and the last run's as the app starts). A `WebView` is
+  handed what the file holds (`loadDataWithBaseURL`), because a sandboxed page reads no file.
+- **Roku, Apple TV**: "", which shows nothing.
+
+```scala
+val source = Files.source(html.getBytes("UTF-8"), "text/html")
+preview.source @= source
+preview.onDispose(() => Files.release(source))
+```
+
+**HTML read as text.** `everyui.text.HtmlText.read(html)` turns HTML into plain text, with no DOM, on every platform.
+It suits HTML from elsewhere, such as a calendar event's description, shown as words with buttons for its links.
+
+- **`text`**: a line ends at each `br`, and each block (`p`, `div`, `li`, `tr`, a heading) gets lines of its own.
+  A list's items are marked "• " and a row's cells share a line. Runs of white space become one space, except in
+  `pre`. Character references become the characters they stand for. Script, style, the head and comments are dropped.
+- **`links`**: each link's words with its `href`, in order. A link with no words is named by its `href`.
+
+```scala
+val read = HtmlText.read(event.description)
+body.content @= read.text
+read.links.foreach { case (words, href) => buttons += Button(words, () => Platform.openUrl(href)) }
+```
+
 ### Snapshots (`everyui.capture`)
 
 `Snapshot` takes a picture of what the app draws, as a PNG: the whole window, or one component and everything in it,
@@ -1916,6 +1947,16 @@ A component is drawn as it is laid out, over the colour behind it (the nearest s
 window's), whatever lies over it on the screen; a scroll inside it shows what it has scrolled to. `Snapshot.drawing(d)`
 and `Snapshot.figures(figures, width, height)` draw a `Drawing`'s figures into a PNG without the screen at all, over a
 `background` or clear, at any scale: a graph's export (`Snapshot.drawable`).
+
+`Snapshot.fitted(bytes, mime, width, height)` draws a picture's bytes into a PNG exactly `width` by `height`. The
+picture keeps its proportions, is centred, and the space round it is clear; this suits an uploaded icon stored at one
+size. What each platform draws:
+
+- **Web**: whatever the browser shows as a picture, SVG included. An SVG with no size of its own fills the box.
+- **Desktop and Android**: the formats they decode (PNG, JPEG, GIF, BMP; WebP and HEIF on Android), but not SVG.
+- **Roku and Apple TV**: nothing.
+
+It answers None where nothing was drawn.
 
 - **Web**: a browser cannot draw its own elements into a picture, so they are drawn again. The component's elements are
   copied as they stand, each with the style the browser worked out for it, its pictures and the faces its words are in
@@ -2143,6 +2184,16 @@ the language's likeliest region (Sunday for `en` and `pt`, Saturday for `ar`, Mo
 The pickers' own words are `DateWords` (Select date, Previous month, Not a date, …), in English unless the app gives them
 with `Words.add` under `date.*` keys. In a right-to-left language the grid, the header and the band mirror, and Left and
 Right with them. `Calendar.textSize` is set once, larger, on a television.
+
+A clock to the second is `DateText.timeWithSeconds(hour, minute, second)`: CLDR's `jms` ("8:44:28 PM", "20:44:28"),
+the language's own clock with the seconds after the minutes. For a format of the app's own, `DateText.timePattern(form,
+hour, minute, second)` fills a clock's fields (`h`, `hh`, `H`, `HH`, `mm`, `ss`, `a`), and `DateText.dateTimePattern`
+fills a date's and a clock's together (`EEE d MMM, h:mm a`). `DateText.pattern` stays a date's alone.
+
+The device's time zone is `Platform.timeZone()`, as IANA names it ("America/Chicago"; a Roku uses its own names, such
+as "US/Central"). `Platform.onTimeZone(f)` is told when the zone changes. It is checked again whenever the app comes
+back to the front or its window gets the focus back (`everyui.date.TimeZones`). On the desktop the JVM reads the zone
+once, at start.
 
 ### Smaller pieces
 
@@ -3615,6 +3666,70 @@ Platform.onResume(() => handedOver.foreach(show => askWatched(show)))
 
 `demo=lifecycle` logs each (`[ui] lifecycle: away 1`, `[ui] lifecycle: resumed 1`) and writes the counts on the screen.
 
+## The window, the network and the build (`Platform.onFocus`, `Platform.online`, `Platform.reload`)
+
+These cover what a web app would otherwise reach the browser for directly, so the same code runs on every platform.
+
+- **Somebody using the app.** `Focus.activity` (a `Val[Long]`) counts every key pressed and every pointer put down,
+  moved or scrolled. Watch it for presence, such as pinging the server as "active" at most once a minute.
+- **The window's focus.** `Platform.onFocus(f)` is told when the window gets the focus back, and `Platform.onBlur(f)`
+  when it loses it. Each returns what stops it being told. This is not `onResume`: on the desktop web a window can stay
+  in sight while another window, such as a popup the app opened, has the focus.
+  - **Web**: the window's `focus` and `blur`. Focus moving into one of the page's own frames, such as a `WebView`,
+    does not count as leaving.
+  - **Desktop**: the stage's focus.
+  - **Android**: the activity's window focus.
+  - **Roku and Apple TV**: the same as `onResume` and `onAway`.
+- **Closing.** `Platform.onClose(f)` is told as the window closes for good: the web's `pagehide`, the desktop window
+  hidden, or an Android activity finishing. Do only what can be done at once there, such as clearing a liveness mark.
+  A page the browser keeps in its back/forward cache may come back (`onResume`). Roku and Apple TV never tell it.
+- **The network.** `Platform.online` (a `Val[Boolean]`) follows the network. False is certain: there is none. True only
+  means a network exists, not that the server answers. Use it to reconnect a socket the moment the network returns
+  instead of waiting for its backoff.
+  - **Web**: `online` and `offline`.
+  - **Android**: the default network, followed only where the app's manifest asks for `ACCESS_NETWORK_STATE`.
+  - **Desktop, Roku and Apple TV**: always true.
+- **A window's own settings.** `Platform.windowSetting(name)` and `saveWindowSetting(name, value)` are like `setting`,
+  but for this window alone, and they survive a reload of it. On the web this is `sessionStorage`, so two windows of
+  the app each keep their own layout. Elsewhere the app has one window, so they last for this run of it. Saving ""
+  forgets the value.
+- **The address.** `Platform.replacePath(path)` shows `path` in place of the current history entry, without adding
+  one, so a used `/join/<token>` can become `/join` with the token gone from the history. `Platform.historyForward()`
+  goes forward, as `historyBack` goes back. It is the browser's own on the web and false elsewhere.
+- **A second window.** `Platform.openWindow(path)` opens the app at an in-app path (`/w/3`) in a new window, the size of
+  this one and offset below and to the right. It returns false where nothing opened: the browser refused (open it from
+  a click or a key), the path is not the app's, or the platform has one window (desktop, Android, Roku, Apple TV).
+- **An address that comes later.** `Platform.openUrlLater()` reserves a window during the person's press and returns a
+  `UrlTarget`. `go(url)` sends it there once the server answers, and `cancel()` closes it. Each takes effect once.
+  Browsers block a window opened after the click, which an OAuth address from the server would otherwise be. The
+  reserved window is blank until `go` and is cut off from the app (no `opener`). Where the browser refused even that,
+  `go` tries `openUrl`. Elsewhere nothing blocks a late open, so `go` is simply `openUrl`.
+- **The build, and reloading into a new one.** `Platform.buildId()` names the running build.
+  - **Web**: the version the page loaded its script by, which `everyuiWebScripts` writes as `main.js?v=…` or
+    `everyui-loader.js?v=…`.
+  - **Android and Roku**: the installed version.
+  - **Desktop**: `--build=…`.
+
+  `Platform.reload()` loads the page again into whatever the server now serves. Its address is named afresh
+  (`?_b=…`) so no cache can answer with the old build, and the parameter is taken off the address again as the page
+  loads. Elsewhere it is false: an update is installed (`installApp`), not reloaded.
+
+  ```scala
+  if (serverBuild != Platform.buildId() && !Platform.reload()) offerUpdate()
+  ```
+- **Codecs.** `Platform.decodes(codec)` answers on the web too. It takes a media server's name ("vp9", "hevc", "aac")
+  or a whole MIME type with its codecs (`video/webm; codecs="vp9"`). The browser is asked through Media Source's
+  `isTypeSupported`, falling back to `canPlayType`. DTS and TrueHD are always no, and a name not known here is yes.
+- **Timing marks.** `everyui.perf.Marks.mark(name)` marks a moment at `Platform.ticks()`, keeping the last 200
+  (`Marks.recent`, `Marks.last(name)`), for a check outside the app to time the gaps between. The web also keeps them on
+  `window.everyuiMarks` (`{name, at}` each). Other platforms log them, as `[mark] name at`, when launched with
+  `marks=1`.
+- **A colour emoji face.** `Faces.colorEmoji(face)` adds a colour emoji font (its file in `fonts/`) as the very last
+  fallback, after the system's own, for a machine whose system has none (Linux without Noto Color Emoji draws boxes).
+  It is added only where the platform can draw it in colour: on the web where the browser takes
+  `font-tech(color-COLRv1)`. It answers whether it was added. Android, iOS and macOS have system emoji, so elsewhere it
+  answers false.
+
 ## Sign-in, autofill and password managers
 
 Every text field (`TextInput`, `TextArea`, and `InputView` beneath them) says what it asks for with `autofill`, an
@@ -3880,6 +3995,44 @@ What each platform honours:
 `demo=webview&sandbox=none` (or `scripts`, or flags by commas) shows `web/sandbox.html` sandboxed, a page that tries to
 read its parent, the cookies and the storage and says what it found, on itself and posted to its parent; its Scripts
 on and off button toggles "allow-scripts".
+
+**Hearing a sandboxed page.** `hearSandboxed(f)` in place of `hear(f)` hears a sandboxed page, which is otherwise not
+heard. It is opted into per view, for a preview whose only script is the app's own bridge, posting
+`{v: bridgeId, open: href}` when a link is pressed so that the app can ask before opening it. Only what the page posts
+from this view's own frame is heard, as a string (an object as its JSON). The page is lent nothing but that: `run`
+still does nothing. Set it before `source`.
+
+- **Web**: the iframe's messages, from its opaque origin. The page posts with `parent.postMessage(m, '*')`.
+- **Android**: the page is lent `<bridge>` and nothing more.
+
+A page written for both says it however it can:
+
+```js
+const say = m => window.previewBridge ? previewBridge.postMessage(JSON.stringify(m)) : parent.postMessage(m, '*')
+```
+
+**Asking a page and hearing its answer.** `ask(request, seconds = 10)(answered)` posts
+`{everyui: "ask", session, id, request}` to the page, whatever its origin, and hears the page's
+`{everyui: "reply", session, id, reply}` back with the same session and id. `reply` is a string, or an object heard as
+its JSON. The session is new each time `source` is set, so an answer from a page no longer showing is never taken for
+one from this. `answered` hears None where the page did not answer in time, or could not be asked: no engine, no page
+yet, or a sandboxed page that is not heard.
+
+- **Web**: posted to the frame. A sandboxed page, if heard, is posted to any origin, as it has none of its own.
+- **Android**: the page posts its reply as JSON through `<bridge>`.
+
+```js
+window.addEventListener('message', e => {
+  const m = e.data
+  if (!m || m.everyui !== 'ask' || e.source !== window.parent) return
+  const reply = { everyui: 'reply', session: m.session, id: m.id, reply: answer(m.request) }
+  window.bridge ? bridge.postMessage(JSON.stringify(reply)) : parent.postMessage(reply, '*')
+})
+```
+
+`hearFrames((origin, message) => …)` hears what the frames inside the page post, at any depth, with each frame's
+origin. Anything at all may be in those frames, so check the origin before acting on what they say. This is the web
+only, since Android's view is the page.
 
 ## Monaco (everyui-monaco)
 

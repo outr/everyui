@@ -32,8 +32,9 @@ class WebView(bridge: String, supplied: RenderNode = null)
   /** The page kept apart from the app, as an iframe's `sandbox` keeps it: None (the default) is no sandbox at all;
     * `Some(flags)` allows only those of the iframe's flags it names ("allow-scripts", "allow-forms", "allow-popups",
     * "allow-same-origin"…), `Some(Set())` nothing. Set it before `source`: a change loads the page again, as an engine
-    * only honours it as a page loads. A sandboxed page is neither told (`run`) nor heard (`hear`). What each engine
-    * honours of it: CONSUMING.md, WebView; where there is no engine it is ignored, as the view is. */
+    * only honours it as a page loads. A sandboxed page is neither told (`run`) nor heard (`hear`), unless the app
+    * asks to hear it (`hearSandboxed`). What each engine honours of it: CONSUMING.md, WebView; where there is no
+    * engine it is ignored, as the view is. */
   lazy val sandbox: Prop[Option[Set[String]]] = own(new Prop[Option[Set[String]]](None, s => this.node.setWebSandbox(s)))
 
   /** Whether nothing of its own is behind the page: off (the default), a page that draws no ground of its own shows on
@@ -47,6 +48,41 @@ class WebView(bridge: String, supplied: RenderNode = null)
 
   /** Hear what the page says back through its bridge. One listener: the page has one thing to talk to. */
   def hear(f: String => Unit): Unit = this.node.onWebMessage(f)
+
+  /** Hear a sandboxed page too, which is otherwise not heard: what it posts from this view's own frame alone, as a
+    * string (an object as its JSON), and nothing lent it but that, run in it or posted to it but `ask`. Set it before
+    * `source`, as on Android the bridge goes with the loads after it. The page says it as it can: through `<bridge>`
+    * where its window has one (Android), else to `window.parent` (the web). CONSUMING.md, WebView. */
+  def hearSandboxed(f: String => Unit): Unit = {
+    this.node.setWebHearSandboxed(true)
+    hear(f)
+  }
+
+  /** Hear what the frames inside the page post (the web's, where a page holds frames of its own), with each one's
+    * origin: `f(origin, message)`. Anything at all in them may post, so check the origin before acting on it. */
+  def hearFrames(f: (String, String) => Unit): Unit = this.node.onWebFrameMessage(Some(f))
+
+  /** Ask the page something and hear its answer: `request` posted to it as `{everyui: "ask", session, id, request}`
+    * whatever its origin, and answered by the page's `{everyui: "reply", session, id, reply}` with the same session
+    * and id, `reply` a string (an object is heard as its JSON). The session is the page's showing now (a new one as
+    * `source` is set), so an answer from a page no longer showing is never taken for one from this. None where the
+    * page has not answered in `seconds`, or could not be asked (no engine, no page yet, a sandboxed one not heard). */
+  def ask(request: String, seconds: Double = 10.0)(answered: Option[String] => Unit): Unit = {
+    asked += 1
+    val id = asked
+    this.node.onWebReply((n, reply) => replied(n, Some(reply)))
+    waiting = waiting + (id -> answered)
+    if (this.node.askWeb(id, request)) everyui.render.Platform.after(seconds, () => replied(id, None))
+    else replied(id, None)
+  }
+
+  private var asked: Int = 0
+  private var waiting: Map[Int, Option[String] => Unit] = Map.empty
+
+  private def replied(id: Int, reply: Option[String]): Unit = waiting.get(id).foreach { f =>
+    waiting = waiting - id
+    f(reply)
+  }
 
   override def kind: String = "WebView"
 }

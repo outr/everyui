@@ -6,13 +6,14 @@ import android.webkit.{CookieManager, WebView, WebViewClient}
   * nearest its settings come to an iframe's, put on as the view loads its page (and the page loaded again as they
   * change, since a setting goes with the loads after it).
   *
-  * Sandboxed at all, the page has no bridge (`bridge` taken off the window, and `run` does nothing), no files or
-  * content of the device (file and content access off), no geolocation and no third-party cookies, and links that
-  * would hand the device something other than a page (`intent:`, `market:`, `file:`, `content:`…) go nowhere
-  * (SandboxClient). Then by its flags: script runs only with "allow-scripts"; DOM storage (localStorage,
-  * sessionStorage) is there only with "allow-same-origin"; a form posted (the page's own POST) is refused without
-  * "allow-forms"; and a new window (`window.open`, `target="_blank"`) opens nowhere without "allow-popups", where with it
-  * it replaces the page, as it does unsandboxed.
+  * Sandboxed at all, the page has no bridge (`bridge` taken off the window, and `run` does nothing) unless the app
+  * asked to hear it (`hear`), when the bridge is all it is lent; no files or content of the device (file and content
+  * access off), no geolocation and no third-party cookies, and links that would hand the device something other than
+  * a page (`intent:`, `market:`, `file:`, `content:`…) go nowhere (SandboxClient). Then by its flags: script runs
+  * only with "allow-scripts"; DOM storage (localStorage, sessionStorage) is there only with "allow-same-origin"; a
+  * form posted (the page's own POST) is refused without "allow-forms"; and a new window (`window.open`,
+  * `target="_blank"`) opens nowhere without "allow-popups", where with it it replaces the page, as it does
+  * unsandboxed.
   *
   * What it cannot do: the page keeps its address's origin, as Android has no opaque one, so the cookies of that origin
   * (the store is the app's, one for every view) still go with its requests, and with "allow-scripts" its script can
@@ -26,14 +27,34 @@ class WebSandbox(view: WebView, bridge: String, bridgeObject: AnyRef) {
   private val thirdParty = CookieManager.getInstance().acceptThirdPartyCookies(view)
   private var source: String = ""
   private var flags: Option[Set[String]] = None
+  private var hearing: Boolean = false
 
-  /** Whether the page is sandboxed: told nothing and heard not at all. */
+  /** Whether the page is sandboxed: told nothing, and heard only where the app asked (`hear`). */
   def sandboxed: Boolean = flags.nonEmpty
 
-  /** Show this address. */
+  /** Whether what the page says is heard: unsandboxed, or sandboxed and heard all the same. */
+  def heard: Boolean = !sandboxed || hearing
+
+  /** A sandboxed page lent the bridge (`on`), and nothing else, so that what it says is heard; the page loaded again
+    * where it shows one and this changes what it has, as the bridge goes with the loads after it. */
+  def hear(on: Boolean): Unit = if (on != hearing) {
+    hearing = on
+    if (sandboxed) {
+      if (on) view.addJavascriptInterface(bridgeObject, bridge) else view.removeJavascriptInterface(bridge)
+      if (source.nonEmpty) show()
+    }
+  }
+
+  /** Show this address: a `Files.source` as what it holds, since a sandboxed page reads no file. */
   def load(url: String): Unit = if (url.trim.nonEmpty) {
     source = url.trim
-    view.loadUrl(source)
+    show()
+  }
+
+  private def show(): Unit = FileAccess.held(source) match {
+    case Some((bytes, mime)) =>
+      view.loadDataWithBaseURL(null, new String(bytes, "UTF-8"), mime.takeWhile(_ != ';').trim, "UTF-8", null)
+    case None => view.loadUrl(source)
   }
 
   /** Sandboxed with `allowed` (None: not at all), and the page loaded again where it shows one. */
@@ -51,13 +72,13 @@ class WebSandbox(view: WebView, bridge: String, bridgeObject: AnyRef) {
     settings.setJavaScriptCanOpenWindowsAutomatically(on && allows("allow-popups"))
     CookieManager.getInstance().setAcceptThirdPartyCookies(view, !on && thirdParty)
     if (on) {
-      view.removeJavascriptInterface(bridge)
+      if (hearing) view.addJavascriptInterface(bridgeObject, bridge) else view.removeJavascriptInterface(bridge)
       view.setWebViewClient(new SandboxClient(allows("allow-forms")))
     }
     else {
       view.addJavascriptInterface(bridgeObject, bridge)
       view.setWebViewClient(new WebViewClient)
     }
-    if (source.nonEmpty) view.loadUrl(source)
+    if (source.nonEmpty) show()
   }
 }

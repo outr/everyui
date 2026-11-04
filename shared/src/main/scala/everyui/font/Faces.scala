@@ -65,4 +65,19 @@ object Faces {
 
   /** The fallback faces, first first. */
   def fallbackFaces(): Vector[Face] = fallbacks
+
+  private var colorEmojis: Vector[Face] = Vector.empty
+
+  /** A colour emoji face for where the system has none (a Linux machine without Noto Color Emoji drew boxes), last of
+    * all: after the system's own, so it is drawn only where they are missing, and only where the platform can draw
+    * it in colour (the web's `font-tech(color-COLRv1)`); anywhere else it is not registered at all, and whether it
+    * was is the answer. Its file beside the bundled faces in `fonts/`. */
+  def colorEmoji(face: Face): Boolean = {
+    val drawn = Platform.registerColorEmoji(face)
+    if (drawn) colorEmojis = colorEmojis :+ face
+    drawn
+  }
+
+  /** The colour emoji faces registered and drawn, first first. */
+  def colorEmojiFaces(): Vector[Face] = colorEmojis
 }

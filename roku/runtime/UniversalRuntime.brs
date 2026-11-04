@@ -1738,6 +1738,11 @@ function uiLocalDateTime(millis as dynamic) as string
     return Right("0" + dt.GetYear().ToStr(), 4) + "-" + Right("0" + dt.GetMonth().ToStr(), 2) + "-" + Right("0" + dt.GetDayOfMonth().ToStr(), 2) + " " + Right("0" + dt.GetHours().ToStr(), 2) + ":" + Right("0" + dt.GetMinutes().ToStr(), 2) + ":" + Right("0" + dt.GetSeconds().ToStr(), 2)
 end function
 
+' The time zone the device is set to, by its own name for it ("US/Central").
+function uiTimeZone() as string
+    return CreateObject("roDeviceInfo").GetTimeZone()
+end function
+
 ' A Roku has no pointer: nothing ever fires.
 sub uiOnPointer(_target as object, _kind as string, _f as dynamic)
 end sub

@@ -60,6 +60,31 @@ object SnapshotAccess {
     encoded(canvas, done)
   }
 
+  /** A picture's bytes drawn into a PNG `width` by `height`, kept in proportion and centred, clear round it: whatever
+    * the browser draws as a picture, an SVG too (one with no size of its own filling the box). None where it draws
+    * nothing of them. */
+  def fitted(bytes: Array[Byte], mime: String, width: Int, height: Int, done: Option[SnapshotImage] => Unit): Unit = {
+    val url = FileAccess.source(bytes, mime)
+    val img = dom.document.createElement("img").asInstanceOf[html.Image]
+    img.addEventListener("load", (_: dom.Event) => {
+      val w0 = if (img.naturalWidth > 0) img.naturalWidth.toDouble else width.toDouble
+      val h0 = if (img.naturalHeight > 0) img.naturalHeight.toDouble else height.toDouble
+      val scale = math.min(width / w0, height / h0)
+      val canvas = made(width.toDouble, height.toDouble)
+      val g = canvas.getContext("2d")
+      g.imageSmoothingQuality = "high"
+      try g.drawImage(img, (width - w0 * scale) / 2.0, (height - h0 * scale) / 2.0, w0 * scale, h0 * scale)
+      catch { case t: Throwable => Platform.log("Snapshot: the picture could not be drawn (" + t.toString + ")") }
+      FileAccess.release(url)
+      encoded(canvas, done)
+    })
+    img.addEventListener("error", (_: dom.Event) => {
+      FileAccess.release(url)
+      done(None)
+    })
+    img.src = url
+  }
+
   /** An object URL for the PNG, held until `Files.release` lets it go. */
   def preview(png: Array[Byte]): String =
     dom.URL.createObjectURL(new dom.Blob(js.Array(png.toTypedArray.buffer),

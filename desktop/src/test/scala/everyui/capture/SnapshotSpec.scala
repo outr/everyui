@@ -138,5 +138,31 @@ class SnapshotSpec extends FxSpec {
       val clear = taken(done => Snapshot.figures(d.figures(), 40.0, 20.0).map(done).start()).get
       (pixels(clear)(5 * 40 + 35) >>> 24) shouldBe 0
     }
+
+    "fit a picture's bytes into a PNG of a size, in proportion, centred and clear round it" in {
+      // a PNG 40 by 20 of solid blue, made by ImageIO, which the backend never uses
+      val blue = new java.awt.image.BufferedImage(40, 20, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+      val g = blue.createGraphics()
+      g.setColor(new java.awt.Color(0, 0, 255))
+      g.fillRect(0, 0, 40, 20)
+      g.dispose()
+      val out = new java.io.ByteArrayOutputStream()
+      javax.imageio.ImageIO.write(blue, "png", out)
+      val image = taken(done => Snapshot.fitted(out.toByteArray, "image/png", 64, 64).map(done).start()).get
+      (image.width, image.height) shouldBe (64, 64)
+      val shot = pixels(image)
+      // 64 by 32, from 16 down
+      apart(shot(32 * 64 + 32), rgb(Color.fromHex("0000ff"))) should be <= 2
+      (shot(17 * 64 + 2) >>> 24) should be > 200
+      (shot(8 * 64 + 32) >>> 24) shouldBe 0
+      (shot(56 * 64 + 32) >>> 24) shouldBe 0
+    }
+
+    "fit nothing it cannot read: an SVG on the desktop, or no bytes" in {
+      val svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">" +
+        "<rect width=\"10\" height=\"10\"/></svg>"
+      taken(done => Snapshot.fitted(svg.getBytes("UTF-8"), "image/svg+xml", 64, 64).map(done).start()) shouldBe None
+      taken(done => Snapshot.fitted(Array.emptyByteArray, "image/png", 64, 64).map(done).start()) shouldBe None
+    }
   }
 }

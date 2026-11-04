@@ -58,6 +58,10 @@ object Desktop {
       val presence = new Presence(() => everyui.render.Platform.away(), () => everyui.render.Platform.resumed())
       stage.iconifiedProperty.addListener((_, _, iconified) =>
         if (iconified.booleanValue) presence.hidden() else presence.shown())
+      // its focus, which another window in front of it takes, and its closing, after which nothing of it is left
+      stage.focusedProperty.addListener((_, _, focused) => everyui.render.Platform.windowFocus(focused.booleanValue))
+      stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_HIDDEN,
+        (_: javafx.stage.WindowEvent) => everyui.render.Platform.closing())
       stage.show()
 
       run()

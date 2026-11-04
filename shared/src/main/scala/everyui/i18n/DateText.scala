@@ -9,42 +9,57 @@ package everyui.i18n
 object DateText {
   /** "Jan 15, 2013", "15 ene 2013", "2013年1月15日": CLDR's `yMMMd`. */
   def mediumDate(year: Int, month: Int, day: Int, code: String = Strings.language().code): String =
-    write(symbols(code).mediumDate, year, month, day, 0, 0, 0, symbols(code))
+    write(symbols(code).mediumDate, year, month, day, 0, 0, 0, 0, symbols(code))
 
   /** "1/15/2013", "15/1/2013", "15.01.2013", "2013/1/15": CLDR's `yMd`, a date in numbers. */
   def numericDate(year: Int, month: Int, day: Int, code: String = Strings.language().code): String =
-    write(symbols(code).numericDate, year, month, day, 0, 0, 0, symbols(code))
+    write(symbols(code).numericDate, year, month, day, 0, 0, 0, 0, symbols(code))
 
   /** "Jan 15", "15 ene": CLDR's `MMMd`. */
   def monthDay(month: Int, day: Int, code: String = Strings.language().code): String =
-    write(symbols(code).monthDay, 0, month, day, 0, 0, 0, symbols(code))
+    write(symbols(code).monthDay, 0, month, day, 0, 0, 0, 0, symbols(code))
 
   /** "Wed, Sep 16", "mié, 16 sept": CLDR's `MMMEd`. */
   def weekdayMonthDay(month: Int, day: Int, weekday: Int, code: String = Strings.language().code): String =
-    write(symbols(code).weekdayMonthDay, 0, month, day, weekday, 0, 0, symbols(code))
+    write(symbols(code).weekdayMonthDay, 0, month, day, weekday, 0, 0, 0, symbols(code))
 
   /** "Wednesday, September 16", "miércoles, 16 de septiembre": CLDR's `MMMMEEEEd`. */
   def longWeekdayDate(month: Int, day: Int, weekday: Int, code: String = Strings.language().code): String =
-    write(symbols(code).longWeekdayDate, 0, month, day, weekday, 0, 0, symbols(code))
+    write(symbols(code).longWeekdayDate, 0, month, day, weekday, 0, 0, 0, symbols(code))
 
   /** "3:07 PM", "15:07", "下午3:07": CLDR's `jm`, the language's own clock. */
   def timeOfDay(hour: Int, minute: Int, code: String = Strings.language().code): String =
-    write(symbols(code).timeOfDay, 0, 0, 0, 0, hour, minute, symbols(code))
+    write(symbols(code).timeOfDay, 0, 0, 0, 0, hour, minute, 0, symbols(code))
+
+  /** "3:07:12 PM", "15:07:12", "下午3:07:12": CLDR's `jms`, the language's own clock to the second (a clock that ticks,
+    * "Draft saved 3:07:12 PM"): its `jm` with the seconds after the minutes, as CLDR writes every language's. */
+  def timeWithSeconds(hour: Int, minute: Int, second: Int, code: String = Strings.language().code): String =
+    write(withSeconds(symbols(code).timeOfDay), 0, 0, 0, 0, hour, minute, second, symbols(code))
 
   /** "Tuesday, September 29, 2026", "martes, 29 de septiembre de 2026": CLDR's `yMMMMEEEEd`, a day named in full (what
     * a calendar says of each of its days to a screen reader). */
   def fullDate(year: Int, month: Int, day: Int, weekday: Int, code: String = Strings.language().code): String =
-    write(symbols(code).fullDate, year, month, day, weekday, 0, 0, symbols(code))
+    write(symbols(code).fullDate, year, month, day, weekday, 0, 0, 0, symbols(code))
 
   /** "September 2026", "septiembre de 2026", "2026年9月": CLDR's `yMMMM`, over a calendar's month. */
   def monthYear(year: Int, month: Int, code: String = Strings.language().code): String =
-    write(symbols(code).monthYear, year, month, 1, 0, 0, 0, symbols(code))
+    write(symbols(code).monthYear, year, month, 1, 0, 0, 0, 0, symbols(code))
 
   /** A date written to `form`, CLDR's way (see below: `dd/MM/y`, `d. MMMM y`, `EEE, MMM d`): an app's own
     * format, in the language's names. */
   def pattern(form: String, year: Int, month: Int, day: Int, weekday: Int = 0,
               code: String = Strings.language().code): String =
-    write(form, year, month, day, weekday, 0, 0, symbols(code))
+    write(form, year, month, day, weekday, 0, 0, 0, symbols(code))
+
+  /** A date and time written to `form`, as `pattern` writes a date, with its clock's fields too: `h`, `hh`, `H`, `HH`,
+    * `mm`, `ss` and `a` (`h:mm:ss a`, `HH:mm`, `EEE d MMM, h:mm a`). */
+  def dateTimePattern(form: String, year: Int, month: Int, day: Int, weekday: Int, hour: Int, minute: Int, second: Int,
+                      code: String = Strings.language().code): String =
+    write(form, year, month, day, weekday, hour, minute, second, symbols(code))
+
+  /** A time of day to the second, written to `form` (`HH:mm:ss`, `h:mm:ss a`): `dateTimePattern` without a date. */
+  def timePattern(form: String, hour: Int, minute: Int, second: Int, code: String = Strings.language().code): String =
+    write(form, 0, 0, 0, 0, hour, minute, second, symbols(code))
 
   /** Whether the language's clock runs to 12 hours (English, Arabic, Chinese) rather than 24. */
   def twelveHour(code: String = Strings.language().code): Boolean = symbols(code).timeOfDay.contains("h")
@@ -82,10 +97,10 @@ object DateText {
   }
 
   /** `pattern` with its fields filled in, CLDR's way: a run of one letter is one field (`y`, `M`, `MMM`, `MMMM`, `d`,
-    * `dd`, `EEE`, `EEEE`, `h`, `H`, `HH`, `mm`, `a`; `yy` is the year's last two digits), text between single quotes is
-    * written as it is, and anything else is kept. */
+    * `dd`, `EEE`, `EEEE`, `h`, `H`, `HH`, `mm`, `ss`, `a`; `yy` is the year's last two digits), text between single
+    * quotes is written as it is, and anything else is kept. */
   private def write(pattern: String, year: Int, month: Int, day: Int, weekday: Int, hour: Int, minute: Int,
-                    s: DateSymbols): String = {
+                    second: Int, s: DateSymbols): String = {
     var out = ""
     var i = 0
     while (i < pattern.length) {
@@ -98,7 +113,7 @@ object DateText {
       } else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
         var j = i
         while (j < pattern.length && pattern.charAt(j) == c) j += 1
-        out = out + field(c, j - i, year, month, day, weekday, hour, minute, s)
+        out = out + field(c, j - i, year, month, day, weekday, hour, minute, second, s)
         i = j
       } else {
         out = out + c.toString
@@ -109,7 +124,7 @@ object DateText {
   }
 
   private def field(c: Char, count: Int, year: Int, month: Int, day: Int, weekday: Int, hour: Int, minute: Int,
-                    s: DateSymbols): String = {
+                    second: Int, s: DateSymbols): String = {
     val two: Int => String = n => (if (n < 10) "0" else "") + n.toString
     if (c == 'y') { if (count == 2) two(((year % 100) + 100) % 100) else year.toString }
     else if (c == 'M' || c == 'L') {
@@ -130,8 +145,16 @@ object DateText {
     }
     else if (c == 'H') { if (count >= 2) two(hour) else hour.toString }
     else if (c == 'm') two(minute)
+    else if (c == 's') two(second)
     else if (c == 'a') { if (hour < 12) s.am else s.pm }
     else ""
+  }
+
+  // a clock's `jm` with its seconds after the minutes (`h:mm a` as `h:mm:ss a`, `ah:mm` as `ah:mm:ss`), as each of
+  // CLDR's `jms` is its `jm` so
+  private def withSeconds(form: String): String = {
+    val at = form.indexOf("mm")
+    if (at < 0) form else form.substring(0, at + 2) + ":ss" + form.substring(at + 2)
   }
 
   private def monthOf(names: List[String], month: Int): String = if (month < 1 || month > 12) "" else names(month - 1)

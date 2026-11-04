@@ -779,6 +779,10 @@ class RenderNode(val fx: Node) {
   def setWebClear(clear: Boolean): Unit = ()
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
+  def setWebHearSandboxed(on: Boolean): Unit = ()
+  def askWeb(id: Int, request: String): Boolean = false
+  def onWebReply(f: (Int, String) => Unit): Unit = ()
+  def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = ()
   def releaseWeb(): Unit = ()
 
   // ---- an embed (everyui.component.Embed, Nodes.embed): a web guest in a web view of its own, where JavaFX's web
@@ -1358,6 +1362,83 @@ object Platform {
   /** No browser history here: the screen manager keeps its own. */
   def historyBack(): Boolean = false
 
+  /** No address bar: the path is the app's alone, set in place of the one it had. */
+  def replacePath(path: String): Unit = Host.path = path
+
+  /** No browser history here: the screen manager keeps its own. */
+  def historyForward(): Boolean = false
+
+  /** A value kept for this window alone: the app has one, so for this run of it. "" when there is none. */
+  def windowSetting(name: String): String = windowSettings.getOrElse(name, "")
+
+  /** Keep `value` under `name` for this run; "" forgets it. */
+  def saveWindowSetting(name: String, value: String): Unit =
+    windowSettings = if (value.isEmpty) windowSettings - name else windowSettings + (name -> value)
+
+  private var windowSettings: Map[String, String] = Map.empty
+
+  /** The time zone the device is in, as IANA names it ("America/Chicago"). */
+  def timeZone(): String = java.util.TimeZone.getDefault.getID
+
+  /** `f` told as the time zone changes (everyui.date.TimeZones). What stops it being told. */
+  def onTimeZone(f: () => Unit): () => Unit = everyui.date.TimeZones.onChange(f)
+
+  /** An address the app will have only later opened once it does: nothing here refuses an open that comes late. */
+  def openUrlLater(): everyui.app.UrlTarget = new everyui.app.UrlTarget(url => openUrl(url), () => ())
+
+  /** A moment marked (everyui.perf.Marks), logged where the app was launched with `marks=1`, for a check to read. */
+  def marked(name: String, at: Double): Unit = if (launchArg("marks") == "1") log("[mark] " + name + " " + at.toString)
+
+  /** What to do as the app's window gets the focus back from another window in front of it. What stops it being
+    * told. */
+  def onFocus(f: () => Unit): () => Unit = {
+    focusers = focusers :+ f
+    () => focusers = focusers.filterNot(_ eq f)
+  }
+
+  /** What to do as the app's window loses the focus to another, though it may still be in sight. */
+  def onBlur(f: () => Unit): () => Unit = {
+    blurrers = blurrers :+ f
+    () => blurrers = blurrers.filterNot(_ eq f)
+  }
+
+  /** Said by the platform as the window gets the focus (`has`) or loses it; told once each way. */
+  def windowFocus(has: Boolean): Unit = if (has != windowFocused) {
+    windowFocused = has
+    (if (has) focusers else blurrers).foreach(f => f())
+  }
+
+  private var windowFocused: Boolean = true
+  private var focusers: List[() => Unit] = Nil
+  private var blurrers: List[() => Unit] = Nil
+
+  /** What to do as the app is closed for good. Only what can be done at once, then and there. What stops it being
+    * told. */
+  def onClose(f: () => Unit): () => Unit = {
+    closers = closers :+ f
+    () => closers = closers.filterNot(_ eq f)
+  }
+
+  /** Said by the platform as the app is closed. */
+  def closing(): Unit = closers.foreach(f => f())
+
+  private var closers: List[() => Unit] = Nil
+
+  /** One window here: a second of the app is not opened. */
+  def openWindow(path: String): Boolean = false
+
+  /** Which build is running, as the launch says it (`--build=…`); "" where it does not. */
+  def buildId(): String = launchArg("build")
+
+  /** The app cannot start itself again into a new build here. */
+  def reload(): Boolean = false
+
+  // a desktop is taken to have a network: nothing here follows it
+  private val onlineNow = reactify.Var[Boolean](true)
+
+  /** Whether the device has a network: always here, where nothing follows it; a socket finds out by trying. */
+  def online: reactify.Val[Boolean] = onlineNow
+
   /** `f` on a thread that does not draw, for work a frame should not wait on (a large document parsed or written);
     * whatever it hands back goes by `later`. A failure is logged and goes no further. */
   def offThread(f: () => Unit): Unit = RenderNode.work.execute(() =>
@@ -1532,6 +1613,9 @@ object Platform {
 
   /** A registered face loads from its file when first used. */
   def registerFont(face: Face): Unit = ()
+  /** A colour emoji face for where the system has none (`Faces.colorEmoji`): the system draws its own here, so none
+    * is taken. */
+  def registerColorEmoji(face: Face): Boolean = false
 
   /** The window in the app's units: its size over the size the app is drawn at (everyui.theme.UiScale). */
   def screenWidth(): Double = Host.scene.getWidth / everyui.theme.UiScale()

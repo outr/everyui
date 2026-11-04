@@ -135,6 +135,10 @@ class RenderNode(val sg: SGNode) {
   def setWebClear(clear: Boolean): Unit = ()
   def runWebScript(script: String): Unit = ()
   def onWebMessage(f: String => Unit): Unit = ()
+  def setWebHearSandboxed(on: Boolean): Unit = ()
+  def askWeb(id: Int, request: String): Boolean = false
+  def onWebReply(f: (Int, String) => Unit): Unit = ()
+  def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = ()
   def releaseWeb(): Unit = ()
 
   // ---- an embed (everyui.component.Embed): tvOS lends no web engine (WebKit is not public there), so its fallback
@@ -555,6 +559,56 @@ object Platform {
   /** No browser history here: the screen manager keeps its own. */
   def historyBack(): Boolean = false
 
+  /** No address bar, and no path to replace. */
+  def replacePath(path: String): Unit = ()
+
+  /** No browser history here: the screen manager keeps its own. */
+  def historyForward(): Boolean = false
+
+  /** A value kept for this window alone: the app has one, so for this run of it. "" when there is none. */
+  def windowSetting(name: String): String = windowSettings.getOrElse(name, "")
+
+  /** Keep `value` under `name` for this run; "" forgets it. */
+  def saveWindowSetting(name: String, value: String): Unit =
+    windowSettings = if (value.isEmpty) windowSettings - name else windowSettings + (name -> value)
+
+  private var windowSettings: Map[String, String] = Map.empty
+
+  /** The time zone the device is set to, by its name for it. */
+  def timeZone(): String = uiTimeZone()
+
+  /** `f` told as the time zone changes (everyui.date.TimeZones). What stops it being told. */
+  def onTimeZone(f: () => Unit): () => Unit = everyui.date.TimeZones.onChange(f)
+
+  /** Nothing is opened outside the app here. */
+  def openUrlLater(): everyui.app.UrlTarget = new everyui.app.UrlTarget(url => openUrl(url), () => ())
+
+  /** A moment marked (everyui.perf.Marks), logged where the app was launched with `marks=1`, for a check to read. */
+  def marked(name: String, at: Double): Unit = if (launchArg("marks") == "1") log("[mark] " + name + " " + at.toString)
+
+  /** The app has the screen, or it does not: its focus is coming back to the front (`onResume`). */
+  def onFocus(f: () => Unit): () => Unit = onResume(f)
+
+  /** Its focus lost is its going away (`onAway`). */
+  def onBlur(f: () => Unit): () => Unit = onAway(f)
+
+  /** Nothing says the app is closed for good here: it is sent away (`onAway`), and ended there. */
+  def onClose(f: () => Unit): () => Unit = () => ()
+
+  /** One screen, one app: a second window is not opened. */
+  def openWindow(path: String): Boolean = false
+
+  /** The app cannot start itself again into a new build here. */
+  def reload(): Boolean = false
+
+  /** Which build is running: the version its bundle says, where it says one. */
+  def buildId(): String = appVersionName()
+
+  private val onlineNow = reactify.Var[Boolean](true)
+
+  /** Whether the device has a network: always here, where nothing follows it; a socket finds out by trying. */
+  def online: reactify.Val[Boolean] = onlineNow
+
   /** Nothing runs beside the interface here yet: the work is done at once. */
   def offThread(f: () => Unit): Unit = f()
 
@@ -684,6 +738,9 @@ object Platform {
 
   /** Faces are files the runtime opens by name. */
   def registerFont(face: Face): Unit = ()
+  /** A colour emoji face for where the system has none (`Faces.colorEmoji`): the system draws its own here, so none
+    * is taken. */
+  def registerColorEmoji(face: Face): Boolean = false
 
   /** The screen in the app's units, over the size the app is drawn at (everyui.theme.UiScale). */
   def screenWidth(): Double = uiScreenWidth() / everyui.theme.UiScale()

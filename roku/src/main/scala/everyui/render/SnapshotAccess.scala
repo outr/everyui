@@ -18,6 +18,9 @@ object SnapshotAccess {
   def figures(figures: List[Figure], width: Double, height: Double, scale: Double, background: Option[Color],
               done: Option[SnapshotImage] => Unit): Unit = done(None)
 
+  def fitted(bytes: Array[Byte], mime: String, width: Int, height: Int, done: Option[SnapshotImage] => Unit): Unit =
+    done(None)
+
   /** Nothing is ever taken here to show. */
   def preview(png: Array[Byte]): String = ""
 }

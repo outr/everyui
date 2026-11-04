@@ -68,8 +68,11 @@ object FileAccess {
     })
   }
 
-  /** Done with a picked file's `preview`: its object URL let go, and the file with it. */
+  /** Done with a picked file's `preview`, or a `source`: its object URL let go, and what it held with it. */
   def release(preview: String): Unit = if (preview.startsWith("blob:")) dom.URL.revokeObjectURL(preview)
+
+  /** `bytes` as an object URL (`blob:`) of type `mime`, however large, held until `release`. */
+  def source(bytes: Array[Byte], mime: String): String = dom.URL.createObjectURL(blobOf(bytes, mime))
 
   private var guarded = false
 

@@ -97,6 +97,26 @@ object SnapshotAccess {
 
   private var previews = 0
 
+  /** A picture's bytes drawn into a PNG `width` by `height`, kept in proportion and centred, clear round it: what
+    * Android decodes (PNG, JPEG, GIF, WebP, HEIF); None for the rest, an SVG among them. */
+  def fitted(bytes: Array[Byte], mime: String, width: Int, height: Int, done: Option[SnapshotImage] => Unit): Unit = {
+    val source = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length)
+    if (source == null || source.getWidth < 1 || source.getHeight < 1) done(None)
+    else {
+      val scale = math.min(width.toDouble / source.getWidth, height.toDouble / source.getHeight)
+      val w = source.getWidth * scale
+      val h = source.getHeight * scale
+      val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+      val left = ((width - w) / 2.0).toFloat
+      val top = ((height - h) / 2.0).toFloat
+      val box = new android.graphics.RectF(left, top, left + w.toFloat, top + h.toFloat)
+      new Canvas(bitmap).drawBitmap(source, null, box,
+        new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG))
+      source.recycle()
+      compressed(bitmap, done)
+    }
+  }
+
   /** A file in the app's cache, which an ImageView loads as it does any file. */
   def preview(png: Array[Byte]): String = {
     val dir = new java.io.File(Host.activity.getCacheDir, "snapshots")

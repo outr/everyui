@@ -28,9 +28,17 @@ object Files {
   def pick(types: List[String] = Nil, multiple: Boolean = true): Task[List[PickedFile]] =
     Task.async[List[PickedFile]](done => FileAccess.pick(types, multiple, done))
 
-  /** Done with a file's `preview` address: the web lets its object URL (and the file it holds) go; elsewhere nothing is
-    * held. After this the address shows nothing. */
+  /** Done with a file's `preview` address, or a `source`: the web lets its object URL (and what it holds) go, the
+    * desktop and Android the file it was written to; elsewhere nothing is held. After this the address shows
+    * nothing. */
   def release(preview: String): Unit = FileAccess.release(preview)
+
+  /** `bytes` as an address a picture (ImageView), a video, a sound or a page (WebView: HTML, a PDF where the engine
+    * shows one) can be shown from, of type `mime` (`image/png`, `text/html`, `video/mp4`), however large, where a
+    * `data:` address would be too long: an object URL on the web, a file of the app's own on the desktop and Android
+    * (a WebView there reads it whatever its sandbox). Held until `release`, which every source wants once it is shown
+    * no more. "" where the platform shows none (a Roku, an Apple TV). */
+  def source(bytes: Array[Byte], mime: String): String = FileAccess.source(bytes, mime)
 
   /** Files dropped on `target` from outside the app: `hover` hears true while files are held over it and false once
     * they leave or land, and `dropped` what landed. Nothing happens where files cannot be dropped. */

@@ -563,6 +563,11 @@ func uiLocalDateTime(_ millis: V) -> V {
     return .vStr(f.string(from: Date(timeIntervalSince1970: rtDouble(millis) / 1000.0)))
 }
 
+/// The time zone the device is in, as IANA names it ("America/Chicago").
+func uiTimeZone() -> V {
+    return .vStr(TimeZone.current.identifier)
+}
+
 // MARK: - input: the remote's presses to one hook (everyui.focus.Focus); there is no pointer
 
 /// A Siri Remote's touch surface only reaches views the focus engine owns, and the shared layer owns the focus.

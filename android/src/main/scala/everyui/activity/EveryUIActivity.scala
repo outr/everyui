@@ -227,9 +227,17 @@ abstract class EveryUIActivity extends Activity {
     super.onStop()
   }
 
+  /** Its window's focus, which a dialog of the system's or a window in front of it in a split screen takes: on a phone
+    * or a television this is mostly the same as being in front. */
+  override def onWindowFocusChanged(hasFocus: Boolean): Unit = {
+    super.onWindowFocusChanged(hasFocus)
+    everyui.render.Platform.windowFocus(hasFocus)
+  }
+
   /** The shared layer's singletons (`ui`, the app) live as long as the process, as they live as long as a page or a
     * channel, so leaving the app ends the process and the next launch starts fresh. */
   override def onDestroy(): Unit = {
+    if (isFinishing) everyui.render.Platform.closing()
     super.onDestroy()
     if (isFinishing && !ServiceRuntime.active) android.os.Process.killProcess(android.os.Process.myPid())
   }

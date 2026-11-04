@@ -48,6 +48,16 @@ object Snapshot {
   def drawing(d: Drawing, scale: Double = 1.0, background: Option[Color] = None): Task[Option[SnapshotImage]] =
     figures(d.figures(), d.size.width(), d.size.height(), scale, background)
 
+  /** A picture's `bytes` (of type `mime`) drawn into a PNG `width` by `height` pixels, kept in proportion and centred,
+    * clear round it: an uploaded icon stored at one size. The web draws whatever the browser shows as a picture, an SVG
+    * too; the desktop and Android the formats they decode, not SVG; a Roku and an Apple TV nothing. None where it was
+    * not drawn. */
+  def fitted(bytes: Array[Byte], mime: String, width: Int, height: Int): Task[Option[SnapshotImage]] =
+    Task.async[Option[SnapshotImage]] { done =>
+      if (width < 1 || height < 1 || bytes.isEmpty) done(None)
+      else SnapshotAccess.fitted(bytes, mime, width, height, done)
+    }
+
   /** `figures` drawn in a box `width` by `height` (in their own pixels), `scale` times that size, over `background`
     * (clear where None): for a picture of a drawing that is not shown, or one drawn larger than it is shown. */
   def figures(figures: List[Figure], width: Double, height: Double, scale: Double = 1.0,

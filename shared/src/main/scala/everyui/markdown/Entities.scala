@@ -4,7 +4,7 @@ import everyui.render.Platform
 
 /** HTML's character references in Markdown text: `&amp;`, `&#35;`, `&#x22;`, and the named ones writing uses most.
   * A name not known here stays as it was written. */
-private[markdown] object Entities {
+private[everyui] object Entities {
   private val named: Map[String, String] = Map(
     "amp" -> "&", "lt" -> "<", "gt" -> ">", "quot" -> "\"", "apos" -> "'", "nbsp" -> "\u00a0", "copy" -> "\u00a9",
     "reg" -> "\u00ae", "trade" -> "\u2122", "hellip" -> "\u2026", "mdash" -> "\u2014", "ndash" -> "\u2013",

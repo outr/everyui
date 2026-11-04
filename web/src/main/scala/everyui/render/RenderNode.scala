@@ -655,6 +655,10 @@ class RenderNode(val el: html.Element) {
   def setWebClear(clear: Boolean): Unit = if (webFrame != null) el.style.background = if (clear) "transparent" else "#000"
   def runWebScript(script: String): Unit = if (webFrame != null) webFrame.run(script)
   def onWebMessage(f: String => Unit): Unit = if (webFrame != null) webFrame.hear(f)
+  def setWebHearSandboxed(on: Boolean): Unit = if (webFrame != null) webFrame.hearSandboxed(on)
+  def askWeb(id: Int, request: String): Boolean = webFrame != null && webFrame.ask(id, request)
+  def onWebReply(f: (Int, String) => Unit): Unit = if (webFrame != null) webFrame.hearReplies(f)
+  def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = if (webFrame != null) webFrame.nested(f)
   def releaseWeb(): Unit = if (webFrame != null) webFrame.release()
 
   // ---- an embed (everyui.component.Embed, Nodes.embed): the guest runs in this page, drawing into this element ----
@@ -1139,9 +1143,11 @@ object RenderNode {
     ("'" + family + "'" :: everyui.font.Faces.fallbackFaces().toList.map(f => "'" + f.family + "'")).mkString(", ") +
       ", " + emojiFaces
 
-  /** The systems' colour emoji faces, by name: macOS's and iOS's, Windows', Android's and Linux's. An app that wants
-    * its own where a system has none registers one as a fallback face (`Faces.fallback`), drawn before these. */
-  val emojiFaces: String = "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'"
+  /** The systems' colour emoji faces, by name: macOS's and iOS's, Windows', Android's and Linux's, then any the app
+    * registered for where a system has none (`Faces.colorEmoji`). An app that wants its own drawn before the system's
+    * registers it as a fallback face (`Faces.fallback`). */
+  def emojiFaces: String = systemEmoji + Faces.colorEmojiFaces().map(f => ", '" + f.family + "'").mkString
+  private val systemEmoji: String = "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'"
 
 
   /** The embed keys at `el` (the page's focused element) belong to, "" for none: the name given by the nearest element
@@ -1539,6 +1545,69 @@ object Platform {
   dom.window.addEventListener("pagehide", (_: dom.Event) => presence.hidden())
   dom.window.addEventListener("pageshow", (e: dom.PageTransitionEvent) => if (e.persisted) presence.shown())
 
+  // the window's own focus, which a page in sight may still not have: another window in front of it, a popup it
+  // opened. Focus gone into one of the page's own frames is the page's still (`document.hasFocus`), so a click into a
+  // web view is not the window left
+  private var windowFocused: Boolean = dom.document.hasFocus()
+  dom.window.addEventListener("focus", (_: dom.Event) => if (!windowFocused) {
+    windowFocused = true
+    focusers.foreach(f => f())
+  })
+  dom.window.addEventListener("blur", (_: dom.Event) => dom.window.setTimeout(() =>
+    if (windowFocused && !dom.document.hasFocus()) {
+      windowFocused = false
+      blurrers.foreach(f => f())
+    }, 0))
+  private var focusers: List[() => Unit] = Nil
+  private var blurrers: List[() => Unit] = Nil
+
+  /** What to do as the app's window gets the focus back: the person back from another window in front of it (a popup
+    * the app opened to connect an account). Not as it is first loaded. On a phone or a television it is the same as
+    * `onResume`. What stops it being told. */
+  def onFocus(f: () => Unit): () => Unit = {
+    focusers = focusers :+ f
+    () => focusers = focusers.filterNot(_ eq f)
+  }
+
+  /** What to do as the app's window loses the focus to another, though it may still be in sight. */
+  def onBlur(f: () => Unit): () => Unit = {
+    blurrers = blurrers :+ f
+    () => blurrers = blurrers.filterNot(_ eq f)
+  }
+
+  // the network's coming and going, as the browser says it: offline is sure, online only that there is a network
+  private val onlineNow = reactify.Var[Boolean](dom.window.navigator.onLine)
+  dom.window.addEventListener("online", (_: dom.Event) => onlineNow @= true)
+  dom.window.addEventListener("offline", (_: dom.Event) => onlineNow @= false)
+
+  /** Whether the device has a network: false is sure (none at all), true only that there is one, not that the server
+    * answers. Changes as it comes and goes, so a socket can reconnect the moment it is back rather than at its next
+    * try. */
+  def online: reactify.Val[Boolean] = onlineNow
+
+  // the page going for good, or into the back/forward cache, from which it may come back (onResume)
+  dom.window.addEventListener("pagehide", (_: dom.Event) => closers.foreach(f => f()))
+  private var closers: List[() => Unit] = Nil
+
+  /** What to do as the app's window is closed or left: the tab closed, the page reloaded or sent elsewhere. Only what
+    * can be done at once, then and there (a mark cleared, a beacon sent): nothing after it is sure to run. A page a
+    * browser keeps to go back to may come back from it (`onResume`). What stops it being told. */
+  def onClose(f: () => Unit): () => Unit = {
+    closers = closers :+ f
+    () => closers = closers.filterNot(_ eq f)
+  }
+
+  // a reload into a new build named its address afresh (`reload`): the address goes back to what it was
+  private val reloadParam = "_b"
+  locally {
+    val search = dom.window.location.search
+    if (search.contains(reloadParam + "=")) {
+      val kept = search.stripPrefix("?").split("&").filterNot(_.startsWith(reloadParam + "=")).mkString("&")
+      dom.window.history.replaceState(dom.window.history.state, "",
+        dom.window.location.pathname + (if (kept.isEmpty) "" else "?" + kept) + dom.window.location.hash)
+    }
+  }
+
   def log(message: String): Unit = dom.console.log("[ui] " + message)
 
   /** A failure with its cause: the console gets the stack. */
@@ -1768,6 +1837,97 @@ object Platform {
     true
   }
 
+  /** Show `path` in the address bar in place of the entry showing, without a new one and without loading anything:
+    * what an address used once becomes (`/join/<token>` as `/join`), so the token is not left in the history. */
+  def replacePath(path: String): Unit = dom.window.history.replaceState(dom.window.history.state, "", path)
+
+  /** Forward is the browser's own, as back is. */
+  def historyForward(): Boolean = {
+    dom.window.history.forward()
+    true
+  }
+
+  /** A value kept for this window alone, across a reload of it (`sessionStorage`): each of two windows of the app its
+    * own, and gone with the window. "" when there is none, or the browser keeps nothing. */
+  def windowSetting(name: String): String =
+    try Option(dom.window.sessionStorage.getItem(name)).getOrElse("") catch { case _: Throwable => "" }
+
+  /** Keep `value` under `name` for this window; "" forgets it. */
+  def saveWindowSetting(name: String, value: String): Unit =
+    try {
+      if (value.isEmpty) dom.window.sessionStorage.removeItem(name) else dom.window.sessionStorage.setItem(name, value)
+    }
+    catch { case _: Throwable => () }
+
+  /** A new window of this app at `path` (in the app: `/w/3`, never another site), the size of this one and just
+    * below and to the right of it. False where it was not opened: refused by the browser (best from a click or a key),
+    * or a path that is not the app's. */
+  def openWindow(path: String): Boolean =
+    if (!path.startsWith("/") || path.startsWith("//")) false
+    else {
+      val w = dom.window
+      val features = "popup,width=" + w.outerWidth.toString + ",height=" + w.outerHeight.toString + ",left=" +
+        (w.screenX + 32).toString + ",top=" + (w.screenY + 32).toString
+      val opened = w.open(path, "_blank", features)
+      opened != null && !js.isUndefined(opened)
+    }
+
+  /** A window for an address the app does not have yet, reserved now, in the person's press, where a browser opens
+    * nothing after it (an OAuth address the server answers with): blank until `go`, closed by `cancel`. Kept apart
+    * from the app (no `opener`) before it goes anywhere. Where the browser would not open one, `go` opens the address
+    * as `openUrl` does, which it may refuse in turn. */
+  def openUrlLater(): everyui.app.UrlTarget = {
+    val held = dom.window.open("", "_blank")
+    if (held == null || js.isUndefined(held)) new everyui.app.UrlTarget(url => openUrl(url), () => ())
+    else {
+      held.asInstanceOf[js.Dynamic].opener = null
+      new everyui.app.UrlTarget(url =>
+        if (everyui.component.NavigationUrl.safe(url)) held.location.href = url else held.close(),
+        () => held.close())
+    }
+  }
+
+  /** Which build of the app this page loaded: the version its script was loaded by (`main.js?v=…`, or the WebAssembly
+    * loader's, which `everyuiWebScripts` writes from what it holds), "" where it was loaded by none. A server serving a
+    * newer one answers with another, and the page can `reload` into it. */
+  def buildId(): String = {
+    val scripts = dom.document.querySelectorAll("script[src]")
+    val version = """[?&]v=([^&#]+)""".r
+    (0 until scripts.length).map(i => Option(scripts(i).getAttribute("src")).getOrElse("")).collectFirst {
+      case src if src.contains("main.js?") || src.contains("everyui-loader.js?") => version.findFirstMatchIn(src)
+    }.flatten.map(_.group(1)).getOrElse("")
+  }
+
+  /** The page loaded again, its address named afresh so no cache can answer it with the build it has (the address
+    * goes back to what it was as it loads). True: a page can always be. */
+  def reload(): Boolean = {
+    val url = new dom.URL(dom.window.location.href)
+    url.searchParams.set(reloadParam, js.Date.now().toLong.toString)
+    dom.window.location.replace(url.href)
+    true
+  }
+
+  /** The device's time zone, as IANA names it ("America/Chicago"); "UTC" where the browser does not say. */
+  def timeZone(): String =
+    try {
+      val zone = js.Dynamic.newInstance(js.Dynamic.global.Intl.DateTimeFormat)().resolvedOptions().timeZone
+      if (js.isUndefined(zone) || zone == null) "UTC" else zone.toString
+    }
+    catch { case _: Throwable => "UTC" }
+
+  /** `f` told as the time zone changes (everyui.date.TimeZones). What stops it being told. */
+  def onTimeZone(f: () => Unit): () => Unit = everyui.date.TimeZones.onChange(f)
+
+  /** A moment marked (everyui.perf.Marks) where a check can read it: `window.everyuiMarks`, `{name, at}` each, the
+    * last 200. */
+  def marked(name: String, at: Double): Unit = {
+    val window = dom.window.asInstanceOf[js.Dynamic]
+    if (js.isUndefined(window.everyuiMarks)) window.everyuiMarks = js.Array[js.Any]()
+    val marks = window.everyuiMarks.asInstanceOf[js.Array[js.Any]]
+    marks.push(js.Dynamic.literal(name = name, at = at))
+    if (marks.length > everyui.perf.Marks.kept) marks.shift()
+  }
+
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
 
@@ -1872,8 +2032,9 @@ object Platform {
   def deviceModel(): String = deviceName()
 
   def launchesApps(): Boolean = false
-  // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
-  def decodes(codec: String): Boolean = true
+  /** Whether the browser plays `codec`, by a media server's name for it ("vp9", "hevc", "aac") or a whole MIME type
+    * with its codecs (WebCodecs). */
+  def decodes(codec: String): Boolean = WebCodecs.plays(codec)
   // an app here is updated by whatever put it here, never by itself
   def canInstallApps(): Boolean = false
   def openInstallSettings(): Unit = ()
@@ -2014,6 +2175,23 @@ object Platform {
     font.load()
   }
   private val registered = js.Array[js.Dynamic]()
+
+  /** A colour emoji face (`Faces.colorEmoji`) added to the page's fonts, where the browser draws COLRv1 in colour
+    * (`font-tech(color-COLRv1)`), which is the answer: elsewhere it is not added, so it is never drawn in black. */
+  def registerColorEmoji(face: Face): Boolean = {
+    val css = js.Dynamic.global.CSS
+    val colour = try !js.isUndefined(css) && css.supports("font-tech(color-COLRv1)").asInstanceOf[Boolean]
+    catch { case _: Throwable => false }
+    if (colour) {
+      val options = js.Dynamic.literal(weight = face.weight.toString, style = "normal")
+      val source = "url(" + fontAddress(face.file) + ") tech(color-COLRv1)"
+      val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, source, options)
+      dom.document.asInstanceOf[js.Dynamic].fonts.add(font)
+      registered.push(font)
+      font.load().`catch`((_: js.Any) => log(face.family + " could not be loaded from fonts/" + face.file))
+    }
+    colour
+  }
 
   // the page's preload of `file`, as it wrote it (a version after it, say), else the bundled faces' own place
   private def fontAddress(file: String): String = {

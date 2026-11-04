@@ -15,19 +15,33 @@ import scala.scalajs.js
   * heard as its bridge's messages are. Whatever else posts to the app's window is not heard.
   *
   * A sandboxed page (`sandbox`, the iframe's own attribute) is neither told nor heard, whatever its origin: nothing is
-  * lent it, run in it or posted to it, and nothing it posts is heard. */
+  * lent it, run in it or posted to it, and nothing it posts is heard; unless the app asked to hear it
+  * (`hearSandboxed`), when what it posts from this frame alone is heard, and still nothing is lent or run.
+  *
+  * `ask` posts `{everyui: "ask", session, id, request}` and hears `{everyui: "reply", session, id, reply}` back, the
+  * session the one this frame's `source` was given, so a page that is no longer showing is not heard answering. What
+  * the frames inside the page post is heard only where the app asked (`nested`), with their origin. */
 class WebFrame(val frame: html.IFrame, bridge: String) {
   private var hearing: String => Unit = _ => ()
+  private var replying: (Int, String) => Unit = (_, _) => ()
+  private var nestedHearing: Option[(String, String) => Unit] = None
   private var origin: String = ""
   private var loaded: Boolean = false
   private var waiting: List[String] = Nil
   private var released: Boolean = false
   private var current: String = ""
   private var sandboxed: Boolean = false
+  private var hearsSandboxed: Boolean = false
+  private var session: String = ""
 
   private val heard: js.Function1[dom.MessageEvent, Unit] = (e: dom.MessageEvent) =>
-    if (!sandboxed && e.source != null && (e.source eq frame.contentWindow) && e.origin == origin)
-      said(e.data.asInstanceOf[js.Any])
+    if (e.source != null && (e.source eq frame.contentWindow)) {
+      val fromPage = if (sandboxed) hearsSandboxed && (e.origin == "null" || e.origin == origin) else e.origin == origin
+      if (fromPage) said(e.data.asInstanceOf[js.Any])
+    }
+    else if (e.source != null && !released) nestedHearing.foreach { f =>
+      if (inside(e.source.asInstanceOf[js.Dynamic])) f(e.origin, text(e.data.asInstanceOf[js.Any]))
+    }
 
   frame.addEventListener("load", (_: dom.Event) => if (origin.nonEmpty) {
     loaded = true
@@ -43,6 +57,7 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
     current = url.trim
     origin = new dom.URL(url.trim, dom.document.baseURI).origin
     loaded = false
+    session = java.lang.Long.toString((math.random() * 1.0e12).toLong, 36)
     frame.src = url.trim
     early(600)
   }
@@ -58,6 +73,15 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
   }
 
   def hear(f: String => Unit): Unit = hearing = f
+
+  /** What a sandboxed page posts from this frame heard as well (`on`), though nothing is lent it or run in it. */
+  def hearSandboxed(on: Boolean): Unit = hearsSandboxed = on
+
+  /** The replies to `ask`, by the id each was asked with. */
+  def hearReplies(f: (Int, String) => Unit): Unit = replying = f
+
+  /** What the frames inside the page post, with the origin of each, heard by `f`; None hears them no more. */
+  def nested(f: Option[(String, String) => Unit]): Unit = nestedHearing = f
 
   /** The frame sandboxed with `flags` allowed (None: not at all), and the page loaded again where it shows one, as a
     * browser only honours the attribute as the frame navigates. */
@@ -86,11 +110,26 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
         if (window != null && origin != "null") window.postMessage(js.Dynamic.literal(everyui = "run", script = script), origin)
     }
 
+  /** Ask the page `request`, posted to it as `{everyui: "ask", session, id, request}`, whatever its origin: a sandboxed
+    * page only where it is heard (`hearSandboxed`), and then to any origin, since it has none of its own. False where
+    * it could not be posted (no page, or one sandboxed and not heard). */
+  def ask(id: Int, request: String): Boolean = {
+    val window = frame.contentWindow
+    if (released || window == null || current.isEmpty || (sandboxed && !hearsSandboxed)) false
+    else {
+      val to = if (sandboxed || origin == "null") "*" else origin
+      window.postMessage(js.Dynamic.literal(everyui = "ask", session = session, id = id, request = request), to)
+      true
+    }
+  }
+
   /** Done with: the page is let go (what it plays stops with it) and the app's window stops listening for it. */
   def release(): Unit = {
     released = true
     dom.window.removeEventListener("message", heard)
     hearing = _ => ()
+    replying = (_, _) => ()
+    nestedHearing = None
     waiting = Nil
     origin = ""
     frame.src = "about:blank"
@@ -103,6 +142,24 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
     catch { case _: Throwable => None }
   }
 
+  // whether `source` is a window inside the page's, at any depth: a window's parent may be read whatever its origin
+  private def inside(source: js.Dynamic): Boolean = {
+    val page = frame.contentWindow.asInstanceOf[js.Dynamic]
+    var at = source
+    var depth = 0
+    var found = false
+    while (!found && depth < 16 && at != null && !js.isUndefined(at)) {
+      val up = try at.parent catch { case _: Throwable => null }
+      if (up == null || js.isUndefined(up) || (up eq at)) at = null
+      else {
+        found = up eq page
+        at = up
+      }
+      depth += 1
+    }
+    found && page != null
+  }
+
   // the bridge put on the page's window, where the page is the app's own; a page loading has a new window, so again
   // each time it loads
   private def lend(): Unit = if (!sandboxed) ownWindow.foreach { w =>
@@ -112,7 +169,23 @@ class WebFrame(val frame: html.IFrame, bridge: String) {
     NavButtons.listen(w)
   }
 
-  private def said(message: js.Any): Unit = hearing(
-    if (js.typeOf(message) == "string") message.asInstanceOf[String] else js.JSON.stringify(message)
-  )
+  // a reply to `ask` (an object, or its JSON) goes to whatever asked, where it is this page's; anything else is heard
+  private def said(message: js.Any): Unit = {
+    val data: js.Any =
+      if (js.typeOf(message) == "string" && message.asInstanceOf[String].startsWith("{\"everyui\":\"reply\""))
+        try js.JSON.parse(message.asInstanceOf[String]) catch { case _: Throwable => message }
+      else message
+    val d = data.asInstanceOf[js.Dynamic]
+    if (js.typeOf(data) == "object" && data != null && (d.everyui: Any) == "reply") {
+      val id = d.id.asInstanceOf[js.Any]
+      if ((d.session: Any) == session && js.typeOf(id) == "number")
+        replying(id.asInstanceOf[Double].toInt, text(d.reply.asInstanceOf[js.Any]))
+    }
+    else hearing(text(message))
+  }
+
+  private def text(message: js.Any): String =
+    if (js.typeOf(message) == "string") message.asInstanceOf[String]
+    else if (js.isUndefined(message)) ""
+    else js.JSON.stringify(message)
 }

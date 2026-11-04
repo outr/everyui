@@ -49,6 +49,29 @@ object SnapshotAccess {
       background.map(RenderNode.paintOf).getOrElse(Color.TRANSPARENT), done)
   }
 
+  /** A picture's bytes drawn into a PNG `width` by `height`, kept in proportion and centred, clear round it: what
+    * JavaFX decodes (PNG, JPEG, GIF, BMP); None for the rest, an SVG among them. */
+  def fitted(bytes: Array[Byte], mime: String, width: Int, height: Int, done: Option[SnapshotImage] => Unit): Unit = {
+    val image = new javafx.scene.image.Image(new java.io.ByteArrayInputStream(bytes), width.toDouble, height.toDouble,
+      true, true)
+    if (image.isError || image.getWidth < 1.0 || image.getHeight < 1.0) done(None)
+    else {
+      val w = math.min(width, image.getWidth.toInt)
+      val h = math.min(height, image.getHeight.toInt)
+      val drawn = new Array[Int](w * h)
+      image.getPixelReader.getPixels(0, 0, w, h, PixelFormat.getIntArgbInstance, drawn, 0, w)
+      val argb = new Array[Int](width * height)
+      val left = (width - w) / 2
+      val top = (height - h) / 2
+      var y = 0
+      while (y < h) {
+        System.arraycopy(drawn, y * w, argb, (top + y) * width + left, w)
+        y += 1
+      }
+      done(Some(SnapshotImage(encoded(width, height, argb), width, height)))
+    }
+  }
+
   /** A file of the app's own, gone when it quits. */
   def preview(png: Array[Byte]): String = {
     val file = java.nio.file.Files.createTempFile("everyui-snapshot", ".png")

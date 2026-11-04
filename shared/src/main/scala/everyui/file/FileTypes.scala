@@ -14,6 +14,15 @@ object FileTypes {
     "mp3" -> "audio/mpeg", "wav" -> "audio/wav", "ogg" -> "audio/ogg", "mp4" -> "video/mp4", "webm" -> "video/webm",
     "mov" -> "video/quicktime")
 
+  /** The extension a file of type `mime` is named with ("png" for "image/png"; its parameters, `; charset=…`, aside),
+    * "bin" for a type not known here. */
+  def extensionOf(mime: String): String = {
+    val bare = mime.takeWhile(_ != ';').trim.toLowerCase
+    if (bare == "text/plain") "txt"
+    else if (bare == "text/html") "html"
+    else known.toList.filter(_._2 == bare).map(_._1).sortBy(e => (e.length, e)).headOption.getOrElse("bin")
+  }
+
   /** What comes after the name's last dot, in lower case; empty where there is none. */
   def extension(name: String): String = {
     val dot = name.lastIndexOf(".")
