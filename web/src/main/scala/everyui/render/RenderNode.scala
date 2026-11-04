@@ -1918,12 +1918,22 @@ object Platform {
 
   /** A window for an address the app does not have yet, reserved now, in the person's press, where a browser opens
     * nothing after it (an OAuth address the server answers with): blank until `go`, closed by `cancel`. Kept apart
-    * from the app (no `opener`) before it goes anywhere. Where the browser would not open one, `go` opens the address
-    * as `openUrl` does, which it may refuse in turn. */
-  def openUrlLater(): everyui.app.UrlTarget = {
+    * from the app (no `opener`) before it goes anywhere, showing `waiting` (its title and words) until then. Where the
+    * browser would not open one, the target says so (`held` false), and `go` opens the address as `openUrl` does,
+    * which it will likely refuse in turn: offer a link to press instead. */
+  def openUrlLater(waiting: String = ""): everyui.app.UrlTarget = {
     val held = dom.window.open("", "_blank")
-    if (held == null || js.isUndefined(held)) new everyui.app.UrlTarget(url => openUrl(url), () => ())
+    if (held == null || js.isUndefined(held)) new everyui.app.UrlTarget(url => openUrl(url), () => (), held = false)
     else {
+      if (waiting.nonEmpty) try {
+        val page = held.document
+        page.title = waiting
+        val words = page.createElement("p")
+        words.textContent = waiting
+        words.setAttribute("style", "font: 16px system-ui, sans-serif; margin: 3em; text-align: center; color: #555")
+        page.body.appendChild(words)
+      }
+      catch { case _: Throwable => () }
       held.asInstanceOf[js.Dynamic].opener = null
       new everyui.app.UrlTarget(url =>
         if (everyui.component.NavigationUrl.safe(url)) held.location.href = url else held.close(),

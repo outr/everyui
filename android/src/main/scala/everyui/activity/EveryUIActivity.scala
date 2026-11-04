@@ -186,6 +186,8 @@ abstract class EveryUIActivity extends Activity {
   override def onNewIntent(intent: android.content.Intent): Unit = {
     super.onNewIntent(intent)
     setIntent(intent)
+    // the redirect of a sign-in with another site (everyui.auth.SignIn), back from its Custom Tab
+    Option(intent.getData).foreach(uri => everyui.render.SignInAccess.returned(uri.toString))
     everyui.render.PushAccess.tapped(intent)
     everyui.render.Notices.tapped(intent)
     everyui.render.Platform.launched(extras(intent))

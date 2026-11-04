@@ -3723,11 +3723,13 @@ These cover what a web app would otherwise reach the browser for directly, so th
 - **A second window.** `Platform.openWindow(path)` opens the app at an in-app path (`/w/3`) in a new window, the size of
   this one and offset below and to the right. It returns false where nothing opened: the browser refused (open it from
   a click or a key), the path is not the app's, or the platform has one window (desktop, Android, Roku, Apple TV).
-- **An address that comes later.** `Platform.openUrlLater()` reserves a window during the person's press and returns a
-  `UrlTarget`. `go(url)` sends it there once the server answers, and `cancel()` closes it. Each takes effect once.
-  Browsers block a window opened after the click, which an OAuth address from the server would otherwise be. The
-  reserved window is blank until `go` and is cut off from the app (no `opener`). Where the browser refused even that,
-  `go` tries `openUrl`. Elsewhere nothing blocks a late open, so `go` is simply `openUrl`.
+- **An address that comes later.** `Platform.openUrlLater(waiting = "")` reserves a window during the person's press
+  and returns a `UrlTarget`. `go(url)` sends it there once the server answers, and `cancel()` closes it. Each takes
+  effect once. Browsers block a window opened after the click, which an OAuth address from the server would otherwise
+  be. The reserved window shows `waiting` as its title and words, and is cut off from the app (no `opener`) before it
+  goes anywhere. `held` says whether a window really was reserved. Where the browser refused even the blank one,
+  `held` is false and `go` would be refused too, so offer a link the person can press instead. Elsewhere nothing
+  blocks a late open: `held` is true and `go` is `openUrl`. For signing in with another site, use `SignIn` (below).
 - **The build, and reloading into a new one.** `Platform.buildId()` names the running build.
   - **Web**: the version the page loaded its script by, which `everyuiWebScripts` writes as `main.js?v=…` or
     `everyui-loader.js?v=…`.
@@ -3753,6 +3755,93 @@ These cover what a web app would otherwise reach the browser for directly, so th
   It is added only where the platform can draw it in colour: on the web where the browser takes
   `font-tech(color-COLRv1)`. It answers whether it was added. Android, iOS and macOS have system emoji, so elsewhere it
   answers false.
+
+## Signing in with another site (`everyui.auth.SignIn`)
+
+`SignIn.signInWith(callback, minutes = 10)(authorize)` signs in with an OAuth provider (Google, Microsoft, Slack and
+others) the same way on every platform. It shows the provider's page wherever the platform shows one for signing in,
+and answers with the address the provider ended at: the redirect, with its `code` and `state`, or its `error`.
+
+The redirect differs by platform, so the app is given it and answers with the address to sign in at, usually built by
+its server. This is a change from passing an authorize URL directly: the desktop's port is only known as each sign-in
+starts. `authorize` is a `Task[String]`, so the server's round trip fits inside it. Start the sign-in from a press,
+because the web opens its window there, before the address has come.
+
+```scala
+val callback = SignInCallback(web = "/signin/done", scheme = "com.example.app", path = "/signin", loopback = "/signin")
+
+SignIn.signInWith(callback)(redirect => server.authorizeUrl("google", redirect)).map {
+  case Some(ended) => server.finishSignIn(ended)  // the redirect, ?code=…&state=…
+  case None => ()                                 // closed, cancelled, refused, or no answer in time
+}.start()
+```
+
+`authorize` answering "" is None. So is no answer within `minutes`. Each sign-in is answered once. `SignIn.supported`
+says whether the platform can sign in at all.
+
+### The web
+
+- **Redirect**: the page's origin plus `callback.web` (`https://app.example.com/signin/done`).
+- **Window**: a popup of its own, opened in the press. It is blank and cut off from the app (no `opener`) until the
+  address comes.
+- **Callback page**: the provider ends at the callback, a page of the app's own origin. It says the address on a
+  BroadcastChannel that only pages of that origin hear, and closes. The answer is taken only if it starts with the
+  redirect.
+- **Closing**: a window the person closes is None. That is judged once it is closed and the app's window has the focus
+  again, because a provider whose page sets Cross-Origin-Opener-Policy makes the popup look closed while it is still
+  open.
+
+The callback page is either the app itself, which calls `SignIn.finish(callback)` as it starts (true when it handed
+the address back and closed), or a static page of its own:
+
+```html
+<!doctype html><script>
+new BroadcastChannel('everyui-signin').postMessage({ everyui: 'signin', url: location.href }); close()
+</script>
+```
+
+Where the browser opens no window, the whole page goes to the provider instead, with the path it left kept for the
+tab. It comes back to the callback, where the app, starting again, calls `SignIn.resumed(callback)`. That answers the
+address once and puts the address bar back where the sign-in began. The task the sign-in was started with is never
+answered, since its page is gone. The app should call `resumed` at every start, before `finish`.
+
+### Android
+
+- **Redirect**: `callback.scheme + ":" + callback.path` (`com.example.app:/signin`), a reverse-domain scheme as Google
+  asks.
+- **Window**: the provider in a Custom Tab. That is the browser's own window over the app, asked for with the Custom
+  Tabs extras, without the androidx library.
+- **Return**: the redirect comes back to the app's activity (`onNewIntent`). The person back in the app without it
+  (the tab closed, or Back) is None. Where nothing can show the page, as on a television without a browser, it is
+  None at once.
+
+The app's manifest takes the scheme on its main activity, which must be `singleTask`, as EveryUI's is:
+
+```xml
+<intent-filter>
+  <action android:name="android.intent.action.VIEW" />
+  <category android:name="android.intent.category.DEFAULT" />
+  <category android:name="android.intent.category.BROWSABLE" />
+  <data android:scheme="com.example.app" />
+</intent-filter>
+```
+
+### The desktop
+
+This follows RFC 8252.
+
+- **Window**: the system's browser is sent to the provider.
+- **Redirect**: `http://127.0.0.1:<port>` plus `callback.loopback`, at a port taken for this sign-in alone. Register
+  it with the provider as a loopback redirect; Google and Microsoft take any port at 127.0.0.1.
+- **Listening**: the app listens until the redirect comes, then answers the browser with a page saying it may be
+  closed.
+- **Closing**: a browser the person closes tells the app nothing, so only the time running out is None.
+
+### Roku and Apple TV, and iOS
+
+A television has no browser to sign in in, so `signInWith` answers None at once there. Sign in with a code shown on
+the screen instead. EveryUI has no iOS target yet. Where it does, signing in will be an ASWebAuthenticationSession
+with `callback.scheme`, registered as one of the app's URL types; tvOS has no such session.
 
 ## Sign-in, autofill and password managers
 

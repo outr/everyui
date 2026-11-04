@@ -1414,7 +1414,8 @@ object Platform {
   def onTimeZone(f: () => Unit): () => Unit = everyui.date.TimeZones.onChange(f)
 
   /** An address the app will have only later opened once it does: nothing here refuses an open that comes late. */
-  def openUrlLater(): everyui.app.UrlTarget = new everyui.app.UrlTarget(url => openUrl(url), () => ())
+  def openUrlLater(waiting: String = ""): everyui.app.UrlTarget =
+    new everyui.app.UrlTarget(url => openUrl(url), () => ())
 
   /** A moment marked (everyui.perf.Marks), logged where the app was launched with `marks=1`, for a check to read. */
   def marked(name: String, at: Double): Unit = if (launchArg("marks") == "1") log("[mark] " + name + " " + at.toString)
