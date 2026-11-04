@@ -1,6 +1,6 @@
 package everyui.date
 
-import everyui.component.{Component, Container}
+import everyui.component.{Component, Container, Modal}
 import everyui.dialog.DialogButton
 import everyui.event.{PointerEvent, PointerKind}
 import everyui.focus.Focus
@@ -291,6 +291,60 @@ class DatePickerSpec extends FxSpec {
         fx(value()) shouldBe None
         fx(value @= Some(day(12, 25)))
         fx(input.value()) shouldBe "12/25/2026"
+      }
+    }
+    "open its calendar from a press on the field, the caret left there to type on" in {
+      val value = Var(Option(day(9, 29)))
+      val field = fx(new DateField("Due", value))
+      val input = field.input.get
+      onScreen(field) {
+        fx(ui.size.width()) should be >= 600.0
+        fx(input.event.pointer.down @= PointerEvent(PointerKind.Down, input.absoluteLeft + 5.0,
+          input.absoluteTop + 5.0))
+        fx(field.isDropped) shouldBe true
+        fx(Modal.showing) shouldBe false
+        fx(input.editing @= true)
+        fx(field.isDropped) shouldBe true
+        // a date typed shows in the calendar, chosen there, and the calendar stays down
+        fx(input.value @= "10/3/26")
+        fx(value()) shouldBe Some(day(10, 3))
+        val picker = fx(field.droppedPicker.get)
+        fx(picker.calendar.active()) shouldBe day(10, 3)
+        fx(picker.value()) shouldBe Some(day(10, 3))
+        fx(field.isDropped) shouldBe true
+        // a day chosen fills the field and puts the calendar away
+        click(cell(picker.calendar, day(10, 20)))
+        fx(value()) shouldBe Some(day(10, 20))
+        fx(input.value()) shouldBe "10/20/2026"
+        fx(field.isDropped) shouldBe false
+        fx(ui.children().exists(_.isInstanceOf[Container] && Focus.within(picker, ui))) shouldBe false
+      }
+    }
+    "put the calendar a press dropped away with Escape or a press outside, and open it from Alt+Down" in {
+      val value = Var(Option(day(9, 29)))
+      val field = fx(new DateField("Due", value))
+      val input = field.input.get
+      onScreen(field) {
+        def drop(): Unit = fx(input.event.pointer.down @= PointerEvent(PointerKind.Down, input.absoluteLeft + 5.0,
+          input.absoluteTop + 5.0))
+        drop()
+        fx(field.isDropped) shouldBe true
+        fx(input.focus())
+        press(KeyCode.ESCAPE)
+        fx(field.isDropped) shouldBe false
+        drop()
+        fx(ui.event.pointer.down @= PointerEvent(PointerKind.Down, 2.0, 2.0))
+        fx(field.isDropped) shouldBe false
+        // a second press on the field while it is down leaves it down
+        drop()
+        drop()
+        fx(field.isDropped) shouldBe true
+        fx(field.close())
+        // Alt+Down from the keys: the calendar with the focus in it, as the button opens it
+        fx(input.event.key.down @= everyui.event.KeyEvent(everyui.event.Key.ArrowDown, "Down", alt = true))
+        fx(Modal.showing) shouldBe true
+        fx(Modal.close())
+        fx(value()) shouldBe Some(day(9, 29))
       }
     }
     "write in the format it is given" in {

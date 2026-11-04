@@ -2232,6 +2232,13 @@ new DateRangePicker(period, presets = presets)
 DateRangePicker.pick(DateWords.selectRange, period(), presets = presets).map(_.foreach(r => period @= Some(r))).start()
 ```
 
+A press on a `DateField` opens its calendar as well as its button does, as most date inputs do. Where there is room it
+drops under the field and the caret stays in the field, so typing still works: a date typed moves the calendar to it.
+Escape, a press anywhere else, or the focus moving on puts it away, and a day chosen fills the field. Where there is no
+room (a phone), the press opens the dialog. From the keys, Tab into the field opens nothing, and Alt+Down opens the
+calendar with the focus in it, as the button does. `isDropped` says whether a press's calendar is down, and `close()`
+puts it away.
+
 `Calendar` is the month both pickers are made of: the month's name (press it for a grid of twenty years a page), the
 buttons to the month before and after, the days of the week, and the days, today ringed, the chosen filled, and those
 outside `min` and `max` muted and out of reach. The keyboard moves among the days as a grid does: the arrows a day and a

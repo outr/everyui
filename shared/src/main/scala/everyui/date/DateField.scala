@@ -1,7 +1,9 @@
 package everyui.date
 
 import everyui.component.types.Semantics
-import everyui.component.{Container, IconButton, TextInput, TextView}
+import everyui.component.{Component, Container, IconButton, Modal, TextInput, TextView}
+import everyui.event.Key
+import everyui.focus.Focus
 import everyui.font.MaterialIcon
 import everyui.i18n.{Strings, WeekStart}
 import everyui.layout.{HorizontalLayout, VerticalLayout}
@@ -16,6 +18,11 @@ import reactify.*
   * else in a dialog (`DatePicker.pick`). `value` is the date, both ways; the field emptied is None. What is
   * typed changes `value` only once it is a date inside `min` and `max`, and a field left holding anything else says
   * so under it (`error`); left holding a date, it is written again as `format` writes it.
+  *
+  * A press on the field opens the calendar too, as most date inputs do: dropped under it, the caret left in the field
+  * to type on (a date typed moves the calendar to it), put away by Escape, a press anywhere else, the focus moving on,
+  * or a day chosen, which fills the field; where there is no room to drop it, the press opens the dialog. From the keys
+  * the focus coming in by Tab opens nothing, and Alt+Down opens it as the button does, the focus in it.
   *
   * Where the app is worked by a remote (`Platform.remoteNavigation`, or `typing = false`), there is nothing to type:
   * the field shows the date, and OK on it opens the calendar in a dialog.
@@ -35,7 +42,11 @@ class DateField(label: String = DateWords.date, val value: Var[Option[CalendarDa
   val edited: Channel[Option[CalendarDate]] = Channel[Option[CalendarDate]]
   private val across: Double = if (button) width - 44.0 else width
   /** The field typed into, where there is typing. */
-  val input: Option[TextInput] = if (typing) Some(new TextInput(label, width = across)) else None
+  val input: Option[TextInput] = if (typing) Some(new TextInput(label, width = across) {
+    // Alt+Down opens the calendar, as it does a select's list
+    override def keepsEvent(e: everyui.event.KeyEvent): Boolean =
+      (e.key == Key.ArrowDown && e.alt) || super.keepsEvent(e)
+  }) else None
   private val face = new Container
   private val opener = new IconButton(MaterialIcon.CalendarMonth, DateWords.openCalendar, () => open())
   private val line = new Container
@@ -46,9 +57,17 @@ class DateField(label: String = DateWords.date, val value: Var[Option[CalendarDa
   input match {
     case Some(field) =>
       field.value @= value().map(d => format.write(d)).getOrElse("")
-      field.value.attach(t => read(t))
+      field.value.attach { t =>
+        read(t)
+        // a date typed while the calendar is down shows there
+        if (dropped.nonEmpty) read(t, update = false).foreach(d => showing(d))
+      }
       field.editing.attach(e => if (!e) tidy())
       field.submitted.attach(_ => tidy())
+      // a press on the field opens the calendar as well as putting the caret in: dropped under it where there is room,
+      // the focus left in the field to type on; a dialog where there is not
+      field.event.pointer.down.attach(_ => if (dropped.isEmpty) Platform.later(() => pressed()))
+      field.event.key.down.attach(k => if (k.key == Key.ArrowDown && k.alt) open())
       line.children += field
     case None =>
       // what a remote works: the date shown as a field shows it, and OK opens the calendar
@@ -75,6 +94,7 @@ class DateField(label: String = DateWords.date, val value: Var[Option[CalendarDa
   }
   if (button) line.children += opener
   children ++= List(line, warning)
+  onDispose(() => close())
 
   follow(value, (v: Option[CalendarDate]) => input.foreach { field =>
     if (read(field.value(), false) != v) {
@@ -85,11 +105,84 @@ class DateField(label: String = DateWords.date, val value: Var[Option[CalendarDa
   // written again in the language it changes to
   follow(Strings.language, (_: everyui.i18n.Language) => if (error().isEmpty) tidy())
 
-  /** The calendar, open on the date in the field: dropped from it, or in a dialog. */
-  def open(): Unit =
+  /** The calendar, open on the date in the field, the focus in it: dropped from it, or in a dialog. What the button,
+    * Alt+Down and a remote's OK open. */
+  def open(): Unit = {
+    close()
     if (typing && ui.size.width() >= 600.0)
       DatePicker.below(line, value(), min, max, firstDay)(d => set(d))
     else DatePicker.pick(label, value(), min, max, firstDay).map(_.foreach(d => set(d))).start()
+  }
+
+  /** The calendar a press on the field dropped, while it is down: its panel, and what puts it away. */
+  private var dropped: Option[(Container, DatePicker)] = None
+  private var undrop: List[() => Unit] = Nil
+
+  // a press on the field: the calendar dropped beside the caret where there is room, else the dialog
+  private def pressed(): Unit =
+    if (!(typing && ui.size.width() >= 600.0)) open()
+    else if (dropped.isEmpty && !Modal.showing) {
+      // the date now, not a Var bound to `value`: the picker's choice is its own until a day is chosen
+      val now = value()
+      val picker = new DatePicker(Var(now), min, max, firstDay, CalendarDate.today(), headline = false)
+      val panel = DateDialog.panel(picker)
+      DateDialog.place(panel, line)
+      ui.children += panel
+      dropped = Some(panel -> picker)
+      picker.value.attach(v => if (typed.nonEmpty && typed == v) typed = None else v.foreach { d =>
+        close()
+        set(d)
+        input.foreach(_.focus())
+      })
+      // Escape (or Back) puts it away, before anything else hears it
+      val unback = Focus.onBack(_ => {
+        val was = dropped.nonEmpty
+        close()
+        was
+      })
+      // a press anywhere but on it or the field puts it away
+      val pressing = ui.event.pointer.down.attach { e =>
+        if (!inside(panel, e.x, e.y) && !inside(line, e.x, e.y)) close()
+      }
+      // the focus gone somewhere else, by Tab or by the app
+      val leaving = Focus.focused.attach { f =>
+        if (f.exists(c => !Focus.within(c, panel) && !Focus.within(c, line))) close()
+      }
+      undrop = List(unback, () => ui.event.pointer.down.reactions -= pressing, () => Focus.focused.reactions -= leaving)
+    }
+
+  /** The calendar a press dropped put away, where it is down. */
+  def close(): Unit = dropped.foreach { case (panel, _) =>
+    dropped = None
+    val stops = undrop
+    undrop = Nil
+    stops.foreach(f => f())
+    ui.children -= panel
+    panel.dispose()
+  }
+
+  /** Whether a calendar is down under the field now (dropped by a press). */
+  def isDropped: Boolean = dropped.nonEmpty
+
+  // the calendar down now, for a spec to work
+  private[date] def droppedPicker: Option[DatePicker] = dropped.map(_._2)
+
+  // the date typed that the calendar is being moved to: heard back from it as typed, not as a day chosen there (heard
+  // later where reactify puts a change made inside another's reaction after it)
+  private var typed: Option[CalendarDate] = None
+
+  // the dropped calendar moved to `d`, chosen there, without choosing it
+  private def showing(d: CalendarDate): Unit = dropped.foreach { case (_, picker) =>
+    if (!picker.value().contains(d)) {
+      typed = Some(d)
+      picker.value @= Some(d)
+    }
+    picker.calendar.show(d)
+  }
+
+  private def inside(c: Component, x: Double, y: Double): Boolean =
+    x >= c.absoluteLeft && x < c.absoluteLeft + c.size.width() &&
+      y >= c.absoluteTop && y < c.absoluteTop + c.size.height()
 
   private def set(d: CalendarDate): Unit = {
     error @= None

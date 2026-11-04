@@ -42,6 +42,14 @@ private[date] object DateDialog {
   /** `body` in a panel under `anchor` (over it where below has no room), kept on the screen, with the focus on
     * `focus`: Back, Escape or a click outside closes it, and so does `close`. */
   def drop(anchor: Component, body: Component, focus: () => Option[Component], closed: () => Unit = () => ()): Container = {
+    val p = panel(body)
+    place(p, anchor)
+    Modal.show(p, focus().getOrElse(body), closed, dim = false, centre = false)
+    p
+  }
+
+  /** `body` on a raised card of its own, as a dropped calendar is drawn. */
+  def panel(body: Component): Container = {
     val panel = new Container
     val inset = 12.0
     body.position.left @= inset
@@ -54,6 +62,11 @@ private[date] object DateDialog {
     panel.borderWidth @= 1.0
     panel.borderColor := Theme.border()
     panel.shadow @= Some(Shadow(0.0, 6.0, 24.0, Color.Black.withAlpha(0.45)))
+    panel
+  }
+
+  /** `panel` under `anchor`, lined up with its start, or above it where there is no room below. */
+  def place(panel: Container, anchor: Component): Unit = {
     val left = anchor.absoluteLeft
     val top = anchor.absoluteTop
     // lined up with the anchor's start: its right edge in a right-to-left language
@@ -65,7 +78,5 @@ private[date] object DateDialog {
       if (under + panel.size.height() <= ui.size.height() - 8.0) under
       else math.max(8.0, top - panel.size.height() - 4.0)
     }
-    Modal.show(panel, focus().getOrElse(body), closed, dim = false, centre = false)
-    panel
   }
 }
