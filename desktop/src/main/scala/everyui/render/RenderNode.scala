@@ -695,6 +695,36 @@ class RenderNode(val fx: Node) {
     case field: TextInputControl => field.positionCaret(at)
     case _ => ()
   }
+  /** Where what is chosen in a text field starts and ends, in characters: the caret, both, where nothing is. */
+  def getSelectionStart(): Int = fx match {
+    case field: TextInputControl => field.getSelection.getStart
+    case _ => 0
+  }
+  def getSelectionEnd(): Int = fx match {
+    case field: TextInputControl => field.getSelection.getEnd
+    case _ => 0
+  }
+  /** `start` to `end` chosen in a text field. */
+  def setSelection(start: Int, end: Int): Unit = fx match {
+    case field: TextInputControl => field.selectRange(start, end)
+    case _ => ()
+  }
+  /** `start` to `end` replaced by `words`, which the field's undo takes back as it does typing; the caret after them. */
+  def replaceInput(start: Int, end: Int, words: String): Unit = fx match {
+    case field: TextInputControl =>
+      field.replaceText(start, end, words)
+      field.positionCaret(start + words.length)
+    case _ => ()
+  }
+  /** What is chosen in a text field, told as it changes, once for each change. */
+  def onSelection(f: (Int, Int) => Unit): Unit = fx match {
+    case field: TextInputControl =>
+      field.selectionProperty.addListener(new ChangeListener[javafx.scene.control.IndexRange] {
+        override def changed(o: ObservableValue[? <: javafx.scene.control.IndexRange], was: javafx.scene.control.IndexRange,
+                             now: javafx.scene.control.IndexRange): Unit = f(now.getStart, now.getEnd)
+      })
+    case _ => ()
+  }
   /** Out of use, or back in it: a text field keeps its words but takes no typing. Nothing reads the nodes' roles here
     * (`setSemantics`), so there is nothing to tell. */
   def setDisabled(disabled: Boolean): Unit = fx match {

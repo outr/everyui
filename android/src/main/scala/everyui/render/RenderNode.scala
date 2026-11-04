@@ -1002,6 +1002,34 @@ class RenderNode(val view: View) {
     case e: EditText => e.setSelection(math.max(0, math.min(at, e.length())))
     case _ => ()
   }
+  /** Where what is chosen in the field starts and ends, in characters: the caret, both, where nothing is. */
+  def getSelectionStart(): Int = getCaret()
+  def getSelectionEnd(): Int = view match {
+    case e: EditText => math.max(0, e.getSelectionEnd)
+    case _ => 0
+  }
+  /** `start` to `end` chosen in the field. */
+  def setSelection(start: Int, end: Int): Unit = view match {
+    case e: EditText =>
+      val n = e.length()
+      e.setSelection(math.max(0, math.min(start, n)), math.max(0, math.min(end, n)))
+    case _ => ()
+  }
+  /** `start` to `end` replaced by `words` in the field's own text, as a keyboard puts what it types; the caret after
+    * them. Android keeps no undo of its own for a field to take it back with. */
+  def replaceInput(start: Int, end: Int, words: String): Unit = view match {
+    case e: EditText =>
+      val n = e.length()
+      val from = math.max(0, math.min(start, n))
+      e.getText.replace(from, math.max(from, math.min(end, n)), words)
+      e.setSelection(math.min(from + words.length, e.length()))
+    case _ => ()
+  }
+  /** What is chosen in the field, told as it changes (FieldView.onSelectionChanged). */
+  def onSelection(f: (Int, Int) => Unit): Unit = view match {
+    case e: FieldView => e.selecting = f
+    case _ => ()
+  }
   /** Out of use, or back in it: a field takes no typing and TalkBack reads it as disabled. Other views are only drawn
     * dimmed by the app: disabling one would stop the touches that move the focus to it. */
   // out of use (`Component.disabled`): TalkBack reads a button so, though it stays where the focus can reach it

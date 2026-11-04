@@ -21,6 +21,8 @@ final class FieldView(context: Context) extends EditText(context) {
   var action: () => Unit = () => ()
   /** What a paste becomes, asked with its words before they land (`InputView.pasted`). */
   var pasting: Option[String => PasteAction] = None
+  /** What is chosen, told as it changes (`InputView.selected`). */
+  var selecting: (Int, Int) => Unit = null
   private var editing = false
 
   setFocusable(false)
@@ -57,6 +59,12 @@ final class FieldView(context: Context) extends EditText(context) {
   }
 
   override def dispatchTouchEvent(event: MotionEvent): Boolean = editing && super.dispatchTouchEvent(event)
+
+  // told by EditText from its own constructor too, before `selecting` is set
+  override def onSelectionChanged(start: Int, end: Int): Unit = {
+    super.onSelectionChanged(start, end)
+    if (selecting != null) selecting(start, end)
+  }
 
   override def onKeyPreIme(keyCode: Int, event: KeyEvent): Boolean = {
     if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction == KeyEvent.ACTION_UP) done()

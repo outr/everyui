@@ -351,6 +351,12 @@ class RenderNode(val sg: SGNode) {
   /** No field of its own here: the caret is always after the words. */
   def getCaret(): Int = 0
   def setCaret(at: Int): Unit = ()
+  /** Nothing is chosen in a field here: its words are asked for whole (`Platform.editField`), the caret after them. */
+  def getSelectionStart(): Int = 0
+  def getSelectionEnd(): Int = 0
+  def setSelection(start: Int, end: Int): Unit = ()
+  def replaceInput(start: Int, end: Int, words: String): Unit = ()
+  def onSelection(f: (Int, Int) => Unit): Unit = ()
   /** Nothing reads the nodes here, and a field is only its words: the app dims what is out of use. */
   def setDisabled(disabled: Boolean): Unit = ()
   /** A field here is only its words, shown, and new ones are asked for by the app (`Platform.editField`), which a

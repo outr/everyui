@@ -49,6 +49,9 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   private val direct = Platform.keyboardSupport()
   // the platform's field, where there is one: its focus taken again (`refocus`)
   private var platformField: Option[InputView] = None
+  /** The platform's own field it wraps, where the platform has one (not a Roku's or an Apple TV's): for its caret and
+    * what is chosen in it (`InputView.selection`, `select`, `replace`, `selected`). */
+  def field: Option[InputView] = platformField
   private val caption = new TextView {
     content := title()
     font.size @= 12.0

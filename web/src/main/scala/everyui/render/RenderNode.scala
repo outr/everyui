@@ -958,6 +958,50 @@ class RenderNode(val el: html.Element) {
     case t: html.TextArea => t.setSelectionRange(at, at)
     case _ => ()
   }
+  /** Where what is chosen in the field starts and ends, as `getCaret` counts: the caret, both, where nothing is. */
+  def getSelectionStart(): Int = getCaret()
+  def getSelectionEnd(): Int = el match {
+    case i: html.Input => i.selectionEnd
+    case t: html.TextArea => t.selectionEnd
+    case _ => 0
+  }
+  /** `start` to `end` chosen in the field. */
+  def setSelection(start: Int, end: Int): Unit = el match {
+    case i: html.Input => i.setSelectionRange(start, end)
+    case t: html.TextArea => t.setSelectionRange(start, end)
+    case _ => ()
+  }
+  /** `start` to `end` replaced by `words` as if typed, so the browser's undo takes it back: chosen, then the browser's
+    * own insertText where it still has it (the one way into a field's undo), else set in place, the field told of it
+    * as typing tells it. The caret after the words. */
+  def replaceInput(start: Int, end: Int, words: String): Unit = el match {
+    case _: html.Input | _: html.TextArea =>
+      val was = dom.document.activeElement
+      if (!(was eq el)) el.asInstanceOf[html.Element].focus()
+      setSelection(start, end)
+      val typed = try dom.document.asInstanceOf[js.Dynamic].execCommand("insertText", false, words).asInstanceOf[Boolean]
+      catch { case _: Throwable => false }
+      if (!typed) {
+        el.asInstanceOf[js.Dynamic].setRangeText(words, start, end, "end")
+        el.dispatchEvent(new dom.Event("input", new dom.EventInit { bubbles = true }))
+      }
+    case _ => ()
+  }
+  /** What is chosen, told as it changes: by the pointer, the keys, typing or the app; once for each change. */
+  def onSelection(f: (Int, Int) => Unit): Unit = el match {
+    case _: html.Input | _: html.TextArea =>
+      var last = (-1, -1)
+      val look: js.Function1[dom.Event, Unit] = _ => {
+        val now = (getSelectionStart(), getSelectionEnd())
+        if (now != last) {
+          last = now
+          f(now._1, now._2)
+        }
+      }
+      // the field's own selectionchange where the browser has it, and where it does not, what moves the selection
+      List("selectionchange", "select", "input", "keyup", "pointerup", "focus").foreach(el.addEventListener(_, look))
+    case _ => ()
+  }
   /** Out of use, or back in it: a screen reader hears so (`aria-disabled`), and a field keeps its words and its caret
     * but takes no typing (read-only, which unlike disabled leaves it where the focus can reach it). */
   def setDisabled(disabled: Boolean): Unit = {

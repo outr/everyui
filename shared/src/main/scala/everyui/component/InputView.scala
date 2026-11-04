@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.component.feature.FontFeature
-import everyui.component.types.{Autofill, PasteAction, Prop, TextDirection}
+import everyui.component.types.{Autofill, PasteAction, Prop, TextDirection, TextRange}
 import everyui.render.Nodes
 import reactify.*
 
@@ -81,6 +81,32 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   /** The caret put at `at`, in characters from the start of `text`, nothing chosen. */
   def moveCaret(at: Int): Unit = node.setCaret(at)
 
+  /** What is chosen now, in characters of `text` (start before end); the caret alone where nothing is. Where the
+    * platform has no caret of its own (a Roku, an Apple TV), the end of the words. */
+  def selection: TextRange = {
+    val (a, b) = (node.getSelectionStart(), node.getSelectionEnd())
+    TextRange(math.min(a, b), math.max(a, b))
+  }
+
+  /** What is chosen, followed as the person or the app changes it: by the pointer, the keys, typing, or `select`. */
+  val selected: Val[TextRange] = selectedNow
+  private lazy val selectedNow: Var[TextRange] = own(Var(TextRange(0, 0)))
+
+  /** `start` to `end` chosen, in characters of `text` (kept within it). */
+  def select(start: Int, end: Int): Unit = {
+    val n = text().length
+    node.setSelection(math.max(0, math.min(start, n)), math.max(0, math.min(end, n)))
+  }
+
+  /** `start` to `end` replaced by `words`, the caret after them: as if typed, so the platform's undo takes it back
+    * where it has one (the web's, the desktop's), and `text` follows as it does typing. */
+  def replace(start: Int, end: Int, words: String): Unit = {
+    val n = text().length
+    val from = math.max(0, math.min(math.min(start, end), n))
+    val to = math.max(from, math.min(math.max(start, end), n))
+    node.replaceInput(from, to, words)
+  }
+
   /** The platform's focus taken again by the field this is the caret of (Component.refocus): at once, where it is being
     * edited (`editing`); else, with a keyboard at hand (`direct`), by editing it again. */
   private[everyui] def retake(editing: Var[Boolean], direct: Boolean): Unit =
@@ -89,6 +115,10 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   text.attach(v => if (node.getValue() != v) node.setValue(v))
   node.onValue(v => if (text() != v) text @= v)
   node.onPaste(words => pasted().map(f => f(words)).getOrElse(PasteAction.Insert))
+  node.onSelection((a, b) => {
+    val now = TextRange(math.min(a, b), math.max(a, b))
+    if (selectedNow() != now) selectedNow @= now
+  })
   asked.attach(_ => hint())
   passkey.attach(_ => hint())
   section.attach(_ => hint())

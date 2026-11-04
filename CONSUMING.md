@@ -2011,6 +2011,30 @@ Copy, rather than as the page's styled HTML: a Markdown view's blocks and a `Dat
 selection in a chat's messages pastes as its paragraphs, lists and tables, cut to the words selected.
 `Clipboard.selection()` answers the same two flavours for a context menu's Copy.
 
+### What is chosen in a field (`InputView.selection`)
+
+A field's selection can be read, set, followed and replaced, which is enough for a formatting toolbar that wraps the
+chosen words in Markdown (`**`, `_`, `[](…)`) or for keys such as Primary+B. `TextInput.field` and `TextArea.field`
+are the platform's `InputView`, where the platform has one. All positions are in characters of `text`.
+
+- `selection` is a `TextRange(start, end)`, with `start` before `end`. Where nothing is chosen it is the caret alone
+  (`collapsed`).
+- `selected` is a `Val[TextRange]` that follows the selection as the pointer, the keys, typing or the app change it.
+- `select(start, end)` chooses a range, kept within the words.
+- `replace(start, end, words)` puts `words` in place of the range as if they were typed, with the caret after them,
+  and `text` follows as it does for typing. The platform's undo takes it back: on the web through the browser's own
+  `insertText`, and on the desktop through JavaFX's undo. Android keeps no undo for a field.
+
+On a Roku and an Apple TV there is no field (`field` is None), so nothing can be chosen.
+
+```scala
+area.field.foreach { input =>
+  val r = input.selection
+  val words = area.value().substring(r.start, r.end)
+  input.replace(r.start, r.end, "**" + words + "**")
+}
+```
+
 ### Pasting (`pasted`)
 
 The app decides what a paste becomes before it lands. `pasted` on an `InputView`, a `TextInput` and a `TextArea` is
