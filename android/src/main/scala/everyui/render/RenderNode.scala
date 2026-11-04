@@ -242,7 +242,12 @@ class RenderNode(val view: View) {
 
   /** Detach from the parent, if attached. */
   def setMediaHeaders(headers: Map[String, String]): Unit = media.foreach(_.setHeaders(headers))
-  def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  /** A site-absolute path is the APK's asset (Media3's `asset:///`), or the app's server's where it holds none
+    * (`Host.address`). */
+  def setMediaSource(url: String): Unit = media.foreach { m =>
+    val at = Host.address(url)
+    m.setSource(if (url.startsWith("/") && !url.startsWith("//") && at.indexOf("://") < 0) "asset:///" + at else at)
+  }
   /** Where the next source starts, in seconds: handed to the player with it, before it is prepared. */
   def setMediaStart(seconds: Double): Unit = media.foreach(_.setStart(seconds))
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = media.foreach(_.setSidecars(sidecars))
@@ -288,7 +293,10 @@ class RenderNode(val view: View) {
   /** Show this address. */
   def setWebSource(url: String): Unit = if (webSandbox != null) {
     webSession = java.lang.Long.toString((math.random() * 1.0e12).toLong, 36)
-    webSandbox.load(url)
+    // a site-absolute path is the APK's page, or the app's server's where it holds none (Host.address)
+    val at = Host.address(url)
+    val packaged = url.startsWith("/") && !url.startsWith("//") && at.indexOf("://") < 0
+    webSandbox.load(if (packaged) "file:///android_asset/" + at else at)
   }
 
   /** Who the page is told is asking, for the loads after this one; empty is the engine's own. */
@@ -914,6 +922,9 @@ class RenderNode(val view: View) {
         case "username" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
         case "tel" => T.TYPE_CLASS_PHONE
         case "url" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_URI
+        // a code of letters and digits on the whole keyboard, as typed: nothing suggested or corrected, no capitals
+        case "one-time-code-text" =>
+          T.TYPE_CLASS_TEXT | T.TYPE_TEXT_FLAG_NO_SUGGESTIONS | T.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
         case "one-time-code" | "cc-number" | "cc-csc" => T.TYPE_CLASS_NUMBER
         case "name" | "given-name" | "additional-name" | "family-name" | "nickname" | "cc-name" =>
           T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_PERSON_NAME | T.TYPE_TEXT_FLAG_CAP_WORDS
@@ -1233,7 +1244,7 @@ object RenderNode {
     case "username" => View.AUTOFILL_HINT_USERNAME
     case "current-password" => View.AUTOFILL_HINT_PASSWORD
     case "new-password" => "newPassword"
-    case "one-time-code" => "smsOTPCode"
+    case "one-time-code" | "one-time-code-text" => "smsOTPCode"
     case "email" => View.AUTOFILL_HINT_EMAIL_ADDRESS
     case "tel" => View.AUTOFILL_HINT_PHONE
     case "name" => View.AUTOFILL_HINT_NAME
@@ -1453,6 +1464,17 @@ object Host {
   var freeze: Double = -1.0
   var viewportWidth: Double = -1.0
   var viewportHeight: Double = -1.0
+  /** How much of the window the on-screen keyboard covers, in pixels from the bottom: what the app is laid out above
+    * (`Platform.screenHeight`), as the web lays a page out in what the keyboard leaves (`interactive-widget`). */
+  var keyboard: Int = 0
+  /** Told as the keyboard comes, goes or changes height (`Platform.onResize`). */
+  var keyboardMoved: List[() => Unit] = Nil
+
+  /** The keyboard's height from the window's insets, the app told where it changed. */
+  def keyboardInset(pixels: Int): Unit = if (pixels != keyboard) {
+    keyboard = pixels
+    keyboardMoved.foreach(f => f())
+  }
 
   lazy val settings: android.content.SharedPreferences = activity.getSharedPreferences("everyui", Context.MODE_PRIVATE)
 
@@ -1579,8 +1601,29 @@ object Host {
 
   /** A bitmap by URI, then `done` on the main thread: at once from the cache or, for a small one, the APK; after a
     * download, or the decoding of a large one of the APK's own, on one of the loading threads (`null` if it cannot be
-    * had). */
-  def bitmapThen(uri: String)(done: Bitmap => Unit): Unit = held(uri) match {
+    * had). A site-absolute path is the APK's asset, or the app's server's where the APK holds none (`address`). */
+  def bitmapThen(asked: String)(done: Bitmap => Unit): Unit = loaded(address(asked), done)
+
+  /** Where `uri` is read from: a site-absolute path (`/api/portrait/3`) from the app's server (`Platform.origin`) where
+    * the APK holds no asset there and there is a server to ask, else the asset; anything else as it is. */
+  def address(uri: String): String =
+    if (!uri.startsWith("/") || uri.startsWith("//")) uri
+    else {
+      val packaged = uri.stripPrefix("/")
+      val origin = Platform.origin()
+      if (origin.isEmpty || packagedHere(packaged)) packaged else origin.stripSuffix("/") + uri
+    }
+
+  // whether the APK holds the asset at `path`, asked once each
+  private def packagedHere(path: String): Boolean = packaged.getOrElseUpdate(path,
+    try {
+      activity.getAssets.open(path).close()
+      true
+    }
+    catch { case _: java.io.IOException => false })
+  private val packaged = mutable.Map.empty[String, Boolean]
+
+  private def loaded(uri: String, done: Bitmap => Unit): Unit = held(uri) match {
     case Some(b) => done(b)
     case None if uri.startsWith("http") || uri.startsWith("file:") =>
       elsewhere(uri, done) {
@@ -1612,7 +1655,9 @@ object Host {
         val in = activity.getContentResolver.openInputStream(address)
         try BitmapFactory.decodeStream(in, null, options) finally in.close()
       }
-    case None if pixels(uri) <= decodedHere => done(bitmap(uri))
+    // one the APK does not hold measures 0 and is read on a loading thread, where its failure is a picture missing
+    // rather than an exception out of whatever asked (an activity starting)
+    case None if pixels(uri) > 0L && pixels(uri) <= decodedHere => done(bitmap(uri))
     case None =>
       elsewhere(uri, done) {
         val in = activity.getAssets.open(uri)
@@ -2495,8 +2540,11 @@ object Platform {
     * a pinned viewport over the size the app is drawn at. */
   def screenWidth(): Double =
     if (Host.viewportWidth > 0.0) Host.viewportWidth / everyui.theme.UiScale() else windowPixels()._1.toDouble / Host.scale
+  /** Less what the on-screen keyboard covers while it is up (Host.keyboard), so a field at the bottom (a composer) is
+    * laid out above it. */
   def screenHeight(): Double =
-    if (Host.viewportHeight > 0.0) Host.viewportHeight / everyui.theme.UiScale() else windowPixels()._2.toDouble / Host.scale
+    if (Host.viewportHeight > 0.0) Host.viewportHeight / everyui.theme.UiScale()
+    else (windowPixels()._2 - Host.keyboard).toDouble / Host.scale
   /** The app drawn `factor` times its size (everyui.theme.UiScale), over the density it is already scaled by. */
   def setUiScale(factor: Double): Unit = Host.scaleRoot()
 
@@ -2604,10 +2652,13 @@ object Platform {
   /** Shortcuts are made with Ctrl on Android. */
   def commandKey(): Boolean = false
 
-  def onResize(f: () => Unit): Unit =
+  /** `f` told as the window changes size, and as the on-screen keyboard comes, goes or changes height. */
+  def onResize(f: () => Unit): Unit = {
     Host.root.addOnLayoutChangeListener((_, l, t, r, b, oldL, oldT, oldR, oldB) =>
       if (r - l != oldR - oldL || b - t != oldB - oldT) f()
     )
+    Host.keyboardMoved = Host.keyboardMoved :+ f
+  }
 
   /** A number from 0 up to 1, at random. */
   def random(): Double = math.random()

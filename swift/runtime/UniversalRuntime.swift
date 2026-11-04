@@ -671,7 +671,7 @@ func uiContentType(_ token: String) -> UITextContentType? {
     case "username": return .username
     case "current-password": return .password
     case "new-password": return .newPassword
-    case "one-time-code": return .oneTimeCode
+    case "one-time-code", "one-time-code-text": return .oneTimeCode
     case "email": return .emailAddress
     case "tel": return .telephoneNumber
     case "url": return .URL
@@ -710,9 +710,11 @@ func uiEditText(_ title: V, _ value: V, _ secure: V, _ autofill: V, _ done: V) -
         case "tel": field.keyboardType = .phonePad
         case "url": field.keyboardType = .URL
         case "one-time-code", "cc-number": field.keyboardType = .numberPad
+        case "one-time-code-text": field.keyboardType = .asciiCapable
         default: break
         }
-        if field.isSecureTextEntry || token == "email" || token == "username" || token == "url" {
+        if field.isSecureTextEntry || token == "email" || token == "username" || token == "url" ||
+            token == "one-time-code-text" {
             field.autocapitalizationType = .none
             field.autocorrectionType = .no
         }

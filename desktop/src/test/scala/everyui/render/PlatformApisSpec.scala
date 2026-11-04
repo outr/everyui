@@ -90,6 +90,13 @@ class PlatformApisSpec extends FxSpec {
       Platform.online() shouldBe true
       Platform.registerColorEmoji(everyui.font.Faces.OpenSansRegular) shouldBe false
     }
+    "read a site-absolute path from its own files, and a picture that cannot be had as one that failed" in {
+      Host.address("/fonts/OpenSans-Regular.ttf") shouldBe
+        new java.io.File(Host.assets, "fonts/OpenSans-Regular.ttf").toURI.toString
+      Host.address("https://x.example.com/a.png") shouldBe "https://x.example.com/a.png"
+      val missing = fx(Host.image("/api/portrait/none.png"))
+      missing.isError shouldBe true
+    }
     "answer an ask with nothing where there is no page to ask" in {
       var answer: Option[Option[String]] = None
       fx(new WebView("bridge").ask("ping")(a => answer = Some(a)))

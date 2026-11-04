@@ -71,6 +71,13 @@ abstract class EveryUIActivity extends Activity {
     def extent(size: Double): Int = if (size > 0.0) size.toInt else ViewGroup.LayoutParams.MATCH_PARENT
     setContentView(root, new ViewGroup.LayoutParams(extent(Host.viewportWidth), extent(Host.viewportHeight)))
     Host.root = root
+    // the window is drawn under the bars, so the keyboard resizes nothing (adjustResize included): its height comes
+    // as an inset instead, and the app is laid out above it
+    root.setOnApplyWindowInsetsListener((view, insets) => {
+      Host.keyboardInset(if (insets.isVisible(WindowInsets.Type.ime())) insets.getInsets(WindowInsets.Type.ime()).bottom
+        else 0)
+      view.onApplyWindowInsets(insets)
+    })
     // laid out in the density's units, times the size the app is drawn at (everyui.theme.UiScale)
     if (Host.viewportWidth <= 0.0) Host.density = getResources.getDisplayMetrics.density.toDouble
     Host.scaleRoot()

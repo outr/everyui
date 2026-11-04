@@ -310,6 +310,11 @@ so nothing is left shifted once the keyboard closes. iOS Safari always puts its 
 in the visual viewport; `interactive-widget=resizes-content` asks Chrome on Android to make the window itself shorter
 instead, so it never moves the page to show the field first.
 
+The Android app does the same. The window is drawn under the system bars, so the keyboard resizes nothing there, and
+`adjustResize` in the manifest has no effect. EveryUI reads the keyboard's height from the window's insets instead:
+`ui` is as tall as what the keyboard leaves showing, and `Platform.onResize` is told as the keyboard comes, goes or
+changes height.
+
 A build without the plugin writes the bundled faces' rules itself, with the files in `fonts/` next to the page (copy
 `assets/fonts/*.ttf` from this repository, and `assets/images` if the app uses them):
 
@@ -3632,6 +3637,12 @@ The app's own `proguard-rules.pro` keeps its activity (`-keep class myapp.MainAc
 manifest names; `everyuiAndroidRules` has the rest. A shipping build passes its release key as an
 `AndroidApk.Signing`, a `Desugar` for the Java library on Android before 8, and `bundletool` for an app bundle.
 
+**Site-absolute paths off the web.** On the desktop and Android, an `ImageView`'s, a video's or a `WebView`'s
+site-absolute source (`/images/logo.png`, `/api/portrait/3`) is read from the app's own files where it has one there:
+`assets/` on the desktop, the APK's assets on Android. Otherwise it is read from the app's server, `Platform.origin()`
+(the "everyui.origin" setting, which `Network.origin` is set from), where the app has one. A picture that cannot be
+had, missing from both, is a picture that failed to load, never an exception out of whatever asked for it.
+
 ### The Roku
 
 The Roku runs no JVM: the app is compiled against everyui-roku (keeping its trees with `-Yretain-trees`), then
@@ -3910,7 +3921,7 @@ Every text field (`TextInput`, `TextArea`, and `InputView` beneath them) says wh
 
 | `Autofill` | For |
 |---|---|
-| `Username`, `CurrentPassword`, `NewPassword`, `OneTimeCode` | signing in, signing up, changing a password, a code sent by text |
+| `Username`, `CurrentPassword`, `NewPassword`, `OneTimeCode`, `OneTimeCodeText` | signing in, signing up, changing a password, a code sent by text: `OneTimeCode` of digits on a phone's number pad, `OneTimeCodeText` of letters and digits on the whole keyboard, nothing suggested or corrected |
 | `Email`, `Tel`, `Url` | contact details |
 | `Name`, `GivenName`, `AdditionalName`, `FamilyName`, `Nickname`, `Organization` | a person |
 | `StreetAddress`, `AddressLine1`, `AddressLine2`, `Locality`, `Region`, `PostalCode`, `Country` | an address |

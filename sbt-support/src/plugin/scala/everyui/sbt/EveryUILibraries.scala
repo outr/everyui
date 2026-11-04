@@ -53,8 +53,13 @@ object EveryUILibraries {
 
   /** What everyui-android compiles against beside android.jar: Media3's archives and Credential Manager's, each named
     * and none taken transitively (an archive's dependencies are archives too, and a build takes only those it can
-    * open), and what their classes reach for. Resolved from `google`. */
+    * open), and what their classes reach for: androidx's collections and core among them, without which the shrinker
+    * fails on a class it cannot find (Media3's AsynchronousMediaCodecCallback's CircularIntArray). Resolved from
+    * `google`. */
   def android: Seq[ModuleID] =
     media3Modules.map(m => ("androidx.media3" % m % media3Version).intransitive().artifacts(Artifact(m, "aar", "aar"))) ++
-      Seq(credentials, "androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android")
+      Seq(credentials, "androidx.annotation" % "annotation-jvm" % "1.9.1",
+        "com.google.guava" % "guava" % "33.4.0-android",
+        "androidx.collection" % "collection-jvm" % "1.5.0",
+        ("androidx.core" % "core" % "1.13.1").intransitive().artifacts(Artifact("core", "aar", "aar")))
 }

@@ -9,7 +9,12 @@ import reactify.*
   * other platforms say it. */
 enum Autofill {
   case Off
-  case Username, CurrentPassword, NewPassword, OneTimeCode
+  case Username, CurrentPassword, NewPassword
+  /** A one-time code of digits (a text message's), typed on a phone's number pad. */
+  case OneTimeCode
+  /** A one-time code of letters and digits, filled as a one-time code is, typed on the whole keyboard as it is written:
+    * nothing suggested or corrected, no capitals put in. */
+  case OneTimeCodeText
   case Email, Tel, Url
   case Name, GivenName, AdditionalName, FamilyName, Nickname, Organization
   case StreetAddress, AddressLine1, AddressLine2, Locality, Region, PostalCode, Country
@@ -37,7 +42,8 @@ object Autofill {
   /** Whether what it asks for reads left to right in every language: a sign-in, a code, an email address, a phone
     * number, a web address (`InputView.direction`). */
   def leftToRight(autofill: Autofill): Boolean = autofill match {
-    case Autofill.Username | Autofill.CurrentPassword | Autofill.NewPassword | Autofill.OneTimeCode | Autofill.Email |
+    case Autofill.Username | Autofill.CurrentPassword | Autofill.NewPassword | Autofill.OneTimeCode |
+         Autofill.OneTimeCodeText | Autofill.Email |
          Autofill.Tel | Autofill.Url => true
     case _ => false
   }
@@ -50,6 +56,8 @@ object Autofill {
     case Autofill.CurrentPassword => "current-password"
     case Autofill.NewPassword => "new-password"
     case Autofill.OneTimeCode => "one-time-code"
+    // the platform's one-time code, on the whole keyboard (each backend says it as "one-time-code")
+    case Autofill.OneTimeCodeText => "one-time-code-text"
     case Autofill.Email => "email"
     case Autofill.Tel => "tel"
     case Autofill.Url => "url"

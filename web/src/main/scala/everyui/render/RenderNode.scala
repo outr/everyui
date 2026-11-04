@@ -850,9 +850,12 @@ class RenderNode(val el: html.Element) {
     * (`inputmode`: the type otherwise stays text, which keeps the caret and the selection the page's to set). "off"
     * keeps them all out (a search box, notes, a guest's name), with the markers 1Password, LastPass, Bitwarden and
     * Dashlane go by; "" says nothing. */
-  def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean): Unit = {
+  def setAutofill(asked: String, section: String, name: String, passkey: Boolean, literal: Boolean): Unit = {
     def attribute(key: String, value: String): Unit =
       if (value.isEmpty) el.removeAttribute(key) else el.setAttribute(key, value)
+    // a code of letters and digits is a one-time code to the browser, typed on the whole keyboard
+    val lettered = asked == "one-time-code-text"
+    val token = if (lettered) "one-time-code" else asked
     val off = token == "off"
     val known = token.nonEmpty && !off
     val group = if (section.isEmpty || !known) "" else if (section == "shipping" || section == "billing") section + " "
@@ -874,7 +877,7 @@ class RenderNode(val el: html.Element) {
       case "email" => "email"
       case "tel" => "tel"
       case "url" => "url"
-      case "one-time-code" | "cc-number" | "cc-csc" => "numeric"
+      case "one-time-code" | "cc-number" | "cc-csc" => if (lettered) "" else "numeric"
       case _ => ""
     })
     // what is typed as it is meant, not as the phone would correct it: what these fill, or a field held literal

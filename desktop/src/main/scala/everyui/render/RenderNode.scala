@@ -765,7 +765,8 @@ class RenderNode(val fx: Node) {
 
   // JavaFX Media takes no request headers: what it is given is an address and nothing else
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
-  def setMediaSource(url: String): Unit = media.foreach(_.setSource(url))
+  /** A site-absolute path is the app's own file, or its server's where it has none (`Host.address`). */
+  def setMediaSource(url: String): Unit = media.foreach(_.setSource(Host.address(url)))
   def setMediaStart(seconds: Double): Unit = media.foreach(_.setStart(seconds))
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
   def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
@@ -936,7 +937,14 @@ object Host {
       images.put(uri, had)
       had
     case None =>
-      val loaded = new Image(uri, uri.startsWith("http"))
+      val at = address(uri)
+      // an address that cannot be had is a picture that failed (isError), never an exception out of what asked for it
+      val loaded = try new Image(at, at.startsWith("http"))
+      catch {
+        case t: IllegalArgumentException =>
+          Platform.log("image: " + uri + " cannot be loaded (" + t.getMessage + ")")
+          new Image(new java.io.ByteArrayInputStream(Array.emptyByteArray))
+      }
       images.put(uri, loaded)
       imageBytes += bytesOf(loaded)
       while (imageBytes > imageBudget && images.size > 1) {
@@ -946,6 +954,16 @@ object Host {
       }
       loaded
   }
+
+  /** Where `uri` is read from: a site-absolute path (`/api/portrait/3`) the app's own file under `assets` where there
+    * is one, else the app's server's (`Platform.origin`) where it has one; anything else as it is. */
+  def address(uri: String): String =
+    if (!uri.startsWith("/") || uri.startsWith("//")) uri
+    else {
+      val packaged = new File(assets, uri.stripPrefix("/"))
+      val origin = Platform.origin()
+      if (packaged.isFile || origin.isEmpty) packaged.toURI.toString else origin.stripSuffix("/") + uri
+    }
 
   // as it will be held once it has loaded (nothing yet while it is on its way)
   private def bytesOf(image: Image): Long = math.round(image.getWidth * image.getHeight * 4.0)
