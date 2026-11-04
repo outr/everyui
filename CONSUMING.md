@@ -1054,6 +1054,52 @@ A Roku and an Apple TV draw a run's words in the paragraph's own style (no bold,
 tables, lists and code blocks as everywhere else. The desktop draws a paragraph's runs in a `TextFlow` of their own
 styles (`Nodes.richText`); JavaFX paints no background behind a run, so code in a line is told by its face.
 
+### Rich text (`everyui.rich`)
+
+A rich document is a `RichDoc`: blocks in order, each a `RichBlock` holding a `kind` and its words as runs. The same
+model runs on every platform, and it is what the rich-text editor edits.
+
+- **Kinds** (`BlockKind`): `Paragraph`, `Heading(1 to 3)`, `Bullet(depth)` and `Numbered(depth)` (nested from 0 to
+  `RichDoc.deepest`), `Quote`, `Code(language)`, `Rule`, and `Picture(image)`, a picture standing as a block of its
+  own.
+- **Runs** (`RichInline`): `Text(words, marks)`, where a line break is a "\n", and `Image(image, marks)`, a picture
+  among the words that counts as one character.
+- **Marks** (`Mark`): `Bold`, `Italic`, `Underline`, `Strike`, `Code` and `Link(href)`.
+- **Pictures**: a `RichImage(source, alt, width, height)`. The source is an address, or one made for bytes the app
+  holds (`Files.source`).
+
+A place in the document is a `RichPos(block, offset)`, with a picture counting as one character. A stretch is a
+`RichRange(anchor, focus)`: `start` and `end` put it in order, and it is `collapsed` at a caret.
+
+**Markdown and HTML.**
+- `doc.markdown` writes CommonMark with GitHub's `~~strike~~`, `<u>…</u>` for an underline, and `<img src alt width
+  height>` for a picture with a size. `RichDoc.fromMarkdown(source)` reads it back to the same document.
+- Words are escaped wherever they would read as Markdown.
+- The spaces at the edges of a bold, italic or struck stretch are written outside its delimiters, because CommonMark
+  takes them nowhere else. The words survive unchanged; only those spaces lose the mark.
+- Markdown from anywhere else reads as near as the model comes. A table's rows and raw HTML become words, and a
+  heading of level 4 to 6 becomes level 3.
+- `doc.markdownOffset(pos)` says where a place falls in `doc.markdown`.
+- `doc.html` writes the same blocks and marks as HTML: lists nested inside their items, every word escaped, and any
+  address that is not a page, mail or a picture left out. `doc.plain` is the words alone.
+
+**Edits.** Each edit makes a new document. Those that move the caret answer `(RichDoc, RichPos)`.
+- **Typing and pasting**: `typed(range, words, marks)`, `replace(range, runs)` and `insert(range, other)`, which puts
+  in a pasted document of several blocks.
+- **Deleting and Enter**: `delete(range)`, `backspace(at)`, and `split(range)` for Enter. Backspace at a block's
+  start outdents a list item and joins a block to the one above. Enter in a list item makes another, and in an empty
+  one ends the list.
+- **Marks and links**: `toggleMark(range, mark)`, `setLink(range, Option[href])` and `marksIn(range)`, which gives the
+  marks at the caret or common to a selection, for a toolbar.
+- **Blocks and pictures**: `setKind(range, kind)`, `indent(range, ±1)` and `insertImage(range, image, block)`.
+
+```scala
+val doc = RichDoc.fromMarkdown(draft)
+val bolded = doc.toggleMark(RichRange(RichPos(0, 0), RichPos(0, 5)), Mark.Bold)
+val (typed, caret) = bolded.typed(RichRange.at(bolded.end), " — sent from my desk", Set.empty)
+send(markdown = typed.markdown, html = typed.html)
+```
+
 ### Drawing (`everyui.draw`)
 
 `Drawing` is a plain component that draws paths in its own pixels: lines, cubic curves, arcs and circles, rectangles

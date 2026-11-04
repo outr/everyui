@@ -83,6 +83,7 @@ object MarkdownPlain {
     case MdInline.Picture(src, _, alt) => if (alt.isEmpty) src else alt
     case MdInline.SoftBreak => if (breaks) "\n" else " "
     case MdInline.HardBreak => "\n"
+    case MdInline.Tag(source) => source
     case MdInline.Pending(source) => source
   }
 }

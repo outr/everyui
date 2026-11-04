@@ -438,7 +438,15 @@ private[markdown] class Inlines(src: String, refs: Map[String, MdReference]) {
     val at = inside.indexOf("@")
     val email = !uri && at > 0 && at < inside.length - 1 && inside.indexOf(" ") < 0 && inside.indexOf(":") < 0 &&
       inside.indexOf("\\") < 0 && inside.substring(at + 1).indexOf(".") > 0
-    if (uri || email) {
+    // the few tags a rich-text document writes (an underline, a picture with a size), kept as written
+    val tag = !uri && !email &&
+      (inside == "u" || inside == "/u" || (inside.startsWith("img ") && inside.indexOf("<") < 0))
+    if (tag) {
+      flush()
+      add(MdInline.Tag("<" + inside + ">"))
+      pos = end + 1
+    }
+    else if (uri || email) {
       flush()
       add(MdInline.Hyperlink(if (email) "mailto:" + inside else inside, "", List(MdInline.Text(inside))))
       pos = end + 1

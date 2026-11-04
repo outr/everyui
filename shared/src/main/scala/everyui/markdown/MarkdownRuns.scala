@@ -93,6 +93,7 @@ private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: 
     case MdInline.Text(t) => text(t, style)
     case MdInline.SoftBreak => if (breaks) lineEnd() else line = style.copy(text = " ") :: line
     case MdInline.HardBreak => lineEnd()
+    case MdInline.Tag(source) => text(source, style)
     case MdInline.Emphasis(inside) => add(inside, style.copy(italic = true))
     case MdInline.Strong(inside) => add(inside, style.copy(weight = 700))
     case MdInline.Strike(inside) => add(inside, style.copy(strike = true))

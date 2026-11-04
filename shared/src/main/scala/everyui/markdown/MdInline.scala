@@ -18,6 +18,9 @@ object MdInline {
   case class Hyperlink(href: String, title: String, content: List[MdInline]) extends MdInline
   /** `![alt](src "title")`: a picture, `alt` its words for whatever cannot see it. */
   case class Picture(src: String, title: String, alt: String) extends MdInline
+  /** One of the few HTML tags a rich-text document writes into its Markdown (`<u>`, `</u>`, `<img …>`: an underline,
+    * a picture with a size), kept as it was written so the document reads it back; drawn as the words it is. */
+  case class Tag(source: String) extends MdInline
   /** A line ending inside a paragraph: a space when it is drawn. */
   case object SoftBreak extends MdInline
   /** Two spaces or a backslash at a line's end: a new line. */
@@ -39,6 +42,7 @@ object MdInline {
     case Picture(_, _, alt) => alt
     case SoftBreak => " "
     case HardBreak => "\n"
+    case Tag(s) => s
     case Pending(s) => s
   }
 }

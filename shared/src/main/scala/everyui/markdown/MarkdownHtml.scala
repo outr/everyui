@@ -69,6 +69,7 @@ object MarkdownHtml {
     case MdInline.Picture(src, _, alt) => "<img src=\"" + escape(src) + "\" alt=\"" + escape(alt) + "\">"
     case MdInline.SoftBreak => if (breaks) "<br>\n" else "\n"
     case MdInline.HardBreak => "<br>\n"
+    case MdInline.Tag(source) => escape(source)
     case MdInline.Pending(source) => escape(source)
   }
 }
