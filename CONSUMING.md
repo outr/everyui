@@ -1110,6 +1110,50 @@ val (typed, caret) = bolded.typed(RichRange.at(bolded.end), " — sent from my d
 send(markdown = typed.markdown, html = typed.html)
 ```
 
+**The editor** (`RichTextEditor`) edits a `RichDoc` in place on the platform's own editing surface, so the caret,
+selection, input methods (IME), spell check and dictation are the platform's. Every change the surface reports
+(`RichInput`) is made to the document by the editor, the same way on every platform, and the document is drawn again.
+The surface never edits the document itself.
+
+The app draws its own toolbar and works the editor through it:
+- **State**: `document` (a `Var[RichDoc]`, both ways) and `selection` (a `Var[RichRange]`).
+- **Commands**: `toggleMark(mark)`, which at a caret applies to the next words typed; `setLink(Option[href])`;
+  `setKind(kind)`; `indent(±1)`; `insertImage(image, block)`; `undo()` and `redo()`, with `canUndo` and `canRedo`;
+  `select(range)`; and `setMarkdown(source)`.
+- **What is on**: `marks` and `blockKind`, a `Val` each, for the toolbar's on/off states.
+- **Its own settings**: `readOnly`, `placeholder` and `look` (a `RichLook`, the theme's until the app sets its own).
+- **Size**: as tall as what it holds, between `minHeight` and `maxHeight` with `grow`, scrolling beyond; `minHeight`
+  without.
+
+```scala
+val editor = new RichTextEditor(RichDoc.fromMarkdown(draft), width = 560.0, minHeight = 120.0, maxHeight = 420.0)
+editor.placeholder @= "Write a message"
+bold.selected := editor.marks().contains(Mark.Bold)
+bold.event.click.attach(_ => editor.toggleMark(Mark.Bold))
+editor.linkAsked.attach(range => askForAddress().foreach(href => editor.setLink(Some(href), range)))
+send(markdown = editor.markdown, html = editor.html)
+```
+
+- **Keys**:
+  - Primary+B, I and U toggle a mark. Primary+K asks the app for a link (`linkAsked`).
+  - Primary+Z undoes, and Primary+Shift+Z or Primary+Y redoes. Undo goes back a word of typing at a time.
+  - Tab and Shift+Tab nest a list item further in or out; elsewhere they move the focus on.
+  - Enter splits a block, and on an empty list item ends the list. Shift+Enter breaks a line within the block.
+  - Typed at a paragraph's start, "- " makes a bulleted item, "1. " a numbered one, "> " a quote and "# " to "### " a
+    heading.
+- **Links**: a link pressed with Primary held, or any press while read-only, is heard on `linkPressed`.
+- **Paste**: HTML is read as blocks and marks (`RichDoc.fromHtml`, including the inline styles document editors
+  paste), else as plain lines. It goes through `pasting` first where the app sets one.
+- **Pictures**: one pasted or dropped is handed to `pictures` (its type and bytes) for the address to show it from.
+  By default that is its bytes as a source of their own (`Files.source`); an app that stores pictures uploads them
+  there and answers with its own address.
+
+**Where it edits in place.** On the web, the editor is an editable element (`contenteditable`). Each change is
+cancelled before it lands (`beforeinput`) and reported instead. An input method's composition is the one exception:
+the browser can't be stopped there, so it is reported whole as it ends. `Platform.richEditing` says whether a platform
+has a surface. The desktop and Android have none yet; there the editor edits the document's Markdown in a `TextArea`,
+read back as it changes, with the same commands. Read-only ranges and annotations come next.
+
 ### Drawing (`everyui.draw`)
 
 `Drawing` is a plain component that draws paths in its own pixels: lines, cubic curves, arcs and circles, rectangles

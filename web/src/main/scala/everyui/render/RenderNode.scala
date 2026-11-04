@@ -661,6 +661,17 @@ class RenderNode(val el: html.Element) {
   def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = if (webFrame != null) webFrame.nested(f)
   def releaseWeb(): Unit = if (webFrame != null) webFrame.release()
 
+  // ---- a rich document's editing surface (Nodes.richEditor): a WebRichEditor ----
+  private[render] var richEditor: WebRichEditor = null
+  def setRichDoc(doc: everyui.rich.RichDoc, selection: everyui.rich.RichRange): Unit =
+    if (richEditor != null) richEditor.draw(doc, selection)
+  def setRichLook(look: everyui.rich.RichLook, placeholder: String, readOnly: Boolean): Unit =
+    if (richEditor != null) richEditor.look(look, placeholder, readOnly)
+  def onRichInput(f: everyui.rich.RichInput => Unit): Unit = if (richEditor != null) richEditor.hear(f)
+  def onRichHeight(f: Double => Unit): Unit = if (richEditor != null) richEditor.heights(f)
+  def focusRich(selection: everyui.rich.RichRange): Unit = if (richEditor != null) richEditor.focus(selection)
+  def richSelection(): Option[everyui.rich.RichRange] = Option(richEditor).map(_.selection())
+
   // ---- an embed (everyui.component.Embed, Nodes.embed): the guest runs in this page, drawing into this element ----
   private[render] var embedSite: everyui.component.EmbedSite = null
   private var embedHearing: List[() => Unit] = Nil
@@ -937,7 +948,8 @@ class RenderNode(val el: html.Element) {
   /** A paste into the field, put to `f` with its words before they land (`Pasting`). */
   def onPaste(f: String => everyui.component.types.PasteAction): Unit = Pasting.listen(el, f)
   /** The field taking the keyboard itself (a click, a tap, the browser's own Tab). */
-  def onInputFocus(f: () => Unit): Unit = el.addEventListener("focus", (_: dom.Event) => f())
+  // focusin, which a rich editor's editable element inside the box sends up as a field sends it of itself
+  def onInputFocus(f: () => Unit): Unit = el.addEventListener("focusin", (_: dom.Event) => f())
   /** The field losing the keyboard; and, where the person put the page's focus on nothing, the focus layer's let go of
     * too (`FieldBlur`). */
   def onInputDone(f: () => Unit): Unit = {
@@ -1289,6 +1301,16 @@ object RenderNode {
 object Nodes {
   /** A page of the web: an `<iframe>` filling its box, allowed to play by itself, full screen and protected media, and
     * out of the page's tab order, since the keys are the app's (WebFrame). */
+  /** A rich document's editing surface (everyui.rich.RichTextEditor): a box that scrolls, holding the editable
+    * element (WebRichEditor). */
+  def richEditor(): RenderNode = {
+    val el = dom.document.createElement("div").asInstanceOf[html.Element]
+    el.style.cssText = "position:absolute;left:0;top:0;margin:0;padding:0;box-sizing:border-box"
+    val node = new RenderNode(el)
+    node.richEditor = new WebRichEditor(el)
+    node
+  }
+
   def web(bridge: String): RenderNode = {
     val frame = dom.document.createElement("iframe").asInstanceOf[html.IFrame]
     frame.setAttribute("allow", "autoplay; encrypted-media; fullscreen")
@@ -1905,6 +1927,9 @@ object Platform {
       if (value.isEmpty) dom.window.sessionStorage.removeItem(name) else dom.window.sessionStorage.setItem(name, value)
     }
     catch { case _: Throwable => () }
+
+  /** Whether a rich document is edited in place here (everyui.rich.RichTextEditor): it is, in an editable element. */
+  def richEditing(): Boolean = true
 
   /** A new window of this app at `path` (in the app: `/w/3`, never another site), the size of this one and just
     * below and to the right of it. False where it was not opened: refused by the browser (best from a click or a key),

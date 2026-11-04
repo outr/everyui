@@ -139,6 +139,13 @@ class RenderNode(val sg: SGNode) {
   def askWeb(id: Int, request: String): Boolean = false
   def onWebReply(f: (Int, String) => Unit): Unit = ()
   def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = ()
+  // ---- a rich document's editing surface: none here yet (Platform.richEditing); the editor edits its Markdown ----
+  def setRichDoc(doc: everyui.rich.RichDoc, selection: everyui.rich.RichRange): Unit = ()
+  def setRichLook(look: everyui.rich.RichLook, placeholder: String, readOnly: Boolean): Unit = ()
+  def onRichInput(f: everyui.rich.RichInput => Unit): Unit = ()
+  def onRichHeight(f: Double => Unit): Unit = ()
+  def focusRich(selection: everyui.rich.RichRange): Unit = ()
+  def richSelection(): Option[everyui.rich.RichRange] = None
   def releaseWeb(): Unit = ()
 
   // ---- an embed (everyui.component.Embed): tvOS lends no web engine (WebKit is not public there), so its fallback
@@ -367,6 +374,9 @@ class RenderNode(val sg: SGNode) {
 
 /** Backend node factories. */
 object Nodes {
+  /** A rich document's editing surface (everyui.rich.RichTextEditor): none here yet (`Platform.richEditing`). */
+  def richEditor(): RenderNode = container()
+
   /** A form (`everyui.form.Form`): a container here. */
   def form(kind: String): RenderNode = container()
 
@@ -604,6 +614,9 @@ object Platform {
 
   /** One screen, one app: a second window is not opened. */
   def openWindow(path: String): Boolean = false
+
+  /** Whether a rich document is edited in place here (everyui.rich.RichTextEditor): not yet, its Markdown instead. */
+  def richEditing(): Boolean = false
 
   /** The app cannot start itself again into a new build here. */
   def reload(): Boolean = false

@@ -342,6 +342,13 @@ class RenderNode(val view: View) {
 
   // no frame inside the page is heard apart from it here
   def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = ()
+  // ---- a rich document's editing surface: none here yet (Platform.richEditing); the editor edits its Markdown ----
+  def setRichDoc(doc: everyui.rich.RichDoc, selection: everyui.rich.RichRange): Unit = ()
+  def setRichLook(look: everyui.rich.RichLook, placeholder: String, readOnly: Boolean): Unit = ()
+  def onRichInput(f: everyui.rich.RichInput => Unit): Unit = ()
+  def onRichHeight(f: Double => Unit): Unit = ()
+  def focusRich(selection: everyui.rich.RichRange): Unit = ()
+  def richSelection(): Option[everyui.rich.RichRange] = None
 
   /** Heard no more: the app is done with the page. */
   def releaseWeb(): Unit = {
@@ -1766,6 +1773,9 @@ class WebBridge(node: RenderNode) {
     })
 }
 object Nodes {
+  /** A rich document's editing surface (everyui.rich.RichTextEditor): none here yet (`Platform.richEditing`). */
+  def richEditor(): RenderNode = container()
+
   /** A form (`everyui.form.Form`): a container here. */
   def form(kind: String): RenderNode = container()
 
@@ -2148,6 +2158,9 @@ object Platform {
 
   /** One activity draws the app: a second window of it is not opened. */
   def openWindow(path: String): Boolean = false
+
+  /** Whether a rich document is edited in place here (everyui.rich.RichTextEditor): not yet, its Markdown instead. */
+  def richEditing(): Boolean = false
 
   /** Which build is running: the version its package was installed with. */
   def buildId(): String = appVersionName()

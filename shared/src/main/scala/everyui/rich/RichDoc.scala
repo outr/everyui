@@ -263,4 +263,8 @@ object RichDoc {
   /** A document read from Markdown, as `markdown` writes it, and as people write it: what this model has no place for
     * (a table, raw HTML) kept as the words it is. */
   def fromMarkdown(source: String): RichDoc = RichMarkdown.read(source)
+
+  /** A document read from HTML (a paste's, a mail's): its blocks and marks as near as the model comes, without a DOM
+    * (`RichHtmlReader`). */
+  def fromHtml(html: String): RichDoc = RichHtmlReader.read(html)
 }
