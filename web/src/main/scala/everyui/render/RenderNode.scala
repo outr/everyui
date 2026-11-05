@@ -795,6 +795,21 @@ class RenderNode(val el: html.Element) {
     }
   })
 
+  /** The row under a list's cursor (`VirtualList`) said to a screen reader as the list's active one
+    * (`aria-activedescendant`), the page's focus staying on the list: where the list is one a reader moves through so
+    * (a list box, a tree, a grid); else, as a list of a conversation, its words said aloud (`Platform.announce`). */
+  def setActiveRow(row: RenderNode, name: () => String): Unit = el.getAttribute("role") match {
+    case "listbox" | "tree" | "grid" | "treegrid" =>
+      if (row.el.id.isEmpty) {
+        RenderNode.rowIds += 1
+        row.el.id = "everyui-row-" + RenderNode.rowIds
+      }
+      // set afresh, so the same element showing another row (scrolled into its place) is said again
+      el.removeAttribute("aria-activedescendant")
+      el.setAttribute("aria-activedescendant", row.el.id)
+    case _ => Platform.announce(name())
+  }
+
   /** An `<img>`'s words for what it shows; empty marks it decoration. */
   def setAlt(text: String): Unit = el.setAttribute("alt", text)
 
@@ -1093,6 +1108,8 @@ object RenderNode {
 
   /** The element made focusable to hold the page's focus for the app's (`accessibleFocus`), and its outline before. */
   private[render] var reading: html.Element = null
+  // how many rows have been given ids to be a list's active one (`setActiveRow`)
+  private[render] var rowIds: Int = 0
   private[render] var readOutline: String = ""
 
   /** The element that held the page's focus for the app's put back as it was, as the app's focus moves on. */
@@ -2487,6 +2504,11 @@ object Platform {
   private var button = 0
 
   /** The button of the pointer event being reported: 0 the primary, 1 the middle, 2 the secondary. */
+  /** Which of the page's pointer events is being reported: the same number for each component one climbs through (the
+    * event marked with it as it is first heard), a new one for the next (`Pointer.blocks`). */
+  def pointerEvent(): Long = pointerSerial
+  private var pointerSerial = 0L
+  private var pointerSerials = 0L
   def pointerButton(): Int = button
   private var finger = false
   /** Whether the pointer event being reported is a finger on the screen (`PointerEvent.finger`): its pointer type,
@@ -2500,6 +2522,12 @@ object Platform {
     * a browser where it is a plain mouse event says nothing, and it is taken to be the last press's: a tap's click is
     * a finger's. */
   private[render] def pointed(e: dom.MouseEvent): Unit = {
+    val marked = e.asInstanceOf[js.Dynamic]
+    if (js.isUndefined(marked.everyuiSerial)) {
+      pointerSerials += 1
+      marked.everyuiSerial = pointerSerials.toDouble
+    }
+    pointerSerial = marked.everyuiSerial.asInstanceOf[Double].toLong
     held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
     button = if (e.button == 1 || e.button == 2) e.button else 0
     val kind = e.asInstanceOf[js.Dynamic].pointerType.asInstanceOf[js.UndefOr[String]]

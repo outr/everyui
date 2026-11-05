@@ -128,13 +128,17 @@ object Focus {
   private var pressTaken = false
   private var lastDown: Option[PointerEvent] = None
   private var lastDownAt = 0.0
+  private var lastDownEvent = -1L
 
   /** A pointer went down (`PointerEvents`, once for each component it climbs through). Where a pointer is used, the
     * keys are no longer moving the focus (`visible`). */
-  private[everyui] def pointerDown(e: PointerEvent): Unit =
-    if (!Platform.remoteNavigation() && !(lastDown.contains(e) && Platform.ticks() - lastDownAt < everyui.event.Pointer.hold)) {
+  private[everyui] def pointerDown(e: PointerEvent): Unit = {
+    // the same press, climbing through another component
+    val again = lastDown.contains(e) && everyui.event.Pointer.same(lastDownEvent, lastDownAt)
+    if (!Platform.remoteNavigation() && !again) {
       lastDown = Some(e)
       lastDownAt = Platform.ticks()
+      lastDownEvent = Platform.pointerEvent()
       visible @= false
       pressing = true
       pressedX = e.x
@@ -142,6 +146,7 @@ object Focus {
       pressedMoves = moves
       pressTaken = false
     }
+  }
 
   /** The pointer let go. Once its click has been heard, a press that no click took, that moved no focus, and that was
     * not on what has the focus (the page's empty space, words, a card that is no control) lets the focus go, as a

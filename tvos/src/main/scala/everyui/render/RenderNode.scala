@@ -321,6 +321,8 @@ class RenderNode(val sg: SGNode) {
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = ()
   /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */
   def accessibleFocus(click: () => Unit, name: () => String): Unit = ()
+  /** The row under a list's cursor (`VirtualList`): no screen reader reaches this platform's nodes. */
+  def setActiveRow(row: RenderNode, name: () => String): Unit = ()
   def setAlt(text: String): Unit = ()
 
   def setTextAlign(align: String): Unit = ()
@@ -831,6 +833,9 @@ object Platform {
   /** A remote composes no words. */
   def keyComposing(): Boolean = false
   /** The button of the pointer event being reported: none here, so always the primary (0). */
+  /** Which of the platform's pointer events is being reported, the same for each component one climbs through: not
+    * told here (-1), so a moment's time stands for it (`Pointer.blocks`). */
+  def pointerEvent(): Long = -1L
   def pointerButton(): Int = 0
   /** No finger touches a television: the remote's touch surface moves the focus. */
   def pointerFinger(): Boolean = false

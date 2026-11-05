@@ -59,6 +59,8 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
 
   val list: VirtualList[TreeLine[T]] = new VirtualList[TreeLine[T]](lines, _.key,
     l => l.value.map(labelOf).getOrElse(""), rowHeight)(() => new TreeRow[T](this))
+  // a tree to a screen reader, its rows its items
+  list.semantics @= everyui.component.types.Semantics("tree")
 
   def selection: Selection = list.selection
   /** The key of the node under the cursor. */

@@ -1121,6 +1121,8 @@ class RenderNode(val view: View) {
       .orElse(if (sort.isEmpty) None else Some("sorted " + sort)).orNull)
   }
 
+  /** The row under a list's cursor (`VirtualList`), read out by TalkBack as it moves, where it is on. */
+  def setActiveRow(row: RenderNode, name: () => String): Unit = if (RenderNode.reading) Platform.announce(name())
   def setAlt(text: String): Unit = view.setContentDescription(if (text.isEmpty) null else text)
 
   /** The focus landed here (the app's own focus, which Android's does not follow). With a screen reader on, this is
@@ -2657,6 +2659,9 @@ object Platform {
   /** The modifiers held with the key being reported (a keyboard's; a remote holds none), as the activity reads them. */
   def modifiers(): everyui.event.Modifiers = Host.modifiers
   /** The button of the pointer event being reported: 0 the primary (a finger), 1 the middle, 2 the secondary. */
+  /** Which of the platform's pointer events is being reported, the same for each component one climbs through: not
+    * told here (-1), so a moment's time stands for it (`Pointer.blocks`). */
+  def pointerEvent(): Long = -1L
   def pointerButton(): Int = Host.pointerButton
   /** Whether the pointer event being reported is a finger (or a stylus) on the screen (`PointerEvent.finger`). */
   def pointerFinger(): Boolean = Host.pointerFinger

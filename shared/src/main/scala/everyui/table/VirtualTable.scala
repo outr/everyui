@@ -95,6 +95,8 @@ class VirtualTable[T](val items: Var[Vector[T]], val keyOf: T => String, val lab
 
   private val rows: Var[Vector[T]] = own(Var(Vector.empty))
   val list: VirtualList[T] = new VirtualList[T](rows, keyOf, labelOf, rowHeight, source = source)(() => new TableRow[T](this))
+  // a grid to a screen reader, its rows rows
+  list.semantics @= everyui.component.types.Semantics("grid")
   val header: TableHeader[T] = new TableHeader[T](this)
   // a row not come draws a grey bar in each cell itself
   list.placeholder @= None

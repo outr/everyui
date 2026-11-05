@@ -11,6 +11,7 @@ import reactify.*
   * one taken away takes its cell with it, and the rest keep theirs. While its row has not come from a paged source,
   * a grey bar stands in each cell. */
 class TableRow[T](table: VirtualTable[T]) extends ListRow[T] {
+  override private[everyui] def impliedRole: String = "row"
   private var made: Vector[(GridColumn[T], GridCell[T], Container)] = Vector.empty
   private val hovered: Val[Boolean] = if (Platform.pointerSupport()) event.pointer.over else own(Val(false))
   private val wash = new Container {

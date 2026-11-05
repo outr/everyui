@@ -377,6 +377,8 @@ class Component(val node: RenderNode) {
     * kind of the app's), takes the focus, hears a click and takes no typing. EveryUI's own kinds say what they are. */
   private[everyui] def impliedRole: String =
     if (clickHeard && focusable() && !takesTyping && Component.appMade(this)) "button" else ""
+  /** Its role said to the platform as it is now: for a kind whose role it has without being given one (a list). */
+  private[everyui] def sayRole(): Unit = said(semantics())
   // whether the role is followed as `focusable` changes: once a click is heard
   private var implying = false
   /** A click is heard on it (`event.click`): it may be a button now, and is told again as it takes the focus or no

@@ -655,6 +655,13 @@ entries (ticked or not, out of use or not), a select, and dialog and icon button
 leaves out: another role (`Semantics("link")`), or meaning the words do not show (`Semantics(label = "unread")` on a
 dot inside a card).
 
+A `VirtualList` is a list box to a screen reader, and its rows its options, each saying whether it is chosen. A
+`RichList` is the same. A `Tree` is a tree of tree items, and a `VirtualTable` a grid of rows. The focus stays on the
+list, and the row under its cursor is told as it moves: on the web as the list's `aria-activedescendant`, on the
+desktop as the list's name, and on Android by TalkBack reading it out. A list is named by its label, not by its rows'
+words: `list.semantics @= Semantics(label = "Inbox")`. A list a conversation or a log reads as says so itself
+(`Semantics("list")`, as `Transcript` and `LogView` do), and its row under the cursor is read out as it moves.
+
 ## General components
 
 An icon that is at work says so itself, with no ring drawn over it. `busy @= true` on an `IconButton` or any

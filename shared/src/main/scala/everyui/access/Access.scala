@@ -133,12 +133,18 @@ object Access {
 
   /** The name a screen reader is given for `c`: its `semantics` label; else its own words (a text's, a picture's alt,
     * a field's label); else the words of what it holds, in reading order (top to bottom, then across), each part
-    * with a label of its own by that label; else its tooltip (which, with words to name it, describes it). Empty
-    * where it has none. */
+    * with a label of its own by that label, unless it is a whole made of parts (`wholes`: a list box); else its
+    * tooltip (which, with words to name it, describes it). Empty where it has none. */
   def nameOf(c: Component): String = {
     val own = (labelOf(c) :: wordsOf(c) :: Nil).map(_.trim).find(_.nonEmpty)
-    own.orElse(Some(inside(c)).filter(_.nonEmpty)).getOrElse(c.tooltip().trim)
+    val held = if (wholes.contains(roleOf(c))) "" else inside(c)
+    own.orElse(Some(held).filter(_.nonEmpty)).getOrElse(c.tooltip().trim)
   }
+
+  /** Roles named only as they are given a name, never by the words they hold: a list box is named by its label, not
+    * by its options, which a screen reader says one at a time. */
+  val wholes: Set[String] = Set("listbox", "list", "tree", "treegrid", "grid", "table", "menu", "menubar", "tablist",
+    "radiogroup", "toolbar", "region", "navigation", "main", "dialog", "log")
 
   // the words of what `c` holds, in reading order: each part with a label of its own by that label
   private def inside(c: Component): String = {
@@ -256,7 +262,8 @@ object Access {
   private def behind(c: Component): Option[Color] = {
     var bg = Theme.palette().background.withAlpha(1.0)
     var known = true
-    val path = (holders(c) :+ c).toVector
+    // from the root down to `c`
+    val path = (holders(c).reverse :+ c).toVector
     val (left, top, right, bottom) = (c.absoluteLeft, c.absoluteTop, c.absoluteLeft + c.size.width(),
       c.absoluteTop + c.size.height())
     def layer(at: Component): Unit = {

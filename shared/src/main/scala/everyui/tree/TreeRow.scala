@@ -10,6 +10,7 @@ import reactify.*
   * tick box where it has one (ticked, empty or mixed), and
   * the node's label dressed as the tree's `decorate` says. */
 class TreeRow[T](tree: Tree[T]) extends ListRow[TreeLine[T]] {
+  override private[everyui] def impliedRole: String = "treeitem"
   private val depth: Val[Int] = own(Val(item().map(_.depth).getOrElse(0)))
   private val start: Val[Double] = own(Val(ListRow.inset + depth() * tree.indent()))
   private val chevron = new MaterialIconView(MaterialIcon.ChevronRight, Tree.chevron) {

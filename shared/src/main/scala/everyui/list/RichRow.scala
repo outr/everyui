@@ -277,7 +277,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   backgroundColor := (if (blocks()) Color.Clear else lit())
   borderWidth := (if (!blocks() && current() && cursorShown() && !onAction() && !onButtons()) 1.0 else 0.0)
   // (an item that expands says whether it is)
-  semantics := item().map(l => Semantics("listitem", label = l.item match {
+  semantics := item().map(l => Semantics("option", selected = Some(selected()), label = l.item match {
     case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText)
     case None if l.empty => l.section.empty.getOrElse("")
     case None => l.groupHead.map(_.title).getOrElse(l.section.title) + ", " + l.count.toString

@@ -2,6 +2,7 @@ package everyui.list
 
 import everyui.Color
 import everyui.component.Container
+import everyui.component.types.Semantics
 import everyui.theme.Theme
 import reactify.*
 
@@ -39,6 +40,9 @@ class ListRow[T] extends Container {
   /** Where an editor over this row starts, from its start edge (the right, right to left): where the label does. */
   def editStart: Double = ListRow.inset
 
+  // an option of its list to a screen reader, chosen or not, named by its words, unless a kind says otherwise
+  override private[everyui] def impliedRole: String = "option"
+  semantics := Semantics(selected = Some(selected()))
   backgroundColor := ListRow.fill(selected(), current() && cursorShown(), active(), drop().contains(DropPosition.Into),
     inUse())
   borderWidth := (if (inUse()) ListRow.inUseRing else if (current() && cursorShown()) 1.0 else 0.0)

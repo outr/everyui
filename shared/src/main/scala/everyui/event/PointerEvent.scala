@@ -13,6 +13,7 @@ case class PointerEvent(kind: PointerKind, x: Double, y: Double, button: Int = 0
   def consume(): Unit = {
     Pointer.consumed = Some(this)
     Pointer.consumedAt = Platform.ticks()
+    Pointer.consumedEvent = Platform.pointerEvent()
   }
 
   /** The platform's shortcut modifier held: Command on a Mac, Ctrl elsewhere (as `Chord.primary`). */

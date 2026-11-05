@@ -420,6 +420,7 @@ class RenderNode(val fx: Node) {
     val button = if (e.getButton == MouseButton.MIDDLE) 1 else if (e.getButton == MouseButton.SECONDARY) 2 else 0
     // a touch screen's finger comes as the mouse, made from the touch
     Platform.pointed(button, e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown, e.isSynthesized)
+    Platform.pointedEvent(e.getPickResult)
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips. */
@@ -548,6 +549,8 @@ class RenderNode(val fx: Node) {
     * and its name. A control of JavaFX's (a text field) keeps its own role. */
   // whether its name was worked out at a focus (`accessibleFocus`), rather than given (`setSemantics`)
   private var named = false
+  // whether a list's name is the row under its cursor (`setActiveRow`), which the focus arriving leaves as it is
+  private var rowSaid = false
   def setSemantics(role: String, level: Int, label: String): Unit = {
     if (!fx.isInstanceOf[javafx.scene.control.Control]) fx.setAccessibleRole(
       if (role.nonEmpty) RenderNode.accessibleRole(role)
@@ -555,6 +558,7 @@ class RenderNode(val fx: Node) {
       else javafx.scene.AccessibleRole.NODE)
     fx.setAccessibleRoleDescription(if (role == "heading") "heading" else null)
     named = false
+    rowSaid = false
     fx.setAccessibleText(if (label.isEmpty) null else label)
   }
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
@@ -564,7 +568,7 @@ class RenderNode(val fx: Node) {
     * node given no name is named by `name` (`Access.nameOf`: the words inside it, its tooltip), which JavaFX does not
     * work out for itself. A text field or an embed (a web view) takes the window's focus itself, and keeps it. */
   def accessibleFocus(click: () => Unit, name: () => String): Unit = {
-    if (!fx.isInstanceOf[javafx.scene.control.Control] && (fx.getAccessibleText == null || named)) {
+    if (!fx.isInstanceOf[javafx.scene.control.Control] && !rowSaid && (fx.getAccessibleText == null || named)) {
       named = true
       val said = name()
       fx.setAccessibleText(if (said.isEmpty) null else said)
@@ -574,6 +578,13 @@ class RenderNode(val fx: Node) {
     val owner = Option(Host.scene).flatMap(s => Option(s.getFocusOwner))
     val holds = owner.exists(o => Iterator.iterate(o)(_.getParent).takeWhile(_ != null).contains(fx))
     if (!takes && !holds && fx.getScene != null && !fx.isFocused) fx.requestFocus()
+  }
+  /** The row under a list's cursor (`VirtualList`), named to a screen reader as the list's own name while it has the
+    * focus: JavaFX's readers hear a node's name change, and a list EveryUI makes is not one of JavaFX's ListViews. */
+  def setActiveRow(row: RenderNode, name: () => String): Unit = {
+    rowSaid = true
+    fx.setAccessibleText(name())
+    fx.notifyAccessibleAttributeChanged(javafx.scene.AccessibleAttribute.TEXT)
   }
   def setAlt(text: String): Unit = ()
 
@@ -934,8 +945,11 @@ object RenderNode {
       case "link" => HYPERLINK
       case "heading" => TEXT
       case "img" => IMAGE_VIEW
-      case "list" => LIST_VIEW
-      case "listitem" => LIST_ITEM
+      case "list" | "listbox" => LIST_VIEW
+      case "listitem" | "option" => LIST_ITEM
+      case "tree" => TREE_VIEW
+      case "treeitem" => TREE_ITEM
+      case "grid" => TABLE_VIEW
       case "slider" => SLIDER
       case "switch" => TOGGLE_BUTTON
       case "checkbox" => CHECK_BOX
@@ -1844,6 +1858,20 @@ object Platform {
   private var finger = false
   /** Whether the pointer event being reported is a finger on a touch screen (`PointerEvent.finger`). */
   def pointerFinger(): Boolean = finger
+  /** Which of the window's pointer events is being reported: the same number for each node one climbs through (by the
+    * pick JavaFX makes once for it and copies with it), a new one for the next; -1 where it cannot be told (a wheel, a
+    * menu), so a moment's time stands for it (`Pointer.blocks`). */
+  def pointerEvent(): Long = pointerSerial
+  private var pointerSerial = -1L
+  private var pointerSerials = 0L
+  private var lastPick: AnyRef = null
+  private[render] def pointedEvent(pick: AnyRef): Unit = {
+    if (!(pick eq lastPick)) {
+      lastPick = pick
+      pointerSerials += 1
+    }
+    pointerSerial = pointerSerials
+  }
 
   /** A pointer event about to be heard: its button, the modifiers held with it, and whether a finger made it. */
   private[render] def pointed(pressed: Int, ctrl: Boolean, meta: Boolean, alt: Boolean, shift: Boolean,
@@ -1851,6 +1879,8 @@ object Platform {
     held = everyui.event.Modifiers(ctrl, meta, alt, shift)
     button = pressed
     finger = touched
+    // which event it is is told after, where it can be (`pointedEvent`)
+    pointerSerial = -1L
   }
   /** The modifiers held with the key being reported. */
   def modifiers(): everyui.event.Modifiers = held

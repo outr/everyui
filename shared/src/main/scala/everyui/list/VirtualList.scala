@@ -39,6 +39,11 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
                      val source: Option[ListSource[T]] = None)
                     (makeRow: () => ListRow[T]) extends Container {
   override def kind: String = "VirtualList"
+  // a list a screen reader moves through by its cursor: a list box of options, unless it says otherwise (a tree, a
+  // table, a conversation)
+  override private[everyui] def impliedRole: String = "listbox"
+  // the key of the row last said to be the cursor's (`RenderNode.setActiveRow`), while the list has the focus
+  private var toldRow: String = ""
   // rows at heights of their own are the items' alone: a source's are `rowHeight` tall, or as tall as it says (`sized`)
   private val ownHeights = measuredRows && source.isEmpty
   // rows at heights the source knows (a log's wrapped lines)
@@ -120,6 +125,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   focusable @= true
+  sayRole()
   clickFocus @= true
   size.width @= 320.0
   size.height @= 400.0
@@ -891,6 +897,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
         at += 1
       }
     }
+    // the row under the cursor told to a screen reader as it moves, while the list has the focus
+    if (!lit) toldRow = ""
+    else cursor.foreach(k => if (k != toldRow) placed.values.find(_.current()).foreach { row =>
+      toldRow = k
+      node.setActiveRow(row.node, () => everyui.access.Access.nameOf(row))
+    })
     placeEditor(width, height)
     placeDropLine(width)
     // the drop line and the thumb last, over the rows
