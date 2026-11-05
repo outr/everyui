@@ -667,6 +667,9 @@ class RenderNode(val el: html.Element) {
     if (richEditor != null) richEditor.draw(doc, selection)
   def setRichLook(look: everyui.rich.RichLook, placeholder: String, readOnly: Boolean): Unit =
     if (richEditor != null) richEditor.look(look, placeholder, readOnly)
+  /** A suggestion drawn dimmed after `at` (`WebRichEditor.setGhost`); no lines takes it away. */
+  def setRichGhost(at: everyui.rich.RichPos, lines: List[String]): Unit =
+    if (richEditor != null) richEditor.setGhost(at, lines)
   def onRichInput(f: everyui.rich.RichInput => Unit): Unit = if (richEditor != null) richEditor.hear(f)
   def onRichHeight(f: Double => Unit): Unit = if (richEditor != null) richEditor.heights(f)
   def focusRich(selection: everyui.rich.RichRange): Unit = if (richEditor != null) richEditor.focus(selection)

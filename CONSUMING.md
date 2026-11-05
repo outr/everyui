@@ -1245,6 +1245,15 @@ send(markdown = editor.markdown, html = editor.html)
 - **Pictures**: one pasted or dropped is handed to `pictures` (its type and bytes) for the address to show it from.
   By default that is its bytes as a source of their own (`Files.source`); an app that stores pictures uploads them
   there and answers with its own address.
+- **Suggestions**: `editor.suggestion @= Some(markdown)` offers what might come next (a reply drafted for an empty
+  message, the end of a sentence). It is drawn dimmed after the caret, never the document's, and the caret and the
+  focus stay where they are. A screen reader hears "Suggestion: …. Tab to accept." Tab, `acceptSuggestion()`, or the
+  Accept chip on a phone (where there is no Tab) puts it in as one change that undo takes back, and `suggestionAccepted`
+  hears its Markdown. Anything else typed, deleted or pasted, the caret moved, Escape, or `suggestion @= None` puts it
+  away. It goes in exactly as given, so give it the space it needs before it. Where the editor edits Markdown (the
+  desktop, Android), the chip says what it would put in and puts it at the end. A `TextArea` has no suggestions: a
+  platform's own field has no place to draw words after its caret that are not its own.
+- **A draft**: `setMarkdown(source, atEnd = true)` puts it in with the caret after its last word, as one change.
 
 **Where it edits in place.** On the web, the editor is an editable element (`contenteditable`). Each change is
 cancelled before it lands (`beforeinput`) and reported instead. An input method's composition is the one exception:

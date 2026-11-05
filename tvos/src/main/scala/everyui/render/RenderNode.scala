@@ -142,6 +142,7 @@ class RenderNode(val sg: SGNode) {
   // ---- a rich document's editing surface: none here yet (Platform.richEditing); the editor edits its Markdown ----
   def setRichDoc(doc: everyui.rich.RichDoc, selection: everyui.rich.RichRange): Unit = ()
   def setRichLook(look: everyui.rich.RichLook, placeholder: String, readOnly: Boolean): Unit = ()
+  def setRichGhost(at: everyui.rich.RichPos, lines: List[String]): Unit = ()
   def onRichInput(f: everyui.rich.RichInput => Unit): Unit = ()
   def onRichHeight(f: Double => Unit): Unit = ()
   def focusRich(selection: everyui.rich.RichRange): Unit = ()

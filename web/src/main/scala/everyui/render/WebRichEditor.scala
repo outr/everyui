@@ -28,6 +28,9 @@ class WebRichEditor(val outer: html.Element) {
   private var composing: Option[RichRange] = None
   private var placing = false
   private var editable = true
+  // a suggestion drawn after the caret, not the document's (`setGhost`): where, its lines, and its element
+  private var ghost: Option[(RichPos, List[String])] = None
+  private var ghostEl: Option[dom.Element] = None
 
   WebRichEditor.style()
   outer.classList.add("everyui-rich-scroll")
@@ -109,6 +112,7 @@ class WebRichEditor(val outer: html.Element) {
     else {
       pending = None
       render(doc)
+      drawGhost()
       if (dom.document.activeElement == content) place(selection)
     }
 
@@ -117,6 +121,48 @@ class WebRichEditor(val outer: html.Element) {
   def focus(selection: RichRange): Unit = RenderNode.afterKey { () =>
     content.focus()
     place(selection)
+  }
+
+  /** A suggestion drawn dimmed after `at`, its first line in the line there and the rest under it, none of it the
+    * document's: the caret, the selection and the places in the document pass it by, it takes no pointer, and a screen
+    * reader is told of it by the editor rather than reading it. No lines takes it away. */
+  def setGhost(at: RichPos, lines: List[String]): Unit = {
+    ghost = if (lines.isEmpty) None else Some(at -> lines)
+    drawGhost()
+    if (dom.document.activeElement == content && composing.isEmpty) place(selection())
+  }
+
+  private def drawGhost(): Unit = {
+    ghostEl.foreach { g =>
+      val parent = g.parentNode
+      if (parent != null) {
+        parent.removeChild(g)
+        parent.normalize()
+      }
+    }
+    ghostEl = None
+    if (composing.isEmpty) ghost.foreach { case (at, lines) =>
+      val g = dom.document.createElement("span").asInstanceOf[html.Span]
+      g.className = "ghost"
+      g.setAttribute("data-ghost", "1")
+      g.setAttribute("contenteditable", "false")
+      g.setAttribute("aria-hidden", "true")
+      lines.zipWithIndex.foreach { case (line, i) =>
+        val part = dom.document.createElement("span").asInstanceOf[html.Span]
+        if (i > 0) part.className = "gl"
+        part.textContent = line
+        g.appendChild(part)
+      }
+      point(at) match {
+        case (t: dom.Text, offset) =>
+          val after = if (offset < t.length) t.splitText(offset) else t.nextSibling
+          t.parentNode.insertBefore(g, after)
+        case (parent, index) =>
+          val kids = parent.childNodes
+          parent.insertBefore(g, if (index < kids.length) kids(index) else null)
+      }
+      ghostEl = Some(g)
+    }
   }
 
   // ---- drawing ----
@@ -282,6 +328,7 @@ class WebRichEditor(val outer: html.Element) {
           }
           else n match {
             case t: dom.Text => count += t.length
+            case e: dom.Element if e.hasAttribute("data-ghost") => ()
             case e: dom.Element if e.hasAttribute("data-i") => count += 1
             case _ =>
               val kids = n.childNodes
@@ -302,6 +349,7 @@ class WebRichEditor(val outer: html.Element) {
 
   private def lengthOf(n: dom.Node): Int = n match {
     case t: dom.Text => t.length
+    case e: dom.Element if e.hasAttribute("data-ghost") => 0
     case e: dom.Element if e.hasAttribute("data-i") => 1
     case e: dom.Element if e.hasAttribute("data-end") => 0
     case _ =>
@@ -334,6 +382,7 @@ class WebRichEditor(val outer: html.Element) {
             left -= 1
             if (left == 0) found = Some(parent -> (index + 1))
           }
+        case e: dom.Element if e.hasAttribute("data-ghost") => ()
         case e: dom.Element if e.hasAttribute("data-end") => ()
         case _ =>
           val kids = n.childNodes
@@ -456,6 +505,8 @@ class WebRichEditor(val outer: html.Element) {
       else if (primary && !e.shiftKey && key == "z") Some("undo")
       else if (primary && ((e.shiftKey && key == "z") || key == "y")) Some("redo")
       else if (e.key == "Tab" && !primary && !e.altKey) Some(if (e.shiftKey) "outdent" else "indent")
+      // a suggestion put away, and nothing else: the dialog the editor is in stays open
+      else if (e.key == "Escape" && ghost.nonEmpty) Some("dismiss")
       else None
     command.foreach { c =>
       e.preventDefault()
@@ -474,6 +525,8 @@ object WebRichEditor {
     val css = dom.document.createElement("style")
     css.textContent =
       """.everyui-rich-scroll { overflow-y: auto; overflow-x: hidden; }
+        |.everyui-rich .ghost { opacity: 0.45; pointer-events: none; user-select: none; -webkit-user-select: none; }
+        |.everyui-rich .ghost .gl { display: block; }
         |.everyui-rich { outline: none; min-height: 100%; box-sizing: border-box; padding: 2px 0;
         |  color: var(--rich-text); font-family: var(--rich-family); font-size: var(--rich-size); line-height: 1.5;
         |  white-space: pre-wrap; overflow-wrap: anywhere; caret-color: var(--rich-accent); cursor: text; }

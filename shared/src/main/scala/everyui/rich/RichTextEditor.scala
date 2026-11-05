@@ -1,7 +1,10 @@
 package everyui.rich
 
 import everyui.async.Task
-import everyui.component.Container
+import everyui.component.{Container, TextView}
+import everyui.component.types.Semantics
+import everyui.i18n.Words
+import everyui.theme.Theme
 import everyui.focus.Focus
 import everyui.render.Platform
 import everyui.text.TextArea
@@ -57,6 +60,15 @@ class RichTextEditor(initial: RichDoc = RichDoc.empty, width: Double = 480.0, va
   val linkAsked: Channel[RichRange] = Channel[RichRange]
   /** A link pressed: with Primary held while editing, or any press while read-only. */
   val linkPressed: Channel[String] = Channel[String]
+  /** A suggestion of what comes next, as Markdown: a reply drafted for an empty message, the end of a sentence being
+    * written. It is drawn dimmed after the caret and is never the document's, the caret and the focus left where they
+    * are, and a screen reader is told of it. Tab, `acceptSuggestion()`, or the Accept chip where there is no Tab to
+    * press (a phone) makes it the document's, one undo taking it back. Anything else typed, deleted or pasted, the
+    * caret moved, Escape, or the app setting None, puts it away. Where the platform edits the document as its Markdown
+    * (`Platform.richEditing` off), the chip alone offers it, and takes it at the end. */
+  val suggestion: Var[Option[String]] = own(Var(None))
+  /** Each suggestion taken, its Markdown. */
+  val suggestionAccepted: Channel[String] = Channel[String]
 
   // the marks the next words typed are given, toggled at a caret before they are typed; gone as the caret moves
   private val pendingMarks: Var[Option[Set[Mark]]] = own(Var(None))
@@ -99,12 +111,69 @@ class RichTextEditor(initial: RichDoc = RichDoc.empty, width: Double = 480.0, va
   }
   markdownArea.foreach { area =>
     area.value @= document().markdown
-    area.value.attach(v => if (document().markdown != v) document @= RichDoc.fromMarkdown(v))
+    area.value.attach { v =>
+      if (document().markdown != v) {
+        // typed: a suggestion offered is put away, as it is on the editor's own surface
+        if (suggestion().nonEmpty) suggestion @= None
+        document @= RichDoc.fromMarkdown(v)
+      }
+    }
     document.attach(d => if (area.value() != d.markdown) area.value @= d.markdown)
     size.height := area.size.height()
     children += area
   }
   selection.attach(_ => pendingMarks @= None)
+
+  // ---- a suggestion ----
+
+  // what is drawn of it after the caret: its blocks' words, a line each, while the caret is one
+  private def ghostLines: List[String] = suggestion() match {
+    case Some(md) if !readOnly() && selection().collapsed => RichDoc.fromMarkdown(md).blocks.map(_.text).toList
+    case _ => Nil
+  }
+  private def drawSuggestion(): Unit = surface.foreach(_.node.setRichGhost(selection().end, ghostLines))
+  private def suggested: String = suggestion().map(md => RichDoc.fromMarkdown(md).blocks.map(_.text).mkString(" "))
+    .getOrElse("")
+  suggestion.attach { s =>
+    drawSuggestion()
+    // (its own last stop left to the words around it)
+    if (s.nonEmpty) {
+      val words = suggested.take(240).trim
+      Platform.announce(Words.suggestion(words.reverse.dropWhile(".!?。！？".contains(_)).reverse))
+    }
+  }
+  selection.attach(_ => if (suggestion().nonEmpty) drawSuggestion())
+
+  // the Accept chip, where there is no Tab to press (a phone, a tablet) or no suggestion drawn (the document edited as
+  // Markdown, where it says what it would put in)
+  private val accepting: Boolean = !rich || (Platform.touchSupport() && !Platform.keyboardSupport())
+  private val chipShown: Val[Boolean] = own(Val(accepting && suggestion().nonEmpty && !readOnly()))
+  private val chipWords = new TextView {
+    content := (if (rich) Words.acceptSuggestion else Words.acceptSuggestion + ": " +
+      (if (suggested.length > 40) suggested.take(40).trim + "…" else suggested))
+    font.size @= 13.0
+    color := Theme.onAccent()
+    position.left @= 12.0
+    position.top @= 5.0
+  }
+  private val chip = new Container {
+    focusable := chipShown()
+    visible := chipShown()
+    semantics := Semantics.button(Words.acceptSuggestion + ": " + suggested.take(240))
+    size.width := chipWords.size.width() + 24.0
+    size.height := chipWords.size.height() + 10.0
+    radius @= 12.0
+    backgroundColor := Theme.accent()
+    children += chipWords
+    event.click.attach { e =>
+      e.consume()
+      acceptSuggestion()
+      RichTextEditor.this.focus()
+    }
+  }
+  chip.position.left := size.width() - chip.size.width() - 6.0
+  chip.position.top := size.height() - chip.size.height() - 6.0
+  children += chip
 
   // ---- what the app does ----
 
@@ -113,7 +182,23 @@ class RichTextEditor(initial: RichDoc = RichDoc.empty, width: Double = 480.0, va
   /** The document's HTML (`RichDoc.html`). */
   def html: String = document().html
   /** The document read from Markdown, as a change undo takes back. */
-  def setMarkdown(source: String): Unit = change(RichDoc.fromMarkdown(source), RichRange.at(RichPos(0, 0)), "set")
+  def setMarkdown(source: String, atEnd: Boolean = false): Unit = {
+    val d = RichDoc.fromMarkdown(source)
+    change(d, RichRange.at(if (atEnd) d.end else RichPos(0, 0)), "set")
+  }
+
+  /** The suggestion made the document's, after the caret (or at the end, where the document is edited as Markdown), as
+    * one change undo takes back. Whether there was one to take. */
+  def acceptSuggestion(): Boolean = suggestion() match {
+    case Some(md) if !readOnly() =>
+      val at = if (rich) selection().end else document().end
+      val (d, caret) = document().insert(RichRange.at(at), RichDoc.fromMarkdown(md))
+      suggestion @= None
+      change(d, RichRange.at(caret), "suggestion")
+      suggestionAccepted @= md
+      true
+    case _ => false
+  }
 
   /** `mark` toggled on what is chosen; at a caret, on the words typed next. */
   def toggleMark(mark: Mark): Unit = {
@@ -161,7 +246,20 @@ class RichTextEditor(initial: RichDoc = RichDoc.empty, width: Double = 480.0, va
   // ---- what the person does ----
 
   private def heard(input: RichInput): Unit = if (!readOnly() || input.isInstanceOf[RichInput.Selected] ||
-    input.isInstanceOf[RichInput.LinkPressed]) input match {
+    input.isInstanceOf[RichInput.LinkPressed]) {
+    // a suggestion showing is taken by Tab and put away by Escape; anything else done, but a caret left where it is,
+    // puts it away first
+    input match {
+      case RichInput.Command("indent" | "dismiss") | RichInput.LinkPressed(_) => ()
+      case RichInput.Selected(range) if range == selection() => ()
+      case _ => if (suggestion().nonEmpty) suggestion @= None
+    }
+    respond(input)
+  }
+
+  private def respond(input: RichInput): Unit = input match {
+    case RichInput.Command("indent") if suggestion().nonEmpty => acceptSuggestion()
+    case RichInput.Command("dismiss") => suggestion @= None
     case RichInput.Typed(range, words) =>
       val (d, caret) = document().typed(range, words, marks())
       val shortcut = if (words == " " && range.collapsed) shortcutAt(d, caret) else None
