@@ -6,7 +6,8 @@ import everyui.theme.Theme
 /** Code coloured by a small lexer shared by the common languages: keywords, strings, comments, numbers and type names,
   * each a colour of the theme (`Theme.extra("code.keyword", …)` and the like override them: "code.keyword",
   * "code.string", "code.comment", "code.number", "code.type"). It reads the text once, left to right, without
-  * parsing it, so a snippet still being written colours as well as it can.
+  * parsing it, so a snippet still being written colours as well as it can. A diff ("diff", "patch") is coloured by
+  * its lines instead: added, taken out, a hunk's header and the files' names (`diffRuns`).
   *
   * {{{
   *   new RichText { whiteSpace @= WhiteSpace.Pre; runs := Highlight.runs(source(), "scala") }
@@ -64,6 +65,7 @@ object Highlight {
   def runs(code: String, language: String): List[TextRun] = {
     val known = words(language)
     if (known.isEmpty && language.trim.isEmpty) List(TextRun(code))
+    else if (diff(language)) diffRuns(code)
     else {
       val keyword = Theme.extra("code.keyword", Theme.accent()).toHex
       val string = Theme.extra("code.string", Theme.success()).toHex
@@ -115,6 +117,52 @@ object Highlight {
       if (plain >= 0) out = TextRun(code.substring(plain)) :: out
       out.reverse
     }
+  }
+
+  /** A diff's lines as runs (`language` "diff" or "patch"): what was added in the theme's success, what was taken out
+    * in its danger, a hunk's `@@` header muted, and the lines naming the files (`diff --git`, `---`, `+++`, `index`,
+    * a file's mode) bold; the rest, the lines around a change, plain. Each line's colour is the theme's "code.added",
+    * "code.removed" and "code.hunk" where it has them. */
+  private def diffRuns(code: String): List[TextRun] = {
+    val added = Theme.extra("code.added", Theme.success()).toHex
+    val removed = Theme.extra("code.removed", Theme.danger()).toHex
+    val hunk = Theme.extra("code.hunk", Theme.muted()).toHex
+    var out: List[TextRun] = Nil
+    // where the plain stretch being read began, -1 for none
+    var plain = -1
+    var k = 0
+    while (k < code.length) {
+      val nl = code.indexOf("\n", k)
+      val end = if (nl < 0) code.length else nl + 1
+      val line = code.substring(k, end)
+      val file = line.startsWith("diff ") || line.startsWith("--- ") || line.startsWith("+++ ") ||
+        line.startsWith("index ") || line.startsWith("new file mode") || line.startsWith("deleted file mode") ||
+        line.startsWith("old mode") || line.startsWith("new mode") || line.startsWith("rename ") ||
+        line.startsWith("similarity index")
+      val run =
+        if (file) Some(TextRun(line, weight = 700))
+        else if (line.startsWith("@@")) Some(TextRun(line, color = hunk))
+        else if (line.startsWith("+")) Some(TextRun(line, color = added))
+        else if (line.startsWith("-")) Some(TextRun(line, color = removed))
+        else None
+      run match {
+        case Some(r) =>
+          if (plain >= 0) {
+            out = TextRun(code.substring(plain, k)) :: out
+            plain = -1
+          }
+          out = r :: out
+        case None => if (plain < 0) plain = k
+      }
+      k = end
+    }
+    if (plain >= 0) out = TextRun(code.substring(plain)) :: out
+    out.reverse
+  }
+
+  private def diff(language: String): Boolean = {
+    val l = language.toLowerCase
+    l == "diff" || l == "patch"
   }
 
   private def identifier(c: Char): Boolean = c.isLetterOrDigit || c == '_' || c == '$'

@@ -1148,6 +1148,9 @@ answer.content := message().text          // may grow token by token while the a
 - Code blocks are coloured for the fence's language (`everyui.kit.Highlight`, which `CodeView(text, points, language)`
   uses too), scroll sideways rather than wrap, and have a copy button where the platform has a clipboard. Each takes
   the focus only when there is somewhere to scroll.
+  A `diff` (or `patch`) block is coloured by its lines: what was added in the theme's success, what was taken out
+  in its danger, a hunk's `@@` header muted, and the lines naming the files (`diff --git`, `---`, `+++`, `index`) bold.
+  The palette's extras "code.added", "code.removed" and "code.hunk" change those colours.
 - A table's columns share the width given as a browser's automatic table layout shares it (`TableWidths`): where every
   cell fits on one line each column is as wide as its widest cell (a wide screen's table, as before); where not, the
   cells' words wrap, each column between its widest word and its widest cell, a column of long phrases giving up more
