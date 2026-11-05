@@ -644,6 +644,18 @@ js.Dynamic.global.window.accessFindings = () => Access.check().map(_.toString).m
 
 ## General components
 
+An icon that is at work says so itself, with no ring drawn over it. `busy @= true` on an `IconButton` or any
+`MaterialIconView` makes the glyph breathe: its opacity eases down to a third and back every two seconds, run by the
+platform as any `motion` is. A glyph's own motion (a `Spinner`'s turn) and its strength come back once it is set back.
+Where less motion is asked for (`ReduceMotion`), it stands still instead. An `IconButton` then shows its glyph whole
+in the accent, and a bare glyph at half strength. A busy `IconButton`'s tooltip and its name to a screen reader add
+"busy" (`Words.busy`, in each language): "Queue, busy". A count beside it (a pill the app places) is untouched.
+
+```scala
+val queue = new IconButton(MaterialIcon.Queue, "Queue", () => openQueue())
+queue.busy := agents.working()
+```
+
 Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:
 
 - `TabBar` and `TabItem`: a strip of tabs, fixed (`TabBar(List(key -> label), current, width)`) or open-ended
