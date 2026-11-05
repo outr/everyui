@@ -13,6 +13,12 @@ package everyui.render
   * arrives. The cost is honest and should be said where it is chosen — a bigger buffer means a longer wait before
   * playback starts and after every seek, in exchange for far fewer interruptions.
   *
+  * Between `minMs` and `maxMs` the player stops reading: full at `maxMs`, it reads again only once the buffer has
+  * played down to `minMs`, holding the response open and unread all that while. A server drops a response nobody
+  * reads after a while (Wasabi after about sixty seconds; a router or a home server at its own), and each cycle then
+  * ended in a load error and a reconnect, every seventy-odd seconds all day under the old Balanced (50 s to 120 s).
+  * So the two are kept under forty-five seconds apart: as much held, refilled more often in smaller pieces.
+  *
   * @param idleMs  what a read is given in the moments after a pause is lifted, where a socket that died quietly
   *                while nothing was being asked of it is the likely explanation and finding out quickly is worth
   *                more than patience
@@ -40,13 +46,13 @@ object Buffering {
     * something goes wrong, while starting later costs a second of every single play; an earlier version of this
     * traded five seconds of start-up for cushion nobody had asked for. Only [[Slow]] makes that trade. */
   val Balanced: Buffering =
-    new Buffering("balanced", 50000, 120000, 2500, 5000, 8000, 15000, 3000, 60000, 20000, 120000)
+    new Buffering("balanced", 80000, 120000, 2500, 5000, 8000, 15000, 3000, 60000, 20000, 120000)
 
   /** For a link that buffers: four minutes held, and now it IS worth waiting five seconds to start, because the
     * alternative is stopping again thirty seconds in. The Jellyfin client's "Extra Large", with longer patience on
     * a read so that being slow is not mistaken for being broken. */
   val Slow: Buffering =
-    new Buffering("slow", 80000, 240000, 5000, 10000, 15000, 30000, 5000, 120000, 60000, 180000)
+    new Buffering("slow", 200000, 240000, 5000, 10000, 15000, 30000, 5000, 120000, 60000, 180000)
 
   def of(name: String): Buffering = name.trim.toLowerCase match {
     case "responsive" => Responsive
