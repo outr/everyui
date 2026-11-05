@@ -546,20 +546,29 @@ class RenderNode(val fx: Node) {
   }
   /** What the node is to a screen reader (JavaFX's, on Windows and macOS): its role, by the nearest of JavaFX's own,
     * and its name. A control of JavaFX's (a text field) keeps its own role. */
+  // whether its name was worked out at a focus (`accessibleFocus`), rather than given (`setSemantics`)
+  private var named = false
   def setSemantics(role: String, level: Int, label: String): Unit = {
     if (!fx.isInstanceOf[javafx.scene.control.Control]) fx.setAccessibleRole(
       if (role.nonEmpty) RenderNode.accessibleRole(role)
       else if (fx.isInstanceOf[javafx.scene.Parent]) javafx.scene.AccessibleRole.PARENT
       else javafx.scene.AccessibleRole.NODE)
     fx.setAccessibleRoleDescription(if (role == "heading") "heading" else null)
+    named = false
     fx.setAccessibleText(if (label.isEmpty) null else label)
   }
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = ()
   /** The focus landed here: the window's focus put on this node too, so a screen reader follows it and reads it by
     * its role and name (setSemantics), while the keys are still heard by the app (`onKey`, a filter on the scene). A
-    * text field or an embed (a web view) takes the window's focus itself, and keeps it. */
-  def accessibleFocus(click: () => Unit): Unit = {
+    * node given no name is named by `name` (`Access.nameOf`: the words inside it, its tooltip), which JavaFX does not
+    * work out for itself. A text field or an embed (a web view) takes the window's focus itself, and keeps it. */
+  def accessibleFocus(click: () => Unit, name: () => String): Unit = {
+    if (!fx.isInstanceOf[javafx.scene.control.Control] && (fx.getAccessibleText == null || named)) {
+      named = true
+      val said = name()
+      fx.setAccessibleText(if (said.isEmpty) null else said)
+    }
     val takes = fx.isInstanceOf[TextInputControl] || Host.embedOf(fx).nonEmpty || fx.lookup(".text-input") != null
     // the focus already in it: a text field or a web view inside it
     val owner = Option(Host.scene).flatMap(s => Option(s.getFocusOwner))
@@ -933,7 +942,11 @@ object RenderNode {
       case "radio" => RADIO_BUTTON
       case "tab" => TAB_ITEM
       case "tablist" => TAB_PANE
+      case "menu" => CONTEXT_MENU
       case "menuitem" => MENU_ITEM
+      case "menuitemcheckbox" => CHECK_MENU_ITEM
+      case "combobox" => COMBO_BOX
+      case "row" => TABLE_ROW
       case "progressbar" => PROGRESS_INDICATOR
       case "status" | "text" => TEXT
       case _ => PARENT

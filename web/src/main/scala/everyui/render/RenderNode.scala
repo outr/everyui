@@ -778,7 +778,7 @@ class RenderNode(val el: html.Element) {
     * focuses it no more than before), draws no outline of the browser's (the app draws its own) and scrolls nothing.
     * A field, an editor or an embed takes the page's focus itself, and a frame or a password manager's menu holding
     * it keeps it; once a key being pressed has done what it does (`afterKey`). */
-  def accessibleFocus(click: () => Unit): Unit = RenderNode.afterKey(() => {
+  def accessibleFocus(click: () => Unit, name: () => String): Unit = RenderNode.afterKey(() => {
     val active = dom.document.activeElement
     if (!(RenderNode.reading eq el)) RenderNode.release()
     val takes = RenderNode.editable(el) || el.hasAttribute("data-everyui-embed") ||

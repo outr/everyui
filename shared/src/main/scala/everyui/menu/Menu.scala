@@ -1,7 +1,7 @@
 package everyui.menu
 
 import everyui.component.*
-import everyui.component.types.FontWeight
+import everyui.component.types.{FontWeight, Semantics}
 import everyui.event.{FocusMoves, Key, Pointer}
 import everyui.focus.Focus
 import everyui.i18n.Direction
@@ -40,6 +40,8 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
   /** As wide as its widest entry asks, and never narrower than `Menu.minWidth`. */
   private val across: Var[Double] = own(Var(Menu.minWidth()))
   val rows: List[MenuRow] = items.map(i => new MenuRow(i, across() - inset * 2.0, points, Menu.widest - inset * 2.0))
+  // a menu to a screen reader, named by its title where it has one, its rows its entries
+  semantics @= Semantics("menu", label = title)
   private val column = new Container {
     layout @= Some(VerticalLayout(0.0))
     children ++= rows

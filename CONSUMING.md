@@ -646,6 +646,15 @@ const found = await page.evaluate(() => window.everyuiAccessJson());
 expect(found).toEqual([]);
 ```
 
+Names and roles come by default. An app's own component that takes the focus and hears a click (a plain
+`Container`, or a kind of the app's) is a button to a screen reader, with no `semantics` of its own. It is named
+by the words it holds, in reading order, or by its tooltip where it holds none: on the web, and on the desktop,
+where the name is worked out as it takes the focus. TalkBack reads what has the focus as a button by its words, as
+before. EveryUI's own controls say what they are: a checkbox, a switch, a radio choice, a tab, a menu and its
+entries (ticked or not, out of use or not), a select, and dialog and icon buttons. `semantics` is for what that
+leaves out: another role (`Semantics("link")`), or meaning the words do not show (`Semantics(label = "unread")` on a
+dot inside a card).
+
 ## General components
 
 An icon that is at work says so itself, with no ring drawn over it. `busy @= true` on an `IconButton` or any

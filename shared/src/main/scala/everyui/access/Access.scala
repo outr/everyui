@@ -132,36 +132,40 @@ object Access {
     .replace("\r", "\\r").replace("\t", "\\t") + "\""
 
   /** The name a screen reader is given for `c`: its `semantics` label; else its own words (a text's, a picture's alt,
-    * a field's label); else its tooltip; else the words of what it holds, in reading order (top to bottom, then
-    * across), each part with a label of its own by that label. Empty where it has none. */
+    * a field's label); else the words of what it holds, in reading order (top to bottom, then across), each part
+    * with a label of its own by that label; else its tooltip (which, with words to name it, describes it). Empty
+    * where it has none. */
   def nameOf(c: Component): String = {
-    val own = (labelOf(c) :: wordsOf(c) :: c.tooltip() :: Nil).map(_.trim).find(_.nonEmpty)
-    own.getOrElse {
-      var parts = List.empty[(Double, Double, String)]
-      var pending: List[Component] = c.childComponents.toList
-      var seen = 0
-      while (pending.nonEmpty && seen < 400) {
-        val at = pending.head
-        pending = pending.tail
-        seen += 1
-        if (at.notHidden) {
-          val said = (labelOf(at) :: wordsOf(at) :: Nil).map(_.trim).find(_.nonEmpty)
-          said match {
-            case Some(words) => parts = (at.absoluteTop, at.absoluteLeft, words) :: parts
-            case None => pending = at.childComponents.toList ::: pending
-          }
-        }
-      }
-      // a line is what starts within 4 pixels of the same height
-      parts.sortBy(p => (math.round(p._1 / 4.0), p._2)).map(_._3).mkString(" ").take(160).trim
-    }
+    val own = (labelOf(c) :: wordsOf(c) :: Nil).map(_.trim).find(_.nonEmpty)
+    own.orElse(Some(inside(c)).filter(_.nonEmpty)).getOrElse(c.tooltip().trim)
   }
 
-  /** What `c` is to a screen reader: its `semantics` role; a field of the platform's is a text box. Empty where
-    * nothing says. */
+  // the words of what `c` holds, in reading order: each part with a label of its own by that label
+  private def inside(c: Component): String = {
+    var parts = List.empty[(Double, Double, String)]
+    var pending: List[Component] = c.childComponents.toList
+    var seen = 0
+    while (pending.nonEmpty && seen < 400) {
+      val at = pending.head
+      pending = pending.tail
+      seen += 1
+      if (at.notHidden) {
+        val said = (labelOf(at) :: wordsOf(at) :: Nil).map(_.trim).find(_.nonEmpty)
+        said match {
+          case Some(words) => parts = (at.absoluteTop, at.absoluteLeft, words) :: parts
+          case None => pending = at.childComponents.toList ::: pending
+        }
+      }
+    }
+    // a line is what starts within 4 pixels of the same height
+    parts.sortBy(p => (math.round(p._1 / 4.0), p._2)).map(_._3).mkString(" ").take(160).trim
+  }
+
+  /** What `c` is to a screen reader: its `semantics` role; a field of the platform's is a text box; an app's own
+    * focusable, clicked component a button (`Component.impliedRole`). Empty where nothing says. */
   def roleOf(c: Component): String = {
     val said = c.semantics().role
-    if (said.nonEmpty) said else if (c.takesTyping) "textbox" else ""
+    if (said.nonEmpty) said else if (c.takesTyping) "textbox" else c.impliedRole
   }
 
   /** The contrast of `a` against `b` (both opaque), from 1 to 21. */

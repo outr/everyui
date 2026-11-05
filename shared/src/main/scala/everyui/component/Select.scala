@@ -4,6 +4,7 @@ import everyui.component.feature.FontFeature
 import everyui.render.{Nodes, Platform}
 import everyui.PlatformKind
 import everyui.theme.Theme
+import everyui.component.types.Semantics
 import reactify.*
 
 /** One of a list of `options`, chosen from a drop-down: the page's own `<select>` on the web (its keyboard, its list,
@@ -58,6 +59,8 @@ class Select(options: => List[String]) extends Container {
     field.position.middle := size.middle()
     focusable @= true
     event.click.attach(_ => if (choices().nonEmpty) selected @= (selected() + 1) % choices().size)
+    // a button that steps through the choices, named by the one it shows
+    semantics @= Semantics.button()
   }
   children += field
 }

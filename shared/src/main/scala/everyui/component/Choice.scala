@@ -1,6 +1,7 @@
 package everyui.component
 
 import everyui.theme.Theme
+import everyui.component.types.Semantics
 import reactify.*
 
 /** One of a set of choices: the chosen one wears the accent, the rest are muted; a click, a tap or Enter chooses it.
@@ -15,6 +16,8 @@ class Choice(label: String, chosen: Boolean, choose: () => Unit) extends Contain
   }
   focusable @= true
   radius @= 11.0
+  // one of a set, chosen or not
+  semantics @= Semantics("radio", label = label, checked = Some(chosen))
   size.width := text.size.width + 20.0
   size.height := text.size.height + 8.0
   backgroundColor := {

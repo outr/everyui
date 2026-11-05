@@ -5,6 +5,7 @@ import everyui.component.*
 import everyui.component.types.FontWeight
 import everyui.kit.{AsyncPress, Spinner}
 import everyui.theme.Theme
+import everyui.component.types.Semantics
 import reactify.*
 
 /** A dialog's button: its label on an outlined plate, the default one's in the accent and a dangerous one's in the
@@ -29,6 +30,7 @@ class DialogButton(val action: DialogAction, points: Double = 14.0) extends Cont
 
   focusable @= true
   size.width := line.size.width() + points * 2.5
+  semantics @= Semantics.button()
   size.height @= tall
   radius @= points * 0.7
   borderWidth := (if (focusShown()) 2.5 else 1.0)

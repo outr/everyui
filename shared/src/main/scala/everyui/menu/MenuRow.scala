@@ -8,6 +8,7 @@ import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.Mirror
 import everyui.theme.Theme
+import everyui.component.types.Semantics
 import reactify.*
 
 /** A row of a [[Menu]], `width` wide: a slot for the tick or the icon, the label (and its detail under it), and at the
@@ -79,11 +80,16 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
       position.top @= points * 0.45
       backgroundColor := Theme.border()
     }
+    semantics @= Semantics("separator")
     size.height @= points * 0.9 + 1.0
     children += rule
   }
   else {
     focusable @= item.enabled
+    // a screen reader hears an entry of a menu, ticked or not where it can be, and out of use where it is
+    semantics := Semantics(if (item.on.nonEmpty || item.checked.nonEmpty) "menuitemcheckbox" else "menuitem",
+      label = item.label, checked = if (item.on.nonEmpty || item.checked.nonEmpty) Some(item.ticked) else None)
+    disabled @= !item.enabled
     size.height := words.size.height() + points * 0.9
     backgroundColor := MenuRow.fill(focused(), item.active)
     // the current choice ringed in the accent, its words in it too: plainer than a mark before it

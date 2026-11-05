@@ -320,7 +320,7 @@ class RenderNode(val sg: SGNode) {
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = ()
   /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */
-  def accessibleFocus(click: () => Unit): Unit = ()
+  def accessibleFocus(click: () => Unit, name: () => String): Unit = ()
   def setAlt(text: String): Unit = ()
 
   def setTextAlign(align: String): Unit = ()

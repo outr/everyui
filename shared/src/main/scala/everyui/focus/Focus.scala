@@ -95,7 +95,10 @@ object Focus {
       marked = now
       now.foreach(remember)
       // a screen reader (TalkBack) reads out where the focus has landed, and can press it
-      now.foreach(c => c.node.accessibleFocus(() => c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))))
+      now.foreach { c =>
+        val press = () => c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
+        c.node.accessibleFocus(press, () => everyui.access.Access.nameOf(c))
+      }
     }
     if (Platform.remoteNavigation()) Platform.after(WatchSeconds, () => watch())
     else {

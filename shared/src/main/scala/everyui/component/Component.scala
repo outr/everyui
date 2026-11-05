@@ -368,11 +368,27 @@ class Component(val node: RenderNode) {
   /** What this is to whatever reads the page rather than looking at it (`Semantics`): a heading, the main content, a
     * set of links. On the web it is the element's ARIA role, level and label, with a slider's value and a switch's
     * state; elsewhere, where the platform has one, its accessibility role. */
-  lazy val semantics: Prop[Semantics] =
-    own(new Prop[Semantics](Semantics.Plain, s => {
-      node.setSemantics(s.role, s.level, s.label)
-      node.setSemanticState(s.range, s.checked, s.expanded, s.selected, s.sort)
-    }))
+  lazy val semantics: Prop[Semantics] = own(new Prop[Semantics](Semantics.Plain, s => said(s)))
+  private def said(s: Semantics): Unit = {
+    node.setSemantics(if (s.role.isEmpty) impliedRole else s.role, s.level, s.label)
+    node.setSemanticState(s.range, s.checked, s.expanded, s.selected, s.sort)
+  }
+  /** The role it has with no `semantics` of its own: a button, where it is an app's own (a plain `Container`, or a
+    * kind of the app's), takes the focus, hears a click and takes no typing. EveryUI's own kinds say what they are. */
+  private[everyui] def impliedRole: String =
+    if (clickHeard && focusable() && !takesTyping && Component.appMade(this)) "button" else ""
+  // whether the role is followed as `focusable` changes: once a click is heard
+  private var implying = false
+  /** A click is heard on it (`event.click`): it may be a button now, and is told again as it takes the focus or no
+    * longer does. */
+  private[everyui] def heardClick(): Unit = {
+    clickHeard = true
+    if (!implying && Component.appMade(this)) {
+      implying = true
+      focusable.attach(_ => said(semantics()))
+      said(semantics())
+    }
+  }
   /** Out of use for now: whatever reads the page hears so (the web's `aria-disabled`, TalkBack for a field), and the
     * platform's own field takes no typing, though the focus still reaches it. How it looks is the component's to say. */
   lazy val disabled: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setDisabled(d)))
@@ -438,6 +454,13 @@ class Component(val node: RenderNode) {
 }
 
 object Component {
+  /** Whether `c` is an app's own: a plain `Container` it made, or a kind of its own; not one of EveryUI's kinds, which
+    * say for themselves what they are. */
+  def appMade(c: Component): Boolean = {
+    val name = c.getClass.getName
+    name == "everyui.component.Container" || !name.startsWith("everyui.")
+  }
+
   /** A component and those it sits in, as class names from it outward (`Spinner < Container < LoadingOverlay`), six at
     * most: what a platform's diagnostics name a node by. */
   def lineage(c: Component): String = {

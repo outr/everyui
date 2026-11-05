@@ -127,6 +127,65 @@ class AccessSpec extends FxSpec {
     }
   }
 
+  "An app's own focusable, clicked box" should {
+    "be a button with no semantics of its own, to the check and the platform, and what the app says once it does" in {
+      val c = fx {
+        val c = target(10.0, 10.0, 120.0)
+        c.focusable @= true
+        c.children += TextView("Lunch on Friday?")
+        c
+      }
+      onScreen(c) {
+        fx(Access.roleOf(c)) shouldBe "button"
+        fx(c.node.fx.getAccessibleRole) shouldBe javafx.scene.AccessibleRole.BUTTON
+        fx(Access.check()) shouldBe Nil
+        fx(c.semantics @= Semantics("link"))
+        fx(c.node.fx.getAccessibleRole) shouldBe javafx.scene.AccessibleRole.HYPERLINK
+      }
+    }
+    "not be a button while it takes no focus" in {
+      val c = fx(target(10.0, 10.0))
+      onScreen(c) {
+        fx(Access.roleOf(c)) shouldBe ""
+        fx(c.focusable @= true)
+        fx(Access.roleOf(c)) shouldBe "button"
+        fx(c.node.fx.getAccessibleRole) shouldBe javafx.scene.AccessibleRole.BUTTON
+      }
+    }
+    "be named by its words before its tooltip, and by the tooltip where it has no words" in {
+      val (worded, bare) = fx {
+        val worded = target(10.0, 10.0, 120.0)
+        worded.tooltip @= "Opens the plan"
+        worded.children += TextView("Plans")
+        val bare = target(10.0, 200.0)
+        bare.tooltip @= "Refresh"
+        (worded, bare)
+      }
+      onScreen(worded, bare) {
+        fx(Access.nameOf(worded)) shouldBe "Plans"
+        fx(Access.nameOf(bare)) shouldBe "Refresh"
+      }
+    }
+    "be named to the desktop's screen reader by its words as it takes the focus" in {
+      val c = fx {
+        val c = target(10.0, 10.0, 200.0)
+        c.focusable @= true
+        val a = TextView("A teammate")
+        val b = TextView("Lunch on Friday?")
+        b.position.top @= 24.0
+        c.children ++= List(b, a)
+        c
+      }
+      onScreen(c) {
+        fx(c.focus())
+        fx(c.node.fx.getAccessibleText) shouldBe "A teammate Lunch on Friday?"
+        fx(c.semantics @= Semantics.button("Mail from a teammate"))
+        fx(c.node.fx.getAccessibleText) shouldBe "Mail from a teammate"
+        fx(everyui.focus.Focus.focused @= None)
+      }
+    }
+  }
+
   "A small target" should {
     "be found only with another within 24 of its middle" in {
       val (a, b, apart) = fx((target(10.0, 10.0, 16.0), target(28.0, 10.0, 16.0), target(200.0, 10.0, 16.0)))
@@ -192,7 +251,12 @@ class AccessSpec extends FxSpec {
           new TextArea("Message"),
           new SearchField(),
           new Slider(Var(0.5), label = "Volume"),
-          new DateField("Due"))
+          new DateField("Due"),
+          new Choice("Week", chosen = true, () => ()),
+          new Select(List("Small", "Large")),
+          new everyui.dialog.DialogButton(everyui.dialog.DialogAction("OK", () => ())),
+          new everyui.menu.Menu(List(everyui.menu.MenuItem("Archive"),
+            everyui.menu.MenuItem.check("Pinned", on = true, _ => ()))))
         column.position.left @= 16.0
         column.position.top @= 16.0
         column

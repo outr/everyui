@@ -1126,7 +1126,7 @@ class RenderNode(val view: View) {
   /** The focus landed here (the app's own focus, which Android's does not follow). With a screen reader on, this is
     * where TalkBack's focus goes: read out by its label, or else by the words inside it, as a button that its double
     * tap (or OK) presses. Without one, nothing is done: the checks and the delegate cost nothing on an ordinary run. */
-  def accessibleFocus(click: () => Unit): Unit = if (RenderNode.reading) {
+  def accessibleFocus(click: () => Unit, name: () => String): Unit = if (RenderNode.reading) {
     view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES)
     if (android.os.Build.VERSION.SDK_INT >= 28) view.setScreenReaderFocusable(true)
     focusDelegate = true

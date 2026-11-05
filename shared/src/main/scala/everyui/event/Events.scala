@@ -15,7 +15,7 @@ class Events(component: Component) {
     * moves the focus or it takes the focus from a click (`Component.clickFocus`: a field, a list); elsewhere (a
     * button, a tab) the focus is let go of (`Focus.clicked`). */
   lazy val click: Channel[PointerEvent] = {
-    component.clickHeard = true
+    component.heardClick()
     val channel = pointer.channel(PointerKind.Click)
     FocusMoves.watch()
     channel.attach { e =>
