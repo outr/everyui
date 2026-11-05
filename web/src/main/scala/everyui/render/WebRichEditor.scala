@@ -112,8 +112,9 @@ class WebRichEditor(val outer: html.Element) {
       if (dom.document.activeElement == content) place(selection)
     }
 
-  /** The page's focus put in it. */
-  def focus(selection: RichRange): Unit = {
+  /** The page's focus put in it: once the key being pressed has done what it does (RenderNode.afterKey), so a dialog's
+    * Enter that closes it and hands the focus back here does not then split a block. */
+  def focus(selection: RichRange): Unit = RenderNode.afterKey { () =>
     content.focus()
     place(selection)
   }

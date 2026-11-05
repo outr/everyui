@@ -1045,7 +1045,8 @@ class RenderNode(val el: html.Element) {
   // never taken back from something the app did not make (a password manager's menu, a frame) while the page's focus
   // is in it
   def focusInput(on: Boolean): Unit =
-    if (on && dom.document.activeElement != el && RenderNode.embedOf(dom.document.activeElement) != "field") el.focus()
+    if (on && dom.document.activeElement != el && RenderNode.embedOf(dom.document.activeElement) != "field")
+      RenderNode.afterKey(() => el.focus())
     else if (!on && dom.document.activeElement == el) {
       FieldBlur.blurring = true
       try el.blur() finally FieldBlur.blurring = false
@@ -1062,6 +1063,15 @@ class RenderNode(val el: html.Element) {
 }
 
 object RenderNode {
+  /** Whether a key is being pressed now (`Platform.onKey`): the browser does what the key does by default once the
+    * app has heard it, to whatever has the page's focus then. */
+  private[render] var inKey: Boolean = false
+
+  /** `f` once the key being pressed has done what it does, where one is (else at once): the focus put in a field or an
+    * editor as a key is heard (a dialog's Enter closing it, the focus going back to the editor it was opened from)
+    * would otherwise take the key's own action (Enter's new line) after it. */
+  def afterKey(f: () => Unit): Unit = if (inKey) dom.window.setTimeout(() => f(), 0) else f()
+
   /** SVG's namespace, which its elements are made in. */
   val svgNs: String = "http://www.w3.org/2000/svg"
 
@@ -2419,7 +2429,9 @@ object Platform {
       // key came to, asked before the app hears it, since a key the app takes may put the focus in a field (E on a
       // queued message edits it in the composer's field), which must not then type it as well
       val typed = RenderNode.fieldKey(e)
-      if (f(RenderNode.keyName(e), pressed) && !typed) e.preventDefault()
+      RenderNode.inKey = pressed
+      try { if (f(RenderNode.keyName(e), pressed) && !typed) e.preventDefault() }
+      finally RenderNode.inKey = false
     }
     dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => hear(e, true))
     dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => hear(e, false))
