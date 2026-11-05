@@ -544,12 +544,28 @@ class RenderNode(val fx: Node) {
       }
     case _ => ()
   }
-  // no reader of roles or descriptions reaches this platform's nodes
-  def setSemantics(role: String, level: Int, label: String): Unit = ()
+  /** What the node is to a screen reader (JavaFX's, on Windows and macOS): its role, by the nearest of JavaFX's own,
+    * and its name. A control of JavaFX's (a text field) keeps its own role. */
+  def setSemantics(role: String, level: Int, label: String): Unit = {
+    if (!fx.isInstanceOf[javafx.scene.control.Control]) fx.setAccessibleRole(
+      if (role.nonEmpty) RenderNode.accessibleRole(role)
+      else if (fx.isInstanceOf[javafx.scene.Parent]) javafx.scene.AccessibleRole.PARENT
+      else javafx.scene.AccessibleRole.NODE)
+    fx.setAccessibleRoleDescription(if (role == "heading") "heading" else null)
+    fx.setAccessibleText(if (label.isEmpty) null else label)
+  }
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = ()
-  /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */
-  def accessibleFocus(click: () => Unit): Unit = ()
+  /** The focus landed here: the window's focus put on this node too, so a screen reader follows it and reads it by
+    * its role and name (setSemantics), while the keys are still heard by the app (`onKey`, a filter on the scene). A
+    * text field or an embed (a web view) takes the window's focus itself, and keeps it. */
+  def accessibleFocus(click: () => Unit): Unit = {
+    val takes = fx.isInstanceOf[TextInputControl] || Host.embedOf(fx).nonEmpty || fx.lookup(".text-input") != null
+    // the focus already in it: a text field or a web view inside it
+    val owner = Option(Host.scene).flatMap(s => Option(s.getFocusOwner))
+    val holds = owner.exists(o => Iterator.iterate(o)(_.getParent).takeWhile(_ != null).contains(fx))
+    if (!takes && !holds && fx.getScene != null && !fx.isFocused) fx.requestFocus()
+  }
   def setAlt(text: String): Unit = ()
 
   def setTextAlign(value: String): Unit = {
@@ -899,6 +915,30 @@ object RenderNode {
   def fieldStyle(hex: String): String =
     "-fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; -fx-text-fill: " + hex +
       "; -fx-prompt-text-fill: derive(" + hex + ", -40%); -fx-highlight-fill: derive(" + hex + ", -60%); -fx-highlight-text-fill: " + hex + ";"
+
+  /** JavaFX's nearest role to an ARIA role (`Semantics`, not empty); a landmark or a region, which JavaFX has none
+    * of, is a parent node. */
+  def accessibleRole(role: String): javafx.scene.AccessibleRole = {
+    import javafx.scene.AccessibleRole.*
+    role match {
+      case "button" => BUTTON
+      case "link" => HYPERLINK
+      case "heading" => TEXT
+      case "img" => IMAGE_VIEW
+      case "list" => LIST_VIEW
+      case "listitem" => LIST_ITEM
+      case "slider" => SLIDER
+      case "switch" => TOGGLE_BUTTON
+      case "checkbox" => CHECK_BOX
+      case "radio" => RADIO_BUTTON
+      case "tab" => TAB_ITEM
+      case "tablist" => TAB_PANE
+      case "menuitem" => MENU_ITEM
+      case "progressbar" => PROGRESS_INDICATOR
+      case "status" | "text" => TEXT
+      case _ => PARENT
+    }
+  }
 }
 
 /** What the launcher (everyui.desktop.Desktop) hands the backend: the scene, its root, and how it was run. */

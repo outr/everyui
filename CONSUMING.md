@@ -391,6 +391,14 @@ val board = new Container {
 }
 ```
 
+A screen reader follows the focus. What has it holds the platform's own focus as well, and is read by its `semantics`
+(its role and its label), while the keys are still heard by the app as before. On the web the element takes
+`document.activeElement`: it is made focusable while it holds it (`tabindex="-1"`, outside the browser's Tab order),
+and it draws no outline of the browser's and scrolls nothing. On the JavaFX desktop the node takes the window's
+focus, by its role and name (`setAccessibleRole`, `setAccessibleText`) for Narrator and VoiceOver. On Android
+TalkBack's focus follows it. A field, an editor or an embed takes the platform's focus itself, as ever. A focusable
+card should say what it is (`semantics @= Semantics.button("Unread: Lunch on Friday?")`), or it is read by its words.
+
 
 A double-tap is a modifier on its own, pressed and released twice in quick succession. It works in any binding:
 

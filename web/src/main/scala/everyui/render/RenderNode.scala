@@ -772,9 +772,28 @@ class RenderNode(val el: html.Element) {
     attribute("aria-sort", if (sort.isEmpty) None else Some(sort))
   }
 
-  /** The focus landed here. The page keeps its own focus rather than the browser's, and says what things are by
-    * their roles and labels (setSemantics), so there is nothing more to do. */
-  def accessibleFocus(click: () => Unit): Unit = ()
+  /** The focus landed here: the page's own focus put on this element too, so a screen reader follows it and reads it
+    * by its role and label (setSemantics), while the keys are still heard by the app (`onKey`, on the document). The
+    * element is focusable only while it holds it (tabindex -1, out of the browser's Tab order, so a click elsewhere
+    * focuses it no more than before), draws no outline of the browser's (the app draws its own) and scrolls nothing.
+    * A field, an editor or an embed takes the page's focus itself, and a frame or a password manager's menu holding
+    * it keeps it; once a key being pressed has done what it does (`afterKey`). */
+  def accessibleFocus(click: () => Unit): Unit = RenderNode.afterKey(() => {
+    val active = dom.document.activeElement
+    if (!(RenderNode.reading eq el)) RenderNode.release()
+    val takes = RenderNode.editable(el) || el.hasAttribute("data-everyui-embed") ||
+      el.querySelector("input, textarea, select, [contenteditable], [data-everyui-embed]") != null
+    val holds = active != null && el.contains(active)
+    if (el.isConnected && !takes && !holds && RenderNode.embedOf(active) != "field") {
+      if (!(RenderNode.reading eq el) && !el.hasAttribute("tabindex")) {
+        RenderNode.reading = el
+        RenderNode.readOutline = el.style.outline
+        el.setAttribute("tabindex", "-1")
+        el.style.outline = "none"
+      }
+      el.asInstanceOf[js.Dynamic].focus(js.Dynamic.literal(preventScroll = true))
+    }
+  })
 
   /** An `<img>`'s words for what it shows; empty marks it decoration. */
   def setAlt(text: String): Unit = el.setAttribute("alt", text)
@@ -1071,6 +1090,17 @@ object RenderNode {
     * editor as a key is heard (a dialog's Enter closing it, the focus going back to the editor it was opened from)
     * would otherwise take the key's own action (Enter's new line) after it. */
   def afterKey(f: () => Unit): Unit = if (inKey) dom.window.setTimeout(() => f(), 0) else f()
+
+  /** The element made focusable to hold the page's focus for the app's (`accessibleFocus`), and its outline before. */
+  private[render] var reading: html.Element = null
+  private[render] var readOutline: String = ""
+
+  /** The element that held the page's focus for the app's put back as it was, as the app's focus moves on. */
+  private[render] def release(): Unit = if (reading != null) {
+    reading.removeAttribute("tabindex")
+    reading.style.outline = readOutline
+    reading = null
+  }
 
   /** SVG's namespace, which its elements are made in. */
   val svgNs: String = "http://www.w3.org/2000/svg"
