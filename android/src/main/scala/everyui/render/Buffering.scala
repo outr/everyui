@@ -15,8 +15,9 @@ package everyui.render
   *
   * Between `minMs` and `maxMs` the player stops reading: full at `maxMs`, it reads again only once the buffer has
   * played down to `minMs`, holding the response open and unread all that while. A server drops a response nobody
-  * reads after a while (Wasabi after about sixty seconds; a router or a home server at its own), and each cycle then
-  * ended in a load error and a reconnect, every seventy-odd seconds all day under the old Balanced (50 s to 120 s).
+  * reads after a while (Wasabi after about sixty seconds; a router or a home server at its own). Under the old
+  * Balanced (50 s to 120 s) a clip whose bytes stayed under the player's byte target, so that it reached the pause,
+  * ended each cycle in a load error and a reconnect, every seventy-odd seconds for as long as it played.
   * So the two are kept under forty-five seconds apart: as much held, refilled more often in smaller pieces.
   *
   * @param idleMs  what a read is given in the moments after a pause is lifted, where a socket that died quietly
