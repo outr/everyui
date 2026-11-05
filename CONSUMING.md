@@ -1945,6 +1945,11 @@ coming up, a rotation, a fold) it is scrolled back into sight with a little room
 conversation follows its newest again, if it was doing so when typing began. `transcript.typing` says whether it is.
 A `ScrollContainer` keeps a field typed into in sight as it grows shorter, the same way, on every platform.
 
+`chat.stripSlot @= Some(bar)` puts a slim strip of the app's just above the composer (and the status bar on it), the
+full width: what runs in the background, say, unfolding upward into its list as it grows. The transcript gives up the
+room it takes, and it takes none while the slot is empty or what it holds is hidden. It stays on the composer at a
+phone's width and with the keyboard up, and the keys and a screen reader reach it after the transcript.
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

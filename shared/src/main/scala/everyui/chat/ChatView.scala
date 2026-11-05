@@ -55,12 +55,18 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   /** What types the messages: the app's, filling the width at the bottom; none, and the transcript takes the room. */
   val composerSlot: Var[Option[Component]] = own(Var(composer))
 
+  /** A slim strip of the app's just above the composer (and the status bar on it), the full width: what goes on in
+    * the background, say, unfolding upward into its list as it grows. It takes no room while it is None, or while what
+    * it holds takes none; the transcript gives up what it takes. */
+  val stripSlot: Var[Option[Component]] = own(Var(None))
+
   private val below: Val[Double] = own(Val(composerSlot().map(_.size.height()).getOrElse(0.0)))
+  private val stripHeight: Val[Double] = own(Val(stripSlot().filter(_.visible()).map(_.size.height()).getOrElse(0.0)))
 
   transcript.size.width := size.width()
-  transcript.size.height := math.max(0.0, size.height() - status.size.height() - below())
+  transcript.size.height := math.max(0.0, size.height() - status.size.height() - stripHeight() - below())
   status.size.width := size.width()
-  status.position.top := transcript.size.height()
+  status.position.top := transcript.size.height() + stripHeight()
   backgroundColor := Theme.background()
   size.width @= 400.0
   size.height @= 600.0
@@ -90,6 +96,25 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   }
   composerSlot.attach(c => place(c))
   place(composerSlot())
+
+  private var stripped: Option[Component] = None
+  // the strip under the transcript, before the status bar and the composer in the order the keys and a screen reader
+  // take
+  private def placeStrip(next: Option[Component]): Unit = {
+    stripped.foreach { c =>
+      children -= c
+      Component.unbind(c.size.width)
+      Component.unbind(c.position.top)
+    }
+    stripped = next
+    next.foreach { c =>
+      c.size.width := size.width()
+      c.position.left @= 0.0
+      c.position.top := transcript.size.height()
+      children @= children().patch(children().indexWhere(_ eq transcript) + 1, List(c), 0)
+    }
+  }
+  stripSlot.attach(c => placeStrip(c))
 
   override def focus(): Unit = transcript.focus()
   override def kind: String = "ChatView"
