@@ -3688,6 +3688,16 @@ network module with that platform's side of it (Spice over `java.net.http` on th
 device's own transfers on a Roku and an Apple TV), so none of them wants `everyui-network`. reactify comes as its
 published jar: an app does not exclude `reactify_3`.
 
+### A phone's screen: its bars and its safe area (`Platform.safeArea`)
+
+On an Android phone or tablet the app keeps the status and navigation bars, and is drawn edge to edge behind them.
+It is laid out inside the safe area they leave, with a camera's cutout and the screen's rounded corners, so nothing
+of it, words or a button, lies under a bar, the camera, a curve or the gesture handle. The window's ground round it is
+the theme's background, and the bars' icons are dark on a light theme and light on a dark one. It follows a rotation,
+a fold and the keyboard. `Platform.safeArea()` says what was taken from each edge, in the app's units, for an app
+that wants to know. An Android television keeps the whole screen with no bars, as before. A browser keeps a page
+inside its own safe area, and a desktop window, a Roku and an Apple TV have none, so the safe area is nothing there.
+
 | Platform | The app depends on | and adds itself |
 |---|---|---|
 | desktop | `"com.outr" %% "everyui-desktop" % everyuiVersion.value` | `EveryUILibraries.javafx()` |

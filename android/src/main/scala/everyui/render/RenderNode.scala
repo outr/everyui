@@ -1497,6 +1497,74 @@ object Host {
   /** Told as the keyboard comes, goes or changes height (`Platform.onResize`). */
   var keyboardMoved: List[() => Unit] = Nil
 
+  /** What the window's status and navigation bars, a cutout and the screen's rounded corners leave of it, in pixels
+    * from each edge (left, top, right, bottom): the safe area the app is laid out inside (`Platform.screenWidth`,
+    * `screenHeight`), its root moved in by it, so nothing of it lies under a bar, the camera or a curve. None on a
+    * television (its whole screen is the app's) or a pinned viewport. */
+  var safe: (Int, Int, Int, Int) = (0, 0, 0, 0)
+
+  /** The safe area from the window's insets, the app told where it changed. A rounded corner reaches in from the side
+    * where the bars above and below leave less than its radius: by as much as its curve does at the bar's edge. */
+  def safeFrom(insets: android.view.WindowInsets): Unit = {
+    val found =
+      if (Platform.remoteNavigation() || viewportWidth > 0.0) (0, 0, 0, 0)
+      else if (android.os.Build.VERSION.SDK_INT >= 30) {
+        val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() |
+          android.view.WindowInsets.Type.displayCutout())
+        var (left, right) = (bars.left, bars.right)
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+          import android.view.RoundedCorner.*
+          def reach(position: Int, bar: Int): Int = Option(insets.getRoundedCorner(position)).map { corner =>
+            val r = corner.getRadius.toDouble
+            val dy = r - bar
+            if (dy <= 0.0) 0 else math.ceil(r - math.sqrt(r * r - dy * dy)).toInt
+          }.getOrElse(0)
+          left = math.max(left, math.max(reach(POSITION_TOP_LEFT, bars.top), reach(POSITION_BOTTOM_LEFT, bars.bottom)))
+          right = math.max(right, math.max(reach(POSITION_TOP_RIGHT, bars.top), reach(POSITION_BOTTOM_RIGHT, bars.bottom)))
+        }
+        (left, bars.top, right, bars.bottom)
+      }
+      else {
+        val cut = if (android.os.Build.VERSION.SDK_INT >= 28) Option(insets.getDisplayCutout) else None
+        (math.max(insets.getSystemWindowInsetLeft, cut.map(_.getSafeInsetLeft).getOrElse(0)),
+          math.max(insets.getSystemWindowInsetTop, cut.map(_.getSafeInsetTop).getOrElse(0)),
+          math.max(insets.getSystemWindowInsetRight, cut.map(_.getSafeInsetRight).getOrElse(0)),
+          math.max(insets.getSystemWindowInsetBottom, cut.map(_.getSafeInsetBottom).getOrElse(0)))
+      }
+    if (found != safe) {
+      safe = found
+      if (root != null) {
+        root.setTranslationX(safe._1.toFloat)
+        root.setTranslationY(safe._2.toFloat)
+      }
+      keyboardMoved.foreach(f => f())
+    }
+  }
+
+  // whether the edges follow the theme yet
+  private var paintingEdges = false
+  /** The window's ground behind the bars and round the safe area in the theme's background, and the bars' icons dark
+    * on a light one, light on a dark one, followed as the palette changes. */
+  def paintEdges(): Unit = if (activity != null) {
+    if (!paintingEdges) {
+      paintingEdges = true
+      everyui.theme.Theme.palette.attach(_ => paintEdges())
+    }
+    val window = activity.getWindow
+    window.getDecorView.setBackgroundColor(android.graphics.Color.parseColor(everyui.theme.Theme.background().toHex))
+    val light = everyui.theme.Theme.colorScheme() == "light"
+    if (android.os.Build.VERSION.SDK_INT >= 30) Option(window.getInsetsController).foreach { bars =>
+      val both = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
+        android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+      bars.setSystemBarsAppearance(if (light) both else 0, both)
+    }
+    else if (android.os.Build.VERSION.SDK_INT >= 23) {
+      val decor = window.getDecorView
+      val flag = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+      decor.setSystemUiVisibility(if (light) decor.getSystemUiVisibility | flag else decor.getSystemUiVisibility & ~flag)
+    }
+  }
+
   /** The keyboard's height from the window's insets, the app told where it changed. */
   def keyboardInset(pixels: Int): Unit = if (pixels != keyboard) {
     keyboard = pixels
@@ -2578,12 +2646,17 @@ object Platform {
   /** The window in the app's units: its pixels over `Host.scale` (the density times the size the app is drawn at), or
     * a pinned viewport over the size the app is drawn at. */
   def screenWidth(): Double =
-    if (Host.viewportWidth > 0.0) Host.viewportWidth / everyui.theme.UiScale() else windowPixels()._1.toDouble / Host.scale
+    if (Host.viewportWidth > 0.0) Host.viewportWidth / everyui.theme.UiScale()
+    else (windowPixels()._1 - Host.safe._1 - Host.safe._3).toDouble / Host.scale
   /** Less what the on-screen keyboard covers while it is up (Host.keyboard), so a field at the bottom (a composer) is
-    * laid out above it. */
+    * laid out above it; and both, less what the bars, a cutout and the corners take (`safeArea`). */
   def screenHeight(): Double =
     if (Host.viewportHeight > 0.0) Host.viewportHeight / everyui.theme.UiScale()
-    else (windowPixels()._2 - Host.keyboard).toDouble / Host.scale
+    else (windowPixels()._2 - Host.safe._2 - math.max(Host.safe._4, Host.keyboard)).toDouble / Host.scale
+  /** The screen's safe area, in the app's units: what a phone's bars, its camera's cutout and its rounded corners take
+    * from each edge (`Host.safe`), which the app is already laid out inside. None on a television. */
+  def safeArea(): everyui.layout.Insets = everyui.layout.Insets(Host.safe._2 / Host.scale, Host.safe._3 / Host.scale,
+    Host.safe._4 / Host.scale, Host.safe._1 / Host.scale)
   /** The app drawn `factor` times its size (everyui.theme.UiScale), over the density it is already scaled by. */
   def setUiScale(factor: Double): Unit = Host.scaleRoot()
 
@@ -2591,7 +2664,7 @@ object Platform {
     * or whatever a `--es viewport` launch set the layout to. */
   def pixelRatio(): Double = {
     val laid = screenWidth()
-    if (laid > 0.0) windowPixels()._1.toDouble / laid else 1.0
+    if (laid > 0.0) (windowPixels()._1 - Host.safe._1 - Host.safe._3).toDouble / laid else 1.0
   }
 
   /** The window's size in pixels: Android 11's window metrics, and before them the display's real size — which, the

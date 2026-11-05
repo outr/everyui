@@ -1572,6 +1572,9 @@ object Platform {
   /** Whether a rich document is edited in place here (everyui.rich.RichTextEditor): not yet, its Markdown instead. */
   def richEditing(): Boolean = false
 
+  /** The screen's safe area: none here (a browser keeps a page inside its own; a window, a television, have none). */
+  def safeArea(): everyui.layout.Insets = everyui.layout.Insets.none
+
   /** Whether a page declares the theme's colour scheme: there is no page here, so nothing is declared. */
   def declareColorScheme(on: Boolean): Unit = ()
 

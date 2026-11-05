@@ -1743,6 +1743,9 @@ object Platform {
   everyui.theme.Theme.colorScheme.attach(_ => declareScheme())
   declareScheme()
 
+  /** The screen's safe area: none here (a browser keeps a page inside its own; a window, a television, have none). */
+  def safeArea(): everyui.layout.Insets = everyui.layout.Insets.none
+
   /** Whether the page declares the theme's colour scheme (`color-scheme` on its root and in a `<meta>`), as it does
     * unless this turns it off: an app that declares its own. */
   def declareColorScheme(on: Boolean): Unit = {

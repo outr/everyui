@@ -48,7 +48,8 @@ abstract class EveryUIActivity extends Activity {
     everyui.render.LegacyTrust.install()
     val window = getWindow
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    immersive(window)
+    // a television's whole screen, a phone's or a tablet's with its bars (everyui.render.Platform.safeArea)
+    if (everyui.render.Platform.remoteNavigation()) immersive(window) else edgeToEdge(window)
     // the frames it draws, measured again for this window where the app is listening (FrameTimings)
     everyui.render.FrameTimings.attach(this)
 
@@ -76,6 +77,8 @@ abstract class EveryUIActivity extends Activity {
     root.setOnApplyWindowInsetsListener((view, insets) => {
       Host.keyboardInset(if (insets.isVisible(WindowInsets.Type.ime())) insets.getInsets(WindowInsets.Type.ime()).bottom
         else 0)
+      // and what the bars, a cutout and the rounded corners leave, which the app is laid out inside
+      Host.safeFrom(insets)
       view.onApplyWindowInsets(insets)
     })
     // laid out in the density's units, times the size the app is drawn at (everyui.theme.UiScale)
@@ -180,6 +183,26 @@ abstract class EveryUIActivity extends Activity {
           android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
           android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
     }
+
+  /** A phone's or a tablet's window: drawn edge to edge behind its status and navigation bars, which stay, and into
+    * a cutout, the app laid out inside the safe area they leave (`Host.safeFrom`), the window's ground painted in the
+    * theme's background behind them (`Host.paintEdges`). On Android before 11 the older flags do the same. */
+  private def edgeToEdge(window: android.view.Window): Unit = {
+    if (android.os.Build.VERSION.SDK_INT >= 28) {
+      val attributes = window.getAttributes
+      attributes.layoutInDisplayCutoutMode =
+        if (android.os.Build.VERSION.SDK_INT >= 30) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+      window.setAttributes(attributes)
+    }
+    if (android.os.Build.VERSION.SDK_INT >= 30) window.setDecorFitsSystemWindows(false)
+    else window.getDecorView.setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+      android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+    window.setStatusBarColor(Color.TRANSPARENT)
+    window.setNavigationBarColor(Color.TRANSPARENT)
+    if (android.os.Build.VERSION.SDK_INT >= 29) window.setNavigationBarContrastEnforced(false)
+    Host.paintEdges()
+  }
 
   // the system's answer to a permission asked for (Permissions.ask)
   override def onRequestPermissionsResult(code: Int, permissions: Array[String], results: Array[Int]): Unit = {
