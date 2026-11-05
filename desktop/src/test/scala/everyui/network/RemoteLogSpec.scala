@@ -12,7 +12,8 @@ import scala.jdk.CollectionConverters.*
 
 /** An app's problems at its server's log, against a server of the spec's own: a problem `Errors` heard sent with where
   * it was, its stack, the platform, the build, the app's own fields and headers; the same line with other ids sent
-  * once, and no more than so many a minute; a failed request sent as a warning, and the log's own sends never. */
+  * once, and no more than so many a minute; a failed request sent as a warning, and the log's own sends never; a
+  * message shown sent as a warning. */
 class RemoteLogSpec extends FxSpec {
   private val lines = new ConcurrentLinkedQueue[(Map[String, String], Option[String])]()
 
@@ -44,7 +45,7 @@ class RemoteLogSpec extends FxSpec {
     val forward = everyui.scribe.forward
     val log = new RemoteLog(base + "/log", headers = () => List("Authorization" -> "Bearer t0"),
       fields = () => List("deviceId" -> str("d1")), build = "abc123", perMinute = perMinute)
-      .install(warnings = true, requests = true)
+      .install(warnings = true, requests = true, toasts = true)
     try test(log) finally {
       log.uninstall()
       Network.observe = observe
@@ -99,6 +100,20 @@ class RemoteLogSpec extends FxSpec {
       eventually(lines.size == 1) shouldBe true
       sent.head("level") shouldBe "error"
       sent.head("message") shouldBe "socket lost"
+    }
+    "send each message shown as a warning, and none once taken off" in {
+      logging() { _ =>
+        fx(everyui.kit.Toast.show("Could not archive the card"))
+        eventually(lines.size == 1) shouldBe true
+        sent.head("level") shouldBe "warn"
+        sent.head("message") shouldBe "toast: Could not archive the card"
+      }
+      fx {
+        everyui.kit.Toast.show("Saved")
+        everyui.kit.Toast.hide()
+      }
+      Thread.sleep(300L)
+      lines.size shouldBe 1
     }
   }
 

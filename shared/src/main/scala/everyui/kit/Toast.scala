@@ -9,15 +9,19 @@ import reactify.*
 
 /** A short message over the screen for a few seconds, saying what just happened: one at a time, the newest in place of
   * the last. It sits at the foot of the screen, or its head with `top`, `margin` in from the edge, and goes after
-  * `seconds`. */
+  * `seconds`. Each message's words pass through `shown` as it shows (`RemoteLog.install(toasts = true)` sends them to
+  * the server's log as warnings). */
 object Toast {
   private var showing: Option[Container] = None
-  private var shown = 0
+  private var made = 0
+  /** The words of every message shown, as it shows: for an app to keep them (its log, its server's), since a message
+    * goes after a few seconds whether anybody read it or not. */
+  val shown: Channel[String] = Channel[String]
 
   def show(words: String, seconds: Double = 4.0, top: Boolean = false, margin: Double = 32.0): Unit = {
     showing.foreach(t => ui.children -= t)
-    shown += 1
-    val mark = shown
+    made += 1
+    val mark = made
     val text = new TextView {
       whiteSpace @= WhiteSpace.Normal
       size.width := math.min(560.0, ui.size.width() - 160.0)
@@ -39,7 +43,8 @@ object Toast {
     plate.position.top := (if (top) margin else ui.size.height() - plate.size.height() - margin)
     ui.children += plate
     showing = Some(plate)
-    Platform.after(seconds, () => if (mark == shown) hide())
+    shown @= words
+    Platform.after(seconds, () => if (mark == made) hide())
   }
 
   /** The message showing taken away now. */

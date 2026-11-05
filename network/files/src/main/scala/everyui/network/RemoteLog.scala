@@ -22,7 +22,7 @@ import rapid.Task
   *   val log = new RemoteLog("/api/client/log",
   *     headers = () => session.token().map(t => "Authorization" -> ("Bearer " + t)).toList,
   *     fields = () => List("deviceId" -> str(deviceId)), build = BuildInfo.sha)
-  *     .install(warnings = true, requests = true)
+  *     .install(warnings = true, requests = true, toasts = true)
   *   log.info("signed in")
   * }}} */
 class RemoteLog(endpoint: String,
@@ -36,9 +36,12 @@ class RemoteLog(endpoint: String,
   @volatile private var sending = false
   private var stops: List[() => Unit] = Nil
 
-  /** Start sending: what `Errors` hears with `problems`, `scribe`'s warnings and errors with `warnings`, and requests
-    * that failed (a warning) or took `slowMs` or more (info) with `requests`. Itself, to keep. */
-  def install(problems: Boolean = true, warnings: Boolean = false, requests: Boolean = false): RemoteLog = {
+  /** Start sending: what `Errors` hears with `problems`, `scribe`'s warnings and errors with `warnings`, requests
+    * that failed (a warning) or took `slowMs` or more (info) with `requests`, and with `toasts` the words of every
+    * message shown (`everyui.kit.Toast.shown`, a warning: "toast: ..."), which are gone from the screen in seconds.
+    * Itself, to keep. */
+  def install(problems: Boolean = true, warnings: Boolean = false, requests: Boolean = false,
+              toasts: Boolean = false): RemoteLog = {
     Network.unobserved = Network.unobserved + endpoint
     if (problems) stops = Errors.onProblem(problem) :: stops
     if (warnings) {
@@ -55,10 +58,15 @@ class RemoteLog(endpoint: String,
         request(call, outcome, ms)
       }
     }
+    if (toasts) {
+      val toast = everyui.kit.Toast.shown.attach(words => warn("toast: " + words))
+      stops = (() => everyui.kit.Toast.shown.reactions -= toast) :: stops
+    }
     this
   }
 
-  /** No more problems heard from `Errors` (what `install` chained onto `scribe` and `Network` stays). */
+  /** No more problems heard from `Errors`, nor messages shown (what `install` chained onto `scribe` and `Network`
+    * stays). */
   def uninstall(): Unit = {
     stops.foreach(stop => stop())
     stops = Nil

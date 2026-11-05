@@ -684,7 +684,9 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   Its glyph is muted as a tab's close button is, brightening on a plate under the pointer, and it is lit as a tab is
   while focused. With `addMenu` None there is no "+" and the bar is exactly as it was.
 - `TabGroups[K]`: tabs in groups split across and down, as an editor splits its files (below).
-- `Toast.show(words, seconds, top, margin)`: one short message at a time.
+- `Toast.show(words, seconds, top, margin)`: one short message at a time. Each one's words pass through
+  `Toast.shown` (a `Channel[String]`) as it shows, for the app to keep: `RemoteLog.install(toasts = true)` sends them
+  to the server's log as warnings ("toast: ..."), so a message gone in seconds can still be read.
 - `AsyncPress(spin, minSpin = 0.5)`: a press that runs slow work, with a delayed spinner, and failures toasted. The
   spinner (`spin(true)`, the app's own: a button swapped for a `Spinner`, say) shows only once the work has run
   `AsyncPress.spinAfter` (0.4 s), so quick work looks instant, and once shown stays at least `minSpin` seconds (Material's
@@ -4666,7 +4668,7 @@ val log = new RemoteLog("/api/client/log",
   headers = () => session.token().map(t => "Authorization" -> ("Bearer " + t)).toList,
   fields = () => List("deviceId" -> str(deviceId)),
   build = buildSha)                                 // to read a minified stack against the source maps kept for it
-  .install(warnings = true, requests = true)        // problems always; scribe's warn/error; failed or slow requests
+  .install(warnings = true, requests = true, toasts = true) // problems; scribe warn/error; bad requests; toasts
 log.info("signed in")
 load(id).handleError(Reported("load " + id, Nil)).map(show).startUnit()
 ```
