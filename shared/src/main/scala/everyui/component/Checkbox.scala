@@ -30,20 +30,36 @@ class Checkbox(label: String, initial: Boolean = false, note: Option[String] = N
     font.size @= (if (compact) 12.5 else 14.0)
     color := labelColor()
     position.left @= start
-    position.top := (line - size.height()) / 2.0
   }
+  // the height of the label's one line, as it is drawn: its height, or a wrapped label's height over its lines
+  private def firstLine: Double = {
+    val h = title.size.height()
+    h / math.max(1L, math.round(h / (title.font.size() * 1.33)))
+  }
+  // a label of one line centred on the box; a wrapped one with its first line there, the rest running down
+  title.position.top := (line - firstLine) / 2.0
+  private def titleBottom: Double = title.position.top() + title.size.height()
   private val detail = note.map { n =>
     val t = TextView.wrapped(n, width - start - 8.0, if (compact) 10.5 else 11.0, Theme.muted())
     t.position.left @= start
-    t.position.top @= line - 4.0
+    t.position.top := math.max(line - 4.0, titleBottom)
     t
   }
 
   focusable @= true
   radius @= (if (compact) 4.0 else 6.0)
   // a compact one given no width of its own is as wide as its label, with room for the ring past its end
-  if (compact && width == Checkbox.width) size.width := start + title.size.width() + 8.0 else size.width @= width
-  size.height := line + detail.map(_.size.height() + 4.0).getOrElse(0.0)
+  if (compact && width == Checkbox.width) size.width := start + title.size.width() + 8.0
+  else {
+    size.width @= width
+    // wrapped within its room, as the note is, rather than to the edge
+    title.maxWidth @= width - start - 8.0
+  }
+  // as tall as its label and its note, however many lines each takes
+  size.height := (detail match {
+    case Some(d) => d.position.top() + d.size.height() + 8.0
+    case None => math.max(line, titleBottom + title.position.top())
+  })
   backgroundColor := (if (focusShown() || event.pointer.over()) Theme.controlLit() else Color.Clear)
   borderWidth := (if (focusShown()) (if (compact) 2.0 else 2.5) else 0.0)
   borderColor := Theme.accent()

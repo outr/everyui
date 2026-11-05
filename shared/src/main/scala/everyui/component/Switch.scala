@@ -45,10 +45,14 @@ class Switch(label: String = "", val on: Var[Boolean] = Var(false), width: Optio
   focusable := !disabled()
   radius @= 8.0
   width match {
-    case Some(w) => size.width @= w
+    case Some(w) =>
+      size.width @= w
+      // a long label wraps before the switch rather than running under it
+      title.maxWidth @= w - Switch.pad * 2.0 - Switch.trackWidth - 16.0
     case None => size.width := Switch.pad * 2.0 + (if (label.isEmpty) 0.0 else title.size.width() + 16.0) + Switch.trackWidth
   }
-  size.height @= Switch.height
+  // a wrapped label makes it taller, the switch centred beside it
+  size.height := math.max(Switch.height, title.size.height() + Switch.pad * 2.0)
   opacity := (if (disabled()) 0.38 else 1.0)
   backgroundColor := (if (!disabled() && (focusShown() || event.pointer.over())) Theme.controlLit() else Color.Clear)
   borderWidth := (if (focusShown()) 2.5 else 0.0)
@@ -56,12 +60,12 @@ class Switch(label: String = "", val on: Var[Boolean] = Var(false), width: Optio
   semantics := Semantics.switch(label, on())
 
   Mirror.place(title, () => size.width(), () => Switch.pad)
-  title.position.top := (Switch.height - title.size.height()) / 2.0
+  title.position.top := (size.height() - title.size.height()) / 2.0
   track.size.width @= Switch.trackWidth
   track.size.height @= Switch.trackHeight
   track.radius @= Switch.trackHeight / 2.0
   Mirror.place(track, () => size.width(), () => size.width() - Switch.pad - Switch.trackWidth)
-  track.position.top @= (Switch.height - Switch.trackHeight) / 2.0
+  track.position.top := (size.height() - Switch.trackHeight) / 2.0
   track.backgroundColor := (if (on()) Theme.accent() else Theme.control())
   track.borderWidth := (if (on()) 0.0 else 2.0)
   track.borderColor := Theme.muted()
