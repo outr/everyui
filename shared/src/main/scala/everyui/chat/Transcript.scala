@@ -676,6 +676,26 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     true
   }
 
+  /** Whether something in an entry has the keyboard: a field the app put in it, being typed into. */
+  val typing: Val[Boolean] = own(Val(Focus.focused().exists(f => f.takesTyping && Focus.within(f, list))))
+  // whether the transcript was kept at the bottom when typing in an entry began, to be again once it ends
+  private var pinnedForTyping = false
+
+  // the field typed into in an entry, with `Transcript.typingMargin` about it, scrolled into what the view shows
+  private def keepTyping(): Unit = Focus.focused().filter(_.takesTyping).foreach { f =>
+    var row: Option[Component] = Some(f)
+    while (row.exists(r => !r.parent().exists(_ eq list))) row = row.flatMap(_.parent())
+    row.foreach {
+      case r: ListRow[?] @unchecked if r.index() >= 0 =>
+        val top = list.top(r.index()) + (f.absoluteTop - r.absoluteTop) - list.offset()
+        val bottom = top + f.size.height()
+        val room = list.size.height() - Transcript.typingMargin
+        if (bottom > room) list.scrollTop(list.offset() + bottom - room)
+        else if (top < Transcript.typingMargin) list.scrollTop(list.offset() - (Transcript.typingMargin - top))
+      case _ => ()
+    }
+  }
+
   // ---- following ----
 
   follow(entries, (_: Vector[ChatEntry]) => reshow())
@@ -687,8 +707,22 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   // (heard before the list lays its rows out for the move, which can draw some at new heights: whether the move
   // reached the bottom is judged against the rows it was made against)
   list.offset.attach(_ => moved(), Priority.Low)
-  // kept at the bottom as rows arrive and grow, and as the view changes size, while it is pinned
-  list.followsEnd := pin.pinned()
+  // kept at the bottom as rows arrive and grow, and as the view changes size, while it is pinned, and while nothing in
+  // an entry is being typed into: a field there (a sign-in card's) stays where it is as entries arrive under it, which
+  // the jump to the newest counts, and is kept in sight as the view grows shorter (the keyboard coming up)
+  list.followsEnd := pin.pinned() && !typing()
+  typing.attach { on =>
+    if (on) {
+      pinnedForTyping = pin.pinned()
+      pin.letGo()
+    }
+    else if (pinnedForTyping) {
+      pinnedForTyping = false
+      pin.pin()
+      list.scrollTop(list.total)
+    }
+  }
+  list.size.height.attach(_ => if (typing()) keepTyping(), Priority.Low)
   // a message's buttons follow the pointer where there is one to rest, and the cursor while the transcript has the focus
   if (Platform.pointerSupport()) {
     list.event.pointer.move.attach { e =>
@@ -725,6 +759,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 }
 
 object Transcript {
+  /** How much room a field typed into in an entry is kept from the view's edge (`typing`). */
+  val typingMargin: Double = 16.0
   /** A row's height before it has drawn itself. */
   val guess: Double = 64.0
   /** About how tall a row for somebody at work (`working`) draws, with a line of what they are doing. */

@@ -1939,6 +1939,12 @@ chat.workingInline @= true
 chat.transcript.workingLines @= 4      // optional: more lines before Show more
 ```
 
+A field in an entry (a sign-in card's, made with `ChatEntry.custom`) stays where it is while it is typed into: entries
+that arrive under it leave it in place and are counted by "Jump to latest", and as the view grows shorter (the keyboard
+coming up, a rotation, a fold) it is scrolled back into sight with a little room about it. Once the field is left, the
+conversation follows its newest again, if it was doing so when typing began. `transcript.typing` says whether it is.
+A `ScrollContainer` keeps a field typed into in sight as it grows shorter, the same way, on every platform.
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

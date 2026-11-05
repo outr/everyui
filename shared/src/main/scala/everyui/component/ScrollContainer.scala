@@ -121,6 +121,9 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   follow(Focus.focused, (f: Option[Component]) => f.foreach { c =>
     if (holds(c) && (!Platform.nativeScroll() || Platform.remoteNavigation() || !Pointer.recent)) reveal(c)
   })
+  // and a field being typed into in it kept in sight as the view grows shorter: the keyboard coming up, a rotation,
+  // a fold (a browser scrolls a field into view itself; elsewhere nothing would)
+  size.height.attach(_ => Focus.focused().filter(c => c.takesTyping && holds(c)).foreach(reveal), Priority.Low)
   if (!Platform.nativeScroll()) {
     size.width.attach(_ => clip())
     size.height.attach(_ => clip())
