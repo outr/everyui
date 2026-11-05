@@ -610,6 +610,38 @@ another; a dialog's sheet, a map's pins and a graph's canvas are marked), and th
 by hand (a list's scrollbar over its rows). On a Roku only rows, columns, flows and grids are looked at.
 `Overlaps.check(root)` looks now and answers the pairs. The example app turns it on with `overlaps=1` on the launch.
 
+### Checking accessibility (`everyui.access.Access`)
+
+EveryUI makes WCAG 2.2 AA its own concern, in stages. `Access` checks a screen against it, in development and in
+tests, as `Overlaps` checks the layout. `Access.check(root)` returns what it finds, each an `AccessFinding` with
+its rule, its component, how it falls short and where it is. `Access.warn @= true` (off by default, and free while
+off) says each finding once through `scribe.warn` as the screen changes:
+
+```
+WARN access: name: Container (12,80 32x32) has nothing a screen reader can say for it in Toolbar < ui$
+WARN access: contrast: TextView(Sent) (24,180 31x16) 2.9:1, #6b6b6b on #2a2a2a, under 4.5:1 in ChatRow < VirtualList
+```
+
+| Rule | What it finds | WCAG |
+|---|---|---|
+| `name` | Focusable or clicked, with nothing a screen reader can say: no `semantics` label, no words of its own or inside it, no alt, no tooltip | 4.1.2 |
+| `role` | Clicked, with no role, so a screen reader does not say it is a button, a link or a switch | 4.1.2 |
+| `keyboard` | Clicked, but neither it nor anything holding it is `focusable`, so the keys never reach it | 2.1.1 |
+| `target` | Clicked, under 24×24, with another clicked thing within 24 of its middle | 2.5.8 |
+| `contrast` | Words under 4.5:1 against what is drawn behind them (3:1 for large words and for icons), unless `disabled` | 1.4.3, 1.4.11 |
+
+What a screen reader is given for a component is `Access.nameOf(c)`: its `semantics` label; else its own words, a
+picture's `alt` or a field's label; else its tooltip; else the words inside it in reading order, taking a part with
+a label of its own by that label. A card whose words say what it is needs nothing more. Add a label only for what the
+words do not show (`Semantics(label = "unread")` on a dot). Behind words is the theme's background, under the
+backgrounds of what holds them and of what lies under them. Over a gradient or a picture, contrast cannot be told,
+and nothing is said. Mark a component that meets a rule in its own way with `Access.allow(c, AccessRule.Target)`.
+A browser check can ask for none on each screen:
+
+```scala
+js.Dynamic.global.window.accessFindings = () => Access.check().map(_.toString).mkString("\n")
+```
+
 ## General components
 
 Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:

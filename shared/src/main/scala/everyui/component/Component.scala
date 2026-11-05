@@ -158,7 +158,15 @@ class Component(val node: RenderNode) {
   private var graded = false
   private var edged = false
   private[everyui] def drawsBox: Boolean = filled || graded || edged
-  lazy val color: Prop[Color] = own(new Prop[Color](Color.Black, c => node.setColor(c.toHex)))
+  lazy val color: Prop[Color] = own(new Prop[Color](Color.Black, c => {
+    node.setColor(c.toHex)
+    colored = true
+  }))
+  // whether its colour was set, rather than taken from what holds it (`everyui.access.Access`)
+  private[everyui] var colored = false
+  // whether it draws a background colour, or a gradient (`everyui.access.Access`: what is behind words)
+  private[everyui] def drawsFill: Boolean = filled
+  private[everyui] def drawsGradient: Boolean = graded
   lazy val backgroundColor: Prop[Color] =
     own(new Prop[Color](Color.Clear, c => {
       node.setBackgroundColor(Component.css(c))
@@ -303,6 +311,10 @@ class Component(val node: RenderNode) {
   private[everyui] def flexShare: Double = if (flexMade) flex() else 0.0
   /** Whether it is meant to lie over what is beside it (`everyui.layout.Overlaps.allow`): a dialog's sheet, a badge. */
   private[everyui] var overlays: Boolean = false
+  /** Whether a click on it is heard (`event.click`). */
+  private[everyui] var clickHeard: Boolean = false
+  /** The rules it is marked as meeting in its own way (`everyui.access.Access.allow`). */
+  private[everyui] var accessAllowed: List[everyui.access.AccessRule] = Nil
 
   lazy val effectiveWidth: Val[Double] = own(Val(size.width()))
   lazy val effectiveHeight: Val[Double] = own(Val(size.height()))

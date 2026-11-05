@@ -122,6 +122,8 @@ object LayoutPass {
       }
       // and, where an app asks, looked over for what now lies over its neighbour
       Overlaps.laidOut()
+      // and for what a screen reader, the keys or the eyes would miss
+      everyui.access.Access.laidOut()
     } finally flushing = false
   }
 

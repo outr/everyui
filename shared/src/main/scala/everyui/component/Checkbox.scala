@@ -1,6 +1,7 @@
 package everyui.component
 
 import everyui.Color
+import everyui.component.types.Semantics
 import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
@@ -48,6 +49,7 @@ class Checkbox(label: String, initial: Boolean = false, note: Option[String] = N
 
   focusable @= true
   radius @= (if (compact) 4.0 else 6.0)
+  semantics := Semantics.checkbox(label, checked())
   // a compact one given no width of its own is as wide as its label, with room for the ring past its end
   if (compact && width == Checkbox.width) size.width := start + title.size.width() + 8.0
   else {
