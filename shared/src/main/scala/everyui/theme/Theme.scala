@@ -14,6 +14,13 @@ object Theme {
   /** The image behind every screen that names none of its own (`UIScreen.background`): a site-absolute path or a
     * URL. Empty leaves the palette's background colour on its own. */
   val backgroundImage: Var[String] = Var("")
+  /** "dark" or "light": which the palette's background is, by its luminance, followed as the palette changes. What a
+    * page declares as its `color-scheme` (the browser's own scrollbars, controls and selection follow it, and a frame
+    * of the same scheme is drawn clear over it), and what an app tells the frames it shows. */
+  val colorScheme: reactify.Val[String] = reactify.Val {
+    val c = palette().background
+    if (0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue > 0.5) "light" else "dark"
+  }
 
   def background(): Color = palette().background
   def surface(): Color = palette().surface

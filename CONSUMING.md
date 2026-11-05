@@ -3861,6 +3861,12 @@ These cover what a web app would otherwise reach the browser for directly, so th
   goes anywhere. `held` says whether a window really was reserved. Where the browser refused even the blank one,
   `held` is false and `go` would be refused too, so offer a link the person can press instead. Elsewhere nothing
   blocks a late open: `held` is true and `go` is `openUrl`. For signing in with another site, use `SignIn` (below).
+- **The colour scheme.** `Theme.colorScheme` (a `Val[String]`) is "dark" or "light", by the palette's background,
+  and follows the palette as it changes. On the web the page declares it: `color-scheme` on its root, and a
+  `<meta name="color-scheme">`. The browser's own scrollbars, controls and selection follow it, and it draws a frame
+  of the same scheme clear over the page instead of on an opaque canvas of its own. Tell the frames you show the same
+  scheme, so they come out clear over the app. `Platform.declareColorScheme(false)` stops the page declaring it, for
+  an app that declares its own. There is no page anywhere else, so it does nothing there.
 - **The build, and reloading into a new one.** `Platform.buildId()` names the running build.
   - **Web**: the version the page loaded its script by, which `everyuiWebScripts` writes as `main.js?v=…` or
     `everyui-loader.js?v=…`.

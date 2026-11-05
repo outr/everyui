@@ -987,6 +987,9 @@ object Platform {
   /** Whether a rich document is edited in place here (everyui.rich.RichTextEditor): not yet, its Markdown instead. */
   def richEditing(): Boolean = false
 
+  /** Whether a page declares the theme's colour scheme: there is no page here, so nothing is declared. */
+  def declareColorScheme(on: Boolean): Unit = ()
+
   /** The app cannot start itself again into a new build here. */
   def reload(): Boolean = false
 

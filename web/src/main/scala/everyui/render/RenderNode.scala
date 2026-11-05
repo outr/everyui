@@ -1666,6 +1666,38 @@ object Platform {
     () => closers = closers.filterNot(_ eq f)
   }
 
+  // the theme's colour scheme declared on the page (Theme.colorScheme), followed as it changes, unless the app says
+  // not: the browser's own scrollbars, controls and selection follow it, and it draws a frame of the same scheme clear
+  // over it rather than on an opaque canvas of its own
+  private var declaresScheme = true
+  everyui.theme.Theme.colorScheme.attach(_ => declareScheme())
+  declareScheme()
+
+  /** Whether the page declares the theme's colour scheme (`color-scheme` on its root and in a `<meta>`), as it does
+    * unless this turns it off: an app that declares its own. */
+  def declareColorScheme(on: Boolean): Unit = {
+    declaresScheme = on
+    if (on) declareScheme()
+    else {
+      dom.document.documentElement.asInstanceOf[html.Element].style.removeProperty("color-scheme")
+      Option(dom.document.querySelector("meta[name=color-scheme][data-everyui]"))
+        .foreach(m => m.parentNode.removeChild(m))
+    }
+  }
+
+  private def declareScheme(): Unit = if (declaresScheme) {
+    val scheme = everyui.theme.Theme.colorScheme()
+    dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("color-scheme", scheme)
+    val meta = Option(dom.document.querySelector("meta[name=color-scheme]")).getOrElse {
+      val made = dom.document.createElement("meta")
+      made.setAttribute("name", "color-scheme")
+      made.setAttribute("data-everyui", "")
+      dom.document.head.appendChild(made)
+      made
+    }
+    meta.setAttribute("content", scheme)
+  }
+
   // a reload into a new build named its address afresh (`reload`): the address goes back to what it was
   private val reloadParam = "_b"
   locally {
