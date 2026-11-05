@@ -10,7 +10,7 @@ import reactify.*
 /** A short message over the screen for a few seconds, saying what just happened: one at a time, the newest in place of
   * the last. It sits at the foot of the screen, or its head with `top`, `margin` in from the edge, and goes after
   * `seconds`. Each message's words pass through `shown` as it shows (`RemoteLog.install(toasts = true)` sends them to
-  * the server's log as warnings). */
+  * the server's log as warnings). A screen reader reads each out as it shows, politely. */
 object Toast {
   private var showing: Option[Container] = None
   private var made = 0
@@ -44,6 +44,7 @@ object Toast {
     ui.children += plate
     showing = Some(plate)
     shown @= words
+    everyui.access.LiveRegions.say(words)
     Platform.after(seconds, () => if (mark == made) hide())
   }
 

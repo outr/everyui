@@ -414,6 +414,8 @@ class RenderNode(val sg: SGNode) {
   def setTooltip(text: String): Unit = ()
   /** No reader of descriptions reaches this platform's nodes. */
   def setDescription(text: String): Unit = ()
+  def setInvalid(on: Boolean): Unit = ()
+  def setUpdating(on: Boolean): Unit = ()
 
   def setPositionType(name: String): Unit = ()
 
@@ -915,6 +917,7 @@ object Platform {
   /** The setting as it changes: it never does here. */
   def watchReduceMotion(f: Boolean => Unit): Unit = ()
   def announce(words: String): Unit = ()
+  def alert(words: String): Unit = ()
   def setTitle(title: String): Unit = ()
   /** A count of what is new on the app's icon: no badge is shown here. */
   def setBadge(count: Int): Unit = ()

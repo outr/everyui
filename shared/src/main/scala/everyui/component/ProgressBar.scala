@@ -1,10 +1,12 @@
 package everyui.component
 
 import everyui.Color
+import everyui.component.types.{SemanticRange, Semantics}
 import everyui.theme.Theme
 import reactify.*
 
-/** A track filled to `fraction` (0..1): `width` wide to start with, and the fill follows `size.width` after. */
+/** A track filled to `fraction` (0..1): `width` wide to start with, and the fill follows `size.width` after. A
+  * screen reader hears it as a progress bar, at the part done as a percentage. */
 class ProgressBar(width: Double, height: Double = 6.0) extends Container {
   val fraction: Var[Double] = own(Var(0.0))
   val fill: Var[Color] = own(Var(Theme.accent()))
@@ -21,6 +23,10 @@ class ProgressBar(width: Double, height: Double = 6.0) extends Container {
   size.height @= height
   backgroundColor := track()
   radius @= height / 2.0
+  semantics := {
+    val percent = math.round(math.max(0.0, math.min(1.0, fraction())) * 100.0).toDouble
+    Semantics("progressbar", range = Some(SemanticRange(percent, 0.0, 100.0, percent.toInt.toString + "%")))
+  }
   children += done
 }
 

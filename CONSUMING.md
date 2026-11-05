@@ -676,6 +676,32 @@ them to the content:
 children ++= List(header, sidebar, content, new SkipLink(content))
 ```
 
+A component's state reaches a screen reader with it. `disabled` is said as out of use, and `invalid` (a component's
+"Enter an email address", "" while nothing is wrong) as wrong, with why after its description: on the web as
+`aria-invalid` and its description, on Android as TalkBack's error, and on the desktop in the help text. The words are
+read out at once as they come while the focus is in it. A `TextInput` passes them to its own field and draws its edge
+and label in the theme's danger. The words are still to be shown, for those who see the screen: a `Notice` beside the
+field reads them out wherever the focus is. `updating` marks a part that is being filled or worked out (`aria-busy`,
+and "busy" on Android and the desktop).
+
+What a part of the screen says can be read out as it changes, as a status line, a count of results or an error is.
+`liveRegion @= Live.Polite` reads its name (its label, else the words inside it) when the screen reader next can, as it
+comes on the screen with something to say and each time that changes. `Live.Assertive` cuts in. Nothing is read while
+it is hidden or `updating`, and it is read again once shown. It works the same on every platform, through the
+platform's announcement (two hidden live regions on the web, TalkBack's announcement on Android; JavaFX has none to
+make, and a Roku and an Apple TV read nothing out yet), so a part that comes with its words already in it is read
+too. `LiveRegions.say(words, how)` reads out words that are on no part, and
+`LiveRegions.announced` passes on everything read out, for a log or a test. EveryUI's own parts take part: a `Notice`
+is a polite live part (set it to `Live.Assertive` for an error that stops the user), a `Toast` is read out as it shows,
+`Spinner.centred` is a progress bar read out as "Loading…", and a `ProgressBar` says how far it is as a percentage.
+
+```scala
+val results = TextView("")
+results.liveRegion @= Live.Polite
+results.content := found().size.toString + " results"
+email.invalid := (if (tried() && !valid(email.value())) "Enter an email address" else "")
+```
+
 ## General components
 
 An icon that is at work says so itself, with no ring drawn over it. `busy @= true` on an `IconButton` or any

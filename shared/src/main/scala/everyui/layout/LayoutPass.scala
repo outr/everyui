@@ -124,6 +124,8 @@ object LayoutPass {
       Overlaps.laidOut()
       // and for what a screen reader, the keys or the eyes would miss
       everyui.access.Access.laidOut()
+      // and for what its live parts now say
+      everyui.access.LiveRegions.changed()
     } finally flushing = false
   }
 

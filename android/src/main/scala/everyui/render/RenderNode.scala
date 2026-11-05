@@ -851,6 +851,7 @@ class RenderNode(val view: View) {
       override def onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo): Unit = {
         super.onInitializeAccessibilityNodeInfo(host, info)
         if (hint.nonEmpty) info.setHintText(hint)
+        if (wrong) info.setContentInvalid(true)
       }
     })
   }
@@ -1115,14 +1116,32 @@ class RenderNode(val view: View) {
     if (android.os.Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(role == "heading")
   }
 
+  // whether what it holds is wrong (`setInvalid`), and whether it is being updated (`setUpdating`)
+  private var wrong = false
+  private var busyNow = false
+  /** What it holds is wrong: TalkBack says so, and why from its description (`Component.invalid`), where it reads
+    * one. */
+  def setInvalid(on: Boolean): Unit = wrong = on
+  /** Being updated: TalkBack hears "busy" in its state (Android 11 on). */
+  def setUpdating(on: Boolean): Unit = {
+    busyNow = on
+    sayState()
+  }
+  // the state set last (`setSemanticState`), said with "busy" while it is being updated
+  private var stateSaid: String = null
+  private def sayState(): Unit = if (android.os.Build.VERSION.SDK_INT >= 30) view.setStateDescription(
+    if (busyNow) List(Option(stateSaid).getOrElse(""), everyui.i18n.Words.busy).filter(_.nonEmpty).mkString(", ")
+    else stateSaid)
+
   /** Where a slider stands, or whether what a button opens is open, read out by TalkBack as the view's state (Android 11
     * on). */
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = {
     selected.foreach(s => view.setSelected(s))
-    if (android.os.Build.VERSION.SDK_INT >= 30) view.setStateDescription(range.map(_.text)
+    stateSaid = range.map(_.text)
       .orElse(expanded.map(open => if (open) "expanded" else "collapsed"))
-      .orElse(if (sort.isEmpty) None else Some("sorted " + sort)).orNull)
+      .orElse(if (sort.isEmpty) None else Some("sorted " + sort)).orNull
+    sayState()
   }
 
   /** A ring in `hex` round the view's edge, where the focus layer draws one for it (`Focus.ring`), as a stroke over
@@ -1160,6 +1179,7 @@ class RenderNode(val view: View) {
         if (hint.nonEmpty && android.os.Build.VERSION.SDK_INT >= 26) info.setHintText(hint)
         info.setClassName("android.widget.Button")
         if (outOfUse) info.setEnabled(false)
+        if (wrong) info.setContentInvalid(true)
         info.setFocusable(true)
         info.setClickable(true)
         info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
@@ -2071,6 +2091,8 @@ object Platform {
   def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
   /** `words` read out by TalkBack when it next can, where it is on (a new message in a chat). */
   def announce(words: String): Unit = if (RenderNode.reading && Host.root != null) Host.root.announceForAccessibility(words)
+  /** At once: TalkBack has no other way to say it than `announce`. */
+  def alert(words: String): Unit = announce(words)
   /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
     * server refuses the platform's own `Dalvik/…`. */
   def identify(app: String): Unit = Host.agent = app

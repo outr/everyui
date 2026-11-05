@@ -8,7 +8,8 @@ import reactify.*
 
 /** A labelled text field, `width` wide (bind `size.width` to follow a form): its label in the corner, what it holds
   * under it, and an edge that lights with the focus. `value` is what it holds, both ways; Enter while typing in it
-  * fires `submitted`.
+  * fires `submitted`. `invalid` ("Enter an email address") marks what it holds wrong: its edge and its label in the
+  * theme's danger, and a screen reader told so and why.
   *
   * Where the platform has a text field of its own (a browser, a desktop, a phone) the field is that. With a keyboard at
   * hand the focus moving onto it puts the caret there. Where the keyboard is on the screen (a TV remote, a phone) the
@@ -55,7 +56,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   private val caption = new TextView {
     content := title()
     font.size @= 12.0
-    color := (if (TextInput.this.focused()) Theme.accent() else Theme.muted())
+    color := (if (TextInput.this.invalid().nonEmpty) Theme.danger()
+      else if (TextInput.this.focused()) Theme.accent() else Theme.muted())
     position.left @= 14.0
     position.top @= 7.0
     // as wide as the field, so the label starts where the reading direction does
@@ -68,7 +70,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   size.width @= width
   size.height @= 56.0
   borderWidth := (if (focused()) 2.5 else 1.0)
-  borderColor := (if (focused()) Theme.accent() else Theme.border())
+  borderColor := (if (invalid().nonEmpty) Theme.danger() else if (focused()) Theme.accent() else Theme.border())
   backgroundColor := (if (focused()) Theme.controlLit() else Theme.raised())
 
   if (native) {
@@ -92,6 +94,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.semantics := Semantics(label = title())
     // and described as it is, since the focus a screen reader follows is the platform's field
     input.accessibleDescription := accessibleDescription()
+    // and said to be wrong, and why, on the field a screen reader is on
+    input.invalid := invalid()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
     focused.attach(f => if (direct || !f) editing @= f)

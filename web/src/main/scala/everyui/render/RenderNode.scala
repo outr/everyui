@@ -753,6 +753,12 @@ class RenderNode(val el: html.Element) {
     attribute("aria-label", label)
   }
 
+  /** Whether what it holds is wrong (`aria-invalid`); why is said in its description (`Component.invalid`). */
+  def setInvalid(on: Boolean): Unit =
+    if (on) el.setAttribute("aria-invalid", "true") else el.removeAttribute("aria-invalid")
+  /** Whether it is being updated (`aria-busy`). */
+  def setUpdating(on: Boolean): Unit = if (on) el.setAttribute("aria-busy", "true") else el.removeAttribute("aria-busy")
+
   /** Where a slider stands (`aria-valuenow`, its range and its words), whether a switch is on (`aria-checked`),
     * whether a toggle button is pressed (`aria-pressed`), whether what a button opens is open (`aria-expanded`),
     * whether a row is chosen (`aria-selected`), and which way a column header sorts (`aria-sort`). */
@@ -1852,12 +1858,16 @@ object Platform {
     * chat): a polite live region, made on first use, clipped to nothing at the page's corner. Not pushed off the
     * page's edge: in a right-to-left page on a phone, a region far off its left widened the page the browser lays out,
     * and everything moved off the screen. The same words again are still read. */
-  def announce(words: String): Unit = {
-    val region = Option(dom.document.getElementById("everyui-announce")).getOrElse {
+  def announce(words: String): Unit = speak("everyui-announce", "polite", "status", words)
+  /** `words` read out by a screen reader at once, cutting in on what it is reading (an error): an assertive live
+    * region beside the polite one. */
+  def alert(words: String): Unit = speak("everyui-alert", "assertive", "alert", words)
+  private def speak(id: String, live: String, role: String, words: String): Unit = {
+    val region = Option(dom.document.getElementById(id)).getOrElse {
       val made = dom.document.createElement("div").asInstanceOf[html.Element]
-      made.id = "everyui-announce"
-      made.setAttribute("aria-live", "polite")
-      made.setAttribute("role", "status")
+      made.id = id
+      made.setAttribute("aria-live", live)
+      made.setAttribute("role", role)
       made.style.cssText = "position:absolute;left:0;top:0;width:1px;height:1px;margin:-1px;padding:0;border:0;" +
         "overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap"
       dom.document.body.appendChild(made)

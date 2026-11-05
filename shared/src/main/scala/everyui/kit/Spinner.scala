@@ -1,6 +1,8 @@
 package everyui.kit
 
 import everyui.component.*
+import everyui.component.types.{Live, Semantics}
+import everyui.i18n.Words
 import everyui.Color
 import everyui.font.MaterialIcon
 import everyui.motion.{Keyframe, Track}
@@ -18,13 +20,16 @@ class Spinner(points: Double = 18.0, tint: () => Color = () => Theme.text())
 }
 
 object Spinner {
-  /** A spinner `points` across in the middle of a row `width` across, in the theme's accent: a page still loading. */
+  /** A spinner `points` across in the middle of a row `width` across, in the theme's accent: a page still loading.
+    * A screen reader hears it as a progress bar, "Loading…", read out as it comes. */
   def centred(width: => Double, points: Double = 36.0): Container = {
     val spinner = new Spinner(points, () => Theme.accent())
     spinner.position.left := math.max(0.0, (width - points) / 2.0)
     new Container {
       size.width := width
       size.height @= points
+      semantics @= Semantics("progressbar", label = Words.loading)
+      liveRegion @= Live.Polite
       children += spinner
     }
   }

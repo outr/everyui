@@ -477,8 +477,27 @@ class RenderNode(val fx: Node) {
     case _ => ()
   }
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
-  /** No reader of descriptions reaches this platform's nodes. */
-  def setDescription(text: String): Unit = ()
+  /** What a screen reader hears of it after its name, as JavaFX's help text, with "busy" while it is being updated
+    * (`setUpdating`) and "unavailable" while out of use (`setDisabled`). */
+  def setDescription(text: String): Unit = {
+    help = text
+    sayHelp()
+  }
+  private var help = ""
+  private var busyNow = false
+  private var outOfUse = false
+  private def sayHelp(): Unit = {
+    val words = List(if (outOfUse) everyui.i18n.Words.unavailable else "", help,
+      if (busyNow) everyui.i18n.Words.busy else "").filter(_.nonEmpty).mkString(". ")
+    fx.setAccessibleHelp(if (words.isEmpty) null else words)
+  }
+  /** JavaFX has no word for a wrong value: why it is wrong is said in its help text (`setDescription`). */
+  def setInvalid(on: Boolean): Unit = ()
+  /** Being updated, said in its help text. */
+  def setUpdating(on: Boolean): Unit = {
+    busyNow = on
+    sayHelp()
+  }
   /** A drawing's figures (everyui.draw.Drawing): an SVGPath each, stroked and filled as it says. */
   def setFigures(figures: List[everyui.draw.Figure]): Unit = fx match {
     case p: Pane =>
@@ -781,7 +800,10 @@ class RenderNode(val fx: Node) {
     case field: TextInputControl =>
       fieldDisabled = disabled
       field.setEditable(!disabled && !fieldReadOnly)
-    case _ => ()
+    case _ =>
+      // said in its help text, since disabling the node would keep the pointer from it too
+      outOfUse = disabled
+      sayHelp()
   }
   /** Read-only, or editable again: a text field shows its words, which can be chosen and copied, but takes no typing
     * or paste, and looks as it did (not editable, which JavaFX tells a screen reader, rather than disabled). */
@@ -1410,6 +1432,7 @@ object Platform {
   /** The setting as it changes: it never does here. */
   def watchReduceMotion(f: Boolean => Unit): Unit = ()
   def announce(words: String): Unit = ()
+  def alert(words: String): Unit = ()
   /** A desktop keeps its own screen timing. */
   def keepAwake(on: Boolean): Unit = ()
   /** A count of what is new on the app's icon: on a Mac its Dock icon's badge (`java.awt.Taskbar`), "9+" over 9;

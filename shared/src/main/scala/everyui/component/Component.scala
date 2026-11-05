@@ -3,7 +3,7 @@ package everyui.component
 import reactify.*
 import everyui.{Color, Gradient, Shadow}
 import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
-import everyui.component.types.{Prop, Semantics, WhiteSpace}
+import everyui.component.types.{Live, Prop, Semantics, WhiteSpace}
 import everyui.event.{Events, Key, KeyEvent}
 import everyui.focus.Focus
 import everyui.motion.Track
@@ -108,6 +108,7 @@ class Component(val node: RenderNode) {
     own(new Prop[Boolean](true, v => {
       node.setVisible(v)
       if (collapsesMade) roomChanged()
+      everyui.access.LiveRegions.changed()
     }))
   }
 
@@ -344,7 +345,10 @@ class Component(val node: RenderNode) {
   lazy val tooltip: Prop[String] = own(new Prop[String]("", t => node.setTooltip(t)))
   /** What whatever reads the page hears of it after its name (a list row's tip): the web's `aria-describedby`, TalkBack's
     * hint; nothing where the platform has no reader of descriptions. */
-  lazy val accessibleDescription: Prop[String] = own(new Prop[String]("", d => node.setDescription(d)))
+  lazy val accessibleDescription: Prop[String] = own(new Prop[String]("", _ => describe()))
+  // its description and, after it, what is wrong with it (`invalid`)
+  private def describe(): Unit =
+    node.setDescription(List(accessibleDescription(), invalid()).filter(_.nonEmpty).mkString(". "))
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"), where there is a
     * pointer to shape; "" leaves the platform's own. */
   lazy val cursor: Prop[String] = own(new Prop[String]("", c => node.setCursor(c)))
@@ -399,6 +403,30 @@ class Component(val node: RenderNode) {
   /** Out of use for now: whatever reads the page hears so (the web's `aria-disabled`, TalkBack for a field), and the
     * platform's own field takes no typing, though the focus still reaches it. How it looks is the component's to say. */
   lazy val disabled: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setDisabled(d)))
+  /** What is wrong with what it holds ("Enter an email address"), "" while nothing is: whatever reads the page hears
+    * that it is invalid, and why (the web's `aria-invalid` and its description, TalkBack's error, the desktop's help
+    * text), and the words are read out at once as they come while the focus is in it. How it looks is the
+    * component's to say (a `TextInput` draws its edge and its label in the theme's danger), and the words are to be
+    * shown too, for those who see the screen: a `Notice` beside it, which reads them out wherever the focus is. */
+  lazy val invalid: Prop[String] = own(new Prop[String]("", m => {
+    node.setInvalid(m.nonEmpty)
+    describe()
+    if (m.nonEmpty && Focus.focused().exists(f => Focus.within(f, this)))
+      everyui.access.LiveRegions.say(m, Live.Assertive)
+  }))
+  /** Being updated (a list being filled, a result being worked out): whatever reads the page is told it is not done
+    * (the web's `aria-busy`, TalkBack's and the desktop's "busy"), and what it says as a live part (`liveRegion`) is
+    * held until it is. */
+  lazy val updating: Prop[Boolean] = own(new Prop[Boolean](false, u => {
+    node.setUpdating(u)
+    everyui.access.LiveRegions.changed()
+  }))
+  /** Whether what it says is read out as it changes, as a status line, a count of results or an error is (`Live`): its
+    * name to a screen reader (its label, else the words inside it) as it comes on the screen with something to say,
+    * and again each time that changes. Off by default. */
+  lazy val liveRegion: Prop[Live] = own(new Prop[Live](Live.Off, l => everyui.access.LiveRegions.watch(this, l)))
+  // what it said last as a live part (`LiveRegions`)
+  private[everyui] var liveSaid: String = ""
 
   lazy val event: Events = new Events(this)
   /** Whether the focus can land here: by `focus()`, the arrows from a neighbour or Tab (everyui.focus.Focus), and a

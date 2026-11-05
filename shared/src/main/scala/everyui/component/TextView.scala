@@ -15,6 +15,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   lazy val content: Prop[String] = own(new Prop[String](node.getText(), _ => {
     followed = false
     fit()
+    everyui.access.LiveRegions.changed()
   }))
   /** The widest these words may be drawn: what will not fit on a line wraps onto another (`TextOverflow.Wrap`, the
     * default), or is cut short with an ellipsis (`TextOverflow.Ellipsis`), as a title beside a chip is, so whatever sits

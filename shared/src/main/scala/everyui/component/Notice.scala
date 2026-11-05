@@ -1,10 +1,11 @@
 package everyui.component
 
 import everyui.Color
-import everyui.component.types.WhiteSpace
+import everyui.component.types.{Live, WhiteSpace}
 
 /** A boxed message `width` wide, tinted in `tone` (an error in the theme's danger, a notice in its accent). It wraps,
-  * grows to fit, and follows what it reads. */
+  * grows to fit, and follows what it reads. What it says is read out by a screen reader as it comes and as it
+  * changes (`liveRegion`): politely, or at once with `liveRegion @= Live.Assertive` (an error that stops the user). */
 class Notice(text: => String, tone: => Color, width: Double) extends Container {
   private val words = new TextView {
     whiteSpace @= WhiteSpace.Normal
@@ -21,5 +22,6 @@ class Notice(text: => String, tone: => Color, width: Double) extends Container {
   backgroundColor := tone.withAlpha(0.12)
   borderWidth @= 1.0
   borderColor := tone.withAlpha(0.5)
+  liveRegion @= Live.Polite
   children += words
 }
