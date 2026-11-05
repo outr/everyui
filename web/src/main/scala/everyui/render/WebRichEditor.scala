@@ -125,7 +125,8 @@ class WebRichEditor(val outer: html.Element) {
 
   /** A suggestion drawn dimmed after `at`, its first line in the line there and the rest under it, none of it the
     * document's: the caret, the selection and the places in the document pass it by, it takes no pointer, and a screen
-    * reader is told of it by the editor rather than reading it. No lines takes it away. */
+    * reader is told of it by the editor rather than reading it. Its lines are drawn by CSS, so the editor's text (its
+    * innerText) holds none of them, and the placeholder is hidden while it shows. No lines takes it away. */
   def setGhost(at: RichPos, lines: List[String]): Unit = {
     ghost = if (lines.isEmpty) None else Some(at -> lines)
     drawGhost()
@@ -141,6 +142,7 @@ class WebRichEditor(val outer: html.Element) {
       }
     }
     ghostEl = None
+    content.removeAttribute("data-ghosting")
     if (composing.isEmpty) ghost.foreach { case (at, lines) =>
       val g = dom.document.createElement("span").asInstanceOf[html.Span]
       g.className = "ghost"
@@ -150,7 +152,9 @@ class WebRichEditor(val outer: html.Element) {
       lines.zipWithIndex.foreach { case (line, i) =>
         val part = dom.document.createElement("span").asInstanceOf[html.Span]
         if (i > 0) part.className = "gl"
-        part.textContent = line
+        // drawn by CSS rather than held as text, so the editor's text (its innerText, its textContent) is the
+        // document's alone
+        part.setAttribute("data-text", line)
         g.appendChild(part)
       }
       point(at) match {
@@ -162,6 +166,8 @@ class WebRichEditor(val outer: html.Element) {
           parent.insertBefore(g, if (index < kids.length) kids(index) else null)
       }
       ghostEl = Some(g)
+      // and the placeholder hidden under it
+      content.setAttribute("data-ghosting", "")
     }
   }
 
@@ -527,6 +533,8 @@ object WebRichEditor {
       """.everyui-rich-scroll { overflow-y: auto; overflow-x: hidden; }
         |.everyui-rich .ghost { opacity: 0.45; pointer-events: none; user-select: none; -webkit-user-select: none; }
         |.everyui-rich .ghost .gl { display: block; }
+        |.everyui-rich .ghost span::after { content: attr(data-text); }
+        |.everyui-rich[data-empty][data-ghosting]::before { content: none; }
         |.everyui-rich { outline: none; min-height: 100%; box-sizing: border-box; padding: 2px 0;
         |  color: var(--rich-text); font-family: var(--rich-family); font-size: var(--rich-size); line-height: 1.5;
         |  white-space: pre-wrap; overflow-wrap: anywhere; caret-color: var(--rich-accent); cursor: text; }
