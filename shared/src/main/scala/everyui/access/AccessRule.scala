@@ -10,6 +10,9 @@ enum AccessRule(val id: String, val criterion: String) {
   case Keyboard extends AccessRule("keyboard", "2.1.1")
   /** Clicked, smaller than 24 by 24, with another target within the 24 about it (2.5.8). */
   case Target extends AccessRule("target", "2.5.8")
+  /** Tab moves the focus to something above the last, in the same column, or before it in the same line: an order
+    * that does not follow the reading order (2.4.3). */
+  case Order extends AccessRule("order", "2.4.3")
   /** Words under 4.5:1 against what is behind them (3:1 large, and for an icon) (1.4.3, 1.4.11). */
   case Contrast extends AccessRule("contrast", "1.4.3")
 }

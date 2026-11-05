@@ -778,6 +778,18 @@ class RenderNode(val el: html.Element) {
     * focuses it no more than before), draws no outline of the browser's (the app draws its own) and scrolls nothing.
     * A field, an editor or an embed takes the page's focus itself, and a frame or a password manager's menu holding
     * it keeps it; once a key being pressed has done what it does (`afterKey`). */
+  /** A ring in `hex` round the element, outside its box, where the focus layer draws one for it (`Focus.ring`); ""
+    * takes it away. */
+  def setFocusRing(hex: String, radius: Double): Unit =
+    if (hex.isEmpty) {
+      el.style.removeProperty("outline")
+      el.style.removeProperty("outline-offset")
+    }
+    else {
+      el.style.outline = "2.5px solid " + hex
+      el.style.setProperty("outline-offset", "2px")
+    }
+
   def accessibleFocus(click: () => Unit, name: () => String): Unit = RenderNode.afterKey(() => {
     val active = dom.document.activeElement
     if (!(RenderNode.reading eq el)) RenderNode.release()
@@ -787,9 +799,8 @@ class RenderNode(val el: html.Element) {
     if (el.isConnected && !takes && !holds && RenderNode.embedOf(active) != "field") {
       if (!(RenderNode.reading eq el) && !el.hasAttribute("tabindex")) {
         RenderNode.reading = el
-        RenderNode.readOutline = el.style.outline
         el.setAttribute("tabindex", "-1")
-        el.style.outline = "none"
+        el.setAttribute("data-everyui-held", "")
       }
       el.asInstanceOf[js.Dynamic].focus(js.Dynamic.literal(preventScroll = true))
     }
@@ -1106,16 +1117,15 @@ object RenderNode {
     * would otherwise take the key's own action (Enter's new line) after it. */
   def afterKey(f: () => Unit): Unit = if (inKey) dom.window.setTimeout(() => f(), 0) else f()
 
-  /** The element made focusable to hold the page's focus for the app's (`accessibleFocus`), and its outline before. */
+  /** The element made focusable to hold the page's focus for the app's (`accessibleFocus`). */
   private[render] var reading: html.Element = null
   // how many rows have been given ids to be a list's active one (`setActiveRow`)
   private[render] var rowIds: Int = 0
-  private[render] var readOutline: String = ""
 
   /** The element that held the page's focus for the app's put back as it was, as the app's focus moves on. */
   private[render] def release(): Unit = if (reading != null) {
     reading.removeAttribute("tabindex")
-    reading.style.outline = readOutline
+    reading.removeAttribute("data-everyui-held")
     reading = null
   }
 
@@ -1426,6 +1436,9 @@ object Nodes {
     style.textContent = ".everyui-link:hover { text-decoration: underline; text-underline-offset: 3px; }" +
       // a scroll run from its left in every language, and what it holds in the page's direction
       " .everyui-ltr { direction: ltr; } .everyui-ltr > :not([dir]) { direction: var(--everyui-dir, ltr); }" +
+      // what holds the page's focus for the app's draws no outline of the browser's: the app draws its focus, or the
+      // focus layer a ring in the element's own style (`setFocusRing`), which outranks this
+      " [data-everyui-held]:focus { outline: none; }" +
       RenderNode.autofillStyle + RenderNode.selectStyle
     dom.document.head.appendChild(style)
     new RenderNode(app)

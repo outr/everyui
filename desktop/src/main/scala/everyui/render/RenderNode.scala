@@ -579,6 +579,20 @@ class RenderNode(val fx: Node) {
     val holds = owner.exists(o => Iterator.iterate(o)(_.getParent).takeWhile(_ != null).contains(fx))
     if (!takes && !holds && fx.getScene != null && !fx.isFocused) fx.requestFocus()
   }
+  /** A ring in `hex` round the node, where the focus layer draws one for it (`Focus.ring`), as a hard shadow its own
+    * shape; "" takes it away. A node with an effect of its own (a blur, a tint) keeps it, and draws no ring. */
+  def setFocusRing(hex: String, radius: Double): Unit =
+    if (hex.isEmpty) {
+      if (fx.getEffect eq focusRing) fx.setEffect(null)
+      focusRing = null
+    }
+    else if (fx.getEffect == null || (fx.getEffect eq focusRing)) {
+      focusRing = new javafx.scene.effect.DropShadow(javafx.scene.effect.BlurType.ONE_PASS_BOX, Color.web(hex), 3.0,
+        1.0, 0.0, 0.0)
+      fx.setEffect(focusRing)
+    }
+  private var focusRing: javafx.scene.effect.Effect = null
+
   /** The row under a list's cursor (`VirtualList`), named to a screen reader as the list's own name while it has the
     * focus: JavaFX's readers hear a node's name change, and a list EveryUI makes is not one of JavaFX's ListViews. */
   def setActiveRow(row: RenderNode, name: () => String): Unit = {

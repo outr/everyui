@@ -662,6 +662,20 @@ desktop as the list's name, and on Android by TalkBack reading it out. A list is
 words: `list.semantics @= Semantics(label = "Inbox")`. A list a conversation or a log reads as says so itself
 (`Semantics("list")`, as `Transcript` and `LogView` do), and its row under the cursor is read out as it moves.
 
+The keys' focus is always seen. EveryUI's own controls draw it. An app's own focusable component that never asks
+whether its focus is shown (`focusShown`) gets a ring in the accent round it while the keys move the focus: an
+outline on the web, and the same shape on the desktop and Android. A component that draws its focus some other way
+(on `focused`, or in a part of it) says so with `Focus.ownRing(c)`. Where a remote moves the focus the app draws it,
+as a TV's screens are made to. Tab goes in the order the screen is built. The check's `order` rule finds a stop
+that sits above the last in the same column, or before it in the same line, so build a screen in the order it reads.
+A dialog holds the focus while it is up, and gives it back to where it was as it closes. A screen with a header or a
+side bar on every screen puts a `SkipLink` last among its parts: Tab reaches it first, and Enter takes the focus past
+them to the content:
+
+```scala
+children ++= List(header, sidebar, content, new SkipLink(content))
+```
+
 ## General components
 
 An icon that is at work says so itself, with no ring drawn over it. `busy @= true` on an `IconButton` or any

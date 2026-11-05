@@ -311,6 +311,11 @@ class Component(val node: RenderNode) {
   private[everyui] def flexShare: Double = if (flexMade) flex() else 0.0
   /** Whether it is meant to lie over what is beside it (`everyui.layout.Overlaps.allow`): a dialog's sheet, a badge. */
   private[everyui] var overlays: Boolean = false
+  /** Whether it draws its focus in a way of its own, where the focus layer would draw a ring round it
+    * (`everyui.focus.Focus.ownRing`). */
+  private[everyui] var drawsOwnFocus: Boolean = false
+  /** Whether Tab reaches it before everything else in its tree, wherever it is (`everyui.kit.SkipLink`). */
+  private[everyui] var tabFirst: Boolean = false
   /** Whether a click on it is heard (`event.click`). */
   private[everyui] var clickHeard: Boolean = false
   /** The rules it is marked as meeting in its own way (`everyui.access.Access.allow`). */

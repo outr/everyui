@@ -23,6 +23,7 @@ import reactify.*
   *   - role: clicked, with no role (`roleOf`): a screen reader would not say it is a button, a link or a switch;
   *   - keyboard: clicked, but neither it nor anything holding it is `focusable`, so the keys never reach it;
   *   - target: clicked, smaller than 24 by 24, with another clicked thing within the 24 about its middle;
+  *   - order: Tab moving the focus to something above the last in the same column, or before it in the same line;
   *   - contrast: words under 4.5:1 against what is drawn behind them (3:1 for large words, 24 points, or 18.66
   *     bold, and for an icon), unless out of use (`disabled`). Behind them is the theme's background under the
   *     background colours of what holds them, and of what lies under them in the same container; where a gradient
@@ -103,6 +104,13 @@ object Access {
         add(AccessRule.Contrast, c,
           tenths(ratio) + ":1, " + fg.toHex + " on " + bg.toHex + ", under " + tenths(wanted) + ":1")
       }
+    }
+    // the order Tab takes, against the reading order
+    val order = everyui.focus.Focus.candidates(root).filter(c => shown.exists(_ eq c))
+    order.indices.drop(1).foreach { i =>
+      val (was, next) = (order(i - 1), order(i))
+      if (backwards(was, next)) add(AccessRule.Order, next, "comes after " + was.kind + " " + box(was) +
+        " on Tab, but before it in reading order")
     }
     found.reverse
   }
@@ -220,6 +228,20 @@ object Access {
   private def outOfUse(c: Component): Boolean = self(c).exists(_.disabled())
 
   private def within(c: Component, of: Component): Boolean = holders(c).exists(_ eq of)
+
+  // whether `next`, the stop after `was` on Tab, reads before it: wholly above it in the same column, or before it
+  // in the same line (left of it, or right of it in a language read from the right)
+  private def backwards(was: Component, next: Component): Boolean = {
+    val (aLeft, aTop, aRight, aBottom) = edges(was)
+    val (bLeft, bTop, bRight, bBottom) = edges(next)
+    val column = bLeft < aRight && bRight > aLeft
+    val line = bTop < aBottom && bBottom > aTop && !column
+    val before = if (everyui.i18n.Direction.rtl()) bLeft >= aRight - 2.0 else bRight <= aLeft + 2.0
+    (column && bBottom <= aTop + 2.0) || (line && before)
+  }
+
+  private def edges(c: Component): (Double, Double, Double, Double) =
+    (c.absoluteLeft, c.absoluteTop, c.absoluteLeft + c.size.width(), c.absoluteTop + c.size.height())
 
   // another target within the 24 by 24 about `c`'s middle, other than what holds it or what it holds
   private def crowded(c: Component, targets: List[Component]): Boolean = {

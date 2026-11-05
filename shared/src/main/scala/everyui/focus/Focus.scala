@@ -87,10 +87,12 @@ object Focus {
       marked.foreach { c =>
         c.focusedNow @= false
         if (c.showsFocus) c.focusShownNow @= false
+        ring(c, false)
       }
       now.foreach { c =>
         c.focusedNow @= true
         if (c.showsFocus) c.focusShownNow @= visible()
+        ring(c, visible())
       }
       marked = now
       now.foreach(remember)
@@ -102,7 +104,10 @@ object Focus {
     }
     if (Platform.remoteNavigation()) Platform.after(WatchSeconds, () => watch())
     else {
-      visible.attach(v => marked.foreach(c => if (c.showsFocus) c.focusShownNow @= v))
+      visible.attach(v => marked.foreach { c =>
+        if (c.showsFocus) c.focusShownNow @= v
+        ring(c, v)
+      })
       // every press heard at the root as well, where nothing under it listens (the page's empty space): on a turn of
       // its own, once `ui` is made
       Platform.later(() => {
@@ -111,6 +116,20 @@ object Focus {
       })
     }
   }
+
+  /** `c`, marked as drawing its focus in a way of its own (on `focused`, or in a part of it), so no ring is drawn
+    * round it for it (`ring`). */
+  def ownRing[C <: Component](c: C): C = {
+    c.drawsOwnFocus = true
+    c
+  }
+
+  // a ring in the accent round what the keys focus, where it draws none of its own: an app's own component that
+  // never asked whether its focus is shown (`focusShown`) and is not marked as drawing it (`ownRing`); EveryUI's own
+  // kinds draw theirs. Where a remote moves the focus, the app draws it (a TV's screens are made for it).
+  private def ring(c: Component, on: Boolean): Unit =
+    if (!Platform.remoteNavigation() && !c.showsFocus && !c.drawsOwnFocus && !c.takesTyping && Component.appMade(c))
+      c.node.setFocusRing(if (on) everyui.theme.Theme.accent().toHex else "", c.radius())
 
   // how many times the focus has moved, to know whether a press or a key moved it
   private var moves = 0
@@ -918,7 +937,8 @@ object Focus {
       pending = c.childComponents.toList ++ pending.tail
       if (c.focusable()) found = found :+ c
     }
-    found
+    // what is marked to come first (a skip link, drawn last to be over the screen) before the rest
+    if (found.exists(_.tabFirst)) found.filter(_.tabFirst) ++ found.filterNot(_.tabFirst) else found
   }
 
   private def centerX(c: Component): Double = c.absoluteLeft + c.size.center()

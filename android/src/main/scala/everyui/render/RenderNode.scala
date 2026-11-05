@@ -1121,6 +1121,24 @@ class RenderNode(val view: View) {
       .orElse(if (sort.isEmpty) None else Some("sorted " + sort)).orNull)
   }
 
+  /** A ring in `hex` round the view's edge, where the focus layer draws one for it (`Focus.ring`), as a stroke over
+    * what it draws; "" takes it away. */
+  def setFocusRing(hex: String, radius: Double): Unit = if (android.os.Build.VERSION.SDK_INT >= 23) {
+    if (hex.isEmpty) {
+      if (focusRing != null && (view.getForeground eq focusRing)) view.setForeground(null)
+      focusRing = null
+    }
+    else if (view.getForeground == null || (view.getForeground eq focusRing)) {
+      val ring = new android.graphics.drawable.GradientDrawable()
+      // in the app's units, as its edges and corners are (`setBorder`, `setRadius`)
+      ring.setStroke(3, android.graphics.Color.parseColor(hex))
+      ring.setCornerRadius(radius.toFloat)
+      focusRing = ring
+      view.setForeground(ring)
+    }
+  }
+  private var focusRing: android.graphics.drawable.Drawable = null
+
   /** The row under a list's cursor (`VirtualList`), read out by TalkBack as it moves, where it is on. */
   def setActiveRow(row: RenderNode, name: () => String): Unit = if (RenderNode.reading) Platform.announce(name())
   def setAlt(text: String): Unit = view.setContentDescription(if (text.isEmpty) null else text)

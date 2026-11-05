@@ -651,6 +651,8 @@ class RenderNode(val sg: SGNode) {
   def accessibleFocus(click: () => Unit, name: () => String): Unit = ()
   /** The row under a list's cursor (`VirtualList`): no screen reader reaches this platform's nodes. */
   def setActiveRow(row: RenderNode, name: () => String): Unit = ()
+  /** A ring round what the focus layer focuses: a remote's app draws its own focus. */
+  def setFocusRing(hex: String, radius: Double): Unit = ()
   def setAlt(text: String): Unit = ()
 
   /** "start", "center" or "end", by the reading direction, whatever script the words are in. */
