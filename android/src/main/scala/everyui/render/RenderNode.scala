@@ -158,7 +158,10 @@ class RenderNode(val view: View) {
     else view match {
       case t: TextView if wrapping =>
         measure(t)
-        laidOutHeight
+        // and as far as its first line is set down to the shared baseline (`placeY`): the lines are drawn that much
+        // lower in the box, and the last one's descenders (g, y) were cut by the edge of what held it (a chat
+        // bubble's, on a phone at 390 dpi, where the face's baseline and its rounded ascent come a few units apart)
+        laidOutHeight + math.max(0.0, restY - top)
       case t: TextView => face.lineHeight(fontSize) * RenderNode.lineCount(t.getText).toDouble
       case _ => 0.0
     }

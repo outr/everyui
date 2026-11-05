@@ -22,6 +22,11 @@ object BubbleDemo {
     def said(id: String, who: Participant, text: String, meta: String, self: Boolean = false): ChatEntry.Message =
       ChatEntry.message(id, who, self, text, Some(at), meta = Some(meta))
     val entries: Var[Vector[ChatEntry]] = Var(Vector(
+      // a title and a paragraph that wraps to three lines on a phone at a larger font scale, its last line's descenders
+      // (g, y) inside the bubble
+      said("gate", Participant("agent-gate", "The Gatekeeper"), "**The Gatekeeper**\n\nI stand here at the threshold " +
+        "of the void. I am the Gatekeeper. Seekers of passage must prove their identity before entry is granted. What " +
+        "brings you to these gates?", "6m"),
       said("code1", luma, "I see the Firebase key is live and in `resources/`. I'm going to move it to " +
         "`.env.firebase` now, then we can delete the old file.", "Qwen3.5-9b · 43s"),
       said("code2", luma, "Oh for heaven's sake, I already moved that Firebase key to `.env.firebase` before you " +
