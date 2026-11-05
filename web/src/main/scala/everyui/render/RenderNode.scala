@@ -2082,6 +2082,13 @@ object Platform {
     if (marks.length > everyui.perf.Marks.kept) marks.shift()
   }
 
+  /** A check a harness reads (`everyui.access.Access.expose`): `window.<name>()`, answering what `f` says now, read
+    * as JSON into objects where `json`. */
+  def expose(name: String, f: () => String, json: Boolean): Unit = {
+    val read: js.Function0[js.Any] = () => if (json) js.JSON.parse(f()) else f()
+    dom.window.asInstanceOf[js.Dynamic].updateDynamic(name)(read)
+  }
+
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
 

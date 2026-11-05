@@ -102,6 +102,25 @@ class AccessSpec extends FxSpec {
       }
       onScreen(card)(fx(Access.nameOf(card)) shouldBe "A teammate unread Lunch on Friday?")
     }
+    "be told as JSON a harness reads, a quote in its words kept" in {
+      val c = fx {
+        val c = target(10.0, 10.0)
+        c.semantics @= Semantics("button", label = "")
+        c.tooltip @= ""
+        c
+      }
+      onScreen(c) {
+        val read = fabric.io.JsonParser(fx(Access.json(Access.check())))
+        val first = read.asVector.head.asObj.value
+        first("rule").asString shouldBe "name"
+        first("criterion").asString shouldBe "4.1.2"
+        first("left").asInt shouldBe 10
+        first("width").asInt shouldBe 40
+        fabric.io.JsonParser(Access.json(Nil)).asVector shouldBe Vector.empty
+        val quoted = fx(Access.json(List(AccessFinding(AccessRule.Name, c, "says \"no\"\\ here", ""))))
+        fabric.io.JsonParser(quoted).asVector.head.asObj.value("detail").asString shouldBe "says \"no\"\\ here"
+      }
+    }
     "not be checked for what it is marked as meeting" in {
       val c = fx(Access.allow(target(10.0, 10.0), AccessRule.Role, AccessRule.Keyboard))
       onScreen(c)(fx(Access.check().map(_.rule)) shouldBe List(AccessRule.Name))

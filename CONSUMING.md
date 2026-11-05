@@ -636,10 +636,14 @@ a label of its own by that label. A card whose words say what it is needs nothin
 words do not show (`Semantics(label = "unread")` on a dot). Behind words is the theme's background, under the
 backgrounds of what holds them and of what lies under them. Over a gradient or a picture, contrast cannot be told,
 and nothing is said. Mark a component that meets a rule in its own way with `Access.allow(c, AccessRule.Target)`.
-A browser check can ask for none on each screen:
+A browser check reads it once the app has called `Access.expose()` (on the web only, and harmless to leave on, since
+nothing is looked at until a check asks). `window.everyuiAccess()` answers the findings as lines, "" for none, and
+`window.everyuiAccessJson()` answers them as objects, `{rule, criterion, component, detail, where, left, top, width,
+height}` each:
 
-```scala
-js.Dynamic.global.window.accessFindings = () => Access.check().map(_.toString).mkString("\n")
+```js
+const found = await page.evaluate(() => window.everyuiAccessJson());
+expect(found).toEqual([]);
 ```
 
 ## General components

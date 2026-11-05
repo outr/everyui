@@ -971,6 +971,8 @@ object Platform {
 
   /** A moment marked (everyui.perf.Marks), logged where the app was launched with `marks=1`, for a check to read. */
   def marked(name: String, at: Double): Unit = if (launchArg("marks") == "1") log("[mark] " + name + " " + at.toString)
+  /** A check a harness reads (`everyui.access.Access.expose`): a web page's alone, so nothing here. */
+  def expose(name: String, f: () => String, json: Boolean): Unit = ()
 
   /** The app has the screen, or it does not: its focus is coming back to the front (`onResume`). */
   def onFocus(f: () => Unit): () => Unit = onResume(f)

@@ -107,6 +107,30 @@ object Access {
     found.reverse
   }
 
+  /** The check put where a test harness can read it, on the web: `window.everyuiAccess()`, the findings under `ui`
+    * as lines (none: ""), and `window.everyuiAccessJson()`, the same as objects, each `{rule, criterion, component,
+    * detail, where, left, top, width, height}`. Nothing is looked at until one is called, so it may be put there
+    * always; elsewhere it does nothing. */
+  def expose(): Unit = {
+    Platform.expose("everyuiAccess", () => check().map(_.toString).mkString("\n"), json = false)
+    Platform.expose("everyuiAccessJson", () => json(check()), json = true)
+  }
+
+  /** `found` as a JSON array, one object for each (`expose`). */
+  def json(found: List[AccessFinding]): String = "[" + found.map { f =>
+    val c = f.component
+    def field(name: String, value: String): String = quoted(name) + ":" + quoted(value)
+    def number(name: String, value: Double): String = quoted(name) + ":" + math.round(value).toString
+    "{" + List(field("rule", f.rule.id), field("criterion", f.rule.criterion), field("component", c.kind),
+      field("detail", f.detail), field("where", c.parent().map(Component.lineage).getOrElse("")),
+      number("left", c.absoluteLeft), number("top", c.absoluteTop), number("width", c.size.width()),
+      number("height", c.size.height())).mkString(",") + "}"
+  }.mkString(",") + "]"
+
+  // `s` as a JSON string
+  private def quoted(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    .replace("\r", "\\r").replace("\t", "\\t") + "\""
+
   /** The name a screen reader is given for `c`: its `semantics` label; else its own words (a text's, a picture's alt,
     * a field's label); else its tooltip; else the words of what it holds, in reading order (top to bottom, then
     * across), each part with a label of its own by that label. Empty where it has none. */

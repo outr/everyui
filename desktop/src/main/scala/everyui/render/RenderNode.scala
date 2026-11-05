@@ -1487,6 +1487,8 @@ object Platform {
 
   /** A moment marked (everyui.perf.Marks), logged where the app was launched with `marks=1`, for a check to read. */
   def marked(name: String, at: Double): Unit = if (launchArg("marks") == "1") log("[mark] " + name + " " + at.toString)
+  /** A check a harness reads (`everyui.access.Access.expose`): a web page's alone, so nothing here. */
+  def expose(name: String, f: () => String, json: Boolean): Unit = ()
 
   /** What to do as the app's window gets the focus back from another window in front of it. What stops it being
     * told. */
