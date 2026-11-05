@@ -30,7 +30,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
   private var direct = false
   private var picture: Option[View] = None
   private var source = ""
-  private var playing = true
+  @volatile private var playing = true
+  // whether the source has played at all since it was set: until it has, while it is not to play, it is held ready (a
+  // screensaver's next clip, parked on its first frame) and loads only its first seconds (HeldLoadControl); a pause
+  // after it has played is the viewer's, and loads on as ever. Read on the player's own thread.
+  @volatile private var rolled = false
   private var looping = false
   private var muted = false
   private var volume = 1.0
@@ -110,6 +114,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
 
   def setSource(url: String): Unit = if (url != source) {
     source = url
+    rolled = false
     close()
     failure = ""
     if (url.nonEmpty) {
@@ -137,9 +142,10 @@ class ExoMedia(frame: Option[VideoFrame]) {
           sending.foreach(h => map.put(h._1, h._2))
           http.setDefaultRequestProperties(map)
         }
-        val load = new DefaultLoadControl.Builder()
+        // held to a few seconds while it waits to be played (HeldLoadControl), the viewer's buffering once it is
+        val load = new HeldLoadControl(new DefaultLoadControl.Builder()
           .setBufferDurationsMs(holding.minMs, holding.maxMs, holding.startMs, holding.resumeMs)
-          .build()
+          .build(), () => !rolled && !playing)
         val made = new ExoPlayer.Builder(Host.activity)
           .setRenderersFactory(renderers(url).setEnableDecoderFallback(true))
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
@@ -195,7 +201,10 @@ class ExoMedia(frame: Option[VideoFrame]) {
               Platform.log("media: centre mix: no sound here to reach, none of it playable")
               mixed(false, false, false)
             }
-          override def onIsPlayingChanged(on: Boolean): Unit = session.foreach(_.state(on))
+          override def onIsPlayingChanged(on: Boolean): Unit = {
+            if (on) rolled = true
+            session.foreach(_.state(on))
+          }
           override def onPositionDiscontinuity(was: Player.PositionInfo, now: Player.PositionInfo, reason: Int): Unit =
             session.foreach(_.state(made.isPlaying))
           // held or let go by Android rather than the app — another app took the sound, or gave it back — which the
