@@ -472,6 +472,11 @@ Keymap.embed("editor", Chord("W", primary = true))           // the chords this 
 An embed gives back a key it did not want. For example, an editor's Escape with no popup to close becomes Back:
 `Focus.handBack("Escape")`.
 
+On the web an embed's box is a stacking context of its own (`isolation: isolate`). Whatever the guest raises inside
+it (Monaco's sticky lines, hovers and suggestions, a terminal's layers) stays under the menus, tooltips and dialogs
+the app opens over it. A Monaco editor with `fixedOverflowWidgets` keeps its hovers inside that context too, so one
+that spills past the editor's edge goes under a panel drawn after the editor.
+
 ### Typing without the platform's keyboard (`Container.typeInto`)
 
 A Roku types characters as keys: its phone app's keyboard, voice entry and a remote with keys send ECP's

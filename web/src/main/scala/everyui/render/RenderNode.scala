@@ -1438,13 +1438,17 @@ object Nodes {
   }
 
   /** An embed's box (everyui.component.Embed): a `<div>` marked `data-everyui-embed`, so the keys are the guest's while
-    * the page's focus is inside it, with an id of its own for the guest to find it by. A `site`'s scripts are loaded
-    * into the page the first time one of its embeds is made. */
+    * the page's focus is inside it, with an id of its own for the guest to find it by, and a stacking context of its own,
+    * so nothing in it is drawn over what the app puts over it. A `site`'s scripts are loaded into the page the first
+    * time one of its embeds is made. */
   def embed(name: String, site: everyui.component.EmbedSite): RenderNode = {
     val node = container()
     node.el.id = WebGuests.nextId()
     node.el.setAttribute("data-everyui-embed", name)
     node.el.style.overflow = "hidden"
+    // a stacking context of its own: whatever the guest raises inside it (Monaco's sticky lines and widgets, a
+    // terminal's layers) stays under the menus, tooltips and dialogs the app draws over it
+    node.el.style.setProperty("isolation", "isolate")
     if (site != null) {
       node.embedSite = site
       WebGuests.load(site)
