@@ -230,7 +230,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   maxLines.attach(_ => fit())
   elide.attach(_ => if (maxWidth() > 0.0) fit())
   // drawn in another face or size, the words are cut again: the cut was made in the one before
-  measure.on(if (!fitting && limited) fit())
+  // (the last cut gone stale first: drawn in another face or size, the same words take other room)
+  measure.on(if (!fitting) {
+    stale = true
+    if (limited) fit()
+  })
 
   // words that could not be measured when they were set are cut once they can be: as they join the page, whose sizes
   // are read then, or once their face has loaded; words not cut are measured again once it has
@@ -244,18 +248,19 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   private def fit(announce: Boolean = true): Unit = {
     fitting = true
     try {
-      cut()
       // what is drawn decides the width: a cut that came from a narrower `maxWidth` changes nothing else
-      if (announce) measure.trigger()
+      if (cut() && announce) measure.trigger()
     } finally fitting = false
   }
 
-  // what the last fit went by, where fits are counted (`PerfCounters`)
-  private var fitKey = ""
+  // what the last cut went by, and whether it may have gone stale since: measured again for something of its own (a
+  // face, a size, a weight changed, a face loaded), not for words, a limit or a room, which the key holds
+  private var cutKey = ""
+  private var stale = true
 
-  private def cut(): Unit = {
-    // words wrapped to fit their room before are put back as they were, to be measured whole again
-    if (wrappedToFit) unwrap()
+  /** The words cut to their room, as `fit` says; false where all it goes by is as at the last cut, the words drawn and
+    * measured then, which nothing is done again for (a change of room that came to the same room, words set again). */
+  private def cut(): Boolean = {
     val wanted = content()
     val limit = maxWidth()
     val lines = if (maxLines() > 0 && (whiteSpace() != WhiteSpace.NoWrap || wraps)) maxLines() else 0
@@ -263,11 +268,24 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     val box = if ((boxed || toBox) && !followed && !size.width.explicit) roomNow else 0.0
     val own = ownRoom
     val before = measured.width()
-    if (everyui.perf.PerfCounters.on) {
-      val key = wanted + "|" + limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString
-      everyui.perf.PerfCounters.fit(key == fitKey)
-      fitKey = key
+    val key = wanted + "|" + limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString + "|" +
+      whiteSpace().value + "|" + overflow.toString + "|" + elide().toString + "|" +
+      // a width of its own, which words that wrap wrap at
+      (if (size.width.explicit) size.width().toString else "")
+    val same = key == cutKey && !stale && !unfit
+    everyui.perf.PerfCounters.fit(same)
+    if (same) false
+    else {
+      cutKey = key
+      stale = false
+      drawCut(wanted, limit, lines, box, own, before)
+      true
     }
+  }
+
+  private def drawCut(wanted: String, limit: Double, lines: Int, box: Double, own: Double, before: Double): Unit = {
+    // words wrapped to fit their room before are put back as they were, to be measured whole again
+    if (wrappedToFit) unwrap()
     node.setText(wanted)
     val asked = limit > 0.0 || lines > 0
     unfit = (asked || box > 0.0 || own > 0.0) && !node.textMeasurable(refit)

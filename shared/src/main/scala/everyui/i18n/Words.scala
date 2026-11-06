@@ -391,7 +391,7 @@ object Words {
     "date.chooseMonth" -> "Choisir un mois",
     "date.openCalendar" -> "Ouvrir le calendrier", "date.today" -> "Aujourd'hui", "date.selected" -> "sélectionné",
     "date.invalid" -> "Date non valide", "date.outOfRange" -> "Hors limites",
-    "date.endBeforeStart" -> "Se termine avant de commencer", "date.noDate" -> "Aucune date", "date.time" -> "Heure", "date.selectTime" -> "Choisir une heure", "date.hour" -> "Heure", "date.minute" -> "Minute", "date.period" -> "Matin ou après-midi", "date.openClock" -> "Choisir une heure", "date.invalidTime" -> "Heure non valide", "date.noTime" -> "Aucune heure",
+    "date.endBeforeStart" -> "Se termine avant de commencer", "date.noDate" -> "Aucune date", "date.time" -> "Heure", "date.selectTime" -> "Choisir une heure", "date.hour" -> "Heure", "date.minute" -> "Minutes", "date.period" -> "Matin ou après-midi", "date.openClock" -> "Choisir une heure", "date.invalidTime" -> "Heure non valide", "date.noTime" -> "Aucune heure",
     "log.log" -> "Journal", "log.jumpToLatest" -> "Aller au plus récent",
     "log.newCount" -> "{n, plural, one{# nouvelle} other{# nouvelles}}", "log.matchOf" -> "{at} sur {total}",
     "log.noMatches" -> "Aucun résultat", "log.badPattern" -> "Motif non valide",

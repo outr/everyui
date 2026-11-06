@@ -72,6 +72,7 @@ class RenderNode(val el: html.Element) {
 
   private var scaled: Double = 1.0
   private def transform(): Unit = {
+    turning(rotation != 0.0 || scaled != 1.0, turnedMoving)
     counted("transform", rotation.toString + " " + scaled.toString)
     el.style.transform = "rotate(" + rotation.toString + "rad) scale(" + scaled.toString + ")"
     WebHover.changed()
@@ -139,9 +140,28 @@ class RenderNode(val el: html.Element) {
   // container scaled by 1.25 measured 1.25 wide, and was spread apart by as much again as the layout placed it), which
   // the whole-pixel layout size (offsetWidth) is not: a box more than a pixel from it is under a transform, past the
   // root's own (the size the app is drawn at, which the box is read over).
-  private def transformed(r: dom.DOMRect): Boolean = {
-    val at = RenderNode.drawnAt
-    math.abs(r.width / at - el.offsetWidth) > 1.0 || math.abs(r.height / at - el.offsetHeight) > 1.0
+  // Only looked at where the node, or one holding it, is turned or scaled (`RenderNode.turned`, marked
+  // `data-everyui-turned`): elsewhere its box is under no transform but the root's, and the second read (offsetWidth,
+  // which makes the browser lay the page out) is spared.
+  private def transformed(r: dom.DOMRect): Boolean =
+    RenderNode.turned > 0 && el.closest("[data-everyui-turned]") != null && {
+      val at = RenderNode.drawnAt
+      math.abs(r.width / at - el.offsetWidth) > 1.0 || math.abs(r.height / at - el.offsetHeight) > 1.0
+    }
+
+  // whether it is turned or scaled now, by its own transform (`setRotation`, `setScale`) or its motion's, each counted
+  // once in `RenderNode.turned`
+  private var turnedStill = false
+  private var turnedMoving = false
+  private def turning(still: Boolean, moving: Boolean): Unit = {
+    val was = turnedStill || turnedMoving
+    turnedStill = still
+    turnedMoving = moving
+    val now = still || moving
+    if (now != was) {
+      RenderNode.turned += (if (now) 1 else -1)
+      if (now) el.setAttribute("data-everyui-turned", "") else el.removeAttribute("data-everyui-turned")
+    }
   }
 
   // The size as laid out, to the fraction of a pixel (what cutting words to fit measures by), untouched by any
@@ -267,6 +287,7 @@ class RenderNode(val el: html.Element) {
   def setMotionOwner(owner: () => String): Unit = ()
   def setMotion(tracks: List[everyui.motion.Track]): Unit = {
     import everyui.motion.Track
+    turning(turnedStill, tracks.exists(t => t.property == Track.Rotation || t.property == Track.Scale))
     animations.foreach(_.cancel())
     animations = tracks.map { track =>
       val frames = track.keys.map { k =>
@@ -1155,6 +1176,9 @@ class RenderNode(val el: html.Element) {
 }
 
 object RenderNode {
+  /** How many of the app's nodes are turned or scaled now, by their own transform or a motion's: while none is, a box
+    * read is the laid-out one, and nothing is read twice to tell (`transformed`). */
+  private[render] var turned: Int = 0
   /** Whether a key is being pressed now (`Platform.onKey`): the browser does what the key does by default once the
     * app has heard it, to whatever has the page's focus then. */
   private[render] var inKey: Boolean = false
