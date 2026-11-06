@@ -21,9 +21,9 @@ class MatchText(width: => Double, height: => Double, points: Double = 13.0) exte
 
   size.width := width
   size.height := height
-  size.width.attach(_ => node.setClip(size.width(), size.height()))
-  size.height.attach(_ => node.setClip(size.width(), size.height()))
-  node.setClip(size.width(), size.height())
+  size.width.attach(_ => clipTo(size.width(), size.height()))
+  size.height.attach(_ => clipTo(size.width(), size.height()))
+  clipTo(size.width(), size.height())
   children += run
 
   private def piece(words: String, lit: Boolean, quiet: Boolean, at: Int): TextView = {

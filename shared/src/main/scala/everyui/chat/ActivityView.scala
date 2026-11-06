@@ -177,9 +177,9 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   clip.size.width := bodyWidth()
   clip.size.height := (if (!hasBody()) 0.0 else if (open() || !cuts()) bodyHeight()
     else lineHeight() * math.max(1, lines))
-  clip.size.width.attach(_ => clip.node.setClip(clip.size.width(), clip.size.height()))
-  clip.size.height.attach(_ => clip.node.setClip(clip.size.width(), clip.size.height()))
-  clip.node.setClip(clip.size.width(), clip.size.height())
+  clip.size.width.attach(_ => clip.clipTo(clip.size.width(), clip.size.height()))
+  clip.size.height.attach(_ => clip.clipTo(clip.size.width(), clip.size.height()))
+  clip.clipTo(clip.size.width(), clip.size.height())
   // the line and the body under its summary
   private val inner: Val[Double] = own(Val(if (!hasBody()) line.size.height()
     else math.max(line.size.height(), summary.position.top() + summary.size.height() + 2.0 + clip.size.height())))
@@ -210,8 +210,8 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   if (Platform.selectsText()) holder.event.click.attach(_.consume())
   holder.size.height := holder.children().headOption.map(_.size.height()).getOrElse(0.0)
   // what is wider than the box is cut at its edge
-  holder.size.width.attach(_ => holder.node.setClip(holder.size.width(), holder.size.height()))
-  holder.size.height.attach(_ => holder.node.setClip(holder.size.width(), holder.size.height()))
+  holder.size.width.attach(_ => holder.clipTo(holder.size.width(), holder.size.height()))
+  holder.size.height.attach(_ => holder.clipTo(holder.size.width(), holder.size.height()))
   // what was selected as the button went down: a drag that selected words in it, the body's or the details', is not a
   // click that opens or closes it, while a click on the summary with words left selected from before is
   private var selectedBefore = ""

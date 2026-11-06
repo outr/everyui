@@ -120,8 +120,8 @@ class StackedPanes(val panes: Vector[StackedPane]) extends Container {
   }
 
   children ++= panes ++ handles
-  size.width.attach(_ => node.setClip(size.width(), size.height()))
-  size.height.attach(_ => node.setClip(size.width(), size.height()))
+  size.width.attach(_ => clipTo(size.width(), size.height()))
+  size.height.attach(_ => clipTo(size.width(), size.height()))
   onDispose(() => {
     run.foreach(_.cancel())
     run = None

@@ -51,7 +51,7 @@ private[log] class LogRow(view: LogView) extends ListRow[LogLine] {
     room.position.left @= lead
     room.size.width @= math.max(0.0, size.width() - lead)
     room.size.height @= size.height()
-    room.node.setClip(room.size.width(), room.size.height())
+    room.clipTo(room.size.width(), room.size.height())
   }
 
   /** Its words moved across to where the view is scrolled sideways, where lines do not wrap. */

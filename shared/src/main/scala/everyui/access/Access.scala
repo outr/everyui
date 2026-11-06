@@ -100,6 +100,8 @@ object Access {
       if (acting && !self(c).exists(_.focusable())) add(AccessRule.Keyboard, c, "is clicked, but the keys never reach it")
       if (acting && (c.size.width() < 24.0 || c.size.height() < 24.0) && crowded(c, targets))
         add(AccessRule.Target, c, "is under 24x24 with another target within 24 of its middle")
+      past(c, root).foreach(by => add(AccessRule.Reflow, c, "runs " + math.round(by).toString +
+        " past the edge of a screen " + math.round(root.size.width()).toString + " across"))
       contrastOf(c).foreach { case (ratio, wanted, fg, bg) =>
         add(AccessRule.Contrast, c,
           tenths(ratio) + ":1, " + fg.toHex + " on " + bg.toHex + ", under " + tenths(wanted) + ":1")
@@ -113,6 +115,29 @@ object Access {
         " on Tab, but before it in reading order")
     }
     found.reverse
+  }
+
+  // how far `c` runs past `root`'s left or right edge, where it is the first along its line of holders to and nothing
+  // holding it cuts it (a scroll, a list): there, what runs past is cut, or scrolled to, not off the screen
+  private def past(c: Component, root: Component): Option[Double] = {
+    def over(x: Component): Double = {
+      val left = x.absoluteLeft - root.absoluteLeft
+      math.max(-left, left + x.size.width() - root.size.width())
+    }
+    val by = over(c)
+    if ((c eq root) || by <= 0.5) None
+    else {
+      var at = c.parent()
+      var cut = false
+      var first = true
+      while (at.nonEmpty && !(at.get eq root) && !cut) {
+        if (at.get.clips) cut = true
+        else if (first && over(at.get) > 0.5) cut = true
+        first = false
+        at = at.get.parent()
+      }
+      if (cut) None else Some(by)
+    }
   }
 
   /** The check put where a test harness can read it, on the web: `window.everyuiAccess()`, the findings under `ui`

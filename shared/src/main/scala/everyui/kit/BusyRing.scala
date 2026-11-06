@@ -48,7 +48,7 @@ class BusyRing(around: Double, on: => Boolean) extends Container {
       size.height @= diameter / 2.0
       children += circle(Theme.accent())
     }
-    half.node.setClip(diameter, diameter / 2.0)
+    half.clipTo(diameter, diameter / 2.0)
     val spin = new Container {
       size.width @= diameter
       size.height @= diameter

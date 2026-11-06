@@ -67,6 +67,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     val on = clipAsked.getOrElse(boxed)
     if (on != boxClipped) {
       boxClipped = on
+      clips = on
       // the desktop and the Roku clip to a size: followed once it clips at all
       if (on && !boxSized) {
         boxSized = true

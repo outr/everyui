@@ -557,11 +557,11 @@ class ZoomCanvas extends Container {
   view.attach(_ => refresh())
   items.attach(_ => replant())
   size.width.attach { _ =>
-    node.setClip(size.width(), size.height())
+    clipTo(size.width(), size.height())
     replant()
   }
   size.height.attach { _ =>
-    node.setClip(size.width(), size.height())
+    clipTo(size.width(), size.height())
     replant()
   }
 }

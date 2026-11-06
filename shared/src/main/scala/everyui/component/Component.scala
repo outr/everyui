@@ -98,6 +98,15 @@ class Component(val node: RenderNode) {
   if (Component.rendering(0)) Component.rendered(0) = this :: Component.rendered(0)
   lazy val position: PositionFeature = new PositionFeature(this)
 
+  // whether it cuts what it holds to a box of its own (`clipTo`, a container's `clipsToBox`): what runs past it is cut,
+  // not past the screen (`Access`'s reflow)
+  private[everyui] var clips: Boolean = false
+  /** What it holds cut to `width` by `height` from its top left, as a scroll's or a list's box is. */
+  private[everyui] def clipTo(width: Double, height: Double): Unit = {
+    clips = true
+    node.setClip(width, height)
+  }
+
   // whether `visible` has been made: one never made is shown, and a look at whether it is need not make it
   private var visibleMade = false
   private[everyui] def notHidden: Boolean = !visibleMade || visible()

@@ -49,8 +49,8 @@ class TableRow[T](table: VirtualTable[T]) extends ListRow[T] {
     cell.visible := table.widthOf(key) > 0.0 && (item().nonEmpty || key == VirtualTable.checkKey)
     cell.position.left := ListRow.along(table.startOf(key) - table.scrollX(), cell.size.width(),
       TableRow.this.size.width())
-    cell.size.width.attach(_ => cell.node.setClip(cell.size.width(), cell.size.height()))
-    cell.size.height.attach(_ => cell.node.setClip(cell.size.width(), cell.size.height()))
+    cell.size.width.attach(_ => cell.clipTo(cell.size.width(), cell.size.height()))
+    cell.size.height.attach(_ => cell.clipTo(cell.size.width(), cell.size.height()))
     cell
   }
 

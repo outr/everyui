@@ -187,8 +187,8 @@ object SplitPane {
   private[split] def pane(part: Component): Container = new Container {
     part.size.width := size.width()
     part.size.height := size.height()
-    size.width.attach(_ => node.setClip(size.width(), size.height()))
-    size.height.attach(_ => node.setClip(size.width(), size.height()))
+    size.width.attach(_ => clipTo(size.width(), size.height()))
+    size.height.attach(_ => clipTo(size.width(), size.height()))
     children += part
   }
 }

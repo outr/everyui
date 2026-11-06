@@ -139,7 +139,7 @@ class Backdrop extends Container {
 
   /** The image scaled until it covers the box on both sides, placed by `alignX` and `alignY`. */
   private def place(): Unit = {
-    node.setClip(size.width(), size.height())
+    clipTo(size.width(), size.height())
     cover(view, shown.width, shown.height)
     video.foreach(v => v.videoSize match {
       case Some((w, h)) => cover(v, w, h)

@@ -1205,7 +1205,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
   followsEnd.attach(on => if (on) offset @= furthest)
   private def clip(): Unit = {
-    node.setClip(size.width(), size.height())
+    clipTo(size.width(), size.height())
     refresh()
   }
 

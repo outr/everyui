@@ -56,8 +56,8 @@ class TableHeader[T](table: VirtualTable[T]) extends Container {
       arrow.position.top := (size.height() - 14.0) / 2.0
       handle.size.height := size.height()
       handle.position.left := ListRow.along(size.width() - TableHeader.grip, TableHeader.grip, size.width())
-      size.width.attach(w => node.setClip(w, size.height()))
-      size.height.attach(h => node.setClip(size.width(), h))
+      size.width.attach(w => clipTo(w, size.height()))
+      size.height.attach(h => clipTo(size.width(), h))
       children ++= List(title, arrow, handle)
       if (column.sorts) {
         cursor @= "pointer"
@@ -164,7 +164,7 @@ class TableHeader[T](table: VirtualTable[T]) extends Container {
   }
   build(table.shown())
   follow(table.shown, (c: Vector[GridColumn[T]]) => build(c))
-  size.width.attach(w => node.setClip(w, size.height()))
+  size.width.attach(w => clipTo(w, size.height()))
 
   override def kind: String = "TableHeader"
 }

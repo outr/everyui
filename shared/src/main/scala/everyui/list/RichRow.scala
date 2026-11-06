@@ -367,9 +367,9 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   private var blockMade = false
   private def makeBlock(): Unit = if (!blockMade) {
     blockMade = true
-    holder.size.width.attach(_ => holder.node.setClip(holder.size.width(), holder.size.height()))
-    holder.size.height.attach(_ => holder.node.setClip(holder.size.width(), holder.size.height()))
-    holder.node.setClip(holder.size.width(), holder.size.height())
+    holder.size.width.attach(_ => holder.clipTo(holder.size.width(), holder.size.height()))
+    holder.size.height.attach(_ => holder.clipTo(holder.size.width(), holder.size.height()))
+    holder.clipTo(holder.size.width(), holder.size.height())
     children @= Vector[Component](holder, light) ++ children() ++ Vector[Component](caption, count, toggle)
   }
   blocks.attach(b => if (b) makeBlock())

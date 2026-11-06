@@ -27,8 +27,8 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     size.height := math.max(0.0, TabGroup.this.size.height() - TabBar.height)
     position.top @= TabBar.height
   }
-  body.size.width.attach(_ => body.node.setClip(body.size.width(), body.size.height()))
-  body.size.height.attach(_ => body.node.setClip(body.size.width(), body.size.height()))
+  body.size.width.attach(_ => body.clipTo(body.size.width(), body.size.height()))
+  body.size.height.attach(_ => body.clipTo(body.size.width(), body.size.height()))
   private val empty: TextView = new TextView {
     content := TabGroups.noTabs
     font.size @= 14.0

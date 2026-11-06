@@ -32,7 +32,7 @@ class Ring(diameter: Double, stroke: Double, fraction: Val[Double], fill: () => 
       position.left @= (if (left) 0.0 else half)
       children += ring
     }
-    cut.node.setClip(half, diameter)
+    cut.clipTo(half, diameter)
     new Container {
       size.width @= diameter
       size.height @= diameter
@@ -49,7 +49,7 @@ class Ring(diameter: Double, stroke: Double, fraction: Val[Double], fill: () => 
       position.left @= (if (left) 0.0 else half)
       children += turning
     }
-    seen.node.setClip(half, diameter)
+    seen.clipTo(half, diameter)
     seen
   }
 

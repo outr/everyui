@@ -649,6 +649,7 @@ WARN access: contrast: TextView(Sent) (24,180 31x16) 2.9:1, #6b6b6b on #2a2a2a, 
 | `keyboard` | Clicked, but neither it nor anything holding it is `focusable`, so the keys never reach it | 2.1.1 |
 | `target` | Clicked, under 24×24, with another clicked thing within 24 of its middle | 2.5.8 |
 | `contrast` | Words under 4.5:1 against what is drawn behind them (3:1 for large words and for icons), unless `disabled` | 1.4.3, 1.4.11 |
+| `reflow` | Shown past the screen's left or right edge, outside anything that scrolls or cuts what it holds; the first part along only | 1.4.10 |
 
 What a screen reader is given for a component is `Access.nameOf(c)`: its `semantics` label; else its own words, a
 picture's `alt` or a field's label; else its tooltip; else the words inside it in reading order, taking a part with
@@ -665,6 +666,13 @@ height}` each:
 const found = await page.evaluate(() => window.everyuiAccessJson());
 expect(found).toEqual([]);
 ```
+
+For reflow, check a screen at 320 across (`ui.size.width @= 320.0` in a test, or a browser window that narrow): what
+the screen shows then must not run past its edges, and EveryUI's dialogs, menus, toasts and pickers fit. The device's
+text size never leaves the app under 320 across (`UiScale.narrowest`). For target size, `target` holds a clicked part
+to 24 by 24 or 24 apart (WCAG 2.5.8, AA); EveryUI's glyph buttons, check boxes and chips are larger, and on the web
+a finger's tap a little outside one still reaches it (`tapSlop`), so a phone's 44 is met where the layout has no
+room for it drawn.
 
 Names and roles come by default. An app's own component that takes the focus and hears a click (a plain
 `Container`, or a kind of the app's) is a button to a screen reader, with no `semantics` of its own. It is named

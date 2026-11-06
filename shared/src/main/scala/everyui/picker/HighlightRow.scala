@@ -40,7 +40,7 @@ class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T
   label.position.top := (size.height() - label.size.height()) / 2.0
   note.position.left := label.position.left() + label.size.width() + points * 0.8
   note.position.top := (size.height() - note.size.height()) / 2.0
-  size.width.attach(_ => node.setClip(size.width(), size.height()))
+  size.width.attach(_ => clipTo(size.width(), size.height()))
   children ++= lead.toList ++ List(label, note)
   // a picker's row is a line tall, its words cut at its end: where they run past it, they are read whole in its tip
   tip := item().filter(_ => note.position.left() + note.size.width() > size.width() - ListRow.inset)

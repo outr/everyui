@@ -317,7 +317,7 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     found
   }
 
-  private def clip(): Unit = node.setClip(size.width(), size.height())
+  private def clip(): Unit = clipTo(size.width(), size.height())
 }
 
 object ScrollContainer {

@@ -15,4 +15,7 @@ enum AccessRule(val id: String, val criterion: String) {
   case Order extends AccessRule("order", "2.4.3")
   /** Words under 4.5:1 against what is behind them (3:1 large, and for an icon) (1.4.3, 1.4.11). */
   case Contrast extends AccessRule("contrast", "1.4.3")
+  /** Shown past the screen's left or right edge, outside anything that scrolls or cuts what it holds: at the width the
+    * screen has (320 across, at 400% of a 1280 window) the person cannot reach it without scrolling sideways (1.4.10). */
+  case Reflow extends AccessRule("reflow", "1.4.10")
 }

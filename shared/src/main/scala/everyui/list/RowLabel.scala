@@ -66,9 +66,9 @@ class RowLabel(text: => String, look: => Decoration, width: => Double, height: =
   size.width := width
   size.height := height
   opacity := look.opacity
-  size.width.attach(_ => node.setClip(size.width(), size.height()))
-  size.height.attach(_ => node.setClip(size.width(), size.height()))
-  node.setClip(size.width(), size.height())
+  size.width.attach(_ => clipTo(size.width(), size.height()))
+  size.height.attach(_ => clipTo(size.width(), size.height()))
+  clipTo(size.width(), size.height())
   children ++= List(glyph, label, badge, tail)
 
   /** Where the text starts, from the start edge. */

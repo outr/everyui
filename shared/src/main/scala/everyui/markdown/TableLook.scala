@@ -64,9 +64,9 @@ object TableLook {
     edge.size.width := grid.size.width()
     edge.size.height := grid.size.height()
     if (grid.radius() > 0.0) {
-      grid.size.width.attach(_ => grid.node.setClip(grid.size.width(), grid.size.height()))
-      grid.size.height.attach(_ => grid.node.setClip(grid.size.width(), grid.size.height()))
-      grid.node.setClip(grid.size.width(), grid.size.height())
+      grid.size.width.attach(_ => grid.clipTo(grid.size.width(), grid.size.height()))
+      grid.size.height.attach(_ => grid.clipTo(grid.size.width(), grid.size.height()))
+      grid.clipTo(grid.size.width(), grid.size.height())
     }
   }
 }
