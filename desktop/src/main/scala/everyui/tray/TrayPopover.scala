@@ -45,10 +45,14 @@ class TrayPopover {
       val h = math.max(1.0, c.size.height())
       s.setWidth(w)
       s.setHeight(h)
-      val screens = Screen.getScreensForRectangle(x.toDouble, y.toDouble, 1.0, 1.0)
-      val area = (if (screens.isEmpty) Screen.getPrimary else screens.get(0)).getVisualBounds
-      val left = if (x > area.getMinX + area.getWidth / 2.0) x - w else x.toDouble
-      val top = if (y > area.getMinY + area.getHeight / 2.0) y - h - 8.0 else y + 8.0
+      val all = Screen.getScreens
+      val shown = (0 until all.size).toList.map(all.get)
+      val boxes = shown.map(sc => TrayScreen(sc.getBounds.getMinX, sc.getBounds.getMinY, sc.getBounds.getWidth,
+        sc.getBounds.getHeight, sc.getOutputScaleX))
+      val (at, px, py) = TrayScreen.locate(x, y, boxes, TrayScreen.plasmaWayland)
+      val area = shown(at).getVisualBounds
+      val left = if (px > area.getMinX + area.getWidth / 2.0) px - w else px
+      val top = if (py > area.getMinY + area.getHeight / 2.0) py - h - 8.0 else py + 8.0
       s.setX(math.max(area.getMinX, math.min(area.getMaxX - w, left)))
       s.setY(math.max(area.getMinY, math.min(area.getMaxY - h, top)))
     }
