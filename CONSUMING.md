@@ -592,6 +592,21 @@ otherReason.collapses @= true
 otherReason.visible := reason() == Reason.Other
 ```
 
+### Masonry columns (`everyui.layout.MasonryLayout`)
+
+`MasonryLayout(minColumnWidth, gap)` puts cards of different heights in columns, each card in the column that is
+shortest when it comes, so the columns end close together. It makes as many columns as fit at least `minColumnWidth`
+wide with `gap` between them (one, however narrow), shares the width equally, and makes each child a column wide. The
+first column is at the start of the reading direction. The container lays it out again as its width changes and as a
+card grows or shrinks (one unfolding), and grows to the tallest column. Tab, a screen reader, and Left and Right go
+through the cards in the order they were added, whichever column each lands in; Up and Down go to the card above or
+below in the same column.
+
+```scala
+clients.layout @= Some(MasonryLayout(minColumnWidth = 320.0, gap = 12.0))
+clients.children ++= machines.map(m => new MachineCard(m))
+```
+
 ### Seeing overlaps while building (`everyui.layout.Overlaps`)
 
 `Overlaps.warn @= true` (off by default, and free while off) looks the screen over after each layout pass and every
