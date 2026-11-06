@@ -2,8 +2,9 @@ package everyui.split
 
 import everyui.Color
 import everyui.component.Container
+import everyui.component.types.{SemanticRange, Semantics}
 import everyui.event.{Key, PointerEvent}
-import everyui.i18n.Direction
+import everyui.i18n.{Direction, Words}
 import everyui.render.Platform
 import everyui.theme.Theme
 import everyui.ui
@@ -14,9 +15,11 @@ import reactify.*
   * `pressed`; dragged, it tells `dragged` how far it has gone from where it was pressed (once past a couple of pixels,
   * mirrored across in a right-to-left language), over the whole screen, since a browser tells only what is under the
   * pointer that it moved; `clicked` hears each click on it, `moved` saying whether the press before it dragged, and
-  * `doubleClicked` two that dragged nothing close together. Focused (where its owner makes it focusable), the arrows
-  * along it tell `nudged` the way (1 on, to the reading direction's end or down, -1 back) and Enter tells `entered`.
-  * Its owner sizes and places it. */
+  * `doubleClicked` two that dragged nothing close together. The keys reach it (Tab, in reading order between the parts
+  * it divides), except where a remote moves the focus: the arrows along it tell `nudged` the way (1 on, to the reading
+  * direction's end or down, -1 back), four times as far with Shift or as Page Up and Page Down; Home and End tell
+  * `ended` (-1 as far back as it goes, 1 as far on); and Enter tells `entered`. A screen reader hears it as a divider,
+  * where its owner says it stands (`value`). Its owner sizes and places it. */
 class SplitHandle(val vertical: Boolean) extends Container {
   /** Whether a pointer has hold of it. */
   val grabbed: Var[Boolean] = own(Var(false))
@@ -33,6 +36,10 @@ class SplitHandle(val vertical: Boolean) extends Container {
   val doubleClicked: Channel[PointerEvent] = Channel[PointerEvent]
   val nudged: Channel[Double] = Channel[Double]
   val entered: Channel[Unit] = Channel[Unit]
+  /** Home (-1) or End (1): as far back, or on, as it goes. */
+  val ended: Channel[Double] = Channel[Double]
+  /** Where it stands, for a screen reader: its owner's to say (a split's first side as a percentage). */
+  val value: Var[Option[SemanticRange]] = own(Var(None))
   private var from: Double = 0.0
   private var dragging: Boolean = false
   private var lastClick: Double = -1000.0
@@ -44,6 +51,10 @@ class SplitHandle(val vertical: Boolean) extends Container {
   }
   cursor @= (if (vertical) "row-resize" else "col-resize")
   touchDrags @= true
+  focusable @= !Platform.remoteNavigation()
+  // a click on it (to fold a side) leaves the focus in the side it was in
+  clickLeavesFocus = true
+  semantics := Semantics("separator", label = Words.divider, range = value())
   if (vertical) {
     line.size.width := size.width()
     line.size.height := (if (lit()) 2.0 else 1.0)
@@ -64,7 +75,7 @@ class SplitHandle(val vertical: Boolean) extends Container {
   }
 
   // the arrows along it, and Enter, are its own where it takes the focus
-  override def keepsKey(key: Key): Boolean = key == Key.Enter ||
+  override def keepsKey(key: Key): Boolean = key == Key.Enter || key == Key.PageUp || key == Key.PageDown ||
     (if (vertical) key == Key.ArrowUp || key == Key.ArrowDown else key == Key.ArrowLeft || key == Key.ArrowRight)
 
   /** Whether the press before the last click dragged it. */
@@ -92,9 +103,14 @@ class SplitHandle(val vertical: Boolean) extends Container {
   event.key.down.attach { k =>
     // (across, in a right-to-left language, on is to the left)
     val mirrored = !vertical && Direction.rtl()
+    val far = if (k.shift) 4.0 else 1.0
     if (k.key == Key.Enter) entered @= (())
-    else if (k.key == Key.ArrowUp || k.key == (if (mirrored) Key.ArrowRight else Key.ArrowLeft)) nudged @= -1.0
-    else if (k.key == Key.ArrowDown || k.key == (if (mirrored) Key.ArrowLeft else Key.ArrowRight)) nudged @= 1.0
+    else if (k.name == "Home") ended @= -1.0
+    else if (k.name == "End") ended @= 1.0
+    else if (k.key == Key.PageUp) nudged @= -4.0
+    else if (k.key == Key.PageDown) nudged @= 4.0
+    else if (k.key == Key.ArrowUp || k.key == (if (mirrored) Key.ArrowRight else Key.ArrowLeft)) nudged @= -far
+    else if (k.key == Key.ArrowDown || k.key == (if (mirrored) Key.ArrowLeft else Key.ArrowRight)) nudged @= far
   }
   // let go of, should it be taken apart while it is held
   onDispose(() => {

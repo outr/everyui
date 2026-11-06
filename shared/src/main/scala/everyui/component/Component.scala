@@ -457,6 +457,9 @@ class Component(val node: RenderNode) {
     * clicked takes no focus, and the click takes it from where it was. A remote's platform focuses whatever is
     * clicked, as ever. */
   lazy val clickFocus: Var[Boolean] = own(Var(false))
+  // whether a click on it leaves the focus where it is, rather than letting it go: a split's handle, clicked beside a
+  // field being typed in, takes nothing from it
+  private[everyui] var clickLeavesFocus: Boolean = false
   /** Whether this is typed into: a field, an editor. Where a pointer moves the focus, a screen starts with the focus
     * on its `defaultFocus` only when that is typed into, and keys pressed in it are not the keys moving the focus. */
   def takesTyping: Boolean = false

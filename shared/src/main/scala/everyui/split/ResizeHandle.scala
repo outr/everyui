@@ -1,5 +1,6 @@
 package everyui.split
 
+import everyui.component.types.SemanticRange
 import everyui.render.Platform
 import reactify.*
 
@@ -12,9 +13,10 @@ import reactify.*
   *
   * Where `collapsed` is given, a double-click folds the part away and back, as a drag most of the way past its minimum
   * folds it; the app hides the part while it is folded (and puts the handle at its edge), and a drag out from there
-  * brings it back. Focusable where the app says (`focusable @= true`), the arrows along it move it by `step` and Enter
-  * folds. It is a `SplitHandle`, as `SplitPane`'s is, so it is dragged the same way: lit with the pointer on it, the
-  * resize cursor, followed over the whole screen. The app places it, its middle on the edge (from the right in a
+  * brings it back. The keys reach it (not where a remote moves the focus): the arrows along it move it by `step`
+  * (Shift, and Page Up and Down, four), Home and End to its least and its most, and Enter folds. It is a
+  * `SplitHandle`, as `SplitPane`'s is, so it is dragged the same way: lit with the pointer on it, the resize cursor,
+  * followed over the whole screen. The app places it, its middle on the edge (from the right in a
   * right-to-left language: `Mirror.place`).
   *
   * {{{
@@ -44,6 +46,9 @@ class ResizeHandle(val length: Var[Double], min: Double, max: Double = SplitPane
   doubleClicked.attach(_ => toggle())
   nudged.attach(way => if (folded) toggle() else resizeTo(length() + way * step() * grows))
   entered.attach(_ => toggle())
+  ended.attach(way => resizeTo(if (way * grows < 0.0) minLength() else maxLength()))
+  value := Some(SemanticRange(length(), minLength(), math.max(minLength(), math.min(maxLength(), 100000.0)),
+    math.round(length()).toString + " px"))
 
   private def folded: Boolean = collapsed.exists(_())
 

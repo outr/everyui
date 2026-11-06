@@ -1,6 +1,7 @@
 package everyui.split
 
 import everyui.component.*
+import everyui.component.types.SemanticRange
 import everyui.event.Key
 import everyui.focus.Focus
 import everyui.i18n.Direction
@@ -13,7 +14,8 @@ import reactify.*
   * Neither side is made smaller than its minimum (`minFirst`, `minSecond`) while there is room for both. The
   * `collapsible` side folds away (`collapsed`, or `toggle()`) when the handle is double-clicked, or dragged most of the
   * way past its minimum, and comes back at the ratio it had. `grow()` and `shrink()` move the handle by `step`, for an
-  * app's commands; a focused handle (`handle.focusable @= true`) moves with the arrows along it and folds with Enter.
+  * app's commands. The keys reach the handle (not where a remote moves the focus): the arrows along it move it a step
+  * (Shift, and Page Up and Down, four), Home and End take it to either end, and Enter folds.
   * `startCollapsed` makes it with that side folded from the first frame: a folded sidebar restored from a saved
   * layout never shows open first. A split can be a side of another. Split across, the first side is at the start of
   * the reading direction: on the right in a right-to-left language, where dragging and the arrows are mirrored with it.
@@ -101,7 +103,8 @@ class SplitPane(val first: Component, val second: Component, val vertical: Boole
   }
   firstPane.visible := firstLength() > 0.0
   secondPane.visible := room - firstLength() > 0.0
-  children ++= List(firstPane, secondPane, handle)
+  // the handle between the sides, so Tab goes from the first to it to the second, in reading order
+  children ++= List(firstPane, handle, secondPane)
 
   // the arrows across, onto a side that shows, the way the sides lie in the reading direction; the other way out of a
   // side is left to what the split is in
@@ -130,6 +133,12 @@ class SplitPane(val first: Component, val second: Component, val vertical: Boole
   handle.doubleClicked.attach(_ => toggle())
   handle.entered.attach(_ => toggle())
   handle.nudged.attach(way => nudge(way * step()))
+  handle.ended.attach(way => resizeTo(if (way < 0.0) kept(0.0) else kept(room)))
+  // where it stands, for a screen reader: the first side's share of the room
+  handle.value := {
+    val percent = if (room > 0.0) math.round(firstLength() / room * 100.0).toDouble else 0.0
+    Some(SemanticRange(percent, 0.0, 100.0, percent.toInt.toString + "%"))
+  }
 
   /** The first side made longer by `step` (a folded side comes back). */
   def grow(): Unit = nudge(step())

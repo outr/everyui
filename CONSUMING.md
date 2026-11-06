@@ -791,7 +791,9 @@ Keymap.global.add("sidebar.grow", "Wider sidebar", Chord.parse("Primary+Alt+Arro
 Keymap.global.add("sidebar.shrink", "Narrower sidebar", Chord.parse("Primary+Alt+ArrowLeft")) { split.shrink() }
 ```
 
-`split.handle.focusable @= true` puts the handle in the focus order too: the arrows along it move it, Enter folds.
+The keys reach the handle, between the two sides in Tab's order, except where a remote moves the focus. The arrows
+along it move it by `step`, Shift or Page Up and Page Down by four, Home and End to either end, and Enter folds. A
+screen reader hears it as a divider at the first side's share. A click on it leaves the focus where it was.
 Split across, the first side is at the start of the reading direction: on the right in a right-to-left language
 (`Direction.rtl`), with the drag and the arrows mirrored.
 
@@ -820,8 +822,9 @@ changes; it is kept between `min` and `max` (`minLength`, `maxLength`). `edge` i
 dragged away from the part it grows: `ResizeEdge.End` for a sidebar at the start (its left right to left, where the
 drag is mirrored too), `Start` for a panel at the end, `Bottom` or `Top`. Given `collapsed`, a double-click folds the
 part and back, as a drag most of the way past `min` does, and a drag out from the folded edge brings it back; the app
-hides the part while it is folded. Made focusable (`focusable @= true`), the arrows along it move it by `step` (24)
-and Enter folds. The app places it, its middle on the edge:
+hides the part while it is folded. The keys reach it, except where a remote moves the focus: the arrows along it
+move it by `step` (24), Shift or Page Up and Page Down by four, Home and End to `min` and `max`, and Enter folds.
+The app places it, its middle on the edge:
 
 ```scala
 import everyui.split.{ResizeEdge, ResizeHandle}

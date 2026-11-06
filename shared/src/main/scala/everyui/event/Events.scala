@@ -19,7 +19,7 @@ class Events(component: Component) {
     val channel = pointer.channel(PointerKind.Click)
     FocusMoves.watch()
     channel.attach { e =>
-      if (component.focusable() && !Pointer.focusedBy(e) && !heldInside) {
+      if (component.focusable() && !component.clickLeavesFocus && !Pointer.focusedBy(e) && !heldInside) {
         val takes = Focus.clickFocuses(component)
         Focus.clicked(component, takes)
         if (takes) component.focus()

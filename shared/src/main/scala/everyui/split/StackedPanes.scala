@@ -100,6 +100,8 @@ class StackedPanes(val panes: Vector[StackedPane]) extends Container {
   val handles: Vector[SplitHandle] = panes.indices.dropRight(1).toVector.map { i =>
     val h = new SplitHandle(vertical = true)
     h.ruled @= false
+    // out of Tab: its reach lies under the header below it, which it is drawn over, so it comes after every pane
+    h.focusable @= false
     h.size.width := size.width()
     h.size.height := thickness()
     // its rule on the line between the panes, its reach mostly into the header under it
