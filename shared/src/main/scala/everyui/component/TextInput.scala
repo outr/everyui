@@ -70,7 +70,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   size.width @= width
   size.height @= 56.0
   borderWidth := (if (focused()) 2.5 else 1.0)
-  borderColor := (if (invalid().nonEmpty) Theme.danger() else if (focused()) Theme.accent() else Theme.border())
+  borderColor := (if (invalid().nonEmpty) Theme.danger() else if (focused()) Theme.accent() else Theme.edge())
   backgroundColor := (if (focused()) Theme.controlLit() else Theme.raised())
 
   if (native) {

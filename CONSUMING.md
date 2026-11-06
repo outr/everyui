@@ -4109,6 +4109,13 @@ These cover what a web app would otherwise reach the browser for directly, so th
   app's own setting as `choice` (`Theme.follow(light, dark, settings.appearance())`): "light" or "dark" holds the
   palette there whatever the device says, anything else ("system") follows the device, and a bound choice is followed
   as it changes. Set the palette with `Theme.follow` or `Theme.palette @=`, not both.
+- **Contrast.** `Palette.dark` and `Palette.light` meet WCAG 2.2 AA: every colour words are drawn in is 4.5:1 or more
+  against every ground (background, surface, raised, control, controlLit), and onAccent against accent and
+  accentLit. `Palette.audit(p)` lists where a palette of the app's own falls short ("muted on controlLit 4.25"), for
+  its tests. `Theme.edge()` is the edge of a control that its edge says is there (a field, a select, an outlined
+  button): the border taken toward the text as little as gives 3:1 against what a control sits on (WCAG 1.4.11),
+  which EveryUI's fields use; a card's edge keeps the lighter `border`. What the screen shows is checked whatever
+  palette made it: `Access.check`'s contrast rule.
 - **The build, and reloading into a new one.** `Platform.buildId()` names the running build.
   - **Web**: the version the page loaded its script by, which `everyuiWebScripts` writes as `main.js?v=…` or
     `everyui-loader.js?v=…`.

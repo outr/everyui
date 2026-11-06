@@ -65,7 +65,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
   size.width @= width
   size.height @= SearchField.height
   borderWidth := (if (focused()) 2.0 else 1.0)
-  borderColor := (if (focused()) Theme.accent() else Theme.border())
+  borderColor := (if (focused()) Theme.accent() else Theme.edge())
   backgroundColor := (if (focused()) Theme.controlLit() else Theme.raised())
   semantics @= Semantics("search")
 

@@ -30,7 +30,7 @@ class Select(options: => List[String]) extends Container {
   val boxed: Var[Boolean] = own(Var(true))
   private val inset: Val[Double] = own(Val(if (boxed()) Select.inset else 0.0))
   borderWidth := (if (boxed()) 1.0 else 0.0)
-  borderColor := Theme.border()
+  borderColor := Theme.edge()
   radius := (if (boxed()) Select.radius else 0.0)
   backgroundColor := (if (boxed()) Theme.control() else everyui.Color.Clear)
   // the page's select fills the box, its words set in by the browser, so a click anywhere on it opens it and its list
@@ -41,7 +41,7 @@ class Select(options: => List[String]) extends Container {
     field.size.height := size.height()
     // the open list in the theme's colours, as a Menu is drawn: raised on its edge, the option under the pointer or
     // the keys lit, the chosen one in the accent; following the theme as it changes
-    own(Val((Theme.raised(), Theme.text(), Theme.controlLit(), Theme.accent(), Theme.border(), inset())))
+    own(Val((Theme.raised(), Theme.text(), Theme.controlLit(), Theme.accent(), Theme.edge(), inset())))
       .attachAndFire { case (list, words, lit, chosen, edge, in) =>
         field.node.setDropDown(list.toHex, words.toHex, lit.toHex, chosen.toHex, edge.toHex, in)
       }

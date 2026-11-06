@@ -78,7 +78,7 @@ class DateField(label: String = DateWords.date, val value: Var[Option[CalendarDa
       face.size.height @= 56.0
       face.radius @= 10.0
       face.borderWidth := (if (face.focusShown()) 2.5 else 1.0)
-      face.borderColor := (if (face.focusShown()) Theme.accent() else Theme.border())
+      face.borderColor := (if (face.focusShown()) Theme.accent() else Theme.edge())
       face.backgroundColor := (if (face.focusShown()) Theme.controlLit() else Theme.raised())
       face.semantics := Semantics.button(label + ", " + value().map(d => format.write(d)).getOrElse(""))
       caption.position.left @= 14.0

@@ -40,6 +40,19 @@ object Theme {
   def control(): Color = palette().control
   def controlLit(): Color = palette().controlLit
   def border(): Color = palette().border
+  /** The edge of a control that its edge says is there (a field, a select, an outlined button): the palette's border
+    * taken toward its text, as little as gives 3:1 against the grounds a control sits on (WCAG 1.4.11). A card's edge,
+    * which says nothing a reader needs, keeps the lighter `border`. */
+  def edge(): Color = edgeOf(palette())
+
+  /** `edge` for palette `p`. */
+  def edgeOf(p: Palette): Color = {
+    def enough(c: Color): Boolean =
+      List(p.background, p.surface, p.raised).forall(g => everyui.access.Access.contrast(c, g) >= 3.0)
+    var t = 0.0
+    while (t < 1.0 && !enough(p.border.blend(p.text, t))) t += 0.05
+    p.border.blend(p.text, math.min(1.0, t))
+  }
   def text(): Color = palette().text
   def muted(): Color = palette().muted
   def accent(): Color = palette().accent

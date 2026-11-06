@@ -75,7 +75,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   size.width @= width
   size.height := (if (grow) math.max(minHeight, math.min(maxHeight, lines())) else minHeight)
   borderWidth := (if (focused()) 2.5 else 1.0)
-  borderColor := (if (focused()) Theme.accent() else Theme.border())
+  borderColor := (if (focused()) Theme.accent() else Theme.edge())
   backgroundColor := (if (focused()) Theme.controlLit() else Theme.raised())
   children += ruler
 
