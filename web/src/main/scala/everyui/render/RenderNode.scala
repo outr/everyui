@@ -2470,11 +2470,54 @@ object Platform {
   /** Whether text can hold emoji: the system's fonts draw them. */
   def emoji(): Boolean = true
   // nothing here turns speech into words
-  def dictation(): Boolean = false
-  def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit = {
-    ended()
-    () => ()
+  /** Whether it can listen: the browser's speech recognizer (the Web Speech API's `SpeechRecognition`: Chrome, Edge,
+    * Safari), none in Firefox. Chrome's sends what is said to Google's servers to be turned into words; Safari's may do
+    * it on the device. */
+  def dictation(): Boolean = !js.isUndefined(recognizer)
+  private def recognizer: js.Dynamic = {
+    val w = dom.window.asInstanceOf[js.Dynamic]
+    if (!js.isUndefined(w.SpeechRecognition)) w.SpeechRecognition else w.webkitSpeechRecognition
   }
+
+  /** One utterance, as words, in the app's language: `heard` hears them as they come (each time the whole of what is
+    * heard so far) and whether they are settled, `ended` that it is over (said, stopped, gone wrong, or the microphone
+    * refused, which the browser asks for the first time, from the press that starts it). What comes back stops it,
+    * what was heard settling. */
+  def dictate(heard: (String, Boolean) => Unit, ended: () => Unit): () => Unit =
+    if (!dictation()) {
+      ended()
+      () => ()
+    }
+    else {
+      val r = js.Dynamic.newInstance(recognizer)()
+      r.lang = everyui.i18n.Strings.language().code.replace('_', '-')
+      r.interimResults = true
+      r.continuous = false
+      r.maxAlternatives = 1
+      var over = false
+      def finish(): Unit = if (!over) {
+        over = true
+        ended()
+      }
+      r.onresult = (e: js.Dynamic) => {
+        val results = e.results
+        val n = results.length.asInstanceOf[Int]
+        var words = ""
+        var settled = n > 0
+        var i = 0
+        while (i < n) {
+          val result = results.selectDynamic(i.toString)
+          words = words + result.selectDynamic("0").transcript.asInstanceOf[String]
+          if (!result.isFinal.asInstanceOf[Boolean]) settled = false
+          i += 1
+        }
+        heard(words.trim, settled)
+      }
+      r.onerror = (_: js.Dynamic) => finish()
+      r.onend = (_: js.Dynamic) => finish()
+      try r.start() catch { case _: Throwable => finish() }
+      () => try r.stop() catch { case _: Throwable => finish() }
+    }
   def localAddress(): String = ""
   def deviceSerial(): String = ""
 

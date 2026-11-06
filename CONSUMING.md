@@ -4208,6 +4208,14 @@ These cover what a web app would otherwise reach the browser for directly, so th
   already. `report` gives them as lines and `json` as an object; `reset()` starts again. On the web
   `PerfCounters.expose()` gives `window.everyuiCountersOn()`, `everyuiCounters()`, `everyuiCountersJson()` and
   `everyuiCountersReset()` to a trace or a test driving the page.
+- **Dictation.** `Platform.dictation()` says whether the device can turn what is said into words, and
+  `Platform.dictate(heard, ended)` listens for one utterance in the app's language: `heard(words, settled)` each time
+  with the whole of what is heard so far, settled once it is final, and `ended()` once it is over, stopped, gone wrong
+  or the microphone refused. What it gives back stops it. On Android it is the system's recognizer; on the web the
+  browser's (the Web Speech API: Chrome, Edge and Safari have one, Firefox none), and the browser asks for the
+  microphone the first time, so call `dictate` from the press that starts it. Chrome's recognizer sends what is said
+  to Google's servers to be turned into words, while Safari's may do it on the device: say so where the app tells people
+  what happens to what they say. Elsewhere `dictation()` is false.
 - **A colour emoji face.** `Faces.colorEmoji(face)` adds a colour emoji font (its file in `fonts/`) as the very last
   fallback, after the system's own, for a machine whose system has none (Linux without Noto Color Emoji draws boxes).
   It is added only where the platform can draw it in colour: on the web where the browser takes
