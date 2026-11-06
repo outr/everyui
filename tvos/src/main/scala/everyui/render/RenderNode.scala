@@ -81,6 +81,8 @@ class RenderNode(val sg: SGNode) {
   def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
   /** How wide the words are whole, whatever width the view is given: as they are measured. */
   def textWidth(): Double = getWidth()
+  /** Its width and height, read together (the web reads a node out of the page once for both). */
+  def getSize(): (Double, Double) = (getWidth(), getHeight())
   def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg)
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)

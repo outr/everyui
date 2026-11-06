@@ -62,8 +62,9 @@ class MeasuredFeature(private[feature] val component: Component) {
 
   // the size read, what has to be done to the node first (`beforeRead`: words cut to fit) done already
   private[feature] def readOnly(): Unit = {
-    readWidth = component.node.getWidth()
-    readHeight = component.node.getHeight()
+    val (width, height) = component.node.getSize()
+    readWidth = width
+    readHeight = height
   }
 
   private[feature] def set(): Unit = {

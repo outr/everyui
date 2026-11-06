@@ -145,6 +145,8 @@ class RenderNode(val sg: SGNode) {
     if (richWidth >= 0.0) richWidth / uiScale()
     else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
     else 0.0
+  /** Its width and height, read together (the web reads a node out of the page once for both). */
+  def getSize(): (Double, Double) = (getWidth(), getHeight())
   def getHeight(): Double =
     if (wrapping && (boxWidth > 0.0 || textLimit > 0.0) && lineHeight > 0.0) {
       // the lines the Label puts its words on at its width, worked out as it wraps them (uiWrappedLines) rather than

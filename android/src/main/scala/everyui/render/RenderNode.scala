@@ -153,6 +153,8 @@ class RenderNode(val view: View) {
     case _ => 0.0
   }
 
+  /** Its width and height, read together (the web reads a node out of the page once for both). */
+  def getSize(): (Double, Double) = (getWidth(), getHeight())
   def getHeight(): Double =
     if (explicitHeight >= 0.0) explicitHeight
     else view match {

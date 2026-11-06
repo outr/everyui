@@ -121,6 +121,11 @@ class RenderNode(val el: html.Element) {
     everyui.perf.PerfCounters.read()
     el.scrollWidth / RenderNode.drawnAt
   } else getWidth()
+  /** Its width and height, read together: a node out of the page lent to it once for both, where reading each laid
+    * the page out for each (the words of a screen being built, read as its rows are laid out). */
+  def getSize(): (Double, Double) =
+    if (!onPage && RenderNode.movable(el)) RenderNode.offPage(el)
+    else (getWidth(), getHeight())
   def getHeight(): Double =
     if (!onPage && RenderNode.movable(el)) RenderNode.offPage(el)._2
     else {
