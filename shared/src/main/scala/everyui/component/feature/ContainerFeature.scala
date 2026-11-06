@@ -86,7 +86,7 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       // measuring a rail of cards again for each card added to it took a Roku seconds
       ContainerFeature.measureUnder(added.toList)
       component.measured.refresh()
-      component.requestLayout()
+      component.asContainer.foreach(_.layoutFor("children"))
       if (removed.nonEmpty) everyui.focus.Focus.offScreen()
       // the focus in what was put here or moved along, given the platform's focus again: a field's node taken off the
       // page loses the browser's, though the focus layer's stays on it

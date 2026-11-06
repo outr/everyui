@@ -65,6 +65,66 @@ class PerfCountersSpec extends FxSpec {
     }
   }
 
+  "A container placed again" should {
+    "be counted by what asked for it: its children, its size" in {
+      val column = fx {
+        PerfCounters.on = true
+        val c = new Container
+        c.layout @= Some(VerticalLayout())
+        c.children += TextView("one")
+        ui.children += c
+        c
+      }
+      try {
+        settle()
+        // a frame of its own: the column last placed in one before it, which has closed
+        val before = fx(PerfCounters.frame)
+        eventually {
+          PerfCounters.flushed()
+          PerfCounters.frame > before
+        } shouldBe true
+        fx(PerfCounters.reset())
+        // in one frame: placed for a child added, then again for a new width, then again for another child
+        fx {
+          column.children += TextView("two")
+          column.size.width @= 300.0
+          column.children += TextView("three")
+        }
+        val json = fx(PerfCounters.json)
+        json should include ("\"placedAgainFor\":{")
+        fx(PerfCounters.report) should include regex "placed again for: (.*, )?size 1"
+        fx(PerfCounters.report) should include regex "placed again for: (.*, )?children 1"
+      } finally fx {
+        PerfCounters.on = false
+        PerfCounters.reset()
+        ui.children.clear()
+      }
+    }
+  }
+
+  "Words written" should {
+    "be counted by what they were written for, the unchanged among them" in {
+      fx {
+        PerfCounters.on = true
+        PerfCounters.reset()
+        PerfCounters.textFor = "box"
+        PerfCounters.wroteText(same = true)
+        PerfCounters.wroteText(same = false)
+        PerfCounters.textFor = ""
+        PerfCounters.wroteText(same = true)
+      }
+      try {
+        fx(PerfCounters.report) should include ("words written for: box 2, other 1")
+        fx(PerfCounters.report) should include regex "words written unchanged for: (box 1, other 1|other 1, box 1)"
+        fx(PerfCounters.json) should include ("\"textUnchangedFor\":{")
+        fx(count("writesUnchanged")) shouldBe 2
+      } finally fx {
+        PerfCounters.on = false
+        PerfCounters.reset()
+      }
+    }
+  }
+
   "A fit" should {
     "do nothing where all it goes by is as it was, and cut again where the face changed" in {
       val label = fx {

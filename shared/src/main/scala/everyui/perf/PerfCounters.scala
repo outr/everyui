@@ -6,7 +6,7 @@ import everyui.render.Platform
   * test of `on` where it is off. Turned on (`on = true`, or `perfCounters=1` at launch), it counts, until `reset()`:
   *
   *  - layout: each `LayoutPass` flush, and the most in one frame; each container placed (`placeNow`), by its kind, and
-  *    each placed again in the same frame;
+  *    each placed again in the same frame, by its kind and by what asked for it;
   *  - words: each `TextView` fit, and those whose words, limits and room were all as at its last (what a cache of fits
   *    would have saved);
   *  - reads: each size read from the platform (the web's box reads), and those after a write in the same frame, which
@@ -14,7 +14,9 @@ import everyui.render.Platform
   *  - children: components a list made (`bindMaking`, `bind`) against those it kept, and parts `replaceMaking` put in
   *    new against those it kept;
   *  - writes: each style written to the page (position, size, colours, opacity, display, the words), and those that
-  *    wrote what was there already.
+  *    wrote what was there already. The words written are counted too by what they were written for: the cause of
+  *    the `TextView` fit that wrote them (new words, a width, the box's room, a face, words measured late), and those
+  *    unchanged with them.
   *
   * A frame is from the first count after one is drawn to the next drawn (`Platform.nextFrame`). `report` is the counts
   * as lines, `json` as an object; on the web `PerfCounters.expose()` gives them as `window.everyuiCounters()` (and
@@ -42,6 +44,11 @@ object PerfCounters {
   private var partsKept = 0
   private var writes = 0
   private var writesSame = 0
+  private var textBy: Map[String, Int] = Map.empty
+  private var textSameBy: Map[String, Int] = Map.empty
+  private var againFor: Map[String, Int] = Map.empty
+  // what the words being written now are written for: a `TextView` fit's cause, while it fits
+  private[everyui] var textFor: String = ""
   // the frame being counted, and whether anything has been written in it since the page was last laid out
   private[everyui] var frame = 0
   private var open = false
@@ -69,9 +76,10 @@ object PerfCounters {
     if (flushesInFrame > mostFlushes) mostFlushes = flushesInFrame
   }
 
-  /** A container of `kind` was placed, last placed in frame `last`: placed again where that is this one. The frame
-    * it is placed in, for its next. */
-  def placedOne(kind: String, last: Int): Int = {
+  /** A container of `kind` was placed, last placed in frame `last`: placed again where that is this one, counted by
+    * `why`, what first asked for it since it was last placed ("children", "size", "padding", "child size", "flex",
+    * "layout"; "asked" for an app's or a kind's own `requestLayout`). The frame it is placed in, for its next. */
+  def placedOne(kind: String, last: Int, why: String = ""): Int = {
     touch()
     // by its kind alone, not what it shows (a menu's row by its label)
     val name = if (kind.contains("(")) kind.substring(0, kind.indexOf("(")) else kind
@@ -80,6 +88,8 @@ object PerfCounters {
     if (last == frame) {
       placedAgain += 1
       againBy = againBy + (name -> (againBy.getOrElse(name, 0) + 1))
+      val cause = if (why.isEmpty) "asked" else why
+      againFor = againFor + (cause -> (againFor.getOrElse(cause, 0) + 1))
     }
     frame
   }
@@ -107,6 +117,15 @@ object PerfCounters {
     touch()
     writes += 1
     if (same) writesSame += 1 else dirty = true
+  }
+
+  /** Words written to the page (`same` where they were what was there), counted by what they were written for: the
+    * cause of the `TextView` fit that wrote them (`textFor`), or "other" for words written outside one. */
+  def wroteText(same: Boolean): Unit = if (on) {
+    wrote(same)
+    val cause = if (textFor.isEmpty) "other" else textFor
+    textBy = textBy + (cause -> (textBy.getOrElse(cause, 0) + 1))
+    if (same) textSameBy = textSameBy + (cause -> (textSameBy.getOrElse(cause, 0) + 1))
   }
 
   /** A list's children followed its values: `newly` made, `still` kept. */
@@ -141,6 +160,9 @@ object PerfCounters {
     partsKept = 0
     writes = 0
     writesSame = 0
+    textBy = Map.empty
+    textSameBy = Map.empty
+    againFor = Map.empty
   }
 
   /** The counts by name. */
@@ -154,18 +176,25 @@ object PerfCounters {
   // the kinds most placed (and placed again), the most first
   private def most(by: Map[String, Int]): List[(String, Int)] = by.toList.sortBy(e => -e._2).take(12)
 
-  /** The counts as lines, with the kinds of container most placed and most placed again in a frame. */
-  def report: String = (counts.map(c => c._1 + ": " + c._2) ++
-    List("placed by kind: " + most(placedBy).map(e => e._1 + " " + e._2).mkString(", "),
-      "placed again by kind: " + most(againBy).map(e => e._1 + " " + e._2).mkString(", "))).mkString("\n")
+  /** The counts as lines, with the kinds of container most placed and most placed again in a frame, what asked for
+    * those placed again, and what the words written were written for (all of them, and those unchanged). */
+  def report: String = {
+    def line(name: String, by: Map[String, Int]): String =
+      name + ": " + most(by).map(e => e._1 + " " + e._2).mkString(", ")
+    (counts.map(c => c._1 + ": " + c._2) ++ List(line("placed by kind", placedBy),
+      line("placed again by kind", againBy), line("placed again for", againFor), line("words written for", textBy),
+      line("words written unchanged for", textSameBy))).mkString("\n")
+  }
 
-  /** The counts as a JSON object, with `placedBy` and `placedAgainBy`. */
+  /** The counts as a JSON object, with `placedBy`, `placedAgainBy`, `placedAgainFor`, `textFor` and
+    * `textUnchangedFor`. */
   def json: String = {
     def quote(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     def obj(entries: List[(String, Int)]): String =
       "{" + entries.map(e => quote(e._1) + ":" + e._2.toString).mkString(",") + "}"
     "{" + counts.map(c => quote(c._1) + ":" + c._2.toString).mkString(",") + ",\"placedBy\":" + obj(most(placedBy)) +
-      ",\"placedAgainBy\":" + obj(most(againBy)) + "}"
+      ",\"placedAgainBy\":" + obj(most(againBy)) + ",\"placedAgainFor\":" + obj(most(againFor)) +
+      ",\"textFor\":" + obj(most(textBy)) + ",\"textUnchangedFor\":" + obj(most(textSameBy)) + "}"
   }
 
   /** The counts to a check outside the app: `window.everyuiCounters()` as lines, `everyuiCountersJson()` as an

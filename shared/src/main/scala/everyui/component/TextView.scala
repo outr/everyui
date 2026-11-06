@@ -14,7 +14,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   private var overflowMade = false
   lazy val content: Prop[String] = own(new Prop[String](node.getText(), _ => {
     followed = false
-    fit()
+    fit(why = "content")
     everyui.access.LiveRegions.changed()
   }))
   /** The widest these words may be drawn: what will not fit on a line wraps onto another (`TextOverflow.Wrap`, the
@@ -40,7 +40,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   lazy val textOverflow: Prop[TextOverflow] = {
     overflowMade = true
     own(new Prop[TextOverflow](overflowAtFirst, _ => if (keepsToBox) {
-      fit()
+      fit(why = "overflow")
       TextView.check(this)
     }))
   }
@@ -93,11 +93,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   // wrapped to a width that changes, the words take a different number of lines; given a width of their own, words
   // kept to their box are left to it, and a line is kept to that width (`ownRoom`)
   size.width.attach(_ => if (size.width.explicit) {
-    if (boxed) fit()
+    if (boxed) fit(why = "width")
     else if (whiteSpace() != WhiteSpace.NoWrap) {
-      if (maxLines() > 0) fit() else measure.trigger()
+      if (maxLines() > 0) fit(why = "width") else measure.trigger()
     }
-    else if (ownRoom > 0.0 || wrappedToFit || elided()) fit()
+    else if (ownRoom > 0.0 || wrappedToFit || elided()) fit(why = "width")
   })
   /** The room a line of words given a width of their own has: that width, where nothing else holds them to less
     * (`maxWidth`, `maxLines`) and they are not let run past it (`TextOverflow.Visible`); 0 for none. Wider than it,
@@ -228,34 +228,41 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     lately = if (now - lastFit > 250.0) 1 else lately + 1
     lastFit = now
     if (lately > 24) followed = true
-    fit()
+    fit(why = "box")
   }
 
-  maxWidth.attach(_ => fit())
-  maxLines.attach(_ => fit())
-  elide.attach(_ => if (maxWidth() > 0.0) fit())
+  maxWidth.attach(_ => fit(why = "maxWidth"))
+  maxLines.attach(_ => fit(why = "maxLines"))
+  elide.attach(_ => if (maxWidth() > 0.0) fit(why = "elide"))
   // drawn in another face or size, the words are cut again: the cut was made in the one before
-  measure.on(if (!fitting && limited) fit())
+  measure.on(if (!fitting && limited) fit(why = "face"))
 
   // words that could not be measured when they were set are cut once they can be: as they join the page, whose sizes
   // are read then, or once their face has loaded; words not cut are measured again once it has
   override private[everyui] def beforeRead(): Unit =
-    if (node.textMeasurable(refit) && unfit) fit(announce = false)
+    if (node.textMeasurable(refit) && unfit) fit(announce = false, why = "unmeasured")
   private val refit: () => Unit = () => if (!takenApart) {
     // a face loaded: the same words take other room
     stale = true
-    if (unfit) fit() else measure.trigger()
+    if (unfit) fit(why = "loaded") else measure.trigger()
   }
 
   /** Draw the words, or as many of them as `maxWidth` or `maxLines` leaves room for with an ellipsis after. The
     * platform measures each try, so the cut is the one the words really take, and not a guess at how wide a letter
     * is. */
-  private def fit(announce: Boolean = true): Unit = {
+  private def fit(announce: Boolean = true, why: String): Unit = {
     fitting = true
+    // what the words written meanwhile were written for, counted (`PerfCounters.textFor`)
+    val counting = everyui.perf.PerfCounters.on
+    val was = if (counting) everyui.perf.PerfCounters.textFor else ""
+    if (counting) everyui.perf.PerfCounters.textFor = why
     try {
       // what is drawn decides the width: a cut that came from a narrower `maxWidth` changes nothing else
       if (cut() && announce) measure.trigger()
-    } finally fitting = false
+    } finally {
+      fitting = false
+      if (counting) everyui.perf.PerfCounters.textFor = was
+    }
   }
 
   // what the last cut went by, and whether it has gone stale since, where something the key does not hold changed what

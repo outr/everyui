@@ -38,7 +38,8 @@ class RenderNode(val el: html.Element) {
       d.updateDynamic("__everyuiWrote")(made)
       made
     } else had.asInstanceOf[js.Dictionary[String]]
-    everyui.perf.PerfCounters.wrote(book.get(property).contains(value))
+    val same = book.get(property).contains(value)
+    if (property == "text") everyui.perf.PerfCounters.wroteText(same) else everyui.perf.PerfCounters.wrote(same)
     book(property) = value
   }
 

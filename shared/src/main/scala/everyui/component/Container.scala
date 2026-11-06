@@ -306,7 +306,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
 
   /** A child's size (`sized`) or place changed: it is laid out again, and its reach counted where it now is. */
   private[component] def childWatched(w: ChildWatch, sized: Boolean): Unit = {
-    if (sized && following) place()
+    if (sized && following) layoutFor("child size")
     if (reachFollowed) {
       val x = w.reachX
       val y = w.reachY
@@ -416,15 +416,24 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Run the layout (the layout pass calls it): where the children go, now. */
   private[everyui] def placeNow(): Unit = if (!placing) {
     placing = true
-    if (everyui.perf.PerfCounters.on) placedIn = everyui.perf.PerfCounters.placedOne(kind, placedIn)
+    if (everyui.perf.PerfCounters.on) {
+      placedIn = everyui.perf.PerfCounters.placedOne(kind, placedIn, askedFor)
+      askedFor = ""
+    }
     try layout().foreach(_.layout(this, children()))
     finally placing = false
   }
 
   // the frame it was last placed in, counted (`PerfCounters`)
   private var placedIn = 0
-  private def place(): Unit = LayoutPass.request(this)
-  override def requestLayout(): Unit = place()
+  // what first asked for it to be placed since it last was, where `PerfCounters` counts
+  private var askedFor = ""
+  /** Ask for it to be laid out, for `why` (counted, `PerfCounters.placedOne`). */
+  private[everyui] def layoutFor(why: String): Unit = {
+    if (everyui.perf.PerfCounters.on && askedFor.isEmpty) askedFor = why
+    LayoutPass.request(this)
+  }
+  override def requestLayout(): Unit = layoutFor("asked")
   layout.attach { l =>
     l.foreach { lay =>
       follow()
@@ -439,7 +448,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
         size.width := content()
       }
     }
-    place()
+    layoutFor("layout")
   }
   // What moves the children is followed once there is a layout to move them: most containers never have one (a card, a
   // badge), and following every child's size for each of them is time a screen of them waits for on a Roku. (A change
@@ -447,9 +456,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   private var following: Boolean = false
   private def follow(): Unit = if (!following) {
     following = true
-    padding.attach(_ => place())
-    size.width.attach(_ => place())
-    size.height.attach(_ => place())
+    padding.attach(_ => layoutFor("padding"))
+    size.width.attach(_ => layoutFor("size"))
+    size.height.attach(_ => layoutFor("size"))
     watchChildren()
   }
 

@@ -316,7 +316,7 @@ class Component(val node: RenderNode) {
   lazy val flex: Var[Double] = {
     flexMade = true
     val share = own(Var(0.0))
-    share.attach(_ => parent().foreach(_.requestLayout()))
+    share.attach(_ => parent().flatMap(_.asContainer).foreach(_.layoutFor("flex")))
     share
   }
   /** Its `flex`, 0 where it has none, without making one. */
