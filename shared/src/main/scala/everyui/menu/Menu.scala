@@ -2,7 +2,7 @@ package everyui.menu
 
 import everyui.component.*
 import everyui.component.types.{FontWeight, Semantics}
-import everyui.event.{FocusMoves, Key, Pointer}
+import everyui.event.{FocusMoves, Key, KeyEvent, Pointer}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.kit.Mirror
@@ -92,9 +92,34 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
     // one that keeps the menu open does its work where it is, the focus staying on it
     else if (row.item.keepOpen) row.chosen.attach(_ => row.item.action())
     else row.chosen.attach(_ => choose(row.item))
+    row.event.key.down.attach(k => keyed(row, k))
     row.event.pointer.enter.attach(_ => pointedAt(row))
     row.event.pointer.leave.attach(_ => if (pointed.exists(_ eq row)) pointed = None)
   }
+
+  // Home and End to the first and the last entry; a letter, or letters typed within a moment of each other, to the
+  // next entry they begin
+  private def keyed(row: MenuRow, k: KeyEvent): Unit = if (k.key == Key.Other && !k.ctrl && !k.meta && !k.alt) {
+    val all = choosable
+    if (k.name == "Home") all.headOption.foreach(_.focus())
+    else if (k.name == "End") all.lastOption.foreach(_.focus())
+    else if (k.name.length == 1 && k.name.trim.nonEmpty && all.nonEmpty) {
+      val now = Platform.ticks()
+      val letter = k.name.toLowerCase
+      // a new letter after the same one over and over (going round the entries it begins) starts a new word
+      val cycling = typed.length > 1 && typed.forall(_ == typed.charAt(0)) && letter.charAt(0) != typed.charAt(0)
+      typed = (if (now - typedAt > 800.0 || cycling) "" else typed) + letter
+      typedAt = now
+      // the same letter again goes on to the next entry it begins
+      val word = if (typed.forall(_ == typed.charAt(0))) typed.substring(0, 1) else typed
+      val at = all.indexWhere(_ eq row)
+      val from = if (word.length == 1) at + 1 else math.max(0, at)
+      (0 until all.length).map(i => all((from + i) % all.length))
+        .find(_.item.label.toLowerCase.startsWith(word)).foreach(_.focus())
+    }
+  }
+  private var typed = ""
+  private var typedAt = 0.0
 
   // the row the pointer is on, and the one whose submenu is open
   private var pointed: Option[MenuRow] = None

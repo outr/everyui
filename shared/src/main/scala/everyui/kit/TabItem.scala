@@ -4,7 +4,8 @@ import everyui.component.*
 import everyui.Color
 import everyui.chat.{Avatar, Participant}
 import everyui.component.types.{FontWeight, Semantics}
-import everyui.event.Key
+import everyui.event.{Key, KeyEvent, Keys}
+import everyui.i18n.Words
 import everyui.font.MaterialIcon
 import everyui.layout.HorizontalLayout
 import everyui.menu.{Menu, MenuItem}
@@ -143,7 +144,7 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   }
   semantics @= Semantics("tab")
   event.pointer.menu.attach { e =>
-    val items = menu(key)
+    val items = menuItems
     if (items.nonEmpty) {
       e.consume()
       if (Platform.remoteNavigation()) Menu.show(items, label()) else Menu.at(e.x, e.y, items)
@@ -151,10 +152,21 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   }
   event.hold.attach(_ => openMenu())
   event.key.down.attach(k => if (k.key == Key.ContextMenu || (k.key == Key.Other && k.name == "F10" && k.shift)) openMenu())
+  // Delete closes a closable tab, as its close button does
+  event.key.down.attach(k => if (closable && k.key == Key.Other && k.name == "Delete") close(key))
+
+  // Alt+Shift and an arrow moves the tab along its bar (`TabBar`), rather than the focus
+  override def keepsEvent(e: KeyEvent): Boolean = (e.alt && e.shift && Keys.isArrow(e.key)) || super.keepsEvent(e)
+
+  // its menu: the app's, else, on a closable tab, Close, so the keys reach what its close button does
+  private def menuItems: List[MenuItem] = {
+    val own = menu(key)
+    if (own.isEmpty && closable) List(MenuItem(Words.close, () => close(key))) else own
+  }
 
   /** Its menu, dropped from it, where it has one. */
   def openMenu(): Unit = {
-    val items = menu(key)
+    val items = menuItems
     if (items.nonEmpty) {
       if (Platform.remoteNavigation()) Menu.show(items, label()) else Menu.below(this, items)
     }

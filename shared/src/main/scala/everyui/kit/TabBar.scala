@@ -2,7 +2,7 @@ package everyui.kit
 
 import everyui.component.*
 import everyui.component.types.Semantics
-import everyui.event.Key
+import everyui.event.{Key, KeyEvent}
 import everyui.i18n.{Direction, Words}
 import everyui.layout.HorizontalLayout
 import everyui.menu.MenuItem
@@ -115,6 +115,7 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   def add(key: String, label: String, closable: Boolean = false, at: Int = -1, lead: TabLead = TabLead.None): TabItem = {
     val tab = new TabItem(key, label, current, closable, k => closing @= k, showOnFocus, lead,
       k => tabMenu()(k))
+    tab.event.key.down.attach(k => keyed(key, k))
     val replaced = apply(key)
     val was = tabs().indexWhere(_.key == key)
     val rest = tabs().filterNot(_.key == key)
@@ -122,6 +123,20 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
     tabs @= rest.patch(place, List(tab), 0)
     replaced.foreach(_.dispose())
     tab
+  }
+
+  // Home and End to the first and the last tab, and Alt+Shift with an arrow moving the tab along the bar
+  private def keyed(key: String, k: KeyEvent): Unit = {
+    val i = tabs().indexWhere(_.key == key)
+    if (k.key == Key.Other && k.name == "Home") tabs().headOption.foreach(_.focus())
+    else if (k.key == Key.Other && k.name == "End") tabs().lastOption.foreach(_.focus())
+    else if (k.alt && k.shift && (k.key == onward || k.key == backward) && i >= 0) {
+      val to = i + (if (k.key == onward) 1 else -1)
+      if (to >= 0 && to < tabs().length) {
+        move(key, to)
+        apply(key).foreach(_.focus())
+      }
+    }
   }
 
   /** A tab added just after the tab for `after` (a diff opened beside the file it compares), else at the end. */

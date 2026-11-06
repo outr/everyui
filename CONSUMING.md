@@ -734,6 +734,9 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   `tabMenu` (`String => List[MenuItem]`, empty by default) gives a tab a context menu: the secondary button opens it
   at the pointer (keeping the browser's own away only where there is one), the menu key, Shift+F10 and OK held drop it
   from the tab. The bar is read as a tab list and each tab as a tab, and the tab shown is scrolled into view.
+  Home and End go to the first and the last tab, Alt+Shift with the arrow along the bar moves the focused tab one
+  place that way (the browser keeps Ctrl+Shift+Page Up and Down for its own tabs), and Delete closes a closable tab
+  as its close button does. A closable tab whose `tabMenu` is empty has a menu of Close, so the keys reach it.
   `addMenu` (`Option[() => List[MenuItem]]`, None by default) puts a "+" after the last tab, as a browser's new-tab
   button, that drops the menu it makes afresh each time: just after the last tab, and kept at the bar's end while the
   tabs scroll before it once they overflow (at the left end, right to left). A click, a tap (a 48 px target), Enter,
@@ -891,9 +894,11 @@ sidebar.size.height := ui.size.height()
 A list of choices: a context menu at the pointer (`Menu.at`), a menu dropped from a button (`Menu.below`), or a panel
 in the middle of the screen under a title (`Menu.show`, what a remote wants). A `MenuItem` has a label, an action, an
 optional icon, a line of detail, a shortcut hint (a keymap `Chord`) or a note, and may be disabled, dangerous,
-checkable or a submenu; `MenuItem.separator` is a rule. Up and Down move round the entries that can be chosen, OK or a
-click chooses (every menu closes, then the action runs), Right opens a submenu (so does the pointer resting on its
-entry for `Menu.hoverDelay`) and Left, Back or Escape closes it, and the pointer resting on an entry focuses it; over
+checkable or a submenu; `MenuItem.separator` is a rule. Up and Down move round the entries that can be chosen, Home
+and End go to the first and the last, a letter (or letters typed together) goes to the next entry they begin, the same
+letter again on to the one after, and OK, Space or a click chooses (every menu closes, then the action runs). Right
+opens a submenu (so does the pointer resting on its entry for `Menu.hoverDelay`) and Left, Back or Escape closes it,
+and the pointer resting on an entry focuses it; over
 the menu under an open submenu, another entry switches submenus and a plain one closes it, and a click outside every
 menu closes them all. The focus goes back where it was. In a right-to-left language submenus open to the left, and Left and Right swap.
 `Menu.context` wires a component's secondary click (`event.pointer.menu`, the new `PointerKind.Menu`; a long press on
@@ -4893,7 +4898,8 @@ showing. Where the look comes from outside the node (a status map the app keeps)
 `tree.redecorateAll()` asks `decorate` again; lists and tables have the same.
 
 Keys: Up and Down move the cursor, Right opens a node or goes to its first child, Left closes it or goes to its parent
-(mirrored in a right-to-left language), Enter activates and opens or closes a folder. A click on the chevron opens or
+(mirrored in a right-to-left language), * opens every folder beside the one under the cursor, Enter activates and
+opens or closes a folder. A click on the chevron opens or
 closes it. Multi-select is the list's (Shift and Primary with clicks and arrows, Primary+A).
 
 ### Selection (lists and trees)

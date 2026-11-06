@@ -118,14 +118,15 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
       }
       event.key.down.attach { k =>
         if (k.key == MenuRow.inward && item.submenu.nonEmpty) opened @= (())
-        else if (k.key == Key.Space && item.keepOpen) chosen @= (())
+        else if (k.key == Key.Space) chosen @= (())
       }
     }
   }
 
-  /** Right opens its submenu, where it has one; Space chooses one that keeps the menu open, as a box is ticked. */
+  /** Right opens its submenu, where it has one; Space chooses it, as Enter does (one that keeps the menu open is ticked
+    * where it is). */
   override def keepsKey(key: Key): Boolean =
-    (key == MenuRow.inward && item.submenu.nonEmpty) || (key == Key.Space && item.keepOpen)
+    (key == MenuRow.inward && item.submenu.nonEmpty) || (key == Key.Space && item.enabled)
 
   override def kind: String = "MenuRow(" + item.label + ")"
 }

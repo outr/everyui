@@ -16,7 +16,8 @@ import scala.collection.mutable
   * A node opens where `expandable` says (by default where it has children, or where `loader` has yet to be asked for
   * them); opening one whose children are not yet known asks `loader` for them, showing an hourglass until they come.
   * Keys: Up and Down move the cursor, Right opens a node or goes to its first child, Left closes it or goes to its
-  * parent (the other way round in a right-to-left language), Enter activates, and opens or closes a node that opens.
+  * parent (the other way round in a right-to-left language), * opens every node beside it, Enter activates, and opens
+  * or closes a node that opens.
   * A click on the chevron opens or closes. The app dresses each node's row (`decorate`), hears its menu (`menu`), and
   * reads and sets the selection by key (`selection`), as a list's.
   *
@@ -102,6 +103,14 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
   }
 
   def toggle(key: String): Unit = if (expanded().contains(key)) collapse(key) else expand(key)
+
+  /** Every folder beside `key` (under the same parent, `key` among them) opened, as * opens them. */
+  def expandSiblings(key: String): Unit = {
+    val parent = model.parentOf(key)
+    val beside = (0 until list.count).map(i => list(i))
+      .filter(l => l.expandable && !l.expanded && model.parentOf(l.key) == parent).map(_.key)
+    beside.foreach(expand)
+  }
 
   /** Every node above `key` opened, and the cursor on it, chosen alone and scrolled into view. */
   def reveal(key: String): Unit = if (model.contains(key)) {
@@ -334,7 +343,9 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
 
   list.keys = (e: KeyEvent) => {
     val at = list.indexOf(current().getOrElse(""))
-    if (at < 0 || e.shift || e.ctrl || e.meta || e.alt) None else {
+    // * opens every closed folder beside the one under the cursor (typed with Shift on most keyboards)
+    if (at >= 0 && e.name == "*" && !e.ctrl && !e.meta && !e.alt) Some(() => expandSiblings(list(at).key))
+    else if (at < 0 || e.shift || e.ctrl || e.meta || e.alt) None else {
       val line = list(at)
       val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
       val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
