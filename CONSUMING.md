@@ -650,6 +650,7 @@ WARN access: contrast: TextView(Sent) (24,180 31x16) 2.9:1, #6b6b6b on #2a2a2a, 
 | `target` | Clicked, under 24×24, with another clicked thing within 24 of its middle | 2.5.8 |
 | `contrast` | Words under 4.5:1 against what is drawn behind them (3:1 for large words and for icons), unless `disabled` | 1.4.3, 1.4.11 |
 | `reflow` | Shown past the screen's left or right edge, outside anything that scrolls or cuts what it holds; the first part along only | 1.4.10 |
+| `flash` | A motion of its own fading in and out more than three times a second over more than 21,824 square pixels | 2.3.1 |
 
 What a screen reader is given for a component is `Access.nameOf(c)`: its `semantics` label; else its own words, a
 picture's `alt` or a field's label; else its tooltip; else the words inside it in reading order, taking a part with
@@ -665,6 +666,28 @@ height}` each:
 ```js
 const found = await page.evaluate(() => window.everyuiAccessJson());
 expect(found).toEqual([]);
+```
+
+Motion follows what people ask for. Where less motion is asked for (`ReduceMotion`: the web's
+`prefers-reduced-motion`, Android's animations off, an Apple TV's Reduce Motion), every animation EveryUI runs is at
+its end at once: a scroll is where it goes, a pane is open, a row has faded in. That is every `AnimateIn`, the
+task DSL's `to … in`. A pause (`sleep`) still waits. A busy glyph stands still and a busy ring stops turning, while a
+`Spinner`, which is the loading itself, still turns. A motion an app sets on a component (`motion`) is its own to
+leave off then; the check's `flash` rule finds one that fades in and out more than three times a second over more
+than a small part of the screen.
+
+Time follows what people need. `TimeLimits.factor` is how much longer than an app's own time people are to be given
+to read or act: Android's "Time to take action", 1 elsewhere, or the app's own setting. A `Toast` stays that much
+longer, longer again for a long message, and not while a pointer rests on it. A `TimeLimit(seconds, expired)` (in
+`everyui.time`) is a time an app gives before something ends, such as a sign-in that lapses. It warns 20 seconds
+before the end, scaled the same way, with a dialog ("Still there?", read out at once) whose "Keep going" starts it
+again. `extend()` starts it again on whatever shows the person is there, `stop()` ends it with nothing run, and
+`expired` runs only when the time runs out unanswered.
+
+```scala
+val session = new TimeLimit(15 * 60, () => signOut())
+session.start()
+ui.event.pointer.down.attach(_ => session.extend())
 ```
 
 For reflow, check a screen at 320 across (`ui.size.width @= 320.0` in a test, or a browser window that narrow): what

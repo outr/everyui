@@ -1921,6 +1921,8 @@ object Platform {
   }
   private val lessMotion = "(prefers-reduced-motion: reduce)"
   /** "dark" or "light": what the person has asked the browser and the system for (`prefers-color-scheme`). */
+  /** No setting for more time to read or act is read here: 1. */
+  def timeScale(): Double = 1.0
   def systemColorScheme(): String = if (dom.window.matchMedia(darkScheme).matches) "dark" else "light"
   /** The scheme as the person changes it, told as the browser says it changed. */
   def watchColorScheme(f: String => Unit): Unit = {

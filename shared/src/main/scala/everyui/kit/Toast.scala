@@ -9,8 +9,10 @@ import reactify.*
 
 /** A short message over the screen for a few seconds, saying what just happened: one at a time, the newest in place of
   * the last. It sits at the foot of the screen, or its head with `top`, `margin` in from the edge, and goes after
-  * `seconds`. Each message's words pass through `shown` as it shows (`RemoteLog.install(toasts = true)` sends them to
-  * the server's log as warnings). A screen reader reads each out as it shows, politely. */
+  * `seconds`: longer for a long message, longer again where people asked for more time to read (`TimeLimits`), and
+  * not while a pointer rests on it. Each message's words pass through `shown` as it shows
+  * (`RemoteLog.install(toasts = true)` sends them to the server's log as warnings). A screen reader reads each out as
+  * it shows, politely. */
 object Toast {
   private var showing: Option[Container] = None
   private var made = 0
@@ -45,7 +47,13 @@ object Toast {
     showing = Some(plate)
     shown @= words
     everyui.access.LiveRegions.say(words)
-    Platform.after(seconds, () => if (mark == made) hide())
+    // as long as people are to be given to read it (`TimeLimits`), longer for more words, and kept while a pointer
+    // rests on it
+    val stays = everyui.time.TimeLimits.scaled(math.max(seconds, words.length / 20.0))
+    def expire(): Unit = if (mark == made) {
+      if (plate.event.pointer.over()) Platform.after(1.0, () => expire()) else hide()
+    }
+    Platform.after(stays, () => expire())
   }
 
   /** The message showing taken away now. */

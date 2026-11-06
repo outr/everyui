@@ -18,4 +18,7 @@ enum AccessRule(val id: String, val criterion: String) {
   /** Shown past the screen's left or right edge, outside anything that scrolls or cuts what it holds: at the width the
     * screen has (320 across, at 400% of a 1280 window) the person cannot reach it without scrolling sideways (1.4.10). */
   case Reflow extends AccessRule("reflow", "1.4.10")
+  /** A motion of its own that turns its opacity up and down more than three times a second, over more than a small
+    * part of the screen (21,824 square pixels, WCAG's small safe area): a flash that can bring on a seizure (2.3.1). */
+  case Flash extends AccessRule("flash", "2.3.1")
 }

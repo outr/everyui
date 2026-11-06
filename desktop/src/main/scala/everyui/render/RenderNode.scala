@@ -1435,6 +1435,8 @@ object Platform {
   /** No text size of the system's is read here: 1. */
   def systemTextScale(): Double = 1.0
   def watchTextScale(f: Double => Unit): Unit = ()
+  /** No setting for more time to read or act is read here: 1. */
+  def timeScale(): Double = 1.0
   def systemColorScheme(): String =
     try if (javafx.application.Platform.getPreferences.getColorScheme == javafx.application.ColorScheme.DARK) "dark"
       else "light"

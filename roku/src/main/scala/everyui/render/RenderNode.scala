@@ -920,6 +920,8 @@ object Platform {
   /** No text size of the system's is read here: 1. */
   def systemTextScale(): Double = 1.0
   def watchTextScale(f: Double => Unit): Unit = ()
+  /** No setting for more time to read or act is read here: 1. */
+  def timeScale(): Double = 1.0
   def systemColorScheme(): String = "dark"
   def watchColorScheme(f: String => Unit): Unit = ()
   def announce(words: String): Unit = ()

@@ -100,6 +100,7 @@ object Access {
       if (acting && !self(c).exists(_.focusable())) add(AccessRule.Keyboard, c, "is clicked, but the keys never reach it")
       if (acting && (c.size.width() < 24.0 || c.size.height() < 24.0) && crowded(c, targets))
         add(AccessRule.Target, c, "is under 24x24 with another target within 24 of its middle")
+      flashes(c).foreach(rate => add(AccessRule.Flash, c, "flashes " + tenths(rate) + " times a second"))
       past(c, root).foreach(by => add(AccessRule.Reflow, c, "runs " + math.round(by).toString +
         " past the edge of a screen " + math.round(root.size.width()).toString + " across"))
       contrastOf(c).foreach { case (ratio, wanted, fg, bg) =>
@@ -116,6 +117,26 @@ object Access {
     }
     found.reverse
   }
+
+  // how often a second `c`'s own motion flashes, where it is over three a second over more than a small area: each of
+  // its opacity tracks, a swing up or down of a tenth or more one way and then the other a flash
+  private def flashes(c: Component): Option[Double] =
+    if (!c.hasMotion || c.size.width() * c.size.height() < 21824.0) None
+    else c.motion().filter(t => t.property == everyui.motion.Track.Opacity && t.seconds > 0.0).map { t =>
+      val values = t.keys.map(_.a) ++ t.keys.headOption.map(_.a).toList
+      var turns = 0
+      var way = 0
+      var from = values.headOption.getOrElse(0.0)
+      values.drop(1).foreach { v =>
+        if (math.abs(v - from) >= 0.1) {
+          val now = if (v > from) 1 else -1
+          if (now != way) turns += 1
+          way = now
+          from = v
+        }
+      }
+      turns / 2.0 / t.seconds
+    }.filter(_ > 3.0).maxOption
 
   // how far `c` runs past `root`'s left or right edge, where it is the first along its line of holders to and nothing
   // holding it cuts it (a scroll, a list): there, what runs past is cut, or scrolled to, not off the screen

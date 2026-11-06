@@ -159,6 +159,8 @@ class Component(val node: RenderNode) {
     node.setMotion(if (Quality.moves) t else Nil)
   }))
   private var ownMotion = false
+  /** Whether it has a motion of its own running (`motion`): for what looks at it without making it. */
+  private[everyui] def hasMotion: Boolean = ownMotion
   // whether it has had a shadow or a blur, which a change of `Quality.level` draws again (`requality`)
   private var shadowed = false
   private var blurred = false

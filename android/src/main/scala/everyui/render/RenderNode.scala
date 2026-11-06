@@ -2102,6 +2102,18 @@ object Platform {
     onResume(() => f(systemColorScheme()))
   }
   private var configured: List[() => Unit] = Nil
+  /** How much longer than an app's own time people asked to be given to read or act (Android's "Time to take action",
+    * Android 10 on): 1 as it comes. */
+  def timeScale(): Double =
+    try {
+      if (android.os.Build.VERSION.SDK_INT >= 29) {
+        val am = Host.activity.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE)
+          .asInstanceOf[android.view.accessibility.AccessibilityManager]
+        math.max(1.0, am.getRecommendedTimeoutMillis(10000,
+          android.view.accessibility.AccessibilityManager.FLAG_CONTENT_TEXT |
+            android.view.accessibility.AccessibilityManager.FLAG_CONTENT_CONTROLS) / 10000.0)
+      } else 1.0
+    } catch { case _: Throwable => 1.0 }
   /** The font size the person chose in the system's settings, 1 as it comes (the configuration's font scale). */
   def systemTextScale(): Double =
     try Host.activity.getResources.getConfiguration.fontScale.toDouble catch { case _: Throwable => 1.0 }
