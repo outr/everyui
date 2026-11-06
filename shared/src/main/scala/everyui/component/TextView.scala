@@ -79,7 +79,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** Whether a word too long for a line (a URL, a path, a hash) is broken where it must be, rather than running past
     * the box's edge. It matters for wrapped words alone. */
   lazy val wrapAnywhere: Prop[Boolean] =
-    own(new Prop[Boolean](false, on => node.setWrapAnywhere(on), () => measure.trigger()))
+    own(new Prop[Boolean](false, on => node.setWrapAnywhere(on), () => {
+      // broken elsewhere, the same words take other room
+      stale = true
+      measure.trigger()
+    }))
   /** The letters painted with a gradient instead of `color` (the web; elsewhere its first stop). */
   lazy val fill: Prop[Option[Gradient]] = own(new Prop[Option[Gradient]](None, g => g match {
     case Some(value) => node.setTextGradient(value.angle, value.encoded)
@@ -131,6 +135,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   private[everyui] def measureWhole(on: Boolean): Unit = if (on != wholeToBox) {
     wholeToBox = on
     node.setTextWhole(on && !size.width.explicit)
+    stale = true
     measure.trigger()
   }
 
@@ -230,17 +235,17 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   maxLines.attach(_ => fit())
   elide.attach(_ => if (maxWidth() > 0.0) fit())
   // drawn in another face or size, the words are cut again: the cut was made in the one before
-  // (the last cut gone stale first: drawn in another face or size, the same words take other room)
-  measure.on(if (!fitting) {
-    stale = true
-    if (limited) fit()
-  })
+  measure.on(if (!fitting && limited) fit())
 
   // words that could not be measured when they were set are cut once they can be: as they join the page, whose sizes
   // are read then, or once their face has loaded; words not cut are measured again once it has
   override private[everyui] def beforeRead(): Unit =
     if (node.textMeasurable(refit) && unfit) fit(announce = false)
-  private val refit: () => Unit = () => if (!takenApart) { if (unfit) fit() else measure.trigger() }
+  private val refit: () => Unit = () => if (!takenApart) {
+    // a face loaded: the same words take other room
+    stale = true
+    if (unfit) fit() else measure.trigger()
+  }
 
   /** Draw the words, or as many of them as `maxWidth` or `maxLines` leaves room for with an ellipsis after. The
     * platform measures each try, so the cut is the one the words really take, and not a guess at how wide a letter
@@ -253,8 +258,8 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     } finally fitting = false
   }
 
-  // what the last cut went by, and whether it may have gone stale since: measured again for something of its own (a
-  // face, a size, a weight changed, a face loaded), not for words, a limit or a room, which the key holds
+  // what the last cut went by, and whether it has gone stale since, where something the key does not hold changed what
+  // the words measure: a face loaded, the words measured whole, broken anywhere
   private var cutKey = ""
   private var stale = true
 
@@ -270,8 +275,8 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     val before = measured.width()
     val key = wanted + "|" + limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString + "|" +
       whiteSpace().value + "|" + overflow.toString + "|" + elide().toString + "|" +
-      // a width of its own, which words that wrap wrap at
-      (if (size.width.explicit) size.width().toString else "")
+      // a width of its own, which words that wrap wrap at, and how many times its face has changed
+      (if (size.width.explicit) size.width().toString else "") + "|" + font.changes.toString
     val same = key == cutKey && !stale && !unfit
     everyui.perf.PerfCounters.fit(same)
     if (same) false

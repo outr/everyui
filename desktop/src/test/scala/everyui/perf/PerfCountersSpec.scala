@@ -64,4 +64,34 @@ class PerfCountersSpec extends FxSpec {
       }
     }
   }
+
+  "A fit" should {
+    "do nothing where all it goes by is as it was, and cut again where the face changed" in {
+      val label = fx {
+        PerfCounters.on = true
+        PerfCounters.reset()
+        val t = TextView("A title long enough to be cut short at eighty")
+        t.maxWidth @= 80.0
+        t.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+        ui.children += t
+        t
+      }
+      try {
+        settle()
+        val (fits, same) = fx((count("fits"), count("fitsUnchanged")))
+        // measured again from outside (a container's turn), the words and their limit as they were
+        fx(label.measure.trigger())
+        fx((count("fits"), count("fitsUnchanged"))) shouldBe (fits + 1, same + 1)
+        val cut = fx(label.node.getText())
+        // another size: cut again, more of the words fitting
+        fx(label.font.size @= 10.0)
+        fx(count("fitsUnchanged")) shouldBe same + 1
+        fx(label.node.getText().length) should be > cut.length
+      } finally fx {
+        PerfCounters.on = false
+        PerfCounters.reset()
+        ui.children.clear()
+      }
+    }
+  }
 }

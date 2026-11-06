@@ -10,19 +10,19 @@ import everyui.theme.Theme
 class FontFeature(component: Component) {
   /** The theme's family (`Theme.family`, as it is when the text is made) until this names its own. */
   lazy val family: Prop[String] = component.own(
-    new Prop[String](Theme.family(), _ => applyFont(), () => component.measure.trigger()))
+    new Prop[String](Theme.family(), _ => applyFont(), () => restyled()))
 
   lazy val weight: Prop[FontWeight] = component.own(new Prop[FontWeight](FontWeight.Normal, w => {
     if (w.family.nonEmpty) family @= w.family
     applyFont()
-  }, () => component.measure.trigger()))
+  }, () => restyled()))
 
   lazy val size: Prop[Double] = component.own(
-    new Prop[Double](16.0, _ => applyFont(), () => component.measure.trigger()))
+    new Prop[Double](16.0, _ => applyFont(), () => restyled()))
   /** The height of a line as a multiple of the size (a paragraph's 1.7, say); 0 is the face's own line box. Only the
     * web spaces lines by it so far. */
   lazy val lineHeight: Prop[Double] = component.own(
-    new Prop[Double](0.0, _ => applyFont(), () => component.measure.trigger()))
+    new Prop[Double](0.0, _ => applyFont(), () => restyled()))
   /** Extra space after each letter, in pixels (negative draws them closer); 0 is the face's own. A browser, Android and
     * an Apple TV space the letters and measure the spaced width; JavaFX has no letter spacing, so the desktop draws the
     * letters as the face sets them but takes the spaced width, keeping the layout; a Roku's Label spaces none.
@@ -33,7 +33,7 @@ class FontFeature(component: Component) {
   lazy val letterSpacing: Prop[Double] = component.own(new Prop[Double](0.0, px => {
     spacing = px
     component.node.setLetterSpacing(px)
-  }, () => component.measure.trigger()))
+  }, () => restyled()))
   // what letterSpacing is, read without making it: most text never spaces its letters
   private var spacing: Double = 0.0
   /** Slanted: the family's own italic where one is registered (`Faces.register` with `italic = true`), else its upright
@@ -46,7 +46,7 @@ class FontFeature(component: Component) {
   lazy val italic: Prop[Boolean] = component.own(new Prop[Boolean](false, on => {
     slanted = on
     component.node.setItalic(on)
-  }, () => component.measure.trigger()))
+  }, () => restyled()))
   // what italic is, read without making it: most text is upright
   private var slanted: Boolean = false
 
@@ -61,7 +61,7 @@ class FontFeature(component: Component) {
   lazy val opticalSizing: Prop[Option[Boolean]] = component.own(new Prop[Option[Boolean]](optical, o => {
     optical = o
     applyAxes()
-  }, () => component.measure.trigger()))
+  }, () => restyled()))
   // what opticalSizing is, read without making it
   private var optical: Option[Boolean] = FontFeature.opticalSizing()
   /** A variable face's axes set by their tags (`"wdth" -> 87.5`, `"GRAD" -> 50`), as CSS `font-variation-settings`;
@@ -70,12 +70,20 @@ class FontFeature(component: Component) {
   lazy val variations: Prop[Map[String, Double]] = component.own(new Prop[Map[String, Double]](Map.empty, v => {
     varied = v
     applyAxes()
-  }, () => component.measure.trigger()))
+  }, () => restyled()))
   // what variations is, read without making it: most text sets none
   private var varied: Map[String, Double] = Map.empty
 
   private def applyAxes(): Unit = component.node.setFontAxes(optical.map(on => if (on) "auto" else "none").getOrElse(""),
     varied.toList.map { case (tag, value) => "'" + tag + "' " + value.toString }.mkString(", "))
+
+  /** How many times the face, size, weight, slant, spacing or axes have changed: what words cut to fit go by
+    * (`TextView`), which are cut again once it has moved. */
+  private[everyui] var changes: Int = 0
+  private def restyled(): Unit = {
+    changes += 1
+    component.measure.trigger()
+  }
 
   private def applyFont(): Unit = {
     component.node.setFont(family(), weight().value, size())
