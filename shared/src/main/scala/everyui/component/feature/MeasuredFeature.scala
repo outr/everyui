@@ -57,6 +57,11 @@ class MeasuredFeature(private[feature] val component: Component) {
 
   private[feature] def read(): Unit = {
     component.beforeRead()
+    readOnly()
+  }
+
+  // the size read, what has to be done to the node first (`beforeRead`: words cut to fit) done already
+  private[feature] def readOnly(): Unit = {
     readWidth = component.node.getWidth()
     readHeight = component.node.getHeight()
   }
@@ -128,8 +133,11 @@ object MeasuredFeature {
         val round = pending.reverse
         pending = Nil
         round.foreach(_.queued = false)
-        round.foreach(m => if (m.component.node.onPage) m.read())
-        round.foreach(m => if (!m.component.node.onPage) m.read())
+        // all that is to be written before a read (words cut to fit) written first, then all the reads: a write between
+        // two reads made the browser lay the page out again for the second
+        round.foreach(_.component.beforeRead())
+        round.foreach(m => if (m.component.node.onPage) m.readOnly())
+        round.foreach(m => if (!m.component.node.onPage) m.readOnly())
         // laid out once they are all set, not once for each: a column of lines measured together was laid out again
         // for every line
         everyui.layout.LayoutPass.batch(round.foreach(_.set()))
