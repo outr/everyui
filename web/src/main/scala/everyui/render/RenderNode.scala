@@ -1904,6 +1904,21 @@ object Platform {
     query.addEventListener("change", (_: dom.Event) => f(if (query.matches) "dark" else "light"))
   }
   private val darkScheme = "(prefers-color-scheme: dark)"
+  /** How large the person asked the browser to draw text: its default size (`font-size: medium`) over 16 pixels, 1 as
+    * it comes. Browser zoom is not in it: the page's pixels are zoomed already. */
+  def systemTextScale(): Double = {
+    val probe = dom.document.createElement("div").asInstanceOf[html.Element]
+    probe.style.cssText = "position:absolute;visibility:hidden;font-size:medium"
+    dom.document.body.appendChild(probe)
+    val px = dom.window.getComputedStyle(probe).fontSize.stripSuffix("px").toDoubleOption.getOrElse(16.0)
+    dom.document.body.removeChild(probe)
+    if (px > 0.0) px / 16.0 else 1.0
+  }
+  /** The text size as the person changes it: read again as the page comes back into sight (a browser says nothing
+    * as its settings change). */
+  def watchTextScale(f: Double => Unit): Unit =
+    dom.document.addEventListener("visibilitychange", (_: dom.Event) =>
+      if (dom.document.visibilityState == "visible") f(systemTextScale()))
 
   /** `words` read out by a screen reader when it next can, not cutting in on what it is reading (a new message in a
     * chat): a polite live region, made on first use, clipped to nothing at the page's corner. Not pushed off the

@@ -22,8 +22,8 @@ import reactify.*
   *   settings.children += new ScaleControl(label = "Text size")
   * }}} */
 class ScaleControl(label: String = "") extends Container {
-  private val less = part(MaterialIcon.Remove, Words.smaller, () => UiScale.smaller(), () => UiScale() > UiScale.steps().min)
-  private val more = part(MaterialIcon.Add, Words.larger, () => UiScale.larger(), () => UiScale() < UiScale.steps().max)
+  private val less = part(MaterialIcon.Remove, Words.smaller, () => UiScale.smaller(), () => UiScale.chosen() > UiScale.steps().min)
+  private val more = part(MaterialIcon.Add, Words.larger, () => UiScale.larger(), () => UiScale.chosen() < UiScale.steps().max)
   private val middle = new Container {
     size.width @= ScaleControl.middle
     size.height @= ScaleControl.height
@@ -31,7 +31,7 @@ class ScaleControl(label: String = "") extends Container {
     tooltip @= Words.defaultSize
     backgroundColor := (if (event.pointer.over()) Theme.controlLit() else Color.Clear)
   }
-  private val shown = TextView.bound(UiScale.percent(UiScale()), 14.0)
+  private val shown = TextView.bound(UiScale.percent(UiScale.chosen()), 14.0)
   shown.position.left := (ScaleControl.middle - shown.size.width()) / 2.0
   shown.position.top := (ScaleControl.height - shown.size.height()) / 2.0
   middle.children += shown
@@ -47,8 +47,8 @@ class ScaleControl(label: String = "") extends Container {
   borderWidth := (if (focusShown()) 2.0 else 1.0)
   borderColor := (if (focusShown()) Theme.accent() else Theme.border())
   backgroundColor := (if (focusShown()) Theme.controlLit() else Theme.raised())
-  semantics := Semantics.slider(label, SemanticRange(UiScale(), UiScale.steps().min, UiScale.steps().max,
-    UiScale.percent(UiScale())))
+  semantics := Semantics.slider(label, SemanticRange(UiScale.chosen(), UiScale.steps().min, UiScale.steps().max,
+    UiScale.percent(UiScale.chosen())))
   less.position.left := ListRow.along(0.0, ScaleControl.height, size.width())
   middle.position.left := ListRow.along(ScaleControl.height, ScaleControl.middle, size.width())
   more.position.left := ListRow.along(ScaleControl.height + ScaleControl.middle, ScaleControl.height, size.width())

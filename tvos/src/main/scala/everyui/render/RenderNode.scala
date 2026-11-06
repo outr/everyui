@@ -546,6 +546,9 @@ object Platform {
   /** The setting as it changes, read again as the app comes back to the front. */
   def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
   /** A television's apps are dark: the Apple TV's appearance is not read yet. */
+  /** No text size of the system's is read here: 1. */
+  def systemTextScale(): Double = 1.0
+  def watchTextScale(f: Double => Unit): Unit = ()
   def systemColorScheme(): String = "dark"
   def watchColorScheme(f: String => Unit): Unit = ()
   /** Words for a screen reader to read out (a new message in a chat): not yet said here. */

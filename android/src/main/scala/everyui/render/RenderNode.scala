@@ -2102,6 +2102,15 @@ object Platform {
     onResume(() => f(systemColorScheme()))
   }
   private var configured: List[() => Unit] = Nil
+  /** The font size the person chose in the system's settings, 1 as it comes (the configuration's font scale). */
+  def systemTextScale(): Double =
+    try Host.activity.getResources.getConfiguration.fontScale.toDouble catch { case _: Throwable => 1.0 }
+  /** The font size as the person changes it: told as the configuration changes (where the app takes `fontScale` among
+    * its `configChanges`; else the activity is made again), and read again as it comes back to the front. */
+  def watchTextScale(f: Double => Unit): Unit = {
+    configured = configured :+ (() => f(systemTextScale()))
+    onResume(() => f(systemTextScale()))
+  }
   /** The activity's configuration changed (`EveryUIActivity.onConfigurationChanged`). */
   def configurationChanged(): Unit = configured.foreach(_())
   /** `words` read out by TalkBack when it next can, where it is on (a new message in a chat). */

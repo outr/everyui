@@ -12,18 +12,20 @@ object ui extends Container(Nodes.root()) with TaskSupport {
   private def measureScreen(): Unit = {
     size.width @= Platform.screenWidth()
     size.height @= Platform.screenHeight()
+    // the screen's width as the platform has it, which the device's text size is held to (`UiScale.narrowest`)
+    UiScale.room @= Platform.screenWidth() * drawn()
   }
 
-  Platform.setUiScale(UiScale())
+  // the size it is drawn at: the size chosen, with the device's text size where it is followed
+  private val drawn: reactify.Val[Double] = reactify.Val(UiScale())
+  Platform.setUiScale(drawn())
   measureScreen()
   Platform.onResize(() => measureScreen())
-  // drawn at the size asked for, taken into range where it is outside (set again, which comes back here)
-  UiScale.factor.attach { f =>
-    if (UiScale() != f) UiScale.factor @= UiScale()
-    else {
-      Platform.setUiScale(f)
-      measureScreen()
-    }
+  // a size chosen outside the range is taken into it (set again, which comes back here)
+  UiScale.factor.attach(f => if (UiScale.chosen() != f) UiScale.factor @= UiScale.chosen())
+  drawn.attach { d =>
+    Platform.setUiScale(d)
+    measureScreen()
   }
   everyui.focus.Focus.listen()
 }

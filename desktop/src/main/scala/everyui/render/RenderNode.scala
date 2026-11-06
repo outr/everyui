@@ -1432,6 +1432,9 @@ object Platform {
   /** The setting as it changes: it never does here. */
   def watchReduceMotion(f: Boolean => Unit): Unit = ()
   /** "dark" or "light": the system's scheme as JavaFX reads it (a desktop's own setting, where it has one). */
+  /** No text size of the system's is read here: 1. */
+  def systemTextScale(): Double = 1.0
+  def watchTextScale(f: Double => Unit): Unit = ()
   def systemColorScheme(): String =
     try if (javafx.application.Platform.getPreferences.getColorScheme == javafx.application.ColorScheme.DARK) "dark"
       else "light"

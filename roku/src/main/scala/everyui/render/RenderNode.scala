@@ -917,6 +917,9 @@ object Platform {
   /** The setting as it changes: it never does here. */
   def watchReduceMotion(f: Boolean => Unit): Unit = ()
   /** A television's apps are dark: no setting is read here. */
+  /** No text size of the system's is read here: 1. */
+  def systemTextScale(): Double = 1.0
+  def watchTextScale(f: Double => Unit): Unit = ()
   def systemColorScheme(): String = "dark"
   def watchColorScheme(f: String => Unit): Unit = ()
   def announce(words: String): Unit = ()

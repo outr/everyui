@@ -732,11 +732,20 @@ glyph: `IconButton.icon.busyMotion`) holds it to `BusyMotion.Spin` or `BusyMotio
 by the glyph. A glyph's own motion (a `Spinner`'s turn) and its strength come back once it is set back.
 Where less motion is asked for (`ReduceMotion`), it stands still instead. An `IconButton` then shows its glyph whole
 in the accent, and a bare glyph at half strength. A busy `IconButton`'s tooltip and its name to a screen reader add
-"busy" (`Words.busy`, in each language): "Queue, busy". A count beside it (a pill the app places) is untouched.
+"busy" (`Words.busy`, in each language): "Queue, busy".
+
+An `IconButton`'s `badge` hangs over its top corner at the reading direction's end: `Some("3")` (or "9+",
+`everyui.push.Badge.text`) a count in a pill, `Some("")` a dot, None nothing, in `badgeColour` (the accent unless set).
+It is part of the button, drawn past its box: the pointer over it is over the button (its hover and cursor), a click
+on it presses the button, and a screen reader hears one control with the count after its name ("Queue, 3"). A pill an
+app places over a button from beside it is none of these; one inside a component of the app's own that is not an
+`IconButton` (a rail's tile) gets them as its child, with the component's `clipsToBox @= Some(false)` so it is drawn
+whole.
 
 ```scala
 val queue = new IconButton(MaterialIcon.Queue, "Queue", () => openQueue())
 queue.busy := agents.working()
+queue.badge := (if (waiting() > 0) Some(Badge.text(waiting())) else None)
 ```
 
 Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and so on), `everyui.kit` has these:
@@ -2604,9 +2613,17 @@ settings.children += new ScaleControl(label = "Size")   // − / 100% / +
 ```
 
 - It is kept between 0.5 and 3.0 (`UiScale.least`, `UiScale.most`): set outside, it is taken to the nearer end.
-  `UiScale()` is the size drawn at.
-- `larger()`, `smaller()` and `reset()` step through `UiScale.steps` (a `SliderScale`, 0.8 to 2.0 by 0.1 unless the
-  app sets it) and back to 1. `percent()` says it as "130%".
+  `UiScale.chosen()` is the size chosen, and `UiScale()` the size drawn at: the size chosen times the device's text
+  size, below.
+- The device's text size draws the app larger too (`UiScale.system`, followed as it changes): Android's font size
+  (with `fontScale` among the activity's `configChanges`, so a change does not make the activity again) and a
+  browser's default text size over 16 px. The desktop, a Roku and an Apple TV say 1. It is the whole app that grows,
+  so nothing laid out to its words is cut short, but never so far that the app has under 320 across to lay out in
+  (`UiScale.narrowest`, WCAG's reflow width): a phone 390 across asked for text twice as large is drawn 390/320 as
+  large. `UiScale.followsSystem` turns it off; it is off by default where a remote moves the focus, whose screens are
+  made for a television's, and an app there turns it on itself.
+- `larger()`, `smaller()` and `reset()` step the size chosen through `UiScale.steps` (a `SliderScale`, 0.8 to 2.0 by
+  0.1 unless the app sets it) and back to 1. `percent()` says it as "130%".
 - `remembered(space = "everyui", key = "scale")` is off until the app calls it (once, at start): it is
   `Stored.connect` over `factor`, so a size set before the read answers stands.
 - `commands(keymap)` adds `ui.larger`, `ui.smaller` and `ui.defaultSize`, labelled in the current language
