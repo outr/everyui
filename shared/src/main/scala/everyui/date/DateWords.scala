@@ -32,4 +32,17 @@ object DateWords {
   def endBeforeStart: String = word("date.endBeforeStart")
   /** A date picker's headline with nothing chosen. */
   def noDate: String = word("date.noDate")
+  /** What a time field is called, and a time picker's title (`TimeField`, `TimePicker`). */
+  def time: String = word("date.time")
+  def selectTime: String = word("date.selectTime")
+  /** A time picker's columns, to a screen reader. */
+  def hour: String = word("date.hour")
+  def minute: String = word("date.minute")
+  def period: String = word("date.period")
+  /** A time field's button that opens the picker. */
+  def openClock: String = word("date.openClock")
+  /** What a time field says when what is in it is not a time. */
+  def invalidTime: String = word("date.invalidTime")
+  /** A time picker's headline with nothing chosen. */
+  def noTime: String = word("date.noTime")
 }

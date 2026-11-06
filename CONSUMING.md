@@ -2515,6 +2515,25 @@ new DateRangePicker(period, presets = presets)
 DateRangePicker.pick(DateWords.selectRange, period(), presets = presets).map(_.foreach(r => period @= Some(r))).start()
 ```
 
+A time of day is a `ClockTime(hour, minute)`, with no date and no zone. `text()` writes it on the language's own
+clock ("3:30 PM", "15:30"), and `ClockTime.read` reads it back however people type it: "14:30", "2:30 pm", "2.30",
+"1430", "2 pm", or the language's own morning and afternoon words. A `TimeField` holds one, both ways with its `value`.
+Typing works where there is a keyboard, and the time is written again on the language's clock when the field is left.
+Anything else is said under it (`error`), and a field emptied is None. Its clock button, Alt+Down, or OK on a remote
+opens a `TimePicker` in a dialog. The picker has wheels for the hour, the minute in `step`s, and, where the clock
+runs to 12 hours, the morning or the afternoon. The arrows turn a wheel, Page Up and Down a sixth of the way, Home and
+End to its ends, and digits typed go to the value they begin. A pointer's wheel turns one, and a click on the value
+above or below goes to it. A screen reader hears each as a spin button. `TimePicker.pick(title, initial, step)` asks
+in a dialog, starting at `initial`, or else at the time now to the nearest step.
+
+```scala
+import everyui.date.{ClockTime, TimeField, TimePicker}
+
+val arrived = Var(Option.empty[ClockTime])
+new TimeField("Arrived", arrived, step = 15)
+TimePicker.pick(initial = arrived(), step = 15).map(_.foreach(t => arrived @= Some(t))).start()
+```
+
 A press on a `DateField` opens its calendar as well as its button does, as most date inputs do. Where there is room it
 drops under the field and the caret stays in the field, so typing still works: a date typed moves the calendar to it.
 Escape, a press anywhere else, or the focus moving on puts it away, and a day chosen fills the field. Where there is no
