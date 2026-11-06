@@ -545,6 +545,9 @@ object Platform {
   def reduceMotion(): Boolean = uiReduceMotion()
   /** The setting as it changes, read again as the app comes back to the front. */
   def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
+  /** A television's apps are dark: the Apple TV's appearance is not read yet. */
+  def systemColorScheme(): String = "dark"
+  def watchColorScheme(f: String => Unit): Unit = ()
   /** Words for a screen reader to read out (a new message in a chat): not yet said here. */
   def announce(words: String): Unit = ()
   def alert(words: String): Unit = ()

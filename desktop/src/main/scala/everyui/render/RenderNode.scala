@@ -1431,6 +1431,16 @@ object Platform {
   def reduceMotion(): Boolean = false
   /** The setting as it changes: it never does here. */
   def watchReduceMotion(f: Boolean => Unit): Unit = ()
+  /** "dark" or "light": the system's scheme as JavaFX reads it (a desktop's own setting, where it has one). */
+  def systemColorScheme(): String =
+    try if (javafx.application.Platform.getPreferences.getColorScheme == javafx.application.ColorScheme.DARK) "dark"
+      else "light"
+    catch { case _: Throwable => "dark" }
+  /** The scheme as the person changes it. */
+  def watchColorScheme(f: String => Unit): Unit =
+    try javafx.application.Platform.getPreferences.colorSchemeProperty.addListener((_, _, s) =>
+      f(if (s == javafx.application.ColorScheme.DARK) "dark" else "light"))
+    catch { case _: Throwable => () }
   def announce(words: String): Unit = ()
   def alert(words: String): Unit = ()
   /** A desktop keeps its own screen timing. */

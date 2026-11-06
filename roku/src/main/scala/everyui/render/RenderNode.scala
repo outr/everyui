@@ -916,6 +916,9 @@ object Platform {
   def reduceMotion(): Boolean = false
   /** The setting as it changes: it never does here. */
   def watchReduceMotion(f: Boolean => Unit): Unit = ()
+  /** A television's apps are dark: no setting is read here. */
+  def systemColorScheme(): String = "dark"
+  def watchColorScheme(f: String => Unit): Unit = ()
   def announce(words: String): Unit = ()
   def alert(words: String): Unit = ()
   def setTitle(title: String): Unit = ()

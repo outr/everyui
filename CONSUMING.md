@@ -4081,6 +4081,14 @@ These cover what a web app would otherwise reach the browser for directly, so th
   of the same scheme clear over the page instead of on an opaque canvas of its own. Tell the frames you show the same
   scheme, so they come out clear over the app. `Platform.declareColorScheme(false)` stops the page declaring it, for
   an app that declares its own. There is no page anywhere else, so it does nothing there.
+- **The device's light or dark setting.** `SystemScheme()` (`everyui.theme`; `SystemScheme.scheme` is a `Val[String]`)
+  is "dark" or "light" as the person has asked their device, followed live as they change it: the web's
+  `prefers-color-scheme`, Android's dark theme (the activity takes the change itself, with `uiMode` among its
+  `configChanges`), the desktop's own setting as JavaFX reads it. A Roku and an Apple TV say "dark".
+  `Theme.follow(Palette.light, Palette.dark)` sets the palette from it and switches it as it changes. Give it the
+  app's own setting as `choice` (`Theme.follow(light, dark, settings.appearance())`): "light" or "dark" holds the
+  palette there whatever the device says, anything else ("system") follows the device, and a bound choice is followed
+  as it changes. Set the palette with `Theme.follow` or `Theme.palette @=`, not both.
 - **The build, and reloading into a new one.** `Platform.buildId()` names the running build.
   - **Web**: the version the page loaded its script by, which `everyuiWebScripts` writes as `main.js?v=…` or
     `everyui-loader.js?v=…`.

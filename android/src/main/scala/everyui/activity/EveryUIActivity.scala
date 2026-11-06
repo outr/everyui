@@ -248,6 +248,13 @@ abstract class EveryUIActivity extends Activity {
     presence.shown()
   }
 
+  /** A change it takes itself (`configChanges`): the night mode among them, which the app hears as the system's scheme
+    * (`everyui.theme.SystemScheme`). */
+  override def onConfigurationChanged(config: android.content.res.Configuration): Unit = {
+    super.onConfigurationChanged(config)
+    everyui.render.Platform.configurationChanged()
+  }
+
   /** Whether it has been out of sight since it was last in front, told once each way. */
   private val presence = new everyui.app.Presence(() => everyui.render.Platform.away(),
     () => everyui.render.Platform.resumed())

@@ -1896,6 +1896,14 @@ object Platform {
     query.addEventListener("change", (_: dom.Event) => f(query.matches))
   }
   private val lessMotion = "(prefers-reduced-motion: reduce)"
+  /** "dark" or "light": what the person has asked the browser and the system for (`prefers-color-scheme`). */
+  def systemColorScheme(): String = if (dom.window.matchMedia(darkScheme).matches) "dark" else "light"
+  /** The scheme as the person changes it, told as the browser says it changed. */
+  def watchColorScheme(f: String => Unit): Unit = {
+    val query = dom.window.matchMedia(darkScheme)
+    query.addEventListener("change", (_: dom.Event) => f(if (query.matches) "dark" else "light"))
+  }
+  private val darkScheme = "(prefers-color-scheme: dark)"
 
   /** `words` read out by a screen reader when it next can, not cutting in on what it is reading (a new message in a
     * chat): a polite live region, made on first use, clipped to nothing at the page's corner. Not pushed off the

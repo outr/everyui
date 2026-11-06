@@ -22,6 +22,18 @@ object Theme {
     if (0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue > 0.5) "light" else "dark"
   }
 
+  /** The palette `light` or `dark` as the person's device asks (`SystemScheme`), switched as they change it, unless
+    * `choice` says otherwise: "light" or "dark" for an app's own setting, anything else ("system", "") to follow the
+    * device. A bound `choice` (a setting the app keeps) is followed too.
+    * {{{
+    *   Theme.follow(Palette.light, Palette.dark, settings.appearance())   // "system", "light" or "dark"
+    * }}} */
+  def follow(light: => Palette, dark: => Palette, choice: => String = "system"): Unit = palette := {
+    val asked = choice
+    val scheme = if (asked == "light" || asked == "dark") asked else SystemScheme()
+    if (scheme == "dark") dark else light
+  }
+
   def background(): Color = palette().background
   def surface(): Color = palette().surface
   def raised(): Color = palette().raised

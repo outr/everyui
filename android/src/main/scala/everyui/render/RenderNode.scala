@@ -2089,6 +2089,21 @@ object Platform {
     catch { case _: Throwable => false }
   /** The setting as it changes, read again as the app comes back to the front from the settings. */
   def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
+  /** "dark" or "light": the system's dark theme on or off (the configuration's night mode). */
+  def systemColorScheme(): String =
+    try {
+      val night = Host.activity.getResources.getConfiguration.uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK
+      if (night == android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"
+    } catch { case _: Throwable => "dark" }
+  /** The scheme as the person changes it: told as the configuration changes (the app takes a change of night mode
+    * itself, `configChanges`), and read again as it comes back to the front. */
+  def watchColorScheme(f: String => Unit): Unit = {
+    configured = configured :+ (() => f(systemColorScheme()))
+    onResume(() => f(systemColorScheme()))
+  }
+  private var configured: List[() => Unit] = Nil
+  /** The activity's configuration changed (`EveryUIActivity.onConfigurationChanged`). */
+  def configurationChanged(): Unit = configured.foreach(_())
   /** `words` read out by TalkBack when it next can, where it is on (a new message in a chat). */
   def announce(words: String): Unit = if (RenderNode.reading && Host.root != null) Host.root.announceForAccessibility(words)
   /** At once: TalkBack has no other way to say it than `announce`. */
