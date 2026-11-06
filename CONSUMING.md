@@ -725,8 +725,11 @@ email.invalid := (if (tried() && !valid(email.value())) "Enter an email address"
 ## General components
 
 An icon that is at work says so itself, with no ring drawn over it. `busy @= true` on an `IconButton` or any
-`MaterialIconView` makes the glyph breathe: its opacity eases down to a third and back every two seconds, run by the
-platform as any `motion` is. A glyph's own motion (a `Spinner`'s turn) and its strength come back once it is set back.
+`MaterialIconView` moves the glyph, run by the platform as any `motion` is. A glyph that is itself a turning symbol
+(Sync, Autorenew, Refresh, Loop, Cached, the Rotate ones, HourglassEmpty: `BusyMotion.of`) turns once every 1.3
+seconds, and any other breathes, its opacity easing down to a third and back every two seconds. `busyMotion` (on the
+glyph: `IconButton.icon.busyMotion`) holds it to `BusyMotion.Spin` or `BusyMotion.Breathe`; `Auto`, the default, goes
+by the glyph. A glyph's own motion (a `Spinner`'s turn) and its strength come back once it is set back.
 Where less motion is asked for (`ReduceMotion`), it stands still instead. An `IconButton` then shows its glyph whole
 in the accent, and a bare glyph at half strength. A busy `IconButton`'s tooltip and its name to a screen reader add
 "busy" (`Words.busy`, in each language): "Queue, busy". A count beside it (a pill the app places) is untouched.

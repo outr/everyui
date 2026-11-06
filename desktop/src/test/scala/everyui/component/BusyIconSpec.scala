@@ -6,8 +6,9 @@ import everyui.motion.ReduceMotion
 import everyui.theme.Theme
 import everyui.{FxSpec, ui}
 
-/** A busy icon's glyph breathes, nothing drawn over it, and goes back to how it was as it stops; where less motion is
-  * asked for it stands still, in the accent on a button; a screen reader and the tooltip hear that it is busy. */
+/** A busy icon's glyph breathes, or turns where it is a turning one, nothing drawn over it, and goes back to how it
+  * was as it stops; where less motion is asked for it stands still, in the accent on a button; a screen reader and
+  * the tooltip hear that it is busy. */
 class BusyIconSpec extends FxSpec {
   override def afterAll(): Unit = {
     fx {
@@ -18,6 +19,33 @@ class BusyIconSpec extends FxSpec {
   }
 
   "A busy icon button" should {
+    "turn a turning glyph, breathe another, as it is told, and stand upright again once not busy" in {
+      val b = fx {
+        ui.children.clear()
+        val b = new IconButton(MaterialIcon.Sync, "Background work")
+        ui.children += b
+        b
+      }
+      fx(b.busy @= true)
+      fx(b.icon.motion()) shouldBe List(MaterialIconView.turn)
+      fx(b.semantics().label) shouldBe "Background work, busy"
+      // another glyph while busy: moved its own way
+      fx(b.icon.icon @= MaterialIcon.Queue)
+      fx(b.icon.motion()) shouldBe List(MaterialIconView.breath)
+      fx(b.icon.busyMotion @= everyui.component.types.BusyMotion.Spin)
+      fx(b.icon.motion()) shouldBe List(MaterialIconView.turn)
+      fx(b.busy @= false)
+      fx(b.icon.motion()) shouldBe Nil
+      eventually(b.icon.node.fx.getRotate == 0.0) shouldBe true
+      fx(ReduceMotion.on @= true)
+      fx(b.busy @= true)
+      fx(b.icon.motion()) shouldBe Nil
+      fx(b.icon.color()) shouldBe fx(Theme.accent())
+      fx {
+        b.busy @= false
+        ReduceMotion.on @= false
+      }
+    }
     "breathe while busy, and be as it was once not" in {
       val b = fx {
         ui.children.clear()
@@ -60,7 +88,8 @@ class BusyIconSpec extends FxSpec {
       val s = fx(new Spinner())
       val turning = fx(s.motion())
       fx(s.busy @= true)
-      fx(s.motion()) shouldBe List(MaterialIconView.breath)
+      // its glyph a turning one, it turns as a busy glyph does
+      fx(s.motion()) shouldBe List(MaterialIconView.turn)
       fx(s.busy @= false)
       fx(s.motion()) shouldBe turning
     }
