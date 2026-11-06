@@ -765,6 +765,10 @@ Where less motion is asked for (`ReduceMotion`), it stands still instead. An `Ic
 in the accent, and a bare glyph at half strength. A busy `IconButton`'s tooltip and its name to a screen reader add
 "busy" (`Words.busy`, in each language): "Queue, busy".
 
+A `Button`'s `busy` (a save under way) turns a spinner in its glyph's place, or before its words where it has none,
+made the first time it is busy. A press does nothing until it is set back, and a screen reader hears "Save, busy" (the
+web's `aria-busy`).
+
 An `IconButton`'s `badge` hangs over its top corner at the reading direction's end: `Some("3")` (or "9+",
 `everyui.push.Badge.text`) a count in a pill, `Some("")` a dot, None nothing, in `badgeColour` (the accent unless set).
 It is part of the button, drawn past its box: the pointer over it is over the button (its hover and cursor), a click

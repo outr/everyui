@@ -38,6 +38,9 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   /** Whether what it does cannot be undone (Delete): its words, an outlined one's edge and a filled one's plate in the
     * danger colour rather than the accent. */
   val danger: Var[Boolean] = own(Var(false))
+  /** At work (a save under way): a spinner turns in the glyph's place (before the words, where it has none), a press does
+    * nothing until it is set back, and a screen reader hears that it is busy ("Save, busy"; the web's `aria-busy`). */
+  val busy: Var[Boolean] = own(Var(false))
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.
@@ -79,10 +82,25 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
     case Some(i) => Row(points * 0.6, middle = true)(i, words)
     case None => Row(points * 0.6, middle = true)(words)
   }
+  // the spinner while busy, in the glyph's place, made the first time it is busy (a turning glyph on every button would
+  // be a motion on each): each takes no room while it is hidden, so the words move only as one takes the other's place
+  private lazy val spinner: Component = {
+    val s = new everyui.kit.Spinner(points * 1.3, () => foreground())
+    s.visible := busy()
+    s.collapses @= true
+    icon.foreach { i =>
+      i.visible := !busy()
+      i.collapses @= true
+    }
+    line.children @= s +: line.children()
+    s
+  }
+  busy.attach(b => if (b) spinner)
 
   // a button to whatever reads the page (the web's role, so a screen reader and a test runner find one), named by its
   // words, as IconButton is by its tip
-  semantics @= Semantics.button()
+  semantics := Semantics.button(if (busy()) label() + ", " + everyui.i18n.Words.busy else "")
+  updating := busy()
   // out of use, as whatever reads the page hears it
   disabled := !enabled()
   focusable @= true
@@ -108,7 +126,7 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   tapSlop @= true
   event.click.attach { e =>
     e.consume()
-    if (enabled()) action()
+    if (enabled() && !busy()) action()
   }
 }
 
