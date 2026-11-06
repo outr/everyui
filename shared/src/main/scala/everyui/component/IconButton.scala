@@ -29,7 +29,8 @@ class IconButton(glyph: MaterialIcon, tip: String, action: () => Unit = () => ()
   /** What hangs over its top corner at the reading direction's end: a count in a pill, "" a dot, None
     * nothing. */
   val badge: Var[Option[String]] = own(Var(None))
-  /** The badge's colour: the accent unless the app says (the theme's danger for something gone wrong). */
+  /** The badge's colour: the accent unless the app says (the theme's danger for something gone wrong). Its words
+    * are the theme's on the accent where they read on it, else white or black, whichever does. */
   val badgeColour: Var[Color] = own(Var(Theme.accent()))
   private def said: String = {
     val named = if (busy()) tip + ", " + everyui.i18n.Words.busy else tip
@@ -51,7 +52,12 @@ class IconButton(glyph: MaterialIcon, tip: String, action: () => Unit = () => ()
     val words = new TextView {
       font.size @= 10.0
       font.weight @= everyui.component.types.FontWeight.Bold
-      color := Theme.onAccent()
+      color := {
+        // the theme's words on the accent where they read on the badge's colour, else white or black, whichever does
+        val fill = badgeColour()
+        val on = Theme.onAccent()
+        if (everyui.access.Access.contrast(on, fill) >= 4.5) on else Theme.wordsOn(fill)
+      }
       // drawn whole in the pill, which hangs past the button's box: not kept to that box, which left it a pixel
       textOverflow @= everyui.component.types.TextOverflow.Visible
       content := badge().getOrElse("")

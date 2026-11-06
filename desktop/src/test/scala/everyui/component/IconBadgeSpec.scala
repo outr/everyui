@@ -69,5 +69,23 @@ class IconBadgeSpec extends FxSpec {
         fx(p.position.left()) shouldBe -6.0
       }
     }
+    "draw its count in the theme's words on the accent where they read, else white or black for its colour" in {
+      val b = fx(new IconButton(MaterialIcon.Queue, "Queue", () => ()))
+      onScreen(b) {
+        fx(b.badge @= Some("1"))
+        val p = pill(b)
+        val words = fx(p.children().collectFirst { case t: TextView => t }.get)
+        def drawn: everyui.Color = fx(words.color())
+        fx(b.badgeColour @= everyui.theme.Theme.accent())
+        drawn shouldBe fx(everyui.theme.Theme.onAccent())
+        // light and deep fills, and mid tones where white reads at under 4.5: its words read on each
+        List("ffab40", "135db1", "1e3a5f", "479e91", "ffffff").foreach { hex =>
+          val fill = everyui.Color.fromHex(hex)
+          fx(b.badgeColour @= fill)
+          val on = drawn
+          everyui.access.Access.contrast(on, fill) should be >= 4.5
+        }
+      }
+    }
   }
 }
