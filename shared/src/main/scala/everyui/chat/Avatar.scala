@@ -8,10 +8,10 @@ import everyui.kit.BusyRing
 import reactify.*
 
 /** Somebody's face, `diameter` across: their picture once it has loaded, and until then (or without one, or where it
-  * fails to load) the first letter of their name on their own colour. A loaded picture hides the letter and is drawn on
-  * `pictureGround` rather than their colour, so a picture with clear areas (a logo) shows neither through them. `who`
-  * is read reactively, so a row handed one item after another as a list scrolls can bind it
-  * (`new Avatar(item().map(_.who).getOrElse(nobody))`) and the face follows.
+  * fails to load) the first letter of their name on their own colour, white or black, whichever reads on it. A loaded
+  * picture hides the letter and is drawn on `pictureGround` rather than their colour, so a picture with clear areas
+  * (a logo) shows neither through them. `who` is read reactively, so a row handed one item after another as a list
+  * scrolls can bind it (`new Avatar(item().map(_.who).getOrElse(nobody))`) and the face follows.
   *
   * While `busy` (an agent at work) a ring turns around it in the accent (`BusyRing`), standing still where people ask
   * for less motion, and gone the moment `busy` is false again. A pointer resting on it then says `busyDetail` ("Running
@@ -32,7 +32,7 @@ class Avatar(who: => Participant, diameter: Double = 32.0) extends Container {
     content := person().initial
     font.size @= diameter * 0.44
     font.weight @= FontWeight.SemiBold
-    color @= Color.White
+    color := everyui.theme.Theme.wordsOn(person().colour)
     visible := !shown()
   }
   letter.position.center := diameter / 2.0

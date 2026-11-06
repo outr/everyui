@@ -309,10 +309,9 @@ object Access {
       case _ => false
     }
     if (!(words || icon) || outOfUse(c)) None
-    else behind(c).flatMap { bg =>
+    else behind(c).flatMap { grounds =>
       val drawn = self(c).find(_.colored).map(_.color()).getOrElse(Theme.palette().text)
       val faded = self(c).foldLeft(1.0)((o, at) => o * at.opacity())
-      val fg = over(drawn, drawn.alpha * faded, bg)
       val large = c match {
         case t: TextView if !icon =>
           val points = t.font.size()
@@ -320,26 +319,48 @@ object Access {
         case _ => true
       }
       val wanted = if (icon || large) 3.0 else 4.5
-      val ratio = contrast(fg, bg)
+      // judged against the ground it reads least on
+      val (ratio, fg, bg) = grounds.map { bg =>
+        val fg = over(drawn, drawn.alpha * faded, bg)
+        (contrast(fg, bg), fg, bg)
+      }.minBy(_._1)
       if (ratio + 0.005 < wanted) Some((ratio, wanted, fg, bg)) else None
     }
   }
 
-  // what is drawn behind `c`: the theme's background, under each holder's background and under whatever lies beneath
-  // `c` in the same container and covers it; None where a gradient or a picture is in it
-  private def behind(c: Component): Option[Color] = {
-    var bg = Theme.palette().background.withAlpha(1.0)
-    var known = true
+  // what may be drawn behind `c`: the theme's background, under each holder's background and under whatever lies
+  // beneath `c` in the same container and covers it. A gradient gives each of its stops; a picture (or a backdrop, a
+  // drawing) could be any colour, so one under a layer that is not wholly opaque is taken as black and as white, the
+  // worst it could be. None where words lie on a picture with no layer over it: nothing can be said of them.
+  private def behind(c: Component): Option[List[Color]] = {
+    var grounds = List(Theme.palette().background.withAlpha(1.0))
+    // whether a picture lies under `c` with nothing yet drawn over it
+    var bare = false
     // from the root down to `c`
     val path = (holders(c).reverse :+ c).toVector
     val (left, top, right, bottom) = (c.absoluteLeft, c.absoluteTop, c.absoluteLeft + c.size.width(),
       c.absoluteTop + c.size.height())
+    def paint(colour: Color, opacity: Double): Unit = {
+      val alpha = colour.alpha * opacity
+      if (alpha > 0.0) {
+        grounds = grounds.map(g => over(colour, alpha, g)).distinct
+        bare = false
+      }
+    }
     def layer(at: Component): Unit = {
-      if (at.drawsGradient) known = false
-      else if (at.drawsFill) bg = over(at.backgroundColor(), at.backgroundColor().alpha * at.opacity(), bg)
+      if (at.drawsFill) paint(at.backgroundColor(), at.opacity())
+      if (at.drawsGradient) at.gradient().foreach { g =>
+        val under = grounds
+        grounds = g.stops.flatMap(s => under.map(u => over(s.color, s.color.alpha * at.opacity(), u))).distinct
+        if (g.stops.exists(_.color.alpha * at.opacity() > 0.0)) bare = false
+      }
+    }
+    def picture(): Unit = {
+      grounds = List(Color.Black, Color.White)
+      bare = true
     }
     var i = 0
-    while (known && i < path.length) {
+    while (i < path.length) {
       val at = path(i)
       if (at ne c) layer(at)
       if (i + 1 < path.length) {
@@ -348,7 +369,7 @@ object Access {
           val covers = s.notHidden && s.absoluteLeft <= left && s.absoluteTop <= top &&
             s.absoluteLeft + s.size.width() >= right && s.absoluteTop + s.size.height() >= bottom
           if (covers) s match {
-            case _: ImageView | _: Backdrop | _: Drawing => known = false
+            case _: ImageView | _: Backdrop | _: Drawing => picture()
             case _ => layer(s)
           }
         }
@@ -356,7 +377,7 @@ object Access {
       else if (c.drawsFill || c.drawsGradient) layer(c)
       i += 1
     }
-    if (known) Some(bg) else None
+    if (bare) None else Some(grounds)
   }
 
   // `fg` at `alpha` over the opaque `bg`

@@ -28,6 +28,17 @@ object Tones {
     }
   }
 
+  /** Words drawn on a fill of `fill` (a chip's, a face's): white where white reads at 4.5:1 on it, else black, which
+    * then reads better. A fill not wholly opaque is taken as it shows over `p`'s background. */
+  def wordsOn(fill: Color, p: Palette): Color = {
+    val a = fill.alpha
+    val g = p.background
+    val shown = Color.fromRGB(fill.red * a + g.red * (1.0 - a), fill.green * a + g.green * (1.0 - a),
+      fill.blue * a + g.blue * (1.0 - a))
+    val white = everyui.access.Access.contrast(Color.White, shown)
+    if (white >= 4.5 || white >= everyui.access.Access.contrast(Color.Black, shown)) Color.White else Color.Black
+  }
+
   private def luminance(c: Color): Double = 0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue
 
   /** Hue (0 to 1), saturation and lightness. */

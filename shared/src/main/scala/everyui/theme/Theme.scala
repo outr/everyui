@@ -74,6 +74,8 @@ object Theme {
   def infoText(): Color = { val p = palette(); wordsTone("info", p.info, p.infoText) }
   /** Any colour as words read in it on this palette's grounds (an app's own: a tag's, a brand's). */
   def readable(c: Color): Color = Tones.readable(c, palette())
+  /** Words drawn on a fill of `fill`, as `onAccent` is on the accent: white, or black where white does not read. */
+  def wordsOn(fill: Color): Color = Tones.wordsOn(fill, palette())
 
   // the words' tone of each role, worked out once for each palette
   private var tonesOf: Palette = null

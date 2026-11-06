@@ -4,13 +4,13 @@ import everyui.Color
 import everyui.component.types.FontWeight
 import reactify.*
 
-/** A word in a coloured pill. */
+/** A word in a coloured pill, white or black, whichever reads on its colour (`Theme.wordsOn`). */
 class Chip(label: String, colour: Color) extends Container {
   private val text = new TextView {
     content @= label
     font.size @= 12.0
     font.weight @= FontWeight.Bold
-    color @= Color.White
+    color := everyui.theme.Theme.wordsOn(colour)
     position.left @= 10.0
     position.top @= 4.0
   }

@@ -170,7 +170,7 @@ class Component(val node: RenderNode) {
   private var graded = false
   private var edged = false
   private[everyui] def drawsBox: Boolean = filled || graded || edged
-  lazy val color: Prop[Color] = own(new Prop[Color](Color.Black, c => {
+  lazy val color: Prop[Color] = own(new Prop[Color](Component.unsetColour, c => {
     node.setColor(c.toHex)
     colored = true
   }))
@@ -503,6 +503,10 @@ class Component(val node: RenderNode) {
 }
 
 object Component {
+  // a colour not yet set: black to whatever reads it, but not `Color.Black`, so setting black is a change and is drawn
+  // (where the words would otherwise keep the colour they take from what holds them)
+  private[everyui] val unsetColour: Color = new Color(0, 0, 0, 254)
+
   /** Whether `c` is an app's own: a plain `Container` it made, or a kind of its own; not one of EveryUI's kinds, which
     * say for themselves what they are. */
   def appMade(c: Component): Boolean = {

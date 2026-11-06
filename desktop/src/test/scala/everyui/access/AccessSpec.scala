@@ -8,7 +8,7 @@ import everyui.kit.SearchField
 import everyui.slider.Slider
 import everyui.text.TextArea
 import everyui.theme.Theme
-import everyui.{Color, FxSpec, ui}
+import everyui.{Color, FxSpec, Gradient, GradientStop, ui}
 import reactify.Var
 
 /** The accessibility check finds what breaks each rule, and nothing on what meets it; EveryUI's own controls,
@@ -235,6 +235,67 @@ class AccessSpec extends FxSpec {
         (plate, on)
       }
       onScreen(plate)(found(AccessRule.Contrast) shouldBe Nil)
+    }
+    "be judged over a picture with a layer over it, as the worst the picture could be" in {
+      val (plate, dim, on) = fx {
+        val plate = new Container
+        plate.size.width @= 200.0
+        plate.size.height @= 60.0
+        val picture = new ImageView
+        picture.sizedByPicture @= false
+        picture.size.width @= 200.0
+        picture.size.height @= 60.0
+        val dim = new Container
+        dim.size.width @= 200.0
+        dim.size.height @= 60.0
+        dim.backgroundColor @= Color.Black.withAlpha(0.5)
+        val on = TextView("Over a dimmed picture", 14.0, Color.White)
+        plate.children ++= List(picture, dim, on)
+        (plate, dim, on)
+      }
+      onScreen(plate) {
+        // over a white picture, half black is a mid grey, where white words read at under 4
+        found(AccessRule.Contrast).map(_.component) shouldBe List(on)
+        fx(dim.backgroundColor @= Color.Black.withAlpha(0.75))
+        found(AccessRule.Contrast) shouldBe Nil
+        // dark words read on it over a white picture, but not over a black one
+        fx(on.color @= Color.fromHex("333333"))
+        found(AccessRule.Contrast).map(_.component) shouldBe List(on)
+      }
+    }
+    "be judged against every stop of a gradient behind them" in {
+      val (plate, on) = fx {
+        val plate = new Container
+        plate.size.width @= 200.0
+        plate.size.height @= 60.0
+        plate.gradient @= Some(Gradient(90.0, List(GradientStop(Color.White, 0.0),
+          GradientStop(Color.fromHex("444444"), 1.0))))
+        val on = TextView("Over a gradient", 14.0, Color.fromHex("222222"))
+        plate.children += on
+        (plate, on)
+      }
+      onScreen(plate) {
+        found(AccessRule.Contrast).map(_.component) shouldBe List(on)
+        fx(plate.gradient @= Some(Gradient(90.0, List(GradientStop(Color.White, 0.0),
+          GradientStop(Color.fromHex("dddddd"), 1.0)))))
+        found(AccessRule.Contrast) shouldBe Nil
+      }
+    }
+    "read on a chip or a face, in white or black, whichever reads on its colour" in {
+      val (chip, faces) = fx {
+        val chip = new Chip("Action Needed", Color.fromHex("ffab40"))
+        // each id its own colour, light and deep
+        val faces = List("ann", "bo", "cy", "dee", "eli", "fay", "gus", "hal").zipWithIndex.map { case (id, i) =>
+          val face = new everyui.chat.Avatar(everyui.chat.Participant(id, id))
+          face.position.top @= 40.0 + i * 40.0
+          face
+        }
+        (chip, faces)
+      }
+      onScreen((chip :: faces)*)(found(AccessRule.Contrast) shouldBe Nil)
+      fx(Theme.wordsOn(Color.fromHex("ffab40"))) shouldBe Color.Black
+      fx(Theme.wordsOn(Color.fromHex("479e91"))) shouldBe Color.Black
+      fx(Theme.wordsOn(Color.fromHex("135db1"))) shouldBe Color.White
     }
   }
 
