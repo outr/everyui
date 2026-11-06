@@ -26,8 +26,9 @@ import reactify.*
   *   - order: Tab moving the focus to something above the last in the same column, or before it in the same line;
   *   - contrast: words under 4.5:1 against what is drawn behind them (3:1 for large words, 24 points, or 18.66
   *     bold, and for an icon), unless out of use (`disabled`). Behind them is the theme's background under the
-  *     background colours of what holds them, and of what lies under them in the same container; where a gradient
-  *     or a picture is behind them it cannot be told, and nothing is said.
+  *     background colours of what holds them, and of what lies under them in the same container: each stop of a
+  *     gradient, and a picture under a layer taken as black and as white, the worst it could be; words on a bare
+  *     picture cannot be told, and nothing is said.
   *
   * A component that meets a rule in a way of its own is marked (`allow`). Off, as it is by default, `warn` costs
   * nothing. */
@@ -84,6 +85,7 @@ object Access {
   /** Everything shown under `root` that breaks a rule, in the order of the screen. Walked with a list rather than by
     * recursion (a Roku's stack is small). */
   def check(root: Component = everyui.ui): List[AccessFinding] = {
+    painters = Map.empty
     val shown = showing(root)
     // the root is the page, whose clicks are the empty space's, not a control's
     def acts(c: Component): Boolean = (c ne root) && c.clickHeard && !outOfUse(c)
@@ -115,6 +117,8 @@ object Access {
       if (backwards(was, next)) add(AccessRule.Order, next, "comes after " + was.kind + " " + box(was) +
         " on Tab, but before it in reading order")
     }
+    // (nothing held on to past the check)
+    painters = Map.empty
     found.reverse
   }
 
@@ -332,6 +336,20 @@ object Access {
   // beneath `c` in the same container and covers it. A gradient gives each of its stops; a picture (or a backdrop, a
   // drawing) could be any colour, so one under a layer that is not wholly opaque is taken as black and as white, the
   // worst it could be. None where words lie on a picture with no layer over it: nothing can be said of them.
+  // each container's children that draw something words could lie on (a fill, a gradient, a picture), with their
+  // places: found once a check, so a word in the hundredth row of a list is not tested against the ninety-nine above
+  private var painters: Map[Component, Vector[(Component, Int)]] = Map.empty
+  private def paintersIn(at: Component): Vector[(Component, Int)] = painters.getOrElse(at, {
+    val found = at.childComponents.zipWithIndex.filter { case (s, _) =>
+      s.drawsFill || s.drawsGradient || (s match {
+        case _: ImageView | _: Backdrop | _: Drawing => true
+        case _ => false
+      })
+    }
+    painters = painters + (at -> found)
+    found
+  })
+
   private def behind(c: Component): Option[List[Color]] = {
     var grounds = List(Theme.palette().background.withAlpha(1.0))
     // whether a picture lies under `c` with nothing yet drawn over it
@@ -365,7 +383,8 @@ object Access {
       if (at ne c) layer(at)
       if (i + 1 < path.length) {
         val next = path(i + 1)
-        at.childComponents.takeWhile(_ ne next).foreach { s =>
+        val place = at.childComponents.indexWhere(_ eq next)
+        paintersIn(at).takeWhile(_._2 < place).foreach { case (s, _) =>
           val covers = s.notHidden && s.absoluteLeft <= left && s.absoluteTop <= top &&
             s.absoluteLeft + s.size.width() >= right && s.absoluteTop + s.size.height() >= bottom
           if (covers) s match {
