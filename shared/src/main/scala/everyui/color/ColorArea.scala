@@ -10,8 +10,9 @@ import reactify.*
 
 /** The square of a picker where saturation runs left to right and value (brightness) bottom to top, for `hsv`'s hue,
   * `width` by `height`. A press or a drag sets both; the arrows move the thumb a hundredth of the way (a tenth with
-  * Shift). With a keyboard at hand the arrows are always the area's (Tab leaves it); on a remote, where the arrows are
-  * also how the focus moves, OK starts moving the thumb and OK or Back stops, so the focus can pass over it.
+  * Shift), Page Up and Down its brightness a tenth, and Home and End to no colour and to all of it. With a keyboard at
+  * hand the arrows are always the area's (Tab leaves it); on a remote, where the arrows are also how the focus moves,
+  * OK starts moving the thumb and OK or Back stops, so the focus can pass over it.
   *
   * It is drawn with gradients, so a platform that draws none (a Roku, an Apple TV) has no use for it: ColorPicker
   * shows saturation and value sliders there instead. */
@@ -51,7 +52,8 @@ class ColorArea(hsv: Var[Hsv], width: Double, height: Double) extends Container 
 
   override def keepsEvent(e: KeyEvent): Boolean =
     if (keyboard || adjusting()) e.key == Key.ArrowLeft || e.key == Key.ArrowRight || e.key == Key.ArrowUp ||
-      e.key == Key.ArrowDown || (adjusting() && (e.key == Key.Enter || e.key == Key.Back))
+      e.key == Key.ArrowDown || e.key == Key.PageUp || e.key == Key.PageDown || e.name == "Home" || e.name == "End" ||
+      (adjusting() && (e.key == Key.Enter || e.key == Key.Back))
     else e.key == Key.Enter
 
   private def key(e: KeyEvent): Unit = {
@@ -61,6 +63,10 @@ class ColorArea(hsv: Var[Hsv], width: Double, height: Double) extends Container 
     else if (e.key == Key.ArrowRight) hsv @= now.copy(saturation = Hsv.unit(now.saturation + by))
     else if (e.key == Key.ArrowUp) hsv @= now.copy(value = Hsv.unit(now.value + by))
     else if (e.key == Key.ArrowDown) hsv @= now.copy(value = Hsv.unit(now.value - by))
+    else if (e.key == Key.PageUp) hsv @= now.copy(value = Hsv.unit(now.value + 0.1))
+    else if (e.key == Key.PageDown) hsv @= now.copy(value = Hsv.unit(now.value - 0.1))
+    else if (e.name == "Home") hsv @= now.copy(saturation = 0.0)
+    else if (e.name == "End") hsv @= now.copy(saturation = 1.0)
     else if (e.key == Key.Enter && !keyboard) adjusting @= !adjusting()
     else if (e.key == Key.Back) adjusting @= false
   }

@@ -5,6 +5,7 @@ import everyui.kit.TabBar
 import everyui.menu.{Menu, MenuItem, MenuRow}
 import everyui.component.{Component, Modal}
 import everyui.render.Nodes
+import everyui.list.{RichList, RichLook, RichMove, RichSection}
 import everyui.tree.{Tree, TreeModel}
 import everyui.{FxSpec, ui}
 import reactify.*
@@ -131,6 +132,36 @@ class KeyParitySpec extends FxSpec {
       try {
         press(tree.list, "*", shift = true)
         fx(tree.expanded()) shouldBe Set("/a", "/b")
+      } finally clear()
+    }
+  }
+
+  "A list that reorders" should {
+    "move the item under the cursor past the one above or below with Alt and an arrow, as a drag would" in {
+      val sections = Var(Vector(RichSection("s", "Queue", Vector("a", "b", "c"))))
+      val list = fx(new RichList[String](sections, s => s, s => RichLook(s)))
+      var moves = List.empty[RichMove]
+      fx {
+        list.moved.attach(m => moves = moves :+ m)
+        ui.children += list
+        list.focus()
+        list.reveal("b")
+      }
+      try {
+        // a list that does not reorder moves nothing
+        press(list.list, "ArrowUp", alt = true)
+        moves shouldBe Nil
+        fx {
+          list.reorders @= true
+          list.reveal("b")
+        }
+        press(list.list, "ArrowUp", alt = true)
+        press(list.list, "ArrowDown", alt = true)
+        moves shouldBe List(RichMove(List("b"), "s", "s", Some("a")), RichMove(List("b"), "s", "s", None))
+        // nor past the head of its section, where `accepts` lets nothing go
+        fx(list.reveal("a"))
+        press(list.list, "ArrowUp", alt = true)
+        moves.size shouldBe 2
       } finally clear()
     }
   }

@@ -5022,7 +5022,8 @@ the secondary button, a long press, the menu key (a Roku's options key), OK held
 with the pointer over it or the cursor on it. `search = true` puts a field over it that narrows it by `query` (the app
 can set it; `matches` says what a word finds), or the app filters its own `sections`. `reorders @= true` drags items
 into another place: `accepts` (within their own section, by default) and `moved` (a `RichMove`: the keys, the section,
-the item they go before). `rename(key)` types a title in place, for `commit`.
+the item they go before). Alt with Up or Down moves the item under the cursor past the line above or below, the
+same way, for the keys. `rename(key)` types a title in place, for `commit`.
 
 ```scala
 val chats = new RichList[Chat](sections, _.id, c => RichLook(c.title, Some(c.snippet), who = Some(c.persona),

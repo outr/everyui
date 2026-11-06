@@ -37,7 +37,8 @@ import reactify.*
   * `search`, a field over the list narrows it to the items `matches` finds for the words (`query`, which
   * the app can also set), under their sections, opened; an app filtering its own sections leaves it off. With
   * `reorders` on, items are dragged into another place, which `accepts` allows (within their own section, by default)
-  * and `moved` hears: never into a group that is closed. Each item then shows a grip at its row's start (with the pointer
+  * and `moved` hears: never into a group that is closed. Alt with Up or Down moves the item under the cursor past the
+  * line above or below it the same way, for the keys. Each item then shows a grip at its row's start (with the pointer
   * over it or the cursor on it, and always on a touch screen) that says it can be dragged.
   *
   * Items can expand in place (`expansion`): activating one that has a `RichExpansion` (a click or a tap on its title's
@@ -375,8 +376,8 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
   list.selection.multiple @= false
   list.clickActivates @= Some(true)
   // (an item's action is reached as a header's is: Right onto it, Left back)
-  list.keys = (e: KeyEvent) => list.currentItem.filter(l => !l.empty && !e.shift && !e.ctrl && !e.meta && !e.alt)
-    .flatMap { line =>
+  list.keys = (e: KeyEvent) => keyMove(e).orElse(list.currentItem
+    .filter(l => !l.empty && !e.shift && !e.ctrl && !e.meta && !e.alt).flatMap { line =>
       val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
       val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
       val acts = actionOf(line).nonEmpty
@@ -400,7 +401,24 @@ class RichList[T](val sections: Var[Vector[RichSection[T]]], val keyOf: T => Str
       else if (e.key == back && atAction()) Some(() => atAction @= false)
       else if (e.key == back && line.header && line.open) Some(() => closeLine(line))
       else None
+    })
+  // Alt with Up or Down moves the item under the cursor past the line above or below it, as a drag there would: where
+  // the list reorders and `accepts` the move, which `moved` hears
+  private def keyMove(e: KeyEvent): Option[() => Unit] = {
+    val at = list.current().map(list.indexOf).getOrElse(-1)
+    val up = e.key == Key.ArrowUp
+    if (!e.alt || e.shift || e.ctrl || e.meta || !(up || e.key == Key.ArrowDown) || !dragsItems() || at < 0) None
+    else list.currentItem.filter(_.item.nonEmpty).flatMap { line =>
+      val beside = if (up) at - 1 else at + 1
+      // the item after it in its section now: a move that would put it back before that one goes nowhere
+      val next = (at + 1 until list.count).map(list(_)).takeWhile(_.section.key == line.section.key)
+        .find(_.item.nonEmpty).flatMap(_.item).map(keyOf)
+      if (beside < 0 || beside >= list.count) None
+      else moveFor(Drop(list, List(line.key), Some(list(beside).key),
+        if (up) DropPosition.Before else DropPosition.After))
+        .filter(m => !(m.section == line.section.key && m.before == next) && accepts()(m)).map(m => () => moved @= m)
     }
+  }
   // a click on an empty section's line does nothing, and one on a row's action is the action's alone (it has run it,
   // and the list may hear it as well, where running it took longer than a click's climb is held); one on an item that
   // expands opens or folds it, but one on its text or its buttons while it is expanded only puts the cursor there

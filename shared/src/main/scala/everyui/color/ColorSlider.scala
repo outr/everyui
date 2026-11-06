@@ -8,9 +8,9 @@ import everyui.theme.Theme
 
 /** One of a picker's sliders, `width` wide: a track through `stops` (over checks, where it runs to see-through), and a
   * thumb at `at` (0 to 1) showing `thumb`'s colour. A press or a drag along it, and Left and Right while it has the
-  * focus, move it by `step` (ten times as far with Shift; Home and End to its ends), calling `set` with where it
-  * should be. Up and Down leave it, so a remote goes on past it. `label` names it to a screen reader, with `said`, its
-  * value in words. */
+  * focus, move it by `step` (ten times as far with Shift or Page Up and Down; Home and End to its ends), calling `set`
+  * with where it should be. Up and Down leave it, so a remote goes on past it. `label` names it to a screen reader,
+  * with `said`, its value in words. */
 class ColorSlider(label: String, width: Double, at: => Double, stops: => List[Color], thumb: => Color,
                   said: => String, step: Double = 0.01, checked: Boolean = false)(set: Double => Unit) extends Container {
   private val inset: Double = ColorThumb.diameter / 2.0 + 2.0
@@ -47,12 +47,15 @@ class ColorSlider(label: String, width: Double, at: => Double, stops: => List[Co
   event.key.down.attach(e => key(e))
 
   override def keepsEvent(e: KeyEvent): Boolean =
-    e.key == Key.ArrowLeft || e.key == Key.ArrowRight || e.name == "Home" || e.name == "End"
+    e.key == Key.ArrowLeft || e.key == Key.ArrowRight || e.key == Key.PageUp || e.key == Key.PageDown ||
+      e.name == "Home" || e.name == "End"
 
   private def key(e: KeyEvent): Unit = {
     val by = if (e.shift) step * 10.0 else step
     if (e.key == Key.ArrowLeft) set(Hsv.unit(at - by))
     else if (e.key == Key.ArrowRight) set(Hsv.unit(at + by))
+    else if (e.key == Key.PageDown) set(Hsv.unit(at - step * 10.0))
+    else if (e.key == Key.PageUp) set(Hsv.unit(at + step * 10.0))
     else if (e.name == "Home") set(0.0)
     else if (e.name == "End") set(1.0)
   }
