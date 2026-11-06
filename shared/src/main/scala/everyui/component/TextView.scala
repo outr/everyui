@@ -250,6 +250,9 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     } finally fitting = false
   }
 
+  // what the last fit went by, where fits are counted (`PerfCounters`)
+  private var fitKey = ""
+
   private def cut(): Unit = {
     // words wrapped to fit their room before are put back as they were, to be measured whole again
     if (wrappedToFit) unwrap()
@@ -260,6 +263,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     val box = if ((boxed || toBox) && !followed && !size.width.explicit) roomNow else 0.0
     val own = ownRoom
     val before = measured.width()
+    if (everyui.perf.PerfCounters.on) {
+      val key = wanted + "|" + limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString
+      everyui.perf.PerfCounters.fit(key == fitKey)
+      fitKey = key
+    }
     node.setText(wanted)
     val asked = limit > 0.0 || lines > 0
     unfit = (asked || box > 0.0 || own > 0.0) && !node.textMeasurable(refit)

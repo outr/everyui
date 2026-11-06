@@ -4057,6 +4057,15 @@ These cover what a web app would otherwise reach the browser for directly, so th
   (`Marks.recent`, `Marks.last(name)`), for a check outside the app to time the gaps between. The web also keeps them on
   `window.everyuiMarks` (`{name, at}` each). Other platforms log them, as `[mark] name at`, when launched with
   `marks=1`.
+- **Work counters.** `everyui.perf.PerfCounters` counts the work behind a frame, off by default (`on = true`, or
+  `perfCounters=1` at launch) and costing a test of `on` while off: `LayoutPass` flushes and the most in one frame,
+  containers placed by their kind and those placed again in the same frame, `TextView` fits and those whose words,
+  limits and room were as at their last, size reads and those after a write in the same frame (on the web, where they
+  make the browser lay the page out there and then), a list's children made against kept (`bindMaking`, `bind`) and
+  `replaceMaking`'s parts new against kept, and, on the web, style and text writes and those that wrote what was there
+  already. `report` gives them as lines and `json` as an object; `reset()` starts again. On the web
+  `PerfCounters.expose()` gives `window.everyuiCountersOn()`, `everyuiCounters()`, `everyuiCountersJson()` and
+  `everyuiCountersReset()` to a trace or a test driving the page.
 - **A colour emoji face.** `Faces.colorEmoji(face)` adds a colour emoji font (its file in `fonts/`) as the very last
   fallback, after the system's own, for a machine whose system has none (Linux without Noto Color Emoji draws boxes).
   It is added only where the platform can draw it in colour: on the web where the browser takes

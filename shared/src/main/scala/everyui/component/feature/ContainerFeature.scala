@@ -166,6 +166,11 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     * }}} */
   def replaceMaking(parts: Vector[Component]): Unit = {
     val gone = ContainerFeature.missing(get, parts)
+    if (everyui.perf.PerfCounters.on) {
+      val was = get
+      val newly = parts.count(p => !was.exists(_ eq p))
+      everyui.perf.PerfCounters.replaced(newly, parts.size - newly)
+    }
     static(parts)
     if (gone.nonEmpty) Component.disposeGradually(gone.toList, () => everyui.render.Platform.collect())
   }
@@ -218,6 +223,10 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
             }
             else made
         }
+      }
+      if (everyui.perf.PerfCounters.on) {
+        val newly = rendered.count(r => !previous.exists(_._2 eq r._2))
+        everyui.perf.PerfCounters.listed(newly, rendered.size - newly)
       }
       previous = rendered
       static(rendered.map(_._2).toVector)

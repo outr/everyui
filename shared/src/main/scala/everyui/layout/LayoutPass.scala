@@ -108,6 +108,7 @@ object LayoutPass {
     * the deepest of a thousand rows for each row was a pass over them all for each. */
   def flush(): Unit = if (!flushing) {
     flushing = true
+    everyui.perf.PerfCounters.flushed()
     try {
       while (pending.nonEmpty) {
         val depths = pending.map(c => c -> depthOf(c))

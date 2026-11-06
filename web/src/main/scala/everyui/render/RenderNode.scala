@@ -24,16 +24,34 @@ import scala.scalajs.js
   */
 class RenderNode(val el: html.Element) {
   def getText(): String = el.textContent
-  def setText(text: String): Unit = el.textContent = text
+  def setText(text: String): Unit = {
+    counted("text", text)
+    el.textContent = text
+  }
+
+  // a write to the page, counted where `PerfCounters` counts: whether it wrote what this last wrote there
+  private def counted(property: String, value: String): Unit = if (everyui.perf.PerfCounters.on) {
+    val d = el.asInstanceOf[js.Dynamic]
+    val had = d.selectDynamic("__everyuiWrote")
+    val book = if (js.isUndefined(had)) {
+      val made = js.Dictionary[String]()
+      d.updateDynamic("__everyuiWrote")(made)
+      made
+    } else had.asInstanceOf[js.Dictionary[String]]
+    everyui.perf.PerfCounters.wrote(book.get(property).contains(value))
+    book(property) = value
+  }
 
   def getX(): Double = px(el.style.left)
   def setX(x: Double): Unit = {
+    counted("left", x.toString)
     el.style.left = x.toString + "px"
     WebHover.changed()
   }
 
   def getY(): Double = px(el.style.top)
   def setY(y: Double): Unit = {
+    counted("top", y.toString)
     el.style.top = y.toString + "px"
     WebHover.changed()
   }
@@ -54,14 +72,19 @@ class RenderNode(val el: html.Element) {
 
   private var scaled: Double = 1.0
   private def transform(): Unit = {
+    counted("transform", rotation.toString + " " + scaled.toString)
     el.style.transform = "rotate(" + rotation.toString + "rad) scale(" + scaled.toString + ")"
     WebHover.changed()
   }
 
-  def setFontSize(size: Double): Unit = el.style.fontSize = size.toString + "px"
+  def setFontSize(size: Double): Unit = {
+    counted("font-size", size.toString)
+    el.style.fontSize = size.toString + "px"
+  }
 
   /** `"#rrggbb"`. */
   def setColor(hex: String): Unit = {
+    counted("color", hex)
     textColor = hex
     if (!textFilled) el.style.color = hex
     // a field keeps its colour through the browser's autofill look, which would paint its words in its own
@@ -89,7 +112,10 @@ class RenderNode(val el: html.Element) {
     }
   /** How wide the words are whole, whatever width the element is given: what they take of the line, past it if they run
     * on (`scrollWidth`), read where it is in the page. */
-  def textWidth(): Double = if (onPage) el.scrollWidth / RenderNode.drawnAt else getWidth()
+  def textWidth(): Double = if (onPage) {
+    everyui.perf.PerfCounters.read()
+    el.scrollWidth / RenderNode.drawnAt
+  } else getWidth()
   def getHeight(): Double =
     if (!onPage && RenderNode.movable(el)) RenderNode.offPage(el)._2
     else {
@@ -104,6 +130,7 @@ class RenderNode(val el: html.Element) {
   // Under `display: none` a node has no box and reads 0 by 0: a button made in a hidden panel was an empty pill once
   // the panel showed, since nothing measures it again then. What hides it is laid out, undrawn, for the read instead.
   private def box(): dom.DOMRect = {
+    everyui.perf.PerfCounters.read()
     val r = el.getBoundingClientRect()
     if (r.width == 0.0 && r.height == 0.0 && RenderNode.reveal(el)) el.getBoundingClientRect() else r
   }
@@ -158,19 +185,26 @@ class RenderNode(val el: html.Element) {
   }
 
   def setWidth(width: Double): Unit = {
+    counted("width", width.toString)
     el.style.width = width.toString + "px"
     WebHover.changed()
   }
   def setHeight(height: Double): Unit = {
+    counted("height", height.toString)
     el.style.height = height.toString + "px"
     WebHover.changed()
   }
 
   /** `"#rrggbb"`, or `""` for transparent. */
-  def setBackgroundColor(hex: String): Unit =
+  def setBackgroundColor(hex: String): Unit = {
+    counted("background", hex)
     el.style.backgroundColor = if (hex.isEmpty) "transparent" else hex
+  }
 
-  def setRadius(radius: Double): Unit = el.style.borderRadius = radius.toString + "px"
+  def setRadius(radius: Double): Unit = {
+    counted("radius", radius.toString)
+    el.style.borderRadius = radius.toString + "px"
+  }
 
   /** An edge `width` pixels wide, inside the box (an inset shadow follows the corners and changes no size). */
   def setBorder(width: Double, hex: String): Unit = {
@@ -501,12 +535,16 @@ class RenderNode(val el: html.Element) {
     }
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = {
+    counted("display", visible.toString)
     el.style.display = if (visible) "" else "none"
     WebHover.changed()
     // no longer laid out only to be measured (RenderNode.reveal)
     if (el.style.visibility.nonEmpty) el.style.visibility = ""
   }
-  def setOpacity(opacity: Double): Unit = el.style.opacity = opacity.toString
+  def setOpacity(opacity: Double): Unit = {
+    counted("opacity", opacity.toString)
+    el.style.opacity = opacity.toString
+  }
 
   /** Clipping is the browser's overflow; a scrollable node already clips. */
   def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
@@ -1224,6 +1262,7 @@ object RenderNode {
     * before it arrived (a column as wide as its widest name) came out as nothing. One made hidden is laid out for the
     * read (the host is out of sight), or it read 0 by 0 and was that size as it was shown. */
   def offPage(el: html.Element): (Double, Double) = {
+    everyui.perf.PerfCounters.read()
     val parent = el.parentNode
     val next = el.nextSibling
     val hidden = el.style.display == "none"

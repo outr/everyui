@@ -415,10 +415,13 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Run the layout (the layout pass calls it): where the children go, now. */
   private[everyui] def placeNow(): Unit = if (!placing) {
     placing = true
+    if (everyui.perf.PerfCounters.on) placedIn = everyui.perf.PerfCounters.placedOne(kind, placedIn)
     try layout().foreach(_.layout(this, children()))
     finally placing = false
   }
 
+  // the frame it was last placed in, counted (`PerfCounters`)
+  private var placedIn = 0
   private def place(): Unit = LayoutPass.request(this)
   override def requestLayout(): Unit = place()
   layout.attach { l =>
