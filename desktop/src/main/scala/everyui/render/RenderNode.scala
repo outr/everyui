@@ -1864,6 +1864,7 @@ object Platform {
         repeating = false
       }
     }
+    keysHeard = Some((e: KeyEvent, pressed: Boolean) => hear(e, pressed))
     // a key let go while the window is not the one in front is never released here
     def watch(w: javafx.stage.Window): Unit = if (w != null) w.focusedProperty.addListener((_, _, now) => if (!now) down.clear())
     watch(Host.scene.getWindow)
@@ -1891,6 +1892,14 @@ object Platform {
       Host.scene.addEventFilter(kind, (e: MouseEvent) => side(e)))
   }
 
+  // how the keys are heard, once the app has asked for them (`onKey`): for each window's scene, the main one's and
+  // any other (a tray icon's popover)
+  private var keysHeard: Option[(KeyEvent, Boolean) => Unit] = None
+  /** The keys in another window's `scene` heard as the main window's are. */
+  private[everyui] def hearKeysIn(scene: Scene): Unit = keysHeard.foreach { h =>
+    scene.addEventFilter(KeyEvent.KEY_PRESSED, (e: KeyEvent) => h(e, true))
+    scene.addEventFilter(KeyEvent.KEY_RELEASED, (e: KeyEvent) => h(e, false))
+  }
   private var held = everyui.event.Modifiers(false, false, false, false)
   private var button = 0
 

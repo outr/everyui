@@ -18,6 +18,7 @@ import java.io.File
   *   --screenshot=out.png   with --freeze: save the frozen frame, then exit
   *   --assets=dir           where images/ and fonts/ are (default: assets)
   *   --path=/somewhere      the path to start at, as a page's address would be
+  *   --headless=1           no window: the app runs in the background (a tray icon, `everyui.tray.Tray`)
   * }}}
   *
   * Every other `--name=value` reaches the app as `Platform.launchArg(name)`. `icon` is an image under the assets. */
@@ -62,7 +63,8 @@ object Desktop {
       stage.focusedProperty.addListener((_, _, focused) => everyui.render.Platform.windowFocus(focused.booleanValue))
       stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_HIDDEN,
         (_: javafx.stage.WindowEvent) => everyui.render.Platform.closing())
-      stage.show()
+      // in the background, its window never shown, and going on with none shown
+      if (arg("headless").contains("1")) javafx.application.Platform.setImplicitExit(false) else stage.show()
 
       run()
     })

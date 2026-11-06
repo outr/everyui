@@ -1582,6 +1582,45 @@ they move by the remote. A Roku computes in single precision, so past zoom 16 wh
 out. Tests and demos never use OpenStreetMap's own server, whose tile usage policy forbids heavy use: `demo=map` draws
 its tiles in the page, and takes `tiles=<template>` for a local server's.
 
+### Tray (`everyui.tray`, the desktop)
+
+An app that goes on in the background puts an icon in the desktop's tray. `Tray.supported` says whether there is a
+tray to show one in. `Tray.show(icon, tooltip)` puts it there and answers a `TrayIcon` (None where there is no tray),
+and the app then goes on with its windows closed. Each of its parts is a Var, and the panel is told as it changes:
+
+- `icon` (a `TrayImage`: `TrayImage.png(bytes)`, `TrayImage.disc(colour)`, or pixels) and `badge`, a dot of a colour
+  at its corner for a status (connected, away, stopped);
+- `title` over `tooltip`, what a pointer resting on it says;
+- `attention`, asking to be looked at;
+- `menu`, the panel's menu on a right click: `MenuItem`s, with separators, ticks (an `on` followed as it changes),
+  submenus and entries out of use. A change of words or ticks alone (a line of live numbers) shows in the menu while it
+  is open;
+- `popover`, what a left click opens beside the icon: a component the app makes afresh each time, in a window of its
+  own with no frame, which takes the focus and shuts as it loses it, with Escape, or with another click. `activated`
+  hears each left click.
+
+`Tray.notify(title, body, actions, clicked)` shows a notification through the desktop's notification server, with a
+button for each action. It works where there is no tray too, so an app with none says there what it would have shown.
+Launched with `--headless=1`, the app opens no window, and the tray is all of it.
+
+```scala
+import everyui.tray.{Tray, TrayImage}
+
+if (Tray.supported) Tray.show(TrayImage.png(logo), "Client").foreach { t =>
+  t.badge := Some(if (connected()) Color.Green else Color.Grey)
+  t.menu := List(MenuItem("CPU " + cpu() + "% · Mem " + mem() + "%", enabled = false), MenuItem.separator,
+    MenuItem(if (running()) "Stop" else "Start", () => toggle()))
+  t.popover @= Some(() => new MachineCard(machine))
+}
+else Tray.notify("Client", "Running in the background")
+```
+
+On Linux the icon is a StatusNotifierItem and its menu a DBusMenu, spoken over the session bus by EveryUI itself
+(`DBusConnection`, with no library and nothing AWT, for a native image). KDE, COSMIC, XFCE and others draw them, and
+GNOME does only with its AppIndicator extension; on GNOME without it `supported` is false. The icon registers again as
+a panel restarts. macOS and Windows are not done yet: `supported` is false there. The example app shows it all with
+`--demo=tray` (`sbt "desktop/run --demo=tray --headless=1"`).
+
 ### SplitButton (`everyui.menu`)
 
 A main action with an arrow beside it that drops a `Menu` of alternatives. The menu also opens on the menu key, on
