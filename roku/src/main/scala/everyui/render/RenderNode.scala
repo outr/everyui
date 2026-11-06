@@ -877,6 +877,9 @@ object Platform {
   def resolvePath(path: String): String = if (path.startsWith("pkg:")) path else "pkg:" + path
 
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = uiLoadImage(uri, loaded)
+  /** A picture's cells, its average colour in each (`everyui.access.Access`): none read here, so words over a picture
+    * are judged as over the worst it could be. */
+  def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = read(Nil)
 
   /** Bundled faces load synchronously from the channel package. */
   def loadFont(family: String, weight: Int, loaded: () => Unit): Unit = loaded()

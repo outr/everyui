@@ -263,6 +263,49 @@ class AccessSpec extends FxSpec {
         found(AccessRule.Contrast).map(_.component) shouldBe List(on)
       }
     }
+    "be judged over a picture by what it is, once its cells are read: a dark one dark, a light one light" in {
+      // a night sky, black with a white star in every 40 by 40, and a white wall
+      def picture(name: String, sky: Boolean): String = {
+        val img = new java.awt.image.BufferedImage(320, 200, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        for (y <- 0 until 200; x <- 0 until 320)
+          img.setRGB(x, y, if (!sky || (x % 40 == 7 && y % 40 == 11)) 0xffffff else 0x05060a)
+        val file = java.nio.file.Files.createTempFile(name, ".png").toFile
+        file.deleteOnExit()
+        javax.imageio.ImageIO.write(img, "png", file)
+        file.toURI.toString
+      }
+      val (sky, wall) = (picture("sky", sky = true), picture("wall", sky = false))
+      val (view, on) = fx {
+        val plate = new Container
+        plate.size.width @= 320.0
+        plate.size.height @= 200.0
+        val view = new ImageView
+        view.sizedByPicture @= false
+        view.size.width @= 320.0
+        view.size.height @= 200.0
+        view.image @= new everyui.image.Image(sky, 320.0, 200.0)
+        // a panel just lighter than what is under it
+        val panel = new Container
+        panel.size.width @= 320.0
+        panel.size.height @= 200.0
+        panel.backgroundColor @= Color.White.withAlpha(0.08)
+        val on = TextView("Muted words on a panel", 14.0, Color.fromHex("a3a3a3"))
+        on.position.top @= 90.0
+        plate.children ++= List(view, panel, on)
+        ui.children += plate
+        (view, on)
+      }
+      try {
+        // not read yet: as over the worst it could be, a white picture
+        found(AccessRule.Contrast).map(_.component) shouldBe List(on)
+        eventually(Access.check().forall(_.rule != AccessRule.Contrast)) shouldBe true
+        // a white wall under the same panel: the light grey words do not read on it
+        fx(view.image @= new everyui.image.Image(wall, 320.0, 200.0))
+        found(AccessRule.Contrast).map(_.component) shouldBe List(on)
+        eventually(PictureCells.of(wall).nonEmpty) shouldBe true
+        found(AccessRule.Contrast).map(_.component) shouldBe List(on)
+      } finally fx(ui.children.clear())
+    }
     "be judged against every stop of a gradient behind them" in {
       val (plate, on) = fx {
         val plate = new Container

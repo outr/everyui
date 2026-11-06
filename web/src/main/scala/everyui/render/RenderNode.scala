@@ -2794,6 +2794,45 @@ object Platform {
     img.src = uri
   }
 
+  /** The picture at `uri` as `across` by `down` cells, each its average colour (0xRRGGBB, row by row): what words over
+    * it are judged against (`everyui.access.Access`). Drawn on a canvas eight times as fine and each cell's pixels
+    * averaged, so a star does not make a cell. Nothing where it cannot be read: one that will not load, or from
+    * another site that does not allow its pixels to be read (the canvas is tainted). */
+  def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = {
+    val img = dom.document.createElement("img").asInstanceOf[html.Image]
+    img.asInstanceOf[js.Dynamic].crossOrigin = "anonymous"
+    img.addEventListener("load", (_: dom.Event) => read(try {
+      val (w, h) = (across * 8, down * 8)
+      val canvas = dom.document.createElement("canvas").asInstanceOf[html.Canvas]
+      canvas.width = w
+      canvas.height = h
+      val g = canvas.getContext("2d").asInstanceOf[dom.CanvasRenderingContext2D]
+      g.drawImage(img, 0.0, 0.0, w.toDouble, h.toDouble)
+      val px = g.getImageData(0.0, 0.0, w.toDouble, h.toDouble).data
+      (0 until across * down).toList.map { cell =>
+        val (cx, cy) = (cell % across, cell / across)
+        var (r, gr, b) = (0, 0, 0)
+        var y = cy * 8
+        while (y < cy * 8 + 8) {
+          var x = cx * 8
+          while (x < cx * 8 + 8) {
+            val at = (y * w + x) * 4
+            r += px(at)
+            gr += px(at + 1)
+            b += px(at + 2)
+            x += 1
+          }
+          y += 1
+        }
+        ((r / 64) << 16) | ((gr / 64) << 8) | (b / 64)
+      }
+    } catch {
+      case _: Throwable => Nil
+    }))
+    img.addEventListener("error", (_: dom.Event) => read(Nil))
+    img.src = uri
+  }
+
   /** Call `loaded` once a bundled face (index.html's `@font-face`) is usable. */
   def loadFont(family: String, weight: Int, loaded: () => Unit): Unit = {
     val done: js.Function1[js.Any, Unit] = _ => loaded()

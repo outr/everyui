@@ -27,8 +27,9 @@ import reactify.*
   *   - contrast: words under 4.5:1 against what is drawn behind them (3:1 for large words, 24 points, or 18.66
   *     bold, and for an icon), unless out of use (`disabled`). Behind them is the theme's background under the
   *     background colours of what holds them, and of what lies under them in the same container: each stop of a
-  *     gradient, and a picture under a layer taken as black and as white, the worst it could be; words on a bare
-  *     picture cannot be told, and nothing is said.
+  *     gradient, and the lightest and darkest of a picture's cells under them, read once it has loaded
+  *     (`PictureCells`). A picture not read yet, or that cannot be, under a layer is taken as black and as white,
+  *     the worst it could be; words on such a picture with nothing over it cannot be told, and nothing is said.
   *
   * A component that meets a rule in a way of its own is marked (`allow`). Off, as it is by default, `warn` costs
   * nothing. */
@@ -332,10 +333,6 @@ object Access {
     }
   }
 
-  // what may be drawn behind `c`: the theme's background, under each holder's background and under whatever lies
-  // beneath `c` in the same container and covers it. A gradient gives each of its stops; a picture (or a backdrop, a
-  // drawing) could be any colour, so one under a layer that is not wholly opaque is taken as black and as white, the
-  // worst it could be. None where words lie on a picture with no layer over it: nothing can be said of them.
   // each container's children that draw something words could lie on (a fill, a gradient, a picture), with their
   // places: found once a check, so a word in the hundredth row of a list is not tested against the ninety-nine above
   private var painters: Map[Component, Vector[(Component, Int)]] = Map.empty
@@ -350,6 +347,11 @@ object Access {
     found
   })
 
+  // what may be drawn behind `c`: the theme's background, under each holder's background and under whatever lies
+  // beneath `c` in the same container and covers it. A gradient gives each of its stops; a picture read already
+  // (`PictureCells`) the lightest and darkest of its cells under `c`. One not read yet, or that cannot be (a drawing, a
+  // picture whose pixels are kept from the page), could be any colour: under a layer that is not wholly opaque it is
+  // taken as black and as white, the worst it could be, and None where words lie on it with nothing over it.
   private def behind(c: Component): Option[List[Color]] = {
     var grounds = List(Theme.palette().background.withAlpha(1.0))
     // whether a picture lies under `c` with nothing yet drawn over it
@@ -373,9 +375,30 @@ object Access {
         if (g.stops.exists(_.color.alpha * at.opacity() > 0.0)) bare = false
       }
     }
-    def picture(): Unit = {
-      grounds = List(Color.Black, Color.White)
-      bare = true
+    def picture(s: Component): Unit = {
+      // the picture drawn: a view's own, or the one a backdrop shows
+      val view = s match {
+        case v: ImageView => Some(v)
+        case b: Backdrop => b.childComponents.collectFirst { case v: ImageView if v.notHidden => v }
+        case _ => None
+      }
+      val tones = view.filter(v => v.size.width() > 0.0 && v.size.height() > 0.0).flatMap { v =>
+        PictureCells.of(v.image().source).map { cells =>
+          // (a picture is drawn stretched to its view's box)
+          val (x, y, w, h) = (v.absoluteLeft, v.absoluteTop, v.size.width(), v.size.height())
+          val opacity = if (v eq s) v.opacity() else v.opacity() * s.opacity()
+          (PictureCells.under(cells, (left - x) / w, (top - y) / h, (right - x) / w, (bottom - y) / h), opacity)
+        }
+      }
+      tones match {
+        case Some((known, opacity)) if known.nonEmpty =>
+          val was = grounds
+          grounds = known.flatMap(t => was.map(u => over(t, opacity, u))).distinct
+          bare = false
+        case _ =>
+          grounds = List(Color.Black, Color.White)
+          bare = true
+      }
     }
     var i = 0
     while (i < path.length) {
@@ -388,7 +411,7 @@ object Access {
           val covers = s.notHidden && s.absoluteLeft <= left && s.absoluteTop <= top &&
             s.absoluteLeft + s.size.width() >= right && s.absoluteTop + s.size.height() >= bottom
           if (covers) s match {
-            case _: ImageView | _: Backdrop | _: Drawing => picture()
+            case _: ImageView | _: Backdrop | _: Drawing => picture(s)
             case _ => layer(s)
           }
         }

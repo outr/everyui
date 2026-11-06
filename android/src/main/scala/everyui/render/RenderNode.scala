@@ -2857,6 +2857,29 @@ object Platform {
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit =
     Host.bitmapThen(uri)(b => if (b == null) loaded(0.0, 0.0) else loaded(b.getWidth.toDouble, b.getHeight.toDouble))
 
+  /** The picture at `uri` as `across` by `down` cells, each its average colour (0xRRGGBB, row by row): what words over
+    * it are judged against (`everyui.access.Access`). Scaled to eight times as fine and each cell's pixels averaged,
+    * so a star does not make a cell. Nothing where it will not load. */
+  def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit =
+    Host.bitmapThen(uri)(b => if (b == null) read(Nil) else {
+      val (w, h) = (across * 8, down * 8)
+      val small = Bitmap.createScaledBitmap(b, w, h, true)
+      val px = new Array[Int](w * h)
+      small.getPixels(px, 0, w, 0, 0, w, h)
+      if (!(small eq b)) small.recycle()
+      read((0 until across * down).toList.map { cell =>
+        val (cx, cy) = (cell % across, cell / across)
+        var (r, g, bl) = (0, 0, 0)
+        for (j <- 0 until 8; i <- 0 until 8) {
+          val argb = px((cy * 8 + j) * w + cx * 8 + i)
+          r += (argb >> 16) & 0xff
+          g += (argb >> 8) & 0xff
+          bl += argb & 0xff
+        }
+        ((r / 64) << 16) | ((g / 64) << 8) | (bl / 64)
+      })
+    })
+
   /** Bundled faces load synchronously from the APK. */
   def loadFont(family: String, weight: Int, loaded: () => Unit): Unit = {
     Host.typeface(Faces(family, weight))

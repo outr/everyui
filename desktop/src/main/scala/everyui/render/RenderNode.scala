@@ -1986,6 +1986,29 @@ object Platform {
 
   /** Load `uri` and report its natural size: at once from a file, once it arrives from the network (0 x 0 if it
     * cannot). */
+  /** The picture at `uri` as `across` by `down` cells, each its average colour (0xRRGGBB, row by row): what words over
+    * it are judged against (`everyui.access.Access`). Each cell averages an 8 by 8 spread of its pixels, so a star
+    * does not make a cell. Nothing where it will not load. */
+  def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = loadImage(uri, (w, h) =>
+    if (w <= 0.0 || h <= 0.0) read(Nil)
+    else {
+      val pixels = Host.image(uri).getPixelReader
+      if (pixels == null) read(Nil)
+      else read((0 until across * down).toList.map { cell =>
+        val (cx, cy) = (cell % across, cell / across)
+        var (r, g, b) = (0, 0, 0)
+        for (j <- 0 until 8; i <- 0 until 8) {
+          val x = math.min(w.toInt - 1, ((cx + (i + 0.5) / 8.0) * w / across).toInt)
+          val y = math.min(h.toInt - 1, ((cy + (j + 0.5) / 8.0) * h / down).toInt)
+          val argb = pixels.getArgb(x, y)
+          r += (argb >> 16) & 0xff
+          g += (argb >> 8) & 0xff
+          b += argb & 0xff
+        }
+        ((r / 64) << 16) | ((g / 64) << 8) | (b / 64)
+      })
+    })
+
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
     val image = Host.image(uri)
     if (image.getProgress >= 1.0 || image.isError) loaded(image.getWidth, image.getHeight)

@@ -507,6 +507,9 @@ object Platform {
   def resolvePath(path: String): String = path
 
   def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = uiLoadImage(uri, loaded)
+  /** A picture's cells, its average colour in each (`everyui.access.Access`): none read here, so words over a picture
+    * are judged as over the worst it could be. */
+  def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = read(Nil)
 
   /** Bundled faces are registered at launch. */
   def loadFont(family: String, weight: Int, loaded: () => Unit): Unit = loaded()
