@@ -52,6 +52,8 @@ class IconButton(glyph: MaterialIcon, tip: String, action: () => Unit = () => ()
       font.size @= 10.0
       font.weight @= everyui.component.types.FontWeight.Bold
       color := Theme.onAccent()
+      // drawn whole in the pill, which hangs past the button's box: not kept to that box, which left it a pixel
+      textOverflow @= everyui.component.types.TextOverflow.Visible
       content := badge().getOrElse("")
     }
     val p = new Container {

@@ -48,6 +48,11 @@ class IconBadgeSpec extends FxSpec {
       onScreen(b) {
         fx(b.badge @= Some("9+"))
         val p = pill(b)
+        // its words whole in the pill, not kept to the button's box it hangs past
+        val words = fx(p.children().collectFirst { case t: TextView => t }.get)
+        eventually(words.size.width() > 8.0) shouldBe true
+        fx(words.node.getText()) shouldBe "9+"
+        fx(p.size.width()) should be >= fx(words.size.width() + 8.0)
         fx(javafx.event.Event.fireEvent(p.node.fx, new MouseEvent(MouseEvent.MOUSE_CLICKED, 4.0, 4.0, 0.0, 0.0,
           MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, false, false, true, null)))
         pressed shouldBe 1
