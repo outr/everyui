@@ -5328,7 +5328,8 @@ DataTable.of(personas)(DataColumn("Persona") -> (_.name), DataColumn("Conversati
 - **Keys**: the table is one stop for the focus (Tab goes on past it). The arrows move between its cells, Up from the
   first row to the header (Left and Right swap where the columns run from the right), Home and End to the first and last
   column (with Ctrl, row), Page Up and Down ten rows; Space or Enter chooses the row, or sorts on the header; Shift with
-  Up or Down chooses as it goes; Ctrl or Command+A chooses every row showing; Escape lets them go. A ring marks the cell
+  Up or Down chooses as it goes; Ctrl or Command+A chooses every row showing; Escape lets them go; Alt with Left or
+  Right makes the column the keys are in narrower or wider by 16, as dragging its handle does. A ring marks the cell
   the keys are on while they move it. A screen reader hears a table of rows of cells and column headers, which rows are
   chosen (`aria-selected`) and the sort.
 - **Long tables**: past 60 rows, the first 12 are made at once and the rest 16 a turn after the first page is drawn,
@@ -5345,7 +5346,11 @@ changes as a pointer drags a heading's edge and can be kept and given back; `hid
 `sort` ordering is sorted by a click on its heading (up, down, then not at all) with an arrow on it; `sort` says which,
 and with `sortsItself @= false` the app sorts `items` itself. Wider than the table, the columns scroll sideways (a
 sideways wheel, the bar at the foot, Left and Right). Rows are chosen as a list's are (`selection`, multi optional), and
-the whole table mirrors right to left.
+the whole table mirrors right to left. The keys reach each heading before the rows, except where a remote moves the
+focus: Left and Right go between them, Down into the rows, Enter or Space sorts (or, over a column of tick
+boxes, chooses every row or none), and Alt with Left or Right makes the column narrower or wider by
+`TableHeader.step` (16). A screen reader hears each as a column header, with the sort. A click on a heading leaves the
+focus where it was.
 
 ```scala
 import everyui.table.{GridCell, GridColumn, VirtualTable}

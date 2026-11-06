@@ -1,11 +1,12 @@
 package everyui.table
 
 import everyui.component.{Component, Container, MaterialIconView, TextView}
-import everyui.component.types.{FontWeight, TextAlign}
-import everyui.event.PointerEvent
+import everyui.component.types.{FontWeight, Semantics, TextAlign}
+import everyui.event.{Key, KeyEvent, PointerEvent}
 import everyui.font.MaterialIcon
-import everyui.i18n.Direction
+import everyui.i18n.{Direction, Words}
 import everyui.list.{ListRow, Pointers}
+import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
 
@@ -62,6 +63,12 @@ class TableHeader[T](table: VirtualTable[T]) extends Container {
         cursor @= "pointer"
         event.click.attach(_ => if (!resized) table.sortBy(key))
       }
+      // a column header to a screen reader, saying how the rows are sorted by it
+      semantics := Semantics("columnheader", sort = table.sort().filter(_.column == key)
+        .map(s => if (s.ascending) "ascending" else "descending").getOrElse(""))
+      private val sortIt = () => if (column.sorts) table.sortBy(key)
+      keyed(this, Some(key), sortIt)
+      override def keepsEvent(e: KeyEvent): Boolean = keyFor(this, Some(key), sortIt, e).nonEmpty
       handle.event.click.attach(_.consume())
       handle.event.pointer.down.attach { e =>
         if (e.button == PointerEvent.PrimaryButton) {
@@ -76,6 +83,35 @@ class TableHeader[T](table: VirtualTable[T]) extends Container {
         }
       }
     }
+  }
+
+  /** A heading the keys reach (not where a remote moves the focus): Left and Right to the heading beside it, Down into
+    * the rows, Space doing what a click does (sorting, or choosing every row), and, on a column's heading, Alt with
+    * Left or Right making the column narrower or wider by `TableHeader.step`. */
+  private def keyed(cell: Container, column: Option[String], act: () => Unit): Unit = {
+    cell.focusable @= !Platform.remoteNavigation()
+    // a click on it (to sort) leaves the focus where it was, in the rows
+    cell.clickLeavesFocus = true
+    // lit while the keys have it
+    cell.backgroundColor := (if (cell.focusShown()) Theme.controlLit() else everyui.Color.Clear)
+    cell.event.key.down.attach(e => keyFor(cell, column, act, e).foreach(_()))
+  }
+
+  private def keyFor(cell: Container, column: Option[String], act: () => Unit, e: KeyEvent): Option[() => Unit] = {
+    val on = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
+    val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
+    val shown = cells.filter(c => c.visible() && c.focusable())
+    val at = shown.indexWhere(_ eq cell)
+    if (e.ctrl || e.meta || e.shift) None
+    else if (e.alt) column.filter(_ => e.key == on || e.key == back).map(key => () =>
+      table.resize(key, table.widths(), if (e.key == on) TableHeader.step else -TableHeader.step))
+    else if (e.key == Key.Space) Some(act)
+    else if (e.key == Key.ArrowDown) Some(() => table.list.focus())
+    else if (e.key == on || e.key == back) Some(() => {
+      val to = at + (if (e.key == on) 1 else -1)
+      if (to >= 0 && to < shown.size) shown(to).focus()
+    })
+    else None
   }
 
   // over the tick boxes: every row, none, or some
@@ -100,6 +136,9 @@ class TableHeader[T](table: VirtualTable[T]) extends Container {
       cursor @= "pointer"
       children += box
       event.click.attach(_ => table.toggleAll())
+      semantics := Semantics.checkbox(Words.selectAll, table.list.count > 0 && table.chosenCount >= table.list.count)
+      keyed(this, None, () => table.toggleAll())
+      override def keepsEvent(e: KeyEvent): Boolean = keyFor(this, None, () => table.toggleAll(), e).nonEmpty
     }
   }
 
@@ -134,4 +173,6 @@ object TableHeader {
   val height: Double = 30.0
   /** How wide a column's resize handle is. */
   val grip: Double = 6.0
+  /** How far Alt with Left or Right widens or narrows a column, in pixels. */
+  val step: Double = 16.0
 }

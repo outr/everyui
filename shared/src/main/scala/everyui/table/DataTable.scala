@@ -1064,8 +1064,9 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   }
 
   /** What `k` does to the table, if anything (what it keeps from the focus layer): the arrows, Home, End and the page
-    * keys move between the cells, Space and Enter choose (or sort, on the header), Escape lets the choice go, and the
-    * shortcut's A and C choose every row showing and copy. */
+    * keys move between the cells, Space and Enter choose (or sort, on the header), Escape lets the choice go, Alt with
+    * the arrow along widens or narrows the column the keys are in, and the shortcut's A and C choose every row
+    * showing and copy. */
   private def action(k: KeyEvent): Option[() => Unit] = {
     val (row, c) = cursor()
     // where the keys are among the rows showing, how many there are, and the row at a place (of a server's rows, any
@@ -1099,6 +1100,9 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     else if (primary && !k.alt && letter == "a") Some(() => selection @= (if (source.nonEmpty) loaded else shown()).toSet)
     else if (k.ctrl && !k.alt && !k.meta && (letter == "home" || letter == "end") && count > 0)
       go(if (letter == "home") order(0) else order(count - 1), c)
+    // Alt with the arrow along makes the column the keys are in wider or narrower, as its handle's drag does
+    else if (k.alt && !k.ctrl && !k.meta && !k.shift && (k.key == forward || k.key == back))
+      Some(() => resize(c, columnWidth(c) + (if (k.key == forward) TableHeader.step else -TableHeader.step)))
     else if (k.ctrl || k.meta || k.alt) None
     else if (k.key == Key.ArrowDown && at < count - 1) go(order(at + 1), c, k.shift)
     else if (k.key == Key.ArrowUp && at > 0) go(order(at - 1), c, k.shift)
