@@ -272,7 +272,9 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     // the box's room, where the words were kept to it or ran past it as last measured (keepToBox)
     val box = if ((boxed || toBox) && !followed && !size.width.explicit) roomNow else 0.0
     val own = ownRoom
-    val before = measured.width()
+    // the width drawn before, which only words kept to their box look back at: read only then, since a read of words not
+    // yet on the page lends them to it, and made the browser lay the page out for every label of a screen being built
+    val before = if (box > 0.0 || boxed) measured.width() else 0.0
     val key = wanted + "|" + limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString + "|" +
       whiteSpace().value + "|" + overflow.toString + "|" + elide().toString + "|" +
       // a width of its own, which words that wrap wrap at, and how many times its face has changed
@@ -286,6 +288,15 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       drawCut(wanted, limit, lines, box, own, before)
       true
     }
+  }
+
+  // whether the words surely fit `room` on one line, by the platform's guess at their width (the web's, on a canvas),
+  // with room to spare for what the guess misses: then nothing is read from the page, which, read just after the words
+  // were written, made the browser lay the page out there and then. Where there is no guess, or it is near, they are
+  // measured.
+  private def surely(room: Double): Boolean = {
+    val guess = node.textWidthGuess()
+    guess >= 0.0 && guess * 1.08 + 2.0 < room
   }
 
   private def drawCut(wanted: String, limit: Double, lines: Int, box: Double, own: Double, before: Double): Unit = {
@@ -306,7 +317,8 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       toBox = false
       // within the box, the words are drawn just as they are
       val was = boxed
-      val whole = if (box > 0.0 || was) node.getWidth() else 0.0
+      // (words that surely fit their box are whole in it, with nothing read: `surely`)
+      val whole = if (box > 0.0 && !was && surely(box)) 0.0 else if (box > 0.0 || was) node.getWidth() else 0.0
       boxed = box > 0.0 && whole > box + 0.5
       if (boxed != was) TextView.boxedCount(0) += (if (boxed) 1 else -1)
       var single = limit
@@ -325,7 +337,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       // takes another, a word too long for one broken where it must be; `maxLines` still cuts what passes it
       if (wraps) {
         val room = if (single > 0.0) single else if (wrapAt > 0.0) wrapAt else if (limit > 0.0) limit else 0.0
-        if (room > 0.0 && node.getWidth() > room + 0.5) {
+        if (room > 0.0 && !surely(room) && node.getWidth() > room + 0.5) {
           wrapToFit()
           node.setTextLimit(room, 0)
           wrapAt = room
@@ -334,7 +346,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
         else if (room > 0.0 && wrapAt == 0.0) single = 0.0
       }
       cutTo(wanted, single, lines)
-      if (own > 0.0 && node.textWidth() > own + 0.5) {
+      if (own > 0.0 && !surely(own) && node.textWidth() > own + 0.5) {
         if (wraps) wrapToFit() else cutTo(wanted, own, 0, whole = true)
       }
       elided @= node.getText() != wanted
@@ -386,7 +398,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   // (`whole`: measured whole, as words given a width of their own are, where the node is as wide as that)
   private def cutTo(wanted: String, limit: Double, lines: Int, whole: Boolean = false): Unit = {
     def wide: Double = if (whole) node.textWidth() else node.getWidth()
-    if (limit > 0.0 && wide > limit) {
+    if (limit > 0.0 && !surely(limit) && wide > limit) {
       // the most letters kept, found in as many measures as halvings: a Roku measures each one
       val side = elide()
       var fewest = 0
@@ -430,7 +442,9 @@ object TextView {
   private val waiting: Array[List[TextView]] = Array(Nil)
 
   private[component] def check(view: TextView): Unit =
-    if (!view.boxCheckWaits && !view.takenApart && (view.boxed || view.size.width() > 0.0)) {
+    // (words that have any, asked without reading a size: a read of words not on the page yet lends them to it, which
+    // made the browser lay the page out for every label of a screen being built)
+    if (!view.boxCheckWaits && !view.takenApart && (view.boxed || view.content().nonEmpty)) {
       view.boxCheckWaits = true
       val first = waiting(0).isEmpty
       waiting(0) = view :: waiting(0)

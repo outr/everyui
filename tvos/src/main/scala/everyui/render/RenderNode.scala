@@ -218,6 +218,8 @@ class RenderNode(val sg: SGNode) {
   /** No pointer to rest. */
   def setTooltip(text: String): Unit = ()
   /** No reader of descriptions reaches this platform's nodes. */
+  /** No guess at the words' width here: they are measured. */
+  def textWidthGuess(): Double = -1.0
   def setDescription(text: String): Unit = ()
   def setInvalid(on: Boolean): Unit = ()
   def setUpdating(on: Boolean): Unit = ()

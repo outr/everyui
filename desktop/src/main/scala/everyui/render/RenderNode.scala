@@ -479,6 +479,8 @@ class RenderNode(val fx: Node) {
   def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
   /** What a screen reader hears of it after its name, as JavaFX's help text, with "busy" while it is being updated
     * (`setUpdating`) and "unavailable" while out of use (`setDisabled`). */
+  /** No guess at the words' width here: they are measured. */
+  def textWidthGuess(): Double = -1.0
   def setDescription(text: String): Unit = {
     help = text
     sayHelp()

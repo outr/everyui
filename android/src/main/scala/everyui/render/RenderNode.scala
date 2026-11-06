@@ -845,6 +845,8 @@ class RenderNode(val view: View) {
   private var hint = ""
   private var focusDelegate = false
   /** What TalkBack reads after the view's name (a list row's tip), as its hint (Android 8 on). */
+  /** No guess at the words' width here: they are measured. */
+  def textWidthGuess(): Double = -1.0
   def setDescription(text: String): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) {
     hint = text
     if (!focusDelegate) view.setAccessibilityDelegate(if (text.isEmpty) null else new View.AccessibilityDelegate {

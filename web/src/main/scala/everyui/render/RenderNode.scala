@@ -98,6 +98,9 @@ class RenderNode(val el: html.Element) {
     * backend. */
   def setFont(family: String, weight: Int, size: Double): Unit = {
     if (family.nonEmpty) el.style.fontFamily = RenderNode.families(family)
+    guessFont =
+      weight.toString + " " + size.toString + "px " + (if (family.nonEmpty) RenderNode.families(family) else "")
+    guessDefault = family.isEmpty
     el.style.fontWeight = weight.toString
     el.style.fontSize = size.toString + "px"
     el.style.lineHeight = Faces(family, weight).lineHeight(size).toString + "px"
@@ -328,16 +331,23 @@ class RenderNode(val el: html.Element) {
     * "" for none), set on the node itself: a field's own font shorthand (the browser's for an input) would otherwise
     * put them back to auto, and words are measured by their box, so they measure as they are drawn. */
   def setFontAxes(opticalSizing: String, variations: String): Unit = {
+    guessOff = opticalSizing == "auto" || variations.nonEmpty
     if (opticalSizing.isEmpty) el.style.removeProperty("font-optical-sizing")
     else el.style.setProperty("font-optical-sizing", opticalSizing)
     if (variations.isEmpty) el.style.removeProperty("font-variation-settings")
     else el.style.setProperty("font-variation-settings", variations)
   }
-  def setLetterSpacing(px: Double): Unit = el.style.letterSpacing = if (px == 0.0) "" else px.toString + "px"
+  def setLetterSpacing(px: Double): Unit = {
+    guessSpacing = px
+    el.style.letterSpacing = if (px == 0.0) "" else px.toString + "px"
+  }
 
   /** Slanted or upright: CSS font-style, drawn in the family's italic face where one is registered and slanted by the
     * browser where not; the box, and so the measured width, takes it. */
-  def setItalic(on: Boolean): Unit = el.style.fontStyle = if (on) "italic" else ""
+  def setItalic(on: Boolean): Unit = {
+    guessItalic = on
+    el.style.fontStyle = if (on) "italic" else ""
+  }
 
   /** Where a link goes (the node is an `<a>`, `Nodes.link`), in a new tab with `newTab`. */
   def setHref(href: String, newTab: Boolean): Unit = {
@@ -920,6 +930,32 @@ class RenderNode(val el: html.Element) {
     * face they wait for has. */
   def textMeasurable(ready: () => Unit): Boolean = TextFit.ready(el, ready)
 
+  // what a guess at the words' width measures them in (`textWidthGuess`): the face, weight and size as set, whether the
+  // face is the page's own (set on none), the slant and the spacing, and whether something the canvas does not follow
+  // is set (variable axes, optical sizing)
+  private var guessFont = ""
+  private var guessDefault = true
+  private var guessItalic = false
+  private var guessSpacing = 0.0
+  private var guessOff = false
+
+  /** How wide the words are on one line, worked out on a canvas without the page laying anything out, in the app's
+    * units; -1 where it cannot be (no size set yet, axes set, words on more than one line, not on the page). For telling
+    * words that surely fit from those to be measured on the page (`TextView`): a guess, not a measure. */
+  def textWidthGuess(): Double =
+    if (guessFont.isEmpty || guessOff || !el.isConnected) -1.0
+    else {
+      val words = el.textContent
+      if (words.contains("\n")) -1.0
+      else {
+        val font = (if (guessItalic) "italic " else "") +
+          (if (guessDefault) guessFont + RenderNode.pageFamily(el) else guessFont)
+        val ctx = RenderNode.guessing
+        if (ctx.font != font) ctx.font = font
+        ctx.measureText(words).width + guessSpacing * words.length
+      }
+    }
+
   /** An `<input>`'s contents. */
   def getValue(): String = el match {
     case i: html.Input => i.value
@@ -1179,6 +1215,14 @@ object RenderNode {
   /** How many of the app's nodes are turned or scaled now, by their own transform or a motion's: while none is, a box
     * read is the laid-out one, and nothing is read twice to tell (`transformed`). */
   private[render] var turned: Int = 0
+  // the canvas words are guessed at on (`textWidthGuess`), and the page's own face, read once
+  private[render] lazy val guessing: dom.CanvasRenderingContext2D = dom.document.createElement("canvas")
+    .asInstanceOf[html.Canvas].getContext("2d").asInstanceOf[dom.CanvasRenderingContext2D]
+  private var pageFace = ""
+  private[render] def pageFamily(el: html.Element): String = {
+    if (pageFace.isEmpty) pageFace = dom.window.getComputedStyle(el).fontFamily
+    pageFace
+  }
   /** Whether a key is being pressed now (`Platform.onKey`): the browser does what the key does by default once the
     * app has heard it, to whatever has the page's focus then. */
   private[render] var inKey: Boolean = false
