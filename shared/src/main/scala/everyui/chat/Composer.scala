@@ -208,7 +208,7 @@ class Composer(onSend: Draft => Unit,
   private val ghost = new TextView {
     whiteSpace @= WhiteSpace.Normal
     font.size @= points
-    color := Theme.accent()
+    color := Theme.accentText()
   }
   // the "+" at the start of the line, opening the menu of what can go with a message; on a phone, its entry in the tray
   private lazy val plusButton: IconButton = new IconButton(MaterialIcon.Add, words.add, () => openPlus(plusButton))
@@ -225,7 +225,7 @@ class Composer(onSend: Draft => Unit,
   private val chip = new Container
   private val chipWords = new TextView {
     font.size @= 13.0
-    color := Theme.accent()
+    color := Theme.accentText()
   }
   private val shield = new Container
   private val veil = new Container
@@ -337,6 +337,10 @@ class Composer(onSend: Draft => Unit,
   chipWords.position.left @= 32.0
   chipWords.position.middle := chip.size.middle()
   chipWords.maxWidth := math.max(40.0, size.width() - 48.0)
+  // one line in its pill, cut short with an ellipsis where it does not fit: the whole of it is its tooltip and its name
+  chipWords.whiteSpace @= WhiteSpace.NoWrap
+  chipWords.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+  chip.tooltip := suggestion().getOrElse("")
   chip.focusable @= true
   chip.size.width := chipWords.size.width() + 44.0
   chip.size.height @= 32.0
@@ -400,7 +404,7 @@ class Composer(onSend: Draft => Unit,
   tint.backgroundColor := Theme.accent().withAlpha(0.14)
   private val veilIcon = new MaterialIconView(MaterialIcon.FileUpload, 20.0)
   veilIcon.color := Theme.accent()
-  private val veilWords = TextView.bound(words.drop, 14.0, Theme.accent())
+  private val veilWords = TextView.bound(words.drop, 14.0, Theme.accentText())
   private val veilLine = Row(8.0, middle = true)(veilIcon, veilWords)
   veilLine.position.center := veil.size.center()
   veilLine.position.middle := veil.size.middle()

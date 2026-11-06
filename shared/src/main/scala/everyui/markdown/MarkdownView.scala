@@ -136,11 +136,11 @@ object MarkdownView {
   /** What a link does unless the app says: a path of this app shown in place, anything else opened. */
   def follow(href: String): Unit = Link.follow(href, newTab = !everyui.component.RichText.inApp(href))
 
-  def link(): Color = Theme.extra("markdown.link", Theme.accent())
+  def link(): Color = Theme.extra("markdown.link", Theme.accentText())
   def codeBackground(): Color = Theme.extra("markdown.code", Theme.raised())
   /** A mention's colour, and the faint wash behind it (`mentions`): `Theme.extra` "markdown.mention" and
     * "markdown.mentionWash" where the palette names them, else the accent, and the accent faintly. */
-  def mention(): Color = Theme.extra("markdown.mention", Theme.accent())
+  def mention(): Color = Theme.extra("markdown.mention", Theme.accentText())
   def mentionWash(): Color = Theme.extra("markdown.mentionWash", Theme.accent().withAlpha(0.14))
   def quoteBar(): Color = Theme.extra("markdown.quote", Theme.border())
 

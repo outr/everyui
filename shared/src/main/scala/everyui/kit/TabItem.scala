@@ -102,7 +102,7 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
     content := label()
     font.size @= 16.0
     font.weight := (if (selected) FontWeight.Bold else FontWeight.SemiBold)
-    color := (if (selected) Theme.accent() else if (TabItem.this.focusShown()) Theme.text() else Theme.muted())
+    color := (if (selected) Theme.accentText() else if (TabItem.this.focusShown()) Theme.text() else Theme.muted())
   }
   /** The close button, on a closable tab. */
   val closeButton: Option[MaterialIconView] = if (!closable) None else Some(new MaterialIconView(MaterialIcon.Close, 16.0) {

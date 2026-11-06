@@ -49,7 +49,7 @@ class StatusBar(working: Var[Vector[Working]], connection: Var[ConnectionState],
     case offline: ConnectionState.Offline =>
       val glyph = new MaterialIconView(MaterialIcon.CloudOff, 16.0)
       glyph.color := Theme.danger()
-      val said = words(ChatWords.offline + offline.reason.map(r => " · " + r).getOrElse(""), Theme.danger())
+      val said = words(ChatWords.offline + offline.reason.map(r => " · " + r).getOrElse(""), Theme.dangerText())
       Some(offline.retry match {
         case Some(again) => line(glyph, said, new Button(ChatWords.retry, again, ButtonStyle.Text, points = 12.0))
         case None => line(glyph, said)

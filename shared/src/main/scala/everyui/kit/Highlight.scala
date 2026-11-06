@@ -67,11 +67,11 @@ object Highlight {
     if (known.isEmpty && language.trim.isEmpty) List(TextRun(code))
     else if (diff(language)) diffRuns(code)
     else {
-      val keyword = Theme.extra("code.keyword", Theme.accent()).toHex
-      val string = Theme.extra("code.string", Theme.success()).toHex
+      val keyword = Theme.extra("code.keyword", Theme.accentText()).toHex
+      val string = Theme.extra("code.string", Theme.successText()).toHex
       val comment = Theme.extra("code.comment", Theme.muted()).toHex
-      val number = Theme.extra("code.number", Theme.warning()).toHex
-      val kind = Theme.extra("code.type", Theme.info()).toHex
+      val number = Theme.extra("code.number", Theme.warningText()).toHex
+      val kind = Theme.extra("code.type", Theme.infoText()).toHex
       val hash = hashComments(language)
       val sql = language.toLowerCase == "sql"
       var out: List[TextRun] = Nil
@@ -124,8 +124,8 @@ object Highlight {
     * a file's mode) bold; the rest, the lines around a change, plain. Each line's colour is the theme's "code.added",
     * "code.removed" and "code.hunk" where it has them. */
   private def diffRuns(code: String): List[TextRun] = {
-    val added = Theme.extra("code.added", Theme.success()).toHex
-    val removed = Theme.extra("code.removed", Theme.danger()).toHex
+    val added = Theme.extra("code.added", Theme.successText()).toHex
+    val removed = Theme.extra("code.removed", Theme.dangerText()).toHex
     val hunk = Theme.extra("code.hunk", Theme.muted()).toHex
     var out: List[TextRun] = Nil
     // where the plain stretch being read began, -1 for none

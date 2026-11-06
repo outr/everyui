@@ -40,7 +40,7 @@ class TimeField(label: String = DateWords.time, val value: Var[Option[ClockTime]
   private val opener = new IconButton(MaterialIcon.Schedule, DateWords.openClock, () => open())
   private val line = new Container
   private val warning =
-    TextView.line(if (input.exists(_.editing())) "" else error().getOrElse(""), 12.0, Theme.danger())
+    TextView.line(if (input.exists(_.editing())) "" else error().getOrElse(""), 12.0, Theme.dangerText())
 
   private def written(v: Option[ClockTime]): String = v.map(_.text()).getOrElse("")
 

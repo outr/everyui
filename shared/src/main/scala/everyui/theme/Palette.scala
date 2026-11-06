@@ -4,17 +4,26 @@ import everyui.Color
 
 /** The colours a theme is made of: the ground, the surfaces on it, controls and their lit (hovered or focused) state, the
   * edge of a field, text, the accent, and the states, plus `extras`: an app's own named colours (a brand's gold), which a theme can change as well.
-  * `dark` and `light` are the two the framework ships. */
+  * `dark` and `light` are the two the framework ships.
+  *
+  * The accent and the states have two tones: their own, for a glyph, a fill, a ring or a mark, which needs 3:1 against
+  * what it is on and may be as deep as a theme likes; and one for words in them, which need 4.5:1 (`Theme.accentText`
+  * and the rest). The words' tone is worked out from the role's own (`Tones.readable`: the same hue, lighter or darker
+  * as little as reads on every ground) unless the palette gives it (`accentText`, …). */
 case class Palette(background: Color, surface: Color, raised: Color, control: Color, controlLit: Color, border: Color,
                    text: Color, muted: Color, accent: Color, accentLit: Color, onAccent: Color, success: Color, warning: Color,
-                   danger: Color, info: Color, backdrop: Color, extras: Map[String, Color] = Map.empty)
+                   danger: Color, info: Color, backdrop: Color, extras: Map[String, Color] = Map.empty,
+                   accentText: Option[Color] = None, accentLitText: Option[Color] = None,
+                   successText: Option[Color] = None, warningText: Option[Color] = None,
+                   dangerText: Option[Color] = None, infoText: Option[Color] = None)
 
 // Each one's words (its text, muted, accent, success, warning, danger and info) are 4.5:1 or more against every ground
 // it has (background, surface, raised, control, controlLit), and onAccent against accent and accentLit: WCAG 2.2 AA
 // (PaletteContrastSpec). The border is lighter, for a card's edge; a control's is `Theme.edge`.
 object Palette {
-  /** Where `p` falls short of WCAG 2.2 AA, each as "muted on controlLit 4.25": its words (text, muted, accent, success,
-    * warning, danger, info) under 4.5:1 against any ground (background, surface, raised, control, controlLit),
+  /** Where `p` falls short of WCAG 2.2 AA, each as "muted on controlLit 4.25": its words (text, muted, and the words'
+    * tones of accent, success, warning, danger and info: `accentText` …) under 4.5:1 against any ground (background,
+    * surface, raised, control, controlLit), the roles' own tones, for a glyph or a fill, under 3:1 there,
     * onAccent under 4.5:1 on accent or accentLit, and a control's edge (`Theme.edge` for `p`) under 3:1 on what a
     * control sits on. None, for a palette that meets it: for an app's own palettes in its tests. */
   def audit(p: Palette): List[String] = {
@@ -23,10 +32,14 @@ object Palette {
       if (ratioOf >= need) Nil else List(name + " " + (math.round(ratioOf * 100.0) / 100.0).toString)
     val grounds = List("background" -> p.background, "surface" -> p.surface, "raised" -> p.raised,
       "control" -> p.control, "controlLit" -> p.controlLit)
-    val words = List("text" -> p.text, "muted" -> p.muted, "accent" -> p.accent, "success" -> p.success,
-      "warning" -> p.warning, "danger" -> p.danger, "info" -> p.info)
+    // the roles: each one's own tone, for a glyph or a fill, and its words' tone
+    val roles = List(("accent", p.accent, p.accentText), ("success", p.success, p.successText),
+      ("warning", p.warning, p.warningText), ("danger", p.danger, p.dangerText), ("info", p.info, p.infoText))
+    val words = List("text" -> p.text, "muted" -> p.muted) ++
+      roles.map(r => (r._1 + "Text") -> r._3.getOrElse(Tones.readable(r._2, p)))
     val edge = Theme.edgeOf(p)
     words.flatMap(w => grounds.flatMap(g => short(w._1 + " on " + g._1, ratio(w._2, g._2), 4.5))) ++
+      roles.flatMap(r => grounds.flatMap(g => short(r._1 + " on " + g._1, ratio(r._2, g._2), 3.0))) ++
       short("onAccent on accent", ratio(p.onAccent, p.accent), 4.5) ++
       short("onAccent on accentLit", ratio(p.onAccent, p.accentLit), 4.5) ++
       grounds.take(3).flatMap(g => short("edge on " + g._1, ratio(edge, g._2), 3.0))

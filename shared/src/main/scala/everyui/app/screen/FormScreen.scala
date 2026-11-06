@@ -59,8 +59,8 @@ trait FormScreen extends UIScreen {
   // the screen never showed
   override def createUI(): Task[Unit] = Task {
     val top = header()
-    val errorBox = new Notice(error().getOrElse(""), Theme.danger(), width)
-    val noticeBox = new Notice(notice().getOrElse(""), Theme.accent(), width)
+    val errorBox = new Notice(error().getOrElse(""), Theme.dangerText(), width)
+    val noticeBox = new Notice(notice().getOrElse(""), Theme.accentText(), width)
     val card = new Container {
       layout @= Some(VerticalLayout(18.0))
       padding @= (if (framed) 28.0 else 0.0)

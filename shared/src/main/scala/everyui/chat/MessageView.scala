@@ -92,7 +92,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
       content @= r.count.toString
       font.size @= 12.0
       font.weight @= (if (r.mine) FontWeight.SemiBold else FontWeight.Normal)
-      color := (if (r.mine) Theme.accent() else Theme.muted())
+      color := (if (r.mine) Theme.accentText() else Theme.muted())
     }
     private val line = Row(4.0, middle = true)(glyph, count)
     size.width := line.size.width() + 16.0

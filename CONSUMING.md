@@ -4166,6 +4166,15 @@ These cover what a web app would otherwise reach the browser for directly, so th
   button): the border taken toward the text as little as gives 3:1 against what a control sits on (WCAG 1.4.11),
   which EveryUI's fields use; a card's edge keeps the lighter `border`. What the screen shows is checked whatever
   palette made it: `Access.check`'s contrast rule.
+- **Two tones a role.** The accent and the states each have their own tone, for a glyph, a fill, a ring or a mark
+  (3:1 against what it is on, as deep as a theme likes), and a tone for words in them (4.5:1 on every ground):
+  `Theme.accentText()`, `accentLitText`, `successText`, `warningText`, `dangerText` and `infoText`. The words' tone is
+  the role's own where that reads already, the palette's `accentText` (and the rest) where it gives one, and else the
+  least lighter (on dark grounds) or darker tone of the same hue that reads (`Tones.readable`). EveryUI's words take it:
+  a text button's label, a link, a selected tab's name, a field's caption, an error under a field, code's colours, a
+  notice in a form; its glyphs, check marks, fills, rings and spinners keep the role's own. Colour words of the app's in
+  a role with the words' accessor, and any colour with `Theme.readable(c)` (a tag's on its wash). `Palette.audit`
+  judges the words' tones at 4.5:1 and the roles' own at 3:1.
 - **The build, and reloading into a new one.** `Platform.buildId()` names the running build.
   - **Web**: the version the page loaded its script by, which `everyuiWebScripts` writes as `main.js?v=…` or
     `everyui-loader.js?v=…`.

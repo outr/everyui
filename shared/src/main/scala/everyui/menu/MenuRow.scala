@@ -25,7 +25,7 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
   private val slot: Double = points * 1.4
   private val ink: Val[Color] = own(Val(
     if (!item.enabled) Theme.muted().withAlpha(0.6) else if (item.danger) Theme.warning()
-    else if (item.active) Theme.accent() else Theme.text()))
+    else if (item.active) Theme.accentText() else Theme.text()))
 
   // a tick that follows the app (`MenuItem.on`) is there however it starts, shown as it is on
   private val lead: Option[MaterialIconView] =

@@ -178,7 +178,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     content := look().flatMap(_.time).map(t => owner.timeText(t, owner.now())).getOrElse("")
     font.size @= 11.5
     font.weight := (if (unread()) FontWeight.SemiBold else FontWeight.Normal)
-    color := (if (unread()) Theme.accent() else Theme.muted())
+    color := (if (unread()) Theme.accentText() else Theme.muted())
     visible := look().exists(_.time.nonEmpty) && !menuShows()
   }
   val mark: MaterialIconView = new MaterialIconView(MaterialIcon.Empty, 14.0) {

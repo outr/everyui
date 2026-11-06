@@ -12,7 +12,7 @@ import reactify.*
   * danger colour, lit and ringed under the focus. An async action spins in place while its work runs. */
 class DialogButton(val action: DialogAction, points: Double = 14.0) extends Container {
   private val tint: () => Color = () =>
-    if (action.danger) Theme.danger() else if (action.default) Theme.accent() else Theme.text()
+    if (action.danger) Theme.dangerText() else if (action.default) Theme.accentText() else Theme.text()
   private val text = new TextView {
     content @= action.label
     font.size @= points

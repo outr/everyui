@@ -21,7 +21,8 @@ class Tag(label: => String, colour: => Color, soft: Boolean = false, points: Dou
     content := label
     font.size @= points
     font.weight @= FontWeight.SemiBold
-    color := (if (soft) colour else Tag.ink(colour))
+    // (on a wash, the words in the colour's own tone that reads: `Theme.readable`)
+    color := (if (soft) Theme.readable(colour) else Tag.ink(colour))
     position.left @= points * 0.6
     position.top @= points * 0.15
   }

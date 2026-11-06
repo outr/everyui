@@ -26,7 +26,7 @@ class ToggleButton(on: Var[Boolean], name: String, glyph: MaterialIcon = Materia
       font.weight @= FontWeight.Bold
       // the letters as they are written, ".*" never turned to "*." in a right-to-left language
       direction @= TextDirection.LeftToRight
-      color := ink()
+      color := (if (on()) Theme.accentText() else ink())
       position.left := (ToggleButton.side - size.width()) / 2.0
       position.top := (ToggleButton.side - size.height()) / 2.0
     }

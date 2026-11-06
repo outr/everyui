@@ -46,10 +46,10 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   private val foreground: Val[Color] = own(Val(
     if (!enabled()) Theme.muted()
     else if (style == ButtonStyle.Filled) Theme.onAccent()
-    else if (danger()) Theme.danger()
+    else if (danger()) Theme.dangerText()
     else if (style == ButtonStyle.Tonal) Theme.text()
     else if (lit() && style == ButtonStyle.Text) Theme.text()
-    else Theme.accent()))
+    else Theme.accentText()))
   private val words: TextView = new TextView {
     content := label()
     font.size @= points

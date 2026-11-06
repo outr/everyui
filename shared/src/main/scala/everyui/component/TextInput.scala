@@ -56,8 +56,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   private val caption = new TextView {
     content := title()
     font.size @= 12.0
-    color := (if (TextInput.this.invalid().nonEmpty) Theme.danger()
-      else if (TextInput.this.focused()) Theme.accent() else Theme.muted())
+    color := (if (TextInput.this.invalid().nonEmpty) Theme.dangerText()
+      else if (TextInput.this.focused()) Theme.accentText() else Theme.muted())
     position.left @= 14.0
     position.top @= 7.0
     // as wide as the field, so the label starts where the reading direction does

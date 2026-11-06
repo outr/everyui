@@ -21,7 +21,7 @@ class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T
     whiteSpace @= WhiteSpace.NoWrap
     font.size @= points
     // the one in use in the accent, its ring and ground the row's own (`ListRow.inUse`)
-    color := (if (inUse()) Theme.accent() else Theme.text())
+    color := (if (inUse()) Theme.accentText() else Theme.text())
     runs := item().map(t => HighlightRow.runs(text(t), spans(t), points)).getOrElse(Nil)
   }
   private val note = new TextView {
@@ -50,7 +50,7 @@ class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T
 object HighlightRow {
   /** `text` as runs, those in `spans` lit. */
   def runs(text: String, spans: List[(Int, Int)], points: Double): List[TextRun] = {
-    val lit = Theme.accent().toHex
+    val lit = Theme.accentText().toHex
     var out: List[TextRun] = Nil
     var at = 0
     spans.foreach { case (start, end) =>

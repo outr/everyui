@@ -62,6 +62,34 @@ object Theme {
   def warning(): Color = palette().warning
   def danger(): Color = palette().danger
   def info(): Color = palette().info
+
+  /** The accent and the states as words are drawn in them: their own tones where those read at 4.5:1 on every ground,
+    * else the palette's `accentText` and the rest where it gives them, else the least lighter or darker tone of the
+    * same hue that does (`Tones.readable`). A glyph, a fill, a ring keeps `accent()`; its words take `accentText()`. */
+  def accentText(): Color = { val p = palette(); wordsTone("accent", p.accent, p.accentText) }
+  def accentLitText(): Color = { val p = palette(); wordsTone("accentLit", p.accentLit, p.accentLitText) }
+  def successText(): Color = { val p = palette(); wordsTone("success", p.success, p.successText) }
+  def warningText(): Color = { val p = palette(); wordsTone("warning", p.warning, p.warningText) }
+  def dangerText(): Color = { val p = palette(); wordsTone("danger", p.danger, p.dangerText) }
+  def infoText(): Color = { val p = palette(); wordsTone("info", p.info, p.infoText) }
+  /** Any colour as words read in it on this palette's grounds (an app's own: a tag's, a brand's). */
+  def readable(c: Color): Color = Tones.readable(c, palette())
+
+  // the words' tone of each role, worked out once for each palette
+  private var tonesOf: Palette = null
+  private var tones: Map[String, Color] = Map.empty
+  private def wordsTone(name: String, own: Color, set: Option[Color]): Color = set.getOrElse {
+    val p = palette()
+    if (!(tonesOf eq p)) {
+      tonesOf = p
+      tones = Map.empty
+    }
+    tones.getOrElse(name, {
+      val t = Tones.readable(own, p)
+      tones = tones + (name -> t)
+      t
+    })
+  }
   def backdrop(): Color = palette().backdrop
   /** An app's own colour from the palette's `extras`, or `fallback` where the palette has none. */
   def extra(name: String, fallback: => Color): Color = palette().extras.getOrElse(name, fallback)

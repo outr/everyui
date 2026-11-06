@@ -50,7 +50,7 @@ class DateField(label: String = DateWords.date, val value: Var[Option[CalendarDa
   private val face = new Container
   private val opener = new IconButton(MaterialIcon.CalendarMonth, DateWords.openCalendar, () => open())
   private val line = new Container
-  private val warning = TextView.line(if (input.exists(_.editing())) "" else error().getOrElse(""), 12.0, Theme.danger())
+  private val warning = TextView.line(if (input.exists(_.editing())) "" else error().getOrElse(""), 12.0, Theme.dangerText())
 
   layout @= Some(VerticalLayout(4.0))
   line.layout @= Some(HorizontalLayout(12.0, middle = true))

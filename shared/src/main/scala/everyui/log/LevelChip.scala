@@ -14,7 +14,7 @@ class LevelChip(val level: LogLevel, on: => Boolean, turn: () => Unit) extends C
     font.family @= LogView.face
     font.size @= 11.0
     font.weight @= FontWeight.SemiBold
-    color := (if (shows()) LevelChip.colour(level) else Theme.muted().withAlpha(0.7))
+    color := (if (shows()) Theme.readable(LevelChip.colour(level)) else Theme.muted().withAlpha(0.7))
     position.left @= 8.0
   }
   words.position.top := (size.height() - words.size.height()) / 2.0

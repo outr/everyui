@@ -65,7 +65,7 @@ object Dialogs {
     val field = new TextInput(label, secure, width)
     field.value @= initial
     val problem: Var[String] = Var("")
-    val error = TextView.line(problem(), DialogPanel.textSize() * 0.9, Theme.danger(), widest = width)
+    val error = TextView.line(problem(), DialogPanel.textSize() * 0.9, Theme.dangerText(), widest = width)
     field.value.attach(_ => problem @= "")
     val ok = DialogAction.async(okLabel, default = true) { done =>
       val words = field.value()

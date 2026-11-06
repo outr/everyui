@@ -54,7 +54,7 @@ class CalendarDay(calendar: Calendar, index: Int, cellWidth: Double, cellHeight:
   number.content := date().day.toString
   number.font.size @= calendar.points
   number.color := (if (!allowed()) Theme.muted().withAlpha(0.6) else if (mark().selected) Theme.onAccent()
-    else if (today()) Theme.accent() else Theme.text())
+    else if (today()) Theme.accentText() else Theme.text())
   number.position.center := cellWidth / 2.0
   number.position.middle := cellHeight / 2.0
 

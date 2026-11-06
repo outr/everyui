@@ -11,7 +11,7 @@ object RichLook {
   /** The theme's, at `size`. */
   def themed(size: Double = 15.0): RichLook = {
     import everyui.theme.Theme
-    RichLook(size, Theme.family(), Theme.text(), Theme.muted(), Theme.accent(), Theme.control(), Theme.border(),
+    RichLook(size, Theme.family(), Theme.text(), Theme.muted(), Theme.accentText(), Theme.control(), Theme.border(),
       Theme.accent().withAlpha(0.3))
   }
 }

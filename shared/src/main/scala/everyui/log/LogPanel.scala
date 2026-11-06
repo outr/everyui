@@ -35,7 +35,7 @@ class LogPanel(val view: LogView = new LogView()) extends Container {
   private val counted = new TextView {
     content := LogPanel.counted(view)
     font.size @= 12.0
-    color := (if (view.broken()) Theme.danger() else Theme.muted())
+    color := (if (view.broken()) Theme.dangerText() else Theme.muted())
     align @= TextAlign.Center
     size.width @= 68.0
   }

@@ -11,7 +11,7 @@ class Tab(label: String, screen: Screen, manager: ScreenManager) extends Contain
   private val text = new TextView {
     content @= label
     font.size @= 14.0
-    color := (if (manager.active().exists(_ eq screen)) Theme.accent() else Theme.text())
+    color := (if (manager.active().exists(_ eq screen)) Theme.accentText() else Theme.text())
     position.left @= 12.0
     position.top @= 6.0
   }

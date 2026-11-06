@@ -34,7 +34,7 @@ class DateRangeField(val value: Var[Option[DateRange]] = Var(None), startLabel: 
   val error: Var[Option[String]] = own(Var(None))
   private val opener = new IconButton(MaterialIcon.DateRange, DateWords.openCalendar, () => open())
   private val line = new Container
-  private val warning = TextView.line(error().getOrElse(""), 12.0, Theme.danger())
+  private val warning = TextView.line(error().getOrElse(""), 12.0, Theme.dangerText())
 
   layout @= Some(VerticalLayout(4.0))
   line.layout @= Some(HorizontalLayout(12.0))
