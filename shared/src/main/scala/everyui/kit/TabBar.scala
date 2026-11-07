@@ -47,6 +47,8 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   val addLabel: Var[String] = Var(TabBar.addWord)
 
   private var plus: Option[TabAdd] = None
+  // what trails the tabs (the "+"), and the divider before it, as wide as they are together
+  private def trailing: Double = TabBar.divider + TabAdd.width
   // the keys shown, the latest first, however `current` came to change: where the tab shown goes, the one before it
   private var history: List[String] = List(current())
   current.attach(k => history = k :: history.filterNot(_ == k))
@@ -56,7 +58,7 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
 
   private val scroll = new ScrollContainer(horizontal = true) {
     // with a "+" as wide as the tabs, so it sits just after the last, and no wider than leaves it room at the end
-    size.width := (if (addMenu().isEmpty) width else math.max(0.0, math.min(width - TabAdd.width, content.size.width())))
+    size.width := (if (addMenu().isEmpty) width else math.max(0.0, math.min(width - trailing, content.size.width())))
     position.left := (if (Direction.rtl()) width - size.width() else 0.0)
     size.height @= TabBar.height
     content.layout @= Some(HorizontalLayout(0.0))
@@ -70,16 +72,30 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   }
   // the rule runs as far as the tabs (and the "+") do, from the right in a right-to-left language
   private val rule = new Container {
-    size.width := math.min(width, scroll.content.size.width() + (if (addMenu().isEmpty) 0.0 else TabAdd.width))
+    size.width := math.min(width, scroll.content.size.width() + (if (addMenu().isEmpty) 0.0 else trailing))
     position.left := (if (Direction.rtl()) width - size.width() else 0.0)
     size.height @= 1.0
     position.top @= TabBar.height - 1.0
     backgroundColor := Theme.border()
   }
 
+  // a short line between the last tab and what trails it, so the "+" is not read as part of the last tab; gone beside a
+  // last tab that is shown, lit or under the pointer, whose edge it would double. Only drawn: no stop for the focus,
+  // nothing to a screen reader
+  private val divider = new Container {
+    size.width @= 1.0
+    size.height @= TabBar.height * 0.6
+    position.top @= TabBar.height * 0.2
+    position.left := (if (Direction.rtl()) scroll.position.left() - TabBar.divider / 2.0 - 0.5
+      else scroll.size.width() + TabBar.divider / 2.0 - 0.5)
+    backgroundColor := Theme.border()
+    visible := addMenu().nonEmpty &&
+      !tabs().lastOption.exists(t => current() == t.key || t.focusShown() || t.pointerOver())
+  }
+
   size.width := width
   size.height @= TabBar.height
-  children ++= List(rule, scroll)
+  children ++= List(rule, scroll, divider)
   semantics @= Semantics("tablist")
   // arriving from elsewhere, the focus lands on the tab being shown rather than the nearest one: a tab can show itself
   // on focus, so the nearest one would be another page
@@ -101,7 +117,8 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
           override def focusExit(direction: Key): Option[Option[Component]] =
             if (direction == backward && tabs().nonEmpty) Some(Some(tabs().last)) else super.focusExit(direction)
         }
-        made.position.left := (if (Direction.rtl()) scroll.position.left() - TabAdd.width else scroll.size.width())
+        made.position.left := (if (Direction.rtl()) scroll.position.left() - trailing
+          else scroll.size.width() + TabBar.divider)
         plus = Some(made)
         made
       }
@@ -188,6 +205,8 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
 
 object TabBar {
   val height: Double = 44.0
+  /** The room the divider before what trails the tabs takes, a line and a little space either side. */
+  val divider: Double = 9.0
 
   /** What the "+" is called unless the app says (`addLabel`). */
   def addWord: String = {

@@ -43,6 +43,13 @@ class TabItem(val key: String, title: String, current: Var[String], closable: Bo
   val marker: Var[Option[Component]] = Var(None)
 
   private def selected: Boolean = current() == key
+  // whether a pointer rests on it: the bar's divider before what trails the tabs hides beside a last tab lit so
+  private[kit] lazy val pointerOver: Var[Boolean] = {
+    val over = own(Var(false))
+    event.pointer.enter.attach(_ => over @= true)
+    event.pointer.leave.attach(_ => over @= false)
+    over
+  }
   /** What leads the label (`TabLead`), changeable as the label is: a renamed persona's face, a new portrait. */
   val lead: Var[TabLead] = own(Var(firstLead))
   // who the avatar shows and which icon: the lead's view follows them in place while the lead keeps its kind

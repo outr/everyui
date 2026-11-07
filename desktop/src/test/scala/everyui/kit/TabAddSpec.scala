@@ -49,7 +49,7 @@ class TabAddSpec extends FxSpec {
       val bar = barOf(1000.0, 3)
       try {
         fx(bar.addButton) shouldBe None
-        fx(bar.childComponents.size) shouldBe 2
+        fx(bar.childComponents.size) shouldBe 3
         fx(scrollOf(bar).size.width()) shouldBe 1000.0
         fx(bar.openAddMenu())
         fx(Modal.showing) shouldBe false
@@ -60,21 +60,22 @@ class TabAddSpec extends FxSpec {
         }))
         val plus = fx(bar.addButton.get)
         val last = fx(bar.tabs().last)
-        eventually(plus.absoluteLeft == last.absoluteLeft + last.size.width()) shouldBe true
+        eventually(plus.absoluteLeft == last.absoluteLeft + last.size.width() + TabBar.divider) shouldBe true
         fx(plus.absoluteTop) shouldBe fx(bar.absoluteTop)
         fx(plus.size.height()) shouldBe TabBar.height
         fx(plus.size.width()) shouldBe TabAdd.width
         // the rule runs under it too
         fx(bar.childComponents.head.size.width()) shouldBe fx(last.absoluteLeft + last.size.width() - bar.absoluteLeft +
-          TabAdd.width)
+          TabBar.divider + TabAdd.width)
         // a tab more and it moves along
         fx(bar.add("t9", "Another"))
-        eventually(plus.absoluteLeft == bar.tabs().last.absoluteLeft + bar.tabs().last.size.width()) shouldBe true
+        eventually(plus.absoluteLeft == bar.tabs().last.absoluteLeft + bar.tabs().last.size.width() + TabBar.divider)
+          .shouldBe(true)
         built shouldBe 0
         // and taken off again with the menu, the bar as it was
         fx(bar.addMenu @= None)
         fx(bar.addButton) shouldBe None
-        fx(bar.childComponents.size) shouldBe 2
+        fx(bar.childComponents.size) shouldBe 3
         fx(scrollOf(bar).size.width()) shouldBe 1000.0
       }
       finally clean()
@@ -87,7 +88,7 @@ class TabAddSpec extends FxSpec {
         val plus = fx(bar.addButton.get)
         val scroll = fx(scrollOf(bar))
         eventually(plus.absoluteLeft == 100.0 + 400.0 - TabAdd.width) shouldBe true
-        fx(scroll.size.width()) shouldBe 400.0 - TabAdd.width
+        fx(scroll.size.width()) shouldBe 400.0 - TabAdd.width - TabBar.divider
         fx(bar.tabs().last.absoluteLeft) should be > 400.0
         // the last tab shown is scrolled into view before the +, which stays put
         fx(bar.tabs().last.focus())
@@ -96,6 +97,35 @@ class TabAddSpec extends FxSpec {
           t.absoluteLeft + t.size.width() <= plus.absoluteLeft + 0.5
         } shouldBe true
         fx(plus.absoluteLeft) shouldBe 100.0 + 400.0 - TabAdd.width
+      }
+      finally clean()
+    }
+
+    "be set apart from the last tab by a short line, gone while the last tab is shown, and never a stop" in {
+      val bar = barOf(1000.0, 3)
+      try {
+        def line: Option[Component] =
+          bar.childComponents.find(c => c.size.width() == 1.0 && c.size.height() < TabBar.height)
+        fx(line.exists(_.visible())) shouldBe false
+        fx(bar.addMenu @= Some(() => List(MenuItem("New"))))
+        val plus = fx(bar.addButton.get)
+        val last = fx(bar.tabs().last)
+        eventually(plus.absoluteLeft == last.absoluteLeft + last.size.width() + TabBar.divider) shouldBe true
+        val divider = fx(line.get)
+        fx(divider.visible()) shouldBe true
+        fx(divider.absoluteLeft) should (be > fx(last.absoluteLeft + last.size.width()) and be < fx(plus.absoluteLeft))
+        fx(divider.size.height()) shouldBe (TabBar.height * 0.6) +- 0.01
+        fx(divider.absoluteTop - bar.absoluteTop) shouldBe (TabBar.height * 0.2) +- 0.01
+        fx(divider.focusable()) shouldBe false
+        // beside a last tab under the pointer, or shown, its edge is not doubled
+        fx(last.pointerOver @= true)
+        fx(divider.visible()) shouldBe false
+        fx(last.pointerOver @= false)
+        fx(divider.visible()) shouldBe true
+        fx(last.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0))
+        fx(divider.visible()) shouldBe false
+        fx(bar.tabs().head.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0))
+        fx(divider.visible()) shouldBe true
       }
       finally clean()
     }
@@ -165,7 +195,7 @@ class TabAddSpec extends FxSpec {
         fx(bar.addMenu @= Some(() => List(MenuItem("New"))))
         val plus = fx(bar.addButton.get)
         val last = fx(bar.tabs().last)
-        eventually(plus.absoluteLeft + TabAdd.width == last.absoluteLeft) shouldBe true
+        eventually(plus.absoluteLeft + TabAdd.width + TabBar.divider == last.absoluteLeft) shouldBe true
         fx(bar.tabs().head.absoluteLeft + bar.tabs().head.size.width()) shouldBe 1100.0
         fx(last.focus())
         press("ArrowLeft")
@@ -181,7 +211,7 @@ class TabAddSpec extends FxSpec {
         val wide = barOf(400.0, 8)
         fx(wide.addMenu @= Some(() => List(MenuItem("New"))))
         eventually(wide.addButton.get.absoluteLeft == 100.0) shouldBe true
-        fx(scrollOf(wide).absoluteLeft) shouldBe 100.0 + TabAdd.width
+        fx(scrollOf(wide).absoluteLeft) shouldBe 100.0 + TabAdd.width + TabBar.divider
       }
       finally {
         clean()
@@ -227,7 +257,8 @@ class TabAddSpec extends FxSpec {
         val second = fx(g.groups()(1))
         val plus = fx(second.bar.addButton.get)
         fx(plus eq first.bar.addButton.get) shouldBe false
-        eventually(plus.absoluteLeft == second.bar.tabs().last.absoluteLeft + second.bar.tabs().last.size.width()) shouldBe true
+        val end = fx(second.bar.tabs().last)
+        eventually(plus.absoluteLeft == end.absoluteLeft + end.size.width() + TabBar.divider) shouldBe true
         fx(first.focusTab())
         fx(plus.event.click @= PointerEvent(PointerKind.Click, 0.0, 0.0))
         asked.last shouldBe second
