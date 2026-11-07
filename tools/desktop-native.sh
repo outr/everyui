@@ -62,9 +62,16 @@ if [ $TRACE = 1 ]; then
     > "$LOGS/agent-tray-check.log" 2>&1
   rm -f "$CFG/.lock"
   # a Scala object's lazy values are found by their fields as it starts: every field of these, rather than each
+  # and the byte order Glass asks of a buffer through JNI as it hands the frame to the window, which no traced run
+  # recorded: without it the buffer stays big-endian and every colour on the screen comes out wrong (red as cyan)
   node -e 'const f=process.argv[1]; const n=JSON.parse(require("fs").readFileSync(f));
     n.reflection=n.reflection.map(e => ["everyui.font.MaterialIcon$","everyui.Color$"].includes(e.type) ?
       Object.assign({type: e.type, allDeclaredFields: true}, e.methods ? {methods: e.methods} : {}) : e);
+    const bb = n.reflection.find(e => e.type === "java.nio.ByteBuffer");
+    if (bb && !(bb.methods || []).some(m => m.name === "order"))
+      (bb.methods = bb.methods || []).push({name: "order", parameterTypes: ["java.nio.ByteOrder"]});
+    if (!n.reflection.some(e => e.type === "java.nio.ByteOrder")) n.reflection.push({type: "java.nio.ByteOrder",
+      jniAccessible: true, methods: [{name: "nativeOrder", parameterTypes: []}]});
     require("fs").writeFileSync(f, JSON.stringify(n, null, 2) + "\n")' "$CFG/reachability-metadata.json"
   if [ -s "$CFG/reachability-metadata.json" ]; then pass "$(wc -c < "$CFG/reachability-metadata.json") bytes of metadata"; else fail; exit 1; fi
 fi

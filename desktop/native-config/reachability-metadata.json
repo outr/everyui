@@ -1299,6 +1299,12 @@
           "parameterTypes": [
             "byte[]"
           ]
+        },
+        {
+          "name": "order",
+          "parameterTypes": [
+            "java.nio.ByteOrder"
+          ]
         }
       ]
     },
@@ -1595,6 +1601,16 @@
     },
     {
       "type": "sun.text.resources.cldr.FormatData_en_US"
+    },
+    {
+      "type": "java.nio.ByteOrder",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "nativeOrder",
+          "parameterTypes": []
+        }
+      ]
     }
   ],
   "resources": [
