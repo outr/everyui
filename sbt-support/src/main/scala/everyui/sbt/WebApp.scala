@@ -40,8 +40,23 @@ object WebApp {
     withHead.replaceFirst("(?i)</body>", java.util.regex.Matcher.quoteReplacement(register + "</body>"))
   }
 
-  /** What registers the service worker: a file of its own, so a page whose policy allows no inline script still runs it. */
-  val registration: String = "if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');\n"
+  /** What registers the service worker: a file of its own, so a page whose policy allows no inline script still runs it.
+    * A browser that will not have it (an extension's `worker-src 'none'`, a private window, a page framed without
+    * the right) is told as one quiet warning, and as an `everyui-sw-refused` event on `window` (its `detail` what was
+    * said) for an app that wants to know, rather than as an uncaught rejection, which an app's error reporting took for
+    * a failure of its own. */
+  val registration: String =
+    """(function () {
+      |  function refused(e) {
+      |    var said = String((e && e.message) || e);
+      |    console.warn("Service worker not registered: " + said);
+      |    try { window.dispatchEvent(new CustomEvent("everyui-sw-refused", { detail: said })); } catch (ignored) {}
+      |  }
+      |  try {
+      |    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(refused);
+      |  } catch (e) { refused(e); }
+      |})();
+      |""".stripMargin
 
   /** The service worker: the network first, what it fetched kept in a cache named by `version` for when it is not
     * there, and older caches cleared once this one is in charge. Only whole answers (200) are kept: a video, a sound
