@@ -132,9 +132,13 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   private var wholeToBox = false
   /** Wrapping words measured whole, on one line, and wrapped only where they pass their box: a button's label
     * (`Button.labelLines`), in a row sized to it, which the web would otherwise wrap at that row, word by word. */
+  // measured whole where they wrap at a limit of their own (`maxWidth`) or a box (`measureWhole`), with no width of
+  // their own: what holds them, sized to them (a pill round a note), is no limit, though the web wraps them at it, and
+  // words first measured in a pill not yet grown round them were wrapped at its width, a few letters wide, and kept so
+  private def wholeNow(): Unit = node.setTextWhole((wholeToBox || maxWidth() > 0.0) && !size.width.explicit)
   private[everyui] def measureWhole(on: Boolean): Unit = if (on != wholeToBox) {
     wholeToBox = on
-    node.setTextWhole(on && !size.width.explicit)
+    wholeNow()
     stale = true
     measure.trigger()
   }
@@ -231,7 +235,10 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     fit(why = "box")
   }
 
-  maxWidth.attach(_ => fit(why = "maxWidth"))
+  maxWidth.attach { _ =>
+    wholeNow()
+    fit(why = "maxWidth")
+  }
   maxLines.attach(_ => fit(why = "maxLines"))
   elide.attach(_ => if (maxWidth() > 0.0) fit(why = "elide"))
   // drawn in another face or size, the words are cut again: the cut was made in the one before
