@@ -2143,12 +2143,13 @@ object Platform {
   def sizesOf(nodes: List[RenderNode]): List[(Double, Double)] = nodes.map(_.getSize())
 
   /** Logcat, tag `everyui`. */
-  def log(message: String): Unit = Log.i("everyui", "[ui] " + message)
+  // (an address's secrets masked, a stream's token with them, whatever is logged: everyui.log.Redact)
+  def log(message: String): Unit = Log.i("everyui", everyui.log.Redact("[ui] " + message))
 
-  /** A failure with its cause: logcat gets the stack. */
+  /** A failure with its cause: logcat gets the stack, an address's secrets in it masked as well. */
   def logError(message: String, t: Throwable): Unit = {
-    Log.i("everyui", "[ui] ERROR " + message + ": " + t.toString)
-    Log.e("everyui", message, t)
+    Log.i("everyui", everyui.log.Redact("[ui] ERROR " + message + ": " + t.toString))
+    Log.e("everyui", everyui.log.Redact(message + "\n" + Log.getStackTraceString(t)))
   }
 
   def ticks(): Double = System.nanoTime() / 1.0e6

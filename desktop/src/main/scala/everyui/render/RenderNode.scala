@@ -1388,12 +1388,15 @@ object Platform {
   /** Guarded while `flag` is set. */
   def leaveGuardWhile(flag: reactify.Val[Boolean]): () => Unit = everyui.app.LeaveGuards.addWhile(flag)
 
-  def log(message: String): Unit = println("[ui] " + message)
+  // (an address's secrets masked, a stream's token with them, whatever is logged: everyui.log.Redact)
+  def log(message: String): Unit = println(everyui.log.Redact("[ui] " + message))
 
-  /** A failure with its cause: the console gets the stack. */
+  /** A failure with its cause: the console gets the stack, an address's secrets in it masked as well. */
   def logError(message: String, t: Throwable): Unit = {
-    println("[ui] ERROR " + message + ": " + t.toString)
-    t.printStackTrace()
+    println(everyui.log.Redact("[ui] ERROR " + message + ": " + t.toString))
+    val stack = new java.io.StringWriter
+    t.printStackTrace(new java.io.PrintWriter(stack))
+    System.err.print(everyui.log.Redact(stack.toString))
   }
 
   def ticks(): Double = System.nanoTime() / 1.0e6
