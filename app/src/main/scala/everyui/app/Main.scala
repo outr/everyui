@@ -23,6 +23,8 @@ import everyui.render.Platform
   *   autofill   a sign-in and a contact form as autofill and password managers see them
   *   rtlscroll  a rail in a right-to-left language, as the web's own scroll holds it
   *   rows       a table of `n=` rows built and then grown a row at a time, timed
+  *   swipe      a page of cards a tap is heard on, with a rail across it: a finger swipe scrolls either, however it
+  *              starts, and a tap lands; where each comes to rest and each tap logged
   *   composer   a chat's composer: suggestions, attachments, @-mentions and /commands, a reply faked as busy
   *   chat       a group room in a ChatView: streaming replies, tool calls, reasoning, 2000 earlier entries (`theme=light`,
   *              `rtl=1`, `offline=1`, `probe=1`, `author=log`, `queue=1` for a composer that queues while a reply comes)
@@ -143,6 +145,7 @@ import everyui.render.Platform
   else if (demo == "autofill") AutofillDemo.run()
   else if (demo == "rtlscroll") RtlScrollDemo.run()
   else if (demo == "rows") RowsDemo.run()
+  else if (demo == "swipe") SwipeDemo.run()
   else if (demo == "composer") ComposerDemo.run()
   else if (demo == "chat") ChatDemo.run()
   else if (demo == "chatperf") ChatPerfDemo.run()

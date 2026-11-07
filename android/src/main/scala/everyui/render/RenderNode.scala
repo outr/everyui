@@ -759,6 +759,8 @@ class RenderNode(val view: View) {
     touchHook.foreach(f => f(e))
     val action = e.getActionMasked
     if (action == MotionEvent.ACTION_DOWN) {
+      // what drags itself keeps the drag from a scroll it is in (Android lets go of the ask as the touch ends)
+      if (keepsDrag && view.getParent != null) view.getParent.requestDisallowInterceptTouchEvent(true)
       fire(PointerKind.Down, e)
       downAt = (e.getRawX, e.getRawY)
       pressedLong = false
@@ -804,8 +806,19 @@ class RenderNode(val view: View) {
     true
   }
 
-  /** The shared ScrollContainer shifts the content; the node only clips. */
-  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = ()
+  /** The shared ScrollContainer shifts the content; the node only clips, and takes a finger's drag along it from what
+    * the finger went down on (`NodeGroup.onInterceptTouchEvent`): it hears the finger go down where it did, then the
+    * move it was taken on, and every move after as its own. */
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = view match {
+    case g: NodeGroup =>
+      g.scrollsAlong = if (vertical) 1 else if (horizontal) 2 else 0
+      g.takeDrag = (moved, x, y) => {
+        val down = MotionEvent.obtain(moved.getDownTime, moved.getEventTime, MotionEvent.ACTION_DOWN, x, y, 0)
+        try touch(down) finally down.recycle()
+        touch(moved)
+      }
+    case _ => ()
+  }
   def setScrollLeft(x: Double): Unit = ()
   /** The shared ScrollContainer moves the content itself, so the node never scrolls on its own. */
   def onScrolled(f: () => Unit): Unit = ()
@@ -865,7 +878,10 @@ class RenderNode(val view: View) {
     case _ => ()
   }
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
-  def setTouchDrags(on: Boolean): Unit = ()
+  /** A finger dragged on it drags it, rather than scrolling what it is in: as it goes down, a scroll holding it is told
+    * not to take the drag (`NodeGroup.onInterceptTouchEvent`), for that touch. */
+  def setTouchDrags(on: Boolean): Unit = keepsDrag = on
+  private var keepsDrag = false
   def setTouchScrolls(on: Boolean): Unit = ()
   /** Only a page is read for how far a list has scrolled: nothing to do here. */
   def setScrolled(at: Double, furthest: Double): Unit = ()
@@ -1470,6 +1486,37 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
   }
 
   override def shouldDelayChildPressedState(): Boolean = false
+
+  /** Where this is a scroll's (`RenderNode.setScrollable`), the way it scrolls: 1 down, 2 across, 0 not at all; and
+    * what takes a finger's drag along it from whatever under it the finger went down on, told where it went down. */
+  private[render] var scrollsAlong: Int = 0
+  private[render] var takeDrag: (MotionEvent, Float, Float) => Unit = null
+  // where the finger went down, as each touch passes on to what is under it
+  private var downX = 0f
+  private var downY = 0f
+
+  /** A finger that moves along the scroll further than a tap may takes the drag from what it went down on, as a
+    * ScrollView does: that is told it was cancelled (no tap), and the scroll hears it go down where it did and every
+    * move after. Without it, a card a tap is heard on held every touch that began on it, and a swipe scrolled nothing
+    * unless it began between the cards. Only a move mostly along the scroll is taken: a page lets a rail in it have a
+    * sideways swipe, and a slider across it its drag. */
+  override def onInterceptTouchEvent(e: MotionEvent): Boolean = scrollsAlong != 0 && takeDrag != null && {
+    val action = e.getActionMasked
+    if (action == MotionEvent.ACTION_DOWN) {
+      downX = e.getRawX
+      downY = e.getRawY
+      false
+    }
+    else if (action == MotionEvent.ACTION_MOVE) {
+      val across = math.abs(e.getRawX - downX)
+      val down = math.abs(e.getRawY - downY)
+      val (along, other) = if (scrollsAlong == 1) (down, across) else (across, down)
+      val taken = along > android.view.ViewConfiguration.get(getContext).getScaledTouchSlop && along > other
+      if (taken) takeDrag(e, downX, downY)
+      taken
+    }
+    else false
+  }
 
   /** A blur drawn by hand before Android 12 (SoftBlur), made when one is first asked for. */
   private var soft: SoftBlur = null
