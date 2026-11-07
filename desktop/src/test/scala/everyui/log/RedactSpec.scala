@@ -24,5 +24,19 @@ class RedactSpec extends AnyWordSpec with Matchers {
       Redact("ftp://ann:s3cret@files.example.com/a") shouldBe "ftp://…@files.example.com/a"
       Redact("https://example.com/@ann/posts") shouldBe "https://example.com/@ann/posts"
     }
+    "pass over a long line once, and give a line with no secrets back as it was" in {
+      // a megabyte of parameters, the token near its end: looking to the end of the line for each one's "=" took
+      // minutes and gigabytes over a line like it
+      val long = "https://h/a?" + ("x=1&" * 250000) + "X-Plex-Token=t0k&y=2"
+      val started = System.nanoTime()
+      val masked = Redact(long)
+      (System.nanoTime() - started) / 1.0e9 should be < 10.0
+      masked should endWith("X-Plex-Token=…&y=2")
+      masked.length shouldBe long.length - 2
+      val plain = "&&&" * 300000
+      (Redact(plain) eq plain) shouldBe true
+      val clean = "https://h/a?page=2&size=10"
+      (Redact(clean) eq clean) shouldBe true
+    }
   }
 }

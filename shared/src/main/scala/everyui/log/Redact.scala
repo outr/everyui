@@ -16,32 +16,49 @@ object Redact {
   private def ends(c: Char): Boolean = c == '&' || c == '#' || c == ' ' || c == '"' || c == '\'' || c == '\n' ||
     c == ')' || c == ']' || c == '>' || c == ','
 
-  def apply(text: String): String = if (text == null) text else userInfo(parameters(text))
+  // the longest name among them: no further is looked for a parameter's "="
+  private val longest = secretNames.map(_.length).max
+
+  /** `text` with its secrets masked, in one pass over it: a line with none comes back as it was, nothing copied. (Each
+    * line the app logs passes through here, on whatever thread logs it: one that looked to the end of the line for
+    * each parameter's "=" took time and memory growing with the square of a long line's length.) */
+  def apply(text: String): String =
+    if (text == null) text
+    else userInfo(if (text.indexOf('=') < 0) text else parameters(text))
 
   // each secret parameter's value masked
   private def parameters(text: String): String = {
-    val lower = text.toLowerCase
-    val out = new StringBuilder
+    var out: StringBuilder = null
+    var copied = 0
     var i = 0
     while (i < text.length) {
       val c = text.charAt(i)
-      out.append(c)
       i += 1
       if (c == '?' || c == '&') {
-        val eq = lower.indexOf('=', i)
-        val name = if (eq > i) lower.substring(i, eq) else ""
-        if (name.nonEmpty && !name.exists(ends) && secretNames.contains(name)) {
-          out.append(text.substring(i, eq + 1)).append('…')
-          i = eq + 1
-          while (i < text.length && !ends(text.charAt(i))) i += 1
+        // the name runs to its "=", no further than the longest secret's, and holds nothing that ends a value
+        var eq = i
+        while (eq < text.length && eq - i <= longest && text.charAt(eq) != '=' && !ends(text.charAt(eq)) &&
+          text.charAt(eq) != '?') eq += 1
+        if (eq < text.length && eq > i && text.charAt(eq) == '=' &&
+          secretNames.contains(text.substring(i, eq).toLowerCase)) {
+          var end = eq + 1
+          while (end < text.length && !ends(text.charAt(end))) end += 1
+          if (out == null) out = new StringBuilder(text.length)
+          out.append(text.substring(copied, eq + 1)).append('…')
+          copied = end
+          i = end
         }
       }
     }
-    out.toString
+    if (out == null) text
+    else {
+      out.append(text.substring(copied))
+      out.toString
+    }
   }
 
   // the user and password of an address that carries them masked
-  private def userInfo(text: String): String = {
+  private def userInfo(text: String): String = if (text.indexOf("://") < 0) text else {
     val out = new StringBuilder
     var from = 0
     var at = text.indexOf("://")
@@ -56,7 +73,10 @@ object Redact {
       }
       at = text.indexOf("://", start)
     }
-    out.append(text.substring(from))
-    out.toString
+    if (from == 0) text
+    else {
+      out.append(text.substring(from))
+      out.toString
+    }
   }
 }
