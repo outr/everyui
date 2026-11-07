@@ -99,6 +99,11 @@ object MeasuredFeature {
   private var holding: Int = 0
   private def quiet: Boolean = holding > 0
 
+  /** Whether layout waits for the batch: sizes are being held (`withBatch`) and some are waiting to be read, so what
+    * would be laid out now would be laid out with sizes that are not yet known, and then again once they are. The
+    * batch lays out what waited, once, with the sizes read (`LayoutPass`). */
+  private[everyui] def layoutWaits: Boolean = holding > 0 && pending.nonEmpty
+
   /** `f`, with the sizes it reads of nodes out of the page read as they were last set, and read with the turn's batch:
     * for what it makes to put in the page before the turn is over (a list's rows), whose sizes are then read there, with
     * everything else, rather than one by one, out of it, as they are read while it is made. */

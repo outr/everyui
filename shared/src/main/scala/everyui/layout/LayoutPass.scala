@@ -15,7 +15,9 @@ import everyui.render.Platform
   *
   * Outside a batch a request is laid out at once, so a size read right after a change is the laid-out one. Inside
   * `batch` (a screen building its UI, the reading direction changing) the requests wait for the end of it: one pass
-  * over everything the batch touched. */
+  * over everything the batch touched. Where sizes are held back to be read together (`MeasuredFeature.withBatch`) and
+  * some are still to be read, they wait for that instead, and are laid out once with the sizes read, not first with
+  * sizes not yet known. */
 object LayoutPass {
   private var pending: List[Container] = Nil
   private var batches: Int = 0
@@ -28,7 +30,7 @@ object LayoutPass {
       container.layoutPending = true
       pending = container :: pending
     }
-    if (batches == 0) flush()
+    if (batches == 0 && !waits) flush()
   }
 
   /** Run `f` with layout held until it is done, then lay out everything it asked for in one pass. */
@@ -143,8 +145,12 @@ object LayoutPass {
 
   private def close(): Unit = {
     batches -= 1
-    if (batches == 0) flush()
+    if (batches == 0 && !waits) flush()
   }
+
+  // whether what is asked for waits for the sizes held back to be read (`MeasuredFeature.layoutWaits`), which lays it
+  // out then, once, rather than now with sizes not yet known and again once they are
+  private def waits: Boolean = everyui.component.feature.MeasuredFeature.layoutWaits
 
   private def depthOf(c: Component): Int = {
     var d = 0
