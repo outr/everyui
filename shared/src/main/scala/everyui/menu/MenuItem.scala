@@ -14,7 +14,11 @@ import reactify.Val
   * An entry that `keepOpen`s does its work and leaves the menu open, and any it is in, the focus on it, and Space
   * chooses it as OK does: a box ticked before something else in the menu is picked ("Archive from inbox" above the
   * places to send to). Its tick follows `on` where it has one, so it shows what the app holds, not what was clicked: an
-  * action that refuses leaves it as it was (`MenuItem.toggle`). */
+  * action that refuses leaves it as it was (`MenuItem.toggle`).
+  *
+  * A `picture` is drawn where the icon would be, a small rounded square (a workspace's icon, a face, a logo, or a
+  * letter on a colour: `MenuPicture`), dimmed with the entry where it is disabled; a ticked one shows its tick at the
+  * row's end instead. A picture still to load stands in as its fallback, else the icon. */
 case class MenuItem(label: String,
                     action: () => Unit = () => (),
                     icon: MaterialIcon = MaterialIcon.Empty,
@@ -28,7 +32,8 @@ case class MenuItem(label: String,
                     separator: Boolean = false,
                     active: Boolean = false,
                     on: Option[Val[Boolean]] = None,
-                    keepOpen: Boolean = false) {
+                    keepOpen: Boolean = false,
+                    picture: Option[MenuPicture] = None) {
   /** Whether it can be chosen, and so take the focus. */
   def choosable: Boolean = enabled && !separator
 

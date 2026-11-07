@@ -27,9 +27,15 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
     if (!item.enabled) Theme.muted().withAlpha(0.6) else if (item.danger) Theme.warning()
     else if (item.active) Theme.accentText() else Theme.text()))
 
-  // a tick that follows the app (`MenuItem.on`) is there however it starts, shown as it is on
-  private val lead: Option[MaterialIconView] =
-    if (item.on.nonEmpty) Some(new MaterialIconView(item.icon, points * 1.15) {
+  // whether it can be ticked, and so has a tick to show, where it is on
+  private val tickable: Boolean = item.on.nonEmpty || item.checked.nonEmpty
+  // a tick that follows the app (`MenuItem.on`) is there however it starts, shown as it is on; a picture takes the
+  // place, its tick then at the row's end (`trail`)
+  private val lead: Option[Component] =
+    if (item.picture.nonEmpty) Some(new MenuPictureView(item.picture.get, slot, item.icon, ink()) {
+      opacity @= (if (item.enabled) 1.0 else 0.5)
+    })
+    else if (item.on.nonEmpty) Some(new MaterialIconView(item.icon, points * 1.15) {
       icon := (if (item.ticked) MaterialIcon.Check else item.icon)
     })
     else if (item.checked.contains(true)) Some(new MaterialIconView(MaterialIcon.Check, points * 1.15))
@@ -50,6 +56,13 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
     if (item.submenu.nonEmpty) Some(new MaterialIconView(MaterialIcon.ChevronRight, points * 1.15) {
       icon := Mirror.onward
       color := ink()
+    })
+    // the tick of one with a picture where its icon would be, at its end, there however it starts
+    else if (item.picture.nonEmpty && tickable) Some(new MaterialIconView(MaterialIcon.Check, points * 1.15) {
+      icon := (if (item.ticked) MaterialIcon.Check else MaterialIcon.Empty)
+      color := ink()
+      // as wide ticked or not, so the row does not change as it is
+      size.width @= points * 1.15
     })
     else item.shortcut.map(_.label).orElse(Option(item.note).filter(_.nonEmpty)).map { hint =>
       new TextView {
@@ -99,7 +112,10 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
     }
     radius @= points * 0.35
     lead.foreach { l =>
-      l.color := ink()
+      l match {
+        case glyph: TextView => glyph.color := ink()
+        case _ => ()
+      }
       Mirror.place(l, () => size.width(), () => pad)
       l.position.top := (size.height() - l.size.height()) / 2.0
     }
