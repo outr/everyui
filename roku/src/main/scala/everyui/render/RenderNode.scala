@@ -788,6 +788,9 @@ object Nodes {
 
 /** The handful of non-render platform services the slice needs. */
 object Platform {
+  /** The sizes of `nodes` (`MeasuredFeature`'s batch), each read in turn. */
+  def sizesOf(nodes: List[RenderNode]): List[(Double, Double)] = nodes.map(_.getSize())
+
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
   def webViews(): Boolean = false

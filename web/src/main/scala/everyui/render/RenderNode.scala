@@ -1366,6 +1366,63 @@ object RenderNode {
     !(revealed eq before)
   }
 
+  /** `el`, in the page under something hidden (`display: none`), laid out for a read, undrawn, until the frame is
+    * drawn, as `reveal` does: found by its styles alone, written and not read, so the reads of a batch (`sizesOf`)
+    * follow every reveal rather than each read laying the page out again after the reveal before it. */
+  def unhide(el: html.Element): Unit = {
+    val before = revealed
+    var at: dom.Node = el
+    while (at != null && !(at eq dom.document)) {
+      val e = at.asInstanceOf[html.Element]
+      if (e.style.display == "none") {
+        e.style.display = ""
+        e.style.visibility = "hidden"
+        revealed = e :: revealed
+      }
+      at = at.parentNode
+    }
+    if (before.isEmpty && revealed.nonEmpty) Platform.beforePaint(() => hide())
+  }
+
+  /** The sizes of `els`, none of them in the page, as `offPage` reads one: all lent to it at once, read, and all put
+    * back, so the page is laid out once for them rather than once for each; `meanwhile` (the batch's reads of what is
+    * in the page) run before they are put back, so those are read in the same layout. */
+  def offPage(els: List[html.Element], meanwhile: () => Unit): List[(Double, Double)] = if (els.isEmpty) {
+    meanwhile()
+    Nil
+  } else {
+    everyui.perf.PerfCounters.read()
+    // only the outermost are moved: one inside another goes with it, and taken out of it would be read without it
+    def within(el: html.Element): Boolean = {
+      var at = el.parentNode
+      var found = false
+      while (at != null && !found) {
+        found = els.exists(_ eq at)
+        at = at.parentNode
+      }
+      found
+    }
+    val moved = els.filterNot(within)
+    val places = moved.map(el => (el.parentNode, el.nextSibling, el.style.display == "none"))
+    moved.foreach { el =>
+      if (el.style.display == "none") el.style.display = ""
+      offPageHost.appendChild(el)
+    }
+    // (one inside another hidden, as an avatar's picture is until it loads, shown for the read as `unhide` shows it)
+    els.foreach(el => if (!moved.exists(_ eq el)) unhide(el))
+    val boxes = els.map(_.getBoundingClientRect())
+    val scale = offPageHost.getBoundingClientRect().width / 100000.0
+    val at = if (scale > 0.0) scale else 1.0
+    // the rest of the batch read now, with these still lent: the page laid out once for all of them
+    meanwhile()
+    // put back last first, so each goes in before the sibling it was before
+    moved.zip(places).reverse.foreach { case (el, (parent, next, hidden)) =>
+      if (hidden) el.style.display = "none"
+      if (parent != null) parent.insertBefore(el, next) else offPageHost.removeChild(el)
+    }
+    boxes.map(r => (r.width / at, r.height / at))
+  }
+
   // hidden again, unless it was shown or hidden since (setVisible clears the visibility)
   private def hide(): Unit = {
     revealed.foreach { e =>
@@ -1748,6 +1805,21 @@ object Nodes {
 
 /** The handful of non-render platform services the slice needs. */
 object Platform {
+  /** The sizes of `nodes` (`MeasuredFeature`'s batch), read with the page laid out once for them all: every one
+    * hidden in the page shown for the read and every one out of it lent to it (`RenderNode.unhide`, `offPage`), all
+    * written before any is read, where reading each in turn laid the page out again for each. */
+  def sizesOf(nodes: List[RenderNode]): List[(Double, Double)] = {
+    // read where they are (in the page, or one that cannot be moved), or lent to it
+    val stays = nodes.map(n => n.onPage || !RenderNode.movable(n.el))
+    nodes.zip(stays).foreach { case (n, s) => if (s && n.onPage) RenderNode.unhide(n.el) }
+    // those in the page read after every one is written (shown, lent), before the lent are put back
+    var staying: List[(Double, Double)] = Nil
+    val lent = RenderNode.offPage(nodes.zip(stays).filterNot(_._2).map(_._1.el),
+      () => staying = nodes.zip(stays).filter(_._2).map(_._1.getSize())).iterator
+    val stayed = staying.iterator
+    stays.map(s => if (s) stayed.next() else lent.next())
+  }
+
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): the browser's own, in an iframe. */
   def webViews(): Boolean = true

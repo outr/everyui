@@ -124,8 +124,8 @@ object MeasuredFeature {
   }
 
   /** Read every queued size, then set them, in the order they were asked for, and lay out what they moved; what
-    * setting them asks to be measured again is the next round, in the same batch. Those in the page are read together,
-    * then any still out of it, each lent to the page for its read. */
+    * setting them asks to be measured again is the next round, in the same batch. All of a round are read with the
+    * page laid out once: those hidden in it shown, those out of it lent to it, before any is read. */
   private def flush(): Unit = {
     var rounds = 0
     flushing = true
@@ -137,8 +137,13 @@ object MeasuredFeature {
         // all that is to be written before a read (words cut to fit) written first, then all the reads: a write between
         // two reads made the browser lay the page out again for the second
         round.foreach(_.component.beforeRead())
-        round.foreach(m => if (m.component.node.onPage) m.readOnly())
-        round.foreach(m => if (!m.component.node.onPage) m.readOnly())
+        // read together, the page laid out once for them: those hidden in it shown, those out of it lent, all before
+        // any is read (`Platform.sizesOf`), where each read in turn laid it out again after the one before was shown
+        // or lent
+        round.zip(Platform.sizesOf(round.map(_.component.node))).foreach { case (m, (width, height)) =>
+          m.readWidth = width
+          m.readHeight = height
+        }
         // laid out once they are all set, not once for each: a column of lines measured together was laid out again
         // for every line
         everyui.layout.LayoutPass.batch(round.foreach(_.set()))

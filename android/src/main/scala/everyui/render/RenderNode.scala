@@ -2029,6 +2029,9 @@ object Nodes {
 
 /** The handful of non-render platform services the slice needs. */
 object Platform {
+  /** The sizes of `nodes` (`MeasuredFeature`'s batch), each read in turn. */
+  def sizesOf(nodes: List[RenderNode]): List[(Double, Double)] = nodes.map(_.getSize())
+
   /** Logcat, tag `everyui`. */
   def log(message: String): Unit = Log.i("everyui", "[ui] " + message)
 
