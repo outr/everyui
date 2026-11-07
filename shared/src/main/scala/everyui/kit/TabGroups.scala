@@ -82,6 +82,9 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   val addMenu: Var[Option[TabGroup[K] => List[MenuItem]]] = own(Var(None))
   /** What each group's "+" is called: its tooltip and its name to a screen reader. */
   val addLabel: Var[String] = own(Var(TabBar.addWord))
+  /** The app's own controls after each group's "+" (`TabBar.trailing`: a pin, a split), made for that group: each
+    * group has its own, set apart from its last tab by the divider before them all. None by default. */
+  val trailing: Var[TabGroup[K] => List[Component]] = own(Var((_: TabGroup[K]) => Nil))
   /** What fills the area under each group's tabs, where its tab shows its content: the theme's background by default
     * (None). An app showing a picture behind its screens (a `Backdrop`) sets `Some(Color.Clear)`, or a tint, and the
     * picture shows through every group, present and future; the strip of tabs stays on the theme's background

@@ -76,6 +76,9 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   follow(owner.addMenu, (m: Option[TabGroup[K] => List[MenuItem]]) => addFor(m))
   bar.addLabel @= owner.addLabel()
   follow(owner.addLabel, (w: String) => bar.addLabel @= w)
+  // the app's own controls after the "+", made for this group
+  bar.trailing @= owner.trailing()(this)
+  follow(owner.trailing, (f: TabGroup[K] => List[Component]) => bar.trailing @= f(this))
   // between the tabs and what the one shown shows, said rather than found by where they lie
   bar.exitAction(Key.ArrowDown, () => Focus.candidates(body).headOption.foreach(_.focus()))
   body.exitAction(Key.ArrowUp, () => focusTab())

@@ -45,10 +45,16 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   val addMenu: Var[Option[() => List[MenuItem]]] = Var(None)
   /** What the "+" is called: its tooltip and its name to a screen reader. */
   val addLabel: Var[String] = Var(TabBar.addWord)
+  /** The app's own controls after the "+" (a pin, a split), in order: with it, they stay at the bar's end while the
+    * tabs scroll before them, set apart from the last tab by the divider before them all. Each sits centred down the
+    * bar, as wide as it is. */
+  val trailing: Var[List[Component]] = Var(Nil)
 
   private var plus: Option[TabAdd] = None
-  // what trails the tabs (the "+"), and the divider before it, as wide as they are together
-  private def trailing: Double = TabBar.divider + TabAdd.width
+  // whether anything trails the tabs (the "+", the app's own), and how wide it is, the divider before it with it
+  private def trails: Boolean = addMenu().nonEmpty || trailing().nonEmpty
+  private def trailRoom: Double = if (!trails) 0.0
+    else TabBar.divider + (if (addMenu().isEmpty) 0.0 else TabAdd.width) + trailing().map(_.size.width()).sum
   // the keys shown, the latest first, however `current` came to change: where the tab shown goes, the one before it
   private var history: List[String] = List(current())
   current.attach(k => history = k :: history.filterNot(_ == k))
@@ -57,22 +63,23 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   private def backward: Key = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
 
   private val scroll = new ScrollContainer(horizontal = true) {
-    // with a "+" as wide as the tabs, so it sits just after the last, and no wider than leaves it room at the end
-    size.width := (if (addMenu().isEmpty) width else math.max(0.0, math.min(width - trailing, content.size.width())))
+    // with what trails the tabs as wide as the tabs, so it sits just after the last, and no wider than leaves it room
+    size.width := (if (!trails) width else math.max(0.0, math.min(width - trailRoom, content.size.width())))
     position.left := (if (Direction.rtl()) width - size.width() else 0.0)
     size.height @= TabBar.height
     content.layout @= Some(HorizontalLayout(0.0))
     content.children := tabs().toVector
 
-    // on past the last tab, the "+"
+    // on past the last tab, the "+", else the first of the app's own
     override def focusExit(direction: Key): Option[Option[Component]] = plus match {
       case Some(p) if direction == onward && addMenu().nonEmpty => Some(Some(p))
+      case _ if direction == onward && trailing().nonEmpty => Some(Some(trailing().head))
       case _ => super.focusExit(direction)
     }
   }
-  // the rule runs as far as the tabs (and the "+") do, from the right in a right-to-left language
+  // the rule runs as far as the tabs (and what trails them) do, from the right in a right-to-left language
   private val rule = new Container {
-    size.width := math.min(width, scroll.content.size.width() + (if (addMenu().isEmpty) 0.0 else trailing))
+    size.width := math.min(width, scroll.content.size.width() + trailRoom)
     position.left := (if (Direction.rtl()) width - size.width() else 0.0)
     size.height @= 1.0
     position.top @= TabBar.height - 1.0
@@ -89,7 +96,7 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
     position.left := (if (Direction.rtl()) scroll.position.left() - TabBar.divider / 2.0 - 0.5
       else scroll.size.width() + TabBar.divider / 2.0 - 0.5)
     backgroundColor := Theme.border()
-    visible := addMenu().nonEmpty &&
+    visible := trails &&
       !tabs().lastOption.exists(t => current() == t.key || t.focusShown() || t.pointerOver())
   }
 
@@ -106,6 +113,7 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
   tabs.attach(_ => entry(current()))
   addMenu.attach(_ => placeAdd())
   placeAdd()
+  trailing.attach(placeTrailing)
   onDispose(() => plus.foreach(_.dispose()))
 
   // the "+" put on the bar while there is a menu for it, and taken off without one
@@ -113,17 +121,33 @@ class TabBar(current: Var[String], width: => Double, showOnFocus: Boolean = true
     case Some(_) =>
       val p = plus.getOrElse {
         val made = new TabAdd(addLabel, () => addMenu().map(f => f()).getOrElse(Nil)) {
-          // back to the last tab
+          // back to the last tab, and on to the app's own
           override def focusExit(direction: Key): Option[Option[Component]] =
-            if (direction == backward && tabs().nonEmpty) Some(Some(tabs().last)) else super.focusExit(direction)
+            if (direction == backward && tabs().nonEmpty) Some(Some(tabs().last))
+            else if (direction == onward && trailing().nonEmpty) Some(Some(trailing().head))
+            else super.focusExit(direction)
         }
-        made.position.left := (if (Direction.rtl()) scroll.position.left() - trailing
+        made.position.left := (if (Direction.rtl()) scroll.position.left() - TabBar.divider - TabAdd.width
           else scroll.size.width() + TabBar.divider)
         plus = Some(made)
         made
       }
       if (!children().exists(_ eq p)) children += p
     case None => plus.foreach(p => if (children().exists(_ eq p)) children -= p)
+  }
+
+  // the app's own controls after the "+", each where those before it end, centred down the bar
+  private var placedTrailing: List[Component] = Nil
+  private def placeTrailing(now: List[Component]): Unit = {
+    placedTrailing.filterNot(c => now.exists(_ eq c)).foreach(c => children -= c)
+    now.zipWithIndex.foreach { case (c, i) =>
+      def before: Double = (if (addMenu().isEmpty) 0.0 else TabAdd.width) + now.take(i).map(_.size.width()).sum
+      c.position.left := (if (Direction.rtl()) scroll.position.left() - TabBar.divider - before - c.size.width()
+        else scroll.size.width() + TabBar.divider + before)
+      c.position.top := (TabBar.height - c.size.height()) / 2.0
+      if (!children().exists(_ eq c)) children += c
+    }
+    placedTrailing = now
   }
 
   /** A tab `label` for `key`, added at `at` among the tabs (at the end, where it is past the last or not given), or in

@@ -240,6 +240,48 @@ class TabAddSpec extends FxSpec {
       g
     }
 
+    def pin(): Container = new Container {
+      size.width @= 30.0
+      size.height @= 30.0
+      focusable @= true
+    }
+
+    "take the app's own controls after it, the divider before them all, on a bar and in every group" in {
+      val bar = barOf(400.0, 8)
+      try {
+        val mine = fx(pin())
+        // without a "+": the divider and then the app's own, at the bar's end, the tabs scrolling before them
+        fx(bar.trailing @= List(mine))
+        val scroll = fx(scrollOf(bar))
+        eventually(mine.absoluteLeft == 100.0 + 400.0 - 30.0) shouldBe true
+        fx(scroll.size.width()) shouldBe 400.0 - 30.0 - TabBar.divider
+        fx(mine.absoluteTop - bar.absoluteTop) shouldBe (TabBar.height - 30.0) / 2.0
+        // with one: the "+", then the app's own
+        fx(bar.addMenu @= Some(() => List(MenuItem("New"))))
+        val plus = fx(bar.addButton.get)
+        eventually(plus.absoluteLeft == 100.0 + 400.0 - 30.0 - TabAdd.width) shouldBe true
+        fx(mine.absoluteLeft) shouldBe 100.0 + 400.0 - 30.0
+        fx(scroll.size.width()) shouldBe 400.0 - 30.0 - TabAdd.width - TabBar.divider
+        // taken off again
+        fx(bar.trailing @= Nil)
+        fx(bar.childComponents.exists(_ eq mine)) shouldBe false
+        eventually(plus.absoluteLeft == 100.0 + 400.0 - TabAdd.width) shouldBe true
+      }
+      finally clean()
+      val g = groupsOf()
+      try {
+        fx(List("a", "b").foreach(k => g.open(k)))
+        fx(g.trailing @= ((_: TabGroup[String]) => List(pin())))
+        val first = fx(g.groups().head)
+        fx(g.openRight(first, "b"))
+        val second = fx(g.groups()(1))
+        val (one, two) = fx((first.bar.trailing().head, second.bar.trailing().head))
+        fx(one eq two) shouldBe false
+        fx(first.bar.childComponents.exists(_ eq one) && second.bar.childComponents.exists(_ eq two)) shouldBe true
+      }
+      finally clean()
+    }
+
     "be in every group, new ones too, its menu made for that group and opening its new tabs there" in {
       val g = groupsOf()
       try {
