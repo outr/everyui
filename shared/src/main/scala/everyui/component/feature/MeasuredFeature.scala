@@ -25,6 +25,16 @@ class MeasuredFeature(private[feature] val component: Component) {
 
   val width: Val[Double] = w
   val height: Val[Double] = h
+  /** Whether its size has been read: from the first read on. Before then, where sizes are read in batches (the web), it
+    * is 0 by 0 for want of a read, not for being nothing: what is worked out from it (the widest of some lines) waits
+    * for it rather than taking that 0 for its size. */
+  lazy val known: Val[Boolean] = {
+    knownNow = Var(everRead)
+    knownNow
+  }
+  // whether it has been read, and `known`, made only where something asks
+  private var everRead = false
+  private var knownNow: Var[Boolean] = null
 
   /** Read the node's size: now, or with the rest of the turn's where the platform batches them (the web). A node not
     * in the page yet (a screen being built, before it arrives) is read the moment its size is read (`peek`), lent to
@@ -74,6 +84,10 @@ class MeasuredFeature(private[feature] val component: Component) {
     setWidth = readWidth
     w @= readWidth
     h @= readHeight
+    if (!everRead) {
+      everRead = true
+      if (knownNow != null) knownNow @= true
+    }
     // (words look at their box again: TextView)
     if (wider) component.widthRemeasured()
   }

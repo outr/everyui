@@ -109,5 +109,19 @@ class MarkdownViewSpec extends FxSpec {
         followed shouldBe List("/one", "/one")
       }
     }
+    "know how wide its lines are drawn on their own, where it measures, once they have been read" in {
+      val view = fx {
+        val v = new MarkdownView("Short words.\n\nA little longer, these.", measures = true)
+        v.size.width @= 420.0
+        v
+      }
+      onScreen(view) {
+        eventually(view.natural().exists(_ > 0.0)) shouldBe true
+        val widest = fx(view.natural().get)
+        widest should be < 420.0
+        fx(view.content @= "Short.")
+        eventually(view.natural().exists(_ < widest)) shouldBe true
+      }
+    }
   }
 }

@@ -35,9 +35,11 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   private val pictures: Var[Boolean] = own(Var(false))
 
   /** How wide it would be drawn on its own: its widest line, or none where it holds a picture (which takes the
-    * width) or the view does not measure. */
+    * width) or the view does not measure, nor until each line's width has been read (`MeasuredFeature.known`), where
+    * a line not yet read is 0 wide for want of the read: a message's bubble sized by it was laid out at no width, its
+    * words read there, and all of it again once they were. */
   val natural: Val[Option[Double]] = own(Val(
-    if (!ctx.measures || pictures()) None
+    if (!ctx.measures || pictures() || !twins.children().forall(_.measured.known())) None
     else Some(twins.children().foldLeft(0.0)((w, t) => math.max(w, t.size.width())))))
 
   size.width := width

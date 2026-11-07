@@ -177,6 +177,9 @@ object PerfCounters {
     textSameBy = Map.empty
     againFor = Map.empty
     forcedBy = Map.empty
+    // and no write before it laid at the door of a read after it
+    dirty = false
+    dirtiedBy = ""
   }
 
   /** The counts by name. */
