@@ -306,10 +306,18 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     guess >= 0.0 && guess * 1.08 + 2.0 < room
   }
 
+  // the words last written to the node, so the same written again (a limit changed that cuts them as before, words
+  // that fit either way) is not written: each wrote the page, and was read after as a change
+  private var written: String = node.getText()
+  private def write(words: String): Unit = if (words != written) {
+    node.setText(words)
+    written = words
+  }
+
   private def drawCut(wanted: String, limit: Double, lines: Int, box: Double, own: Double, before: Double): Unit = {
     // words wrapped to fit their room before are put back as they were, to be measured whole again
     if (wrappedToFit) unwrap()
-    node.setText(wanted)
+    write(wanted)
     val asked = limit > 0.0 || lines > 0
     unfit = (asked || box > 0.0 || own > 0.0) && !node.textMeasurable(refit)
     // measured whole, then held to the room it has; where it cannot be measured yet, only held
@@ -412,29 +420,29 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       var most = wanted.length
       while (fewest < most) {
         val half = (fewest + most + 1) / 2
-        node.setText(TextView.kept(wanted, half, side))
+        write(TextView.kept(wanted, half, side))
         if (wide <= limit) fewest = half else most = half - 1
       }
-      node.setText(TextView.kept(wanted, fewest, side))
+      write(TextView.kept(wanted, fewest, side))
     }
     if (lines > 0 && wanted.nonEmpty) {
       // a line's height, from one letter: n lines are no taller than n of them, give or take half of one
-      node.setText(wanted.substring(0, 1))
+      write(wanted.substring(0, 1))
       val one = node.getHeight()
       val tallest = one * lines + one / 2.0
-      node.setText(wanted)
+      write(wanted)
       if (one > 0.0 && node.getHeight() > tallest) {
         var fewest = 0
         var most = wanted.length
         while (fewest < most) {
           val half = (fewest + most + 1) / 2
-          node.setText(wanted.substring(0, half) + "…")
+          write(wanted.substring(0, half) + "…")
           if (node.getHeight() <= tallest) fewest = half else most = half - 1
         }
         // back to the last whole word, where there is one
         val space = wanted.substring(0, fewest).lastIndexOf(' ')
         val cut = if (space > fewest / 2) space else fewest
-        node.setText(wanted.substring(0, cut).trim + "…")
+        write(wanted.substring(0, cut).trim + "…")
       }
     }
   }
