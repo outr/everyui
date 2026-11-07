@@ -1415,10 +1415,26 @@ object RenderNode {
     val at = if (scale > 0.0) scale else 1.0
     // the rest of the batch read now, with these still lent: the page laid out once for all of them
     meanwhile()
-    // put back last first, so each goes in before the sibling it was before
-    moved.zip(places).reverse.foreach { case (el, (parent, next, hidden)) =>
+    // each put back before the sibling it was before once that sibling is back where it was, whatever order they
+    // came in: put back in turn, one whose sibling was lent too and is not back yet went before a node no longer its
+    // parent's, which threw, and every page of an app failed as it loaded
+    var left = moved.zip(places)
+    var placing = true
+    while (left.nonEmpty && placing) {
+      val (ready, waiting) = left.partition { case (_, (parent, next, _)) =>
+        parent == null || next == null || (next.parentNode eq parent)
+      }
+      ready.foreach { case (el, (parent, next, hidden)) =>
+        if (hidden) el.style.display = "none"
+        if (parent != null) parent.insertBefore(el, next) else offPageHost.removeChild(el)
+      }
+      placing = ready.nonEmpty
+      left = waiting
+    }
+    // (a sibling gone from its parent meanwhile: put back at its end)
+    left.foreach { case (el, (parent, _, hidden)) =>
       if (hidden) el.style.display = "none"
-      if (parent != null) parent.insertBefore(el, next) else offPageHost.removeChild(el)
+      parent.appendChild(el)
     }
     boxes.map(r => (r.width / at, r.height / at))
   }
