@@ -756,6 +756,13 @@ class RenderNode(val view: View) {
     pressHeld.foreach(r => view.removeCallbacks(r))
     pressHeld = None
   }
+  // a move or the lift of a touch this holds, heard at the root too, as the web's and the desktop's are heard there on
+  // their way up: what follows a drag from the root (Pointers.track: a list's rows under a finger, a scroll's thumb)
+  // heard nothing on Android, where the view a finger goes down on holds the whole touch, and a chat could not be swiped
+  private def toRoot(kind: PointerKind, e: MotionEvent): Unit = {
+    val root = RenderNode.rootNode
+    if (root != null && !(root eq this)) root.fire(kind, e)
+  }
   private def touch(e: MotionEvent): Boolean = {
     touchHook.foreach(f => f(e))
     val action = e.getActionMasked
@@ -790,10 +797,12 @@ class RenderNode(val view: View) {
       val slop = android.view.ViewConfiguration.get(view.getContext).getScaledTouchSlop
       if (math.abs(e.getRawX - pressFrom._1) > slop || math.abs(e.getRawY - pressFrom._2) > slop) letGo()
       fire(PointerKind.Move, e)
+      toRoot(PointerKind.Move, e)
     }
     else if (action == MotionEvent.ACTION_UP) {
       letGo()
       fire(PointerKind.Up, e)
+      toRoot(PointerKind.Up, e)
       // nor where it moved further than a tap may, onto something in it that answers a click itself (PressOwner)
       val slop = android.view.ViewConfiguration.get(view.getContext).getScaledTouchSlop
       val moved = math.abs(e.getRawX - downAt._1) > slop || math.abs(e.getRawY - downAt._2) > slop
@@ -805,6 +814,7 @@ class RenderNode(val view: View) {
     else if (action == MotionEvent.ACTION_CANCEL) {
       letGo()
       fire(PointerKind.Up, e)
+      toRoot(PointerKind.Up, e)
     }
     true
   }
@@ -1318,6 +1328,8 @@ class RenderNode(val view: View) {
 }
 
 object RenderNode {
+  /** The render root's node (`root`), which hears every touch's moves and lift as well (`toRoot`). */
+  private[render] var rootNode: RenderNode = null
   /** A view's text direction for `setTextDirection`'s value: "auto" by the first letter with one (the app's where
     * there is none), "ltr", "rtl", or the app's for "". */
   def textDirection(value: String): Int = value match {
@@ -1991,7 +2003,11 @@ object Nodes {
   def form(kind: String): RenderNode = container()
 
   /** The Activity's content view. */
-  def root(): RenderNode = new RenderNode(Host.root)
+  def root(): RenderNode = {
+    val made = new RenderNode(Host.root)
+    RenderNode.rootNode = made
+    made
+  }
 
   /** A video: a [[VideoFrame]], holding the view the player draws into. */
   def video(): RenderNode = {
