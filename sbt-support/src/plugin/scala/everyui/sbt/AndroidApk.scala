@@ -19,8 +19,13 @@ object AndroidApk {
 
   /** Core library desugaring: Java library classes newer than the device (`java.time`, streams, `Optional` — Android 7
     * and 8 additions) rewritten onto Google's back-port, which is dexed into the APK beside the program. `config` is
-    * the `desugar.json` from `desugar_jdk_libs_configuration`, `library` the `desugar_jdk_libs` jar of the same version. */
-  final case class Desugar(config: File, library: File)
+    * the `desugar.json` from `desugar_jdk_libs_configuration`, `library` the `desugar_jdk_libs` jar of that version,
+    * and `configuration` that `desugar_jdk_libs_configuration` jar itself, whose classes are dexed with the back-port:
+    * since 2.0 the conversions between the platform's types and the back-port's (`StreamApiFlips`, `TimeConversions`,
+    * `OptionalConversions`) are there, not in the library. Without them the back-port names them and no dex has them,
+    * and the first framework call to hand one across failed (`NoClassDefFoundError: j$/util/stream/StreamApiFlips`, a
+    * media session's route discovery, playing anything at all). */
+  final case class Desugar(config: File, library: File, configuration: Option[File] = None)
 
   /** A copy of R8's mapping kept for good, gzipped, under `mappings/<map id>-v<versionCode>.txt.gz`: a crash from the
     * field names its build only by the map id in its frames (`r8-map-id-...`), and the build's own mapping.txt is
@@ -85,9 +90,13 @@ object AndroidApk {
     desugar.foreach { d =>
       val lib = work / "dexlib"
       IO.createDirectory(lib)
+      if (d.configuration.isEmpty)
+        log("AndroidApk: warning: no desugar_jdk_libs_configuration jar (Desugar.configuration): its conversions " +
+          "(StreamApiFlips, TimeConversions, OptionalConversions) are not dexed, and a framework call handing one of " +
+          "those types across fails with NoClassDefFoundError")
       exec(Seq("java", "-cp", (tools / "lib" / "d8.jar").toString, "com.android.tools.r8.L8", "--release",
         "--min-api", minSdk, "--lib", androidJar.toString, "--desugared-lib", d.config.toString,
-        "--output", lib.toString, d.library.toString))
+        "--output", lib.toString, d.library.toString) ++ d.configuration.map(_.toString).toList)
       // after the program's own dex files, numbered on from them
       val next = (dex * "*.dex").get().size + 1
       (lib * "*.dex").get().sortBy(_.getName).zipWithIndex.foreach { case (f, i) =>
