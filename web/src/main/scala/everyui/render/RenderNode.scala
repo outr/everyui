@@ -1015,8 +1015,9 @@ class RenderNode(val el: html.Element) {
     * `autocomplete`, by the `name` and `id` that match it and by a password's type; a phone shows the keyboard for it
     * (`inputmode`: the type otherwise stays text, which keeps the caret and the selection the page's to set). "off"
     * keeps them all out (a search box, notes, a guest's name), with the markers 1Password, LastPass, Bitwarden and
-    * Dashlane go by; "" says nothing. */
-  def setAutofill(asked: String, section: String, name: String, passkey: Boolean, literal: Boolean): Unit = {
+    * Dashlane go by; "" says nothing. `numeric` asks for a phone's number pad whatever the token, a password's too. */
+  def setAutofill(asked: String, section: String, name: String, passkey: Boolean, literal: Boolean,
+    numeric: Boolean): Unit = {
     def attribute(key: String, value: String): Unit =
       if (value.isEmpty) el.removeAttribute(key) else el.setAttribute(key, value)
     // a code of letters and digits is a one-time code to the browser, typed on the whole keyboard
@@ -1039,15 +1040,17 @@ class RenderNode(val el: html.Element) {
         i.`type` = if (madeSecret.contains(true) || token == "current-password" || token == "new-password") "password" else "text"
       case _ => ()
     }
-    attribute("inputmode", token match {
+    attribute("inputmode", if (numeric) "numeric" else token match {
       case "email" => "email"
       case "tel" => "tel"
       case "url" => "url"
       case "one-time-code" | "cc-number" | "cc-csc" => if (lettered) "" else "numeric"
       case _ => ""
     })
-    // what is typed as it is meant, not as the phone would correct it: what these fill, or a field held literal
-    val asTyped = literal || Set("username", "email", "url", "current-password", "new-password", "one-time-code").contains(token)
+    // what is typed as it is meant, not as the phone would correct it: what these fill, or a field held
+    // literal or numeric
+    val asTyped = literal || numeric ||
+      Set("username", "email", "url", "current-password", "new-password", "one-time-code").contains(token)
     attribute("spellcheck", if (asTyped) "false" else "")
     attribute("autocapitalize", if (asTyped) "none" else "")
     attribute("autocorrect", if (asTyped) "off" else "")

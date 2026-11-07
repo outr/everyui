@@ -36,6 +36,8 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
   /** Holds words meant as they are typed (a pattern, a path, an identifier), never spell-checked, corrected or
     * capitalized (`InputView.literal`). */
   val literal: Var[Boolean] = own(Var(false))
+  /** Holds digits (a PIN, a code), on a phone's number pad rather than its letters (`InputView.numeric`). */
+  val numeric: Var[Boolean] = own(Var(false))
   /** Which way its words run (`InputView.direction`): by default the app's, left to right where `literal`. */
   val direction: Var[TextDirection] = own(Var(TextDirection.Inherit))
   /** What it asks for, so the platform's autofill and a password manager know (`Autofill`): None says nothing, which
@@ -87,6 +89,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     input.position.top := (size.height() - 20.0) / 2.0
     input.placeholder := placeholder()
     input.literal := literal()
+    input.numeric := numeric()
     input.direction := direction()
     input.autofill := autofill()
     input.semantics := Semantics(label = placeholder())

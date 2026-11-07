@@ -933,8 +933,10 @@ class RenderNode(val view: View) {
     * Framework hears it (Android 8 and later): its `autofillHints`, the keyboard for it (`inputType`: an email address,
     * a phone number, digits, a password), and whether it is to be filled at all ("off" is not). Every autofill service
     * the user picked (Google's, 1Password, LastPass, Bitwarden) goes by these. `section`, `name` and `passkey` are the
-    * web's; Android has nothing for them. */
-  def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean): Unit = view match {
+    * web's; Android has nothing for them. `numeric` makes it a number field whatever the token, a hidden one a number
+    * password (`TYPE_NUMBER_VARIATION_PASSWORD`), which takes digits alone. */
+  def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean,
+    numeric: Boolean): Unit = view match {
     case e: EditText if android.os.Build.VERSION.SDK_INT >= 26 =>
       import android.text.InputType as T
       if (token == "off") e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO)
@@ -946,8 +948,13 @@ class RenderNode(val view: View) {
       }
       val lines = e.getInputType & T.TYPE_TEXT_FLAG_MULTI_LINE
       val secret = (e.getInputType & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_PASSWORD ||
-        (e.getInputType & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_WEB_PASSWORD
+        (e.getInputType & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+        (e.getInputType & (T.TYPE_MASK_CLASS | T.TYPE_MASK_VARIATION)) ==
+          (T.TYPE_CLASS_NUMBER | T.TYPE_NUMBER_VARIATION_PASSWORD)
+      val password = secret || token == "current-password" || token == "new-password"
       val kind = token match {
+        // digits on the number pad, hidden as a password is where it is one (a PIN)
+        case _ if numeric => T.TYPE_CLASS_NUMBER | (if (password) T.TYPE_NUMBER_VARIATION_PASSWORD else 0)
         case "current-password" | "new-password" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_PASSWORD
         case _ if secret => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_PASSWORD
         case "email" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_EMAIL_ADDRESS

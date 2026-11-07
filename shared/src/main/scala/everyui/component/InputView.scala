@@ -44,9 +44,17 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
     * The web and Android do as it says; the desktop checks no spelling anyway, and a Roku's and an Apple TV's keyboard
     * is the platform's own. */
   val literal: Var[Boolean] = own(Var(false))
-  /** Which way its words run: by default (`TextDirection.Inherit`) the app's, except in a `literal` field and one
-    * asking for a sign-in, an email address, a phone number, a web address or a code (`Autofill.leftToRight`), whose
-    * words run left to right in every language, so "*.scala" or "name@host.com" reads as typed in Arabic too;
+  /** Holds digits (a PIN, a code, an amount of whole things), for which a phone shows its number pad rather than its
+    * letters, whatever it is filled with: `autofill` is unchanged, so a parental PIN can be numeric and not offered a
+    * text message's code (`Autofill.OneTimeCode` is numeric already), and a `secure` one stays hidden. The web says it
+    * as `inputmode="numeric"`, Android as a number field (a password one where it is hidden), which keeps letters
+    * out; elsewhere, and on the web, a keyboard or a paste can still type letters, so a field that must hold digits
+    * alone checks them (`pasted`, the form's rules). The desktop has no keyboard of its own, and a Roku's and an
+    * Apple TV's is the platform's. Its words run left to right, as a `literal` field's do. */
+  val numeric: Var[Boolean] = own(Var(false))
+  /** Which way its words run: by default (`TextDirection.Inherit`) the app's, except in a `literal` or `numeric` field
+    * and one asking for a sign-in, an email address, a phone number, a web address or a code (`Autofill.leftToRight`),
+    * whose words run left to right in every language, so "*.scala" or "name@host.com" reads as typed in Arabic too;
     * `TextDirection.Auto` runs them by their own first letter with a direction (a query in either script). The field
     * itself sits where the app's direction puts it, and while empty it reads as the app does, so its placeholder is
     * in the app's direction. A Roku's and an Apple TV's fields are only their words there, so it changes nothing
@@ -56,7 +64,7 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
     * app's while it is empty. */
   val runs: Val[TextDirection] = own(Val {
     val chosen = if (direction() != TextDirection.Inherit) direction()
-      else if (literal() || asked().exists(Autofill.leftToRight)) TextDirection.LeftToRight
+      else if (literal() || numeric() || asked().exists(Autofill.leftToRight)) TextDirection.LeftToRight
       else TextDirection.Inherit
     if (text().isEmpty) TextDirection.Inherit else chosen
   })
@@ -70,7 +78,7 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
 
   private def hint(): Unit =
-    node.setAutofill(asked().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey(), literal())
+    node.setAutofill(asked().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey(), literal(), numeric())
 
   /** Choose all of what it holds, so what is typed next replaces it (a value being changed rather than added to). */
   def selectAll(): Unit = node.selectAllInput()
@@ -124,6 +132,7 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   section.attach(_ => hint())
   fieldName.attach(_ => hint())
   literal.attach(_ => hint())
+  numeric.attach(_ => hint())
   runs.attach(d => node.setTextDirection(d.value))
   if (runs() != TextDirection.Inherit) node.setTextDirection(runs().value)
   // said at once where the app says for every field, so a field made after `Autofill.fallback` is set says it too

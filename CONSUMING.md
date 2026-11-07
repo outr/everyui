@@ -1742,6 +1742,25 @@ username, email, url, password and one-time-code autofill tokens. Android's fiel
 which would tell autofill it is a password. The desktop (JavaFX) checks no spelling to begin with, and a Roku's and
 an Apple TV's text comes from the platform's own keyboard, which is left as it is.
 
+### Fields of digits (`numeric`)
+
+`numeric @= true` on an `InputView`, a `TextInput` or a `SearchField` says the field holds digits (a PIN, a code, a
+count), so a phone shows its number pad rather than its letters. Like `literal` it says nothing to autofill: a code
+sent by text is `autofill @= Some(Autofill.OneTimeCode)`, which brings up the number pad already and offers the
+code; a PIN is `numeric` alone, so it is not offered one. A `secure` field stays hidden.
+
+```scala
+val pin = new TextInput("PIN", secure = true)
+pin.numeric @= true             // the number pad, the digits hidden, no code offered
+```
+
+The web sets `inputmode="numeric"` (and no spelling, corrections or capitals); a hidden field stays a password field.
+Android makes it a number field (`TYPE_CLASS_NUMBER`), a hidden one a number password
+(`TYPE_NUMBER_VARIATION_PASSWORD`), which takes digits alone. Elsewhere, and on the web, a keyboard or a paste can
+still type letters, so a field that must hold digits alone checks them (`pasted`, the form's rules). Its words run
+left to right, as a literal field's do. The desktop has no keyboard of its own, and a Roku's and an Apple TV's is
+the platform's.
+
 ### Italic (`font.italic`)
 
 `font.italic @= true` slants the words of anything with a `font`: a `TextView`, a `RichText` (every run, as the

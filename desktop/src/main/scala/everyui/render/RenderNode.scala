@@ -712,7 +712,8 @@ class RenderNode(val fx: Node) {
   // a desktop keyboard's Enter says nothing of what it does
   def setInputAction(action: String): Unit = ()
   // what a field asks for (`Autofill.token`): nothing here fills fields
-  def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean): Unit = ()
+  def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean,
+    numeric: Boolean): Unit = ()
   // a form (`everyui.form.Form`) is a container here: nothing sends it but the app, and nothing offers to save it
   def onSubmit(f: () => Unit): Unit = ()
   def formDone(saved: Boolean): Unit = ()

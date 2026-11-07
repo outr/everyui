@@ -15,10 +15,10 @@ import everyui.ui
   *   [ui] autofill email=ann@example.com
   *   [ui] autofill signed in as ann@example.com
   *
-  * Beside them, fields that say nothing (a search box and a chat's composer), which "Unhinted off" holds out of autofill
-  * with every other such field (`Autofill.fallback`), as `fallback=off` does from the start; "Remove sign-in" takes the
-  * sign-in away unsent. `step=1` makes the sign-in a password-only step for an account asked a step before
-  * (`Form.hiddenUsername`).
+  * Beside them, fields that say nothing (a search box, a chat's composer, and two of digits on a phone's number pad: a
+  * count of seats and a hidden PIN, `numeric`), which "Unhinted off" holds out of autofill with every other such field
+  * (`Autofill.fallback`), as `fallback=off` does from the start; "Remove sign-in" takes the sign-in away unsent.
+  * `step=1` makes the sign-in a password-only step for an account asked a step before (`Form.hiddenUsername`).
   */
 object AutofillDemo {
   def run(): Unit = {
@@ -45,12 +45,18 @@ object AutofillDemo {
 
     val search = new SearchField
     val composer = new Composer(draft => Platform.log("autofill sent " + draft.text), width = 640.0)
+    val seats = new TextInput("Seats")
+    seats.numeric @= true
+    seats.value.attach(v => Platform.log("autofill seats=" + v))
+    val pin = new TextInput("PIN", secure = true)
+    pin.numeric @= true
+    pin.value.attach(v => Platform.log("autofill pin of " + v.length.toString))
     val off = new Button("Unhinted off", () => Autofill.fallback @= (if (Autofill.fallback().isEmpty) Some(Autofill.Off) else None))
     val remove = new Button("Remove sign-in", () => if (ui.children().contains(signIn)) {
       ui.children -= signIn
       signIn.dispose()
     })
-    val unhinted = Column(12.0)(search, composer, off, remove)
+    val unhinted = Column(12.0)(search, composer, seats, pin, off, remove)
     unhinted.position.left @= 40.0
     unhinted.position.top @= 420.0
 

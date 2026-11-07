@@ -58,6 +58,21 @@ class InputDirectionSpec extends FxSpec {
       fx(name.text @= "Matt")
       fx(turned(name)) shouldBe NodeOrientation.RIGHT_TO_LEFT
     }
+    "run a field of digits left to right, and from a text input too" in inArabic {
+      val field = fx(new InputView)
+      fx(field.numeric @= true)
+      fx(field.text @= "1234")
+      fx(turned(field)) shouldBe NodeOrientation.LEFT_TO_RIGHT
+      fx(field.numeric @= false)
+      fx(turned(field)) shouldBe NodeOrientation.RIGHT_TO_LEFT
+      val pin = fx(new TextInput("PIN", secure = true))
+      fx(pin.numeric @= true)
+      fx(ui.children += pin)
+      fx(pin.value @= "1234")
+      val inner = fx(pin.children().collectFirst { case i: InputView => i }.get)
+      fx(inner.numeric()) shouldBe true
+      fx(turned(inner)) shouldBe NodeOrientation.LEFT_TO_RIGHT
+    }
     "run words by their own first letter, or the way the app says, where it says" in inArabic {
       val field = fx(new InputView)
       fx(field.direction @= TextDirection.Auto)

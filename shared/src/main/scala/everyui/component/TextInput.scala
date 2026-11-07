@@ -33,6 +33,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   /** Holds text meant as it is typed (a path, a command, code), never spell-checked, corrected or capitalized
     * (`InputView.literal`). */
   val literal: Var[Boolean] = own(Var(false))
+  /** Holds digits (a PIN, a code), on a phone's number pad rather than its letters (`InputView.numeric`). */
+  val numeric: Var[Boolean] = own(Var(false))
   /** Which way its words run (`InputView.direction`): by default the app's, left to right where `literal`. */
   val direction: Var[TextDirection] = own(Var(TextDirection.Inherit))
   /** Its name to autofill and password managers (`InputView.fieldName`); empty, it is named by its hint. */
@@ -88,6 +90,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.fieldName := fieldName()
     input.readOnly := readOnly()
     input.literal := literal()
+    input.numeric := numeric()
     input.direction := direction()
     input.pasted := pasted()
     // named by its label, which is drawn beside it rather than being its own
