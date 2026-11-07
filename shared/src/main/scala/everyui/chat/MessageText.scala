@@ -30,7 +30,10 @@ class MessageText(text: Val[String], widest: Val[Double], points: Double = 14.0,
     content := text()
   }
   words.direction @= direction
-  words.size.width := math.max(1.0, math.min(widest(), math.ceil(natural.size.width()) + 1.0))
+  // as wide as the words on one line, once that has been read: before, the whole width (a line not yet read is 0 wide,
+  // and the words were laid out a letter wide, read there, and laid out again)
+  words.size.width := math.max(1.0,
+    if (!natural.measured.known()) widest() else math.min(widest(), math.ceil(natural.size.width()) + 1.0))
   size.width := words.size.width()
   size.height := words.size.height()
   children ++= List(natural, words)
