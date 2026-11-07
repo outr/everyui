@@ -24,19 +24,25 @@ object AutofillDemo {
   def run(): Unit = {
     if (Platform.launchArg("fallback") == "off") Autofill.fallback @= Some(Autofill.Off)
     val step = Platform.launchArg("step") == "1"
-    val signIn = new Form(FormKind.SignIn)
-    val email = field("Email", "email", Autofill.Username)
-    val password = new TextInput("Password", secure = true)
-    password.autofill @= Some(Autofill.CurrentPassword)
-    password.value.attach(v => Platform.log("autofill password of " + v.length.toString))
-    password.submitted.attach(_ => signIn.submit())
-    if (step) signIn.hiddenUsername @= "ann@example.com"
-    signIn.submitted.attach { _ =>
-      Platform.log("autofill signed in as " + (if (step) signIn.hiddenUsername() else email.value()))
-      signIn.succeeded()
+    def signInForm(): Form = {
+      val signIn = new Form(FormKind.SignIn)
+      val email = field("Email", "email", Autofill.Username)
+      val password = new TextInput("Password", secure = true)
+      password.autofill @= Some(Autofill.CurrentPassword)
+      password.value.attach(v => Platform.log("autofill password of " + v.length.toString))
+      password.submitted.attach(_ => signIn.submit())
+      if (step) signIn.hiddenUsername @= "ann@example.com"
+      signIn.submitted.attach { _ =>
+        Platform.log("autofill signed in as " + (if (step) signIn.hiddenUsername() else email.value()))
+        signIn.succeeded()
+      }
+      signIn.children += (if (step) Column(12.0)(password, new Button("Sign in", () => signIn.submit()))
+        else Column(12.0)(email, password, new Button("Sign in", () => signIn.submit())))
+      signIn.position.left @= 40.0
+      signIn.position.top @= 40.0
+      signIn
     }
-    signIn.children += (if (step) Column(12.0)(password, new Button("Sign in", () => signIn.submit()))
-      else Column(12.0)(email, password, new Button("Sign in", () => signIn.submit())))
+    var signIn = signInForm()
 
     val contact = new Form(FormKind.Contact)
     contact.children += Column(12.0)(field("Name", "name", Autofill.Name), field("Email", "contact-email", Autofill.Email),
@@ -56,12 +62,16 @@ object AutofillDemo {
       ui.children -= signIn
       signIn.dispose()
     })
-    val unhinted = Column(12.0)(search, composer, seats, pin, off, remove)
+    // a sign-in put up afresh, as an app shows one long after it started (a card in a chat), for autofill to be asked
+    // about it as it was about the first
+    val again = new Button("New sign-in", () => if (!ui.children().contains(signIn)) {
+      signIn = signInForm()
+      ui.children += signIn
+    })
+    val unhinted = Column(12.0)(search, composer, seats, pin, off, remove, again)
     unhinted.position.left @= 40.0
     unhinted.position.top @= 420.0
 
-    signIn.position.left @= 40.0
-    signIn.position.top @= 40.0
     contact.position.top @= 40.0
     ui.children ++= List(signIn, contact, unhinted)
   }

@@ -28,6 +28,9 @@ final class FieldView(context: Context) extends EditText(context) {
   setFocusable(false)
 
   def edit(on: Boolean): Unit = {
+    // a field of a form put up since the autofill session began (a sign-in card shown in a chat well after launch)
+    // starts a session of its own: a finished one, a password manager's answer to another form, answers no other
+    if (on && !editing) FieldView.newSessionFor(this)
     editing = on
     setFocusable(on)
     setFocusableInTouchMode(on)
@@ -59,6 +62,18 @@ final class FieldView(context: Context) extends EditText(context) {
   }
 
   override def dispatchTouchEvent(event: MotionEvent): Boolean = editing && super.dispatchTouchEvent(event)
+
+  // Told to autofill as the field it is: focusable, which it is the moment it is touched (it is only kept from taking
+  // the focus by itself, on a TV), and where it is in the window, which its translation places it (its own left and top
+  // are 0, the layout being EveryUI's). Told unfocusable at 0, 0, a password manager answered a sign-in's first request
+  // with nothing, Android finished the session there, and touching the fields after asked for nothing more.
+  override def onProvideAutofillStructure(structure: android.view.ViewStructure, flags: Int): Unit = {
+    super.onProvideAutofillStructure(structure, flags)
+    structure.setFocusable(true)
+    val at = new Array[Int](2)
+    getLocationInWindow(at)
+    structure.setDimens(at(0), at(1), 0, 0, getWidth, getHeight)
+  }
 
   // told by EditText from its own constructor too, before `selecting` is set
   override def onSelectionChanged(start: Int, end: Int): Unit = {
@@ -111,5 +126,31 @@ final class FieldView(context: Context) extends EditText(context) {
     if (clip == null) ""
     else (0 until clip.getItemCount).flatMap(i => Option(clip.getItemAt(i).coerceToText(getContext))).map(_.toString)
       .filter(_.nonEmpty).mkString("\n")
+  }
+}
+
+object FieldView {
+  // the fields on the screen as the autofill session began, by identity, held no longer than they are
+  private val inSession =
+    java.util.Collections.newSetFromMap(new java.util.WeakHashMap[FieldView, java.lang.Boolean]())
+
+  /** A fresh autofill session where `field` was not on the screen as the last began: that one cancelled (finished as
+    * it is once a password manager answers with nothing, it hears no field again), and the fields there now the new
+    * one's, so a form shown later in the one activity is asked about as the first was. */
+  private[render] def newSessionFor(field: FieldView): Unit = if (android.os.Build.VERSION.SDK_INT >= 26 &&
+      !inSession.contains(field)) {
+    val manager = field.getContext.getSystemService(classOf[android.view.autofill.AutofillManager])
+    // (the first edited takes the session there is, which Android began as the fields were laid out, the fill dialog's
+    // answer with it: only a field come since needs another)
+    if (manager != null && manager.isEnabled && !inSession.isEmpty) manager.cancel()
+    inSession.clear()
+    shown(field.getRootView).foreach(inSession.add)
+  }
+
+  // the fields under `view`
+  private def shown(view: android.view.View): List[FieldView] = view match {
+    case f: FieldView => List(f)
+    case g: android.view.ViewGroup => (0 until g.getChildCount).toList.flatMap(i => shown(g.getChildAt(i)))
+    case _ => Nil
   }
 }
