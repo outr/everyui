@@ -92,7 +92,8 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   // (TextView.looks), worked out once for all the words in it: where it starts in the box, from the box's start edge
   // (`spaceFrom`), what lies after it inside what it is in on the way up to the box (`spaceTail`), the box's width
   // (`spaceWidth`, 0 for no box), and what the words in it watch to be looked at again (`spaceWatch`). The box is the
-  // nearest container with a width of its own; one sized to what it holds leaves it to the one it is in. There is none
+  // nearest container with a width of its own; one sized to what it holds, or letting what it holds hang out of it
+  // (`clipsToBox` Some(false)), leaves it to the one it is in. There is none
   // where the way up meets something hidden, content that runs on past its width on purpose (`textRunsOn`), or the top
   // of something not yet on the screen: what stops it is watched, to look again as it is shown or put on the screen.
   private var spaceLook: Int = -1
@@ -110,7 +111,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     spaceWidth = 0.0
     spaceWatch = List(this)
     if (!textRunsOn && notHidden) {
-      if (size.width.explicit && !followsChildren) {
+      // (one that lets what it holds hang out of it, `clipsToBox` Some(false), is no box: a badge on a button's corner,
+      // past its edge, was held to the room left there, none, and its count drawn a pixel wide)
+      if (size.width.explicit && !followsChildren && !clipAsked.contains(false)) {
         spaceFrom = 0.0
         spaceTail = 0.0
         spaceWidth = size.width()

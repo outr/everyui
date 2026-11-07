@@ -263,6 +263,10 @@ class TranscriptNarrowSpec extends FxSpec {
           val b = fx(t.jump.badge)
           if (rtl) fx(b.position.left()) should be < 0.0
           else fx(b.position.left() + b.size.width()) should be > JumpButton.diameter
+          // its count drawn whole, though it hangs past the button's edge (which lets it): not held to the room there
+          val count = fx(b.childComponents.collectFirst { case w: TextView => w }.get)
+          fx(count.node.getText()) shouldBe "3"
+          fx(count.size.width()) should be > 4.0
           // pressed: down at the newest, and gone, so the last row's own buttons are clear of it
           fx(t.jump.event.click @= PointerEvent(PointerKind.Click, t.jump.absoluteLeft + 20.0, t.jump.absoluteTop + 20.0))
           settle(t)
