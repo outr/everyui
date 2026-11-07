@@ -39,7 +39,11 @@ class RenderNode(val el: html.Element) {
       made
     } else had.asInstanceOf[js.Dictionary[String]]
     val same = book.get(property).contains(value)
-    if (property == "text") everyui.perf.PerfCounters.wroteText(same) else everyui.perf.PerfCounters.wrote(same)
+    // named, for a read after it, with whether it was to a node off the page (laid out as it is lent to the page to
+    // be read)
+    val what = if (el.isConnected) property else property + " off the page"
+    if (property == "text") everyui.perf.PerfCounters.wroteText(same, what)
+    else everyui.perf.PerfCounters.wrote(same, what)
     book(property) = value
   }
 

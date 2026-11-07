@@ -10,7 +10,8 @@ import everyui.render.Platform
   *  - words: each `TextView` fit, and those whose words, limits and room were all as at its last (what a cache of fits
   *    would have saved);
   *  - reads: each size read from the platform (the web's box reads), and those after a write in the same frame, which
-  *    make the browser lay the page out there and then;
+  *    may make the browser lay the page out there and then, by the first write before them (`readsAfterAWriteOf`: what
+  *    was written, and whether to a node off the page);
   *  - children: components a list made (`bindMaking`, `bind`) against those it kept, and parts `replaceMaking` put in
   *    new against those it kept;
   *  - writes: each style written to the page (position, size, colours, opacity, display, the words), and those that
@@ -47,12 +48,15 @@ object PerfCounters {
   private var textBy: Map[String, Int] = Map.empty
   private var textSameBy: Map[String, Int] = Map.empty
   private var againFor: Map[String, Int] = Map.empty
+  private var forcedBy: Map[String, Int] = Map.empty
   // what the words being written now are written for: a `TextView` fit's cause, while it fits
   private[everyui] var textFor: String = ""
   // the frame being counted, and whether anything has been written in it since the page was last laid out
   private[everyui] var frame = 0
   private var open = false
   private var dirty = false
+  // what made it so: the first write since the page was laid out, as the platform names it
+  private var dirtiedBy = ""
 
   private def touch(): Unit = if (!open) {
     open = true
@@ -107,22 +111,31 @@ object PerfCounters {
     reads += 1
     if (dirty) {
       forcedReads += 1
+      val by = if (dirtiedBy.isEmpty) "other" else dirtiedBy
+      forcedBy = forcedBy + (by -> (forcedBy.getOrElse(by, 0) + 1))
       // the page laid out for the read: clean until the next write
       dirty = false
     }
   }
 
-  /** A style written to the page; `same` where it was what was there already. */
-  def wrote(same: Boolean): Unit = if (on) {
+  /** A style written to the page; `same` where it was what was there already. `what` is what was written ("left",
+    * "color", "text"), with " off the page" where what it was written to was not on it, as the platform says: what a
+    * read after it is counted by, the first written since the page was laid out (`readsAfterAWriteOf`), so a write
+    * that lays nothing out again (a colour) is told from one that does. */
+  def wrote(same: Boolean, what: String = ""): Unit = if (on) {
     touch()
     writes += 1
-    if (same) writesSame += 1 else dirty = true
+    if (same) writesSame += 1
+    else {
+      if (!dirty) dirtiedBy = what
+      dirty = true
+    }
   }
 
   /** Words written to the page (`same` where they were what was there), counted by what they were written for: the
     * cause of the `TextView` fit that wrote them (`textFor`), or "other" for words written outside one. */
-  def wroteText(same: Boolean): Unit = if (on) {
-    wrote(same)
+  def wroteText(same: Boolean, what: String = "text"): Unit = if (on) {
+    wrote(same, what)
     val cause = if (textFor.isEmpty) "other" else textFor
     textBy = textBy + (cause -> (textBy.getOrElse(cause, 0) + 1))
     if (same) textSameBy = textSameBy + (cause -> (textSameBy.getOrElse(cause, 0) + 1))
@@ -163,6 +176,7 @@ object PerfCounters {
     textBy = Map.empty
     textSameBy = Map.empty
     againFor = Map.empty
+    forcedBy = Map.empty
   }
 
   /** The counts by name. */
@@ -177,24 +191,26 @@ object PerfCounters {
   private def most(by: Map[String, Int]): List[(String, Int)] = by.toList.sortBy(e => -e._2).take(12)
 
   /** The counts as lines, with the kinds of container most placed and most placed again in a frame, what asked for
-    * those placed again, and what the words written were written for (all of them, and those unchanged). */
+    * those placed again, what the words written were written for (all of them, and those unchanged), and what was
+    * written before a read after a write. */
   def report: String = {
     def line(name: String, by: Map[String, Int]): String =
       name + ": " + most(by).map(e => e._1 + " " + e._2).mkString(", ")
     (counts.map(c => c._1 + ": " + c._2) ++ List(line("placed by kind", placedBy),
       line("placed again by kind", againBy), line("placed again for", againFor), line("words written for", textBy),
-      line("words written unchanged for", textSameBy))).mkString("\n")
+      line("words written unchanged for", textSameBy), line("reads after a write of", forcedBy))).mkString("\n")
   }
 
-  /** The counts as a JSON object, with `placedBy`, `placedAgainBy`, `placedAgainFor`, `textFor` and
-    * `textUnchangedFor`. */
+  /** The counts as a JSON object, with `placedBy`, `placedAgainBy`, `placedAgainFor`, `textFor`, `textUnchangedFor`
+    * and `readsAfterAWriteOf`. */
   def json: String = {
     def quote(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     def obj(entries: List[(String, Int)]): String =
       "{" + entries.map(e => quote(e._1) + ":" + e._2.toString).mkString(",") + "}"
     "{" + counts.map(c => quote(c._1) + ":" + c._2.toString).mkString(",") + ",\"placedBy\":" + obj(most(placedBy)) +
       ",\"placedAgainBy\":" + obj(most(againBy)) + ",\"placedAgainFor\":" + obj(most(againFor)) +
-      ",\"textFor\":" + obj(most(textBy)) + ",\"textUnchangedFor\":" + obj(most(textSameBy)) + "}"
+      ",\"textFor\":" + obj(most(textBy)) + ",\"textUnchangedFor\":" + obj(most(textSameBy)) +
+      ",\"readsAfterAWriteOf\":" + obj(most(forcedBy)) + "}"
   }
 
   /** The counts to a check outside the app: `window.everyuiCounters()` as lines, `everyuiCountersJson()` as an

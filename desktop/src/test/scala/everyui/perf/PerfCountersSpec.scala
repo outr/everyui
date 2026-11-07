@@ -154,4 +154,28 @@ class PerfCountersSpec extends FxSpec {
       }
     }
   }
+  "Reads after a write" should {
+    "be counted by the first write since the page was laid out, and only once for it" in {
+      val after = fx {
+        PerfCounters.on = true
+        PerfCounters.reset()
+        PerfCounters.wrote(same = false, "width off the page")
+        PerfCounters.wrote(same = false, "color")
+        PerfCounters.read()
+        PerfCounters.read()
+        PerfCounters.wrote(same = true, "left")
+        PerfCounters.read()
+        PerfCounters.wroteText(same = false, "text")
+        PerfCounters.read()
+        val json = PerfCounters.json
+        PerfCounters.on = false
+        json
+      }
+      after should include("\"readsAfterAWrite\":2")
+      val of = after.substring(after.indexOf("\"readsAfterAWriteOf\""))
+      of should include("\"width off the page\":1")
+      of should include("\"text\":1")
+      of should not include "color"
+    }
+  }
 }
