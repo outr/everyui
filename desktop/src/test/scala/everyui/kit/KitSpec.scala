@@ -104,6 +104,19 @@ class KitSpec extends FxSpec {
       fx(ui.children().size) shouldBe before + 1
       eventually(ui.children().size == before) shouldBe true
     }
+    "offer an action after its words, which does it and takes the message away" in onScreen() {
+      var undone = 0
+      fx(Toast.show("Archived", action = Some("Undo" -> (() => undone += 1))))
+      val plate = fx(ui.children().last.asInstanceOf[Container])
+      val undo = fx(plate.children().collectFirst { case b: Button => b }.get)
+      val words = fx(plate.children().collectFirst { case t: TextView => t }.get)
+      fx(undo.label()) shouldBe "Undo"
+      fx(undo.position.left()) should be >= fx(words.position.left() + words.size.width())
+      fx(plate.size.width()) should be >= fx(undo.position.left() + undo.size.width())
+      fx(undo.event.click @= everyui.event.PointerEvent(everyui.event.PointerKind.Click, 0.0, 0.0))
+      undone shouldBe 1
+      fx(ui.children().contains(plate)) shouldBe false
+    }
   }
 
   // The presses' time (AsyncPress.clock, AsyncPress.after), kept by the spec: what is due runs as `advance` passes it,
