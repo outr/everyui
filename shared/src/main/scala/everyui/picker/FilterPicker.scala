@@ -27,8 +27,13 @@ import reactify.*
   * Given `segments`, a row of chips over the list narrows the matches to one group (`groupOf`), on top of the query:
   * a model picker's providers, say, each with an icon before its words if it likes (`SegmentIcon`). The first segment
   * is chosen to begin with, and `Segment.all` shows every match.
-  * A click or a tap chooses a chip; from the field, Tab and Shift+Tab go round the segments, and on a remote the
-  * chips sit between the field and the list, Left and Right along them and OK choosing.
+  * A click or a tap chooses a chip, the focus going back to the field where there is a keyboard; from the field, Tab
+  * and Shift+Tab go round the segments, and on a remote the chips sit between the field and the list, Left and Right
+  * along them and OK choosing. Given `groupsOf`, a match is in each group it names, not the one `groupOf` does: a
+  * "Recent" chip whose matches are each in their own group's chip too.
+  *
+  * Given `subtitleOf`, each row has a muted second line under its words where there are any (a description under a
+  * name), and the rows are two lines tall.
   *
   * Given `toggles`, options the query reads (Match case, a regular expression, whole words: `PickerToggle`) are toggle
   * buttons at the field's end, and given `extraField`, a second, smaller field under it (a file mask: `PickerField`),
@@ -70,7 +75,8 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
                       row: Option[Var[String] => ListRow[T]] = None, segments: List[Segment] = Nil,
                       groupOf: T => String = (_: T) => "", toggles: List[PickerToggle] = Nil,
                       extraField: Option[PickerField] = None, heading: Option[Val[String]] = None,
-                      inUse: T => Boolean = (_: T) => false) extends Container {
+                      inUse: T => Boolean = (_: T) => false, groupsOf: Option[T => Set[String]] = None,
+                      subtitleOf: Option[T => String] = None) extends Container {
   /** A match chosen. */
   val chosen: Channel[T] = Channel[T]
   /** The words in the field. */
@@ -118,6 +124,12 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     size.width @= across - 24.0
     children ++= segments.map(s => new SegmentChip(s, segment))
   }
+  // a chip clicked or tapped where there is a keyboard gives the focus back to the field, where the arrows and Enter
+  // move through the matches and choose (left on the chip, they reached the list no more); one chosen with Enter, by
+  // the keys, keeps it, and on a remote the chips are a stop of their own, left by the arrows
+  if (keyboard && !Platform.remoteNavigation())
+    chips.children().foreach(c => c.event.click.attach(_ =>
+      if (everyui.event.Pointer.recent) Platform.later(() => field.focus())))
   /** The heading's line, under the field (and the second field), over the chips and the list: muted words wrapped to
     * the picker's width, drawn only while there are words. Never focused, and no row of the list. */
   val headingLine: Option[TextView] = heading.map { h =>
@@ -130,9 +142,11 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
       visible := h().nonEmpty
     }
   }
-  val list: VirtualList[T] = new VirtualList[T](shown, keyOf, labelOf)(() =>
+  val list: VirtualList[T] = new VirtualList[T](shown, keyOf, labelOf,
+    rowHeight = if (subtitleOf.nonEmpty) HighlightRow.twoLines else VirtualList.rowHeight)(() =>
     row.map(make => make(words)).getOrElse(new HighlightRow[T](labelOf,
-      (t: T) => Match.spans(words(), labelOf(t)).getOrElse(Nil), detailOf)))
+      (t: T) => Match.spans(words(), labelOf(t)).getOrElse(Nil), detailOf,
+      subtitle = subtitleOf.getOrElse((_: T) => ""))))
   private val empty = new TextView {
     content := Words.noResults
     font.size @= 14.0
@@ -329,7 +343,9 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   /** The matches in the chosen segment shown, the first of them under the cursor. */
   private def narrow(): Unit = {
     val key = segment()
-    shown @= (if (key.isEmpty) matches() else matches().filter(t => groupOf(t) == key))
+    // (in every group it is in, where it is in several: `groupsOf`)
+    shown @= (if (key.isEmpty) matches()
+      else matches().filter(t => groupsOf.map(f => f(t).contains(key)).getOrElse(groupOf(t) == key)))
     // the cursor on the one in use while no words narrow them, else on the first
     if (shown().nonEmpty) list.moveTo(if (words().trim.nonEmpty) 0 else math.max(0, shown().indexWhere(inUse)))
   }

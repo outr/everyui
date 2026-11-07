@@ -15,6 +15,8 @@ class FilterPickerSpec extends FxSpec {
     Focus.key(key, false)
   }
 
+  private def inside(c: Component): List[Component] = c.childComponents.toList.flatMap(x => x :: inside(x))
+
   private val names: Vector[String] = Vector.tabulate(50000)(i => "File" + i + ".scala")
 
   private def onScreen[T](test: Component => T): T = {
@@ -160,6 +162,50 @@ class FilterPickerSpec extends FxSpec {
       fx(picker.segment()) shouldBe "local"
       press("ArrowDown")
       fx(Focus.focused()) shouldBe Some(picker.list)
+    }
+    "show a match in each group it is in, where it names several" in onScreen { _ =>
+      val recent = Set("qwen:local", "gpt:openai")
+      val picker = fx(new FilterPicker[String](q => Task.pure(models.filter(_.contains(q))), identity, identity,
+        debounce = 0.0,
+        segments = List(Segment.all("All"), Segment("recent", "Recent"), Segment("local", "Local")),
+        groupsOf = Some((m: String) => Set(group(m)) ++ (if (recent.contains(m)) Set("recent") else Set.empty))))
+      fx(picker.open())
+      eventually(picker.shown().size == 5) shouldBe true
+      fx(picker.segment @= "recent")
+      fx(picker.shown()) shouldBe Vector("qwen:local", "gpt:openai")
+      fx(picker.segment @= "local")
+      fx(picker.shown()) shouldBe Vector("llama:local", "qwen:local")
+    }
+    "give the focus back to the field when a chip is clicked, keep it on one chosen with Enter" in onScreen { _ =>
+      val picker = make()
+      fx(picker.open())
+      eventually(picker.shown().size == 5) shouldBe true
+      val chip = fx(picker.chips.children()(1))
+      fx(chip.focus())
+      fx {
+        everyui.event.Pointer.usedAt = everyui.render.Platform.ticks()
+        chip.event.click @= everyui.event.PointerEvent(everyui.event.PointerKind.Click, 0.0, 0.0)
+      }
+      fx(picker.segment()) shouldBe "local"
+      eventually(Focus.focused().contains(picker.field)) shouldBe true
+      // by the keys, the focus stays on the chip
+      fx(everyui.event.Pointer.usedAt = -1.0e9)
+      val next = fx(picker.chips.children()(3))
+      fx(next.focus())
+      press("Enter")
+      fx(picker.segment()) shouldBe "openai"
+      fx(Focus.focused()) shouldBe Some(next)
+    }
+    "draw a second line under each row's words where given, the rows two lines tall" in onScreen { _ =>
+      val picker = fx(new FilterPicker[String](q => Task.pure(models), identity, identity, debounce = 0.0,
+        subtitleOf = Some((m: String) => "by " + group(m))))
+      fx(picker.open())
+      eventually(picker.shown().size == 5) shouldBe true
+      fx(picker.list.rowHeight) shouldBe HighlightRow.twoLines
+      eventually(picker.list.children().exists(r => inside(r).exists {
+        case t: TextView => t.content() == "by local" && t.visible()
+        case _ => false
+      })) shouldBe true
     }
     "leave a picker without segments as it was: no chips, every match shown" in onScreen { _ =>
       val picker = fx(new FilterPicker[String](q => Task.pure(models), identity, identity, debounce = 0.0))

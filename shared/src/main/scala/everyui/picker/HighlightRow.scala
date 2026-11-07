@@ -12,9 +12,13 @@ import reactify.*
   * accent, in its ring.
   *
   * `leading` puts something before the words (an icon, a workspace's tile), centred on the row's line: made once for
-  * the row and handed its item, which it binds, since a row is handed one item after another as a list scrolls. */
+  * the row and handed its item, which it binds, since a row is handed one item after another as a list scrolls.
+  *
+  * `subtitle` puts a muted second line under the words (a description under a name), where it has any for the item:
+  * the row is then two lines tall (`HighlightRow.twoLines`), the words and the line centred together. */
 class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T => String = (_: T) => "",
-                      points: Double = 14.0, leading: Option[Val[Option[T]] => Component] = None)
+                      points: Double = 14.0, leading: Option[Val[Option[T]] => Component] = None,
+                      subtitle: T => String = (_: T) => "")
   extends ListRow[T] {
   private val lead: Option[Component] = leading.map(make => make(item))
   private val label = new RichText {
@@ -24,6 +28,13 @@ class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T
     color := (if (inUse()) Theme.accentText() else Theme.text())
     runs := item().map(t => HighlightRow.runs(text(t), spans(t), points)).getOrElse(Nil)
   }
+  private val under = new TextView {
+    textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+    font.size @= points * 0.85
+    color := Theme.muted()
+    content := item().map(subtitle).getOrElse("")
+  }
+  private def twoLines: Boolean = under.content().nonEmpty
   private val note = new TextView {
     // (on the row's one line, cut at its end: the tip has it whole)
     textOverflow @= everyui.component.types.TextOverflow.Ellipsis
@@ -37,17 +48,26 @@ class HighlightRow[T](text: T => String, spans: T => List[(Int, Int)], detail: T
     l.position.top := (size.height() - l.size.height()) / 2.0
   }
   label.position.left := lead.map(l => ListRow.inset + l.size.width() + points * 0.6).getOrElse(ListRow.inset)
-  label.position.top := (size.height() - label.size.height()) / 2.0
+  // alone, centred on the row; with a line under it, the two centred together
+  label.position.top := (if (twoLines) (size.height() - label.size.height() - under.size.height() - 2.0) / 2.0
+    else (size.height() - label.size.height()) / 2.0)
+  under.position.left := label.position.left()
+  under.position.top := label.position.top() + label.size.height() + 2.0
+  under.visible := twoLines
+  under.maxWidth := math.max(0.0, size.width() - under.position.left() - ListRow.inset)
   note.position.left := label.position.left() + label.size.width() + points * 0.8
-  note.position.top := (size.height() - note.size.height()) / 2.0
+  note.position.top := label.position.top() + (label.size.height() - note.size.height()) / 2.0
   size.width.attach(_ => clipTo(size.width(), size.height()))
-  children ++= lead.toList ++ List(label, note)
+  children ++= lead.toList ++ List(label, note, under)
   // a picker's row is a line tall, its words cut at its end: where they run past it, they are read whole in its tip
   tip := item().filter(_ => note.position.left() + note.size.width() > size.width() - ListRow.inset)
-    .map(t => (text(t) :: List(detail(t)).filter(_.nonEmpty)).mkString("  "))
+    .map(t => (text(t) :: List(detail(t), subtitle(t)).filter(_.nonEmpty)).mkString("  "))
 }
 
 object HighlightRow {
+  /** How tall a row with a second line (`subtitle`) is. */
+  val twoLines: Double = 44.0
+
   /** `text` as runs, those in `spans` lit. */
   def runs(text: String, spans: List[(Int, Int)], points: Double): List[TextRun] = {
     val lit = Theme.accentText().toHex
