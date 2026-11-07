@@ -794,10 +794,12 @@ class RenderNode(val view: View) {
     else if (action == MotionEvent.ACTION_UP) {
       letGo()
       fire(PointerKind.Up, e)
-      val inside = e.getX >= 0 && e.getY >= 0 && e.getX <= view.getWidth && e.getY <= view.getHeight
       // nor where it moved further than a tap may, onto something in it that answers a click itself (PressOwner)
       val slop = android.view.ViewConfiguration.get(view.getContext).getScaledTouchSlop
       val moved = math.abs(e.getRawX - downAt._1) > slop || math.abs(e.getRawY - downAt._2) > slop
+      // a finger lifted where it went down is a tap on what it went down on, though that moved from under it meanwhile:
+      // a phone's keyboard closing as a button under a field was tapped moved the form, and the tap was no click
+      val inside = !moved || (e.getX >= 0 && e.getY >= 0 && e.getX <= view.getWidth && e.getY <= view.getHeight)
       if (inside && !pressedLong && !(moved && PressOwner.elsewhere(view, e.getRawX, e.getRawY))) fire(PointerKind.Click, e)
     }
     else if (action == MotionEvent.ACTION_CANCEL) {
