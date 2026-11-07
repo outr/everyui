@@ -34,8 +34,8 @@ class TimeLimit(seconds: Double, expired: () => Unit, warning: Double = 20.0) {
     closeWarning()
     val mine = run
     val warnFor = math.min(TimeLimits.scaled(warning), seconds)
-    Platform.after(math.max(0.0, seconds - warnFor), () => if (mine == run) warn(mine))
-    Platform.after(math.max(seconds, warnFor), () => if (mine == run) end())
+    TimeLimit.after(math.max(0.0, seconds - warnFor), () => if (mine == run) warn(mine))
+    TimeLimit.after(math.max(seconds, warnFor), () => if (mine == run) end())
   }
 
   /** Counting again from now, as `start` does: more time. */
@@ -71,6 +71,10 @@ class TimeLimit(seconds: Double, expired: () => Unit, warning: Double = 20.0) {
 }
 
 object TimeLimit {
+  /** How its times are waited out: the platform's timer, or a spec's own clock, which runs what falls due exactly when
+    * the spec says time has passed, however late a busy machine would run a real timer (as `AsyncPress.after`). */
+  private[everyui] var after: (Double, () => Unit) => Unit = (seconds, f) => Platform.after(seconds, f)
+
   /** The warning's title, words and button, in each language. */
   def stillThere: String = Words("time.stillThere")
   def almostUp: String = Words("time.almostUp")
