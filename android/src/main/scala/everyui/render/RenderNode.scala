@@ -65,6 +65,7 @@ class RenderNode(val view: View) {
   def setX(x: Double): Unit = {
     left = x
     view.setTranslationX(x.toFloat)
+    moved()
     if (tracks.nonEmpty) animate()
   }
 
@@ -1296,7 +1297,15 @@ class RenderNode(val view: View) {
 
   /** A `TextView` draws its baseline `-ascent` (whole pixels) below its top: shift it so the baseline lands where the
     * shared line box puts it. */
-  private def placeY(): Unit = view.setTranslationY(restY.toFloat)
+  private def placeY(): Unit = {
+    view.setTranslationY(restY.toFloat)
+    moved()
+  }
+  // the group it is in, where that is laid out over its children's reach (NodeGroup.childMoved), told it moved
+  private def moved(): Unit = view.getParent match {
+    case g: NodeGroup => g.childMoved()
+    case _ => ()
+  }
 
   // Where the view sits down its parent: a line of text by its baseline
   private def restY: Double = view match {
@@ -1479,8 +1488,37 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
     }
     // the render root drawn smaller than a unit to a pixel is laid out that much larger, so its edges are the window's
     val grown = if ((this eq Host.root) && Host.scale > 0.0 && Host.scale < 1.0) 1.0 / Host.scale else 1.0
-    setMeasuredDimension(math.ceil(View.getDefaultSize(0, widthSpec) * grown - 0.001).toInt,
-      math.ceil(View.getDefaultSize(0, heightSpec) * grown - 0.001).toInt)
+    acrossToReach = View.MeasureSpec.getMode(widthSpec) == View.MeasureSpec.UNSPECIFIED
+    downToReach = View.MeasureSpec.getMode(heightSpec) == View.MeasureSpec.UNSPECIFIED
+    val (across, down) = reach()
+    setMeasuredDimension(
+      if (acrossToReach) across else math.ceil(View.getDefaultSize(0, widthSpec) * grown - 0.001).toInt,
+      if (downToReach) down else math.ceil(View.getDefaultSize(0, heightSpec) * grown - 0.001).toInt)
+  }
+
+  // A group given no size (a container sized by nothing, a form) would be 0 by 0, and Android draws nothing in a view
+  // with no room and sends it no touch, so what is in it was never seen: it is laid out over where its children reach
+  // instead, as a `div` of no size shows what is in it. Its size to EveryUI is 0 all the same (`getWidth`).
+  private var acrossToReach = false
+  private var downToReach = false
+  private def reach(): (Int, Int) = {
+    var across = 0f
+    var down = 0f
+    var i = 0
+    while (i < getChildCount) {
+      val child = getChildAt(i)
+      across = math.max(across, child.getTranslationX + child.getMeasuredWidth)
+      down = math.max(down, child.getTranslationY + child.getMeasuredHeight)
+      i += 1
+    }
+    (math.ceil(across).toInt, math.ceil(down).toInt)
+  }
+
+  /** A child moved (its translation): a group laid out over its children's reach is laid out again where they now
+    * reach past it, or no longer to its edge. */
+  private[render] def childMoved(): Unit = if (acrossToReach || downToReach) {
+    val (across, down) = reach()
+    if ((acrossToReach && across != getMeasuredWidth) || (downToReach && down != getMeasuredHeight)) requestLayout()
   }
 
   override def onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int): Unit = {
