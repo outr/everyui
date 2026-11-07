@@ -631,6 +631,569 @@
       ]
     },
     {
+      "type": "everyui.Color$",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "everyui.component.Button",
+      "fields": [
+        {
+          "name": "spinner$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.Component",
+      "fields": [
+        {
+          "name": "accessibleDescription$lzy1"
+        },
+        {
+          "name": "backdropBlur$lzy1"
+        },
+        {
+          "name": "backgroundColor$lzy1"
+        },
+        {
+          "name": "blur$lzy1"
+        },
+        {
+          "name": "borderColor$lzy1"
+        },
+        {
+          "name": "borderWidth$lzy1"
+        },
+        {
+          "name": "cached$lzy1"
+        },
+        {
+          "name": "clickFocus$lzy1"
+        },
+        {
+          "name": "collapses$lzy1"
+        },
+        {
+          "name": "color$lzy1"
+        },
+        {
+          "name": "copyAs$lzy1"
+        },
+        {
+          "name": "cursor$lzy1"
+        },
+        {
+          "name": "disabled$lzy1"
+        },
+        {
+          "name": "effectiveHeight$lzy1"
+        },
+        {
+          "name": "effectiveWidth$lzy1"
+        },
+        {
+          "name": "event$lzy1"
+        },
+        {
+          "name": "flex$lzy1"
+        },
+        {
+          "name": "focusShown$lzy1"
+        },
+        {
+          "name": "focusShownNow$lzy1"
+        },
+        {
+          "name": "focusable$lzy1"
+        },
+        {
+          "name": "focused$lzy1"
+        },
+        {
+          "name": "focusedNow$lzy1"
+        },
+        {
+          "name": "gradient$lzy1"
+        },
+        {
+          "name": "invalid$lzy1"
+        },
+        {
+          "name": "liveRegion$lzy1"
+        },
+        {
+          "name": "mask$lzy1"
+        },
+        {
+          "name": "measure$lzy1"
+        },
+        {
+          "name": "measured$lzy1"
+        },
+        {
+          "name": "motion$lzy1"
+        },
+        {
+          "name": "opacity$lzy1"
+        },
+        {
+          "name": "position$lzy1"
+        },
+        {
+          "name": "radius$lzy1"
+        },
+        {
+          "name": "rotation$lzy1"
+        },
+        {
+          "name": "scale$lzy1"
+        },
+        {
+          "name": "selectable$lzy1"
+        },
+        {
+          "name": "semantics$lzy1"
+        },
+        {
+          "name": "shadow$lzy1"
+        },
+        {
+          "name": "shadows$lzy1"
+        },
+        {
+          "name": "tapSlop$lzy1"
+        },
+        {
+          "name": "tooltip$lzy1"
+        },
+        {
+          "name": "touchDrags$lzy1"
+        },
+        {
+          "name": "updating$lzy1"
+        },
+        {
+          "name": "visible$lzy1"
+        },
+        {
+          "name": "whiteSpace$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.Container",
+      "fields": [
+        {
+          "name": "children$lzy1"
+        },
+        {
+          "name": "clipsToBox$lzy1"
+        },
+        {
+          "name": "contentHeight$lzy1"
+        },
+        {
+          "name": "contentWidth$lzy1"
+        },
+        {
+          "name": "layout$lzy1"
+        },
+        {
+          "name": "padding$lzy1"
+        },
+        {
+          "name": "reachedHeight$lzy1"
+        },
+        {
+          "name": "reachedWidth$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.ImageView",
+      "fields": [
+        {
+          "name": "image$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.TextView",
+      "fields": [
+        {
+          "name": "align$lzy1"
+        },
+        {
+          "name": "content$lzy1"
+        },
+        {
+          "name": "direction$lzy1"
+        },
+        {
+          "name": "elide$lzy1"
+        },
+        {
+          "name": "elided$lzy1"
+        },
+        {
+          "name": "fill$lzy1"
+        },
+        {
+          "name": "font$lzy1"
+        },
+        {
+          "name": "maxLines$lzy1"
+        },
+        {
+          "name": "maxWidth$lzy1"
+        },
+        {
+          "name": "textOutline$lzy1"
+        },
+        {
+          "name": "textOverflow$lzy1"
+        },
+        {
+          "name": "textShadow$lzy1"
+        },
+        {
+          "name": "wrapAnywhere$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.feature.DerivedPosition",
+      "fields": [
+        {
+          "name": "reactify$Reactive$$_status$lzy1"
+        },
+        {
+          "name": "reactions$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.feature.FontFeature",
+      "fields": [
+        {
+          "name": "family$lzy1"
+        },
+        {
+          "name": "italic$lzy1"
+        },
+        {
+          "name": "letterSpacing$lzy1"
+        },
+        {
+          "name": "lineHeight$lzy1"
+        },
+        {
+          "name": "opticalSizing$lzy1"
+        },
+        {
+          "name": "size$lzy1"
+        },
+        {
+          "name": "variations$lzy1"
+        },
+        {
+          "name": "weight$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.feature.MeasuredFeature",
+      "fields": [
+        {
+          "name": "known$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.feature.PositionFeature",
+      "fields": [
+        {
+          "name": "bottom$lzy1"
+        },
+        {
+          "name": "center$lzy1"
+        },
+        {
+          "name": "left$lzy1"
+        },
+        {
+          "name": "middle$lzy1"
+        },
+        {
+          "name": "right$lzy1"
+        },
+        {
+          "name": "top$lzy1"
+        },
+        {
+          "name": "type$lzy1"
+        },
+        {
+          "name": "x$lzy1"
+        },
+        {
+          "name": "y$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.feature.SizeFeature",
+      "fields": [
+        {
+          "name": "center$lzy1"
+        },
+        {
+          "name": "height$lzy1"
+        },
+        {
+          "name": "middle$lzy1"
+        },
+        {
+          "name": "width$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.component.types.FontWeight$",
+      "fields": [
+        {
+          "name": "Black$lzy1"
+        },
+        {
+          "name": "Bold$lzy1"
+        },
+        {
+          "name": "ExtraBold$lzy1"
+        },
+        {
+          "name": "Light$lzy1"
+        },
+        {
+          "name": "Medium$lzy1"
+        },
+        {
+          "name": "Normal$lzy1"
+        },
+        {
+          "name": "SemiBold$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.easing.Easing$",
+      "fields": [
+        {
+          "name": "all$lzy1"
+        },
+        {
+          "name": "map$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.event.Events",
+      "fields": [
+        {
+          "name": "click$lzy1"
+        },
+        {
+          "name": "hold$lzy1"
+        },
+        {
+          "name": "key$lzy1"
+        },
+        {
+          "name": "pointer$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.event.PointerEvents",
+      "fields": [
+        {
+          "name": "down$lzy1"
+        },
+        {
+          "name": "enter$lzy1"
+        },
+        {
+          "name": "leave$lzy1"
+        },
+        {
+          "name": "menu$lzy1"
+        },
+        {
+          "name": "middle$lzy1"
+        },
+        {
+          "name": "move$lzy1"
+        },
+        {
+          "name": "over$lzy1"
+        },
+        {
+          "name": "up$lzy1"
+        },
+        {
+          "name": "wheel$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.example.ExampleApp$",
+      "fields": [
+        {
+          "name": "animation$lzy1"
+        },
+        {
+          "name": "appHeader$lzy1"
+        },
+        {
+          "name": "contentContainer$lzy1"
+        },
+        {
+          "name": "delta$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.example.ui.AnimationExample",
+      "fields": [
+        {
+          "name": "container$lzy1"
+        },
+        {
+          "name": "delta$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.font.Faces$",
+      "fields": [
+        {
+          "name": "MaterialIcons$lzy1"
+        },
+        {
+          "name": "OpenSansRegular$lzy1"
+        },
+        {
+          "name": "OpenSansSemiBold$lzy1"
+        },
+        {
+          "name": "RobotoMono$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.font.GoogleFont$Open$u0020Sans$",
+      "fields": [
+        {
+          "name": "600$lzy1"
+        },
+        {
+          "name": "family$lzy1"
+        },
+        {
+          "name": "regular$lzy1"
+        },
+        {
+          "name": "weights$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.font.MaterialIcon$",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "everyui.image.Image",
+      "fields": [
+        {
+          "name": "size$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.image.Image$",
+      "fields": [
+        {
+          "name": "empty$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.render.Host$",
+      "fields": [
+        {
+          "name": "rootScale$lzy1"
+        },
+        {
+          "name": "settings$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.render.Platform$",
+      "fields": [
+        {
+          "name": "hearUncaught$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.render.RenderNode$",
+      "fields": [
+        {
+          "name": "areaSheet$lzy1"
+        },
+        {
+          "name": "work$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.render.RtlText$",
+      "fields": [
+        {
+          "name": "face$lzy1"
+        },
+        {
+          "name": "probe$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.render.Timers$",
+      "fields": [
+        {
+          "name": "scheduler$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.theme.Palette$",
+      "fields": [
+        {
+          "name": "dark$lzy1"
+        },
+        {
+          "name": "light$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "everyui.ui$",
+      "fields": [
+        {
+          "name": "delta$lzy1"
+        }
+      ]
+    },
+    {
       "type": "java.lang.Boolean",
       "jniAccessible": true,
       "fields": [
@@ -687,6 +1250,9 @@
       ]
     },
     {
+      "type": "java.lang.Object[]"
+    },
+    {
       "type": "java.lang.Runnable",
       "jniAccessible": true,
       "methods": [
@@ -707,6 +1273,9 @@
           ]
         }
       ]
+    },
+    {
+      "type": "java.lang.String[]"
     },
     {
       "type": "java.lang.System",
@@ -902,6 +1471,9 @@
       "type": "javafx.scene.image.ImageView"
     },
     {
+      "type": "javafx.scene.layout.BackgroundFill[]"
+    },
+    {
       "type": "javafx.scene.layout.Pane"
     },
     {
@@ -969,10 +1541,21 @@
       ]
     },
     {
+      "type": "scala.Tuple2[]"
+    },
+    {
       "type": "scala.collection.immutable.ArraySeq$",
       "fields": [
         {
           "name": "emptyImpl$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scala.collection.immutable.LazyList$",
+      "fields": [
+        {
+          "name": "_tailUpdater$lzy1"
         }
       ]
     },
@@ -994,6 +1577,17 @@
       ]
     },
     {
+      "type": "sun.security.provider.NativePRNG$NonBlocking",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.security.SecureRandomParameters"
+          ]
+        }
+      ]
+    },
+    {
       "type": "sun.text.resources.cldr.FormatData"
     },
     {
@@ -1001,272 +1595,14 @@
     },
     {
       "type": "sun.text.resources.cldr.FormatData_en_US"
-    },
-    {
-      "type": "everyui.Color$",
-      "fields": [
-        {
-          "name": "Black$lzy1"
-        },
-        {
-          "name": "Clear$lzy1"
-        },
-        {
-          "name": "DarkGray$lzy1"
-        },
-        {
-          "name": "LightGray$lzy1"
-        },
-        {
-          "name": "SteelBlue$lzy1"
-        },
-        {
-          "name": "White$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.Component",
-      "fields": [
-        {
-          "name": "backgroundColor$lzy1"
-        },
-        {
-          "name": "color$lzy1"
-        },
-        {
-          "name": "effectiveHeight$lzy1"
-        },
-        {
-          "name": "effectiveWidth$lzy1"
-        },
-        {
-          "name": "measure$lzy1"
-        },
-        {
-          "name": "measured$lzy1"
-        },
-        {
-          "name": "position$lzy1"
-        },
-        {
-          "name": "rotation$lzy1"
-        },
-        {
-          "name": "whiteSpace$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.Container",
-      "fields": [
-        {
-          "name": "children$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.ImageView",
-      "fields": [
-        {
-          "name": "image$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.TextView",
-      "fields": [
-        {
-          "name": "content$lzy1"
-        },
-        {
-          "name": "font$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.feature.DerivedPosition",
-      "fields": [
-        {
-          "name": "reactify$Reactive$$_status$lzy1"
-        },
-        {
-          "name": "reactions$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.feature.FontFeature",
-      "fields": [
-        {
-          "name": "family$lzy1"
-        },
-        {
-          "name": "size$lzy1"
-        },
-        {
-          "name": "weight$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.feature.PositionFeature",
-      "fields": [
-        {
-          "name": "bottom$lzy1"
-        },
-        {
-          "name": "center$lzy1"
-        },
-        {
-          "name": "left$lzy1"
-        },
-        {
-          "name": "middle$lzy1"
-        },
-        {
-          "name": "right$lzy1"
-        },
-        {
-          "name": "top$lzy1"
-        },
-        {
-          "name": "type$lzy1"
-        },
-        {
-          "name": "x$lzy1"
-        },
-        {
-          "name": "y$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.feature.SizeFeature",
-      "fields": [
-        {
-          "name": "center$lzy1"
-        },
-        {
-          "name": "height$lzy1"
-        },
-        {
-          "name": "middle$lzy1"
-        },
-        {
-          "name": "width$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.component.types.FontWeight$",
-      "fields": [
-        {
-          "name": "Bold$lzy1"
-        },
-        {
-          "name": "Normal$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.easing.Easing$",
-      "fields": [
-        {
-          "name": "all$lzy1"
-        },
-        {
-          "name": "map$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.example.ExampleApp$",
-      "fields": [
-        {
-          "name": "animation$lzy1"
-        },
-        {
-          "name": "appHeader$lzy1"
-        },
-        {
-          "name": "contentContainer$lzy1"
-        },
-        {
-          "name": "delta$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.example.ui.AnimationExample",
-      "fields": [
-        {
-          "name": "container$lzy1"
-        },
-        {
-          "name": "delta$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.font.Faces$",
-      "fields": [
-        {
-          "name": "MaterialIcons$lzy1"
-        },
-        {
-          "name": "OpenSansRegular$lzy1"
-        },
-        {
-          "name": "OpenSansSemiBold$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.font.GoogleFont$Open$u0020Sans$",
-      "fields": [
-        {
-          "name": "600$lzy1"
-        },
-        {
-          "name": "family$lzy1"
-        },
-        {
-          "name": "regular$lzy1"
-        },
-        {
-          "name": "weights$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.image.Image",
-      "fields": [
-        {
-          "name": "size$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.image.Image$",
-      "fields": [
-        {
-          "name": "empty$lzy1"
-        }
-      ]
-    },
-    {
-      "type": "everyui.ui$",
-      "fields": [
-        {
-          "name": "delta$lzy1"
-        }
-      ]
     }
   ],
   "resources": [
     {
       "glob": "META-INF/fonts.mf"
+    },
+    {
+      "glob": "META-INF/services/java.nio.channels.spi.SelectorProvider"
     },
     {
       "glob": "META-INF/services/java.time.zone.ZoneRulesProvider"

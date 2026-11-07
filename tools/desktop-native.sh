@@ -2,10 +2,12 @@
 # The desktop app as a self-contained native binary: GraalVM native-image over the JavaFX backend.
 #
 #   tools/desktop-native.sh           build desktop/out/native/everyui-desktop, then run it under Xvfb: the frozen
-#                                     frame against tools/golden/animation-tree.txt, and a live frame-rate sample
+#                                     frame against tools/golden/animation-tree.txt, a live frame-rate sample, and
+#                                     the tray (--demo=tray --headless=1) on a bus of its own, as a panel sees it
+#                                     (everyui.tray.TrayNativeCheck): registered, its menu run, its popover opened
 #   tools/desktop-native.sh --trace   first rerun GraalVM's tracing agent (a frozen and a short live run) to refresh
 #                                     desktop/native-config/, the reflection/JNI/resource metadata JavaFX needs —
-#                                     after a change to what the app touches of JavaFX
+#                                     after a change to what the app touches of JavaFX; the tray's run is traced too
 #
 # Needs `native-image` on the PATH (GraalVM) and Xvfb. The binary needs nothing from the machine: JavaFX's own
 # native libraries ride inside it as resources and are extracted on first run. Logs go to target/native/.
@@ -39,8 +41,12 @@ command -v native-image > /dev/null || { echo "native-image not found (GraalVM)"
 command -v xvfb-run > /dev/null || { echo "xvfb-run not found"; exit 1; }
 
 step "compile: desktop classpath"
-if "$SBT" "checks/checksClasspath; desktop/desktopClasspath" > "$LOGS/sbt.log" 2>&1; then pass; else fail "(target/native/sbt.log)"; exit 1; fi
-CP=$(cat desktop/out/classpath.txt)
+if xvfb "$SBT" "checks/checksClasspath; desktop/desktopClasspath; desktop/Test/compile" > "$LOGS/sbt.log" 2>&1; then pass; else fail "(target/native/sbt.log)"; exit 1; fi
+# (scala-java-time, which scribe's perfolation brings for Scala.js, is java.time over again: the JDK's own is
+# there, and native-image refuses a class of its own in the image's classpath)
+CP=$(tr ':' '\n' < desktop/out/classpath.txt | grep -v '/scala-java-time' | paste -sd:)
+# the tray played as a panel would, on a bus of its own, against the command given
+traycheck() { xvfb "$SBT" --server -batch "desktop/Test/runMain everyui.tray.TrayNativeCheck $*"; }
 
 if [ $TRACE = 1 ]; then
   step "trace: native-image agent (frozen + live)"
@@ -51,6 +57,15 @@ if [ $TRACE = 1 ]; then
   timeout 12 xvfb-run -a -s "-screen 0 1920x1080x24" java -agentlib:native-image-agent=config-merge-dir="$CFG" -Dprism.order=sw -Dprism.lcdtext=false \
     -cp "$CP" everyui.desktop.DesktopApp > "$LOGS/agent-live.log" 2>&1
   rm -f "$CFG/.lock"
+  traycheck "$LOGS/agent-tray.log" java -agentlib:native-image-agent=config-merge-dir="$CFG" -Dprism.order=sw \
+    -Dprism.lcdtext=false -cp "$CP" everyui.desktop.DesktopApp --demo=tray --headless=1 \
+    > "$LOGS/agent-tray-check.log" 2>&1
+  rm -f "$CFG/.lock"
+  # a Scala object's lazy values are found by their fields as it starts: every field of these, rather than each
+  node -e 'const f=process.argv[1]; const n=JSON.parse(require("fs").readFileSync(f));
+    n.reflection=n.reflection.map(e => ["everyui.font.MaterialIcon$","everyui.Color$"].includes(e.type) ?
+      Object.assign({type: e.type, allDeclaredFields: true}, e.methods ? {methods: e.methods} : {}) : e);
+    require("fs").writeFileSync(f, JSON.stringify(n, null, 2) + "\n")' "$CFG/reachability-metadata.json"
   if [ -s "$CFG/reachability-metadata.json" ]; then pass "$(wc -c < "$CFG/reachability-metadata.json") bytes of metadata"; else fail; exit 1; fi
 fi
 
@@ -80,6 +95,13 @@ if $CHECKS fps "$LOGS/live.log" --samples-min 12 --median-min 59 --min 55 > "$LO
   pass "$(tail -n 2 "$LOGS/fps.log" | tr '\n' ' ')"
 else
   fail "(target/native/fps.log)"; tail -n 5 "$LOGS/fps.log"
+fi
+
+step "tray as a panel sees it (Xvfb, own bus)"
+if TRAY_SHOT="$LOGS/tray-popover.png" traycheck "$LOGS/tray.log" "$OUT" --demo=tray --headless=1 > "$LOGS/tray-check.log" 2>&1; then
+  pass "$(grep -c PASS "$LOGS/tray-check.log") steps"
+else
+  fail "(target/native/tray-check.log)"; grep -E "tray:" "$LOGS/tray-check.log"
 fi
 
 exit $FAILED
