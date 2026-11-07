@@ -662,7 +662,11 @@ class RenderNode(val el: html.Element) {
 
   def setWhiteSpace(value: String): Unit = el.style.whiteSpace = value
 
-  def setImageSource(uri: String): Unit = el.setAttribute("src", uri)
+  def setImageSource(uri: String): Unit = {
+    el.setAttribute("src", uri)
+    // a tint set before the picture came masks with it now: set first, it had masked with no picture, and drew nothing
+    if (tint.nonEmpty) masked()
+  }
 
   // ---- a `video` or `audio` element (`Nodes.video`, `Nodes.audio`); on any other node these do nothing ----
   private def media: Option[js.Dynamic] =
@@ -814,11 +818,18 @@ class RenderNode(val el: html.Element) {
   /** The picture in one colour, its transparency kept: the box painted the colour through the picture as a mask, and
     * the picture itself drawn out of sight. */
   def setTint(hex: String): Unit = {
-    val tinted = hex.nonEmpty
-    el.style.backgroundColor = if (tinted) hex else "transparent"
+    tint = hex
+    masked()
+  }
+  // the tint, and the picture masked by it as it is now (none until it has a source, which masks it as it comes)
+  private var tint = ""
+  private def masked(): Unit = {
+    val source = Option(el.getAttribute("src")).getOrElse("")
+    val tinted = tint.nonEmpty
+    el.style.backgroundColor = if (tinted && source.nonEmpty) tint else "transparent"
     el.style.setProperty("object-position", if (tinted) "-100000px 0" else "")
     List("mask", "-webkit-mask").foreach { p =>
-      el.style.setProperty(p + "-image", if (tinted) "url(\"" + el.getAttribute("src") + "\")" else "none")
+      el.style.setProperty(p + "-image", if (tinted && source.nonEmpty) "url(\"" + source + "\")" else "none")
       el.style.setProperty(p + "-size", "100% 100%")
     }
   }
