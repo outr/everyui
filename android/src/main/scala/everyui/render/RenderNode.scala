@@ -968,10 +968,11 @@ class RenderNode(val view: View) {
       val kind = token match {
         // digits on the number pad, hidden as a password is where it is one (a PIN)
         case _ if numeric => T.TYPE_CLASS_NUMBER | (if (password) T.TYPE_NUMBER_VARIATION_PASSWORD else 0)
-        case "current-password" | "new-password" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_PASSWORD
-        case _ if secret => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_PASSWORD
+        // a password and a username as a stock sign-in's are, not as a web page's: 1Password offered at once for those
+        case "current-password" | "new-password" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_PASSWORD
+        case _ if secret => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_PASSWORD
         case "email" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-        case "username" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
+        case "username" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
         case "tel" => T.TYPE_CLASS_PHONE
         case "url" => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_VARIATION_URI
         // a code of letters and digits on the whole keyboard, as typed: nothing suggested or corrected, no capitals
