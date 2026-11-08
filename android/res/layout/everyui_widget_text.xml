@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A widget's words within a column, as wide as it. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/everyui_widget_text"
+  android:layout_width="match_parent"
+  android:layout_height="wrap_content"
+  android:ellipsize="end"
+  android:includeFontPadding="false"
+  android:maxLines="1"
+  android:textSize="14sp" />

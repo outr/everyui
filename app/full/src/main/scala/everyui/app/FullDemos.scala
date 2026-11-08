@@ -77,5 +77,10 @@ object FullDemos {
       EffectsDemo.run()
       true
     }
+    else if (demo == "inbox" || everyui.render.Platform.path().startsWith("/inbox")) {
+      // the home-screen widget's taps open the app at /inbox (InboxWidgets)
+      InboxDemo.run()
+      true
+    }
     else false
 }

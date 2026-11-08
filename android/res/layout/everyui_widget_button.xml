@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A widget's button: a pill tinted to the theme's accent, under its icon and words. Both match the frame, so it
+     measures them again at its size: one alone would keep its own (nothing, for the pill). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/everyui_widget_button"
+  android:layout_width="wrap_content"
+  android:layout_height="wrap_content"
+  android:minHeight="32dp">
+  <ImageView
+    android:id="@+id/everyui_widget_button_ground"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:scaleType="fitXY"
+    android:src="@drawable/everyui_widget_pill" />
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
+    <ImageView
+      android:id="@+id/everyui_widget_button_icon"
+      android:layout_width="18dp"
+      android:layout_height="18dp"
+      android:layout_marginEnd="6dp"
+      android:visibility="gone" />
+    <TextView
+      android:id="@+id/everyui_widget_button_label"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:maxLines="1"
+      android:textSize="14sp" />
+  </LinearLayout>
+</FrameLayout>

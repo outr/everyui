@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A widget's scrolling list (Android 12 and later), filling what its column leaves, with the words it says where it
+     has no rows. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/everyui_widget_items"
+  android:layout_width="match_parent"
+  android:layout_height="0dp"
+  android:layout_weight="1">
+  <ListView
+    android:id="@+id/everyui_widget_list"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:divider="@null"
+    android:dividerHeight="0dp" />
+  <TextView
+    android:id="@+id/everyui_widget_empty"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:textSize="14sp" />
+</FrameLayout>

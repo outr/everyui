@@ -220,6 +220,8 @@ abstract class EveryUIActivity extends Activity {
     Option(intent.getData).foreach(uri => everyui.render.SignInAccess.returned(uri.toString))
     everyui.render.PushAccess.tapped(intent)
     everyui.render.Notices.tapped(intent)
+    // a home-screen widget's tap, to its path (everyui.widget.WidgetTap.Open)
+    everyui.render.WidgetAccess.tapped(intent)
     everyui.render.Platform.launched(extras(intent))
   }
 

@@ -5,6 +5,13 @@
 # reached from there, so R8 can remove the rest of the Scala library and reactify's unused surface.
 -keep class everyui.activity.MainActivity { *; }
 
+# Home-screen widgets: the manifest names their receivers and their configure screen, and a receiver loads the
+# app's WidgetApp object by the name the manifest gives it (everyui.render.WidgetAccess).
+-keep class everyui.render.WidgetReceiver { *; }
+-keep class * extends everyui.render.WidgetReceiver { *; }
+-keep class everyui.activity.WidgetConfigureActivity { *; }
+-keep class * implements everyui.widget.WidgetApp { *; }
+
 # Scala's runtime reaches for JDK internals the Android platform does not declare; the references are
 # guarded at runtime.
 -dontwarn scala.**

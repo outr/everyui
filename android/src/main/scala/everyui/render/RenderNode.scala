@@ -1705,7 +1705,9 @@ object Host {
     keyboardMoved.foreach(f => f())
   }
 
-  lazy val settings: android.content.SharedPreferences = activity.getSharedPreferences("everyui", Context.MODE_PRIVATE)
+  // the application's, not the activity's: the same file, and there with no activity (a home-screen widget's receiver)
+  lazy val settings: android.content.SharedPreferences =
+    everyui.activity.ServiceRuntime.context.getSharedPreferences("everyui", Context.MODE_PRIVATE)
 
   /** The key hook (Platform.onKey), fed by the activity. */
   var key: (String, Boolean) => Boolean = null
@@ -2741,7 +2743,7 @@ object Platform {
   private def storeSafe(name: String): String =
     name.map(c => if (c.isLetterOrDigit || c == '.' || c == '-') c else '_')
   private def storeDir(space: String): java.io.File = {
-    val dir = new java.io.File(Host.activity.getCacheDir, "everyui-store/" + storeSafe(space))
+    val dir = new java.io.File(everyui.activity.ServiceRuntime.context.getCacheDir, "everyui-store/" + storeSafe(space))
     dir.mkdirs()
     dir
   }
