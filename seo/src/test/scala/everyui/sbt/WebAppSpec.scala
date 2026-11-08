@@ -15,15 +15,15 @@ class WebAppSpec extends AnyWordSpec with Matchers {
   "WebApp.write" should {
     val out = Files.createTempDirectory("webapp").toFile
     Files.write(new File(out, "index.html").toPath, "<html><head></head><body></body></html>".getBytes(UTF_8))
-    WebApp.write(out, WebAppManifest("Voidcraft", icons = Seq(WebAppIcon("icons/512.png", "512x512"))), "abc123")
+    WebApp.write(out, WebAppManifest("Example", icons = Seq(WebAppIcon("icons/512.png", "512x512"))), "abc123")
 
     "write the manifest, the worker and its registration, and link them once" in {
-      read(new File(out, "manifest.webmanifest")) should include("\"name\": \"Voidcraft\"")
-      read(new File(out, "webapp.js")) should include("register('sw.js')")
+      read(new File(out, "manifest.webmanifest")) should include("\"name\": \"Example\"")
+      read(new File(out, "webapp.js")) should include("register(\"sw.js\")")
       val page = read(new File(out, "index.html"))
       page should include("manifest.webmanifest")
       page should include("webapp.js")
-      WebApp.link(page, WebAppManifest("Voidcraft")) shouldBe page
+      WebApp.link(page, WebAppManifest("Example")) shouldBe page
     }
 
     "name the worker's cache by the version" in {
