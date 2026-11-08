@@ -839,6 +839,23 @@ class RenderNode(val view: View) {
   def setLeftToRight(): Unit = ()
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
+  def setScrollbarShown(shown: Boolean): Unit = ()
+  /** Its ends faded to clear over `start` and `end` (its left and right, or its top and bottom), showing what is
+    * behind: the view's own fading edges, as Android's scrolling views fade theirs, told which ends have more
+    * (`NodeGroup.fades`) since the content is moved within it rather than scrolled by it. */
+  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = view match {
+    case g: NodeGroup =>
+      val on = start > 0.0 || end > 0.0
+      g.fades = (if (start > 0.0) 1f else 0f, if (end > 0.0) 1f else 0f)
+      if (on) {
+        g.setWillNotDraw(false)
+        g.setFadingEdgeLength(math.round(math.max(start, end)).toInt)
+      }
+      g.setVerticalFadingEdgeEnabled(on && !horizontal)
+      g.setHorizontalFadingEdgeEnabled(on && horizontal)
+      g.invalidate()
+    case _ => ()
+  }
   def setScrollTop(y: Double): Unit = ()
   /** How far the node has scrolled its own overflow: never, here, where the ScrollContainer shifts the content. */
   def scrolled(horizontal: Boolean): Double = 0.0
@@ -1552,6 +1569,12 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
   /** Where this is a scroll's (`RenderNode.setScrollable`), the way it scrolls: 1 down, 2 across, 0 not at all; and
     * what takes a finger's drag along it from whatever under it the finger went down on, told where it went down. */
   private[render] var scrollsAlong: Int = 0
+  /** How strongly its ends fade (`RenderNode.setEdgeFade`): its start (left or top) and its end, 0 or 1. */
+  private[render] var fades: (Float, Float) = (0f, 0f)
+  override protected def getTopFadingEdgeStrength(): Float = fades._1
+  override protected def getBottomFadingEdgeStrength(): Float = fades._2
+  override protected def getLeftFadingEdgeStrength(): Float = fades._1
+  override protected def getRightFadingEdgeStrength(): Float = fades._2
   private[render] var takeDrag: (MotionEvent, Float, Float) => Unit = null
   // where the finger went down, as each touch passes on to what is under it
   private var downX = 0f

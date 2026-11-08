@@ -543,6 +543,24 @@ class RenderNode(val el: html.Element) {
   }
   /** The scrollbar's thumb colour, on a clear track. */
   def setScrollbarColor(hex: String): Unit = el.style.setProperty("scrollbar-color", if (hex.isEmpty) "auto" else hex + " transparent")
+  /** Its scrollbar drawn or not: off, none, and no room kept for one (`scrollbar-width: none`, and for Chrome and
+    * Safari a rule for the class, as a scrollbar's own pseudo-element cannot be styled on the element), the gutter
+    * measured again so what it holds is placed as having none. It scrolls as before. */
+  def setScrollbarShown(shown: Boolean): Unit = {
+    RenderNode.barless()
+    if (shown) el.classList.remove("everyui-nobar") else el.classList.add("everyui-nobar")
+    el.style.setProperty("scrollbar-width", if (shown) "thin" else "none")
+    ScrollGutter.measure(el)
+  }
+  /** Its ends faded to clear over `start` and `end` pixels (its left and right, or its top and bottom), showing what is
+    * behind: a mask on the node, which stays where the node is as what it holds scrolls under it. */
+  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = {
+    val mask = if (start <= 0.0 && end <= 0.0) ""
+      else "linear-gradient(to " + (if (horizontal) "right" else "bottom") + ", transparent 0px, black " +
+        start.toString + "px, black calc(100% - " + end.toString + "px), transparent 100%)"
+    el.style.setProperty("mask-image", mask)
+    el.style.setProperty("-webkit-mask-image", mask)
+  }
   def setScrollTop(y: Double): Unit = el.scrollTop = y
   /** Scrolled `x` sideways from its start edge, which is the right in a right-to-left page. */
   def setScrollLeft(x: Double): Unit = el.scrollLeft = fromStart(x)
@@ -1240,6 +1258,14 @@ class RenderNode(val el: html.Element) {
 }
 
 object RenderNode {
+  // the rule that takes a scroll's scrollbar away where it has none (`setScrollbarShown`), put in the page once
+  private var barRule = false
+  private[render] def barless(): Unit = if (!barRule) {
+    barRule = true
+    val style = dom.document.createElement("style")
+    style.textContent = ".everyui-nobar { scrollbar-width: none; } .everyui-nobar::-webkit-scrollbar { display: none; }"
+    dom.document.head.appendChild(style)
+  }
   /** How many of the app's nodes are turned or scaled now, by their own transform or a motion's: while none is, a box
     * read is the laid-out one, and nothing is read twice to tell (`transformed`). */
   private[render] var turned: Int = 0

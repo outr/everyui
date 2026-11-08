@@ -385,6 +385,9 @@ class RenderNode(val sg: SGNode) {
   def setLeftToRight(): Unit = ()
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
+  /** No scrollbar is drawn here, and no fade: what is out of the viewport is cut at its edge. */
+  def setScrollbarShown(shown: Boolean): Unit = ()
+  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = ()
   def setScrollTop(y: Double): Unit = ()
   /** How far the node has scrolled its own overflow: never, here, where the ScrollContainer shifts the content. */
   def scrolled(horizontal: Boolean): Double = 0.0

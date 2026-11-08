@@ -434,6 +434,48 @@ class RenderNode(val fx: Node) {
   def setLeftToRight(): Unit = ()
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
+  def setScrollbarShown(shown: Boolean): Unit = ()
+  /** Its ends faded to clear over `start` and `end` pixels (its left and right, or its top and bottom), showing what is
+    * behind: its clip (`setClip`) filled with a gradient from clear to solid and back, which JavaFX draws through as
+    * a mask, set again as the clip is. */
+  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = {
+    fade = (horizontal, start, end)
+    faded()
+  }
+  private var fade: (Boolean, Double, Double) = (false, 0.0, 0.0)
+  // the clip's fill for the fade: solid where there is none, so the clip is a plain one, as JavaFX cuts fastest
+  private def faded(): Unit = clipShape.foreach { r =>
+    val (across, start, end) = fade
+    val length = if (across) r.getWidth else r.getHeight
+    if ((start <= 0.0 && end <= 0.0) || length <= 0.0) {
+      r.setFill(Color.BLACK)
+      fx.getClip match {
+        case g: javafx.scene.Group if g.getChildren.contains(r) =>
+          fx.setClip(null)
+          g.getChildren.remove(r)
+          fx.setClip(r)
+        case _ => ()
+      }
+    }
+    else {
+      val a = math.min(0.5, start / length)
+      val b = math.max(0.5, 1.0 - end / length)
+      r.setFill(new LinearGradient(0.0, 0.0, if (across) length else 0.0, if (across) 0.0 else length, false,
+        CycleMethod.NO_CYCLE, new Stop(0.0, if (start > 0.0) Color.TRANSPARENT else Color.BLACK),
+        new Stop(a, Color.BLACK), new Stop(b, Color.BLACK),
+        new Stop(1.0, if (end > 0.0) Color.TRANSPARENT else Color.BLACK)))
+      // in a group: a rectangle alone is cut to as a plain one, its fill not looked at
+      fx.getClip match {
+        case g: javafx.scene.Group if g.getChildren.contains(r) => ()
+        case _ =>
+          // (a node is the clip of one node at a time, so it is let go as one before the group takes it)
+          fx.setClip(null)
+          fx.setClip(new javafx.scene.Group(r))
+      }
+    }
+  }
+  // the rectangle `setClip` cut it to last
+  private var clipShape: Option[Rectangle] = None
   def setScrollTop(y: Double): Unit = ()
   /** How far the node has scrolled its own overflow: never, here, where the ScrollContainer shifts the content. */
   def scrolled(horizontal: Boolean): Double = 0.0
@@ -449,8 +491,11 @@ class RenderNode(val fx: Node) {
   /** What shows of it cut to `width` by `height`, with its corners rounded as its own are (`setRadius`), as the web's
     * overflow is: a header band or a picture in a rounded box does not show square corners inside it. */
   def setClip(width: Double, height: Double): Unit = {
-    fx.setClip(new Rectangle(width, height))
+    val r = new Rectangle(width, height)
+    clipShape = Some(r)
+    fx.setClip(r)
     roundClip()
+    faded()
   }
   // cut to its box by its container (`Container.clipsToBox`) while it casts no shadow, as JavaFX cuts a node's own
   // effect with its clip. To a rectangle, its corners left square: Prism cuts to one as it draws, where a rounded

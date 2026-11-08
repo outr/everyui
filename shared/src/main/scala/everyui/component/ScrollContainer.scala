@@ -65,15 +65,30 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   /** The scrollbar's colour, where the platform draws one (the web: a thin one, on a clear track). */
   lazy val scrollbar: Prop[Color] = own(new Prop[Color](Theme.border(), c => node.setScrollbarColor(Component.css(c))))
 
+  /** Whether the platform's scrollbar shows, where it draws one (the web): off, it draws none and keeps no room for
+    * one (`scrollbarRoom` is 0), and the wheel, a finger, the keys, `offset`, `scrollTo` and `reveal` scroll it as
+    * before. For a strip too narrow to give a bar its room (a rail of tiles down a window's edge). The other backends
+    * draw no scrollbar of their own. */
+  val bar: Var[Boolean] = own(Var(true))
+
+  /** How long a fade is at each end that has more beyond it, in pixels (0, the default: none): the content goes to
+    * clear over that length, showing what is behind it, at the start once it has scrolled from there and at the end
+    * while there is more to come, following the scroll and the viewport's size, never more than half the viewport.
+    * The web masks the node (`mask-image`), the desktop clips it to a gradient, and Android fades its edges as its own
+    * scrolling views do; a Roku and an Apple TV draw no fade. */
+  val edgeFade: Var[Double] = own(Var(0.0))
+
   /** The room a rail's own scrollbar takes along its foot while it has more than shows, which what holds it adds to
     * its height so the scrollbar is under the content rather than over it: where the page draws one (the web,
-    * but for a touch screen alone: `ScrollContainer.barRoom`), else 0 (a phone's lies over the content and fades, and the
-    * other backends draw none). The content is that much shorter than the viewport, so a rail never scrolls up and down. */
-  val scrollbarRoom: Val[Double] = own(Val(if (horizontal && ScrollContainer.drawsBar &&
-    content.size.width() > size.width() + 0.5) ScrollContainer.barRoom else 0.0))
+    * but for a touch screen alone: `ScrollContainer.barRoom`) and `bar` is on, else 0 (a phone's lies over the
+    * content and fades, and the other backends draw none). The content is that much shorter than the viewport, so a
+    * rail never scrolls up and down. */
+  val scrollbarRoom: Val[Double] = own(Val(ScrollContainer.room(horizontal, bar(), ScrollContainer.drawsBar,
+    content.size.width() > size.width() + 0.5)))
 
   node.setScrollable(!horizontal, horizontal)
   node.setScrollbarColor(Component.css(scrollbar()))
+  bar.attach(shown => node.setScrollbarShown(shown))
   // across, the content is the viewport's size; along, as long as what it holds reaches, unless it is given a length (a
   // content with no length draws nothing on Android, which clips a view to its box)
   if (horizontal) {
@@ -102,6 +117,16 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     content.size.height := content.contentHeight()
   }
   children += content
+  /** How long the fade is at each end now (`edgeFade`), as (start, end) along it: the start once it has scrolled from
+    * there, the end while there is more to come, nothing where it all shows. */
+  val fades: Val[(Double, Double)] = own(Val(ScrollContainer.ends(edgeFade(), offset(), furthest(),
+    if (horizontal) size.width() else size.height())))
+  // drawn by the node from its left or top: a rail from the right starts at its right
+  private val faded: Val[(Double, Double)] = own(Val {
+    val (start, end) = fades()
+    if (fromRight()) (end, start) else (start, end)
+  })
+  faded.attach(f => node.setEdgeFade(horizontal, f._1, f._2))
   // the web scrolls the node itself (a wheel, a finger, the scrollbar, a smooth scroll): the offset follows it there
   // and the offset set (by the app, as anywhere else) scrolls the node there, as far as it goes: an offset the node
   // cannot reach is what it reached, so it never reads as where the page is not
@@ -331,6 +356,20 @@ object ScrollContainer {
   /** How much room a rail keeps under its content for the page's scrollbar where it draws one: the web's thin one is
     * 8 to 11 pixels. */
   val barRoom: Double = 12.0
+
+  /** The room a rail keeps for its scrollbar (`scrollbarRoom`): `barRoom` where it is a rail, its bar shows, the
+    * platform draws one and the content runs past it; else none. */
+  def room(horizontal: Boolean, bar: Boolean, draws: Boolean, over: Boolean): Double =
+    if (horizontal && bar && draws && over) barRoom else 0.0
+
+  /** The fades at the start and the end of a scroll `offset` along, as far as `furthest`, `along` long, that fades
+    * `fade` at an end with more beyond it: none at all where everything shows, and never more than half its length. */
+  def ends(fade: Double, offset: Double, furthest: Double, along: Double): (Double, Double) =
+    if (fade <= 0.0 || furthest <= 0.5) (0.0, 0.0)
+    else {
+      val length = math.max(0.0, math.min(fade, along / 2.0))
+      (if (offset > 0.5) length else 0.0, if (offset < furthest - 0.5) length else 0.0)
+    }
 
   // whether the platform draws a scrollbar a rail must keep room for: the web's, but where only a finger points (a
   // phone's lies over the content and fades)

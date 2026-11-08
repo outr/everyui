@@ -32,6 +32,10 @@ object ScrollGutter {
     }
   }
 
+  /** The scrollbar's width measured again now: what the box is wider than the room inside it, besides its edges (0
+    * where it has none, as a scroll without its bar has). */
+  def measure(el: html.Element): Unit = if (el.classList.contains("everyui-scroll")) gutter(el)
+
   // the scrollbar's width: what the box is wider than the room inside it, besides its edges
   private def gutter(el: html.Element): Unit = {
     val style = dom.window.getComputedStyle(el)
