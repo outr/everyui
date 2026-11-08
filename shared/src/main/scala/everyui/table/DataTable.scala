@@ -43,8 +43,9 @@ import reactify.*
   *     cells, on the web) those are copied instead, as the browser copies them.
   *   - Open: where its rows open something (`onOpen`: a detail pane), a click or a tap on a row opens it, as Enter on
   *     the one the keys are on (OK on a remote) does, and it is the row open (`opened`), washed faintly in the accent
-  *     until another opens; the rows show the pointer's hand and a wash under it, and are buttons to a screen reader,
-  *     the open one current. Shift+click and Ctrl or Command+click still choose, as Space and Shift with the arrows do.
+  *     until another opens; the rows show the pointer's hand and a wash under it, and to a screen reader are rows
+  *     told that they open, the open one current. Shift+click and Ctrl or Command+click still choose, as Space and
+  *     Shift with the arrows do.
   *   - Copy and export: the tools' button (⋮), shown while the pointer is over the table or the focus is in it, and
   *     always on a touch screen, copies the rows showing (sorted and filtered) as tab-separated lines or as Markdown,
   *     or hands them over as a CSV or a Markdown file (`Files.download`: the browser's downloads on the web, the save
@@ -101,10 +102,10 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   /** What opens a row, where its rows open something (a detail pane): set, a click on a row or Enter on the one the
     * keys are on opens it, handing this the row's index in `cells` (of a server's rows, its place among them), which
     * sorting and filtering leave as it is. Its rows then show the pointer's hand and a wash as it passes over them,
-    * and are buttons to a screen reader, named by their words; the row open (`opened`) is washed faintly in the
-    * accent and is the current one. Choosing stays with the keys (Space, Shift with the arrows, the shortcut and A)
-    * and with Shift or Ctrl or Command and a click, and copies are as they were. None, the default, opens nothing:
-    * a click chooses, as it always has. */
+    * and are rows to a screen reader, named by their words and told that they open; the row open (`opened`) is
+    * washed faintly in the accent and is the current one. Choosing stays with the keys (Space, Shift with the
+    * arrows, the shortcut and A) and with Shift or Ctrl or Command and a click, and copies are as they were. None,
+    * the default, opens nothing: a click chooses, as it always has. */
   val onOpen: Var[Option[Int => Unit]] = own(Var(None))
   /** The row open, by its index in `cells` (of a server's rows, its place), drawn as such until another opens: opening
     * one sets it, and the app sets it itself, or clears it as what it opened closes. */

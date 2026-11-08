@@ -391,7 +391,7 @@ class Component(val node: RenderNode) {
   lazy val semantics: Prop[Semantics] = own(new Prop[Semantics](Semantics.Plain, s => said(s)))
   private def said(s: Semantics): Unit = {
     node.setSemantics(if (s.role.isEmpty) impliedRole else s.role, s.level, s.label)
-    node.setSemanticState(s.range, s.checked, s.expanded, s.selected, s.sort, s.current)
+    node.setSemanticState(s.range, s.checked, s.expanded, s.selected, s.sort, s.current, s.description)
   }
   /** The role it has with no `semantics` of its own: a button, where it is an app's own (a plain `Container`, or a
     * kind of the app's), takes the focus, hears a click and takes no typing. EveryUI's own kinds say what they are. */

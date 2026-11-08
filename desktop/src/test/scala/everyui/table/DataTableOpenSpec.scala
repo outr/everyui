@@ -147,9 +147,10 @@ class DataTableOpenSpec extends FxSpec {
         val grace = fx(row(t, "Grace"))
         fx(grace.cursor()) shouldBe "pointer"
         fx(grace.cells.map(_.cursor()).distinct) shouldBe Vector("pointer")
-        fx(grace.semantics().role) shouldBe "button"
+        fx(grace.semantics().role) shouldBe "row"
+        fx(grace.semantics().description) shouldBe everyui.table.TableWords.opens
         fx(grace.semantics().label) shouldBe "Grace, 1,204, Mar 3, 2026"
-        fx(grace.cells.map(_.semantics().role).distinct) shouldBe Vector("")
+        fx(grace.cells.map(_.semantics().role).distinct) shouldBe Vector("cell")
         fx(head(t).semantics().role) shouldBe "row"
         fx(head(t).cells.map(_.semantics().role).distinct) shouldBe Vector("columnheader")
         fx(enter(grace))

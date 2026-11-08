@@ -44,4 +44,6 @@ object TableWords {
   def rowsSoFar(n: Int): String = said("table.rowsSoFar", Map("rows" -> rows(n)))
   /** "null", a cell holding no value (`DataCell.Null`) to a screen reader. */
   def nothing: String = word("table.null")
+  /** What a screen reader is told of a row that opens something (`DataTable.onOpen`), after its words. */
+  def opens: String = word("table.opens")
 }

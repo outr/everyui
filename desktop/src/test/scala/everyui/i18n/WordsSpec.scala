@@ -16,7 +16,7 @@ class WordsSpec extends FxSpec {
   private val tabs = List("add", "close", "closeOthers", "closeAll", "openRight", "openDown", "moveRight", "moveLeft",
     "moveDown", "moveUp", "unsplit", "nextGroup", "previousGroup", "maximize", "unmaximize", "none").map("tabs." + _)
   /** The families of words that were English alone until they were given to Words, and how many each has. */
-  private val families = List("chat." -> 49, "composer." -> 14, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 23,
+  private val families = List("chat." -> 49, "composer." -> 14, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 25,
     "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4)
 
   /** The names of a message's arguments: `{n}`, `{n, plural, …}`, not a plural's own branches. */

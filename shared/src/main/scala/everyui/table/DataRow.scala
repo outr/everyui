@@ -11,10 +11,10 @@ import reactify.*
 /** A row of a `DataTable`, its header's (`index` -1) or the row of cells at `index`: a cell a column, laid out in the
   * table's columns as it shares its width, the header on the look's band with an arrow by the column its rows are
   * sorted by, every second row striped where the look says (by where it shows, sorted and filtered), and a chosen row
-  * washed in the selection's colour. Where the table's rows open something (`DataTable.onOpen`), a row is a button
-  * named by its words, shows the pointer's hand and a wash under it, and the one open is washed faintly in the accent
-  * and current. The cells of the columns in `sized` are also measured out of sight on one line and
-  * a word to a line, for how wide their columns are to be. A row the filter hides takes no room (and so no place in
+  * washed in the selection's colour. Where the table's rows open something (`DataTable.onOpen`), a row is named by
+  * its words and told that it opens, shows the pointer's hand and a wash under it, and the one open is washed faintly
+  * in the accent and current. The cells of the columns in `sized` are also measured out of sight on one line and a
+  * word to a line, for how wide their columns are to be. A row the filter hides takes no room (and so no place in
   * the table's column of rows). */
 private[table] class DataRow(table: DataTable, val index: Int, val content: Vector[DataCell], val sized: Set[Int])
   extends Container {
@@ -35,8 +35,9 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
 
   copyAs @= "tr"
   if (header) semantics @= Semantics("row")
-  else semantics := (if (table.opening()) Semantics("button", label = said, selected = Some(table.selection()
-    .contains(index)), current = table.opened().contains(index))
+  // a row that opens is still a row of cells, named by its words, the one open current, and told that it opens
+  else semantics := (if (table.opening()) Semantics("row", label = said, selected = Some(table.selection()
+    .contains(index)), current = table.opened().contains(index), description = TableWords.opens)
     else Semantics("row", selected = Some(table.selection().contains(index))))
   if (!header) cursor := (if (table.opening()) "pointer" else "")
   size.width := (if (shown()) table.across() else 0.0)
@@ -106,9 +107,7 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
     follow = href => table.onLink(href)
     if (header) semantics := Semantics("columnheader", sort = table.sort().filter(_.column == c)
       .map(s => if (s.ascending) "ascending" else "descending").getOrElse(""))
-    // (a row that opens is a button, read by its words: its cells say nothing of their own)
-    else semantics := (if (table.opening()) Semantics.Plain
-      else if (content(c).nothing) Semantics("cell", label = TableWords.nothing) else Semantics("cell"))
+    else semantics := (if (content(c).nothing) Semantics("cell", label = TableWords.nothing) else Semantics("cell"))
     copyAs @= (if (header) "th" else "td")
     direction @= table.style.direction
     size.width := table.cellWidth(c, header)

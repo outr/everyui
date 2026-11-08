@@ -1178,7 +1178,7 @@ class RenderNode(val view: View) {
     * on). */
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String,
-                       current: Boolean): Unit = {
+                       current: Boolean, description: String): Unit = {
     selected.foreach(s => view.setSelected(s))
     stateSaid = range.map(_.text)
       .orElse(expanded.map(open => if (open) "expanded" else "collapsed"))

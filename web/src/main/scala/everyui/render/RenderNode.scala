@@ -855,7 +855,7 @@ class RenderNode(val el: html.Element) {
     * current one of its set (`aria-current`). */
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String,
-                       current: Boolean): Unit = {
+                       current: Boolean, description: String): Unit = {
     def attribute(name: String, value: Option[String]): Unit = value match {
       case Some(v) => el.setAttribute(name, v)
       case None => el.removeAttribute(name)
@@ -872,6 +872,7 @@ class RenderNode(val el: html.Element) {
     attribute("aria-selected", selected.map(_.toString))
     attribute("aria-sort", if (sort.isEmpty) None else Some(sort))
     attribute("aria-current", if (current) Some("true") else None)
+    attribute("aria-description", if (description.isEmpty) None else Some(description))
   }
 
   /** The focus landed here: the page's own focus put on this element too, so a screen reader follows it and reads it

@@ -586,7 +586,8 @@ class RenderNode(val fx: Node) {
   }
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String,
-                       current: Boolean): Unit = ()
+                       current: Boolean, description: String): Unit =
+    fx.setAccessibleHelp(if (description.isEmpty) null else description)
   /** The focus landed here: the window's focus put on this node too, so a screen reader follows it and reads it by
     * its role and name (setSemantics), while the keys are still heard by the app (`onKey`, a filter on the scene). A
     * node given no name is named by `name` (`Access.nameOf`: the words inside it, its tooltip), which JavaFX does not
