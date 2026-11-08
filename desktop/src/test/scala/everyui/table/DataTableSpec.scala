@@ -169,6 +169,35 @@ class DataTableSpec extends FxSpec {
           "|---|---:|---|---:|")
       }
     }
+    "draw a cell holding no value as a muted NULL, read it as null, and copy and export it blank" in {
+      val held = Vector(
+        Vector(DataCell("Grace"), DataCell.Null, DataCell("Mar 3, 2026"), DataCell("$1,299.00")),
+        Vector(DataCell("ada"), DataCell("87"), DataCell.of(None), DataCell.of(Some("—"))))
+      val t = fx(new DataTable(columns, held))
+      onScreen(t) {
+        eventually(names(t).size == 2 && row(t, "Grace").size.height() > 0.0) shouldBe true
+        val nothing = fx(row(t, "Grace").cells(1))
+        fx(nothing.runs().map(_.text)) shouldBe List("NULL")
+        fx(nothing.color()) shouldBe fx(everyui.theme.Theme.muted())
+        fx(nothing.semantics()) shouldBe everyui.component.types.Semantics("cell", label = "null")
+        // a cell with words, even a dash, is as it was
+        val dash = fx(row(t, "ada").cells(3))
+        fx(dash.runs().map(_.text)) shouldBe List("—")
+        fx(dash.color()) shouldBe fx(everyui.theme.Theme.text())
+        fx(dash.semantics()) shouldBe everyui.component.types.Semantics("cell")
+        fx(row(t, "ada").cells(2).runs().map(_.text)) shouldBe List("NULL")
+        // blank in every copy and export
+        fx(t.rowTexts(0)) shouldBe Vector("Grace", "", "Mar 3, 2026", "$1,299.00")
+        fx(t.tsv()) shouldBe "Persona\tConversations\tLast active\tSpend\nGrace\t\tMar 3, 2026\t$1,299.00\n" +
+          "ada\t87\t\t—"
+        fx(t.csv()) shouldBe "Persona,Conversations,Last active,Spend\r\nGrace,,\"Mar 3, 2026\",\"$1,299.00\"\r\n" +
+          "ada,87,,—\r\n"
+        fx(t.markdown()).linesIterator.toList.drop(2) shouldBe List("| Grace |  | Mar 3, 2026 | $1,299.00 |",
+          "| ada | 87 |  | — |")
+        fx(t.copy())
+        clipboard() shouldBe Some(fx(t.tsv()))
+      }
+    }
     "move between its cells with the keys, choose rows as it goes, and copy the cell it is on" in {
       val t = fx(DataTable(columns, rows))
       onScreen(t) {

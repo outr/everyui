@@ -90,10 +90,12 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
     // a drag copies words while a plain click still chooses the row (or sorts the header).
     selectable @= true
     font.size @= table.style.points
-    color := (if (table.style.quiet) Theme.muted() else Theme.text())
+    // a cell holding no value muted, as a quiet table's are
+    color := (if (table.style.quiet || content(c).nothing) Theme.muted() else Theme.text())
     follow = href => table.onLink(href)
     if (header) semantics := Semantics("columnheader", sort = table.sort().filter(_.column == c)
       .map(s => if (s.ascending) "ascending" else "descending").getOrElse(""))
+    else if (content(c).nothing) semantics := Semantics("cell", label = TableWords.nothing)
     else semantics @= Semantics("cell")
     copyAs @= (if (header) "th" else "td")
     direction @= table.style.direction
@@ -110,9 +112,11 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
 }
 
 private[table] object DataRow {
-  /** What `cell` draws: its runs, or its words as they are (of `weight` in a header). */
+  /** What `cell` draws: NULL where it holds no value, else its runs, or its words as they are (of `weight` in a
+    * header). */
   def runs(cell: DataCell, header: Boolean, weight: Int): List[TextRun] =
-    if (cell.runs.nonEmpty) cell.runs
+    if (cell.nothing) List(TextRun(DataCell.nullText))
+    else if (cell.runs.nonEmpty) cell.runs
     else if (cell.text.isEmpty) Nil
     else List(TextRun(cell.text, weight = if (header) weight else 0))
 }

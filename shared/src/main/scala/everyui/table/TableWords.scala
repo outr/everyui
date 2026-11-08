@@ -42,4 +42,6 @@ object TableWords {
   def searching(percent: Int): String = said("table.searching", Map("p" -> percent.toString))
   /** "1,200 rows so far", where a server's rows have not all been counted. */
   def rowsSoFar(n: Int): String = said("table.rowsSoFar", Map("rows" -> rows(n)))
+  /** "null", a cell holding no value (`DataCell.Null`) to a screen reader. */
+  def nothing: String = word("table.null")
 }
