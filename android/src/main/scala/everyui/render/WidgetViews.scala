@@ -32,9 +32,14 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
   // each tap's PendingIntent its own request code, across every size drawn at once: one a size shared with another
   // would carry the other's path
   private var taps = 0
+  // the list of the tree being drawn, set on its root: a launcher refuses a collection set anywhere else
+  // ("setRemoteAdapter can only be used for AppWidgets", the Pixel launcher on Android 15) and draws only the list's
+  // empty words
+  private var list: Option[RemoteViews.RemoteCollectionItems] = None
 
   /** `node` on the widget's ground, the whole of it named `name` to a screen reader. */
   def root(node: WidgetNode, name: String): RemoteViews = {
+    list = None
     val views = new RemoteViews(context.getPackageName, layout("root"))
     val ground = WidgetViews.id(context, "everyui_widget_ground")
     tint(views, ground, "setColorFilter", _.surface)
@@ -48,6 +53,14 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
         fill(views, content, parts, gap, inRow = false, filler = -1, inList = false)
         tap.foreach(t => tapOn(views, content, t, inList = false))
       case other => views.addView(content, part(other, inRow = false, fills = false, inList = false))
+    }
+    // after the parts, so the list it is aimed at is in the tree
+    list.foreach { items =>
+      val at = WidgetViews.id(context, "everyui_widget_list")
+      views.setRemoteAdapter(at, items)
+      views.setEmptyView(at, WidgetViews.id(context, "everyui_widget_empty"))
+      views.setPendingIntentTemplate(at, WidgetViews.opening(context, None, (id << 12) | 0xfff,
+        PendingIntent.FLAG_MUTABLE))
     }
     views
   }
@@ -124,7 +137,6 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
   private def items(rows: Vector[WidgetNode], empty: String): RemoteViews =
     if (Build.VERSION.SDK_INT >= 31) {
       val views = new RemoteViews(context.getPackageName, layout("items"))
-      val list = WidgetViews.id(context, "everyui_widget_list")
       val none = WidgetViews.id(context, "everyui_widget_empty")
       val made = new RemoteViews.RemoteCollectionItems.Builder()
       rows.zipWithIndex.foreach { (row, i) =>
@@ -137,12 +149,11 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
         made.addItem(i.toLong, item)
       }
       made.setViewTypeCount(1)
-      views.setRemoteAdapter(list, made.build())
-      views.setEmptyView(list, none)
+      // the tree's one list: its rows, its template and its empty words' place are set on the root (`root`)
+      if (list.isEmpty) list = Some(made.build())
+      else Platform.log("widget: a second list in one widget is drawn empty")
       views.setTextViewText(none, empty)
       tint(views, none, "setTextColor", WidgetViews.colour(WidgetColour.Muted))
-      views.setPendingIntentTemplate(list, WidgetViews.opening(context, None, (id << 12) | 0xfff,
-        PendingIntent.FLAG_MUTABLE))
       views
     }
     else {

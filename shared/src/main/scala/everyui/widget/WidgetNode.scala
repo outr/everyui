@@ -7,8 +7,8 @@ import everyui.font.MaterialIcon
   * (RemoteViews on Android, SwiftUI in a WidgetKit extension), so only what both can show is here. Each part's
   * `label` is what a screen reader says for it where the words alone would not do.
   *
-  * A list (`Items`) belongs in a column; Android before 12 shows its first rows without scrolling. A tap in one of its
-  * rows opens the app (`WidgetTap.Open`); an `Action` there does nothing. */
+  * A list (`Items`) belongs in a column, one to a widget; Android before 12 shows its first rows without scrolling. A
+  * tap in one of its rows opens the app (`WidgetTap.Open`); an `Action` there does nothing. */
 enum WidgetNode {
   /** Words in a style and a colour, `lines` at most (0 for any number), cut short with an ellipsis past them. */
   case Text(words: String, style: WidgetText = WidgetText.Body, colour: WidgetColour = WidgetColour.Text,

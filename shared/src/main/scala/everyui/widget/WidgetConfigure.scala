@@ -14,9 +14,10 @@ object WidgetConfigure {
   def grouped(choices: Vector[WidgetChoice]): Vector[(String, Vector[WidgetChoice])] =
     choices.map(_.group).distinct.map(g => g -> choices.filter(_.group == g))
 
-  /** What is chosen as the screen opens: what the widget was set to, or the kind's defaults among what is offered. */
+  /** What is chosen as the screen opens: what the widget was set to, or the kind's defaults among what is offered where
+    * nothing was chosen (`WidgetSetup.resolved`), as the widget draws them. */
   def initial(kind: WidgetKind, offered: Vector[WidgetChoice], setup: Option[WidgetSetup]): WidgetSetup =
-    setup.filter(_.kind == kind.key).getOrElse(WidgetSetup(kind.key, kind.defaults(offered), countsOnly = false))
+    WidgetSetup.resolved(kind, offered, setup)
 
   def show(kind: WidgetKind, setup: Option[WidgetSetup], done: Option[WidgetSetup] => Unit): Unit = {
     ui.backgroundColor := Theme.background()

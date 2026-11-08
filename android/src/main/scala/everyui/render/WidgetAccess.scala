@@ -246,10 +246,18 @@ object WidgetAccess {
   }
 
   /** The activity's new intent: a widget's open tap while the app runs, to its path (a launch has it as
-    * `Host.path`). */
+    * `Host.path`). Where the app's screens are not running yet, the path is the app's, where they start: an activity
+    * made again for a task whose process had gone hears the tap as a new intent before then (an app that reads its
+    * session first, say), and the tap went nowhere. */
   def tapped(intent: Intent): Unit =
     if (intent != null && intent.getBooleanExtra(openedExtra, false))
-      Option(intent.getStringExtra("path")).filter(_.nonEmpty).foreach(p => ScreenManager.navigate(p))
+      Option(intent.getStringExtra("path")).filter(_.nonEmpty).foreach { p =>
+        if (ScreenManager.running.nonEmpty) ScreenManager.navigate(p)
+        else {
+          Host.path = p
+          Platform.log("widget: opened at " + p + " before the app's screens run: they start there")
+        }
+      }
 
   // --- drawing ---------------------------------------------------------------------------------------------------
 
@@ -307,23 +315,23 @@ object WidgetAccess {
   private def waiting(kind: WidgetKind): WidgetNode =
     WidgetNode.Column(Vector(WidgetNode.Text(kind.name, WidgetText.Caption, WidgetColour.Muted)))
 
-  /** `f` with what widget `id` was set to, or the kind's defaults among its choices where it has never been set (one
-    * placed with its configure screen passed by), kept for it; nothing chosen where its choices are slow to come. */
-  private def withSetup(context: Context, id: Int, kind: WidgetKind)(f: WidgetSetup => Unit): Unit =
-    setup(context, id).filter(_.kind == kind.key) match {
-      case Some(set) => f(set)
-      case None =>
+  /** `f` with what widget `id` was set to, or, where nothing was chosen, the kind's defaults among its choices as
+    * they are now (`WidgetSetup.resolved`), as its configure screen opens on them. They are not kept: a widget placed
+    * while the app had no choices to offer (signed out) kept none, and its configure screen opened with nothing ticked
+    * though it drew everything. Nothing chosen where its choices are slow to come. */
+  private def withSetup(context: Context, id: Int, kind: WidgetKind)(f: WidgetSetup => Unit): Unit = {
+    val saved = setup(context, id).filter(_.kind == kind.key)
+    saved match {
+      case Some(set) if set.choices.nonEmpty => f(set)
+      case _ =>
         val once = new AtomicBoolean(false)
-        main.postDelayed(() => if (once.compareAndSet(false, true)) f(WidgetSetup(kind.key, Set.empty, false)),
-          deadline / 2)
+        main.postDelayed(() => if (once.compareAndSet(false, true))
+          f(saved.getOrElse(WidgetSetup(kind.key, Set.empty, countsOnly = false))), deadline / 2)
         onMain(kind.choices()) { offered =>
-          if (once.compareAndSet(false, true)) {
-            val set = WidgetSetup(kind.key, kind.defaults(offered), countsOnly = false)
-            save(context, id, set)
-            f(set)
-          }
+          if (once.compareAndSet(false, true)) f(WidgetSetup.resolved(kind, offered, saved))
         }
     }
+  }
 
   /** `task` started on the thread that draws, as the app's own tasks are, and `f` with its answer. */
   private def onMain[T](task: => Task[T])(f: T => Unit): Unit = main.post(() =>
