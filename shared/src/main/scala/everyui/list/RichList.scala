@@ -564,7 +564,8 @@ object RichList {
       (if (look.count > 0) List(countText(look.count)) else Nil) ++
       (if (look.unread) List(unreadLabel) else Nil) ++
       (if (look.busy) ChatWords.busy :: (if (look.busyDetail.isEmpty) Nil else List(look.busyDetail)) else Nil) ++
-      (if (look.live) look.liveLabel.filter(_.nonEmpty).toList else Nil))
+      (if (look.live) look.liveLabel.filter(_.nonEmpty).toList else Nil) ++
+      look.meter.map(_.said).toList)
       .mkString(", ")
 
   def moreLabel: String = Words("list.more")

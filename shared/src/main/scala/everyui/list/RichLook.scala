@@ -14,7 +14,9 @@ import everyui.font.MaterialIcon
   * or the cursor is on the row, or always where `actionShown` (a starred one's filled star) or the action's own `shown`.
   * A `live` one is held somewhere else in the app (open in a tab, playing, connected, pinned to a pane): a faint tint
   * of the accent behind it and a thin accent bar at its start edge, apart from the list's own choice (`selected`), which
-  * stays the stronger; `liveLabel` ("open in a tab") is said to a screen reader with the row while it is live. */
+  * stays the stronger; `liveLabel` ("open in a tab") is said to a screen reader with the row while it is live. A
+  * `meter` (`RichMeter`: a quota's use) is a bar on a line of its own under the title and the detail, taking the room
+  * its words at its end leave, which are never cut, its colour turning as it fills; its words are said with the row. */
 case class RichLook(title: String,
                     detail: Option[String] = None,
                     who: Option[Participant] = None,
@@ -29,4 +31,5 @@ case class RichLook(title: String,
                     action: Option[RichAction] = None,
                     actionShown: Boolean = false,
                     live: Boolean = false,
-                    liveLabel: Option[String] = None)
+                    liveLabel: Option[String] = None,
+                    meter: Option[RichMeter] = None)

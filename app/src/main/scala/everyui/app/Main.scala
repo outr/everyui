@@ -129,6 +129,9 @@ import everyui.render.Platform
   *              small one (`theme=light`, `rtl=1`, `max=<pixels>`); not on a Roku or an Apple TV (app/full: FullDemos)
   *   rail       a rail of tiles 44 wide, no scrollbar and its ends faded, beside a list that fades too, over stripes
   *              (`theme=light`, `at=<pixels>`); not on a Roku or an Apple TV (app/full: FullDemos)
+  *   quota      an admin console's usage in a RichList: meters whose colour turns as they fill, a subtitle beside
+  *              its section's title or under it, sections with no count (`width=<pixels>`, `theme=light`,
+  *              `style=blocks`); not on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

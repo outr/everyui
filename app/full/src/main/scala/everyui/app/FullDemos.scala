@@ -77,6 +77,10 @@ object FullDemos {
       EffectsDemo.run()
       true
     }
+    else if (demo == "quota") {
+      QuotaDemo.run()
+      true
+    }
     else if (demo == "rail") {
       RailDemo.run()
       true

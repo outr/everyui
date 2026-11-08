@@ -8,7 +8,11 @@ import everyui.font.MaterialIcon
   * header, and its items are always shown. Sections next to each other in the same `group` go under its header, a level
   * above theirs; one in none is drawn as it always was. `action` puts a small button in its header that does a thing
   * of its own ("New conversation"), and `empty` is the line it shows, muted, while it is open and holds nothing ("No
-  * conversations yet"); without it, an empty section is its header alone. */
+  * conversations yet"); without it, an empty section is its header alone. `showCount` off leaves the count out of its
+  * header (a block of one line, whose count says nothing), and `subtitle` is a muted line of its own beside its title
+  * ("3 of 5 seats"), on the title's line where there is room and wrapped under it where there is not, never cut
+  * short. */
 case class RichSection[T](key: String, title: String, items: Vector[T], count: Option[Int] = None,
                           icon: Option[MaterialIcon] = None, group: Option[RichGroup] = None,
-                          action: Option[RichAction] = None, empty: Option[String] = None)
+                          action: Option[RichAction] = None, empty: Option[String] = None,
+                          showCount: Boolean = true, subtitle: Option[String] = None)

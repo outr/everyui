@@ -2,8 +2,9 @@ package everyui.list
 
 import everyui.Color
 import everyui.chat.{Avatar, Participant}
-import everyui.component.{Button, ButtonStyle, Component, Container, IconButton, MaterialIconView, TextView}
-import everyui.component.types.{FontWeight, Semantics, WhiteSpace}
+import everyui.component.{Button, ButtonStyle, Component, Container, IconButton, MaterialIconView, ProgressBar,
+  TextView}
+import everyui.component.types.{FontWeight, SemanticRange, Semantics, WhiteSpace}
 import everyui.easing.Easing
 import everyui.font.MaterialIcon
 import everyui.markdown.{MarkdownStyle, MarkdownView}
@@ -67,18 +68,22 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   // how tall an item's words are, with the room round them: a title or a detail that wraps (words wrap by default) makes
   // its row taller, the list measuring each row
   private val wordsTall: Var[Double] = own(Var(0.0))
-  private val base: Val[Double] = own(Val(
+  // the row's own line; and its height, which is a section's header's line and its subtitle under it where that wraps
+  // under the title (`RichSection.subtitle`)
+  private val line: Val[Double] = own(Val(
     if (header()) {
       if (!blocks()) RichRow.headerHeight else if (group().nonEmpty) RichRow.captionHeight else RichRow.blockHeader
     }
     else if (emptyLine()) RichRow.emptyHeight
     else math.max(if (tall()) RichRow.tallHeight else RichRow.shortHeight, wordsTall())))
+  private val subtitleUnder: Var[Double] = own(Var(0.0))
+  private val base: Val[Double] = own(Val(line() + subtitleUnder()))
   private val above: Val[Double] = own(Val(if (blocks() && !header() && item().exists(_.blockStart)) RichRow.blockPad
     else 0.0))
   private val below: Val[Double] = own(Val(if (blocks() && item().exists(_.blockEnd))
     (if (header()) 0.0 else RichRow.blockPad) + RichRow.blockGap else 0.0))
   // where a piece `h` tall sits, in the middle of the row's line
-  private def middle(h: Double): Double = above() + (base() - h) / 2.0
+  private def middle(h: Double): Double = above() + (line() - h) / 2.0
   private val headerHasMenu: Val[Boolean] = own(Val(group() match {
     case Some(g) => owner.groupMenu()(g).nonEmpty
     case None => section().exists(s => owner.sectionMenu()(s).nonEmpty)
@@ -127,17 +132,18 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   }
   // a group's header a level above a section's: bold, in the text's colour, where a section's is muted (in a block, a
   // section's title is in the text's colour, the block itself setting it apart)
-  private val heading: RowLabel = new RowLabel(group().map(_.title).orElse(section().map(_.title)).getOrElse(""),
+  private[list] val heading: RowLabel = new RowLabel(group().map(_.title).orElse(section().map(_.title)).getOrElse(""),
     Decoration(icon = if (group().nonEmpty) group().flatMap(_.icon) else section().flatMap(_.icon),
       weight = if (group().nonEmpty) FontWeight.Bold else FontWeight.SemiBold,
       color = Some(if (group().nonEmpty || blocks()) Theme.text() else Theme.muted()),
-      badge = if (blocks()) "" else item().filter(_.header).map(_.count.toString).getOrElse("")),
+      badge = if (blocks() || !section().forall(_.showCount)) ""
+        else item().filter(_.header).map(_.count.toString).getOrElse("")),
     // short of the ⋮ where any header has a menu, and of the action where any section has one, so the counts keep one
     // line as the ⋮ comes and goes (in a block, short of its count, which a long title never hides, and its action)
     if (blocks()) countStart() - (if (section().exists(_.action.nonEmpty)) RichRow.headerMore else 0.0) - side()
     else RichRow.this.size.width() - ListRow.inset - 22.0 - RichRow.inset + 8.0 - nest() -
       (if (owner.headersHaveMenus()) RichRow.headerMore - 2.0 else 0.0) -
-      (if (owner.headersHaveActions()) RichRow.headerMore else 0.0), base(), 12.5)
+      (if (owner.headersHaveActions()) RichRow.headerMore else 0.0), line(), 12.5)
   heading.position.left := ListRow.along(if (blocks()) side() else ListRow.inset + 22.0 + nest(), heading.size.width(),
     size.width())
   heading.position.top := above()
@@ -241,14 +247,19 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     visible := tall()
   }
 
+  // an item's meter (`RichLook.meter`), and how tall its line is once it is made (the first time a row shows one)
+  private val meterOf: Val[Option[RichMeter]] = own(Val(if (header() || emptyLine()) None else look().flatMap(_.meter)))
+  private val meterTall: Var[Double] = own(Var(0.0))
+  private val meterRoom: Val[Double] = own(Val(if (meterOf().nonEmpty) meterTall() + RichRow.meterGap else 0.0))
+
   wordsTall := (if (header() || emptyLine()) 0.0
-    else if (tall()) title.size.height() + detail.size.height() + 2.0 + RichRow.wordsPad
-    else title.size.height() + RichRow.wordsPad)
+    else if (tall()) title.size.height() + detail.size.height() + 2.0 + meterRoom() + RichRow.wordsPad
+    else title.size.height() + meterRoom() + RichRow.wordsPad)
 
   // the title's line in the middle of a short row, the two lines together in the middle of a tall one
-  private val titleTop: Val[Double] = own(Val(
-    if (tall()) above() + (base() - title.size.height() - detail.size.height() - 2.0) / 2.0
-    else middle(title.size.height())))
+  // (and with its meter's line under them)
+  private val titleTop: Val[Double] = own(Val(above() + (base() - title.size.height() -
+    (if (tall()) detail.size.height() + 2.0 else 0.0) - meterRoom()) / 2.0))
   private def from(start: => Double, c: Component): Unit =
     c.position.left := ListRow.along(start, c.size.width(), RichRow.this.size.width())
   from(textStart(), title)
@@ -280,7 +291,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   semantics := item().map(l => Semantics("option", selected = Some(selected()), label = l.item match {
     case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText)
     case None if l.empty => l.section.empty.getOrElse("")
-    case None => l.groupHead.map(_.title).getOrElse(l.section.title) + ", " + l.count.toString
+    case None => l.groupHead.map(_.title).getOrElse((l.section.title :: l.section.subtitle.toList).mkString(", ")) +
+      (if (l.groupHead.isEmpty && !l.section.showCount) "" else ", " + l.count.toString)
   }, expanded = if (expands()) Some(l.expanded) else None)).getOrElse(Semantics.Plain)
   children ++= List(chevron, heading, sectionMore, tallFace, shortFace, glyph, title, detail, mark, time, badge, more)
 
@@ -355,7 +367,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     content := item().filter(_.header).map(_.count.toString).getOrElse("")
     font.size @= 10.5
     color := Theme.muted()
-    visible := blocks() && section().nonEmpty
+    visible := blocks() && section().exists(_.showCount)
     position.top := middle(size.height())
   }
   private lazy val countStart: Val[Double] = {
@@ -437,6 +449,92 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   }
   emptyLine.attach(e => if (e) makeEmpty())
   if (emptyLine()) makeEmpty()
+
+  // ---- an item's meter (RichLook.meter): made the first time a row shows one, so others have none ----
+  /** The meter's words at its end, muted, never cut: wrapped within the row's words where they are wider. */
+  private[list] lazy val meterWords: TextView = new TextView {
+    content := meterOf().map(_.words).getOrElse("")
+    font.size @= 11.5
+    color := Theme.muted()
+    maxWidth := math.max(20.0, end() - textStart())
+    visible := meterOf().exists(_.words.nonEmpty)
+  }
+  // whether its words leave the bar too little room beside them, and so go on a line under it
+  private lazy val meterStacked: Val[Boolean] = own(Val(meterWords.visible() &&
+    meterWords.size.width() + RichRow.meterWordsGap + RichRow.meterLeast > end() - textStart()))
+  /** The meter's bar (EveryUI's own `ProgressBar`), in the room its words leave, its colour turning as it fills
+    * (`RichMeter.tone`); a progress bar to a screen reader, its value its words. */
+  private[list] lazy val meterBar: ProgressBar = new ProgressBar(RichRow.meterLeast, RichRow.meterThick) {
+    fraction := meterOf().map(_.filled).getOrElse(0.0)
+    fill := meterOf().map(_.tone).getOrElse(Theme.accent())
+    size.width := math.max(RichRow.meterLeast, end() - textStart() -
+      (if (meterWords.visible() && !meterStacked()) meterWords.size.width() + RichRow.meterWordsGap else 0.0))
+    visible := meterOf().nonEmpty
+    semantics := {
+      val percent = math.round(meterOf().map(_.filled).getOrElse(0.0) * 100.0).toDouble
+      Semantics("progressbar", range = Some(SemanticRange(percent, 0.0, 100.0, meterOf().map(_.said).getOrElse(""))))
+    }
+  }
+  private var meterMade = false
+  private def makeMeter(): Unit = if (!meterMade) {
+    meterMade = true
+    meterTall := (if (meterStacked()) RichRow.meterThick + RichRow.meterGap + meterWords.size.height()
+      else math.max(RichRow.meterThick, if (meterWords.visible()) meterWords.size.height() else 0.0))
+    // under the title (and the detail), the bar and its words in the middle of their line, or the words under the bar
+    val top = own(Val(titleTop() + title.size.height() + (if (tall()) detail.size.height() + 2.0 else 0.0) +
+      RichRow.meterGap))
+    from(textStart(), meterBar)
+    meterBar.position.top := top() + (if (meterStacked()) 0.0 else (meterTall() - RichRow.meterThick) / 2.0)
+    from(if (meterStacked()) textStart() else end() - meterWords.size.width(), meterWords)
+    meterWords.position.top := (if (meterStacked()) top() + RichRow.meterThick + RichRow.meterGap
+      else top() + (meterTall() - meterWords.size.height()) / 2.0)
+    children ++= List(meterBar, meterWords)
+  }
+  meterOf.attach(m => if (m.nonEmpty) makeMeter())
+  if (meterOf().nonEmpty) makeMeter()
+
+  // ---- a section's subtitle (RichSection.subtitle): made the first time a header shows one ----
+  private val subtitleOf: Val[Option[String]] = own(Val(section().flatMap(_.subtitle).filter(_.nonEmpty)))
+  // where the header's words start, from the start edge
+  private val headingStart: Val[Double] = own(Val(if (blocks()) side() else ListRow.inset + 22.0 + nest()))
+  // the subtitle on one line, measured out of sight and taking no room: whether it fits beside the title
+  private lazy val subtitleLine: TextView = new TextView {
+    content := subtitleOf().getOrElse("")
+    font.size @= RichRow.subtitlePoints
+  }
+  private lazy val measuring: Container = new Container {
+    size.width @= 0.0
+    size.height @= 0.0
+    visible @= false
+    children += subtitleLine
+  }
+  // the room between the title's words and the header's count (its badge, in a tree)
+  private lazy val besideRoom: Val[Double] = own(Val(heading.size.width() - heading.textStart -
+    heading.label.size.width() - RowLabel.pad - (if (heading.badge.visible()) heading.badge.size.width() + RowLabel.pad
+    else 0.0)))
+  private lazy val beside: Val[Boolean] = own(Val(subtitleLine.size.width() <= besideRoom()))
+  /** The section's subtitle, muted: on the title's line after it where it fits there, else under it, wrapped within the
+    * header's words, never cut short; the header as tall as it needs. */
+  private[list] lazy val subtitleText: TextView = new TextView {
+    content := subtitleOf().getOrElse("")
+    font.size @= RichRow.subtitlePoints
+    color := Theme.muted()
+    maxWidth := math.max(20.0, if (beside()) besideRoom() else heading.size.width() - heading.textStart)
+    visible := header() && subtitleOf().nonEmpty
+  }
+  private var subtitleMade = false
+  private def makeSubtitle(): Unit = if (!subtitleMade) {
+    subtitleMade = true
+    from(headingStart() + heading.textStart + (if (beside()) heading.label.size.width() + RichRow.subtitleGap else 0.0),
+      subtitleText)
+    subtitleText.position.top := (if (beside()) middle(subtitleText.size.height())
+      else above() + line() - RichRow.subtitleLift)
+    subtitleUnder := (if (subtitleText.visible() && !beside())
+      subtitleText.size.height() - RichRow.subtitleLift + RichRow.subtitleBelow else 0.0)
+    children ++= List(measuring, subtitleText)
+  }
+  subtitleOf.attach(s => if (s.nonEmpty) makeSubtitle())
+  if (subtitleOf().nonEmpty) makeSubtitle()
 
   // ---- a live item (RichLook.live): its bar made the first time a row shows one, so others have none ----
   /** The thin accent bar at a live item's start edge, as tall as its line less `liveInset` at each end, `liveFrom` in from
@@ -628,6 +726,18 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
 
 object RichRow {
   val inset: Double = 12.0
+  /** A meter's bar: how thick, how short it may be beside its words, the gap before them, and the gap above its line
+    * (and between the bar and its words where they go under it). */
+  val meterThick: Double = 6.0
+  val meterLeast: Double = 24.0
+  val meterWordsGap: Double = 8.0
+  val meterGap: Double = 4.0
+  /** A section's subtitle: its size, its gap after the title beside it, how far up into the header's line it starts
+    * under the title, and the room under it there. */
+  val subtitlePoints: Double = 12.0
+  val subtitleGap: Double = 8.0
+  val subtitleLift: Double = 6.0
+  val subtitleBelow: Double = 6.0
   /** The room above and below an item's words, which a row that grows for them keeps. */
   val wordsPad: Double = 22.0
   val headerHeight: Double = 30.0
