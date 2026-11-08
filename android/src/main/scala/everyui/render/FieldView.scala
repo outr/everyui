@@ -162,10 +162,21 @@ object FieldView {
       val manager = field.getContext.getSystemService(classOf[android.view.autofill.AutofillManager])
       if (fresh && manager != null && manager.isEnabled) {
         manager.cancel()
-        // asked about by hand once the focus has landed on it: Android entered every hinted field on the screen as the
-        // card came (its fill dialog's request), and once that session finished, a focus on any of them was ignored as
-        // "already entered", which no cancel undoes; a request made for the field is not
-        field.post(() => if (field.hasFocus && manager.isEnabled) manager.requestAutofill(field))
+        // given an autofill id of its own, new to Android, before the focus comes to it: Android entered every field on
+        // the screen as the card came (the request it makes as fields are laid out), and once that session finished, a
+        // focus on any of them was ignored as "already entered", which no cancel undoes. A field Android has not met is
+        // asked about as its focus comes, as an ordinary request (one asked by hand, a password manager answered with
+        // nothing). An id is given only to a view out of its window: taken out and put back where it was, as it was.
+        val id = if (android.os.Build.VERSION.SDK_INT >= 28 && !field.hasFocus) manager.getNextAutofillId else null
+        if (id != null) field.getParent match {
+          case parent: android.view.ViewGroup =>
+            val at = parent.indexOfChild(field)
+            val params = field.getLayoutParams
+            parent.removeView(field)
+            field.setAutofillId(id)
+            parent.addView(field, at, params)
+          case _ => ()
+        }
       }
     } finally entering = false
   }
