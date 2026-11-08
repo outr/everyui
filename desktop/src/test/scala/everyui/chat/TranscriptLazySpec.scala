@@ -176,5 +176,34 @@ class TranscriptLazySpec extends FxSpec {
         before.filter { case (id, view) => !after.get(id).exists(_ eq view) }.keySet shouldBe empty
       }
     }
+    "show an entry given twice once, leave out a page of history given again, and look back again when replaced" in {
+      val entries = Var(history(3))
+      var answer: Option[Vector[ChatEntry] => Unit] = None
+      val older = () => everyui.async.Task.async[Vector[ChatEntry]](done => answer = Some(done))
+      val t = fx(new Transcript(entries, Some(older)))
+      fx {
+        t.size.width @= 900.0
+        t.size.height @= 700.0
+      }
+      onScreen(t) {
+        settle(t)
+        // an entry given twice: one row, the first
+        fx(entries @= entries() :+ entries().head)
+        settle(t)
+        fx(t.list.count) shouldBe 3
+        // a page of history all shown already: left out, and nothing earlier
+        eventually(answer.nonEmpty) shouldBe true
+        val reply = answer.get
+        answer = None
+        fx(reply(history(2)))
+        settle(t)
+        fx(entries().map(_.id).distinct.length) shouldBe fx(entries().length - 1)
+        fx(t.exhausted()) shouldBe true
+        // another conversation in its place: its history may go back further
+        fx(entries @= Vector(ChatEntry.message("n1", me, self = true, "Another conversation")))
+        settle(t)
+        fx(t.exhausted()) shouldBe false
+      }
+    }
   }
 }

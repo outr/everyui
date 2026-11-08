@@ -246,7 +246,17 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private var lastIds: Vector[String] = Vector.empty
 
   private def reshow(): Unit = {
-    val all = entries()
+    // one row an id: an entry given twice (a page of history prepended again) is shown once, the first, so one
+    // component is never drawn in two rows
+    val handed = entries()
+    val handedIds = handed.map(_.id)
+    val all = if (handedIds.distinct.length == handedIds.length) handed else {
+      Platform.log("transcript: " + (handedIds.length - handedIds.distinct.length).toString +
+        " entries given again under an id already shown; shown once")
+      handed.zipWithIndex.filter { case (e, i) => handedIds.indexOf(e.id) == i }.map(_._1)
+    }
+    // entries replaced by others (another conversation), not added to: their history may go back further again
+    if (lastIds.nonEmpty && !all.exists(_.id == lastIds.head)) exhausted @= loadOlder.isEmpty
     dated = if (dayMarkers()) Grouping.withDays(all, dayOf, separator) else all
     showAll()
     val ids = all.map(_.id)
@@ -501,8 +511,11 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       loading @= true
       fetch().map { earlier =>
         loading @= false
-        if (earlier.isEmpty) exhausted @= true
-        else prepend(earlier)
+        // (an earlier page of entries already shown, prepended again, is left out)
+        val here = entries().map(_.id).toSet
+        val fresh = earlier.filterNot(e => here.contains(e.id))
+        if (fresh.isEmpty) exhausted @= true
+        else prepend(fresh)
         val waiting = awaiting
         awaiting = Nil
         waiting.foreach(_())
