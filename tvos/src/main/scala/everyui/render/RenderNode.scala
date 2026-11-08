@@ -325,7 +325,8 @@ class RenderNode(val sg: SGNode) {
   // no reader of roles or descriptions reaches this platform's nodes
   def setSemantics(role: String, level: Int, label: String): Unit = ()
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
-                       expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = ()
+                       expanded: Option[Boolean], selected: Option[Boolean], sort: String,
+                       current: Boolean): Unit = ()
   /** The focus landed here: where a screen reader is on, it reads this out, and pressing there is `click`. */
   def accessibleFocus(click: () => Unit, name: () => String): Unit = ()
   /** The row under a list's cursor (`VirtualList`): no screen reader reaches this platform's nodes. */

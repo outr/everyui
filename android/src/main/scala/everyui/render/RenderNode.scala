@@ -1177,11 +1177,13 @@ class RenderNode(val view: View) {
   /** Where a slider stands, or whether what a button opens is open, read out by TalkBack as the view's state (Android 11
     * on). */
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
-                       expanded: Option[Boolean], selected: Option[Boolean], sort: String): Unit = {
+                       expanded: Option[Boolean], selected: Option[Boolean], sort: String,
+                       current: Boolean): Unit = {
     selected.foreach(s => view.setSelected(s))
     stateSaid = range.map(_.text)
       .orElse(expanded.map(open => if (open) "expanded" else "collapsed"))
-      .orElse(if (sort.isEmpty) None else Some("sorted " + sort)).orNull
+      .orElse(if (sort.isEmpty) None else Some("sorted " + sort))
+      .orElse(if (current) Some("current") else None).orNull
     sayState()
   }
 

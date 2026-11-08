@@ -11,7 +11,9 @@ import reactify.*
 /** A row of a `DataTable`, its header's (`index` -1) or the row of cells at `index`: a cell a column, laid out in the
   * table's columns as it shares its width, the header on the look's band with an arrow by the column its rows are
   * sorted by, every second row striped where the look says (by where it shows, sorted and filtered), and a chosen row
-  * washed in the selection's colour. The cells of the columns in `sized` are also measured out of sight on one line and
+  * washed in the selection's colour. Where the table's rows open something (`DataTable.onOpen`), a row is a button
+  * named by its words, shows the pointer's hand and a wash under it, and the one open is washed faintly in the accent
+  * and current. The cells of the columns in `sized` are also measured out of sight on one line and
   * a word to a line, for how wide their columns are to be. A row the filter hides takes no room (and so no place in
   * the table's column of rows). */
 private[table] class DataRow(table: DataTable, val index: Int, val content: Vector[DataCell], val sized: Set[Int])
@@ -33,14 +35,21 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
 
   copyAs @= "tr"
   if (header) semantics @= Semantics("row")
-  else semantics := Semantics("row", selected = Some(table.selection().contains(index)))
+  else semantics := (if (table.opening()) Semantics("button", label = said, selected = Some(table.selection()
+    .contains(index)), current = table.opened().contains(index))
+    else Semantics("row", selected = Some(table.selection().contains(index))))
+  if (!header) cursor := (if (table.opening()) "pointer" else "")
   size.width := (if (shown()) table.across() else 0.0)
   size.height := (if (shown()) tall() else 0.0)
   visible := shown()
   if (header) backgroundColor := look.header()
-  // a chosen row washed in the selection's colour, else striped by where it shows
+  // a chosen row washed in the selection's colour; where rows open, the one open faintly in the accent and the one
+  // under the pointer in the lit control colour, which a stripe is not; else striped by where it shows
   else backgroundColor := (if (table.selection().contains(index)) ListRow.fill(selected = true, current = false,
-    active = table.active(), into = false) else look.rowFill(table.stripeOf(index)))
+    active = table.active(), into = false)
+    else if (table.opening() && table.opened().contains(index)) DataRow.openFill(event.pointer.over())
+    else if (table.opening() && event.pointer.over()) Theme.controlLit()
+    else look.rowFill(table.stripeOf(index)))
   cells.indices.foreach { c =>
     val cell = cells(c)
     cell.position.left := table.cellLeft(c, cell.size.width(), header)
@@ -90,13 +99,16 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
     // a drag copies words while a plain click still chooses the row (or sorts the header).
     selectable @= true
     font.size @= table.style.points
+    // the pointer's hand over its words too where rows open, rather than the words' own
+    if (!header) cursor := (if (table.opening()) "pointer" else "")
     // a cell holding no value muted, as a quiet table's are
     color := (if (table.style.quiet || content(c).nothing) Theme.muted() else Theme.text())
     follow = href => table.onLink(href)
     if (header) semantics := Semantics("columnheader", sort = table.sort().filter(_.column == c)
       .map(s => if (s.ascending) "ascending" else "descending").getOrElse(""))
-    else if (content(c).nothing) semantics := Semantics("cell", label = TableWords.nothing)
-    else semantics @= Semantics("cell")
+    // (a row that opens is a button, read by its words: its cells say nothing of their own)
+    else semantics := (if (table.opening()) Semantics.Plain
+      else if (content(c).nothing) Semantics("cell", label = TableWords.nothing) else Semantics("cell"))
     copyAs @= (if (header) "th" else "td")
     direction @= table.style.direction
     size.width := table.cellWidth(c, header)
@@ -105,6 +117,10 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
     runs @= DataRow.runs(content(c), header, look.headerWeight)
   }
 
+  // what a row that opens is called: its words, cell by cell, a cell holding no value said as such
+  private lazy val said: String =
+    content.map(c => if (c.nothing) TableWords.nothing else c.text).filter(_.nonEmpty).mkString(", ")
+
   // a cell measured, on one line or a word to a line: what a body's measures is told to the table as it is measured
   private def twin(c: Int, words: Boolean): RichText = table.twin(content(c), c, words, header)
 
@@ -112,6 +128,10 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
 }
 
 private[table] object DataRow {
+  /** The row open's wash (`DataTable.opened`): the accent, faintly (a little more than a list's row in use, which has a
+    * ring besides), and a little more under the pointer: plainly not a stripe, which is the text's grey. */
+  def openFill(over: Boolean): everyui.Color = Theme.accent().withAlpha(if (over) 0.22 else 0.16)
+
   /** What `cell` draws: NULL where it holds no value, else its runs, or its words as they are (of `weight` in a
     * header). */
   def runs(cell: DataCell, header: Boolean, weight: Int): List[TextRun] =

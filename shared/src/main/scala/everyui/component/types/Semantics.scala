@@ -6,11 +6,12 @@ package everyui.component.types
   * shows does not say (an icon, a picture). A control that sets a number (a slider) says where it stands (`range`),
   * one that is on or off (a switch) whether it is (`checked`), and one that shows or hides a part (a pane's header)
   * whether that part is open (`expanded`). A table's row says whether it is chosen (`selected`), and a column's header
-  * which way the rows are sorted by it (`sort`: "ascending" or "descending", ARIA's words). Nothing, the default, is a
-  * component that is only drawn. */
+  * which way the rows are sorted by it (`sort`: "ascending" or "descending", ARIA's words). One of a set that is the
+  * current one (the row whose detail shows, the page a link is to) says so (`current`: ARIA's aria-current). Nothing,
+  * the default, is a component that is only drawn. */
 case class Semantics(role: String = "", level: Int = 0, label: String = "", range: Option[SemanticRange] = None,
                      checked: Option[Boolean] = None, expanded: Option[Boolean] = None,
-                     selected: Option[Boolean] = None, sort: String = "")
+                     selected: Option[Boolean] = None, sort: String = "", current: Boolean = false)
 
 object Semantics {
   /** Only drawn: nothing to say about it. */

@@ -41,6 +41,10 @@ import reactify.*
   *     Command+C copies the rows chosen (or, with none, the cell the keys are on) as tab-separated lines under the
   *     header, so they paste into a spreadsheet; where the page has words selected with the pointer (a drag across
   *     cells, on the web) those are copied instead, as the browser copies them.
+  *   - Open: where its rows open something (`onOpen`: a detail pane), a click or a tap on a row opens it, as Enter on
+  *     the one the keys are on (OK on a remote) does, and it is the row open (`opened`), washed faintly in the accent
+  *     until another opens; the rows show the pointer's hand and a wash under it, and are buttons to a screen reader,
+  *     the open one current. Shift+click and Ctrl or Command+click still choose, as Space and Shift with the arrows do.
   *   - Copy and export: the tools' button (⋮), shown while the pointer is over the table or the focus is in it, and
   *     always on a touch screen, copies the rows showing (sorted and filtered) as tab-separated lines or as Markdown,
   *     or hands them over as a CSV or a Markdown file (`Files.download`: the browser's downloads on the web, the save
@@ -53,8 +57,8 @@ import reactify.*
   *     `commit` takes it (`edited` hears it), Escape keeps what it was.
   *   - Keys: the table takes the focus as one stop (Tab goes on past it). The arrows move between its cells (Up from the
   *     first row reaches the header), Home and End to the first and last column (with Ctrl, row), Page Up and Down a
-  *     page of rows; Space or Enter chooses the row (Enter on a header sorts), Shift with Up or Down chooses as it
-  *     goes, Ctrl or Command+A chooses every row showing, Escape lets them go.
+  *     page of rows; Space or Enter chooses the row (Enter on a header sorts, and opens a row where rows open),
+  *     Shift with Up or Down chooses as it goes, Ctrl or Command+A chooses every row showing, Escape lets them go.
   *
   * Past `DataTable.eager` rows, the rows are made a page a turn after the first page is drawn, and only the widest cells
   * of each column (by their characters and their longest words) are measured for the columns' widths, so a long table
@@ -94,6 +98,19 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   val filter: Var[String] = own(Var(""))
   /** The rows chosen, by their index in `cells`. */
   val selection: Var[Set[Int]] = own(Var(Set.empty))
+  /** What opens a row, where its rows open something (a detail pane): set, a click on a row or Enter on the one the
+    * keys are on opens it, handing this the row's index in `cells` (of a server's rows, its place among them), which
+    * sorting and filtering leave as it is. Its rows then show the pointer's hand and a wash as it passes over them,
+    * and are buttons to a screen reader, named by their words; the row open (`opened`) is washed faintly in the
+    * accent and is the current one. Choosing stays with the keys (Space, Shift with the arrows, the shortcut and A)
+    * and with Shift or Ctrl or Command and a click, and copies are as they were. None, the default, opens nothing:
+    * a click chooses, as it always has. */
+  val onOpen: Var[Option[Int => Unit]] = own(Var(None))
+  /** The row open, by its index in `cells` (of a server's rows, its place), drawn as such until another opens: opening
+    * one sets it, and the app sets it itself, or clears it as what it opened closes. */
+  val opened: Var[Option[Int]] = own(Var(None))
+  /** Whether its rows open something (`onOpen`). */
+  val opening: Val[Boolean] = own(Val(onOpen().nonEmpty))
   /** How many rows a table has before it offers its filter. */
   val filterAfter: Var[Int] = own(Var(8))
   /** The tallest the table is drawn before its rows scroll under its header (0: as tall as its rows). */
@@ -850,6 +867,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     letGo(samples.flatMap(s => Vector(s._2, s._3)))
     samples = Vector.empty
     if (selection().exists(_ >= content.size)) selection @= selection().filter(_ < content.size)
+    if (opened().exists(_ >= content.size)) opened @= None
     // what the rows make is measured with the turn's batch (the web), as the table goes into the page, rather than read by
     // read as it is made
     MeasuredFeature.withBatch(LayoutPass.batch {
@@ -1040,7 +1058,15 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     }
     // the end of a drag across words selects them, and chooses nothing
     else if (!Platform.selectsText() || Platform.selectedText().isEmpty) {
-      if (e.shift && anchor.nonEmpty) chooseTo(row)
+      if (e.shift && (anchor.nonEmpty || opening())) {
+        chooseTo(row)
+        if (anchor.isEmpty) anchor = Some(row)
+      }
+      // where rows open, a plain click or a finger's tap opens, and the shortcut with it chooses
+      else if (opening() && !e.primary) {
+        anchor = Some(row)
+        open(row)
+      }
       else {
         // a finger's tap adds or takes away, as Ctrl or Command does, on a touch laptop as on a phone
         val toggles = e.primary || e.finger || touch
@@ -1049,6 +1075,13 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
         anchor = Some(row)
       }
     }
+  }
+
+  /** Row `row` opened (its index in `cells`; of a server's rows, its place), as a click on it opens it: it is the
+    * row open (`opened`) and `onOpen` hears it. Nothing where rows open nothing. */
+  def open(row: Int): Unit = onOpen().foreach { f =>
+    opened @= Some(row)
+    f(row)
   }
 
   // the rows from the last chosen to `row`, as they show
@@ -1115,6 +1148,10 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     else if (letter == "home" && c > 0) go(row, 0)
     else if (letter == "end" && c < columnCount() - 1) go(row, columnCount() - 1)
     else if ((k.key == Key.Enter || k.key == Key.Space) && row < 0) Some(() => sortBy(c))
+    else if (k.key == Key.Enter && at >= 0 && opening()) Some(() => {
+      anchor = Some(row)
+      open(row)
+    })
     else if ((k.key == Key.Enter || k.key == Key.Space) && at >= 0) Some(() => {
       selection @= (if (selection().contains(row)) selection() - row else selection() + row)
       anchor = Some(row)

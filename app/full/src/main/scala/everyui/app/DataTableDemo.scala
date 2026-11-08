@@ -17,6 +17,8 @@ import reactify.*
   * `at=<seconds>` makes the tables that long after the page. `paged=1` gives it a server's `n` personas (200,000 by
   * default) a page at a time instead, searched and sorted there.
   * `edit=1` lets its cells be typed over, on a double-click or F2.
+  * `open=1` makes its rows open (`DataTable.onOpen`), as a console's open into a detail pane: a click or Enter opens
+  * one, written under the tables until Close.
   * It logs how long the table took to make and to filter:
   *
   *   [ui] datatable 500 rows made in 92.4 ms
@@ -156,5 +158,16 @@ object DataTableDemo {
     small.position.left := left()
     small.position.top := table.position.top() + table.size.height() + 24.0
     page.content.children += small
+    // open=1: its rows open, as a console's open into a detail pane: what is open written under them, Close shuts it
+    if (Platform.launchArg("open") == "1") {
+      table.onOpen @= Some((i: Int) =>
+        Platform.log("datatable opened row " + i.toString + ": " + table.rowTexts(i).head))
+      val said = Val(table.opened().map(i => "Open: " + table.rowTexts(i).head).getOrElse("Nothing open: click a row"))
+      val detail = Row(12.0, middle = true)(TextView.bound(said(), 13.0, Theme.text()),
+        new Button("Close", () => table.opened @= None, style = ButtonStyle.Outlined))
+      detail.position.left := left()
+      detail.position.top := small.position.top() + small.size.height() + 16.0
+      page.content.children += detail
+    }
   }
 }
