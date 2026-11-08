@@ -35,6 +35,10 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   /** Where wrapped words line up (`labelLines`): at the start, the reading direction's, as a paragraph and the
     * one-line choices beside it do; `Center` or `End` where a design wants them so. */
   val labelAlign: Var[TextAlign] = own(Var(TextAlign.Start))
+  /** Where its glyph and words sit across its width: `Center`, the default, in the middle; `Start` or `End` at that edge
+    * of the reading direction, inside its padding (a full-width button as a rail's item, its icon and name at the
+    * start). `labelAlign` lines the words up among themselves. */
+  val contentAlign: Var[TextAlign] = own(Var(TextAlign.Center))
   /** Whether what it does cannot be undone (Delete): its words, an outlined one's edge and a filled one's plate in the
     * danger colour rather than the accent. */
   val danger: Var[Boolean] = own(Var(false))
@@ -108,7 +112,15 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   size.height := line.size.height() + points
   // a pill on one line; wrapped, a box with the corners one line would have
   radius := (if (labelLines() == 1) size.height() / 2.0 else math.min(size.height() / 2.0, points * 1.2))
-  line.position.center := size.center()
+  // across its width as `contentAlign` says, the start the reading direction's, inside the padding its width allows
+  line.position.left := {
+    val pad = points * 1.1
+    val room = size.width() - line.size.width()
+    val atStart = contentAlign() == TextAlign.Start
+    if (contentAlign() == TextAlign.Center) room / 2.0
+    else if (atStart != everyui.i18n.Direction.rtl()) pad
+    else room - pad
+  }
   line.position.middle := size.middle()
   backgroundColor := {
     if (style == ButtonStyle.Filled)
