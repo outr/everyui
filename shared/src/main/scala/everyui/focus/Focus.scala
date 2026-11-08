@@ -286,6 +286,9 @@ object Focus {
     () => confined = confined.filterNot(_ eq held)
   }
 
+  /** Every confinement let go: a spec's, as it ends, so none it left held reaches the next. */
+  private[everyui] def unconfine(): Unit = confined = Nil
+
   /** The confinement holding the focus now: the newest, while its region is on the screen and in where the focus may
     * go otherwise. A dialog put up elsewhere holds it instead. */
   private def fence(): Option[Confinement] =

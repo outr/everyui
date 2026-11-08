@@ -59,6 +59,8 @@ class ConfineSpec extends FxSpec {
     }
     try test finally fx {
       while (Modal.showing) Modal.close()
+      // and every confinement a test made let go, released or not, so none holds the next spec's focus
+      Focus.unconfine()
       ui.children.clear()
       Focus.focused @= None
       Focus.scope @= None
