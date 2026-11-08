@@ -3200,6 +3200,64 @@ Platform.showNotice(Notice(sender, preview, tag = "conversation:" + id), () => o
 No flashing title: a changing tab title is the app's to do, if it wants one. `demo=platform` allows notices, shows one
 now or while away (tagged, so each replaces the last), and counts unread on the badge.
 
+## Home-screen widgets (`everyui.widget`)
+
+An app can put widgets on Android's home screen: a count, the next event, a list of the latest. A widget is a small
+tree each kind describes (`WidgetNode`: words, a picture, rows and columns, a button, a scrolling list), which Android
+draws in the launcher's own process; it is not a `Component` tree. A tap opens the app at a path (`WidgetTap.Open`,
+answered as a link) or runs an action in the background (`WidgetTap.Action`), after which the widget is drawn again.
+The other platforms have none yet: there `Widgets.placed` is empty and the rest does nothing.
+
+```scala
+import everyui.widget.*
+
+object MailWidgets extends WidgetApp {
+  val inbox: WidgetKind = WidgetKind("inbox", "Inbox", "Unread mail from the accounts you choose", "",
+    Set(WidgetSize.Compact, WidgetSize.Medium, WidgetSize.Large),
+    choices = () => mail.accounts.map(_.map(a => WidgetChoice(a.id, a.address, "Mail accounts"))),
+    defaults = offered => offered.map(_.key).toSet,
+    content = request => mail.unread(request.choices).map(messages => draw(request, messages)),
+    action = (request, name, args) => if (name == "refresh") mail.sync() else Task.unit)
+
+  def kinds: List[WidgetKind] = List(inbox)
+  override def prepare(): Unit = Network.origin = "https://mail.example.com"
+}
+```
+
+A launcher asks for a widget with the app closed, so the kinds come from an object rather than the app's `main`, and
+`choices`, `content` and `action` fetch and describe without touching the screen. They can read what the app keeps
+(`Platform.secret`, `Platform.setting`, `Store`) and reach its server (`Network`) as the app does. `content` answers
+within a few seconds: the widget shows what it drew last until it does. `WidgetRequest` says the size class, the
+room in points (`width`, `height`: leave out what would not fit), the choices the person made for this widget in its
+configure screen, whether they asked for counts only (no subjects or names), and dark mode. The app registers the
+same kinds as it starts (`MailWidgets.kinds.foreach(Widgets.register)`), and redraws them as its data changes
+(`Widgets.refresh("inbox")`) or the person signs out (`Widgets.refreshAll()`).
+
+The build declares them: the object, and each kind as the launcher knows it. sbt-everyui then writes a receiver for
+each kind, the manifest's entries (the receivers, the meta-data naming the object, and the configure screen in a
+process of its own), each kind's `appwidget-provider`, and the shrinker's rules, and adds EveryUI's widget layouts to
+the app's resources, through `everyuiAndroidManifest`, `everyuiAndroidResources` and `everyuiAndroidRules` (the
+Android example above). Nothing of it is written by hand.
+
+```scala
+everyuiWidgets := Some("myapp.MailWidgets"),
+everyuiWidgetKinds := Seq(AndroidWidget("inbox", "Inbox", Seq("compact", "medium", "large"),
+  description = "Unread mail from the accounts you choose", preview = "@drawable/inbox_preview"))
+```
+
+`AndroidWidget(key, label, sizes, description = "", preview = "", updateMinutes = 30, configurable = true)`:
+
+- `key`, `label`, `description` and `sizes` are the kind's own (`WidgetKind.key`, `name`, `description` and `sizes`).
+  The build reads the object's kinds once it is compiled and fails where they differ, or where a kind is in one and
+  not the other; an empty `description` is not compared. A key is a resource name: lower case, digits and `_`.
+- `sizes` ("compact", "medium", "large") give the launcher's least size (110 by 110 points at two cells square for
+  compact, 250 by 110 at four by two for medium, 250 by 250 at four by four for large) and its most.
+- `preview` is a resource the widget picker shows (the app's icon where there is none).
+- `updateMinutes` is how often the launcher has it drawn again unasked: 30 at least (Android's floor), or 0 for never.
+- `configurable` shows the configure screen as the widget is placed (it may be passed by, with the kind's
+  `defaults`) and from a long press on it (Android 12 on): the kind's `choices` by group with a box each, "Counts
+  only" where `privacy`, Cancel and Done.
+
 ## Location (`everyui.location`)
 
 `Location.current()` answers where the device is, once, and `Location.watch(distance)` follows it as it moves until
@@ -3926,7 +3984,10 @@ The plugin's tasks, on every project:
 | `everyuiVersion` | the EveryUI release the plugin belongs to |
 | `everyuiFonts` | EveryUI's fonts (and Material Icons' codepoints), out of the backend on the classpath, with the app's own (`everyuiAppFonts`): a directory to copy into the app's `fonts/` |
 | `everyuiAppFonts` | the app's own font files (a face it registers with `Faces.register`), a setting, empty by default: copied in by `everyuiFonts` and `everyuiWebFonts`, and a name one of EveryUI's has fails the build |
-| `everyuiAndroidRules` | the Android backend's shrinker rules, out of everyui-android, for `AndroidApk.build` |
+| `everyuiAndroidRules` | the Android backend's shrinker rules, out of everyui-android, for `AndroidApk.build`, with the widgets' where there are any |
+| `everyuiAndroidManifest` | the manifest for `AndroidApk.build`: the app's own (`everyuiAndroidManifestSource`, `AndroidManifest.xml` under the project) as it is, or with its home-screen widgets' entries |
+| `everyuiAndroidResources` | the resources for `AndroidApk.build`: the app's own (`everyuiAndroidRes`, `res` under the project) as they are, or with EveryUI's widget layouts (`everyuiWidgetLayouts`, out of everyui-android) and each widget's `appwidget-provider` |
+| `everyuiWidgets`, `everyuiWidgetKinds` | the app's home-screen widgets on Android, settings: none by default ([Home-screen widgets](#home-screen-widgets-everyuiwidget)) |
 | `everyuiEmbedAssets` | the files of the embeds on the classpath (everyui-monaco-android's Monaco, everyui-terminal-android's xterm.js), out of their jars: a directory whose contents go into an APK's assets as they are |
 | `everyuiCompiler` | the Roku and Swift compiler (everyui-compiler at `everyuiVersion`, fetched with the build's resolvers) and what it runs with |
 | `everyuiEmitLibraries` | what the compiler compiles through with the app: everyui-roku or everyui-tvos, reactify, and Spice's durable client |
@@ -3961,7 +4022,8 @@ lazy val desktop = project.in(file("desktop"))
 ### Android
 
 The backend is plain JVM bytecode compiled against android.jar, published as a jar rather than an Android archive (it
-has no resources or manifest of its own), and the app's build dexes it with everything else. An app's activity extends
+has no manifest of its own, and its only resources, the layouts a home-screen widget is drawn with, are added by
+`everyuiAndroidResources` where the app has widgets), and the app's build dexes it with everything else. An app's activity extends
 `everyui.activity.EveryUIActivity`.
 
 ```scala
@@ -3987,12 +4049,15 @@ lazy val android = project.in(file("android"))
       AndroidApk.build(streams.value.log.info(_), androidSdk, "android-37.0", "37.0.0", "23", "37",
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile)
           .filterNot(_.getName.endsWith(".aar")), "23", target.value / "android-runtime", streams.value.log.info(_)),
-        baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
+        everyuiAndroidManifest.value, everyuiAndroidResources.value, assets,
         Seq(everyuiAndroidRules.value, baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "myapp.apk", version.value, 1, AndroidApk.debug)
     }
   )
 ```
+
+Without widgets, `everyuiAndroidManifest` and `everyuiAndroidResources` are the app's own manifest and `res`, so the APK
+is what it was; with them, they add what the widgets need (below).
 
 The app's own `proguard-rules.pro` keeps its activity (`-keep class myapp.MainActivity { *; }`) and anything else the
 manifest names; `everyuiAndroidRules` has the rest. A shipping build passes its release key as an

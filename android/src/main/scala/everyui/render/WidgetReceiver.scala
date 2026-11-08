@@ -6,8 +6,9 @@ import android.os.Bundle
 
 /** Where the launcher asks for the app's home-screen widgets (`everyui.widget.Widgets`): to draw them as they are
   * placed, every half hour, as the app asks (`Widgets.refresh`) and as one is resized; to run a tap's action; and to
-  * forget one removed. The app's manifest declares it with its `appwidget-provider` and the meta-data
-  * "everyui.widget.kind", the key of the kind it draws (android/AndroidManifest.xml has the example app's).
+  * forget one removed. sbt-everyui declares it for each kind the build names (`everyuiWidgetKinds`), under a name of
+  * its own (everyui.widget.generated), with its `appwidget-provider` and the meta-data "everyui.widget.kind", the
+  * key of the kind it draws.
   *
   * It runs with no activity, often in a process started for it alone, so it has only its context: what it draws is
   * the app's `WidgetApp`'s (`WidgetAccess`). Each request holds the broadcast open (`goAsync`) until the content has

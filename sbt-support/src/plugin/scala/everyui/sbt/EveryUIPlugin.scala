@@ -47,6 +47,18 @@ object EveryUIPlugin extends AutoPlugin {
     @transient val everyuiCommit = taskKey[Option[String]]("The EveryUI commit the everyui jars on the classpath were published from (their manifest's EveryUI-Commit, \"-dirty\" after it if the tree had uncommitted changes), or None where there is none: for recording which EveryUI a build has")
     @transient val everyuiAndroidRules =taskKey[File]("The Android backend's shrinker rules, taken out of the everyui-android jar, for AndroidApk.build")
     @transient val everyuiEmbedAssets = taskKey[File]("The files of the embeds on the classpath (everyui-monaco-android's Monaco, everyui-terminal-android's xterm.js: everyui-monaco/<version>/, everyui-terminal/<version>/), taken out of their jars: a directory whose contents go into an APK's assets as they are; empty where there are none")
+
+    // home-screen widgets on Android (AndroidWidgets): none unless everyuiWidgets names the app's WidgetApp
+    type AndroidWidget = everyui.sbt.AndroidWidget
+    def AndroidWidget: everyui.sbt.AndroidWidget.type = everyui.sbt.AndroidWidget
+    val everyuiWidgets = settingKey[Option[String]]("The app's home-screen widgets on Android: the WidgetApp object with its kinds (\"com.example.MyWidgets\"), or None, the default, for none")
+    val everyuiWidgetKinds = settingKey[Seq[AndroidWidget]]("Each widget kind as the launcher knows it (key, label, sizes, description, preview, update period, configurable): its key, label, description and sizes are checked against the WidgetApp's own kinds, and a difference fails the build")
+    val everyuiAndroidManifestSource = settingKey[File]("The app's own AndroidManifest.xml, which everyuiAndroidManifest adds the widgets to (android/AndroidManifest.xml under the project)")
+    @transient val everyuiAndroidManifest = taskKey[File]("The manifest for AndroidApk.build: the app's own as it is, or with its widgets' receivers, their meta-data and the configure screen where everyuiWidgets names any")
+    val everyuiAndroidRes = settingKey[File]("The app's own Android resources (res under the project), which everyuiAndroidResources adds the widgets' to")
+    @transient val everyuiAndroidResources = taskKey[File]("The resources for AndroidApk.build: the app's own as they are, or with EveryUI's widget layouts (everyuiWidgetLayouts) and each kind's appwidget-provider where everyuiWidgets names any")
+    @transient val everyuiWidgetLayouts = taskKey[File]("EveryUI's layouts and drawables a widget is drawn with, taken out of the everyui-android jar: a resource directory")
+    @transient val everyuiWidgetRules = taskKey[Seq[File]]("The shrinker's rules for the widgets: the WidgetApp object and each kind's receiver, or none without widgets (everyuiAndroidRules has them too)")
   }
   import autoImport.*
 
@@ -81,6 +93,13 @@ object EveryUIPlugin extends AutoPlugin {
       case Right(files) => files.filter(_.getName.endsWith(".jar")).distinct
       case Left(problem) => sys.error(s"sbt-everyui: could not fetch $module: ${problem.resolveException.getMessage}")
     }
+
+  /** The kinds declared for `app`, or the build failed with what is wrong with them. */
+  private def widgetKinds(app: String, kinds: Seq[AndroidWidget]): Seq[AndroidWidget] = {
+    val wrong = AndroidWidgets.problems(app, kinds)
+    if (wrong.nonEmpty) sys.error("sbt-everyui: " + wrong.mkString("\n  ", "\n  ", ""))
+    kinds
+  }
 
   override def projectSettings: Seq[Setting[?]] = Seq(
     // a snapshot republished to the local repository with other dependencies of its own is resolved again (LocalSnapshots)
@@ -133,9 +152,92 @@ object EveryUIPlugin extends AutoPlugin {
       commits.headOption
     },
     everyuiAndroidRules := Def.uncached {
-      unpack(jar(classpath.value, "everyui-android"), "everyui/android", target.value / "everyui-android") /
-        "proguard-rules.pro"
+      val unpacked = unpack(jar(classpath.value, "everyui-android"), "everyui/android", target.value / "everyui-android")
+      val backend = unpacked / "proguard-rules.pro"
+      // with the widgets', where there are any: one file, as before
+      everyuiWidgetRules.value.headOption match {
+        case None => backend
+        case Some(widgets) =>
+          val both = target.value / "everyui-widgets" / "proguard-rules.pro"
+          IO.write(both, IO.read(backend) + "\n" + IO.read(widgets))
+          both
+      }
     },
+    everyuiWidgets := None,
+    everyuiWidgetKinds := Nil,
+    everyuiAndroidManifestSource := baseDirectory.value / "AndroidManifest.xml",
+    everyuiAndroidRes := baseDirectory.value / "res",
+    everyuiWidgetLayouts := Def.uncached {
+      unpack(jar(classpath.value, "everyui-android"), "everyui/android/res", target.value / "everyui-widget-res")
+    },
+    everyuiAndroidManifest := Def.uncached {
+      val source = everyuiAndroidManifestSource.value
+      val conv = fileConverter.value
+      val program = (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile)
+      val log = streams.value.log
+      everyuiWidgets.value match {
+        case None => source
+        case Some(app) =>
+          val kinds = widgetKinds(app, everyuiWidgetKinds.value)
+          // the build's kinds and the app's own, compared where the app's can be read
+          AndroidWidgets.declaredIn(program, app) match {
+            case Right(found) =>
+              val wrong = AndroidWidgets.mismatches(kinds, found)
+              if (wrong.nonEmpty) sys.error("sbt-everyui: " + wrong.mkString("\n  ", "\n  ", ""))
+            case Left(why) => log.warn(s"sbt-everyui: $app's widget kinds could not be read to check ($why)")
+          }
+          AndroidWidgets.manifest(IO.read(source), app, kinds) match {
+            case Right(text) =>
+              val out = target.value / "everyui-widgets" / "AndroidManifest.xml"
+              IO.write(out, text)
+              out
+            case Left(why) => sys.error(s"sbt-everyui: $why ($source)")
+          }
+      }
+    },
+    everyuiAndroidResources := Def.uncached {
+      val res = everyuiAndroidRes.value
+      val layouts = everyuiWidgetLayouts.value
+      val out = target.value / "everyui-widgets" / "res"
+      everyuiWidgets.value match {
+        case None => res
+        case Some(app) =>
+          val kinds = widgetKinds(app, everyuiWidgetKinds.value)
+          IO.delete(out)
+          if (res.exists) IO.copyDirectory(res, out)
+          (layouts ** "*").get().filter(_.isFile).foreach { f =>
+            val to = out / IO.relativize(layouts, f).getOrElse(f.getName)
+            if (to.exists)
+              sys.error(s"sbt-everyui: the app's resources have ${to.getName}, which EveryUI's widgets draw with")
+            IO.copyFile(f, to)
+          }
+          kinds.foreach(k =>
+            IO.write(out / "xml" / (AndroidWidgets.providerName(k.key) + ".xml"), AndroidWidgets.provider(k)))
+          AndroidWidgets.strings(kinds).foreach(s => IO.write(out / "values" / "everyui_widgets.xml", s))
+          out
+      }
+    },
+    everyuiWidgetRules := Def.uncached {
+      everyuiWidgets.value match {
+        case None => Nil
+        case Some(app) =>
+          val out = target.value / "everyui-widgets" / "widget-rules.pro"
+          IO.write(out, AndroidWidgets.rules(app, widgetKinds(app, everyuiWidgetKinds.value)))
+          Seq(out)
+      }
+    },
+    // each kind's receiver, EveryUI's under a name of its own, compiled with the app
+    Compile / sourceGenerators += Def.task {
+      val dir = (Compile / sourceManaged).value / "everyui-widgets"
+      everyuiWidgets.value match {
+        case None => Nil
+        case Some(app) => widgetKinds(app, everyuiWidgetKinds.value).map { k =>
+          val out = dir / (AndroidWidgets.receiverName(k.key) + ".scala")
+          IO.write(out, AndroidWidgets.receiverSource(k))
+          out
+        }
+      }
+    }.taskValue,
     // each embed's files under its own directory, as its EmbedSite asks for them (EmbedClient reads the APK's assets)
     everyuiEmbedAssets := Def.uncached {
       val out = target.value / "everyui-embeds"

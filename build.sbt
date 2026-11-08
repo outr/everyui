@@ -505,6 +505,13 @@ lazy val android = (project in file("android"))
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: AndroidRuntime, in sbt-support)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
+    // the example's home-screen widget ("inbox", everyui.app.InboxWidgets), as an app declares its own: sbt-everyui
+    // writes its receiver, its manifest entries, its appwidget-provider and its shrinker rules, and draws it with
+    // EveryUI's widget layouts, here from the source (widget-res) rather than out of the everyui-android jar
+    everyuiWidgets := Some("everyui.app.InboxWidgets"),
+    everyuiWidgetKinds := Seq(AndroidWidget("inbox", "Inbox", Seq("compact", "medium", "large"),
+      description = "Unread mail from the accounts you choose", preview = "@mipmap/ic_launcher")),
+    everyuiWidgetLayouts := Def.uncached(baseDirectory.value / "widget-res"),
     packageApk := {
       val conv = fileConverter.value
       val buildRoot = (ThisBuild / baseDirectory).value
@@ -516,8 +523,8 @@ lazy val android = (project in file("android"))
         // the archives themselves are not dexable: what was opened out of them stands in their place
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
           androidMinSdk, target.value / "android-runtime", streams.value.log.info(_)),
-        baseDirectory.value / "AndroidManifest.xml", baseDirectory.value / "res", assets,
-        Seq(baseDirectory.value / "proguard-rules.pro"), target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
+        everyuiAndroidManifest.value, everyuiAndroidResources.value, assets,
+        baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value, target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
         version.value, 1, AndroidApk.debug)
     }
@@ -545,8 +552,9 @@ lazy val desktopPublished = (project in file("published/desktop"))
     Compile / resourceGenerators += fontResources.taskValue
   )
 
-// Plain JVM bytecode against android.jar, as a jar rather than an Android archive: the backend has no resources or
-// manifest of its own for an archive to carry, and an app's build dexes jars (AndroidApk). Its Android archives are
+// Plain JVM bytecode against android.jar, as a jar rather than an Android archive: the backend has no manifest of its
+// own for an archive to carry (its widget layouts are resources in the jar, which sbt-everyui adds to an app's with
+// widgets), and an app's build dexes jars (AndroidApk). Its Android archives are
 // `provided` for the same reason as JavaFX (EveryUILibraries.android).
 lazy val androidPublished = (project in file("published/android"))
   .settings(published)
@@ -567,7 +575,18 @@ lazy val androidPublished = (project in file("published/android"))
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     Compile / resourceGenerators += fontResources.taskValue,
-    Compile / resourceGenerators += bundled("everyui/android", root => Seq(root / "android" / "proguard-rules.pro")).taskValue
+    Compile / resourceGenerators += bundled("everyui/android", root => Seq(root / "android" / "proguard-rules.pro")).taskValue,
+    // the layouts and drawables a home-screen widget is drawn with, under everyui/android/res/ as they are in
+    // android/widget-res (sbt-everyui's everyuiWidgetLayouts)
+    Compile / resourceGenerators += Def.task {
+      val from = (ThisBuild / baseDirectory).value / "android" / "widget-res"
+      val dir = (Compile / resourceManaged).value / "everyui" / "android" / "res"
+      (from ** "*.xml").get().map { f =>
+        val copy = dir / IO.relativize(from, f).getOrElse(f.getName)
+        IO.copyFile(f, copy)
+        copy
+      }
+    }.taskValue
   )
 
 // The Roku and the Apple TV run no JVM: an app compiles against these, and the compiler (everyui-compiler) translates

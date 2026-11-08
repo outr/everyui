@@ -27,27 +27,5 @@
         <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
       </intent-filter>
     </activity>
-    <!-- home-screen widgets (everyui.widget.Widgets): the object with the app's kinds, the receiver that draws one of
-         them ("inbox", everyui.app.InboxWidgets), and the screen each is set in as it is placed, in a process of its
-         own -->
-    <meta-data android:name="everyui.widgets" android:value="everyui.app.InboxWidgets" />
-    <receiver android:name="everyui.render.WidgetReceiver" android:label="Inbox" android:exported="false">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data android:name="android.appwidget.provider" android:resource="@xml/everyui_widget_inbox" />
-      <meta-data android:name="everyui.widget.kind" android:value="inbox" />
-    </receiver>
-    <activity
-      android:name="everyui.activity.WidgetConfigureActivity"
-      android:exported="true"
-      android:process=":widgets"
-      android:taskAffinity=""
-      android:excludeFromRecents="true"
-      android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
-      </intent-filter>
-    </activity>
   </application>
 </manifest>

@@ -5,7 +5,7 @@ import everyui.font.MaterialIcon
 import everyui.widget.{WidgetApp, WidgetChoice, WidgetColour, WidgetKind, WidgetNode, WidgetPicture, WidgetRequest,
   WidgetSize, WidgetTap, WidgetText}
 
-/** The example app's home-screen widget, "inbox" (android/AndroidManifest.xml names this object for the receiver):
+/** The example app's home-screen widget, "inbox" (build.sbt names this object and the kind, `everyuiWidgets`):
   * made-up mail from three made-up accounts, chosen in its configure screen. Compact, the unread count of the chosen
   * accounts; medium and large, a header with a Refresh (an action, which brings one more message) over a list of the
   * messages, each opening the app at `/inbox/<id>` (InboxDemo). Counts only, the accounts and their counts, with no
