@@ -3258,6 +3258,69 @@ everyuiWidgetKinds := Seq(AndroidWidget("inbox", "Inbox", Seq("compact", "medium
   `defaults`) and from a long press on it (Android 12 on): the kind's `choices` by group with a box each, "Counts
   only" where `privacy`, Cancel and Done.
 
+## With the app closed (`everyui.background`)
+
+Some work must happen with the app closed: a message sent once there is a network, a sync every hour, a notice that
+stays while something goes on with a button that pauses it, all of it put back after the device restarts. The app
+names an object the platform loads by name where the app is not running, as widgets do, whose handlers hear what
+the platform delivers:
+
+```scala
+import everyui.async.Task
+import everyui.background.*
+import everyui.push.*
+
+object Background extends BackgroundApp {
+  val channel: NoticeChannel = NoticeChannel("sync", "Sync", "While syncing is paused or running")
+
+  override def prepare(): Unit = Network.origin @= "https://example.com"   // once a process, before any handler
+
+  override def onWork(key: String, data: Map[String, String]): Task[WorkResult] =
+    Sync.run().map(ok => if (ok) WorkResult.Done else WorkResult.Retry)
+
+  override def onNoticeAction(notice: String, action: String, args: Map[String, String]): Task[Unit] = Task {
+    if (action == "pause") Ongoing.show(OngoingNotice("sync", "Sync paused", "", channel,
+      Vector(NoticeAction("Resume", NoticeTap.RunAction("resume")))))
+  }
+
+  override def onRestart(reason: RestartReason): Task[Unit] = Task(showStatus())   // booted, or updated
+}
+```
+
+```scala
+// sbt-everyui: the meta-data naming it, EveryUI's receiver and job service, RECEIVE_BOOT_COMPLETED and the rules
+everyuiBackground := Some("com.example.Background")
+// and the background's rules with the app's own where it passes them to AndroidApk.build itself
+(baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value
+```
+
+A handler runs where there may be no window: it reads the settings, the secrets, the store and the network, and
+never touches a component. It starts on the thread that draws (heavy work goes `Task.off`), and the platform holds its
+process until it answers: about ten seconds for an action or a restart (longer work schedules `Work.once` and
+answers), nine and a half minutes for work, which is then tried again.
+
+- **Work** (`Work.once(key, constraints, expedited, backoff, delay, data)`, `Work.every(key, minutes, ...)`,
+  `Work.cancel(key)`, `Work.pending(key)`): unique by key, kept through a restart, waiting for a network (any or
+  unmetered), charging, a battery not low or the device idle. Every 15 minutes at the most often (fewer are raised to
+  15). Expedited work runs as soon as it can (Android 12 on) and waits for nothing but a network. On Android it is a
+  JobScheduler job; `adb shell cmd jobscheduler run -f <package> <id>` runs one now, with the id logged as it is
+  scheduled.
+- **Ongoing notices** (`Ongoing.show(OngoingNotice(key, title, body, channel, actions, tap))`, `Ongoing.clear(key)`):
+  quiet, not swiped away, on a channel of the app's own, updated in place by key, from the app or a handler. An
+  action runs `onNoticeAction` with the app closed (`NoticeTap.RunAction`) or opens the app at a path
+  (`NoticeTap.OpenApp`); three are shown at most. From Android 14 the person may swipe one away all the same:
+  `onNoticeDismissed` hears it. Android 13 and later need the person's leave first
+  (`Platform.askNotificationPermission`); the small icon is the drawable `everyui_notice` where the app has one.
+- **Restarts** (`onRestart(RestartReason.Booted | Updated)`): what the platform forgot, an ongoing notice above all,
+  is put back here. Scheduled work needs nothing.
+- **Settings pages** (`everyui.SystemSettings.open(SettingsPage.App | AppNotifications | AppLocation |
+  UnusedAppRestrictions | DeviceLocation)`), answered as the person comes back, and
+  `SystemSettings.unusedAppRestrictions`: whether Android may take the app's permissions away and stop its work after
+  months unused, which an app that depends on the background asks the person to turn off.
+
+The web, the desktop, an Apple TV and a Roku run nothing with the app closed: `Background.supported`, `Work.supported`
+and `Ongoing.supported` are false, nothing is scheduled or shown, and `SystemSettings` answers false.
+
 ## Location (`everyui.location`)
 
 `Location.current()` answers where the device is, once, and `Location.watch(distance)` follows it as it moves until
@@ -3988,6 +4051,7 @@ The plugin's tasks, on every project:
 | `everyuiAndroidManifest` | the manifest for `AndroidApk.build`: the app's own (`everyuiAndroidManifestSource`, `AndroidManifest.xml` under the project) as it is, or with its home-screen widgets' entries |
 | `everyuiAndroidResources` | the resources for `AndroidApk.build`: the app's own (`everyuiAndroidRes`, `res` under the project) as they are, or with EveryUI's widget layouts (`everyuiWidgetLayouts`, out of everyui-android) and each widget's `appwidget-provider` |
 | `everyuiWidgets`, `everyuiWidgetKinds` | the app's home-screen widgets on Android, settings: none by default ([Home-screen widgets](#home-screen-widgets-everyuiwidget)) |
+| `everyuiBackground`, `everyuiBackgroundRules` | what runs with the app closed on Android: the `BackgroundApp` object, none by default, and the shrinker's rules for it ([With the app closed](#with-the-app-closed-everyuibackground)) |
 | `everyuiEmbedAssets` | the files of the embeds on the classpath (everyui-monaco-android's Monaco, everyui-terminal-android's xterm.js), out of their jars: a directory whose contents go into an APK's assets as they are |
 | `everyuiCompiler` | the Roku and Swift compiler (everyui-compiler at `everyuiVersion`, fetched with the build's resolvers) and what it runs with |
 | `everyuiEmitLibraries` | what the compiler compiles through with the app: everyui-roku or everyui-tvos, reactify, and Spice's durable client |

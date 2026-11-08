@@ -54,11 +54,15 @@ object EveryUIPlugin extends AutoPlugin {
     val everyuiWidgets = settingKey[Option[String]]("The app's home-screen widgets on Android: the WidgetApp object with its kinds (\"com.example.MyWidgets\"), or None, the default, for none")
     val everyuiWidgetKinds = settingKey[Seq[AndroidWidget]]("Each widget kind as the launcher knows it (key, label, sizes, description, preview, update period, configurable): its key, label, description and sizes are checked against the WidgetApp's own kinds, and a difference fails the build")
     val everyuiAndroidManifestSource = settingKey[File]("The app's own AndroidManifest.xml, which everyuiAndroidManifest adds the widgets to (android/AndroidManifest.xml under the project)")
-    @transient val everyuiAndroidManifest = taskKey[File]("The manifest for AndroidApk.build: the app's own as it is, or with its widgets' receivers, their meta-data and the configure screen where everyuiWidgets names any")
+    @transient val everyuiAndroidManifest = taskKey[File]("The manifest for AndroidApk.build: the app's own as it is, or with its widgets' receivers, their meta-data and the configure screen where everyuiWidgets names any, and with what runs with the app closed where everyuiBackground names it")
     val everyuiAndroidRes = settingKey[File]("The app's own Android resources (res under the project), which everyuiAndroidResources adds the widgets' to")
     @transient val everyuiAndroidResources = taskKey[File]("The resources for AndroidApk.build: the app's own as they are, or with EveryUI's widget layouts (everyuiWidgetLayouts) and each kind's appwidget-provider where everyuiWidgets names any")
     @transient val everyuiWidgetLayouts = taskKey[File]("EveryUI's layouts and drawables a widget is drawn with, taken out of the everyui-android jar: a resource directory")
     @transient val everyuiWidgetRules = taskKey[Seq[File]]("The shrinker's rules for the widgets: the WidgetApp object and each kind's receiver, or none without widgets (everyuiAndroidRules has them too)")
+
+    // what runs with the app closed on Android (AndroidBackground): nothing unless everyuiBackground names one
+    val everyuiBackground = settingKey[Option[String]]("What runs with the app closed on Android: the BackgroundApp object (\"com.example.Background\"), whose handlers hear scheduled work, an ongoing notice's actions and the device starting again, or None, the default, for none")
+    @transient val everyuiBackgroundRules = taskKey[Seq[File]]("The shrinker's rules for what runs with the app closed: the BackgroundApp object, EveryUI's receiver and job service, or none without everyuiBackground (everyuiAndroidRules has them too)")
   }
   import autoImport.*
 
@@ -154,13 +158,13 @@ object EveryUIPlugin extends AutoPlugin {
     everyuiAndroidRules := Def.uncached {
       val unpacked = unpack(jar(classpath.value, "everyui-android"), "everyui/android", target.value / "everyui-android")
       val backend = unpacked / "proguard-rules.pro"
-      // with the widgets', where there are any: one file, as before
-      everyuiWidgetRules.value.headOption match {
-        case None => backend
-        case Some(widgets) =>
-          val both = target.value / "everyui-widgets" / "proguard-rules.pro"
-          IO.write(both, IO.read(backend) + "\n" + IO.read(widgets))
-          both
+      // with the widgets' and the background's, where there are any: one file, as before
+      val more = everyuiWidgetRules.value ++ everyuiBackgroundRules.value
+      if (more.isEmpty) backend
+      else {
+        val all = target.value / "everyui-app-rules" / "proguard-rules.pro"
+        IO.write(all, (backend +: more).map(IO.read(_)).mkString("\n"))
+        all
       }
     },
     everyuiWidgets := None,
@@ -175,9 +179,16 @@ object EveryUIPlugin extends AutoPlugin {
       val conv = fileConverter.value
       val program = (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile)
       val log = streams.value.log
-      everyuiWidgets.value match {
-        case None => source
-        case Some(app) =>
+      val widgets = everyuiWidgets.value
+      val background = everyuiBackground.value
+      if (widgets.isEmpty && background.isEmpty) source
+      else {
+        def written(step: Either[String, String]): String = step match {
+          case Right(text) => text
+          case Left(why) => sys.error(s"sbt-everyui: $why ($source)")
+        }
+        // the widgets' entries, then the background's after them
+        val withWidgets = widgets.fold(IO.read(source)) { app =>
           val kinds = widgetKinds(app, everyuiWidgetKinds.value)
           // the build's kinds and the app's own, compared where the app's can be read
           AndroidWidgets.declaredIn(program, app) match {
@@ -186,13 +197,21 @@ object EveryUIPlugin extends AutoPlugin {
               if (wrong.nonEmpty) sys.error("sbt-everyui: " + wrong.mkString("\n  ", "\n  ", ""))
             case Left(why) => log.warn(s"sbt-everyui: $app's widget kinds could not be read to check ($why)")
           }
-          AndroidWidgets.manifest(IO.read(source), app, kinds) match {
-            case Right(text) =>
-              val out = target.value / "everyui-widgets" / "AndroidManifest.xml"
-              IO.write(out, text)
-              out
-            case Left(why) => sys.error(s"sbt-everyui: $why ($source)")
+          written(AndroidWidgets.manifest(IO.read(source), app, kinds))
+        }
+        val text = background.fold(withWidgets) { app =>
+          AndroidBackground.problem(app).foreach(p => sys.error("sbt-everyui: " + p))
+          AndroidBackground.check(program, app) match {
+            case (Some(wrong), _) => sys.error("sbt-everyui: " + wrong)
+            case (None, Some(why)) =>
+              log.warn(s"sbt-everyui: $app could not be read to check it is a BackgroundApp ($why)")
+            case _ => ()
           }
+          written(AndroidBackground.manifest(withWidgets, app))
+        }
+        val out = target.value / "everyui-manifest" / "AndroidManifest.xml"
+        IO.write(out, text)
+        out
       }
     },
     everyuiAndroidResources := Def.uncached {
@@ -223,6 +242,17 @@ object EveryUIPlugin extends AutoPlugin {
         case Some(app) =>
           val out = target.value / "everyui-widgets" / "widget-rules.pro"
           IO.write(out, AndroidWidgets.rules(app, widgetKinds(app, everyuiWidgetKinds.value)))
+          Seq(out)
+      }
+    },
+    everyuiBackground := None,
+    everyuiBackgroundRules := Def.uncached {
+      everyuiBackground.value match {
+        case None => Nil
+        case Some(app) =>
+          AndroidBackground.problem(app).foreach(p => sys.error("sbt-everyui: " + p))
+          val out = target.value / "everyui-background" / "background-rules.pro"
+          IO.write(out, AndroidBackground.rules(app))
           Seq(out)
       }
     },

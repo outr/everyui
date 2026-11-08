@@ -132,6 +132,10 @@ import everyui.render.Platform
   *   quota      an admin console's usage in a RichList: meters whose colour turns as they fill, a subtitle beside
   *              its section's title or under it, sections with no count (`width=<pixels>`, `theme=light`,
   *              `style=blocks`); not on a Roku or an Apple TV (app/full: FullDemos)
+  *   background what runs with the app closed (ExampleBackground): work scheduled once, at once and every 15 minutes,
+  *              an ongoing notice whose Pause, Resume and Open run with the app closed (Open lands on
+  *              /background/opened), the settings pages, and the restarts heard (`theme=light`); also at a launch to
+  *              /background; not on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

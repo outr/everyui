@@ -512,6 +512,9 @@ lazy val android = (project in file("android"))
     everyuiWidgetKinds := Seq(AndroidWidget("inbox", "Inbox", Seq("compact", "medium", "large"),
       description = "Unread mail from the accounts you choose", preview = "@mipmap/ic_launcher")),
     everyuiWidgetLayouts := Def.uncached(baseDirectory.value / "widget-res"),
+    // what the example runs with the app closed (everyui.app.ExampleBackground, demo=background), as an app declares
+    // its own: sbt-everyui adds its meta-data, EveryUI's receiver and job service, and their shrinker rules
+    everyuiBackground := Some("everyui.app.ExampleBackground"),
     packageApk := {
       val conv = fileConverter.value
       val buildRoot = (ThisBuild / baseDirectory).value
@@ -524,7 +527,8 @@ lazy val android = (project in file("android"))
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
           androidMinSdk, target.value / "android-runtime", streams.value.log.info(_)),
         everyuiAndroidManifest.value, everyuiAndroidResources.value, assets,
-        baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value, target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
+        (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value,
+        target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
         version.value, 1, AndroidApk.debug)
     }

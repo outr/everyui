@@ -222,6 +222,8 @@ abstract class EveryUIActivity extends Activity {
     everyui.render.Notices.tapped(intent)
     // a home-screen widget's tap, to its path (everyui.widget.WidgetTap.Open)
     everyui.render.WidgetAccess.tapped(intent)
+    // an ongoing notice's tap that opens the app at a path (everyui.push.NoticeTap.OpenApp)
+    everyui.render.BackgroundAccess.tapped(intent)
     everyui.render.Platform.launched(extras(intent))
   }
 

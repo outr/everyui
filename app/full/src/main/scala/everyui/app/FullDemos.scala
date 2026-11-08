@@ -85,6 +85,11 @@ object FullDemos {
       RailDemo.run()
       true
     }
+    else if (demo == "background" || everyui.render.Platform.path().startsWith("/background")) {
+      // what runs with the app closed (ExampleBackground); its notice's Open opens the app at /background/opened
+      BackgroundDemo.run()
+      true
+    }
     else if (demo == "inbox" || everyui.render.Platform.path().startsWith("/inbox")) {
       // the home-screen widget's taps open the app at /inbox (InboxWidgets)
       InboxDemo.run()
