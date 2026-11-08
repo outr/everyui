@@ -98,6 +98,33 @@ class TreeSpec extends FxSpec {
         asked shouldBe List("/src")
       }
     }
+    "filter to what matches and the way down to it, and cleared, be as it was" in {
+      val model = fx(files())
+      val tree = fx(new Tree[Node](model, _.name))
+      onScreen(tree) {
+        fx(tree.expand("/a"))
+        shown(tree) shouldBe List("/a", "/a/1", "/a/2", "/b", "/c")
+        // a match deep down shows with every node above it, opened; nothing else shows
+        fx(tree.filter @= Some((n: Node) => n.name == "x"))
+        shown(tree) shouldBe List("/b", "/b/1", "/b/1/x")
+        fx(tree.lineOf("/b/1").map(_.expanded)) shouldBe Some(true)
+        // a node of the model's that matches shows as it comes, under a node that was open
+        fx(model.insert(Some("/a"), 0, Node("/a/x")))
+        shown(tree) shouldBe List("/a", "/a/x", "/b", "/b/1", "/b/1/x")
+        fx(model.remove("/a/x"))
+        // a match with nothing matching under it shows alone, and does not open
+        fx(tree.filter @= Some((n: Node) => n.path == "/b/1" || n.path == "/c"))
+        shown(tree) shouldBe List("/b", "/b/1", "/c")
+        fx(tree.lineOf("/b/1").map(_.expandable)) shouldBe Some(false)
+        fx(tree.filter @= Some((n: Node) => n.name == "nothing"))
+        shown(tree) shouldBe Nil
+        // cleared, what was open is open again, and nothing else
+        fx(tree.filter @= None)
+        shown(tree) shouldBe List("/a", "/a/1", "/a/2", "/b", "/c")
+        fx(tree.expanded()) shouldBe Set("/a")
+        fx(tree.lineOf("/b").map(_.expandable)) shouldBe Some(true)
+      }
+    }
     "open, close and move with the arrows, and activate with Enter" in {
       val model = fx(files())
       val tree = fx(new Tree[Node](model, _.name))

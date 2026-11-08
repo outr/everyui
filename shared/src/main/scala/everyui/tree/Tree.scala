@@ -19,7 +19,8 @@ import scala.collection.mutable
   * parent (the other way round in a right-to-left language), * opens every node beside it, Enter activates, and opens
   * or closes a node that opens.
   * A click on the chevron opens or closes. The app dresses each node's row (`decorate`), hears its menu (`menu`), and
-  * reads and sets the selection by key (`selection`), as a list's.
+  * reads and sets the selection by key (`selection`), as a list's. A `filter` shows only the nodes it is true of and
+  * the way down to them, and cleared, the tree as it was.
   *
   * {{{
   *   val model = new TreeModel[File](_.path)
@@ -29,6 +30,7 @@ import scala.collection.mutable
   *   tree.decorate @= (f => Decoration(icon = Some(if (f.directory) MaterialIcon.Folder else MaterialIcon.Description)))
   *   tree.activated.attach(f => if (!f.directory) open(f))
   *   model.setChildren(None, roots)
+  *   tree.filter @= Some(f => f.name.contains("Spec"))   // the specs and the folders they are in
   * }}} */
 class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Double = VirtualList.rowHeight)
   extends Container {
@@ -132,12 +134,41 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
 
   override def focus(): Unit = list.focus()
 
+  // ---- filtering ----
+
+  /** Which nodes show, where it is set: each node it is true of, and every node above one on its way to the root,
+    * opened as the filter is set so that the nodes it is true of show; the rest are hidden, and a node with nothing
+    * showing under it does not open. Only the nodes loaded are looked at. Set back to None, the tree is as it was
+    * before it was filtered, the nodes that were open then open again and no others. */
+  val filter: Var[Option[T => Boolean]] = own(Var(None))
+  // what was open before the filter was set, given back when it is cleared
+  private var unfiltered: Option[Set[String]] = None
+  // the keys the filter lets show: the nodes it is true of and those above them
+  private var passing: Set[String] = Set.empty
+
+  /** The nodes `test` lets show (those it is true of and those above them), and those of them with one under them. */
+  private def passes(test: T => Boolean): (Set[String], Set[String]) = {
+    val keep = mutable.HashSet.empty[String]
+    val above = mutable.HashSet.empty[String]
+    def visit(key: String): Boolean = {
+      var any = false
+      model.childKeys(Some(key)).foreach(k => if (visit(k)) any = true)
+      if (any) above += key
+      val shows = any || model.get(key).exists(test)
+      if (shows) keep += key
+      shows
+    }
+    model.childKeys(None).foreach(visit)
+    (keep.toSet, above.toSet)
+  }
+
   // ---- the lines ----
 
   private def flatten(): Unit = {
     val out = Vector.newBuilder[TreeLine[T]]
     val open = expanded()
     val busy = loading()
+    val keep = filter().map(_ => passing)
     val next = mutable.HashMap.empty[String, TreeLine[T]]
     def newLine(parent: Option[String], depth: Int): Unit = out += TreeLine[T](Tree.newKey, None, depth, false, false, false)
     def walk(parent: Option[String], depth: Int): Unit = {
@@ -146,8 +177,8 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
       while (i < keys.length) {
         if (pending.exists(p => p._1 == parent && p._2 == i)) newLine(parent, depth)
         val key = keys(i)
-        model.entry(key).foreach { e =>
-          val can = isExpandable(e.value)
+        if (keep.forall(_.contains(key))) model.entry(key).foreach { e =>
+          val can = isExpandable(e.value) && keep.forall(k => model.childKeys(Some(key)).exists(k.contains))
           val opened = can && open.contains(key)
           val tick = if (isCheckable(e.value)) Some(checkState(key)) else None
           val line = kept.get(key) match {
@@ -385,11 +416,27 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
 
   model.changed.attach { _ =>
     settle()
+    filter().foreach(test => passing = passes(test)._1)
     val open = expanded().filter(model.contains)
     if (open.size != expanded().size) expanded @= open
     val busy = loading().filter(model.contains)
     if (busy.size != loading().size) loading @= busy
     flatten()
+  }
+  // a filter set opens the way to what it is true of, over what was open, and one cleared gives back what was open
+  filter.attach {
+    case Some(test) =>
+      val was = unfiltered.getOrElse(expanded())
+      unfiltered = Some(was)
+      val (keep, above) = passes(test)
+      passing = keep
+      if (expanded() == was ++ above) flatten() else expanded @= was ++ above
+    case None => unfiltered.foreach { was =>
+      unfiltered = None
+      passing = Set.empty
+      val back = was.filter(model.contains)
+      if (expanded() == back) flatten() else expanded @= back
+    }
   }
   expanded.attach(_ => flatten())
   loading.attach(_ => flatten())
