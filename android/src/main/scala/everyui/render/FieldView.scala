@@ -63,6 +63,11 @@ final class FieldView(context: Context) extends EditText(context) {
 
   override def dispatchTouchEvent(event: MotionEvent): Boolean = editing && super.dispatchTouchEvent(event)
 
+  override def onAttachedToWindow(): Unit = {
+    super.onAttachedToWindow()
+    FieldView.attached(this)
+  }
+
   // Told to autofill as the field it is: focusable, which it is the moment it is touched (it is only kept from taking
   // the focus by itself, on a TV), and where it is in the window, which its translation places it (its own left and top
   // are 0, the layout being EveryUI's). Told unfocusable at 0, 0, a password manager answered a sign-in's first request
@@ -130,21 +135,47 @@ final class FieldView(context: Context) extends EditText(context) {
 }
 
 object FieldView {
-  // the fields on the screen as the autofill session began, by identity, held no longer than they are
+  // the fields on the screen as the autofill session began, by identity, held no longer than they are; and whether that
+  // is known yet (Android begins its session as the first fields are laid out)
   private val inSession =
     java.util.Collections.newSetFromMap(new java.util.WeakHashMap[FieldView, java.lang.Boolean]())
+  private var noted = false
+  private var entering = false
 
-  /** A fresh autofill session where `field` was not on the screen as the last began: that one cancelled (finished as
-    * it is once a password manager answers with nothing, it hears no field again), and the fields there now the new
-    * one's, so a form shown later in the one activity is asked about as the first was. */
+  /** The fields there as the first are laid out: those Android's session, begun then, was asked about. */
+  private[render] def attached(field: FieldView): Unit = if (!noted) {
+    noted = true
+    field.post(() => note(field))
+  }
+
+  /** A fresh autofill request where `field` came since the last session began: that one cancelled (finished as it is
+    * once a password manager answers with nothing, it hears no field again) and `field` asked about by hand, so a
+    * form shown later in the one activity (a sign-in card in a chat, long after launch) is asked about as the first
+    * was. A field there as the session began keeps it, its fill dialog's answer with it. Once for each field come
+    * since, and never within itself, whatever the cancel sets off: it cannot go round. */
   private[render] def newSessionFor(field: FieldView): Unit = if (android.os.Build.VERSION.SDK_INT >= 26 &&
-      !inSession.contains(field)) {
-    val manager = field.getContext.getSystemService(classOf[android.view.autofill.AutofillManager])
-    // (the first edited takes the session there is, which Android began as the fields were laid out, the fill dialog's
-    // answer with it: only a field come since needs another)
-    if (manager != null && manager.isEnabled && !inSession.isEmpty) manager.cancel()
+      !entering && !inSession.contains(field)) {
+    entering = true
+    try {
+      val fresh = noted
+      note(field)
+      val manager = field.getContext.getSystemService(classOf[android.view.autofill.AutofillManager])
+      if (fresh && manager != null && manager.isEnabled) {
+        manager.cancel()
+        // asked about by hand once the focus has landed on it: Android entered every hinted field on the screen as the
+        // card came (its fill dialog's request), and once that session finished, a focus on any of them was ignored as
+        // "already entered", which no cancel undoes; a request made for the field is not
+        field.post(() => if (field.hasFocus && manager.isEnabled) manager.requestAutofill(field))
+      }
+    } finally entering = false
+  }
+
+  // the fields on the screen now as those of the session
+  private def note(field: FieldView): Unit = {
+    noted = true
     inSession.clear()
     shown(field.getRootView).foreach(inSession.add)
+    inSession.add(field)
   }
 
   // the fields under `view`

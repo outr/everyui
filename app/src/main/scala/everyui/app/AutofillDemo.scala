@@ -18,6 +18,8 @@ import everyui.ui
   * Beside them, fields that say nothing (a search box, a chat's composer, and two of digits on a phone's number pad: a
   * count of seats and a hidden PIN, `numeric`), which "Unhinted off" holds out of autofill with every other such field
   * (`Autofill.fallback`), as `fallback=off` does from the start; "Remove sign-in" takes the sign-in away unsent.
+  * `later=1` puts the sign-in up three seconds after the rest, as a sign-in card shown in a chat is, after the first
+  * autofill request; "New sign-in" puts a new one up.
   * `step=1` makes the sign-in a password-only step for an account asked a step before (`Form.hiddenUsername`).
   */
 object AutofillDemo {
@@ -73,7 +75,13 @@ object AutofillDemo {
     unhinted.position.top @= 420.0
 
     contact.position.top @= 40.0
-    ui.children ++= List(signIn, contact, unhinted)
+    // with `later=1` the sign-in is put up a few seconds after the rest, as a card in a chat is long after launch:
+    // after Android has asked about the fields there first
+    if (Platform.launchArg("later") == "1") {
+      ui.children ++= List(contact, unhinted)
+      Platform.after(3.0, () => ui.children += signIn)
+    }
+    else ui.children ++= List(signIn, contact, unhinted)
   }
 
   private def field(label: String, name: String, hint: Autofill): TextInput = {
