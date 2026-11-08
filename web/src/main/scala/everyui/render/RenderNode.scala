@@ -1520,10 +1520,13 @@ object RenderNode {
 
   /** Whether `e` is a key the page's focused field types or edits with (a character, Backspace, Delete, the caret's
     * keys along the line), which the browser must be left to act on whatever the app made of it: kept from the field,
-    * nothing could be typed. Enter, Escape, Tab and the up and down arrows stay the app's to take. AltGr is Ctrl+Alt. */
+    * nothing could be typed. Enter, Escape, Tab and the up and down arrows stay the app's to take. AltGr is Ctrl+Alt.
+    * Alt and Left or Right moves no caret off a Mac (it is Back and Forward there), so it is not the field's; on a Mac
+    * Option and Command with them move a word and a line, and are. */
   def fieldKey(e: dom.KeyboardEvent): Boolean = editable(dom.document.activeElement) && {
     val character = e.key.codePointCount(0, e.key.length) == 1 && !e.metaKey && (!e.ctrlKey || e.altKey)
-    character || fieldKeys.contains(e.key)
+    val history = e.altKey && (e.key == "ArrowLeft" || e.key == "ArrowRight") && !Platform.commandKey()
+    character || (fieldKeys.contains(e.key) && !history)
   }
   private val fieldKeys = Set("Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End")
 

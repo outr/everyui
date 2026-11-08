@@ -14,7 +14,8 @@ import reactify.*
   * focused component first, unless it types: a character, a space or Backspace where the focus is in something that
   * takes typing (`Container.typeInto`: a field with no platform field under it, an app's own keyboard) goes there. Enter
   * clicks it; Tab moves the focus on in tree order, Shift+Tab back; Back goes to the newest back handler (`onBack`: an
-  * open dialog, then the screen history). An arrow is answered by the layouts:
+  * open dialog, then the screen history). An arrow with no modifier but Shift is answered by the layouts (with Alt,
+  * Ctrl or Meta held it is the platform's, Back and Forward in a browser, unless a chord claims it):
   * from the focused component up through its containers, the first whose layout has a neighbour that way (a row's next
   * item, a column's next line, the next row of a flow) takes the focus there. Nothing is found by where things are on the
   * screen: a move is always one somebody decided, by a layout's order or by what a container states, never whatever
@@ -626,8 +627,9 @@ object Focus {
       else to.typed(event.name)
       true
     }
-    // what the screen itself claims, before the focus layer makes its own use of the key
-    else if (fenced.isEmpty && hooked(key)) true
+    // what the screen itself claims, before the focus layer makes its own use of the key: not an arrow with Alt, Ctrl
+    // or Meta held, which a hook (hearing the key alone) cannot tell from a plain one
+    else if (fenced.isEmpty && !(Keys.isArrow(key) && modified(event)) && hooked(key)) true
     // one press, one click: a held OK is a single press however long it is held, where the remote's own repeat made
     // it a click every fiftieth of a second — and once the first had opened the next screen, the rest landed on
     // whatever had the focus there, which is usually Play. Held arrows still repeat; that is how a rail is run along.
@@ -657,12 +659,16 @@ object Focus {
       c.event.click @= PointerEvent(PointerKind.Click, centerX(c), centerY(c))
       true
     }.getOrElse(false)
-    else if (Keys.isArrow(key)) move(key)
+    else if (Keys.isArrow(key)) !modified(event) && move(key)
     else if (key == Key.Tab && event.shift) previous()
     else if (key == Key.Tab) next()
     else if (key == Key.Back || key == Key.Escape) goBack(key)
     else false
   }
+
+  // Alt, Ctrl or Meta held: an arrow the platform has a use for (Back and Forward in a browser, a word or a line along
+  // in a field), so the focus layer leaves it be unless a chord took it first
+  private def modified(e: KeyEvent): Boolean = e.alt || e.ctrl || e.meta
 
   /** Move the focus an arrow's way (see above). Whether it moved. */
   def move(direction: Key): Boolean = {

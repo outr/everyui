@@ -168,6 +168,31 @@ class KeymapSpec extends FxSpec {
       fx(Focus.focused()) shouldBe Some(cards(1))
       ran shouldBe 1
     }
+    "leave an arrow with Alt, Ctrl or Meta held to the platform, the focus where it is" in onScreen { cards =>
+      press(KeyCode.RIGHT, alt = true)
+      press(KeyCode.LEFT, alt = true)
+      press(KeyCode.RIGHT, ctrl = true)
+      press(KeyCode.RIGHT, meta = true)
+      fx(Focus.focused()) shouldBe Some(cards(0))
+      reached shouldBe List("Right", "Left", "Right", "Right")
+      // with nothing held, or Shift, it moves as it did
+      press(KeyCode.RIGHT)
+      fx(Focus.focused()) shouldBe Some(cards(1))
+      press(KeyCode.RIGHT, shift = true)
+      fx(Focus.focused()) shouldBe Some(cards(2))
+      reached shouldBe List("Right", "Left", "Right", "Right")
+    }
+    "still run a chord on Alt and an arrow, kept from the platform" in onScreen { cards =>
+      var ran = 0
+      fx(Keymap.global.add("tab.next", "Next tab", Chord("ArrowRight", alt = true))(ran += 1))
+      press(KeyCode.RIGHT, alt = true)
+      ran shouldBe 1
+      fx(Focus.focused()) shouldBe Some(cards(0))
+      reached shouldBe Nil
+      // Alt and Left, which no chord claims, is still the platform's
+      press(KeyCode.LEFT, alt = true)
+      reached shouldBe List("Left")
+    }
   }
   /** `code` pressed and released on an embed named `name` in the window, as the keys of an editor there come. */
   private def pressIn(name: String, code: KeyCode, text: String = "", ctrl: Boolean = false, shift: Boolean = false): Unit = {

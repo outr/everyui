@@ -352,11 +352,14 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private def own(e: KeyEvent): Option[() => Unit] = if (count == 0 || blank) None else {
     val at = currentAt
     val keep = primary(e.ctrl, e.meta)
+    // the arrows with Shift, or the primary modifier to move without selecting; with Alt or the other modifier they are
+    // the platform's
+    val arrow = !e.alt && !(if (Platform.commandKey()) e.ctrl else e.meta)
     val page = math.max(1, (size.height() / rowHeight).toInt - 1)
     e.key match {
-      case Key.ArrowUp if at > 0 => Some(() => moveTo(at - 1, e.shift, keep))
-      case Key.ArrowUp if at < 0 => Some(() => moveTo(0))
-      case Key.ArrowDown if at < count - 1 => Some(() => moveTo(at + 1, e.shift, keep))
+      case Key.ArrowUp if arrow && at > 0 => Some(() => moveTo(at - 1, e.shift, keep))
+      case Key.ArrowUp if arrow && at < 0 => Some(() => moveTo(0))
+      case Key.ArrowDown if arrow && at < count - 1 => Some(() => moveTo(at + 1, e.shift, keep))
       case Key.PageUp => Some(() => moveTo(math.max(0, at - page), e.shift, keep))
       case Key.PageDown => Some(() => moveTo(math.min(count - 1, at + page), e.shift, keep))
       case Key.Enter if at >= 0 => Some(() => enterDown(e))
