@@ -203,7 +203,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   private def discard(g: TabGroup[K], k: K): Unit = if (g.has(k)) {
     val had = Focus.focused().exists(c => Focus.within(c, g))
     g.take(k).foreach(_.dispose())
-    if (g.keys().isEmpty && !keepEmptyGroups()) removeGroup(g, had) else if (had) g.focusTab()
+    if (g.keys().isEmpty && !g.keeps) removeGroup(g, had) else if (had) g.focusTab()
   }
 
   /** The tab of `k` in each group it shows in, first to last: one, unless it may show twice. */
@@ -245,7 +245,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
       if (to.has(k)) g.take(k).foreach(_.dispose()) else to.add(k, at, g.take(k))
       to.select(k)
       to.focusTab()
-      if (g.keys().isEmpty && !keepEmptyGroups()) removeGroup(g, had = false)
+      if (g.keys().isEmpty && !g.keeps) removeGroup(g, had = false)
       else if (had && !Focus.focused().exists(c => Focus.within(c, to))) g.focusTab()
     }
   }
@@ -369,15 +369,19 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
 
   /** It laid out as `l` says, each tab's id found by `find` (one it no longer finds is left out); what was open is
     * closed. A layout with no tabs at all leaves one empty group; a group none of whose tabs is found is left out, or
-    * kept empty with `keepEmptyGroups`. */
+    * kept empty where it keeps (its own `keepEmpty`, else `keepEmptyGroups`). Each group has its `keepEmpty` and
+    * `data` back. */
   def restore(l: TabLayout, find: String => Option[K]): Unit = {
     quiet = true
     val old = groups()
     def build(t: TabLayout): Option[TabTree[K]] =
       if (t.isGroup) {
         val ks = t.tabs.flatMap(find)
-        if (ks.isEmpty && !keepEmptyGroups()) None else {
+        // (an empty group kept as it was kept: by its own say where it had one)
+        if (ks.isEmpty && !t.keepEmpty.getOrElse(keepEmptyGroups())) None else {
           val g = new TabGroup[K](this)
+          g.keepEmpty @= t.keepEmpty
+          g.data @= t.data
           ks.foreach(k => g.add(k))
           ks.find(k => id(k) == t.selected).orElse(ks.headOption).foreach(g.select)
           Some(TabTree.Leaf(g))
@@ -406,7 +410,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   private[kit] def changed(): Unit = if (!quiet) layoutChanged @= tabLayout
 
   private def snapshot(t: TabTree[K]): TabLayout = t match {
-    case TabTree.Leaf(g) => TabLayout(g.keys().map(id).toList, g.keyOf(g.shown()).map(id).getOrElse(""))
+    case TabTree.Leaf(g) => TabLayout(g.keys().map(id).toList, g.keyOf(g.shown()).map(id).getOrElse(""),
+      keepEmpty = g.keepEmpty(), data = g.data())
     case TabTree.Split(v, r, a, b) => TabLayout(vertical = v, ratio = r(), parts = List(snapshot(a), snapshot(b)))
   }
 

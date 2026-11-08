@@ -20,6 +20,17 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   val shown: Var[String] = own(Var(""))
   /** The tab being shown. */
   val selected: Val[Option[K]] = own(Val(keys().find(k => owner.id(k) == shown())))
+  /** Whether it stays as an empty pane once its last tab goes: None, the default, as `TabGroups.keepEmptyGroups` says
+    * for every group; `Some(true)` keeps this one (a pinned group), `Some(false)` closes it whatever that says. Kept
+    * in its layout (`TabLayout.keepEmpty`). */
+  val keepEmpty: Var[Option[Boolean]] = own(Var(None))
+  /** The app's own words about this group, kept in its layout (`TabLayout.data`) and given back as it is restored: a
+    * name, a mark that it is pinned, what it was opened for. */
+  val data: Var[Map[String, String]] = own(Var(Map.empty))
+  /** Whether it stays as an empty pane: `keepEmpty`, else the groups' `keepEmptyGroups`. */
+  private[kit] def keeps: Boolean = keepEmpty().getOrElse(owner.keepEmptyGroups())
+  keepEmpty.attach(_ => owner.changed())
+  data.attach(_ => owner.changed())
   val bar: TabBar = new TabBar(shown, size.width(), showOnFocus = false)
   /** Where the tab being shown shows its content. */
   val body: Container = new Container {
@@ -39,7 +50,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   empty.position.center := body.size.width() / 2.0
   empty.position.middle := body.size.height() / 2.0
   private val closer: Button = new Button(TabGroups.closeGroupWord, () => owner.closeGroup(this), ButtonStyle.Text) {
-    visible := keys().isEmpty && owner.keepEmptyGroups() && owner.groups().size > 1
+    visible := keys().isEmpty && keepEmpty().getOrElse(owner.keepEmptyGroups()) && owner.groups().size > 1
   }
   closer.position.center := body.size.width() / 2.0
   // (over the body rather than in it, which holds the words and the tabs' contents)

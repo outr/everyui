@@ -172,5 +172,47 @@ class TabEmptyGroupSpec extends FxSpec {
         fx(closer(g.groups().head)) shouldBe None
       }
     }
+    "stay or close by its own say, which outweighs the option, and keep it and its data in the layout" in {
+      val g = groupsOf(keep = false)
+      shown(g) {
+        two(g)
+        // the second group pinned: it stays empty though the others close
+        val second = fx(g.groups()(1))
+        var told = 0
+        fx(g.layoutChanged.attach(_ => told += 1))
+        fx(second.keepEmpty @= Some(true))
+        fx(second.data @= Map("pinned" -> "true", "name" -> "Inbox"))
+        told should be >= 2
+        fx(g.close(second, "c"))
+        keysOf(g) shouldBe List(List("a", "b"), Nil)
+        fx(closer(second).map(_.label())) shouldBe Some(TabGroups.closeGroupWord)
+        // in the layout, and back with it, each group with its own say and words
+        val l = fx(g.tabLayout)
+        l.groups.map(_.keepEmpty) shouldBe List(None, Some(true))
+        l.groups.map(_.data) shouldBe List(Map.empty, Map("pinned" -> "true", "name" -> "Inbox"))
+        TabLayout.parse(l.json) shouldBe Some(l)
+        val again = groupsOf(keep = false)
+        fx {
+          ui.children += again
+          again.restore(l, k => Some(k))
+        }
+        keysOf(again) shouldBe List(List("a", "b"), Nil)
+        fx(again.groups()(1).data()) shouldBe Map("pinned" -> "true", "name" -> "Inbox")
+        fx(again.groups()(1).keepEmpty()) shouldBe Some(true)
+      }
+      // and a group told to close, where the option keeps the rest
+      val kept = groupsOf(keep = true)
+      shown(kept) {
+        two(kept)
+        val second = fx(kept.groups()(1))
+        fx(second.keepEmpty @= Some(false))
+        fx(kept.close(second, "c"))
+        keysOf(kept) shouldBe List(List("a", "b"))
+      }
+    }
+    "read a layout written before groups kept their say and their data" in {
+      val old = """{"tabs":["a"],"selected":"a","vertical":false,"ratio":0.5,"parts":[]}"""
+      TabLayout.parse(old) shouldBe Some(TabLayout(List("a"), "a"))
+    }
   }
 }

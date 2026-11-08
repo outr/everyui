@@ -1,7 +1,7 @@
 package everyui.kit
 
-/** Reads a `TabLayout` back from the JSON `TabLayout.json` writes: its five fields, any other passed over. Throws on
-  * text that is not such JSON, which `TabLayout.parse` answers as None. */
+/** Reads a `TabLayout` back from the JSON `TabLayout.json` writes: its seven fields, any other passed over. Throws
+  * on text that is not such JSON, which `TabLayout.parse` answers as None. */
 private[kit] class TabLayoutReader(text: String) {
   private var at = 0
 
@@ -24,6 +24,8 @@ private[kit] class TabLayoutReader(text: String) {
         else if (name == "vertical") l = l.copy(vertical = boolean())
         else if (name == "ratio") l = l.copy(ratio = number())
         else if (name == "parts") l = l.copy(parts = list(() => layout()))
+        else if (name == "keepEmpty") l = l.copy(keepEmpty = if (nothing()) None else Some(boolean()))
+        else if (name == "data") l = l.copy(data = strings())
         else skip()
         more = take(',')
       }
@@ -83,6 +85,33 @@ private[kit] class TabLayoutReader(text: String) {
       false
     }
     else throw new IllegalArgumentException("a boolean at " + at.toString)
+  }
+
+  // a JSON null, read past where it comes next
+  private def nothing(): Boolean = {
+    blank()
+    if (ahead("null")) {
+      at += 4
+      true
+    }
+    else false
+  }
+
+  // an object of words by name, `{"name": "words", …}`
+  private def strings(): Map[String, String] = {
+    expect('{')
+    var out = Map.empty[String, String]
+    if (!take('}')) {
+      var more = true
+      while (more) {
+        val name = string()
+        expect(':')
+        out = out + (name -> string())
+        more = take(',')
+      }
+      expect('}')
+    }
+    out
   }
 
   /** A number, read digit by digit rather than by `toDouble`, which the Roku's simulator reads to a whole number. */
