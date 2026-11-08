@@ -70,14 +70,31 @@ final class FieldView(context: Context) extends EditText(context) {
 
   // Told to autofill as the field it is: focusable, which it is the moment it is touched (it is only kept from taking
   // the focus by itself, on a TV), and where it is in the window, which its translation places it (its own left and top
-  // are 0, the layout being EveryUI's). Told unfocusable at 0, 0, a password manager answered a sign-in's first request
-  // with nothing, Android finished the session there, and touching the fields after asked for nothing more.
+  // are 0, the layout being EveryUI's), and as large as it is drawn there: laid out in points and scaled up by the views
+  // it is in, its own width and height alone told a field 22 pixels high. Told unfocusable at 0, 0, a password manager
+  // answered a sign-in's first request with nothing, Android finished the session there, and touching the fields after
+  // asked for nothing more.
   override def onProvideAutofillStructure(structure: android.view.ViewStructure, flags: Int): Unit = {
     super.onProvideAutofillStructure(structure, flags)
     structure.setFocusable(true)
     val at = new Array[Int](2)
     getLocationInWindow(at)
-    structure.setDimens(at(0), at(1), 0, 0, getWidth, getHeight)
+    var scaleX = 1.0
+    var scaleY = 1.0
+    var view: android.view.View = this
+    while (view != null) {
+      scaleX *= view.getScaleX
+      scaleY *= view.getScaleY
+      view = view.getParent match {
+        case parent: android.view.View => parent
+        case _ => null
+      }
+    }
+    structure.setDimens(at(0), at(1), 0, 0, math.round(getWidth * scaleX).toInt, math.round(getHeight * scaleY).toInt)
+    // what it asks for, as a stock field's hint tells it, where its label is drawn beside it rather than in it
+    if ((getHint == null || getHint.length == 0) && getContentDescription != null) {
+      structure.setHint(getContentDescription)
+    }
   }
 
   // told by EditText from its own constructor too, before `selecting` is set
