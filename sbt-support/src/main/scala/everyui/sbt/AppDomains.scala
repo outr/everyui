@@ -10,7 +10,11 @@ import java.nio.file.Files
   *
   * `androidPackage` and the SHA-256 fingerprints of the keys the app is signed with (the store's, not only the upload
   * key's: `keytool -list -v`, or Play's App signing page) name the Android app; `appleAppIds` name the Apple apps as
-  * "TEAMID.bundle.id". `links` also claims the domains' links for the app. `changePassword`, `passkeyEnroll` and
+  * "TEAMID.bundle.id". The Android app is named with both relations Android's Credential Manager asks for, sharing
+  * sign-ins (`get_login_creds`) and `handle_all_urls`: a passkey asked for by an app named with the first alone is
+  * refused ("The incoming request cannot be validated"). The second routes no links by itself (that takes the app's
+  * https intent filter with autoVerify, which claims them for the Android app); `links` claims the domains' links
+  * for the Apple apps (applinks). `changePassword`, `passkeyEnroll` and
   * `passkeyManage` are the site's pages for them, which password managers send a user to.
   *
   * {{{
@@ -36,9 +40,10 @@ case class AppDomains(domains: Seq[String],
   } + "\""
   private def list(xs: Seq[String]): String = xs.map(q).mkString("[", ", ", "]")
 
-  /** `/.well-known/assetlinks.json`: the Android app shares the site's sign-ins (and, with `links`, its links). */
+  /** `/.well-known/assetlinks.json`: the Android app shares the site's sign-ins and passkeys, with both relations
+    * Credential Manager asks for, whether or not `links` is set. */
   def assetLinks: String = if (androidPackage.isEmpty) "[]\n" else {
-    val relations = "delegate_permission/common.get_login_creds" +: (if (links) Seq("delegate_permission/common.handle_all_urls") else Nil)
+    val relations = Seq("delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds")
     s"""[{
        |  "relation": ${list(relations)},
        |  "target": {"namespace": "android_app", "package_name": ${q(androidPackage)}, "sha256_cert_fingerprints": ${list(androidFingerprints)}}

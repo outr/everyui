@@ -20,6 +20,8 @@ class WellKnownSpec extends AnyWordSpec with Matchers {
       val links = WellKnown.answer(root, "/.well-known/assetlinks.json").get
       links.contentType shouldBe "application/json"
       links.body should include("\"delegate_permission/common.get_login_creds\"")
+      // both, without `links`: a passkey asked for by an app named with sign-ins alone is refused
+      links.body should include("\"delegate_permission/common.handle_all_urls\"")
       links.body should include("\"package_name\": \"com.example.app\"")
       links.body should include("\"sha256_cert_fingerprints\": [\"AB:CD\"]")
       WellKnown.answer(root, "/.well-known/apple-app-site-association").get.body should
