@@ -1,83 +1,86 @@
 package everyui.render
 
-import android.app.job.{JobInfo, JobParameters, JobScheduler, JobService}
-import android.content.{ComponentName, Context}
-import android.os.{Build, PersistableBundle}
+import android.content.Context
+import android.os.Build
+import androidx.work.{BackoffPolicy, Configuration, Constraints, Data, ExistingPeriodicWorkPolicy, ExistingWorkPolicy,
+  ListenableWorker, NetworkType, OneTimeWorkRequest, OutOfQuotaPolicy, PeriodicWorkRequest, WorkManager}
+import com.google.common.util.concurrent.{ListenableFuture, SettableFuture}
 import everyui.activity.ServiceRuntime
 import everyui.background.{Background, WorkNetwork, WorkRequest, WorkResult}
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import scala.jdk.CollectionConverters.*
 
-/** Scheduled work (`everyui.background.Work`) on JobScheduler: a job for each key, whose id is kept by the key in the
-  * app's preferences ("everyui-work") so the key keeps it from run to run, persisted through a restart of the device,
-  * run by `BackgroundJobs` in the app's `BackgroundApp.onWork`.
+/** Scheduled work (`everyui.background.Work`) on WorkManager: unique work by key (`enqueueUniqueWork`, replacing or
+  * keeping as the request says; `enqueueUniquePeriodicWork`, updating its period and constraints in place), run by
+  * `BackgroundWorker` in the app's `BackgroundApp.onWork`, kept by WorkManager through a restart and an update.
+  * WorkManager schedules through JobScheduler: `adb shell cmd jobscheduler run -f <package> <id>` runs one now, its id
+  * the SystemJobService job `dumpsys jobscheduler <package>` lists; its own diagnostics answer
+  * `adb shell am broadcast -a androidx.work.diagnostics.REQUEST_DIAGNOSTICS -p <package>` in the log.
   *
-  * JobScheduler rather than WorkManager, which schedules through it on every Android EveryUI runs on: WorkManager
-  * brings Kotlin, its coroutines, Room and some thirty more libraries, and reads a resource of its own through a class
-  * an app built without Gradle does not have. Forcing a run on a device: `adb shell cmd jobscheduler run -f
-  * <package> <id>`, with the id logged as the work is scheduled. */
+  * WorkManager is made ready as the process starts (`BackgroundStart`, which the build declares with the rest of what
+  * runs with the app closed), so a job heard in a process started for it finds it ready; `ready` makes it ready where
+  * that has not happened. */
 object BackgroundWork {
-  private val keyExtra = "everyui.work.key"
+  private val keyData = "everyui.work.key"
   private val dataPrefix = "everyui.work.data."
-  private val nextId = "everyui.next"
-  // the runs under way, by job id: one stopped by the system is not finished again by its late answer
-  private val running = new ConcurrentHashMap[Integer, AtomicBoolean]
+  // the runs under way, by WorkManager's id: one stopped is not answered by its late result
+  private val running = new ConcurrentHashMap[UUID, SettableFuture[ListenableWorker.Result]]
 
-  private def ids(context: Context) = context.getSharedPreferences("everyui-work", Context.MODE_PRIVATE)
+  /** WorkManager made ready with EveryUI's configuration, once a process. */
+  def ready(context: Context): Unit = synchronized {
+    if (!WorkManager.isInitialized) WorkManager.initialize(context.getApplicationContext,
+      new Configuration.Builder().setMinimumLoggingLevel(android.util.Log.INFO).build())
+  }
 
-  private def scheduler(context: Context): JobScheduler = context.getSystemService(classOf[JobScheduler])
-
-  /** The job id of work `key`, given one where it has none and `make`. */
-  private def idOf(context: Context, key: String, make: Boolean): Option[Int] = synchronized {
-    val kept = ids(context)
-    val id = kept.getInt("key." + key, 0)
-    if (id != 0) Some(id)
-    else if (!make) None
-    else {
-      val next = math.max(1, kept.getInt(nextId, 1))
-      kept.edit().putInt("key." + key, next).putInt(nextId, next + 1).commit()
-      Some(next)
-    }
+  private def manager: WorkManager = {
+    val context = ServiceRuntime.context
+    ready(context)
+    WorkManager.getInstance(context)
   }
 
   def schedule(request: WorkRequest): Boolean = try {
-    val context = ServiceRuntime.context
-    val id = idOf(context, request.key, make = true).get
-    val jobs = scheduler(context)
-    if (!request.replace && jobs.getPendingJob(id) != null) {
-      Platform.log("work: " + request.key + " is already scheduled (job " + id.toString + "), and kept")
-      true
-    }
-    else {
-      val extras = new PersistableBundle
-      extras.putString(keyExtra, request.key)
-      request.data.foreach((k, v) => extras.putString(dataPrefix + k, v))
-      val c = request.constraints
-      val builder = new JobInfo.Builder(id, new ComponentName(context, classOf[BackgroundJobs]))
-        .setExtras(extras)
-        .setPersisted(true)
-        .setRequiredNetworkType(c.network match {
-          case WorkNetwork.NotNeeded => JobInfo.NETWORK_TYPE_NONE
-          case WorkNetwork.Connected => JobInfo.NETWORK_TYPE_ANY
-          case WorkNetwork.Unmetered => JobInfo.NETWORK_TYPE_UNMETERED
-        })
-        .setRequiresCharging(c.charging)
-        .setRequiresBatteryNotLow(c.batteryNotLow)
-        .setRequiresDeviceIdle(c.idle)
-      // Android refuses a backoff for work that waits for the device to be idle: it is tried again at the next idle
-      if (!c.idle) builder.setBackoffCriteria(request.backoff.millis,
-        if (request.backoff.exponential) JobInfo.BACKOFF_POLICY_EXPONENTIAL else JobInfo.BACKOFF_POLICY_LINEAR)
-      if (request.periodic) builder.setPeriodic(request.every.toLong * 60000L)
-      else {
-        if (request.delay > 0.0) builder.setMinimumLatency((request.delay * 1000.0).toLong)
-        if (request.expedited && Build.VERSION.SDK_INT >= 31) builder.setExpedited(true)
+    val data = new Data.Builder().putString(keyData, request.key)
+    request.data.foreach((k, v) => data.putString(dataPrefix + k, v))
+    val c = request.constraints
+    val constraints = new Constraints.Builder()
+      .setRequiredNetworkType(c.network match {
+        case WorkNetwork.NotNeeded => NetworkType.NOT_REQUIRED
+        case WorkNetwork.Connected => NetworkType.CONNECTED
+        case WorkNetwork.Unmetered => NetworkType.UNMETERED
+      })
+      .setRequiresCharging(c.charging)
+      .setRequiresBatteryNotLow(c.batteryNotLow)
+      .setRequiresDeviceIdle(c.idle)
+      .build()
+    val policy = if (request.backoff.exponential) BackoffPolicy.EXPONENTIAL else BackoffPolicy.LINEAR
+    val id =
+      if (request.periodic) {
+        val builder = new PeriodicWorkRequest.Builder(classOf[BackgroundWorker], request.every.toLong, TimeUnit.MINUTES)
+          .setConstraints(constraints).setInputData(data.build())
+        // WorkManager refuses a backoff for work that waits for the device to be idle: it is tried at the next idle
+        if (!c.idle) builder.setBackoffCriteria(policy, request.backoff.millis, TimeUnit.MILLISECONDS)
+        val work = builder.build()
+        manager.enqueueUniquePeriodicWork(request.key, ExistingPeriodicWorkPolicy.UPDATE, work)
+        work.getId
       }
-      val scheduled = jobs.schedule(builder.build()) == JobScheduler.RESULT_SUCCESS
-      Platform.log("work: " + request.key + (if (scheduled) " scheduled as job " else " not scheduled, job ") +
-        id.toString + (if (request.periodic) ", every " + request.every.toString + " minutes" else ", once"))
-      scheduled
-    }
+      else {
+        val builder = new OneTimeWorkRequest.Builder(classOf[BackgroundWorker])
+          .setConstraints(constraints).setInputData(data.build())
+        if (!c.idle) builder.setBackoffCriteria(policy, request.backoff.millis, TimeUnit.MILLISECONDS)
+        if (request.delay > 0.0) builder.setInitialDelay((request.delay * 1000.0).toLong, TimeUnit.MILLISECONDS)
+        // a job from Android 12; before, WorkManager would run it in the foreground, with a notice of its own
+        if (request.expedited && Build.VERSION.SDK_INT >= 31)
+          builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        val work = builder.build()
+        manager.enqueueUniqueWork(request.key,
+          if (request.replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, work)
+        work.getId
+      }
+    Platform.log("work: " + request.key + " enqueued (" + id.toString + ")" +
+      (if (request.periodic) ", every " + request.every.toString + " minutes" else ", once") +
+      (if (!request.periodic && !request.replace) ", or the one already scheduled kept" else ""))
+    true
   }
   catch {
     case t: Throwable =>
@@ -86,44 +89,45 @@ object BackgroundWork {
   }
 
   def cancel(key: String): Unit = try {
-    val context = ServiceRuntime.context
-    idOf(context, key, make = false).foreach { id =>
-      scheduler(context).cancel(id)
-      Platform.log("work: " + key + " cancelled (job " + id.toString + ")")
-    }
+    manager.cancelUniqueWork(key)
+    Platform.log("work: " + key + " cancelled")
   }
   catch { case t: Throwable => Platform.logError("work: " + key + " not cancelled", t) }
 
+  /** Whether work `key` is scheduled and not finished: waiting, blocked or running. */
   def pending(key: String): Boolean = try {
-    val context = ServiceRuntime.context
-    idOf(context, key, make = false).exists(id => scheduler(context).getPendingJob(id) != null)
+    manager.getWorkInfosForUniqueWork(key).get(2, TimeUnit.SECONDS).asScala.exists(!_.getState.isFinished)
   }
   catch { case _: Throwable => false }
 
-  /** A job begun by `BackgroundJobs`: the app's `onWork` run with its key and data, and the job finished as it
-    * answers (Retry asks for another try after the backoff), or as Retry once the deadline passes. */
-  def started(service: JobService, params: JobParameters): Boolean = {
-    BackgroundAccess.start(service)
-    val extras = params.getExtras
-    val key = Option(extras.getString(keyExtra)).getOrElse("")
-    val data = extras.keySet.asScala.toList.filter(_.startsWith(dataPrefix))
-      .flatMap(k => Option(extras.getString(k)).map(k.stripPrefix(dataPrefix) -> _)).toMap
-    val over = new AtomicBoolean(false)
-    running.put(params.getJobId, over)
+  /** A run begun by `BackgroundWorker`: the app's `onWork` with its key and data, answered as the app answers (Retry
+    * runs it again after its backoff), or as Retry once the deadline passes. */
+  def started(worker: ListenableWorker): ListenableFuture[ListenableWorker.Result] = {
+    val future = SettableFuture.create[ListenableWorker.Result]()
+    BackgroundAccess.start(worker.getApplicationContext)
+    val input = worker.getInputData
+    val key = Option(input.getString(keyData)).getOrElse("")
+    val data = input.getKeyValueMap.asScala.toMap.collect {
+      case (k, v: String) if k.startsWith(dataPrefix) => k.stripPrefix(dataPrefix) -> v
+    }
+    running.put(worker.getId, future)
     BackgroundAccess.run("work " + key, Background.work(key, data), BackgroundAccess.jobDeadline,
       WorkResult.Retry) { result =>
-      Platform.log("work: " + key + " ran (job " + params.getJobId.toString + "): " + result.toString)
-      running.remove(params.getJobId, over)
-      if (over.compareAndSet(false, true)) service.jobFinished(params, result == WorkResult.Retry)
+      Platform.log("work: " + key + " ran (" + worker.getId.toString + "): " + result.toString)
+      running.remove(worker.getId)
+      future.set(result match {
+        case WorkResult.Done => ListenableWorker.Result.success()
+        case WorkResult.Retry => ListenableWorker.Result.retry()
+        case WorkResult.Failed => ListenableWorker.Result.failure()
+      })
     }
-    true
+    future
   }
 
-  /** A job the system stopped (a constraint no longer holds, its time ran out): to be run again, and its late
-    * answer let go. */
-  def stopped(params: JobParameters): Boolean = {
-    Option(running.remove(params.getJobId)).foreach(_.set(true))
-    Platform.log("work: job " + params.getJobId.toString + " stopped by the system, to run again")
-    true
+  /** A run WorkManager stopped (a constraint no longer holds, its time ran out, it was cancelled): WorkManager runs it
+    * again where it should, and its late answer goes nowhere. */
+  def stopped(worker: ListenableWorker): Unit = {
+    Option(running.remove(worker.getId)).foreach(_.cancel(false))
+    Platform.log("work: " + worker.getId.toString + " stopped by WorkManager")
   }
 }

@@ -62,6 +62,7 @@ object EveryUIPlugin extends AutoPlugin {
 
     // what runs with the app closed on Android (AndroidBackground): nothing unless everyuiBackground names one
     val everyuiBackground = settingKey[Option[String]]("What runs with the app closed on Android: the BackgroundApp object (\"com.example.Background\"), whose handlers hear scheduled work, an ongoing notice's actions and the device starting again, or None, the default, for none")
+    @transient val everyuiAndroidLibraries = taskKey[Seq[AarResources]]("The resources of the Android archives the project depends on whose classes read their own R class (WorkManager's among them), opened for AndroidApk.build's libraries, which links them and writes those R classes")
     @transient val everyuiBackgroundRules = taskKey[Seq[File]]("The shrinker's rules for what runs with the app closed: the BackgroundApp object, EveryUI's receiver and job service, or none without everyuiBackground (everyuiAndroidRules has them too)")
   }
   import autoImport.*
@@ -201,6 +202,10 @@ object EveryUIPlugin extends AutoPlugin {
         }
         val text = background.fold(withWidgets) { app =>
           AndroidBackground.problem(app).foreach(p => sys.error("sbt-everyui: " + p))
+          // WorkManager runs the app's scheduled work, and its components are in the manifest from here
+          if (!program.exists(_.getName.startsWith("work-runtime-")))
+            sys.error("sbt-everyui: everyuiBackground needs WorkManager: add libraryDependencies ++= " +
+              "EveryUILibraries.work (EveryUILibraries.android has it)")
           AndroidBackground.check(program, app) match {
             case (Some(wrong), _) => sys.error("sbt-everyui: " + wrong)
             case (None, Some(why)) =>
@@ -246,6 +251,10 @@ object EveryUIPlugin extends AutoPlugin {
       }
     },
     everyuiBackground := None,
+    everyuiAndroidLibraries := Def.uncached {
+      Aars.resources(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")),
+        Aars.room)
+    },
     everyuiBackgroundRules := Def.uncached {
       everyuiBackground.value match {
         case None => Nil

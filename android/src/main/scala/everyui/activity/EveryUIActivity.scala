@@ -57,6 +57,8 @@ abstract class EveryUIActivity extends Activity {
     BackCallback.register(this)
 
     if (!adopted) run()
+    // started by a push notification's button that opens the app: Push.acted hears it, the app now listening
+    everyui.render.PushAccess.launched(getIntent)
     // what keeps it busy while nothing moves, logged where the launch asks (`--es idleAudit 1`)
     everyui.render.IdleAudit.start()
   }

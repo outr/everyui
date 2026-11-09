@@ -3,13 +3,14 @@ package everyui.app
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
 import everyui.background.{BackgroundApp, RestartReason, WorkResult}
-import everyui.push.{NoticeAction, NoticeChannel, NoticeTap, Ongoing, OngoingNotice}
+import everyui.push.{NoticeAction, NoticeChannel, NoticeTap, Ongoing, OngoingNotice, PushAction}
 import everyui.render.Platform
 
 /** What the example runs with the app closed (build.sbt names this object, `everyuiBackground`; `demo=background`
   * drives it): each run of scheduled work noted with its time, whether the app was open, and how many runs there have
   * been; an ongoing notice ("status") whose Pause and Resume run here and whose Open opens `/background/opened`, shown
-  * again when it is swiped away and after a restart; each restart noted with its reason. What it notes is in the
+  * again when it is swiped away and after a restart; each restart noted with its reason; a push notification's button
+  * that runs in the background noted with its push. What it notes is in the
   * settings ("example.bg.*"), which the demo reads, and in the log ("[ui] example background: ..."). */
 object ExampleBackground extends BackgroundApp {
   val channel: NoticeChannel = NoticeChannel("example.status", "Status", "What the example does in the background")
@@ -40,6 +41,13 @@ object ExampleBackground extends BackgroundApp {
     note("notice " + notice + " dismissed: shown again")
     val state = Platform.setting("example.bg.ongoing")
     if (state.nonEmpty) show(paused = state == "paused")
+  }
+
+  override def onPushAction(action: PushAction): Task[Unit] = Task {
+    note("push action " + action.id + " on " + action.message.title + " (" +
+      action.message.data.toList.sorted.map((k, v) => k + "=" + v).mkString(" ") + ") with the app closed")
+    Platform.saveSetting("example.bg.push", action.id + " on \"" + action.message.title + "\" at " + now() +
+      " with the app closed")
   }
 
   override def onRestart(reason: RestartReason): Task[Unit] = Task {

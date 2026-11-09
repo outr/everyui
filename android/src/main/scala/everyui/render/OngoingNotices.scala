@@ -50,7 +50,7 @@ object OngoingNotices {
       channel.setShowBadge(false)
       // made, or its name and description brought up to date: Android keeps the importance it was made with
       notify.createNotificationChannel(channel)
-      val icon = smallIcon(context)
+      val icon = NoticeIcon.of(context)
       val builder = new Notification.Builder(context, c.key)
         .setSmallIcon(icon)
         .setContentTitle(notice.title)
@@ -86,11 +86,6 @@ object OngoingNotices {
 
   // each of a notice's intents its own request code: Android tells PendingIntents apart by it, not by their extras
   private def code(key: String, part: Int): Int = (key + "#" + part.toString).hashCode
-
-  private def smallIcon(context: Context): Int = {
-    val own = context.getResources.getIdentifier("everyui_notice", "drawable", context.getPackageName)
-    if (own != 0) own else context.getApplicationInfo.icon
-  }
 
   private def pending(context: Context, key: String, tap: NoticeTap, code: Int): PendingIntent = tap match {
     case NoticeTap.RunAction(name, args) => broadcast(context, BackgroundAccess.noticeIntent, key, name, args, code)

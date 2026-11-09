@@ -45,7 +45,7 @@ object AndroidApk {
   def build(log: String => Unit, sdk: File, platform: String, buildTools: String, minSdk: String, targetSdk: String,
             program: Seq[File], manifest: File, resources: File, assets: File, rules: Seq[File], work: File, apk: File,
             versionName: String, versionCode: Int, signing: Signing, desugar: Option[Desugar] = None,
-            bundletool: Option[Seq[File]] = None): File = {
+            bundletool: Option[Seq[File]] = None, libraries: Seq[AarResources] = Nil): File = {
     val tools = sdk / "build-tools" / buildTools
     val androidJar = sdk / "platforms" / platform / "android.jar"
     IO.delete(work)
@@ -55,8 +55,32 @@ object AndroidApk {
       if (rc != 0) sys.error(s"AndroidApk: ${cmd.head} exited $rc")
     }
 
+    // the resources first: linked with those of the archives whose classes read them (`libraries`), whose R classes
+    // are written here and compiled, to be shrunk and dexed with the program (an archive's R is the app's to write,
+    // since the ids are the app's)
+    val compiled = work / "res.zip"
+    exec(Seq((tools / "aapt2").toString, "compile", "--dir", resources.toString, "-o", compiled.toString))
+    val libraryZips = libraries.zipWithIndex.map { case (l, i) =>
+      val zip = work / "libraries" / s"$i-${l.name}.zip"
+      IO.createDirectory(zip.getParentFile)
+      exec(Seq((tools / "aapt2").toString, "compile", "--dir", l.res.toString, "-o", zip.toString))
+      zip
+    }
+    val rSources = work / "r-java"
+    val linked = work / "linked.apk"
+    // the libraries the base, the app's own over them (it may give one of theirs its own value)
+    val resourceInputs =
+      if (libraries.isEmpty) Seq(compiled.toString)
+      else libraryZips.map(_.toString) ++ Seq("-R", compiled.toString, "--auto-add-overlay",
+        "--java", rSources.toString, "--extra-packages", libraries.map(_.packageName).distinct.mkString(":"))
+    exec(Seq((tools / "aapt2").toString, "link", "-o", linked.toString, "--manifest", manifest.toString,
+      "-I", androidJar.toString, "-A", assets.toString) ++ resourceInputs ++
+      Seq("--min-sdk-version", minSdk, "--target-sdk-version", targetSdk,
+        "--version-code", versionCode.toString, "--version-name", versionName) ++
+      (if (bundletool.nonEmpty) Seq("--proto-format") else Nil))
+    val rJar = if (libraries.isEmpty) None else Some(compileR(rSources, work / "r-classes", work / "r.jar", log))
     // d8 and R8 read jars, so class directories are zipped first
-    val inputs = program.filterNot(_ == androidJar).zipWithIndex.map { case (f, i) =>
+    val inputs = (program.filterNot(_ == androidJar) ++ rJar.toSeq).zipWithIndex.map { case (f, i) =>
       if (f.isDirectory) {
         val jar = work / "classes" / s"$i.jar"
         IO.zip(Path.allSubpaths(f).filterNot(_._1.isDirectory), jar, None)
@@ -106,13 +130,6 @@ object AndroidApk {
     }
     (dex * "*.dex").get().foreach(d => log(s"AndroidApk: ${d.getName} ${d.length / 1024} KB"))
 
-    val compiled = work / "res.zip"
-    exec(Seq((tools / "aapt2").toString, "compile", "--dir", resources.toString, "-o", compiled.toString))
-    val linked = work / "linked.apk"
-    exec(Seq((tools / "aapt2").toString, "link", "-o", linked.toString, "--manifest", manifest.toString, "-I", androidJar.toString,
-      "-A", assets.toString, compiled.toString, "--min-sdk-version", minSdk, "--target-sdk-version", targetSdk,
-      "--version-code", versionCode.toString, "--version-name", versionName) ++
-      (if (bundletool.nonEmpty) Seq("--proto-format") else Nil))
     if (!signing.keystore.exists) sys.error(s"AndroidApk: no keystore at ${signing.keystore}")
     IO.createDirectory(apk.getParentFile)
     bundletool match {
@@ -195,5 +212,20 @@ object AndroidApk {
         log(s"AndroidApk: $apk (v$versionCode $versionName, signed ${signing.keystore.getName} alias ${signing.alias})")
         apk
     }
+  }
+
+  /** The R classes aapt2 wrote under `sources` compiled into `jar`: by the JDK's own compiler where sbt runs on one,
+    * else `javac`. */
+  private def compileR(sources: File, classes: File, jar: File, log: String => Unit): File = {
+    val files = (sources ** "*.java").get().map(_.toString)
+    IO.delete(classes)
+    IO.createDirectory(classes)
+    val args = Seq("--release", "17", "-nowarn", "-d", classes.toString) ++ files
+    val compiler = javax.tools.ToolProvider.getSystemJavaCompiler
+    val rc = if (compiler != null) compiler.run(null, null, null, args*) else sys.process.Process("javac" +: args).!
+    if (rc != 0) sys.error("AndroidApk: the R classes did not compile")
+    IO.zip(Path.allSubpaths(classes).filterNot(_._1.isDirectory), jar, None)
+    log(s"AndroidApk: ${files.size} R classes written for the app and its libraries")
+    jar
   }
 }

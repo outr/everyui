@@ -9,6 +9,7 @@ object EveryUILibraries {
   val javafxVersion: String = "26.0.2"
   val media3Version: String = "1.9.2"
   val credentialsVersion: String = "1.6.0"
+  val workVersion: String = "2.12.0"
 
   /** The Media3 (ExoPlayer) modules the Android backend plays with: what a television needs from a player and
     * `MediaPlayer` has no answer to — its own timeouts, a buffer that can be chosen, and a measurement of what the
@@ -51,15 +52,50 @@ object EveryUILibraries {
     (group % name % version).intransitive().artifacts(Artifact(name, "aar", "aar"))
   }
 
-  /** What everyui-android compiles against beside android.jar: Media3's archives and Credential Manager's, each named
-    * and none taken transitively (an archive's dependencies are archives too, and a build takes only those it can
-    * open), and what their classes reach for: androidx's collections and core among them, without which the shrinker
-    * fails on a class it cannot find (Media3's AsynchronousMediaCodecCallback's CircularIntArray). Resolved from
-    * `google`. */
+  /** WorkManager (androidx.work), which everyui-android's scheduled work runs on (`everyui.background.Work`), and what
+    * it runs with, each named, none taken transitively, and none the backend has already: Kotlin's standard library
+    * and its coroutines, Room and SQLite (where it keeps its work), lifecycle, startup, tracing and
+    * concurrent-futures. Left out: what another of these already is (Guava's ListenableFuture for `listenablefuture`,
+    * `annotation-jvm` and `collection-jvm` for their roots, the `-jvm` and `-android` builds for theirs), annotations
+    * only (`jspecify`, JetBrains' `annotations`), and what only `core` reaches for (`interpolator`,
+    * `versionedparcelable`, `profileinstaller`). Its archives' resources are linked and their R classes written by
+    * `AndroidApk.build` (`libraries`), which WorkManager reads its own through. */
+  def work: Seq[ModuleID] = Seq(
+    ("androidx.work", "work-runtime", workVersion, "aar"),
+    ("androidx.room", "room-runtime-android", "2.7.0", "aar"),
+    ("androidx.room", "room-common-jvm", "2.7.0", "jar"),
+    ("androidx.sqlite", "sqlite-android", "2.5.0", "aar"),
+    ("androidx.sqlite", "sqlite-framework-android", "2.5.0", "aar"),
+    ("androidx.lifecycle", "lifecycle-common", "2.6.2", "jar"),
+    ("androidx.lifecycle", "lifecycle-runtime", "2.6.2", "aar"),
+    ("androidx.lifecycle", "lifecycle-livedata", "2.6.2", "aar"),
+    ("androidx.lifecycle", "lifecycle-livedata-core", "2.6.2", "aar"),
+    ("androidx.lifecycle", "lifecycle-service", "2.6.2", "aar"),
+    ("androidx.arch.core", "core-common", "2.2.0", "jar"),
+    ("androidx.arch.core", "core-runtime", "2.2.0", "aar"),
+    ("androidx.startup", "startup-runtime", "1.1.1", "aar"),
+    ("androidx.tracing", "tracing", "1.2.0", "aar"),
+    ("androidx.tracing", "tracing-ktx", "1.2.0", "aar"),
+    ("androidx.concurrent", "concurrent-futures", "1.1.0", "jar"),
+    ("androidx.concurrent", "concurrent-futures-ktx", "1.1.0", "jar"),
+    ("androidx.annotation", "annotation-experimental", "1.4.1", "aar"),
+    ("org.jetbrains.kotlin", "kotlin-stdlib", "2.1.20", "jar"),
+    ("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.9.0", "jar"),
+    ("org.jetbrains.kotlinx", "kotlinx-coroutines-android", "1.9.0", "jar"),
+    ("org.jetbrains.kotlinx", "atomicfu-jvm", "0.17.0", "jar")).map { (group, name, version, kind) =>
+    if (kind == "aar") (group % name % version).intransitive().artifacts(Artifact(name, "aar", "aar"))
+    else (group % name % version).intransitive()
+  }
+
+  /** What everyui-android compiles against beside android.jar: Media3's archives, Credential Manager's and
+    * WorkManager's (`work`), each named and none taken transitively (an archive's dependencies are archives too,
+    * and a build takes only those it can open), and what their classes reach for: androidx's collections and core
+    * among them, without which the shrinker fails on a class it cannot find (Media3's AsynchronousMediaCodecCallback's
+    * CircularIntArray). Resolved from `google`. */
   def android: Seq[ModuleID] =
     media3Modules.map(m => ("androidx.media3" % m % media3Version).intransitive().artifacts(Artifact(m, "aar", "aar"))) ++
       Seq(credentials, "androidx.annotation" % "annotation-jvm" % "1.9.1",
         "com.google.guava" % "guava" % "33.4.0-android",
         "androidx.collection" % "collection-jvm" % "1.5.0",
-        ("androidx.core" % "core" % "1.13.1").intransitive().artifacts(Artifact("core", "aar", "aar")))
+        ("androidx.core" % "core" % "1.13.1").intransitive().artifacts(Artifact("core", "aar", "aar"))) ++ work
 }

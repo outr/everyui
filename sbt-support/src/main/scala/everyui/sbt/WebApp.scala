@@ -69,7 +69,11 @@ object WebApp {
     * own way, and otherwise is shown as a notification, in place of the one shown with its `tag` where it has one
     * (sounding again only with `renotify`); a push of `{"close": tag}` closes those shown with that tag; a tap on one
     * focuses a window of the app and tells it (`everyui.push.Push.opened`, and the app goes to the path), or opens the
-    * app at the path when none is open. A path
+    * app at the path when none is open. Its buttons ("actions", an array or JSON text of one, `everyui.push.PushButton`)
+    * are the notification's actions; one chosen tells an open window of the app (`{everyui: "act", id, message}`,
+    * `everyui.push.Push.acted`), brought forward unless the button runs in the background, or opens the app at the
+    * button's path (else the push's) with `everyui-action` and `everyui-push` in its address. What else the push says
+    * is its `data`. A path
     * off the app's own origin opens the app's start instead. A subscription the browser renews is subscribed again
     * with the same key and handed to the open windows (`everyui.push.Push.tokens`). A notification a page showed itself
     * (`Platform.showNotice`) is answered by the page: a click on it focuses the window that showed it, which the page
@@ -106,11 +110,21 @@ object WebApp {
        |});
        |const windows = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true });
        |const tell = (client, data) => client.postMessage(data);
+       |const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions'];
        |self.addEventListener('push', e => {
        |  let m = {};
        |  try { m = e.data ? e.data.json() : {}; } catch (x) { m = { body: e.data.text() }; }
+       |  // its buttons, an array or JSON text of one, and the rest of what it says as its data
+       |  let actions = m.actions;
+       |  if (typeof actions === 'string') { try { actions = JSON.parse(actions); } catch (x) { actions = []; } }
+       |  actions = (Array.isArray(actions) ? actions : []).filter(a => a && a.id).map(a => ({ id: String(a.id),
+       |    label: String(a.label || a.id), background: a.background === true || a.background === 'true',
+       |    path: a.path ? String(a.path) : null }));
+       |  const data = {};
+       |  Object.keys(m).filter(k => !KEYS.includes(k))
+       |    .forEach(k => { data[k] = typeof m[k] === 'string' ? m[k] : JSON.stringify(m[k]); });
        |  const message = { title: String(m.title || ''), body: String(m.body || ''), path: m.path ? String(m.path) : null,
-       |    tag: m.tag ? String(m.tag) : null, renotify: m.renotify === true };
+       |    tag: m.tag ? String(m.tag) : null, renotify: m.renotify === true || m.renotify === 'true', actions, data };
        |  // those shown with a tag taken away (read elsewhere), and nothing more where that is all the push is
        |  const closing = m.close ? self.registration.getNotifications({ tag: String(m.close) })
        |    .then(shown => shown.forEach(n => n.close())) : Promise.resolve();
@@ -121,6 +135,7 @@ object WebApp {
        |    // one with a tag in place of the one shown with it, sounding again only where it says so
        |    const options = { body: message.body, data: message };
        |    if (message.tag) { options.tag = message.tag; options.renotify = message.renotify; }
+       |    if (actions.length) options.actions = actions.map(a => ({ action: a.id, title: a.label }));
        |    return self.registration.showNotification(message.title, options);
        |  }));
        |});
@@ -140,6 +155,23 @@ object WebApp {
        |  const data = e.notification.data;
        |  if (data && data.everyui === 'notice') return notice(e, data);
        |  const message = e.notification.data || { title: e.notification.title, body: e.notification.body, path: null };
+       |  // a button chosen: the open window told (and brought forward unless the button runs in the background), or the
+       |  // app opened at its path with the button and the push in its address, for the page to read as it starts
+       |  const chosen = e.action && Array.isArray(message.actions) ? message.actions.find(a => a.id === e.action) : null;
+       |  if (chosen) {
+       |    let at = new URL(chosen.path || message.path || './', self.registration.scope);
+       |    if (at.origin !== self.location.origin) at = new URL('./', self.registration.scope);
+       |    return e.waitUntil(windows().then(list => {
+       |      const open = list.find(c => c.url.startsWith(self.registration.scope));
+       |      if (open) {
+       |        tell(open, { everyui: 'act', id: chosen.id, message });
+       |        return chosen.background ? undefined : open.focus();
+       |      }
+       |      at.searchParams.set('everyui-action', chosen.id);
+       |      at.searchParams.set('everyui-push', JSON.stringify(message));
+       |      return self.clients.openWindow(at.href);
+       |    }));
+       |  }
        |  let url = new URL(message.path || './', self.registration.scope);
        |  if (url.origin !== self.location.origin) url = new URL('./', self.registration.scope);
        |  e.waitUntil(windows().then(list => {

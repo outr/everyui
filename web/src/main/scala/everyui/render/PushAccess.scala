@@ -1,7 +1,7 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.push.{Push, PushAnswer, PushMessage, PushToken}
+import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushMessage, PushToken}
 import org.scalajs.dom
 
 import scala.scalajs.js
@@ -11,7 +11,9 @@ import scala.scalajs.js.typedarray.Uint8Array
   * `everyui.sbt.WebApp.write` installs (sw.js), which shows a notification that arrives while no window of the app is
   * in sight, opens or focuses the app at its path when it is tapped, and otherwise hands the message to the page. What
   * it hands over comes to the page as a message: `{everyui: "push", message}` (arrived while open), `{everyui: "open",
-  * message}` (tapped), `{everyui: "subscription", subscription}` (renewed by the browser). */
+  * message}` (tapped), `{everyui: "act", id, message}` (a button chosen), `{everyui: "subscription", subscription}`
+  * (renewed by the browser). A button chosen with no window of the app open opens it with `everyui-action` and
+  * `everyui-push` in its address, which `listen` reads, hands to `Push.acted` and takes out of the address. */
 object PushAccess {
   private def window: js.Dynamic = dom.window.asInstanceOf[js.Dynamic]
   private def workers: js.Dynamic = dom.window.navigator.asInstanceOf[js.Dynamic].serviceWorker
@@ -19,16 +21,38 @@ object PushAccess {
   def supported(): Boolean = window.isSecureContext.asInstanceOf[Boolean] && !js.isUndefined(workers) &&
     js.typeOf(window.PushManager) == "function" && js.typeOf(window.Notification) == "function"
 
-  /** What the service worker hands the page, heard from the first use of `Push`. */
-  def listen(): Unit = if (supported()) workers.addEventListener("message", (e: js.Dynamic) => {
-    val data = e.data
-    if (data != null && !js.isUndefined(data) && !js.isUndefined(data.everyui)) {
-      val kind = String.valueOf(data.everyui)
-      if (kind == "push") Push.received @= message(data.message)
-      else if (kind == "open") Push.tapped(message(data.message))
-      else if (kind == "subscription") Push.tokens @= PushToken("webpush", String.valueOf(data.subscription))
+  /** What the service worker hands the page, heard from the first use of `Push`, and a button the page was opened
+    * for, heard on the next turn, once the app's `main` listens. */
+  def listen(): Unit = if (supported()) {
+    started()
+    workers.addEventListener("message", (e: js.Dynamic) => {
+      val data = e.data
+      if (data != null && !js.isUndefined(data) && !js.isUndefined(data.everyui)) {
+        val kind = String.valueOf(data.everyui)
+        if (kind == "push") Push.received @= message(data.message)
+        else if (kind == "open") Push.tapped(message(data.message))
+        else if (kind == "act") Push.chose(PushAction(String.valueOf(data.id), message(data.message)), go = true)
+        else if (kind == "subscription") Push.tokens @= PushToken("webpush", String.valueOf(data.subscription))
+      }
+    })
+  }
+
+  /** A button the page was opened for (the service worker's `everyui-action` and `everyui-push`), taken out of the
+    * address and heard by `Push.acted` on the next turn; the page is already at its path. */
+  private def started(): Unit = {
+    val params = new dom.URLSearchParams(dom.window.location.search)
+    val id = Option(params.get("everyui-action")).getOrElse("")
+    if (id.nonEmpty) {
+      val pushed = try message(js.JSON.parse(Option(params.get("everyui-push")).getOrElse("{}")))
+        catch { case _: Throwable => PushMessage("", "", None) }
+      params.delete("everyui-action")
+      params.delete("everyui-push")
+      val rest = params.toString
+      dom.window.history.replaceState(dom.window.history.state, "",
+        dom.window.location.pathname + (if (rest.isEmpty) "" else "?" + rest) + dom.window.location.hash)
+      dom.window.setTimeout(() => Push.chose(PushAction(id, pushed), go = false), 0)
     }
-  })
+  }
 
   def permission(done: Permission => Unit): Unit = done(
     if (!supported()) Permission.Refused
@@ -82,6 +106,9 @@ object PushAccess {
     }
 
   /** The notifications the page's service worker shows with `tag` closed. */
+  /** No push service to hand data to here: the service worker's own push is what delivers. */
+  def deliver(data: Map[String, String]): Unit = ()
+
   def close(tag: String): Unit = if (supported()) registration {
     case None => ()
     case Some(r) => r.getNotifications(js.Dynamic.literal(tag = tag)).asInstanceOf[js.Promise[js.Array[js.Dynamic]]]
@@ -110,7 +137,11 @@ object PushAccess {
     val text = (v: js.Dynamic) => if (v == null || js.isUndefined(v)) "" else String.valueOf(v)
     val path = text(m.path)
     val tag = text(m.tag)
+    val buttons = if (js.isUndefined(m.actions) || m.actions == null) Vector.empty[PushButton]
+      else PushButton.parse(js.JSON.stringify(m.actions))
+    val data = if (js.isUndefined(m.data) || m.data == null) Map.empty[String, String]
+      else m.data.asInstanceOf[js.Dictionary[Any]].toMap.map((k, v) => k -> String.valueOf(v))
     PushMessage(text(m.title), text(m.body), if (path.isEmpty) None else Some(path), if (tag.isEmpty) None else Some(tag),
-      (m.renotify: Any) == true)
+      (m.renotify: Any) == true, buttons, data)
   }
 }

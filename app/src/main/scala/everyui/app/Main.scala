@@ -140,8 +140,9 @@ import everyui.render.Platform
   *              (app/full: FullDemos)
   *   background what runs with the app closed (ExampleBackground): work scheduled once, at once and every 15 minutes,
   *              an ongoing notice whose Pause, Resume and Open run with the app closed (Open lands on
-  *              /background/opened), the settings pages, and the restarts heard (`theme=light`); also at a launch to
-  *              /background; not on a Roku or an Apple TV (app/full: FullDemos)
+  *              /background/opened), the settings pages, the restarts heard, and pushes with buttons delivered in 3 s
+  *              (Done, Approve and Deny run with the app closed) (`theme=light`); also at a launch to /background; not
+  *              on a Roku or an Apple TV (app/full: FullDemos)
   */
 @main def main(): Unit = {
   val demo = Platform.launchArg("demo")

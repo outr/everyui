@@ -8,8 +8,8 @@ import org.scalatest.wordspec.AnyWordSpec
 
 /** What runs with the app closed, as far as the desktop shows it: scheduled work checked before the platform sees it
   * (WorkRequest.problems, WorkBackoff's limits), the app's BackgroundApp made ready once and its handlers called with
-  * what was delivered, an ongoing notice's actions cut to three, and the desktop's answers, which are all no: nothing
-  * scheduled or pending, no ongoing notices, no settings pages. */
+  * what was delivered, an ongoing notice's actions cut to three, and the desktop's answers: work run while the app is
+  * open (WorkRunnerSpec runs it), no ongoing notices, no settings pages. */
 class BackgroundSpec extends AnyWordSpec with Matchers {
   private def request(key: String = "sync", every: Int = 0, constraints: WorkConstraints = WorkConstraints(),
                       expedited: Boolean = false, delay: Double = 0.0,
@@ -71,15 +71,12 @@ class BackgroundSpec extends AnyWordSpec with Matchers {
       WorkBackoff(exponential = false, seconds = 600.0).millis shouldBe 600000L
       WorkBackoff(seconds = 86400.0).millis shouldBe 18000000L
     }
-    "be scheduled nowhere on the desktop, and never pending" in {
-      Work.supported shouldBe false
-      Work.once("sync") shouldBe false
+    "run while the app is open on the desktop, and refuse what is wrong there too" in {
+      Work.supported shouldBe true
+      Work.inBackground shouldBe false
       Work.once("") shouldBe false
-      Work.every("sync", 5) shouldBe false
-      Work.every("sync", 60, WorkConstraints(WorkNetwork.Unmetered, charging = true)) shouldBe false
-      Work.pending("sync") shouldBe false
-      Work.cancel("sync")
-      Work.pending("sync") shouldBe false
+      Work.once("now", expedited = true, delay = 5.0) shouldBe false
+      Work.pending("never-scheduled-here") shouldBe false
     }
   }
 

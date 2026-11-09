@@ -29,11 +29,8 @@ object Aars {
 
   /** The classes jar of each archive, and the shrinker rules any of them ship, unpacked under `into`.
     *
-    * Resources are NOT merged, and an archive that has any is named in the log rather than passed over in silence.
-    * What that costs is whatever code reads them: the classes are still there, and asking one of them for a string
-    * it cannot find is a crash at the moment of asking. It is only safe while the resources belong to a corner of
-    * the library nothing here enters — Media3's are the nine strings its download-notification service shows, and
-    * the shrinker removes that service along with them. Anything else wants `aapt2` adding here first. */
+    * Resources are not opened here: `resources` opens those of the archives whose classes read them, which
+    * `AndroidApk.build` links (`libraries`). An archive that has resources is named in the log. */
   def open(log: String => Unit, archives: Seq[File], into: File): (Seq[File], Seq[File]) = {
     IO.createDirectory(into)
     var opened = 0
@@ -48,7 +45,7 @@ object Aars {
         IO.unzip(aar, bench)
         val resources = bench / "res"
         if (resources.isDirectory && resources.listFiles().nonEmpty)
-          log(s"Aars: $name carries resources, which are not merged — whatever reads them must be shrunk away")
+          log(s"Aars: $name carries resources (linked only where its classes read its R class: Aars.resources)")
         val classes = bench / "classes.jar"
         // moved rather than copied: a jar appears at its name whole, never as far as somebody else's read got
         if (classes.isFile) IO.move(classes, jar)
@@ -62,5 +59,31 @@ object Aars {
     val rules = found.map(_._2).filter(_.isFile)
     if (opened > 0) log(s"Aars: $opened opened of ${archives.size}; ${classes.size} with classes, ${rules.size} with rules")
     (classes, rules)
+  }
+
+  /** The resources of each archive whose classes read them through their own R class (AndroidLibraries), opened under
+    * `into`, for `AndroidApk.build` to link and write that R class for (`libraries`). Archives whose classes read no
+    * R class of their own are left out, their resources with them. Opened once, and again as an archive changes. */
+  def resources(log: String => Unit, archives: Seq[File], into: File): Seq[AarResources] = {
+    IO.createDirectory(into)
+    val found = archives.distinct.flatMap { aar =>
+      val name = aar.getName.stripSuffix(".aar")
+      AndroidLibraries.needsResources(aar).map { pkg =>
+        val dir = into / s"$name.res"
+        if (!(dir / "res").isDirectory || dir.lastModified() < aar.lastModified()) {
+          val bench = into / s"$name.res-opening-${java.util.UUID.randomUUID().toString.take(8)}"
+          IO.delete(bench)
+          IO.unzip(aar, bench, (entry: String) => entry.startsWith("res/"))
+          IO.delete(dir)
+          IO.move(bench, dir)
+        }
+        AarResources(name, pkg, dir / "res")
+      }
+    }
+    // one for each package: the first, where two versions of an archive are on the classpath
+    val kept = found.groupBy(_.packageName).values.map(_.head).toSeq.sortBy(_.name)
+    if (kept.nonEmpty)
+      log(s"Aars: resources linked for ${kept.map(r => r.name + " (" + r.packageName + ")").mkString(", ")}")
+    kept
   }
 }

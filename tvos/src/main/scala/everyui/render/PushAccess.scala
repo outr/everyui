@@ -20,4 +20,6 @@ object PushAccess {
   def unsubscribe(done: () => Unit): Unit = done()
 
   def close(tag: String): Unit = ()
+
+  def deliver(data: Map[String, String]): Unit = ()
 }

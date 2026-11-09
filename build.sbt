@@ -487,6 +487,8 @@ lazy val android = (project in file("android"))
     // notifications ask (EveryUILibraries.firebase: compiled against; without its runtime and configuration, no push)
     libraryDependencies += EveryUILibraries.credentials,
     libraryDependencies ++= EveryUILibraries.firebase,
+    // WorkManager, which scheduled work runs on (everyui.background.Work, EveryUILibraries.work), and what it runs with
+    libraryDependencies ++= EveryUILibraries.work,
     libraryDependencies ++= Seq(
       "androidx.annotation" % "annotation-jvm" % "1.9.1",
       "com.google.guava" % "guava" % "33.4.0-android"),
@@ -527,10 +529,12 @@ lazy val android = (project in file("android"))
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
           androidMinSdk, target.value / "android-runtime", streams.value.log.info(_)),
         everyuiAndroidManifest.value, everyuiAndroidResources.value, assets,
-        (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value,
+        // with the archives' own rules (WorkManager's, Room's, Media3's), as a Gradle build applies them
+        (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value ++
+          androidAarRules.value,
         target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
-        version.value, 1, AndroidApk.debug)
+        version.value, 1, AndroidApk.debug, libraries = everyuiAndroidLibraries.value)
     }
   )
 
@@ -828,6 +832,7 @@ lazy val monacoAndroid = (project in file("monaco/android"))
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
     libraryDependencies ++= EveryUILibraries.credentials +: EveryUILibraries.firebase,
+    libraryDependencies ++= EveryUILibraries.work,   // WorkManager, which the backend's scheduled work runs on
     libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
     androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     Compile / unmanagedJars ++= Def.uncached(androidAars.value
@@ -852,7 +857,7 @@ lazy val monacoAndroid = (project in file("monaco/android"))
         baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-monaco.apk",
-        version.value, 1, AndroidApk.debug)
+        version.value, 1, AndroidApk.debug, libraries = everyuiAndroidLibraries.value)
     }
   )
 
@@ -945,6 +950,7 @@ lazy val terminalAndroid = (project in file("terminal/android"))
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
     libraryDependencies ++= EveryUILibraries.credentials +: EveryUILibraries.firebase,
+    libraryDependencies ++= EveryUILibraries.work,   // WorkManager, which the backend's scheduled work runs on
     libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
     androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
     Compile / unmanagedJars ++= Def.uncached(androidAars.value
@@ -969,7 +975,7 @@ lazy val terminalAndroid = (project in file("terminal/android"))
         baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-terminal.apk",
-        version.value, 1, AndroidApk.debug)
+        version.value, 1, AndroidApk.debug, libraries = everyuiAndroidLibraries.value)
     }
   )
 

@@ -14,9 +14,9 @@ import scala.jdk.CollectionConverters.*
 
 /** What runs with the app closed (`everyui.background`) on Android: the app's `BackgroundApp`, loaded by the name its
   * manifest gives under the application's meta-data "everyui.background" (sbt-everyui writes it from
-  * `everyuiBackground`, with `BackgroundReceiver` and `BackgroundJobs`), and made ready once a process; the handlers
-  * it is asked to run, each held to a deadline; scheduled work (`BackgroundWork`), ongoing notices
-  * (`OngoingNotices`) and the settings pages (`SettingsPages`).
+  * `everyuiBackground`, with `BackgroundReceiver`, `BackgroundStart` and WorkManager's components), and made ready
+  * once a process; the handlers it is asked to run, each held to a deadline; scheduled work (`BackgroundWork`, on
+  * WorkManager), ongoing notices (`OngoingNotices`) and the settings pages (`SettingsPages`).
   *
   * A receiver or a job runs with no activity, often in a process started for it alone, so nothing here needs one:
   * the application's context, its settings and its secrets, and the network made ready where no activity has. Each
@@ -36,7 +36,7 @@ object BackgroundAccess {
   /** How long a receiver's handler (a restart, a notice's action) has before the receiver lets go: Android's limit
     * for a broadcast in the background is a minute, and a short one keeps the process from being taken as hung. */
   val receiverDeadline: Long = 10000L
-  /** How long work has before it is taken as needing another try: Android stops a job at ten minutes. */
+  /** How long work has before it is taken as needing another try: WorkManager stops a run at ten minutes. */
   val jobDeadline: Long = 570000L
 
   private lazy val main = new Handler(Looper.getMainLooper)
@@ -124,6 +124,15 @@ object BackgroundAccess {
           b.keySet.asScala.toList.flatMap(k => Option(b.getString(k)).map(k -> _)).toMap)
           .getOrElse(Map.empty[String, String])
         Some(("notice " + notice + " action " + name) -> (() => Background.noticeAction(notice, name, args)))
+      case PushAccess.actionIntent =>
+        val chosen = PushAccess.actionOf(intent)
+        PushAccess.dismiss(context, intent)
+        // the app's screens running hear it (Push.acted); otherwise its BackgroundApp does, with the app closed
+        if (ScreenManager.running.nonEmpty) {
+          main.post(() => everyui.push.Push.chose(chosen, go = false))
+          Some(("push action " + chosen.id + " (the app hears it)") -> (() => Task.unit))
+        }
+        else Some(("push action " + chosen.id) -> (() => Background.pushAction(chosen)))
       case `dismissedIntent` => Some(("notice " + notice + " dismissed") -> (() => Background.noticeDismissed(notice)))
       case other =>
         Platform.log("background: nothing to do for " + other)

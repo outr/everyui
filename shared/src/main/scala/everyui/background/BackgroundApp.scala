@@ -1,11 +1,13 @@
 package everyui.background
 
 import everyui.async.Task
+import everyui.push.PushAction
 
 /** The app's code that runs with no screen: an object the platform loads by name where the app is not running (on
   * Android, the manifest's meta-data "everyui.background", which sbt-everyui writes from `everyuiBackground`), whose
   * handlers hear what the platform delivers in the background: scheduled work, an ongoing notice's actions, the device
-  * started again or the app updated.
+  * started again or the app updated. The app also registers it as it starts (`Background.register`), which on the
+  * other platforms runs its scheduled work while the app is open.
   *
   * A handler runs where there may be no window: it reads the settings, the secrets, the store and the network, and
   * never touches a component. It is started on the thread that draws, as the app's own tasks are, so heavy work goes
@@ -38,6 +40,10 @@ trait BackgroundApp {
   /** An ongoing notice swiped away, by its key: Android 14 and later let the person do so. The app may show it again,
     * or take the swipe as a wish to stop. */
   def onNoticeDismissed(notice: String): Task[Unit] = Task.unit
+
+  /** A push notification's button that runs in the background (`PushButton.background`) chosen while the app's
+    * screens do not run: a reminder ticked off, a request approved. While they run, `Push.acted` hears it instead. */
+  def onPushAction(action: PushAction): Task[Unit] = Task.unit
 
   /** The device started again, or the app was updated: what the platform forgot then (an ongoing notice) is put back
     * here. Scheduled work is kept through both and needs nothing. It may be heard with no restart (Android 15 tells

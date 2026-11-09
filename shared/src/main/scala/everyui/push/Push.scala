@@ -31,6 +31,12 @@ object Push {
     * One tapped while the app was closed opens the app at its path instead, which the app's screens answer as a link. */
   val opened: Channel[PushMessage] = Channel[PushMessage]
 
+  /** A button on a notification chosen (`PushButton`): its id and the push. One that opens the app is heard here
+    * before the app goes to its path, with the app running or as it starts. One that runs in the background is heard
+    * here while the app's screens run, and by the app's `BackgroundApp.onPushAction` while they do not (on
+    * Android; a browser opens the app for it where no window of it is open): once either way. */
+  val acted: Channel[PushAction] = Channel[PushAction]
+
   /** A new token for the server, where the platform replaced the one it had (a refreshed FCM token, a Web Push
     * subscription the browser renewed). Send it as a `Subscribed` token is sent. */
   val tokens: Channel[PushToken] = Channel[PushToken]
@@ -62,6 +68,16 @@ object Push {
     opened @= message
     message.path.foreach(p => ScreenManager.running.foreach(_.go(p)))
   }
+
+  /** A button chosen: `acted` hears it, then, where it opens the app and `go`, the running screens go to its path. */
+  private[everyui] def chose(action: PushAction, go: Boolean): Unit = {
+    acted @= action
+    if (go && !action.background) action.path.foreach(p => ScreenManager.running.foreach(_.go(p)))
+  }
+
+  /** A push handled as if the platform's push service had delivered `data` (an FCM data message's keys): for the
+    * example's demo and checks on a device with no push service. Nothing where the platform has no push. */
+  private[everyui] def deliver(data: Map[String, String]): Unit = PushAccess.deliver(data)
 
   PushAccess.listen()
 }

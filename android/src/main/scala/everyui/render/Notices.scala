@@ -57,9 +57,8 @@ object Notices {
         .getOrElse(new Intent(Intent.ACTION_MAIN).setPackage(context.getPackageName))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
         .putExtra("everyui.notice", key)
-      val info = context.getApplicationInfo
       val notification = new Notification.Builder(context, channel)
-        .setSmallIcon(info.icon)
+        .setSmallIcon(NoticeIcon.of(context))
         .setContentTitle(notice.title)
         .setContentText(notice.body)
         .setStyle(new Notification.BigTextStyle().bigText(notice.body))

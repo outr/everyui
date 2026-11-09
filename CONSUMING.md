@@ -3186,10 +3186,57 @@ the push service with 404 or 410 at the next send; delete it then, and the app s
   reaches the app whether or not it is in front, and the app shows it as a notification (channel "everyui.push") when it
   is not. A notification message the system shows itself; its `data.path` still reaches the app on a tap. Android 13
   and later ask the person first. Not on an Android TV. Without Firebase in the app, `Push.supported` is false.
+  The small icon is the app's drawable `everyui_notice`, which an app supplies: a monochrome white shape on
+  transparent, at each density (`res/drawable-mdpi` to `-xxxhdpi`, or one vector drawable), since Android draws a small
+  icon as a silhouette and a full-colour launcher icon shows as a blank square; the app's icon where it has none. The
+  app's own notices and its ongoing ones use it too.
 - **Desktop, Roku, Apple TV**: none; `supported` is false and `subscribe` answers `PushUnsupported`. A desktop app
   hears its server over its own connection while it runs.
 
+### Buttons on a push (`PushButton`, `Push.acted`)
+
+A push can carry up to three buttons, so a reminder ("Take pills, 8:00") is ticked off with Done without opening the
+app, and an agent's request is answered with Approve or Deny. They go under `actions`, as JSON text (FCM's data
+values are all text; Web Push may send the array itself):
+
+```json
+{"title": "Take pills", "body": "8:00", "path": "/tasks/42", "tag": "task-42", "task": "42",
+ "actions": "[{\"id\":\"done\",\"label\":\"Done\",\"background\":true},{\"id\":\"snooze\",\"label\":\"Later\",\"path\":\"/tasks/42/snooze\"}]"}
+```
+
+Each button has an `id` (what the app is told), a `label` (the id where it has none), `background` (true or "true":
+it runs with the app left closed; false, the default, opens the app) and a `path` where an opening one goes (the
+push's otherwise). Any other key (`task` above) is the push's `data`, handed back with it (`PushMessage.data`).
+
+```scala
+Push.acted.attach { a =>                       // PushAction(id, message): the button and the push
+  if (a.id == "done") Tasks.tick(a.message.data("task"))
+}
+
+object AppBackground extends BackgroundApp {       // the same button with the app closed (Android)
+  override def onPushAction(a: PushAction): Task[Unit] =
+    if (a.id == "done") Tasks.tickOnServer(a.message.data("task")) else Task.unit
+}
+```
+
+Attach to `Push.acted` as the app starts (in its `main`): a choice that started the app is heard on the next turn.
+A choice is heard once: by `Push.acted` while the app's screens run (an opening button before the app goes to its
+path, or as the app starts at it), and by `BackgroundApp.onPushAction` for a background button while they do not.
+
+- **Android**: the buttons are the notification's actions. A background one is a broadcast to EveryUI's
+  `BackgroundReceiver`, which runs `onPushAction` with the app closed, within its ten seconds, where the build names a
+  `BackgroundApp` ([With the app closed](#with-the-app-closed-everyuibackground)); without one it opens the app with the
+  choice. The notification is taken away once a button is chosen. A push that arrives with the app in front goes to
+  `Push.received` with its buttons, to show its own way.
+- **Web**: the service worker shows them as the notification's actions (a browser may show fewer than three: Chrome
+  shows two). A choice is told to an open window of the app, brought forward unless the button runs in the
+  background; with none open the app opens at the button's path with the choice in its address (`everyui-action`,
+  `everyui-push`), which `Push` reads as it starts and takes out of the address. A page runs nothing with no window
+  open, so a background button opens the app there.
+- **Desktop, Roku, Apple TV**: no push, so no buttons.
+
 `demo=platform` allows notifications, subscribes (`vapid=<public key>`), and shows what arrives or is tapped.
+`demo=background` delivers a reminder and an approval with buttons on Android, as the push service would.
 
 ## The app's own notifications and the unread badge (`Platform.showNotice`, `Platform.setBadge`)
 
@@ -3238,6 +3285,8 @@ Platform.showNotice(Notice(sender, preview, tag = "conversation:" + id), () => o
   page served with an older `sw.js` still shows notices, but its clicks only focus a window: rebuild with this
   `WebApp.write`. On Android it is posted on the channel push uses ("everyui.push", "Notifications"), and a tap on one
   after the app was closed only opens it. The desktop, a Roku and an Apple TV show nothing.
+  Its small icon is the app's `everyui_notice` drawable, as a push's is (monochrome white on transparent, at each
+  density), the app's icon where it has none.
 
 No flashing title: a changing tab title is the app's to do, if it wants one. `demo=platform` allows notices, shows one
 now or while away (tagged, so each replaces the last), and counts unread on the badge.
@@ -3326,7 +3375,7 @@ import everyui.async.Task
 import everyui.background.*
 import everyui.push.*
 
-object Background extends BackgroundApp {
+object AppBackground extends BackgroundApp {
   val channel: NoticeChannel = NoticeChannel("sync", "Sync", "While syncing is paused or running")
 
   override def prepare(): Unit = Network.origin @= "https://example.com"   // once a process, before any handler
@@ -3344,10 +3393,16 @@ object Background extends BackgroundApp {
 ```
 
 ```scala
-// sbt-everyui: the meta-data naming it, EveryUI's receiver and job service, RECEIVE_BOOT_COMPLETED and the rules
-everyuiBackground := Some("com.example.Background")
-// and the background's rules with the app's own where it passes them to AndroidApk.build itself
+// sbt-everyui: the meta-data naming it, EveryUI's receiver and provider, WorkManager's components, the permissions
+// they need (RECEIVE_BOOT_COMPLETED, WAKE_LOCK, ACCESS_NETWORK_STATE) and the rules
+everyuiBackground := Some("com.example.AppBackground")
+// WorkManager and what it runs with (in EveryUILibraries.android too; the build fails without it)
+libraryDependencies ++= EveryUILibraries.work
+// and where the app passes them to AndroidApk.build itself: the background's rules with the app's own, and the
+// resources of the archives whose classes read their own R class (WorkManager's among them), linked with their R
+// classes written
 (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value
+AndroidApk.build(..., libraries = everyuiAndroidLibraries.value)
 ```
 
 A handler runs where there may be no window: it reads the settings, the secrets, the store and the network, and
@@ -3358,9 +3413,12 @@ answers), nine and a half minutes for work, which is then tried again.
 - **Work** (`Work.once(key, constraints, expedited, backoff, delay, data)`, `Work.every(key, minutes, ...)`,
   `Work.cancel(key)`, `Work.pending(key)`): unique by key, kept through a restart, waiting for a network (any or
   unmetered), charging, a battery not low or the device idle. Every 15 minutes at the most often (fewer are raised to
-  15). Expedited work runs as soon as it can (Android 12 on) and waits for nothing but a network. On Android it is a
-  JobScheduler job; `adb shell cmd jobscheduler run -f <package> <id>` runs one now, with the id logged as it is
-  scheduled.
+  15). Expedited work runs as soon as it can (Android 12 on) and waits for nothing but a network. On Android it is
+  WorkManager's unique work (REPLACE or KEEP as `replace` says; periodic work UPDATEd in place), made ready as the
+  process starts by EveryUI's provider; WorkManager schedules it through JobScheduler, so
+  `adb shell cmd jobscheduler run -f <package> <id>` runs one now (the id of its SystemJobService job in
+  `adb shell dumpsys jobscheduler <package>`), and `adb shell am broadcast -a
+  androidx.work.diagnostics.REQUEST_DIAGNOSTICS -p <package>` logs what WorkManager has.
 - **Ongoing notices** (`Ongoing.show(OngoingNotice(key, title, body, channel, actions, tap))`, `Ongoing.clear(key)`):
   quiet, not swiped away, on a channel of the app's own, updated in place by key, from the app or a handler. An
   action runs `onNoticeAction` with the app closed (`NoticeTap.RunAction`) or opens the app at a path
@@ -3374,8 +3432,23 @@ answers), nine and a half minutes for work, which is then tried again.
   `SystemSettings.unusedAppRestrictions`: whether Android may take the app's permissions away and stop its work after
   months unused, which an app that depends on the background asks the person to turn off.
 
-The web, the desktop, an Apple TV and a Roku run nothing with the app closed: `Background.supported`, `Work.supported`
-and `Ongoing.supported` are false, nothing is scheduled or shown, and `SystemSettings` answers false.
+The web, the desktop, an Apple TV and a Roku run nothing with the app closed: `Background.supported`,
+`Work.inBackground` and `Ongoing.supported` are false, nothing is shown, and `SystemSettings` answers false. Scheduled
+work runs there while the app is open instead (and on Android where the build names no `BackgroundApp`), once the app
+registers its `BackgroundApp` as it starts, which it does on every platform:
+
+```scala
+Background.register(AppBackground)   // in main: on Android it changes nothing; elsewhere its work runs while open
+```
+
+What is scheduled, when each is next due and when it last ran are kept in the app's settings (`Platform.setting`), so
+they outlast the app: `Work.once` runs after its delay, `Work.every` at once and then every period, each in `onWork`
+with the same retry and backoff as Android (and Retry after nine and a half minutes without an answer); what came
+due while the app was closed runs once as it starts again, periodic work missed several times among it once, its
+next a period later. Of the constraints, the network is waited for where `Platform.online` says there is none (looked
+at again every 30 seconds), and an unmetered network is any network, since whether one is metered cannot be read;
+charging, the battery and the device idle cannot be read there, and are taken as met. Expedited work runs as any
+other. On an Apple TV it runs as far as its runtime keeps settings and timers.
 
 ## Location (`everyui.location`)
 
@@ -4108,6 +4181,7 @@ The plugin's tasks, on every project:
 | `everyuiAndroidResources` | the resources for `AndroidApk.build`: the app's own (`everyuiAndroidRes`, `res` under the project) as they are, or with EveryUI's widget layouts (`everyuiWidgetLayouts`, out of everyui-android) and each widget's `appwidget-provider` |
 | `everyuiWidgets`, `everyuiWidgetKinds` | the app's home-screen widgets on Android, settings: none by default ([Home-screen widgets](#home-screen-widgets-everyuiwidget)) |
 | `everyuiBackground`, `everyuiBackgroundRules` | what runs with the app closed on Android: the `BackgroundApp` object, none by default, and the shrinker's rules for it ([With the app closed](#with-the-app-closed-everyuibackground)) |
+| `everyuiAndroidLibraries` | the resources of the Android archives whose classes read their own R class (WorkManager's among them), opened for `AndroidApk.build`'s `libraries`, which links them and writes those R classes |
 | `everyuiEmbedAssets` | the files of the embeds on the classpath (everyui-monaco-android's Monaco, everyui-terminal-android's xterm.js), out of their jars: a directory whose contents go into an APK's assets as they are |
 | `everyuiCompiler` | the Roku and Swift compiler (everyui-compiler at `everyuiVersion`, fetched with the build's resolvers) and what it runs with |
 | `everyuiEmitLibraries` | what the compiler compiles through with the app: everyui-roku or everyui-tvos, reactify, and Spice's durable client |
@@ -4117,8 +4191,8 @@ The plugin's tasks, on every project:
 
 And its helpers, plain objects an app's tasks call: `AndroidApk` (R8, aapt2, zipalign and apksigner, or bundletool for
 an app bundle), `AndroidRuntime` (the classpath an APK is dexed from, with Scala 3's VarHandle lazy vals rewritten for
-Android before 13, and the build failing if one is left), `Aars` (Android archives opened into jars and shrinker
-rules), `RokuChannel` (emit, assemble, version, fallback fonts, the store package), `AppleApp` (emit and assemble) and
+Android before 13, and the build failing if one is left), `Aars` (Android archives opened into jars, shrinker
+rules and, where their classes read them, resources), `RokuChannel` (emit, assemble, version, fallback fonts, the store package), `AppleApp` (emit and assemble) and
 `EveryUILibraries`.
 
 ### Desktop
