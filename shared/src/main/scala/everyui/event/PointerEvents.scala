@@ -56,6 +56,13 @@ class PointerEvents(component: Component) {
   /** What the platform heard, handed to `channel` unless a component inside this consumed it: a menu asked for that
     * something put a dialog up for (a `Menu`) is consumed, as answered. */
   private[everyui] def heard(channel: Channel[PointerEvent], kind: PointerKind, x: Double, y: Double): Unit = {
+    // a press that scrolled something is a scroll: its release clicks nothing, here or anywhere it climbs (ScrollPress)
+    if (kind == PointerKind.Down) ScrollPress.down()
+    else if (kind == PointerKind.Up) ScrollPress.up()
+    if (kind != PointerKind.Click || !ScrollPress.holdsClick()) told(channel, kind, x, y)
+  }
+
+  private def told(channel: Channel[PointerEvent], kind: PointerKind, x: Double, y: Double): Unit = {
     val held = everyui.render.Platform.modifiers()
     val event = PointerEvent(kind, x, y, everyui.render.Platform.pointerButton(), held.ctrl, held.meta, held.alt,
       held.shift, kind != PointerKind.Wheel && everyui.render.Platform.pointerFinger())

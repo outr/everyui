@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.easing.Easing
-import everyui.event.{Flick, Key, Pointer, PointerEvent}
+import everyui.event.{Flick, Key, Pointer, PointerEvent, ScrollPress}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.Color
@@ -185,6 +185,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
       dragFrom.foreach { from =>
         scrollTo(dragOffset - (along(e) - from))
         flick.at(along(e))
+        // dragged further than a tap may, and the content moved: a scroll, whose release clicks nothing in it
+        if (math.abs(along(e) - from) > ScrollPress.slop && offset() != dragOffset) ScrollPress.scrolled()
       }
     }
     event.pointer.up.attach { _ =>

@@ -29,7 +29,9 @@ private[render] object TapReach {
       downX = e.clientX
       downY = e.clientY
     }, capture)
-    dom.window.addEventListener("click", (e: dom.MouseEvent) => if (finger && e.isTrusted) retarget(e), capture)
+    // (not a finger that strayed, which made no tap: PressOwner)
+    dom.window.addEventListener("click", (e: dom.MouseEvent) =>
+      if (finger && e.isTrusted && !PressOwner.swiped) retarget(e), capture)
   }
 
   // the click taken to the control the finger reached, judged where the finger went down: Chrome sends a finger's click

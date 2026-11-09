@@ -748,8 +748,9 @@ class RenderNode(val view: View) {
   // long press does anywhere on Android: where it went down, after the platform's long-press time, unless it moved
   // further than a tap may or was lifted first. What it asked for is not also a click as it lifts.
   private var pressFrom: (Float, Float) = (0f, 0f)
-  // where the touch went down
+  // where the touch went down, and whether a finger has since gone further from there than a tap may
   private var downAt: (Float, Float) = (0f, 0f)
+  private var strayed = false
   private var pressHeld: Option[Runnable] = None
   private var pressedLong = false
   private def letGo(): Unit = {
@@ -771,6 +772,7 @@ class RenderNode(val view: View) {
       if (keepsDrag && view.getParent != null) view.getParent.requestDisallowInterceptTouchEvent(true)
       fire(PointerKind.Down, e)
       downAt = (e.getRawX, e.getRawY)
+      strayed = false
       pressedLong = false
       letGo()
       if (pointer.contains(PointerKind.Menu)) {
@@ -796,6 +798,7 @@ class RenderNode(val view: View) {
     else if (action == MotionEvent.ACTION_MOVE) {
       val slop = android.view.ViewConfiguration.get(view.getContext).getScaledTouchSlop
       if (math.abs(e.getRawX - pressFrom._1) > slop || math.abs(e.getRawY - pressFrom._2) > slop) letGo()
+      if (math.abs(e.getRawX - downAt._1) > slop || math.abs(e.getRawY - downAt._2) > slop) strayed = true
       fire(PointerKind.Move, e)
       toRoot(PointerKind.Move, e)
     }
@@ -809,7 +812,12 @@ class RenderNode(val view: View) {
       // a finger lifted where it went down is a tap on what it went down on, though that moved from under it meanwhile:
       // a phone's keyboard closing as a button under a field was tapped moved the form, and the tap was no click
       val inside = !moved || (e.getX >= 0 && e.getY >= 0 && e.getX <= view.getWidth && e.getY <= view.getHeight)
-      if (inside && !pressedLong && !(moved && PressOwner.elsewhere(view, e.getRawX, e.getRawY))) fire(PointerKind.Click, e)
+      // and a finger that went further than a tap may, even once and back, was a scroll or a swipe, not a tap, as on
+      // Android's own lists: one dragged down a picker's rows chose the row it lifted from (a mouse may still drag on a
+      // button and click it, as a desktop's does)
+      val swiped = strayed && e.getToolType(0) != MotionEvent.TOOL_TYPE_MOUSE
+      if (inside && !pressedLong && !swiped && !(moved && PressOwner.elsewhere(view, e.getRawX, e.getRawY)))
+        fire(PointerKind.Click, e)
     }
     else if (action == MotionEvent.ACTION_CANCEL) {
       letGo()

@@ -9,7 +9,8 @@ import javafx.scene.{Node, Scene}
   * browser does, instead sends its click to the innermost node holding both where the button went down and where it
   * came up, which made a click of a drag: one that selected words in a field in a dialog and ended over the dim around
   * it went to the dialog's sheet, as a click outside the dialog, and closed it. A mouse's click here counts only when
-  * its press and its release landed on the same such thing; a finger's tap (made into the mouse) is left as it is. */
+  * its press and its release landed on the same such thing; a finger's (made into the mouse) only when it stayed
+  * where it went down. */
 private[render] object PressOwner {
   private val key = "everyui.clicks"
   private val watched = java.util.Collections.newSetFromMap(new java.util.WeakHashMap[Scene, java.lang.Boolean]())
@@ -23,8 +24,10 @@ private[render] object PressOwner {
     else fx.sceneProperty.addListener((_, _, scene) => if (scene != null) watch(scene))
   }
 
-  /** Whether `e`, a click, came of a press and a release on different things: not to be heard. */
-  def splits(e: MouseEvent): Boolean = split && !e.isSynthesized
+  /** Whether `e`, a click, came of a press and a release on different things, or of a finger (a touch screen's, made
+    * into the mouse) that moved further than a tap may before it lifted, a scroll or a swipe, as a phone's own lists
+    * have it: not to be heard. */
+  def splits(e: MouseEvent): Boolean = if (e.isSynthesized) !e.isStillSincePress else split
 
   private def watch(scene: Scene): Unit = if (watched.add(scene)) {
     scene.addEventFilter(MouseEvent.MOUSE_PRESSED, (e: MouseEvent) => if (e.getButton == MouseButton.PRIMARY) {

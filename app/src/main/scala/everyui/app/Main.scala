@@ -135,6 +135,9 @@ import everyui.render.Platform
   *   turns      a coding agent's conversation whose turn header names the turn at the top while its message is out of
   *              sight, with a file and a spinner, going back to it on a press (`theme=light`, `room=1`, `busy=0`,
   *              `at=<pixels>`); not on a Roku or an Apple TV (app/full: FullDemos)
+  *   press      a drag over a scroll of buttons or a list that activates on a click presses nothing as it lifts, a
+  *              tap does; badges hang past a plain column in a rail (`theme=light`); not on a Roku or an Apple TV
+  *              (app/full: FullDemos)
   *   background what runs with the app closed (ExampleBackground): work scheduled once, at once and every 15 minutes,
   *              an ongoing notice whose Pause, Resume and Open run with the app closed (Open lands on
   *              /background/opened), the settings pages, and the restarts heard (`theme=light`); also at a launch to

@@ -5609,6 +5609,12 @@ row.event.click.attach(e => if (e.shift) extend() else if (e.primary) toggle() e
 tab.event.pointer.middle.attach(_ => close())
 ```
 
+A press that scrolls is a scroll, not a click: a finger or a mouse dragged across a list's rows or a scroll's content
+further than a tap may (`ScrollPress.slop`, 8 pixels) that moved it clicks nothing as it lifts, so a picker's row, a
+button or a chip under the finger is not pressed, as on a phone's own lists. A finger that went further than a tap may
+clicks nothing even where nothing scrolled (Android, the web, a touch screen on the desktop); a mouse dragged over a
+button where nothing scrolls still clicks it, as a desktop's does. A tap that wobbled within the slop still clicks.
+
 A control smaller than a fingertip (a glyph button, a check box, a chip) answers a finger's tap a little outside it
 (`Component.tapSlop`, `everyui.event.TapSlop`): anywhere in the 48-pixel square around its centre (Material's 48 dp,
 which holds Apple's 44 pt), while it is drawn and laid out at its own size, so its neighbours stay where they are. Where
