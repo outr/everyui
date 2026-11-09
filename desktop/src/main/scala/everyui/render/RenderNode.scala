@@ -13,6 +13,8 @@ import javafx.scene.text.{Font, FontSmoothingType, Text, TextAlignment}
 import javafx.scene.{Node, Scene}
 import everyui.font.{Face, Faces}
 import everyui.PlatformKind
+import everyui.draw.VectorArt
+import everyui.image.{DataAddress, SvgImage}
 import everyui.event.PointerKind
 
 import java.io.File
@@ -190,7 +192,9 @@ class RenderNode(val fx: Node) {
         r.setPrefWidth(width)
         r.setMaxWidth(width)
       case _: Text => applyAlign()
-      case i: ImageView => i.setFitWidth(width)
+      case i: ImageView =>
+        i.setFitWidth(width)
+        sharpen(i)
       case _ => ()
     }
   }
@@ -202,7 +206,9 @@ class RenderNode(val fx: Node) {
         r.setMinHeight(height)
         r.setPrefHeight(height)
         r.setMaxHeight(height)
-      case i: ImageView => i.setFitHeight(height)
+      case i: ImageView =>
+        i.setFitHeight(height)
+        sharpen(i)
       case _ => ()
     }
   }
@@ -909,11 +915,27 @@ class RenderNode(val fx: Node) {
     else new javafx.scene.effect.Blend(javafx.scene.effect.BlendMode.SRC_ATOP, null,
       new javafx.scene.effect.ColorInput(0, 0, 8192, 8192, Color.web(hex))))
 
-  /** The picture the view draws, or none (which lets the one it was drawing go). */
+  /** The picture the view draws, or none (which lets the one it was drawing go). One JavaFX reads is shown as it
+    * loads; an SVG once it is drawn (`Host.imageThen`), at the view's size times the screen's density. */
   def setImageSource(uri: String): Unit = fx match {
-    case i: ImageView => i.setImage(if (uri.isEmpty) null else Host.image(uri))
+    case i: ImageView =>
+      picture = uri
+      if (uri.isEmpty) i.setImage(null)
+      else {
+        if (!Host.drawnLater(uri)) i.setImage(Host.image(uri))
+        Host.imageThen(uri)(image => if (picture == uri && image != null && !image.isError) {
+          if (!(image eq i.getImage)) i.setImage(image)
+          sharpen(i)
+        })
+      }
     case _ => ()
   }
+  // the address of the picture it draws
+  private var picture: String = ""
+  // an SVG drawn again where the view shows it larger than it was drawn
+  private def sharpen(i: ImageView): Unit = if (picture != null && picture.nonEmpty)
+    Host.sharper(picture, explicitWidth, explicitHeight)
+    .foreach(image => if (!(image eq i.getImage)) i.setImage(image))
 
   // JavaFX Media takes no request headers: what it is given is an address and nothing else
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
@@ -1158,6 +1180,152 @@ object Host {
 
   // as it will be held once it has loaded (nothing yet while it is on its way)
   private def bytesOf(image: Image): Long = math.round(image.getWidth * image.getHeight * 4.0)
+
+  /** The SVGs read so far, by the address each was asked for at, each drawn again larger where a view shows it larger
+    * than it was drawn (`sharper`); those still being read, and everyone waiting on each; and those found to be none. */
+  private val svgs = mutable.Map.empty[String, VectorArt]
+  private val reading = mutable.Map.empty[String, List[Image => Unit]]
+  private val notSvg = mutable.Set.empty[String]
+
+  /** Layout units to the screen's pixels: the size the app is drawn at (everyui.theme.UiScale) times the window's
+    * output scale (2 on a HiDPI screen). */
+  def density: Double = {
+    val window = if (scene != null) scene.getWindow else null
+    val output = if (window != null) window.getOutputScaleX else javafx.stage.Screen.getPrimary.getOutputScaleX
+    everyui.theme.UiScale() * math.max(1.0, output)
+  }
+
+  /** Whether the picture at `uri` is an SVG, drawn once it is read rather than shown as it loads. */
+  def drawnLater(uri: String): Boolean = svgs.contains(uri) || reading.contains(uri) || SvgImage.named(address(uri))
+
+  /** The picture at `uri`, then `done` with it on the FX thread once it has come: at once where it is held, or is a
+    * file of one JavaFX reads (PNG, JPEG, GIF, BMP), as it finishes loading otherwise. An SVG (by its address, or by
+    * its first bytes once JavaFX has failed on it) is read as VectorArt and drawn on a canvas at its own size times
+    * the screen's density (`svgPicture`). One that cannot be had or decoded comes failed (`isError`), and one that
+    * came but is neither is logged (`SvgImage.undecoded`). */
+  def imageThen(uri: String)(done: Image => Unit): Unit =
+    if (svgs.contains(uri) || reading.contains(uri) || SvgImage.named(address(uri)) && !notSvg.contains(uri))
+      svgThen(uri, svg => if (svg != null) done(svg) else {
+        val raster = image(uri)
+        settled(raster, () => done(raster))
+      })
+    else {
+      val raster = image(uri)
+      settled(raster, () =>
+        if (!raster.isError || notSvg.contains(uri)) done(raster)
+        else svgThen(uri, svg => done(if (svg != null) svg else raster)))
+    }
+
+  /** The size of the picture at `uri` as the app lays it out: an SVG's own (`VectorArt.natural`), anything else its
+    * pixels. */
+  def natural(uri: String, image: Image): (Double, Double) =
+    svgs.get(uri).map(_.natural).getOrElse((image.getWidth, image.getHeight))
+
+  /** The SVG at `uri` drawn at least as large as a view `wide` by `high` shows it, times the screen's density: the one
+    * held where it is large enough, else drawn again and held in its place. None where `uri` is no SVG read. */
+  def sharper(uri: String, wide: Double, high: Double): Option[Image] = svgs.get(uri).map { art =>
+    val (w, h) = SvgImage.pixels(art, math.max(0.0, wide) * density, math.max(0.0, high) * density)
+    images.get(uri) match {
+      case Some(held) if held.getWidth >= w && held.getHeight >= h => held
+      case _ => keepSvg(uri, art, w, h)
+    }
+  }
+
+  /** `art` drawn in its own colours into a picture `w` by `h` pixels (clear where it draws nothing), on a canvas
+    * through `FxArtPen`, then snapshotted. On the FX thread. */
+  def svgPicture(art: VectorArt, w: Int, h: Int): Image = {
+    val canvas = new javafx.scene.canvas.Canvas(w.toDouble, h.toDouble)
+    art.paint(new FxArtPen(canvas.getGraphicsContext2D), w.toDouble, h.toDouble)
+    val params = new javafx.scene.SnapshotParameters
+    params.setFill(Color.TRANSPARENT)
+    canvas.snapshot(params, null)
+  }
+
+  // `art` drawn `w` by `h` (at its own size times the density where that is larger) and held under `uri`
+  private def keepSvg(uri: String, art: VectorArt, w: Int, h: Int): Image = {
+    val (nw, nh) = art.natural
+    val (bw, bh) = SvgImage.pixels(art, nw * density, nh * density)
+    val picture = svgPicture(art, math.max(w, bw), math.max(h, bh))
+    images.remove(uri).foreach(old => imageBytes -= bytesOf(old))
+    images.put(uri, picture)
+    imageBytes += bytesOf(picture)
+    picture
+  }
+
+  // `f` once `image` has finished loading or failed, whichever comes first: at once where it has
+  private def settled(image: Image, f: () => Unit): Unit =
+    if (image.getProgress >= 1.0 || image.isError) f()
+    else {
+      var answered = false
+      val answer: () => Unit = () => if (!answered && (image.getProgress >= 1.0 || image.isError)) {
+        answered = true
+        f()
+      }
+      image.progressProperty.addListener(new ChangeListener[Number] {
+        override def changed(o: ObservableValue[? <: Number], was: Number, now: Number): Unit =
+          if (now.doubleValue >= 1.0) {
+            o.removeListener(this)
+            answer()
+          }
+      })
+      // (a download failing part-way through raises an error without the progress ever reaching the end)
+      image.errorProperty.addListener(new ChangeListener[java.lang.Boolean] {
+        override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean,
+                             now: java.lang.Boolean): Unit =
+          if (now) {
+            o.removeListener(this)
+            answer()
+          }
+      })
+    }
+
+  // the SVG at `uri` drawn (`done` with null where it is none), read once however many ask: on a thread of its own
+  // from the network, at once otherwise
+  private def svgThen(uri: String, done: Image => Unit): Unit = svgs.get(uri) match {
+    case Some(_) => done(sharper(uri, 0.0, 0.0).orNull)
+    case None if notSvg.contains(uri) => done(null)
+    case None if reading.contains(uri) => reading(uri) = done :: reading(uri)
+    case None =>
+      reading(uri) = List(done)
+      val at = address(uri)
+      val finish: Option[(String, Array[Byte])] => Unit = read => {
+        val art = read.flatMap { case (kind, bytes) =>
+          val svg = SvgImage.named(at, kind) || SvgImage.sniffed(DataAddress.text(bytes.take(1024)))
+          if (svg) SvgImage.art(DataAddress.text(bytes)) else None
+        }
+        art match {
+          case Some(a) =>
+            svgs(uri) = a
+            SvgImage.drawn(uri, a)
+          case None =>
+            notSvg += uri
+            if (read.nonEmpty) SvgImage.undecoded(uri)
+        }
+        val picture = art.flatMap(_ => sharper(uri, 0.0, 0.0)).orNull
+        reading.remove(uri).getOrElse(Nil).reverse.foreach(_(picture))
+      }
+      if (at.startsWith("http")) {
+        val thread = new Thread(() => {
+          val read = fetch(at)
+          javafx.application.Platform.runLater(() => finish(read))
+        }, "everyui-svg")
+        thread.setDaemon(true)
+        thread.start()
+      } else finish(fetch(at))
+  }
+
+  // the bytes at `at` and the type they came as ("" where they say none); None where they cannot be had
+  private def fetch(at: String): Option[(String, Array[Byte])] =
+    if (at.startsWith("data:")) DataAddress(at)
+    else try {
+      val connection = new java.net.URI(at).toURL.openConnection()
+      connection.setConnectTimeout(10000)
+      connection.setReadTimeout(20000)
+      val in = connection.getInputStream
+      try Some((Option(connection.getContentType).getOrElse(""), in.readAllBytes())) finally in.close()
+    } catch {
+      case _: java.io.IOException | _: IllegalArgumentException | _: java.net.URISyntaxException => None
+    }
 
   /** A pointer's place in the scene in the app's units: over the size the app was drawn at as the event began
     * (everyui.theme.UiScale), so one that changes the size as it is heard (a click on a + that turns it up) is the
@@ -2068,57 +2236,35 @@ object Platform {
     if (path.startsWith("/") && !path.startsWith("//")) Host.address(path)
     else new File(Host.assets, path).toURI.toString
 
-  /** Load `uri` and report its natural size: at once from a file, once it arrives from the network (0 x 0 if it
-    * cannot). */
   /** The picture at `uri` as `across` by `down` cells, each its average colour (0xRRGGBB, row by row): what words over
     * it are judged against (`everyui.access.Access`). Each cell averages an 8 by 8 spread of its pixels, so a star
     * does not make a cell. Nothing where it will not load. */
-  def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = loadImage(uri, (w, h) =>
-    if (w <= 0.0 || h <= 0.0) read(Nil)
-    else {
-      val pixels = Host.image(uri).getPixelReader
-      if (pixels == null) read(Nil)
-      else read((0 until across * down).toList.map { cell =>
-        val (cx, cy) = (cell % across, cell / across)
-        var (r, g, b) = (0, 0, 0)
-        for (j <- 0 until 8; i <- 0 until 8) {
-          val x = math.min(w.toInt - 1, ((cx + (i + 0.5) / 8.0) * w / across).toInt)
-          val y = math.min(h.toInt - 1, ((cy + (j + 0.5) / 8.0) * h / down).toInt)
-          val argb = pixels.getArgb(x, y)
-          r += (argb >> 16) & 0xff
-          g += (argb >> 8) & 0xff
-          b += argb & 0xff
-        }
-        ((r / 64) << 16) | ((g / 64) << 8) | (b / 64)
-      })
-    })
-
-  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
-    val image = Host.image(uri)
-    if (image.getProgress >= 1.0 || image.isError) loaded(image.getWidth, image.getHeight)
-    else {
-      // answered once, whichever comes first: the whole of it, or an error (which a download failing part-way through
-      // raises without the progress ever reaching the end)
-      var answered = false
-      val answer: () => Unit = () => if (!answered) {
-        answered = true
-        if (image.isError) loaded(0.0, 0.0) else loaded(image.getWidth, image.getHeight)
+  def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = Host.imageThen(uri) { image =>
+    val (w, h) = if (image == null || image.isError) (0.0, 0.0) else (image.getWidth, image.getHeight)
+    val pixels = if (w <= 0.0 || h <= 0.0) null else image.getPixelReader
+    if (pixels == null) read(Nil)
+    else read((0 until across * down).toList.map { cell =>
+      val (cx, cy) = (cell % across, cell / across)
+      var (r, g, b) = (0, 0, 0)
+      for (j <- 0 until 8; i <- 0 until 8) {
+        val x = math.min(w.toInt - 1, ((cx + (i + 0.5) / 8.0) * w / across).toInt)
+        val y = math.min(h.toInt - 1, ((cy + (j + 0.5) / 8.0) * h / down).toInt)
+        val argb = pixels.getArgb(x, y)
+        r += (argb >> 16) & 0xff
+        g += (argb >> 8) & 0xff
+        b += argb & 0xff
       }
-      image.progressProperty.addListener(new ChangeListener[Number] {
-        override def changed(o: ObservableValue[? <: Number], was: Number, now: Number): Unit =
-          if (now.doubleValue >= 1.0) {
-            o.removeListener(this)
-            answer()
-          }
-      })
-      image.errorProperty.addListener(new ChangeListener[java.lang.Boolean] {
-        override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean,
-                             now: java.lang.Boolean): Unit =
-          if (now) {
-            o.removeListener(this)
-            answer()
-          }
-      })
+      ((r / 64) << 16) | ((g / 64) << 8) | (b / 64)
+    })
+  }
+
+  /** Load `uri` and report its natural size (an SVG's own, `Host.natural`): at once from a file, once it arrives from
+    * the network, 0 x 0 if it cannot be had or decoded (`Host.imageThen`). */
+  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = Host.imageThen(uri) { image =>
+    if (image == null || image.isError) loaded(0.0, 0.0)
+    else {
+      val (w, h) = Host.natural(uri, image)
+      loaded(w, h)
     }
   }
 

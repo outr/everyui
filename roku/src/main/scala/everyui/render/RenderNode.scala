@@ -894,7 +894,17 @@ object Platform {
     * is left as it is: `imagePath` hands one out, and resolving it again made `pkg:pkg:/…`, which nothing opens. */
   def resolvePath(path: String): String = if (path.startsWith("pkg:")) path else "pkg:" + path
 
-  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = uiLoadImage(uri, loaded)
+  /** Decode `uri` and report its natural size, 0 x 0 where it cannot be had or decoded (logged once). A Poster reads
+    * no SVG, so one named as an SVG (`SvgImage.named`) is never asked for: it is logged once and comes as 0 x 0, and an
+    * Avatar keeps its initial. */
+  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit =
+    if (everyui.image.SvgImage.named(uri)) {
+      everyui.image.SvgImage.undrawn(uri, "a Roku")
+      loaded(0.0, 0.0)
+    } else uiLoadImage(uri, (w: Double, h: Double) => {
+      if (w <= 0.0 || h <= 0.0) everyui.image.SvgImage.undecoded(uri)
+      loaded(w, h)
+    })
   /** A picture's cells, its average colour in each (`everyui.access.Access`): none read here, so words over a picture
     * are judged as over the worst it could be. */
   def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = read(Nil)

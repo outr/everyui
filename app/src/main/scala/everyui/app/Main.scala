@@ -55,6 +55,8 @@ import everyui.render.Platform
   *              kept on the device (`scale=<factor>`, `theme=light`, `rtl=1`)
   *   menus      a menu whose entries lead with letter tiles, pictures large and small, one that will not load, icons,
   *              a tick and nothing, with details under them, their words lined up (`theme=light`, `rtl=1`)
+  *   svg        SVG pictures in avatars and image views, from the app's files, a server (by .svg and by its bytes) and a
+  *              data: address, and one that is no picture (`svghost=`, `theme=light`)
   *   completion fields completing what is typed: To and Cc addresses between separators, a city by the whole field, a
   *              box of lines' #tags, and the city in a dialog (`dialog=1`, `theme=light`, `rtl=1`)
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
@@ -188,6 +190,7 @@ import everyui.render.Platform
   else if (demo == "memory") MemoryDemo.run()
   else if (demo == "scale") ScaleDemo.run()
   else if (demo == "menus") MenusDemo.run()
+  else if (demo == "svg") SvgDemo.run()
   else if (demo == "completion") CompletionDemo.run()
   else if (demo == "narrow") NarrowDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()

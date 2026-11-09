@@ -443,6 +443,7 @@ class RenderNode(val view: View) {
     val params = view.getLayoutParams
     params.width = math.max(0L, math.round(width * EmbedView.scaleOf(view))).toInt
     view.setLayoutParams(params)
+    sharpen()
   }
 
   def setHeight(height: Double): Unit = {
@@ -450,6 +451,7 @@ class RenderNode(val view: View) {
     val params = view.getLayoutParams
     params.height = math.max(0L, math.round(height * EmbedView.scaleOf(view))).toInt
     view.setLayoutParams(params)
+    sharpen()
   }
 
   /** `"#rrggbb"`, or `""` for transparent. */
@@ -1386,11 +1388,29 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
-  /** The picture the view draws, or none (which lets the one it was drawing go). */
+  /** The picture the view draws, or none (which lets the one it was drawing go): the last one asked for, never one
+    * that came after another was. An SVG is drawn again sharper where the view shows it larger than it was drawn. */
   def setImageSource(uri: String): Unit = view match {
     case i: ImageView =>
+      picture = uri
       if (uri.isEmpty) i.setImageDrawable(null)
-      else Host.bitmapThen(uri)(b => if (b != null) i.setImageBitmap(b))
+      else Host.bitmapThen(uri)(b => if (b != null && picture == uri) {
+        i.setImageBitmap(b)
+        sharpen()
+      })
+    case _ => ()
+  }
+  // the address of the picture it draws
+  private var picture: String = ""
+  // an SVG drawn again where the view shows it larger than it was drawn
+  private def sharpen(): Unit = if (picture != null && picture.nonEmpty) view match {
+    case i: ImageView => Host.sharper(picture, explicitWidth, explicitHeight).foreach { b =>
+      val shown = i.getDrawable match {
+        case d: android.graphics.drawable.BitmapDrawable => d.getBitmap
+        case _ => null
+      }
+      if (shown != null && !(shown eq b)) i.setImageBitmap(b)
+    }
     case _ => ()
   }
 
@@ -1968,49 +1988,154 @@ object Host {
         // a pixel, half the memory and half the texture to upload; one with transparency is decoded as it is all the same
         val options = new BitmapFactory.Options()
         if (everyui.perf.Quality.compactPixels) options.inPreferredConfig = Bitmap.Config.RGB_565
-        try BitmapFactory.decodeStream(in, null, options) finally in.close()
+        try decode(uri, in, Option(connection.getContentType).getOrElse(""), options) finally in.close()
+      }
+    // a picture written into its address (`data:image/svg+xml;base64,…`, `data:image/png;…`)
+    case None if uri.startsWith("data:") =>
+      elsewhere(uri, done) {
+        everyui.image.DataAddress(uri).map { case (kind, bytes) =>
+          decode(uri, new java.io.ByteArrayInputStream(bytes), kind, new BitmapFactory.Options())
+        }.orNull
       }
     // a document the person chose (FileAccess): a photo's full size is far more than a preview needs, so it is decoded
     // scaled down by halves to no more than twice `previewSide`
     case None if uri.startsWith("content:") =>
       elsewhere(uri, done) {
         val address = android.net.Uri.parse(uri)
-        val bounds = new BitmapFactory.Options()
-        bounds.inJustDecodeBounds = true
-        val probe = activity.getContentResolver.openInputStream(address)
-        try BitmapFactory.decodeStream(probe, null, bounds) finally probe.close()
-        val options = new BitmapFactory.Options()
-        while (math.max(bounds.outWidth, bounds.outHeight) / (options.inSampleSize max 1) > previewSide * 2)
-          options.inSampleSize = (options.inSampleSize max 1) * 2
-        val in = activity.getContentResolver.openInputStream(address)
-        try BitmapFactory.decodeStream(in, null, options) finally in.close()
+        val resolver = activity.getContentResolver
+        val kind = Option(resolver.getType(address)).getOrElse("")
+        val first = resolver.openInputStream(address)
+        val head = try headOf(first) finally first.close()
+        if (everyui.image.SvgImage.named(uri, kind) || everyui.image.SvgImage.sniffed(head)) {
+          val in = resolver.openInputStream(address)
+          try svgBitmap(uri, bytesOf(in)) finally in.close()
+        } else {
+          val bounds = new BitmapFactory.Options()
+          bounds.inJustDecodeBounds = true
+          val probe = resolver.openInputStream(address)
+          try BitmapFactory.decodeStream(probe, null, bounds) finally probe.close()
+          val options = new BitmapFactory.Options()
+          while (math.max(bounds.outWidth, bounds.outHeight) / (options.inSampleSize max 1) > previewSide * 2)
+            options.inSampleSize = (options.inSampleSize max 1) * 2
+          val in = resolver.openInputStream(address)
+          try BitmapFactory.decodeStream(in, null, options) finally in.close()
+        }
       }
     // one the APK does not hold measures 0 and is read on a loading thread, where its failure is a picture missing
-    // rather than an exception out of whatever asked (an activity starting)
+    // rather than an exception out of whatever asked (an activity starting); so does an SVG, which has no pixels to
+    // count until it is drawn
     case None if pixels(uri) > 0L && pixels(uri) <= decodedHere => done(bitmap(uri))
     case None =>
       elsewhere(uri, done) {
         val in = activity.getAssets.open(uri)
-        try BitmapFactory.decodeStream(in) finally in.close()
+        try decode(uri, in, "", new BitmapFactory.Options()) finally in.close()
       }
+  }
+
+  /** The SVGs drawn so far, by address: each drawn again larger for a view that shows it larger than it was
+    * (`sharper`). Written on the loading threads. */
+  private val svgs = new java.util.concurrent.ConcurrentHashMap[String, everyui.draw.VectorArt]()
+
+  /** `raw` decoded: an SVG (by its address, the type it came as, or its first bytes) read as VectorArt and drawn
+    * (`svgBitmap`), anything else by BitmapFactory with `options`; null where neither makes a picture of it, as
+    * BitmapFactory says nothing of why. On a loading thread. */
+  private def decode(uri: String, raw: java.io.InputStream, kind: String, options: BitmapFactory.Options): Bitmap = {
+    val in = new java.io.BufferedInputStream(raw, 64 * 1024)
+    in.mark(4096)
+    val head = headOf(in)
+    in.reset()
+    if (everyui.image.SvgImage.named(uri, kind) || everyui.image.SvgImage.sniffed(head)) svgBitmap(uri, bytesOf(in))
+    else BitmapFactory.decodeStream(in, null, options)
+  }
+
+  // the first bytes of `in` as text, enough to tell an SVG by
+  private def headOf(in: java.io.InputStream): String = {
+    val head = new Array[Byte](512)
+    var n = 0
+    var read = 0
+    while (n < head.length && read >= 0) {
+      read = in.read(head, n, head.length - n)
+      if (read > 0) n += read
+    }
+    everyui.image.DataAddress.text(head.take(n))
+  }
+
+  // the rest of `in` (an InputStream's own readAllBytes is Android 13's)
+  private def bytesOf(in: java.io.InputStream): Array[Byte] = {
+    val out = new java.io.ByteArrayOutputStream()
+    val buffer = new Array[Byte](16 * 1024)
+    var read = in.read(buffer)
+    while (read >= 0) {
+      out.write(buffer, 0, read)
+      read = in.read(buffer)
+    }
+    out.toByteArray
+  }
+
+  // the SVG `bytes` at `uri` drawn at its own size times the screen's density, and kept for drawing again; null where
+  // it holds none
+  private def svgBitmap(uri: String, bytes: Array[Byte]): Bitmap =
+    everyui.image.SvgImage.art(everyui.image.DataAddress.text(bytes)) match {
+      case Some(art) =>
+        svgs.put(uri, art)
+        val (nw, nh) = art.natural
+        val (w, h) = everyui.image.SvgImage.pixels(art, nw * scale, nh * scale)
+        svgBitmap(art, w, h)
+      case None => null
+    }
+
+  /** `art` drawn in its own colours into a bitmap `w` by `h` pixels, clear where it draws nothing, with Android's
+    * Canvas and Path (`AndroidArtPen`). On any thread. */
+  def svgBitmap(art: everyui.draw.VectorArt, w: Int, h: Int): Bitmap = {
+    val b = Bitmap.createBitmap(math.max(1, w), math.max(1, h), Bitmap.Config.ARGB_8888)
+    art.paint(new AndroidArtPen(new android.graphics.Canvas(b)), b.getWidth.toDouble, b.getHeight.toDouble)
+    b
+  }
+
+  /** The size of the picture asked for at `asked` as the app lays it out: an SVG's own (`VectorArt.natural`),
+    * anything else its pixels. */
+  def natural(asked: String, b: Bitmap): (Double, Double) =
+    Option(svgs.get(address(asked))).map(_.natural).getOrElse((b.getWidth.toDouble, b.getHeight.toDouble))
+
+  /** The SVG asked for at `asked` drawn at least as large as a view `wide` by `high` (in layout units) shows it on
+    * the screen: the one held where it is large enough, else drawn again and held in its place. None where it is no
+    * SVG drawn. On the main thread. */
+  def sharper(asked: String, wide: Double, high: Double): Option[Bitmap] = {
+    val uri = address(asked)
+    Option(svgs.get(uri)).map { art =>
+      val (w, h) = everyui.image.SvgImage.pixels(art, math.max(0.0, wide) * scale, math.max(0.0, high) * scale)
+      held(uri) match {
+        case Some(b) if b.getWidth >= w && b.getHeight >= h => b
+        case _ =>
+          val b = svgBitmap(art, w, h)
+          bitmaps.remove(uri).foreach(old => bitmapBytes -= old.getAllocationByteCount.toLong)
+          keep(uri, b)
+          b
+      }
+    }
   }
 
   /** `load` on one of the loading threads, then everyone waiting on `uri` on the main thread: one load per address,
     * however many ask for it, since a rail shows the same artwork more than once, and each picture asks twice over
-    * (its natural size, then its pixels). */
+    * (its natural size, then its pixels). A load that came to nothing without an exception had something that was no
+    * picture (`SvgImage.undecoded`), and an SVG drawn without some of it says so; each logged once. */
   private def elsewhere(uri: String, done: Bitmap => Unit)(load: => Bitmap): Unit = pending.get(uri) match {
     case Some(waiting) => pending(uri) = done :: waiting
     case None =>
       pending(uri) = List(done)
       loaders.execute(() => {
+        var thrown = false
         val b =
           try load
           catch {
             case t: Exception =>
               Platform.logError("Loading " + uri, t)
+              thrown = true
               null
           }
         activity.runOnUiThread(() => {
+          if (b == null && !thrown) everyui.image.SvgImage.undecoded(uri)
+          Option(svgs.get(uri)).foreach(art => everyui.image.SvgImage.drawn(uri, art))
           keep(uri, b)
           pending.remove(uri).getOrElse(Nil).reverse.foreach(_(b))
         })
@@ -2025,7 +2150,7 @@ object Host {
   /** The side a chosen document's picture is shown at, at most (a preview beside its name). */
   private val previewSide: Int = 256
 
-  /** Each asset's size in pixels, read once from its header. */
+  /** Each asset's size in pixels, read once from its header: 0 for one BitmapFactory cannot read (an SVG). */
   private val assetPixels = mutable.Map.empty[String, Long]
 
   private def pixels(uri: String): Long = assetPixels.getOrElseUpdate(uri,
@@ -2035,7 +2160,7 @@ object Host {
         val bounds = new BitmapFactory.Options
         bounds.inJustDecodeBounds = true
         BitmapFactory.decodeStream(in, null, bounds)
-        bounds.outWidth.toLong * bounds.outHeight.toLong
+        math.max(0, bounds.outWidth).toLong * math.max(0, bounds.outHeight).toLong
       } finally in.close()
     } catch { case _: java.io.IOException => 0L })
 
@@ -3105,9 +3230,14 @@ object Platform {
     * else the app's server's (`Host.address`). */
   def resolvePath(path: String): String = if (path.startsWith("/")) Host.address(path) else path
 
-  /** Decode `uri` and report its natural size. */
-  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit =
-    Host.bitmapThen(uri)(b => if (b == null) loaded(0.0, 0.0) else loaded(b.getWidth.toDouble, b.getHeight.toDouble))
+  /** Decode `uri` and report its natural size (an SVG's own, `Host.natural`), 0 x 0 where it cannot be had or
+    * decoded. */
+  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = Host.bitmapThen(uri)(b =>
+    if (b == null) loaded(0.0, 0.0)
+    else {
+      val (w, h) = Host.natural(uri, b)
+      loaded(w, h)
+    })
 
   /** The picture at `uri` as `across` by `down` cells, each its average colour (0xRRGGBB, row by row): what words over
     * it are judged against (`everyui.access.Access`). Scaled to eight times as fine and each cell's pixels averaged,

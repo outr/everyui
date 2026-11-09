@@ -14,9 +14,11 @@ class Image(val source: String, val width: Double, val height: Double) {
 object Image {
   lazy val empty: Image = new Image("", 0.0, 0.0)
 
-  /** Load `source` (a site-absolute path, as in youi, or a URL) and complete with its natural size. */
+  /** Load `source` (a site-absolute path, as in youi, a URL, or a `data:` address) and complete with its natural size:
+    * 0 by 0 where it cannot be had or decoded. An SVG's is its own (its width and height, else its viewBox's); see
+    * CONSUMING.md for which formats each platform draws. */
   def apply(source: String): Task[Image] = {
-    val uri = if (source.contains("://")) source else Platform.resolvePath(source)
+    val uri = if (source.contains("://") || source.startsWith("data:")) source else Platform.resolvePath(source)
     Task.async[Image](done => Platform.loadImage(uri, (w, h) => done(new Image(uri, w, h))))
   }
 }

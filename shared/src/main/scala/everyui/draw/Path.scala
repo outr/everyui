@@ -39,6 +39,14 @@ final class Path(val ops: Vector[PathOp]) {
 
   def isEmpty: Boolean = ops.isEmpty
 
+  /** The path through the affine transform SVG writes as `matrix(a b c d e f)`, each point (x, y) taken to (a x + c y
+    * + e, b x + d y + f): exact, as a line is still a line and a cubic still a cubic. */
+  def transformed(a: Double, b: Double, c: Double, d: Double, e: Double, f: Double): Path = new Path(ops.map { op =>
+    val v = op.values
+    op.copy(values = v.indices.toList.map(i =>
+      if (i % 2 == 0) a * v(i) + c * v(i + 1) + e else b * v(i - 1) + d * v(i) + f))
+  })
+
   /** The path `scale` times its size, then moved `dx` across and `dy` down: art drawn in a box of its own (an icon's
     * 24 by 24) fitted to where it shows. */
   def placed(scale: Double, dx: Double, dy: Double): Path = new Path(ops.map { op =>

@@ -2970,8 +2970,12 @@ object Platform {
     val img = dom.document.createElement("img").asInstanceOf[html.Image]
     img.addEventListener("load", (_: dom.Event) => loaded(img.naturalWidth.toDouble, img.naturalHeight.toDouble))
     // one that will not load says so, as 0 x 0, as the other backends do: left unanswered, a picture that failed could
-    // not be told from one still coming
-    img.addEventListener("error", (_: dom.Event) => loaded(0.0, 0.0))
+    // not be told from one still coming (the browser does not say whether it came and could not be decoded, or never
+    // came: logged once as the first, as the other backends log it)
+    img.addEventListener("error", (_: dom.Event) => {
+      everyui.image.SvgImage.undecoded(uri)
+      loaded(0.0, 0.0)
+    })
     img.src = uri
   }
 

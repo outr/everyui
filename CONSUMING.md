@@ -4531,6 +4531,42 @@ default). A view the app sizes itself, such as an avatar or a picture fitted to 
 (`sizedByPicture @= false`) and keeps its size whatever picture comes. `Avatar`, `ImageViewer`, `AttachmentChip` and
 `ImageView(source, height)` do so.
 
+**Which pictures each platform draws.** `Image(url)`, `ImageView` and `Avatar` take an http(s) URL, a site-absolute or
+relative path of the app's own files, or a `data:` address (base64 or percent-encoded).
+
+- **Web**: whatever the browser's `<img>` reads: PNG, JPEG, GIF, WebP, AVIF and SVG (as an `<img>` draws one: its own
+  shapes, text and effects, no scripts and nothing it would fetch).
+- **Desktop**: PNG, JPEG, GIF and BMP through JavaFX, and SVG through EveryUI's own reader (below).
+- **Android**: whatever `BitmapFactory` reads (PNG, JPEG, GIF, WebP, HEIF), and SVG through EveryUI's own reader.
+- **Roku, Apple TV**: PNG and JPEG (and what else the device's own image view reads), and no SVG. One named as an SVG
+  (by its .svg, or a `data:image/svg+xml` address) comes as 0 by 0, so an `Avatar` keeps its initial, and the console
+  says `Image: <url> is an SVG, which a Roku cannot draw` once for it.
+
+An SVG is known by its type (`image/svg+xml`), its .svg, or its first bytes (`<svg`, or `<?xml`, near the start, as
+when a server sends one with no type and no extension). It is drawn with the platform's own vector drawing (Android's
+Canvas and Path into a Bitmap; JavaFX's GraphicsContext, snapshotted), at the size the view shows it times the
+screen's density, and drawn again larger where a view shows it larger, so it stays sharp. Its size as `Image` reports
+it is its own: its `<svg>`'s width and height, one of them with the other in the viewBox's proportion, else the
+viewBox's.
+
+What the reader draws (`everyui.draw.VectorArt.parse`, which `VectorIcon` uses too):
+
+- `<path>` (every command, arcs included), `<rect>` (corners rounded by rx and ry), `<circle>`, `<ellipse>`, `<line>`,
+  `<polyline>` and `<polygon>`, in `<g>`, `<a>` and `<svg>`.
+- `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`, `fill-rule`, `fill-opacity`,
+  `stroke-opacity`, `opacity` and `color`, as attributes or in `style`, each handed down from the groups round a shape.
+  A group's `opacity` is each of its shapes' own: where two overlap, the one under shows through.
+- `transform`: matrix, translate, scale, rotate (about a point too), skewX and skewY, through every group.
+- The viewBox, and `preserveAspectRatio`'s alignment (xMinYMin to xMaxYMax, or none), always as meet.
+- Colours by name, #rgb, #rgba, #rrggbb, #rrggbbaa, rgb() and rgba() (numbers or percentages), none and
+  `currentColor` (its `color`, else black).
+
+A gradient is drawn in its first colour. Text, `<use>`, an embedded image, a filter, a mask, a clip, a marker, a pattern
+and a CSS `<style>` are not drawn: the rest is, and the console says what was left out, once for each picture
+(`Image: <url> is drawn without its gradients (drawn in their first colour), text`). A picture that came but is neither
+an image the platform reads nor an SVG says `Image: <url> could not be decoded (not a raster image or SVG?)`, once,
+and comes as 0 by 0.
+
 ### The Roku
 
 The Roku runs no JVM: the app is compiled against everyui-roku (keeping its trees with `-Yretain-trees`), then
