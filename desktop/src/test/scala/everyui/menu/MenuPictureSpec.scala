@@ -9,7 +9,9 @@ import java.io.File
 
 /** An entry of a menu with a picture where its icon would be: a letter on its colour at once, a picture once it has
   * loaded and what it falls back to until then, or where it will not; dimmed where the entry is disabled, its tick at
-  * the row's end, and a screen reader hearing only its label. */
+  * the row's end, and a screen reader hearing only its label; as big as an icon whatever its own size, as far from its
+  * words as an icon is, with a detail and without, and every row's words, after a picture, an icon, a tick or nothing,
+  * in one column. */
 class MenuPictureSpec extends FxSpec {
   private def portrait(name: String, rgb: Int): String = {
     val dir = new File("target/menupicture")
@@ -35,10 +37,10 @@ class MenuPictureSpec extends FxSpec {
     view.childComponents.toList.flatMap(c => c :: inside(c))
 
   "A menu entry's picture" should {
-    "draw a letter on its colour where the icon would be, as wide a slot" in {
+    "draw a letter on its colour where the icon would be, as big as an icon" in {
       val row = shown(MenuItem("Nabo", picture = Some(MenuPicture.letter("N", Color.fromHex("1565c0")))))
       val tile = picture(row)
-      fx(tile.size.width()) shouldBe (14.0 * 1.4) +- 0.01
+      fx(tile.size.width()) shouldBe MenuRow.lead(14.0) +- 0.01
       fx(inside(tile).collectFirst { case t: TextView => t.content() }) shouldBe Some("N")
       fx(row.semantics().label) shouldBe "Nabo"
     }
@@ -74,6 +76,86 @@ class MenuPictureSpec extends FxSpec {
       fx(on @= false)
       fx(tick.icon()) shouldBe MaterialIcon.Empty
       fx(ticked.semantics().checked) shouldBe Some(false)
+      fx(ui.children.clear())
+    }
+  }
+
+  // a row's words (its label and detail), and what it leads with: its picture, else the glyph before the words
+  private def wordsOf(row: MenuRow): Component = row.childComponents.find(c => !c.isInstanceOf[MenuPictureView] &&
+    inside(c).exists { case t: TextView => t.content() == row.item.label; case _ => false }).get
+  private def leadOf(row: MenuRow): Option[Component] = {
+    val words = wordsOf(row)
+    row.childComponents.find(c => (c ne words) && c.position.left() < words.position.left())
+  }
+  // between the end of what a row leads with and its words
+  private def gapOf(row: MenuRow): Double = fx {
+    val lead = leadOf(row).get
+    wordsOf(row).position.left() - lead.position.left() - lead.size.width()
+  }
+  private def menuOf(items: List[MenuItem]): Menu = fx {
+    ui.children.clear()
+    Menu.at(10.0, 10.0, items)
+  }
+  private def closed(): Unit = fx {
+    while (everyui.component.Modal.showing) everyui.component.Modal.close()
+    ui.children.clear()
+  }
+
+  "A menu with pictures and icons" should {
+    // pictures smaller than the icon, as big, larger and far larger, drawn at the picture's size whatever their own
+    def sized(name: String, side: Int): String = {
+      val dir = new File("target/menupicture")
+      dir.mkdirs()
+      val file = new File(dir, name + ".png")
+      val image = new java.awt.image.BufferedImage(side, side, java.awt.image.BufferedImage.TYPE_INT_RGB)
+      (0 until side).foreach(x => (0 until side).foreach(y => image.setRGB(x, y, 0x22aa44)))
+      javax.imageio.ImageIO.write(image, "png", file)
+      "file://" + file.getAbsolutePath
+    }
+    val pictures = List(sized("eight", 8), sized("sixteen", 16), sized("twenty", 20), sized("ninetysix", 96))
+    def items(detail: String): List[MenuItem] =
+      MenuItem("Icon", icon = MaterialIcon.Folder, detail = detail) ::
+        MenuItem("Letter", detail = detail, picture = Some(MenuPicture.letter("S", Color.fromHex("5c6bc0")))) ::
+        pictures.zipWithIndex.map { case (url, i) => MenuItem("Picture " + i, detail = detail,
+          picture = Some(MenuPicture.image(url, Some(MenuPicture.letter("P", Color.Black))))) } ++
+        List(MenuItem("Blank", detail = detail), MenuItem("Ticked", checked = Some(true), detail = detail),
+          MenuItem.separator, MenuItem("Last icon", icon = MaterialIcon.Settings))
+
+    "keep each picture as far from its words as an icon is, with a detail and without, whatever its size" in {
+      List("", "A line of detail under the label").foreach { detail =>
+        val menu = menuOf(items(detail))
+        val rows = fx(menu.rows.filterNot(_.item.separator))
+        val pictured = rows.filter(_.item.picture.nonEmpty)
+        // the pictures loaded, so it is their drawn size measured, not what stood in for them
+        eventually(pictured.forall(r => inside(leadOf(r).get).exists(_.isInstanceOf[ImageView]) ||
+          r.item.picture.exists(_.isInstanceOf[MenuPicture.Letter]))) shouldBe true
+        val icon = gapOf(rows.head)
+        icon shouldBe MenuRow.gap(Menu.textSize()) +- 0.01
+        pictured.foreach(r => withClue(r.item.label + " " + detail)(gapOf(r) shouldBe icon +- 0.01))
+        // each picture drawn as big as the icon whatever its image's own size: 8, 16, 20 and 96 pixels about an icon
+        // of 16 at a menu's 14 points
+        val side = fx(leadOf(rows.head).get.size.width())
+        pictured.foreach(r => fx(leadOf(r).get.size.width()) shouldBe side +- 0.01)
+        closed()
+      }
+    }
+    "line every row's words up in one column: icons, pictures, a tick and none" in {
+      List("", "A line of detail under the label").foreach { detail =>
+        val menu = menuOf(items(detail))
+        val starts = fx(menu.rows.filterNot(_.item.separator).map(r => r.item.label -> wordsOf(r).position.left()))
+        starts.map(_._2).distinct.size shouldBe 1
+        closed()
+        // where a menu of icons alone has its words: a picture moves no row's words
+        val plain = menuOf(List(MenuItem("Icon", icon = MaterialIcon.Folder, detail = detail), MenuItem("Blank")))
+        fx(plain.rows.map(r => wordsOf(r).position.left()).distinct) shouldBe List(starts.head._2)
+        closed()
+      }
+    }
+    "keep a picture apart from its words on a row of its own, outside a menu" in {
+      val icon = gapOf(shown(MenuItem("Icon", icon = MaterialIcon.Folder, detail = "Detail")))
+      val letter = gapOf(shown(MenuItem("Letter", detail = "Detail", picture = Some(MenuPicture.letter("S",
+        Color.Black)))))
+      letter shouldBe icon +- 0.01
       fx(ui.children.clear())
     }
   }

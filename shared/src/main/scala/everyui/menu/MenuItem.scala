@@ -17,8 +17,9 @@ import reactify.Val
   * action that refuses leaves it as it was (`MenuItem.toggle`).
   *
   * A `picture` is drawn where the icon would be, a small rounded square (a workspace's icon, a face, a logo, or a
-  * letter on a colour: `MenuPicture`), dimmed with the entry where it is disabled; a ticked one shows its tick at the
-  * row's end instead. A picture still to load stands in as its fallback, else the icon. */
+  * letter on a colour: `MenuPicture`) as big as the icon whatever its own size, so its words line up with the other
+  * entries'; dimmed with the entry where it is disabled; a ticked one shows its tick at the row's end instead. A
+  * picture still to load stands in as its fallback, else the icon. */
 case class MenuItem(label: String,
                     action: () => Unit = () => (),
                     icon: MaterialIcon = MaterialIcon.Empty,

@@ -11,10 +11,11 @@ import everyui.theme.Theme
 import everyui.component.types.Semantics
 import reactify.*
 
-/** A row of a [[Menu]], `width` wide: a slot for the tick or the icon, the label (and its detail under it), and at the
-  * right the shortcut, the note, or the way into a submenu. It lights under the focus, which a pointer resting on it
-  * brings, and stays half lit while it is the menu's current choice (`active`), ringed in the accent with its words
-  * in it; `chosen` hears it clicked or entered, and `opened` the arrow into its submenu. A separator is a rule. */
+/** A row of a [[Menu]], `width` wide: a slot for the tick, the icon or the picture, the label (and its detail under
+  * it), and at the right the shortcut, the note, or the way into a submenu. It lights under the focus, which a pointer
+  * resting on it brings, and stays half lit while it is the menu's current choice (`active`), ringed in the accent
+  * with its words in it; `chosen` hears it clicked or entered, and `opened` the arrow into its submenu. A separator is
+  * a rule. */
 class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => Double = 0.0) extends Container {
   /** A click, a tap or OK on it. */
   val chosen: Channel[Unit] = Channel[Unit]
@@ -22,7 +23,7 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
   val opened: Channel[Unit] = Channel[Unit]
 
   private val pad: Double = points * 0.85
-  private val slot: Double = points * 1.4
+  private val slot: Double = MenuRow.lead(points) + MenuRow.gap(points)
   private val ink: Val[Color] = own(Val(
     if (!item.enabled) Theme.muted().withAlpha(0.6) else if (item.danger) Theme.warning()
     else if (item.active) Theme.accentText() else Theme.text()))
@@ -30,16 +31,17 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
   // whether it can be ticked, and so has a tick to show, where it is on
   private val tickable: Boolean = item.on.nonEmpty || item.checked.nonEmpty
   // a tick that follows the app (`MenuItem.on`) is there however it starts, shown as it is on; a picture takes the
-  // place, its tick then at the row's end (`trail`)
+  // place, its tick then at the row's end (`trail`); each the one size (`MenuRow.lead`), a picture whatever its own,
+  // so it is as far from its words as an icon is and every row's words line up
   private val lead: Option[Component] =
-    if (item.picture.nonEmpty) Some(new MenuPictureView(item.picture.get, slot, item.icon, ink()) {
+    if (item.picture.nonEmpty) Some(new MenuPictureView(item.picture.get, MenuRow.lead(points), item.icon, ink()) {
       opacity @= (if (item.enabled) 1.0 else 0.5)
     })
-    else if (item.on.nonEmpty) Some(new MaterialIconView(item.icon, points * 1.15) {
+    else if (item.on.nonEmpty) Some(new MaterialIconView(item.icon, MenuRow.lead(points)) {
       icon := (if (item.ticked) MaterialIcon.Check else item.icon)
     })
-    else if (item.checked.contains(true)) Some(new MaterialIconView(MaterialIcon.Check, points * 1.15))
-    else if (item.icon.nonEmpty) Some(new MaterialIconView(item.icon, points * 1.15))
+    else if (item.checked.contains(true)) Some(new MaterialIconView(MaterialIcon.Check, MenuRow.lead(points)))
+    else if (item.icon.nonEmpty) Some(new MaterialIconView(item.icon, MenuRow.lead(points)))
     else None
   private val label = new TextView {
     content @= item.label
@@ -153,6 +155,14 @@ object MenuRow {
 
   /** How thick the accent ring round the current choice is (`MenuItem.active`). */
   val ring: Double = 1.5
+
+  /** How big what a row of words `points` tall leads with is: a tick, an icon or a picture (`MenuItem.picture`), all
+    * one size, so that each is the same gap from its words (`gap`) and the words of every row start in one column. A
+    * picture drawn as wide as the slot, a little larger than an icon, left none and ran into its words. */
+  def lead(points: Double): Double = points * 1.15
+
+  /** The gap between what a row leads with and its words. */
+  def gap(points: Double): Double = points * 0.25
 
   /** A row's ground: lit under the focus; half lit for the menu's current choice (`MenuItem.active`) while the focus is
     * elsewhere, so that the focus is always the plainest to see; clear otherwise. */
