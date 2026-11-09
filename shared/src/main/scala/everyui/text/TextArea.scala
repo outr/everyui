@@ -55,9 +55,22 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
   /** Where a paste's pictures and files go (`InputView.pastedFiles`); None takes none. */
   val pastedFiles: Var[Option[PickedFile => Unit]] = own(Var(None))
+  /** Where what is typed in it is completed from (`CompletionSource`), as a [[everyui.component.TextInput]]'s is: the
+    * piece at the caret (the whole box, or what lies between its separators) asked about as it changes, and the
+    * answers listed under the box. While they show, Down and Up move through them, Enter and Tab (a click, a tap) put
+    * the lit one in the piece's place (heard on `completed`), and Escape closes the list alone; without them Enter is
+    * a new line again. None, the default, offers nothing. Only where the platform has a field of its own. */
+  val completions: Var[Option[CompletionSource]] = own(Var(None))
+  /** The completion chosen from its list, once it is in the box. */
+  val completed: Channel[everyui.chat.Completion] = Channel[everyui.chat.Completion]
+  /** Whether its list of completions shows. */
+  val completing: Val[Boolean] = completingNow
+  private lazy val completingNow: Var[Boolean] = own(Var(false))
 
   private val native = Platform.nativeInput()
   private val direct = Platform.keyboardSupport()
+  // its list of completions, made the first time it is given a source
+  private var completer: Option[FieldCompletion] = None
   private val pad = 10.0
   // the lines as they wrap and as Enter broke them, measured out of sight: how tall the box grows
   private val ruler = new TextView {
@@ -109,6 +122,10 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     }
     input.node.onInputDone(() => editing @= false)
     event.click.attach(_ => editing @= true)
+    // a key the list of completions takes is heard by it alone
+    event.key.down.attach(k => completer.foreach(_.key(k)))
+    completions.attach(s => if (s.nonEmpty && completer.isEmpty) completer = Some(new FieldCompletion(this, input,
+      value, editing, completions, completingNow, completed, points, () => if (label().nonEmpty) label() else hint())))
     children += input
   }
   if (!native) {
@@ -129,8 +146,16 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   }
   event.key.down.attach(k => if (editing() && TextArea.submit.matches(k)) submitted @= value())
 
-  /** Primary+Enter is its own, and the platform's field never sees it. */
-  override def keepsEvent(e: KeyEvent): Boolean = native && editing() && TextArea.submit.matches(e)
+  /** Primary+Enter is its own, and the platform's field never sees it; and while its list of completions shows, the
+    * keys the list takes (`CompletionKey`). */
+  override def keepsEvent(e: KeyEvent): Boolean =
+    (native && editing() && TextArea.submit.matches(e)) || completer.exists(_.keeps(e))
+
+  override def dispose(): Unit = {
+    completer.foreach(_.dispose())
+    completer = None
+    super.dispose()
+  }
 
   override private[everyui] def refocus(): Unit = field.foreach(_.retake(editing, direct))
 

@@ -942,6 +942,41 @@ class RenderNode(val el: html.Element) {
     case _ => Platform.announce(name())
   }
 
+  /** A field that offers completions (`on`) said to be one (`aria-autocomplete`, the browser's own list of what was
+    * typed before turned off where the app has said nothing of autofill), the `list` of them showing as the one it
+    * controls (`aria-controls`) and its lit row as its active one (`aria-activedescendant`), the page's focus staying
+    * in the field: a screen reader reads the lit choice as the keys move it. */
+  def setCompletionList(on: Boolean, list: Option[RenderNode], active: Option[RenderNode], name: () => String): Unit = {
+    def id(n: RenderNode): String = {
+      if (n.el.id.isEmpty) {
+        RenderNode.rowIds += 1
+        n.el.id = "everyui-row-" + RenderNode.rowIds
+      }
+      n.el.id
+    }
+    if (on) el.setAttribute("aria-autocomplete", "list") else el.removeAttribute("aria-autocomplete")
+    if (on && !el.hasAttribute("autocomplete")) {
+      el.setAttribute("autocomplete", "off")
+      el.setAttribute("data-everyui-completes", "")
+    }
+    else if (!on && el.hasAttribute("data-everyui-completes")) {
+      el.removeAttribute("autocomplete")
+      el.removeAttribute("data-everyui-completes")
+    }
+    list match {
+      case Some(l) => el.setAttribute("aria-controls", id(l))
+      case None => el.removeAttribute("aria-controls")
+    }
+    // set afresh, so a row lit again is said again
+    el.removeAttribute("aria-activedescendant")
+    active.foreach(a => el.setAttribute("aria-activedescendant", id(a)))
+  }
+
+  /** A press on it leaves the page's focus where it is (its `mousedown` prevented, which is where a browser moves the
+    * focus, for a touch as for a mouse): a list of completions pressed keeps the field's caret, and a phone its
+    * keyboard. */
+  def holdFocusOnPress(): Unit = el.addEventListener("mousedown", (e: dom.MouseEvent) => e.preventDefault())
+
   /** An `<img>`'s words for what it shows; empty marks it decoration. */
   def setAlt(text: String): Unit = el.setAttribute("alt", text)
 

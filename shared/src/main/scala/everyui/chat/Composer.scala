@@ -728,8 +728,10 @@ class Composer(onSend: Draft => Unit,
     case ComposerAction.Send => send()
     case ComposerAction.Accept => acceptSuggestion()
     case ComposerAction.Dismiss => dismissSuggestion()
-    case ComposerAction.Next => if (completions().nonEmpty) lit @= (lit() + 1) % completions().length
-    case ComposerAction.Previous => if (completions().nonEmpty) lit @= (lit() + completions().length - 1) % completions().length
+    case ComposerAction.Next =>
+      if (completions().nonEmpty) lit @= everyui.text.CompletionKey.step(lit(), completions().length, forward = true)
+    case ComposerAction.Previous =>
+      if (completions().nonEmpty) lit @= everyui.text.CompletionKey.step(lit(), completions().length, forward = false)
     case ComposerAction.Complete => choose(lit())
     case ComposerAction.Close => closeCompletions()
     case ComposerAction.ToQueue => if (queueShown()) queueView.focusLast()

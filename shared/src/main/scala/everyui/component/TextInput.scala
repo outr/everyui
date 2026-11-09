@@ -1,9 +1,11 @@
 package everyui.component
 
+import everyui.chat.Completion
 import everyui.component.types.{Autofill, PasteAction, Semantics, TextDirection}
 import everyui.event.Key
 import everyui.file.PickedFile
 import everyui.render.Platform
+import everyui.text.{CompletionSource, FieldCompletion}
 import everyui.theme.Theme
 import reactify.*
 
@@ -47,6 +49,17 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
   /** Where a paste's pictures and files go (`InputView.pastedFiles`); None takes none. */
   val pastedFiles: Var[Option[PickedFile => Unit]] = own(Var(None))
+  /** Where what is typed in it is completed from (`CompletionSource`): the piece being typed (the whole field, or what
+    * lies between its separators) asked about as it changes, and the answers listed under the field, Down and Up
+    * moving through them, Enter, Tab, a click or a tap putting the lit one in the piece's place (heard on `completed`),
+    * and Escape closing the list alone. None, the default, offers nothing. Only where the platform has a field of its
+    * own (a browser, a desktop, a phone): a remote has no typing to complete. */
+  val completions: Var[Option[CompletionSource]] = own(Var(None))
+  /** The completion chosen from its list, once it is in the field. */
+  val completed: Channel[Completion] = Channel[Completion]
+  /** Whether its list of completions shows. */
+  val completing: Val[Boolean] = completingNow
+  private lazy val completingNow: Var[Boolean] = own(Var(false))
 
   // a secret, or asked for as a password
   private def hidden: Boolean = secure || autofill().exists(Autofill.secret)
@@ -55,6 +68,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   private val direct = Platform.keyboardSupport()
   // the platform's field, where there is one: its focus taken again (`refocus`)
   private var platformField: Option[InputView] = None
+  // its list of completions, made the first time it is given a source
+  private var completer: Option[FieldCompletion] = None
   /** The platform's own field it wraps, where the platform has one (not a Roku's or an Apple TV's): for its caret and
     * what is chosen in it (`InputView.selection`, `select`, `replace`, `selected`). */
   def field: Option[InputView] = platformField
@@ -97,8 +112,10 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.direction := direction()
     input.pasted := pasted()
     input.pastedFiles := pastedFiles()
-    // named by its label, which is drawn beside it rather than being its own
-    input.semantics := Semantics(label = title())
+    // named by its label, which is drawn beside it rather than being its own; a combo box where it offers completions,
+    // saying whether their list shows
+    input.semantics := Semantics(if (completions().nonEmpty) "combobox" else "", label = title(),
+      expanded = if (completions().nonEmpty) Some(completing()) else None)
     // and described as it is, since the focus a screen reader follows is the platform's field
     input.accessibleDescription := accessibleDescription()
     // and said to be wrong, and why, on the field a screen reader is on
@@ -113,7 +130,10 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     }
     input.node.onInputDone(() => editing @= false)
     event.click.attach(_ => editing @= true)
-    event.key.down.attach(k => if (k.key == Key.Enter && editing()) submitted @= value())
+    // a key the list of completions takes (Enter choosing from it) is not the field's
+    event.key.down.attach(k => if (!completer.exists(_.key(k)) && k.key == Key.Enter && editing()) submitted @= value())
+    completions.attach(s => if (s.nonEmpty && completer.isEmpty) completer = Some(new FieldCompletion(this, input,
+      value, editing, completions, completingNow, completed, 16.0, () => title())))
     children ++= List(caption, input)
     platformField = Some(input)
   } else {
@@ -137,6 +157,15 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   }
 
   override private[everyui] def refocus(): Unit = platformField.foreach(_.retake(editing, direct))
+
+  /** The keys its list of completions takes while it shows (`CompletionKey`): Down, Up, Enter, Tab and Escape. */
+  override def keepsEvent(e: everyui.event.KeyEvent): Boolean = completer.exists(_.keeps(e)) || super.keepsEvent(e)
+
+  override def dispose(): Unit = {
+    completer.foreach(_.dispose())
+    completer = None
+    super.dispose()
+  }
 
   /** A field being edited types Enter and the keys that move along its line, which go on to the platform's field (kept
     * from it, as they were, Backspace deleted nothing and the arrows moved no caret); the rest still move the focus. With

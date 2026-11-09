@@ -670,6 +670,26 @@ class RenderNode(val fx: Node) {
     fx.setAccessibleText(name())
     fx.notifyAccessibleAttributeChanged(javafx.scene.AccessibleAttribute.TEXT)
   }
+  /** A field's list of completions (`FieldCompletion`): JavaFX has no active descendant, so while a row of it is lit
+    * the field is named by that row, as a list is by the row under its cursor, and given its own name back as the list
+    * closes. A press on the list takes no focus here anyway (`holdFocusOnPress`). */
+  def setCompletionList(on: Boolean, list: Option[RenderNode], active: Option[RenderNode], name: () => String): Unit =
+    if (active.nonEmpty) {
+      if (!completionSaid) ownName = fx.getAccessibleText
+      completionSaid = true
+      fx.setAccessibleText(name())
+      fx.notifyAccessibleAttributeChanged(javafx.scene.AccessibleAttribute.TEXT)
+    }
+    else if (completionSaid) {
+      completionSaid = false
+      fx.setAccessibleText(ownName)
+      fx.notifyAccessibleAttributeChanged(javafx.scene.AccessibleAttribute.TEXT)
+    }
+  // whether a field is named by its lit completion (`setCompletionList`), and its own name meanwhile
+  private var completionSaid = false
+  private var ownName: String = null
+  /** A press takes no focus from a field here: JavaFX moves it only to a control that asks. */
+  def holdFocusOnPress(): Unit = ()
   def setAlt(text: String): Unit = ()
 
   def setTextAlign(value: String): Unit = {

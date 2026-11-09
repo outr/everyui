@@ -662,6 +662,11 @@ class RenderNode(val sg: SGNode) {
   def accessibleFocus(click: () => Unit, name: () => String): Unit = ()
   /** The row under a list's cursor (`VirtualList`): no screen reader reaches this platform's nodes. */
   def setActiveRow(row: RenderNode, name: () => String): Unit = ()
+  /** A field's list of completions: a remote has no typing to complete, and no screen reader reaches these nodes. */
+  def setCompletionList(on: Boolean, list: Option[RenderNode], active: Option[RenderNode],
+                        name: () => String): Unit = ()
+  /** A press keeps a field's focus: nothing here takes it. */
+  def holdFocusOnPress(): Unit = ()
   /** A ring round what the focus layer focuses: a remote's app draws its own focus. */
   def setFocusRing(hex: String, radius: Double): Unit = ()
   def setAlt(text: String): Unit = ()

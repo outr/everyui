@@ -5,8 +5,8 @@ Central by default, so a build adds no resolver for EveryUI itself. Android is t
 everyui-android compiles against, and leaves to the app (`EveryUILibraries.android`), are on Google's Maven
 repository, which the app's Android project adds (`resolvers += EveryUILibraries.google`).
 
-Between releases, `sbt publishLocal` in this repository publishes the working tree as `0.1.0-SNAPSHOT` to
-`~/.ivy2/local/com.outr/`, which a build takes by naming that version in place of the release.
+Between releases, `sbt publishLocal` in this repository publishes the working tree as the next version's snapshot
+(now `0.1.1-SNAPSHOT`) to `~/.ivy2/local/com.outr/`, which a build takes by naming that version in place of the release.
 
 ## Coordinates
 
@@ -1806,6 +1806,62 @@ Android makes it a number field (`TYPE_CLASS_NUMBER`), a hidden one a number pas
 still type letters, so a field that must hold digits alone checks them (`pasted`, the form's rules). Its words run
 left to right, as a literal field's do. The desktop has no keyboard of its own, and a Roku's and an Apple TV's is
 the platform's.
+
+### Completing what is typed (`completions`, `CompletionSource`)
+
+`completions` on a `TextInput` or a `TextArea` (`Var[Option[CompletionSource]]`, None by default) lists choices for
+what is being typed, as the composer lists people after '@': a recipient, a search, a tag, a city. The source is
+handed the piece being typed and answers with a `Task[Vector[Completion]]` (`everyui.chat.Completion`: its `label`,
+a line of `detail`, `insert`, what goes in, and a `picture`), as late as it likes: an answer for a piece since typed
+on, or one coming after the list was closed, is dropped, and an answer of nothing closes the list.
+
+```scala
+import everyui.chat.Completion
+import everyui.text.CompletionSource
+
+val to = new TextInput("To")
+to.completions @= Some(CompletionSource(typed => people.find(typed).map(_.map(p =>
+  Completion(p.name + " <" + p.email + ">", p.email))), separators = ",;", after = ", "))
+to.completed.attach(c => Platform.log("added " + c.insert))
+
+val city = new TextInput("City")
+city.completions @= Some(CompletionSource(typed => cities.search(typed), rows = 5))
+```
+
+- **The piece.** With no `separators` it is the whole field, its spaces left out. With some (",;" for addresses, ","
+  for tags, " \n" for words in a box of lines) it is what the caret is in between them, its leading spaces left out:
+  "ann@example.com, os" asks for "os", and with the caret inside "ossi" what comes before the caret is asked about and
+  the whole piece replaced. A piece shorter than `minimum` (1) asks nothing. Moving the caret (Home, End, a click)
+  into another piece while the list shows asks about that one.
+- **The list** shows under the field, as wide as it, or over it where there is no room under it (a phone with its
+  keyboard up), and where neither side has room for all its `rows` (6), as many as fit; past them it scrolls, the lit
+  one kept in view. It takes no focus: the keys stay in the field.
+- **Keys** while it shows, with no modifier: Down and Up move the lit row, going round; Enter and Tab put the lit one
+  in; Escape closes the list, and only the list, so a field in a dialog keeps its dialog, and Back is not heard.
+  Home, End and the rest are the field's. With no list, Enter submits (a box of lines types a new line) and Tab moves
+  the focus, as ever.
+- **The pointer**: resting on a row lights it, a click or a tap chooses it. A press on the list leaves the field its
+  caret, and a phone its keyboard.
+- **Choosing** puts `insert` in the piece's place, `after` following it unless a separator follows already, the caret
+  after it and the field still being typed in; `completed` hears the `Completion` chosen. What went in asks for
+  nothing more until it is typed on.
+- **Closing**: as the field loses the focus or stops being typed in, on Escape, when the source answers nothing, when
+  `completions` changes, and as the field is taken apart (`dispose`), which lets go of all it followed. `completing`
+  says whether the list shows.
+
+To a screen reader a `TextInput` with completions is a combo box (`role="combobox"`, `aria-expanded`), and either
+field says `aria-autocomplete="list"`, controls the list (`aria-controls`, a `listbox` of `option`s, the lit one
+`aria-selected`) and names the lit row as its active one (`aria-activedescendant`), the page's focus staying in the
+field, so the reader reads the lit choice as Down and Up move it. The web also turns the browser's own list of what
+was typed before off (`autocomplete="off"`) where the app has said nothing of `autofill`. Android has no active
+descendant for a field: TalkBack, where it is on, reads the lit row out as it is lit, and the field's state says
+"expanded" or "collapsed". JavaFX has none either: the desktop names the field by its lit row while the list shows,
+as a list is named by the row under its cursor, and gives it its own name back as the list closes. A Roku and an
+Apple TV have no typing to complete, so a source there is never asked.
+
+The composer shares the list (`CompletionPopup`) and its keys (`CompletionKey`, which `ComposerKeys` follows) with
+these fields; its '@' and '/' completions are unchanged. The example's `demo=completion` has To and Cc address fields,
+a city searched by the whole field, a box of lines completing `#tags`, and the city in a dialog (`dialog=1`).
 
 ### Italic (`font.italic`)
 

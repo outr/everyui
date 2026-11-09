@@ -1284,6 +1284,13 @@ class RenderNode(val view: View) {
 
   /** The row under a list's cursor (`VirtualList`), read out by TalkBack as it moves, where it is on. */
   def setActiveRow(row: RenderNode, name: () => String): Unit = if (RenderNode.reading) Platform.announce(name())
+  /** A field's list of completions (`FieldCompletion`): Android has no active descendant for a field, so where
+    * TalkBack is on the lit row is read out as it is lit, as a list's row under its cursor is; the field says whether
+    * the list shows in its state ("expanded", `setSemanticState`). */
+  def setCompletionList(on: Boolean, list: Option[RenderNode], active: Option[RenderNode], name: () => String): Unit =
+    if (RenderNode.reading && active.nonEmpty) Platform.announce(name())
+  /** A tap takes no focus from a field here: a view that is not focusable leaves the field its keyboard. */
+  def holdFocusOnPress(): Unit = ()
   def setAlt(text: String): Unit = view.setContentDescription(if (text.isEmpty) null else text)
 
   /** The focus landed here (the app's own focus, which Android's does not follow). With a screen reader on, this is

@@ -55,6 +55,8 @@ import everyui.render.Platform
   *              kept on the device (`scale=<factor>`, `theme=light`, `rtl=1`)
   *   menus      a menu whose entries lead with letter tiles, pictures large and small, one that will not load, icons,
   *              a tick and nothing, with details under them, their words lined up (`theme=light`, `rtl=1`)
+  *   completion fields completing what is typed: To and Cc addresses between separators, a city by the whole field, a
+  *              box of lines' #tags, and the city in a dialog (`dialog=1`, `theme=light`, `rtl=1`)
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
   *   italic     an empty list's and a search's labels upright and slanted, a paragraph, buttons and a field slanted
   *   readonly   read-only fields beside an editable one: a share link, a note and a key to choose and copy but not change
@@ -186,6 +188,7 @@ import everyui.render.Platform
   else if (demo == "memory") MemoryDemo.run()
   else if (demo == "scale") ScaleDemo.run()
   else if (demo == "menus") MenusDemo.run()
+  else if (demo == "completion") CompletionDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()
   else if (demo == "italic") ItalicDemo.run()
   else if (demo == "readonly") ReadOnlyDemo.run()
