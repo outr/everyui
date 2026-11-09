@@ -24,8 +24,8 @@ ThisBuild / homepage := Some(url("https://github.com/outr/everyui"))
 ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/outr/everyui"), "scm:git@github.com:outr/everyui.git"))
 ThisBuild / developers := List(
   Developer(id = "darkfrog", name = "Matt Hicks", email = "matt@outr.com", url = url("https://github.com/darkfrog26")))
-// reactify is compiled from its source tree (the `reactive` project); the published jar Spice depends on must not
-// come along too (R8 refuses a class defined twice)
+// reactify is compiled from its source (the `reactive` project, reactifySources); the published jar Spice depends on
+// must not come along too (R8 refuses a class defined twice)
 ThisBuild / excludeDependencies += ExclusionRule("com.outr", "reactify_3")
 
 @transient val emitRoku = taskKey[File]("Compile this project, and the libraries it emits with, into a Roku channel")
@@ -102,17 +102,30 @@ lazy val reactiveLibrary = Def.task {
 }
 
 // --- reactive: reactify's real source, compiled for emission -----------------
-// Points at reactify's own source tree (no vendoring) with -Yretain-trees so the
+// reactify's own source, unmodified (no vendoring), compiled with -Yretain-trees so the
 // compiler can read its TASTy. `reactive/emitRoku` emits reactify alone — the
 // input to the gap meter (`tools/emit-gaps.py`).
-/** reactify's own source tree. */
-lazy val reactifySources = file("/home/mhicks/projects/open/reactify/reactify/src/main/scala")
+@transient val reactifySourceDirectory = taskKey[File](
+  "reactify's source: its sources jar at reactifyVersion, unpacked, or the tree EVERYUI_REACTIFY_SOURCES names")
+
+/** reactify's source files, for the projects that compile it (`reactive`, and the Android ones, which compile it with
+  * their own options): its published sources jar at reactifyVersion, unpacked into target/reactify-sources/<version>,
+  * or the tree the environment variable or system property EVERYUI_REACTIFY_SOURCES names, for working on reactify
+  * with EveryUI (project/LibrarySources.scala). `reactive` is named by its id, as it names reactifySources itself and two
+  * lazy vals naming each other never settle (the build's load waits on itself). */
+lazy val reactifySources: Def.Initialize[Task[Seq[File]]] =
+  LibrarySources.sources(LocalProject("reactive") / reactifySourceDirectory)
 
 lazy val reactive = (project in file("reactive"))
   .settings(
     name := "everyui-reactive",
-    Compile / unmanagedSourceDirectories :=
-      Seq(file("/home/mhicks/projects/open/reactify/reactify/src/main/scala")),
+    reactifySourceDirectory := LibrarySources.directory("com.outr" %% "reactify" % reactifyVersion,
+      Some("EVERYUI_REACTIFY_SOURCES"), file("target").getAbsoluteFile).value,
+    // the build excludes reactify_3 everywhere, and its sources jar is fetched with this project's resolution (it has
+    // no dependency of its own for the exclusion to keep out)
+    excludeDependencies := Nil,
+    Compile / unmanagedSourceDirectories := Nil,
+    Compile / sourceGenerators += reactifySources.taskValue,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     publish / skip := true,
     emitRoku := emitRokuTask("out-roku", "ReactifyProbe", Def.task(Seq.empty[File])).value
@@ -516,7 +529,7 @@ lazy val media3Modules = EveryUILibraries.media3Modules
 lazy val android = (project in file("android"))
   .settings(
     // reactify compiled here rather than through `reactive`, so its lazy vals are the legacy kind too
-    Compile / unmanagedSourceDirectories += reactifySources,
+    Compile / sourceGenerators += reactifySources.taskValue,
     name := "everyui-android-example",   // the example app; everyui-android is the published backend
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true),
@@ -874,7 +887,7 @@ lazy val monacoDesktop = (project in file("monaco/desktop"))
 
 lazy val monacoAndroid = (project in file("monaco/android"))
   .settings(
-    Compile / unmanagedSourceDirectories += reactifySources,
+    Compile / sourceGenerators += reactifySources.taskValue,
     name := "everyui-monaco-android-gallery",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true) ++ Seq(
@@ -993,7 +1006,7 @@ lazy val terminalDesktop = (project in file("terminal/desktop"))
 
 lazy val terminalAndroid = (project in file("terminal/android"))
   .settings(
-    Compile / unmanagedSourceDirectories += reactifySources,
+    Compile / sourceGenerators += reactifySources.taskValue,
     name := "everyui-terminal-android-demo",
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true) ++ Seq(
