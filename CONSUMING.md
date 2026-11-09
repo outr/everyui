@@ -598,6 +598,26 @@ tree.size.width := panel.size.width() - 24.0
 - With no `flex` anywhere, rows and columns lay out exactly as before.
 - A right-to-left row mirrors as it always has, the filling child included.
 
+**A form that narrows.** A field follows its form both ways only when what it is bound to has a width of its own: the
+card or the window, or a column whose width is bound to them. A column given no width is as wide as its widest child,
+so a field bound to that column's width is bound to its own: the column grows with the field and the field with it,
+and neither ever shrinks again, the fields left past the card's edge once the window narrows. Give the column its
+width, or bind the fields past it:
+
+```scala
+form.size.width := card.size.width()                        // or bind each field to card.size.width() - 32.0
+to.size.width := form.size.width() - 32.0                   // follows the card down to a phone's width and back
+// not: to.size.width := Column(12.0, 16.0)(to, cc).size.width() - 32.0, a column sized to the field it sizes
+fromRow.size.width := card.size.width() - 32.0              // a label and a field filling the rest of the row
+fromRow.children ++= List(TextView("From"), Fill(from))
+```
+
+A row never puts a child on another line: where its children are wider than its box, they run past its edge, which a
+box that draws itself cuts (`clipsToBox`), the words first in it wrapped between their words to give way (see "Words
+kept to their box"). Links, chips or buttons that should go onto as many lines as they need are a flow
+(`FlowLayout(gap, lineGap)`, its width bound to its box's). `demo=narrow` shows a form, a row of links and the same
+links in a flow in a card that follows the window; with `cycle=1` its fields are bound to their column instead.
+
 **A hidden child's room.** `visible := false` hides a child but keeps its place, as something that comes and goes (a
 spinner, a badge) wants, so its neighbours don't move. With `collapses @= true`, a child takes no room while it is
 hidden: it is left out of its column, row or flow, and out of its container's size, as a child with no size is, and it
@@ -1943,8 +1963,11 @@ altogether, past its edge or before its start (made out of sight to be measured,
 along a horizontal `ScrollContainer`, or in a `ZoomCanvas`'s world, which run on past the viewport on purpose; and
 words in a box that turns out to shrink with them (bound to their width through a value of its own, which the box
 cannot see), until their words change. In a row too wide for its box, the words that come first take the cut,
-measured against what follows them at its own whole width, so a title gives way to the badge after it. A `RichText`
-paragraph wraps to the width it is given, as before.
+measured against what follows them at its own whole width, so a title gives way to the badge after it. A word too
+long for its line is broken only where the room holds a few letters (`TextView.breakingRoom`, four of the words' size:
+a URL in a narrow column); in less, as the first links in a row too wide for its box are left a pixel by what follows
+them, the words wrap between words alone, each word whole on its line and running past the room, never one letter to a
+line. A `RichText` paragraph wraps to the width it is given, as before.
 
 A `Button`'s words are one line by default, cut short at its room. `labelLines` lets them wrap within it, the button
 growing as tall as they are and its pill becoming a box with rounded corners, its lines starting where a paragraph's

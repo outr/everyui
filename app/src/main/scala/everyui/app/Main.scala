@@ -189,6 +189,7 @@ import everyui.render.Platform
   else if (demo == "scale") ScaleDemo.run()
   else if (demo == "menus") MenusDemo.run()
   else if (demo == "completion") CompletionDemo.run()
+  else if (demo == "narrow") NarrowDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()
   else if (demo == "italic") ItalicDemo.run()
   else if (demo == "readonly") ReadOnlyDemo.run()

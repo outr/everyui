@@ -321,14 +321,20 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     written = words
   }
 
-  private def drawCut(wanted: String, limit: Double, lines: Int, box: Double, own: Double, before: Double): Unit = {
+  private def drawCut(wanted: String, limit: Double, lines: Int, boxRoom: Double, own: Double, before: Double): Unit = {
     // words wrapped to fit their room before are put back as they were, to be measured whole again
     if (wrappedToFit) unwrap()
     write(wanted)
     val asked = limit > 0.0 || lines > 0
-    unfit = (asked || box > 0.0 || own > 0.0) && !node.textMeasurable(refit)
+    unfit = (asked || boxRoom > 0.0 || own > 0.0) && !node.textMeasurable(refit)
     // measured whole, then held to the room it has; where it cannot be measured yet, only held
     if (held) node.setTextLimit(0.0, 0)
+    // a word is broken across lines only where the box's room holds a few letters (`TextView.breakingRoom`): in less
+    // (a link in a row too wide for its box, which leaves the words first in it a pixel) the words wrap between words
+    // alone, each whole on its line, the room taken as their widest word, rather than one letter to a line
+    val box = if (!unfit && boxRoom > 0.0 && boxRoom < TextView.breakingRoom * font.size() &&
+      whiteSpace() != WhiteSpace.Pre && (wraps || whiteSpace() != WhiteSpace.NoWrap))
+      math.max(boxRoom, widestWord(wanted)) else boxRoom
     held = asked
     if (unfit) {
       // (wrapping words wrap at the limit already, where they can be measured nothing more is known)
@@ -346,7 +352,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       var single = limit
       var wrapAt = 0.0
       if (boxed) {
-        cutRoom = box
+        cutRoom = boxRoom
         drawnBefore = before
         // words that wrap wrap within it, where the platform wraps them there; a line, and words it does not, are cut
         if (whiteSpace() != WhiteSpace.NoWrap && whiteSpace() != WhiteSpace.Pre) {
@@ -380,6 +386,33 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       boxWhole = if (boxed || was) whole else 0.0
       if (elided() || described.nonEmpty) describe(wanted)
     }
+  }
+
+  /** How wide the widest word of `wanted` is, measured as it is drawn, with a pixel to spare: the narrowest the words
+    * can be wrapped to without breaking one. The words are written back after. */
+  private def widestWord(wanted: String): Double = {
+    var widest = 0.0
+    var seen: List[String] = Nil
+    var start = -1
+    var i = 0
+    while (i <= wanted.length) {
+      val gap = i == wanted.length || wanted.charAt(i).isWhitespace
+      if (gap && start >= 0) {
+        val word = wanted.substring(start, i)
+        // the same word measured once
+        if (!seen.contains(word)) {
+          seen = word :: seen
+          write(word)
+          val w = node.textWidth()
+          if (w > widest) widest = w
+        }
+        start = -1
+      }
+      else if (!gap && start < 0) start = i
+      i += 1
+    }
+    write(wanted)
+    if (widest > 0.0) widest + 1.0 else 0.0
   }
 
   // whether words too wide wrap rather than end in an ellipsis (`TextOverflow.Wrap`): not words laid out as they are
@@ -498,6 +531,12 @@ object TextView {
     * the row as it is drawn (Container.endOf). */
   private[component] val boxedCount: Array[Int] = Array(0)
   private val looking: Array[Boolean] = Array(false)
+
+  /** The narrowest room, in the words' size (ems: four), at which words kept to their box have a word too long for a
+    * line broken across lines: a URL or a path in a narrow column is broken where it must be, but words given less (the
+    * first links in a row too wide for its box, left a pixel by what follows them) wrap between words alone, each word
+    * whole on its line, and run past the room rather than stand one letter to a line. */
+  val breakingRoom: Double = 4.0
 
   /** The seam's name for an alignment: "start", "center" or "end", resolved against the platform's direction. */
   def side(align: TextAlign): String =
