@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A widget's row within a row that has room to fill (a spacer or a column): it shares the row's width with the
+     others. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/everyui_widget_row"
+  android:layout_width="0dp"
+  android:layout_height="wrap_content"
+  android:layout_weight="1"
+  android:gravity="center_vertical"
+  android:orientation="horizontal" />

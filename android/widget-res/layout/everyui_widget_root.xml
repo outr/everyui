@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A home-screen widget (everyui.render.WidgetViews): its ground, tinted to the theme's surface, under its content,
-     which is laid out as a column. -->
+<!-- A home-screen widget as a launcher shows it before its first draw (the appwidget-provider's initialLayout): its
+     ground under its content. Each draw is on everyui_widget_base or everyui_widget_base_tap
+     (everyui.render.WidgetViews). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:id="@+id/everyui_widget_root"
   android:layout_width="match_parent"

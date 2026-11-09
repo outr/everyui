@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A tapped part of a list's row, within a row, sharing the row's width with the others.
-     Android hears a tap set on the first view of a list's row's part only as the whole row's (the list's item
-     click), so the part's tap is set on its content, within this, where it is heard as its own
+<!-- A tapped part of a widget, within a row, sharing the row's width with the others.
+     Its content carries the tap, and nothing else does: a launcher reapplies a later draw to the views it has,
+     each keeping a tap it was given until it is given another, and every draw gives this one its own. In a list's
+     row a tap set here is heard as the part's own, where one set on a part's first view is the whole row's
      (everyui.render.WidgetViews). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:layout_width="0dp"

@@ -8,12 +8,13 @@ import everyui.widget.{WidgetApp, WidgetChoice, WidgetColour, WidgetGround, Widg
 
 /** The example app's home-screen widget, "inbox" (build.sbt names this object and the kind, `everyuiWidgets`):
   * made-up mail from three made-up accounts, chosen in its configure screen. Compact, the unread count of the chosen
-  * accounts; medium and large, a header with a Refresh (an action, which brings one more message) over a list of the
-  * messages, each opening the app at `/inbox/<id>` (InboxDemo) and with a "Mark read" tick of its own (an action in
-  * a list's row, with the message's id as its arg, which takes it out of the list and notes it in the log). Counts
-  * only, the accounts and their counts, with no senders or subjects. Its ground is translucent, the wallpaper showing
-  * through, with each part on a card. Its text size is chosen for each widget in its configure screen (a setting,
-  * "Text size"), drawn through `WidgetNode.Scaled`. */
+  * accounts; medium, a header with a Refresh (an action, which brings one more message) over the messages that fit in
+  * a column, and large over a list of them that scrolls. Each message opens the app at `/inbox/<id>` (InboxDemo) and
+  * has a "Mark read" tick (an action, with the message's id and sender as its args, which takes it out of the widget
+  * and notes it in the log), within the row whose tap opens the message or beside the part that does, as a setting
+  * chooses ("Mark read"). Counts only, the accounts and their counts, with no senders or subjects. Its ground is
+  * translucent, the wallpaper showing through, with each part on a card. Its text size is chosen for each widget in
+  * its configure screen (a setting, "Text size"), drawn through `WidgetNode.Scaled`. */
 object InboxWidgets extends WidgetApp {
   private val group = "Mail accounts"
   private val accounts: Vector[WidgetChoice] = Vector(WidgetChoice("work", "matt@work.example", group),
@@ -33,6 +34,9 @@ object InboxWidgets extends WidgetApp {
     Vector(("small", "Small", 0.9), ("normal", "Normal", 1.0), ("large", "Large", 1.25))
   private val textSize = WidgetSetting("textSize", "Text size", textSizes.map((k, l, _) => WidgetSettingOption(k, l)),
     "normal", "The size of the widget's words, its rows growing with them")
+  // where each message's "Mark read" tick is: within the row whose tap opens it, or beside the part that does
+  private val tickPlace = WidgetSetting("tick", "Mark read", Vector(WidgetSettingOption("inside", "In the row"),
+    WidgetSettingOption("beside", "Beside it")), "inside", "Where each message's tick is: within its row or beside it")
   // what each Refresh brings: one more, made up, at the top
   @volatile private var arrived = 0
   // the messages marked read from the widget, while the process lasts
@@ -41,7 +45,7 @@ object InboxWidgets extends WidgetApp {
   val inbox: WidgetKind = WidgetKind("inbox", "Inbox", "Unread mail from the accounts you choose", "images/icon.png",
     Set(WidgetSize.Compact, WidgetSize.Medium, WidgetSize.Large), () => Task.pure(accounts),
     offered => offered.map(_.key).toSet, draw, act, groundOpacity = 0.35,
-    settings = Vector(textSize))
+    settings = Vector(textSize, tickPlace))
   // each part on a card of the theme's surface, more opaque than the widget's own ground, so the words read over a
   // busy wallpaper that shows through around them
   private val card = Some(WidgetGround(WidgetColour.Surface, opacity = 0.8, radius = 12.0, padding = 8.0))
@@ -90,16 +94,27 @@ object InboxWidgets extends WidgetApp {
             tap = Some(WidgetTap.Open("/inbox")), ground = card)
         }
         else shown.map { (id, _, from, subject, at) =>
-          // the tick its own tap within the row's: the rest of the row opens the message
           val tick = WidgetNode.Row(Vector(WidgetNode.Picture(WidgetPicture.Icon(MaterialIcon.Done), 22.0,
             "Mark read")), tap = Some(WidgetTap.Action("read", Map("id" -> id, "from" -> from))))
-          WidgetNode.Row(Vector(
-            WidgetNode.Column(Vector(WidgetNode.Text(from), WidgetNode.Text(subject, WidgetText.Caption,
-              WidgetColour.Muted)), gap = 2.0),
-            WidgetNode.Text(at, WidgetText.Caption, WidgetColour.Muted), tick),
-            tap = Some(WidgetTap.Open("/inbox/" + id)), ground = card)
+          val words = Vector(WidgetNode.Column(Vector(WidgetNode.Text(from), WidgetNode.Text(subject,
+            WidgetText.Caption, WidgetColour.Muted)), gap = 2.0), WidgetNode.Text(at, WidgetText.Caption,
+            WidgetColour.Muted))
+          val open = Some(WidgetTap.Open("/inbox/" + id))
+          // the tick's tap within the row's, the rest of the row opening the message; or the tick and the words
+          // side by side on the card, each with its own tap
+          if (request.settings.get(tickPlace.key).contains("beside"))
+            WidgetNode.Row(Vector(tick, WidgetNode.Row(words, tap = open)), gap = 8.0, ground = card)
+          else WidgetNode.Row(words :+ tick, tap = open, ground = card)
         }
-      WidgetNode.Column(Vector(header, WidgetNode.Items(rows, "No unread mail")), gap = 8.0)
+      // large, a list that scrolls; medium, the rows that fit in a column under the header (its line, 48 points,
+      // and each card's two, 64), or the first row alone where the header and a row do not fit
+      val fit = if (request.height <= 0.0) 2 else ((request.height - 48.0) / (64.0 * scale)).toInt
+      if (request.size == WidgetSize.Large)
+        WidgetNode.Column(Vector(header, WidgetNode.Items(rows, "No unread mail")), gap = 8.0)
+      else if (rows.isEmpty)
+        WidgetNode.Column(Vector(header, WidgetNode.Text("No unread mail", colour = WidgetColour.Muted)), gap = 8.0)
+      else if (fit < 1) WidgetNode.Column(rows.take(1))
+      else WidgetNode.Column(Vector(header) ++ rows.take(fit), gap = 8.0)
     }
   }
 

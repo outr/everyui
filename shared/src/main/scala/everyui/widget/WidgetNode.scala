@@ -42,4 +42,18 @@ object WidgetNode {
   /** `scale` held to `leastScale`..`mostScale`, and 1 where it is not a number. */
   def scale(scale: Double): Double =
     if (scale.isNaN) 1.0 else math.max(leastScale, math.min(mostScale, scale))
+
+  /** Whether a row with `parts` has room to fill: a `Spacer`, a column, or a row that has either, through `Scaled`.
+    * Such a row within a row shares the outer row's width, as a column does, where one with none is as wide as its
+    * parts, so a tapped row of a bar, a column of words and a `Spacer` beside a check box takes the room the box
+    * leaves rather than cutting its words short. */
+  def stretches(parts: Vector[WidgetNode]): Boolean = parts.exists(p => stretching(p))
+
+  private def stretching(node: WidgetNode): Boolean = node match {
+    case Spacer => true
+    case _: Column => true
+    case Row(inner, _, _, _) => stretches(inner)
+    case Scaled(_, inner) => stretching(inner)
+    case _ => false
+  }
 }

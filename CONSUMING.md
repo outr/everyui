@@ -3405,6 +3405,22 @@ WidgetNode.Row(Vector(WidgetNode.Text(task.title), WidgetNode.Spacer, tick),
   tap = Some(WidgetTap.Open("/tasks/" + task.id)))                          // one of an Items' rows
 ```
 
+Taps beside each other each work too, in a list or not: a check box's row with its action beside a row of the task's
+words that opens it, both on one card. A row within a row that has room to fill, a `Spacer`, a column or a row that has
+either (`WidgetNode.stretches`), shares the outer row's width as a column does, so the words beside the box take the
+room it leaves rather than being cut short; a row of words, pictures and buttons alone is as wide as its parts.
+
+```scala
+WidgetNode.Row(Vector(tick, WidgetNode.Row(Vector(bar, words, WidgetNode.Spacer),
+  tap = Some(WidgetTap.Open("/tasks/" + task.id)))), ground = card)
+```
+
+A launcher draws a widget again over the views it has where their layouts are the same (a redraw, a resize, the app
+updated), and a view keeps a tap it was given until a draw gives it another, so Android draws each tap on a frame of its
+own around the part tapped, a layout used only for taps that every draw sets afresh: a part that had a tap in one draw
+and none in the next has none, rather than the last one's (an open tap left on a row heard from the check box beside it,
+or a compact size's tap left on the whole widget once it was drawn larger).
+
 A kind can offer settings, each a choice of one option kept for each placed widget: its text size, how far ahead a
 calendar looks. `WidgetKind.settings` is a `Vector[WidgetSetting]`, each
 `WidgetSetting(key, label, options, default, note)` with its `WidgetSettingOption(key, label)`s; the configure screen

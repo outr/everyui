@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A home-screen widget as each draw has it (everyui.render.WidgetViews): its ground, tinted to the theme's surface,
+     under its content, which is laid out as a column. A widget tapped as a whole is drawn on everyui_widget_base_tap,
+     so its tap is never left on this one's content when a launcher reapplies a later draw to it; both are other
+     than everyui_widget_root, the layout a launcher shows before the first draw, so the views of a widget drawn by an
+     earlier EveryUI, which kept taps on its rows, are made afresh rather than reapplied. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/everyui_widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent">
+  <ImageView
+    android:id="@+id/everyui_widget_ground"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:scaleType="fitXY"
+    android:src="@drawable/everyui_widget_ground" />
+  <LinearLayout
+    android:id="@+id/everyui_widget_content"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp" />
+</FrameLayout>

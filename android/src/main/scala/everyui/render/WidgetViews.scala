@@ -22,10 +22,11 @@ import everyui.widget.{WidgetColour, WidgetGround, WidgetNode, WidgetPicture, Wi
   * choose between them as the device's mode changes, and before it they are chosen as the widget is drawn.
   *
   * A tap opens the app at its path (the launch intent, with the path as `Host.path` has it) or sends the action to
-  * the widget's receiver. A list scrolls from Android 12 (RemoteCollectionItems); Android gives its rows one tap
-  * between them, the list's template, each part filling in its own tap (`WidgetTap.extras`), so the template is
-  * EveryUI's tap activity (`everyui.activity.WidgetTapActivity`), which opens the app at a path or sends an action to
-  * the receiver as a tap outside a list does. Before 12 a list is its first rows, unscrolled, their taps their own. */
+  * the widget's receiver, set on a frame of its own around the part tapped (`framed`). A list scrolls from Android 12
+  * (RemoteCollectionItems); Android gives its rows one tap between them, the list's template, each part filling in
+  * its own tap (`WidgetTap.extras`), so the template is EveryUI's tap activity (`everyui.activity.WidgetTapActivity`),
+  * which opens the app at a path or sends an action to the receiver as a tap outside a list does. Before 12 a list is
+  * its first rows, unscrolled, their taps their own. */
 final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: ComponentName) {
   private val density = context.getResources.getDisplayMetrics.density
   private val day = Widgets.light
@@ -45,7 +46,13 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
   def root(node: WidgetNode, name: String, opacity: Double = 1.0): RemoteViews = {
     list = None
     scale = 1.0
-    val views = new RemoteViews(context.getPackageName, layout("root"))
+    // a root of its own where the whole widget is tapped, so no draw's tap is left on views a later draw reapplies
+    // without one (`framed`)
+    val tapped = WidgetViews.bare(node) match {
+      case WidgetNode.Column(_, _, Some(_), None) => true
+      case _ => false
+    }
+    val views = new RemoteViews(context.getPackageName, layout(if (tapped) "base_tap" else "base"))
     val ground = WidgetViews.id(context, "everyui_widget_ground")
     shade(views, ground, _.surface, WidgetGround.alpha(opacity))
     views.setContentDescription(ground, name)
@@ -102,17 +109,23 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       if (label.nonEmpty) views.setContentDescription(at, label)
       views
     case WidgetNode.Row(parts, gap, tap, ground) =>
-      val views = new RemoteViews(context.getPackageName, layout(if (inRow) "row_wrap" else "row"))
+      // within a row, as wide as its parts, or sharing the row's width where it has room to fill (a `Spacer`, a
+      // column or such a row); on a card or in a tap's frame, which then take that width, it fills them
+      val room = if (!inRow) "" else if (WidgetNode.stretches(parts)) "fill" else "wrap"
+      val boxed = ground.nonEmpty || tap.nonEmpty
+      val views = new RemoteViews(context.getPackageName,
+        layout(if (room == "wrap") "row_wrap" else if (room == "fill" && !boxed) "row_fill" else "row"))
       val at = WidgetViews.id(context, "everyui_widget_row")
       fill(views, at, parts, gap, inRow = true, WidgetViews.filler(parts), inList)
-      tapped(views, at, tap, ground, inList, if (inRow) "wrap" else "")
+      boxedUp(views, at, tap, ground, inList, room)
     case WidgetNode.Column(parts, gap, tap, ground) =>
-      // on a card or tapped in a list, the card or the tap's frame shares the row's width and the column fills it
-      val framed = ground.nonEmpty || (inList && tap.nonEmpty)
-      val views = new RemoteViews(context.getPackageName, layout(if (inRow && !framed) "column_fill" else "column"))
+      // within a row it shares the row's width; on a card or in a tap's frame, which then share it, it fills them
+      val room = if (inRow) "fill" else ""
+      val boxed = ground.nonEmpty || tap.nonEmpty
+      val views = new RemoteViews(context.getPackageName, layout(if (inRow && !boxed) "column_fill" else "column"))
       val at = WidgetViews.id(context, "everyui_widget_column")
       fill(views, at, parts, gap, inRow = false, filler = -1, inList)
-      tapped(views, at, tap, ground, inList, if (inRow) "fill" else "")
+      boxedUp(views, at, tap, ground, inList, room)
     case WidgetNode.Button(label, icon, tap) =>
       val views = new RemoteViews(context.getPackageName, layout("button"))
       tint(views, WidgetViews.id(context, "everyui_widget_button_ground"), "setColorFilter", _.accent)
@@ -130,7 +143,7 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
         views.setViewVisibility(WidgetViews.id(context, "everyui_widget_button_icon"), View.GONE)
       val button = WidgetViews.id(context, "everyui_widget_button")
       views.setContentDescription(button, label)
-      if (inList) framed(views, tap, "tap_wrap")
+      if (inList) framed(views, tap, "tap_wrap", inList)
       else {
         tapOn(views, button, tap)
         views
@@ -141,8 +154,8 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
   }
 
   /** `inner` (whose row or column is `at`) on a card of the `kind` layout: its ground under it, of the shape with the
-    * nearest radius, tinted and as opaque as `ground` says, and `ground.padding` around the parts. The padding is
-    * the row's own, so its tap covers the whole card. */
+    * nearest radius, tinted and as opaque as `ground` says, and `ground.padding` around the parts (the row's
+    * own padding). A tap's frame around the card covers the whole of it. */
   private def card(inner: RemoteViews, at: Int, ground: WidgetGround, kind: String): RemoteViews = {
     val views = new RemoteViews(context.getPackageName, layout(kind))
     val under = WidgetViews.id(context, "everyui_widget_card_ground")
@@ -211,31 +224,34 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       views
     }
 
-  /** A row or a column (`inner`, whose container is `at`) with its tap and on its card, if it has them, `room` the
-    * way it sits in a row ("wrap", "fill", or "" in a column). Outside a list its tap is a PendingIntent of its own.
-    * In a list's row its tap is filled into the list's template, set on a view that is not the first of its own
-    * RemoteViews: Android hears a tap on that view only as the whole row's (the list's item click, which takes the
-    * outermost part's), so the card's content or a frame of its own (`framed`) carries it. */
-  private def tapped(inner: RemoteViews, at: Int, tap: Option[WidgetTap], ground: Option[WidgetGround],
-                     inList: Boolean, room: String): RemoteViews = {
-    if (!inList) tap.foreach(t => tapOn(inner, at, t))
-    ground match {
-      case Some(g) =>
-        val views = card(inner, at, g, if (room.isEmpty) "card" else "card_" + room)
-        if (inList) tap.foreach(t => fillIn(views, WidgetViews.id(context, "everyui_widget_card_content"), t))
-        views
-      case None if inList && tap.nonEmpty => framed(inner, tap.get, if (room.isEmpty) "tap" else "tap_" + room)
-      case None => inner
+  /** A row or a column (`inner`, whose container is `at`) on its card, if it has one, and in a frame carrying its tap,
+    * if it has one, `room` the way it sits in a row ("wrap", "fill", or "" in a column), the card filling the frame.
+    * A tap is only ever set on a frame's content (`framed`), never on a row or a column. */
+  private def boxedUp(inner: RemoteViews, at: Int, tap: Option[WidgetTap], ground: Option[WidgetGround],
+                      inList: Boolean, room: String): RemoteViews = {
+    val carded = ground.fold(inner) { g =>
+      val kind = if (room.isEmpty || tap.nonEmpty && room == "fill") "card" else "card_" + room
+      card(inner, at, g, kind)
     }
+    tap.fold(carded)(t => framed(carded, t, if (room.isEmpty) "tap" else "tap_" + room, inList))
   }
 
-  /** `inner` in a frame of the `kind` layout whose content carries `tap`, filled into the list's template. */
-  private def framed(inner: RemoteViews, tap: WidgetTap, kind: String): RemoteViews = {
+  /** `inner` in a frame of the `kind` layout whose content carries `tap`: a PendingIntent of its own, or in a list's
+    * row filled into the list's template.
+    *
+    * A launcher reapplies a new draw to the views it has where their layouts are the same (a resize, a redraw, the
+    * app updated), each view keeping a tap it was given until a draw gives it another: a row or a column that had a
+    * tap kept it when a later draw gave it none, so a tick beside a row that once opened the app opened it, and the
+    * widget's margin kept a compact size's open tap once it was drawn larger. So taps are set only on views of layouts
+    * that always have one, these frames (and the root's content in `base_tap`), and each draw sets every one of them
+    * afresh. In a list a tap set on the first view of a part's own RemoteViews is heard only as the whole row's (the
+    * list's item click, which takes the outermost part's), and a frame's content is not. */
+  private def framed(inner: RemoteViews, tap: WidgetTap, kind: String, inList: Boolean): RemoteViews = {
     val views = new RemoteViews(context.getPackageName, layout(kind))
     val at = WidgetViews.id(context, "everyui_widget_tap")
     views.removeAllViews(at)
     views.addView(at, inner)
-    fillIn(views, at, tap)
+    if (inList) fillIn(views, at, tap) else tapOn(views, at, tap)
     views
   }
 
@@ -312,11 +328,12 @@ object WidgetViews {
   def gap(points: Double): Option[Int] =
     if (points < 2.0) None else Some(List(4, 8, 12, 16).minBy(g => math.abs(g - points)))
 
-  /** Which of a row's parts takes the room the others leave: none where it has a `Spacer` or a column (which shares
-    * the row's width already), and otherwise the words with the most of them. -1 for none. */
+  /** Which of a row's parts takes the room the others leave: none where it has a `Spacer`, a column or a row that
+    * has either (which share the row's width already, `WidgetNode.stretches`), and otherwise the words with the most
+    * of them. -1 for none. */
   def filler(all: Vector[WidgetNode]): Int = {
     val parts = all.map(bare)
-    if (parts.exists(p => p == WidgetNode.Spacer || p.isInstanceOf[WidgetNode.Column])) -1
+    if (WidgetNode.stretches(all)) -1
     else {
       val words = parts.zipWithIndex.collect { case (t: WidgetNode.Text, i) => (t.words.length, i) }
       if (words.isEmpty) -1 else words.maxBy(_._1)._2
