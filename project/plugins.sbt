@@ -11,3 +11,6 @@ libraryDependencies += "org.ow2.asm" % "asm-tree" % "9.10.1"
 
 // brotli4j for the web bundle's precompression and WOFF2 (WebBundle, Woff2), as the published plugin has it
 libraryDependencies += "com.aayushatharva.brotli4j" % "brotli4j" % "1.23.0"
+
+// sbt-pgp, which signs a release for Maven Central (`publishSigned`; publish.sh)
+addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.3.2")

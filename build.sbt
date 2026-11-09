@@ -7,6 +7,23 @@
 ThisBuild / scalaVersion := "3.10.0"
 ThisBuild / organization := "com.outr"
 ThisBuild / version := "0.1.0-SNAPSHOT"
+
+// --- publishing: Maven Central, under the Apache License 2.0 ------------------------------------------------------
+// sbt's own Central Portal support (sbt-pgp signs): `publishSigned` stages a release in localStaging, and `sonaRelease`
+// uploads and releases it (publish.sh); a snapshot goes to Central's snapshots repository. The credentials are for
+// central.sonatype.com, kept outside the build.
+ThisBuild / publishTo := {
+  val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
+  if (isSnapshot.value) Some("central-snapshots" at centralSnapshots) else localStaging.value
+}
+ThisBuild / publishMavenStyle := true
+ThisBuild / pomIncludeRepository := (_ => false)
+ThisBuild / description := "EveryUI: one reactive Scala 3 UI on the web, the desktop, Android, Roku and Apple TV"
+ThisBuild / licenses := Seq(License.Apache2)
+ThisBuild / homepage := Some(url("https://github.com/outr/everyui"))
+ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/outr/everyui"), "scm:git@github.com:outr/everyui.git"))
+ThisBuild / developers := List(
+  Developer(id = "darkfrog", name = "Matt Hicks", email = "matt@outr.com", url = url("https://github.com/darkfrog26")))
 // reactify is compiled from its source tree (the `reactive` project); the published jar Spice depends on must not
 // come along too (R8 refuses a class defined twice)
 ThisBuild / excludeDependencies += ExclusionRule("com.outr", "reactify_3")
@@ -24,6 +41,7 @@ lazy val compiler = (project in file("compiler"))
   .settings(published)
   .settings(
     name := "everyui-compiler",
+    description := "Scala 3 TASTy to BrightScript and Swift, the compiler sbt-everyui runs for Roku and Apple TV",
     libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value,
     // SwiftEmitter.scala is derived from RokuEmitter.scala by compiler/swift-derivation.txt (project/SwiftEmitterDerivation.scala)
     Compile / sourceGenerators += Def.task {
@@ -47,7 +65,8 @@ lazy val compiler = (project in file("compiler"))
 lazy val compilerApi = (project in file("compiler-api"))
   .settings(published)
   .settings(
-    name := "everyui-compiler-api"
+    name := "everyui-compiler-api",
+    description := "EveryUI's @native, for a facade over a Roku or Apple TV global"
   )
 
 /** Compile the current project, then run the Roku compiler over its TASTy plus
@@ -210,6 +229,7 @@ lazy val web = (project in file("web"))
   .settings(published)
   .settings(
     name := "everyui-web",
+    description := "EveryUI's UI layer over the DOM, for Scala.js",
     sourcesInBase := false,   // web/project.scala is scala-cli's
     Compile / unmanagedSourceDirectories += sharedSources,
     libraryDependencies ++= Seq(
@@ -230,6 +250,7 @@ lazy val networkJvm = (project in file("network/jvm"))
   .settings(published)
   .settings(
     name := "everyui-network",
+    description := "EveryUI's HTTP and DurableSocket, with Spice as the core",
     // the published reactify, not the source tree: nothing here needs excluding
     excludeDependencies := Nil,
     Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice"), logModelSources),
@@ -250,6 +271,7 @@ lazy val networkJs = (project in file("network/js"))
   .settings(published)
   .settings(
     name := "everyui-network",
+    description := "EveryUI's HTTP and DurableSocket, with Spice as the core",
     Compile / unmanagedSourceDirectories ++= Seq(networkSources, networkBackend("spice"), networkBackend("fabric"), networkBackend("files")),
     libraryDependencies ++= Seq(
       "com.outr" %% "spice-client" % spiceVersion,
@@ -300,6 +322,7 @@ lazy val seo = (project in file("seo"))
   .settings(published)
   .settings(
     name := "everyui-seo",
+    description := "What an EveryUI app's server writes for search and answer engines",
     Compile / unmanagedSourceDirectories += sharedSources / "everyui" / "seo",
     // the build's side of the well-known files (sbt-support's AppDomains), checked against the server's
     Test / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "sbt-support" / "src" / "main" / "scala",
@@ -316,6 +339,7 @@ lazy val seoJs = (project in file("seo/js"))
   .settings(published)
   .settings(
     name := "everyui-seo",
+    description := "What an EveryUI app's server writes for search and answer engines",
     Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "seo" / "src" / "main" / "scala",
     Compile / unmanagedSources / excludeFilter := HiddenFileFilter || "WellKnown.scala" || "WellKnownAnswer.scala"
   )
@@ -335,6 +359,7 @@ lazy val sbtEveryui = (project in file("sbt-support"))
   .settings(published)
   .settings(
     name := "sbt-everyui",
+    description := "EveryUI's sbt 2 plugin: web targets, and packaging for every other platform",
     scalaVersion := "3.8.4",
     Compile / unmanagedSourceDirectories += baseDirectory.value / "src" / "plugin" / "scala",
     addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0"),
@@ -549,6 +574,7 @@ lazy val desktopPublished = (project in file("published/desktop"))
   .settings(published)
   .settings(
     name := "everyui-desktop",
+    description := "EveryUI's UI layer over JavaFX, with the network module",
     excludeDependencies := Nil,   // the published reactify
     // with the web view's guest (desktop/web), which runs only where the app adds javafx-web (WebGuest)
     Compile / unmanagedSourceDirectories ++= publishedSources("desktop", "jvm", spice = true) :+ desktopWebSources,
@@ -568,6 +594,7 @@ lazy val androidPublished = (project in file("published/android"))
   .settings(published)
   .settings(
     name := "everyui-android",
+    description := "EveryUI's UI layer over Android's Views, with the network module",
     excludeDependencies := Nil,
     Compile / unmanagedSourceDirectories ++= publishedSources("android", "android", spice = true),
     libraryDependencies ++= Seq(
@@ -605,6 +632,7 @@ lazy val rokuPublished = (project in file("published/roku"))
   .settings(published)
   .settings(
     name := "everyui-roku",
+    description := "EveryUI's UI layer over SceneGraph, with the network module, for the compiler",
     excludeDependencies := Nil,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / unmanagedSourceDirectories ++= publishedSources("roku", "native", spice = false),
@@ -621,6 +649,7 @@ lazy val tvosPublished = (project in file("published/tvos"))
   .settings(published)
   .settings(
     name := "everyui-tvos",
+    description := "EveryUI's UI layer over UIKit, with the network module, for the compiler",
     excludeDependencies := Nil,
     Compile / scalacOptions ++= Seq("-Yretain-trees"),
     Compile / unmanagedSourceDirectories ++= publishedSources("tvos", "native", spice = false),
@@ -767,6 +796,7 @@ lazy val monaco = (project in file("monaco"))
   .settings(published)
   .settings(
     name := "everyui-monaco",
+    description := "Monaco as EveryUI components, for Scala.js",
     libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
     Compile / resourceGenerators += monacoResources.taskValue
   )
@@ -886,6 +916,7 @@ lazy val terminal = (project in file("terminal"))
   .settings(published)
   .settings(
     name := "everyui-terminal",
+    description := "A terminal (xterm.js) as an EveryUI component, for Scala.js",
     Compile / resourceGenerators += terminalResources.taskValue
   )
 
@@ -1016,23 +1047,27 @@ def embedAndroid(sources: File, resources: Def.Initialize[Task[Seq[File]]]): Seq
 lazy val monacoDesktopPublished = (project in file("published/monaco-desktop"))
   .dependsOn(desktopPublished % Provided)
   .settings(published)
-  .settings(name := "everyui-monaco-desktop")
+  .settings(name := "everyui-monaco-desktop",
+    description := "Monaco as EveryUI components, over everyui-desktop's web view")
   .settings(embedDesktop(monacoSources, monacoResources))
 
 lazy val monacoAndroidPublished = (project in file("published/monaco-android"))
   .dependsOn(androidPublished % Provided)
   .settings(published)
-  .settings(name := "everyui-monaco-android")
+  .settings(name := "everyui-monaco-android",
+    description := "Monaco as EveryUI components, over everyui-android's web view")
   .settings(embedAndroid(monacoSources, monacoResources))
 
 lazy val terminalDesktopPublished = (project in file("published/terminal-desktop"))
   .dependsOn(desktopPublished % Provided)
   .settings(published)
-  .settings(name := "everyui-terminal-desktop")
+  .settings(name := "everyui-terminal-desktop",
+    description := "A terminal (xterm.js) as an EveryUI component, over everyui-desktop's web view")
   .settings(embedDesktop(terminalSources, terminalResources))
 
 lazy val terminalAndroidPublished = (project in file("published/terminal-android"))
   .dependsOn(androidPublished % Provided)
   .settings(published)
-  .settings(name := "everyui-terminal-android")
+  .settings(name := "everyui-terminal-android",
+    description := "A terminal (xterm.js) as an EveryUI component, over everyui-android's web view")
   .settings(embedAndroid(terminalSources, terminalResources))

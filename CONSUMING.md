@@ -1,30 +1,35 @@
 # Using EveryUI from another build
 
-EveryUI is published locally for now: run `sbt publishLocal` in this repository, and the artifacts go to
-`~/.ivy2/local/com.outr/`.
+EveryUI is published to Maven Central under the Apache License 2.0 (`LICENSE`), as `com.outr`. sbt resolves from
+Central by default, so a build adds no resolver for EveryUI itself. Android is the exception: the Android archives
+everyui-android compiles against, and leaves to the app (`EveryUILibraries.android`), are on Google's Maven
+repository, which the app's Android project adds (`resolvers += EveryUILibraries.google`).
+
+Between releases, `sbt publishLocal` in this repository publishes the working tree as `0.1.0-SNAPSHOT` to
+`~/.ivy2/local/com.outr/`, which a build takes by naming that version in place of the release.
 
 ## Coordinates
 
 | Module | What it is | Platforms |
 |---|---|---|
-| `"com.outr" %% "everyui-web" % "0.1.0-SNAPSHOT"` | the UI layer (components, layouts, focus, keymaps, screens, theme, i18n) over the DOM | Scala.js |
-| `"com.outr" %% "everyui-desktop" % "0.1.0-SNAPSHOT"` | the UI layer over JavaFX, with the network module | JVM |
-| `"com.outr" %% "everyui-android" % "0.1.0-SNAPSHOT"` | the UI layer over Android's Views, with the network module | JVM (Android) |
-| `"com.outr" %% "everyui-roku" % "0.1.0-SNAPSHOT"` | the UI layer over SceneGraph, with the network module, for the compiler | JVM (TASTy) |
-| `"com.outr" %% "everyui-tvos" % "0.1.0-SNAPSHOT"` | the UI layer over UIKit, with the network module, for the compiler | JVM (TASTy) |
-| `"com.outr" %% "everyui-network" % "0.1.0-SNAPSHOT"` | HTTP and DurableSocket, with Spice as the core: the web's, and a server's | JVM and Scala.js |
-| `"com.outr" %% "everyui-seo" % "0.1.0-SNAPSHOT"` | what an app's server writes for search and answer engines | JVM and Scala.js |
-| `"com.outr" %% "everyui-monaco" % "0.1.0-SNAPSHOT"` | Monaco as EveryUI components | Scala.js |
-| `"com.outr" %% "everyui-monaco-desktop" % "0.1.0-SNAPSHOT"` | the same, over everyui-desktop's web view | JVM (desktop) |
-| `"com.outr" %% "everyui-monaco-android" % "0.1.0-SNAPSHOT"` | the same, over everyui-android's web view | JVM (Android) |
-| `"com.outr" %% "everyui-terminal" % "0.1.0-SNAPSHOT"` | a terminal (xterm.js) as an EveryUI component | Scala.js |
-| `"com.outr" %% "everyui-terminal-desktop" % "0.1.0-SNAPSHOT"` | the same, over everyui-desktop's web view | JVM (desktop) |
-| `"com.outr" %% "everyui-terminal-android" % "0.1.0-SNAPSHOT"` | the same, over everyui-android's web view | JVM (Android) |
-| `"com.outr" %% "everyui-compiler" % "0.1.0-SNAPSHOT"` | Scala 3 TASTy to BrightScript and Swift, run by the plugin | JVM |
-| `"com.outr" %% "everyui-compiler-api" % "0.1.0-SNAPSHOT"` | `@native`, for a facade over a Roku or Apple TV global (comes with everyui-roku and everyui-tvos) | JVM |
-| `addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")` | an app's build: web targets, and packaging for every other platform | sbt 2 |
+| `"com.outr" %% "everyui-web" % "0.1.0"` | the UI layer (components, layouts, focus, keymaps, screens, theme, i18n) over the DOM | Scala.js |
+| `"com.outr" %% "everyui-desktop" % "0.1.0"` | the UI layer over JavaFX, with the network module | JVM |
+| `"com.outr" %% "everyui-android" % "0.1.0"` | the UI layer over Android's Views, with the network module | JVM (Android) |
+| `"com.outr" %% "everyui-roku" % "0.1.0"` | the UI layer over SceneGraph, with the network module, for the compiler | JVM (TASTy) |
+| `"com.outr" %% "everyui-tvos" % "0.1.0"` | the UI layer over UIKit, with the network module, for the compiler | JVM (TASTy) |
+| `"com.outr" %% "everyui-network" % "0.1.0"` | HTTP and DurableSocket, with Spice as the core: the web's, and a server's | JVM and Scala.js |
+| `"com.outr" %% "everyui-seo" % "0.1.0"` | what an app's server writes for search and answer engines | JVM and Scala.js |
+| `"com.outr" %% "everyui-monaco" % "0.1.0"` | Monaco as EveryUI components | Scala.js |
+| `"com.outr" %% "everyui-monaco-desktop" % "0.1.0"` | the same, over everyui-desktop's web view | JVM (desktop) |
+| `"com.outr" %% "everyui-monaco-android" % "0.1.0"` | the same, over everyui-android's web view | JVM (Android) |
+| `"com.outr" %% "everyui-terminal" % "0.1.0"` | a terminal (xterm.js) as an EveryUI component | Scala.js |
+| `"com.outr" %% "everyui-terminal-desktop" % "0.1.0"` | the same, over everyui-desktop's web view | JVM (desktop) |
+| `"com.outr" %% "everyui-terminal-android" % "0.1.0"` | the same, over everyui-android's web view | JVM (Android) |
+| `"com.outr" %% "everyui-compiler" % "0.1.0"` | Scala 3 TASTy to BrightScript and Swift, run by the plugin | JVM |
+| `"com.outr" %% "everyui-compiler-api" % "0.1.0"` | `@native`, for a facade over a Roku or Apple TV global (comes with everyui-roku and everyui-tvos) | JVM |
+| `addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0")` | an app's build: web targets, and packaging for every other platform | sbt 2 |
 
-The version stays 0.1.0-SNAPSHOT from one publish to the next. What a build has is in each jar's manifest instead:
+A local snapshot stays 0.1.0-SNAPSHOT from one publish to the next. What a build has is in each jar's manifest instead:
 `EveryUI-Commit` is the commit it was published from (with `-dirty` after it if the tree had uncommitted changes), and
 the plugin's `everyuiCommit` answers it (`sbt show everyuiCommit`), warning when the jars on a classpath come from more
 than one commit. Record it with a deploy to say which EveryUI shipped.
@@ -43,7 +48,13 @@ supplies it. So there is no separate core artifact. The shared layer ships insid
 
 ```scala
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0")
+// the build side of EveryUI: web targets, and packaging for the desktop, Android, the Roku and the Apple TV
+addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0")
 ```
+
+sbt-everyui is an sbt 2 plugin (published as `sbt-everyui_sbt2_3`), so the app's build is on sbt 2. Its
+`everyuiVersion` is the release it belongs to, and a project names the backends at it
+(`"com.outr" %% "everyui-desktop" % everyuiVersion.value`) so the plugin and the artifacts stay at one release.
 
 `build.sbt` (sbt 2 picks the `_sjs1` artifact for a Scala.js project from `%%`):
 
@@ -59,8 +70,8 @@ lazy val app = project.in(file("app"))
     // Spice's Scala.js artifacts name some dependencies by their JVM names; keep the JVM reactify off the page
     excludeDependencies += ExclusionRule("com.outr", "reactify_3"),
     libraryDependencies ++= Seq(
-      "com.outr" %% "everyui-web" % "0.1.0-SNAPSHOT",
-      "com.outr" %% "everyui-network" % "0.1.0-SNAPSHOT"   // only if the app talks to a server
+      "com.outr" %% "everyui-web" % "0.1.0",
+      "com.outr" %% "everyui-network" % "0.1.0"   // only if the app talks to a server
     )
   )
 ```
@@ -4013,7 +4024,7 @@ bytes, so it does not open any sooner.
 `project/plugins.sbt`, beside Scala.js:
 
 ```scala
-addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")
+addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0")
 ```
 
 (EveryUI's own build compiles the plugin's sources into its meta-build, `project/plugins.sbt`; an app takes the
@@ -4256,7 +4267,7 @@ The `sbt-everyui` plugin (`project/plugins.sbt`, as for the web) does the rest: 
 of the published artifacts, and its helpers package the app. Nothing comes from an EveryUI checkout.
 
 ```scala
-addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0-SNAPSHOT")
+addSbtPlugin("com.outr" % "sbt-everyui" % "0.1.0")
 ```
 
 `everyuiVersion` is the release the plugin belongs to, so the backends are named at it. Each backend carries the
@@ -5029,7 +5040,7 @@ only, since Android's view is the page.
 
 ## Monaco (everyui-monaco)
 
-`"com.outr" %% "everyui-monaco" % "0.1.0-SNAPSHOT"` (Scala.js) is Monaco, VS Code's editor, as components: a port of
+`"com.outr" %% "everyui-monaco" % "0.1.0"` (Scala.js) is Monaco, VS Code's editor, as components: a port of
 flutter_monaco_editor with the same API in Scala. It brings Monaco 0.57.0's files as resources under
 `everyui-monaco/0.57.0/`: fetched from npm with their integrity checked by the build, never committed.
 
@@ -5170,7 +5181,7 @@ everyuiVersion.value`. Each is compiled against its backend and carries Monaco's
 
 ## Terminal (everyui-terminal)
 
-`"com.outr" %% "everyui-terminal" % "0.1.0-SNAPSHOT"` (Scala.js) is a terminal as a component: xterm.js 6.0.0 with its
+`"com.outr" %% "everyui-terminal" % "0.1.0"` (Scala.js) is a terminal as a component: xterm.js 6.0.0 with its
 fit and web-links addons, over an `Embed` as Monaco is. It knows nothing of where the bytes come from: the app writes a
 program's output in and sends what it gives out on, over whatever carries them (a socket to a pty on another machine,
 say). xterm.js's files come as resources under `everyui-terminal/6.0.0/`, fetched from npm with their integrity checked
