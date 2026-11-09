@@ -311,7 +311,7 @@ lazy val networkJs = (project in file("network/js"))
       // spice-core_sjs1 as published locally lists its dependencies by their JVM names (reactify_3 is excluded
       // build-wide, and so in this module's POM): the Scala.js builds of them are named here
       "org.typelevel" %% "fabric-io" % "1.30.4",
-      "com.outr" %% "rapid-core" % "2.9.9",
+      "com.outr" %% "rapid-core" % "2.9.10",
       "com.outr" %% "scribe" % "3.19.1",
       "com.outr" %% "profig" % "3.7.1",
       "com.outr" %% "reactify" % reactifyVersion,
