@@ -3090,7 +3090,7 @@ URL's last segment); a browser then opens its picker only while the click is rec
 and downloads the file otherwise. A status that is not a success saves nothing and answers `SaveFailed("HTTP <status>:
 <what it said>")`. `HttpFiles.fetched(call)` is the call alone: the bytes and the result, or why there are none.
 
-- **Web**: the response read as an ArrayBuffer (Spice 1.10.9-SNAPSHOT6's client, which reads every response as
+- **Web**: the response read as an ArrayBuffer (Spice 1.10.9's client, which reads every response as
   bytes and a text one as its charset says). Another origin must allow the page (CORS) and expose the name,
   `Access-Control-Expose-Headers: Content-Disposition`, or `fileName` is None there.
 - **Desktop, Android**: Spice's client; the file is written off the drawing thread.

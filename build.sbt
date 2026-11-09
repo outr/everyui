@@ -163,7 +163,7 @@ def backendSources(backend: String, spice: Boolean): Seq[File] =
 // The shared layer names `everyui.render.RenderNode` and a backend supplies it at compile time, so it ships inside
 // each backend's artifact rather than as a core of its own. reactify comes as its published snapshot here (4.2.1,
 // what the `reactive` project compiles from source), which evicts the older release Spice depends on.
-lazy val reactifyVersion = "4.2.1-SNAPSHOT"
+lazy val reactifyVersion = "4.2.1"
 /** The commit a published artifact is built from, "-dirty" after it when the tree had uncommitted changes: written into
   * each published jar's manifest as EveryUI-Commit, so an app's build can say which EveryUI it has (sbt-everyui's
   * everyuiCommit) while the version stays 0.1.0-SNAPSHOT. */
@@ -255,9 +255,9 @@ lazy val networkJs = (project in file("network/js"))
       "com.outr" %% "spice-client" % spiceVersion,
       // spice-core_sjs1 as published locally lists its dependencies by their JVM names (reactify_3 is excluded
       // build-wide, and so in this module's POM): the Scala.js builds of them are named here
-      "org.typelevel" %% "fabric-io" % "1.30.2-SNAPSHOT",
+      "org.typelevel" %% "fabric-io" % "1.30.4",
       "com.outr" %% "rapid-core" % "2.9.9",
-      "com.outr" %% "scribe" % "3.19.1-SNAPSHOT",
+      "com.outr" %% "scribe" % "3.19.1",
       "com.outr" %% "profig" % "3.7.1",
       "com.outr" %% "reactify" % reactifyVersion,
       // UUID.randomUUID (the durable client id) needs SecureRandom, which Scala.js keeps in its own library
@@ -290,7 +290,7 @@ lazy val roku = (project in file("roku"))
 // example server used it too), so the backend is part of the system rather than
 // a dev-only prop — where API endpoints, WebSocket hot-reload or OpenAPI go
 // when the framework needs them. Consumed from ~/.ivy2/local.
-lazy val spiceVersion = "1.10.9-SNAPSHOT6"
+lazy val spiceVersion = "1.10.9"
 
 // --- seo: what a page says to search and answer engines, written by an app's server -------------------------
 // Plain Scala over the shared PageMeta and Alternate (every backend has those); the rest (the page's content as HTML
@@ -750,7 +750,7 @@ lazy val network = (project in file("network"))
 //   sbt monacoDesktop/run                the gallery on the desktop (JavaFX's web view)
 //   sbt monacoDesktop/test               the bridge protocol and controller specs, and Monaco loaded in a web view
 //   sbt monacoAndroid/packageApk         the gallery for Android, in monaco/android/out-apk/everyui-monaco.apk
-lazy val fabricVersion = "1.30.2-SNAPSHOT"
+lazy val fabricVersion = "1.30.4"
 lazy val monacoSources = (file("monaco") / "src" / "main" / "scala").getAbsoluteFile
 lazy val monacoGallerySources = (file("monaco") / "gallery" / "src" / "main" / "scala").getAbsoluteFile
 /** The desktop's web guest (FxWebGuest): only where javafx-web is on the classpath. */
