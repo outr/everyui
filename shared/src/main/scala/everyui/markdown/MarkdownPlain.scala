@@ -1,5 +1,7 @@
 package everyui.markdown
 
+import everyui.log.AnsiText
+
 /** Markdown as plain prose, for a clipboard's text flavour (`Clipboard.copyMarkdown`): what reads well pasted where
   * there are no styles. Paragraphs, headings and quotes are their words, a blank line between each; the marks of bold,
   * slant and code go; a list's items start "- " or "1. ", a list inside an item stood in under its words; a link is
@@ -7,43 +9,52 @@ package everyui.markdown
   * its lines as they are (a terminal's output without its escapes, `CodeBlockView.plain`); a rule is the blank line
   * it stands for; a table is a line to a row, its cells apart by tabs.
   *
-  * With `breaks`, a line break in the text is a line break, as a chat's messages have it (`MessageMarkdown`).
+  * With `breaks`, a line break in the text is a line break, as a chat's messages have it (`MessageMarkdown`). Without
+  * `hrefs`, a link is its words alone, where it goes only where it has no words of its own: as `spoken` reads it.
   *
   * {{{
   *   MarkdownPlain("**Hi**, see [the docs](https://x.io).\n\n- one\n- two") == "Hi, see the docs (https://x.io).\n\n- one\n- two"
   * }}} */
 object MarkdownPlain {
   /** `markdown` parsed and made plain text. */
-  def apply(markdown: String, breaks: Boolean = false): String = blocks(Markdown.parse(markdown), breaks)
+  def apply(markdown: String, breaks: Boolean = false, hrefs: Boolean = true): String =
+    blocks(Markdown.parse(markdown), breaks, hrefs)
+
+  /** `markdown` as a screen reader is given it (a chat's message, `Transcript.said`): its words as `apply` makes them,
+    * its line breaks kept, a link its words alone and a terminal's escapes taken out wherever they are, a code block's
+    * and the prose's alike (`AnsiText.unescaped`). Words with no Markdown in them are said as they are. */
+  def spoken(markdown: String): String = AnsiText.unescaped(apply(markdown, breaks = true, hrefs = false))
 
   /** `list` as plain text, a blank line between blocks. */
-  def blocks(list: List[MdBlock], breaks: Boolean = false): String = joined(list, breaks, "\n\n")
+  def blocks(list: List[MdBlock], breaks: Boolean = false, hrefs: Boolean = true): String =
+    joined(list, breaks, hrefs, "\n\n")
 
   /** `content` as plain text: the words of a paragraph, a heading or a cell. */
-  def inlines(content: List[MdInline], breaks: Boolean = false): String = content.map(i => piece(i, breaks)).mkString
+  def inlines(content: List[MdInline], breaks: Boolean = false, hrefs: Boolean = true): String =
+    content.map(i => piece(i, breaks, hrefs)).mkString
 
-  private def joined(list: List[MdBlock], breaks: Boolean, between: String): String =
-    list.map(b => block(b, breaks)).filter(_.nonEmpty).mkString(between)
+  private def joined(list: List[MdBlock], breaks: Boolean, hrefs: Boolean, between: String): String =
+    list.map(b => block(b, breaks, hrefs)).filter(_.nonEmpty).mkString(between)
 
-  private def block(b: MdBlock, breaks: Boolean): String = b match {
-    case MdBlock.Paragraph(content) => inlines(content, breaks)
-    case MdBlock.Heading(_, content) => inlines(content, breaks)
+  private def block(b: MdBlock, breaks: Boolean, hrefs: Boolean): String = b match {
+    case MdBlock.Paragraph(content) => inlines(content, breaks, hrefs)
+    case MdBlock.Heading(_, content) => inlines(content, breaks, hrefs)
     case MdBlock.CodeBlock(language, code, _) => trimEnd(CodeBlockView.plain(language, code))
     case MdBlock.Html(source) => trimEnd(source)
-    case MdBlock.Quote(inside) => blocks(inside, breaks)
+    case MdBlock.Quote(inside) => blocks(inside, breaks, hrefs)
     case MdBlock.BulletList(ordered, start, tight, items) =>
       val between = if (tight) "\n" else "\n\n"
       var out: List[String] = Nil
       var n = start
       items.foreach { it =>
         val mark = if (ordered) n.toString + ". " else "- "
-        out = indented(mark + task(it), joined(it.blocks, breaks, between)) :: out
+        out = indented(mark + task(it), joined(it.blocks, breaks, hrefs, between)) :: out
         n += 1
       }
       out.reverse.mkString(between)
     case MdBlock.Rule => ""
     case MdBlock.TableBlock(_, header, rows) =>
-      (if (header.isEmpty) rows else header :: rows).map(r => r.map(c => inlines(c, breaks)).mkString("\t"))
+      (if (header.isEmpty) rows else header :: rows).map(r => r.map(c => inlines(c, breaks, hrefs)).mkString("\t"))
         .mkString("\n")
     case MdBlock.Definitions(_) => ""
   }
@@ -71,15 +82,16 @@ object MarkdownPlain {
     }.mkString("\n")
   }
 
-  private def piece(i: MdInline, breaks: Boolean): String = i match {
+  private def piece(i: MdInline, breaks: Boolean, hrefs: Boolean): String = i match {
     case MdInline.Text(t) => t
-    case MdInline.Emphasis(c) => inlines(c, breaks)
-    case MdInline.Strong(c) => inlines(c, breaks)
-    case MdInline.Strike(c) => inlines(c, breaks)
+    case MdInline.Emphasis(c) => inlines(c, breaks, hrefs)
+    case MdInline.Strong(c) => inlines(c, breaks, hrefs)
+    case MdInline.Strike(c) => inlines(c, breaks, hrefs)
     case MdInline.CodeSpan(code) => code
     case MdInline.Hyperlink(href, _, c) =>
-      val words = inlines(c, breaks)
+      val words = inlines(c, breaks, hrefs)
       if (words.trim.isEmpty || words == href || "mailto:" + words == href) href.stripPrefix("mailto:")
+      else if (!hrefs) words
       else words + " (" + href + ")"
     case MdInline.Picture(src, _, alt) => if (alt.isEmpty) src else alt
     case MdInline.SoftBreak => if (breaks) "\n" else " "

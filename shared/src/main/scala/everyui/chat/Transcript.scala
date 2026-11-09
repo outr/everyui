@@ -10,6 +10,8 @@ import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.Spinner
 import everyui.list.{ListRow, VirtualList}
+import everyui.log.AnsiText
+import everyui.markdown.MarkdownPlain
 import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -89,6 +91,11 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val dayMarkers: Var[Boolean] = own(Var(true))
   /** How many lines of a tool call's `body` show before it is opened. */
   val bodyLines: Var[Int] = own(Var(3))
+  /** Whether messages' words (and tool calls' bodies) are plain text, said as they are, a terminal's escapes taken out
+    * (`AnsiText.unescaped`): on for a transcript given `render = MessageText.plain`. Off, the default, they are
+    * Markdown, as `MessageMarkdown` draws them, and said as their words (`MarkdownPlain.spoken`): no fences, marks or
+    * escapes. */
+  val plainText: Var[Boolean] = own(Var(false))
   /** Whether a new message from somebody else is read out by a screen reader. */
   val announces: Var[Boolean] = own(Var(true))
   /** The clock "5m" and a live elapsed time follow, moving on while this is on the screen. */
@@ -200,7 +207,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     Grouping.leads(if (index > 0 && index <= list.count) Some(list(index - 1)) else None, entry)
 
   /** How an entry is read out: a message by its author and words, a tool call by what it does, its body and how it
-    * stands; then its rail's `railLabel`, where it has one. */
+    * stands; then its rail's `railLabel`, where it has one. A message's words and a body are said as they read
+    * (`spoken`), not as the Markdown they were written in. */
   def said(entry: ChatEntry): String = {
     val label = entry.railLabel()
     if (label.isEmpty) saidOf(entry) else saidOf(entry) + ", " + label.get
@@ -211,13 +219,17 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       val work = s.working()
       work.who.name + ", " + ChatWords.busy + ", " + work.what
     }.getOrElse("")
-    case m: ChatEntry.Message => m.author.name + ": " + m.text()
-    case a: ChatEntry.Activity => a.summary() + (if (a.body().isEmpty) "" else ": " + a.body()) + ", " +
+    case m: ChatEntry.Message => m.author.name + ": " + spoken(m.text())
+    case a: ChatEntry.Activity => a.summary() + (if (a.body().isEmpty) "" else ": " + spoken(a.body())) + ", " +
       ActivityView.said(a.status())
     case t: ChatEntry.Thinking => t.done().map(d => ChatWords.thoughtFor(ChatTime.span(d))).getOrElse(ChatWords.thinking)
     case m: ChatEntry.Marker => m.text()
     case _: ChatEntry.Custom => ""
   }
+
+  /** `text`, a message's words or a tool call's body, as a screen reader is given it: its Markdown's words
+    * (`MarkdownPlain.spoken`), or where the words are `plainText`, them as they are less a terminal's escapes. */
+  def spoken(text: String): String = if (plainText()) AnsiText.unescaped(text) else MarkdownPlain.spoken(text)
 
   /** The view for `entry` in `row`, which is taken apart again when the row moves on. */
   private[chat] def viewFor(entry: ChatEntry, leading: Boolean, row: ChatRow): Component = entry match {

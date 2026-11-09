@@ -1969,7 +1969,12 @@ message by the same author now sits straight above it, so nothing on the screen 
 A transcript shows each message as Markdown by default (`MessageMarkdown`): as wide as its widest line up to the widest
 a bubble's words may be, so a short reply makes a narrow bubble, with code, a table, a rule or a picture taking all of
 that; the line breaks it was typed with kept; and a streaming message parsed again from its last block alone.
-`render = MessageText.plain` shows plain text instead.
+`render = MessageText.plain` shows plain text instead. A screen reader hears a message as it reads, not its Markdown
+(`Transcript.said`, its row's name and what is announced as a message arrives; `MarkdownPlain.spoken`): no fences, no
+`**` or backticks, a link's words without where it goes, a terminal's block (```` ```ansi ````) its words without the
+escapes, which are taken out of the prose too, and a tool call's body the same; words with no Markdown in them are
+heard as they are, and a long message whole. A transcript of `MessageText.plain` sets `plainText @= true`, and its
+messages are heard as they are written, less a terminal's escapes.
 
 A transcript narrower than a phone's (`Transcript.narrow`, 600 px) draws as a phone's, by itself as the width crosses
 it: everybody else's avatar goes small (`smallAvatar`, 20 px) at the start of the line with their name, and every bubble,
@@ -2209,7 +2214,8 @@ above the first turn. A `TurnHeader` is the turn's words (`text`, a `Val`: give 
 follows), an optional author's name for a room of several people (`author`), an optional file's name drawn after a
 paperclip (`attachment`), and `busy`, a `Val[Boolean]` the app turns on while the turn runs and off once it is done,
 which draws a small turning glyph at the end (standing still at half strength where less motion is asked for).
-`TurnHeader.of(message, named, attachment, busy)` makes one from a message.
+`TurnHeader.of(message, named, attachment, busy, plain)` makes one from a message. Its words are Markdown, as a
+message's are: shown, in its tip and to a screen reader as they read (`MarkdownPlain.spoken`), unless `plain`.
 
 The header is one line, 30 points tall, 6 in from the top and 12 from each side, over the rows rather than above them:
 nothing in the transcript moves as it comes and goes, and the spinner for earlier entries sits under it while it shows.

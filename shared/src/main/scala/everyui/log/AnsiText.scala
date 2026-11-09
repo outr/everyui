@@ -48,6 +48,12 @@ object AnsiText {
   /** `text` with every escape and control character taken out, a line to a line: its words as a terminal shows them. */
   def strip(text: String): String = lines(text).map(_.text).mkString("\n")
 
+  /** `text` stripped (`strip`) where it holds an escape, a bare ESC among them; as it is, the same string, where it
+    * holds none, so words that were never a terminal's keep their tabs and carriage returns. */
+  def unescaped(text: String): String =
+    if (text.indexOf("\u001b") >= 0 || text.indexOf("\u009b") >= 0 || text.indexOf("\u009d") >= 0) strip(text)
+    else text
+
   /** Whether `text` holds a terminal's escapes: a control sequence or an operating system command (ESC [ or ESC ],
     * or their 8-bit forms). */
   def escaped(text: String): Boolean =
