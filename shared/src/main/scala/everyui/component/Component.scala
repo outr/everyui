@@ -414,6 +414,9 @@ class Component(val node: RenderNode) {
   /** Out of use for now: whatever reads the page hears so (the web's `aria-disabled`, TalkBack for a field), and the
     * platform's own field takes no typing, though the focus still reaches it. How it looks is the component's to say. */
   lazy val disabled: Prop[Boolean] = own(new Prop[Boolean](false, d => node.setDisabled(d)))
+  /** Passed over, with all it holds, by whatever reads the screen (the web's `aria-hidden`, TalkBack), though still
+    * drawn: what an open dialog's sheet covers (Modal), so a screen reader hears the top dialog alone. */
+  private[everyui] lazy val readerHidden: Prop[Boolean] = own(new Prop[Boolean](false, h => node.setReaderHidden(h)))
   /** What is wrong with what it holds ("Enter an email address"), "" while nothing is: whatever reads the page hears
     * that it is invalid, and why (the web's `aria-invalid` and its description, TalkBack's error, the desktop's help
     * text), and the words are read out at once as they come while the focus is in it. How it looks is the

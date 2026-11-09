@@ -1159,6 +1159,18 @@ class RenderNode(val view: View) {
     case e: FieldView => e.selecting = f
     case _ => ()
   }
+  // how much it mattered to TalkBack before a dialog covered it (`setReaderHidden`), given back as the dialog closes
+  private var importance: Option[Int] = None
+  /** Passed over by TalkBack, with all it holds: what a dialog covers. */
+  def setReaderHidden(hidden: Boolean): Unit =
+    if (hidden) {
+      if (importance.isEmpty) importance = Some(view.getImportantForAccessibility)
+      view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS)
+    }
+    else importance.foreach { was =>
+      importance = None
+      view.setImportantForAccessibility(was)
+    }
   /** Out of use, or back in it: a field takes no typing and TalkBack reads it as disabled. Other views are only drawn
     * dimmed by the app: disabling one would stop the touches that move the focus to it. */
   // out of use (`Component.disabled`): TalkBack reads a button so, though it stays where the focus can reach it

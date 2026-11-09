@@ -22,7 +22,9 @@ import reactify.*
   * A press on the field opens the calendar too, as most date inputs do: dropped under it, the caret left in the field
   * to type on (a date typed moves the calendar to it), put away by Escape, a press anywhere else, the focus moving on,
   * or a day chosen, which fills the field; where there is no room to drop it, the press opens the dialog. From the keys
-  * the focus coming in by Tab opens nothing, and Alt+Down opens it as the button does, the focus in it.
+  * the focus coming in by Tab opens nothing, and Alt+Down opens it as the button does, the focus in it. In a dialog a
+  * press opens it as the button does too: over the dialog, which stays as it was, the focus in the calendar and back
+  * on the field once it goes (Back, Escape and a press outside put away the calendar alone).
   *
   * Where the app is worked by a remote (`Platform.remoteNavigation`, or `typing = false`), there is nothing to type:
   * the field shows the date, and OK on it opens the calendar in a dialog.
@@ -118,10 +120,12 @@ class DateField(label: String = DateWords.date, val value: Var[Option[CalendarDa
   private var dropped: Option[(Container, DatePicker)] = None
   private var undrop: List[() => Unit] = Nil
 
-  // a press on the field: the calendar dropped beside the caret where there is room, else the dialog
+  // a press on the field: the calendar dropped beside the caret where there is room, else the dialog. In a dialog the
+  // calendar is dropped as the button drops it, over the dialog (Modal.over), the focus in it and back on the field as
+  // it goes: one dropped beside the caret would be outside the dialog, where the focus and Back do not reach
   private def pressed(): Unit =
-    if (!(typing && ui.size.width() >= 600.0)) open()
-    else if (dropped.isEmpty && !Modal.showing) {
+    if (!(typing && ui.size.width() >= 600.0) || (dropped.isEmpty && Modal.showing)) open()
+    else if (dropped.isEmpty) {
       // the date now, not a Var bound to `value`: the picker's choice is its own until a day is chosen
       val now = value()
       val picker = new DatePicker(Var(now), min, max, firstDay, CalendarDate.today(), headline = false)

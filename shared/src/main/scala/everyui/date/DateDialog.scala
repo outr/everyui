@@ -40,11 +40,11 @@ private[date] object DateDialog {
   }
 
   /** `body` in a panel under `anchor` (over it where below has no room), kept on the screen, with the focus on
-    * `focus`: Back, Escape or a click outside closes it, and so does `close`. */
+    * `focus`, over any dialog up (the field's): Back, Escape or a click outside closes it alone, as `close` does. */
   def drop(anchor: Component, body: Component, focus: () => Option[Component], closed: () => Unit = () => ()): Container = {
     val p = panel(body)
     place(p, anchor)
-    Modal.show(p, focus().getOrElse(body), closed, dim = false, centre = false)
+    Modal.over(p, focus().getOrElse(body), closed, dim = false, centre = false)
     p
   }
 

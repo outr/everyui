@@ -121,9 +121,10 @@ class DialogPanel(title: String, body: List[Component], actions: List[DialogActi
   def defaultButton: Option[DialogButton] = buttons.find(_.action.default)
 
   /** Put it up, the focus on `focus`, else on the default button, else on the first thing it holds; `after` hears it
-    * close, however it closes. `over` keeps the dialog it opens from, to go back to; one that is not `dismissible`
-    * stays until what put it up takes it down. */
-  def open(focus: Option[Component] = None, after: () => Unit = () => (), over: Boolean = false,
+    * close, however it closes. It goes over any dialog up (Modal.over), which is there again, whole, once it closes:
+    * a confirmation from a form's button, a picker from its field. Without `over` it takes the place of the one on top
+    * (Modal.show). One that is not `dismissible` stays until what put it up takes it down. */
+  def open(focus: Option[Component] = None, after: () => Unit = () => (), over: Boolean = true,
            dismissible: Boolean = true): Unit = {
     val target = focus.orElse(defaultButton).orElse(Focus.candidates(this).headOption).getOrElse(this)
     if (over) Modal.over(this, target, after, dismissible) else Modal.show(this, target, after, dismissible)

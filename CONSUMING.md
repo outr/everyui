@@ -1053,6 +1053,25 @@ Dialogs.show("Publish", List(summary), close => List(
 A body of words taller than its room takes the focus, and Up and Down read through it with a remote. `DialogPanel.textSize`
 and `Menu.textSize` are set once, larger, on a television.
 
+A dialog opened from a dialog stacks on it: a confirmation from a form's Delete, a `DateField`'s calendar, a
+`TimeField`'s, a colour or a range picked in a dialog of its own, a menu, a `FilterPicker`. The form stays up, whole,
+under it, with whatever was typed into it; only the top dialog is live (Back, Escape and a click on the dim around it
+close it alone, the focus is kept in it, and a screen reader hears it alone, what is under it `aria-hidden` on the web
+and hidden from TalkBack on Android), and as it closes, however it closes, the one under it is back with the focus on
+what opened it. A dialog taken down with others open over it from it (`Modal.remove`, its own `close`) takes them down
+first, each answering as it would to Back. `DialogPanel.open` and `Dialog.show` go over what is up; `open(over =
+false)` and `Modal.show` put one up in place of the dialog on top. A `DateField` in a dialog drops its calendar over
+the dialog, under the field, from a press as from its button (the focus in the calendar, and back on the field once a
+day is chosen or it is put away), or opens `DatePicker.pick` over it where there is no room to drop it or nothing to
+type on (a remote).
+
+```scala
+Dialogs.show("New task", List(title, new DateField("Date", date), priority, new Button("Delete", () =>
+  Dialogs.confirm("Delete this task?", "It cannot be undone.", Words.delete, danger = true)
+    .map(yes => if (yes) delete()).start())),   // over the form, which is there again, as it was, once it closes
+  close => List(DialogAction(Words.done, close, default = true))).start()
+```
+
 `Words` holds OK, Cancel, Close, Done, Yes, No, Save, Don't save, Delete, Try again, Search, No results, Loading and
 Back in English, German, Spanish, French, Italian, Dutch, Portuguese, Turkish, Arabic and Simplified and Traditional
 Chinese, following `Strings.language`. `Words.add(code, messages)` adds a language or the app's own wording (messages by

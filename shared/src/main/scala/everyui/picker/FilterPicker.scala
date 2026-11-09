@@ -261,12 +261,14 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   children ++= (field :: (if (toggles.isEmpty) Nil else List(toggleBar))) ++ extraInput.toList ++
     headingLine.toList ++ List(chips, list, empty)
 
-  /** Put it up, a fifth of the way down the screen, with `initial` in the field. */
+  /** Put it up, a fifth of the way down the screen, with `initial` in the field: over a dialog it is opened from, which
+    * is there again once it closes, and in place of another picker on top. */
   def open(initial: String = ""): Unit = {
     position.left := (ui.size.width() - size.width()) / 2.0
     position.top := math.max(16.0, ui.size.height() * 0.12)
-    Modal.show(this, field, dim = false, centre = false,
-      after = () => Keymap.global.commands @= Keymap.global.commands().filterNot(c => commands.exists(_ eq c)))
+    val gone = () => Keymap.global.commands @= Keymap.global.commands().filterNot(c => commands.exists(_ eq c))
+    if (Modal.top.exists(_.kind == kind)) Modal.show(this, field, gone, dim = false, centre = false)
+    else Modal.over(this, field, gone, dim = false, centre = false)
     // the options' chords ahead of the app's own while it is up, as the keys of what is in front
     if (commands.nonEmpty) Keymap.global.commands @= commands ++ Keymap.global.commands()
     if (words() == initial) ask(initial) else words @= initial

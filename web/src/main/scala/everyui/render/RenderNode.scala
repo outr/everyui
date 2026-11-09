@@ -1214,6 +1214,9 @@ class RenderNode(val el: html.Element) {
       List("selectionchange", "select", "input", "keyup", "pointerup", "focus").foreach(el.addEventListener(_, look))
     case _ => ()
   }
+  /** Passed over by a screen reader, with all it holds (`aria-hidden`): what a dialog covers. */
+  def setReaderHidden(hidden: Boolean): Unit =
+    if (hidden) el.setAttribute("aria-hidden", "true") else el.removeAttribute("aria-hidden")
   /** Out of use, or back in it: a screen reader hears so (`aria-disabled`), and a field keeps its words and its caret
     * but takes no typing (read-only, which unlike disabled leaves it where the focus can reach it). */
   def setDisabled(disabled: Boolean): Unit = {

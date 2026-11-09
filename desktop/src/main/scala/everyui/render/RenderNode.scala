@@ -851,6 +851,9 @@ class RenderNode(val fx: Node) {
       })
     case _ => ()
   }
+  /** Passed over by a screen reader (under a dialog): JavaFX gives no way to keep a node from one, whose reader
+    * follows the focus, which the dialog keeps to itself. */
+  def setReaderHidden(hidden: Boolean): Unit = ()
   /** Out of use, or back in it: a text field keeps its words but takes no typing. Nothing reads the nodes' roles here
     * (`setSemantics`), so there is nothing to tell. */
   def setDisabled(disabled: Boolean): Unit = fx match {

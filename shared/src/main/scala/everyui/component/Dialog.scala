@@ -7,7 +7,8 @@ import reactify.*
 
 /** A dialog: a title, whatever goes in `body` (stacked; it scrolls when taller than the screen leaves room for),
   * and its `buttons` at the end of the line (the right, or the left in a right-to-left language). `show(defaultFocus)`
-  * puts it up on the modal sheet with the focus there, `close()` takes it down. */
+  * puts it up on the modal sheet with the focus there, over any dialog up (which is there again once it closes), and
+  * `close()` takes it down. */
 class Dialog(title: String, width: Double = 440.0) extends Container {
   val body: Container = new Container {
     size.width @= width
@@ -38,6 +39,6 @@ class Dialog(title: String, width: Double = 440.0) extends Container {
   children ++= List(TextView(title, 20.0), scroll, buttonLine)
 
   /** Put it up, with the focus on `defaultFocus` (one of its buttons, usually the one that changes nothing). */
-  def show(defaultFocus: Component): Unit = Modal.show(this, defaultFocus)
-  def close(): Unit = Modal.close()
+  def show(defaultFocus: Component): Unit = Modal.over(this, defaultFocus)
+  def close(): Unit = Modal.remove(this)
 }

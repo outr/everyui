@@ -9,9 +9,13 @@ import reactify.*
   * component it names and keeps the focus inside it; a click on the sheet, Escape or Back closes it (before Back does
   * anything else), and the focus goes back to where it was.
   *
-  * They stack. `show` puts a dialog up IN PLACE of the one on top, which is what most dialogs mean by opening;
-  * `over` puts one up ON TOP of it — a confirmation over a picker, a word that something is under way over the dialog
-  * that started it — and closing that one is back to the one under it, focus and all. A dialog that is not
+  * They stack. `over` puts one up ON TOP of the one up — a confirmation over a form, a date picker over the dialog its
+  * field is in, a word that something is under way over the dialog that started it — and closing that one is back to
+  * the one under it, whole, with the focus on what opened it; `show` puts one up IN PLACE of the one on top, for a
+  * screen's dialog that means to leave the one before. EveryUI's own (`DialogPanel`, `Dialogs`, the pickers, the
+  * menus) go over. Only the top one is live: Back, Escape and a click on the sheet close it alone, the focus is kept
+  * in it, and whatever reads the screen hears only it (what is under its sheet is `readerHidden`). One put up while
+  * another is on top and in view is that one's: closing that one, however, closes it first. A dialog that is not
   * `dismissible` ignores Back and the sheet (something is being written, and leaving now would act on a screen that
   * is about to change); only the code that put it up takes it down, by `remove`.
   *
@@ -49,6 +53,7 @@ object Modal {
 
   covered.attach(now => if (layers.nonEmpty) {
     layers.foreach(_.sheet.visible @= !now)
+    unheard()
     if (now) {
       Focus.scope @= None
       Focus.focused @= None
@@ -86,6 +91,7 @@ object Modal {
   private def forget(): Unit = layers.filterNot(layer => Focus.showing(layer.sheet)).foreach { layer =>
     layers = layers.filterNot(_ eq layer)
     layer.release()
+    unheard()
     if (Focus.scope().exists(_ eq layer.sheet)) Focus.scope @= (if (covered()) None else ruling())
     let(layer)
     layer.after()
@@ -118,7 +124,9 @@ object Modal {
       }
       children += panel
     }
-    val layer = new ModalLayer(sheet, panel, Focus.focused(), after, focus, dismissible, centre, keep)
+    // put up from the one on top, where that one is in view: its own, and closed with it
+    val from = layers.headOption.filter(l => !covered() && Focus.showing(l.sheet))
+    val layer = new ModalLayer(sheet, panel, Focus.focused(), after, focus, dismissible, centre, keep, from)
     puts += 1
     sheet.event.click.attach(_ => if (layer.dismissible && layers.headOption.exists(_ eq layer)) take(layer))
     panel.event.click.attach(_.consume())
@@ -137,6 +145,7 @@ object Modal {
     // on the screen before it is on the stack, which lets go of any dialog whose sheet is not
     ui.children += sheet
     layers = layer :: layers
+    unheard()
     // Put up under a cover, it waits there rather than appearing over it: a dialog raised while the screensaver is
     // running is one the viewer is not present for, and it belongs to the screen they left, not to the picture.
     if (covered()) sheet.visible @= false
@@ -150,13 +159,16 @@ object Modal {
   def close(): Unit = layers.headOption.foreach(take)
 
   /** Take down the dialog that is `panel`, wherever it is in the stack — what put up a dialog that cannot be
-    * dismissed takes it down this way, without closing whatever may have been put up over it since. */
+    * dismissed takes it down this way — and, first, those put up from it (a picker or a confirmation it opened), each
+    * hearing it close as it would have; whatever was put up over it from elsewhere (one under a cover) stays. */
   def remove(panel: Container): Unit = layers.find(_.panel eq panel).foreach(take)
 
   /** Where the focus goes back to when the dialog that is `panel` closes, in place of what had it as it was put up. */
   def returnTo(panel: Container, to: Option[Component]): Unit = layers.find(_.panel eq panel).foreach(_.before = to)
 
   private def take(layer: ModalLayer): Unit = {
+    // those put up from it first, the top one first: nothing of a closed dialog is left over the screen under it
+    layers.filter(_.descends(layer)).foreach(take)
     val top = layers.headOption.exists(_ eq layer)
     // the one directly above it, if any, now goes back to where this one would have
     var above: Option[ModalLayer] = None
@@ -169,6 +181,7 @@ object Modal {
     layers = layers.filterNot(_ eq layer)
     layer.release()
     ui.children -= layer.sheet
+    unheard()
     if (top) {
       Focus.scope @= (if (covered()) None else ruling())
       // back where it was; or, where that has left the screen meanwhile (a card taken off a row read again under the
@@ -177,6 +190,20 @@ object Modal {
     }
     let(layer)
     layer.after()
+  }
+
+  // what is kept from whatever reads the screen now, under the top dialog's sheet
+  private var silenced: List[Component] = Nil
+
+  /** Whatever reads the screen (a screen reader) kept to the top dialog: all under its sheet, the screen and the
+    * dialogs it is over, is `readerHidden`, and nothing is once the last has closed or while a cover is over them.
+    * What went up over the sheet since (a toast) is still heard. */
+  private def unheard(): Unit = {
+    val top = if (covered()) None else layers.headOption.map(_.sheet)
+    val under = top.map(s => ui.children().takeWhile(c => !(c eq s)).toList).getOrElse(Nil)
+    silenced.filterNot(c => c.takenApart || under.exists(_ eq c)).foreach(_.readerHidden @= false)
+    under.foreach(_.readerHidden @= true)
+    silenced = under
   }
 
   /** A dialog closed, taken apart: its sheet, and its panel unless that is kept or has been put up again meanwhile. On

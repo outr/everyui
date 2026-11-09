@@ -115,7 +115,7 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
     }
     show(start, 0)
     near(start)
-    Modal.show(panel, panel, closed)
+    Modal.over(panel, panel, closed)
   }
 
   /** Which picture is showing. */
