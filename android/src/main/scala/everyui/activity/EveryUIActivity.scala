@@ -64,8 +64,10 @@ abstract class EveryUIActivity extends Activity {
   /** The render root, made. */
   private def build(): Unit = {
     val root = new NodeGroup(this)
-    // The render root is a viewport: content past its edges is clipped, as on every other backend.
-    root.setClipChildren(true)
+    // The render root is a viewport: content past its edges is clipped, as on every other backend. At its own edge
+    // (its outline), not each of its children at theirs (clipChildren), so what hangs out of a component placed on
+    // the root, a badge past a rail's edge, shows as it does on the web (RenderNode.setBoxClip).
+    root.setClipToOutline(true)
     // see-through until the app paints its own ground, so the window's launch background (an app's splash) shows
     // from the moment the process starts rather than a white view over it
     root.setBackgroundColor(Color.TRANSPARENT)

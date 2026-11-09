@@ -1880,6 +1880,8 @@ The web cuts with `overflow: clip`, which makes no scroll box (nothing in the ca
 it takes the focus) and leaves the box's own shadow whole, its rounded corners included; a browser without `clip` draws
 it whole as before. The desktop, the Roku and the Apple TV cut to the box's rectangle, its corners square; on the
 desktop a box that casts a shadow is not cut, as JavaFX would cut the shadow with it. Android cuts to its outline.
+Each cuts at the box's own edge, never at the edges of what is inside it: a badge hanging out of a button in a plain
+column, inside a rail that draws a box, shows as far as the rail's edge.
 
 ```scala
 val card = new Container { backgroundColor @= Theme.raised(); radius @= 12.0 }   // cuts what spills out of it

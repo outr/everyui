@@ -875,14 +875,27 @@ class RenderNode(val view: View) {
   def setClip(width: Double, height: Double): Unit = view match {
     case g: ViewGroup =>
       ownClip = true
-      g.setClipChildren(true); g.setClipToPadding(true); g.setClipToOutline(true)
+      clipAtEdge(g, true)
     case _ => ()
   }
   // cut to its box by its container (`Container.clipsToBox`), as `setClip` cuts it, never undoing a clip of its own
   private var ownClip = false
   def setBoxClip(on: Boolean, width: Double, height: Double): Unit = view match {
-    case g: ViewGroup if !ownClip => g.setClipChildren(on); g.setClipToPadding(on); g.setClipToOutline(on)
+    case g: ViewGroup if !ownClip => clipAtEdge(g, on)
     case _ => ()
+  }
+  // What it draws, its children with it, cut at its own edge, as the web's overflow and the desktop's clip cut it: to
+  // its outline, its background's rounded box, or its bounds where it has none. Never by Android's clipChildren, which
+  // cuts each child at the child's own edge instead: a badge hanging out of a button in a plain column, in a rail that
+  // clips, was cut at the column's edge though the rail had room for it, and showed whole on the web. So a container
+  // of ours never clips its children to themselves, clipping or not; another kind of group (a video's frame) keeps its
+  // own rule.
+  private def clipAtEdge(g: ViewGroup, on: Boolean): Unit = {
+    if (g.isInstanceOf[NodeGroup]) {
+      g.setClipChildren(false)
+      g.setClipToPadding(false)
+    }
+    g.setClipToOutline(on)
   }
   def setTooltip(text: String): Unit =
     if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
