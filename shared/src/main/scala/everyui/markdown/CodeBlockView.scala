@@ -1,18 +1,25 @@
 package everyui.markdown
 
-import everyui.component.{Container, IconButton, RichText, ScrollContainer, TextView}
+import everyui.component.{Container, IconButton, NavigationUrl, RichText, ScrollContainer, TextView}
 import everyui.component.types.{Semantics, TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.i18n.Words
 import everyui.kit.Highlight
+import everyui.log.{AnsiText, LogTheme}
 import everyui.render.Platform
+import everyui.text.TextRun
 import everyui.theme.Theme
 import reactify.*
 
 /** A code block of a `MarkdownView`: its lines kept as they are and coloured for its `language` (`Highlight`), on the
   * code wash, scrolled sideways where a line is longer than `width` rather than wrapped (the arrows scroll it once it
   * has the focus). Over it, the language's name and a button that copies the code, where the platform has a
-  * clipboard. New code for it (`code`, as an answer streams in) is drawn in place. */
+  * clipboard. New code for it (`code`, as an answer streams in) is drawn in place.
+  *
+  * A terminal's output (`CodeBlockView.terminal`: its escapes, or a language of "ansi" or "terminal") is drawn as a
+  * terminal draws it, its SGR colours and attributes in the theme's terminal palette (`AnsiText`, `LogTheme`) over
+  * any highlighting, an OSC 8 link kept as a link and every other escape dropped; the label is the language the
+  * block was given, none where it was given none, and what is copied is the words without their escapes. */
 class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, width: => Double) extends Container {
   /** The code it shows. */
   val code: Var[String] = own(Var(source))
@@ -21,7 +28,7 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
   private val header = if (language.nonEmpty || Platform.clipboard()) 30.0 else 0.0
 
   private val name = TextView(language, points * 0.85, Theme.muted())
-  private val copy = new IconButton(MaterialIcon.ContentCopy, Words("markdown.copy"), () => Platform.copyText(code()))
+  private val copy = new IconButton(MaterialIcon.ContentCopy, Words("markdown.copy"), () => Platform.copyText(copied))
   private val text = new RichText {
     font.family @= "Roboto Mono"
     font.size @= points
@@ -29,7 +36,7 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
     color := Theme.text()
     // code reads left to right whatever the words about it do
     direction @= TextDirection.LeftToRight
-    runs := Highlight.runs(code(), language)
+    runs := CodeBlockView.runs(code(), language)
   }
   // the room after the longest line, as there is before it
   private val end = new Container {
@@ -62,7 +69,38 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
   // the arrows scroll it only where there is somewhere to scroll to
   scroll.focusable := text.size.width() + pad * 2.0 > scroll.size.width()
   size.height := header + scroll.size.height()
+  // a terminal's links go where the view's other links go
+  text.follow = href => ctx.press(href, this)
   children ++= List(scroll, name, copy)
 
+  /** What its copy button puts on the clipboard: the code, its escapes taken out where it is a terminal's. */
+  def copied: String = CodeBlockView.plain(language, code())
+
   override def kind: String = "CodeBlockView(" + language + ")"
+}
+
+object CodeBlockView {
+  /** Whether code in `language` is a terminal's output, drawn as a terminal draws it: it holds escapes (ESC [ or
+    * ESC ], `AnsiText.escaped`), whatever its language, or its language is "ansi" or "terminal". A "console" block
+    * with escapes is one; without them it is coloured as a shell's, as it was. */
+  def terminal(language: String, code: String): Boolean = AnsiText.escaped(code) || {
+    val l = language.trim.toLowerCase
+    l == "ansi" || l == "terminal"
+  }
+
+  /** `code` as it reads, for the clipboard and for plain text and HTML (`MarkdownPlain`, `MarkdownHtml`): a
+    * terminal's without its escapes (`AnsiText.strip`), anything else as it is. */
+  def plain(language: String, code: String): String = if (terminal(language, code)) AnsiText.strip(code) else code
+
+  /** `code` as runs: a terminal's in the theme's terminal palette on the code wash, a link drawn as the view's
+    * other links are (`MarkdownView.link`, underlined) where it is safe to follow (`NavigationUrl.safe`) and as its
+    * words where not; anything else highlighted for `language` (`Highlight`). Read where the palette can change, it
+    * follows the theme. */
+  def runs(code: String, language: String): List[TextRun] =
+    if (!terminal(language, code)) Highlight.runs(code, language)
+    else AnsiText.runs(code, LogTheme.of(Theme.palette()).copy(background = MarkdownView.codeBackground())).map { r =>
+      if (r.href.isEmpty) r
+      else if (NavigationUrl.safe(r.href)) r.copy(color = MarkdownView.link().toHex, underline = true)
+      else r.copy(href = "")
+    }
 }

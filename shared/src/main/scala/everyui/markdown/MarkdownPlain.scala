@@ -4,7 +4,8 @@ package everyui.markdown
   * there are no styles. Paragraphs, headings and quotes are their words, a blank line between each; the marks of bold,
   * slant and code go; a list's items start "- " or "1. ", a list inside an item stood in under its words; a link is
   * its words and where it goes, "docs (https://…)", or only where it goes where those are its words; a code block is
-  * its lines as they are; a rule is the blank line it stands for; a table is a line to a row, its cells apart by tabs.
+  * its lines as they are (a terminal's output without its escapes, `CodeBlockView.plain`); a rule is the blank line
+  * it stands for; a table is a line to a row, its cells apart by tabs.
   *
   * With `breaks`, a line break in the text is a line break, as a chat's messages have it (`MessageMarkdown`).
   *
@@ -27,7 +28,7 @@ object MarkdownPlain {
   private def block(b: MdBlock, breaks: Boolean): String = b match {
     case MdBlock.Paragraph(content) => inlines(content, breaks)
     case MdBlock.Heading(_, content) => inlines(content, breaks)
-    case MdBlock.CodeBlock(_, code, _) => trimEnd(code)
+    case MdBlock.CodeBlock(language, code, _) => trimEnd(CodeBlockView.plain(language, code))
     case MdBlock.Html(source) => trimEnd(source)
     case MdBlock.Quote(inside) => blocks(inside, breaks)
     case MdBlock.BulletList(ordered, start, tight, items) =>

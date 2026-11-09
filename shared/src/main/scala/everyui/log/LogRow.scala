@@ -1,7 +1,7 @@
 package everyui.log
 
 import everyui.Color
-import everyui.component.{Component, Container, RichText, TextView}
+import everyui.component.{Container, RichText, TextView}
 import everyui.component.types.{FontWeight, TextOverflow, WhiteSpace}
 import everyui.list.ListRow
 import everyui.text.TextRun
@@ -113,16 +113,11 @@ private[log] class LogRow(view: LogView) extends ListRow[LogLine] {
       LogRow.split(span.from, span.to, cols).foreach { case (seg, a, b) =>
         val text = line.text.substring(seg * cols + a, seg * cols + b)
         val broken = seg > 0 && a == 0
-        runs = run(if (broken) "\n" + text else text, span, theme) :: runs
+        runs = AnsiText.run(if (broken) "\n" + text else text, span, theme, false) :: runs
       }
     }
     w.runs @= runs.reverse
   }
-
-  private def run(text: String, span: LogSpan, theme: LogTheme): TextRun =
-    if (span.style.plain && span.href.isEmpty) TextRun(text)
-    else TextRun(text, color = Component.css(letters(span.style, theme)), weight = if (span.style.bold) 700 else 0,
-      italic = span.style.italic, strike = span.style.strike, underline = span.style.underline, href = span.href)
 
   // the words as a piece per run, each at its column
   // (runs next to each other in one colour are one piece: each is a label of its own, and a Roku makes them slowly)
@@ -131,7 +126,7 @@ private[log] class LogRow(view: LogView) extends ListRow[LogLine] {
     // (a row, from, to and the colour: no wider, a Roku has no tuple of five)
     var at: List[(Int, Int, Int, (Color, AnsiStyle))] = Nil
     LogRow.pieces(line).foreach { span =>
-      val colour = if (line.marker) theme.muted else letters(span.style, theme)
+      val colour = if (line.marker) theme.muted else AnsiText.letters(span.style, theme)
       LogRow.split(span.from, span.to, cols).foreach { case (seg, a, b) =>
         at = at match {
           case (s, from, to, look) :: rest if s == seg && to == a && look._1 == colour => (s, from, b, look) :: rest
@@ -155,11 +150,6 @@ private[log] class LogRow(view: LogView) extends ListRow[LogLine] {
       n += 1
     }
   }
-
-  // a concealed run's letters in its ground, so they hide but are still there to copy
-  private def letters(style: AnsiStyle, theme: LogTheme): Color =
-    if (style.conceal) theme.ground(style.copy(conceal = false)).getOrElse(theme.background)
-    else theme.letters(style)
 
   // the boxes behind runs with a ground of their own: (left, top, width, colour)
   private def grounds(line: LogLine, theme: LogTheme, cols: Int, advance: Double): List[(Double, Double, Double, Color)] =
@@ -233,15 +223,18 @@ private[log] object LogRow {
     }
 
   /** The whole line as spans: its own, and plain ones between them. */
-  def pieces(line: LogLine): List[LogSpan] = {
+  def pieces(line: LogLine): List[LogSpan] = covering(line.text, line.spans)
+
+  /** All of `text` as spans: `spans`, and plain ones between them. */
+  def covering(text: String, spans: List[LogSpan]): List[LogSpan] = {
     var out: List[LogSpan] = Nil
     var at = 0
-    line.spans.foreach { s =>
+    spans.foreach { s =>
       if (s.from > at) out = LogSpan(at, s.from, AnsiStyle.Plain) :: out
       out = s :: out
       at = s.to
     }
-    if (at < line.text.length || line.text.isEmpty) out = LogSpan(at, line.text.length, AnsiStyle.Plain) :: out
+    if (at < text.length || text.isEmpty) out = LogSpan(at, text.length, AnsiStyle.Plain) :: out
     out.reverse
   }
 }

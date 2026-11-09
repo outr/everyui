@@ -3,7 +3,8 @@ package everyui.markdown
 /** Markdown as clean HTML, for a clipboard's rich flavour (`Clipboard.copyMarkdown`): only what the words are —
   * paragraphs, headings, strong and emphasis, lists, links, code, quotes, rules and tables — with no style, class,
   * colour or font of its own, so an email or a document pastes it in its own look. Everything it holds is escaped; raw
-  * HTML in the Markdown comes out as the text it is, as `MarkdownView` shows it.
+  * HTML in the Markdown comes out as the text it is, as `MarkdownView` shows it. A code block of a terminal's output
+  * is its words without their escapes (`CodeBlockView.plain`), uncoloured as every other block is.
   *
   * With `breaks`, a line break in the text is a line break, as a chat's messages have it (`MessageMarkdown`).
   *
@@ -30,7 +31,8 @@ object MarkdownHtml {
     case MdBlock.Heading(level, content) =>
       val tag = "h" + math.max(1, math.min(6, level)).toString
       "<" + tag + ">" + inlines(content, breaks) + "</" + tag + ">"
-    case MdBlock.CodeBlock(_, code, _) => "<pre><code>" + escape(MarkdownPlain.trimEnd(code)) + "</code></pre>"
+    case MdBlock.CodeBlock(language, code, _) =>
+      "<pre><code>" + escape(MarkdownPlain.trimEnd(CodeBlockView.plain(language, code))) + "</code></pre>"
     case MdBlock.Html(source) => "<pre><code>" + escape(MarkdownPlain.trimEnd(source)) + "</code></pre>"
     case MdBlock.Quote(inside) => "<blockquote>\n" + blocks(inside, breaks) + "\n</blockquote>"
     case MdBlock.BulletList(ordered, start, tight, items) =>

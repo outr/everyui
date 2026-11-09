@@ -1226,6 +1226,22 @@ answer.content := message().text          // may grow token by token while the a
   A `diff` (or `patch`) block is coloured by its lines: what was added in the theme's success, what was taken out
   in its danger, a hunk's `@@` header muted, and the lines naming the files (`diff --git`, `---`, `+++`, `index`) bold.
   The palette's extras "code.added", "code.removed" and "code.hunk" change those colours.
+- A terminal's output, such as a coding agent's, is drawn as a terminal draws it: a block whose code holds escapes
+  (ESC `[` or ESC `]`), whatever its language, and one whose language is `ansi` or `terminal`
+  (`CodeBlockView.terminal`). Its SGR colours (the sixteen, xterm's 256 and `38;2;r;g;b`) are the theme's terminal
+  palette, a log view's (`LogTheme.of(Theme.palette())` on the code wash), each made to read on the ground and
+  changing with the theme; bold, dim, italic, underline and strike are kept, an OSC 8 link is a link where it is safe
+  to follow, drawn as the view's other links, and every other escape (the cursor's moves, erasing, the other OSC
+  sequences) is dropped, as is a sequence cut off at the end of the code while an answer streams in. Escapes win over
+  highlighting: a `bash` block with escapes is drawn by its escapes. The label is the language the block was given,
+  none where it was given none, never "ansi" for escapes found in it; a `console` block is coloured as a shell's
+  unless it holds escapes. The copy button, `MarkdownPlain` and `MarkdownHtml` give its words without the escapes
+  (`CodeBlockView.plain`); the HTML is plain text in `<pre><code>`, uncoloured, as the rest of `MarkdownHtml` is. Where
+  the platform draws no ground behind a run (the desktop, a Roku, an Apple TV), a reversed run is drawn unreversed and
+  grounds are left out; the desktop draws no bold in code, as only Roboto Mono's regular is bundled.
+  Outside Markdown, `everyui.log.AnsiText` does the same for any text:
+  `AnsiText.runs(text, LogTheme.of(Theme.palette()))` gives a `RichText`'s runs (its grounds where the platform draws
+  them, `AnsiText.grounds`), and `AnsiText.strip(text)` its words.
 - A table's columns share the width given as a browser's automatic table layout shares it (`TableWidths`): where every
   cell fits on one line each column is as wide as its widest cell (a wide screen's table, as before); where not, the
   cells' words wrap, each column between its widest word and its widest cell, a column of long phrases giving up more
