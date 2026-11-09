@@ -11,7 +11,7 @@ import android.view.View
 import android.widget.RemoteViews
 import everyui.Color
 import everyui.theme.{Palette, Tones}
-import everyui.widget.{WidgetColour, WidgetNode, WidgetPicture, WidgetTap, WidgetText, Widgets}
+import everyui.widget.{WidgetColour, WidgetGround, WidgetNode, WidgetPicture, WidgetTap, WidgetText, Widgets}
 
 /** One draw of a widget: its trees (one for each size it is drawn at) as RemoteViews, which the launcher draws in its
   * own process. RemoteViews inflate only the app's own layouts, so a tree is built from a fixed few (res/layout's
@@ -37,19 +37,20 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
   // empty words
   private var list: Option[RemoteViews.RemoteCollectionItems] = None
 
-  /** `node` on the widget's ground, the whole of it named `name` to a screen reader. */
-  def root(node: WidgetNode, name: String): RemoteViews = {
+  /** `node` on the widget's ground, the whole of it named `name` to a screen reader, the ground `opacity` opaque
+    * (`WidgetKind.groundOpacity`). */
+  def root(node: WidgetNode, name: String, opacity: Double = 1.0): RemoteViews = {
     list = None
     val views = new RemoteViews(context.getPackageName, layout("root"))
     val ground = WidgetViews.id(context, "everyui_widget_ground")
-    tint(views, ground, "setColorFilter", _.surface)
+    shade(views, ground, _.surface, WidgetGround.alpha(opacity))
     views.setContentDescription(ground, name)
     val content = WidgetViews.id(context, "everyui_widget_content")
     // emptied first: a launcher reapplies a new draw of the same layout to the views it has, and each part added
     // without it was added beside the last draw's
     views.removeAllViews(content)
     node match {
-      case WidgetNode.Column(parts, gap, tap) =>
+      case WidgetNode.Column(parts, gap, tap, None) =>
         fill(views, content, parts, gap, inRow = false, filler = -1, inList = false)
         tap.foreach(t => tapOn(views, content, t, inList = false))
       case other => views.addView(content, part(other, inRow = false, fills = false, inList = false))
@@ -86,18 +87,20 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       }
       if (label.nonEmpty) views.setContentDescription(at, label)
       views
-    case WidgetNode.Row(parts, gap, tap) =>
+    case WidgetNode.Row(parts, gap, tap, ground) =>
       val views = new RemoteViews(context.getPackageName, layout(if (inRow) "row_wrap" else "row"))
       val at = WidgetViews.id(context, "everyui_widget_row")
       fill(views, at, parts, gap, inRow = true, WidgetViews.filler(parts), inList)
       tap.foreach(t => tapOn(views, at, t, inList))
-      views
-    case WidgetNode.Column(parts, gap, tap) =>
-      val views = new RemoteViews(context.getPackageName, layout(if (inRow) "column_fill" else "column"))
+      ground.fold(views)(g => card(views, at, g, if (inRow) "card_wrap" else "card"))
+    case WidgetNode.Column(parts, gap, tap, ground) =>
+      // on a card, the card shares the row's width and the column fills the card
+      val views = new RemoteViews(context.getPackageName,
+        layout(if (inRow && ground.isEmpty) "column_fill" else "column"))
       val at = WidgetViews.id(context, "everyui_widget_column")
       fill(views, at, parts, gap, inRow = false, filler = -1, inList)
       tap.foreach(t => tapOn(views, at, t, inList))
-      views
+      ground.fold(views)(g => card(views, at, g, if (inRow) "card_fill" else "card"))
     case WidgetNode.Button(label, icon, tap) =>
       val views = new RemoteViews(context.getPackageName, layout("button"))
       tint(views, WidgetViews.id(context, "everyui_widget_button_ground"), "setColorFilter", _.accent)
@@ -119,6 +122,31 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       views
     case WidgetNode.Items(rows, empty) => items(rows, empty)
     case WidgetNode.Spacer => new RemoteViews(context.getPackageName, layout("spacer"))
+  }
+
+  /** `inner` (whose row or column is `at`) on a card of the `kind` layout: its ground under it, of the shape with the
+    * nearest radius, tinted and as opaque as `ground` says, and `ground.padding` around the parts. The padding is
+    * the row's own, so its tap covers the whole card. */
+  private def card(inner: RemoteViews, at: Int, ground: WidgetGround, kind: String): RemoteViews = {
+    val views = new RemoteViews(context.getPackageName, layout(kind))
+    val under = WidgetViews.id(context, "everyui_widget_card_ground")
+    views.setImageViewResource(under, WidgetViews.drawable(context, "everyui_widget_card_" +
+      WidgetGround.radius(ground.radius).toString))
+    val pick = (p: Palette) => ground.exact.getOrElse(WidgetViews.colour(ground.colour)(p))
+    shade(views, under, pick, ground.alpha)
+    val room = pixels(math.max(0.0, ground.padding))
+    inner.setViewPadding(at, room, room, room, room)
+    val content = WidgetViews.id(context, "everyui_widget_card_content")
+    views.removeAllViews(content)
+    views.addView(content, inner)
+    views
+  }
+
+  /** A white shape's ImageView at `at` tinted to `pick` (opaque: the tint is drawn over the shape, and keeps none of
+    * a colour's alpha) and then drawn `alpha` opaque, which keeps the shape's rounded corners. */
+  private def shade(views: RemoteViews, at: Int, pick: Palette => Color, alpha: Int): Unit = {
+    tint(views, at, "setColorFilter", p => pick(p).withAlpha(1.0))
+    views.setInt(at, "setImageAlpha", alpha)
   }
 
   /** `parts` into `container`, `gap` apart, the one at `filler` taking the room left. */
@@ -223,6 +251,8 @@ object WidgetViews {
     case WidgetColour.Accent => p.accentText.getOrElse(Tones.readable(p.accent, p))
     case WidgetColour.Danger => p.dangerText.getOrElse(Tones.readable(p.danger, p))
     case WidgetColour.OnAccent => p.onAccent
+    case WidgetColour.Surface => p.surface
+    case WidgetColour.Raised => p.raised
   }
 
   def argb(c: Color): Int = android.graphics.Color.argb(c.alphaInt, c.redInt, c.greenInt, c.blueInt)
@@ -242,6 +272,7 @@ object WidgetViews {
 
   def layout(context: Context, name: String): Int = resource(context, name, "layout")
   def id(context: Context, name: String): Int = resource(context, name, "id")
+  def drawable(context: Context, name: String): Int = resource(context, name, "drawable")
 
   private def resource(context: Context, name: String, kind: String): Int = {
     val key = kind + "/" + name

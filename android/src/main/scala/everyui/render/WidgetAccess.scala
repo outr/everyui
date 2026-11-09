@@ -343,7 +343,8 @@ object WidgetAccess {
                    shown: Vector[Sized], nodes: Map[WidgetSize, WidgetNode],
                    night: Boolean): Unit = try {
     val drawing = new WidgetViews(context, id, night, provider)
-    val tree = (size: WidgetSize) => drawing.root(nodes.getOrElse(size, waiting(kind)), kind.name)
+    val tree = (size: WidgetSize) => drawing.root(nodes.getOrElse(size, waiting(kind)), kind.name,
+      kind.groundOpacity)
     val sized = shown.collect { case (Some(s), c, _) => s -> c }
     val views =
       if (sized.isEmpty || Build.VERSION.SDK_INT < 31) tree(shown.head._2)

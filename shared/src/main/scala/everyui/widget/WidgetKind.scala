@@ -9,7 +9,11 @@ import everyui.async.Task
   * `choices`, `content` and `action` run where the app may not be (a launcher's request in the background, with no
   * window): they fetch and describe, and never touch the screen. A draw has a deadline of a few seconds, so `content`
   * answers from what the app has kept first; the widget shows what it drew last until it answers. `privacy` offers
-  * "Counts only" in the configure screen, which `content` honours by drawing counts with no subjects or names. */
+  * "Counts only" in the configure screen, which `content` honours by drawing counts with no subjects or names.
+  *
+  * `groundOpacity` is how opaque the widget's own ground is, from 0 (none: the wallpaper shows through whole) to 1
+  * (the theme's surface, the default), in light and dark alike; its corners stay rounded. A translucent widget
+  * usually puts its parts on cards (`WidgetGround`) so its words stay readable over a busy wallpaper. */
 case class WidgetKind(key: String,
                       name: String,
                       description: String,
@@ -19,4 +23,5 @@ case class WidgetKind(key: String,
                       defaults: Vector[WidgetChoice] => Set[String],
                       content: WidgetRequest => Task[WidgetNode],
                       action: (WidgetRequest, String, Map[String, String]) => Task[Unit] = (_, _, _) => Task.unit,
-                      privacy: Boolean = true)
+                      privacy: Boolean = true,
+                      groundOpacity: Double = 1.0)

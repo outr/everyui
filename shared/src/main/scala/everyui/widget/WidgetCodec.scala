@@ -1,5 +1,6 @@
 package everyui.widget
 
+import everyui.Color
 import everyui.font.MaterialIcon
 
 /** A widget's tree and its saved setup as text, to keep on the device between draws: each widget's last good tree is
@@ -71,16 +72,19 @@ object WidgetCodec {
       }
       number(size, out)
       words(label, out)
-    case WidgetNode.Row(parts, gap, tap) =>
-      out.append('r')
+    case WidgetNode.Row(parts, gap, tap, ground) =>
+      // a capital where it has a ground, written after the rest: a tree without one is kept as it always was
+      out.append(if (ground.isEmpty) 'r' else 'R')
       nodes(parts, out)
       number(gap, out)
       maybeTap(tap, out)
-    case WidgetNode.Column(parts, gap, tap) =>
-      out.append('c')
+      ground.foreach(g => grounded(g, out))
+    case WidgetNode.Column(parts, gap, tap, ground) =>
+      out.append(if (ground.isEmpty) 'c' else 'C')
       nodes(parts, out)
       number(gap, out)
       maybeTap(tap, out)
+      ground.foreach(g => grounded(g, out))
     case WidgetNode.Button(label, icon, tap) =>
       out.append('b')
       words(label, out)
@@ -102,6 +106,19 @@ object WidgetCodec {
   private def nodes(parts: Vector[WidgetNode], out: StringBuilder): Unit = {
     count(parts.size, out)
     parts.foreach(p => write(p, out))
+  }
+
+  private def grounded(ground: WidgetGround, out: StringBuilder): Unit = {
+    count(ground.colour.ordinal, out)
+    number(ground.opacity, out)
+    number(ground.radius, out)
+    number(ground.padding, out)
+    ground.exact match {
+      case Some(c) =>
+        out.append('1')
+        words(c.toHexAlpha, out)
+      case None => out.append('0')
+    }
   }
 
   private def maybeTap(tap: Option[WidgetTap], out: StringBuilder): Unit = tap match {
@@ -154,16 +171,18 @@ object WidgetCodec {
       val (size, b) = numberAt(text, a)
       val (label, c) = wordsAt(text, b)
       (WidgetNode.Picture(source, size, label), c)
-    case 'r' =>
+    case 'r' | 'R' =>
       val (parts, a) = nodesAt(text, at + 1)
       val (gap, b) = numberAt(text, a)
       val (tap, c) = maybeTapAt(text, b)
-      (WidgetNode.Row(parts, gap, tap), c)
-    case 'c' =>
+      val (ground, d) = maybeGroundAt(text, c, text.charAt(at) == 'R')
+      (WidgetNode.Row(parts, gap, tap, ground), d)
+    case 'c' | 'C' =>
       val (parts, a) = nodesAt(text, at + 1)
       val (gap, b) = numberAt(text, a)
       val (tap, c) = maybeTapAt(text, b)
-      (WidgetNode.Column(parts, gap, tap), c)
+      val (ground, d) = maybeGroundAt(text, c, text.charAt(at) == 'C')
+      (WidgetNode.Column(parts, gap, tap, ground), d)
     case 'b' =>
       val (label, a) = wordsAt(text, at + 1)
       val (icon, b) =
@@ -193,6 +212,22 @@ object WidgetCodec {
     }.toVector
     (parts, next)
   }
+
+  private def maybeGroundAt(text: String, at: Int, has: Boolean): (Option[WidgetGround], Int) =
+    if (!has) (None, at)
+    else {
+      val (colour, a) = countAt(text, at)
+      val (opacity, b) = numberAt(text, a)
+      val (radius, c) = numberAt(text, b)
+      val (padding, d) = numberAt(text, c)
+      val (exact, e) =
+        if (flagAt(text, d)) {
+          val (hex, x) = wordsAt(text, d + 1)
+          (Some(Color.fromHex(hex)), x)
+        }
+        else (None, d + 1)
+      (Some(WidgetGround(WidgetColour.fromOrdinal(colour), opacity, radius, padding, exact)), e)
+    }
 
   private def maybeTapAt(text: String, at: Int): (Option[WidgetTap], Int) =
     if (flagAt(text, at)) {

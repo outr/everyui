@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A card's ground behind a widget's row or column, its corners 0dp, white to be tinted
+     (everyui.render.WidgetViews). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+  <corners android:radius="0dp" />
+  <solid android:color="#FFFFFFFF" />
+</shape>

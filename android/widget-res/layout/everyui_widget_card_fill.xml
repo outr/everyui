@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A widget's card within a row, sharing the row's width with the others.
+     Its ground is tinted, its alpha set and its corners one of the everyui_widget_card_* shapes, under
+     the row or the column added to its content (everyui.render.WidgetViews). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/everyui_widget_card"
+  android:layout_width="0dp"
+  android:layout_height="wrap_content"
+  android:layout_weight="1">
+  <ImageView
+    android:id="@+id/everyui_widget_card_ground"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:scaleType="fitXY"
+    android:src="@drawable/everyui_widget_card_12" />
+  <FrameLayout
+    android:id="@+id/everyui_widget_card_content"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content" />
+</FrameLayout>

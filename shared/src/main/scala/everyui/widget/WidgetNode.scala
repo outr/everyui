@@ -15,10 +15,12 @@ enum WidgetNode {
             lines: Int = 1, label: String = "")
   /** A picture `size` points square. */
   case Picture(source: WidgetPicture, size: Double, label: String = "")
-  /** Parts side by side, `gap` points apart. */
-  case Row(parts: Vector[WidgetNode], gap: Double = 8.0, tap: Option[WidgetTap] = None)
-  /** Parts one above another, `gap` points apart. */
-  case Column(parts: Vector[WidgetNode], gap: Double = 4.0, tap: Option[WidgetTap] = None)
+  /** Parts side by side, `gap` points apart, on a tinted card where it has a `ground`. */
+  case Row(parts: Vector[WidgetNode], gap: Double = 8.0, tap: Option[WidgetTap] = None,
+           ground: Option[WidgetGround] = None)
+  /** Parts one above another, `gap` points apart, on a tinted card where it has a `ground`. */
+  case Column(parts: Vector[WidgetNode], gap: Double = 4.0, tap: Option[WidgetTap] = None,
+              ground: Option[WidgetGround] = None)
   /** A button in the accent, with its words and an icon before them. */
   case Button(label: String, icon: Option[MaterialIcon], tap: WidgetTap)
   /** A scrolling list of rows, filling what its column leaves; `empty` is said where it has none. */

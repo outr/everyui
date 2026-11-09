@@ -3273,6 +3273,20 @@ configure screen, whether they asked for counts only (no subjects or names), and
 same kinds as it starts (`MailWidgets.kinds.foreach(Widgets.register)`), and redraws them as its data changes
 (`Widgets.refresh("inbox")`) or the person signs out (`Widgets.refreshAll()`).
 
+A widget can be translucent, the wallpaper showing through it as through the Pixel's own weather widget.
+`WidgetKind.groundOpacity` is how opaque its ground is, from 0 (none) to 1 (the theme's surface, the default), in light
+and dark alike, its corners still rounded. Its words then usually sit on cards: a `Row` or a `Column` with a `ground`,
+`WidgetGround(colour, opacity, radius, padding, exact)`, is drawn on a rounded ground of a theme role
+(`WidgetColour.Surface` by default, or `Raised`, `Accent` and the rest) or of an exact colour (its alpha multiplied into
+`opacity`), with `padding` points of room around its parts and its tap covering the whole card. Android draws the
+corners from a fixed few shapes, square, 8, 12 and 16 points (`WidgetGround.radii`), the nearest to `radius`.
+
+```scala
+val card = Some(WidgetGround(WidgetColour.Surface, opacity = 0.8, radius = 12.0))
+WidgetKind("inbox", ..., groundOpacity = 0.35)                // in the kind
+WidgetNode.Row(Vector(from, WidgetNode.Spacer, when), tap = Some(WidgetTap.Open("/inbox/" + id)), ground = card)
+```
+
 The build declares them: the object, and each kind as the launcher knows it. sbt-everyui then writes a receiver for
 each kind, the manifest's entries (the receivers, the meta-data naming the object, and the configure screen in a
 process of its own), each kind's `appwidget-provider`, and the shrinker's rules, and adds EveryUI's widget layouts to
