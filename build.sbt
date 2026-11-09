@@ -192,8 +192,13 @@ lazy val builtFrom: String = {
   val dirty = scala.util.Try(Process(Seq("git", "status", "--porcelain"), file(".")).!!.trim.nonEmpty).getOrElse(false)
   if (dirty) sha + "-dirty" else sha
 }
+/** What every published artifact is: published, its commit in its manifest, and EveryUI's LICENSE, NOTICE and
+  * THIRD-PARTY.md in its jar's META-INF (the third-party licences beside what carries them: sharedLicenses, and the
+  * `licenses/` of Monaco's, xterm.js's, hls.js's and LiveKit's files). */
 lazy val published = Seq(publish / skip := false,
-  Compile / packageBin / packageOptions += Package.ManifestAttributes("EveryUI-Commit" -> builtFrom))
+  Compile / packageBin / packageOptions += Package.ManifestAttributes("EveryUI-Commit" -> builtFrom),
+  Compile / resourceGenerators += bundled("META-INF",
+    root => Seq(root / "LICENSE", root / "NOTICE", root / "THIRD-PARTY.md")).taskValue)
 
 /** `files` (from the build's root) as resources under `path` in a published jar, for the sbt plugin to take out. */
 def bundled(path: String, files: File => Seq[File]): Def.Initialize[Task[Seq[File]]] = Def.task {
@@ -208,6 +213,19 @@ def bundled(path: String, files: File => Seq[File]): Def.Initialize[Task[Seq[Fil
 /** EveryUI's fonts (and Material Icons' codepoints), in each backend's jar under everyui/fonts/, which an app copies out
   * (sbt-everyui's everyuiFonts, and everyuiWebFonts on the web). */
 lazy val fontResources = bundled("everyui/fonts", root => (root / "assets" / "fonts" * ("*.ttf" | "*.codepoints")).get())
+
+/** The licences of what every backend's jar carries of others': the fonts' (assets/licenses: Open Sans's and Roboto
+  * Mono's OFL, Material Icons' Apache 2.0, whose codepoints MaterialIcon was generated from) and gemoji's MIT
+  * (assets/emoji, whose table EmojiData was generated from), under META-INF/licenses/. */
+lazy val sharedLicenses = Def.task {
+  val dir = (Compile / resourceManaged).value / "META-INF" / "licenses"
+  val root = (ThisBuild / baseDirectory).value
+  ((root / "assets" / "licenses" * "*.txt").get().map(f => f -> f.getName) :+
+    (root / "assets" / "emoji" / "LICENSE" -> "gemoji.txt")).map { case (f, name) =>
+    IO.copyFile(f, dir / name)
+    dir / name
+  }
+}
 
 /** A published backend's jar compiles the shared layer, the backend (`backend/src/main/scala`), and the network module
   * with the backend's side of it (`network`), as the example app compiles them: with Spice's own client and the store's
@@ -237,11 +255,13 @@ lazy val web = (project in file("web"))
       "com.outr" %% "reactify" % reactifyVersion
     ),
     Compile / resourceGenerators += fontResources.taskValue,
+    Compile / resourceGenerators += sharedLicenses.taskValue,
     // hls.js, for a browser with no HLS of its own: served next to the page (project/HlsAssets.scala)
     Compile / resourceGenerators += Def.task(HlsAssets.generate(streams.value.log.info(_), (Compile / resourceManaged).value)).taskValue,
     // LiveKit's client, for a call (everyui.call): served next to the page, loaded once a call connects
     // (project/LiveKitAssets.scala)
-    Compile / resourceGenerators += Def.task(LiveKitAssets.generate(streams.value.log.info(_), (Compile / resourceManaged).value)).taskValue
+    Compile / resourceGenerators += Def.task(LiveKitAssets.generate(streams.value.log.info(_),
+      (ThisBuild / baseDirectory).value / "NOTICE", (Compile / resourceManaged).value)).taskValue
   )
 
 // --- network, published: the module and its backend, for the JVM and the browser ------------------------------
@@ -583,7 +603,8 @@ lazy val desktopPublished = (project in file("published/desktop"))
       "com.outr" %% "spice-client-jvm" % spiceVersion,
       "org.typelevel" %% "fabric-io" % fabricVersion),   // the network module and the store's codec use it
     libraryDependencies ++= EveryUILibraries.javafx("base", "graphics", "controls", "media", "web").map(_ % Provided),
-    Compile / resourceGenerators += fontResources.taskValue
+    Compile / resourceGenerators += fontResources.taskValue,
+    Compile / resourceGenerators += sharedLicenses.taskValue
   )
 
 // Plain JVM bytecode against android.jar, as a jar rather than an Android archive: the backend has no manifest of its
@@ -610,6 +631,7 @@ lazy val androidPublished = (project in file("published/android"))
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     Compile / resourceGenerators += fontResources.taskValue,
+    Compile / resourceGenerators += sharedLicenses.taskValue,
     Compile / resourceGenerators += bundled("everyui/android", root => Seq(root / "android" / "proguard-rules.pro")).taskValue,
     // the layouts and drawables a home-screen widget is drawn with, under everyui/android/res/ as they are in
     // android/widget-res (sbt-everyui's everyuiWidgetLayouts)
@@ -640,6 +662,7 @@ lazy val rokuPublished = (project in file("published/roku"))
       "com.outr" %% "reactify" % reactifyVersion,
       "com.outr" %% "spice-core" % spiceVersion),
     Compile / resourceGenerators += fontResources.taskValue,
+    Compile / resourceGenerators += sharedLicenses.taskValue,
     Compile / resourceGenerators += bundled("everyui/roku/runtime",
       root => (root / "roku" / "runtime" * ("*.brs" | "*.xml")).get()).taskValue
   )
@@ -657,6 +680,7 @@ lazy val tvosPublished = (project in file("published/tvos"))
       "com.outr" %% "reactify" % reactifyVersion,
       "com.outr" %% "spice-core" % spiceVersion),
     Compile / resourceGenerators += fontResources.taskValue,
+    Compile / resourceGenerators += sharedLicenses.taskValue,
     // the runtime, the launcher and the Info.plist template (everyuiSwiftRuntime, everyuiAppleInfoPlist)
     Compile / resourceGenerators += bundled("everyui/swift", root => Seq(root / "swift" / "runtime" / "ScalaRuntime.swift",
       root / "swift" / "runtime" / "UniversalRuntime.swift", root / "swift" / "app" / "main.swift",

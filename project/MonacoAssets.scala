@@ -10,7 +10,9 @@ import java.util.zip.GZIPInputStream
   * fetched once from the npm registry, checked against the integrity npm publishes for it, and unpacked.
   *
   * What comes out is the module's resources under `everyui-monaco/<version>/`: Monaco's `min/vs` as `vs/`, require.js,
-  * and the bridge (`monaco/assets`: the guest's side of the protocol, the page a web view shows, its style). The one
+  * the licences under `licenses/` (Monaco's, its ThirdPartyNotices, and DOMPurify's, which its min build bundles and
+  * the notices do not name; require.js's package has none, so its licence is kept in `monaco/assets/licenses`), and
+  * the bridge (`monaco/assets`: the guest's side of the protocol, the page a web view shows, its style). The one
   * path serves every platform: classpath resources on the desktop, APK assets on Android, and files served next to
   * the page on the web. */
 object MonacoAssets {
@@ -23,6 +25,9 @@ object MonacoAssets {
     "sha512-5BkI9KGoqrNvBGUe15/QlZq3OooZ8WLg1AxTpaqHRCP3HNpzPPZKE2EDz8M7c+VRmCeUw1Brp4cx/PWm3kI/5A==")
   val requirejs: Npm = Npm("requirejs", "2.3.8",
     "sha512-7/cTSLOdYkNBNJcDMWf+luFvMriVm7eYxp4BcFCsAX0wF421Vyce5SXP17c+Jd5otXKGNehIonFlyQXSowL6Mw==")
+  /** DOMPurify, at the version Monaco's package pins: its min build has it inside, for its licence. */
+  val dompurify: Npm = Npm("dompurify", "3.4.15",
+    "sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==")
 
   /** Where the root sits in the resources. */
   def root: String = "everyui-monaco/" + monaco.version
@@ -34,10 +39,14 @@ object MonacoAssets {
   def generate(log: String => Unit, bridge: File, out: File): Seq[File] = {
     val base = out / root
     val stamp = base / ".staged"
-    val want = monaco.integrity + " " + requirejs.integrity
+    val want = List(monaco, requirejs, dompurify).map(_.integrity).mkString(" ")
     if (!stamp.exists || IO.read(stamp) != want) {
       IO.delete(base)
-      unpack(fetch(log, monaco), base, "package/min/vs/", "vs/")
+      val m = fetch(log, monaco)
+      unpack(m, base, "package/min/vs/", "vs/")
+      unpack(m, base, "package/LICENSE", "licenses/monaco-editor.txt")
+      unpack(m, base, "package/ThirdPartyNotices.txt", "licenses/monaco-editor-ThirdPartyNotices.txt")
+      unpack(fetch(log, dompurify), base, "package/LICENSE", "licenses/dompurify.txt")
       unpack(fetch(log, requirejs), base, "package/require.js", "require.js")
       IO.write(stamp, want)
       log(s"MonacoAssets: Monaco ${monaco.version} and require.js ${requirejs.version} staged in $base")
