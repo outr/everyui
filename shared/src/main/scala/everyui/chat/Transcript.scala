@@ -49,6 +49,11 @@ import reactify.*
   * nothing moves as it comes and goes. The forward arrow on a message goes onto them (Tab too, in the page's order,
   * after what the rows hold); an arrow out of them, Escape or Back, back to the message.
   *
+  * Where the app says which entries start a turn (`turnHeader`: the person's messages, say), a compact header over the
+  * top edge names the turn the entries at the top belong to while its start is scrolled out of sight above, and takes
+  * the transcript back to it when pressed (`TurnHeaderView`). It is drawn over the rows, so nothing moves as it comes
+  * and goes.
+  *
   * `render` makes a message's words from its text and the widest they may be: Markdown by default
   * (`MessageMarkdown.render`), as narrow as a short reply, or plain text (`MessageText.plain`).
   *
@@ -125,6 +130,18 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val working: Var[Vector[Working]] = own(Var(Vector.empty))
   /** How many lines of what somebody at work is doing show before Show more. */
   val workingLines: Var[Int] = own(Var(3))
+  /** Which entries start a turn, and what the turn header says of each (`TurnHeader`): Some for an entry that starts
+    * one (the person's message), None for the rest. With it, a compact header over the transcript's top edge
+    * (`TurnHeaderView`) names the turn the topmost entry in view belongs to, the last entry at or above it that starts
+    * one, while that entry is itself scrolled out of sight above; it is hidden while the entry shows, and above the
+    * first turn. A press on it (a click, a tap, Enter or OK) takes the transcript back to the entry, gliding there
+    * where it is near and motion is not asked to be less. Asked once of each entry, again where the entry is replaced
+    * or this changes; a day's separator and a row for somebody at work are never asked. None, the default: no
+    * header. */
+  val turnHeader: Var[Option[ChatEntry => Option[TurnHeader]]] = own(Var(None))
+  private val turnShown: Var[Option[ChatEntry]] = own(Var(None))
+  /** The entry whose turn the header names, while it shows. */
+  val turn: Val[Option[ChatEntry]] = turnShown
 
   // what the list shows: the entries with a separator for each day, then who is at work
   private val shown: Var[Vector[ChatEntry]] = own(Var(Vector.empty))
@@ -152,10 +169,17 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     size.width())
   jump.position.top := size.height() - JumpButton.diameter - JumpButton.margin
 
+  /** The turn header (`turnHeader`), over the top edge of the rows. */
+  val header: TurnHeaderView = new TurnHeaderView(() => turnShown().foreach(toTurn))
+  header.position.left @= TurnHeader.sideInset
+  header.position.top @= TurnHeader.inset
+  header.size.width := math.max(0.0, size.width() - TurnHeader.sideInset * 2.0)
+
   private val spinner: Spinner = new Spinner(18.0, () => Theme.accent())
   spinner.visible := loading()
   spinner.position.left := (size.width() - 18.0) / 2.0
-  spinner.position.top @= 8.0
+  // (under the turn header, where it shows)
+  spinner.position.top := (if (header.visible()) TurnHeader.inset + TurnHeader.height + 8.0 else 8.0)
   spinner.semantics @= Semantics("status", label = ChatWords.loadingOlder)
 
   list.size.width := size.width()
@@ -165,7 +189,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   list.semantics @= Semantics("list", label = ChatWords.conversation)
   size.width @= 400.0
   size.height @= 400.0
-  children ++= List(list, spinner, jump)
+  children ++= List(list, header, spinner, jump)
 
   // ---- what shows ----
 
@@ -579,6 +603,118 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     pin.scrolled(list.offset(), furthest)
     nearTop()
     if (pointerAt.nonEmpty) hoverAt()
+    findTurn()
+  }
+
+  // ---- the turn header ----
+
+  // what `turnHeader` said of each entry asked, by id, with the entry it was asked of (one replaced under the same id
+  // is asked again); and the places in the list of those that start a turn, in order
+  private var turnOf: Map[String, (ChatEntry, Option[TurnHeader])] = Map.empty
+  private var starts: Vector[Int] = Vector.empty
+
+  private def turnFor(e: ChatEntry, build: ChatEntry => Option[TurnHeader]): Option[TurnHeader] =
+    if (Grouping.isDay(e) || Grouping.isWork(e)) None
+    else turnOf.get(e.id) match {
+      case Some((asked, said)) if asked eq e => said
+      case _ =>
+        val said = build(e)
+        turnOf = turnOf.updated(e.id, (e, said))
+        said
+    }
+
+  // the turns' starts found again in what the list shows, and what is kept for entries gone let go
+  private def restart(): Unit = {
+    val all = shown()
+    starts = turnHeader() match {
+      case None => Vector.empty
+      case Some(build) => all.indices.filter(i => turnFor(all(i), build).nonEmpty).toVector
+    }
+    if (turnOf.size > all.length) {
+      val here = all.map(_.id).toSet
+      turnOf = turnOf.filter { case (id, _) => here.contains(id) }
+    }
+    findTurn()
+  }
+
+  // the turn the topmost row in view belongs to (the last start at or above it), named while its start is out of sight
+  // above: its start the topmost row itself, at least in part in view, or no start above it, and there is none
+  private def findTurn(): Unit = {
+    val next = turnHeader() match {
+      case Some(build) if starts.nonEmpty && list.count > 0 =>
+        val top = list.indexAt(list.offset())
+        // the last start at or above it
+        var low = 0
+        var high = starts.length - 1
+        var at = -1
+        while (low <= high) {
+          val mid = (low + high) / 2
+          if (starts(mid) <= top) {
+            at = mid
+            low = mid + 1
+          }
+          else high = mid - 1
+        }
+        if (at < 0 || starts(at) >= top || starts(at) >= list.count) None
+        else Some(list(starts(at))).filter(e => turnFor(e, build).nonEmpty)
+      case _ => None
+    }
+    if (!(next.isEmpty && turnShown().isEmpty) && !next.exists(e => turnShown().exists(_ eq e))) turnShown @= next
+    val said = turnShown().flatMap(e => turnOf.get(e.id).flatMap(_._2))
+    if (said != header.header()) header.header @= said
+  }
+
+  /** The transcript taken to `entry`, the start of a turn, as a press on the turn header takes it: its top at the top,
+    * the cursor on it (`reveal`), gliding there where it is within two views and motion is not asked to be less
+    * (`everyui.motion.ReduceMotion`, `everyui.perf.Quality.glides`), else at once. */
+  def toTurn(entry: ChatEntry): Unit = {
+    val i = list.indexOf(entry.id)
+    // the focus on the header, which hides as the entry comes into view, goes to the rows
+    if (header.focused()) list.focus()
+    stopTurnGlide()
+    if (i < 0) reveal(entry.id)
+    else {
+      val from = list.offset()
+      val to = math.max(0.0, math.min(furthest, list.top(i)))
+      val near = math.abs(to - from) <= list.size.height() * 2.0
+      if (!near || math.abs(to - from) < 1.0 || !everyui.perf.Quality.glides || everyui.motion.ReduceMotion())
+        reveal(entry.id)
+      else {
+        pin.letGo()
+        list.stopFling()
+        import everyui.task.*
+        import scala.concurrent.duration.*
+        val move = PartialAnimate(() => list.offset(), (d: Double) => list.scrollTop(d), () => {
+          val now = list.indexOf(entry.id)
+          if (now < 0) list.offset() else math.max(0.0, math.min(furthest, list.top(now)))
+        }).in(Transcript.turnGlide.millis).easing(everyui.easing.Easing.cubicOut)
+        val run = sequential(move, synchronous {
+          turnGlideRun = None
+          reveal(entry.id)
+        }).start()
+        // (where the app runs no frame loop nothing would step it: there at once)
+        if (!everyui.task.Frames.running) {
+          run.cancel()
+          reveal(entry.id)
+        }
+        else {
+          turnGlideRun = Some(run)
+          // and there by then whatever happens, the loop held up or not
+          Platform.after(Transcript.turnGlide.toDouble / 1000.0 + 0.4, () => if (turnGlideRun.exists(_ eq run)) {
+            stopTurnGlide()
+            reveal(entry.id)
+          })
+        }
+      }
+    }
+  }
+
+  // the glide to a turn's start under way
+  private var turnGlideRun: Option[everyui.task.TaskInstance] = None
+
+  private def stopTurnGlide(): Unit = {
+    turnGlideRun.foreach(_.cancel())
+    turnGlideRun = None
   }
 
   // ---- keys ----
@@ -713,6 +849,14 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   follow(entries, (_: Vector[ChatEntry]) => reshow())
   follow(working, (_: Vector[Working]) => atWork())
+  // the turns' starts found again as the rows change (heard after the list has its rows), and as the app says otherwise
+  shown.attach(_ => restart(), Priority.Low)
+  turnHeader.attach { _ =>
+    turnOf = Map.empty
+    restart()
+  }
+  // (rows drawn at another width are as tall as they now draw: the topmost may be another)
+  list.size.width.attach(_ => Platform.later(() => findTurn()), Priority.Low)
   dayMarkers.attach { _ =>
     reshow()
     list.redecorateAll()
@@ -760,6 +904,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   messageActions.attach(_ => retarget())
   reactionsEnabled.attach(_ => retarget())
   onDispose(() => {
+    stopTurnGlide()
     kept.values.foreach(_.dispose())
     kept = Map.empty
   })
@@ -802,6 +947,8 @@ object Transcript {
   val lineStep: Double = 48.0
   /** How near the top earlier entries are asked for. */
   val loadAhead: Double = 600.0
+  /** How long a press on the turn header glides to the turn's start, in milliseconds. */
+  val turnGlide: Long = 250L
   /** Below this width, a phone's: everything in the flow takes all of it but the side margins, the avatar goes small
     * beside the name, and no room is kept for the rails. */
   val narrow: Double = 600.0

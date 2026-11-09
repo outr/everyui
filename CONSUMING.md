@@ -2121,6 +2121,46 @@ full width: what runs in the background, say, unfolding upward into its list as 
 room it takes, and it takes none while the slot is empty or what it holds is hidden. It stays on the composer at a
 phone's width and with the keyboard up, and the keys and a screen reader reach it after the transcript.
 
+### The turn header (`Transcript.turnHeader`, `TurnHeader`)
+
+A conversation of turns (your message, then everything an agent does about it) can name the turn being read over the
+transcript's top edge, as a list names the section it is in. `turnHeader` says which entries start a turn and what the
+header shows for each: Some(`TurnHeader`) for a start (your message, say), None for the rest. The header names the turn
+the topmost entry in view belongs to, the last start at or above it, while that start is itself scrolled out of sight
+above: at the bottom of a long answer it is the newest turn's. It hides while the start shows (even a sliver of it), and
+above the first turn. A `TurnHeader` is the turn's words (`text`, a `Val`: give the message's own `text` and an edit
+follows), an optional author's name for a room of several people (`author`), an optional file's name drawn after a
+paperclip (`attachment`), and `busy`, a `Val[Boolean]` the app turns on while the turn runs and off once it is done,
+which draws a small turning glyph at the end (standing still at half strength where less motion is asked for).
+`TurnHeader.of(message, named, attachment, busy)` makes one from a message.
+
+The header is one line, 30 points tall, 6 in from the top and 12 from each side, over the rows rather than above them:
+nothing in the transcript moves as it comes and goes, and the spinner for earlier entries sits under it while it shows.
+Its words are muted and cut short with an ellipsis (the file's name takes at most 40% of the width); the pointer resting
+on it, or a finger held on it, shows them whole. A click, a tap, or Enter or OK with the focus on it (Tab reaches it
+after the rows) takes the transcript to the start (`toTurn`): its top at the top, the cursor on it, the focus moved to
+the rows if it was on the header. It glides there over a quarter of a second where the start is within two views,
+frames are running (a `ScreenManager` runs them) and neither `ReduceMotion` nor `Quality` says otherwise, and is there
+at once otherwise. A screen reader hears a link, "Jump to message: Fix the login bug, notes.txt" ("chat.jumpToMessage",
+in Words' eleven languages), with ", running" after it while the turn is busy.
+
+`turnHeader` is asked once of each entry, again where an entry is replaced (another object, or another id: a message
+sent as `local-1` and kept by the server as `m-42` is asked again, and the header follows it) or `turnHeader` itself
+changes; a day's separator and a row for somebody at work are never asked. Earlier entries paged in above
+(`loadOlder`) keep the header on the turn it named, as they keep what shows where it was. `transcript.turn` is the entry
+whose turn is named, while the header shows; `transcript.header` is the `TurnHeaderView`. None, the default: no
+header, and the transcript is as it was. `demo=turns` shows it (`room=1` names authors, `busy=0` leaves it done).
+
+```scala
+val replying: Var[Option[String]] = Var(None)      // the id of the message whose turn is running
+chat.transcript.turnHeader @= Some {
+  case m: ChatEntry.Message if m.self =>
+    Some(TurnHeader.of(m, named = isRoom, attachment = filesOf(m.id).headOption.map(_.name),
+      busy = Val(replying().contains(m.id))))
+  case _ => None
+}
+```
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

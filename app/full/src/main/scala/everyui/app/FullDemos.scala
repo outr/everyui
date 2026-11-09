@@ -85,6 +85,10 @@ object FullDemos {
       RailDemo.run()
       true
     }
+    else if (demo == "turns") {
+      TurnHeaderDemo.run()
+      true
+    }
     else if (demo == "background" || everyui.render.Platform.path().startsWith("/background")) {
       // what runs with the app closed (ExampleBackground); its notice's Open opens the app at /background/opened
       BackgroundDemo.run()

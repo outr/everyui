@@ -132,6 +132,9 @@ import everyui.render.Platform
   *   quota      an admin console's usage in a RichList: meters whose colour turns as they fill, a subtitle beside
   *              its section's title or under it, sections with no count (`width=<pixels>`, `theme=light`,
   *              `style=blocks`); not on a Roku or an Apple TV (app/full: FullDemos)
+  *   turns      a coding agent's conversation whose turn header names the turn at the top while its message is out of
+  *              sight, with a file and a spinner, going back to it on a press (`theme=light`, `room=1`, `busy=0`,
+  *              `at=<pixels>`); not on a Roku or an Apple TV (app/full: FullDemos)
   *   background what runs with the app closed (ExampleBackground): work scheduled once, at once and every 15 minutes,
   *              an ongoing notice whose Pause, Resume and Open run with the app closed (Open lands on
   *              /background/opened), the settings pages, and the restarts heard (`theme=light`); also at a launch to

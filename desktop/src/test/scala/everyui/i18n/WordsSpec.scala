@@ -16,7 +16,7 @@ class WordsSpec extends FxSpec {
   private val tabs = List("add", "close", "closeOthers", "closeAll", "openRight", "openDown", "moveRight", "moveLeft",
     "moveDown", "moveUp", "unsplit", "nextGroup", "previousGroup", "maximize", "unmaximize", "none").map("tabs." + _)
   /** The families of words that were English alone until they were given to Words, and how many each has. */
-  private val families = List("chat." -> 49, "composer." -> 14, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 25,
+  private val families = List("chat." -> 50, "composer." -> 14, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 25,
     "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4)
 
   /** The names of a message's arguments: `{n}`, `{n, plural, …}`, not a plural's own branches. */
@@ -33,6 +33,7 @@ class WordsSpec extends FxSpec {
     ChatWords.queued(2), ChatWords.queuePaused, ChatWords.resume, ChatWords.sendNext, ChatWords.clearQueue,
     ChatWords.queueMore, ChatWords.addToQueue, ChatWords.edit, ChatWords.remove, ChatWords.fileCount(2),
     ChatWords.queuedItem(1, 2, "Hi"), ChatWords.queuedHelp, ChatWords.moved(1, 2), ChatWords.reorder,
+    ChatWords.jumpToMessage("Hi"),
     ChatTime.span(12000L), ChatTime.span(69000L), ChatTime.span(7500000L),
     DateWords.selectDate, DateWords.selectRange, DateWords.date, DateWords.start, DateWords.end,
     DateWords.previousMonth, DateWords.nextMonth, DateWords.previousYears, DateWords.nextYears, DateWords.previousYear,

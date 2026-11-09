@@ -59,6 +59,8 @@ object ChatWords {
   def selectAll: String = word("chat.selectAll")
   /** "About Ada", the menu's way to a message's author. */
   def about(name: String): String = word("chat.about").replace("{name}", name)
+  /** "Jump to message: Fix the login bug", a transcript's turn header to a screen reader (`TurnHeader`). */
+  def jumpToMessage(text: String): String = word("chat.jumpToMessage").replace("{text}", text)
 
   // a composer's queue (Composer.queueWhileBusy)
   /** "2 messages queued", over the queue and to a screen reader as it changes. */
