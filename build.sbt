@@ -6,7 +6,7 @@
 
 ThisBuild / scalaVersion := "3.10.0"
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "0.1.1-SNAPSHOT"
+ThisBuild / version := "0.1.1"
 
 // --- publishing: Maven Central, under the Apache License 2.0 ------------------------------------------------------
 // sbt's own Central Portal support (sbt-pgp signs): `publishSigned` stages a release in localStaging, and `sonaRelease`
