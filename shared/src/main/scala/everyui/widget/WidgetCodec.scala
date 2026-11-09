@@ -24,6 +24,14 @@ object WidgetCodec {
     count(setup.choices.size, out)
     setup.choices.toList.sorted.foreach(c => words(c, out))
     out.append(if (setup.countsOnly) '1' else '0')
+    // after the rest, and only where it has some: a setup without settings is kept as it always was
+    if (setup.settings.nonEmpty) {
+      count(setup.settings.size, out)
+      setup.settings.toList.sortBy(_._1).foreach { (k, v) =>
+        words(k, out)
+        words(v, out)
+      }
+    }
     out.toString
   }
 
@@ -36,7 +44,22 @@ object WidgetCodec {
       next = d
       c
     }.toSet
-    (WidgetSetup(kind, choices, flagAt(text, next)), next + 1)
+    val countsOnly = flagAt(text, next)
+    next += 1
+    // none where the text ends there, as a setup kept before settings were offered does
+    val settings =
+      if (next == text.length) Map.empty[String, String]
+      else {
+        val (m, e) = countAt(text, next)
+        next = e
+        (0 until m).map { _ =>
+          val (k, f) = wordsAt(text, next)
+          val (v, g) = wordsAt(text, f)
+          next = g
+          k -> v
+        }.toMap
+      }
+    (WidgetSetup(kind, choices, countsOnly, settings), next)
   })
 
   /** `body` from just past the version, the whole of `text` read by it, or None. */
@@ -101,6 +124,11 @@ object WidgetCodec {
       nodes(rows, out)
       words(empty, out)
     case WidgetNode.Spacer => out.append('s')
+    case WidgetNode.Scaled(scale, inner) =>
+      // a letter of its own, which a tree without it never has: such a tree is kept as it always was
+      out.append('z')
+      number(scale, out)
+      write(inner, out)
   }
 
   private def nodes(parts: Vector[WidgetNode], out: StringBuilder): Unit = {
@@ -199,6 +227,10 @@ object WidgetCodec {
       val (empty, b) = wordsAt(text, a)
       (WidgetNode.Items(rows, empty), b)
     case 's' => (WidgetNode.Spacer, at + 1)
+    case 'z' =>
+      val (scale, a) = numberAt(text, at + 1)
+      val (inner, b) = node(text, a)
+      (WidgetNode.Scaled(scale, inner), b)
     case other => throw new IllegalArgumentException("node " + other)
   }
 

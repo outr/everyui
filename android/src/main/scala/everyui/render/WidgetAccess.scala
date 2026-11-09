@@ -22,7 +22,9 @@ import scala.jdk.CollectionConverters.*
   * name its manifest gives under the application's meta-data "everyui.widgets", and each receiver's kind is the key
   * under its own meta-data "everyui.widget.kind" (the app's first kind where there is none). What each placed widget
   * was set to (`WidgetSetup`) and the last tree it drew at each size are files of the app's own, by its id, forgotten
-  * as it is removed; files rather than the settings, as the configure screen runs in a process of its own.
+  * as it is removed; files rather than the settings, as the configure screen runs in a process of its own. Each request
+  * carries the kind's settings as `WidgetSetup.settled` resolves them, so a widget placed with its configure screen
+  * passed by, or kept before its kind offered a setting, draws with the defaults.
   *
   * A draw shows what the widget drew last at once, asks the kind's `content` for each size the launcher may show it
   * at (on the thread that draws, as the app would), and draws again as they answer, or with what has answered once
@@ -232,7 +234,8 @@ object WidgetAccess {
           val shown = sizes(context, id, k)
           val size = shown.headOption.map(_._2).getOrElse(WidgetSize.Compact)
           val (w, h) = room(shown, size)
-          WidgetRequest(id, kind, size, set.choices, set.countsOnly, dark(context), w, h)
+          WidgetRequest(id, kind, size, set.choices, set.countsOnly, dark(context), w, h,
+            WidgetSetup.settled(k, set.settings))
         }
     }
   }
@@ -299,7 +302,8 @@ object WidgetAccess {
         main.postDelayed(() => enough(), deadline)
         classes.foreach { size =>
           val (w, h) = room(shown, size)
-          val request = WidgetRequest(id, kind.key, size, setup.choices, setup.countsOnly, night, w, h)
+          val request = WidgetRequest(id, kind.key, size, setup.choices, setup.countsOnly, night, w, h,
+            WidgetSetup.settled(kind, setup.settings))
           onMain(kind.content(request)) { node =>
             answers.put(size, node)
             work.execute(() => keep(context, id, size, node))
@@ -371,7 +375,8 @@ object WidgetAccess {
         val shown = sizes(context, id, kind)
         val size = shown.headOption.map(_._2).getOrElse(WidgetSize.Compact)
         val (w, h) = room(shown, size)
-        val request = WidgetRequest(id, kind.key, size, set.choices, set.countsOnly, dark(context), w, h)
+        val request = WidgetRequest(id, kind.key, size, set.choices, set.countsOnly, dark(context), w, h,
+          WidgetSetup.settled(kind, set.settings))
         val once = new AtomicBoolean(false)
         val next = () => if (once.compareAndSet(false, true)) update(context, p, Array(id), finish)
         main.postDelayed(() => next(), deadline)

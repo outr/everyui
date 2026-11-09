@@ -27,4 +27,19 @@ enum WidgetNode {
   case Items(rows: Vector[WidgetNode], empty: String)
   /** The room left in its row or column, pushing what follows it to the far end. */
   case Spacer
+  /** `node` with the size of every `Text` in it (a list's rows' too, which grow with their words) times `scale`,
+    * held to `WidgetNode.leastScale`..`mostScale`; a `Scaled` within it multiplies again, the product held the
+    * same. A widget's text size, chosen for it in its configure screen (`WidgetSetting`), usually wraps its whole
+    * tree. Pictures, gaps and a button's words keep their size. */
+  case Scaled(scale: Double, node: WidgetNode)
+}
+
+object WidgetNode {
+  /** The least and the most a `Scaled` multiplies its words' size by. */
+  val leastScale: Double = 0.5
+  val mostScale: Double = 2.0
+
+  /** `scale` held to `leastScale`..`mostScale`, and 1 where it is not a number. */
+  def scale(scale: Double): Double =
+    if (scale.isNaN) 1.0 else math.max(leastScale, math.min(mostScale, scale))
 }

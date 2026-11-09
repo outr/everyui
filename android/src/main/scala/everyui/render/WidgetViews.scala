@@ -36,11 +36,14 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
   // ("setRemoteAdapter can only be used for AppWidgets", the Pixel launcher on Android 15) and draws only the list's
   // empty words
   private var list: Option[RemoteViews.RemoteCollectionItems] = None
+  // what the words of the part being drawn are scaled by: the product of the `Scaled` it is within, held
+  private var scale = 1.0
 
   /** `node` on the widget's ground, the whole of it named `name` to a screen reader, the ground `opacity` opaque
     * (`WidgetKind.groundOpacity`). */
   def root(node: WidgetNode, name: String, opacity: Double = 1.0): RemoteViews = {
     list = None
+    scale = 1.0
     val views = new RemoteViews(context.getPackageName, layout("root"))
     val ground = WidgetViews.id(context, "everyui_widget_ground")
     shade(views, ground, _.surface, WidgetGround.alpha(opacity))
@@ -49,12 +52,7 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
     // emptied first: a launcher reapplies a new draw of the same layout to the views it has, and each part added
     // without it was added beside the last draw's
     views.removeAllViews(content)
-    node match {
-      case WidgetNode.Column(parts, gap, tap, None) =>
-        fill(views, content, parts, gap, inRow = false, filler = -1, inList = false)
-        tap.foreach(t => tapOn(views, content, t, inList = false))
-      case other => views.addView(content, part(other, inRow = false, fills = false, inList = false))
-    }
+    place(views, content, node)
     // after the parts, so the list it is aimed at is in the tree
     list.foreach { items =>
       val at = WidgetViews.id(context, "everyui_widget_list")
@@ -66,13 +64,29 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
     views
   }
 
+  // the root's column's parts straight into the content, as a list in it fills what it leaves; through `Scaled`
+  private def place(views: RemoteViews, content: Int, node: WidgetNode): Unit = node match {
+    case WidgetNode.Column(parts, gap, tap, None) =>
+      fill(views, content, parts, gap, inRow = false, filler = -1, inList = false)
+      tap.foreach(t => tapOn(views, content, t, inList = false))
+    case WidgetNode.Scaled(by, inner) => scaled(by)(place(views, content, inner))
+    case other => views.addView(content, part(other, inRow = false, fills = false, inList = false))
+  }
+
+  /** `draw` with the words' scale multiplied by `by`, the product held (`WidgetNode.scale`), and put back after. */
+  private def scaled[T](by: Double)(draw: => T): T = {
+    val outer = scale
+    scale = WidgetNode.scale(outer * WidgetNode.scale(by))
+    try draw finally scale = outer
+  }
+
   private def part(node: WidgetNode, inRow: Boolean, fills: Boolean, inList: Boolean): RemoteViews = node match {
     case WidgetNode.Text(words, style, colour, lines, label) =>
       val views = new RemoteViews(context.getPackageName,
         layout(if (!inRow) "text" else if (fills) "text_fill" else "text_wrap"))
       val at = WidgetViews.id(context, "everyui_widget_text")
       views.setTextViewText(at, styled(words, style))
-      views.setTextViewTextSize(at, TypedValue.COMPLEX_UNIT_SP, WidgetViews.points(style).toFloat)
+      views.setTextViewTextSize(at, TypedValue.COMPLEX_UNIT_SP, (WidgetViews.points(style) * scale).toFloat)
       tint(views, at, "setTextColor", WidgetViews.colour(colour))
       views.setInt(at, "setMaxLines", if (lines <= 0) Int.MaxValue else lines)
       if (label.nonEmpty) views.setContentDescription(at, label)
@@ -122,6 +136,7 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       views
     case WidgetNode.Items(rows, empty) => items(rows, empty)
     case WidgetNode.Spacer => new RemoteViews(context.getPackageName, layout("spacer"))
+    case WidgetNode.Scaled(by, inner) => scaled(by)(part(inner, inRow, fills, inList))
   }
 
   /** `inner` (whose row or column is `at`) on a card of the `kind` layout: its ground under it, of the shape with the
@@ -155,7 +170,8 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
     views.removeAllViews(container)
     parts.zipWithIndex.foreach { (p, i) =>
       // no gap beside the room left: it is room already
-      val beside = i > 0 && p != WidgetNode.Spacer && parts(i - 1) != WidgetNode.Spacer
+      val beside = i > 0 && WidgetViews.bare(p) != WidgetNode.Spacer &&
+        WidgetViews.bare(parts(i - 1)) != WidgetNode.Spacer
       if (beside) WidgetViews.gap(gap).foreach(g => views.addView(container,
         new RemoteViews(context.getPackageName, layout("gap_" + g.toString))))
       views.addView(container, part(p, inRow, i == filler, inList))
@@ -181,6 +197,7 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       if (list.isEmpty) list = Some(made.build())
       else Platform.log("widget: a second list in one widget is drawn empty")
       views.setTextViewText(none, empty)
+      views.setTextViewTextSize(none, TypedValue.COMPLEX_UNIT_SP, (WidgetViews.points(WidgetText.Body) * scale).toFloat)
       tint(views, none, "setTextColor", WidgetViews.colour(WidgetColour.Muted))
       views
     }
@@ -263,12 +280,20 @@ object WidgetViews {
 
   /** Which of a row's parts takes the room the others leave: none where it has a `Spacer` or a column (which shares
     * the row's width already), and otherwise the words with the most of them. -1 for none. */
-  def filler(parts: Vector[WidgetNode]): Int =
+  def filler(all: Vector[WidgetNode]): Int = {
+    val parts = all.map(bare)
     if (parts.exists(p => p == WidgetNode.Spacer || p.isInstanceOf[WidgetNode.Column])) -1
     else {
       val words = parts.zipWithIndex.collect { case (t: WidgetNode.Text, i) => (t.words.length, i) }
       if (words.isEmpty) -1 else words.maxBy(_._1)._2
     }
+  }
+
+  /** `node` without the `Scaled` around it: what it draws as, at whatever size. */
+  def bare(node: WidgetNode): WidgetNode = node match {
+    case WidgetNode.Scaled(_, inner) => bare(inner)
+    case other => other
+  }
 
   def layout(context: Context, name: String): Int = resource(context, name, "layout")
   def id(context: Context, name: String): Int = resource(context, name, "id")

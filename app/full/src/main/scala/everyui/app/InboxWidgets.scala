@@ -3,13 +3,15 @@ package everyui.app
 import everyui.async.Task
 import everyui.font.MaterialIcon
 import everyui.widget.{WidgetApp, WidgetChoice, WidgetColour, WidgetGround, WidgetKind, WidgetNode, WidgetPicture,
-  WidgetRequest, WidgetSize, WidgetTap, WidgetText}
+  WidgetRequest, WidgetSetting, WidgetSettingOption, WidgetSize, WidgetTap, WidgetText}
 
 /** The example app's home-screen widget, "inbox" (build.sbt names this object and the kind, `everyuiWidgets`):
   * made-up mail from three made-up accounts, chosen in its configure screen. Compact, the unread count of the chosen
   * accounts; medium and large, a header with a Refresh (an action, which brings one more message) over a list of the
   * messages, each opening the app at `/inbox/<id>` (InboxDemo). Counts only, the accounts and their counts, with no
-  * senders or subjects. Its ground is translucent, the wallpaper showing through, with each part on a card. */
+  * senders or subjects. Its ground is translucent, the wallpaper showing through, with each part on a card. Its text
+  * size is chosen for each widget in its configure screen (a setting, "Text size"), drawn through
+  * `WidgetNode.Scaled`. */
 object InboxWidgets extends WidgetApp {
   private val group = "Mail accounts"
   private val accounts: Vector[WidgetChoice] = Vector(WidgetChoice("work", "matt@work.example", group),
@@ -24,12 +26,18 @@ object InboxWidgets extends WidgetApp {
     ("m5", "home", "Hedy Lamarr", "Photos from the weekend", "Yesterday"),
     ("m6", "lists", "Android Developers", "What's new in widgets", "Yesterday"),
     ("m7", "work", "Edsger Dijkstra", "On the cruelty of really teaching computing", "Mon"))
+  // the configure screen's "Text size", each option's key and what it scales the words by
+  private val textSizes: Vector[(String, String, Double)] =
+    Vector(("small", "Small", 0.9), ("normal", "Normal", 1.0), ("large", "Large", 1.25))
+  private val textSize = WidgetSetting("textSize", "Text size", textSizes.map((k, l, _) => WidgetSettingOption(k, l)),
+    "normal", "The size of the widget's words, its rows growing with them")
   // what each Refresh brings: one more, made up, at the top
   @volatile private var arrived = 0
 
   val inbox: WidgetKind = WidgetKind("inbox", "Inbox", "Unread mail from the accounts you choose", "images/icon.png",
     Set(WidgetSize.Compact, WidgetSize.Medium, WidgetSize.Large), () => Task.pure(accounts),
-    offered => offered.map(_.key).toSet, draw, act, groundOpacity = 0.35)
+    offered => offered.map(_.key).toSet, draw, act, groundOpacity = 0.35,
+    settings = Vector(textSize))
   // each part on a card of the theme's surface, more opaque than the widget's own ground, so the words read over a
   // busy wallpaper that shows through around them
   private val card = Some(WidgetGround(WidgetColour.Surface, opacity = 0.8, radius = 12.0, padding = 8.0))
@@ -43,16 +51,22 @@ object InboxWidgets extends WidgetApp {
   }
 
   private def draw(request: WidgetRequest): Task[WidgetNode] = Task.pure {
+    val scale = request.settings.get(textSize.key).flatMap(k => textSizes.find(_._1 == k)).map(_._3).getOrElse(1.0)
+    WidgetNode.Scaled(scale, tree(request, scale))
+  }
+
+  private def tree(request: WidgetRequest, scale: Double): WidgetNode = {
     val shown = messages(request.choices)
     val count = shown.size.toString
     if (request.size == WidgetSize.Compact) {
       // the count beside the icon, at the foot, and "unread" under it where there is room (76 points: the count's
-      // line, a gap and the caption's, the card's padding, with a launcher's own margin to spare)
+      // line, a gap and the caption's, the card's padding, with a launcher's own margin to spare),
+      // the lines the taller as the words are scaled
       val number = WidgetNode.Row(Vector(
         WidgetNode.Text(count, WidgetText.Count, WidgetColour.Accent, label = count + " unread"),
         WidgetNode.Spacer,
         WidgetNode.Picture(WidgetPicture.Icon(MaterialIcon.Mail), 22.0)))
-      val caption = if (request.height > 0.0 && request.height < 76.0) Vector.empty
+      val caption = if (request.height > 0.0 && request.height < 76.0 * scale) Vector.empty
         else Vector(WidgetNode.Text("unread", WidgetText.Caption, WidgetColour.Muted))
       // the count on a card at the foot, the wallpaper showing through above it
       WidgetNode.Column(Vector(WidgetNode.Spacer, WidgetNode.Column(Vector(number) ++ caption, ground = card)),

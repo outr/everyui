@@ -3338,6 +3338,40 @@ WidgetKind("inbox", ..., groundOpacity = 0.35)                // in the kind
 WidgetNode.Row(Vector(from, WidgetNode.Spacer, when), tap = Some(WidgetTap.Open("/inbox/" + id)), ground = card)
 ```
 
+A kind can offer settings, each a choice of one option kept for each placed widget: its text size, how far ahead a
+calendar looks. `WidgetKind.settings` is a `Vector[WidgetSetting]`, each
+`WidgetSetting(key, label, options, default, note)` with its `WidgetSettingOption(key, label)`s; the configure screen
+shows each as a row of chips, one lit, after the choices and before "Counts only", with `note` under it. What was
+chosen is kept with the widget's setup (`WidgetSetup.settings`, by the setting's key), and `content` and `action` are
+handed every one of the kind's settings in `WidgetRequest.settings`: the option chosen where it is still offered, the
+setting's default where none was (a widget placed with its configure screen passed by, or kept before the kind offered
+the setting) or the option chosen has since been taken away (`WidgetSetup.settled`).
+
+`WidgetNode.Scaled(scale, node)` multiplies the size of every `Text` within it, a list's rows (which grow with their
+words) and its empty words included, by `scale`, held to 0.5..2 (`WidgetNode.leastScale`, `mostScale`); a `Scaled`
+within another multiplies again. Pictures, gaps and a button's words keep their size. Android's sizes at 1 are a
+title's 16, the body's 14, a caption's 12 and a count's 30. A widget's text size is usually a setting applied to its
+whole tree:
+
+```scala
+val textSize = WidgetSetting("textSize", "Text size", Vector(WidgetSettingOption("small", "Small"),
+  WidgetSettingOption("normal", "Normal"), WidgetSettingOption("large", "Large")), default = "normal")
+val ahead = WidgetSetting("ahead", "Show", Vector(WidgetSettingOption("1", "Today"),
+  WidgetSettingOption("7", "Next 7 days")), default = "7", note = "How far ahead the widget looks")
+WidgetKind("agenda", ..., settings = Vector(textSize, ahead))              // in the kind
+
+def draw(request: WidgetRequest): Task[WidgetNode] = {
+  val scale = request.settings("textSize") match {
+    case "small" => 0.9
+    case "large" => 1.25
+    case _ => 1.0
+  }
+  events(days = request.settings("ahead").toInt).map(list => WidgetNode.Scaled(scale, tree(list)))
+}
+```
+
+A kind that leaves out what would not fit (`WidgetRequest.width`, `height`) allows for its words' scale too.
+
 The build declares them: the object, and each kind as the launcher knows it. sbt-everyui then writes a receiver for
 each kind, the manifest's entries (the receivers, the meta-data naming the object, and the configure screen in a
 process of its own), each kind's `appwidget-provider`, and the shrinker's rules, and adds EveryUI's widget layouts to
@@ -3360,8 +3394,8 @@ everyuiWidgetKinds := Seq(AndroidWidget("inbox", "Inbox", Seq("compact", "medium
 - `preview` is a resource the widget picker shows (the app's icon where there is none).
 - `updateMinutes` is how often the launcher has it drawn again unasked: 30 at least (Android's floor), or 0 for never.
 - `configurable` shows the configure screen as the widget is placed (it may be passed by, with the kind's
-  `defaults`) and from a long press on it (Android 12 on): the kind's `choices` by group with a box each, "Counts
-  only" where `privacy`, Cancel and Done.
+  `defaults` and each setting's `default`) and from a long press on it (Android 12 on): the kind's `choices` by group
+  with a box each, its `settings` as rows of chips, "Counts only" where `privacy`, Cancel and Done.
 
 ## With the app closed (`everyui.background`)
 

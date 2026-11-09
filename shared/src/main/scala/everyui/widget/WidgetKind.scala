@@ -13,7 +13,11 @@ import everyui.async.Task
   *
   * `groundOpacity` is how opaque the widget's own ground is, from 0 (none: the wallpaper shows through whole) to 1
   * (the theme's surface, the default), in light and dark alike; its corners stay rounded. A translucent widget
-  * usually puts its parts on cards (`WidgetGround`) so its words stay readable over a busy wallpaper. */
+  * usually puts its parts on cards (`WidgetGround`) so its words stay readable over a busy wallpaper.
+  *
+  * `settings` are each a choice of one option (a text size, how far ahead a calendar looks), offered in the
+  * configure screen after the choices and kept for each placed widget; `content` and `action` are handed every one
+  * of them, chosen or defaulted, in `WidgetRequest.settings`. */
 case class WidgetKind(key: String,
                       name: String,
                       description: String,
@@ -24,4 +28,5 @@ case class WidgetKind(key: String,
                       content: WidgetRequest => Task[WidgetNode],
                       action: (WidgetRequest, String, Map[String, String]) => Task[Unit] = (_, _, _) => Task.unit,
                       privacy: Boolean = true,
-                      groundOpacity: Double = 1.0)
+                      groundOpacity: Double = 1.0,
+                      settings: Vector[WidgetSetting] = Vector.empty)
