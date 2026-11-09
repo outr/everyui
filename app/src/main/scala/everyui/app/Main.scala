@@ -44,6 +44,8 @@ import everyui.render.Platform
   *              server's log over a durable socket (`socket=ws://host:8731/logs`)
   *   richlist   a conversation list (RichList): 5000 in three sections, with unread counts, pins, a search and menus
   *              (`theme=light`, `collapsed=archive`), a few with an agent at work (`stop=<seconds>`)
+  *   avatars    people's statuses on their avatars (Avatar.statuses) at 18 to 96 px, by an initial and a picture, busy,
+  *              a face's own, and on a conversation list's rows (`theme=light`, `rtl=1`, `cycle=<seconds>`)
   *   blocks     a sidebar's conversations as blocks (RichStyle.Blocks): groups, workspaces open and closed, unread
   *              counts, long names, drags between blocks, a button to draw it as a tree (`style=tree`, `theme=light`,
   *              `rtl=1`, `collapsed=<keys>`, `groups=<keys>`, `find=<words>`)
@@ -179,6 +181,7 @@ import everyui.render.Platform
   else if (demo == "markdown") MarkdownDemo.run()
   else if (demo == "logs") LogsDemo.run()
   else if (demo == "richlist") RichListDemo.run()
+  else if (demo == "avatars") AvatarsDemo.run()
   else if (demo == "blocks") BlocksDemo.run()
   else if (demo == "memory") MemoryDemo.run()
   else if (demo == "scale") ScaleDemo.run()

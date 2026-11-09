@@ -1,6 +1,6 @@
 package everyui.list
 
-import everyui.chat.{ChatTime, ChatWords, Ticker}
+import everyui.chat.{AvatarStatus, ChatTime, ChatWords, Ticker}
 import everyui.component.{Component, Container}
 import everyui.event.{Key, KeyEvent}
 import everyui.i18n.{Direction, Words}
@@ -557,13 +557,14 @@ object RichList {
     look.title.toLowerCase.contains(w) || look.detail.exists(_.toLowerCase.contains(w))
   }
 
-  /** What a screen reader says for a row: its title, detail, time, count, whether it is unread or busy, and its
-    * `liveLabel` while it is live. */
-  def said(look: RichLook, now: Long, timeText: (Long, Long) => String): String =
+  /** What a screen reader says for a row: its title, detail, time, count, whether it is unread or busy, the words of
+    * its person's `status` (`AvatarStatus`, what their avatar shows), and its `liveLabel` while it is live. */
+  def said(look: RichLook, now: Long, timeText: (Long, Long) => String, status: Option[AvatarStatus] = None): String =
     (List(look.title) ++ look.detail.toList ++ look.time.map(t => timeText(t, now)).toList ++
       (if (look.count > 0) List(countText(look.count)) else Nil) ++
       (if (look.unread) List(unreadLabel) else Nil) ++
       (if (look.busy) ChatWords.busy :: (if (look.busyDetail.isEmpty) Nil else List(look.busyDetail)) else Nil) ++
+      status.map(_.words).filter(_.nonEmpty).toList ++
       (if (look.live) look.liveLabel.filter(_.nonEmpty).toList else Nil) ++
       look.meter.map(_.said).toList)
       .mkString(", ")

@@ -2079,6 +2079,35 @@ an Apple TV, the whole ring is lit and stands still. The ring is made the first 
 outside its box by `BusyRing.outset(diameter)`, so leave that room around it. `RichLook.busy` and `TabItem.busy` draw
 it on a list's rows and a tab's lead; `demo=tabs` shows both kinds of lead and the ring turning and stopped.
 
+### Status on an avatar (`Avatar.statuses`, `AvatarStatus`)
+
+What somebody is up to (in a meeting from their calendar, out of office, online, away, not to be disturbed) is a dot
+on their avatar's bottom corner, as a chat app shows a calendar's status. Set it once per person, by `Participant.id`,
+and every avatar of theirs shows it, those EveryUI draws (a message's, a list's row, a tab's lead, a tool call's, the
+working line and status bar, a call's tile) and the app's own, already drawn or drawn after; take it from the map and
+it goes from every one:
+
+```scala
+import everyui.chat.{Avatar, AvatarStatus}
+Avatar.statuses @= Map(
+  "u-17" -> AvatarStatus(Color.fromHex("#e53935"), "In a meeting · until 3:00 PM"),
+  "u-42" -> AvatarStatus(Color.fromHex("#43a047"), "Online"))
+Avatar.statuses @= Avatar.statuses() - "u-17"
+```
+
+`AvatarStatus(colour, words)`: the dot is `colour`, and `words` are what a pointer resting on the face shows (under
+the busy detail, where it is busy too) and what a screen reader hears after the name and anything busy says ("Ada,
+busy, Running bash, In a meeting · until 3:00 PM"). The dot is about 30% of the face, 8 px at the least (an 18 px
+face's is 8), ringed in `avatar.statusGround` (the theme's background by default; a list's row rings it in the row's
+ground, lit or not) so it reads over a picture or their colour, its middle on the face's edge at the bottom-right
+(bottom-left right to left), past the face's box and over the busy ring. `avatar.status` is one face's own: it follows
+the map by default, `@= Some(…)` puts that face's own over it, `@= None` shows none there whatever the map holds, and
+`status := Avatar.statusOf(id)` follows the map again; a face with no id (a `Participant("", "")`) has only its own.
+`avatar.statusDot @= false` keeps the words and draws no dot, for a view that marks that corner itself (a tool call's
+line does while its own mark shows there). A `RichList` row whose `who` has a status shows it on its avatar and says
+it with the row. A face takes its watch on the map apart when it is disposed of. `demo=avatars` shows them at 18 to
+96 px, by initial and picture, busy, a face's own, and on a list's rows (`theme=light`, `rtl=1`, `cycle=<seconds>`).
+
 ### Tool calls (`ChatEntry.Activity`: `lead`, `body`)
 
 A tool call is one line in the transcript: its `summary` after a status mark (a spinner, a tick, a cross). It can say
@@ -5629,7 +5658,8 @@ its `RichLook` says: an avatar (a `chat.Participant`: their picture, or their in
 title and an optional second line, and at the end how long ago (`time`, epoch millis: "now", "5m", "3h", "2d", "9/16",
 kept current while the list is on the screen, and said again the moment it is back: `Ticker`), a `count` badge ("99+") and a small `mark` (a pin, a lock); `unread` is bold with its time lit. `busy`
 turns the busy ring around the avatar (an agent at work in it, unread or not), with `busyDetail` ("Running bash") said
-by the avatar to a pointer and with the row to a screen reader; rows reused as the list scrolls start and stop it. Items
+by the avatar to a pointer and with the row to a screen reader; rows reused as the list scrolls start and stop it. A
+person with a status (`Avatar.statuses`) has its dot on their avatar, its words said with the row. Items
 sit in `RichSection`s under headers (title and count) that open and close, the closed ones' keys in `collapsed`, which
 the app may hold; a section with no title has no header.
 

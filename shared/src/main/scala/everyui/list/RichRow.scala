@@ -167,6 +167,9 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
     visible := wanted && look().exists(_.who.nonEmpty)
     busy := wanted && look().exists(_.busy)
     busyDetail := look().map(_.busyDetail).getOrElse("")
+    // its status's dot ringed in what the row is drawn on: the theme's ground, under its block and whatever lights it
+    statusGround := RichRow.over(RichRow.over(Theme.background(), if (blocks()) RichRow.blockTint() else Color.Clear),
+      lit())
     position.left := ListRow.along(itemStart(), diameter, RichRow.this.size.width())
     position.top := middle(diameter)
   }
@@ -289,7 +292,8 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   borderWidth := (if (!blocks() && current() && cursorShown() && !onAction() && !onButtons()) 1.0 else 0.0)
   // (an item that expands says whether it is)
   semantics := item().map(l => Semantics("option", selected = Some(selected()), label = l.item match {
-    case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText)
+    case Some(t) => RichList.said(owner.lookOf(t), owner.now(), owner.timeText,
+      (if (tall()) tallFace else shortFace).status())
     case None if l.empty => l.section.empty.getOrElse("")
     case None => l.groupHead.map(_.title).getOrElse((l.section.title :: l.section.subtitle.toList).mkString(", ")) +
       (if (l.groupHead.isEmpty && !l.section.showCount) "" else ", " + l.count.toString)
@@ -779,6 +783,9 @@ object RichRow {
 
   /** A block's tint: the theme's `list.block`, else the text's colour, faintly, so it shows on any ground. */
   def blockTint(): Color = Theme.extra("list.block", Theme.text().withAlpha(0.05))
+
+  /** `colour` drawn over `ground`, as it shows: `ground` where it is clear, itself where it is solid. */
+  def over(ground: Color, colour: Color): Color = ground.blend(colour.withAlpha(ground.alpha), colour.alpha)
 
   /** How far a live item's bar is from the row's start edge, in a tree and in blocks alike. */
   val liveFrom: Double = 2.0

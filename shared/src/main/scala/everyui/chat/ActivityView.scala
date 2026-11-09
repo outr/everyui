@@ -92,6 +92,8 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   private def person(who: Participant): Component = {
     val face = new Avatar(who, ActivityView.face)
     face.busy := running()
+    // (the status's dot gives the corner to the activity's own mark once it has one, and is said all the same)
+    face.statusDot := running()
     val inset = BusyRing.outset(ActivityView.face)
     face.position.left @= inset
     face.position.top @= inset
