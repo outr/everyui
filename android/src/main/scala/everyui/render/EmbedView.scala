@@ -94,6 +94,11 @@ class EmbedView(context: Context, val name: String, site: EmbedSite) extends Web
     focusListeners = Nil
     removeJavascriptInterface("EveryUIEmbed")
     loadUrl("about:blank")
+    // out of its window first: a web view destroyed while still in one is not let go of whole
+    getParent match {
+      case g: android.view.ViewGroup => g.removeView(this)
+      case _ => ()
+    }
     destroy()
   }
 

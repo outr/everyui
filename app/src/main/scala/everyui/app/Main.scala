@@ -138,6 +138,9 @@ import everyui.render.Platform
   *   press      a drag over a scroll of buttons or a list that activates on a click presses nothing as it lifts, a
   *              tap does; badges hang past a plain column in a rail (`theme=light`); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
+  *   webboard   a web view in a rounded panel over a busy board, shown 3 s in and taken apart 30 s later, to measure
+  *              what a page playing costs the app's frames and what is left after it goes (`page=<url>`, `at=`,
+  *              `for=`, `web=0`, `tint=1`, `prewarm=1`); not on a Roku or an Apple TV (app/full: FullDemos)
   *   background what runs with the app closed (ExampleBackground): work scheduled once, at once and every 15 minutes,
   *              an ongoing notice whose Pause, Resume and Open run with the app closed (Open lands on
   *              /background/opened), the settings pages, the restarts heard, and pushes with buttons delivered in 3 s

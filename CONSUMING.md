@@ -4812,7 +4812,26 @@ window.addEventListener('message', e => {
 ```
 
 `agent` does nothing on the web: the browser says who is asking. A WebView taken apart (`dispose`) lets its page go
-(the frame is left on `about:blank`, so what it played stops) and stops listening to the app's window.
+(the frame is left on `about:blank`, so what it played stops) and stops listening to the app's window. On Android it
+is destroyed as it is taken apart: its page stopped, left on `about:blank` and the view let go of, rather than kept
+running (its script, its timers, its bridge) until the collector found it. Take a page you are done with apart; one
+only taken off the screen goes on running.
+
+The first web view of an Android process loads the engine (Chromium) on the main thread as it is made, holding every
+frame up: 350 ms on a Google TV Streamer, over two seconds on a SHIELD. `WebView.prewarm()` does that work at a moment
+the app chooses, where a pause would not be seen (a game's lobby, before its first trailer): the engine's classes and
+library loaded off the main thread, its start, and one web view made, with its page process, which the next WebView
+takes; that first page is then made in about 30 ms. It does nothing where one is ready, and nothing on the platforms
+with no engine to warm (the web's iframes start with their page).
+
+A page's video costs the app frames where it is drawn into the app's window. From Android 13 a web view puts a
+playing video on a plane of its own and the app draws nothing for it; before Android 13 (a SHIELD's Android 11) every
+frame of the video is a whole frame of the app's, its window drawn again, so keep the page's box small and what is
+around it still while it plays. Anything that draws the web view into a layer of its own takes its video off that
+plane on Android 13 and later and draws the page twice: a cached ancestor (`cached`), an ancestor fading
+(`opacity` below 1). `Platform.tint` draws no layer; while the screen is tinted a web view is drawn into the window on
+Android 13 and later so its video is tinted with the rest, at a frame of the app's for each of the video's.
+`demo=webboard` (app/full) shows a page over a busy board, with `page=<url>`, `tint=1` and `prewarm=1`.
 `demo=webview` shows `web/webview.html` (copied beside the build), or `src=<url>` for the same page served from another
 origin.
 

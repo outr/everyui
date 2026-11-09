@@ -86,3 +86,13 @@ class WebView(bridge: String, supplied: RenderNode = null)
 
   override def kind: String = "WebView"
 }
+
+object WebView {
+  /** The browser engine started now, at a moment the app chooses, rather than as the first page shows: on Android the
+    * first web view of a process loads Chromium on the main thread and holds every frame up for a second or more on
+    * a television. Call it where a page is likely soon and a pause would not be seen (a game's lobby before its
+    * trailers): the engine is loaded off the main thread, started, and one web view made ready, with its page
+    * process, for the next WebView to take. Calling it again while one is ready does nothing. Where the platform has
+    * no engine to warm (the web's iframes start with their page; a Roku, an Apple TV, the desktop) it does nothing. */
+  def prewarm(): Unit = everyui.render.Platform.prewarmWeb()
+}

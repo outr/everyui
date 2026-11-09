@@ -1890,6 +1890,8 @@ object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): the browser's own, in an iframe. */
   def webViews(): Boolean = true
+  /** Nothing to warm: an iframe starts with the page it shows (WebView.prewarm). */
+  def prewarmWeb(): Unit = ()
   /** Whether a web guest runs in an embed here: in this very page. */
   def embeds(): Boolean = true
 

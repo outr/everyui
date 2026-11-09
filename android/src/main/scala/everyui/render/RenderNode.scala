@@ -357,11 +357,32 @@ class RenderNode(val view: View) {
   def focusRich(selection: everyui.rich.RichRange): Unit = ()
   def richSelection(): Option[everyui.rich.RichRange] = None
 
-  /** Heard no more: the app is done with the page. */
+  /** Heard no more, and the view destroyed: the app is done with the page. Taken off the screen only, a web view
+    * kept its page running (its script, its timers, what it said over the bridge) and its page process alive and
+    * holding its memory until the collector happened on the view, if it ever did: on a television short of memory the
+    * system went on killing processes and the app on collecting for half a minute after a trailer had gone. It is
+    * taken out of its parent first, as a web view destroyed while still in a window is not let go of whole. */
   def releaseWeb(): Unit = {
     webListener = _ => ()
     webReplier = (_, _) => ()
+    view match {
+      // an embed's web view lets itself go (EmbedView.release)
+      case w: android.webkit.WebView if !webReleased && !w.isInstanceOf[EmbedView] =>
+        webReleased = true
+        try {
+          w.stopLoading()
+          w.loadUrl("about:blank")
+          w.onPause()
+          remove()
+          w.removeAllViews()
+          w.destroy()
+        }
+        catch { case t: Throwable => Platform.log("[web] the page could not be let go of: " + t.toString) }
+      case _ => ()
+    }
   }
+
+  private var webReleased = false
 
   private[render] var webListener: String => Unit = _ => ()
   private[render] var webSandbox: WebSandbox = null
@@ -1634,8 +1655,11 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
 
   private def drawSharp(canvas: android.graphics.Canvas): Unit = super.dispatchDraw(canvas)
 
-  override def dispatchDraw(canvas: android.graphics.Canvas): Unit =
+  override def dispatchDraw(canvas: android.graphics.Canvas): Unit = {
     if (soft != null && soft.on) soft.draw(canvas) else super.dispatchDraw(canvas)
+    // the root's tint, over everything drawn under it (Platform.tint)
+    if (Host.tint != null && (this eq Host.root)) canvas.drawPaint(Host.tint)
+  }
 
   // what is inside changing means the blurred picture of it has to be taken again: Android 8 on says so here, and
   // draws only the child again unless the group asks to be drawn again too
@@ -1669,6 +1693,8 @@ object Host {
   /** The User-Agent pictures are fetched with (Platform.identify); the platform's own when empty. */
   var agent: String = ""
   var root: NodeGroup = null
+  /** The colours scaled over the whole root (`Platform.tint`), drawn last by it, or null where nothing is scaled. */
+  var tint: Paint = null
   var freeze: Double = -1.0
   var viewportWidth: Double = -1.0
   var viewportHeight: Double = -1.0
@@ -2009,6 +2035,24 @@ object Host {
     unscale(root)
     root.requestLayout()
   }
+  /** Each web view under `view` drawn into the window while the screen is tinted, so the tint reaches its video too.
+    * From Android 13 a web view's video can be a plane of its own, under the window where the page shows it, which
+    * nothing the window draws can scale: a layer of the web view's own keeps its video in the window, and costs a
+    * frame of the app's for each of the video's, so it is there only while there is a tint. Before Android 13 a web
+    * view's video is always in the window. */
+  def tintPages(view: View): Unit = if (android.os.Build.VERSION.SDK_INT >= 33) view match {
+    case page: android.webkit.WebView =>
+      val layer = if (tint != null) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE
+      if (page.getLayerType != layer) page.setLayerType(layer, null)
+    case group: ViewGroup =>
+      var i = 0
+      while (i < group.getChildCount) {
+        tintPages(group.getChildAt(i))
+        i += 1
+      }
+    case _ => ()
+  }
+
   private def unscale(view: View): Unit = view match {
     case embed: EmbedView =>
       embed.setScaleX((1.0 / scale).toFloat)
@@ -2072,7 +2116,8 @@ object Nodes {
     * named by whoever builds the view rather than fixed here, since the page and the app have to agree on it and
     * neither of them is this layer. */
   def web(bridge: String): RenderNode = {
-    val view = new android.webkit.WebView(Host.activity)
+    // the one made ready by WebView.prewarm, where there is one
+    val view = WebWarm.take().getOrElse(new android.webkit.WebView(Host.activity))
     val settings = view.getSettings
     settings.setJavaScriptEnabled(true)
     settings.setDomStorageEnabled(true)
@@ -2082,6 +2127,8 @@ object Nodes {
     // the keys are the app's: a page that took them would swallow the remote
     view.setFocusable(false)
     view.setFocusableInTouchMode(false)
+    // in the window while the screen is tinted (Host.tintPages)
+    Host.tintPages(view)
     val node = new RenderNode(view)
     val said = new WebBridge(node)
     view.addJavascriptInterface(said, bridge)
@@ -2092,7 +2139,12 @@ object Nodes {
   /** An embed's box (everyui.component.Embed): for a `site`, an [[EmbedView]] running it; otherwise a plain group
     * for the app to put a view of its own in. */
   def embed(name: String, site: everyui.component.EmbedSite): RenderNode =
-    if (site == null) container() else new RenderNode(new EmbedView(Host.activity, name, site))
+    if (site == null) container()
+    else {
+      val view = new EmbedView(Host.activity, name, site)
+      Host.tintPages(view)
+      new RenderNode(view)
+    }
 
   /** Sound: an empty view, with nothing to draw. */
   def audio(): RenderNode = {
@@ -2304,6 +2356,9 @@ object Platform {
   /** Whether this platform has a browser engine to lend a page (Nodes.web). Only what is actually implemented
     * says yes: a platform that answered yes and drew nothing would leave a viewer on a black screen. */
   def webViews(): Boolean = true
+  /** The engine started now and a web view made ready for the next page (WebWarm), at a moment the app chooses
+    * rather than as the first page is shown. */
+  def prewarmWeb(): Unit = WebWarm.prewarm()
   /** Whether a web guest runs in an embed here: in a web view of its own (EmbedView). */
   def embeds(): Boolean = true
 
@@ -2355,16 +2410,25 @@ object Platform {
   def leaveGuardWhile(flag: reactify.Val[Boolean]): () => Unit = everyui.app.LeaveGuards.addWhile(flag)
 
   /** Every colour on the screen scaled, channel by channel (1 each leaves it as it is): a picture dimmed, or its blue
-    * pulled down for the night, the video with it. A colour matrix on the root's layer, which the video's TextureView
-    * is drawn into like everything else; left off entirely when there is nothing to scale, a layer costing a pass. */
+    * pulled down for the night, the video with it. The root draws the scale last, over all it holds, as a colour
+    * multiplied into what is under it (PorterDuff's MULTIPLY, Skia's modulate: the blend unit's own, with nothing
+    * copied), so a video's TextureView is scaled like everything else. Not a colour filter on a layer of the root:
+    * a layer drew the whole window offscreen and then again, a web view's page offscreen once more within it, and
+    * on Android 13 and later took a web view's video off its overlay, so every frame of a playing page became a
+    * whole frame of the app's. Nothing is drawn where nothing is scaled. */
   def tint(red: Double, green: Double, blue: Double): Boolean = {
-    if (red >= 0.999 && green >= 0.999 && blue >= 0.999) Host.root.setLayerType(View.LAYER_TYPE_NONE, null)
-    else {
-      val paint = new Paint()
-      paint.setColorFilter(new android.graphics.ColorMatrixColorFilter(Array[Float](red.toFloat, 0f, 0f, 0f, 0f,
-        0f, green.toFloat, 0f, 0f, 0f, 0f, 0f, blue.toFloat, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
-      Host.root.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
-    }
+    def channel(v: Double): Int = math.round(math.max(0.0, math.min(1.0, v)) * 255.0).toInt
+    Host.tint =
+      if (red >= 0.999 && green >= 0.999 && blue >= 0.999) null
+      else {
+        val paint = new Paint()
+        paint.setColor(android.graphics.Color.rgb(channel(red), channel(green), channel(blue)))
+        paint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.MULTIPLY))
+        paint
+      }
+    Host.tintPages(Host.root)
+    // the root drawn again, with the scale or without
+    Host.root.invalidate()
     true
   }
 

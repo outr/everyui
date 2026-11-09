@@ -799,6 +799,8 @@ object Platform {
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
   /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
   def webViews(): Boolean = false
+  /** No engine to warm (WebView.prewarm). */
+  def prewarmWeb(): Unit = ()
   /** Whether a web guest runs in an embed here: no engine to run one. */
   def embeds(): Boolean = false
 
