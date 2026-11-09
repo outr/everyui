@@ -1,4 +1,4 @@
-//> using scala 3.10.0-RC3
+//> using scala 3.10.0
 
 import java.nio.file.{Files, Paths}
 

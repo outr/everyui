@@ -1077,7 +1077,7 @@ the frozen frame matches the golden (0.096 px) and it runs at 62 fps under Xvfb
 
 | | version |
 |---|---|
-| Scala | **3.10.0-RC3** (decided 2026-09-13: the RC now, the final when it lands; RC3 on 2026-09-28) — 3.9 needed no change; 3.10 needed two emitter cases, below |
+| Scala | **3.10.0** (decided 2026-09-13: the RC then, the final when it landed; RC3 on 2026-09-28, 3.10.0 on 2026-11-09) — 3.9 needed no change; 3.10 needed two emitter cases, below |
 | sbt | **2.0.9** (2.1 is at M3) |
 | Scala.js | **1.22.0** (3.9 emits IR 1.22; the linker had to follow): sbt-scalajs for the published `everyui-web` and `everyui-network`, scala-cli **1.17.0** for the example bundle |
 | JavaFX | **26.0.2** |

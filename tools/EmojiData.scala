@@ -1,4 +1,4 @@
-//> using scala 3.10.0-RC3
+//> using scala 3.10.0
 //> using dep com.lihaoyi::upickle:4.4.1
 
 import java.nio.file.{Files, Paths}

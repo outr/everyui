@@ -4,7 +4,7 @@
 // Roku has no Scala runtime, so `compiler/` — everyui's own Scala 3 TASTy →
 // BrightScript compiler — translates the same code into a SceneGraph channel.
 
-ThisBuild / scalaVersion := "3.10.0-RC3"
+ThisBuild / scalaVersion := "3.10.0"
 ThisBuild / organization := "com.outr"
 ThisBuild / version := "0.1.0-SNAPSHOT"
 // reactify is compiled from its source tree (the `reactive` project); the published jar Spice depends on must not

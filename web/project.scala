@@ -1,4 +1,4 @@
-//> using scala 3.10.0-RC3
+//> using scala 3.10.0
 //> using platform js
 //> using jsVersion 1.22.0
 //> using jsModuleKind none

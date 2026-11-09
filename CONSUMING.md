@@ -29,8 +29,8 @@ The version stays 0.1.0-SNAPSHOT from one publish to the next. What a build has 
 the plugin's `everyuiCommit` answers it (`sbt show everyuiCommit`), warning when the jars on a classpath come from more
 than one commit. Record it with a deploy to say which EveryUI shipped.
 
-Everything is built with Scala **3.10.0-RC3** and Scala.js **1.22.0**, so a consumer needs Scala 3.10 (an RC or
-later) to read it.
+Everything is built with Scala **3.10.0** and Scala.js **1.22.0**, so a consumer needs Scala 3.10 or later to read
+it.
 
 A backend is chosen when EveryUI is compiled: the shared layer names `everyui.render.RenderNode`, and each backend
 supplies it. So there is no separate core artifact. The shared layer ships inside each backend module, and
@@ -51,7 +51,7 @@ addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0")
 lazy val app = project.in(file("app"))
   .enablePlugins(ScalaJSPlugin)
   .settings(
-    scalaVersion := "3.10.0-RC3",
+    scalaVersion := "3.10.0",
     scalaJSUseMainModuleInitializer := true,
     Compile / mainClass := Some("myapp.main"),
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.NoModule)
