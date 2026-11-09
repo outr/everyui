@@ -170,8 +170,9 @@ object AndroidWidgets {
         .replace("'", "\\'")}</string>""").mkString("\n") + "\n</resources>\n")
   }
 
-  /** The manifest's entries: the meta-data naming `app`, each kind's receiver, and the configure screen (in a
-    * process of its own) where a kind has one. */
+  /** The manifest's entries: the meta-data naming `app`, each kind's receiver, the activity a tap on a list's row
+    * goes through (everyui.activity.WidgetTapActivity: showing nothing, in a task of its own, out of the recent apps),
+    * and the configure screen (in a process of its own) where a kind has one. */
   def entries(app: String, kinds: Seq[AndroidWidget]): String = {
     // what the configure screen keeps its window through, as an EveryUI activity does
     val changes = Seq("orientation", "screenSize", "smallestScreenSize", "screenLayout", "keyboard", "keyboardHidden",
@@ -186,6 +187,15 @@ object AndroidWidgets {
          |    </receiver>
          |""".stripMargin
     }
+    val tap =
+      """    <activity
+         |      android:name="everyui.activity.WidgetTapActivity"
+         |      android:exported="false"
+         |      android:theme="@android:style/Theme.NoDisplay"
+         |      android:taskAffinity=""
+         |      android:excludeFromRecents="true"
+         |      android:noHistory="true" />
+         |""".stripMargin
     val configure =
       if (!kinds.exists(_.configurable)) ""
       else s"""    <activity
@@ -202,7 +212,7 @@ object AndroidWidgets {
               |""".stripMargin
     "    <!-- home-screen widgets, written by sbt-everyui from everyuiWidgets and everyuiWidgetKinds -->\n" +
       s"""    <meta-data android:name="everyui.widgets" android:value="${xml(app)}" />""" + "\n" +
-      receivers.mkString + configure
+      receivers.mkString + tap + configure
   }
 
   /** `manifest` with the entries put at the end of its application. It must have one, and must not name the widgets

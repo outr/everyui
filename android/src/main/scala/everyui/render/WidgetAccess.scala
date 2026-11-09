@@ -11,7 +11,7 @@ import everyui.activity.ServiceRuntime
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
 import everyui.widget.{WidgetApp, WidgetCodec, WidgetColour, WidgetKind, WidgetNode, WidgetRequest, WidgetSetup,
-  WidgetSize, WidgetText, Widgets}
+  WidgetSize, WidgetTap, WidgetText, Widgets}
 import java.util.concurrent.{ConcurrentHashMap, Executors}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scala.jdk.CollectionConverters.*
@@ -35,6 +35,8 @@ object WidgetAccess {
   val actionIntent = "everyui.widget.ACTION"
   val actionExtra = "everyui.widget.action"
   val argsExtra = "everyui.widget.args"
+  /** A list's template's extra: the receiver that draws the widget, flattened, where its rows' actions go. */
+  val receiverExtra = "everyui.widget.receiver"
   private val appMeta = "everyui.widgets"
   private val kindMeta = "everyui.widget.kind"
 
@@ -361,6 +363,31 @@ object WidgetAccess {
     manager(context).updateAppWidget(id, views)
   }
   catch { case t: Throwable => Platform.logError("widget " + id.toString + " not drawn", t) }
+
+  /** A tap on a list's row, heard by EveryUI's tap activity (`everyui.activity.WidgetTapActivity`) from the list's
+    * template with the row's part's tap filled in (`WidgetTap.of`): an open tap opens the app at its path, as a tap
+    * outside a list does (the activity in the foreground, as the launcher started it, may), and an action is sent to
+    * the widget's receiver, which runs it and draws the widget again (`act`) with the app left where it was. */
+  def relay(context: Context, intent: Intent): Unit = {
+    val extras = words(intent)
+    val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+    val receiver = extras.get(receiverExtra).flatMap(r => Option(ComponentName.unflattenFromString(r)))
+      .orElse(provider(context, id))
+    WidgetTap.of(extras) match {
+      case Some(WidgetTap.Open(path)) => context.startActivity(WidgetViews.launching(context, path))
+      case Some(WidgetTap.Action(name, args)) => receiver match {
+        case Some(r) => context.sendBroadcast(WidgetViews.action(r, id, name, args))
+        case None => Platform.log("widget " + id.toString + ": no receiver for its row's action " + name)
+      }
+      case None => Platform.log("widget " + id.toString + ": a row's tap with nothing to do")
+    }
+  }
+
+  // an intent's extras that are words: the template's and the row's tap's, among the widget's id
+  @annotation.nowarn("cat=deprecation")
+  private def words(intent: Intent): Map[String, String] = Option(intent.getExtras).map(b =>
+    b.keySet.asScala.toList.flatMap(k => Option(b.get(k)).collect { case s: String => k -> s }).toMap)
+    .getOrElse(Map.empty[String, String])
 
   /** The action a widget's tap sent (`WidgetTap.Action`) run by its kind, then the widget drawn again; `finish` as
     * that draw finishes. */

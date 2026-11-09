@@ -3370,6 +3370,25 @@ WidgetKind("inbox", ..., groundOpacity = 0.35)                // in the kind
 WidgetNode.Row(Vector(from, WidgetNode.Spacer, when), tap = Some(WidgetTap.Open("/inbox/" + id)), ground = card)
 ```
 
+A tap works the same on any part of a list's row (`WidgetNode.Items`) as outside a list: a row can open the app at
+its path while a tick within it runs an action with its args, with the app closed or in the background and without
+bringing it forward, after which the widget is drawn again. Android gives a list's rows one tap between them, so each
+part's tap is handed with it as words (`WidgetTap.extras`, read back by `WidgetTap.of`) and goes through EveryUI's
+widget tap activity (`everyui.activity.WidgetTapActivity`), which shows nothing and is gone at once: it opens the app
+at the path, or sends the action to the widget's receiver, which runs the kind's `action` and draws the widget again.
+An activity rather than a broadcast, since the launcher starts it in the foreground and it may open the app from
+there, where a receiver may not start an activity from the background (Android 10 on) unless the launcher lends it
+its allowance (Android 14's `setPendingIntentBackgroundActivityStartMode`), which a launcher need not do. A tapped
+part within another's tap takes the tap for itself, and the rest of the row is the row's own. Before Android 12 a list
+is its first rows, unscrolled, each part's tap its own as outside a list.
+
+```scala
+val tick = WidgetNode.Row(Vector(WidgetNode.Picture(WidgetPicture.Icon(MaterialIcon.Done), 22.0, "Done")),
+  tap = Some(WidgetTap.Action("tick", Map("id" -> task.id))))
+WidgetNode.Row(Vector(WidgetNode.Text(task.title), WidgetNode.Spacer, tick),
+  tap = Some(WidgetTap.Open("/tasks/" + task.id)))                          // one of an Items' rows
+```
+
 A kind can offer settings, each a choice of one option kept for each placed widget: its text size, how far ahead a
 calendar looks. `WidgetKind.settings` is a `Vector[WidgetSetting]`, each
 `WidgetSetting(key, label, options, default, note)` with its `WidgetSettingOption(key, label)`s; the configure screen
@@ -3405,10 +3424,10 @@ def draw(request: WidgetRequest): Task[WidgetNode] = {
 A kind that leaves out what would not fit (`WidgetRequest.width`, `height`) allows for its words' scale too.
 
 The build declares them: the object, and each kind as the launcher knows it. sbt-everyui then writes a receiver for
-each kind, the manifest's entries (the receivers, the meta-data naming the object, and the configure screen in a
-process of its own), each kind's `appwidget-provider`, and the shrinker's rules, and adds EveryUI's widget layouts to
-the app's resources, through `everyuiAndroidManifest`, `everyuiAndroidResources` and `everyuiAndroidRules` (the
-Android example above). Nothing of it is written by hand.
+each kind, the manifest's entries (the receivers, the meta-data naming the object, the lists' tap activity, and the
+configure screen in a process of its own), each kind's `appwidget-provider`, and the shrinker's rules, and adds
+EveryUI's widget layouts to the app's resources, through `everyuiAndroidManifest`, `everyuiAndroidResources` and
+`everyuiAndroidRules` (the Android example above). Nothing of it is written by hand.
 
 ```scala
 everyuiWidgets := Some("myapp.MailWidgets"),

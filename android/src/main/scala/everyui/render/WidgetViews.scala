@@ -22,9 +22,10 @@ import everyui.widget.{WidgetColour, WidgetGround, WidgetNode, WidgetPicture, Wi
   * choose between them as the device's mode changes, and before it they are chosen as the widget is drawn.
   *
   * A tap opens the app at its path (the launch intent, with the path as `Host.path` has it) or sends the action to
-  * the widget's receiver. A list scrolls from Android 12 (RemoteCollectionItems); its rows' taps go by the list's one
-  * template, which opens the app, so an action in a row does nothing. Before 12 a list is its first rows,
-  * unscrolled. */
+  * the widget's receiver. A list scrolls from Android 12 (RemoteCollectionItems); Android gives its rows one tap
+  * between them, the list's template, each part filling in its own tap (`WidgetTap.extras`), so the template is
+  * EveryUI's tap activity (`everyui.activity.WidgetTapActivity`), which opens the app at a path or sends an action to
+  * the receiver as a tap outside a list does. Before 12 a list is its first rows, unscrolled, their taps their own. */
 final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: ComponentName) {
   private val density = context.getResources.getDisplayMetrics.density
   private val day = Widgets.light
@@ -58,8 +59,7 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       val at = WidgetViews.id(context, "everyui_widget_list")
       views.setRemoteAdapter(at, items)
       views.setEmptyView(at, WidgetViews.id(context, "everyui_widget_empty"))
-      views.setPendingIntentTemplate(at, WidgetViews.opening(context, None, (id << 12) | 0xfff,
-        PendingIntent.FLAG_MUTABLE))
+      views.setPendingIntentTemplate(at, WidgetViews.relaying(context, receiver, id, (id << 12) | 0xfff))
     }
     views
   }
@@ -68,7 +68,7 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
   private def place(views: RemoteViews, content: Int, node: WidgetNode): Unit = node match {
     case WidgetNode.Column(parts, gap, tap, None) =>
       fill(views, content, parts, gap, inRow = false, filler = -1, inList = false)
-      tap.foreach(t => tapOn(views, content, t, inList = false))
+      tap.foreach(t => tapOn(views, content, t))
     case WidgetNode.Scaled(by, inner) => scaled(by)(place(views, content, inner))
     case other => views.addView(content, part(other, inRow = false, fills = false, inList = false))
   }
@@ -105,16 +105,14 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       val views = new RemoteViews(context.getPackageName, layout(if (inRow) "row_wrap" else "row"))
       val at = WidgetViews.id(context, "everyui_widget_row")
       fill(views, at, parts, gap, inRow = true, WidgetViews.filler(parts), inList)
-      tap.foreach(t => tapOn(views, at, t, inList))
-      ground.fold(views)(g => card(views, at, g, if (inRow) "card_wrap" else "card"))
+      tapped(views, at, tap, ground, inList, if (inRow) "wrap" else "")
     case WidgetNode.Column(parts, gap, tap, ground) =>
-      // on a card, the card shares the row's width and the column fills the card
-      val views = new RemoteViews(context.getPackageName,
-        layout(if (inRow && ground.isEmpty) "column_fill" else "column"))
+      // on a card or tapped in a list, the card or the tap's frame shares the row's width and the column fills it
+      val framed = ground.nonEmpty || (inList && tap.nonEmpty)
+      val views = new RemoteViews(context.getPackageName, layout(if (inRow && !framed) "column_fill" else "column"))
       val at = WidgetViews.id(context, "everyui_widget_column")
       fill(views, at, parts, gap, inRow = false, filler = -1, inList)
-      tap.foreach(t => tapOn(views, at, t, inList))
-      ground.fold(views)(g => card(views, at, g, if (inRow) "card_fill" else "card"))
+      tapped(views, at, tap, ground, inList, if (inRow) "fill" else "")
     case WidgetNode.Button(label, icon, tap) =>
       val views = new RemoteViews(context.getPackageName, layout("button"))
       tint(views, WidgetViews.id(context, "everyui_widget_button_ground"), "setColorFilter", _.accent)
@@ -132,8 +130,11 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
         views.setViewVisibility(WidgetViews.id(context, "everyui_widget_button_icon"), View.GONE)
       val button = WidgetViews.id(context, "everyui_widget_button")
       views.setContentDescription(button, label)
-      tapOn(views, button, tap, inList)
-      views
+      if (inList) framed(views, tap, "tap_wrap")
+      else {
+        tapOn(views, button, tap)
+        views
+      }
     case WidgetNode.Items(rows, empty) => items(rows, empty)
     case WidgetNode.Spacer => new RemoteViews(context.getPackageName, layout("spacer"))
     case WidgetNode.Scaled(by, inner) => scaled(by)(part(inner, inRow, fills, inList))
@@ -210,14 +211,47 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
       views
     }
 
-  private def tapOn(views: RemoteViews, at: Int, tap: WidgetTap, inList: Boolean): Unit = tap match {
+  /** A row or a column (`inner`, whose container is `at`) with its tap and on its card, if it has them, `room` the
+    * way it sits in a row ("wrap", "fill", or "" in a column). Outside a list its tap is a PendingIntent of its own.
+    * In a list's row its tap is filled into the list's template, set on a view that is not the first of its own
+    * RemoteViews: Android hears a tap on that view only as the whole row's (the list's item click, which takes the
+    * outermost part's), so the card's content or a frame of its own (`framed`) carries it. */
+  private def tapped(inner: RemoteViews, at: Int, tap: Option[WidgetTap], ground: Option[WidgetGround],
+                     inList: Boolean, room: String): RemoteViews = {
+    if (!inList) tap.foreach(t => tapOn(inner, at, t))
+    ground match {
+      case Some(g) =>
+        val views = card(inner, at, g, if (room.isEmpty) "card" else "card_" + room)
+        if (inList) tap.foreach(t => fillIn(views, WidgetViews.id(context, "everyui_widget_card_content"), t))
+        views
+      case None if inList && tap.nonEmpty => framed(inner, tap.get, if (room.isEmpty) "tap" else "tap_" + room)
+      case None => inner
+    }
+  }
+
+  /** `inner` in a frame of the `kind` layout whose content carries `tap`, filled into the list's template. */
+  private def framed(inner: RemoteViews, tap: WidgetTap, kind: String): RemoteViews = {
+    val views = new RemoteViews(context.getPackageName, layout(kind))
+    val at = WidgetViews.id(context, "everyui_widget_tap")
+    views.removeAllViews(at)
+    views.addView(at, inner)
+    fillIn(views, at, tap)
+    views
+  }
+
+  // a tap in a list's row: its words (`WidgetTap.extras`), merged into the list's template as it is tapped
+  private def fillIn(views: RemoteViews, at: Int, tap: WidgetTap): Unit = {
+    val fill = new Intent
+    WidgetTap.extras(tap).foreach((k, v) => fill.putExtra(k, v))
+    views.setOnClickFillInIntent(at, fill)
+  }
+
+  // a tap outside a list: a PendingIntent of its own
+  private def tapOn(views: RemoteViews, at: Int, tap: WidgetTap): Unit = tap match {
     case WidgetTap.Open(path) =>
-      if (inList) views.setOnClickFillInIntent(at, new Intent().putExtra("path", path))
-      else views.setOnClickPendingIntent(at, WidgetViews.opening(context, Some(path), code(),
-        PendingIntent.FLAG_IMMUTABLE))
+      views.setOnClickPendingIntent(at, WidgetViews.opening(context, path, code()))
     case WidgetTap.Action(name, args) =>
-      if (inList) Platform.log("widget: an action in a list's row does nothing (" + name + ")")
-      else views.setOnClickPendingIntent(at, WidgetViews.acting(context, receiver, id, name, args, code()))
+      views.setOnClickPendingIntent(at, WidgetViews.acting(context, receiver, id, name, args, code()))
   }
 
   private def code(): Int = {
@@ -311,26 +345,47 @@ object WidgetViews {
     }
   }
 
-  /** The app opened at `path` (the list's template has none: each row's fill-in gives it). */
-  def opening(context: Context, path: Option[String], code: Int, mutability: Int): PendingIntent = {
-    val launch = Option(context.getPackageManager.getLaunchIntentForPackage(context.getPackageName))
+  /** The app opened at `path`. */
+  def opening(context: Context, path: String, code: Int): PendingIntent =
+    PendingIntent.getActivity(context, code, launching(context, path),
+      PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
+
+  /** The app's launch at `path`, as a widget's open tap has it (`WidgetAccess.tapped`, `Host.path`). */
+  def launching(context: Context, path: String): Intent =
+    Option(context.getPackageManager.getLaunchIntentForPackage(context.getPackageName))
       .getOrElse(new Intent(Intent.ACTION_MAIN).setPackage(context.getPackageName))
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
       .putExtra(WidgetAccess.openedExtra, true)
-    path.foreach(p => launch.putExtra("path", p))
-    PendingIntent.getActivity(context, code, launch, mutability | PendingIntent.FLAG_UPDATE_CURRENT)
+      .putExtra(WidgetTap.pathKey, path)
+
+  /** A list's one template, for widget `id` drawn by `receiver`: EveryUI's tap activity, each row's part filling in
+    * its tap. An activity, as the launcher starts it in the foreground and it may open the app from there; a
+    * broadcast's receiver may not start one from the background (Android 10 on) unless the launcher lends it its
+    * allowance (an option of the sender's from Android 14), which a launcher need not do. Mutable, so the fill-in's
+    * extras are merged into it. */
+  def relaying(context: Context, receiver: ComponentName, id: Int, code: Int): PendingIntent = {
+    val intent = new Intent(context, classOf[everyui.activity.WidgetTapActivity])
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION |
+        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+      .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+      .putExtra(WidgetAccess.receiverExtra, receiver.flattenToString)
+    PendingIntent.getActivity(context, code, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
   }
 
   /** The action `name` sent to the widget's receiver, for widget `id`. */
   def acting(context: Context, receiver: ComponentName, id: Int, name: String, args: Map[String, String],
-             code: Int): PendingIntent = {
+             code: Int): PendingIntent =
+    PendingIntent.getBroadcast(context, code, action(receiver, id, name, args),
+      PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
+
+  /** The broadcast that runs action `name` with `args` for widget `id`, to its `receiver` (`WidgetAccess.act`). */
+  def action(receiver: ComponentName, id: Int, name: String, args: Map[String, String]): Intent = {
     val bundle = new android.os.Bundle
     args.foreach((k, v) => bundle.putString(k, v))
-    val intent = new Intent(WidgetAccess.actionIntent).setComponent(receiver)
+    new Intent(WidgetAccess.actionIntent).setComponent(receiver)
       .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id)
       .putExtra(WidgetAccess.actionExtra, name)
       .putExtra(WidgetAccess.argsExtra, bundle)
-    PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
   }
 
   /** A picture `pixels` square (or within it, its shape kept): an icon drawn white, to be tinted, from the bundled

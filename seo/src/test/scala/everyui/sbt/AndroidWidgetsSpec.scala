@@ -19,7 +19,7 @@ class AndroidWidgetsSpec extends AnyWordSpec with Matchers {
       |""".stripMargin
 
   "The widgets' manifest entries" should {
-    "go at the end of the application, with a receiver for each kind and the configure screen" in {
+    "go at the end of the application, with each kind's receiver, the lists' tap activity and the configure screen" in {
       val written = AndroidWidgets.manifest(manifest, "com.example.Widgets", Seq(inbox, calendar)).toOption.get
       written should startWith(manifest.substring(0, manifest.indexOf("  </application>")))
       written should endWith("  </application>\n</manifest>\n")
@@ -32,10 +32,14 @@ class AndroidWidgetsSpec extends AnyWordSpec with Matchers {
       written should include("""<meta-data android:name="everyui.widget.kind" android:value="inbox" />""")
       written should include("""android:process=":widgets"""")
       written.split("WidgetConfigureActivity").length shouldBe 2
+      written should include("""android:name="everyui.activity.WidgetTapActivity"""")
+      written should include("""android:theme="@android:style/Theme.NoDisplay"""")
+      written.split("WidgetTapActivity").length shouldBe 2
     }
     "leave out the configure screen where no kind has one" in {
       val written = AndroidWidgets.manifest(manifest, "com.example.Widgets", Seq(calendar)).toOption.get
       written should not include "WidgetConfigureActivity"
+      written should include("WidgetTapActivity")
     }
     "refuse a manifest with no application, or one that declares widgets itself" in {
       AndroidWidgets.manifest("<manifest/>", "a.B", Seq(inbox)).isLeft shouldBe true

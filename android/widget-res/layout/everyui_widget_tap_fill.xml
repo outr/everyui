@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A tapped part of a list's row, within a row, sharing the row's width with the others.
+     Android hears a tap set on the first view of a list's row's part only as the whole row's (the list's item
+     click), so the part's tap is set on its content, within this, where it is heard as its own
+     (everyui.render.WidgetViews). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="0dp"
+  android:layout_height="wrap_content"
+  android:layout_weight="1">
+  <FrameLayout
+    android:id="@+id/everyui_widget_tap"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content" />
+</FrameLayout>

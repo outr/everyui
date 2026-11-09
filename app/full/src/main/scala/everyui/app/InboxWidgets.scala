@@ -2,16 +2,18 @@ package everyui.app
 
 import everyui.async.Task
 import everyui.font.MaterialIcon
+import everyui.render.Platform
 import everyui.widget.{WidgetApp, WidgetChoice, WidgetColour, WidgetGround, WidgetKind, WidgetNode, WidgetPicture,
   WidgetRequest, WidgetSetting, WidgetSettingOption, WidgetSize, WidgetTap, WidgetText}
 
 /** The example app's home-screen widget, "inbox" (build.sbt names this object and the kind, `everyuiWidgets`):
   * made-up mail from three made-up accounts, chosen in its configure screen. Compact, the unread count of the chosen
   * accounts; medium and large, a header with a Refresh (an action, which brings one more message) over a list of the
-  * messages, each opening the app at `/inbox/<id>` (InboxDemo). Counts only, the accounts and their counts, with no
-  * senders or subjects. Its ground is translucent, the wallpaper showing through, with each part on a card. Its text
-  * size is chosen for each widget in its configure screen (a setting, "Text size"), drawn through
-  * `WidgetNode.Scaled`. */
+  * messages, each opening the app at `/inbox/<id>` (InboxDemo) and with a "Mark read" tick of its own (an action in
+  * a list's row, with the message's id as its arg, which takes it out of the list and notes it in the log). Counts
+  * only, the accounts and their counts, with no senders or subjects. Its ground is translucent, the wallpaper showing
+  * through, with each part on a card. Its text size is chosen for each widget in its configure screen (a setting,
+  * "Text size"), drawn through `WidgetNode.Scaled`. */
 object InboxWidgets extends WidgetApp {
   private val group = "Mail accounts"
   private val accounts: Vector[WidgetChoice] = Vector(WidgetChoice("work", "matt@work.example", group),
@@ -33,6 +35,8 @@ object InboxWidgets extends WidgetApp {
     "normal", "The size of the widget's words, its rows growing with them")
   // what each Refresh brings: one more, made up, at the top
   @volatile private var arrived = 0
+  // the messages marked read from the widget, while the process lasts
+  @volatile private var read = Set.empty[String]
 
   val inbox: WidgetKind = WidgetKind("inbox", "Inbox", "Unread mail from the accounts you choose", "images/icon.png",
     Set(WidgetSize.Compact, WidgetSize.Medium, WidgetSize.Large), () => Task.pure(accounts),
@@ -47,7 +51,7 @@ object InboxWidgets extends WidgetApp {
   private def messages(choices: Set[String]): Vector[(String, String, String, String, String)] = {
     val fresh = (1 to arrived).reverse.map(n => ("n" + n.toString, "work", "Example sender " + n.toString,
       "A new message, number " + n.toString, "now")).toVector
-    (fresh ++ mail).filter(m => choices.contains(m._2))
+    (fresh ++ mail).filter(m => choices.contains(m._2) && !read.contains(m._1))
   }
 
   private def draw(request: WidgetRequest): Task[WidgetNode] = Task.pure {
@@ -86,11 +90,14 @@ object InboxWidgets extends WidgetApp {
             tap = Some(WidgetTap.Open("/inbox")), ground = card)
         }
         else shown.map { (id, _, from, subject, at) =>
+          // the tick its own tap within the row's: the rest of the row opens the message
+          val tick = WidgetNode.Row(Vector(WidgetNode.Picture(WidgetPicture.Icon(MaterialIcon.Done), 22.0,
+            "Mark read")), tap = Some(WidgetTap.Action("read", Map("id" -> id, "from" -> from))))
           WidgetNode.Row(Vector(
             WidgetNode.Column(Vector(WidgetNode.Text(from), WidgetNode.Text(subject, WidgetText.Caption,
               WidgetColour.Muted)), gap = 2.0),
-            WidgetNode.Text(at, WidgetText.Caption, WidgetColour.Muted)), tap = Some(WidgetTap.Open("/inbox/" + id)),
-            ground = card)
+            WidgetNode.Text(at, WidgetText.Caption, WidgetColour.Muted), tick),
+            tap = Some(WidgetTap.Open("/inbox/" + id)), ground = card)
         }
       WidgetNode.Column(Vector(header, WidgetNode.Items(rows, "No unread mail")), gap = 8.0)
     }
@@ -98,5 +105,9 @@ object InboxWidgets extends WidgetApp {
 
   private def act(request: WidgetRequest, name: String, args: Map[String, String]): Task[Unit] = Task {
     if (name == "refresh") arrived += 1
+    if (name == "read") args.get("id").foreach { id =>
+      read += id
+      Platform.log("inbox widget: marked " + id + " read (from " + args.getOrElse("from", "") + ")")
+    }
   }
 }
