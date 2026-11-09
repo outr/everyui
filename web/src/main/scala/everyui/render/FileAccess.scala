@@ -90,7 +90,7 @@ object FileAccess {
   private def list(files: dom.FileList): List[PickedFile] =
     if (files == null) Nil else (0 until files.length).toList.map(i => picked(files(i)))
 
-  private def picked(f: dom.File): PickedFile = {
+  private[render] def picked(f: dom.File): PickedFile = {
     val mime = if (f.`type`.isEmpty) FileTypes.of(f.name) else f.`type`
     val bytes = Task.async[Array[Byte]] { done =>
       f.asInstanceOf[js.Dynamic].arrayBuffer().asInstanceOf[js.Promise[ArrayBuffer]]

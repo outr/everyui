@@ -782,6 +782,11 @@ class RenderNode(val fx: Node) {
     case field: TextInputControl => Pasting.hook(field, f)
     case _ => ()
   }
+  /** The pictures and files of a paste into a text field, handed to `f` where `wanted` says (`Pasting`). */
+  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = fx match {
+    case field: TextInputControl => Pasting.hookFiles(field, wanted, f)
+    case _ => ()
+  }
   /** A text field taking the keyboard focus itself (a click on it). */
   def onInputFocus(f: () => Unit): Unit = fx match {
     case field: TextInputControl => field.focusedProperty.addListener(new ChangeListener[java.lang.Boolean] {

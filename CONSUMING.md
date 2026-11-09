@@ -2197,6 +2197,11 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
   is let go (`Files.release`) once it leaves the draft, removed or sent: to show a sent picture, read its `bytes`.
 - `pasted` decides what a paste becomes: words in the field, or a file's chip, as a long log or stack trace should be
   (`ComposerPaste.longAsFile`; see Pasting below).
+- A picture pasted (a screenshot tool's or an image viewer's copy, a keyboard's sticker) or a file copied in a file
+  manager goes with the message as a dropped file does, a chip taken where `accept`, `allow` and `maxSize` agree. A
+  picture with no name of its own is "pasted-image-1.png", numbered on; words on the clipboard beside it still paste as
+  words. `pastedFiles` (`Var[Option[Attachment => Option[Attachment]]]`, None by default: each taken as it is) can take
+  another in its place or refuse one, and `Some(_ => None)` turns it off; none is taken where `attachable` is off.
 - Completions list over the composer for the word at the caret after a trigger: Up and Down, Enter or Tab to put the
   lit one in place of the word, Escape to close.
 - Under `compactWidth` (480) the controls are a phone's, and `leading` folds behind a "+" with the attach button, in
@@ -2462,8 +2467,9 @@ area.field.foreach { input =>
 The app decides what a paste becomes before it lands. `pasted` on an `InputView`, a `TextInput` and a `TextArea` is
 asked with the clipboard's words and answers a `PasteAction`: `Insert` (they land, as with no hook: the default),
 `InsertText(other)` (these words land instead, at the caret or over the selection, and one undo takes them back as it
-would the paste) or `Ignore` (nothing lands). A paste with no words (a picture, files) is never asked about, nor is
-one into a read-only (`readOnly`) or disabled field, which takes no paste at all.
+would the paste) or `Ignore` (nothing lands). A paste with no words (a picture, files) is never asked about (its
+pictures and files go to `pastedFiles`, below), nor is one into a read-only (`readOnly`) or disabled field, which takes
+no paste at all.
 
 ```scala
 import everyui.component.types.PasteAction
@@ -2500,6 +2506,32 @@ It is asked wherever the platform has a field of its own (`Platform.nativeInput(
 
 On the web a phone keyboard's clipboard suggestion is typed too, and is not asked about; nor is text dragged into a
 field.
+
+### Pasted pictures and files (`pastedFiles`)
+
+`pastedFiles` on an `InputView`, a `TextInput` and a `TextArea` (`Var[Option[PickedFile => Unit]]`, None by default)
+hears each picture and file in a paste, as a `PickedFile`, the type a picker or a drop hands over: its name, size, type
+and bytes, and a picture's preview. A picture with no name of its own (a screenshot, a bitmap an image viewer copied)
+is named "pasted-image-1.png", the number counting the field's pasted pictures and the extension its type's. The
+clipboard's words, where it holds some beside them, still land as words (`pasted` asked about them as ever). Without a
+hook a paste of pictures does what the platform's field does with one, which is nothing; a read-only field takes none.
+
+```scala
+avatarField.pastedFiles @= Some(file => if (file.mime.startsWith("image/")) upload(file.name, file.bytes))
+```
+
+A `Composer` takes them itself, as chips (`Composer.pastedFiles` above decides what each becomes).
+
+- **Web**: the `paste` event's `clipboardData.files` (else its items that are files). Chrome and Firefox on Linux offer
+  a screenshot tool's or an image viewer's copy (Spectacle, Dolphin on KDE, Wayland or X) as image/png, named
+  "image.png", which is taken as a picture with no name. The default is prevented only where files were taken and the
+  clipboard has no words.
+- **Desktop**: JavaFX's clipboard: its files (`getFiles`, a file manager's copy) by their own names, the paths a file
+  manager puts beside them as words not landing; else its picture (`getImage`), encoded as a PNG off the FX thread.
+- **Android**: a paste of a `content:` address of a type other than words (a picture shared to the clipboard), read
+  whole, its words still landing; and a keyboard's GIFs and stickers, the field telling the keyboard it takes
+  `image/*` (`EditorInfo.contentMimeTypes`) and taking what the keyboard commits (`commitContent`, Android 7.1 on).
+- **Roku, Apple TV**: no pasting, so it is never heard.
 
 ### ColorPicker (`everyui.color`)
 

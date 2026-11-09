@@ -134,6 +134,41 @@ object FileAccess {
     PickedFile(name, size, mime, bytes, if (mime.startsWith("image/")) Some(uri.toString) else None)
   }
 
+  /** A pasted document (a clipboard's `content:` address, a keyboard's picture) read whole on a thread of its own, its
+    * permission let go of once it is (`release`), and handed to `done` on the one that draws: its name as the provider
+    * gives it (none where it gives none, for the field to number), its type `mime` where the provider says none, and a
+    * picture's preview a file of the app's own (`source`), as the address may not be readable after. Nothing is handed
+    * over where it cannot be read. */
+  private[render] def pasted(uri: Uri, mime: String, release: () => Unit)(done: PickedFile => Unit): Unit =
+    Platform.offThread(() => {
+      val resolver = Host.activity.getContentResolver
+      val read = try {
+        var name = ""
+        try {
+          val cursor = resolver.query(uri, Array(OpenableColumns.DISPLAY_NAME), null, null, null)
+          if (cursor != null) try {
+            if (cursor.moveToFirst() && !cursor.isNull(0)) name = cursor.getString(0)
+          } finally cursor.close()
+        } catch { case _: Exception => () }
+        val kind = Option(resolver.getType(uri)).getOrElse(mime)
+        val in = resolver.openInputStream(uri)
+        val out = new java.io.ByteArrayOutputStream()
+        try {
+          val buffer = new Array[Byte](64 * 1024)
+          var n = in.read(buffer)
+          while (n >= 0) {
+            out.write(buffer, 0, n)
+            n = in.read(buffer)
+          }
+        } finally in.close()
+        Some((name, kind, out.toByteArray))
+      } catch { case t: Exception => Platform.logError("Reading the pasted " + uri, t); None }
+      finally try release() catch { case _: Exception => () }
+      read.foreach { case (name, kind, bytes) => Platform.later(() => done(PickedFile(name, bytes.length.toLong, kind,
+        Task.pure(bytes), if (kind.startsWith("image/")) Some(source(bytes, kind)) else None)))
+      }
+    })
+
   /** Done with a picked file's `preview` (the content's own address, which holds nothing), or a `source`, whose file
     * is deleted. */
   def release(preview: String): Unit = sources.get(preview).foreach { file =>

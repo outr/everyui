@@ -11,3 +11,8 @@ import everyui.async.Task
   *   Files.pick(List("image/\*", ".txt")).map(_.foreach(f => f.bytes.map(b => upload(f.name, b)).start())).start()
   * }}} */
 case class PickedFile(name: String, size: Long, mime: String, bytes: Task[Array[Byte]], preview: Option[String] = None)
+
+object PickedFile {
+  /** The name of the `n`th picture pasted with no name of its own: "pasted-image-1.png", its extension its type's. */
+  def pastedName(mime: String, n: Int): String = "pasted-image-" + n.toString + "." + FileTypes.extensionOf(mime)
+}

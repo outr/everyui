@@ -2,6 +2,7 @@ package everyui.component
 
 import everyui.component.types.{Autofill, PasteAction, Semantics, TextDirection}
 import everyui.event.Key
+import everyui.file.PickedFile
 import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
@@ -44,6 +45,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   val readOnly: Var[Boolean] = own(Var(false))
   /** What a paste becomes before it lands (`InputView.pasted`); None lets it land. */
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
+  /** Where a paste's pictures and files go (`InputView.pastedFiles`); None takes none. */
+  val pastedFiles: Var[Option[PickedFile => Unit]] = own(Var(None))
 
   // a secret, or asked for as a password
   private def hidden: Boolean = secure || autofill().exists(Autofill.secret)
@@ -93,6 +96,7 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     input.numeric := numeric()
     input.direction := direction()
     input.pasted := pasted()
+    input.pastedFiles := pastedFiles()
     // named by its label, which is drawn beside it rather than being its own
     input.semantics := Semantics(label = title())
     // and described as it is, since the focus a screen reader follows is the platform's field

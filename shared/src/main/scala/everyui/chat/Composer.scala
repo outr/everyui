@@ -54,6 +54,9 @@ import reactify.*
   *  - '''Pasting''' (`pasted`): the app decides what a paste becomes before it lands, words or a file: a paste of a
   *    log or a whole file can go with the message as a chip named after its first line (`ComposerPaste.longAsFile`),
   *    rather than flooding it. What `accept`, `allow` and `maxSize` refuse is refused as a dropped file is.
+  *    A picture pasted (a screenshot, an image viewer's copy, a keyboard's sticker) or a file copied in a file
+  *    manager goes with the message as a dropped one does, a picture with no name of its own named
+  *    "pasted-image-1.png"; the words beside it still paste as words, and `pastedFiles` decides what each becomes.
   *  - '''Completions''' (`complete`): typing one of `triggers` ('@' for a mention, '/' for a command at the start)
   *    asks the app for completions of what follows it, listed over the composer. Up and Down move through them,
   *    Enter or Tab puts the lit one in place of the word, and Escape closes them. None on a remote.
@@ -111,6 +114,14 @@ class Composer(onSend: Draft => Unit,
     * land, other words land in their place, nothing does, or they go with the message as a file, a chip as a dropped
     * file is (`longAsFile` for a log or a stack trace). None, the default, lets every paste land. */
   val pasted: Var[Option[String => ComposerPaste]] = own(Var(None))
+  /** What a pasted picture or file becomes before it goes with the message (`InputView.pastedFiles`): a screenshot or
+    * a picture copied in an image viewer, named "pasted-image-1.png", or a file copied in a file manager, by its own
+    * name. None, the default, takes each as it is, a chip as a dropped file is; the app's function can take it, take
+    * another in its place (renamed, made smaller), or refuse it (None), and `Some(_ => None)` takes none, a paste of
+    * them then doing nothing. Words on the clipboard beside a picture still paste as words, as `pasted` says. What
+    * `accept`, `allow` and `maxSize` refuse is refused as a dropped file is, with a word saying why; and where files
+    * cannot go (`attachable` off, a remote) none is taken. */
+  val pastedFiles: Var[Option[Attachment => Option[Attachment]]] = own(Var(None))
   /** Whether an emoji's name typed between colons (`:tada:`) becomes the emoji as its closing colon is typed, with a
     * list of the emoji whose names start with what follows a colon, after two letters, as completions are listed; and
     * Backspace just after one gives the name back. The app's own (`everyui.emoji.CustomEmoji`) are listed too, by their
@@ -295,6 +306,7 @@ class Composer(onSend: Draft => Unit,
     }
     case None => PasteAction.Insert
   })
+  field.pastedFiles := (if (attachable() && !remote) Some(pastedFile) else None)
   field.field.foreach { f =>
     f.disabled := !enabled()
     f.semantics := Semantics(label = if (suggesting() && !asChip)
@@ -674,6 +686,15 @@ class Composer(onSend: Draft => Unit,
   /** Files the person chose or dropped, each added where `accept`, `allow` and `maxSize` agree, and refused with a word
     * where they do not. */
   def add(files: List[PickedFile]): Unit = files.foreach(f => attach(Attachment.of(f)))
+
+  // a picture or file pasted into the field, made what the app's `pastedFiles` says, and added as a dropped one is
+  private def pastedFile(file: PickedFile): Unit = if (enabled() && attachable()) {
+    val a = Attachment.of(file)
+    pastedFiles() match {
+      case Some(f) => f(a).foreach(attach)
+      case None => attach(a)
+    }
+  }
 
   /** One attachment added, where it is taken: whether it was. */
   def attach(a: Attachment): Boolean = {

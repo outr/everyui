@@ -1142,6 +1142,8 @@ class RenderNode(val el: html.Element) {
   }
   /** A paste into the field, put to `f` with its words before they land (`Pasting`). */
   def onPaste(f: String => everyui.component.types.PasteAction): Unit = Pasting.listen(el, f)
+  /** The pictures and files of a paste into the field, handed to `f` where `wanted` says (`Pasting.files`). */
+  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = Pasting.files(el, wanted, f)
   /** The field taking the keyboard itself (a click, a tap, the browser's own Tab). */
   // focusin, which a rich editor's editable element inside the box sends up as a field sends it of itself
   def onInputFocus(f: () => Unit): Unit = el.addEventListener("focusin", (_: dom.Event) => f())

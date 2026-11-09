@@ -1091,6 +1091,12 @@ class RenderNode(val view: View) {
     case e: FieldView => e.pasting = Some(f)
     case _ => ()
   }
+  /** The pictures and files of a paste into the field, and a keyboard's pictures, handed to `f` where `wanted` says
+    * (`FieldView.pastingFiles`). */
+  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = view match {
+    case e: FieldView => e.pastingFiles = Some((wanted, f))
+    case _ => ()
+  }
   /** The field taking the keyboard itself (a tap on it). */
   def onInputFocus(f: () => Unit): Unit = view match {
     case e: EditText => e.setOnFocusChangeListener((_, has) => if (has) f())

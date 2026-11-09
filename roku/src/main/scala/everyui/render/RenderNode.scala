@@ -707,6 +707,7 @@ class RenderNode(val sg: SGNode) {
   def onValue(f: String => Unit): Unit = ()
   // no pasting here: a field is written on the platform's keyboard
   def onPaste(f: String => everyui.component.types.PasteAction): Unit = ()
+  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = ()
   def onInputFocus(f: () => Unit): Unit = ()
   def onInputDone(f: () => Unit): Unit = ()
   def onInputAction(f: () => Unit): Unit = ()

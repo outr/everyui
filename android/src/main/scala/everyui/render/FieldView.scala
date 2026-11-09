@@ -5,6 +5,7 @@ import android.view.{KeyEvent, MotionEvent}
 import android.view.inputmethod.{EditorInfo, InputConnection}
 import android.widget.EditText
 import everyui.component.types.PasteAction
+import everyui.file.PickedFile
 
 /** An `EditText` that is only a field while it is being edited. Until then it takes no focus and no touches, so
   * Android never hands it the focus by itself (a TV focuses the first focusable view as a window opens, and Google TV
@@ -14,13 +15,20 @@ import everyui.component.types.PasteAction
   * Its pastes are put to the app before they land (`pasting`): its menu's Paste and Paste as plain text, Ctrl+V on a
   * keyboard, and a soft keyboard's Paste key, which all come through `onTextContextMenuItem`; and a soft keyboard's
   * clipboard suggestion, which is typed (`PasteConnection`) and is taken as a paste where it is the clipboard's words
-  * and more than a line. A read-only field takes no paste, and its app is never asked about one. */
+  * and more than a line. A read-only field takes no paste, and its app is never asked about one.
+  *
+  * Where it takes a paste's pictures and files (`pastingFiles`), a paste's documents (the clipboard's `content:`
+  * addresses of a type other than words: a screenshot, a picture shared to the clipboard) are read and handed over,
+  * its words still landing, and it tells the keyboard it takes pictures (`EditorInfo.contentMimeTypes`), which a
+  * keyboard's GIFs and stickers then come as (`committed`, by `PasteConnection.commitContent`). */
 final class FieldView(context: Context) extends EditText(context) {
   var done: () => Unit = () => ()
   // its action key pressed (Done, Search, Next), which also puts the keyboard away
   var action: () => Unit = () => ()
   /** What a paste becomes, asked with its words before they land (`InputView.pasted`). */
   var pasting: Option[String => PasteAction] = None
+  /** Where a paste's pictures and files go, and whether the field takes them now (`InputView.pastedFiles`). */
+  var pastingFiles: Option[(() => Boolean, List[PickedFile] => Unit)] = None
   /** What is chosen, told as it changes (`InputView.selected`). */
   var selecting: (Int, Int) => Unit = null
   private var editing = false
@@ -110,24 +118,65 @@ final class FieldView(context: Context) extends EditText(context) {
 
   override def onTextContextMenuItem(id: Int): Boolean = {
     val paste = id == android.R.id.paste || id == android.R.id.pasteAsPlainText
-    val words = if (paste && pasting.nonEmpty && writable) clipboard() else ""
-    if (words.isEmpty) super.onTextContextMenuItem(id)
-    else pasting.get(words) match {
-      case PasteAction.Insert => super.onTextContextMenuItem(id)
+    val files = if (paste && writable) clipboardFiles() else Nil
+    val words = if (paste && (pasting.nonEmpty || files.nonEmpty) && writable) clipboard(files.nonEmpty) else ""
+    files.foreach(_())
+    if (words.isEmpty) files.nonEmpty || super.onTextContextMenuItem(id)
+    else pasting.map(_(words)).getOrElse(PasteAction.Insert) match {
+      case PasteAction.Insert if files.isEmpty => super.onTextContextMenuItem(id)
+      case PasteAction.Insert => replaced(words)
       case PasteAction.Ignore => true
-      case PasteAction.InsertText(text) =>
-        val edit = getText
-        val from = math.max(0, math.min(getSelectionStart, getSelectionEnd))
-        val to = math.max(0, math.max(getSelectionStart, getSelectionEnd))
-        edit.replace(from, to, text)
-        setSelection(math.min(from + text.length, edit.length))
-        true
+      case PasteAction.InsertText(text) => replaced(text)
     }
+  }
+
+  // `text` in place of the selection, the caret after it
+  private def replaced(text: String): Boolean = {
+    val edit = getText
+    val from = math.max(0, math.min(getSelectionStart, getSelectionEnd))
+    val to = math.max(0, math.max(getSelectionStart, getSelectionEnd))
+    edit.replace(from, to, text)
+    setSelection(math.min(from + text.length, edit.length))
+    true
   }
 
   override def onCreateInputConnection(info: EditorInfo): InputConnection = {
     val made = super.onCreateInputConnection(info)
+    // a keyboard offers its pictures (GIFs, stickers) where the field says it takes them
+    if (made != null && android.os.Build.VERSION.SDK_INT >= 25 && takesFiles) info.contentMimeTypes =
+      Array("image/*")
     if (made == null) null else new PasteConnection(made, this)
+  }
+
+  /** A keyboard's picture (`InputConnection.commitContent`, Android 7.1 on): read and handed to `pastingFiles` where
+    * the field takes it, with the permission the keyboard grants asked for while it is read; whether it was taken. */
+  def committed(content: android.view.inputmethod.InputContentInfo, flags: Int): Boolean =
+    if (!writable || !takesFiles || android.os.Build.VERSION.SDK_INT < 25) false
+    else {
+      val granted = (flags & android.view.inputmethod.InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0
+      val asked = !granted || (try { content.requestPermission(); true } catch { case _: Exception => false })
+      val description = content.getDescription
+      val mime = if (description != null && description.getMimeTypeCount > 0) description.getMimeType(0) else ""
+      if (asked) FileAccess.pasted(content.getContentUri, mime, () => if (granted) content.releasePermission())(file =>
+        pastingFiles.foreach(_._2(List(file))))
+      asked
+    }
+
+  // whether the field takes a paste's pictures and files now
+  private def takesFiles: Boolean = pastingFiles.exists(_._1())
+
+  // what hands over each of the clipboard's documents (its items with a `content:` address of a type not words),
+  // where the field takes them
+  private def clipboardFiles(): List[() => Unit] = if (!takesFiles) Nil else {
+    val manager = getContext.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
+    val clip = if (manager == null) null else manager.getPrimaryClip
+    if (clip == null) Nil
+    else (0 until clip.getItemCount).toList.flatMap(i => Option(clip.getItemAt(i).getUri))
+      .filter(uri => uri.getScheme == "content").flatMap { uri =>
+        val mime = Option(getContext.getContentResolver.getType(uri)).getOrElse("")
+        if (mime.isEmpty || mime.startsWith("text/")) None
+        else Some(() => FileAccess.pasted(uri, mime, () => ())(file => pastingFiles.foreach(_._2(List(file)))))
+      }
   }
 
   /** What words a soft keyboard types become: a paste's action where they are the clipboard's words and more than a
@@ -141,12 +190,14 @@ final class FieldView(context: Context) extends EditText(context) {
   // a field that takes typing: not read-only (no key listener) nor out of use, where a paste lands and its app is asked
   private def writable: Boolean = getKeyListener != null && isEnabled
 
-  // the clipboard's words, as Android's own paste joins them; empty where it holds none
-  private def clipboard(): String = {
+  // the clipboard's words, as Android's own paste joins them; empty where it holds none; `bare`, those of its items
+  // with no address (their documents going as files)
+  private def clipboard(bare: Boolean = false): String = {
     val manager = getContext.getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
     val clip = if (manager == null) null else manager.getPrimaryClip
     if (clip == null) ""
-    else (0 until clip.getItemCount).flatMap(i => Option(clip.getItemAt(i).coerceToText(getContext))).map(_.toString)
+    else (0 until clip.getItemCount).map(clip.getItemAt).filter(item => !bare || item.getUri == null)
+      .flatMap(item => Option(item.coerceToText(getContext))).map(_.toString)
       .filter(_.nonEmpty).mkString("\n")
   }
 }

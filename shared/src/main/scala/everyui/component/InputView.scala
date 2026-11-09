@@ -2,6 +2,7 @@ package everyui.component
 
 import everyui.component.feature.FontFeature
 import everyui.component.types.{Autofill, PasteAction, Prop, TextDirection, TextRange}
+import everyui.file.PickedFile
 import everyui.render.Nodes
 import reactify.*
 
@@ -76,6 +77,18 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
     * or nothing). None, the default, lets every paste land. A Roku and an Apple TV have no pasting, so it is never
     * asked there. */
   val pasted: Var[Option[String => PasteAction]] = own(Var(None))
+  /** Where the pictures and files of a paste go, each handed over as a dropped file is (`PickedFile`): a picture copied
+    * from a screenshot tool or an image viewer, a file copied in a file manager, and on Android a picture a keyboard
+    * inserts (its GIFs and stickers). A picture with no name of its own is named "pasted-image-1.png" (the number
+    * counting the field's pasted pictures, the extension its type's). The clipboard's words, where it holds some
+    * beside them, still paste as words (`pasted` asked about them as ever). None, the default, takes no pictures or
+    * files, and a paste of them does what the platform's field does with one (nothing, in a plain field). The web
+    * reads them from the paste event, the desktop from JavaFX's clipboard (a picture encoded as a PNG), Android from
+    * a paste of a `content:` address and a keyboard's content (`commitContent`); a Roku and an Apple TV have none. A
+    * read-only field takes none. */
+  val pastedFiles: Var[Option[PickedFile => Unit]] = own(Var(None))
+  // the pictures with no name of their own pasted here so far, for the next one's number
+  private var pictures = 0
 
   private def hint(): Unit =
     node.setAutofill(asked().map(Autofill.token).getOrElse(""), section(), fieldName(), passkey(), literal(), numeric())
@@ -123,6 +136,14 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   text.attach(v => if (node.getValue() != v) node.setValue(v))
   node.onValue(v => if (text() != v) text @= v)
   node.onPaste(words => pasted().map(f => f(words)).getOrElse(PasteAction.Insert))
+  node.onPasteFiles(() => pastedFiles().nonEmpty,
+    files => pastedFiles().foreach(f => files.foreach(file => f(named(file)))))
+
+  // a file as pasted, a picture with no name of its own named after its number and type
+  private def named(file: PickedFile): PickedFile = if (file.name.nonEmpty) file else {
+    pictures += 1
+    file.copy(name = PickedFile.pastedName(file.mime, pictures))
+  }
   node.onSelection((a, b) => {
     val now = TextRange(math.min(a, b), math.max(a, b))
     if (selectedNow() != now) selectedNow @= now
