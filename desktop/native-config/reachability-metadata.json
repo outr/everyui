@@ -528,6 +528,40 @@
       ]
     },
     {
+      "type": "com.sun.javafx.font.freetype.FT_Matrix",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "xx"
+        },
+        {
+          "name": "xy"
+        },
+        {
+          "name": "yx"
+        },
+        {
+          "name": "yy"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.geom.Path2D",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "byte[]",
+            "int",
+            "float[]",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
       "type": "com.sun.javafx.logging.PrintLogger",
       "methods": [
         {

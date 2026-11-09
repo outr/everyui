@@ -2,10 +2,13 @@
 # The desktop app as a self-contained native binary: GraalVM native-image over the JavaFX backend.
 #
 #   tools/desktop-native.sh           build desktop/out/native/everyui-desktop, then run it under Xvfb: the frozen
-#                                     frame against tools/golden/animation-tree.txt, a live frame-rate sample, and
-#                                     the tray (--demo=tray --headless=1) on a bus of its own, as a panel sees it
+#                                     frame against tools/golden/animation-tree.txt, a live frame-rate sample, live
+#                                     windows at uiScale 1.75 in ES2 and SW (failing on a JNI exception, a
+#                                     NoClassDefFoundError or a blank window), and the tray (--demo=tray
+#                                     --headless=1) on a bus of its own, as a panel sees it
 #                                     (everyui.tray.TrayNativeCheck): registered, its menu run, its popover opened
-#   tools/desktop-native.sh --trace   first rerun GraalVM's tracing agent (a frozen and a short live run) to refresh
+#   tools/desktop-native.sh --trace   first rerun GraalVM's tracing agent (a frozen and a short live run, and
+#                                     a frozen one at uiScale 1.75 in SW) to refresh
 #                                     desktop/native-config/, the reflection/JNI/resource metadata JavaFX needs —
 #                                     after a change to what the app touches of JavaFX; the tray's run is traced too
 #
@@ -57,13 +60,21 @@ if [ $TRACE = 1 ]; then
   timeout 12 xvfb-run -a -s "-screen 0 1920x1080x24" java -agentlib:native-image-agent=config-merge-dir="$CFG" -Dprism.order=sw -Dprism.lcdtext=false \
     -cp "$CP" everyui.desktop.DesktopApp > "$LOGS/agent-live.log" 2>&1
   rm -f "$CFG/.lock"
+  # at a fractional scale, where outlined glyphs make a Path2D through JNI (never at scale 1); in SW alone, as the
+  # image has no ES2 (an ES2 run would bring in its pipeline with only the shaders that one screen used)
+  xvfb java -agentlib:native-image-agent=config-merge-dir="$CFG" -Dglass.gtk.uiScale=1.75 -Dprism.order=sw \
+    -cp "$CP" everyui.desktop.DesktopApp --size=1000x600 --freeze=$FREEZE --screenshot="$LOGS/agent-scaled.png" \
+    > "$LOGS/agent-scaled.log" 2>&1
+  rm -f "$CFG/.lock"
   traycheck "$LOGS/agent-tray.log" java -agentlib:native-image-agent=config-merge-dir="$CFG" -Dprism.order=sw \
     -Dprism.lcdtext=false -cp "$CP" everyui.desktop.DesktopApp --demo=tray --headless=1 \
     > "$LOGS/agent-tray-check.log" 2>&1
   rm -f "$CFG/.lock"
   # a Scala object's lazy values are found by their fields as it starts: every field of these, rather than each
   # and the byte order Glass asks of a buffer through JNI as it hands the frame to the window, which no traced run
-  # recorded: without it the buffer stays big-endian and every colour on the screen comes out wrong (red as cyan)
+  # recorded: without it the buffer stays big-endian and every colour on the screen comes out wrong (red as cyan);
+  # and the glyph strike's transform (FT_Matrix, through JNI, in ES2 at a fractional scale) and the outline's Path2D,
+  # where a trace missed them: without them glyphs are drawn at 1x on scaled advances, or nothing is drawn at all
   node -e 'const f=process.argv[1]; const n=JSON.parse(require("fs").readFileSync(f));
     n.reflection=n.reflection.map(e => ["everyui.font.MaterialIcon$","everyui.Color$"].includes(e.type) ?
       Object.assign({type: e.type, allDeclaredFields: true}, e.methods ? {methods: e.methods} : {}) : e);
@@ -72,6 +83,11 @@ if [ $TRACE = 1 ]; then
       (bb.methods = bb.methods || []).push({name: "order", parameterTypes: ["java.nio.ByteOrder"]});
     if (!n.reflection.some(e => e.type === "java.nio.ByteOrder")) n.reflection.push({type: "java.nio.ByteOrder",
       jniAccessible: true, methods: [{name: "nativeOrder", parameterTypes: []}]});
+    const glyphs = [{type: "com.sun.javafx.font.freetype.FT_Matrix", jniAccessible: true,
+        fields: ["xx", "xy", "yx", "yy"].map(name => ({name}))},
+      {type: "com.sun.javafx.geom.Path2D", jniAccessible: true,
+        methods: [{name: "<init>", parameterTypes: ["int", "byte[]", "int", "float[]", "int"]}]}];
+    for (const g of glyphs) if (!n.reflection.some(e => e.type === g.type)) n.reflection.push(g);
     require("fs").writeFileSync(f, JSON.stringify(n, null, 2) + "\n")' "$CFG/reachability-metadata.json"
   if [ -s "$CFG/reachability-metadata.json" ]; then pass "$(wc -c < "$CFG/reachability-metadata.json") bytes of metadata"; else fail; exit 1; fi
 fi
@@ -103,6 +119,23 @@ if $CHECKS fps "$LOGS/live.log" --samples-min 12 --median-min 59 --min 55 > "$LO
 else
   fail "(target/native/fps.log)"; tail -n 5 "$LOGS/fps.log"
 fi
+
+step "text at a fractional scale (1.75, ES2 + SW)"
+# a uiScale that is not whole gives a glyph strike a transform (FT_Matrix, through JNI, in ES2) and, in SW, draws
+# large glyphs as outlines (a Path2D made through JNI): neither runs at scale 1, and without their metadata glyphs
+# are drawn at 1x on 1.75x advances, or no frame reaches the window at all. Only the window shows it (the app's own
+# snapshot is drawn at 1x), so each pipeline runs live for 8 s and the display is taken, which must not be one colour
+SCALED=""; NOTE=""
+for pipe in "es2:-Dprism.forceGPU=true -Dprism.order=es2" "sw:-Dprism.order=sw"; do
+  name=${pipe%%:*}; log="$LOGS/scaled-$name.log"; shot="$LOGS/scaled-$name.png"; rm -f "$shot"
+  xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX" bash -c "\"$OUT\" -Dglass.gtk.uiScale=1.75 -Dprism.verbose=true ${pipe#*:} \
+    --size=1000x600 > \"$log\" 2>&1 & pid=\$!; sleep 8; magick import -window root \"$shot\"; kill \$pid"
+  if grep -q "ClassNotFoundException: com.sun.prism.es2.ES2Pipeline" "$log"; then NOTE="$NOTE $name:not-in-image"; continue; fi
+  grep -qE "JNI exception|NoClassDefFoundError" "$log" && SCALED="$SCALED $name:jni"
+  [ "$(magick identify -format %k "$shot" 2>/dev/null || echo 0)" -gt 1 ] || SCALED="$SCALED $name:blank"
+done
+if [ -z "$SCALED" ]; then pass "$NOTE"
+else fail "($SCALED ) target/native/scaled-*.log"; grep -ohE "[A-Za-z_]+ error: JNI exception or [^ ]+ == NULL|NoClassDefFoundError: [^ ]+" "$LOGS"/scaled-*.log | sort -u | head -n 5; fi
 
 step "tray as a panel sees it (Xvfb, own bus)"
 if TRAY_SHOT="$LOGS/tray-popover.png" traycheck "$LOGS/tray.log" "$OUT" --demo=tray --headless=1 > "$LOGS/tray-check.log" 2>&1; then
