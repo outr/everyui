@@ -386,7 +386,7 @@ class RenderNode(val el: html.Element) {
         val img = dom.document.createElement("img").asInstanceOf[html.Image]
         img.src = run.image
         img.alt = run.text
-        img.title = run.text
+        img.title = if (run.title.nonEmpty) run.title else run.text
         img.setAttribute("draggable", "false")
         img.className = "everyui-run-picture"
         img.style.width = everyui.text.TextRun.pictureEm.toString + "em"
@@ -413,7 +413,13 @@ class RenderNode(val el: html.Element) {
         span.style.padding = "0.08em 0.35em"
         span.style.borderRadius = "5px"
       }
-      if (run.href.nonEmpty && everyui.component.NavigationUrl.safe(run.href)) {
+      // what it says on a hover (a link's by `Link.describe`), and to a screen reader as its description, after its
+      // words, which stay its name
+      if (run.title.nonEmpty) {
+        span.title = run.title
+        span.setAttribute("aria-description", run.title)
+      }
+      if (run.href.nonEmpty &&everyui.component.NavigationUrl.safe(run.href)) {
         span.setAttribute("href", run.href)
         span.className = "everyui-link"
         val inApp = run.href.startsWith("/") && !run.href.startsWith("//")

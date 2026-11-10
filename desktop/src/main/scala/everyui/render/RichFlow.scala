@@ -8,7 +8,7 @@ import javafx.scene.text.{Font, FontPosture, FontSmoothingType, FontWeight, Text
 /** A paragraph of styled runs (`everyui.component.RichText`, `Nodes.richText`): a `Text` for each run in a `TextFlow`,
   * so a run keeps its own face, weight, slant, size, colour, strike and underline, and a link's run is followed by a
   * click. What no run names is the paragraph's own (`base`, `colour`). JavaFX draws no background behind a run, so a
-  * marked span (code) is told by its face and colour alone. */
+  * marked span (code) is told by its face and colour alone. A run's `title` is the platform's tooltip over it. */
 class RichFlow extends TextFlow {
   private var runs: List[TextRun] = Nil
   private var follow: String => Unit = _ => ()
@@ -106,7 +106,8 @@ class RichFlow extends TextFlow {
     box.setPrefSize(side, side)
     box.setMaxSize(side, side)
     box.setAccessibleText(run.text)
-    javafx.scene.control.Tooltip.install(box, new javafx.scene.control.Tooltip(run.text))
+    javafx.scene.control.Tooltip.install(box,
+      new javafx.scene.control.Tooltip(if (run.title.nonEmpty) run.title else run.text))
     if (run.href.nonEmpty) {
       box.setCursor(javafx.scene.Cursor.HAND)
       box.setOnMouseClicked(e => if (e.getButton == javafx.scene.input.MouseButton.PRIMARY) {
@@ -125,6 +126,12 @@ class RichFlow extends TextFlow {
     t.setFill(Color.web(if (run.color.nonEmpty) run.color else colour))
     t.setStrikethrough(run.strike)
     t.setUnderline(run.underline)
+    // what it says on a hover (a link's by `Link.describe`): the platform's tooltip over its letters, and to a screen
+    // reader after its words
+    if (run.title.nonEmpty) {
+      javafx.scene.control.Tooltip.install(t, new javafx.scene.control.Tooltip(run.title))
+      t.setAccessibleHelp(run.title)
+    }
     if (run.href.nonEmpty) {
       t.setCursor(javafx.scene.Cursor.HAND)
       t.setOnMouseClicked(e => if (e.getButton == javafx.scene.input.MouseButton.PRIMARY) {

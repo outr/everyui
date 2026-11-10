@@ -623,16 +623,18 @@ class RenderNode(val view: View) {
   def setDropDown(background: String, text: String, highlight: String, chosen: String, edge: String,
                   inset: Double): Unit = ()
   /** Styled runs as spans of one text: each run's colour, marking, weight, slant, size, strike and underline, and a
-    * link followed by a tap (its family is the paragraph's). */
+    * link followed by a tap (its family is the paragraph's); a run's `title` is the view's tip as a hover is over it. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = view match {
     case t: TextView =>
       val text = new android.text.SpannableStringBuilder()
       val span: (Any, Int, Int) => Unit = (what, from, to) =>
         text.setSpan(what, from, to, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      val tips = Vector.newBuilder[(Int, Int, String)]
       runs.foreach { run =>
         val from = text.length
         text.append(run.text)
         val to = text.length
+        if (to > from && run.title.nonEmpty) tips += ((from, to, run.title))
         if (to > from) {
           if (run.color.nonEmpty) span(new android.text.style.ForegroundColorSpan(RenderNode.color(run.color)), from, to)
           if (run.background.nonEmpty)
@@ -668,6 +670,10 @@ class RenderNode(val view: View) {
         t.setFocusable(false)
       }
       t.setText(FaceSpan.fallen(text, t.getPaint))
+      // each run's tip (`TextRun.title`) the view's as the pointer is over it: a mouse's or a stylus's hover
+      runTips = tips.result()
+      if (runTips.nonEmpty) hearHover()
+      else if (android.os.Build.VERSION.SDK_INT >= 26) t.setTooltipText(if (ownTip.isEmpty) null else ownTip)
       if (textDirection == "auto") applyAlign()
       // as many lines as the runs are written as, where they are not wrapped (see setText)
       if (!wrapping) {
@@ -741,11 +747,35 @@ class RenderNode(val view: View) {
   private[render] def listen(): Unit = if (!listening) {
     listening = true
     view.setOnTouchListener((_, e) => touch(e))
+    hearHover()
+  }
+
+  // the view's hovers heard, once: the pointer's enter and leave, and which run's tip it is over (`runTips`)
+  private var hoverHeard = false
+  private def hearHover(): Unit = if (!hoverHeard) {
+    hoverHeard = true
     view.setOnHoverListener { (_, e) =>
-      if (e.getAction == MotionEvent.ACTION_HOVER_ENTER) fire(PointerKind.Enter, e)
-      else if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) fire(PointerKind.Leave, e)
+      if (runTips.nonEmpty) tipOver(e)
+      if (listening && e.getAction == MotionEvent.ACTION_HOVER_ENTER) fire(PointerKind.Enter, e)
+      else if (listening && e.getAction == MotionEvent.ACTION_HOVER_EXIT) fire(PointerKind.Leave, e)
       false
     }
+  }
+
+  // the runs' tips (`TextRun.title`), where they lie in the text, and the view's own tip (`setTooltip`), shown where
+  // the pointer is over no run's
+  private var runTips: Vector[(Int, Int, String)] = Vector.empty
+  private var ownTip: String = ""
+
+  // the view's tip made the one of the run the pointer is over, as it moves: Android has one tip a view, shown as the
+  // pointer rests on it (and kept up to date while it shows), and none for a span of its text
+  private def tipOver(e: MotionEvent): Unit = (view, android.os.Build.VERSION.SDK_INT >= 26) match {
+    case (t: TextView, true) =>
+      val at = if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) -1 else t.getOffsetForPosition(e.getX, e.getY)
+      val tip = runTips.find(r => at >= r._1 && at < r._2).map(_._3).getOrElse(ownTip)
+      val now = t.getTooltipText
+      if ((if (now == null) "" else now.toString) != tip) t.setTooltipText(if (tip.isEmpty) null else tip)
+    case _ => ()
   }
 
   /** What hears every touch on the view before its pointer events are made of it: a pinch (Gestures). */
@@ -928,8 +958,10 @@ class RenderNode(val view: View) {
     }
     g.setClipToOutline(on)
   }
-  def setTooltip(text: String): Unit =
+  def setTooltip(text: String): Unit = {
+    ownTip = text
     if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
+  }
   // what TalkBack reads after the view's name, and whether accessibleFocus's delegate (which says it too) is on the view
   private var hint = ""
   private var focusDelegate = false

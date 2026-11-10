@@ -1310,6 +1310,26 @@ answer.content := message().text          // may grow token by token while the a
 - A click on a link, or Enter (a remote's OK) on a paragraph that holds links, goes to `onLink`: by default a path of
   this app is shown in place and anything else opened (`Link.follow`). A paragraph with several links offers them in a
   menu. A picture's relative URL is found against `base`, `Platform.origin()` by default (`MarkdownView.resolve`).
+- Links of a scheme of the app's own (`file:src/Main.scala`, opened in a tab) are its to answer:
+  `Link.handle("file")(href => ...)` is handed every such link followed anywhere (a `Link`, Markdown, a chat message, a
+  table, a `RichText`), and nothing else opens it where it answers true. Such a link is drawn as a link and followed by
+  a click, a tap or Enter on every platform, but has no address to show, so `Link.describe("file")(href =>
+  Option[String])` says what it does: the words the pointer resting on it shows and a screen reader hears after its
+  words (None for nothing). A run's own `TextRun.title` comes first, and a Markdown link's title
+  (`[the site](https://everyui.com "The site")`) is its run's. On the web the run is drawn with them as its `title`
+  and its `aria-description` (a description, not its name, which stays its words); on the desktop and Android they are
+  the platform's tooltip over the run's letters (Android's for a mouse's or a stylus's hover); a TV shows none. A
+  paragraph holding such links shows them in a `Tooltip` as the keys bring the focus to it, where the focus shows tips
+  (`Tooltip.onFocus`: not on a remote, unless the app says), each link's words after its own where it has several, and
+  its menu of links (Enter) has them under each. A `Link` of such a scheme has them as its `tooltip` and
+  `accessibleDescription` (a tooltip of the app's own is kept). A link of a scheme the platforms open (`https`) is drawn
+  as it was unless a describer is given for its scheme. Give the describer before the words are shown: it is asked as
+  the runs are drawn. Each returns a function that takes it away.
+
+  ```scala
+  Link.handle("file") { href => tabs.open(href.stripPrefix("file:")); true }
+  Link.describe("file")(href => Some("Open " + href.stripPrefix("file:") + " in a tab"))
+  ```
 - `MarkdownStyle` sets the sizes: the body's points, code's, the headings' scale, the gap between blocks, the list
   indent and the tallest picture. How its tables are drawn is `tableLook` (a `Var[TableLook]`, below under `DataTable`),
   which starts as `MarkdownView.tableLook` says: a header band, every second row striped, rounded corners, no rules, its

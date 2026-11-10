@@ -1,18 +1,21 @@
 package everyui.markdown
 
 import everyui.Color
-import everyui.component.{Container, RichText}
+import everyui.component.{Container, Link, RichText}
 import everyui.component.types.WhiteSpace
 import everyui.event.Key
 import everyui.layout.VerticalLayout
 import everyui.menu.{Menu, MenuItem}
 import everyui.theme.Theme
+import everyui.tooltip.Tooltip
 import reactify.*
 
 /** A paragraph or a heading of a `MarkdownView`: its lines wrapped to `width`, a picture on a line of its own. New
   * words for it (`inlines`, as an answer streams in) are drawn in place while its lines and pictures stay as they
   * were. Where it holds links it takes the focus, and Enter (a remote's OK) follows its link, or offers its links in a
-  * menu where it has several; a click or a tap on a link follows it where the platform draws links. Its words run the
+  * menu where it has several; a click or a tap on a link follows it where the platform draws links. What its links say
+  * (a title, or the app's words: `Link.describe`) shows as the pointer rests on one and, in a `Tooltip`, as the keys
+  * bring the focus to it where the focus shows tips, and beside each in its menu. Its words run the
   * way the view says (`MarkdownContext.direction`), and a word too long for a line (a URL, a path) is broken where it
   * must be. */
 class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Double, points: Double,
@@ -53,12 +56,44 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   override def keepsKey(key: Key): Boolean = key == Key.Enter && links().nonEmpty
   event.key.down.attach(k => if (k.key == Key.Enter) openLinks())
 
-  /** Its link followed, or its links offered to choose from. */
+  // what its links say (`tip`) shown as the keys bring the focus to it, where the focus shows tips: a
+  // pointer resting on a link has the run's own
+  private lazy val pointerOver: Val[Boolean] = event.pointer.over
+  // followed from the first link, before the focus asks, and not by a paragraph with none
+  if (links().nonEmpty) pointerOver
+  links.attach(l => if (l.nonEmpty) pointerOver)
+  focusShown.attach { on =>
+    if (on && Tooltip.onFocus() && !pointerOver()) Tooltip.askFor(this, () => tip)
+    else if (!on) Tooltip.hideFor(this)
+  }
+  onDispose(() => Tooltip.hideFor(this))
+
+  /** What its links say as the pointer rests on them (a Markdown link's title, or the app's words for it:
+    * `Link.describe`), by `href`, for those that say something. */
+  def titles: Map[String, String] = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(),
+      ctx.pressesMentions()).flatMap(_.runs).filter(_.href.nonEmpty).map(Link.titled)
+    .foldLeft(Map.empty[String, String])((out, r) =>
+      if (r.title.isEmpty || out.contains(r.href)) out else out.updated(r.href, r.title))
+
+  /** What the focus on it shows in a tip: its link's words where it has one, each link's words after its own where it
+    * has several (those with none left out), and nothing where none say anything. */
+  def tip: Option[String] = {
+    val said = titles
+    val all = links().filter(l => said.contains(l._2))
+    if (all.isEmpty) None
+    else if (links().size == 1) Some(said(all.head._2))
+    else Some(all.map(l => (if (l._1.trim.isEmpty) "" else l._1.trim + ": ") + said(l._2)).mkString("; "))
+  }
+
+  /** Its link followed, or its links offered to choose from, each with what it says (`titles`) or its address. */
   def openLinks(): Unit = {
     val all = links()
     if (all.size == 1) ctx.press(all.head._2, this)
-    else if (all.size > 1) Menu.below(this, all.map(l => MenuItem(if (l._1.trim.isEmpty) l._2 else l._1,
-      () => ctx.press(l._2, this), detail = if (everyui.component.Link.appOwn(l._2)) "" else l._2)))
+    else if (all.size > 1) {
+      val said = titles
+      Menu.below(this, all.map(l => MenuItem(if (l._1.trim.isEmpty) l._2 else l._1, () => ctx.press(l._2, this),
+        detail = said.getOrElse(l._2, if (Link.appOwn(l._2)) "" else l._2))))
+    }
   }
 
   /** Its lines made again where they are no longer the same lines and pictures; otherwise their words follow

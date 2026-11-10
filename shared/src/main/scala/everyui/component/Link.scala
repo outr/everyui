@@ -11,10 +11,26 @@ import everyui.component.types.Prop
 class Link(target: String = "", newTab: Boolean = false) extends Container(Nodes.link()) {
   override def kind: String = "Link(" + href() + ")"
 
-  lazy val href: Prop[String] = own(new Prop[String](target, h => node.setHref(h, newTab)))
+  lazy val href: Prop[String] = own(new Prop[String](target, h => {
+    node.setHref(h, newTab)
+    sayWhere(h)
+  }))
+  // what the app says of where it goes (`Link.describe`), last given as its tooltip and description: an app's own
+  // tooltip or description, set apart from it, is left as it is
+  private var said = ""
   // a Prop writes only what changes, and the first address is where the link was made to go: without it here a
   // link made with its address had none on the page, and a crawler, a middle click or "copy link" had nowhere to go
   node.setHref(href(), newTab)
+  sayWhere(href())
+
+  private def sayWhere(h: String): Unit = {
+    val words = Link.description(h).getOrElse("")
+    if (words.nonEmpty || said.nonEmpty) {
+      if (tooltip() == said) tooltip @= words
+      if (accessibleDescription() == said) accessibleDescription @= words
+      said = words
+    }
+  }
 
   focusable @= true
   tapSlop @= true
@@ -46,6 +62,40 @@ object Link {
     handlers = handlers.updated(key, handler)
     () => if (handlers.get(key).exists(_ eq handler)) handlers = handlers - key
   }
+
+  // what the app says of links of schemes it describes, by scheme (in lower case)
+  private var describers: Map[String, String => Option[String]] = Map.empty
+
+  /** What a link of `scheme` (`"file"` for `file:<path>`) says as the pointer rests on it and to a screen reader, as
+    * `describer` words it for the link's `href` (`href => Some("Open " + href.stripPrefix("file:"))`), None for
+    * nothing: words for a link the app answers itself (`handle`), which otherwise shows nothing on a hover. A run's
+    * own `TextRun.title` (a Markdown link's `"title"`) comes first; it is asked as the runs are drawn, so it is given
+    * before the words it describes are shown. On the web a run is drawn with the words as its `title` and its
+    * `aria-description` (a description, not the link's name, which stays its words), and a `Link` with them as its
+    * title and its description; on the desktop and Android they are the platform's own tooltip over the run or the
+    * `Link`; a Markdown paragraph holding such links shows them in a `Tooltip` as the keys bring the focus to it, where
+    * the focus shows tips (`Tooltip.onFocus`), and as the detail of each in its menu of links. A link of a scheme the
+    * platforms open (`https`) is drawn as it was unless a describer is given for its scheme. Handing over another
+    * describer for the same scheme replaces it; the function returned takes it away.
+    *
+    * {{{
+    *   Link.describe("file")(href => Some("Open " + href.stripPrefix("file:") + " in a tab"))
+    * }}} */
+  def describe(scheme: String)(describer: String => Option[String]): () => Unit = {
+    val key = scheme.toLowerCase.stripSuffix(":")
+    describers = describers.updated(key, describer)
+    () => if (describers.get(key).exists(_ eq describer)) describers = describers - key
+  }
+
+  /** What the app says of `href` (`describe`), where it describes its scheme and has words for it. */
+  def description(href: String): Option[String] =
+    if (describers.isEmpty) None
+    else schemeOf(href).flatMap(describers.get).flatMap(_(href)).map(_.trim).filter(_.nonEmpty)
+
+  /** `run` with what it says on a hover (`TextRun.title`): its own, or the app's for its link (`description`). */
+  def titled(run: everyui.text.TextRun): everyui.text.TextRun =
+    if (run.href.isEmpty || run.title.nonEmpty) run
+    else description(run.href).fold(run)(words => run.copy(title = words))
 
   /** The scheme `href` starts with, in lower case (`"https"`, `"voidcraft-share"`), where it has one: none for a path. */
   def schemeOf(href: String): Option[String] = {

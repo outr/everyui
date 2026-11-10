@@ -103,8 +103,8 @@ private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: 
     case MdInline.Strike(inside) => add(inside, style.copy(strike = true))
     case MdInline.CodeSpan(code) => line = style.copy(text = code, family = "Roboto Mono", size = points * 0.88,
       background = MarkdownRuns.hex(MarkdownView.codeBackground())) :: line
-    case MdInline.Hyperlink(href, _, inside) =>
-      add(inside, style.copy(href = href, color = MarkdownView.link().toHex, underline = true))
+    case MdInline.Hyperlink(href, title, inside) =>
+      add(inside, style.copy(href = href, title = title, color = MarkdownView.link().toHex, underline = true))
     case i: MdInline.Picture =>
       lineEnd()
       lines = MdPart(Nil, Some(i)) :: lines

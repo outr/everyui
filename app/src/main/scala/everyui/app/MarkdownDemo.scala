@@ -1,6 +1,6 @@
 package everyui.app
 
-import everyui.component.{Button, ButtonStyle, Container, Row, ScrollContainer, TextView}
+import everyui.component.{Button, ButtonStyle, Container, Link, Row, ScrollContainer, TextView}
 import everyui.markdown.{MarkdownStyle, MarkdownView}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -10,7 +10,8 @@ import reactify.*
 /** Markdown drawn by EveryUI (`MarkdownView`): a document with every kind of block in a chat's bubble, and the same
   * document streamed in a few characters at a time, as an answer arrives. `theme=light` shows the light palette,
   * `stream=1` streams from the start, and `at=<characters>` stops the stream there (a frame of it, part written).
-  * Each stream logs what an append cost:
+  * Its `file:` links are the app's own (`Link.handle`), saying what they open on a hover (`Link.describe`). Each
+  * stream logs what an append cost:
   *
   *   [ui] markdown streamed 3021 characters in 756 appends, 0.21 ms an append
   */
@@ -22,6 +23,10 @@ object MarkdownDemo {
     "and a bare one: https://example.com/docs. Line ends are soft,",
     "unless a backslash (or two spaces) ends one:\\",
     "this starts a new line.",
+    "",
+    "Links the app opens itself, which say so on a hover: [Main.scala](file:src/Main.scala) and",
+    "[the notes](file:docs/notes.md); and one with a title of its own:",
+    "[EveryUI](https://everyui.com \"The EveryUI site\").",
     "",
     "## Lists",
     "",
@@ -134,6 +139,14 @@ object MarkdownDemo {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
     ui.backgroundColor := Theme.background()
     val width = Val(math.min(760.0, ui.size.width() - 32.0))
+    val status = Var("")
+    // `file:` links the app's own, as an editor would open a file in a tab, each saying so on a hover
+    Link.handle("file") { href =>
+      status @= "would open " + href.stripPrefix("file:")
+      Platform.log("markdown link " + href)
+      true
+    }
+    Link.describe("file")(href => Some("Open " + href.stripPrefix("file:") + " in a tab"))
     val view = new MarkdownView(sample, MarkdownStyle.compact, base = "")
     val bubble = new Container {
       backgroundColor := Theme.surface()
@@ -147,7 +160,6 @@ object MarkdownDemo {
     bubble.size.width := width()
     bubble.size.height := view.size.height() + 24.0
     bubble.children += view
-    val status = Var("")
     val stream = new Button("Stream it", () => streamed(view, -1, status), style = ButtonStyle.Filled)
     val theme = new Button("Light / dark", () =>
       Theme.palette @= (if (Theme.palette() eq Palette.light) Palette.dark else Palette.light))
