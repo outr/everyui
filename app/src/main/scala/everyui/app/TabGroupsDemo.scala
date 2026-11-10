@@ -5,7 +5,7 @@ import everyui.async.Task
 import everyui.component.{Component, Container, TextView}
 import everyui.dialog.{Dialogs, SaveChoice}
 import everyui.font.MaterialIcon
-import everyui.i18n.Direction
+import everyui.i18n.{Direction, Language, Strings}
 import everyui.kit.{GroupContent, TabGroup, TabGroups, TabLayout, TabLead}
 import everyui.keymap.{Chord, Keymap}
 import everyui.menu.MenuItem
@@ -26,7 +26,8 @@ import reactify.*
   * the menu's actions in turn, and the second group's New terminal. M (or Primary+Shift+Enter) shows the focused
   * group alone, or every group again, as its tabs' menu does (Hide Other Groups, Show All Groups), logging
   * `tabgroups maximized <group> <layout>`; `maximized=<i>` starts with that group alone. `add=0` leaves the "+" out,
-  * `theme=light`, `rtl=1`. Logs `tabgroups ok`, and the layout at each change (`tabgroups layout <json>`). */
+  * `theme=light`, `rtl=1`, `lang=<code>` its words in that language (`lang=ar` right to left). Logs `tabgroups ok`,
+  * and the layout at each change (`tabgroups layout <json>`). */
 object TabGroupsDemo {
   private val helper = Participant("agent-1", "Helper")
   private val files = List("README.md", "Main.scala", "build.sbt", "notes.txt")
@@ -38,6 +39,11 @@ object TabGroupsDemo {
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
     if (Platform.launchArg("rtl") == "1") Direction.set(true)
+    val code = Platform.launchArg("lang")
+    if (code.nonEmpty) {
+      Strings.language @= Language(code, code, code, rtl = code == "ar")
+      Direction.set(code == "ar")
+    }
     ui.backgroundColor := Theme.background()
     val groups = new TabGroups[String](k => k, view, k => k,
       lead = k => if (isChat(k)) TabLead.Person(helper)

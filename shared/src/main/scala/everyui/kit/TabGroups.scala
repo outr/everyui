@@ -17,7 +17,8 @@ import reactify.*
   * time it is shown; it is kept while the tab is open, in whichever group it moves to, and disposed of once it closes.
   * `id` names a tab, as the bars and a saved `layout` know it, and `label` and `lead` say how it looks.
   *
-  * A tab's menu (the secondary button, the menu key, Shift+F10, OK held) has Close, Close Others and Close All; Open
+  * A tab's menu (the secondary button, the menu key, Shift+F10, OK held) has Close, Close Others, Close All and Close
+  * Tabs to the Left and to the Right (the sides as seen, those before it in the reading order and those after); Open
   * Right and Open Down, which open it in a new group after the group (by the reading direction) or below it; Move
   * Right, Left, Down and Up, to the group that way, or into a new one split off that way where there is none (not a
   * group's only tab, which would only make its group again, unless `keepEmptyGroups` keeps the group it leaves); and
@@ -42,11 +43,11 @@ import reactify.*
   * `layoutChanged`.
   *
   * A tab closes only once `canClose` lets it (the app asking whether to save it), whichever way it is closed; Close
-  * Others and Close All ask one tab at a time and stop at the first that stays. `tab(k)` finds a key's tabs (to change
-  * their `label` or `lead` as what they show is renamed, `lead` answering the same for a tab made later), and
-  * `dirty(k, on)` marks them with a dot. The keys `sharesGroupContent` says share one view per group show
-  * `groupContent`'s for their group, told which of them it shows (`GroupContent.show`), rather than a content each: one
-  * editor for a group's files, while a terminal keeps its own.
+  * Others, Close All and the closes to a side ask one tab at a time, in order, and stop at the first that stays.
+  * `tab(k)` finds a key's tabs (to change their `label` or `lead` as what they show is renamed, `lead` answering the
+  * same for a tab made later), and `dirty(k, on)` marks them with a dot. The keys `sharesGroupContent` says share one
+  * view per group show `groupContent`'s for their group, told which of them it shows (`GroupContent.show`), rather
+  * than a content each: one editor for a group's files, while a terminal keeps its own.
   *
   * A tab not shown is taken off the screen, its content alive, unless `keepsMounted` says it keeps its place: then it
   * stays where it is, hidden, and is shown again as it is chosen. A page of the web (`WebView`, a frame), a video or a
@@ -156,6 +157,16 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   /** Every other tab of `g` closed, one at a time, in order, each asked of `canClose` in turn: the first it will not let
     * close stays, with those after it, and those before it are closed. */
   def closeOthers(g: TabGroup[K], k: K): Unit = closeInTurn(g, g.keys().toList.filterNot(_ == k), _ => ())
+
+  /** Every tab of `g` before `k` in the reading order, first to last, closed as `closeOthers` closes them, `k` and those
+    * after it staying: the tabs to the left, or to the right where the reading runs right to left, as the menu says. */
+  def closeBefore(g: TabGroup[K], k: K): Unit =
+    if (g.has(k)) closeInTurn(g, g.keys().toList.takeWhile(_ != k), _ => ())
+
+  /** Every tab of `g` after `k` in the reading order, first to last, closed as `closeOthers` closes them, `k` and those
+    * before it staying: the tabs to the right, or to the left where the reading runs right to left. */
+  def closeAfter(g: TabGroup[K], k: K): Unit =
+    if (g.has(k)) closeInTurn(g, g.keys().toList.dropWhile(_ != k).drop(1), _ => ())
 
   /** Every tab of `g` closed, as `closeOthers` closes them, and `g` with them where none stays. */
   def closeAll(g: TabGroup[K]): Unit = closeInTurn(g, g.keys().toList, _ => ())
@@ -323,10 +334,16 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     val movable = allowsTwice(k) || canLeave(g)
     def to(word: String, vertical: Boolean, after: Boolean): List[MenuItem] = List(MenuItem(word,
       () => moveBeside(g, k, vertical, after), enabled = canMoveBeside(g, k, vertical, after)))
+    // the tabs to one side as seen: before it in the reading order to the left, or to the right reading right to left
+    def side(word: String, before: Boolean): MenuItem = MenuItem(word,
+      () => if (before) closeBefore(g, k) else closeAfter(g, k),
+      enabled = !(if (before) g.keys().headOption else g.keys().lastOption).contains(k))
     val own = List(
       MenuItem(TabGroups.closeWord, () => close(g, k)),
       MenuItem(TabGroups.closeOthersWord, () => closeOthers(g, k), enabled = g.keys().size > 1),
       MenuItem(TabGroups.closeAllWord, () => closeAll(g)),
+      side(TabGroups.closeLeftWord, before = !Direction.rtl()),
+      side(TabGroups.closeRightWord, before = Direction.rtl()),
       MenuItem.separator,
       MenuItem(TabGroups.openRightWord, () => openRight(g, k), enabled = movable),
       MenuItem(TabGroups.openDownWord, () => openDown(g, k), enabled = movable)) ++
@@ -636,6 +653,10 @@ object TabGroups {
   def closeWord: String = word("tabs.close", "Close")
   def closeOthersWord: String = word("tabs.closeOthers", "Close Others")
   def closeAllWord: String = word("tabs.closeAll", "Close All")
+  /** The tabs to the left of the one whose menu it is, and to the right, closed (`closeBefore`, `closeAfter`): the
+    * words say the side as seen, and the menu picks which closes those before and which those after by `Direction`. */
+  def closeLeftWord: String = word("tabs.closeLeft", "Close Tabs to the Left")
+  def closeRightWord: String = word("tabs.closeRight", "Close Tabs to the Right")
   def openRightWord: String = word("tabs.openRight", "Open Right")
   def openDownWord: String = word("tabs.openDown", "Open Down")
   def moveRightWord: String = word("tabs.moveRight", "Move Right")

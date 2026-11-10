@@ -70,11 +70,13 @@ class TabGroupsSpec extends FxSpec {
         opened(g, "a", "b")
         fx(g.tabMenu @= (k => List(MenuItem("Reveal " + k))))
         val first = fx(g.groups().head)
-        labels(fx(g.menuFor(first, "b"))) shouldBe List("Close", "Close Others", "Close All", "Open Right", "Open Down",
+        labels(fx(g.menuFor(first, "b"))) shouldBe List("Close", "Close Others", "Close All", "Close Tabs to the Left",
+          "Close Tabs to the Right", "Open Right", "Open Down",
           "Move Right", "Move Left", "Move Down", "Move Up", "Reveal b")
         // a split adds Unsplit, and a lone tab moves only where there is a group that way
         fx(g.openRight(first, "b"))
-        labels(fx(g.menuFor(first, "a"))) shouldBe List("Close", "Close Others", "Close All", "Open Right", "Open Down",
+        labels(fx(g.menuFor(first, "a"))) shouldBe List("Close", "Close Others", "Close All", "Close Tabs to the Left",
+          "Close Tabs to the Right", "Open Right", "Open Down",
           "Move Right", "Move Left", "Move Down", "Move Up", "Unsplit", "Hide Other Groups", "Reveal a")
         fx(g.menuFor(first, "a").filter(_.label.startsWith("Move")).map(i => i.label -> i.enabled)) shouldBe List(
           "Move Right" -> true, "Move Left" -> false, "Move Down" -> false, "Move Up" -> false)

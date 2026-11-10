@@ -13,8 +13,9 @@ import everyui.table.TableWords
 class WordsSpec extends FxSpec {
   private val shipped = List("en", "de", "es", "fr", "it", "nl", "pt", "tr", "ar", "zh", "zh_Hant")
   private val english = Words.languages("en")
-  private val tabs = List("add", "close", "closeOthers", "closeAll", "openRight", "openDown", "moveRight", "moveLeft",
-    "moveDown", "moveUp", "unsplit", "nextGroup", "previousGroup", "maximize", "unmaximize", "none").map("tabs." + _)
+  private val tabs = List("add", "close", "closeOthers", "closeAll", "closeLeft", "closeRight", "openRight", "openDown",
+    "moveRight", "moveLeft", "moveDown", "moveUp", "unsplit", "nextGroup", "previousGroup", "maximize", "unmaximize",
+    "none").map("tabs." + _)
   /** The families of words that were English alone until they were given to Words, and how many each has. */
   private val families = List("chat." -> 50, "composer." -> 14, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 25,
     "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4)
@@ -82,6 +83,7 @@ class WordsSpec extends FxSpec {
     }
     "say the tab menu's words in every language" in {
       english.keySet should contain allElementsOf tabs
+      english.keySet.count(_.startsWith("tabs.")) shouldBe tabs.size
       shipped.filter(_ != "en").foreach { code =>
         withClue(code + ": ")(tabs.count(k => Words.languages(code)(k) != english(k)) shouldBe tabs.size)
       }

@@ -6256,10 +6256,16 @@ editor.restore(saved(), path => files.get(path))
 editor.layoutChanged.attach(l => saved @= l)
 ```
 
-A tab's menu has Close, Close Others and Close All; Open Right and Open Down, which open it in a new group after its
-group (by the reading direction: on the left, right to left) or below it; Move Right, Left, Down and Up, always on
-the menu, to the group that way, or, where there is none, into a new group split off that way (`moveBeside(g, k,
-vertical, after)`, Right being after by the reading direction as Open Right is); a group's only tab with no group that
+A tab's menu has Close, Close Others and Close All, then Close Tabs to the Left and Close Tabs to the Right, as
+IntelliJ has them (`closeBefore(g, k)` and `closeAfter(g, k)`: the tabs of its group before it in the reading order, or
+after it, first to last, the tab itself staying). Their words say the side as seen (`TabGroups.closeLeftWord`,
+`closeRightWord`, in EveryUI's eleven languages) and the menu picks by `Direction` which closes which: left to right
+Left closes those before it, right to left those after it, which lie to its left, so the word is true of the screen
+whatever the language and direction (unlike Move Right, whose key is the reading direction's after, its translation
+saying the side); each is shown but not enabled with no tab that side (the first tab has none to its left, left to
+right). Open Right and Open Down, which open it in a new group after its group (by the reading direction: on the
+left, right to left) or below it; Move Right, Left, Down and Up, always on the menu, to the group that way, or, where
+there is none, into a new group split off that way (`moveBeside(g, k, vertical, after)`, Right being after by the reading direction as Open Right is); a group's only tab with no group that
 way shows Move there but not enabled, as it would only make its own group again (`canMoveBeside`). A move never asks
 `canClose` and takes the tab's content along (or is shown by the new group's view, for a key `sharesGroupContent`
 picks), the focus following it. Unsplit puts the group's tabs into the group beside it; then come the app's
@@ -6284,9 +6290,10 @@ without it (`TabLayout.codec`);
 `layoutChanged` tells each change and `restore` lays a kept one out again, leaving out what it no longer finds.
 A tab closes only once `canClose` (`K => Task[Boolean]`, always true by default) lets it, by the ×, the menu, the keys
 and `closeAllTabs()`: the app asks as it likes (`Dialogs.saveChanges`) and a tab it answers false for stays. It is asked
-for a key's last tab only, a second view of it closing at once. Close Others and Close All ask one tab at a time, in
-order, and stop at the first that stays, those before it closed. A close asked again while its answer is awaited does
-nothing. Disposing of the groups asks nothing (it cannot wait): an app closing its window asks `closeAllTabs()` first.
+for a key's last tab only, a second view of it closing at once. Close Others, Close All and the closes to a side ask
+one tab at a time, in order, and stop at the first that stays, those before it closed. A close asked again while its
+answer is awaited does nothing. Disposing of the groups asks nothing (it cannot wait): an app closing its window asks
+`closeAllTabs()` first.
 `tab(k)` finds a key's tabs in every group, and `dirty(k, on)` puts a dot after their label (`isDirty`, `dirtyKeys`), on
 tabs opened later too.
 
