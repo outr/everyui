@@ -32,6 +32,10 @@ private[markdown] object MarkdownRuns {
     out.reverse
   }
 
+  /** `c` as a run's colour: `#rrggbb` where it is whole, as it always was, and `#rrggbbaa` where it is not (a code
+    * span's wash over a picture, `MarkdownView.codeBackground`), which the web and Android read. */
+  def hex(c: everyui.Color): String = if (c.alpha >= 1.0) c.toHex else c.toHexAlpha
+
 }
 
 /** Runs gathered a line at a time (`MarkdownRuns.parts`). */
@@ -98,7 +102,7 @@ private[markdown] class MarkdownRuns(points: Double, breaks: Boolean, mentions: 
     case MdInline.Strong(inside) => add(inside, style.copy(weight = 700))
     case MdInline.Strike(inside) => add(inside, style.copy(strike = true))
     case MdInline.CodeSpan(code) => line = style.copy(text = code, family = "Roboto Mono", size = points * 0.88,
-      background = MarkdownView.codeBackground().toHex) :: line
+      background = MarkdownRuns.hex(MarkdownView.codeBackground())) :: line
     case MdInline.Hyperlink(href, _, inside) =>
       add(inside, style.copy(href = href, color = MarkdownView.link().toHex, underline = true))
     case i: MdInline.Picture =>

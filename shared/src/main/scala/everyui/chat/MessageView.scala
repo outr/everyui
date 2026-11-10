@@ -212,8 +212,10 @@ object MessageView {
 
   /** How much of everybody else's bubble is drawn, 0 to 1: all of it (1, the default), or less where the app shows a
     * picture behind its conversations and wants it through their bubbles as through one's own, about 0.8 keeping the
-    * words on them easy to read. The words, and the code and tables in a message, are drawn as they are. */
-  val othersOpacity: Var[Double] = Var(1.0)
+    * words on them easy to read. It is the theme's `Theme.surfaceOpacity`, the same `Var` under the name a chat first
+    * had it by, so the code blocks in a message follow it too (`MarkdownView.codeOver`, a little more opaque);
+    * the words, and the tables in a message, are drawn as they are. */
+  val othersOpacity: Var[Double] = Theme.surfaceOpacity
 
   /** How tall a reaction's pill is. */
   val pillHeight: Double = 24.0

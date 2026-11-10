@@ -1,5 +1,6 @@
 package everyui.markdown
 
+import everyui.Color
 import everyui.component.{Container, IconButton, NavigationUrl, RichText, ScrollContainer, TextView}
 import everyui.component.types.{Semantics, TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
@@ -43,11 +44,24 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
     size.width @= pad
     size.height @= 1.0
   }
+  // the ground it is on: the first fill of those it is in (a bubble, a card), none where nothing it is in is filled
+  private def beneath(): Option[Color] = {
+    var at = parent()
+    var found: Option[Color] = None
+    while (found.isEmpty && at.nonEmpty) {
+      val fill = at.get.backgroundColor()
+      if (fill.alpha > 0.0) found = Some(fill) else at = at.get.parent()
+    }
+    found
+  }
   // code runs from its left in every language
   private val scroll = new ScrollContainer(horizontal = true, followsDirection = false)
 
   size.width := width
-  backgroundColor := MarkdownView.codeBackground()
+  // the wash: see-through as the theme's surfaces are, by the ground it is on, and whole on none (where it could be
+  // straight over a picture, and nothing says how much of one)
+  backgroundColor := (if (Theme.surfaceOpacity() >= 1.0) MarkdownView.codeColour()
+    else beneath().map(g => MarkdownView.codeOver(g)).getOrElse(MarkdownView.codeColour()))
   radius @= 8.0
   semantics @= Semantics("code", label = language)
   name.position.left @= pad
@@ -98,7 +112,8 @@ object CodeBlockView {
     * follows the theme. */
   def runs(code: String, language: String): List[TextRun] =
     if (!terminal(language, code)) Highlight.runs(code, language)
-    else AnsiText.runs(code, LogTheme.of(Theme.palette()).copy(background = MarkdownView.codeBackground())).map { r =>
+    // (made to read on the wash, with as much of a picture through it as there could be)
+    else AnsiText.runs(code, LogTheme.of(Theme.palette()).copy(background = MarkdownView.codeReadOn())).map { r =>
       if (r.href.isEmpty) r
       else if (NavigationUrl.safe(r.href)) r.copy(color = MarkdownView.link().toHex, underline = true)
       else r.copy(href = "")

@@ -5,7 +5,7 @@ import everyui.component.{Component, Container, Link}
 import everyui.component.types.TextDirection
 import everyui.layout.VerticalLayout
 import everyui.render.Platform
-import everyui.theme.Theme
+import everyui.theme.{Palette, Theme}
 import reactify.*
 
 /** Markdown drawn with EveryUI's own components, so it looks the same on every platform: headings on the style's
@@ -137,7 +137,81 @@ object MarkdownView {
   def follow(href: String): Unit = Link.follow(href, newTab = !everyui.component.RichText.inApp(href))
 
   def link(): Color = Theme.extra("markdown.link", Theme.accentText())
-  def codeBackground(): Color = Theme.extra("markdown.code", Theme.raised())
+  /** The code wash behind a code span, and behind anything with nothing known under it: `codeOver` a ground that
+    * lets all of what is behind it through. Whole while the theme's surfaces are (`Theme.surfaceOpacity` 1, the
+    * default), so an opaque theme's code is drawn exactly as it always was. */
+  def codeBackground(): Color = codeOver(Color.Clear)
+
+  /** The code wash on `ground`, the fill of the bubble or card it is in: `codeColour`, whole while the theme's surfaces
+    * are, or where the ground lets nothing through; otherwise see-through enough that the block lets half as much of a
+    * picture behind through as the ground around it does (one in a bubble at 0.8 about 0.1 of it), so it shows
+    * through the code a little less than through the bubble, but never more than `codeLetThrough`, and only as much
+    * as leaves every colour of the code's words reading at 4.5 to 1 on the wash, the ground's own colour and a white
+    * picture or a black one behind them, the worst there could be (one's own bubble, a wash of the accent, keeps a
+    * little more of the code's ground). */
+  def codeOver(ground: Color): Color = {
+    val c = codeColour()
+    val through = 1.0 - ground.alpha
+    if (Theme.surfaceOpacity() >= 1.0 || through <= 0.0) c
+    else {
+      codeLetThrough()
+      val a = washes.getOrElse(ground, {
+        var a = 1.0 - math.min(through / 2.0, letThrough) / through
+        while (a < 1.0 && !reads(c, a, ground)) a = math.min(1.0, a + 0.01)
+        washes = washes + (ground -> a)
+        a
+      })
+      if (a >= 1.0) c else c.withAlpha(c.alpha * a)
+    }
+  }
+
+  /** The code wash's own colour: `Theme.extra` "markdown.code" where the palette names it, else the raised colour. */
+  def codeColour(): Color = Theme.extra("markdown.code", Theme.raised())
+
+  /** The most of what is behind a code block that may show through it (0 to 0.5), worked out for the palette: the
+    * most at which every colour a code block's words are drawn in (the text, muted for comments, the words' tones of
+    * the accent and the states, the code and link colours an app names) keeps a contrast of 4.5 to 1 on the wash
+    * over a white picture and over a black one: 0.09 for the framework's dark palette and 0.1 for its light, muted
+    * the first to fall short; none where a colour falls short on the wash alone. */
+  def codeLetThrough(): Double = {
+    val p = Theme.palette()
+    if (!(letThroughOf eq p)) {
+      letThroughOf = p
+      var named: List[Color] = Nil
+      p.extras.foreach(e => if (e._1.startsWith("code.")) named = e._2 :: named)
+      words = List(Theme.text(), Theme.muted(), Theme.accentText(), Theme.successText(), Theme.warningText(),
+        Theme.dangerText(), Theme.infoText(), link()) ++ named
+      washes = Map.empty
+      val c = codeColour()
+      var t = 0.0
+      while (t < 0.5 && reads(c, 1.0 - (t + 0.005), Color.Clear)) t += 0.005
+      letThrough = t
+    }
+    letThrough
+  }
+  private var letThroughOf: Palette = null
+  private var letThrough: Double = 0.0
+  private var words: List[Color] = Nil
+  private var washes: Map[Color, Double] = Map.empty
+
+  // whether every colour of the code's words reads on wash `c` drawn `a` whole over `ground`, over white and black
+  private def reads(c: Color, a: Double, ground: Color): Boolean = List(Color.White, Color.Black).forall { behind =>
+    val under = ground.withAlpha(1.0).blend(behind, 1.0 - ground.alpha)
+    val shown = c.withAlpha(1.0).blend(under, 1.0 - a)
+    words.forall(w => everyui.access.Access.contrast(w, shown) >= 4.5)
+  }
+
+  /** The ground a terminal's colours are made to read on (`LogTheme.legible`) in a code block: `codeColour` while the
+    * theme's surfaces are whole, as it always was; otherwise the wash with `codeLetThrough` of the worst picture
+    * through it (white behind a dark wash, black behind a light one), so they read however much shows through. */
+  def codeReadOn(): Color = {
+    val c = codeColour()
+    if (Theme.surfaceOpacity() >= 1.0) c
+    else {
+      val dark = 0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue <= 0.5
+      c.withAlpha(1.0).blend(if (dark) Color.White else Color.Black, codeLetThrough())
+    }
+  }
   /** A mention's colour, and the faint wash behind it (`mentions`): `Theme.extra` "markdown.mention" and
     * "markdown.mentionWash" where the palette names them, else the accent, and the accent faintly. */
   def mention(): Color = Theme.extra("markdown.mention", Theme.accentText())

@@ -1,6 +1,8 @@
 package everyui.app
 
+import everyui.Color
 import everyui.chat.*
+import everyui.component.Backdrop
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -10,7 +12,11 @@ import reactify.*
 /** Bubbles whose words wrap to a second line in a face other than the page's own: inline code (Roboto Mono, which the
   * page loads only once it is drawn), bold and italic mixed, a link, one's own, and after a second one streamed in
   * over four seconds. Each bubble must hold every line, the meta line under it. `theme=light`. Logs `bubbles ok`, and
-  * `bubbles streamed` once the last is whole. */
+  * `bubbles streamed` once the last is whole.
+  *
+  * `code=1` adds a reply with a code block and a terminal's coloured output; `backdrop=<picture>` draws the picture
+  * behind the conversation with the theme's surfaces at `see` (0.8 unless given, `Theme.surfaceOpacity`), so the
+  * bubbles and the code wash let it through. */
 object BubbleDemo {
   private def luma: Participant = Participant("agent-luma", "Luma")
   private def you: Participant = Participant("u-you", "You")
@@ -39,9 +45,22 @@ object BubbleDemo {
       said("own", you, "Move `voidcraft-eb24f-firebase-adminsdk.json` out of `backend/src/main/resources/` and " +
         "into `.env.firebase`, then delete it.", "Sent", self = true)
     ))
+    if (Platform.launchArg("code") == "1") entries @= entries() :+ said("code", luma, BubbleDemo.code,
+      "Qwen3.5-9b · 4s")
     val chat = new ChatView(entries)
     chat.size.width := ui.size.width()
     chat.size.height := ui.size.height()
+    val picture = Platform.launchArg("backdrop")
+    if (picture.nonEmpty) {
+      val see = Platform.launchArg("see")
+      Theme.surfaceOpacity @= (if (see.nonEmpty) see.toDouble else 0.8)
+      val back = new Backdrop
+      back.size.width := ui.size.width()
+      back.size.height := ui.size.height()
+      back.source @= picture
+      chat.backgroundColor @= Color.Clear
+      ui.children += back
+    }
     ui.children += chat
     Platform.after(1.0, () => {
       val m = ChatEntry.message("stream", luma, self = false, time = Some(Clock.real()), streaming = true)
@@ -57,6 +76,13 @@ object BubbleDemo {
     })
     Platform.log("bubbles ok")
   }
+
+  // a reply with a code span, a code block and a terminal's output in its colours (`code=1`)
+  private val code: String = "Run `sbt test` again; the spec is:\n\n```scala\nobject Ground {\n  // a comment, " +
+    "drawn muted\n  def half(x: Double): Double = x / 2.0\n  val name = " +
+    "\"code\"\n}\n```\n\nand the run said:\n\n```ansi\n\u001b[1;32m[info]\u001b[0m Compiling 3 Scala sources\n" +
+    "\u001b[33m[warn]\u001b[0m one deprecation\n\u001b[31m[error]\u001b[0m GroundSpec: 1 failed\n" +
+    "\u001b[36m[info]\u001b[0m Total time: \u001b[1m12 s\u001b[0m\n```"
 
   // `text` into `into` a few letters at a time over about four seconds, then `done`
   private def stream(into: Var[String], text: String, at: Int, done: () => Unit): Unit =

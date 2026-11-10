@@ -14,6 +14,13 @@ object Theme {
   /** The image behind every screen that names none of its own (`UIScreen.background`): a site-absolute path or a
     * URL. Empty leaves the palette's background colour on its own. */
   val backgroundImage: Var[String] = Var("")
+  /** How much of a surface that holds words is drawn, 0 to 1: all of it (1, the default, so every theme is drawn as
+    * it always was), or less where the app shows a picture or a video behind its screens and wants it through them,
+    * about 0.8 keeping the words on them easy to read. What follows it: everybody else's bubbles in a conversation
+    * (`MessageView.othersOpacity` is this same `Var`), and the code wash of Markdown's code blocks and code spans,
+    * which lets half as much through as the bubble or card it is in, and no more than its words read over
+    * (`MarkdownView.codeOver`). */
+  val surfaceOpacity: Var[Double] = Var(1.0)
   /** "dark" or "light": which the palette's background is, by its luminance, followed as the palette changes. What a
     * page declares as its `color-scheme` (the browser's own scrollbars, controls and selection follow it, and a frame
     * of the same scheme is drawn clear over it), and what an app tells the frames it shows. */

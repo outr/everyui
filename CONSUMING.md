@@ -1317,6 +1317,21 @@ answer.content := message().text          // may grow token by token while the a
   theme's; a palette's `extras` can name
   "markdown.link", "markdown.code" and "markdown.quote", and "code.keyword", "code.string", "code.comment",
   "code.number" and "code.type" for the code.
+- The code wash (behind a code block, a terminal's block and a code span) follows the theme's translucency,
+  `Theme.surfaceOpacity` (1 by default, a `Var[Double]`): while it is 1 the wash is "markdown.code", else the raised
+  colour, drawn whole, exactly as before. Below 1, for an app that shows a picture or a video behind its screens, a
+  code block lets through half as much of the picture as the bubble or card it is in (the first filled thing it is in;
+  `MarkdownView.codeOver(ground)`), a little less than the ground around it, and never more than every colour its words
+  are drawn in (the text, muted for comments, the accent's and the states' words' tones, the palette's "code.*" and
+  link colours) still reads on at 4.5 to 1 over a white picture and over a black one: `MarkdownView.codeLetThrough`,
+  worked out for the palette (0.09 for `Palette.dark`, 0.1 for `Palette.light`). In a bubble at 0.8, which lets 0.2
+  through, a block lets about 0.09 through, its wash about 0.57 to 0.59 whole; in one's own bubble (a wash of the
+  accent) the wash is drawn a little more whole, as the accent behind it would lower the contrast; on an opaque card,
+  or in nothing filled, it is drawn whole. A code span, which cannot see what it is on, is drawn as over the picture
+  itself (`MarkdownView.codeBackground`, about 0.9 whole), as `#rrggbbaa`. A terminal's colours are made to read on
+  the wash with the most of a white picture through it (black behind a light wash: `MarkdownView.codeReadOn`), so
+  they read however much shows. A log view (`LogView`) has its own ground, `LogTheme.of(...)`'s (the surface), and
+  does not follow it; nor does the composer's code, which is drawn on its own card.
 - Headings, lists and their items, tables, rows and cells, and pictures carry their `Semantics`; a picture's alt text
   is its label. On the web the text can be selected.
 - `direction` is which way its words run: `TextDirection.Auto` for words the app did not write turns each paragraph,
@@ -2118,7 +2133,9 @@ through the message's menu, whose About entry does the same.
 Everybody else's bubble is the theme's control colour, drawn whole; `MessageView.othersOpacity` (1 by default) draws
 less of it, for an app that shows a picture behind its conversations and wants it through those bubbles as through
 one's own (a wash of the accent): about 0.8 keeps the words easy to read. It is the app's, every conversation following
-it, the bubbles shown too; the words, and the code and tables in a message, are drawn as they are.
+it, the bubbles shown too. It is the theme's `Theme.surfaceOpacity`, the same `Var`, so the code blocks in a message
+let the picture through too, a little less than the bubble (above, under `MarkdownView`); the words and the tables in
+a message are drawn as they are.
 
 ```scala
 chat.onAuthor @= Some(p => showProfile(p.participant.id))
