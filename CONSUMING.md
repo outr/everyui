@@ -4493,6 +4493,11 @@ Android before 13, and the build failing if one is left), `Aars` (Android archiv
 rules and, where their classes read them, resources), `RokuChannel` (emit, assemble, version, fallback fonts, the store package), `AppleApp` (emit and assemble) and
 `EveryUILibraries`.
 
+`Aars` opens each archive once for the machine, under `~/.cache/everyui/aar` (the environment's `EVERYUI_AAR_CACHE`
+names another), into an entry of its own named for the archive and its content, which appears whole by a rename and is
+never written again, so builds running at once (two apps, or an app and EveryUI) share it without one losing a jar the
+other has on its classpath.
+
 ### Desktop
 
 The desktop reads its fonts and images from `assets/` under the working directory (`--assets=dir` elsewhere):
