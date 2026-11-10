@@ -19,7 +19,8 @@ object Theme {
     * about 0.8 keeping the words on them easy to read. What follows it: everybody else's bubbles in a conversation
     * (`MessageView.othersOpacity` is this same `Var`), and the code wash of Markdown's code blocks and code spans,
     * which lets half as much through as the bubble or card it is in, and no more than its words read over
-    * (`MarkdownView.codeOver`). */
+    * (`MarkdownView.codeOver`; an app can give that its own contrast, `MarkdownView.codeContrast`, or say outright how
+    * whole it is, `MarkdownView.codeOpacity`). */
   val surfaceOpacity: Var[Double] = Var(1.0)
   /** "dark" or "light": which the palette's background is, by its luminance, followed as the palette changes. What a
     * page declares as its `color-scheme` (the browser's own scrollbars, controls and selection follow it, and a frame

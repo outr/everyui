@@ -58,10 +58,11 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
   private val scroll = new ScrollContainer(horizontal = true, followsDirection = false)
 
   size.width := width
-  // the wash: see-through as the theme's surfaces are, by the ground it is on, and whole on none (where it could be
-  // straight over a picture, and nothing says how much of one)
-  backgroundColor := (if (Theme.surfaceOpacity() >= 1.0) MarkdownView.codeColour()
-    else beneath().map(g => MarkdownView.codeOver(g)).getOrElse(MarkdownView.codeColour()))
+  // the wash: as whole as the app says (`MarkdownView.codeOpacity`), else see-through as the theme's surfaces are, by
+  // the ground it is on, and whole on none (where it could be straight over a picture, and nothing says how much of
+  // one: drawn as on a ground that lets nothing through)
+  backgroundColor := (if (MarkdownView.codeOpacity().isEmpty && Theme.surfaceOpacity() >= 1.0) MarkdownView.codeColour()
+    else MarkdownView.codeOver(beneath().getOrElse(Color.Black)))
   radius @= 8.0
   semantics @= Semantics("code", label = language)
   name.position.left @= pad

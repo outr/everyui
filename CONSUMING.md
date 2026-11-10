@@ -1352,6 +1352,27 @@ answer.content := message().text          // may grow token by token while the a
   the wash with the most of a white picture through it (black behind a light wash: `MarkdownView.codeReadOn`), so
   they read however much shows. A log view (`LogView`) has its own ground, `LogTheme.of(...)`'s (the surface), and
   does not follow it; nor does the composer's code, which is drawn on its own card.
+- The app has the last word on the code wash, through two `Var`s read as it is drawn (a change redraws every code
+  wash shown), both leaving it exactly as above unless set:
+  - `MarkdownView.codeContrast` (a `Var[Double]`, 4.5 by default, held to 1 to 21) is the contrast the code's words
+    keep where the wash is worked out. Lower lets more of the picture through: at 3.0 a code span lets about 0.2 through
+    (`Palette.dark`) and 0.26 (`Palette.light`), and a block in a bubble at 0.8 is drawn 0.5 whole, still letting
+    through no more than half what the bubble does. Higher keeps more of the wash. A terminal's colours are drawn as
+    at 4.5 whatever it is (lower, they would all be taken to white). It changes nothing while `Theme.surfaceOpacity`
+    is 1.
+  - `MarkdownView.codeOpacity` (a `Var[Option[Double]]`, `None` by default) says outright how whole the wash is:
+    `Some(a)` draws it `a` whole (held to 0 to 1) behind every code block, terminal's block and code span, whatever it
+    is on and whatever the surfaces are, even where its words then read below `codeContrast`, as the app's choice;
+    `Some(1.0)` keeps it whole under a translucent theme. A terminal's colours are still made to read on it, on the
+    wash with as much of a white picture (black, for a light wash) as shows through it but no more than
+    `codeLetThrough` at 4.5 to 1 (the contrast `LogTheme.legible` keeps), past which no colour reads at 4.5 over a white
+    picture and a black one alike; the highlighted code's colours are the theme's, as always.
+
+  ```scala
+  Theme.surfaceOpacity @= 0.8                    // a picture behind the app's screens
+  MarkdownView.codeContrast @= 3.0               // more of it through the code, its words at 3 to 1
+  MarkdownView.codeOpacity @= Some(0.5)          // or: the code wash half whole, whatever it is on
+  ```
 - Headings, lists and their items, tables, rows and cells, and pictures carry their `Semantics`; a picture's alt text
   is its label. On the web the text can be selected.
 - `direction` is which way its words run: `TextDirection.Auto` for words the app did not write turns each paragraph,

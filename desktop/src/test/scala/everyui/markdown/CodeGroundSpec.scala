@@ -13,7 +13,9 @@ import everyui.{FxSpec, ui}
   * raised colour while they are whole, as it always was, behind a code block, a terminal's block and a code span; once
   * they are not, letting a little less of a picture through than the bubble it is in, whole on an opaque card, and
   * never more than the palette's words read over (`codeLetThrough`), however see-through the ground it is on, a
-  * terminal's colours made to read on the worst of it; whole again once the surfaces are. */
+  * terminal's colours made to read on the worst of it; whole again once the surfaces are. The app's own say: an exact
+  * opacity (`codeOpacity`) drawn as given behind all three, held to 0 to 1, whatever the surfaces and the contrast,
+  * and a contrast of its own (`codeContrast`) letting more through where it is lower, each redrawn as it changes. */
 class CodeGroundSpec extends FxSpec {
   private val markdown: String = "Run `sbt test` now.\n\n```scala\nval x = 1 // one\n```\n\n```ansi\n" +
     "\u001b[31mERROR\u001b[0m build \u001b[32mok\u001b[0m\n```"
@@ -36,6 +38,8 @@ class CodeGroundSpec extends FxSpec {
 
   private def reset(): Unit = fx {
     Theme.surfaceOpacity @= 1.0
+    MarkdownView.codeOpacity @= None
+    MarkdownView.codeContrast @= 4.5
     Theme.palette @= Palette.dark
     ui.children.clear()
   }
@@ -159,6 +163,135 @@ class CodeGroundSpec extends FxSpec {
         val past = List(Color.White, Color.Black).map(b => wash.blend(b, most + 0.01))
         past.exists(g => tones().exists(t => Access.contrast(t, g) < 4.5)) shouldBe true
       }
+      reset()
+    }
+    "be drawn exactly as the app's codeOpacity says, behind a block, a terminal's block and a span" in {
+      fx(MarkdownView.codeOpacity()) shouldBe None
+      fx(MarkdownView.codeContrast()) shouldBe 4.5
+      List(1.0, 0.8).foreach { surfaces =>
+        fx(Theme.surfaceOpacity @= surfaces)
+        val (_, view) = inBubble(Palette.dark, MessageView.fill(false))
+        val raised = fx(Theme.raised())
+        fx(MarkdownView.codeOpacity @= Some(0.5))
+        val half = raised.withAlpha(0.5)
+        blocks(view).foreach(b => fx(b.backgroundColor()) shouldBe half)
+        fx(MarkdownView.codeBackground()) shouldBe half
+        fx(MarkdownView.codeOver(Theme.surface())) shouldBe half
+        span(view).background shouldBe half.toHexAlpha
+        // a terminal's colours read on the wash with as much of a white picture as could leave them reading on a black
+        val most = fx(MarkdownView.codeLetThrough())
+        val readOn = fx(MarkdownView.codeReadOn())
+        readOn shouldBe raised.blend(Color.White, most)
+        val theme = fx(LogTheme.of(Palette.dark).copy(background = readOn))
+        val ansi = runsOf(blocks(view)(1))
+        ansi.find(_.text == "ERROR").get.color shouldBe theme.legible(theme.ansi(1)).toHex
+        ansi.find(_.text == "ok").get.color shouldBe theme.legible(theme.ansi(2)).toHex
+        // honoured below what the words would read over, as the app's choice
+        fx(MarkdownView.codeOpacity @= Some(0.2))
+        val first = blocks(view).head
+        val faint = fx(first.backgroundColor())
+        faint shouldBe raised.withAlpha(0.2)
+        fx(Access.contrast(Theme.muted(), over(faint, Color.White))) should be < 4.5
+        fx(MarkdownView.codeReadOn()) shouldBe raised.blend(Color.White, most)
+        // whole where it is 1, however see-through the surfaces
+        fx(MarkdownView.codeOpacity @= Some(1.0))
+        blocks(view).foreach(b => fx(b.backgroundColor()) shouldBe raised)
+        span(view).background shouldBe raised.toHex
+        fx(MarkdownView.codeReadOn()) shouldBe raised
+        reset()
+      }
+    }
+    "hold the app's opacity to 0 to 1 and its contrast to 1 to 21" in {
+      val (_, view) = inBubble(Palette.light, MessageView.fill(false))
+      val raised = fx(Theme.raised())
+      fx(MarkdownView.codeOpacity @= Some(1.7))
+      blocks(view).foreach(b => fx(b.backgroundColor()) shouldBe raised)
+      span(view).background shouldBe raised.toHex
+      fx(MarkdownView.codeOpacity @= Some(-0.3))
+      blocks(view).foreach(b => fx(b.backgroundColor()).alpha shouldBe 0.0)
+      span(view).background shouldBe raised.withAlpha(0.0).toHexAlpha
+      // not a number: worked out, as with none (whole, the surfaces being)
+      fx(MarkdownView.codeOpacity @= Some(Double.NaN))
+      blocks(view).foreach(b => fx(b.backgroundColor()) shouldBe raised)
+      fx(MarkdownView.codeOpacity @= None)
+      fx(Theme.surfaceOpacity @= 0.8)
+      fx(MarkdownView.codeContrast @= 1.0)
+      val one = fx(MarkdownView.codeLetThrough())
+      fx(MarkdownView.codeContrast @= -2.0)
+      fx(MarkdownView.codeLetThrough()) shouldBe one
+      fx(MarkdownView.codeContrast @= 21.0)
+      val most = fx(MarkdownView.codeLetThrough())
+      fx(MarkdownView.codeContrast @= 50.0)
+      fx(MarkdownView.codeLetThrough()) shouldBe most
+      one should be(0.5 +- 0.001)
+      most shouldBe 0.0
+      reset()
+    }
+    "let more through where the app lowers the contrast its words keep, and every colour still read at that" in {
+      List(Palette.dark, Palette.light).foreach { p =>
+        fx(Theme.palette @= p)
+        fx(Theme.surfaceOpacity @= 0.8)
+        val at45 = fx(MarkdownView.codeLetThrough())
+        val own45 = fx(MarkdownView.codeOver(MessageView.fill(true))).alpha
+        val readOn45 = fx(MarkdownView.codeReadOn())
+        fx(MarkdownView.codeContrast @= 3.0)
+        val at3 = fx(MarkdownView.codeLetThrough())
+        val own3 = fx(MarkdownView.codeOver(MessageView.fill(true))).alpha
+        info(s"${if (p eq Palette.dark) "dark" else "light"}: at 3 to 1 up to ${f"$at3%.3f"} through (at 4.5 " +
+          f"$at45%.3f); the wash at " + fx(List(false, true).map(self =>
+            f"${MarkdownView.codeOver(MessageView.fill(self)).alpha}%.2f")).mkString(" and ") +
+          " in everybody else's bubble and one's own, " + f"${fx(MarkdownView.codeBackground().alpha)}%.2f" + " alone")
+        at3 should be > at45
+        (1.0 - fx(MarkdownView.codeBackground()).alpha) should be(at3 +- 0.005)
+        own3 should be <= own45
+        // a terminal's colours drawn as at 4.5, which they could not keep over more of a picture
+        fx(MarkdownView.codeReadOn()) shouldBe readOn45
+        val wash = fx(Theme.raised())
+        List(Color.White, Color.Black).foreach { behind =>
+          val alone = over(fx(MarkdownView.codeBackground()), behind)
+          tones().foreach(t => Access.contrast(t, alone) should be >= 3.0)
+          List(false, true).foreach { self =>
+            val fill = fx(MessageView.fill(self))
+            val ground = over(fx(MarkdownView.codeOver(fill)), over(fill, behind))
+            tones().foreach(t => Access.contrast(t, ground) should be >= 3.0)
+          }
+        }
+        val past = List(Color.White, Color.Black).map(b => wash.blend(b, at3 + 0.01))
+        past.exists(g => tones().exists(t => Access.contrast(t, g) < 3.0)) shouldBe true
+        // back at 4.5, as it was
+        fx(MarkdownView.codeContrast @= 4.5)
+        fx(MarkdownView.codeLetThrough()) shouldBe at45
+        fx(MarkdownView.codeOver(MessageView.fill(true))).alpha shouldBe own45
+      }
+      reset()
+    }
+    "redraw every code wash shown as the app's opacity and contrast change" in {
+      val (_, view) = inBubble(Palette.dark, MessageView.fill(false))
+      val raised = fx(Theme.raised())
+      val ansiAt = runsOf(blocks(view)(1)).map(_.color)
+      fx(MarkdownView.codeOpacity @= Some(0.6))
+      blocks(view).foreach(b => fx(b.backgroundColor()) shouldBe raised.withAlpha(0.6))
+      span(view).background shouldBe raised.withAlpha(0.6).toHexAlpha
+      val readOn = fx(MarkdownView.codeReadOn())
+      val theme = fx(LogTheme.of(Palette.dark).copy(background = readOn))
+      runsOf(blocks(view)(1)).find(_.text == "ERROR").get.color shouldBe theme.legible(theme.ansi(1)).toHex
+      fx(MarkdownView.codeOpacity @= None)
+      blocks(view).foreach(b => fx(b.backgroundColor()) shouldBe raised)
+      span(view).background shouldBe raised.toHex
+      runsOf(blocks(view)(1)).map(_.color) shouldBe ansiAt
+      // worked out, a lower contrast lets more through the span and the blocks, and 4.5 again as it was
+      fx(Theme.surfaceOpacity @= 0.8)
+      val first = blocks(view).head
+      val block45 = fx(first.backgroundColor())
+      val span45 = span(view).background
+      val ansi45 = runsOf(blocks(view)(1)).map(_.color)
+      fx(MarkdownView.codeContrast @= 3.0)
+      fx(first.backgroundColor()).alpha should be <= block45.alpha
+      runsOf(blocks(view)(1)).map(_.color) shouldBe ansi45
+      Color.fromHex(span(view).background).alpha should be < Color.fromHex(span45).alpha
+      fx(MarkdownView.codeContrast @= 4.5)
+      fx(first.backgroundColor()) shouldBe block45
+      span(view).background shouldBe span45
       reset()
     }
   }

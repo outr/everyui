@@ -3,6 +3,7 @@ package everyui.app
 import everyui.Color
 import everyui.chat.*
 import everyui.component.Backdrop
+import everyui.markdown.MarkdownView
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -16,7 +17,9 @@ import reactify.*
   *
   * `code=1` adds a reply with a code block and a terminal's coloured output; `backdrop=<picture>` draws the picture
   * behind the conversation with the theme's surfaces at `see` (0.8 unless given, `Theme.surfaceOpacity`), so the
-  * bubbles and the code wash let it through. */
+  * bubbles and the code wash let it through. `codeOpacity=<0 to 1>` draws the code wash that whole
+  * (`MarkdownView.codeOpacity`), and `codeContrast=<ratio>` gives the contrast its words keep where it is worked out
+  * (`MarkdownView.codeContrast`, 4.5 unless given). */
 object BubbleDemo {
   private def luma: Participant = Participant("agent-luma", "Luma")
   private def you: Participant = Participant("u-you", "You")
@@ -54,6 +57,10 @@ object BubbleDemo {
     if (picture.nonEmpty) {
       val see = Platform.launchArg("see")
       Theme.surfaceOpacity @= (if (see.nonEmpty) see.toDouble else 0.8)
+      val opacity = Platform.launchArg("codeOpacity")
+      if (opacity.nonEmpty) MarkdownView.codeOpacity @= Some(opacity.toDouble)
+      val contrast = Platform.launchArg("codeContrast")
+      if (contrast.nonEmpty) MarkdownView.codeContrast @= contrast.toDouble
       val back = new Backdrop
       back.size.width := ui.size.width()
       back.size.height := ui.size.height()
