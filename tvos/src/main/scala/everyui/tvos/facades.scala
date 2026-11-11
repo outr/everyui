@@ -121,9 +121,10 @@ class SGNode
 @native object uiSetItalic {
   def apply(node: SGNode): Unit = native.value
 }
-/** A bundled face by family and CSS weight; size in points. */
+/** A face by its file in the bundle's `fonts/` (the system's at the CSS weight where it has no such file), and a size
+  * in points (the label's own for 0). */
 @native object uiSetFont {
-  def apply(node: SGNode, family: String, weight: Int, size: Double): Unit = native.value
+  def apply(node: SGNode, file: String, weight: Int, size: Double): Unit = native.value
 }
 /** The node's laid-out bounding box. */
 @native object uiGetWidth {

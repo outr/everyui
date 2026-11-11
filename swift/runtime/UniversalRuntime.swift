@@ -39,7 +39,7 @@ enum UI {
     static var collectMs = 0.0
     static var collectMaxMs = 0.0
     static var reported = CACurrentMediaTime()
-    static var fonts: [String: UIFontDescriptor] = [:]   // "family|weight" → the bundled face
+    static var fonts: [String: UIFontDescriptor] = [:]   // a face by its file in fonts/ (registerFonts)
     /// The size the app is drawn at (uiSetRootScale): a point of the root is this many of the app's units.
     static var scale: Double = 1.0
     /// What the screen's edges take on an iPhone or an iPad (the safe area), which the root is placed inside.
@@ -135,21 +135,19 @@ func bundlePath(_ uri: String) -> String {
     return (Bundle.main.resourcePath ?? ".") + "/" + rel
 }
 
-/// Register the bundled faces (`fonts/*.ttf` in the app) and remember each by family and CSS weight.
+/// Register the faces in the app's `fonts/` (EveryUI's, and an app's registered beside them with Faces.register) and
+/// remember each by its file, which Faces chooses for a family and a CSS weight as on every other platform. Each was
+/// once remembered as "Open Sans" at 400 or 600 by its name, so an app's Roboto-Light, -Regular, -Medium and -Bold
+/// were all Open Sans 400, whichever the folder listed last drawing every weight of the app's words.
 func registerFonts() {
     let dir = (Bundle.main.resourcePath ?? ".") + "/fonts"
-    for name in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where name.hasSuffix(".ttf") {
+    for name in ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).sorted()
+        where name.hasSuffix(".ttf") || name.hasSuffix(".otf") {
         let url = URL(fileURLWithPath: dir + "/" + name)
         CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
         guard let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [UIFontDescriptor],
               let d = descriptors.first else { continue }
-        // the same choice roku's uiFontUri makes: the file decides the family and weight
-        let key: String
-        if name.hasPrefix("MaterialIcons") { key = "Material Icons|400" }
-        else if name.hasPrefix("RobotoMono") { key = "Roboto Mono|400" }
-        else if name.contains("SemiBold") { key = "Open Sans|600" }
-        else { key = "Open Sans|400" }
-        UI.fonts[key] = d
+        UI.fonts[name] = d
         print("[ui] font \(name) → \(d.postscriptName)")
     }
 }
@@ -157,10 +155,26 @@ func registerFonts() {
 /// How many lines `s` was written with: one, and one more for each line break.
 func uiLineCount(_ s: String) -> Int { s.reduce(1) { $1 == "\n" || $1 == "\r\n" || $1 == "\r" ? $0 + 1 : $0 } }
 
-func font(_ family: String, _ weight: Int, _ size: Double) -> UIFont {
-    let key = family == "Material Icons" ? "Material Icons|400" : family == "Roboto Mono" ? "Roboto Mono|400" : (weight >= 600 ? "Open Sans|600" : "Open Sans|400")
-    if let d = UI.fonts[key] { return UIFont(descriptor: d, size: size) }
-    return UIFont.systemFont(ofSize: size, weight: weight >= 600 ? .semibold : .regular)
+/// The face in `file` (the app's `fonts/`), or the system's at a CSS weight where there is no such file.
+func font(_ file: String, _ weight: Int, _ size: Double) -> UIFont {
+    if let d = UI.fonts[file] { return UIFont(descriptor: d, size: size) }
+    return UIFont.systemFont(ofSize: size, weight: systemWeight(weight))
+}
+
+/// A CSS weight as UIKit's: each hundred its own, as Android's Typeface.create takes it (400 regular, 500 medium,
+/// 600 semibold, 700 bold), where 600 and above were all semibold and the rest regular.
+func systemWeight(_ weight: Int) -> UIFont.Weight {
+    switch weight {
+    case ..<150: return .ultraLight
+    case ..<250: return .thin
+    case ..<350: return .light
+    case ..<450: return .regular
+    case ..<550: return .medium
+    case ..<650: return .semibold
+    case ..<750: return .bold
+    case ..<850: return .heavy
+    default: return .black
+    }
 }
 
 // MARK: - nodes
@@ -381,10 +395,11 @@ func uiSetTextOutline(_ node: V, _ width: V, _ hex: V) -> V {
     return .vNull
 }
 
-/// A bundled face by family and CSS weight; size in points.
-func uiSetFont(_ node: V, _ family: V, _ weight: V, _ size: V) -> V {
+/// A face by its file in the app's `fonts/` (Faces' choice for a family and weight), or the system's at a CSS weight
+/// for ""; size in points, the label's own for 0.
+func uiSetFont(_ node: V, _ file: V, _ weight: V, _ size: V) -> V {
     guard let l = view(node) as? UILabel else { return .vNull }
-    l.font = font(rtS(family), Int(dbl(weight)), dbl(size))
+    l.font = font(rtS(file), Int(dbl(weight)), dbl(size) > 0 ? dbl(size) : Double(l.font.pointSize))
     place(l, geo(l))
     return .vNull
 }

@@ -74,19 +74,29 @@ class RenderNode(val sg: SGNode) {
   /** `"#rrggbb"`. */
   def setColor(hex: String): Unit = uiSetColor(sg, hex)
 
-  /** A bundled face (`assets/fonts/`, in the app bundle): family, CSS weight, size in points. */
+  /** A face (`assets/fonts/`, and an app's registered beside them, in the app bundle) by family and CSS weight, size
+    * in points: the file Faces chooses for them (Open Sans for a family it has none of), as the other platforms take
+    * it, or the system's face at that weight where the bundle has no such file. */
   def setFont(family: String, weight: Int, size: Double): Unit = {
-    uiSetFont(sg, family, weight, size)
     fontFamily = family
     fontWeight = weight
     fontPoints = size
-    if (italic) uiSetItalic(sg)
+    face()
     if (family.nonEmpty) {
       val face = Faces(family, weight)
       fontUri = "fonts/" + face.file
       fontSize = size
       lineHeight = face.lineHeight(size)
     }
+  }
+
+  // the label's face as set: the family's italic file where one is registered and the words are italic, else its
+  // upright one (slanted by UIKit where italic)
+  private def face(): Unit = {
+    val slanted = if (italic && fontFamily.nonEmpty) Faces.italic(fontFamily, fontWeight) else None
+    val file = slanted.map(_.file).getOrElse(Faces(fontFamily, fontWeight).file)
+    uiSetFont(sg, file, fontWeight, fontPoints)
+    if (italic && slanted.isEmpty) uiSetItalic(sg)
   }
 
   /** The laid-out size in points. Text is as wide as its face makes it at exactly its size (the advance width,
@@ -442,11 +452,12 @@ class RenderNode(val sg: SGNode) {
     * platform draws the face. */
   def setFontAxes(opticalSizing: String, variations: String): Unit = ()
   def setLetterSpacing(px: Double): Unit = uiSetLetterSpacing(sg, px)
-  /** Slanted: UIKit's italic of the face where it has one, else its upright letters slanted; the measured width is
-    * the slanted words'. Upright again is the face set afresh. */
+  /** Slanted: the family's italic face where one is registered (Faces.italic, as Android draws it), else UIKit's italic
+    * of the face where it has one, else its upright letters slanted; the measured width is the slanted words'. Upright
+    * again is the face set afresh. */
   def setItalic(on: Boolean): Unit = if (on != italic) {
     italic = on
-    if (on) uiSetItalic(sg) else uiSetFont(sg, fontFamily, fontWeight, fontPoints)
+    face()
   }
   private var italic: Boolean = false
   private var fontFamily: String = ""

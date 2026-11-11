@@ -73,6 +73,7 @@ import everyui.render.Platform
   *              box of lines' #tags, and the city in a dialog (`dialog=1`, `theme=light`, `rtl=1`)
   *   letterspacing Material's type scale drawn plain and letter-spaced, each over a bar as wide as it measures
   *   italic     an empty list's and a search's labels upright and slanted, a paragraph, buttons and a field slanted
+  *   weights    weights 300 to 800 in the bundled Open Sans and in faces of it registered as an app's (`six=1`)
   *   later      Platform.later on a later turn, in order, and 10,000 steps asking for the next one, one deep at most
   *   readonly   read-only fields beside an editable one: a share link, a note and a key to choose and copy but not change
   *   typing     a field, a search box and a keyboard of the app's own typed into without the platform's keyboard (a Roku's
@@ -218,6 +219,7 @@ import everyui.render.Platform
   else if (demo == "narrow") NarrowDemo.run()
   else if (demo == "letterspacing") LetterSpacingDemo.run()
   else if (demo == "italic") ItalicDemo.run()
+  else if (demo == "weights") FontWeightsDemo.run()
   else if (demo == "later") LaterDemo.run()
   else if (demo == "readonly") ReadOnlyDemo.run()
   else if (demo == "typing") TypingDemo.run()
