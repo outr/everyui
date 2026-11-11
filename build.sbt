@@ -43,6 +43,7 @@ lazy val compiler = (project in file("compiler"))
     name := "everyui-compiler",
     description := "Scala 3 TASTy to BrightScript and Swift, the compiler sbt-everyui runs for Roku and Apple TV",
     libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value,
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
     // SwiftEmitter.scala is derived from RokuEmitter.scala by compiler/swift-derivation.txt (project/SwiftEmitterDerivation.scala)
     Compile / sourceGenerators += Def.task {
       val out = (Compile / sourceManaged).value / "everyui" / "compiler" / "SwiftEmitter.scala"

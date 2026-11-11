@@ -91,21 +91,8 @@ class SwiftEmitter(
       case _           => false
     }
 
-    // A Swift string literal.
-    def swStr(str: String): String = {
-      val sb = new StringBuilder("\"")
-      str.foreach {
-        case '\\' => sb.append("\\\\")
-        case '"'  => sb.append("\\\"")
-        case '\n' => sb.append("\\n")
-        case '\r' => sb.append("\\r")
-        case '\t' => sb.append("\\t")
-        // every control character escaped: swiftc refuses DEL and the C1 controls written as they are
-        case c if c < ' ' || (c >= '\u007f' && c <= '\u009f') => sb.append("\\u{" + c.toInt.toHexString + "}")
-        case c => sb.append(c)
-      }
-      sb.append("\"").toString
-    }
+    // A Swift string literal (SwiftEmitter.literal).
+    def swStr(str: String): String = SwiftEmitter.literal(str)
     /** A Scala string as a `V`. */
     def brStr(str: String): String = "V.vStr(" + swStr(str) + ")"
     val NULL = "V.vNull"
@@ -2490,5 +2477,35 @@ class SwiftEmitter(
     val p = outDir.resolve(rel)
     Files.createDirectories(p.getParent)
     Files.write(p, content.getBytes(StandardCharsets.UTF_8))
+  }
+}
+
+object SwiftEmitter {
+  /** A Swift string literal of `s`. A character Swift will not have written as it is is escaped (`\u{7f}`): the C0
+    * and C1 controls and DEL, which swiftc refuses ("unprintable ASCII character"), and the invisible ones (a format
+    * character, a line or paragraph separator), which a reader of the output would never see. Half of a surrogate
+    * pair with no other half, which no Swift String can hold, is U+FFFD, as Swift reads one from UTF-16. */
+  def literal(s: String): String = {
+    val sb = new StringBuilder("\"")
+    var i = 0
+    while (i < s.length) {
+      val c = s.charAt(i)
+      c match {
+        case '\\' => sb.append("\\\\")
+        case '"' => sb.append("\\\"")
+        case '\n' => sb.append("\\n")
+        case '\r' => sb.append("\\r")
+        case '\t' => sb.append("\\t")
+        case _ if Character.isHighSurrogate(c) && i + 1 < s.length && Character.isLowSurrogate(s.charAt(i + 1)) =>
+          sb.append(c).append(s.charAt(i + 1))
+          i += 1
+        case _ if Character.isSurrogate(c) => sb.append("\\u{fffd}")
+        case _ if Character.isISOControl(c) || Character.getType(c) == Character.FORMAT ||
+            c == '\u2028' || c == '\u2029' => sb.append("\\u{" + c.toInt.toHexString + "}")
+        case _ => sb.append(c)
+      }
+      i += 1
+    }
+    sb.append("\"").toString
   }
 }
