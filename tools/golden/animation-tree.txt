@@ -1,6 +1,7 @@
 tree Container x=0 y=0 w=1920 h=1080 rot=0
 tree   Backdrop x=0 y=0 w=1920 h=1080 rot=0
 tree     ImageView x=960 y=540 w=0 h=0 rot=0
+tree   Container x=0 y=0 w=1920 h=1080 rot=0
 tree   Container x=0 y=0 w=1920 h=75 rot=0
 tree     ImageView x=0 y=0 w=1920 h=75 rot=0
 tree     ImageView x=10 y=5 w=235.5 h=65 rot=0
