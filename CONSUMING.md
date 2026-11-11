@@ -2266,7 +2266,7 @@ line does while its own mark shows there). A `RichList` row whose `who` has a st
 it with the row. A face takes its watch on the map apart when it is disposed of. `demo=avatars` shows them at 18 to
 96 px, by initial and picture, busy, a face's own, and on a list's rows (`theme=light`, `rtl=1`, `cycle=<seconds>`).
 
-### Tool calls (`ChatEntry.Activity`: `lead`, `body`)
+### Tool calls (`ChatEntry.Activity`: `lead`, `body`, `aside`)
 
 A tool call is one line in the transcript: its `summary` after a status mark (a spinner, a tick, a cross). It can say
 what it is rather than show its raw input: `lead` (an `ActivityLead`) puts somebody's avatar first, in place of the
@@ -2289,6 +2289,30 @@ val call = ChatEntry.activity("c-9", "Message to The Oracle", lead = ActivityLea
 ChatEntry.activity("c-10", "Ran a command", ActivityStatus.Succeeded, lead = ActivityLead.Icon(MaterialIcon.Terminal),
   body = "`ls -la backend/src`")
 call.status @= ActivityStatus.Failed       // the ring stops, a cross on the face's corner
+```
+
+`aside` is a quiet note after the summary, on its line: when the call ran, how long it took, what it cost ("9:42:13 AM ·
+1.2 s"). It is drawn in `Theme.muted()`, a little smaller than the summary (11.5 to its 13), its feet level with the
+summary's, and follows it in reading order (to its left, right to left). Where the line has no room for both (a phone,
+a long summary) it goes on a line of its own under the summary, at its start edge, and where even it alone is too long
+it wraps at its words within the line's room; it is never cut. `asideHint` is the aside said in words ("Started at
+9:42:13 AM, took 1.2 seconds"): a tip as the pointer rests on the aside, or as the keys bring the transcript's cursor to
+the call (not a click's, as the pointer-focus ruling has it), and read out after the summary and the aside ("Ran the
+tests, 9:42:13 AM · 1.2 s, Started at 9:42:13 AM, took 1.2 seconds, done"). Both are empty by default, and an empty
+aside takes no room: the line is as it was. Both are reactive and change the line in place, so nothing else in the
+transcript is made again; EveryUI ticks nothing for them, and an app showing a running call's time binds the aside to
+`Clock.now` itself (moved on each second by `ScreenManager`'s frame loop; an app without one uses a `Ticker`'s
+`now`), and sets what it took once the call settles.
+
+```scala
+val began = Clock.real()
+val run = ChatEntry.activity("c-11", "Ran the test suite")
+run.aside := clock(began) + " · " + ChatTime.span(Clock.now() - began)   // ticks each second while it runs
+run.status.attach { s =>
+  if (s != ActivityStatus.Running) run.aside @= clock(began) + " · " + seconds(Clock.real() - began)
+}
+ChatEntry.activity("c-12", "Read 3 files", ActivityStatus.Succeeded, aside = "9:42:13 AM · 0.4 s",
+  asideHint = "Started at 9:42:13 AM, took 0.4 seconds")
 ```
 
 ### Threads (`ChatEntry.rail`, `Transcript.rails`)

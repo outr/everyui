@@ -6,7 +6,7 @@ import everyui.chat.*
 import everyui.component.*
 import everyui.component.types.{FontWeight, TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
-import everyui.i18n.Direction
+import everyui.i18n.{DateText, Direction}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -18,7 +18,9 @@ import reactify.*
   * an agent thinks, messages The Oracle (the words it sent arriving after it starts, and failing), runs a tool that
   * succeeds and one that fails, and streams a long reply while the status bar shows who is working; another asks for
   * approval with a card of its own. Before them, tool calls led by The Oracle's portrait (with the message sent, cut
-  * to three lines), a search icon and a terminal icon (with the command). Each message runs the way its own words do,
+  * to three lines), a search icon and a terminal icon (with the command), and a call watching a CI run that never
+  * ends. Every tool call has an aside, when it began and how long it took ("9:42:13 AM · 1.2 s"), with a hint saying
+  * so in words; a running one's ticks each second until it settles. Each message runs the way its own words do,
   * the Arabic ones right to left and the English ones left to right whichever way the app reads, and a long link, path
   * and hash break inside their bubble. Messages are Markdown: the long reply has a list, a table, code and a link, and an
   * Arabic one a list whose bullets stand on its right. What is typed in the field at the bottom is sent as yours, and
@@ -236,6 +238,34 @@ object ChatDemo {
   }
   private def now[E <: ChatEntry](e: E): E = topic(e, topicAt)
 
+  // a tool call's aside, as an app keeps it: when it began, to the second, and how long it took or has run so far
+  // ("9:42:13 AM · 1.2 s"), with a hint saying so in words
+  private def clockAt(time: Long): String = {
+    val local = Platform.localDateTime(time)
+    DateText.timeWithSeconds(local.substring(11, 13).toInt, local.substring(14, 16).toInt,
+      local.substring(17, 19).toInt)
+  }
+  private def took(millis: Long): String = {
+    val tenths = math.max(0L, millis) / 100L
+    if (tenths < 600L) (tenths / 10L).toString + "." + (tenths % 10L).toString + " s" else ChatTime.span(millis)
+  }
+  private def timed(a: ChatEntry.Activity, millis: Long): ChatEntry.Activity = {
+    val began = a.time.getOrElse(Clock.real())
+    a.aside @= clockAt(began) + " · " + took(millis)
+    a.asideHint @= "Started at " + clockAt(began) + ", took " + took(millis)
+    a
+  }
+  // a running call's: following the clock until it settles, then what it took. An app whose frame loop runs
+  // (ScreenManager) binds it to `Clock.now`; this demo has none, so a Ticker of its own moves it on each second
+  private lazy val seconds: Ticker = new Ticker()
+  private def ticking(a: ChatEntry.Activity): ChatEntry.Activity = {
+    val began = a.time.getOrElse(Clock.real())
+    a.aside := clockAt(began) + " · " + ChatTime.span(seconds.now() - began)
+    a.asideHint := "Started at " + clockAt(began) + ", running for " + ChatTime.span(seconds.now() - began)
+    a.status.attach(s => if (s != ActivityStatus.Running) timed(a, Clock.real() - began))
+    a
+  }
+
   // entry `i` of the earlier history: a day's talk every few dozen entries, back over some weeks
   private def past(i: Int, start: Long): ChatEntry = topic(pastEntry(i, start), i / 97)
 
@@ -263,14 +293,15 @@ object ChatDemo {
     ChatEntry.message("o3", you, self = true, "Close. Helper, can you check what is left?", Some(start - 300000L)),
     ChatEntry.message("o4", helper, self = false, "On it. I'll look through the open issues and the test runs first, as [the plan](demo-file:plan.md) says.",
       Some(start - 280000L), meta = Some("model small · 212 tokens · 1.4s")),
-    ChatEntry.activity("o-msg", "Message to The Oracle", ActivityStatus.Succeeded,
+    timed(ChatEntry.activity("o-msg", "Message to The Oracle", ActivityStatus.Succeeded,
       Some(ChatEntry.textDetails("message_conversation \"The Oracle\"", "delivered")), Some(start - 270000L),
-      ActivityLead.Person(oracle), ChatDemo.toOracle),
-    ChatEntry.activity("o-look", "Looked up “Creating Custom Persona”: nothing found", ActivityStatus.Succeeded,
-      time = Some(start - 265000L), lead = ActivityLead.Icon(MaterialIcon.Search)),
-    ChatEntry.activity("o-ls", "Ran a command", ActivityStatus.Succeeded,
+      ActivityLead.Person(oracle), ChatDemo.toOracle), 1200L),
+    timed(ChatEntry.activity("o-look", "Looked up “Creating Custom Persona”: nothing found", ActivityStatus.Succeeded,
+      time = Some(start - 265000L), lead = ActivityLead.Icon(MaterialIcon.Search)), 380L),
+    timed(ChatEntry.activity("o-ls", "Ran a command", ActivityStatus.Succeeded,
       Some(ChatEntry.textDetails("ls -la backend/src", "drwxr-xr-x  main\ndrwxr-xr-x  test")), Some(start - 260000L),
-      ActivityLead.Icon(MaterialIcon.Terminal), "`ls -la backend/src`"),
+      ActivityLead.Icon(MaterialIcon.Terminal), "`ls -la backend/src`"), 140L),
+    ticking(ChatEntry.activity("o-watch", "Watching CI run 413", time = Some(start - 250000L))),
     ChatEntry.message("o5", layla, self = false, "صباح الخير! هل ملاحظات الإصدار جاهزة؟", Some(start - 240000L)))
     .map(e => topic(e, 21))
 
@@ -286,24 +317,25 @@ object ChatDemo {
     })
     Platform.after(5.0, () => {
       think.done @= Some(Clock.real() - think.started)
-      val search = now(ChatEntry.activity("a1", "Searched the repository for open TODOs",
+      val search = now(ticking(ChatEntry.activity("a1", "Searched the repository for open TODOs",
         details = Some(ChatEntry.textDetails("grep -rn TODO src/", "src/app/Main.scala:12: // TODO: remove the flag\n" +
-          "src/net/Socket.scala:88: // TODO: back off on reconnect")), time = Some(Clock.real())))
+          "src/net/Socket.scala:88: // TODO: back off on reconnect")), time = Some(Clock.real()))))
       add(entries, search)
       Platform.after(2.0, () => search.status @= ActivityStatus.Succeeded)
     })
     // a message to The Oracle that goes, its words arriving after it started, and fails
     Platform.after(2.0, () => {
-      val ask = now(ChatEntry.activity("a0", "Message to The Oracle", lead = ActivityLead.Person(oracle),
-        time = Some(Clock.real())))
+      val ask = now(ticking(ChatEntry.activity("a0", "Message to The Oracle", lead = ActivityLead.Person(oracle),
+        time = Some(Clock.real()))))
       add(entries, ask)
       Platform.after(1.0, () => ask.body @= "Are you there? The Persona needs a `name` before it can be saved.")
       Platform.after(6.0, () => ask.status @= ActivityStatus.Failed)
     })
     Platform.after(7.5, () => {
-      val tests = now(ChatEntry.activity("a2", "Ran the test suite", details = Some(ChatEntry.textDetails("sbt test",
+      val tests = now(ticking(ChatEntry.activity("a2", "Ran the test suite",
+        details = Some(ChatEntry.textDetails("sbt test",
         "[error] SocketSpec: reconnects after a drop *** FAILED ***\n[info] 412 passed, 1 failed")),
-        time = Some(Clock.real())))
+        time = Some(Clock.real()))))
       add(entries, tests)
       Platform.after(2.0, () => tests.status @= ActivityStatus.Failed)
     })

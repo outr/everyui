@@ -50,7 +50,13 @@ object ChatEntry {
     * ring turning around it while the call runs and the status on its corner once it has; or an icon, with the status
     * on its corner. `body` is a short text under the summary, shown without opening the line (the message that was
     * sent, the command that ran): Markdown, drawn as the transcript draws a message's words, cut to the transcript's
-    * `bodyLines` and shown whole once the line is opened. Empty by default. */
+    * `bodyLines` and shown whole once the line is opened. Empty by default.
+    *
+    * `aside` is a quiet note after the summary on its line (when it ran, how long it took, what it cost: "9:42:13 AM ·
+    * 1.2 s"), muted and a little smaller, wrapped under the summary where the line has no room for both and never cut;
+    * `asideHint` is what a tip on it says (the pointer resting on it, or the keys bringing the transcript's cursor to
+    * the call) and is read out after the summary and the aside. Both are empty by default, and an empty aside takes no
+    * room. Nothing ticks for it: an app showing a running call's time binds it to `everyui.util.Clock.now` itself. */
   final class Activity(val id: String, val details: Option[() => Component] = None, val time: Option[Long] = None)
     extends ChatEntry {
     val summary: Var[String] = Var("")
@@ -58,6 +64,8 @@ object ChatEntry {
     val expanded: Var[Boolean] = Var(false)
     val lead: Var[ActivityLead] = Var(ActivityLead.None)
     val body: Var[String] = Var("")
+    val aside: Var[String] = Var("")
+    val asideHint: Var[String] = Var("")
     // whether its body, as last drawn, was cut short: it then opens, to be read whole
     private[chat] val cut: Var[Boolean] = Var(false)
 
@@ -95,12 +103,15 @@ object ChatEntry {
 
   def activity(id: String, summary: String, status: ActivityStatus = ActivityStatus.Running,
                details: Option[() => Component] = None, time: Option[Long] = None,
-               lead: ActivityLead = ActivityLead.None, body: String = "", rail: Option[Color] = None): Activity = {
+               lead: ActivityLead = ActivityLead.None, body: String = "", rail: Option[Color] = None,
+               aside: String = "", asideHint: String = ""): Activity = {
     val a = new Activity(id, details, time)
     a.summary @= summary
     a.status @= status
     a.lead @= lead
     a.body @= body
+    a.aside @= aside
+    a.asideHint @= asideHint
     railed(a, rail)
   }
 

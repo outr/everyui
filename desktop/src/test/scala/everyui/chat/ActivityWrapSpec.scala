@@ -24,7 +24,7 @@ class ActivityWrapSpec extends FxSpec {
 
   private def box(v: ActivityView): Container = v.children().head.asInstanceOf[Container]
   private def line(v: ActivityView): Container = box(v).children().head.asInstanceOf[Container]
-  private def summary(v: ActivityView): TextView = line(v).children()(1).asInstanceOf[TextView]
+  private def summary(v: ActivityView): TextView = v.summaryView
   private def oneLine(): Double = {
     val t = fx(new TextView {
       content @= "X"

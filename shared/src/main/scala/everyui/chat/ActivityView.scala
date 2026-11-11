@@ -7,6 +7,7 @@ import everyui.kit.{BusyRing, Spinner}
 import everyui.list.ListRow
 import everyui.render.Platform
 import everyui.theme.Theme
+import everyui.tooltip.Tooltip
 import reactify.*
 
 /** A tool call in the transcript, `width` wide: one line in a quiet box (a spinner while it runs, a tick or a cross once
@@ -19,10 +20,15 @@ import reactify.*
   * while the call runs (`Avatar.busy`), or an icon with a spinner on its corner while it runs; once it has, a tick or a
   * cross on the corner. A `body` goes under the summary, drawn by `render` (the transcript's way with a message's
   * words), selectable, cut to `lines` lines and shown whole while the line is open. With neither, it is the line
-  * alone. */
+  * alone.
+  *
+  * An `aside` follows the summary on its line, muted and a little smaller, its feet level with the summary's, where
+  * both fit in the room the line has; else it goes on a line of its own under the summary at its start edge, wrapped
+  * within the room where even it alone is too long, never cut. Its `asideHint` is a tip as the pointer rests on it or
+  * while `cursorOn` holds (the transcript's cursor brought to the call by the keys). An empty aside takes no room. */
 class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Option[Component],
                    render: (Val[String], Val[Double]) => Component = MessageMarkdown.render,
-                   lines: => Int = 3) extends Container {
+                   lines: => Int = 3, cursorOn: => Boolean = false) extends Container {
   private val widest: Val[Double] = own(Val(Transcript.widest(width)))
   private val running: Val[Boolean] = own(Val(a.status() == ActivityStatus.Running))
 
@@ -69,12 +75,64 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     whiteSpace := (if (wholeSummary.size.width() > summaryRoom() + 0.5) WhiteSpace.Normal else WhiteSpace.NoWrap)
     size.width := math.min(wholeSummary.size.width(), summaryRoom())
   }
+
+  // the aside (`ChatEntry.Activity.aside`), measured whole as the summary is: after the summary on its line where both
+  // fit in the room, else on a line of its own under it, wrapped within the room where even it alone does not fit; an
+  // empty one takes no room, the summary alone where it was
+  private val hasAside: Val[Boolean] = own(Val(a.aside().nonEmpty))
+  private val wholeAside: TextView = new TextView {
+    content := a.aside()
+    direction @= TextDirection.Auto
+    font.size @= ActivityView.asideSize
+    textOverflow @= TextOverflow.Visible
+  }
+  measuring.children += wholeAside
+  private val together: Val[Boolean] = own(Val(hasAside() &&
+    wholeSummary.size.width() + ActivityView.asideGap + wholeAside.size.width() <= summaryRoom() + 0.5))
+  private val aside: TextView = new TextView {
+    content := a.aside()
+    direction @= TextDirection.Auto
+    font.size @= ActivityView.asideSize
+    color := Theme.muted()
+    visible := hasAside()
+    whiteSpace := (if (wholeAside.size.width() > summaryRoom() + 0.5) WhiteSpace.Normal else WhiteSpace.NoWrap)
+    size.width := (if (hasAside()) math.min(wholeAside.size.width(), summaryRoom()) else 0.0)
+  }
+  // the summary and its aside, in reading order: side by side on one line, their feet level, or one under the other
+  // at the start edge
+  private val heading: Container = new Container {
+    size.width := (if (!hasAside()) summary.size.width()
+      else if (together()) summary.size.width() + ActivityView.asideGap + aside.size.width()
+      else math.max(summary.size.width(), aside.size.width()))
+    size.height := (if (!hasAside()) summary.size.height()
+      else if (together()) math.max(summary.size.height(), aside.size.height())
+      else summary.size.height() + ActivityView.asideUnder + aside.size.height())
+    children ++= List(summary, aside)
+  }
+  summary.position.left := ListRow.along(0.0, summary.size.width(), heading.size.width())
+  summary.position.top := (if (together()) math.max(0.0, aside.size.height() - summary.size.height()) else 0.0)
+  aside.position.left := ListRow.along(if (together()) summary.size.width() + ActivityView.asideGap else 0.0,
+    aside.size.width(), heading.size.width())
+  aside.position.top := (if (together()) math.max(0.0, summary.size.height() - aside.size.height())
+    else summary.size.height() + ActivityView.asideUnder)
+
+  // the aside's hint as a tip: the pointer resting on the aside, or the keys bringing the transcript's cursor to the
+  // call (`cursorOn`) where the focus shows tips (`Tooltip.onFocus`)
+  private val hint: () => Option[String] = () => Some(a.asideHint()).filter(h => h.nonEmpty && hasAside())
+  private def unhint(): Unit = if (Tooltip.shownFor.exists(_ eq aside)) Tooltip.hide()
+  aside.event.pointer.enter.attach(e => if (!e.finger && hint().nonEmpty) Tooltip.askFor(aside, hint))
+  aside.event.pointer.leave.attach(_ => Tooltip.hideFor(aside))
+  aside.event.pointer.down.attach(_ => unhint())
+  private val keyed: Val[Boolean] = own(Val(cursorOn && hasAside() && a.asideHint().nonEmpty))
+  keyed.attach(on => if (on && Tooltip.onFocus()) Tooltip.askFor(aside, hint) else unhint())
+  onDispose(() => unhint())
+
   private val chevron: MaterialIconView = new MaterialIconView(MaterialIcon.ExpandMore, 18.0)
   chevron.icon := (if (a.expanded()) MaterialIcon.ExpandLess else MaterialIcon.ExpandMore)
   chevron.color := Theme.muted()
   chevron.visible := a.opens
   chevron.size.width := (if (a.opens) 18.0 else 0.0)
-  private val line: Container = Row(8.0, middle = true)(status, summary, chevron)
+  private val line: Container = Row(8.0, middle = true)(status, heading, chevron)
 
   private def lead(l: ActivityLead): Unit = {
     val was = leading()
@@ -84,7 +142,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
       case _ => None
     }
     leading @= made
-    line.children @= Vector(made.getOrElse(status), summary, chevron)
+    line.children @= Vector(made.getOrElse(status), heading, chevron)
     was.foreach(_.dispose())
   }
 
@@ -184,7 +242,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   clip.clipTo(clip.size.width(), clip.size.height())
   // the line and the body under its summary
   private val inner: Val[Double] = own(Val(if (!hasBody()) line.size.height()
-    else math.max(line.size.height(), summary.position.top() + summary.size.height() + 2.0 + clip.size.height())))
+    else math.max(line.size.height(), heading.position.top() + heading.size.height() + 2.0 + clip.size.height())))
 
   private val box: Container = new Container {
     size.width := (if (open()) widest() else math.min(widest(), math.max(line.size.width(),
@@ -200,7 +258,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   line.position.left := ListRow.along(Transcript.padX, line.size.width(), box.size.width())
   line.position.top @= 6.0
   clip.position.left := ListRow.along(Transcript.padX + markWidth() + 8.0, clip.size.width(), box.size.width())
-  clip.position.top := 6.0 + summary.position.top() + summary.size.height() + 2.0
+  clip.position.top := 6.0 + heading.position.top() + heading.size.height() + 2.0
   holder.size.width := box.size.width() - Transcript.padX * 2.0
   holder.position.left @= Transcript.padX
   holder.position.top := inner() + 12.0
@@ -264,6 +322,13 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   /** The body's words as drawn, where there is a body. */
   def bodyView: Option[Component] = words
 
+  /** The summary's words as drawn, and the aside's after them (`ChatEntry.Activity.aside`). */
+  def summaryView: TextView = summary
+  def asideView: TextView = aside
+
+  /** Whether the aside shows on the summary's line, rather than under it. */
+  def asideBeside: Boolean = together()
+
   /** How tall the body shows: cut to `lines` lines, or whole. */
   def bodyShown: Double = clip.size.height()
 
@@ -277,6 +342,12 @@ object ActivityView {
   val room: Double = face + BusyRing.outset(face) * 2.0
   val icon: Double = 20.0
   val badge: Double = 14.0
+
+  /** The aside's font size (the summary's is 13), the room between it and the summary on one line, and between them
+    * where it goes under. */
+  val asideSize: Double = 11.5
+  val asideGap: Double = 6.0
+  val asideUnder: Double = 1.0
 
   /** Input and output as plain text under small headings, wrapped to the width it is given (its parent's). Words
     * selected across them copy as the headings' paragraphs and the text's code blocks. */

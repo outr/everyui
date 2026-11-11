@@ -44,7 +44,8 @@ class ActivityLeadSpec extends FxSpec {
   // the box, the line in it, and the line's parts
   private def box(v: ActivityView): Container = v.children().head.asInstanceOf[Container]
   private def line(v: ActivityView): Container = box(v).children().head.asInstanceOf[Container]
-  private def summary(v: ActivityView): TextView = line(v).children()(1).asInstanceOf[TextView]
+  // the summary's words, with the aside they hold (none here): where the summary sits on the line
+  private def summary(v: ActivityView): Component = line(v).children()(1)
   private def avatar(v: ActivityView): Avatar =
     v.leadView.toVector.flatMap(all).collectFirst { case a: Avatar => a }.get
   // the status badge on the lead's corner: what is read as the status
@@ -63,7 +64,7 @@ class ActivityLeadSpec extends FxSpec {
         eventually(v.size.height() > 0.0) shouldBe true
         fx(box(v).children().size) shouldBe 2
         fx(line(v).children().map(_.size.width())).head shouldBe 16.0
-        fx(line(v).children()(1).isInstanceOf[TextView]) shouldBe true
+        fx(line(v).children()(1).asInstanceOf[Container].children().head eq v.summaryView) shouldBe true
         fx(line(v).children()(2).size.width()) shouldBe 0.0
         fx(v.leadView) shouldBe None
         fx(v.bodyView) shouldBe None

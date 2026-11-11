@@ -214,9 +214,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   def leads(index: Int, entry: ChatEntry): Boolean = headed.contains(entry.id) ||
     Grouping.leads(if (index > 0 && index <= list.count) Some(list(index - 1)) else None, entry)
 
-  /** How an entry is read out: a message by its author and words, a tool call by what it does, its body and how it
-    * stands; then its rail's `railLabel`, where it has one. A message's words and a body are said as they read
-    * (`spoken`), not as the Markdown they were written in. */
+  /** How an entry is read out: a message by its author and words, a tool call by what it does, its aside and the
+    * aside's hint, its body and how it stands; then its rail's `railLabel`, where it has one. A message's words and a
+    * body are said as they read (`spoken`), not as the Markdown they were written in. */
   def said(entry: ChatEntry): String = {
     val label = entry.railLabel()
     if (label.isEmpty) saidOf(entry) else saidOf(entry) + ", " + label.get
@@ -228,8 +228,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       work.who.name + ", " + ChatWords.busy + ", " + work.what
     }.getOrElse("")
     case m: ChatEntry.Message => m.author.name + ": " + spoken(m.text())
-    case a: ChatEntry.Activity => a.summary() + (if (a.body().isEmpty) "" else ": " + spoken(a.body())) + ", " +
-      ActivityView.said(a.status())
+    case a: ChatEntry.Activity => a.summary() + (if (a.aside().isEmpty) "" else ", " + a.aside()) +
+      (if (a.asideHint().isEmpty) "" else ", " + a.asideHint()) +
+      (if (a.body().isEmpty) "" else ": " + spoken(a.body())) + ", " + ActivityView.said(a.status())
     case t: ChatEntry.Thinking => t.done().map(d => ChatWords.thoughtFor(ChatTime.span(d))).getOrElse(ChatWords.thinking)
     case m: ChatEntry.Marker => m.text()
     case _: ChatEntry.Custom => ""
@@ -246,7 +247,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       reactionsEnabled(), (emoji: String, on: Boolean) => onReact @= Reacted(m.id, emoji, on),
       (at: Component) => pickReaction(m, at))
     case a: ChatEntry.Activity =>
-      new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), words(a), bodyLines())
+      new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), words(a), bodyLines(),
+        row.current() && row.cursorShown())
     case t: ChatEntry.Thinking => new ThinkingView(t, row.inner, ticker.now)
     case w: ChatEntry.Marker if Grouping.isWork(w) && slotOf(w).nonEmpty =>
       val s = slotOf(w).get
