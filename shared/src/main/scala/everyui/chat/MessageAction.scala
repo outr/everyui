@@ -12,22 +12,27 @@ case class MessageAction(icon: MaterialIcon, label: String, action: () => Unit, 
 object MessageAction {
   /** Copy message: `m`'s words on the clipboard as they read (`Clipboard.copyMarkdown`, a line break in them a line
     * break, as the transcript shows them): clean HTML where they are pasted with styles (an email, a document), plain
-    * prose where they are not, and "Copied" said. A transcript that shows its messages as plain text
+    * prose where they are not, and "Copied" said. The words are what `text` gives for `m` as it is pressed, so a
+    * streaming message copies as far as it has come: its text by default, a transcript's `Transcript.copiedText` where
+    * the app copies its messages as other words than it draws. A transcript that shows its messages as plain text
     * (`MessageText.plain`) offers `copyMarkdownSource`'s doing under this one's name instead. */
-  def copyText(m: ChatEntry.Message): MessageAction =
-    MessageAction(MaterialIcon.ContentCopy, ChatWords.copyMessage, () => copy(m), ChatWords.copied)
+  def copyText(m: ChatEntry.Message, text: ChatEntry.Message => String = _.text()): MessageAction =
+    MessageAction(MaterialIcon.ContentCopy, ChatWords.copyMessage, () => copy(m, text), ChatWords.copied)
 
-  /** Copy as Markdown: `m`'s text as it was written, marks and all, and "Copied" said. Not offered by default; an app
-    * adds it to `Transcript.messageActions`:
+  /** Copy as Markdown: what `text` gives for `m` as it is pressed (its text as it was written, marks and all, by
+    * default) on the clipboard as it is, and "Copied" said. Not offered by default; an app adds it to
+    * `Transcript.messageActions`, with the transcript's `copiedText` where it gives one:
     * {{{
     *   transcript.messageActions @= {
-    *     case m: ChatEntry.Message => transcript.actionsFor(m) :+ MessageAction.copyMarkdownSource(m)
+    *     case m: ChatEntry.Message =>
+    *       transcript.actionsFor(m) :+ MessageAction.copyMarkdownSource(m, transcript.copiedText)
     *     case _ => Nil
     *   }
     * }}} */
-  def copyMarkdownSource(m: ChatEntry.Message): MessageAction =
-    MessageAction(MaterialIcon.Code, ChatWords.copyMarkdown, () => Clipboard.copy(m.text()), ChatWords.copied)
+  def copyMarkdownSource(m: ChatEntry.Message, text: ChatEntry.Message => String = _.text()): MessageAction =
+    MessageAction(MaterialIcon.Code, ChatWords.copyMarkdown, () => Clipboard.copy(text(m)), ChatWords.copied)
 
-  /** `m`'s words on the clipboard, as Copy message puts them. */
-  def copy(m: ChatEntry.Message): Unit = Clipboard.copyMarkdown(m.text(), breaks = true)
+  /** What `text` gives for `m` (its text by default) on the clipboard, as Copy message puts it. */
+  def copy(m: ChatEntry.Message, text: ChatEntry.Message => String = _.text()): Unit =
+    Clipboard.copyMarkdown(text(m), breaks = true)
 }

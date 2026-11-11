@@ -2162,6 +2162,22 @@ transcript.messageActions @= {
 }
 ```
 
+What a message is copied as whole is `copyText`'s (a `Var[ChatEntry.Message => String]`, its text as it was written by
+default), asked as each copy is made, so a streaming message copies as far as it has come: Copy message beside it and in
+its menu read it as Markdown (clean HTML and prose), Ctrl or Cmd+C with nothing selected the same, and Copy as Markdown
+(`MessageAction.copyMarkdownSource`, not offered by default) puts it on the clipboard as it is when given
+`transcript.copiedText`. One set of words serves both, so a copy as prose and a copy as Markdown never disagree. An app
+that draws marks of its own into the words (a link to a file, say) gives the words it wants copied in their place,
+rather than replacing the actions; words selected are copied as they are drawn, not through it:
+
+```scala
+transcript.copyText @= (m => m.text().replaceAll("""\[([^\]]+)\]\(file:[^)]+\)""", "$1"))
+transcript.messageActions @= {
+  case m: ChatEntry.Message => transcript.actionsFor(m) :+ MessageAction.copyMarkdownSource(m, transcript.copiedText)
+  case _ => Nil
+}
+```
+
 A click on a message's avatar or its author's name, and on a worker's avatar in the status bar, is an `AuthorPressed`
 (the participant, and the message's id where it was a message). `onAuthor` (on the `ChatView` or its `Transcript`) is
 the app's: None by default, which shows the author's picture whole over the screen (`AuthorPressed.showPicture`: the
