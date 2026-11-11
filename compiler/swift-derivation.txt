@@ -175,7 +175,9 @@ class SwiftEmitter(
       "rethrows", "static", "struct", "subscript", "typealias", "var", "break", "case", "catch", "continue",
       "default", "defer", "do", "else", "fallthrough", "for", "guard", "if", "in", "repeat", "return",
       "throw", "switch", "where", "while", "Any", "as", "await", "false", "is", "nil", "self", "Self",
-      "super", "throws", "true", "try", "async", "actor", "this", "ga", "V", "env", "args"
+      "super", "throws", "true", "try", "async", "actor", "this", "ga", "V", "env", "args",
+      // BrightScript's words, which checkNames looks for in the output as BrightScript left: a local is never one
+      "invalid", "and", "or", "not", "then", "mod", "Mid", "Chr", "Len", "Left", "Instr", "Cdbl", "Fix"
     )
     // Operator characters → BrightScript-legal identifier fragments. BrightScript
     // identifiers are letters/digits/underscore only (no `$`), so a Scala
@@ -212,15 +214,6 @@ class SwiftEmitter(
 @@ new
     /** A local's or a parameter's name. Swift names are case-sensitive, so no runtime function is shadowed by one. */
     def brLocal(name: String): String = brSafe(name)
-@@ old
-    /** A `def` inside a block. It is emitted as a closure held in a local of its name (see `emitStats`), and called
-      * through it, so it reads what it captures as a lambda does. */
-    def isLocalDef(s: Symbol): Boolean =
-      s.exists && s.isDefDef && s.name != "$anonfun" && s.owner.exists && !s.owner.isClassDef
-        && (s.owner.flags.is(Flags.Method) || s.owner.isValDef)
-@@ new
-    /** A `def` inside a block: made a closure on the Roku (see `emitStats`); not yet here, where it is left out. */
-    def isLocalDef(s: Symbol): Boolean = false
 @@ old
       pcs.exists { case _: TermParamClause => true; case _ => false }
 
@@ -1519,9 +1512,12 @@ class SwiftEmitter(
     def sinkLine(sk: String, v: String): String =
       if (sk == "") stmtTerm(v)
       else if (sk == skReturn) s"  return try $v"
+      // a place reached through a call (`this["box"](this)["x"]`) throws as it is found: `try` covers both sides
+      else if (sk.contains("(")) s"  try $sk = $v"
       else s"  $sk = try $v"
     def sinkUnit(sk: String): String =
-      if (sk == "") "" else if (sk == skReturn) s"  return $NULL" else s"  $sk = $NULL"
+      if (sk == "") "" else if (sk == skReturn) s"  return $NULL" else if (sk.contains("(")) s"  try $sk = $NULL"
+      else s"  $sk = $NULL"
 
     /** Emit ONE statement: whatever its expressions hoist is written first. */
     def withStatement(f: => String): String = {
@@ -1862,6 +1858,7 @@ class SwiftEmitter(
       // constructor
       out.append(s"func ${cn}_new(${ctorParams.map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
       out.append(s"  let this: V = rtNew(${swStr(clsTag(sym))})\n")
+      { val tag = isaTag(sym); if (tag.nonEmpty) out.append(s"  ${field("this", "_isa")} = ${brStr(tag)}\n") }
       cd.body.foreach {
         case vd: ValDef if userMember(vd.symbol) && vd.symbol.flags.is(Flags.ParamAccessor) =>
           out.append(s"  ${field("this", brSafe(vd.name))} = ${brLocal(vd.name)}\n")
@@ -2182,6 +2179,7 @@ class SwiftEmitter(
         sb.append(s"  existing = ga[$key]\n")
         sb.append(s"  if (existing != $NULL).rtTrue { return existing }\n")
         sb.append(s"  let this: V = rtNew(${swStr(clsTag(sym))})\n")
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  ${field("this", "_isa")} = ${brStr(tag)}\n") }
         sb.append(s"  ${field("this", "_name")} = ${brStr(sym.name.stripSuffix("$"))}\n")   // the Scala name, for toString
         sym.typeRef.baseClasses.reverse.foreach { bc =>
           shimParents.get(bc.fullName).foreach(shim => sb.append(s"  _ = ${shim}__install(this)\n"))
@@ -2195,6 +2193,7 @@ class SwiftEmitter(
       else if (!isTrait && !sym.flags.is(Flags.Abstract)) {
         sb.append(s"func ${cn}_new(${(extraParams ++ ctorParams).map(p => s"_ $p: V").mkString(", ")}) throws -> V {\n")
         sb.append(s"  let this: V = rtNew(${swStr(clsTag(sym))})\n")
+        { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  ${field("this", "_isa")} = ${brStr(tag)}\n") }
         extraParams.foreach(ep => sb.append(s"  ${field("this", ep)} = $ep\n"))
         ordinalField(sym).foreach(o => sb.append(s"  ${field("this", "ordinal")} = ${vInt(o)}\n"))
         if (sym.flags.is(Flags.Case))
@@ -2269,9 +2268,13 @@ class SwiftEmitter(
       else if (!ts.isClassDef) "true"
       else s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
 @@ new
-    /** `case x: SomeClass` for a class of this program's own. The spike's objects carry no ancestry yet, so this
-      * still answers "true" as the Roku backend did before `_isa`; narrowing it waits on the Swift runtime. */
-    def classTest(ts: Symbol, subj: String): String = "true"
+    /** `case x: SomeClass` where SomeClass is a class of this program's own and not a case class: tested against the
+      * `_isa` every object the compiler makes carries (RtIsA), as on the Roku. */
+    def classTest(ts: Symbol, subj: String): String =
+      if (!ts.exists || universal.contains(ts.name) || ts.flags.is(Flags.Module)) "true"
+      else if (ts.fullName.startsWith("scala.") || ts.fullName.startsWith("java.")) "true"
+      else if (!ts.isClassDef) "true"
+      else s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
 @@ old
     def enumValues(enumClass: Symbol): String =
       "[" + enumClass.children.filter(isEnumCase).map(c => emitEnumCase(c, c.name)).mkString(", ") + "]"
@@ -2347,15 +2350,21 @@ class SwiftEmitter(
 @@ old
         case Select(q, "lift") if isSeqLike(q) => s"{ fn: _liftCall, xs: ${emitTerm(q)} }"
 @@ new
-        case Select(q, "lift") if isSeqLike(q) => s"{ fn: _liftCall, env: { xs: ${emitTerm(q)} } }"
+        case Select(q, "lift") if isSeqLike(q) =>
+          s"rtClosure(_liftCall, ${rtObj(List(s"${swStr("xs")}: ${emitTerm(q)}"))})"
 @@ old
+      val capture = s", fv_$lhs: $lhs"
+      if (!code.contains(s"$lhs = { fn: ") || !code.contains(capture)) code
       else code.replace(capture, "") + s"\n  $lhs.fv_$lhs = $lhs"
 @@ new
-      else code.replace(capture, "") + s"\n  $lhs.env.fv_$lhs = $lhs"
+      val capture = s", ${swStr("fv_" + lhs)}: $lhs"
+      if (!code.contains(s"$lhs = try rtClosure(") || !code.contains(capture)) code
+      else code.replace(capture, "") + s"\n  ${field(field(lhs, "env"), "fv_" + lhs)} = $lhs"
 @@ old
             (line :: ready.map((h, s) => s"  $h.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
 @@ new
-            (line :: ready.map((h, s) => s"  $h.env.fv_${brLocal(s.name)} = ${brLocal(s.name)}")).mkString("\n")
+            (line :: ready.map((h, s) =>
+              s"  ${field(field(h, "env"), "fv_" + brLocal(s.name))} = ${brLocal(s.name)}")).mkString("\n")
 @@ old
     def enumCaseAt(cn: String, i: Int): String = s"${cn}__cases()[$i]"
     def enumOrdinalOf(recv: String): String = s"$recv.ordinal"
@@ -2407,6 +2416,7 @@ class SwiftEmitter(
       sb.append(s"  ga[$key] = cs\n")
       // a Swift object carries its slots itself: each case is given the enum's, from this one table
       sb.append(s"  let vt: V = rtNew(${swStr(clsTag(sym))})\n")
+      { val tag = isaTag(sym); if (tag.nonEmpty) sb.append(s"  ${field("vt", "_isa")} = ${brStr(tag)}\n") }
       vtableFor(sym).foreach { case (slot, impl) => sb.append(s"  ${field("vt", slot)} = rtFn($impl)\n") }
       enumCases(sym).foreach { c =>
         val made = s"RtEnumOf(cs, vt, ${brStr(clsTag(sym))}, ${brStr(c.name)}, ${vInt(sym.children.indexOf(c))})"
@@ -2426,12 +2436,116 @@ class SwiftEmitter(
       }
       sb.append("  return cs\n}\n\n")
     }
+@@ old
+          if (field) s"self.${fieldKey(id.symbol)}" else brLocal(id.name)
+@@ new
+          if (field) s"this[${swStr(fieldKey(id.symbol))}]" else brLocal(id.name)
+@@ old
+      s"$r.fn($r, [${a.mkString(", ")}])"
+@@ new
+      s"RtInvoke($r, ${rtArr(a)})"
+@@ old
+              s"Mid(${emitTerm(recv)}, ${emitArgVal(args.head)} + 1, 1)"
+@@ new
+              s"rtCharAt(${emitTerm(recv)}, ${emitArgVal(args.head)})"
+@@ old
+                && args.size == 1 => "false"
+@@ new
+                && args.size == 1 => "V.vBool(false)"
+@@ old
+            case "scala.Boolean" => "false"
+            case "scala.Double" | "scala.Float" => "0.0"
+            case "scala.Int" | "scala.Long" | "scala.Short" | "scala.Byte" => "0"
+            case _ => "invalid"
+@@ new
+            case "scala.Boolean" => "V.vBool(false)"
+            case "scala.Double" | "scala.Float" => vDbl(0.0)
+            case "scala.Int" | "scala.Long" | "scala.Short" | "scala.Byte" => vInt(0)
+            case _ => NULL
+@@ old
+        case id: Ident if isFabricNull(id.symbol)   => "invalid"
+        case sel: Select if isFabricNull(sel.symbol) => "invalid"
+@@ new
+        case id: Ident if isFabricNull(id.symbol)   => NULL
+        case sel: Select if isFabricNull(sel.symbol) => NULL
+@@ old
+        case Select(q, "indices") if isCollType(q) => s"_until(0, ${emitTerm(q)}.count())"
+@@ new
+        case Select(q, "indices") if isCollType(q) => s"_until(${vInt(0)}, rtCount(${emitTerm(q)}))"
+@@ old
+    def substToken(in: String, name: String, value: String): String = {
+      val re = "(?<![A-Za-z0-9_$.])" + java.util.regex.Pattern.quote(name) + "(?![A-Za-z0-9_$])"
+      in.replaceAll(re, java.util.regex.Matcher.quoteReplacement(value))
+    }
+@@ new
+    def substToken(in: String, name: String, value: String): String =
+      outsideStrings(in, "(?<![A-Za-z0-9_$.])" + java.util.regex.Pattern.quote(name) + "(?![A-Za-z0-9_$])", value)
+
+    /** `in` with what `re` matches replaced by `value`, but never inside a string literal: a field here is
+      * `x["name"]`, and a local of the same name substituted into it made `_mt["_3"]["_mt["_3"]["language"]"]`. */
+    def outsideStrings(in: String, re: String, value: String): String = {
+      val out = new StringBuilder
+      val code = new StringBuilder
+      def flush(): Unit = {
+        out.append(code.toString.replaceAll(re, java.util.regex.Matcher.quoteReplacement(value)))
+        code.clear()
+      }
+      var i = 0
+      while (i < in.length) {
+        if (in.charAt(i) == '"') {
+          flush()
+          var j = i + 1
+          while (j < in.length && in.charAt(j) != '"') j += (if (in.charAt(j) == '\\') 2 else 1)
+          out.append(in.substring(i, math.min(j + 1, in.length)))
+          i = j + 1
+        }
+        else { code.append(in.charAt(i)); i += 1 }
+      }
+      flush()
+      out.toString
+    }
+@@ old
+        val re = "(?<![A-Za-z0-9_$])" + java.util.regex.Pattern.quote(name) + "(?![A-Za-z0-9_$])"
+        in.replaceAll(re, java.util.regex.Matcher.quoteReplacement(value))
+@@ new
+        outsideStrings(in, "(?<![A-Za-z0-9_$])" + java.util.regex.Pattern.quote(name) + "(?![A-Za-z0-9_$])", value)
+@@ old
+                case "range" if passed.size == 2 => s"_rangeBy(${emitTerm(passed(0))}, ${emitTerm(passed(1))}, 1, false)"
+@@ new
+                case "range" if passed.size == 2 =>
+                  s"_rangeBy(${emitTerm(passed(0))}, ${emitTerm(passed(1))}, ${vInt(1)}, false)"
+@@ old
+        case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Char" => s"Cdbl(_chCode(${emitTerm(q)}))"
+@@ new
+        case Select(q, "toDouble" | "toFloat") if fqnOf(q.tpe) == "scala.Char" => s"rtToDbl(_chCode(${emitTerm(q)}))"
+@@ old
+      if (sy.exists && sy.name.contains("$default$")) "0" else emitArgVal(a)
+@@ new
+      if (sy.exists && sy.name.contains("$default$")) vInt(0) else emitArgVal(a)
+@@ old
+        case Select(q, "init") if isSeqLike(q) => s"_dropRight(${emitTerm(q)}, 1)"
+@@ new
+        case Select(q, "init") if isSeqLike(q) => s"_dropRight(${emitTerm(q)}, ${vInt(1)})"
 @@ output
   // ── output ─────────────────────────────────────────────────────────────
   def writeOutput(): Unit = {
     val declared = declareLocals(out.toString + "\n// ── defunctionalised closures ──\n" + closures.toString)
     checkNames(declared)
-    write("App.swift", SwiftEmitter.header + declared)
+    write("App.swift", SwiftEmitter.header + declared + wideSlots(declared))
+  }
+
+  /** `rtFn` for a method of more than the ten parameters the runtime's overloads take (a constructor's defaults
+    * helper, a wide case class's `copy`): one overload per such arity, written beside the program. */
+  private def wideSlots(code: String): String = {
+    val arity = """(?m)^func ([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)""".r.findAllMatchIn(code)
+      .map(m => m.group(1) -> m.group(2).split(",").count(_.trim.nonEmpty)).toMap
+    val wide = """rtFn\(([A-Za-z_][A-Za-z0-9_]*)\)""".r.findAllMatchIn(code).flatMap(m => arity.get(m.group(1)))
+      .filter(_ > 10).toSet.toList.sorted
+    wide.map { n =>
+      val args = (0 until n).map(i => s"rtArg(a, $i)").grouped(8).map(_.mkString(", ")).mkString(",\n        ")
+      s"\nfunc rtFn(_ f: @escaping (${List.fill(n)("V").mkString(", ")}) throws -> V) -> V {\n" +
+        s"    .vFn(Fn { a in\n      try f($args)\n    })\n}\n"
+    }.mkString
   }
 
   /** Every function the emitted Swift calls is checked against what it defines and what the Swift runtime does
