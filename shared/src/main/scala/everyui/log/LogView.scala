@@ -684,7 +684,8 @@ object LogView {
 
   /** Whether the platform draws a paragraph's styled runs (the web, the desktop, Android); a Roku and an Apple TV
     * draw a run a piece. */
-  val runsDrawn: Boolean = Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS
+  val runsDrawn: Boolean =
+    Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS && Platform.kind != PlatformKind.IOS
 
   /** How long a stretch of reading or searching may take before the screen has a turn, in milliseconds. */
   val budget: Double = if (Platform.kind == PlatformKind.Roku) 25.0 else 8.0

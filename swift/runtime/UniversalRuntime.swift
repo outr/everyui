@@ -10,6 +10,7 @@ import UIKit
 import CoreText
 import QuartzCore
 import MediaAccessibility
+import GameController
 #if os(iOS)
 import WebKit   // WebView: there is no WebKit on tvOS, so a tvOS build neither references nor links it
 #endif
@@ -36,6 +37,27 @@ enum UI {
     static var collectMaxMs = 0.0
     static var reported = CACurrentMediaTime()
     static var fonts: [String: UIFontDescriptor] = [:]   // "family|weight" → the bundled face
+    /// The size the app is drawn at (uiSetRootScale): a point of the root is this many of the app's units.
+    static var scale: Double = 1.0
+    /// What the screen's edges take on an iPhone or an iPad (the safe area), which the root is placed inside.
+    static var safe: UIEdgeInsets = .zero
+    /// Told as the root changes size (a rotation, a split view), and as the system's light or dark changes.
+    static var resized: [V] = []
+    static var schemes: [V] = []
+    /// The event being reported: its modifiers (ctrl, meta, alt, shift), whether a finger made it, its button.
+    static var modifiers: (Bool, Bool, Bool, Bool) = (false, false, false, false)
+    static var finger = true
+    static var button = 0
+}
+
+/// The program's closures the runtime holds itself, roots of the collector with what RtHeld holds.
+func uiHooks() -> [V] {
+    var all: [V] = [UI.tick, UI.key] + UI.resized + UI.schemes
+    all.append(contentsOf: uiPointerRoots())
+    all.append(contentsOf: uiWebRoots())
+    all.append(contentsOf: uiMediaRoots())
+    for box in SocketDelegate.shared.boxes.values { all.append(contentsOf: [box.onOpen, box.onText, box.onClose]) }
+    return all
 }
 
 /// Every node's absolute geometry: its top-left, size and rotation in the parent's coordinates.
@@ -175,6 +197,7 @@ func uiSetScale(_ node: V, _ factor: V) -> V {
 func uiSetRootScale(_ factor: V) -> V {
     guard let root = UI.root else { return .vNull }
     let f = CGFloat(dbl(factor))
+    UI.scale = Double(f)
     let cx = root.bounds.width * root.layer.anchorPoint.x, cy = root.bounds.height * root.layer.anchorPoint.y
     root.layer.sublayerTransform = CATransform3DConcat(CATransform3DMakeScale(f, f, 1),
         CATransform3DMakeTranslation((f - 1) * cx, (f - 1) * cy, 0))
@@ -277,10 +300,18 @@ func uiSetHeight(_ node: V, _ height: V) -> V {
     return .vNull
 }
 
-/// `"#rrggbb"`, or `""` for transparent.
+/// `"#rrggbb"`, or `""` for transparent. The root's is the ground round it too, under the status bar and the home
+/// indicator (outside the safe area), and the status bar's words are dark or light against it.
 func uiSetBackgroundColor(_ node: V, _ hex: V) -> V {
     let s = rtS(hex)
-    view(node)?.backgroundColor = s.isEmpty ? .clear : uiColor(s)
+    let colour: UIColor = s.isEmpty ? .clear : uiColor(s)
+    view(node)?.backgroundColor = colour
+    if let v = view(node), v === UI.root, UI.viewport == nil, let around = v.superview {
+        around.backgroundColor = s.isEmpty ? .white : colour
+        #if os(iOS)
+        around.window?.rootViewController?.setNeedsStatusBarAppearanceUpdate()
+        #endif
+    }
     return .vNull
 }
 
@@ -324,8 +355,14 @@ func uiLoadImage(_ uri: V, _ loaded: V) throws -> V {
 
 // MARK: - platform
 
-func uiScreenWidth() -> V { .vDbl(Double((UI.viewport ?? UIScreen.main.bounds.size).width)) }
-func uiScreenHeight() -> V { .vDbl(Double((UI.viewport ?? UIScreen.main.bounds.size).height)) }
+/// The root's size: the screen's, less the safe area on an iPhone or an iPad (RootViewController places the root
+/// inside it), or the `--viewport` asked for.
+func uiScreenWidth() -> V { .vDbl(Double((UI.viewport ?? uiRootSize()).width)) }
+func uiScreenHeight() -> V { .vDbl(Double((UI.viewport ?? uiRootSize()).height)) }
+func uiRootSize() -> CGSize {
+    if let root = UI.root, root.bounds.width > 0 { return root.bounds.size }
+    return UIScreen.main.bounds.size
+}
 
 func uiLog(_ message: V) -> V {
     print("[ui] " + rtS(message))
@@ -335,9 +372,13 @@ func uiLog(_ message: V) -> V {
 /// Milliseconds on a monotonic clock — the animation clock.
 func uiTicks() -> V { .vDbl(CACurrentMediaTime() * 1000.0) }
 
-/// `f()` once `seconds` have passed, on the main queue (Platform.after).
+/// `f()` once `seconds` have passed, on the main queue (Platform.after), held for the collector until then.
 func uiAfter(_ seconds: V, _ f: V) -> V {
-    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.0, dbl(seconds))) { _ = try? RtInvoke(f, rtArr([])) }
+    let held = RtHeld.hold(f)
+    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.0, dbl(seconds))) {
+        RtHeld.release(held)
+        RtGuard("a timer", f, [])
+    }
     return .vNull
 }
 
@@ -348,13 +389,7 @@ func uiReduceMotion() -> V { .vBool(UIAccessibility.isReduceMotionEnabled) }
 
 final class FrameDriver {
     @objc func frame(_ link: CADisplayLink) {
-        do {
-            _ = try RtInvoke(UI.tick, rtArr([]))
-        } catch let e as RtError {
-            print("[ui] uncaught in frame: " + rtS(e.v))
-        } catch {
-            print("[ui] uncaught in frame: \(error)")
-        }
+        RtGuard("a frame", UI.tick, [])
         // Between frames, with no emitted code on the stack: collect the cycles the frames left behind — once
         // the allocations since the last pass are worth a walk of the live graph (a quarter of it, at least
         // 2,000), so a steady-state frame that allocates little costs nothing here.
@@ -363,7 +398,7 @@ final class FrameDriver {
         UI.allocsAt = Rt.allocatedTotal
         if Rt.allocated >= max(2000, Rt.live / 4) {
             let t = CACurrentMediaTime()
-            rtCollectCycles([ga, rtUnit, UI.tick])
+            rtCollectCycles(RtHeld.roots(uiHooks()))
             let ms = (CACurrentMediaTime() - t) * 1000.0
             UI.collectMs += ms
             UI.collectMaxMs = max(UI.collectMaxMs, ms)
@@ -419,7 +454,7 @@ final class SocketDelegate: NSObject, URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         guard let b = box(webSocketTask) else { return }
         b.opened = true
-        _ = try? RtInvoke(b.onOpen, rtArr([]))
+        RtGuard("a socket", b.onOpen, [])
         receive(b)
     }
 
@@ -440,10 +475,10 @@ final class SocketDelegate: NSObject, URLSessionWebSocketDelegate {
                 if b.finished { return }
                 switch result {
                 case .success(.string(let s)):
-                    _ = try? RtInvoke(b.onText, rtArr([.vStr(s)]))
+                    RtGuard("a socket", b.onText, [.vStr(s)])
                     self.receive(b)
                 case .success(.data(let d)):
-                    _ = try? RtInvoke(b.onText, rtArr([.vStr(String(data: d, encoding: .utf8) ?? "")]))
+                    RtGuard("a socket", b.onText, [.vStr(String(data: d, encoding: .utf8) ?? "")])
                     self.receive(b)
                 case .success: self.receive(b)
                 case .failure(let e): self.finish(b, 1006, e.localizedDescription)
@@ -456,13 +491,13 @@ final class SocketDelegate: NSObject, URLSessionWebSocketDelegate {
         if b.finished { return }
         b.finished = true
         boxes.removeValue(forKey: ObjectIdentifier(b.task))
-        _ = try? RtInvoke(b.onClose, rtArr([.vInt(code), .vStr(reason)]))
+        RtGuard("a socket", b.onClose, [.vInt(code), .vStr(reason)])
     }
 }
 
 func uiSocketOpen(_ url: V, _ onOpen: V, _ onText: V, _ onClose: V) -> V {
     guard let u = URL(string: rtS(url)) else {
-        _ = try? RtInvoke(onClose, rtArr([.vInt(1006), .vStr("bad url: " + rtS(url))]))
+        RtGuard("a socket", onClose, [.vInt(1006), .vStr("bad url: " + rtS(url))])
         return .vNull
     }
     let task = SocketDelegate.session.webSocketTask(with: u)
@@ -484,7 +519,7 @@ func uiSocketClose(_ h: V) -> V {
 
 func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ done: V) -> V {
     guard let u = URL(string: rtS(url)) else {
-        _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url))]))
+        RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url))])
         return .vNull
     }
     var request = URLRequest(url: u)
@@ -494,10 +529,13 @@ func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ 
         for (k, v) in headers { request.setValue("\(v)", forHTTPHeaderField: k) }
     }
     if hasBody.rtTrue { request.httpBody = rtS(body).data(using: .utf8) }
+    // held for the collector while it is under way
+    let held = RtHeld.hold(done)
     URLSession.shared.dataTask(with: request) { data, response, error in
         DispatchQueue.main.async {
+            defer { RtHeld.release(held) }
             if let error = error {
-                _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription)]))
+                RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription)])
                 return
             }
             let http = response as? HTTPURLResponse
@@ -505,7 +543,7 @@ func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ 
             http?.allHeaderFields.forEach { headers["\($0.key)"] = "\($0.value)" }
             let headersJson = (try? JSONSerialization.data(withJSONObject: headers)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
             let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            _ = try? RtInvoke(done, rtArr([.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text)]))
+            RtGuard("a request", done, [.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text)])
         }
     }.resume()
     return .vNull
@@ -515,7 +553,7 @@ func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ 
 /// `done(status, headersJson, text, bytes)`, a Scala `Array[Byte]`'s numbers from -128 to 127.
 func uiHttpBytes(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ binary: V, _ done: V) -> V {
     guard let u = URL(string: rtS(url)) else {
-        _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url)), rtArr([])]))
+        RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url)), rtArr([])])
         return .vNull
     }
     var request = URLRequest(url: u)
@@ -526,10 +564,13 @@ func uiHttpBytes(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: 
     }
     if hasBody.rtTrue { request.httpBody = Data(rtItems(body).map { UInt8(truncatingIfNeeded: Int(rtDouble($0))) }) }
     let wanted = binary.rtTrue
+    // held for the collector while it is under way
+    let held = RtHeld.hold(done)
     URLSession.shared.dataTask(with: request) { data, response, error in
         DispatchQueue.main.async {
+            defer { RtHeld.release(held) }
             if let error = error {
-                _ = try? RtInvoke(done, rtArr([.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription), rtArr([])]))
+                RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription), rtArr([])])
                 return
             }
             let http = response as? HTTPURLResponse
@@ -538,7 +579,7 @@ func uiHttpBytes(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: 
             let headersJson = (try? JSONSerialization.data(withJSONObject: headers)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
             let text = data.map { String(decoding: $0, as: UTF8.self) } ?? ""
             let bytes: [V] = wanted ? (data.map { d in d.map { V.vInt(Int(Int8(bitPattern: $0))) } } ?? []) : []
-            _ = try? RtInvoke(done, rtArr([.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text), rtArr(bytes)]))
+            RtGuard("a request", done, [.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text), rtArr(bytes)])
         }
     }.resume()
     return .vNull
@@ -577,32 +618,83 @@ func uiTimeZone() -> V {
     return .vStr(TimeZone.current.identifier)
 }
 
-// MARK: - input: the remote's presses to one hook (everyui.focus.Focus); there is no pointer
-
-/// A Siri Remote's touch surface only reaches views the focus engine owns, and the shared layer owns the focus.
-func uiOnPointer(_ node: V, _ kind: V, _ f: V) -> V { .vNull }
+// MARK: - keys: the remote's presses, and a keyboard's, to one hook (everyui.focus.Focus)
 
 func uiOnKey(_ f: V) -> V {
     UI.key = f
     return .vNull
 }
 
-/// RootViewController's presses, by the web's names. Menu is Back, and tvOS's (leaving the app) only when the app does
-/// not take it.
+/// RootViewController's presses, by the web's names. On an Apple TV the remote's: Menu is Back, and tvOS's (leaving the
+/// app) only when the app does not take it. On an iPhone or an iPad a keyboard's (a hardware one, or the Mac's on the
+/// simulator), by the key: Escape is Escape there, and Return is Enter. The emitted program's closures are objects
+/// (rtIsFn), so the hook is asked for as one.
 func uiKeyEvent(_ press: UIPress, _ pressed: Bool) -> Bool {
-    guard case .vFn = UI.key else { return false }
-    let name: String
-    switch press.type {
-    case .select: name = "Enter"
-    case .upArrow: name = "ArrowUp"
-    case .downArrow: name = "ArrowDown"
-    case .leftArrow: name = "ArrowLeft"
-    case .rightArrow: name = "ArrowRight"
-    case .playPause: name = "MediaPlayPause"
-    case .menu: name = "Back"
-    default: return false
+    guard rtIsFn(UI.key) else { return false }
+    var name = ""
+    if let key = press.key {
+        let flags = key.modifierFlags
+        UI.modifiers = (flags.contains(.control), flags.contains(.command), flags.contains(.alternate),
+                        flags.contains(.shift))
     }
-    if case .vBool(let taken)? = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(pressed)])) { return taken }
+    #if os(tvOS)
+    name = uiRemoteName(press)
+    if name.isEmpty, let key = press.key { name = uiKeyName(key) }
+    #else
+    if let key = press.key { name = uiKeyName(key) }
+    if name.isEmpty { name = uiRemoteName(press) }
+    #endif
+    if name.isEmpty { return false }
+    return uiKey(name, pressed)
+}
+
+/// A remote's press by the web's name, or "".
+func uiRemoteName(_ press: UIPress) -> String {
+    switch press.type {
+    case .select: return "Enter"
+    case .upArrow: return "ArrowUp"
+    case .downArrow: return "ArrowDown"
+    case .leftArrow: return "ArrowLeft"
+    case .rightArrow: return "ArrowRight"
+    case .playPause: return "MediaPlayPause"
+    case .menu: return "Back"
+    default: return ""
+    }
+}
+
+/// A keyboard's key by the web's name (KeyboardEvent.key): the named keys by their names, any other by what it types.
+func uiKeyName(_ key: UIKey) -> String {
+    switch key.keyCode {
+    case .keyboardUpArrow: return "ArrowUp"
+    case .keyboardDownArrow: return "ArrowDown"
+    case .keyboardLeftArrow: return "ArrowLeft"
+    case .keyboardRightArrow: return "ArrowRight"
+    case .keyboardReturnOrEnter, .keypadEnter: return "Enter"
+    case .keyboardEscape: return "Escape"
+    case .keyboardTab: return "Tab"
+    case .keyboardDeleteOrBackspace: return "Backspace"
+    case .keyboardDeleteForward: return "Delete"
+    case .keyboardSpacebar: return " "
+    case .keyboardHome: return "Home"
+    case .keyboardEnd: return "End"
+    case .keyboardPageUp: return "PageUp"
+    case .keyboardPageDown: return "PageDown"
+    case .keyboardLeftShift, .keyboardRightShift: return "Shift"
+    case .keyboardLeftControl, .keyboardRightControl: return "Control"
+    case .keyboardLeftAlt, .keyboardRightAlt: return "Alt"
+    case .keyboardLeftGUI, .keyboardRightGUI: return "Meta"
+    default:
+        let typed = key.characters.isEmpty ? key.charactersIgnoringModifiers : key.characters
+        let control = typed.unicodeScalars.first.map { CharacterSet.controlCharacters.contains($0) } ?? true
+        return typed.count == 1 && !control ? typed : ""
+    }
+}
+
+/// A key pressed or released, by the web's name, told to the program: whether it took it.
+@discardableResult
+func uiKey(_ name: String, _ pressed: Bool) -> Bool {
+    guard rtIsFn(UI.key) else { return false }
+    if case .vBool(let taken) = RtGuard("a key", UI.key, [.vStr(name), .vBool(pressed)]) { return taken }
     return false
 }
 
@@ -728,11 +820,14 @@ func uiEditText(_ title: V, _ value: V, _ secure: V, _ autofill: V, _ done: V) -
             field.autocorrectionType = .no
         }
     }
-    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-    let ok = UIAlertAction(title: "Done", style: .default) { _ in
-        let words = alert.textFields?.first?.text ?? ""
-        _ = try? RtInvoke(done, rtArr([.vStr(words)]))
+    // `done` held for the collector while the dialog is up
+    let held = RtHeld.hold(done)
+    let submit: (Bool) -> Void = { taken in
+        RtHeld.release(held)
+        if taken { RtGuard("a text dialog", done, [.vStr(alert.textFields?.first?.text ?? "")]) }
     }
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in submit(false) })
+    let ok = UIAlertAction(title: "Done", style: .default) { _ in submit(true) }
     alert.addAction(ok)
     alert.preferredAction = ok
     var top = UI.root.window?.rootViewController
@@ -809,20 +904,23 @@ func uiCaptionsLanguage() -> V {
 
 var uiCaptionObservers: [Int: NSObjectProtocol] = [:]
 var uiCaptionNext = 0
+var uiCaptionHeld: [Int: Int] = [:]   // each listener's closure, held for the collector (RtHeld)
 
 /// `changed()` each time the viewer changes the setting, until uiCaptionsUnlisten(the id answered).
 func uiCaptionsListen(_ changed: V) -> V {
     uiCaptionNext += 1
     let name = Notification.Name(kMACaptionAppearanceSettingsChangedNotification as String)
     uiCaptionObservers[uiCaptionNext] = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
-        _ = try? RtInvoke(changed, rtArr([]))
+        RtGuard("the caption settings", changed, [])
     }
+    uiCaptionHeld[uiCaptionNext] = RtHeld.hold(changed)
     return .vInt(uiCaptionNext)
 }
 
 func uiCaptionsUnlisten(_ id: V) -> V {
     guard case .vInt(let key) = rtToInt(id), let observer = uiCaptionObservers.removeValue(forKey: key) else { return .vNull }
     NotificationCenter.default.removeObserver(observer)
+    if let held = uiCaptionHeld.removeValue(forKey: key) { RtHeld.release(held) }
     return .vNull
 }
 
@@ -849,6 +947,8 @@ final class WebSaid: NSObject, WKScriptMessageHandler {
 final class WebPage: WKWebView, WKNavigationDelegate, WKUIDelegate {
     /// The one made ready by WebView.prewarm, for the next page to take.
     static var spare: WebPage? = nil
+    /// Every page alive, whose handlers are roots of the collector (uiHooks) while it is.
+    static let live = NSHashTable<WebPage>.weakObjects()
 
     let content: WKUserContentController
     var bridge = ""
@@ -876,6 +976,7 @@ final class WebPage: WKWebView, WKNavigationDelegate, WKUIDelegate {
         c.allowsPictureInPictureMediaPlayback = true
         self.content = content
         super.init(frame: .zero, configuration: c)
+        WebPage.live.add(self)
         navigationDelegate = self
         uiDelegate = self
         scrollView.contentInsetAdjustmentBehavior = .never
@@ -964,12 +1065,12 @@ final class WebPage: WKWebView, WKNavigationDelegate, WKUIDelegate {
             if let data = message.data(using: .utf8),
                let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
                 if reply["session"] as? String == session, let id = reply["id"] as? Int {
-                    _ = try? RtInvoke(replied, rtArr([.vInt(id), .vStr(reply["reply"].map(webText) ?? "")]))
+                    RtGuard("a web page", replied, [.vInt(id), .vStr(reply["reply"].map(webText) ?? "")])
                 }
                 return
             }
         }
-        _ = try? RtInvoke(heard, rtArr([.vStr(message)]))
+        RtGuard("a web page", heard, [.vStr(message)])
     }
 
     /// Heard no more, its page stopped and left on about:blank, and taken off the screen: the app is done with it.
@@ -1048,6 +1149,9 @@ func webPage(_ node: V) -> WebPage? { view(node) as? WebPage }
 
 func uiWebViews() -> V { .vBool(true) }
 
+/// Each live page's handlers, roots of the collector (uiHooks).
+func uiWebRoots() -> [V] { WebPage.live.allObjects.flatMap { [$0.heard, $0.replied] } }
+
 /// A view made ready, with its page process started, for the next WebView to take (WebView.prewarm).
 func uiWebPrewarm() -> V {
     if WebPage.spare == nil {
@@ -1117,6 +1221,7 @@ func uiWebRelease(_ node: V) -> V { webPage(node)?.release(); return .vNull }
 
 // tvOS: WebKit is not public here, so nothing of it is referenced or linked, and a page is an empty box
 func uiWebViews() -> V { .vBool(false) }
+func uiWebRoots() -> [V] { [] }
 func uiWebPrewarm() -> V { .vNull }
 func uiWeb(_ bridge: V) -> V { uiContainer() }
 func uiWebLoad(_ node: V, _ url: V, _ origin: V) -> V { .vNull }
@@ -1141,15 +1246,354 @@ var uiLifecycleObservers: [NSObjectProtocol] = []
 /// queue; the Scala side (Presence) tells each once. Heard from the first call; a later one changes nothing.
 func uiOnLifecycle(_ resumed: V, _ away: V) -> V {
     if !uiLifecycleObservers.isEmpty { return .vNull }
+    _ = RtHeld.hold(resumed)   // held for the collector for good, as the observers are
+    _ = RtHeld.hold(away)
     let centre = NotificationCenter.default
     for name in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification] {
         uiLifecycleObservers.append(centre.addObserver(forName: name, object: nil, queue: .main) { _ in
-            _ = try? RtInvoke(away, rtArr([]))
+            RtGuard("the lifecycle", away, [])
         })
     }
     uiLifecycleObservers.append(centre.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil,
                                                    queue: .main) { _ in
-        _ = try? RtInvoke(resumed, rtArr([]))
+        RtGuard("the lifecycle", resumed, [])
     })
     return .vNull
+}
+
+// MARK: - the device: which it is, what it has, and what the app's bundle says of itself
+
+/// What the app is running on, as UIKit's idiom has it: "tv" (an Apple TV), "phone", "pad", "mac" (an iPad app on a
+/// Mac), "vision", or "car". One emitted app serves them all, so this is asked as it runs.
+func uiIdiom() -> V {
+    #if os(tvOS)
+    return .vStr("tv")
+    #else
+    switch UIDevice.current.userInterfaceIdiom {
+    case .tv: return .vStr("tv")
+    case .pad: return .vStr("pad")
+    case .mac: return .vStr("mac")
+    case .carPlay: return .vStr("car")
+    case .vision: return .vStr("vision")
+    default: return .vStr("phone")
+    }
+    #endif
+}
+
+/// What the device calls itself (UIDevice's name: "iPhone", "iPad", "Apple TV", the owner's own name for it where the
+/// system lets an app read that), else its model.
+func uiDeviceName() -> V {
+    let name = UIDevice.current.name.trimmingCharacters(in: .whitespaces)
+    return .vStr(name.isEmpty ? UIDevice.current.model : name)
+}
+
+/// The hardware's own name for itself ("iPhone18,1", "AppleTV14,1"): on the simulator the device it stands for.
+func uiDeviceModel() -> V {
+    if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return .vStr(simulated) }
+    var info = utsname()
+    uname(&info)
+    let machine = withUnsafeBytes(of: &info.machine) { raw in
+        String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+    }
+    return .vStr(machine.isEmpty ? UIDevice.current.model : machine)
+}
+
+/// The build's number (CFBundleVersion, Android's versionCode: its first whole number, 0 where it has none) and its
+/// release (CFBundleShortVersionString, Android's versionName), as AppleApp.version wrote them into the Info.plist.
+func uiAppVersion() -> V {
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    return .vInt(Int(build.prefix { $0.isNumber }) ?? 0)
+}
+func uiAppVersionName() -> V {
+    .vStr(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+}
+
+/// The language the person reads, first of those they prefer, as a BCP 47 tag ("en-US", "pt-BR").
+func uiLanguage() -> V { .vStr(Locale.preferredLanguages.first ?? "en") }
+
+/// The system's light or dark ("light", "dark"), the screen's (an app's own Info.plist style does not change it), and
+/// `f` told each as it changes (RootViewController's traits).
+func uiColorScheme() -> V {
+    .vStr(UIScreen.main.traitCollection.userInterfaceStyle == .dark ? "dark" : "light")
+}
+func uiOnColorScheme(_ f: V) -> V {
+    UI.schemes.append(f)
+    return .vNull
+}
+
+/// Screen pixels to a point (2 or 3 on an iPhone, 1 on an Apple TV at 1080p).
+func uiScreenScale() -> V { .vDbl(Double(UIScreen.main.scale)) }
+
+/// The safe area the root is placed inside, in points, at one edge: 0 top, 1 right, 2 bottom, 3 left.
+func uiSafeInset(_ edge: V) -> V {
+    let s = UI.safe
+    let at: [CGFloat] = [s.top, s.right, s.bottom, s.left]
+    return .vDbl(Double(at[max(0, min(3, Int(dbl(edge))))]))
+}
+
+/// `f()` each time the root changes size: a rotation, a split view or Slide Over on an iPad, a window resized.
+func uiOnResize(_ f: V) -> V {
+    UI.resized.append(f)
+    return .vNull
+}
+
+/// The root resized (RootViewController.viewDidLayoutSubviews): each listener told.
+func uiResized() {
+    for f in UI.resized { RtGuard("a resize", f, []) }
+}
+
+/// Whether a keyboard is attached (a hardware one, an iPad's Magic Keyboard), or a mouse or a trackpad.
+func uiHasKeyboard() -> V {
+    if #available(iOS 14.0, tvOS 14.0, *) { return .vBool(GCKeyboard.coalesced != nil) }
+    return .vBool(false)
+}
+func uiHasPointer() -> V {
+    if #available(iOS 14.0, tvOS 14.0, *) { return .vBool(GCMouse.current != nil) }
+    return .vBool(false)
+}
+
+/// The event being reported: one of its modifiers (0 ctrl, 1 meta, 2 alt, 3 shift), whether a finger made it, its
+/// button.
+func uiModifier(_ which: V) -> V {
+    let m = UI.modifiers
+    return .vBool([m.0, m.1, m.2, m.3][max(0, min(3, Int(dbl(which))))])
+}
+func uiPointerFinger() -> V { .vBool(UI.finger) }
+func uiPointerButton() -> V { .vInt(UI.button) }
+
+// MARK: - what nothing caught: the program's (RtReportError), Objective-C's, and a crash, told to Platform.onError
+
+/// The app's hook for what nothing caught (Platform.onError): `f(message, stack)`. A crash the last run ended on is
+/// told to it too, once, as that run's (`uiCrashGuard` kept a note of it).
+func uiOnError(_ f: V) -> V {
+    RtErrors.hook = f
+    if let last = Crash.last {
+        Crash.last = nil
+        DispatchQueue.main.async { RtReportProblem("the last run", last, "") }
+    }
+    return .vNull
+}
+
+/// How many errors nothing caught this run has seen.
+func uiErrorsSeen() -> V { .vInt(RtErrors.seen) }
+
+/// A crash's note, kept in a file under Caches by a signal's handler, which can do no more than write to one already
+/// open, and read at the next launch.
+enum Crash {
+    static var fd: Int32 = -1
+    static var told = false
+    static var last: String? = nil
+    static var prefix: UnsafeMutablePointer<CChar>? = nil
+}
+
+/// Every crash heard at launch: an Objective-C exception nothing caught (told to the hook at once, its reason and its
+/// stack), and a signal that ends the app (a Swift trap, a bad access, an abort), noted for the next launch to tell,
+/// the app then ending as it would have, with the system's crash report. What the last run's note said is read first.
+func uiCrashGuard() {
+    let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("everyui-crash.txt")
+    if let note = try? String(contentsOf: file, encoding: .utf8) {
+        let said = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !said.isEmpty { Crash.last = "the app ended on " + said }
+    }
+    Crash.fd = open(file.path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+    Crash.prefix = strdup("signal ")
+    NSSetUncaughtExceptionHandler { e in
+        Crash.told = true
+        RtReportProblem("Objective-C", e.name.rawValue + ": " + (e.reason ?? ""),
+                        e.callStackSymbols.joined(separator: "\n"))
+    }
+    for s in [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGFPE] {
+        signal(s) { n in
+            // only what is safe in a signal's handler: a write to a file already open, then the signal again
+            if Crash.fd >= 0 && !Crash.told, let p = Crash.prefix {
+                _ = write(Crash.fd, p, 7)
+                var digits: (UInt8, UInt8, UInt8) = (UInt8(48 + (n / 10) % 10), UInt8(48 + n % 10), 10)
+                _ = withUnsafeBytes(of: &digits) { write(Crash.fd, $0.baseAddress, 3) }
+            }
+            signal(n, SIG_DFL)
+            raise(n)
+        }
+    }
+}
+
+// MARK: - the pointer: a finger, or an iPad's trackpad or mouse, to the views that listen (Android's model)
+
+/// What a view hears of the pointer (uiOnPointer), by kind ("down", "up", "move", "click", "menu", "enter", "leave",
+/// "wheel"), and how it scrolls: kept with the view (an associated object), so it goes with it.
+final class PointerHandlers {
+    var kinds: [String: V] = [:]
+    /// 1 scrolls down, 2 across (uiSetScrollable): a drag along it is taken from what it went down on.
+    var along = 0
+    /// What drags itself keeps a drag from the scroll it is in (uiSetTouchDrags).
+    var keepsDrag = false
+}
+var pointerKey: UInt8 = 0
+/// Every view that has handlers, for the collector's roots while it lives.
+let pointerViews = NSHashTable<UIView>.weakObjects()
+
+func pointerHandlers(_ v: UIView, _ make: Bool) -> PointerHandlers? {
+    if let h = objc_getAssociatedObject(v, &pointerKey) as? PointerHandlers { return h }
+    if !make { return nil }
+    let h = PointerHandlers()
+    objc_setAssociatedObject(v, &pointerKey, h, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    pointerViews.add(v)
+    return h
+}
+
+func uiPointerRoots() -> [V] {
+    pointerViews.allObjects.flatMap { v in pointerHandlers(v, false).map { Array($0.kinds.values) } ?? [] }
+}
+
+/// `f(x, y)` for each pointer event of `kind` on the node, at the root's coordinates in the app's units. An Apple TV
+/// has none (its remote's touch surface moves the focus), so nothing is ever told there.
+func uiOnPointer(_ node: V, _ kind: V, _ f: V) -> V {
+    if let v = view(node) { pointerHandlers(v, true)?.kinds[rtS(kind).lowercased()] = f }
+    return .vNull
+}
+
+/// The node scrolls its content down (`vertical`) or across, or not at all: a finger's drag along it is its own.
+func uiSetScrollable(_ node: V, _ vertical: V, _ horizontal: V) -> V {
+    if let v = view(node) { pointerHandlers(v, true)?.along = rtB(vertical) ? 1 : rtB(horizontal) ? 2 : 0 }
+    return .vNull
+}
+func uiSetTouchDrags(_ node: V, _ on: V) -> V {
+    if let v = view(node) { pointerHandlers(v, true)?.keepsDrag = rtB(on) }
+    return .vNull
+}
+
+/// The deepest view under `p` (in `v`'s coordinates) whose handlers `wanted` says yes to: drawn, and inside what clips
+/// it; the last drawn first. A view that hears nothing lets the pointer through to what is under it, as on Android.
+func pointerHit(_ v: UIView, _ p: CGPoint, _ wanted: (PointerHandlers) -> Bool) -> UIView? {
+    if v.isHidden || v.alpha < 0.01 { return nil }
+    let inside = v.bounds.contains(p)
+    if v.clipsToBounds && !inside { return nil }
+    for c in v.subviews.reversed() {
+        if let found = pointerHit(c, v.convert(p, to: c), wanted) { return found }
+    }
+    if inside, let h = pointerHandlers(v, false), wanted(h) { return v }
+    return nil
+}
+
+/// The event of `kind` to `v`, if it hears it, at `p` (the root's points) in the app's units.
+func pointerFire(_ kind: String, _ v: UIView?, _ p: CGPoint) {
+    guard let v = v, let f = pointerHandlers(v, false)?.kinds[kind] else { return }
+    RtGuard("pointer " + kind, f, [.vDbl(Double(p.x) / UI.scale), .vDbl(Double(p.y) / UI.scale)])
+}
+
+/// One pointer at a time: the touch (or the trackpad's press) being followed, and what it went down on.
+enum Touch {
+    static var target: UIView? = nil
+    static var downAt = CGPoint.zero
+    static var strayed = false
+    static var pressedLong = false
+    static var taken = false
+    static var held: DispatchWorkItem? = nil
+    /// How far a finger may move and still tap, in points.
+    static let slop: CGFloat = 10
+}
+
+/// A touch's phase ("down", "move", "up", "cancel") at `p`, the root's points, from RootViewController.
+/// As Android has it: what it went down on hears it to the end (and the root its moves and its lift, for a drag
+/// followed from there); a finger held still on what has a menu asks for it; a drag along a scroll further than a tap
+/// may is taken by the scroll (what it went down on told it was lifted); and a lift where it went down, no further than
+/// a tap may have strayed, is a click.
+func uiTouch(_ phase: String, _ p: CGPoint, _ finger: Bool) {
+    UI.finger = finger
+    let root: UIView? = UI.root
+    switch phase {
+    case "down":
+        Touch.target = root.flatMap { pointerHit($0, p) { !$0.kinds.isEmpty } }
+        Touch.downAt = p
+        Touch.strayed = false
+        Touch.pressedLong = false
+        Touch.taken = false
+        Touch.held?.cancel()
+        pointerFire("down", Touch.target, p)
+        if let t = Touch.target, pointerHandlers(t, false)?.kinds["menu"] != nil {
+            if UI.button == 2 {
+                Touch.pressedLong = true
+                pointerFire("menu", t, p)
+            } else {
+                let held = DispatchWorkItem {
+                    Touch.held = nil
+                    Touch.pressedLong = true
+                    pointerFire("menu", t, Touch.downAt)
+                }
+                Touch.held = held
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: held)
+            }
+        }
+    case "move":
+        let dx = abs(p.x - Touch.downAt.x), dy = abs(p.y - Touch.downAt.y)
+        if dx > Touch.slop || dy > Touch.slop {
+            Touch.strayed = true
+            Touch.held?.cancel()
+            Touch.held = nil
+            if !Touch.taken, let scroll = pointerScrollTaking(dx, dy) {
+                Touch.taken = true
+                pointerFire("up", Touch.target, p)
+                Touch.target = scroll
+                pointerFire("down", scroll, Touch.downAt)
+            }
+        }
+        pointerFire("move", Touch.target, p)
+        if Touch.target !== root { pointerFire("move", root, p) }
+    default:
+        Touch.held?.cancel()
+        Touch.held = nil
+        let target = Touch.target
+        pointerFire("up", target, p)
+        if target !== root { pointerFire("up", root, p) }
+        if phase == "up", let t = target, !Touch.pressedLong, !(Touch.strayed && finger) {
+            let at = root.map { $0.convert(p, to: t) } ?? p
+            if !Touch.strayed || t.bounds.contains(at) { pointerFire("click", t, p) }
+        }
+        Touch.target = nil
+    }
+}
+
+/// The scroll round what the touch went down on that takes a drag of `dx` across and `dy` down: one along that
+/// direction, further along it than across it, and nothing between that keeps its own drag.
+func pointerScrollTaking(_ dx: CGFloat, _ dy: CGFloat) -> UIView? {
+    var at = Touch.target
+    while let v = at {
+        if let h = pointerHandlers(v, false) {
+            if h.keepsDrag { return nil }
+            if v !== Touch.target && ((h.along == 1 && dy > dx) || (h.along == 2 && dx > dy)) { return v }
+        }
+        at = v.superview
+        if v === UI.root { break }
+    }
+    return nil
+}
+
+/// What a hovering pointer (an iPad's trackpad or mouse) is over, entered: each view from the deepest that listens to
+/// the root, told as the pointer comes onto it and goes off it, and the deepest its moves.
+var pointerOver: [UIView] = []
+func uiHover(_ p: CGPoint?) {
+    UI.finger = false
+    var now: [UIView] = []
+    if let p = p, let root = UI.root, let hit = pointerHit(root, p, { !$0.kinds.isEmpty }) {
+        var at = hit
+        while true {
+            if pointerHandlers(at, false) != nil { now.append(at) }
+            if at === root { break }
+            guard let up = at.superview else { break }
+            at = up
+        }
+    }
+    for v in pointerOver where !now.contains(where: { $0 === v }) { pointerFire("leave", v, p ?? .zero) }
+    for v in now where !pointerOver.contains(where: { $0 === v }) { pointerFire("enter", v, p ?? .zero) }
+    pointerOver = now
+    if let p = p { pointerFire("move", now.first, p) }
+}
+
+/// A trackpad's two fingers or a mouse's wheel, `dx` and `dy` points the content is to move, to the deepest view under
+/// `p` that hears the wheel.
+func uiWheel(_ p: CGPoint, _ dx: CGFloat, _ dy: CGFloat) {
+    UI.finger = false
+    guard let root = UI.root, let v = pointerHit(root, p, { $0.kinds["wheel"] != nil }) else { return }
+    guard let f = pointerHandlers(v, false)?.kinds["wheel"] else { return }
+    RtGuard("pointer wheel", f, [.vDbl(Double(dx)), .vDbl(Double(dy))])
 }

@@ -732,7 +732,8 @@ class GraphView[N, E](val nodes: Var[Vector[N]], val edges: Var[Vector[E]], val 
 
 object GraphView {
   /** Whether edges are drawn as curves here: everywhere but a Roku and an Apple TV, which draw only rectangles. */
-  def curves: Boolean = Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS
+  def curves: Boolean =
+    Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS && Platform.kind != PlatformKind.IOS
 
   /** How a graph's force layout moves its nodes by default: boxes with words in them, pushed further apart and linked
     * further than dots would be. */

@@ -280,8 +280,9 @@ class RenderNode(val sg: SGNode) {
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind.toString, f)
 
-  /** The shared ScrollContainer shifts the content; the node only clips. */
-  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = ()
+  /** The shared ScrollContainer shifts the content; the node only clips, and takes a finger's drag along it from what
+    * the finger went down on (uiTouch), as Android's does. */
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = uiSetScrollable(sg, vertical, horizontal)
   def setScrollLeft(x: Double): Unit = ()
   /** The shared ScrollContainer moves the content itself, so the node never scrolls on its own. */
   def onScrolled(f: () => Unit): Unit = ()
@@ -326,8 +327,8 @@ class RenderNode(val sg: SGNode) {
   /** The picture as it is: no tint here yet. */
   def setTint(hex: String): Unit = ()
 
-  /** Only a web page scrolls under a finger that drags: nothing to do here. */
-  def setTouchDrags(on: Boolean): Unit = ()
+  /** What drags itself under a finger keeps the drag from a scroll it is in (uiTouch). */
+  def setTouchDrags(on: Boolean): Unit = uiSetTouchDrags(sg, on)
   def setTouchScrolls(on: Boolean): Unit = ()
   /** Only a page is read for how far a list has scrolled: nothing to do here. */
   def setScrolled(at: Double, furthest: Double): Unit = ()
@@ -499,7 +500,7 @@ object Nodes {
   /** An embed's box (everyui.component.Embed): a plain view, which holds its fallback. */
   def embed(name: String, site: everyui.component.EmbedSite): RenderNode = container()
 
-  /** The root view controller's view. */
+  /** The root view controller's render root. */
   def root(): RenderNode = new RenderNode(uiRoot())
   /** A paragraph of styled runs (`everyui.component.RichText`): a text node here, which draws them. */
   def richText(): RenderNode = text()
@@ -638,12 +639,25 @@ object Platform {
   /** A bundle-relative image path. */
   def imagePath(name: String): String = "/images/" + name
 
-  def kind: PlatformKind = PlatformKind.TvOS
-  /** A remote, and nothing else. */
-  def pointerSupport(): Boolean = false
-  def touchSupport(): Boolean = false
-  def remoteNavigation(): Boolean = true
-  def keyboardSupport(): Boolean = false
+  /** What the app runs on, by UIKit's idiom ("tv", "phone", "pad", "mac"): one emitted app serves an Apple TV, an
+    * iPhone and an iPad, so it is asked as the app runs, once. */
+  def idiom(): String = {
+    if (idiomRead.isEmpty) idiomRead = uiIdiom()
+    idiomRead
+  }
+  private var idiomRead: String = ""
+  /** Whether this is an Apple TV, driven by its remote. */
+  def tv(): Boolean = idiom() == "tv"
+
+  /** An Apple TV is TvOS; an iPhone, an iPad (and an iPad app on a Mac) are IOS. */
+  def kind: PlatformKind = if (tv()) PlatformKind.TvOS else PlatformKind.IOS
+  /** An Apple TV has a remote and nothing else. An iPhone or an iPad is touched, and focuses as Android's phones and
+    * tablets do (the pointer-focus ruling: nothing shown focused until keys move the focus); an iPad with a trackpad or
+    * a mouse has a pointer too, and one with a keyboard keys. */
+  def pointerSupport(): Boolean = !tv() && uiHasPointer()
+  def touchSupport(): Boolean = !tv()
+  def remoteNavigation(): Boolean = tv()
+  def keyboardSupport(): Boolean = !tv() && uiHasKeyboard()
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
@@ -670,14 +684,15 @@ object Platform {
   def reduceMotion(): Boolean = uiReduceMotion()
   /** The setting as it changes, read again as the app comes back to the front. */
   def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
-  /** A television's apps are dark: the Apple TV's appearance is not read yet. */
   /** No text size of the system's is read here: 1. */
   def systemTextScale(): Double = 1.0
   def watchTextScale(f: Double => Unit): Unit = ()
   /** No setting for more time to read or act is read here: 1. */
   def timeScale(): Double = 1.0
-  def systemColorScheme(): String = "dark"
-  def watchColorScheme(f: String => Unit): Unit = ()
+  /** The system's light or dark on an iPhone or an iPad, as it changes; a television's apps are dark, and the Apple
+    * TV's appearance is not read. */
+  def systemColorScheme(): String = if (tv()) "dark" else uiColorScheme()
+  def watchColorScheme(f: String => Unit): Unit = if (!tv()) uiOnColorScheme(f)
   /** Words for a screen reader to read out (a new message in a chat): not yet said here. */
   def announce(words: String): Unit = ()
   def alert(words: String): Unit = ()
@@ -761,8 +776,14 @@ object Platform {
   /** Whether a rich document is edited in place here (everyui.rich.RichTextEditor): not yet, its Markdown instead. */
   def richEditing(): Boolean = false
 
-  /** The screen's safe area: none here (a browser keeps a page inside its own; a window, a television, have none). */
-  def safeArea(): everyui.layout.Insets = everyui.layout.Insets.none
+  /** The screen's safe area, in the app's units: on an iPhone or an iPad what the status bar, the Dynamic Island or the
+    * camera's cutout, the home indicator and the rounded corners take from each edge, which the app is already laid out
+    * inside (the root is placed there, as Android's is), following a rotation and an iPad's split view. None on an Apple
+    * TV, whose whole screen is the app's as a Roku's is: an app keeps its own margins from a television's edges. */
+  def safeArea(): everyui.layout.Insets = {
+    val scale = everyui.theme.UiScale()
+    everyui.layout.Insets(uiSafeInset(0) / scale, uiSafeInset(1) / scale, uiSafeInset(2) / scale, uiSafeInset(3) / scale)
+  }
 
   /** Whether a page declares the theme's colour scheme: there is no page here, so nothing is declared. */
   def declareColorScheme(on: Boolean): Unit = ()
@@ -792,7 +813,8 @@ object Platform {
 
   /** Not read yet: the runtime is still to open packaged text files, so translations fall back to their keys. */
   def readText(path: String, done: String => Unit): Unit = done("")
-  def language(): String = "en"
+  /** The first language the person prefers, as a BCP 47 tag ("en-US"). */
+  def language(): String = uiLanguage()
   def fromCodePoint(codePoint: Int): String = uiChr(codePoint)
   /** The app's language: the platform chooses its own faces for the script, so there is nothing to do. */
   def setLanguage(code: String): Unit = ()
@@ -829,8 +851,9 @@ object Platform {
     done()
   }
 
-  /** What it is, as its maker names it; the same as its name where the platform knows no more than that. */
-  def deviceModel(): String = deviceName()
+  /** What it is, as its maker names it: the hardware's own name ("iPhone18,1", "AppleTV14,1"), on the simulator the
+    * device it stands for. */
+  def deviceModel(): String = uiDeviceModel()
 
   def launchesApps(): Boolean = true
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
@@ -849,10 +872,24 @@ object Platform {
   /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): not
     * read here, 0. */
   def refreshRate(): Double = 0.0
-  /** Errors nothing caught: one ends the app here, and no run reports it. */
-  def errorsSeen(): Int = 0
-  /** What nothing caught: not heard here, where one ends the app. */
-  def onUncaught(f: (String, String) => Unit): Unit = ()
+  /** How many errors nothing caught this run has seen: a handler the platform called (a key, a touch, a frame, a timer,
+    * a request), a started task's failure, an Objective-C exception. */
+  def errorsSeen(): Int = uiErrorsSeen()
+  /** Every error the app throws from a handler the platform calls and nothing caught, as a Roku's `onError` hears it:
+    * the message ("RuntimeException: what went wrong") and where it was thrown out of, the app going on. An
+    * Objective-C exception is told with its stack, and the crash the last run ended on (a signal: a Swift trap, a bad
+    * access) is told once at the first call, as "the app ended on signal N". */
+  def onError(f: (String, String) => Unit): Unit = {
+    errorHooks = errorHooks :+ f
+    if (!hearing) {
+      hearing = true
+      uiOnError((message: String, stack: String) => errorHooks.foreach(h => h(message, stack)))
+    }
+  }
+  /** What nothing caught, as `onError` hears it. */
+  def onUncaught(f: (String, String) => Unit): Unit = onError(f)
+  private var errorHooks: List[(String, String) => Unit] = Nil
+  private var hearing: Boolean = false
   /** A throwable's stack: none to be had here. */
   def stackOf(t: Throwable): String = ""
   /** Turns cut off by the platform (a Roku's): none here. */
@@ -883,15 +920,18 @@ object Platform {
   def localAddress(): String = ""
   def deviceSerial(): String = ""
 
-  /** Where the app came from, and which build it is: nothing this platform can say. */
+  /** Where the app came from: nothing this platform can say. Which build it is: the Info.plist's, as AppleApp.version
+    * wrote it from the app's release, CFBundleVersion as the build's number (Android's versionCode) and
+    * CFBundleShortVersionString as the release (its versionName, "2.0.0"). */
   def installStore(): String = ""
-  def appVersion(): Int = 0
-  def appVersionName(): String = ""
+  def appVersion(): Int = uiAppVersion()
+  def appVersionName(): String = uiAppVersionName()
 
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
 
-  def deviceName(): String = "Apple TV"
+  /** What the device calls itself, as UIDevice names it: "Apple TV", "iPhone", "iPad". */
+  def deviceName(): String = uiDeviceName()
 
   /** No text fields of its own. */
   def nativeInput(): Boolean = false
@@ -911,12 +951,13 @@ object Platform {
     * is taken. */
   def registerColorEmoji(face: Face): Boolean = false
 
-  /** The screen in the app's units, over the size the app is drawn at (everyui.theme.UiScale). */
+  /** The screen in the app's units, over the size the app is drawn at (everyui.theme.UiScale): on an iPhone or an iPad
+    * the part inside the safe area, which the root is placed in. */
   def screenWidth(): Double = uiScreenWidth() / everyui.theme.UiScale()
   def screenHeight(): Double = uiScreenHeight() / everyui.theme.UiScale()
-  /** Screen pixels to a layout unit: a point is taken as a pixel, the screen's own scale not yet being asked for, times
-    * the size the app is drawn at. */
-  def pixelRatio(): Double = everyui.theme.UiScale()
+  /** Screen pixels to a layout unit: on an iPhone or an iPad the screen's scale (2 or 3 pixels a point) times the size
+    * the app is drawn at; on an Apple TV a point is taken as a pixel, as before. */
+  def pixelRatio(): Double = if (tv()) everyui.theme.UiScale() else uiScreenScale() * everyui.theme.UiScale()
   /** The app drawn `factor` times its size (everyui.theme.UiScale): the root view's layers scaled from its top left. */
   def setUiScale(factor: Double): Unit = uiSetRootScale(factor)
 
@@ -961,32 +1002,36 @@ object Platform {
   /** Exit the process (a demo that is done). */
   def quit(): Unit = uiQuit()
 
-  /** An Apple TV's screen never changes size. */
-  /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released. */
+  /** Every key of the remote, by the web's name (OK is "Enter"), pressed or released; on an iPhone or an iPad a
+    * keyboard's, where one is attached. */
   def onKey(f: (String, Boolean) => Boolean): Unit = uiOnKey((name: String, pressed: Boolean) => {
     // a press timed to the frame that answers it, where it is measured
     if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
     f(name, pressed)
   })
-  /** A remote holds no modifiers. */
-  def modifiers(): everyui.event.Modifiers = everyui.event.Modifiers(false, false, false, false)
+  /** The modifiers held for the key or the pointer event being reported: a remote holds none, a keyboard says its own. */
+  def modifiers(): everyui.event.Modifiers =
+    everyui.event.Modifiers(uiModifier(0), uiModifier(1), uiModifier(2), uiModifier(3))
   /** Whether the key being reported is one held down repeating: a remote never says so. */
   def keyRepeat(): Boolean = false
   /** A remote composes no words. */
   def keyComposing(): Boolean = false
-  /** The button of the pointer event being reported: none here, so always the primary (0). */
   /** Which of the platform's pointer events is being reported, the same for each component one climbs through: not
     * told here (-1), so a moment's time stands for it (`Pointer.blocks`). */
   def pointerEvent(): Long = -1L
-  def pointerButton(): Int = 0
-  /** No finger touches a television: the remote's touch surface moves the focus. */
-  def pointerFinger(): Boolean = false
+  /** The button of the pointer event being reported: a finger's is the primary (0), a trackpad's secondary click 2. */
+  def pointerButton(): Int = uiPointerButton()
+  /** Whether a finger made the pointer event being reported, and not an iPad's trackpad or mouse. No finger touches a
+    * television, whose remote's touch surface moves the focus. */
+  def pointerFinger(): Boolean = !tv() && uiPointerFinger()
   /** Every key is the focus layer's: nothing here handles its own. */
   def keyEmbed(): String = ""
   /** No shortcuts are made on a remote. */
   def commandKey(): Boolean = false
 
-  def onResize(f: () => Unit): Unit = ()
+  /** `f` as the root changes size: an iPhone or an iPad turned, an iPad's split view or Slide Over. An Apple TV's
+    * screen never changes size. */
+  def onResize(f: () => Unit): Unit = uiOnResize(f)
 
   // Through the runtime, as the Roku backend has them.
   /** A number from 0 up to 1, at random. */

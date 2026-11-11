@@ -470,6 +470,8 @@ lazy val tvos = (project in file("tvos"))
         Some(swift / "app" / "Assets.xcassets"), Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"))
       // demo=webview's pages, in the bundle beside the app as they are beside the web build
       Seq("webview.html", "sandbox.html").foreach(p => IO.copyFile(root / "web" / p, outDir / p))
+      // the release and the build's number as Android's example has them (Platform.appVersionName, appVersion)
+      AppleApp.version(outDir, version.value, 1)
       outDir
     }
   )

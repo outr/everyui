@@ -34,6 +34,7 @@ object ColorTrack {
   /** How many boxes a track is drawn in where there are no gradients. */
   val segments: Int = 24
 
-  /** Whether the platform draws a gradient (not a Roku, not an Apple TV). */
-  def gradients: Boolean = Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS
+  /** Whether the platform draws a gradient (not a Roku, not an Apple TV, an iPhone or an iPad). */
+  def gradients: Boolean =
+    Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS && Platform.kind != PlatformKind.IOS
 }

@@ -106,6 +106,9 @@ import everyui.render.Platform
   *              and blur that each level draws differently (QualityDemo; `window=5`, `slow=2` and `level=Reduced`)
   *   launch     what the app was launched with, and each launch that reaches it once it runs (Platform.onLaunch): on a
   *              Roku, ECP's `/launch/dev?open=…` to a running or suspended channel, or `/input?open=…` (LaunchDemo)
+  *   device     what the platform says of the device (its kind, name, version, safe area, input), a button that counts
+  *              its presses, and errors thrown on purpose from a press and from a timer, each logged as Errors hears
+  *              it (DeviceDemo)
   *   unwind     a form whose content is set once it is built, as NaboTV's last setup step: shown, or with `throw=deep` a
   *              throw at depth in the children change, told with its backtrace (UnwindDemo)
   *   audio      a looping track, a clip that takes the player from it and gives it back, and effects over both, the
@@ -221,6 +224,7 @@ import everyui.render.Platform
   else if (demo == "coach") CoachDemo.run()
   else if (demo == "quality") QualityDemo.run()
   else if (demo == "launch") LaunchDemo.run()
+  else if (demo == "device") DeviceDemo.run()
   else if (demo == "lifecycle") LifecycleDemo.run()
   else if (demo == "unwind") UnwindDemo.run()
   else if (demo == "confirm") ConfirmDemo.run()

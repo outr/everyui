@@ -28,9 +28,10 @@ class VectorIcon(points: Double) extends Drawing {
 }
 
 object VectorIcon {
-  /** Whether this platform draws a mark at all: the web, the desktop and Android do; a Roku and an Apple TV draw no
-    * paths. */
-  def drawn: Boolean = Platform.kind != everyui.PlatformKind.Roku && Platform.kind != everyui.PlatformKind.TvOS
+  /** Whether this platform draws a mark at all: the web, the desktop and Android do; a Roku and the Apple backend (an
+    * Apple TV, an iPhone, an iPad) draw no paths. */
+  def drawn: Boolean = Platform.kind != everyui.PlatformKind.Roku && Platform.kind != everyui.PlatformKind.TvOS &&
+    Platform.kind != everyui.PlatformKind.IOS
 
   def apply(art: VectorArt, points: Double): VectorIcon = {
     val icon = new VectorIcon(points)

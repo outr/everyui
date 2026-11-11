@@ -169,7 +169,8 @@ object Spotlight {
   def lets(c: Component, kind: PointerKind, x: Double, y: Double): Boolean = up.forall(_.lets(c, kind, x, y))
 
   /** Whether the platform rounds the hole: it draws curves. */
-  def curves: Boolean = Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS
+  def curves: Boolean =
+    Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS && Platform.kind != PlatformKind.IOS
 
   // the platform's own handling of the pointer stops at `c`: a press, a click, a long press, the wheel and a hover over
   // it are its own, and reach nothing under it (a finger on Android, which passes what a view does not take)

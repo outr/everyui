@@ -4499,6 +4499,7 @@ the theme's background, and the bars' icons are dark on a light theme and light 
 a fold and the keyboard. `Platform.safeArea()` says what was taken from each edge, in the app's units, for an app
 that wants to know. An Android television keeps the whole screen with no bars, as before. A browser keeps a page
 inside its own safe area, and a desktop window, a Roku and an Apple TV have none, so the safe area is nothing there.
+An iPhone or an iPad is laid out inside its safe area as an Android phone is (see The Apple TV).
 
 | Platform | The app depends on | and adds itself |
 |---|---|---|
@@ -4706,6 +4707,39 @@ them as it is compiled, with `#if os(iOS)`, so one emitted app serves both. A We
 is imported, and linked, only there (`otool -L` on a tvOS build shows no WebKit); on tvOS `Platform.webViews()` is false
 and the view an empty box (see WebView).
 
+An Apple TV and an iPhone or an iPad are told apart as the app runs, by UIKit's idiom (`UIDevice.userInterfaceIdiom`,
+and `#if os(tvOS)` where the build itself differs). On an Apple TV `Platform.kind` is `TvOS`, `remoteNavigation()` is
+true and the focus is always shown, as before. On an iPhone or an iPad (and an iPad app on a Mac) it is `IOS`:
+`remoteNavigation()` is false, `touchSupport()` true, `pointerSupport()` true while a trackpad or a mouse is attached
+and `keyboardSupport()` while a keyboard is, so the focus is shown only once keys move it, as on an Android phone (the
+pointer-focus ruling), and nothing is lit at launch; `Tooltip.onFocus`, `UiScale.followsSystem` and the rest that ask
+`remoteNavigation()` follow. A finger's touch is heard as Android's is: what it goes down on hears it to its lift, a
+finger held on what has a menu asks for it, a drag along a scroll further than a tap may is the scroll's, and a lift
+where it went down is a click; an iPad's trackpad or mouse also hovers (enter, leave, moves), scrolls with two fingers or
+a wheel, and its secondary click is button 2 (`Platform.pointerFinger()` is false for it). A keyboard's keys come by
+the web's names (Escape, Return as Enter, the arrows, the characters typed), with their modifiers. `deviceName()` is
+UIDevice's name ("iPhone", "iPad", "Apple TV"), `deviceModel()` the hardware's ("iPhone18,1"), `language()` the first
+language the person prefers ("en-US"), `systemColorScheme()` the system's light or dark on an iPhone or an iPad (an Apple
+TV's stays "dark"), and `pixelRatio()` the screen's scale (2 or 3) on them.
+
+`Platform.appVersionName()` and `appVersion()` read the bundle's CFBundleShortVersionString and CFBundleVersion, as
+Android's read its versionName and versionCode. `AppleApp.version(out, release, code)`, after `assemble`, writes them:
+the release's numbers (`2.0.0` of `2.0.0-SNAPSHOT`) and the build's number, which a store upload has to raise.
+
+On an iPhone or an iPad the app is laid out inside the safe area (see "A phone's screen" above): the root is placed
+inside what the status bar, the Dynamic Island or the camera, the home indicator and the rounded corners leave, at each
+rotation and each split-view or Slide Over size (`Platform.onResize` tells the app), `Platform.screenWidth()` and
+`screenHeight()` are its size and `safeArea()` says what was taken. Round it is the root's own ground, and the status
+bar's words are dark or light against it. The Info.plist template lets an iPhone turn to either landscape and an iPad
+to all four. An Apple TV keeps its whole screen, as a Roku does: its overscan margins are the app's to keep.
+
+`Platform.onError(f)` (and `onUncaught`, which `everyui.error.Errors` listens through) hears every error nothing caught,
+as a Roku's does: one thrown out of a handler the platform calls (a key, a touch, a frame, a timer, a request, a socket,
+a web page, a player, the lifecycle), a started task's failure, and an Objective-C exception, with its message
+("RuntimeException: what went wrong") and where it was thrown out of (an Objective-C exception's stack); the app goes on.
+A crash the app cannot go on from (a Swift trap, a bad access, an abort) is noted as it happens and told to the hook at
+the next launch, once, as "the app ended on signal N". `Platform.errorsSeen()` counts them.
+
 ```scala
 @transient lazy val emitSwift = taskKey[File]("The app as Swift, with what an Apple TV build takes, in out-swift/")
 
@@ -4722,6 +4756,8 @@ lazy val tvos = project.in(file("tvos"))
         baseDirectory.value / "out-swift", baseDirectory.value)
       AppleApp.assemble(out, everyuiSwiftRuntime.value, everyuiAppleInfoPlist.value,
         Some(baseDirectory.value / "Assets.xcassets"), Seq(baseDirectory.value / "images"), Seq(everyuiFonts.value))
+      AppleApp.version(out, version.value, 42)   // the release, and the build's number (Android's versionCode)
+      out
     }
   )
 ```

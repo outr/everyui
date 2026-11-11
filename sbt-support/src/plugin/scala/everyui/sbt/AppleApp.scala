@@ -52,4 +52,32 @@ object AppleApp {
     fonts.foreach(d => (d * "*.ttf").get().foreach(f => IO.copyFile(f, out / "fonts" / f.getName)))
     out
   }
+
+  /** Set the app's version in the Info.plist in `out` (after `assemble`), as `Platform.appVersionName` and
+    * `appVersion` read it: CFBundleShortVersionString is the release's numbers (`2.0.0` of `2.0.0-SNAPSHOT`, three at
+    * most, as the App Store takes them), and CFBundleVersion the build's number as the app's other platforms count them
+    * (Android's versionCode), which a store upload has to raise; `code` 0 keeps the plist's own. */
+  def version(out: File, release: String, code: Int = 0): File = {
+    val numbers = release.takeWhile(c => c.isDigit || c == '.').split('.').filter(_.nonEmpty).take(3)
+    val short = if (numbers.isEmpty) "1.0" else numbers.mkString(".")
+    val plist = out / "Info.plist"
+    val set = setKey(setKey(IO.read(plist), "CFBundleShortVersionString", short),
+      "CFBundleVersion", if (code > 0) code.toString else "")
+    IO.write(plist, set)
+    plist
+  }
+
+  // a string key's value replaced where the plist has the key, and the key added at the end of its dict where it has
+  // not; "" leaves it as it is
+  private def setKey(plist: String, key: String, value: String): String =
+    if (value.isEmpty) plist
+    else {
+      val at = ("(<key>" + java.util.regex.Pattern.quote(key) + "</key>\\s*<string>)[^<]*(</string>)").r
+      if (at.findFirstIn(plist).nonEmpty) at.replaceAllIn(plist, m => java.util.regex.Matcher.quoteReplacement(
+        m.group(1) + value + m.group(2)))
+      else {
+        val end = plist.lastIndexOf("</dict>")
+        plist.substring(0, end) + s"  <key>$key</key><string>$value</string>\n" + plist.substring(end)
+      }
+    }
 }

@@ -69,7 +69,8 @@ object BusyRing {
   def outset(around: Double): Double = stroke(around) * 2.0
 
   /** Whether the platform can turn the lit half: a Roku clips only upright, and an Apple TV runs no motion yet. */
-  def turns: Boolean = Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS
+  def turns: Boolean =
+    Platform.kind != PlatformKind.Roku && Platform.kind != PlatformKind.TvOS && Platform.kind != PlatformKind.IOS
 
   /** Once round a second. */
   val turn: List[Track] = List(Track(Track.Rotation, 1.0, List(Keyframe(0.0, 0.0), Keyframe(1.0, 2.0 * math.Pi))))

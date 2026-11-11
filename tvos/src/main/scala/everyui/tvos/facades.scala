@@ -306,3 +306,78 @@ class SGNode
 @native object uiWebRelease {
   def apply(node: SGNode): Unit = native.value
 }
+/** What the app runs on, by UIKit's idiom: "tv", "phone", "pad", "mac", "vision" or "car". */
+@native object uiIdiom {
+  def apply(): String = native.value
+}
+/** What the device calls itself ("iPhone", "iPad", "Apple TV"), and the hardware's name for itself ("iPhone18,1"). */
+@native object uiDeviceName {
+  def apply(): String = native.value
+}
+@native object uiDeviceModel {
+  def apply(): String = native.value
+}
+/** The bundle's CFBundleVersion as a number, and its CFBundleShortVersionString. */
+@native object uiAppVersion {
+  def apply(): Int = native.value
+}
+@native object uiAppVersionName {
+  def apply(): String = native.value
+}
+/** The first language the person prefers, as a BCP 47 tag. */
+@native object uiLanguage {
+  def apply(): String = native.value
+}
+/** The system's "light" or "dark", and `f` told each as it changes. */
+@native object uiColorScheme {
+  def apply(): String = native.value
+}
+@native object uiOnColorScheme {
+  def apply(f: String => Unit): Unit = native.value
+}
+/** Screen pixels to a point. */
+@native object uiScreenScale {
+  def apply(): Double = native.value
+}
+/** The safe area the root is placed inside, in points, at one edge: 0 top, 1 right, 2 bottom, 3 left. */
+@native object uiSafeInset {
+  def apply(edge: Int): Double = native.value
+}
+/** `f` each time the root changes size (a rotation, a split view). */
+@native object uiOnResize {
+  def apply(f: () => Unit): Unit = native.value
+}
+/** Whether a hardware keyboard is attached, and a mouse or a trackpad. */
+@native object uiHasKeyboard {
+  def apply(): Boolean = native.value
+}
+@native object uiHasPointer {
+  def apply(): Boolean = native.value
+}
+/** The event being reported: one of its modifiers (0 ctrl, 1 meta, 2 alt, 3 shift), whether a finger made it, and
+  * its button. */
+@native object uiModifier {
+  def apply(which: Int): Boolean = native.value
+}
+@native object uiPointerFinger {
+  def apply(): Boolean = native.value
+}
+@native object uiPointerButton {
+  def apply(): Int = native.value
+}
+/** A view that scrolls its content down or across: a finger's drag along it is its own. */
+@native object uiSetScrollable {
+  def apply(node: SGNode, vertical: Boolean, horizontal: Boolean): Unit = native.value
+}
+/** A view that drags itself keeps a drag from the scroll it is in. */
+@native object uiSetTouchDrags {
+  def apply(node: SGNode, on: Boolean): Unit = native.value
+}
+/** `f(message, stack)` for each error nothing caught (the program's, Objective-C's, and the crash the last run ended
+  * on); how many this run has seen. */
+@native object uiOnError {
+  def apply(f: (String, String) => Unit): Unit = native.value
+}
+@native object uiErrorsSeen {
+  def apply(): Int = native.value
+}

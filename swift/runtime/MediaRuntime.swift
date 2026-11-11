@@ -76,9 +76,9 @@ enum MediaSession {
             (c.nextTrackCommand, "MediaTrackNext"), (c.previousTrackCommand, "MediaTrackPrevious")]
         for (command, name) in keys {
             command.addTarget { _ in
-                if case .vNull = UI.key { return .noActionableNowPlayingItem }
-                _ = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(true)]))
-                _ = try? RtInvoke(UI.key, rtArr([.vStr(name), .vBool(false)]))
+                if !rtIsFn(UI.key) { return .noActionableNowPlayingItem }
+                RtGuard("a media key", UI.key, [.vStr(name), .vBool(true)])
+                RtGuard("a media key", UI.key, [.vStr(name), .vBool(false)])
                 return .success
             }
         }
@@ -166,7 +166,7 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
 
     func tell(_ event: String) {
         print("[ui] media: \(event)")
-        _ = try? RtInvoke(heard, rtArr([.vStr(event)]))
+        RtGuard("a player", heard, [.vStr(event)])
     }
 
     /// The source opened afresh, `start` seconds in, with everything it is opened with: its headers, its caching,
@@ -776,6 +776,8 @@ func uiMediaTrack(_ node: V, _ index: V, _ field: V) -> V {
 func uiMediaDiagnostics(_ node: V, _ field: V) -> V { .vStr(mediaView(node)?.diagnostics(rtS(field)) ?? "") }
 
 func uiMediaOnEvent(_ node: V, _ f: V) -> V { mediaView(node)?.heard = f; return .vNull }
+/// Each live player's handler, a root of the collector (uiHooks) while the player is.
+func uiMediaRoots() -> [V] { MediaView.live.allObjects.map { $0.heard } }
 func uiMediaRelease(_ node: V) -> V { mediaView(node)?.release(); return .vNull }
 
 #else
@@ -809,6 +811,7 @@ func uiMediaTrackCount(_ node: V) -> V { .vInt(0) }
 func uiMediaTrack(_ node: V, _ index: V, _ field: V) -> V { .vStr("") }
 func uiMediaDiagnostics(_ node: V, _ field: V) -> V { .vStr("") }
 func uiMediaOnEvent(_ node: V, _ f: V) -> V { .vNull }
+func uiMediaRoots() -> [V] { [] }
 func uiMediaRelease(_ node: V) -> V { .vNull }
 
 #endif
