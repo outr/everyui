@@ -80,6 +80,10 @@ class SGNode
 @native object uiAfter {
   def apply(seconds: Double, f: () => Unit): Unit = native.value
 }
+/** `f` on the main queue's next turn, after what runs now. */
+@native object uiLater {
+  def apply(f: () => Unit): Unit = native.value
+}
 /** Run `tick` once per render frame (a `CADisplayLink`). */
 @native object uiAnimate {
   def apply(tick: () => Unit): Unit = native.value

@@ -911,7 +911,10 @@ object Platform {
   /** Nothing runs beside the interface here yet: the work is done at once. */
   def offThread(f: () => Unit): Unit = f()
 
-  def later(f: () => Unit): Unit = f()
+  /** `f` on the main queue's next turn, once what runs now is done and after what was asked for before it, as
+    * every other backend has it (uiLater); it ran at once here, so a step waiting for its component to be put on the
+    * screen ran before it was. */
+  def later(f: () => Unit): Unit = uiLater(f)
   /** `f` once what is running now is done: `later` here. */
   def afterTurn(f: () => Unit): Unit = later(f)
   /** `f` once `seconds` have passed, on the main queue (uiAfter). */

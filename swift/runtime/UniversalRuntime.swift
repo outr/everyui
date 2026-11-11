@@ -1137,6 +1137,21 @@ func uiAfter(_ seconds: V, _ f: V) -> V {
     return .vNull
 }
 
+/// `f()` on the main queue's next turn, after what runs now and what was asked for before it (Platform.later and
+/// afterTurn, as Android's Handler.post and the desktop's runLater), held for the collector until then. It ran at once
+/// here, inside whatever asked, so a step that waits for its component to be put on the screen ran before it was, and
+/// a step that asks for the next one recursed.
+func uiLater(_ f: V) -> V {
+    let held = RtHeld.hold(f)
+    RtTimers.next += 1
+    let id = RtTimers.next
+    DispatchQueue.main.async {
+        RtHeld.release(held)
+        RtTimerRun(id, 0, f)
+    }
+    return .vNull
+}
+
 func uiFreezeSeconds() -> V { .vDbl(UI.freeze) }
 
 /// Whether Reduce Motion is on in Accessibility.
