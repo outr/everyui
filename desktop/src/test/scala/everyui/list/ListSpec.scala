@@ -43,9 +43,29 @@ class ListSpec extends FxSpec {
         fx(list.rowAt(25000).flatMap(_.item())) shouldBe Some("item 25000")
         fx(list.rows.size) shouldBe made
         fx(list.rowAt(25000).map(_.position.top())) shouldBe Some(0.0)
-        // scrolled a pixel at a time through a thousand rows, and back to the top, timed in the FX thread's own time
-        val took = worked((0 until 28000 by 7).foreach(y => list.scrollTop(y.toDouble)))
-        info(f"4000 scroll steps over 50k rows: $took%.0f ms worked (${took / 4000.0}%.3f ms a step)")
+        // scrolled a pixel at a time through a thousand rows, counted: each step fitting the words of the rows it shows
+        // at most, and none whatever the length
+        val step = (i: Int) => list.scrollTop(i * 7.0)
+        fx(list.scrollTop(0.0))
+        val c = counted(4000, "fits", "measured")(step)
+        info(s"4000 scroll steps over 50k rows: ${c("fits")._1} fits (most ${c("fits")._2} a step), " +
+          s"${c("measured")._1} sizes read (most ${c("measured")._2}), for $made rows made")
+        c("fits")._2 should be <= made * 2
+        c("measured")._2 should be <= made * 2
+        fx(list.rows.size) shouldBe made
+        // and timed in the FX thread's own time beside a list a tenth as long scrolled step for step: a step that grew
+        // with the length would cost several times what the short one's does
+        val short = fx(VirtualList.text[String](numbers(5000), s => s, s => s))
+        fx {
+          short.size.height @= 280.0
+          ui.children += short
+          list.scrollTop(0.0)
+        }
+        val (took, shorter) = workedBeside(4000)(step, i => short.scrollTop(i * 7.0))
+        info(f"4000 scroll steps over 50k rows: $took%.0f ms worked (${took / 4000.0}%.3f ms a step); over 5k beside " +
+          f"them: $shorter%.0f ms (${took / shorter}%.2f times)")
+        took should be < shorter * 3.0
+        // and 1 ms a step at most, some thirty times what one costs on a quiet machine
         took should be < 4000.0
         fx(list.rows.size) shouldBe made
         val reindexed = System.nanoTime()

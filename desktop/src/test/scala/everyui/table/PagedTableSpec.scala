@@ -277,14 +277,41 @@ class PagedTableSpec extends FxSpec {
     "scroll through 1.9 million rows quickly, keeping only its bound of pages" in {
       val server = new Server(1900000)
       val (source, t) = table(server, maxPages = 12)
+      // a hundredth as long, scrolled beside it to the same rows (taken around its length), fetching as often
+      val shortServer = new Server(19000)
+      val (_, short) = table(shortServer, maxPages = 12)
       onScreen(t) {
+        fx(ui.children += short)
         val made = fx(t.list.rows.size)
-        // a wheel's worth at a time near the top, then jumps through the whole length, as a thumb dragged does, timed in
-        // the FX thread's own time (worked): the work the steps cost
-        val took = worked((0 until 2000).foreach(i => t.list.scrollBy(40.0))) +
-          worked((0 until 2000).foreach(i => t.list.scrollTop(i * 1900000.0 * 28.0 / 2000.0)))
-        info(f"4000 scroll steps over 1.9M rows, fetching as they go: $took%.0f ms worked (${took / 4000.0}%.3f ms a step)")
-        took should be < 8000.0
+        // a wheel's worth at a time near the top, then jumps through the whole length, as a thumb dragged does
+        def wheel(table: VirtualTable[Entity])(i: Int): Unit = table.list.scrollBy(40.0)
+        def jump(table: VirtualTable[Entity], rows: Int)(i: Int): Unit = table.list.scrollTop((i * 950 % rows) * 28.0)
+        // the work counted, which no load changes: each step fits and reads the words of the rows it shows, a few
+        // times each at most, and fetches a page or two, nothing that grows with the length or the pages kept
+        val cells = made * 3
+        val counts = List(counted(2000, "fits", "measured")(wheel(t)),
+          counted(2000, "fits", "measured")(jump(t, 1900000)))
+        val fetched = server.asked.size
+        counts.zip(List("a wheel's", "a jump's")).foreach { case (c, step) =>
+          info(s"$step fits ${c("fits")._1 / 2000.0} a step (most ${c("fits")._2}), sizes read " +
+            s"${c("measured")._1 / 2000.0} (most ${c("measured")._2}), for $cells cells made")
+          c("fits")._2 should be <= cells * 3
+          c("measured")._2 should be <= cells * 3
+        }
+        info(s"$fetched pages fetched in 4000 steps")
+        fetched should be <= 4000 * 3
+        // and timed in the FX thread's own time beside the short table, step for step: a step that grew with the
+        // length (by a hundred) would cost many times what the short one's does
+        fx(List(t, short).foreach(_.list.scrollTop(0.0)))
+        val (wheelLong, wheelShort) = workedBeside(2000)(wheel(t), wheel(short))
+        val (jumpLong, jumpShort) = workedBeside(2000)(jump(t, 1900000), jump(short, 19000))
+        val (long, shorter) = (wheelLong + jumpLong, wheelShort + jumpShort)
+        info(f"4000 scroll steps over 1.9M rows: $long%.0f ms worked (${long / 4000.0}%.3f ms a step); over 19k " +
+          f"beside them: $shorter%.0f ms (${long / shorter}%.2f times)")
+        long should be < shorter * 3.0
+        // and 10 ms a step at most: some 0.4 ms on a quiet machine, and 2.8 the slowest seen, in a whole run of the
+        // specs at a load of 26 to 40
+        long should be < 40000.0
         fx(t.list.rows.size) should be <= made + 5
         fx(source.kept) should be <= 12 * 100
         info(s"${server.asked.size} pages fetched, ${fx(source.kept)} rows kept")

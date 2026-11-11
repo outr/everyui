@@ -65,16 +65,42 @@ class MarkdownViewSpec extends FxSpec {
       onScreen(view) {
         var at = 0
         var appends = 0
-        val start = System.nanoTime()
-        while (at < doc.length) {
-          at = math.min(doc.length, at + 16)
-          val upTo = at
-          fx(view.content @= doc.substring(0, upTo))
-          appends += 1
+        // the work of each append counted, which no load changes: its words fitted and its containers placed, the
+        // most any one append does
+        val names = Vector("fits", "placed")
+        def counts(): Vector[Int] = fx(names.map(everyui.perf.PerfCounters.counts.toMap))
+        val was = fx(everyui.perf.PerfCounters.on)
+        fx {
+          everyui.perf.PerfCounters.on = true
+          everyui.perf.PerfCounters.reset()
         }
-        val each = (System.nanoTime() - start) / 1e6 / appends
-        info(f"${doc.length} characters, 16 at a time, drawn: $each%.2f ms an append (the FX thread round trip included)")
-        fx(view.blocks.size) shouldBe Markdown.parse(doc).size
+        val most = Array.fill(names.length)(0)
+        // and timed in the FX thread's own time (fxWorked), what each turn left for later (the layout) among it
+        val took = try fxWorked {
+          var before = counts()
+          while (at < doc.length) {
+            at = math.min(doc.length, at + 16)
+            val upTo = at
+            fx(view.content @= doc.substring(0, upTo))
+            appends += 1
+            val after = counts()
+            names.indices.foreach(n => most(n) = math.max(most(n), after(n) - before(n)))
+            before = after
+          }
+        } finally fx {
+          everyui.perf.PerfCounters.reset()
+          everyui.perf.PerfCounters.on = was
+        }
+        val each = took / appends
+        val blocks = fx(view.blocks.size)
+        info(f"${doc.length} characters, 16 at a time, drawn: $each%.2f ms worked an append; the most an append " +
+          s"fitted ${most(0)} words and placed ${most(1)} containers, of $blocks blocks")
+        blocks shouldBe Markdown.parse(doc).size
+        // an append fits the words of its last block and places what holds them (2 and 22 at most here), not the
+        // hundreds of blocks before it
+        most(0) should be <= 8
+        most(1) should be <= 50
+        // and 5 ms of the thread's own time an append at most, several times what one costs on a busy machine
         each should be < 5.0
       }
     }

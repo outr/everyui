@@ -45,6 +45,74 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
     (threads.getCurrentThreadCpuTime - start) / 1e6
   }
 
+  /** `f`, run on this thread and calling `fx` as often as it likes, and the time the FX thread spent meanwhile (ms):
+    * what the turns cost, what each posts for later (a layout) among it, without the waits for the thread to come
+    * round that a clock on the wall counts in on a busy machine. */
+  protected def fxWorked(f: => Unit): Double = {
+    val id = fx(Thread.currentThread().threadId())
+    val start = threads.getThreadCpuTime(id)
+    f
+    fx(())
+    (threads.getThreadCpuTime(id) - start) / 1e6
+  }
+
+  /** `long(i)` and `short(i)` for each of `steps`, in turn on the FX thread (which goes first changing at each), and
+    * the time that thread spent on each in all (ms): work over more beside the same work over less, under whatever
+    * load the machine is under at that moment, so that their ratio is the work's and not the load's. A busy machine
+    * slows the thread's own time too, three and four times over (the JIT's compilers starved of a core, the code left
+    * interpreted, the caches shared), so a bound on that time alone fails on a busy machine; side by side, both slow
+    * alike. */
+  protected def workedBeside(steps: Int)(long: Int => Unit, short: Int => Unit): (Double, Double) = fx {
+    var inLong = 0L
+    var inShort = 0L
+    var i = 0
+    while (i < steps) {
+      val start = threads.getCurrentThreadCpuTime
+      if (i % 2 == 0) long(i) else short(i)
+      val between = threads.getCurrentThreadCpuTime
+      if (i % 2 == 0) short(i) else long(i)
+      val end = threads.getCurrentThreadCpuTime
+      if (i % 2 == 0) {
+        inLong += between - start
+        inShort += end - between
+      } else {
+        inShort += between - start
+        inLong += end - between
+      }
+      i += 1
+    }
+    (inLong / 1e6, inShort / 1e6)
+  }
+
+  /** `step(i)` for each of `steps` on the FX thread with `PerfCounters` counting, and for each count in `names`
+    * ("fits", "measured", "placed") what all the steps added and the most one step added: the work, counted, which
+    * no load changes. */
+  protected def counted(steps: Int, names: String*)(step: Int => Unit): Map[String, (Int, Int)] = fx {
+    val was = everyui.perf.PerfCounters.on
+    everyui.perf.PerfCounters.on = true
+    everyui.perf.PerfCounters.reset()
+    def now(): Vector[Int] = {
+      val all = everyui.perf.PerfCounters.counts.toMap
+      names.toVector.map(all)
+    }
+    val most = Array.fill(names.length)(0)
+    try {
+      var before = now()
+      var i = 0
+      while (i < steps) {
+        step(i)
+        val after = now()
+        names.indices.foreach(n => most(n) = math.max(most(n), after(n) - before(n)))
+        before = after
+        i += 1
+      }
+      names.indices.map(n => names(n) -> (before(n), most(n))).toMap
+    } finally {
+      everyui.perf.PerfCounters.reset()
+      everyui.perf.PerfCounters.on = was
+    }
+  }
+
   /** `check` on the FX thread until it holds, a turn at a time: for what comes a few turns on, or after a timer. It
     * gives up only after ten seconds, a bound for what never comes, as a machine busy with other work can hold the FX
     * thread and the timers up for well over a second; what holds at once costs no more. */
