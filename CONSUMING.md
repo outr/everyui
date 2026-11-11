@@ -184,6 +184,35 @@ screen and put back, keeps the focus and has the platform's again (its caret) as
 the focus already takes the platform's focus again. A click on the page's empty space lets go of the focus where a
 pointer is used, as a browser does; on a remote's platform the focus stays where it is (see "Two focus models").
 
+### Keeping views to show again
+
+A view kept to be shown again (a workspace's panels, a conversation per tab, a route kept alive) is put back cheaply:
+take it out with `children @= …` or `-=` (not `replaceMaking`, which takes it apart), keep the component, and put the
+same component back. Put back in a room as wide as the one it left (the container's width, as it was laid out), nothing
+in it is measured again, no words are fitted again, nothing is laid out again and nothing is made again: only the
+container it goes into is read. What changed while it was out was measured as it changed, and a theme or a language
+changed meanwhile shows on it already (it stays bound while it is out). On the web, what was measured while it was off
+the page (lent to the page with no room around it) is read again, alone, as it comes back. Put back in a room of
+another width, it is measured whole and laid out to it, words without a width of their own wrapping at their new box.
+The width is looked at once the turn is over, so a view sized to its room as it goes in is compared at that size.
+
+```scala
+private val kept = mutable.Map.empty[String, Component]
+def show(id: String): Unit = {
+  val view = kept.getOrElseUpdate(id, makeView(id))
+  view.size.width := holder.size.width()
+  view.size.height := holder.size.height()
+  holder.children @= Vector(view)   // the one showing comes out, kept; this one goes back whole
+}
+def forget(id: String): Unit = kept.remove(id).foreach(_.dispose())   // a kept view is the app's to take apart
+```
+
+A kept view out of every container is drawn nowhere: its words are not cut or wrapped again for no box while it is
+out, so it comes back as it left. It holds what it holds (its bindings, its nodes) until it is disposed of. Tab groups
+showing one workspace's tabs at a time set them aside and put them back whole (`TabGroups.setAside`, `putBack`, under
+TabGroups), rather than `restore` a `tabLayout`, which makes every tab and slot again. `PerfCounters` counts each size
+read for a component (`measured`), and on the web `demo=kept` in the example times putting kept panels back.
+
 ### Rebuilding a screen
 
 Most changes need nothing rebuilt: text bound to `Strings` changes language, and anything bound to `Theme` changes
@@ -6722,6 +6751,21 @@ and a split's arrows cross it. `tabLayout` is how it all lies, a `TabLayout` tre
 shown; the splits' direction and share), plain enough for fabric (`given RW[TabLayout] = RW.gen`) and kept as JSON
 without it (`TabLayout.codec`);
 `layoutChanged` tells each change and `restore` lays a kept one out again, leaving out what it no longer finds.
+`setAside()` takes every group off the screen whole, its tabs, their contents and the splits between them as drawn,
+and leaves one empty group; `putBack(aside)` puts them back as they were, the one maximized and the focused group
+too, closing what shows meanwhile as `restore` does: an app showing one workspace's tabs at a time puts a workspace's
+tabs back with nothing made or measured again, where `restore` makes every tab and its slot again. A `TabsAside` never
+put back is the app's to `dispose()`, its contents with it. Tabs opened meanwhile (a pinned file kept through the
+switch) close as the set-aside ones come back; open them again after `putBack`.
+
+```scala
+val asides = mutable.Map.empty[String, TabsAside[File]]
+def switchTo(next: String): Unit = {
+  asides(current) = editor.setAside()
+  asides.remove(next).foreach(editor.putBack)   // a first visit opens its tabs in the empty group instead
+  current = next
+}
+```
 A tab closes only once `canClose` (`K => Task[Boolean]`, always true by default) lets it, by the ×, the menu, the keys
 and `closeAllTabs()`: the app asks as it likes (`Dialogs.saveChanges`) and a tab it answers false for stays. It is asked
 for a key's last tab only, a second view of it closing at once. Close Others, Close All and the closes to a side ask

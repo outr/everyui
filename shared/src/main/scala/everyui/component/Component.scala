@@ -88,6 +88,13 @@ class Component(val node: RenderNode) {
   private[component] var containerWatches: List[ChildWatch] = Nil
   /** A mark for a pass over lists of components (ContainerFeature), cleared by the pass that set it. */
   private[everyui] var listMark: Boolean = false
+  /** The width of the container this was last taken out of, as it was then, while it is out of every container; -1
+    * where it is in one, or has never been. Put back where the room is as wide, a kept view is not measured again
+    * (ContainerFeature): what it holds measures as it did. */
+  private[everyui] var leftWidth: Double = -1.0
+  /** Whether a size of this, or of something in it, was read while it was out of the page, since it was last put back
+    * (MeasuredFeature.wasRead): what a kept view put back reads again, and nothing else. */
+  private[everyui] var readAwayBelow: Boolean = false
 
   lazy val measure: Trigger = Trigger()
   lazy val measured: MeasuredFeature = new MeasuredFeature(this)

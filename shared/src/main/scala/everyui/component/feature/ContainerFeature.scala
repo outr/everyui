@@ -51,6 +51,10 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
     // back when its tab came up again)
     val movers = added.filter(c => c.parent().exists(p => !(p eq component)))
     val leftBy = movers.map(_.parent().get)
+    // how wide what each comes from was: the container it was last taken out of (a kept view put back), or the one it
+    // moves from; -1 where it has been in none
+    val from = added.map(c => if (c.leftWidth >= 0.0) c.leftWidth
+      else c.parent().filter(p => !(p eq component)).map(ContainerFeature.widthOf).getOrElse(-1.0))
     shifted = Nil
     LayoutPass.batch {
       removed.foreach { c =>
@@ -62,7 +66,9 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
           c.leaves(component, old.indexWhere(_ eq c))
           ContainerFeature.forget(component, c)
           c.parent @= None
-          c.containerChanged()
+          // and how wide it was, for its return: out of every container it is drawn nowhere, so its words are not cut
+          // or wrapped again for no box, and a kept view put back where it was finds them as it left them
+          c.leftWidth = ContainerFeature.widthOf(component)
         }
       }
       if (grown || (removed.isEmpty && ContainerFeature.startsWith(current, old))) added.foreach { c =>
@@ -83,8 +89,10 @@ class ContainerFeature(val component: Component) extends Var[Vector[Component]](
       if (everyui.perf.Quality.changes > 0)
         added.foreach(c => if (c.drawnAt != everyui.perf.Quality.changes) Component.requality(c))
       // only what was added is measured again, and then the container: those already here have their sizes, and
-      // measuring a rail of cards again for each card added to it took a Roku seconds
-      ContainerFeature.measureUnder(added.toList)
+      // measuring a rail of cards again for each card added to it took a Roku seconds. What comes back from a container
+      // as wide (a kept view put back) has its sizes too, but for what was read out of the page meanwhile: putting back
+      // a workspace's views read every word in them again
+      ContainerFeature.measureAdded(added, from)
       component.measured.refresh()
       component.asContainer.foreach(_.layoutFor("children"))
       if (removed.nonEmpty) everyui.focus.Focus.offScreen()
@@ -321,12 +329,77 @@ object ContainerFeature {
     i == start.length
   }
 
+  /** How wide `c` is now, as last laid out (not read as a value being worked out would read it). */
+  private[everyui] def widthOf(c: Component): Double = c.size.width.option.getOrElse(0.0)
+
+  /** `added` measured, and everything under each, but for one that comes from a container (`from`, its width) and has
+    * been measured: a kept view put back, or one moved. That is looked at once the turn is over, when what it is in has
+    * been laid out (`settleReturns`): back in as wide a room, its sizes are as they were, and only what was read out of
+    * the page since is read again (`readAgain`); in a room of another width it is measured whole, since words with no
+    * width of their own wrap at their box. */
+  private[feature] def measureAdded(added: Vector[Component], from: Vector[Double]): Unit = {
+    var fresh: List[Component] = Nil
+    var i = added.length - 1
+    while (i >= 0) {
+      val c = added(i)
+      if (from(i) >= 0.0 && c.measured.readOrQueued) {
+        c.leftWidth = from(i)
+        val first = returning(0).isEmpty
+        returning(0) = c :: returning(0)
+        if (first) everyui.render.Platform.afterTurn(() => settleReturns())
+      }
+      else {
+        c.leftWidth = -1.0
+        fresh = c :: fresh
+      }
+      i -= 1
+    }
+    measureUnder(fresh)
+  }
+
+  // what came back this turn (`measureAdded`), the newest first, each with the width it came from in `leftWidth`: an
+  // array of one rather than a var, which a Roku may not be able to set
+  private val returning: Array[List[Component]] = Array(Nil)
+
+  // each that came back and is still where it came to, measured as its room says (`measureAdded`); one taken out again
+  // meanwhile has the width it left then, and one put back twice is looked at once
+  private def settleReturns(): Unit = {
+    val back = returning(0).reverse
+    returning(0) = Nil
+    back.foreach { c =>
+      val was = c.leftWidth
+      if (was >= 0.0 && !c.takenApart) c.parent.option match {
+        case Some(Some(p)) =>
+          c.leftWidth = -1.0
+          if (widthOf(p) == was) readAgain(c) else measureUnder(List(c))
+        case _ => ()
+      }
+    }
+  }
+
+  /** What under `root` (and `root`) was read out of the page since it was last in it (MeasuredFeature.wasRead), read
+    * again, the deepest first, and the marks let go: a kept view put back reads nothing else. Only the marked are
+    * walked. */
+  def readAgain(root: Component): Unit = if (root.readAwayBelow) {
+    var order: List[Component] = Nil
+    var pending: List[Component] = List(root)
+    while (pending.nonEmpty) {
+      val c = pending.head
+      pending = pending.tail
+      c.readAwayBelow = false
+      if (c.measured.readAway) order = c :: order
+      c.childComponents.foreach(k => if (k.readAwayBelow) pending = k :: pending)
+    }
+    order.foreach(_.measured.refresh())
+  }
+
   /** Measure `roots` and everything under them, deepest first. */
   def measureUnder(roots: List[Component]): Unit = {
     var order: List[Component] = Nil
     var pending: List[Component] = roots
     while (pending.nonEmpty) {
       val c = pending.head
+      c.readAwayBelow = false
       order = c :: order
       pending = c.childComponents.toList ++ pending.tail
     }

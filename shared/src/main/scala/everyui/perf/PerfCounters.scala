@@ -9,6 +9,7 @@ import everyui.render.Platform
   *    each placed again in the same frame, by its kind and by what asked for it;
   *  - words: each `TextView` fit, and those whose words, limits and room were all as at its last (what a cache of fits
   *    would have saved);
+  *  - measured: each component's size read for its `measured` (`MeasuredFeature`), on every platform;
   *  - reads: each size read from the platform (the web's box reads), and those after a write in the same frame, which
   *    may make the browser lay the page out there and then, by the first write before them (`readsAfterAWriteOf`: what
   *    was written, and whether to a node off the page);
@@ -38,6 +39,7 @@ object PerfCounters {
   private var fits = 0
   private var fitsSame = 0
   private var reads = 0
+  private var measured = 0
   private var forcedReads = 0
   private var made = 0
   private var kept = 0
@@ -105,6 +107,10 @@ object PerfCounters {
     if (same) fitsSame += 1
   }
 
+  /** A component's size read for its `measured` (MeasuredFeature), on the page or off it: what putting a kept view
+    * back, unchanged, should not do. */
+  def measuredOne(): Unit = if (on) measured += 1
+
   /** A size read from the platform. */
   def read(): Unit = if (on) {
     touch()
@@ -166,6 +172,7 @@ object PerfCounters {
     fits = 0
     fitsSame = 0
     reads = 0
+    measured = 0
     forcedReads = 0
     made = 0
     kept = 0
@@ -187,8 +194,8 @@ object PerfCounters {
     "frames" -> frames, "flushes" -> flushes, "mostFlushesInAFrame" -> mostFlushes,
     "framesFlushedMoreThanOnce" -> framesFlushedMore, "placed" -> placed, "placedAgainInAFrame" -> placedAgain,
     "fits" -> fits, "fitsUnchanged" -> fitsSame, "reads" -> reads, "readsAfterAWrite" -> forcedReads,
-    "listMade" -> made, "listKept" -> kept, "replacedNew" -> partsNew, "replacedKept" -> partsKept,
-    "writes" -> writes, "writesUnchanged" -> writesSame)
+    "measured" -> measured, "listMade" -> made, "listKept" -> kept, "replacedNew" -> partsNew,
+    "replacedKept" -> partsKept, "writes" -> writes, "writesUnchanged" -> writesSame)
 
   // the kinds most placed (and placed again), the most first
   private def most(by: Map[String, Int]): List[(String, Int)] = by.toList.sortBy(e => -e._2).take(12)

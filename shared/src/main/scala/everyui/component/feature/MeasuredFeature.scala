@@ -22,6 +22,12 @@ class MeasuredFeature(private[feature] val component: Component) {
   private var peeked: Boolean = false
   // the width last set, read without reading `width` (which, in a value being worked out, would make it depend on it)
   private var setWidth: Double = 0.0
+  /** Whether its size was last read with its node out of the page (lent to it, on the web, where nothing it will be in
+    * holds it to a width): read again as a kept view it is in is put back in the page (`ContainerFeature`), where what
+    * it is in decides how it measures (words wrapped at their box). */
+  private[everyui] var readAway: Boolean = false
+  /** Whether it has been read, or waits in the turn's batch to be. */
+  private[everyui] def readOrQueued: Boolean = everRead || queued
 
   val width: Val[Double] = w
   val height: Val[Double] = h
@@ -72,9 +78,11 @@ class MeasuredFeature(private[feature] val component: Component) {
 
   // the size read, what has to be done to the node first (`beforeRead`: words cut to fit) done already
   private[feature] def readOnly(): Unit = {
+    everyui.perf.PerfCounters.measuredOne()
     val (width, height) = component.node.getSize()
     readWidth = width
     readHeight = height
+    MeasuredFeature.wasRead(this)
   }
 
   private[feature] def set(): Unit = {
@@ -141,6 +149,31 @@ object MeasuredFeature {
       override def get: Double = m.peek(across, super.get)
     }
 
+  /** `m` read, in the page or out of it: out of it, it and each component it is in, up to the top of what is out of the
+    * page with it (or one marked already), are marked, so that a kept view put back reads again what was read
+    * meanwhile and nothing else (`ContainerFeature.readAgain`). Every platform but the web reads a node the same in
+    * the page or out of it, and has every node on its page. */
+  private def wasRead(m: MeasuredFeature): Unit = {
+    heard.foreach(f => f(m.component))
+    if (m.component.node.onPage) m.readAway = false
+    else {
+      m.readAway = true
+      var at: Option[Component] = Some(m.component)
+      while (at.nonEmpty && !at.get.readAwayBelow) {
+        at.get.readAwayBelow = true
+        // (its parent as it is, not read as a value being worked out would read it)
+        at = at.get.parent.option match {
+          case Some(p) => p
+          case None => None
+        }
+      }
+    }
+  }
+
+  /** Told of each component whose size is read for its `measured`, where set: what a spec watches to see what is
+    * measured (a kept view put back, nothing in it). */
+  private[everyui] var heard: Option[Component => Unit] = None
+
   private def enqueue(m: MeasuredFeature): Unit = if (!m.queued) {
     m.queued = true
     pending = m :: pending
@@ -169,8 +202,10 @@ object MeasuredFeature {
         // any is read (`Platform.sizesOf`), where each read in turn laid it out again after the one before was shown
         // or lent
         round.zip(Platform.sizesOf(round.map(_.component.node))).foreach { case (m, (width, height)) =>
+          everyui.perf.PerfCounters.measuredOne()
           m.readWidth = width
           m.readHeight = height
+          MeasuredFeature.wasRead(m)
         }
         // laid out once they are all set, not once for each: a column of lines measured together was laid out again
         // for every line

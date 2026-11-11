@@ -423,6 +423,74 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     changed()
   }
 
+  /** Every group, with its tabs, their contents and the splits between them, taken off the screen whole and kept as it
+    * is, one empty group left in its place: `putBack` puts it all back as it was, nothing made again, where `restore`
+    * of a `tabLayout` makes every group, tab and slot again and closes what was open. An app showing one workspace's
+    * tabs at a time sets each aside as it leaves it and puts it back on its return; one it will not put back it
+    * disposes of (`TabsAside.dispose`). `layoutChanged` hears of the empty group, and `tabLayout` is its layout.
+    * {{{
+    *   val kept = mutable.Map.empty[String, TabsAside[File]]
+    *   def switchTo(next: String): Unit = {
+    *     kept(current) = editor.setAside()
+    *     kept.remove(next).foreach(editor.putBack)
+    *     current = next
+    *   }
+    * }}} */
+  def setAside(): TabsAside[K] = {
+    val aside = new TabsAside[K](tree, alone(), focusedGroup(), root)
+    // (the empty group last put back over, where there is one: an app setting aside and putting back makes none)
+    val empty = spare.getOrElse(new TabGroup[K](this))
+    spare = None
+    tree = TabTree.Leaf(empty)
+    alone @= None
+    mount(TabTrees.groups(tree).head)
+    focusedGroup @= groups().head
+    aside
+  }
+
+  /** What `setAside` took off the screen put back as it was: its groups with their tabs, contents and splits, the one
+    * shown alone (`maximize`), and the group the focus was in as `focusedGroup`. What shows now is closed as `restore`
+    * closes it, its contents disposed of. Each group and its contents are put back whole, not made again, and what was
+    * measured in them is not measured again where their room is as wide as it was. One spent already (put back, or
+    * disposed of) changes nothing. */
+  def putBack(aside: TabsAside[K]): Unit = if (!aside.spent) {
+    aside.spent = true
+    val old = groups()
+    val was = root
+    tree = aside.tree
+    alone @= aside.alone
+    mount(aside.root)
+    // an empty group alone, as `setAside` leaves, is kept for the next; anything else is closed
+    if (old.size == 1 && (old.head eq was) && old.head.keys().isEmpty && old.head.keepEmpty().isEmpty &&
+      old.head.data().isEmpty) spare = Some(old.head)
+    else old.foreach { g =>
+      g.disposeContents()
+      g.dispose()
+    }
+    was match {
+      case s: SplitPane => s.dispose()
+      case _ => ()
+    }
+    focusedGroup @= (if (groups().exists(_ eq aside.focused)) aside.focused else groups().head)
+  }
+
+  // an empty group put back over (`putBack`), for the next `setAside` to show rather than make another
+  private var spare: Option[TabGroup[K]] = None
+
+  // `r`, the groups as they lie (`tree`), shown as it is, splits and all, in place of what showed, which is left to the
+  // caller: what `setAside` took off is put back whole, rather than its splits made again (`place`), which sized each
+  // group to nothing and back as the new splits were sized
+  private def mount(r: Component): Unit = {
+    val focus = Focus.focused()
+    root = r
+    root.size.width := size.width()
+    root.size.height := size.height()
+    groups @= TabTrees.groups(tree)
+    children @= Vector(root, zone)
+    focus.filter(c => Focus.showing(c)).foreach(c => if (!Focus.focused().contains(c)) c.focus())
+    changed()
+  }
+
   /** The layout told, as it changes. */
   private[kit] def changed(): Unit = if (!quiet) layoutChanged @= tabLayout
 
@@ -632,6 +700,10 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   onDispose(() => {
     escape()
     groups().foreach(_.disposeContents())
+    spare.foreach(_.dispose())
+    // and what catches a drag, bound to the screen's size and on it only while a tab is dragged: left, the screen held
+    // every tab groups ever taken apart, and what each had made
+    catcher.dispose()
     // the groups a maximized one hides are not among its children to go with it
     alone().foreach(a => groups().filterNot(_ eq a).foreach(_.dispose()))
   })

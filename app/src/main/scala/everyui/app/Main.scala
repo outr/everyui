@@ -37,6 +37,8 @@ import everyui.render.Platform
   *              Alt+T, Alt+F, Alt+C, Alt+K and Alt+L (ReparentDemo)
   *   fill       a filter that wraps over a list that fills the rest (Panel, `Component.flex`), the overlap check on; `bad=1`
   *              places the list by hand under a guessed height instead, which the check reports (FillDemo)
+  *   kept       kept views put back: panels of tabs, paragraphs and a conversation switched between, each switch timed
+  *              (`kept=<panels>`, `switches=`, `every=<ms>`, `narrow=1`, `perfCounters=1` for the counts; KeptDemo)
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
   *   spinner    a button swapped for a spinner while its work runs (AsyncPress), the work just past spinAfter
   *              (`work=<seconds>`, `probe=1`)
@@ -236,5 +238,6 @@ import everyui.render.Platform
   else if (demo == "leave") LeaveDemo.run()
   else if (demo == "reparent") ReparentDemo.run()
   else if (demo == "fill") FillDemo.run()
+  else if (demo == "kept") KeptDemo.run()
   else if (!FullDemos.run(demo)) ExampleApp.main()
 }
