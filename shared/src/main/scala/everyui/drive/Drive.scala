@@ -19,7 +19,11 @@ import everyui.theme.UiScale
   *   - `press label`: a tap on the middle of the component showing that is named so (`nameOf`: its semantics
   *     label, else its words), the same words first, then in any case, then a part of them; of those, what can take
   *     the focus before what cannot, and the smallest
-  *   - `find label`: where that is, with no tap; `labels`: each focusable component showing, by name and where it is;
+  *   - `find label`: where that is, with no tap; `labels`: each focusable component showing, by name and where it is,
+  *     the topmost layer's first, once each
+  *   - showing is what a tap at its middle would reach as the platform finds what a touch is on (`hit`): nothing
+  *     round it hidden, its middle on the screen and inside whatever cuts it, and nothing that hears the pointer
+  *     over it there (a drawer's scrim over the screen behind it)
   *     `focused`: what has the focus; `ping`: the platform, the device and whether a remote drives it
   *
   * Actions are `tap x y`, `hold x y ms`, `swipe x1 y1 x2 y2 ms` in the app's units (inside the safe area, over the
@@ -110,7 +114,7 @@ object Drive {
           case None => s"say${Sep}error nothing showing is named ${c.words}"
         }
       case "labels" =>
-        val named = Focus.candidates(root).filter(shown(_, root)).map(f => nameOf(f) + "  " + where(f))
+        val named = labelled(root).map(f => nameOf(f) + "  " + where(f))
         s"say${Sep}ok ${named.length}" + named.map("\n" + _).mkString
       case "focused" =>
         s"say${Sep}ok " + Focus.focused().map(f => Focus.named(f) + "  " + where(f)).getOrElse("nothing")
@@ -119,6 +123,32 @@ object Drive {
           s"touch=${Platform.touchSupport()} version=${Platform.appVersionName()} (${Platform.appVersion()})"
       case _ => s"say${Sep}error not a command: ${c.verb}"
     }
+  }
+
+  /** The focusable components showing under `root` (`reached`), each once, the topmost layer's first (a dialog's
+    * before the screen under it), in the order they are held within each layer. */
+  def labelled(root: Component): Vector[Component] = {
+    val layers = root.childComponents
+    val candidates = Focus.candidates(root)
+    var once: Vector[Component] = Vector.empty
+    var i = 0
+    while (i < candidates.length) {
+      val c = candidates(i)
+      val seen = once
+      if (!seen.exists(_ eq c) && reached(c, root)) once = seen :+ c
+      i += 1
+    }
+    val reachable = once
+    var ordered: Vector[Component] = Vector.empty
+    i = layers.length - 1
+    while (i >= 0) {
+      val layer = layers(i)
+      val sofar = ordered
+      ordered = sofar ++ reachable.filter(c => Focus.within(c, layer) && !sofar.exists(_ eq c))
+      i -= 1
+    }
+    val placed = ordered
+    placed ++ reachable.filterNot(c => placed.exists(_ eq c))
   }
 
   /** The component showing under `root` named `label` (see the object's description), if any. */
@@ -139,7 +169,7 @@ object Drive {
         val name = nameOf(c)
         val score = if (name == wanted) 3 else if (name.toLowerCase == lower) 2
           else if (lower.nonEmpty && name.toLowerCase.contains(lower)) 1 else 0
-        if (score > 0 && shown(c, root)) {
+        if (score > 0 && reached(c, root)) {
           val focus = if (c.focusable()) 1 else 0
           val area = c.size.width() * c.size.height()
           val better = best.isEmpty || score > bestScore || (score == bestScore && (focus > bestFocus ||
@@ -188,6 +218,45 @@ object Drive {
       case _ => ""
     }
   }
+
+  /** Whether a tap at the middle of `c` would reach it: it is drawn (`shown`), its middle is on the screen and inside
+    * whatever cuts what it is in to a box, and what a touch there is on (`hit`) is it, is in it or holds it. A
+    * drawer opened over a screen covers the screen's buttons with its scrim, and a row scrolled out of its list is cut
+    * away. The screen itself is not: a press on it is a press on what is on it. */
+  def reached(c: Component, root: Component): Boolean = (c ne root) && shown(c, root) && {
+    val (x, y) = middle(c)
+    var inside = within(root, x, y)
+    var at = c.parent()
+    while (inside && at.nonEmpty) {
+      if (at.get.clips) inside = within(at.get, x, y)
+      at = at.get.parent()
+    }
+    inside && hit(root, x, y).forall(h => Focus.within(c, h) || Focus.within(h, c))
+  }
+
+  /** What a touch at `x`, `y` (the app's units) is on, as the platform finds it (the Apple runtime's pointerHit): the
+    * topmost, deepest component there that hears the pointer, passing by what is hidden or unseen, and by what is cut
+    * to a box the point is outside of; or nothing. */
+  def hit(c: Component, x: Double, y: Double): Option[Component] =
+    if (!c.notHidden || c.tooFaint) None
+    else {
+      val inside = within(c, x, y)
+      if (c.clips && !inside) None
+      else {
+        val held = c.childComponents
+        var found: Option[Component] = None
+        var i = held.length - 1
+        while (found.isEmpty && i >= 0) {
+          found = hit(held(i), x, y)
+          i -= 1
+        }
+        if (found.isEmpty && inside && c.hearsPointer) Some(c) else found
+      }
+    }
+
+  private def within(c: Component, x: Double, y: Double): Boolean =
+    x >= c.absoluteLeft && y >= c.absoluteTop && x < c.absoluteLeft + c.size.width() &&
+      y < c.absoluteTop + c.size.height()
 
   /** Whether `c` is drawn: under `root`, and neither it nor anything round it hidden. */
   private def shown(c: Component, root: Component): Boolean = {

@@ -60,6 +60,7 @@ class PointerEvents(component: Component) {
 
   def channel(kind: PointerKind): Channel[PointerEvent] = {
     val channel = Channel[PointerEvent]
+    component.hearsPointer = true
     // a handler that throws is told as this event's, on this component (Errors.guard)
     component.node.onPointer(kind, (x, y) =>
       everyui.error.Errors.guard("pointer " + kind + " on " + everyui.focus.Focus.named(component), ())(

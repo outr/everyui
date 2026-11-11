@@ -4957,8 +4957,13 @@ DEVICE unset it goes to 47001, the booted simulator's, unchecked.
 | `key name` | `up`, `down`, `left`, `right`, `select` (`ok`, `enter`), `back` (`menu`), `escape`, `tab`, `space`, `backspace`, `play`, or any web key name |
 | `type words` | into the text dialog that is up (`key enter` is its Done, `key escape` its Cancel), else a key a character |
 | `press label` | a tap on the middle of what is showing named so: its label or its words, exactly, then in any case, then a part; what takes the focus first |
-| `find label`, `labels`, `focused` | where something is; each focusable thing showing, by name and place; what has the focus |
+| `find label`, `labels`, `focused` | where something is; each focusable thing showing, by name and place, each once, the topmost layer's first; what has the focus |
 | `screenshot [file]` | the simulator's screen (`xcrun simctl io … screenshot`), on its own line of the shell (not in a script of lines) |
+
+Showing, for `press`, `find` and `labels`, is what a tap at its middle would reach now, as the app finds what a touch
+is on: nothing round it hidden, its middle on the screen and inside whatever cuts it to a box (a list's row scrolled
+away is not), and nothing that hears the pointer over it there (a drawer's scrim covers the screen behind it, so its
+buttons are left out until the drawer closes).
 
 Each answer is a line starting `ok` or `error`, and the tool exits 1 on an error, so a session can sign in and walk its
 screens with a script of lines on its standard input:

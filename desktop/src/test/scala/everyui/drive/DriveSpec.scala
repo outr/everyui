@@ -1,6 +1,6 @@
 package everyui.drive
 
-import everyui.component.{Button, Column, Modal, TextView}
+import everyui.component.{Button, Column, Container, Modal, TextView}
 import everyui.focus.Focus
 import everyui.{FxSpec, ui}
 
@@ -79,6 +79,86 @@ class DriveSpec extends FxSpec {
         Drive.find(ui, "Deutsch") shouldBe None
         reply(Drive.answer(Drive.parse("press Deutsch"), ui)) shouldBe "error nothing showing is named Deutsch"
         action(Drive.answer(Drive.parse("press Deutsch"), ui)) shouldBe "say"
+      }
+    }
+    "list a drawer's rows opened over the screen, closed and opened again, each once, not what its scrim covers" in {
+      val (english, spanish, _) = screen()
+      val (drawer, home, calendar) = fx {
+        val scrim = new Container {
+          size.width := ui.size.width()
+          size.height := ui.size.height()
+        }
+        scrim.event.click.attach(_ => ())
+        val home = new Button("Home")
+        val calendar = new Button("Calendar")
+        val rail = Column(spacing = 8.0)(home, calendar)
+        rail.position.left @= 400.0
+        rail.position.top @= 10.0
+        val drawer = new Container {
+          size.width := ui.size.width()
+          size.height := ui.size.height()
+        }
+        drawer.children ++= List(scrim, rail)
+        drawer.visible @= false
+        ui.children += drawer
+        (drawer, home, calendar)
+      }
+      eventually(english.size.width() > 0.0 && calendar.size.width() > 0.0) shouldBe true
+      def labels(): List[String] =
+        reply(Drive.answer(Drive.parse("labels"), ui)).split("\n").toList.tail.map(_.takeWhile(_ != ' '))
+      (1 to 3).foreach { _ =>
+        fx {
+          drawer.visible @= true
+          labels() shouldBe List("Home", "Calendar")
+          Drive.find(ui, "Calendar") shouldBe Some(calendar)
+          Drive.find(ui, "English") shouldBe None
+          val answer = Drive.answer(Drive.parse("press Calendar"), ui)
+          reply(answer) should startWith("ok pressed")
+          val y = calendar.absoluteTop + calendar.size.height() / 2.0
+          action(answer).split(' ').toList(2).toDouble shouldBe y +- 0.06
+          drawer.visible @= false
+          labels() shouldBe List("English", "Español")
+          Drive.find(ui, "Calendar") shouldBe None
+          Drive.find(ui, "English") shouldBe Some(english)
+        }
+      }
+      fx {
+        // its scrim taken away, the screen's are reached too: the drawer's first, put on the screen after them
+        drawer.visible @= true
+        drawer.children -= drawer.children().head
+        labels() shouldBe List("Home", "Calendar", "English", "Español")
+        Drive.find(ui, "Español") shouldBe Some(spanish)
+        home.focusable() shouldBe true
+      }
+    }
+    "list what the tree holds twice once, and pass by a row its list cuts away" in {
+      val (english, _, _) = screen()
+      eventually(english.size.width() > 0.0) shouldBe true
+      fx {
+        val column = english.parent().get
+        ui.children @= ui.children() :+ column
+        Focus.candidates(ui).count(_ eq english) shouldBe 2
+        reply(Drive.answer(Drive.parse("labels"), ui)).split("\n").toList.head shouldBe "ok 2"
+      }
+      val (list, rows) = fx {
+        val rows = (1 to 20).map(i => new Button("Row " + i)).toList
+        val column = Column(spacing = 0.0)(rows*)
+        val list = new Container {
+          size.width @= 200.0
+          size.height @= 60.0
+        }
+        list.position.top @= 300.0
+        list.children += column
+        list.clipTo(200.0, 60.0)
+        ui.children += list
+        (list, rows)
+      }
+      eventually(rows.last.size.height() > 0.0) shouldBe true
+      fx {
+        Drive.find(ui, "Row 1") shouldBe Some(rows.head)
+        Drive.find(ui, "Row 20") should not be Some(rows.last)
+        Drive.labelled(ui).exists(_ eq rows.last) shouldBe false
+        list.size.height() shouldBe 60.0
       }
     }
     "say where things are, what is focusable, and what is not a command" in {

@@ -179,6 +179,7 @@ object Spotlight {
     c.cursor @= "default"
     List(PointerKind.Down, PointerKind.Click, PointerKind.Menu, PointerKind.Wheel, PointerKind.Enter)
       .foreach(k => c.node.onPointer(k, (_, _) => ()))
+    c.hearsPointer = true
   }
 
   /** A corner's box, `r` square, dimmed outside the hole's rounding: the box at the hole's left (`across` -1) or right

@@ -146,8 +146,18 @@ class Component(val node: RenderNode) {
   // the containers it is in told its room changed, as a change of size tells them
   private def roomChanged(): Unit = containerWatches.foreach(w => w.container.childWatched(w, true))
 
+  // whether `opacity` has been made: one never made is solid, and a look at whether it is need not make it
+  private var opacityMade = false
+  /** Whether it is drawn too faint to see or to take a touch (a platform's hit test passes it by), as the drive
+    * reads the screen (Drive.hit). */
+  private[everyui] def tooFaint: Boolean = opacityMade && opacity() < 0.01
   /** How opaque it is drawn, with all it holds: 1.0 is solid, 0.0 unseen (but still there, unlike `visible`). */
-  lazy val opacity: Prop[Double] = own(new Prop[Double](1.0, o => node.setOpacity(o)))
+  lazy val opacity: Prop[Double] = {
+    opacityMade = true
+    own(new Prop[Double](1.0, o => node.setOpacity(o)))
+  }
+  /** Whether anything listens to the pointer on it (PointerEvents), as a platform's hit test asks of a view. */
+  private[everyui] var hearsPointer: Boolean = false
 
   /** Drawn larger or smaller about its own centre, its place and its size unchanged — what a card does under the
     * focus. 1.0 is its own size. */

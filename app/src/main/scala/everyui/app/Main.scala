@@ -75,6 +75,7 @@ import everyui.render.Platform
   *   italic     an empty list's and a search's labels upright and slanted, a paragraph, buttons and a field slanted
   *   weights    weights 300 to 800 in the bundled Open Sans and in faces of it registered as an app's (`six=1`)
   *   later      Platform.later on a later turn, in order, and 10,000 steps asking for the next one, one deep at most
+  *   drawer     a side drawer over a screen, opened from a bar's Menu, its rows made a turn later (`rebuild=1`)
   *   readonly   read-only fields beside an editable one: a share link, a note and a key to choose and copy but not change
   *   typing     a field, a search box and a keyboard of the app's own typed into without the platform's keyboard (a Roku's
   *              phone app: ECP's Lit_ keys), each value logged (`probe=1` types itself)
@@ -221,6 +222,7 @@ import everyui.render.Platform
   else if (demo == "italic") ItalicDemo.run()
   else if (demo == "weights") FontWeightsDemo.run()
   else if (demo == "later") LaterDemo.run()
+  else if (demo == "drawer") DrawerDemo.run()
   else if (demo == "readonly") ReadOnlyDemo.run()
   else if (demo == "typing") TypingDemo.run()
   else if (demo == "rtlwrap") RtlWrapDemo.run()
