@@ -2687,7 +2687,8 @@ class RokuEmitter(
         case Select(q, "toLong") if isIntegral(q.tpe) => s"(${emitTerm(q)} + 0&)"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
-        case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
+        case TypeApply(Select(q, "isInstanceOf"), List(t)) => typeTest(t.tpe, emitTerm(q))
+        case TypeApply(Select(q, "asInstanceOf"), List(t)) => castTo(q, t.tpe)
         case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
         case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
           if (isByNameParam(sel.symbol)) s"RtForce(${brLocal(n)})" else brLocal(n)
@@ -2786,13 +2787,54 @@ class RokuEmitter(
       case _                   => Symbol.noSymbol
     }
 
-    /** `case x: SomeClass` where SomeClass is a class of this program's own and not a case class: it was read as
-      * "true" once, so `case i: ImageView` matched every component there was. Tested against `_isa` now. */
-    def classTest(ts: Symbol, subj: String): String =
-      if (!ts.exists || universal.contains(ts.name) || ts.flags.is(Flags.Module)) "true"
-      else if (ts.fullName.startsWith("scala.") || ts.fullName.startsWith("java.")) "true"
-      else if (!ts.isClassDef) "true"
-      else s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
+    /** What `x.isInstanceOf[T]`, `case x: T` (T not a case class) and `x.asInstanceOf[T]` test, as the JVM answers:
+      * a class or trait of the program's own (its library's or the app's) by the `_isa` every object the compiler
+      * makes carries, its class's name and its ancestors' between bars, so a subclass, an anonymous one and a trait
+      * mixed in each answer to it (RtIsA; a string, a number or a Boolean to none, and null to nothing); a String or a
+      * Char, a whole number, a fraction and a Boolean by what the value is (RtTypeIs: an Int and a Long are told
+      * apart from a Double, not from each other); what everything is (Any, AnyRef), Unit, an Option (None is null
+      * here), an object's own type and a type parameter by nothing at all; and any other class of Scala's or Java's
+      * by being there (not null). `case i: ImageView` was read as "true" once, so it matched every component there
+      * was, and `x.isInstanceOf[EpisodeNav]` as a field of x nothing had, so it was always false. */
+    def classTest(asked: Symbol, subj: String): String = {
+      val ts = if (asked.exists && asked.isAliasType) asked.typeRef.dealias.typeSymbol else asked
+      if (!ts.exists || universal.contains(ts.name) || ts.flags.is(Flags.Module) || !ts.isClassDef) "true"
+      else ts.fullName match {
+        case "java.lang.String" | "scala.Char" | "java.lang.Character" => s"RtTypeIs($subj, ${brStr("s")})"
+        case "scala.Int" | "scala.Long" | "scala.Short" | "scala.Byte" | "java.lang.Integer" | "java.lang.Long" =>
+          s"RtTypeIs($subj, ${brStr("i")})"
+        case "scala.Double" | "scala.Float" | "java.lang.Double" | "java.lang.Float" =>
+          s"RtTypeIs($subj, ${brStr("d")})"
+        case "scala.Boolean" | "java.lang.Boolean" => s"RtTypeIs($subj, ${brStr("b")})"
+        case "scala.Unit" | "scala.Null" | "scala.Nothing" | "scala.Option" | "scala.Any" | "scala.AnyVal" => "true"
+        case "scala.Some" => s"RtTypeIs($subj, ${brStr("")})"
+        case n if n.startsWith("scala.") || n.startsWith("java.") || hasNative(ts) => s"RtTypeIs($subj, ${brStr("")})"
+        case _ => s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
+      }
+    }
+
+    /** `x.isInstanceOf[T]` (classTest), where T may be `A | B` or `A & B`. */
+    def typeTest(tpe: TypeRepr, subj: String): String = tpe.dealias match {
+      case OrType(a, b) => joined(typeTest(a, subj), typeTest(b, subj), binOps("||"))
+      case AndType(a, b) => joined(typeTest(a, subj), typeTest(b, subj), binOps("&&"))
+      case t => classTest(t.typeSymbol, subj)
+    }
+    def joined(a: String, b: String, op: String): String =
+      if (op == binOps("||") && (a == "true" || b == "true")) "true"
+      else if (a == "true") b else if (b == "true") a else s"($a $op $b)"
+
+    /** `x.asInstanceOf[T]`: x, where T is a class or trait of the program's own that x is not an instance of a
+      * ClassCastException, as on the JVM (RtCast); a cast to anything else is taken on trust, as one to a type
+      * parameter is on the JVM, since a number here does not always know whether it is an Int or a Double. */
+    def castTo(q: Term, tpe: TypeRepr): String = {
+      val subj = emitTerm(q)
+      val checked = tpe.dealias match {
+        case _: OrType | _: AndType => false
+        // (an upcast, or a cast to what x is known to be, needs no look)
+        case t => !(q.tpe <:< t) && classTest(t.typeSymbol, "").startsWith("RtIsA(")
+      }
+      if (checked) s"RtCast($subj, ${brStr("|" + tpe.dealias.typeSymbol.name + "|")})" else subj
+    }
 
     // (testExpr, bindingStatements) for matching `subj` against pattern `p`.
     def patternTest(p: Tree, subj: String): (String, List[String]) = p match {
@@ -2811,7 +2853,7 @@ class RokuEmitter(
         val ts = tpt.tpe.typeSymbol
         val tag =
           if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
-            s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
+            s"(type($subj) = \"roAssociativeArray\" and $subj._cls = ${brStr(ts.name)})"
           else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         (if (it == "true") tag else if (tag == "true") it else s"$tag and $it", ib)
@@ -2825,7 +2867,7 @@ class RokuEmitter(
           if (!ts.exists || innerTests) "true"
           else if (ts.fullName == "scala.Some" || ts.fullName == "scala.Option") s"($subj <> invalid)"
           else if (ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
-            s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
+            s"(type($subj) = \"roAssociativeArray\" and $subj._cls = ${brStr(ts.name)})"
           else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         val test = if (it == "true") tag else if (tag == "true") it else s"$tag and $it"
@@ -2863,7 +2905,8 @@ class RokuEmitter(
         // each field under the key it is kept at: `__v_<name>` where it implements a parent's `def`
         val fields = if (cls.exists) cls.caseFields.map(fieldKey) else Nil
         val tag =
-          if (cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+")) s"($subj <> invalid and $subj._cls = ${brStr(cls.name)})"
+          if (cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+"))
+            s"(type($subj) = \"roAssociativeArray\" and $subj._cls = ${brStr(cls.name)})"
           else if (cls.exists) s"($subj <> invalid)"
           else "true"
         val subT = subs.zipWithIndex.map { case (sp, i) =>
@@ -5374,22 +5417,50 @@ class RokuEmitter(
       |    return false
       |end function
       |
-      |' `case x: SomeClass` for a class that is not a case class. Every object this
-      |' compiler makes carries `_isa` (in its class's table, where it has one), its own
-      |' name and its ancestors' between bars, so a subclass answers to its parent's name
-      |' too. Anything with no `_isa` (a string, a number, a record from the runtime)
-      |' answers yes, as it did before there was a test at all: the tag only narrows
-      |' what it knows about.
+      |' `x.isInstanceOf[T]` and `case x: T` for a class or trait of the program's own. Every
+      |' object this compiler makes carries `_isa` (in its class's table, where it has one),
+      |' its own name and its ancestors' between bars, so a subclass answers to its parent's
+      |' name too. A string, a number or a Boolean is none of the program's; null is nothing;
+      |' anything else with no `_isa` (a record or a node from the runtime) answers yes, as it
+      |' did before there was a test at all: the tag only narrows what it knows about.
       |function RtIsA(v as dynamic, tag as string) as boolean
-      |    if v = invalid then return false
-      |    if type(v) <> "roAssociativeArray" then return true
-      |    s = v._isa
-      |    if s = invalid
-      |        vt = v._vt
-      |        if vt <> invalid then s = vt._isa
+      |    if type(v) = "roAssociativeArray"
+      |        s = v._isa
+      |        if s = invalid
+      |            vt = v._vt
+      |            if vt <> invalid then s = vt._isa
+      |        end if
+      |        if s = invalid then return true
+      |        return Instr(1, s, tag) > 0
       |    end if
-      |    if s = invalid then return true
-      |    return Instr(1, s, tag) > 0
+      |    k = _rtKind(v)
+      |    return k <> "nil" and k <> "s" and k <> "n" and k <> "b"
+      |end function
+      |
+      |' `x.isInstanceOf[T]` and `case x: T` for one of Scala's own: "s" a String (or a Char,
+      |' which is a one-character string here), "i" a whole number, "d" a fraction, "b" a
+      |' Boolean, "" anything but null.
+      |function RtTypeIs(v as dynamic, kind as string) as boolean
+      |    k = _rtKind(v)
+      |    if k = "nil" then return false
+      |    if kind = "" then return true
+      |    if kind = "s" or kind = "b" then return k = kind
+      |    if k <> "n" then return false
+      |    t = LCase(type(v))
+      |    whole = t = "integer" or t = "roint" or t = "rointeger" or t = "longinteger" or t = "rolonginteger"
+      |    if kind = "i" then return whole
+      |    return not whole
+      |end function
+      |
+      |' `x.asInstanceOf[T]` for a class or trait of the program's own: x where it is one (or
+      |' null), else a ClassCastException, as the JVM throws.
+      |function RtCast(v as dynamic, tag as string) as dynamic
+      |    if RtIsA(v, tag) or _rtKind(v) = "nil" then return v
+      |    cls = "a " + _rtKind(v)
+      |    if type(v) = "roAssociativeArray" and v._cls <> invalid then cls = "class " + v._cls
+      |    said = cls + " cannot be cast to class " + Mid(tag, 2, Len(tag) - 2)
+      |    RtThrow({ _cls: "ClassCastException", message: said })
+      |    return v
       |end function
       |
       |' Reference identity (Scala `eq`). BrightScript has no identity operator for

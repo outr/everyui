@@ -124,4 +124,20 @@ RX PASS emit.seq.collectfirst = 2
 RX PASS emit.seq.array.ints = 1
 RX PASS emit.seq.fill = 1,2,3
 RX PASS emit.seq.tabulate = 0,1,4
-RX DONE 126/126
+RX PASS emit.isa.app.class = 100000000000
+RX PASS emit.isa.lib.class = 110010000000
+RX PASS emit.isa.lib.parent = 111011100000
+RX PASS emit.isa.lib.trait = 110110000000
+RX PASS emit.isa.app.trait = 000010000000
+RX PASS emit.isa.case.class = 000100000000
+RX PASS emit.isa.union = 000100010000
+RX PASS emit.isa.string = 000000010000
+RX PASS emit.isa.int = 000000001000
+RX PASS emit.isa.double = 000000000100
+RX PASS emit.isa.boolean = 000000000010
+RX PASS emit.isa.match = nav,pane,widget,episode,pane,widget,widget,string,int,double,boolean,null
+RX PASS emit.isa.negated = true
+RX PASS emit.isa.cast.ok = nav 2
+RX PASS emit.isa.cast.fails = ClassCastException
+RX PASS emit.isa.cast.null = true
+RX DONE 142/142

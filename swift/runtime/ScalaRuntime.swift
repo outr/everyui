@@ -1972,16 +1972,41 @@ func _identityHash(_ o: V) -> V {
     guard case .vObj(let obj) = o else { return .vInt(0) }
     return .vInt(Int(truncatingIfNeeded: UInt(bitPattern: ObjectIdentifier(obj).hashValue)) & 0x7fffffff)
 }
-/// `case x: SomeClass` for a class of the program's own: whether its `_isa` (its class's name and its ancestors',
-/// between bars) names the class; anything without one (a string, a number, a record of the runtime's) answers yes.
+/// `x.isInstanceOf[T]` and `case x: T` for a class or trait of the program's own: whether its `_isa` (its class's name
+/// and its ancestors', between bars) names the class. A string, a number or a Boolean is none of the program's, null
+/// is nothing, and anything else without an `_isa` (a record or a view of the runtime's) answers yes.
 func RtIsA(_ v: V, _ tag: V) -> V {
     switch v {
-    case .vNull: return .vBool(false)
+    case .vNull, .vStr, .vInt, .vDbl, .vBool: return .vBool(false)
     case .vObj:
         guard case .vStr(let s) = v["_isa"] else { return .vBool(true) }
         return .vBool(s.contains(rtS(tag)))
     default: return .vBool(true)
     }
+}
+/// `x.isInstanceOf[T]` and `case x: T` for one of Scala's own: "s" a String (or a Char, a one-character string here),
+/// "i" a whole number, "d" a fraction, "b" a Boolean, "" anything but null.
+func RtTypeIs(_ v: V, _ kind: V) -> V {
+    let k = rtS(kind)
+    switch v {
+    case .vNull: return .vBool(false)
+    case .vStr: return .vBool(k == "" || k == "s")
+    case .vBool: return .vBool(k == "" || k == "b")
+    case .vInt: return .vBool(k == "" || k == "i")
+    case .vDbl: return .vBool(k == "" || k == "d")
+    default: return .vBool(k == "")
+    }
+}
+/// `x.asInstanceOf[T]` for a class or trait of the program's own: x where it is one (or null), else a
+/// ClassCastException, as the JVM throws.
+func RtCast(_ v: V, _ tag: V) throws -> V {
+    if case .vNull = v { return v }
+    if RtIsA(v, tag).rtTrue { return v }
+    let t = rtS(tag)
+    let cls: String
+    if case .vStr(let c) = v["_cls"] { cls = "class " + c } else { cls = "a " + rtKindName(v) }
+    return try RtThrow(rtException("ClassCastException",
+        cls + " cannot be cast to class " + String(t.dropFirst().dropLast())))
 }
 func Tuple5(_ a: V = .vNull, _ b: V = .vNull, _ c: V = .vNull, _ d: V = .vNull, _ e: V = .vNull) -> V {
     rtObj(["_1": a, "_2": b, "_3": c, "_4": d, "_5": e])

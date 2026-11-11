@@ -1237,7 +1237,8 @@ class SwiftEmitter(
         case Select(q, "toLong") if isIntegral(q.tpe) => s"(${emitTerm(q)} + 0&)"
         case Select(q, "toDouble" | "toInt" | "toLong" | "toFloat") => emitTerm(q)
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
-        case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
+        case TypeApply(Select(q, "isInstanceOf"), List(t)) => typeTest(t.tpe, emitTerm(q))
+        case TypeApply(Select(q, "asInstanceOf"), List(t)) => castTo(q, t.tpe)
         case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
         case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
           if (isByNameParam(sel.symbol)) s"RtForce(${brLocal(n)})" else brLocal(n)
@@ -1257,7 +1258,8 @@ class SwiftEmitter(
         case Select(q, "toDouble" | "toFloat") => s"rtToDbl(${emitTerm(q)})"
         case Select(q, "toInt" | "toLong")     => s"rtToInt(${emitTerm(q)})"
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, ${vInt(1)})"
-        case TypeApply(Select(q, "asInstanceOf"), _) => emitTerm(q)
+        case TypeApply(Select(q, "isInstanceOf"), List(t)) => typeTest(t.tpe, emitTerm(q))
+        case TypeApply(Select(q, "asInstanceOf"), List(t)) => castTo(q, t.tpe)
         case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
         case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
           if (isByNameParam(sel.symbol)) s"RtForce(${brLocal(n)})" else brLocal(n)
@@ -1371,7 +1373,7 @@ class SwiftEmitter(
         val ts = tpt.tpe.typeSymbol
         val tag =
           if (ts.exists && ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
-            s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
+            s"(type($subj) = \"roAssociativeArray\" and $subj._cls = ${brStr(ts.name)})"
           else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         (if (it == "true") tag else if (tag == "true") it else s"$tag and $it", ib)
@@ -1400,7 +1402,7 @@ class SwiftEmitter(
           if (!ts.exists || innerTests) "true"
           else if (ts.fullName == "scala.Some" || ts.fullName == "scala.Option") s"($subj <> invalid)"
           else if (ts.flags.is(Flags.Case) && !ts.fullName.matches("scala\\.Tuple\\d+"))
-            s"($subj <> invalid and $subj._cls = ${brStr(ts.name)})"
+            s"(type($subj) = \"roAssociativeArray\" and $subj._cls = ${brStr(ts.name)})"
           else classTest(ts, subj)
         val (it, ib) = patternTest(inner, subj)
         val test = if (it == "true") tag else if (tag == "true") it else s"$tag and $it"
@@ -1438,7 +1440,8 @@ class SwiftEmitter(
         // each field under the key it is kept at: `__v_<name>` where it implements a parent's `def`
         val fields = if (cls.exists) cls.caseFields.map(fieldKey) else Nil
         val tag =
-          if (cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+")) s"($subj <> invalid and $subj._cls = ${brStr(cls.name)})"
+          if (cls.exists && !cls.fullName.matches("scala\\.Tuple\\d+"))
+            s"(type($subj) = \"roAssociativeArray\" and $subj._cls = ${brStr(cls.name)})"
           else if (cls.exists) s"($subj <> invalid)"
           else "true"
         val subT = subs.zipWithIndex.map { case (sp, i) =>
@@ -2261,22 +2264,6 @@ class SwiftEmitter(
 @@ new
     // Swift takes any number of parameters: nothing is packed
     val Packed = 1000000
-@@ old
-    /** `case x: SomeClass` where SomeClass is a class of this program's own and not a case class: it was read as
-      * "true" once, so `case i: ImageView` matched every component there was. Tested against `_isa` now. */
-    def classTest(ts: Symbol, subj: String): String =
-      if (!ts.exists || universal.contains(ts.name) || ts.flags.is(Flags.Module)) "true"
-      else if (ts.fullName.startsWith("scala.") || ts.fullName.startsWith("java.")) "true"
-      else if (!ts.isClassDef) "true"
-      else s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
-@@ new
-    /** `case x: SomeClass` where SomeClass is a class of this program's own and not a case class: tested against the
-      * `_isa` every object the compiler makes carries (RtIsA), as on the Roku. */
-    def classTest(ts: Symbol, subj: String): String =
-      if (!ts.exists || universal.contains(ts.name) || ts.flags.is(Flags.Module)) "true"
-      else if (ts.fullName.startsWith("scala.") || ts.fullName.startsWith("java.")) "true"
-      else if (!ts.isClassDef) "true"
-      else s"RtIsA($subj, ${brStr("|" + ts.name + "|")})"
 @@ old
     def enumValues(enumClass: Symbol): String =
       "[" + enumClass.children.filter(isEnumCase).map(c => emitEnumCase(c, c.name)).mkString(", ") + "]"
