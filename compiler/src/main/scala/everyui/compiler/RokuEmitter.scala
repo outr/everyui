@@ -1644,7 +1644,7 @@ class RokuEmitter(
     }
 
     def mathNames: Set[String] =
-      Set("sqrt", "pow", "sin", "cos", "tan", "atan", "exp", "log", "abs", "min", "max", "floor", "ceil", "round", "random")
+      Set("sqrt", "pow", "sin", "cos", "tan", "atan", "atan2", "exp", "log", "abs", "min", "max", "floor", "ceil", "round", "random")
     /** `scala.math` onto BrightScript's numeric builtins. */
     def emitMath(name: String, args: List[Term]): String = {
       val a = flattenVarargs(args).map(emitArgVal)
@@ -1655,6 +1655,7 @@ class RokuEmitter(
         case "cos"   => s"Cos(${a(0)})"
         case "tan"   => s"Tan(${a(0)})"
         case "atan"  => s"Atn(${a(0)})"
+        case "atan2" => s"RtAtan2(${a(0)}, ${a(1)})"
         case "exp"   => s"Exp(${a(0)})"
         case "log"   => s"Log(${a(0)})"
         case "abs"   => s"Abs(${a(0)})"
@@ -2630,6 +2631,8 @@ class RokuEmitter(
         // a number made a Char: the character of that code (a Char is a one-character string here)
         case Select(q, "toChar") if isPrimLike(q) => s"_chOf(${emitTerm(q)})"
         case Select(q, "indices") if isCollType(q) => s"_until(0, ${emitTerm(q)}.count())"
+        // a String reversed is a String (`s.reverse`, through StringOps), not the array of its characters
+        case Select(q, "reverse") if isStringLike(q.tpe) => s"_strReverse(${emitTerm(q)})"
         case Select(q, "reverse") if isCollType(q)   => s"_reverse(${emitTerm(q)})"
         case Select(q, "init") if isSeqLike(q) => s"_dropRight(${emitTerm(q)}, 1)"
         case Select(q, "capitalize") if isStringLike(q.tpe) => s"_strCapitalize(${emitTerm(q)})"
@@ -4683,6 +4686,14 @@ class RokuEmitter(
       |    if s = invalid or Len(s) = 0 then return ""
       |    return UCase(Left(s, 1)) + Mid(s, 2)
       |end function
+      |function _strReverse(s as dynamic) as string
+      |    out = ""
+      |    if s = invalid then return out
+      |    for i = Len(s) to 1 step -1
+      |        out = out + Mid(s, i, 1)
+      |    end for
+      |    return out
+      |end function
       |function _drop(xs as dynamic, n as integer) as dynamic
       |    if _rtIsStr(xs) then return Mid(xs, _iif(n < 0, 0, n) + 1)
       |    r = [] : i = 0
@@ -5182,6 +5193,15 @@ class RokuEmitter(
       |function RtMax(a as dynamic, b as dynamic) as dynamic
       |    if a > b then return a
       |    return b
+      |end function
+      |' scala.math.atan2: the angle of (x, y), BrightScript having Atn alone
+      |function RtAtan2(y as dynamic, x as dynamic) as dynamic
+      |    if x > 0 then return Atn(y / x)
+      |    if x < 0 and y >= 0 then return Atn(y / x) + 3.141592653589793
+      |    if x < 0 then return Atn(y / x) - 3.141592653589793
+      |    if y > 0 then return 1.5707963267948966
+      |    if y < 0 then return -1.5707963267948966
+      |    return 0.0
       |end function
       |' scala.concurrent.duration.FiniteDuration, in milliseconds
       |function RtDuration(ms as dynamic) as object

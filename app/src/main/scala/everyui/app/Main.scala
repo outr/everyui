@@ -65,6 +65,8 @@ import everyui.render.Platform
   *              a tick and nothing, with details under them, their words lined up (`theme=light`, `rtl=1`)
   *   svg        SVG pictures in avatars and image views, from the app's files, a server (by .svg and by its bytes) and a
   *              data: address, and one that is no picture (`svghost=`, `theme=light`)
+  *   pictures   pictures from a server, over HTTPS, a 4K one decoded at the size drawn, SVGs, avatars, a blur, a tint, a
+  *              404, no host, and a box asked for six in a moment showing the last (`picturehost=`, `public=`)
   *   wrap       a paragraph wrapped at three widths and in a box, cut to two lines, centred, at its end, Arabic, code
   *              as written, and emoji, a flag, CJK and Arabic in one line
   *   completion fields completing what is typed: To and Cc addresses between separators, a city by the whole field, a
@@ -209,6 +211,7 @@ import everyui.render.Platform
   else if (demo == "scale") ScaleDemo.run()
   else if (demo == "menus") MenusDemo.run()
   else if (demo == "svg") SvgDemo.run()
+  else if (demo == "pictures") PicturesDemo.run()
   else if (demo == "wrap") TextWrapDemo.run()
   else if (demo == "completion") CompletionDemo.run()
   else if (demo == "narrow") NarrowDemo.run()

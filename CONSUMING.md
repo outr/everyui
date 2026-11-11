@@ -4727,15 +4727,29 @@ relative path of the app's own files, or a `data:` address (base64 or percent-en
   shapes, text and effects, no scripts and nothing it would fetch).
 - **Desktop**: PNG, JPEG, GIF and BMP through JavaFX, and SVG through EveryUI's own reader (below).
 - **Android**: whatever `BitmapFactory` reads (PNG, JPEG, GIF, WebP, HEIF), and SVG through EveryUI's own reader.
-- **Roku, Apple TV**: PNG and JPEG (and what else the device's own image view reads), and no SVG. One named as an SVG
-  (by its .svg, or a `data:image/svg+xml` address) comes as 0 by 0, so an `Avatar` keeps its initial, and the console
-  says `Image: <url> is an SVG, which a Roku cannot draw` once for it.
+- **Apple TV, iPhone, iPad**: whatever ImageIO reads (PNG, JPEG, GIF's first frame, WebP, HEIF), and SVG through
+  EveryUI's own reader, drawn with Core Graphics (below). A picture is fetched with URLSession (one download however
+  many views ask; kept on disk by its URLCache, 256 MB, as the server's headers allow, and in memory, decoded, as long
+  as memory allows), read off the main thread and decoded only as large as the view draws it on the screen
+  (ImageIO's thumbnail, at most 4096 on its longer side), so a 4K backdrop in a 1080p box takes the memory of a 1080p
+  one; it is decoded again larger where the view grows. A view asked for another picture, or for none, drops what it
+  showed at once and never shows one that comes for an address asked for before; a download nobody waits on any
+  longer is cancelled. `Platform.identify(app)` names the app in the User-Agent pictures are fetched with. A view's
+  `blur` blurs its picture on the device (Core Image) and `tint` draws it in one colour.
+- **Roku**: PNG and JPEG (and what else the device's own image view reads), and no SVG. One named as an SVG (by its
+  .svg, or a `data:image/svg+xml` address) comes as 0 by 0, so an `Avatar` keeps its initial, and the console says
+  `Image: <url> is an SVG, which a Roku cannot draw` once for it.
+
+A picture that cannot be had (no connection, no such host, a status other than 2xx, no such file) comes as 0 by 0 on
+Android and Apple, and the console says `Image: <url> could not be loaded (<why>)` once for it, the address as
+`LoggedAddress` shows it (no query).
 
 An SVG is known by its type (`image/svg+xml`), its .svg, or its first bytes, as when a server sends one with no type
 and no extension: its first element is `<svg>` (or `<svg:svg>`), after any byte-order mark, white space, `<?xml …?>`,
 comments and DOCTYPE (`SvgImage.sniffed`), so other XML (`<rss>`, an Android `<vector>`) is not read as one. It is
 drawn with the platform's own vector drawing (Android's Canvas and Path into a Bitmap; JavaFX's GraphicsContext,
-snapshotted), at the size the view shows it times the screen's density, and drawn again larger where a view shows it
+snapshotted; Core Graphics' paths into a bitmap context on Apple, `AppleArtPen`), at the size the view shows it
+times the screen's density, and drawn again larger where a view shows it
 larger, so it stays sharp. Its size as `Image` reports it is its own: its `<svg>`'s width and height, one of them with
 the other in the viewBox's proportion, else the viewBox's.
 

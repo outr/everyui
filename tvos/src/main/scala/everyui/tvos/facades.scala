@@ -441,6 +441,53 @@ class SGNode
   def apply(name: String, value: String): Unit = native.value
 }
 
+// ---- pictures: loaded, decoded at their size, tinted and blurred (UniversalRuntime.swift's Pictures) ----
+/** The picture in one colour (`"#rrggbb"`), or as it is for "". */
+@native object uiSetTint {
+  def apply(node: SGNode, hex: String): Unit = native.value
+}
+/** A gaussian blur of deviation `radius` over an image node's picture. */
+@native object uiSetBlur {
+  def apply(node: SGNode, radius: Double): Unit = native.value
+}
+/** The program's SVG painter `(address, text, pixels)`, and its word on a picture that would not load
+  * `(address, why)`. */
+@native object uiPictureHooks {
+  def apply(svg: (String, String, Double) => Unit, failed: (String, String) => Unit): Unit = native.value
+}
+/** The User-Agent pictures are fetched with; URLSession's own for "". */
+@native object uiPictureAgent {
+  def apply(agent: String): Unit = native.value
+}
+/** Whether the app bundle holds a file at this path. */
+@native object uiBundled {
+  def apply(path: String): Boolean = native.value
+}
+/** The canvas an SVG is drawn on, `width` by `height` pixels, the art's own size `naturalWidth` by `naturalHeight`. */
+@native object uiArtBegin {
+  def apply(width: Double, height: Double, naturalWidth: Double, naturalHeight: Double): Unit = native.value
+}
+@native object uiArtMove {
+  def apply(x: Double, y: Double): Unit = native.value
+}
+@native object uiArtLine {
+  def apply(x: Double, y: Double): Unit = native.value
+}
+@native object uiArtCurve {
+  def apply(x1: Double, y1: Double, x2: Double, y2: Double, x: Double, y: Double): Unit = native.value
+}
+@native object uiArtClose {
+  def apply(): Unit = native.value
+}
+/** The path made so far filled, `red`, `green`, `blue` 0 to 255 and `alpha` 0 to 1. */
+@native object uiArtFill {
+  def apply(red: Double, green: Double, blue: Double, alpha: Double, evenOdd: Boolean): Unit = native.value
+}
+@native object uiArtStroke {
+  def apply(red: Double, green: Double, blue: Double, alpha: Double, width: Double, cap: String,
+            join: String): Unit = native.value
+}
+
 // ---- text: wrapped at a width, aligned, spaced, shadowed ----
 /** Whether a label wraps at its width (as many lines as it takes) or keeps the lines its words were written with. */
 @native object uiSetWraps {

@@ -9,6 +9,8 @@
 import UIKit
 import CoreText
 import QuartzCore
+import ImageIO
+import CoreImage
 import MediaAccessibility
 import GameController
 import Security
@@ -64,6 +66,7 @@ enum UI {
 /// The program's closures the runtime holds itself, roots of the collector with what RtHeld holds.
 func uiHooks() -> [V] {
     var all: [V] = [UI.tick, UI.key, UI.drive] + UI.resized + UI.schemes
+    all.append(contentsOf: [Pictures.svg, Pictures.failed])
     all.append(contentsOf: uiPointerRoots())
     all.append(contentsOf: uiWebRoots())
     all.append(contentsOf: uiMediaRoots())
@@ -103,6 +106,7 @@ func place(_ v: UIView, _ g: Geo) {
     v.bounds = CGRect(x: 0, y: 0, width: w, height: h)
     v.center = CGPoint(x: g.x + w / 2.0, y: g.y + h / 2.0)
     v.transform = CGAffineTransform(rotationAngle: g.rot).scaledBy(x: g.scale, y: g.scale)
+    if let p = v as? PictureView { pictureResized(p) }
 }
 
 func view(_ v: V) -> UIView? {
@@ -467,22 +471,6 @@ func uiSetBackgroundColor(_ node: V, _ hex: V) -> V {
     return .vNull
 }
 
-/// An image node, stretched to its box.
-func uiImage(_ uri: V, _ width: V, _ height: V) -> V {
-    let iv = UIImageView()
-    iv.contentMode = .scaleToFill
-    place(iv, Geo(w: dbl(width), h: dbl(height)))
-    let v: V = .vRef(iv)
-    _ = uiSetImageSource(v, uri)
-    return v
-}
-
-func uiSetImageSource(_ node: V, _ uri: V) -> V {
-    let s = rtS(uri)
-    if let iv = view(node) as? UIImageView, !s.isEmpty { iv.image = UIImage(contentsOfFile: bundlePath(s)) }
-    return .vNull
-}
-
 func uiAppend(_ parent: V, _ child: V) -> V {
     if let p = view(parent), let c = view(child) { p.addSubview(c) }
     return .vNull
@@ -490,18 +478,6 @@ func uiAppend(_ parent: V, _ child: V) -> V {
 
 func uiRemove(_ node: V) -> V {
     view(node)?.removeFromSuperview()
-    return .vNull
-}
-
-/// Decode `uri` and report its natural size in pixels (bundle images are 1x, so points are pixels).
-func uiLoadImage(_ uri: V, _ loaded: V) throws -> V {
-    let path = bundlePath(rtS(uri))
-    guard let img = UIImage(contentsOfFile: path) else {
-        print("[ui] image not found: \(path)")
-        _ = try RtInvoke(loaded, rtArr([.vDbl(0), .vDbl(0)]))
-        return .vNull
-    }
-    _ = try RtInvoke(loaded, rtArr([.vDbl(Double(img.size.width * img.scale)), .vDbl(Double(img.size.height * img.scale))]))
     return .vNull
 }
 
@@ -553,6 +529,578 @@ func uiReadTextThen(_ path: V, _ done: V) -> V {
             answer(nil, (FileManager.default.fileExists(atPath: file) ? "could not read " : "no such file ") + file)
         }
     }
+    return .vNull
+}
+
+// MARK: - pictures: an image node, and what loads and decodes its pictures
+
+/// An image node: a UIImageView that knows the picture it was last asked for, so one that comes after it was asked for
+/// another is never shown, and what it is drawn with (a tint, a blur), over the picture as it was decoded.
+final class PictureView: UIImageView {
+    /// The address asked for last, and a ticket that changes with it: what comes for an older ticket is let go.
+    var uri = ""
+    var ticket = 0
+    /// What it waits on (Pictures.want), to give up as it is asked for another or for none.
+    var waiter = 0
+    /// The picture as decoded, before its tint and blur.
+    var decoded: Picture? = nil
+    /// Asked again at a larger size, for this ticket, once: a picture decoded smaller than it came to be drawn.
+    var askedAgain = false
+    var tint: UIColor? = nil
+    var blur = 0.0
+    /// What the blur under way, or the blurred picture shown, was made of.
+    var blurredFor = ""
+    /// A look at its size is waiting for the turn to end (place, as it is resized).
+    var looking = false
+}
+
+/// A picture decoded: its image (none where only its size was read), its natural size in pixels, the longer side in
+/// pixels it was decoded at, whether that is the most it is ever decoded at (its whole size, or Pictures.largest), and
+/// an SVG's text, to draw it again larger.
+final class Picture {
+    let image: UIImage?
+    let width: Double
+    let height: Double
+    let side: Double
+    let whole: Bool
+    let svg: String?
+    init(_ image: UIImage?, _ width: Double, _ height: Double, _ side: Double, _ whole: Bool, _ svg: String?) {
+        self.image = image; self.width = width; self.height = height; self.side = side; self.whole = whole
+        self.svg = svg
+    }
+}
+
+/// A file as it came: its bytes and the type it came as.
+final class Fetched {
+    let data: Data
+    let type: String
+    init(_ data: Data, _ type: String) { self.data = data; self.type = type }
+}
+
+/// One address on its way: everyone waiting on it (an id, the longer side in pixels each wants, -1 for its size alone,
+/// and what to tell), and its download, if it is one.
+final class PictureLoad {
+    var waiters: [(id: Int, side: Double, done: (Picture?) -> Void)] = []
+    var task: URLSessionDataTask? = nil
+}
+
+/// Pictures by address: an app's own file (a path in the bundle), a `file:` URL, a `data:` address, or an http(s) one,
+/// fetched with URLSession and kept on disk by its URLCache as the server allows; read and decoded off the main thread,
+/// made only as large as they are drawn (ImageIO's thumbnail, so a 4K backdrop on a 1080p screen is decoded at 1080p),
+/// and handed back on it. One load an address, however many ask; one nobody waits on any longer is cancelled. An SVG
+/// (by its type, its name, or its first bytes) is drawn by the program (EveryUI's VectorArt) through `svg`.
+enum Pictures {
+    /// The most pixels a picture is decoded at on its longer side, as SvgImage.largest.
+    static let largest = 4096.0
+    /// Pictures decoded lately, by address, at the largest they were needed: a screen of posters shown again comes from
+    /// memory. NSCache lets them go under memory pressure, or past its cost (their pixels' bytes).
+    static let decoded: NSCache<NSString, Picture> = {
+        let c = NSCache<NSString, Picture>()
+        c.totalCostLimit = 192 << 20
+        return c
+    }()
+    /// The files fetched lately, by address: a picture's size read (Image) and its view's picture then decoded take
+    /// one download, and one decoded again larger takes none.
+    static let fetched: NSCache<NSString, Fetched> = {
+        let c = NSCache<NSString, Fetched>()
+        c.totalCostLimit = 48 << 20
+        return c
+    }()
+    static var loads: [String: PictureLoad] = [:]
+    static var waiting = 0
+    /// The User-Agent pictures are fetched with (Platform.identify); URLSession's own when empty.
+    static var agent = ""
+    /// The program's SVG painter, `(address, text, pixels)` (uiPictureHooks), and what it is drawing into meanwhile.
+    static var svg: V = .vNull
+    static var canvas: ArtCanvas? = nil
+    /// The program's word on a picture that would not load, `(address, why)`; why is "" for one that came but was
+    /// neither a picture nor an SVG.
+    static var failed: V = .vNull
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        config.urlCache = URLCache(memoryCapacity: 8 << 20, diskCapacity: 256 << 20,
+                                   directory: caches?.appendingPathComponent("everyui-pictures"))
+        config.requestCachePolicy = .useProtocolCachePolicy
+        // a network gone away leaves a picture waiting no longer than this
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 90
+        config.httpMaximumConnectionsPerHost = 6
+        return URLSession(configuration: config)
+    }()
+    static let work = DispatchQueue(label: "everyui-pictures", qos: .utility, attributes: .concurrent)
+    static let blurring = DispatchQueue(label: "everyui-blur", qos: .utility)
+    static let effects = CIContext(options: nil)
+    /// Each picture's sizes logged as it is decoded, where the app was launched with `--picturelog=1` (a check reads it).
+    static let logged = CommandLine.arguments.contains("--picturelog=1")
+
+    /// Whether `p` will do for a view wanting `side` pixels on its longer side (-1 its size alone, 0 its whole size).
+    static func enough(_ p: Picture, _ side: Double) -> Bool {
+        side < 0 || (p.image != nil && (p.whole || (side > 0 && p.side >= side - 1.0)))
+    }
+
+    /// The picture at `uri` as `side` wants it, then `done` on the main queue (or at once, from memory); nil where it
+    /// cannot be had. The answer is an id to `forget` it by (0 where it was answered at once).
+    @discardableResult
+    static func want(_ uri: String, _ side: Double, _ done: @escaping (Picture?) -> Void) -> Int {
+        if let p = decoded.object(forKey: uri as NSString) {
+            if enough(p, side) { done(p); return 0 }
+            // an SVG is drawn again larger from its words, here and now
+            if let text = p.svg {
+                let again = drawSvg(uri, text, side)
+                if let again = again { keep(uri, again) }
+                done(again ?? p)
+                return 0
+            }
+        }
+        waiting += 1
+        let id = waiting
+        if let load = loads[uri] {
+            load.waiters.append((id, side, done))
+            return id
+        }
+        let load = PictureLoad()
+        load.waiters.append((id, side, done))
+        loads[uri] = load
+        fetch(uri, load)
+        return id
+    }
+
+    /// Nobody waits on `id` any longer: a load nobody waits on is given up, its download cancelled.
+    static func forget(_ uri: String, _ id: Int) {
+        guard id > 0, let load = loads[uri] else { return }
+        load.waiters.removeAll { $0.id == id }
+        if load.waiters.isEmpty {
+            load.task?.cancel()
+            loads.removeValue(forKey: uri)
+        }
+    }
+
+    static func keep(_ uri: String, _ p: Picture) {
+        guard let image = p.image else { return }
+        if let held = decoded.object(forKey: uri as NSString), held.image != nil, held.side > p.side { return }
+        let px = image.size.width * image.scale * image.size.height * image.scale
+        decoded.setObject(p, forKey: uri as NSString, cost: Int(px) * 4)
+    }
+
+    /// The file's bytes, from memory, the network, the bundle, a file or the address itself; then `got` on the main
+    /// queue.
+    static func fetch(_ uri: String, _ load: PictureLoad) {
+        if let f = fetched.object(forKey: uri as NSString) {
+            DispatchQueue.main.async { got(uri, load, f) }
+            return
+        }
+        if uri.hasPrefix("http://") || uri.hasPrefix("https://") {
+            guard let u = URL(string: uri) else { failed(uri, load, "not an address"); return }
+            var request = URLRequest(url: u)
+            if !agent.isEmpty { request.setValue(agent, forHTTPHeaderField: "User-Agent") }
+            let task = session.dataTask(with: request) { data, response, error in
+                // given up on (`forget`): nobody waits for it
+                if let e = error as NSError?, e.domain == NSURLErrorDomain, e.code == NSURLErrorCancelled { return }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+                DispatchQueue.main.async {
+                    if let error = error { failed(uri, load, error.localizedDescription) }
+                    else if status < 200 || status >= 300 { failed(uri, load, "HTTP " + String(status)) }
+                    else {
+                        let f = Fetched(data ?? Data(), response?.mimeType ?? "")
+                        fetched.setObject(f, forKey: uri as NSString, cost: f.data.count)
+                        got(uri, load, f)
+                    }
+                }
+            }
+            load.task = task
+            task.resume()
+            return
+        }
+        work.async {
+            var f: Fetched? = nil
+            var why = ""
+            if uri.hasPrefix("data:") {
+                f = dataAddress(uri)
+                if f == nil { why = "not a data: address that can be read" }
+            } else {
+                let path = uri.hasPrefix("file:") ? (URL(string: uri)?.path ?? "") : bundlePath(uri)
+                if let data = FileManager.default.contents(atPath: path) { f = Fetched(data, "") }
+                else {
+                    why = (FileManager.default.fileExists(atPath: path) ? "could not read " : "no such file ") + path
+                }
+            }
+            DispatchQueue.main.async {
+                if let f = f {
+                    fetched.setObject(f, forKey: uri as NSString, cost: f.data.count)
+                    got(uri, load, f)
+                } else { failed(uri, load, why) }
+            }
+        }
+    }
+
+    /// A `data:` address's bytes (base64, or percent-encoded) and its type.
+    static func dataAddress(_ uri: String) -> Fetched? {
+        guard let comma = uri.firstIndex(of: ",") else { return nil }
+        let head = uri[uri.index(uri.startIndex, offsetBy: 5)..<comma].split(separator: ";").map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+        let body = String(uri[uri.index(after: comma)...])
+        let type = head.first ?? ""
+        if head.contains("base64") {
+            guard let data = Data(base64Encoded: body, options: .ignoreUnknownCharacters) else { return nil }
+            return Fetched(data, type)
+        }
+        guard let text = body.removingPercentEncoding else { return nil }
+        return Fetched(Data(text.utf8), type)
+    }
+
+    /// Whether the file is an SVG: by its type, its name, or its first bytes (`<svg`, after a declaration, a comment or
+    /// a DOCTYPE), as SvgImage tells one.
+    static func isSvg(_ uri: String, _ f: Fetched) -> Bool {
+        let lower = uri.lowercased()
+        if f.type.lowercased().contains("image/svg+xml") || lower.hasPrefix("data:image/svg+xml") { return true }
+        let bare = String(lower.prefix { $0 != "?" && $0 != "#" })
+        if !lower.hasPrefix("data:") && bare.hasSuffix(".svg") { return true }
+        let head = String(decoding: f.data.prefix(4096), as: UTF8.self)
+        var at = head.startIndex
+        while at < head.endIndex {
+            let rest = head[at...]
+            if let c = rest.first, c.isWhitespace || c == "\u{FEFF}" { at = head.index(after: at); continue }
+            func past(_ mark: String) -> String.Index? {
+                rest.range(of: mark).map { $0.upperBound }
+            }
+            if rest.hasPrefix("<?") { guard let p = past("?>") else { return false }; at = p }
+            else if rest.hasPrefix("<!--") { guard let p = past("-->") else { return false }; at = p }
+            else if rest.hasPrefix("<!") { guard let p = past(">") else { return false }; at = p }
+            else {
+                guard rest.hasPrefix("<") else { return false }
+                let name = rest.dropFirst().prefix { !$0.isWhitespace && $0 != ">" && $0 != "/" }
+                return name == "svg" || name.hasSuffix(":svg")
+            }
+        }
+        return false
+    }
+
+    /// The file came: an SVG drawn by the program here, anything else decoded by ImageIO off the main thread, as large
+    /// as the largest any waiter wants (only its size read where none wants pixels).
+    static func got(_ uri: String, _ load: PictureLoad, _ f: Fetched) {
+        guard loads[uri] === load else { return }
+        let side = load.waiters.map { $0.side }.max() ?? -1
+        if isSvg(uri, f) {
+            let p = drawSvg(uri, String(decoding: f.data, as: UTF8.self), side)
+            if p == nil { tell(uri, "") }
+            finish(uri, load, p)
+            return
+        }
+        work.async {
+            let p = raster(f.data, side)
+            DispatchQueue.main.async {
+                if p == nil { tell(uri, "") }
+                finish(uri, load, p)
+            }
+        }
+    }
+
+    /// `data` decoded with ImageIO: its natural size from its header (turned as its orientation says), and where
+    /// `side` asks for pixels, a picture no larger than that on its longer side (0: its whole size), decoded here and
+    /// now rather than as it is first drawn. Nil where ImageIO reads no picture in it. On any thread.
+    static func raster(_ data: Data, _ side: Double) -> Picture? {
+        let reading = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, reading),
+              CGImageSourceGetCount(source) > 0,
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              var h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue, w > 0, h > 0 else { return nil }
+        if ((props[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1) >= 5 { swap(&w, &h) }
+        if side < 0 { return Picture(nil, w, h, 0, false, nil) }
+        let most = min(max(w, h), largest)
+        let wanted = side > 0 ? min(side, most) : most
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(wanted.rounded(.up)),
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        let made = Double(max(cg.width, cg.height))
+        return Picture(UIImage(cgImage: cg), w, h, made, made >= most - 1.0, nil)
+    }
+
+    /// An SVG drawn by the program (AppleArtPen) at `side` pixels on its longer side, and at least its own size times
+    /// the screen's scale; nil where it holds no SVG it can draw. On the main queue.
+    static func drawSvg(_ uri: String, _ text: String, _ side: Double) -> Picture? {
+        guard rtIsFn(svg) else { return nil }
+        canvas = nil
+        _ = RtGuard("an SVG", svg, [.vStr(uri), .vStr(text), .vDbl(max(0, side))])
+        guard let c = canvas, let image = c.picture() else { canvas = nil; return nil }
+        canvas = nil
+        return Picture(image, c.naturalWidth, c.naturalHeight, Double(max(c.width, c.height)),
+                       Double(max(c.width, c.height)) >= largest - 1.0, text)
+    }
+
+    /// Everyone waiting on `uri` told, and the picture kept.
+    static func finish(_ uri: String, _ load: PictureLoad, _ p: Picture?) {
+        guard loads[uri] === load else { return }
+        loads.removeValue(forKey: uri)
+        if let p = p { keep(uri, p) }
+        if logged, let p = p {
+            let shown = uri.hasPrefix("data:") ? "data:" : String(uri.prefix { $0 != "?" && $0 != "#" })
+            print("[ui] picture " + shown + " natural=" + String(Int(p.width)) + "x" + String(Int(p.height)) +
+                  " decoded=" + String(Int(p.side)) + (p.svg != nil ? " svg" : ""))
+        }
+        for w in load.waiters { w.done(p) }
+    }
+
+    static func failed(_ uri: String, _ load: PictureLoad, _ why: String) {
+        guard loads[uri] === load else { return }
+        tell(uri, why.isEmpty ? "it could not be had" : why)
+        finish(uri, load, nil)
+    }
+
+    /// The program told (it logs each address once, as LoggedAddress shows it).
+    static func tell(_ uri: String, _ why: String) {
+        if rtIsFn(failed) { _ = RtGuard("a picture's failure", failed, [.vStr(uri), .vStr(why)]) }
+        else { print("[ui] picture: " + why) }
+    }
+}
+
+/// An image node, stretched to its box.
+func uiImage(_ uri: V, _ width: V, _ height: V) -> V {
+    let iv = PictureView()
+    iv.contentMode = .scaleToFill
+    place(iv, Geo(w: dbl(width), h: dbl(height)))
+    let v: V = .vRef(iv)
+    _ = uiSetImageSource(v, uri)
+    return v
+}
+
+/// The picture the view draws, or none ("", which lets the one it drew go). What it showed is gone at once, so another
+/// address's picture never stands in; one already decoded large enough shows at once (a poster shown again); else it
+/// is asked for once the turn is over, when the view has the size it is drawn at.
+func uiSetImageSource(_ node: V, _ uri: V) -> V {
+    guard let iv = view(node) as? PictureView else { return .vNull }
+    let s = rtS(uri)
+    if s == iv.uri { return .vNull }
+    Pictures.forget(iv.uri, iv.waiter)
+    iv.uri = s
+    iv.ticket += 1
+    iv.waiter = 0
+    iv.askedAgain = false
+    iv.decoded = nil
+    iv.blurredFor = ""
+    iv.image = nil
+    if s.isEmpty { return .vNull }
+    // (the same address decoded smaller stands in until it comes larger)
+    if let p = Pictures.decoded.object(forKey: s as NSString) {
+        showPicture(iv, p)
+        if Pictures.enough(p, pictureSide(iv)) { return .vNull }
+    }
+    let ticket = iv.ticket
+    DispatchQueue.main.async { [weak iv] in
+        if let iv = iv, iv.ticket == ticket { askPicture(iv) }
+    }
+    return .vNull
+}
+
+/// The longer side, in the screen's pixels, the view is drawn at; 0 where it has no size yet (the picture's whole
+/// size).
+func pictureSide(_ v: UIView) -> Double {
+    let g = geo(v)
+    let longest = max(g.w, g.h) * max(1.0, g.scale)
+    return longest <= 0 ? 0 : (longest * Double(UIScreen.main.scale) * UI.scale).rounded(.up)
+}
+
+/// The view's picture asked for at the size it is drawn at.
+func askPicture(_ iv: PictureView) {
+    let side = pictureSide(iv)
+    if let p = iv.decoded, Pictures.enough(p, side) { return }
+    let ticket = iv.ticket
+    Pictures.forget(iv.uri, iv.waiter)
+    iv.waiter = Pictures.want(iv.uri, side) { [weak iv] p in
+        guard let iv = iv, iv.ticket == ticket else { return }
+        iv.waiter = 0
+        guard let p = p, p.image != nil else { return }
+        showPicture(iv, p)
+        // decoded for a waiter that wanted less, or before the view grew: once more, at its size
+        if !Pictures.enough(p, pictureSide(iv)) && !iv.askedAgain {
+            iv.askedAgain = true
+            DispatchQueue.main.async { if iv.ticket == ticket { askPicture(iv) } }
+        }
+    }
+}
+
+/// Resized (place): a picture decoded smaller than it is drawn now is asked for again, once the turn is over.
+func pictureResized(_ iv: PictureView) {
+    guard !iv.uri.isEmpty, !iv.looking, let p = iv.decoded, !Pictures.enough(p, pictureSide(iv)) else { return }
+    iv.looking = true
+    let ticket = iv.ticket
+    DispatchQueue.main.async { [weak iv] in
+        guard let iv = iv else { return }
+        iv.looking = false
+        if iv.ticket == ticket { askPicture(iv) }
+    }
+}
+
+/// The decoded picture drawn with the view's tint and blur.
+func showPicture(_ iv: PictureView, _ p: Picture) {
+    iv.decoded = p
+    guard let image = p.image else { iv.image = nil; return }
+    if iv.blur <= 0 {
+        iv.blurredFor = ""
+        tinted(iv, image)
+        return
+    }
+    // blurred off the main thread: until it is, what it showed stays (nothing, for a new address)
+    let key = String(UInt(bitPattern: ObjectIdentifier(image).hashValue)) + "|" + String(iv.blur)
+    if iv.blurredFor == key { return }
+    iv.blurredFor = key
+    let ticket = iv.ticket
+    let g = geo(iv)
+    // the blur is in the app's units: in the picture's pixels it is as much larger as the picture is to the view
+    let perUnit = g.w > 0 ? Double(image.size.width * image.scale) / g.w : Double(UIScreen.main.scale) * UI.scale
+    let sigma = iv.blur * perUnit
+    Pictures.blurring.async {
+        let made = blurred(image, sigma)
+        DispatchQueue.main.async {
+            if iv.ticket == ticket && iv.blurredFor == key, let made = made { tinted(iv, made) }
+        }
+    }
+}
+
+func tinted(_ iv: PictureView, _ image: UIImage) {
+    if let tint = iv.tint {
+        iv.tintColor = tint
+        iv.image = image.withRenderingMode(.alwaysTemplate)
+    } else {
+        iv.image = image.withRenderingMode(.alwaysOriginal)
+    }
+}
+
+/// `image` blurred by a gaussian of deviation `sigma` pixels, its edges held: made smaller first where the blur is wide
+/// (a blur that wide leaves nothing the smaller picture lacks), so a backdrop blurs in a few milliseconds. On any
+/// thread.
+func blurred(_ image: UIImage, _ sigma: Double) -> UIImage? {
+    guard let cg = image.cgImage else { return nil }
+    var input = CIImage(cgImage: cg)
+    let shrink = sigma > 8 ? 8 / sigma : 1.0
+    if shrink < 1 { input = input.transformed(by: CGAffineTransform(scaleX: CGFloat(shrink), y: CGFloat(shrink))) }
+    let extent = input.extent.integral
+    guard let f = CIFilter(name: "CIGaussianBlur") else { return nil }
+    f.setValue(input.clampedToExtent(), forKey: kCIInputImageKey)
+    f.setValue(sigma * shrink, forKey: kCIInputRadiusKey)
+    guard let out = f.outputImage?.cropped(to: extent),
+          let made = Pictures.effects.createCGImage(out, from: extent) else { return nil }
+    return UIImage(cgImage: made)
+}
+
+/// The picture in one colour (`"#rrggbb"`), its transparency kept, or as it is for "".
+func uiSetTint(_ node: V, _ hex: V) -> V {
+    guard let iv = view(node) as? PictureView else { return .vNull }
+    let s = rtS(hex)
+    iv.tint = s.isEmpty ? nil : uiColor(s)
+    if let p = iv.decoded { iv.blurredFor = ""; showPicture(iv, p) }
+    return .vNull
+}
+
+/// A gaussian blur of deviation `radius` (the app's units) over an image node's picture; anything else is drawn sharp.
+func uiSetBlur(_ node: V, _ radius: V) -> V {
+    guard let iv = view(node) as? PictureView else { return .vNull }
+    let r = max(0, dbl(radius))
+    if r == iv.blur { return .vNull }
+    iv.blur = r
+    if let p = iv.decoded { showPicture(iv, p) }
+    return .vNull
+}
+
+/// Decode `uri` and report its natural size in pixels (an SVG's own size), 0 x 0 where it cannot be had or decoded
+/// (said once, by the program's hook). Only the header is read for it; the view decodes the picture at its size.
+func uiLoadImage(_ uri: V, _ loaded: V) throws -> V {
+    let s = rtS(uri)
+    if s.isEmpty { _ = try RtInvoke(loaded, rtArr([.vDbl(0), .vDbl(0)])); return .vNull }
+    let held = RtHeld.hold(loaded)
+    Pictures.want(s, -1) { p in
+        RtHeld.release(held)
+        RtGuard("an image's size", loaded, [.vDbl(p?.width ?? 0), .vDbl(p?.height ?? 0)])
+    }
+    return .vNull
+}
+
+/// The program's SVG painter and its word on a picture that would not load, held for as long as the app runs.
+func uiPictureHooks(_ svg: V, _ failed: V) -> V {
+    Pictures.svg = svg
+    Pictures.failed = failed
+    return .vNull
+}
+
+/// The User-Agent pictures are fetched with (Platform.identify).
+func uiPictureAgent(_ agent: V) -> V {
+    Pictures.agent = rtS(agent)
+    return .vNull
+}
+
+/// Where an SVG is drawn (AppleArtPen): a bitmap context `width` by `height` pixels, clear, y down as the art has it,
+/// with the path being made.
+final class ArtCanvas {
+    let context: CGContext?
+    let width: Int
+    let height: Int
+    let naturalWidth: Double
+    let naturalHeight: Double
+    var path = CGMutablePath()
+    init(_ width: Int, _ height: Int, _ naturalWidth: Double, _ naturalHeight: Double) {
+        self.width = max(1, width); self.height = max(1, height)
+        self.naturalWidth = naturalWidth; self.naturalHeight = naturalHeight
+        context = CGContext(data: nil, width: self.width, height: self.height, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        context?.translateBy(x: 0, y: CGFloat(self.height))
+        context?.scaleBy(x: 1, y: -1)
+    }
+    func picture() -> UIImage? { context?.makeImage().map { UIImage(cgImage: $0) } }
+}
+
+func artColor(_ r: V, _ g: V, _ b: V, _ a: V) -> CGColor {
+    CGColor(srgbRed: CGFloat(dbl(r) / 255.0), green: CGFloat(dbl(g) / 255.0), blue: CGFloat(dbl(b) / 255.0),
+            alpha: CGFloat(dbl(a)))
+}
+
+/// A canvas `width` by `height` pixels for the SVG being drawn, whose own size is `naturalWidth` by `naturalHeight`.
+func uiArtBegin(_ width: V, _ height: V, _ naturalWidth: V, _ naturalHeight: V) -> V {
+    Pictures.canvas = ArtCanvas(Int(dbl(width)), Int(dbl(height)), dbl(naturalWidth), dbl(naturalHeight))
+    return .vNull
+}
+func uiArtMove(_ x: V, _ y: V) -> V {
+    Pictures.canvas?.path.move(to: CGPoint(x: dbl(x), y: dbl(y)))
+    return .vNull
+}
+func uiArtLine(_ x: V, _ y: V) -> V {
+    Pictures.canvas?.path.addLine(to: CGPoint(x: dbl(x), y: dbl(y)))
+    return .vNull
+}
+func uiArtCurve(_ x1: V, _ y1: V, _ x2: V, _ y2: V, _ x: V, _ y: V) -> V {
+    Pictures.canvas?.path.addCurve(to: CGPoint(x: dbl(x), y: dbl(y)), control1: CGPoint(x: dbl(x1), y: dbl(y1)),
+                                   control2: CGPoint(x: dbl(x2), y: dbl(y2)))
+    return .vNull
+}
+func uiArtClose() -> V {
+    Pictures.canvas?.path.closeSubpath()
+    return .vNull
+}
+/// The path made so far filled in `r g b` (0 to 255) at `a` (0 to 1), by the even-odd rule or the non-zero one.
+func uiArtFill(_ r: V, _ g: V, _ b: V, _ a: V, _ evenOdd: V) -> V {
+    guard let c = Pictures.canvas, let cx = c.context else { return .vNull }
+    cx.addPath(c.path)
+    cx.setFillColor(artColor(r, g, b, a))
+    cx.fillPath(using: rtB(evenOdd) ? .evenOdd : .winding)
+    c.path = CGMutablePath()
+    return .vNull
+}
+/// The path made so far outlined, `width` pixels wide, its ends `cap` and its corners `join` (SVG's names).
+func uiArtStroke(_ r: V, _ g: V, _ b: V, _ a: V, _ width: V, _ cap: V, _ join: V) -> V {
+    guard let c = Pictures.canvas, let cx = c.context else { return .vNull }
+    cx.addPath(c.path)
+    cx.setStrokeColor(artColor(r, g, b, a))
+    cx.setLineWidth(CGFloat(dbl(width)))
+    cx.setLineCap(rtS(cap) == "round" ? .round : rtS(cap) == "square" ? .square : .butt)
+    cx.setLineJoin(rtS(join) == "round" ? .round : rtS(join) == "bevel" ? .bevel : .miter)
+    cx.setMiterLimit(4)
+    cx.strokePath()
+    c.path = CGMutablePath()
     return .vNull
 }
 

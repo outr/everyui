@@ -513,9 +513,17 @@ func _substr(_ s: V, _ a: V, _ b: V) -> V {
 }
 func _substr1(_ s: V, _ a: V) -> V { _substr(s, a, rtLen(s)) }
 func _trim(_ s: V) -> V { .vStr(rtS(s).trimmingCharacters(in: .whitespaces)) }
+/// A String split where `sep` matches: a pattern, as Java takes it, where it is more than one character and holds one of
+/// a pattern's marks (`"[\\s,]+"`, `"\\."`), else the very characters (a Char is one); empty pieces left out.
 func _split(_ s: V, _ sep: V) -> V {
     let str = rtS(s), by = rtCharOrString(sep)
     if by.isEmpty { return rtArr(str.map { .vStr(String($0)) }) }
+    if by.count > 1, by.contains(where: { "[]\\^$.|?*+(){}".contains($0) }),
+       let pattern = try? NSRegularExpression(pattern: by) {
+        let marked = pattern.stringByReplacingMatches(in: str, range: NSRange(str.startIndex..., in: str),
+                                                      withTemplate: "\u{0}")
+        return rtArr(marked.components(separatedBy: "\u{0}").filter { !$0.isEmpty }.map { .vStr($0) })
+    }
     return rtArr(str.components(separatedBy: by).filter { !$0.isEmpty }.map { .vStr($0) })
 }
 func _startsWith(_ s: V, _ p: V) -> V { .vBool(rtS(s).hasPrefix(rtS(p))) }
@@ -568,6 +576,7 @@ func rtSin(_ v: V) -> V { rtMath(v, sin) }
 func rtCos(_ v: V) -> V { rtMath(v, cos) }
 func rtTan(_ v: V) -> V { rtMath(v, tan) }
 func rtAtan(_ v: V) -> V { rtMath(v, atan) }
+func RtAtan2(_ y: V, _ x: V) -> V { .vDbl(atan2(rtD(y) ?? 0, rtD(x) ?? 0)) }
 func rtExp(_ v: V) -> V { rtMath(v, exp) }
 func rtLog(_ v: V) -> V { rtMath(v, log) }
 func rtAbs(_ v: V) -> V { if case .vInt(let i) = v { return .vInt(abs(i)) }; return rtMath(v, abs) }
@@ -1779,6 +1788,8 @@ func _strTakeWhile(_ s: V, _ cl: V, _ keeping: Bool) throws -> V {
 func _strFilter(_ s: V, _ cl: V, _ keep: Bool) throws -> V {
     .vStr(try rtChars(s).filter { try RtInvoke(cl, rtArr([$0])).rtTrue == keep }.map(rtS).joined())
 }
+/// A String reversed, a String still (`s.reverse`).
+func _strReverse(_ s: V) -> V { .vStr(String(rtS(s).reversed())) }
 func _strCapitalize(_ s: V) -> V {
     let t = rtS(s)
     guard let first = t.first else { return .vStr("") }

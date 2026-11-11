@@ -369,9 +369,14 @@ class RenderNode(val sg: SGNode) {
     }
   }
 
-  def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
-  /** The picture as it is: no tint here yet. */
-  def setTint(hex: String): Unit = ()
+  /** The picture the view draws, or none: the last one asked for, never one that came after another was, decoded at the
+    * size it is drawn at (swift/runtime/UniversalRuntime.swift's Pictures). */
+  def setImageSource(uri: String): Unit = {
+    if (uri.nonEmpty) ApplePictures.lend()
+    uiSetImageSource(sg, Platform.address(uri))
+  }
+  /** The picture in one colour (`"#rrggbb"`), its transparency kept, or as it is for `""`. */
+  def setTint(hex: String): Unit = uiSetTint(sg, hex)
 
   /** What drags itself under a finger keeps the drag from a scroll it is in (uiTouch). */
   def setTouchDrags(on: Boolean): Unit = uiSetTouchDrags(sg, on)
@@ -427,8 +432,9 @@ class RenderNode(val sg: SGNode) {
   def setMotion(tracks: List[everyui.motion.Track]): Unit = ()
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
-  /** Nothing is drawn blurred here. */
-  def setBlur(radius: Double): Unit = ()
+  /** A gaussian blur of deviation `radius` (the web's `filter: blur()`): an image node's picture blurred on the device
+    * (Core Image); anything else is drawn sharp here. */
+  def setBlur(radius: Double): Unit = uiSetBlur(sg, radius)
   /** Each line of wrapped text `px` below the last: the gap the face leaves, opened or closed to that. */
   def setLineHeight(px: Double): Unit = uiSetLineHeight(sg, px)
   /** Extra space after each letter, in points: UIKit's kern, which the measured width takes. */
@@ -618,9 +624,13 @@ object Nodes {
   /** Sound: VLCKit's player with nothing to draw, a view taking no room. */
   def audio(): RenderNode = new RenderNode(uiMedia(false))
 
-  /** An image node — a `UIImageView` loading from the app bundle. */
-  def image(uri: String, width: Double, height: Double): RenderNode =
-    new RenderNode(uiImage(uri, width, height))
+  /** An image node: a `UIImageView` whose picture comes from the app bundle, a file, a `data:` address or the network
+    * (swift/runtime/UniversalRuntime.swift's Pictures). */
+  def image(uri: String, width: Double, height: Double): RenderNode = {
+    val node = new RenderNode(uiImage("", width, height))
+    node.setImageSource(uri)
+    node
+  }
 
   // a label's node, which knows it is one
   private def label(sg: SGNode): RenderNode = {
@@ -700,17 +710,21 @@ object Platform {
   /** Assets live in the app bundle; the runtime resolves a site-absolute path against it. */
   def resolvePath(path: String): String = path
 
-  /** Decode `uri` and report its natural size, 0 x 0 where it cannot be had or decoded (logged once). UIImage reads no
-    * SVG, so one named as an SVG (`SvgImage.named`) is never asked for: it is logged once and comes as 0 x 0, and an
-    * Avatar keeps its initial. */
-  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit =
-    if (everyui.image.SvgImage.named(uri)) {
-      everyui.image.SvgImage.undrawn(uri, "an Apple TV")
-      loaded(0.0, 0.0)
-    } else uiLoadImage(uri, (w: Double, h: Double) => {
-      if (w <= 0.0 || h <= 0.0) everyui.image.SvgImage.undecoded(uri)
-      loaded(w, h)
-    })
+  /** Decode `uri` and report its natural size (an SVG's own), 0 x 0 where it cannot be had or decoded, which is logged
+    * once for the address (ApplePictures): an Avatar keeps its initial. Only its header is read for it. */
+  def loadImage(uri: String, loaded: (Double, Double) => Unit): Unit = {
+    ApplePictures.lend()
+    uiLoadImage(address(uri), loaded)
+  }
+
+  /** Where `uri` is read from: a site-absolute path (`/api/portrait/3`) from the app's server (`origin`) where the
+    * bundle holds no file there and there is a server to ask, as Android has it; anything else as it is. */
+  def address(uri: String): String =
+    if (!uri.startsWith("/") || uri.startsWith("//")) uri
+    else {
+      val server = origin()
+      if (server.isEmpty || uiBundled(uri)) uri else server.stripSuffix("/") + uri
+    }
   /** A picture's cells, its average colour in each (`everyui.access.Access`): none read here, so words over a picture
     * are judged as over the worst it could be. */
   def pictureCells(uri: String, across: Int, down: Int, read: List[Int] => Unit): Unit = read(Nil)
@@ -812,8 +826,8 @@ object Platform {
   /** The screen kept on (while something is shown that is meant to be watched without a touch), or let dim, lock or
     * go to the screen saver again: the system's idle timer off, or on. */
   def keepAwake(on: Boolean): Unit = uiKeepAwake(on)
-  /** The device names itself to the servers its pictures come from. */
-  def identify(app: String): Unit = ()
+  /** The app named (`My App (com.example.app)`) to the servers its pictures come from, as their User-Agent. */
+  def identify(app: String): Unit = uiPictureAgent(app)
   /** Nothing here can scale the screen's colours: an app that wants it dimmed does it itself. */
   def tint(red: Double, green: Double, blue: Double): Boolean = false
 
