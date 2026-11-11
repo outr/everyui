@@ -112,9 +112,11 @@ func uiColor(_ hex: String) -> UIColor {
                    blue: CGFloat(n & 0xFF) / 255.0, alpha: alpha)
 }
 
-/// A site-absolute asset path (`/images/icon.png`) inside the app bundle.
+/// A site-absolute asset path (`/images/icon.png`) inside the app bundle, by its path alone: a query (`?v=3`) or a
+/// fragment is a server's to read, as Android's assets have it.
 func bundlePath(_ uri: String) -> String {
-    let rel = uri.hasPrefix("/") ? String(uri.dropFirst()) : uri
+    let bare = String(uri.prefix { $0 != "?" && $0 != "#" })
+    let rel = bare.hasPrefix("/") ? String(bare.dropFirst()) : bare
     return (Bundle.main.resourcePath ?? ".") + "/" + rel
 }
 
@@ -363,6 +365,41 @@ func uiLoadImage(_ uri: V, _ loaded: V) throws -> V {
         return .vNull
     }
     _ = try RtInvoke(loaded, rtArr([.vDbl(Double(img.size.width * img.scale)), .vDbl(Double(img.size.height * img.scale))]))
+    return .vNull
+}
+
+/// A text file as UTF-8, then `done(text)` on the main queue (Platform.readText): one in the bundle by its path (a
+/// leading `/` is the bundle's root, as Android reads its assets and a Roku `pkg:/`), a `file:` URL, or one at an
+/// http(s) URL (an SVG icon), read off the main thread either way. One that is not there, or will not read, is logged
+/// and answered with "", as on Android and a Roku, where the shared API has nothing else to say it with.
+func uiReadTextThen(_ path: V, _ done: V) -> V {
+    let p = rtS(path)
+    let held = RtHeld.hold(done)
+    func answer(_ text: String?, _ why: String) {
+        DispatchQueue.main.async {
+            RtHeld.release(held)
+            if text == nil { print("[ui] readText: " + why) }
+            RtGuard("a file read", done, [.vStr(text ?? "")])
+        }
+    }
+    if p.hasPrefix("http://") || p.hasPrefix("https://"), let u = URL(string: p) {
+        var request = URLRequest(url: u)
+        request.timeoutInterval = 30
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if let error = error { answer(nil, p + ": " + error.localizedDescription) }
+            else if status < 200 || status >= 300 { answer(nil, p + ": HTTP " + String(status)) }
+            else { answer(String(decoding: data ?? Data(), as: UTF8.self), "") }
+        }.resume()
+        return .vNull
+    }
+    let file = p.hasPrefix("file:") ? (URL(string: p)?.path ?? "") : bundlePath(p)
+    DispatchQueue.global(qos: .userInitiated).async {
+        if let data = FileManager.default.contents(atPath: file) { answer(String(decoding: data, as: UTF8.self), "") }
+        else {
+            answer(nil, (FileManager.default.fileExists(atPath: file) ? "could not read " : "no such file ") + file)
+        }
+    }
     return .vNull
 }
 

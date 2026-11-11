@@ -41,15 +41,20 @@ object AppleApp {
 
   /** Complete an emitted app in `out`: the Swift `runtime` files (`ScalaRuntime.swift`, `UniversalRuntime.swift` and
     * the launcher, `main.swift`: EveryUI's `swift/`, or `everyuiSwiftRuntime` out of the everyui-tvos jar), the
-    * `infoPlist` as `Info.plist`, the app's icons as `Assets.xcassets` if given, and the images and fonts in `images` and
-    * `fonts` (directories, later ones winning). */
+    * `infoPlist` as `Info.plist`, the app's icons as `Assets.xcassets` if given, the images and fonts in `images` and
+    * `fonts` (directories, later ones winning), and each of `files` at its path in the bundle, as RokuChannel.assemble
+    * puts them in a package and an APK holds them in its assets: the app's translations (`l10n/app_en.arb`, which
+    * `Strings` reads as `/l10n/app_en.arb`) and any other file it reads by its path (`Platform.readText`). A build
+    * puts everything here but the Swift, the Info.plist and the icons into the app's bundle as it lies
+    * (tools/tvos-run.sh). */
   def assemble(out: File, runtime: Seq[File], infoPlist: File, assetCatalog: Option[File], images: Seq[File],
-               fonts: Seq[File]): File = {
+               fonts: Seq[File], files: Seq[(String, File)] = Nil): File = {
     runtime.foreach(f => IO.copyFile(f, out / f.getName))
     IO.copyFile(infoPlist, out / "Info.plist")
     assetCatalog.foreach(c => IO.copyDirectory(c, out / "Assets.xcassets"))
     images.filter(_.isDirectory).foreach(d => IO.copyDirectory(d, out / "images"))
     fonts.foreach(d => (d * "*.ttf").get().foreach(f => IO.copyFile(f, out / "fonts" / f.getName)))
+    files.foreach { case (path, f) => IO.copyFile(f, out / path) }
     out
   }
 

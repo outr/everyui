@@ -233,6 +233,11 @@ def bundled(path: String, files: File => Seq[File]): Def.Initialize[Task[Seq[Fil
   }
 }
 
+/** The example's translations (assets/l10n), at their paths in an Apple bundle, a Roku package and an APK's assets,
+  * where `Strings` reads them as `/l10n/app_<code>.arb` (demo=net). */
+def exampleTranslations(root: File): Seq[(String, File)] =
+  (root / "assets" / "l10n" * "*.arb").get().map(f => ("l10n/" + f.getName, f))
+
 /** EveryUI's fonts (and Material Icons' codepoints), in each backend's jar under everyui/fonts/, which an app copies out
   * (sbt-everyui's everyuiFonts, and everyuiWebFonts on the web). */
 lazy val fontResources = bundled("everyui/fonts", root => (root / "assets" / "fonts" * ("*.ttf" | "*.codepoints")).get())
@@ -345,7 +350,7 @@ lazy val roku = (project in file("roku"))
       // identical pixels; the channel's own icons and splash screens are roku/images (tools/make-icons.py).
       val root = (ThisBuild / baseDirectory).value
       RokuChannel.assemble(outDir, root / "roku" / "runtime", Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"),
-        (root / "assets" / "sounds" * "*.wav").get().map(f => ("sounds/" + f.getName, f)),
+        (root / "assets" / "sounds" * "*.wav").get().map(f => ("sounds/" + f.getName, f)) ++ exampleTranslations(root),
         Some(baseDirectory.value / "images"))
     }
   )
@@ -467,7 +472,8 @@ lazy val tvos = (project in file("tvos"))
       // the example's app icons (tools/make-icons.py)
       AppleApp.assemble(outDir, Seq(swift / "runtime" / "ScalaRuntime.swift", swift / "runtime" / "UniversalRuntime.swift",
         swift / "runtime" / "MediaRuntime.swift", swift / "app" / "main.swift"), everyuiAppleInfoPlist.value,
-        Some(swift / "app" / "Assets.xcassets"), Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"))
+        Some(swift / "app" / "Assets.xcassets"), Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"),
+        exampleTranslations(root))
       // demo=webview's pages, in the bundle beside the app as they are beside the web build
       Seq("webview.html", "sandbox.html").foreach(p => IO.copyFile(root / "web" / p, outDir / p))
       // the release and the build's number as Android's example has them (Platform.appVersionName, appVersion)
@@ -597,6 +603,7 @@ lazy val android = (project in file("android"))
       IO.delete(assets)
       IO.copyDirectory(buildRoot / "assets" / "images", assets / "images")
       (buildRoot / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, assets / "fonts" / f.getName))
+      exampleTranslations(buildRoot).foreach { case (path, f) => IO.copyFile(f, assets / path) }
       AndroidApk.build(streams.value.log.info(_), androidSdk, androidPlatform, androidBuildTools, androidMinSdk, "37",
         // the archives themselves are not dexable: what was opened out of them stands in their place
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),

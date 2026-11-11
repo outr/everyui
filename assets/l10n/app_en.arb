@@ -1,0 +1,7 @@
+{
+  "@@locale": "en",
+  "netTitle": "Files and the network",
+  "@netTitle": {"description": "demo=net's heading"},
+  "netGreeting": "Hello, {name}: these words were read from the app's own files",
+  "@netGreeting": {"description": "demo=net's greeting", "placeholders": {"name": {}}}
+}

@@ -156,6 +156,11 @@ class SGNode
 @native object uiLoadImage {
   def apply(uri: String, loaded: (Double, Double) => Unit): Unit = native.value
 }
+/** A text file as UTF-8 (a path in the bundle, a `file:` URL or an http(s) one), read off the main thread and given to
+  * `done` on it; "" where it is not there or will not read, which is logged. */
+@native object uiReadTextThen {
+  def apply(path: String, done: String => Unit): Unit = native.value
+}
 /** Both coordinates at once. */
 @native object uiSetTranslation {
   def apply(node: SGNode, x: Double, y: Double): Unit = native.value

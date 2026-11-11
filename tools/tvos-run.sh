@@ -16,6 +16,10 @@
 # "Apple TV 4K (3rd generation) (at 1080p)"), IOS_DEVICE (default "iPhone 17 Pro"), LIVE_SECONDS. Logs and the
 # screenshot go to target/tvos/ (target/ios/ with --ios).
 #
+# Everything AppleApp.assemble put beside the Swift but the Info.plist and the icons goes into the bundle as it lies:
+# the images, the fonts, the web view's pages and the app's own files (l10n/app_en.arb), where Platform.readText
+# finds them.
+#
 # An app that plays (App.swift calls uiMedia) is linked with VLCKit (tools/vlckit.sh, fetched and checked on the Mac),
 # its framework embedded in the bundle's Frameworks folder, any bitcode stripped, and signed with the app.
 set -uo pipefail
@@ -104,8 +108,8 @@ $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
     -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker sim.xcent \
     $LINK src/ScalaRuntime.swift src/UniversalRuntime.swift src/MediaRuntime.swift \
     src/App*.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
-  test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && cp -r src/images src/fonts EveryUI.app/ && \
-  { cp src/*.html EveryUI.app/ 2>/dev/null; true; } && \
+  test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && \
+  rsync -a --exclude '*.swift' --exclude Info.plist --exclude Assets.xcassets src/ EveryUI.app/ && \
   plutil -replace UIDeviceFamily -json '$FAMILY' EveryUI.app/Info.plist && \
   xcrun actool src/Assets.xcassets --compile EveryUI.app --platform $SDK $TARGETS --minimum-deployment-target 15.0 \
     --app-icon '$APPICON' --output-partial-info-plist icons.plist > actool.log 2>&1 && \

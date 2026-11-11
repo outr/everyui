@@ -1,0 +1,5 @@
+{
+  "@@locale": "fr",
+  "netTitle": "Les fichiers et le réseau",
+  "netGreeting": "Bonjour, {name} : ces mots ont été lus dans les fichiers de l’application"
+}

@@ -825,8 +825,10 @@ object Platform {
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
 
-  /** Not read yet: the runtime is still to open packaged text files, so translations fall back to their keys. */
-  def readText(path: String, done: String => Unit): Unit = done("")
+  /** A text file in the app's bundle (a translation, `/l10n/app_en.arb`: a leading `/` is the bundle's root, as an
+    * Android app's assets and a Roku's `pkg:/` are), a `file:` URL, or one at an http(s) URL (an SVG icon), read off
+    * the main thread and answered on it; "" if it is not there, which the console says. */
+  def readText(path: String, done: String => Unit): Unit = uiReadTextThen(path, done)
   /** The first language the person prefers, as a BCP 47 tag ("en-US"). */
   def language(): String = uiLanguage()
   def fromCodePoint(codePoint: Int): String = uiChr(codePoint)
