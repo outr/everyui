@@ -405,6 +405,15 @@ func rtCompare(_ l: V, _ r: V) -> Int {
     if case .vStr(let a) = l, case .vStr(let b) = r { return a < b ? -1 : (a > b ? 1 : 0) }
     if case .vInt(let a) = l, case .vInt(let b) = r { return a < b ? -1 : (a > b ? 1 : 0) }
     if let a = rtD(l), let b = rtD(r) { return a < b ? -1 : (a > b ? 1 : 0) }
+    if case .vBool(let a) = l, case .vBool(let b) = r { return a == b ? 0 : (a ? 1 : -1) }
+    // tuples, element by element (Ordering.Tuple2 and on: a sortBy keyed by a pair, Access's reading order)
+    if case .vObj = l, case .vObj = r, rtHas(l, "_1"), rtHas(r, "_1") {
+        for k in ["_1", "_2", "_3", "_4", "_5", "_6"] where rtHas(l, k) && rtHas(r, k) {
+            let c = rtCompare(l[k], r[k])
+            if c != 0 { return c }
+        }
+        return 0
+    }
     rtFatal("cannot compare \(rtKindName(l)) with \(rtKindName(r))")
 }
 
@@ -772,13 +781,28 @@ func _contains(_ xs: V, _ x: V) -> V { .vBool(rtItems(xs).contains { rtEq($0, x)
 func _arrIndexOf(_ xs: V, _ x: V) -> V { .vInt(rtItems(xs).firstIndex { rtEq($0, x) } ?? -1) }
 func _optToList(_ o: V) -> V { if case .vNull = o { return rtArr([]) }; return rtArr([o]) }
 func _mkString(_ xs: V, _ sep: V) -> V { .vStr(rtItems(xs).map(rtS).joined(separator: rtS(sep))) }
+/// A collection's first `n`, or the rest after them; a String's are a String, as the Roku's are (a String's `take`
+/// was a list of its characters, which a name cut short with it, `Focus.named`'s, came out as "List()").
 func _take(_ xs: V, _ n: V) -> V {
     guard case .vInt(let k) = n else { return rtArr([]) }
+    if case .vStr(let s) = xs { return .vStr(rtStrSplit(s, k).0) }
     return rtArr(Array(rtItems(xs).prefix(max(0, k))))
 }
 func _drop(_ xs: V, _ n: V) -> V {
     guard case .vInt(let k) = n else { return xs }
+    if case .vStr(let s) = xs { return .vStr(rtStrSplit(s, k).1) }
     return rtArr(Array(rtItems(xs).dropFirst(max(0, k))))
+}
+/// A String cut after `n` UTF-16 units, as the JVM counts them, a surrogate pair kept whole on the side it starts on.
+func rtStrSplit(_ s: String, _ n: Int) -> (String, String) {
+    var units = 0
+    var at = s.unicodeScalars.startIndex
+    for scalar in s.unicodeScalars {
+        if units >= n { break }
+        units += scalar.utf16.count
+        at = s.unicodeScalars.index(after: at)
+    }
+    return (String(s.unicodeScalars[..<at]), String(s.unicodeScalars[at...]))
 }
 func _sortBy(_ xs: V, _ cl: V) throws -> V {
     let keyed = try rtItems(xs).map { (k: try RtInvoke(cl, rtArr([$0])), v: $0) }
@@ -1129,7 +1153,11 @@ func RapidTask_unit(_ t: V) -> V { RapidTask_map(t, rtClosure({ _, _ in .vNull }
 func RapidTask_foreach(_ t: V, _ f: V) throws -> V { try RapidTask_start(RapidTask_map(t, f)) }
 func RapidTask_start(_ t: V) throws -> V {
     _ = try RapidTask_run(t, RtCb { ok, v in
-        if !rtB(ok) { print("[rt] task failed: " + rtS(_getMessage(v))) }
+        // a started task's failure nothing was there to hear: reported, as a thread's uncaught exception is
+        if !rtB(ok) {
+            print("[rt] task failed: " + rtS(_getMessage(v)))
+            RtReportError("a task", RtError(v: v))
+        }
         return .vNull
     })
     return RapidTaskObj_pure(.vNull)
@@ -1144,11 +1172,95 @@ func RapidTask_sync(_ t: V) throws -> V {
     if !rtB(box["ok"]) { try RtThrow(box["v"]) }
     return box["v"]
 }
-/** A one-shot timer on the main queue: `cb` (a zero-argument closure) runs after `ms`. */
+/** A one-shot timer on the main queue: `cb` (a zero-argument closure) runs after `ms`, held for the cycle collector
+  * until then, and what it throws is reported (RtReportError) as nothing caught it. */
 func RtSetTimeout(_ ms: Double, _ cb: V) {
+    let held = RtHeld.hold(cb)
     DispatchQueue.main.asyncAfter(deadline: .now() + max(ms, 0) / 1000.0) {
-        do { _ = try RtInvoke(cb, rtArr([])) }
-        catch { print("[rt] timer callback failed: " + rtS(_getMessage(rtErrorValue(error)))) }
+        RtHeld.release(held)
+        _ = RtGuard("a timer", cb, [])
+    }
+}
+
+// MARK: - what the platform holds for the program, and what nothing caught
+
+/** A closure value the program made: an object with its `fn` (a `.vFn` alone is a runtime's own slot). The emitted
+  * code makes every lambda one of these, so a hook is checked with this and never with `case .vFn`. */
+func rtIsFn(_ v: V) -> Bool {
+    if case .vObj = v, case .vFn = v["fn"] { return true }
+    return false
+}
+
+/** What the platform side holds for the program between its calls into it: a closure a timer, an observer or a view
+  * keeps to call later. The cycle collector sees only what the program's own objects reach, so each is a root
+  * (`RtHeld.roots`) until it is let go, or its fields would be cleared under it and the call later find nothing. */
+enum RtHeld {
+    static var values: [Int: V] = [:]
+    static var next = 0
+    /** More roots, asked for at each collection: a view's handlers, kept with the view and gone with it. */
+    static var providers: [() -> [V]] = []
+
+    /** `v` held until `release(the answer)`. */
+    static func hold(_ v: V) -> Int {
+        next += 1
+        values[next] = v
+        return next
+    }
+    static func release(_ id: Int) { values.removeValue(forKey: id) }
+
+    /** Every root of the collection: the program's globals, then what is held here. */
+    static func roots(_ more: [V]) -> [V] {
+        var all: [V] = [ga, rtUnit, RtErrors.hook] + more
+        all.append(contentsOf: values.values)
+        for p in providers { all.append(contentsOf: p()) }
+        return all
+    }
+}
+
+/** What nothing caught: told to the app's hook (Platform.onError), counted, and written to the console. */
+enum RtErrors {
+    /** `(message, stack)`, a closure of the program's (uiOnError), or null. */
+    static var hook: V = .vNull
+    static var seen = 0
+    static var reporting = false
+}
+
+/** `error`, thrown out of `place` (a key, a frame, a timer, a task) with nothing to catch it: written to the console
+  * as `[error] in <place>: <class>: <message>` and handed to the app's hook as the message and a stack, which here is
+  * where it was thrown out of, the Swift runtime having no Scala stack to give. A throw from the hook itself is
+  * written and not told again. The app goes on, as a Roku channel does. */
+func RtReportError(_ place: String, _ error: Error) {
+    let v = rtErrorValue(error)
+    var message = ""
+    if case .vObj = v {
+        let cls = rtS(_clsName(v))
+        let said = rtS(_getMessage(v))
+        message = said.isEmpty || said == cls ? cls : cls + ": " + said
+    } else {
+        message = rtS(v)
+    }
+    RtReportProblem(place, message, "thrown in " + place + ", and nothing caught it")
+}
+
+/** A problem with its message and stack as they are: written and told, as RtReportError does. */
+func RtReportProblem(_ place: String, _ message: String, _ stack: String) {
+    RtErrors.seen += 1
+    print("[error] in " + place + ": " + message)
+    if !rtIsFn(RtErrors.hook) || RtErrors.reporting { return }
+    RtErrors.reporting = true
+    do { _ = try RtInvoke(RtErrors.hook, rtArr([.vStr(message), .vStr(stack)])) }
+    catch { print("[error] the error hook failed too: " + rtS(_getMessage(rtErrorValue(error)))) }
+    RtErrors.reporting = false
+}
+
+/** Call `f`, a closure of the program's, from the platform (`place`: a key, a frame, a timer…): what it throws is
+  * reported (RtReportError) and null answered, never swallowed. */
+@discardableResult
+func RtGuard(_ place: String, _ f: V, _ args: [V]) -> V {
+    do { return try RtInvoke(f, rtArr(args)) }
+    catch {
+        RtReportError(place, error)
+        return .vNull
     }
 }
 func rtDouble(_ v: V) -> Double {
