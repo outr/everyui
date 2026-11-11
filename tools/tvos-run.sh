@@ -8,7 +8,8 @@
 #   tools/tvos-run.sh --console       run for LIVE_SECONDS with EXTRA_ARGS on the launch and print the console
 #   tools/tvos-run.sh --show          also open the Simulator window on the Mac
 #   tools/tvos-run.sh --ios           an iPhone simulator instead of the Apple TV
-#   tools/tvos-run.sh --drive         launch it to take a test's input on the Mac's 127.0.0.1:$DRIVE_PORT (47001),
+#   tools/tvos-run.sh --drive         launch it to take a test's input on the Mac's 127.0.0.1:$DRIVE_PORT (the
+#                                     simulator's own, 47100 to 47899 from its UDID, as tools/apple-drive.sh finds it),
 #                                     and leave it running, for tools/apple-drive.sh (this build is always compiled to
 #                                     be driven, -D EVERYUI_DRIVE; an app's release build is not, and has none of it)
 #
@@ -131,7 +132,9 @@ ARGS=""
 [ -n "${EXTRA_ARGS:-}" ] && ARGS="$ARGS $EXTRA_ARGS"
 SECONDS_TO_RUN=$LIVE_SECONDS
 [ $MODE = freeze ] && SECONDS_TO_RUN=12
-[ $MODE = drive ] && SECONDS_TO_RUN=10 && ARGS="$ARGS --drive=${DRIVE_PORT:-47001}"
+# a port of the simulator's own, from its UDID, as tools/apple-drive.sh finds it, so two driven at once each have one
+DRIVE_PORT=${DRIVE_PORT:-$((47100 + $(printf '%s' "$UDID" | cksum | cut -d' ' -f1) % 800))}
+[ $MODE = drive ] && SECONDS_TO_RUN=10 && ARGS="$ARGS --drive=$DRIVE_PORT"
 # macOS has no `timeout`: the launch (which stays attached to the app's console) runs in the background for
 # SECONDS_TO_RUN; with --show the app is left running on the simulator afterwards.
 STOP="xcrun simctl terminate $UDID $BUNDLE > /dev/null 2>&1"
@@ -145,7 +148,8 @@ scp -q "$MAC:$APP/screen.png" "$LOGS/screen.png" 2>/dev/null; scp -q "$MAC:$APP/
 if grep -aq '\[ui\] root' "$LOGS/console.log"; then pass "$(grep -aoE '\[ui\] root .*' "$LOGS/console.log")"; else fail "(target/$PLATFORM/console.log)"; tail -n 15 "$LOGS/console.log"; exit 1; fi
 if [ $MODE = console ]; then grep -a '\[ui\]' "$LOGS/console.log"; exit 0; fi
 if [ $MODE = drive ]; then
-  echo "driven: tools/apple-drive.sh ping (DEVICE=$UDID for a screenshot); the console is $MAC:$APP/console.log"
+  echo "driven on 127.0.0.1:$DRIVE_PORT: DEVICE=$UDID tools/apple-drive.sh ping; the console is $MAC:$APP/console.log"
+  grep -a "\[ui\] drive:" "$LOGS/console.log" | sed 's/^/    /'
   exit 0
 fi
 

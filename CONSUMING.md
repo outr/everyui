@@ -4923,6 +4923,15 @@ is a touch the app hears as any other, a key a key. Nothing touches the Mac's ow
 compiled without the flag and has none of it; one with it listens only when launched to. `tools/tvos-run.sh --drive
 [--ios]` builds EveryUI's example so and leaves it running; `tools/apple-drive.sh` (MAC, DRIVE_PORT, DEVICE) sends:
 
+Two simulators driven at once each need a port of their own, as they share the Mac's loopback: an app that finds its
+port taken says so in its console (`[ui] drive: ERROR could not listen on 127.0.0.1:<port> (Address already in use):
+another app holds the port…`), and a drive sent there reaches the other app. So `tools/tvos-run.sh --drive` launches
+each simulator's app on a port of its own, 47100 to 47899 from its UDID, unless DRIVE_PORT names one, and
+`tools/apple-drive.sh` with DEVICE set (its UDID or its name) finds the same port; it asks the app first which
+simulator it is on (`ping` answers with `udid=` and `port=`) and stops, saying which, where it is another's. With
+DEVICE unset it goes to 47001, the booted simulator's, unchecked.
+
+
 | Command | What it does |
 |---|---|
 | `ping` | the platform, the device, whether a remote drives it, the version |

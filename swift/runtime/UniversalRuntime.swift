@@ -2548,7 +2548,12 @@ func uiDriveStart() {
         }
     }
     if bound != 0 || listen(server, 4) != 0 {
-        print("[ui] drive: could not listen on 127.0.0.1:\(port)")
+        // another app (another simulator's, the simulators sharing the Mac's loopback) has the port: said plainly, as
+        // a drive at that port reaches that app instead
+        let why = String(cString: strerror(errno))
+        print("[ui] drive: ERROR could not listen on 127.0.0.1:\(port) (" + why + "): another app holds the port, and " +
+              "a drive sent there reaches it, not this one; launch with another --drive=<port>")
+        close(server)
         return
     }
     print("[ui] drive: listening on 127.0.0.1:\(port)")
@@ -2592,7 +2597,13 @@ func uiDriveRun(_ line: String, _ answer: @escaping (String) -> Void) {
     guard rtIsFn(UI.drive) else { answer("error the app has not started"); return }
     let said = rtS(RtGuard("the drive", UI.drive, [.vStr(line)]))
     let parts = said.components(separatedBy: "\t")
-    let action = parts[0], reply = parts.count > 1 ? parts[1...].joined(separator: "\t") : "ok"
+    let action = parts[0]
+    var reply = parts.count > 1 ? parts[1...].joined(separator: "\t") : "ok"
+    // which simulator answered, and on which port, so a drive meant for another one can tell (tools/apple-drive.sh)
+    if line == "ping" {
+        reply += " udid=" + (ProcessInfo.processInfo.environment["SIMULATOR_UDID"] ?? "none") + " port=" +
+            String(uiDrivePort())
+    }
     let words = action.split(separator: " ", maxSplits: 1).map(String.init)
     let numbers = action.split(separator: " ").dropFirst().compactMap { Double($0) }
     // the app's units to the root's points
