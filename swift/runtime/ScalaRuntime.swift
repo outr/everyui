@@ -325,8 +325,11 @@ func rtHas(_ o: V, _ key: String) -> Bool {
     return false
 }
 
+/// A collection's elements; a String walked as one (StringOps: map, exists, forall, count, foreach…) is its
+/// characters, as the Roku's _rtItems has it, where it was nothing (`s.map(_.toInt)` came out empty).
 func rtItems(_ xs: V) -> [V] {
     if case .vArr(let a) = xs { return a.items }
+    if case .vStr = xs { return rtChars(xs) }
     return []
 }
 

@@ -80,6 +80,13 @@ object Collections {
     check(ok, total, "emit.seq.updated", v.updated(1, 9).mkString(",") + " " + xs.updated(0, 1).mkString(","), "1,9,3 1,6,7")
     check(ok, total, "emit.range.by", (1 to 10 by 3).mkString(",") + " " + (10 to 1 by -3).mkString(",") + " " + (0 until 10 by 5).mkString(","), "1,4,7,10 10,7,4,1 0,5")
     check(ok, total, "emit.string.capitalize", "hello".capitalize + " " + "".capitalize, "Hello ")
+    // an `s` part's escapes taken, a `raw` part's kept, each shown by its character codes (a tab or a newline would
+    // not survive the console)
+    val n = 7
+    val codes = (s: String) => s.map(_.toInt).mkString(",")
+    check(ok, total, "emit.string.interp.escapes", codes(s"a\tb\n$n\"\\\u0041\r"), "97,9,98,10,55,34,92,65,13")
+    check(ok, total, "emit.string.interp.raw", codes(raw"a\tb$n\n"), "97,92,116,98,55,92,110")
+    check(ok, total, "emit.string.interp.plain", codes(s"\t") + " " + codes(s"$n\t$n"), "9 55,9,55")
     check(ok, total, "emit.seq.collect", List(1, 2, 3, 4).collect { case x if x % 2 == 0 => x * 10 }.mkString(","), "20,40")
     check(ok, total, "emit.seq.collectfirst", List(1, 2, 3).collectFirst { case x if x > 1 => x }.getOrElse(0).toString, "2")
     check(ok, total, "emit.seq.array.ints", Array(3, 4).indexWhere(_ > 3).toString, "1")

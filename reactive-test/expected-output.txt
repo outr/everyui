@@ -116,9 +116,12 @@ RX PASS emit.seq.init = 1,2 5,6
 RX PASS emit.seq.updated = 1,9,3 1,6,7
 RX PASS emit.range.by = 1,4,7,10 10,7,4,1 0,5
 RX PASS emit.string.capitalize = Hello 
+RX PASS emit.string.interp.escapes = 97,9,98,10,55,34,92,65,13
+RX PASS emit.string.interp.raw = 97,92,116,98,55,92,110
+RX PASS emit.string.interp.plain = 9 55,9,55
 RX PASS emit.seq.collect = 20,40
 RX PASS emit.seq.collectfirst = 2
 RX PASS emit.seq.array.ints = 1
 RX PASS emit.seq.fill = 1,2,3
 RX PASS emit.seq.tabulate = 0,1,4
-RX DONE 123/123
+RX DONE 126/126

@@ -1606,11 +1606,21 @@ class RokuEmitter(
       case _               => Nil
     }
 
+    def literalPart(t: Term): Option[String] = unwrap(t) match {
+      case Literal(StringConstant(s)) => Some(s)
+      case _                          => None
+    }
+
+    /** `s"…"` and `raw"…"` as the text they make. TASTy holds each part as it was typed between the quotes, and the
+      * parts went out so: `s"a\tb"` showed a backslash and a t on an Apple TV and a Roku. An `s` part's escapes are
+      * taken here, as StringContext takes them on the JVM, and a `raw` part keeps its backslashes
+      * (RokuEmitter.interpolated); either is then written as any literal is (brStr). */
     def emitStringInterp(outer: Term): Option[String] = unwrap(outer) match {
-      case Apply(Select(inner, "s"), List(argsArg)) =>
+      case Apply(Select(inner, kind @ ("s" | "raw")), List(argsArg)) =>
         unwrap(inner) match {
-          case Apply(Select(sc, "apply"), List(partsArg)) if sc.symbol.fullName.contains("StringContext") =>
-            val parts = rep(partsArg).collect { case Literal(StringConstant(s)) => s }
+          case Apply(Select(sc, "apply"), List(partsArg)) if sc.symbol.fullName.contains("StringContext") &&
+              rep(partsArg).forall(literalPart(_).isDefined) =>
+            val parts = rep(partsArg).flatMap(literalPart).map(RokuEmitter.interpolated(kind, _))
             val args  = rep(argsArg)
             val pieces = mutable.ListBuffer[String]()
             for (i <- args.indices) {
@@ -7359,6 +7369,13 @@ object RokuEmitter {
   val runtimeClasses: Set[String] = Set("AssertionError", "AtomicBoolean", "AtomicInteger", "AtomicLong", "ConcurrentHashMap",
     "ConcurrentLinkedQueue", "Exception", "IllegalArgumentException", "IllegalStateException", "MatchError", "Object", "Promise",
     "RuntimeException", "ThreadLocal")
+
+  /** A literal part of an interpolated string as the text it makes: an `s` part with its escapes taken (`\t`, `\n`,
+    * `\"`, `\\`, `\u0041`), as StringContext.processEscapes takes them on the JVM, and a `raw` part as it was typed.
+    * The Scala compiler has already refused a part whose escape is not one, so one that fails here is kept as typed. */
+  def interpolated(kind: String, part: String): String =
+    if (kind == "raw") part
+    else try StringContext.processEscapes(part) catch { case _: IllegalArgumentException => part }
 
   /** Whether emitted code refers to `self`, the object a closure was written in. */
   def usesSelf(code: String): Boolean = "\\bself\\b".r.findFirstIn(code).nonEmpty
