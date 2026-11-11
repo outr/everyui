@@ -1,13 +1,15 @@
 package everyui.text
 
 import everyui.async.Task
-import everyui.chat.{Completion, CompletionPopup, ComposerAction, ComposerKeys, ComposerState}
+import everyui.chat.{Completion, CompletionAction, CompletionPopup, ComposerAction, ComposerKeys, ComposerState}
 import everyui.component.*
 import everyui.dialog.{DialogAction, Dialogs}
 import everyui.event.{Key, KeyEvent, PointerEvent, PointerKind}
 import everyui.focus.Focus
+import everyui.font.MaterialIcon
 import everyui.render.Nodes
 import everyui.{FxSpec, ui}
+import javafx.scene.input.{KeyCode, MouseButton, MouseEvent, KeyEvent as FxKeyEvent}
 import reactify.*
 
 /** A field's completions on the desktop's real nodes: the piece asked about (the whole field, or what lies between its
@@ -346,6 +348,123 @@ class FieldCompletionSpec extends FxSpec {
         eventually(box.field.get.caret == 14) shouldBe true
         fx(popups) shouldBe empty
       } finally fx(clear())
+    }
+  }
+
+  "A field's completions with actions of their own" should {
+    // cities that may be forgotten, each row's action taking it out of what the source answers
+    var recent = cities
+    var removed: List[String] = Nil
+    def forgetting: CompletionSource = CompletionSource(t => {
+      asked = asked :+ t
+      Task(recent.filter(_.toLowerCase.startsWith(t.toLowerCase)).map(c => Completion(c, c,
+        actions = Vector(CompletionAction(MaterialIcon.Close, "Remove", () => {
+          removed = removed :+ c
+          recent = recent.filterNot(_ == c)
+        }, removes = true)))))
+    })
+    def fresh(): Unit = {
+      recent = cities
+      removed = Nil
+    }
+    // the buttons of the row at `i`, in order from its start
+    def actionsOf(i: Int): List[Component] = fx(popups.head.rowAt(i).get.childComponents.toList
+      .filter(_.semantics().role == "button").sortBy(_.absoluteLeft))
+    def click(on: Component): Unit = fx {
+      val x = on.absoluteLeft + on.size.width() / 2.0
+      val y = on.absoluteTop + on.size.height() / 2.0
+      javafx.event.Event.fireEvent(on.node.fx, new MouseEvent(MouseEvent.MOUSE_CLICKED, x, y, x, y,
+        MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, false, false, true, null))
+    }
+    def shiftDelete(): Unit = fx {
+      javafx.event.Event.fireEvent(window, new FxKeyEvent(FxKeyEvent.KEY_PRESSED, "", "", KeyCode.DELETE, true, false,
+        false, false))
+      javafx.event.Event.fireEvent(window, new FxKeyEvent(FxKeyEvent.KEY_RELEASED, "", "", KeyCode.DELETE, false,
+        false, false, false))
+    }
+
+    "run the action pressed and not choose its row, the list staying and asked again" in onScreen(forgetting) { f =>
+      fresh()
+      var chosen: List[Completion] = Nil
+      fx(f.completed.attach(c => chosen = chosen :+ c))
+      typeIn(f, "p")
+      eventually(labels == Vector("Paris", "Parma", "Porto", "Prague")) shouldBe true
+      fx(popups.head.rowAt(2).get.event.pointer.enter @= PointerEvent(PointerKind.Enter, 0.0, 0.0))
+      val remove = actionsOf(1)
+      remove.length shouldBe 1
+      // at the row's end, inside it, named for what it does and the row, its tip what it does
+      val row = fx(popups.head.rowAt(1).get)
+      fx(remove.head.absoluteLeft + remove.head.size.width()) should be <= fx(row.absoluteLeft + row.size.width())
+      fx(remove.head.absoluteLeft) should be > fx(row.absoluteLeft + row.size.width() / 2.0)
+      fx(remove.head.semantics().label) shouldBe "Remove, Parma"
+      fx(remove.head.tooltip()) shouldBe "Remove"
+      fx(row.semantics().description) shouldBe "Remove (Shift+Delete)"
+      click(remove.head)
+      removed shouldBe List("Parma")
+      // not chosen: the field as it was, the focus and the typing kept, nothing told, the list still showing
+      fx(f.value()) shouldBe "p"
+      chosen shouldBe empty
+      fx(Focus.focused().contains(f) && f.editing()) shouldBe true
+      fx(f.completing()) shouldBe true
+      // the row gone at once, the lit one (Porto) still lit, and the source asked again for the same piece
+      eventually(labels == Vector("Paris", "Porto", "Prague")) shouldBe true
+      eventually(asked == List("p", "p")) shouldBe true
+      fx(popups.head.completions(lit).label) shouldBe "Porto"
+    }
+    "remove the lit row with Shift+Delete, closing with the last, and leave Delete alone to the field" in
+      onScreen(forgetting) { f =>
+        fresh()
+        typeIn(f, "p")
+        eventually(labels.length == 4) shouldBe true
+        press("ArrowDown")
+        fx(lit) shouldBe 1
+        fx(f.keepsEvent(KeyEvent(Key.Other, "Delete", shift = true))) shouldBe true
+        // Delete alone, and with another modifier, are the field's
+        fx(f.keepsEvent(KeyEvent(Key.Other, "Delete"))) shouldBe false
+        fx(f.keepsEvent(KeyEvent(Key.Other, "Delete", ctrl = true, shift = true))) shouldBe false
+        shiftDelete()
+        removed shouldBe List("Parma")
+        fx(f.value()) shouldBe "p"
+        eventually(labels == Vector("Paris", "Porto", "Prague")) shouldBe true
+        fx(popups.head.completions(lit).label) shouldBe "Porto"
+        fx(Focus.focused().contains(f) && f.editing()) shouldBe true
+        // the last two lit and removed: the list closes with the last
+        shiftDelete()
+        shiftDelete()
+        shiftDelete()
+        removed shouldBe List("Parma", "Porto", "Prague", "Paris")
+        eventually(popups.isEmpty) shouldBe true
+        fx(f.completing()) shouldBe false
+        fx(f.value()) shouldBe "p"
+      }
+    "leave Shift+Delete to the field where the lit row has no removing action" in onScreen(citySource) { f =>
+      typeIn(f, "p")
+      eventually(labels.length == 4) shouldBe true
+      fx(f.keepsEvent(KeyEvent(Key.Other, "Delete", shift = true))) shouldBe false
+      actionsOf(0) shouldBe empty
+      fx(popups.head.rowAt(0).get.semantics().description) shouldBe ""
+    }
+    "be drawn by no list but a field's: the composer's draws its rows as before" in {
+      val withActions = Vector(Completion("Ada", "@ada", Some("@ada"),
+        actions = Vector(CompletionAction(MaterialIcon.Close, "Remove", () => (), removes = true))))
+      val (composer, field) = fx {
+        val a = new CompletionPopup(withActions, Var(0), 300.0)
+        val b = new CompletionPopup(withActions, Var(0), 300.0, actions = true)
+        (a, b)
+      }
+      try {
+        fx(composer.rowAt(0).get.childComponents.length) shouldBe 2
+        fx(composer.rowAt(0).get.semantics().description) shouldBe ""
+        fx(field.rowAt(0).get.childComponents.length) shouldBe 3
+        // the same row, its words where they were and as wide, but for the room the button takes at the end
+        val plain = fx(new CompletionPopup(Vector(Completion("Ada", "@ada", Some("@ada"))), Var(0), 300.0))
+        fx(composer.rowAt(0).get.childComponents.map(c => (c.absoluteLeft, c.size.width())).toList) shouldBe
+          fx(plain.rowAt(0).get.childComponents.map(c => (c.absoluteLeft, c.size.width())).toList)
+        fx(plain.dispose())
+      } finally fx {
+        composer.dispose()
+        field.dispose()
+      }
     }
   }
 

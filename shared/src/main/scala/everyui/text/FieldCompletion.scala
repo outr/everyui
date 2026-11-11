@@ -1,6 +1,6 @@
 package everyui.text
 
-import everyui.chat.{Completion, CompletionPopup}
+import everyui.chat.{Completion, CompletionAction, CompletionPopup}
 import everyui.component.{Component, InputView}
 import everyui.event.KeyEvent
 import everyui.render.Platform
@@ -13,7 +13,9 @@ import reactify.*
   * there is no room under it, as on a phone with its keyboard up) as wide as it, and the one chosen put in the piece's
   * place, the caret after it and the field still being typed in, and told on `completed`. `open` follows whether the
   * list shows. It closes as the field loses the focus or stops being typed in, on Escape, when the source answers
-  * nothing, and as the field is taken apart (`close`). */
+  * nothing, and as the field is taken apart (`close`). A row's own action (`Completion.actions`) pressed, or the lit
+  * row's removing one by Shift+Delete, runs it without choosing the row: the list stays, a removed row gone from it at
+  * once, and the source is asked again for the same piece, its answer shown with the same row lit. */
 private[everyui] class FieldCompletion(field: Component, input: InputView, value: Var[String], editing: Var[Boolean],
                                        source: Var[Option[CompletionSource]], open: Var[Boolean],
                                        completed: Channel[Completion], points: Double, label: () => String) {
@@ -44,11 +46,17 @@ private[everyui] class FieldCompletion(field: Component, input: InputView, value
   /** Whether `e` is a key the list takes while it shows (`CompletionKey`): kept from the platform's field and from the
     * focus layer, so Escape closes the list and nothing else (not Back, not a dialog the field is in). */
   def keeps(e: KeyEvent): Boolean =
-    popup.nonEmpty && editing() && !Platform.keyComposing() && CompletionKey.of(e).nonEmpty
+    popup.nonEmpty && editing() && !Platform.keyComposing() &&
+      (CompletionKey.of(e).nonEmpty || (CompletionKey.removes(e) && removing.nonEmpty))
+
+  // the lit row's action that removes it, where it has one
+  private def removing: Option[CompletionAction] =
+    if (lit() >= 0 && lit() < shown.length) shown(lit()).actions.find(_.removes) else None
 
   /** `e` done, where the list takes it (`keeps`); whether it did. */
   def key(e: KeyEvent): Boolean = if (!keeps(e)) false else {
-    CompletionKey.of(e).get match {
+    if (CompletionKey.removes(e)) removing.foreach(a => act(lit(), a))
+    else CompletionKey.of(e).get match {
       case CompletionKey.Next => lit @= CompletionKey.step(lit(), shown.length, forward = true)
       case CompletionKey.Previous => lit @= CompletionKey.step(lit(), shown.length, forward = false)
       case CompletionKey.Choose => choose(lit())
@@ -73,15 +81,16 @@ private[everyui] class FieldCompletion(field: Component, input: InputView, value
     case _ => if (!quiet.contains(value())) close()
   }
 
-  private def show(t: CompletionToken, found: Vector[Completion]): Unit = {
+  // `found` listed for `t`, the row at `at` lit (the first, but for a list shown again after an action)
+  private def show(t: CompletionToken, found: Vector[Completion], at: Int = 0): Unit = {
     drop()
     if (found.isEmpty) close()
     else {
       token = Some(t)
       shown = found
-      lit @= 0
+      lit @= math.max(0, math.min(at, found.length - 1))
       val rows = source().map(_.rows).getOrElse(0)
-      var p = new CompletionPopup(found, lit, field.size.width(), points, rows)
+      var p = new CompletionPopup(found, lit, field.size.width(), points, rows, actions = true)
       ui.children += p
       // where neither under the field nor over it has room for its rows (a phone with its keyboard up), as many as fit
       val room = math.max(ui.size.height() - 12.0 - field.absoluteTop - field.size.height(), field.absoluteTop - 12.0)
@@ -92,7 +101,7 @@ private[everyui] class FieldCompletion(field: Component, input: InputView, value
         if (fit < shows) {
           ui.children -= p
           p.dispose()
-          p = new CompletionPopup(found, lit, field.size.width(), points, fit)
+          p = new CompletionPopup(found, lit, field.size.width(), points, fit, actions = true)
           ui.children += p
         }
       }
@@ -107,9 +116,27 @@ private[everyui] class FieldCompletion(field: Component, input: InputView, value
         if (list.size.height() <= below || (over < 8.0 && below >= top)) under else math.max(8.0, over)
       }
       list.chosen.attach(i => choose(i))
+      list.acted.attach { case (i, a) => act(i, a) }
       popup = Some(list)
       open @= true
       said()
+    }
+  }
+
+  // the action `a` of the row at `i` run, the row not chosen and the field kept as it is: a removing one takes the row
+  // out of the list at once (the list closing where it was the last), and the source is asked again for the same
+  // piece, its answer shown with the same row lit, so what the action changed shows
+  private def act(i: Int, a: CompletionAction): Unit = token.foreach { t =>
+    everyui.error.Errors.guard("completion action " + a.label, ())(a.run())
+    if (a.removes && i >= 0 && i < shown.length) {
+      val left = shown.patch(i, Nil, 1)
+      show(t, left, if (lit() > i) lit() - 1 else lit())
+    }
+    if (popup.nonEmpty) source().foreach { s =>
+      asked += 1
+      val mine = asked
+      asking = Some(t)
+      s.complete(t.text).map(found => if (mine == asked && popup.nonEmpty) show(t, found, lit())).startUnit()
     }
   }
 

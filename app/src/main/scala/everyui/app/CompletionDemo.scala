@@ -1,9 +1,10 @@
 package everyui.app
 
 import everyui.async.Task
-import everyui.chat.Completion
+import everyui.chat.{Completion, CompletionAction}
 import everyui.component.{Button, ButtonStyle, Column, Component, ScrollContainer, TextInput}
 import everyui.dialog.{DialogAction, Dialogs}
+import everyui.font.MaterialIcon
 import everyui.render.Platform
 import everyui.text.{CompletionSource, TextArea}
 import everyui.theme.{Palette, Theme}
@@ -11,17 +12,19 @@ import everyui.ui
 
 /** Fields that complete what is typed in them (`CompletionSource`): To and Cc lists of addresses (separators ",;",
   * each choice followed by ", "), a city searched by the whole field, and a box of lines whose words starting with '#'
-  * complete to tags; each source answers a moment later, as a server would. A button (or `dialog=1` as the screen
-  * opens) puts the city field up in a dialog, where Escape closes the list and only the list. `theme=light` for the
-  * light palette, `rtl=1` for right to left. Logs `completion ok` once built and `completion chose <field> <insert>`
-  * for each choice. */
+  * complete to tags; each source answers a moment later, as a server would. The city's rows are past entries, each
+  * with a close mark at its end (`CompletionAction`, removes) that forgets it without choosing it, as Shift+Delete
+  * does to the lit one. A button (or `dialog=1` as the screen opens) puts the city field up in a dialog, where Escape
+  * closes the list and only the list. `theme=light` for the light palette, `rtl=1` for right to left. Logs
+  * `completion ok` once built, `completion chose <field> <insert>` for each choice and `completion removed <city>` for
+  * each city forgotten. */
 object CompletionDemo {
   private val people: Vector[(String, String)] = Vector(("Ossi Mäki", "ossi@example.com"),
     ("Oscar Lindqvist", "oscar.l@example.com"), ("Olivia Brandt", "olivia@example.com"),
     ("Ann Berg", "ann@example.com"), ("Anders Holm", "anders@example.com"), ("Bea Novak", "bea@example.com"),
     ("Carl Eklund", "carl@example.com"), ("Dana Reyes", "dana@example.com"), ("Omar Haddad", "omar@example.com"),
     ("Otto Weber", "otto@example.com"), ("Oona Virtanen", "oona@example.com"))
-  private val cities: Vector[String] = Vector("Paris", "Parma", "Patras", "Perth", "Porto", "Prague", "Pune",
+  private var cities: Vector[String] = Vector("Paris", "Parma", "Patras", "Perth", "Porto", "Prague", "Pune",
     "Oslo", "Osaka", "Ottawa", "Oxford", "Helsinki", "Hamburg", "Lisbon", "Lyon")
   private val tags: Vector[String] = Vector("#design", "#deploy", "#docs", "#release", "#review", "#roadmap")
 
@@ -35,8 +38,15 @@ object CompletionDemo {
   }, separators = ",;", after = ", ")
 
   private val places: CompletionSource = CompletionSource(typed => later {
-    cities.filter(_.toLowerCase.startsWith(typed.toLowerCase)).map(c => Completion(c, c))
+    cities.filter(_.toLowerCase.startsWith(typed.toLowerCase)).map(c => Completion(c, c,
+      actions = Vector(CompletionAction(MaterialIcon.Close, "Remove", () => forget(c), removes = true))))
   }, rows = 5)
+
+  // a past entry forgotten, as a server would be told to
+  private def forget(city: String): Unit = {
+    cities = cities.filterNot(_ == city)
+    Platform.log("completion removed " + city)
+  }
 
   // a word starting with '#' completes to the tags it begins; any other word asks for nothing
   private val tagged: CompletionSource = CompletionSource(typed => later {

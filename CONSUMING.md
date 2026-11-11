@@ -1909,6 +1909,13 @@ val city = new TextInput("City")
 city.completions @= Some(CompletionSource(typed => cities.search(typed), rows = 5))
 ```
 
+A place field whose past entries can be forgotten while typing:
+
+```scala
+place.completions @= Some(CompletionSource(typed => recent.find(typed).map(_.map(p => Completion(p, p,
+  actions = Vector(CompletionAction(MaterialIcon.Close, "Remove", () => recent.forget(p), removes = true)))))))
+```
+
 - **The piece.** With no `separators` it is the whole field, its spaces left out. With some (",;" for addresses, ","
   for tags, " \n" for words in a box of lines) it is what the caret is in between them, its leading spaces left out:
   "ann@example.com, os" asks for "os", and with the caret inside "ossi" what comes before the caret is asked about and
@@ -1929,6 +1936,15 @@ city.completions @= Some(CompletionSource(typed => cities.search(typed), rows = 
 - **Closing**: as the field loses the focus or stops being typed in, on Escape, when the source answers nothing, when
   `completions` changes, and as the field is taken apart (`dispose`), which lets go of all it followed. `completing`
   says whether the list shows.
+- **A row's own actions** (`Completion.actions`, `Vector[CompletionAction(icon, label, run, removes = false)]`) are
+  small buttons at its end (its start, right to left), each `label` its tooltip: a past entry's × that forgets it, say.
+  Pressing one runs `run` and does not choose the row: the field keeps the focus, the caret and a phone's keyboard,
+  the list stays open, a `removes` action's row is gone from it at once (the list closing with its last row), and the
+  source is asked again for the same piece, its answer shown with the same row lit, so what `run` changed shows.
+  Shift+Delete in the field runs the lit row's `removes` action, as a browser removes its own suggestions
+  (Shift+Fn+Delete on a Mac's keyboard); where the lit row has none, the key is the field's. To a screen reader each
+  is a button named for what it does and the row ("Remove, Parma"), and the option describes them
+  ("Remove (Shift+Delete)", `aria-description` on the web).
 
 To a screen reader a `TextInput` with completions is a combo box (`role="combobox"`, `aria-expanded`), and either
 field says `aria-autocomplete="list"`, controls the list (`aria-controls`, a `listbox` of `option`s, the lit one
@@ -1941,8 +1957,9 @@ as a list is named by the row under its cursor, and gives it its own name back a
 Apple TV have no typing to complete, so a source there is never asked.
 
 The composer shares the list (`CompletionPopup`) and its keys (`CompletionKey`, which `ComposerKeys` follows) with
-these fields; its '@' and '/' completions are unchanged. The example's `demo=completion` has To and Cc address fields,
-a city searched by the whole field, a box of lines completing `#tags`, and the city in a dialog (`dialog=1`).
+these fields; its '@' and '/' completions are unchanged and draw no actions. The example's `demo=completion` has To
+and Cc address fields, a city searched by the whole field, each city with a × that forgets it, a box of lines
+completing `#tags`, and the city in a dialog (`dialog=1`).
 
 ### Italic (`font.italic`)
 

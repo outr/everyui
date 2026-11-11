@@ -28,6 +28,11 @@ object CompletionKey {
     else None
   }
 
+  /** Whether `e` removes the lit row of a field's list, where it has an action that removes it
+    * (`everyui.chat.CompletionAction.removes`): Shift+Delete, as a browser's own suggestions are removed (on a Mac's
+    * keyboard Shift+Fn+Delete). Not one of the keys above, as the composer's list has no such actions. */
+  def removes(e: KeyEvent): Boolean = e.shift && !e.ctrl && !e.meta && !e.alt && e.name == "Delete"
+
   /** The row lit after `lit` among `count`, `forward` or back, going round. */
   def step(lit: Int, count: Int, forward: Boolean): Int =
     if (count <= 0) 0 else if (forward) (lit + 1) % count else (lit + count - 1) % count

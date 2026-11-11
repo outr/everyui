@@ -158,7 +158,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
 
   override private[everyui] def refocus(): Unit = platformField.foreach(_.retake(editing, direct))
 
-  /** The keys its list of completions takes while it shows (`CompletionKey`): Down, Up, Enter, Tab and Escape. */
+  /** The keys its list of completions takes while it shows (`CompletionKey`): Down, Up, Enter, Tab and Escape, and
+    * Shift+Delete where the lit row has an action that removes it. */
   override def keepsEvent(e: everyui.event.KeyEvent): Boolean = completer.exists(_.keeps(e)) || super.keepsEvent(e)
 
   override def dispose(): Unit = {
