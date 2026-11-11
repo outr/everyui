@@ -32,6 +32,8 @@ object Tooltip {
 
   private var showing: Option[(Component, Container)] = None
   private var asked = 0
+  // whose tip is still to come: asked for and not yet shown, none once it shows or is called off
+  private var pending: Option[Component] = None
 
   /** `target`'s tip, the words `text` says as it shows. */
   def apply(target: Component, text: => String): Unit = rich(target)(() => words(text))
@@ -56,12 +58,14 @@ object Tooltip {
   def askFor(target: Component, text: () => Option[String], now: Boolean = false): Unit = {
     asked += 1
     val mine = asked
+    pending = Some(target)
     if (now) showIf(target, text, mine) else Platform.after(delay(), () => showIf(target, text, mine))
   }
 
-  /** The tip showing, taken away. */
+  /** The tip showing, taken away, and any still to come, whoever's. */
   def hide(): Unit = {
     asked += 1
+    pending = None
     showing.foreach(s => ui.children -= s._2)
     showing = None
   }
@@ -69,18 +73,36 @@ object Tooltip {
   /** Whether a tip is showing, and for what. */
   def shownFor: Option[Component] = showing.map(_._1)
 
-  /** The tip taken away if it is `target`'s, with one still to come for it. */
-  def hideFor(target: Component): Unit =
-    if (showing.forall(_._1 eq target)) hide()
+  /** `target`'s tip taken away, the one showing or the one still to come for it, where it is `target`'s; another's,
+    * showing or to come, is left as it is (a paragraph taken apart as a reply streams calls off none but its own). */
+  def hideFor(target: Component): Unit = {
+    if (pending.exists(_ eq target)) {
+      asked += 1
+      pending = None
+    }
+    if (showing.exists(_._1 eq target)) {
+      showing.foreach(s => ui.children -= s._2)
+      showing = None
+    }
+  }
+
+  /** Whether a tip is still to come, and for what. */
+  def pendingFor: Option[Component] = pending
 
   private def ask(target: Component, make: () => Component): Unit = {
     asked += 1
     val mine = asked
-    Platform.after(delay(), () => if (mine == asked && Focus.showing(target)) show(target, make()))
+    pending = Some(target)
+    Platform.after(delay(), () => if (mine == asked) {
+      pending = None
+      if (Focus.showing(target)) show(target, make())
+    })
   }
 
-  private def showIf(target: Component, text: () => Option[String], mine: Int): Unit =
-    if (mine == asked && Focus.showing(target)) text().foreach(t => show(target, words(t)))
+  private def showIf(target: Component, text: () => Option[String], mine: Int): Unit = if (mine == asked) {
+    pending = None
+    if (Focus.showing(target)) text().foreach(t => show(target, words(t)))
+  }
 
   private def show(target: Component, content: Component): Unit = {
     showing.foreach(s => ui.children -= s._2)

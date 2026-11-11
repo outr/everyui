@@ -7,7 +7,8 @@ import everyui.render.Nodes
 import everyui.{FxSpec, ui}
 
 /** Tips: after the pointer rests or the focus stays, placed under what they belong to or over it at the foot of the
-  * screen, gone as the pointer leaves or the focus moves on. */
+  * screen, gone as the pointer leaves or the focus moves on; one still to come, or showing, called off by its own
+  * `hideFor` and by no other's. */
 class TooltipSpec extends FxSpec {
   // the focus as the keys move it, which these are about
   override protected def keyed: Boolean = true
@@ -86,6 +87,45 @@ class TooltipSpec extends FxSpec {
         }
         Thread.sleep(150L)
         fx(Tooltip.shownFor) shouldBe None
+      }
+    }
+    "keep a tip still to come for one thing as another's is called off, and call it off for its own" in {
+      val (a, b) = fx((card(100.0, 100.0), card(300.0, 100.0)))
+      onScreen(a, b) {
+        // long enough that nothing shows while the calls are made
+        fx(Tooltip.delay @= 0.4)
+        fx(Tooltip.askFor(a, () => Some("A's")))
+        fx(Tooltip.pendingFor.exists(_ eq a)) shouldBe true
+        // b has nothing showing and nothing to come: a paragraph taken apart as a reply streams
+        fx(Tooltip.hideFor(b))
+        fx(Tooltip.pendingFor.exists(_ eq a)) shouldBe true
+        eventually(Tooltip.shownFor.exists(_ eq a)) shouldBe true
+        fx(Tooltip.pendingFor) shouldBe None
+        // another's call leaves a's tip showing too, and a's own takes it away
+        fx(Tooltip.hideFor(b))
+        fx(Tooltip.shownFor.exists(_ eq a)) shouldBe true
+        fx(Tooltip.hideFor(a))
+        fx(Tooltip.shownFor) shouldBe None
+        // asked again and called off by its own before it shows: it never comes
+        fx(Tooltip.askFor(a, () => Some("A's")))
+        fx(Tooltip.hideFor(a))
+        fx(Tooltip.pendingFor) shouldBe None
+        Thread.sleep(700L)
+        fx(Tooltip.shownFor) shouldBe None
+      }
+    }
+    "leave b's tip to come as a's showing one is taken away" in {
+      val (a, b) = fx((card(100.0, 100.0), card(300.0, 100.0)))
+      onScreen(a, b) {
+        fx(Tooltip.askFor(a, () => Some("A's"), now = true))
+        fx(Tooltip.shownFor.exists(_ eq a)) shouldBe true
+        fx {
+          Tooltip.delay @= 0.4
+          Tooltip.askFor(b, () => Some("B's"))
+        }
+        fx(Tooltip.hideFor(a))
+        fx(Tooltip.pendingFor.exists(_ eq b)) shouldBe true
+        eventually(Tooltip.shownFor.exists(_ eq b)) shouldBe true
       }
     }
   }

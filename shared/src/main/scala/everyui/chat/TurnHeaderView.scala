@@ -101,7 +101,8 @@ class TurnHeaderView(press: () => Unit) extends Container {
       Tooltip.askFor(this, () => Some(said()).filter(_.nonEmpty), now = true)
       holds += 1
       val mine = holds
-      Platform.after(TurnHeaderView.held, () => if (mine == holds && Tooltip.shownFor.exists(_ eq this)) Tooltip.hide())
+      Platform.after(TurnHeaderView.held,
+        () => if (mine == holds && Tooltip.shownFor.exists(_ eq this)) Tooltip.hideFor(this))
     }
   }
 

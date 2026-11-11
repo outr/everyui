@@ -123,7 +123,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   // the aside's hint as a tip: the pointer resting on the aside, or the keys bringing the transcript's cursor to the
   // call (`cursorOn`) where the focus shows tips (`Tooltip.onFocus`)
   private val hint: () => Option[String] = () => Some(a.asideHint()).filter(h => h.nonEmpty && hasAside())
-  private def unhint(): Unit = if (Tooltip.shownFor.exists(_ eq aside)) Tooltip.hide()
+  private def unhint(): Unit = if (Tooltip.shownFor.exists(_ eq aside)) Tooltip.hideFor(aside)
   aside.event.pointer.enter.attach(e => if (!e.finger && hint().nonEmpty) Tooltip.askFor(aside, hint))
   aside.event.pointer.leave.attach(_ => Tooltip.hideFor(aside))
   aside.event.pointer.down.attach(_ => unhint())

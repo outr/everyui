@@ -1,5 +1,6 @@
 package everyui.list
 
+import everyui.component.Component
 import everyui.render.Platform
 import everyui.tooltip.Tooltip
 import reactify.*
@@ -34,21 +35,26 @@ private[list] class RowTips[T](list: VirtualList[T]) {
     }
     row.event.pointer.down.attach(_ => Tooltip.hideFor(row))
     row.item.attach { _ =>
-      if (Tooltip.shownFor.exists(_ eq row)) Tooltip.hide()
+      if (Tooltip.shownFor.exists(_ eq row)) Tooltip.hideFor(row)
       if (pointedAt.exists(_ eq row)) Tooltip.askFor(row, () => row.tip())
     }
   }
 
-  /** Whether the tip showing is one of this list's. */
-  def showing: Boolean = Tooltip.shownFor.exists(t => watched.exists(_ eq t))
+  private def ours(t: Component): Boolean = watched.exists(_ eq t)
 
-  /** The tip taken away, where it is this list's. */
-  def hide(): Unit = if (showing) Tooltip.hide()
+  /** Whether the tip showing is one of this list's. */
+  def showing: Boolean = Tooltip.shownFor.exists(ours)
+
+  /** The tip taken away, where it is this list's, and one still to come for one of its rows; another's is left. */
+  def hide(): Unit = {
+    Tooltip.shownFor.filter(ours).foreach(Tooltip.hideFor)
+    Tooltip.pendingFor.filter(ours).foreach(Tooltip.hideFor)
+  }
 
   /** The rows scrolled: a tip goes with them, and one still to come for the row under the pointer (which the pointer
     * comes onto afresh), and comes again for the cursor where it was the cursor's. */
   def scrolled(): Unit = {
-    if (showing || pointedAt.nonEmpty) Tooltip.hide()
+    hide()
     if (byCursor) cursor(true)
   }
 
@@ -57,7 +63,7 @@ private[list] class RowTips[T](list: VirtualList[T]) {
   def cursor(keys: Boolean): Unit = {
     val row = list.current().map(list.indexOf).flatMap(list.rowAt)
     if (keys && list.focused() && Tooltip.onFocus() && row.exists(_.tip().nonEmpty)) {
-      if (showing && !row.exists(r => Tooltip.shownFor.exists(_ eq r))) Tooltip.hide()
+      Tooltip.shownFor.filter(t => ours(t) && !row.exists(_ eq t)).foreach(Tooltip.hideFor)
       byCursor = true
       row.foreach(r => Tooltip.askFor(r, () => r.tip()))
     }
@@ -73,7 +79,7 @@ private[list] class RowTips[T](list: VirtualList[T]) {
     Tooltip.askFor(row, () => row.tip(), now = true)
     holds += 1
     val mine = holds
-    Platform.after(RowTips.held, () => if (mine == holds && Tooltip.shownFor.exists(_ eq row)) Tooltip.hide())
+    Platform.after(RowTips.held, () => if (mine == holds && Tooltip.shownFor.exists(_ eq row)) Tooltip.hideFor(row))
   }
 }
 

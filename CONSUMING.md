@@ -1150,7 +1150,10 @@ plain tip drawn by the platform itself is still `Component.tooltip`.
 
 What owns a component that is not its own pointer's or focus's (a list's row, under its cursor) asks for its tip
 itself: `Tooltip.askFor(row, () => words)`, the words read as it shows and none shown where they are None by then, and
-`Tooltip.hideFor(row)`. A list's rows have theirs from `Decoration.tooltip` (Tree).
+`Tooltip.hideFor(row)`. `hideFor` takes away only that component's tip, the one showing or the one still to come for it
+(`Tooltip.pendingFor` says whose that is); another's, showing or to come, is left, so taking apart something that never
+asked for a tip calls off none. `Tooltip.hide()` takes away whatever shows or is to come. A list's rows have theirs
+from `Decoration.tooltip` (Tree).
 
 ### FilterPicker (`everyui.picker`)
 
