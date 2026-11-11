@@ -1162,9 +1162,14 @@ func rtDouble(_ v: V) -> Double {
 
 // MARK: - fabric.Json (the network module): JSON values are V — an object, an array, a string, a number, a bool, null
 
+/// Text read as JSON; none, or text that is not JSON, throws as fabric's parser does (and the Roku runtime's).
 func _jsonParse(_ text: V) throws -> V {
-    guard let data = rtS(text).data(using: .utf8),
-          let any = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return .vNull }
+    guard case .vStr(let s) = text else { return try RtThrow(rtException("RuntimeException", "no JSON to parse")) }
+    let body = s.trimmingCharacters(in: .whitespacesAndNewlines)
+    if body.isEmpty { return try RtThrow(rtException("RuntimeException", "no JSON to parse")) }
+    guard let any = try? JSONSerialization.jsonObject(with: Data(body.utf8), options: [.fragmentsAllowed]) else {
+        return try RtThrow(rtException("RuntimeException", "not JSON: " + String(body.prefix(80))))
+    }
     return rtFromJsonAny(any)
 }
 func rtFromJsonAny(_ any: Any) -> V {
@@ -1541,3 +1546,295 @@ func rtCollectCycles(_ roots: [V]) -> Int {
     Rt.allocated = 0
     return garbage.count
 }
+
+// MARK: - the rest of the Roku runtime's library (roku's ScalaRuntime.brs), one for one
+
+/// Scala's arithmetic where it can fail: a whole number's quotient and remainder by zero throw ArithmeticException, as
+/// the JVM's do (Swift would trap); a fraction's division is IEEE's (x / 0.0 is an infinity, 0.0 / 0.0 NaN).
+func _div(_ a: V, _ b: V) -> V { .vDbl((rtD(a) ?? 0) / (rtD(b) ?? 0)) }
+func _quot(_ a: V, _ b: V) throws -> V {
+    if case .vInt(let x) = a, case .vInt(let y) = b {
+        if y == 0 { _ = try RtThrow(rtException("ArithmeticException", "/ by zero")) }
+        return .vInt(x == Int.min && y == -1 ? x : x / y)
+    }
+    return rtToInt(_div(a, b))
+}
+func _rem(_ a: V, _ b: V) throws -> V {
+    if case .vInt(let x) = a, case .vInt(let y) = b {
+        if y == 0 { _ = try RtThrow(rtException("ArithmeticException", "/ by zero")) }
+        return .vInt(y == -1 ? 0 : x % y)
+    }
+    return a % b
+}
+/// A String's character at an index (a Char is a one-character String). Strings count in UTF-16 units, as the JVM's
+/// do, but a Swift String cannot hold half a surrogate pair: at the first half the whole pair is given, and at the
+/// second nothing, so a walk that copies a string a character at a time still copies its emoji whole.
+func rtCharAt(_ s: V, _ i: V) throws -> V {
+    let str = rtS(s), u = str.utf16
+    guard case .vInt(let n) = i, n >= 0, n < u.count else {
+        return try RtThrow(rtException("StringIndexOutOfBoundsException", "index \(rtS(i)), length \(u.count)"))
+    }
+    let at = u.index(u.startIndex, offsetBy: n)
+    let unit = u[at]
+    if UTF16.isLeadSurrogate(unit) {
+        let next = u.index(after: at)
+        if next < u.endIndex, UTF16.isTrailSurrogate(u[next]) { return .vStr(String(str[at..<u.index(after: next)])) }
+    }
+    if UTF16.isTrailSurrogate(unit), at > u.startIndex, UTF16.isLeadSurrogate(u[u.index(before: at)]) {
+        return .vStr("")
+    }
+    return .vStr(String(decoding: [unit], as: UTF16.self))
+}
+/// The next place of a character or a string at or after an index, and the last at or before one (Java's
+/// `indexOf(x, from)` and `lastIndexOf(x, from)`), by UTF-16 unit.
+func _strIndexFrom(_ s: V, _ x: V, _ from: V) -> V {
+    let hay = Array(rtS(s).utf16), needle = Array(rtCharOrString(x).utf16)
+    let start = max(0, Int(rtDouble(from)))
+    if start > hay.count { return .vInt(needle.isEmpty ? hay.count : -1) }
+    if needle.isEmpty { return .vInt(start) }
+    if needle.count > hay.count - start { return .vInt(-1) }
+    for i in start...(hay.count - needle.count) where Array(hay[i..<(i + needle.count)]) == needle { return .vInt(i) }
+    return .vInt(-1)
+}
+func _strLastIndexFrom(_ s: V, _ x: V, _ from: V) -> V {
+    let hay = Array(rtS(s).utf16), needle = Array(rtCharOrString(x).utf16)
+    let start = min(Int(rtDouble(from)), hay.count - needle.count)
+    if start < 0 { return .vInt(-1) }
+    for i in stride(from: start, through: 0, by: -1) where Array(hay[i..<(i + needle.count)]) == needle {
+        return .vInt(i)
+    }
+    return .vInt(-1)
+}
+func _strIndexOf(_ s: V, _ x: V) -> V { rtIndexOf(s, x) }
+func _strLastIndexOf(_ s: V, _ x: V) -> V { rtLastIndexOf(s, x) }
+/// A String's leading characters while a test holds (`takeWhile`, `keeping`), or what follows them (`dropWhile`).
+func _strTakeWhile(_ s: V, _ cl: V, _ keeping: Bool) throws -> V {
+    let cs = rtChars(s)
+    var at = cs.count
+    for (i, c) in cs.enumerated() where !(try RtInvoke(cl, rtArr([c])).rtTrue) { at = i; break }
+    return .vStr((keeping ? cs[..<at] : cs[at...]).map(rtS).joined())
+}
+/// A String's characters that pass a test (`filter`, keep) or fail it (`filterNot`).
+func _strFilter(_ s: V, _ cl: V, _ keep: Bool) throws -> V {
+    .vStr(try rtChars(s).filter { try RtInvoke(cl, rtArr([$0])).rtTrue == keep }.map(rtS).joined())
+}
+func _strCapitalize(_ s: V) -> V {
+    let t = rtS(s)
+    guard let first = t.first else { return .vStr("") }
+    return .vStr(String(first).uppercased() + t.dropFirst())
+}
+func _strCompare(_ s: V, _ o: V) -> V { .vInt(rtCompare(_str(s), _str(o))) }
+/// A String read as a whole number or a fraction (`toInt`, `toDouble`), throwing NumberFormatException as Java does.
+func _strToInt(_ s: V) throws -> V {
+    let n = _strToIntOpt(s)
+    if case .vNull = n { _ = try RtThrow(rtException("NumberFormatException", "For input string: \"\(rtS(s))\"")) }
+    return n
+}
+func _strToDouble(_ s: V) throws -> V {
+    let n = _strToDoubleOpt(s)
+    if case .vNull = n { _ = try RtThrow(rtException("NumberFormatException", "For input string: \"\(rtS(s))\"")) }
+    return n
+}
+/// RichInt's toHexString: a negative number's as its unsigned 32 bits, as Integer.toHexString.
+func _toHex(_ n: V) -> V { _hexOf(n) }
+/// A String walked as a collection (StringOps: exists, forall, count, foreach…): its characters.
+func rtChars(_ s: V) -> [V] { rtS(s).unicodeScalars.map { .vStr(String($0)) } }
+
+/// java.lang.Character's tests on a Char (a one-character String) or a code, as Java answers them.
+private func rtScalar(_ c: V) -> Unicode.Scalar? {
+    if case .vInt(let n) = c { return Unicode.Scalar(UInt32(truncatingIfNeeded: n)) }
+    return rtS(c).unicodeScalars.first
+}
+func _ch_isDigit(_ c: V) -> V { .vBool(rtScalar(c)?.properties.numericType == .decimal) }
+func _ch_isLetter(_ c: V) -> V { .vBool(rtScalar(c)?.properties.isAlphabetic ?? false) }
+func _ch_isLetterOrDigit(_ c: V) -> V { .vBool(_ch_isLetter(c).rtTrue || _ch_isDigit(c).rtTrue) }
+func _ch_isLower(_ c: V) -> V { .vBool(rtScalar(c)?.properties.isLowercase ?? false) }
+func _ch_isUpper(_ c: V) -> V { .vBool(rtScalar(c)?.properties.isUppercase ?? false) }
+func _ch_isSpaceChar(_ c: V) -> V {
+    guard let s = rtScalar(c) else { return .vBool(false) }
+    let k = s.properties.generalCategory
+    return .vBool(k == .spaceSeparator || k == .lineSeparator || k == .paragraphSeparator)
+}
+func _ch_isWhitespace(_ c: V) -> V {
+    guard let s = rtScalar(c) else { return .vBool(false) }
+    if (9...13).contains(s.value) || (28...31).contains(s.value) { return .vBool(true) }
+    // Java: a space separator but the no-break ones
+    return .vBool(_ch_isSpaceChar(c).rtTrue && ![0x00A0, 0x2007, 0x202F].contains(s.value))
+}
+
+/// fabric's Json kinds a value of the network module answers.
+func _json_isNum(_ j: V) -> V { .vBool(rtKindName(j) == "n") }
+func _json_isBoolean(_ j: V) -> V { .vBool(rtKindName(j) == "b") }
+
+/// `new Array[T](n)`: n slots, each `z` (what the JVM starts them at).
+func _arrNew(_ n: V, _ z: V) -> V { rtArr(Array(repeating: z, count: max(0, Int(rtDouble(n))))) }
+/// `Seq.tabulate(n)(f)` and `Seq.fill(n)(x)`, x evaluated for every slot.
+func _tabulate(_ n: V, _ cl: V) throws -> V {
+    rtArr(try (0..<max(0, Int(rtDouble(n)))).map { try RtInvoke(cl, rtArr([.vInt($0)])) })
+}
+func _fill(_ n: V, _ thunk: V) throws -> V { rtArr(try (0..<max(0, Int(rtDouble(n)))).map { _ in try RtForce(thunk) }) }
+/// `Iterator.iterate(z)(f).takeWhile(p)`, made whole.
+func _iterateWhile(_ z: V, _ f: V, _ p: V) throws -> V {
+    var xs: [V] = []
+    var x = z
+    while try RtInvoke(p, rtArr([x])).rtTrue {
+        xs.append(x)
+        x = try RtInvoke(f, rtArr([x]))
+    }
+    return rtArr(xs)
+}
+/// `start until end by step` and `to … by …` (`incl`), and `Range(a, b)`.
+func _rangeBy(_ a: V, _ b: V, _ stride: V, _ incl: Bool) -> V {
+    var r: [V] = []
+    let step = rtDouble(stride)
+    if step == 0 { return rtArr(r) }
+    var v = a
+    while (step > 0 ? rtCompare(v, b) < 0 : rtCompare(v, b) > 0) || (incl && rtCompare(v, b) == 0) {
+        r.append(v)
+        v = v + stride
+    }
+    return rtArr(r)
+}
+/// A Map built from pairs (what `map` on a Map gives): the Roku keeps one of String keys in an object of its own, but
+/// every Map here is an entry list, which each of the Map helpers reads.
+func _mapOfPairs(_ pairs: V) -> V { _mapFromPairs(pairs) }
+/// `xs.lift` and `xs.lift(i)`: the element at an index, or None (null) past either end.
+func _lift(_ xs: V, _ i: V) -> V {
+    let items = rtSeqItems(xs)
+    guard case .vInt(let n) = i, n >= 0, n < items.count else { return .vNull }
+    return items[n]
+}
+func _liftCall(_ env: V, _ args: V) throws -> V { _lift(env["xs"], args[V.vInt(0)]) }
+func _seqAsFnCall(_ env: V, _ args: V) throws -> V { env["xs"][args[V.vInt(0)]] }
+func _mapAsFnCall(_ env: V, _ args: V) throws -> V { _mapGet(env["m"], args[V.vInt(0)]) }
+func _setAsFnCall(_ env: V, _ args: V) throws -> V { _setHas(env["s"], args[V.vInt(0)]) }
+/// A collection's elements, a String's its characters.
+func rtSeqItems(_ xs: V) -> [V] { if case .vStr = xs { return rtChars(xs) }; return rtItems(xs) }
+func _flatten(_ xs: V) -> V {
+    var r: [V] = []
+    for e in rtItems(xs) {
+        if case .vArr(let a) = e { r.append(contentsOf: a.items) } else if case .vNull = e {} else { r.append(e) }
+    }
+    return rtArr(r)
+}
+/// The least or greatest element (`minOption`, `least`; `maxOption`), None (null) for none.
+func _minOption(_ xs: V, _ least: Bool) -> V {
+    if rtItems(xs).isEmpty { return .vNull }
+    return least ? _minList(xs) : _maxList(xs)
+}
+/// `xs.patch(from, other, replaced)`.
+func _patch(_ xs: V, _ from: V, _ other: V, _ replaced: V) -> V {
+    let items = rtItems(xs), f = max(0, Int(rtDouble(from))), n = max(0, Int(rtDouble(replaced)))
+    let at = min(f, items.count)
+    return rtArr(Array(items[..<at]) + rtSeqItems(other) + Array(items[min(items.count, at + n)...]))
+}
+/// `dropRight(n)` of a collection or a String; `slice(from, until)`.
+func _dropRight(_ xs: V, _ n: V) -> V {
+    let k = max(0, Int(rtDouble(n)))
+    if case .vStr(let s) = xs { return .vStr(String(s.utf16.dropLast(k)) ?? "") }
+    return rtArr(Array(rtItems(xs).dropLast(k)))
+}
+func _slice(_ xs: V, _ from: V, _ until: V) -> V {
+    let items = rtItems(xs)
+    let a = min(max(0, Int(rtDouble(from))), items.count), b = min(max(a, Int(rtDouble(until))), items.count)
+    return rtArr(Array(items[a..<b]))
+}
+/// `takeWhile` (`keeping`) and `dropWhile` of a collection.
+func _takeWhile(_ xs: V, _ cl: V, _ keeping: Bool) throws -> V {
+    let items = rtItems(xs)
+    var at = items.count
+    for (i, x) in items.enumerated() where !(try RtInvoke(cl, rtArr([x])).rtTrue) { at = i; break }
+    return rtArr(Array(keeping ? items[..<at] : items[at...]))
+}
+func _arrIndexWhereFrom(_ xs: V, _ cl: V, _ from: V) throws -> V {
+    let items = rtSeqItems(xs)
+    var i = max(0, Int(rtDouble(from)))
+    while i < items.count {
+        if try RtInvoke(cl, rtArr([items[i]])).rtTrue { return .vInt(i) }
+        i += 1
+    }
+    return .vInt(-1)
+}
+func _arrLastIndexWhere(_ xs: V, _ cl: V) throws -> V {
+    let items = rtSeqItems(xs)
+    for i in stride(from: items.count - 1, through: 0, by: -1) where try RtInvoke(cl, rtArr([items[i]])).rtTrue {
+        return .vInt(i)
+    }
+    return .vInt(-1)
+}
+/// `xs.updated(i, x)`: a copy with one element replaced, an index past either end an IndexOutOfBoundsException.
+func _seqUpdated(_ xs: V, _ i: V, _ x: V) throws -> V {
+    var items = rtItems(xs)
+    guard case .vInt(let n) = i, n >= 0, n < items.count else {
+        let message = "\(rtS(i)) is out of bounds (0 until \(items.count))"
+        return try RtThrow(rtException("IndexOutOfBoundsException", message))
+    }
+    items[n] = x
+    return rtArr(items)
+}
+func _partition(_ xs: V, _ cl: V) throws -> V {
+    var yes: [V] = [], no: [V] = []
+    for x in rtSeqItems(xs) { if try RtInvoke(cl, rtArr([x])).rtTrue { yes.append(x) } else { no.append(x) } }
+    return Tuple2(rtArr(yes), rtArr(no))
+}
+func _reduce(_ xs: V, _ op: V) throws -> V {
+    let items = rtItems(xs)
+    guard var acc = items.first else {
+        return try RtThrow(rtException("UnsupportedOperationException", "empty.reduceLeft"))
+    }
+    for x in items.dropFirst() { acc = try RtInvoke(op, rtArr([acc, x])) }
+    return acc
+}
+/// `sortWith(lt)`, stable as Scala's.
+func _sortWith(_ xs: V, _ lt: V) throws -> V {
+    rtArr(try rtStableSort(rtItems(xs)) { try RtInvoke(lt, rtArr([$0, $1])).rtTrue })
+}
+/// `Success(x)` or the Failure of what evaluating x threw (`Try(x)`).
+func _tryApply(_ thunk: V) -> V {
+    do { return Success(try RtForce(thunk)) } catch let e as RtError { return Failure(e.v) } catch {
+        return Failure(rtException("RuntimeException", "\(error)"))
+    }
+}
+/// `System.identityHashCode`: a number an object keeps for its life, 0 for anything else.
+func _identityHash(_ o: V) -> V {
+    guard case .vObj(let obj) = o else { return .vInt(0) }
+    return .vInt(Int(truncatingIfNeeded: UInt(bitPattern: ObjectIdentifier(obj).hashValue)) & 0x7fffffff)
+}
+/// `case x: SomeClass` for a class of the program's own: whether its `_isa` (its class's name and its ancestors',
+/// between bars) names the class; anything without one (a string, a number, a record of the runtime's) answers yes.
+func RtIsA(_ v: V, _ tag: V) -> V {
+    switch v {
+    case .vNull: return .vBool(false)
+    case .vObj:
+        guard case .vStr(let s) = v["_isa"] else { return .vBool(true) }
+        return .vBool(s.contains(rtS(tag)))
+    default: return .vBool(true)
+    }
+}
+func Tuple5(_ a: V = .vNull, _ b: V = .vNull, _ c: V = .vNull, _ d: V = .vNull, _ e: V = .vNull) -> V {
+    rtObj(["_1": a, "_2": b, "_3": c, "_4": d, "_5": e])
+}
+func Tuple6(_ a: V = .vNull, _ b: V = .vNull, _ c: V = .vNull, _ d: V = .vNull, _ e: V = .vNull, _ f: V = .vNull) -> V {
+    rtObj(["_1": a, "_2": b, "_3": c, "_4": d, "_5": e, "_6": f])
+}
+/// Predef's wrappers, which are the array (or the Option as a collection) itself here.
+func refArrayOps(_ a: V = .vNull) -> V { a }
+func intArrayOps(_ a: V = .vNull) -> V { a }
+func longArrayOps(_ a: V = .vNull) -> V { a }
+func doubleArrayOps(_ a: V = .vNull) -> V { a }
+func floatArrayOps(_ a: V = .vNull) -> V { a }
+func booleanArrayOps(_ a: V = .vNull) -> V { a }
+func byteArrayOps(_ a: V = .vNull) -> V { a }
+func shortArrayOps(_ a: V = .vNull) -> V { a }
+func option2Iterable(_ o: V) -> V { _optToList(o) }
+/// What the compiler could not translate, said once each on the console, with an empty value of the right kind.
+func RtTodoSay(_ label: V) {
+    let key = "__todo_" + rtS(label)
+    if case .vNull = ga[key] {
+        ga[key] = .vBool(true)
+        print("[todo] no translation for " + rtS(label))
+    }
+}
+func RtTodoList(_ label: V) -> V { RtTodoSay(label); return rtArr([]) }
+func RtTodoOpt(_ label: V) -> V { RtTodoSay(label); return .vNull }
+func RtTodoStr(_ label: V) -> V { RtTodoSay(label); return .vStr("") }

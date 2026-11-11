@@ -11,19 +11,29 @@ import sbt.*
 object AppleApp {
   /** Run the compiler (`compilerClasspath`: EveryUI's `compiler` project, or `everyuiCompiler` in an app) over
     * `classes`, and the `libraries` compiled through with it (`everyuiEmitLibraries`), resolving against `classpath`,
-    * into a fresh `out`. `sourceRoot` is where gaps are reported against. */
+    * into a fresh `out`. `sourceRoot` is where gaps are reported against.
+    *
+    * Anything the compiler cannot translate fails the build, each listed at its Scala source, as RokuChannel.emit's
+    * does: a construct it has no Swift for, or a function the emitted Swift calls that the Swift runtime does not
+    * define, which swiftc would otherwise refuse on the Mac. `allowGaps` (or `-Deveryui.allowGaps=true`) lets such an
+    * app through, for a look at one in progress. */
   def emit(log: String => Unit, compilerClasspath: Seq[File], classes: File, classpath: Seq[File], libraries: Seq[File],
-           out: File, sourceRoot: File): File = {
+           out: File, sourceRoot: File,
+           allowGaps: Boolean = sys.props.get("everyui.allowGaps").contains("true")): File = {
     val sep = java.io.File.pathSeparator
     IO.delete(out)
     IO.createDirectory(out)
     log(s"emitSwift: emitting Swift into $out")
     val rc = sys.process.Process(
       Seq("java", "-cp", compilerClasspath.map(_.getAbsolutePath).mkString(sep), "everyui.compiler.Main", "--target=swift") ++
+        (if (allowGaps) Nil else Seq("--strict")) ++
         libraries.map(f => s"--library=${f.getAbsolutePath}") ++
         Seq(classes.getAbsolutePath, classpath.map(_.getAbsolutePath).mkString(sep), out.getAbsolutePath,
           sourceRoot.getAbsolutePath, "App")
     ).!
+    if (rc == 3)
+      sys.error("emitSwift: the compiler could not translate everything (listed above); " +
+        "-Deveryui.allowGaps=true emits it anyway")
     if (rc != 0) sys.error(s"everyui.compiler.Main exited $rc")
     out
   }

@@ -44,13 +44,22 @@ lazy val compiler = (project in file("compiler"))
     description := "Scala 3 TASTy to BrightScript and Swift, the compiler sbt-everyui runs for Roku and Apple TV",
     libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value,
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
-    // SwiftEmitter.scala is derived from RokuEmitter.scala by compiler/swift-derivation.txt (project/SwiftEmitterDerivation.scala)
+    // SwiftEmitterSpec reads the derived Swift emitter's templates for the runtime functions they call
+    Test / fork := true,
+    Test / javaOptions +=
+      s"-Deveryui.swiftEmitter=${(Compile / sourceManaged).value / "everyui" / "compiler" / "SwiftEmitter.scala"}",
+    // SwiftEmitter.scala is derived from RokuEmitter.scala by compiler/swift-derivation.txt
+    // (project/SwiftEmitterDerivation.scala), and SwiftRuntimeNames.scala lists the functions the Swift runtime
+    // defines, which an emit checks its calls against
     Compile / sourceGenerators += Def.task {
-      val out = (Compile / sourceManaged).value / "everyui" / "compiler" / "SwiftEmitter.scala"
-      SwiftEmitterDerivation.derive(
-        baseDirectory.value / "src" / "main" / "scala" / "everyui" / "compiler" / "RokuEmitter.scala",
-        baseDirectory.value / "swift-derivation.txt", out)
-      Seq(out)
+      val dir = (Compile / sourceManaged).value / "everyui" / "compiler"
+      val runtime = (ThisBuild / baseDirectory).value / "swift" / "runtime"
+      Seq(
+        SwiftEmitterDerivation.derive(
+          baseDirectory.value / "src" / "main" / "scala" / "everyui" / "compiler" / "RokuEmitter.scala",
+          baseDirectory.value / "swift-derivation.txt", dir / "SwiftEmitter.scala"),
+        SwiftEmitterDerivation.runtimeNames((runtime * "*.swift").get().sortBy(_.getName),
+          dir / "SwiftRuntimeNames.scala"))
     }.taskValue,
     compilerClasspath := {
       val conv = fileConverter.value

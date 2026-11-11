@@ -57,4 +57,26 @@ object SwiftEmitterDerivation {
     Files.write(out.toPath, s.getBytes(StandardCharsets.UTF_8))
     out
   }
+
+  /** What the Swift runtime (the files in `swift/runtime`) declares that the emitted Swift may name: its functions,
+    * types and globals (its top level), but none it keeps private to its file. Written as
+    * `everyui.compiler.SwiftRuntimeNames`, which the Swift emitter checks every function its output calls against,
+    * so a helper the Roku runtime has and the Swift one lacks fails the emit (as a gap) rather than swiftc on a Mac. */
+  def runtimeNames(runtime: Seq[File], out: File): File = {
+    val decl = Pattern.compile(
+      """(?m)^(?:@\w+(?:\([^)]*\))?[ \t]+)*((?:private|fileprivate)[ \t]+)?(?:static[ \t]+|final[ \t]+)*""" +
+        """(?:func|class|struct|enum|let|var|typealias)[ \t]+([A-Za-z_][A-Za-z0-9_]*)""")
+    val names = runtime.flatMap { f =>
+      val m = decl.matcher(read(f))
+      Iterator.continually(m).takeWhile(_.find()).filter(_.group(1) == null).map(_.group(2)).toList
+    }.distinct.sorted
+    val lines = names.grouped(8).map(_.map("\"" + _ + "\"").mkString("    ", ", ", ",")).mkString("\n")
+    val src = "package everyui.compiler\n\n" +
+      "/** Generated from the Swift runtime by project/SwiftEmitterDerivation.scala: what it declares for the\n" +
+      "  * emitted Swift to name. */\nobject SwiftRuntimeNames {\n  val all: Set[String] = Set(\n" + lines +
+      "\n  )\n}\n"
+    out.getParentFile.mkdirs()
+    Files.write(out.toPath, src.getBytes(StandardCharsets.UTF_8))
+    out
+  }
 }

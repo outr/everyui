@@ -69,10 +69,13 @@ object Main {
     emitter.writeOutput()
     println(s"Wrote $target output to ${outDir.toAbsolutePath}")
 
-    if (strict && emitter.unsupported.nonEmpty) {
-      System.err.println(s"The Roku compiler cannot translate ${emitter.unsupported.size} thing(s); emitted, each would do nothing on the device:")
+    // listed whether or not they fail the build: an emit let through with its gaps (allowGaps) still says what they are
+    if (emitter.unsupported.nonEmpty) {
+      System.err.println(
+        s"The compiler cannot translate ${emitter.unsupported.size} thing(s); emitted, each would do nothing " +
+          "on the device:")
       emitter.unsupported.foreach(g => System.err.println(s"  $g"))
-      System.exit(3)
+      if (strict) System.exit(3)
     }
   }
 
