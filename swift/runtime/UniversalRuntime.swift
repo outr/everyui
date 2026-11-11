@@ -489,6 +489,8 @@ final class SocketBox {
     let onClose: V
     var opened = false
     var finished = false
+    /// Closed from this side (uiSocketClose): its end is a normal closure, whatever URLSession says of the cancel.
+    var closing = false
     init(_ task: URLSessionWebSocketTask, _ onOpen: V, _ onText: V, _ onClose: V) {
         self.task = task; self.onOpen = onOpen; self.onText = onText; self.onClose = onClose
     }
@@ -541,7 +543,8 @@ final class SocketDelegate: NSObject, URLSessionWebSocketDelegate {
         if b.finished { return }
         b.finished = true
         boxes.removeValue(forKey: ObjectIdentifier(b.task))
-        RtGuard("a socket", b.onClose, [.vInt(code), .vStr(reason)])
+        if b.closing { RtGuard("a socket", b.onClose, [.vInt(1000), .vStr("closed")]) }
+        else { RtGuard("a socket", b.onClose, [.vInt(code), .vStr(reason)]) }
     }
 }
 
@@ -551,6 +554,8 @@ func uiSocketOpen(_ url: V, _ onOpen: V, _ onText: V, _ onClose: V) -> V {
         return .vNull
     }
     let task = SocketDelegate.session.webSocketTask(with: u)
+    // a message as large as a server sends, where URLSession would refuse one past a megabyte and drop the line
+    task.maximumMessageSize = 64 * 1024 * 1024
     let box = SocketBox(task, onOpen, onText, onClose)
     SocketDelegate.shared.boxes[ObjectIdentifier(task)] = box
     task.resume()
@@ -558,12 +563,21 @@ func uiSocketOpen(_ url: V, _ onOpen: V, _ onText: V, _ onClose: V) -> V {
 }
 
 func uiSocketSend(_ h: V, _ text: V) -> V {
-    if case .vRef(let o) = h, let b = o as? SocketBox { b.task.send(.string(rtS(text))) { _ in } }
+    // a send that fails has lost the line: closed, as a read that fails closes it, so the durable client reconnects
+    if case .vRef(let o) = h, let b = o as? SocketBox, !b.finished {
+        b.task.send(.string(rtS(text))) { error in
+            guard let error = error else { return }
+            DispatchQueue.main.async { SocketDelegate.shared.finish(b, 1006, error.localizedDescription) }
+        }
+    }
     return .vNull
 }
 
 func uiSocketClose(_ h: V) -> V {
-    if case .vRef(let o) = h, let b = o as? SocketBox { b.task.cancel(with: .normalClosure, reason: nil) }
+    if case .vRef(let o) = h, let b = o as? SocketBox, !b.finished {
+        b.closing = true
+        b.task.cancel(with: .normalClosure, reason: nil)
+    }
     return .vNull
 }
 

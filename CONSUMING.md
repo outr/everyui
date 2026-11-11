@@ -4789,6 +4789,27 @@ a web page, a player, the lifecycle), a started task's failure, and an Objective
 A crash the app cannot go on from (a Swift trap, a bad access, an abort) is noted as it happens and told to the hook at
 the next launch, once, as "the app ended on signal N". `Platform.errorsSeen()` counts them.
 
+The app's own files are in its bundle, as an APK's are in its assets and a channel's in its package: `AppleApp.assemble`
+puts each of its `files` at its path there (`"l10n/app_en.arb" -> file`), and a build copies everything `assemble`
+wrote but the Swift, the Info.plist and the icons into the bundle as it lies (tools/tvos-run.sh does).
+`Platform.readText` reads one by its path, a leading `/` being the bundle's root (`Strings` reads
+`/l10n/app_en.arb`), as well as a `file:` URL or an http(s) one, off the main thread, and answers on it; a file the
+bundle lacks is answered with "", as on Android and a Roku, and the console says which (`[ui] readText: no such file
+…`). A query or a fragment on a path (`?v=3`) is left off, as Android leaves it.
+
+HTTP and WebSockets are URLSession's (the network module's `network/native`, which the Roku shares). A request sends
+its headers, and a text body with its `contentType` unless a header names one, as Spice's client does elsewhere; it
+follows redirects, answers with the status, the headers and the body whatever the status, and fails its task (a
+`RuntimeException` saying why: no connection, no such host, a refused certificate, App Transport Security) where no
+answer came, as Spice's client does, rather than answering with a status of -1. A call's `timeout` fails the task with
+a TimeoutException once it passes; URLSession's own minute without a byte holds otherwise. A WebSocket is a
+`URLSessionWebSocketTask`: text frames each way (a binary one read as UTF-8), messages up to 64 MB, a close from the
+app reported as 1000 and a lost line (a failed read or send) as 1006, so `Network.durable` reconnects and resumes as it
+does on Android. EveryUI's Info.plist template allows plain `http://` and any certificate authority's HTTPS
+(`NSAppTransportSecurity`'s `NSAllowsArbitraryLoads`), as the example's Android manifest allows cleartext; an app with
+a plist of its own sets it there if it talks to a server over plain HTTP, or URLSession refuses the request and the
+task fails with App Transport Security's reason. demo=net checks the files and the network with EveryUI's `server/`.
+
 The system's services, as Android's are: `Platform.openUrl` (and `navigate`) asks the system to open the address (the
 browser, or the app that owns its scheme); an Apple TV has no browser, so a web address opens nothing there, and what
 nothing opens is logged (`[ui] openUrl: nothing opens …`) and otherwise ignored. On an iPhone or an iPad the clipboard
@@ -4819,7 +4840,8 @@ lazy val tvos = project.in(file("tvos"))
         (Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile), everyuiEmitLibraries.value,
         baseDirectory.value / "out-swift", baseDirectory.value)
       AppleApp.assemble(out, everyuiSwiftRuntime.value, everyuiAppleInfoPlist.value,
-        Some(baseDirectory.value / "Assets.xcassets"), Seq(baseDirectory.value / "images"), Seq(everyuiFonts.value))
+        Some(baseDirectory.value / "Assets.xcassets"), Seq(baseDirectory.value / "images"), Seq(everyuiFonts.value),
+        (baseDirectory.value / "l10n" * "*.arb").get().map(f => ("l10n/" + f.getName, f)))   // read by their paths
       AppleApp.version(out, version.value, 42)   // the release, and the build's number (Android's versionCode)
       out
     }

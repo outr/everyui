@@ -2171,7 +2171,14 @@ class RokuEmitter(
               s"_strCompare(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "replace") if args.length == 2 =>
               s"_replace(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
-            // FiniteDuration arithmetic and ordering, on the runtime's millisecond representation
+            // FiniteDuration arithmetic and ordering, on the runtime's millisecond representation: a sum or a
+            // difference of two as well (spice's DurableSocketClient.waitForActive counts `waited + 50.millis`), which
+            // was two objects added, an Apple app's fatal `aa + aa` and a Roku's type mismatch, as a durable socket
+            // handshook
+            case Select(recv, op @ ("+" | "$plus" | "-" | "$minus"))
+                if isDurationTerm(recv) && args.length == 1 && isDurationTerm(args.head) =>
+              val o = if (op == "+" || op == "$plus") "+" else "-"
+              s"RtDuration(RtDurationMs(${emitTerm(recv)}) $o RtDurationMs(${emitArgVal(args.head)}))"
             case Select(recv, op @ ("*" | "$times" | "/" | "$div")) if isDurationTerm(recv) && args.length == 1 =>
               val o = if (op == "*" || op == "$times") "*" else "/"
               s"RtDuration(RtDurationMs(${emitTerm(recv)}) $o ${emitArgVal(args.head)})"
