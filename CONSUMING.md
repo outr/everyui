@@ -2051,8 +2051,8 @@ comes after them; a row or a column given no width, and a container whose width 
 `Button`, a `Chip`, `size.width := label.size.width() + 20.0`), is sized to the words and leaves it to the one it is
 in, up to the screen. Words wider than that room are cut short with an ellipsis where they are one line (the cut
 `maxWidth` makes, where `elide` says), and wrapped within it where they wrap (`WhiteSpace.Normal`, `PreWrap`,
-`PreLine`; the web, the desktop and Android wrap them there, and the Roku and the Apple TV, whose labels wrap only at a
-width of their own, cut them on one line).
+`PreLine`; the web, the desktop, Android, an Apple TV, an iPhone and an iPad wrap them there, and the Roku, whose
+labels wrap only at a width of their own, cuts them on one line).
 `maxLines` and `maxWidth` still hold within the box. Words that fit are drawn exactly as before, and nothing is
 measured again for them: the box is looked at once a turn is over, after what they are in has followed them.
 
@@ -2149,7 +2149,9 @@ The web sets `dir="auto"` and `overflow-wrap: anywhere`; Android the TextView's 
 long words already). JavaFX has no automatic direction, so the desktop finds the first letter itself; it also draws
 words with right-to-left letters in a face that has them (Segoe UI, DejaVu Sans or Arial, the first installed), since
 JavaFX puts a line in the wrong order when a fallback face draws part of it, and wraps them itself, since JavaFX 22 and
-later throw when a wrap falls inside right-to-left words. The Roku and the Apple TV keep the app's direction.
+later throw when a wrap falls inside right-to-left words. An Apple TV, an iPhone and an iPad find the first letter as
+`Bidi` does and set the paragraph's direction and its side by it, and by the app's (`Direction.set`) otherwise. The Roku
+keeps the app's direction.
 
 A chat transcript (`everyui.chat`) shows every message's words, names, times, tool calls and notes this way. When
 earlier history arrives above an entry that led its group, that entry keeps its avatar and name, though an older

@@ -29,9 +29,25 @@ class RenderNode(val sg: SGNode) {
   private var fontUri: String = ""
   private var fontSize: Double = 0.0
   private var lineHeight: Double = 0.0
+  // Whether it is a label (Nodes.text and its kin), and the words it was last given: how many lines they were written
+  // with is how tall it is where it does not wrap.
+  private[render] var text: Boolean = false
+  private var words: String = ""
+  // The size the app gave it, -1 for none; whether its words wrap at a width (setWhiteSpace), and where words with no
+  // width of their own wrap, kept to their box (setTextLimit), 0 for nowhere.
+  private var explicitWidth: Double = -1.0
+  private var explicitHeight: Double = -1.0
+  private var wrapping: Boolean = false
+  private var wrapLimit: Double = 0.0
+  // where its lines sit (setTextAlign) and which way its words run (setTextDirection)
+  private var textAlign: String = "start"
+  private var textDirection: String = ""
 
   def getText(): String = uiGetText(sg)
-  def setText(text: String): Unit = uiSetText(sg, text)
+  def setText(text: String): Unit = {
+    words = text
+    uiSetText(sg, text)
+  }
 
   def getX(): Double = left
   def setX(x: Double): Unit = {
@@ -78,12 +94,28 @@ class RenderNode(val sg: SGNode) {
   /** Always: a node here is measured where it is, in the page or not (only the web's are measured in batches). */
   def onPage: Boolean = true
 
-  def getWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
-  /** How wide the words are whole, whatever width the view is given: as they are measured. */
-  def textWidth(): Double = getWidth()
+  /** A label is as wide as the app made it; else as its words, whole, or as the width they wrap at where they pass it
+    * (`setTextLimit`). */
+  def getWidth(): Double =
+    if (!text) wholeWidth()
+    else if (explicitWidth >= 0.0) explicitWidth
+    else {
+      val whole = wholeWidth()
+      if (wrapping && wrapLimit > 0.0 && whole > wrapLimit) wrapLimit else whole
+    }
+  private def wholeWidth(): Double = if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize) else uiGetWidth(sg)
+  /** How wide the words are whole, on their lines, whatever width the view is given: as they are measured. */
+  def textWidth(): Double = wholeWidth()
   /** Its width and height, read together (the web reads a node out of the page once for both). */
   def getSize(): (Double, Double) = (getWidth(), getHeight())
-  def getHeight(): Double = if (lineHeight > 0.0) lineHeight else uiGetHeight(sg)
+  /** A label is as tall as the app made it; wrapping at a width (its own, or the limit it is held to), as tall as UIKit
+    * lays its lines out there; else one shared line (everyui.font.Face) for each line its words were written with. */
+  def getHeight(): Double =
+    if (text && explicitHeight >= 0.0) explicitHeight
+    else if (text && wrapping && (explicitWidth > 0.0 || wrapLimit > 0.0))
+      uiTextHeight(sg, if (explicitWidth > 0.0) explicitWidth else wrapLimit)
+    else if (lineHeight > 0.0) lineHeight * (if (text) RenderNode.lineCount(words) else 1).toDouble
+    else uiGetHeight(sg)
 
   def append(child: RenderNode): Unit = uiAppend(sg, child.sg)
   // no ordered insert on this target yet: appended, which is where most children go
@@ -267,8 +299,14 @@ class RenderNode(val sg: SGNode) {
     captionWatch = None
   }
 
-  def setWidth(width: Double): Unit = uiSetWidth(sg, width)
-  def setHeight(height: Double): Unit = uiSetHeight(sg, height)
+  def setWidth(width: Double): Unit = {
+    explicitWidth = width
+    uiSetWidth(sg, width)
+  }
+  def setHeight(height: Double): Unit = {
+    explicitHeight = height
+    uiSetHeight(sg, height)
+  }
 
   /** `"#rrggbb"`, or `""` for transparent. */
   def setBackgroundColor(hex: String): Unit = uiSetBackgroundColor(sg, hex)
@@ -320,8 +358,16 @@ class RenderNode(val sg: SGNode) {
 
   def setPositionType(name: String): Unit = ()
 
-  /** A label is a single line. */
-  def setWhiteSpace(value: String): Unit = ()
+  /** `"normal"`, `"pre-wrap"` and `"pre-line"` wrap a label at its width (its own, or the limit it is held to);
+    * anything else keeps the lines its words were written with. */
+  def setWhiteSpace(value: String): Unit = if (text) {
+    wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
+    uiSetWraps(sg, wrapping)
+    if (!wrapping && wrapLimit > 0.0) {
+      wrapLimit = 0.0
+      if (explicitWidth < 0.0) uiSetWidth(sg, 0.0)
+    }
+  }
 
   def setImageSource(uri: String): Unit = uiSetImageSource(sg, uri)
   /** The picture as it is: no tint here yet. */
@@ -383,8 +429,8 @@ class RenderNode(val sg: SGNode) {
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
   /** Nothing is drawn blurred here. */
   def setBlur(radius: Double): Unit = ()
-  /** Lines keep the face's own spacing. */
-  def setLineHeight(px: Double): Unit = ()
+  /** Each line of wrapped text `px` below the last: the gap the face leaves, opened or closed to that. */
+  def setLineHeight(px: Double): Unit = uiSetLineHeight(sg, px)
   /** Extra space after each letter, in points: UIKit's kern, which the measured width takes. */
   /** A variable face's optical sizing and axes: a browser's to set (`FontFeature.opticalSizing`); drawn here as the
     * platform draws the face. */
@@ -410,8 +456,9 @@ class RenderNode(val sg: SGNode) {
   /** Styled runs are drawn as the label's own style, their words run together. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(r => r.text).mkString)
   /** Labels sit where they are placed. */
-  /** A shadow behind the letters: not drawn here. */
-  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** A shadow behind the letters, `blur` its spread, or none for `""`: the label's layer's, which follows its
+    * glyphs. */
+  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = uiSetTextShadow(sg, x, y, blur, hex)
   /** An edge round the letters, `width` each side, or none for "" (the runtime's OutlinedLabel). */
   def setTextOutline(width: Double, hex: String): Unit = uiSetTextOutline(sg, width, hex)
   // no reader of roles or descriptions reaches this platform's nodes
@@ -432,23 +479,37 @@ class RenderNode(val sg: SGNode) {
   def setFocusRing(hex: String, radius: Double): Unit = ()
   def setAlt(text: String): Unit = ()
 
-  def setTextAlign(align: String): Unit = ()
-  def setTextDirection(value: String): Unit = ()
+  /** "start", "center" or "end", by the reading direction: the app's (`Platform.setDirection`), or the words' own. */
+  def setTextAlign(align: String): Unit = if (align != textAlign) {
+    textAlign = align
+    uiSetTextAlign(sg, textAlign, textDirection)
+  }
+  /** Which way the words run: "" the app's, "auto" their own (the first letter with a direction, falling back to the
+    * app's), "ltr" or "rtl". The side their lines start from follows. */
+  def setTextDirection(value: String): Unit = if (value != textDirection) {
+    textDirection = value
+    uiSetTextAlign(sg, textAlign, textDirection)
+  }
+  /** A label breaks a word too long for its line where it must already. */
   def setWrapAnywhere(on: Boolean): Unit = ()
   /** Words that wrap are measured whole on one line here already, and wrap only at a width or a limit. */
   def setTextWhole(on: Boolean): Unit = ()
-  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone: nothing else holds them
-    * here. */
-  def setTextLimit(width: Double, lines: Int): Unit = ()
-  /** Whether words held to a limit wrap at it here: not yet (no wrap width reaches the label), so words too wide for
-    * their room are cut short with an ellipsis, as they were, rather than run past it. */
-  def wrapsToLimit(): Boolean = false
+  /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) are cut by measuring alone; words that wrap and are
+    * given no width of their own wrap at `width` where they would run past it (kept to their box), the label as
+    * wide. */
+  def setTextLimit(width: Double, lines: Int): Unit = if (text && wrapping && explicitWidth < 0.0) {
+    wrapLimit = 0.0
+    if (width > 0.0 && wholeWidth() > width) wrapLimit = width
+    uiSetWidth(sg, wrapLimit)
+  }
+  /** Whether words held to a limit (`setTextLimit`) wrap at it here: they do. */
+  def wrapsToLimit(): Boolean = true
   /** Words measure as they will be drawn from the moment they are set. */
   def textMeasurable(ready: () => Unit): Boolean = true
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
   def getValue(): String = uiGetText(sg)
-  def setValue(value: String): Unit = uiSetText(sg, value)
+  def setValue(value: String): Unit = setText(value)
   def setPlaceholder(text: String): Unit = ()
   def setInputAction(action: String): Unit = ()
   // what a field asks for (`Autofill.token`): nothing here fills fields
@@ -485,6 +546,19 @@ class RenderNode(val sg: SGNode) {
   def focusInput(on: Boolean): Unit = ()
 }
 
+object RenderNode {
+  /** How many lines `text` was written with: one, and one more for each line break. */
+  def lineCount(text: String): Int = {
+    var lines = 1
+    var i = 0
+    while (i < text.length) {
+      if (text.charAt(i) == '\n') lines += 1
+      i += 1
+    }
+    lines
+  }
+}
+
 /** Backend node factories. */
 object Nodes {
   /** A rich document's editing surface (everyui.rich.RichTextEditor): none here yet (`Platform.richEditing`). */
@@ -510,15 +584,15 @@ object Nodes {
   def richText(): RenderNode = text()
 
   /** A text node — a `UILabel`. */
-  def text(): RenderNode = new RenderNode(uiText())
+  def text(): RenderNode = label(uiText())
   /** A container — a `UIView` other nodes are appended to. */
   def container(): RenderNode = new RenderNode(uiContainer())
   /** A drawing (everyui.draw.Drawing): a container its rectangles go in, since nothing here draws paths. */
   def drawing(): RenderNode = container()
   /** No text field: a line of text, which TextInput fills from the keyboard. */
-  def input(secure: Boolean): RenderNode = new RenderNode(uiText())
+  def input(secure: Boolean): RenderNode = label(uiText())
   /** A box of lines is a field like any other. */
-  def textArea(): RenderNode = new RenderNode(uiText())
+  def textArea(): RenderNode = label(uiText())
   /** A link: a container; its select follows it. */
   def link(): RenderNode = container()
   /** A drop-down draws itself here: its node is a line of text. */
@@ -533,7 +607,7 @@ object Nodes {
 
   /** A Material Icons glyph, by codepoint, `size` pixels. */
   def icon(glyph: String, size: Double): RenderNode = {
-    val node = new RenderNode(uiText())
+    val node = label(uiText())
     node.setFont("Material Icons", 400, size)
     node.setText(glyph)
     node
@@ -547,6 +621,13 @@ object Nodes {
   /** An image node — a `UIImageView` loading from the app bundle. */
   def image(uri: String, width: Double, height: Double): RenderNode =
     new RenderNode(uiImage(uri, width, height))
+
+  // a label's node, which knows it is one
+  private def label(sg: SGNode): RenderNode = {
+    val node = new RenderNode(sg)
+    node.text = true
+    node
+  }
 }
 
 /** The handful of non-render platform services the slice needs. */
@@ -836,7 +917,8 @@ object Platform {
   /** The app's language: the platform chooses its own faces for the script, so there is nothing to do. */
   def setLanguage(code: String): Unit = ()
 
-  def setDirection(rtl: Boolean): Unit = ()
+  /** Every label's start on the side the app reads from (uiSetDirection). */
+  def setDirection(rtl: Boolean): Unit = uiSetDirection(rtl)
 
   /** A value kept across launches (the app's UserDefaults), or "" when there is none. */
   def setting(name: String): String = uiSettingGet(name)

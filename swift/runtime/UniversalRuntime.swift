@@ -57,6 +57,8 @@ enum UI {
     static var modifiers: (Bool, Bool, Bool, Bool) = (false, false, false, false)
     static var finger = true
     static var button = 0
+    /// The app's reading direction (uiSetDirection), which a label's start follows.
+    static var rtl = false
 }
 
 /// The program's closures the runtime holds itself, roots of the collector with what RtHeld holds.
@@ -82,12 +84,21 @@ func place(_ v: UIView, _ g: Geo) {
     // The root is the view controller's view: the screen owns its geometry (`ui.size` is set to the screen's
     // size, which must not resize the root to 1920x0 between the two writes).
     if v === UI.root { return }
-    // Text that was never given a size takes its natural size, as a `div` or a SceneGraph `Label` does.
+    // Text that was never given a size takes its natural size, as a `div` or a SceneGraph `Label` does; text that wraps
+    // at a width it was given is as tall as its lines there.
     var w = g.w, h = g.h
     if let l = v as? UILabel {
-        let natural = l.intrinsicContentSize
-        if w <= 0 { w = Double(natural.width) }
-        if h <= 0 { h = Double(natural.height) }
+        // (a label of several lines that does not wrap is as wide as its longest, whatever it was given: UIKit wraps
+        // any label of more than one line at its width, which code laid out as it is written must not be)
+        if let o = l as? OutlinedLabel, !o.wraps, l.numberOfLines > 1 {
+            w = max(w, Double(l.intrinsicContentSize.width))
+        }
+        if w > 0 && h <= 0 && l.numberOfLines != 1 { h = labelHeight(l, w) }
+        else {
+            let natural = l.intrinsicContentSize
+            if w <= 0 { w = Double(natural.width) }
+            if h <= 0 { h = Double(natural.height) }
+        }
     }
     v.bounds = CGRect(x: 0, y: 0, width: w, height: h)
     v.center = CGPoint(x: g.x + w / 2.0, y: g.y + h / 2.0)
@@ -139,6 +150,9 @@ func registerFonts() {
     }
 }
 
+/// How many lines `s` was written with: one, and one more for each line break.
+func uiLineCount(_ s: String) -> Int { s.reduce(1) { $1 == "\n" || $1 == "\r\n" || $1 == "\r" ? $0 + 1 : $0 } }
+
 func font(_ family: String, _ weight: Int, _ size: Double) -> UIFont {
     let key = family == "Material Icons" ? "Material Icons|400" : family == "Roboto Mono" ? "Roboto Mono|400" : (weight >= 600 ? "Open Sans|600" : "Open Sans|400")
     if let d = UI.fonts[key] { return UIFont(descriptor: d, size: size) }
@@ -167,10 +181,133 @@ func uiGetText(_ node: V) -> V { .vStr((view(node) as? UILabel)?.text ?? "") }
 func uiSetText(_ node: V, _ text: V) -> V {
     guard let l = view(node) as? UILabel else { return .vNull }
     let s = rtS(text)
-    l.numberOfLines = s.reduce(1) { $1 == "\n" || $1 == "\r\n" || $1 == "\r" ? $0 + 1 : $0 }
+    l.numberOfLines = (l as? OutlinedLabel)?.wraps == true ? 0 : uiLineCount(s)
     l.text = s
     place(l, geo(l))
     return .vNull
+}
+
+/// How tall a label's words are laid out `width` wide, as it draws them: whole pixels, so its last line is never cut.
+func labelHeight(_ l: UILabel, _ width: Double) -> Double {
+    let room = CGRect(x: 0, y: 0, width: width, height: 100_000)
+    let r = l.textRect(forBounds: room, limitedToNumberOfLines: l.numberOfLines)
+    return Double(r.height.rounded(.up))
+}
+
+/// Whether a label wraps at its width, as many lines as it takes, or keeps the lines its words were written with.
+func uiSetWraps(_ node: V, _ on: V) -> V {
+    guard let l = view(node) as? OutlinedLabel else { return .vNull }
+    let wraps = rtB(on)
+    if wraps == l.wraps { return .vNull }
+    l.wraps = wraps
+    l.numberOfLines = wraps ? 0 : uiLineCount(l.text ?? "")
+    place(l, geo(l))
+    return .vNull
+}
+
+/// How tall a label's words are wrapped at `width`.
+func uiTextHeight(_ node: V, _ width: V) -> V {
+    guard let l = view(node) as? UILabel else { return .vDbl(0) }
+    return .vDbl(labelHeight(l, dbl(width)))
+}
+
+/// Where a label's lines sit and which way its words run (OutlinedLabel.styled).
+func uiSetTextAlign(_ node: V, _ align: V, _ direction: V) -> V {
+    guard let l = view(node) as? OutlinedLabel else { return .vNull }
+    l.align = rtS(align)
+    l.direction = rtS(direction)
+    return .vNull
+}
+
+/// The app's reading direction: every label's start on its side, those running their own way (`auto`, `ltr`, `rtl`)
+/// as before.
+func uiSetDirection(_ rtl: V) -> V {
+    UI.rtl = rtB(rtl)
+    for l in OutlinedLabel.all.allObjects { l.styled(l.text) }
+    return .vNull
+}
+
+/// Each wrapped line `px` below the last; 0, the face's own spacing.
+func uiSetLineHeight(_ node: V, _ px: V) -> V {
+    guard let l = view(node) as? OutlinedLabel else { return .vNull }
+    l.advance = CGFloat(max(0, dbl(px)))
+    place(l, geo(l))
+    return .vNull
+}
+
+/// A shadow behind a label's letters, `blur` its spread as CSS has it, or none for "": the layer's own, which follows
+/// the glyphs it draws.
+func uiSetTextShadow(_ node: V, _ x: V, _ y: V, _ blur: V, _ hex: V) -> V {
+    guard let l = view(node) as? UILabel else { return .vNull }
+    let s = rtS(hex)
+    if s.isEmpty { l.layer.shadowOpacity = 0; return .vNull }
+    let colour = uiColor(s)
+    var alpha: CGFloat = 1
+    colour.getRed(nil, green: nil, blue: nil, alpha: &alpha)
+    l.layer.shadowColor = colour.withAlphaComponent(1).cgColor
+    l.layer.shadowOpacity = Float(alpha)
+    l.layer.shadowOffset = CGSize(width: dbl(x), height: dbl(y))
+    l.layer.shadowRadius = CGFloat(dbl(blur) / 2.0)
+    l.layer.masksToBounds = false
+    return .vNull
+}
+
+/// Whether the app bundle holds a file at `path` (a query or a fragment left off).
+func uiBundled(_ path: V) -> V { .vBool(FileManager.default.fileExists(atPath: bundlePath(rtS(path)))) }
+
+/// Whether words shown with `direction` ("", "auto", "ltr", "rtl") run right to left, the app's own direction being
+/// UI.rtl: "auto" by the first letter with a direction (uiFirstStrong), or the app's where there is none.
+func uiRightToLeft(_ direction: String, _ words: String) -> Bool {
+    switch direction {
+    case "rtl": return true
+    case "ltr": return false
+    case "auto": return uiFirstStrong(words) ?? UI.rtl
+    default: return UI.rtl
+    }
+}
+
+/// Whether the first letter of `words` with a direction reads right to left; nil where none has one:
+/// everyui.text.Bidi's rule, over the same UTF-16 units.
+func uiFirstStrong(_ words: String) -> Bool? {
+    for u in words.utf16 {
+        let c = Int(u)
+        if (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) { return false }
+        if c < 0xAA { continue }
+        if c < 0x590 {
+            if c == 0xAA || c == 0xB5 || c == 0xBA || (c >= 0xC0 && c <= 0x2B8 && c != 0xD7 && c != 0xF7) ||
+                (c >= 0x2BB && c <= 0x2C1) || c == 0x2D0 || c == 0x2D1 || (c >= 0x2E0 && c <= 0x2E4) || c == 0x2EE ||
+                (c >= 0x370 && c != 0x374 && c != 0x375 && c != 0x37E && c != 0x384 && c != 0x385 && c != 0x387) {
+                return false
+            }
+            continue
+        }
+        if c < 0x900 {
+            // Hebrew's points, Arabic's marks and digits, have none
+            if (c >= 0x591 && c <= 0x5C7) || (c >= 0x600 && c <= 0x61A && c != 0x608 && c != 0x60B && c != 0x60D) ||
+                (c >= 0x64B && c <= 0x66C) || c == 0x670 || (c >= 0x6D6 && c <= 0x6ED && c != 0x6E5 && c != 0x6E6) ||
+                (c >= 0x6F0 && c <= 0x6F9) || (c >= 0x816 && c <= 0x82D && c != 0x81A && c != 0x824 && c != 0x828) ||
+                (c >= 0x8D3 && c <= 0x8FF) { continue }
+            return true
+        }
+        if c < 0x2000 { return false }
+        if c == 0x200E { return false }
+        if c == 0x200F { return true }
+        if c < 0x2C00 { continue }
+        if c < 0xD800 {
+            if (c >= 0x2E00 && c <= 0x2E7F) || (c >= 0x3000 && c <= 0x303F) { continue }
+            return false
+        }
+        if c == 0xD802 || c == 0xD803 || c == 0xD83A || c == 0xD83B { return true }
+        if c < 0xF900 { continue }
+        if c < 0xFB1D { return false }
+        if c < 0xFE00 {
+            if (c >= 0xFD3E && c <= 0xFD4F) || c == 0xFDFD { continue }
+            return true
+        }
+        if c >= 0xFE70 && c <= 0xFEFE { return true }
+        if (c >= 0xFF21 && c <= 0xFF3A) || (c >= 0xFF41 && c <= 0xFF5A) || (c >= 0xFF66 && c <= 0xFFDC) { return false }
+    }
+    return nil
 }
 
 func uiGetX(_ node: V) -> V { guard let v = view(node) else { return .vDbl(0) }; return .vDbl(geo(v).x) }
@@ -801,19 +938,41 @@ func uiSetOpacity(_ node: V, _ opacity: V) -> V {
 final class OutlinedLabel: UILabel {
     var edgeWidth: CGFloat = 0
     var edgeColor: UIColor = .clear
-    /// Extra space after each letter (`uiSetLetterSpacing`): while it is not 0 the words are attributed text, which a
-    /// font or a colour set later is applied over, keeping the kern.
-    var kern: CGFloat = 0 { didSet { spaced(text) } }
+    /// Extra space after each letter (`uiSetLetterSpacing`), each wrapped line this far below the last (0: the face's
+    /// own), where its lines sit ("start", "center", "end") and which way its words run ("" the app's, "auto", "ltr",
+    /// "rtl"), and whether it wraps at its width. Where any is not as it starts the words are attributed text, which a
+    /// font or a colour set later is applied over, keeping them.
+    var kern: CGFloat = 0 { didSet { styled(text) } }
+    var advance: CGFloat = 0 { didSet { styled(text) } }
+    var align = "start" { didSet { styled(text) } }
+    var direction = "" { didSet { styled(text) } }
+    var wraps = false { didSet { styled(text) } }
     override var text: String? {
         get { super.text }
-        set { spaced(newValue) }
+        set { styled(newValue) }
     }
-    private func spaced(_ words: String?) {
-        if kern == 0 { super.text = words }
-        else {
-            super.attributedText = NSAttributedString(string: words ?? "",
-                attributes: [.kern: kern, .font: font as Any, .foregroundColor: textColor as Any])
-        }
+    /// Every label made, held weakly: the app's direction changes the side each starts on (uiSetDirection).
+    static let all = NSHashTable<OutlinedLabel>.weakObjects()
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        OutlinedLabel.all.add(self)
+    }
+    required init?(coder: NSCoder) { super.init(coder: coder) }
+
+    func styled(_ words: String?) {
+        let rtl = uiRightToLeft(direction, words ?? "")
+        let side: NSTextAlignment = align == "center" ? .center : ((align == "end") != rtl ? .right : .left)
+        let breaking: NSLineBreakMode = wraps ? .byWordWrapping : .byClipping
+        textAlignment = side
+        lineBreakMode = breaking
+        if kern == 0 && advance == 0 && !rtl && direction.isEmpty { super.text = words; return }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = side
+        paragraph.lineBreakMode = breaking
+        paragraph.baseWritingDirection = rtl ? .rightToLeft : .leftToRight
+        if advance > 0 { paragraph.minimumLineHeight = advance; paragraph.maximumLineHeight = advance }
+        super.attributedText = NSAttributedString(string: words ?? "", attributes: [.kern: kern, .font: font as Any,
+            .foregroundColor: textColor as Any, .paragraphStyle: paragraph])
     }
     // the colour is swapped for the edge's while the stroke is drawn, and a label redraws itself whenever its colour
     // is set: that is held off for the one pass

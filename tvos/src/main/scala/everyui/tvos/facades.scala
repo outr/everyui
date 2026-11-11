@@ -440,3 +440,29 @@ class SGNode
 @native object uiSecretPut {
   def apply(name: String, value: String): Unit = native.value
 }
+
+// ---- text: wrapped at a width, aligned, spaced, shadowed ----
+/** Whether a label wraps at its width (as many lines as it takes) or keeps the lines its words were written with. */
+@native object uiSetWraps {
+  def apply(node: SGNode, on: Boolean): Unit = native.value
+}
+/** How tall a label's words are wrapped at `width`, as UIKit draws them. */
+@native object uiTextHeight {
+  def apply(node: SGNode, width: Double): Double = native.value
+}
+/** Where a label's lines sit ("start", "center", "end") and which way its words run ("", "auto", "ltr", "rtl"). */
+@native object uiSetTextAlign {
+  def apply(node: SGNode, align: String, direction: String): Unit = native.value
+}
+/** The app's reading direction, which every label's start follows. */
+@native object uiSetDirection {
+  def apply(rtl: Boolean): Unit = native.value
+}
+/** Each wrapped line `px` below the last (0: the face's own spacing). */
+@native object uiSetLineHeight {
+  def apply(node: SGNode, px: Double): Unit = native.value
+}
+/** A shadow behind a label's letters, or none for "". */
+@native object uiSetTextShadow {
+  def apply(node: SGNode, x: Double, y: Double, blur: Double, hex: String): Unit = native.value
+}
