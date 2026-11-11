@@ -5,6 +5,8 @@ import fabric.io.{JsonFormatter, JsonParser}
 import rapid.Task
 import spice.http.{ConnectionStatus, WebSocket}
 
+import scala.concurrent.duration.DurationLong
+
 /** Spice's `WebSocket` over the platform's socket (the Roku's `roStreamSocket` in a Task node, tvOS's
   * `URLSessionWebSocketTask`). Text frames; the platform reports open, each message and the close. */
 class PlatformWebSocket(url: String) extends WebSocket {
@@ -43,6 +45,13 @@ object NetworkBackend {
 
   def http(call: HttpCall): Task[HttpResult] = {
     val done = Task.completable[HttpResult]
+    // a request that got no answer (no connection, no such host, a refused certificate, the platform's own time up:
+    // status -1, or a Roku's negative curl code, the reason as the body) fails the task, as Spice's client fails it on
+    // Android, the desktop and the web: an answer is only ever a status the server gave
+    def settle(status: Int, result: HttpResult, why: String): Unit =
+      if (status < 0) done.failure(new RuntimeException(call.method + " " + call.url + ": " +
+        (if (why.isEmpty) "no answer" else why)))
+      else done.success(result)
     if (call.parts.nonEmpty || call.bodyBytes.isDefined || call.binary) {
       val boundary = Multipart.boundary()
       // the body's type goes with it: a multipart body's names its boundary
@@ -55,12 +64,19 @@ object NetworkBackend {
         else call.bodyBytes.getOrElse(call.body.map(_.getBytes("UTF-8")).getOrElse(Array.empty[Byte]))
       val hasBody = call.parts.nonEmpty || call.bodyBytes.isDefined || call.body.isDefined
       uiHttpBytes(call.method, call.url, json(typed), body, hasBody, call.binary,
-        (status, headersJson, text, bytes) =>
-          done.success(HttpResult(status, headers(headersJson), text, if (call.binary) Some(bytes) else None)))
+        (status, headersJson, text, bytes) => settle(status,
+          HttpResult(status, headers(headersJson), text, if (call.binary) Some(bytes) else None), text))
     }
-    else uiHttp(call.method, call.url, json(call.headers), call.body.getOrElse(""), call.body.isDefined,
-      (status, headersJson, body) => done.success(HttpResult(status, headers(headersJson), body)))
-    done
+    else {
+      // a text body goes with its type, as Spice's client sends it, unless a header names one already
+      val typed = if (call.body.isEmpty || call.headers.exists(_._1.toLowerCase == "content-type")) call.headers
+        else call.headers :+ ("Content-Type" -> call.contentType)
+      uiHttp(call.method, call.url, json(typed), call.body.getOrElse(""), call.body.isDefined,
+        (status, headersJson, body) => settle(status, HttpResult(status, headers(headersJson), body), body))
+    }
+    // a call's own limit (`timeout`), where it has one, as Spice's client keeps it: the platform's own (a minute on
+    // URLSession) otherwise
+    if (call.timeout > 0.0) done.timeout((call.timeout * 1000.0).toLong.millis) else done
   }
 
   private def json(headers: List[(String, String)]): String = JsonFormatter.Compact(obj(headers.map((k, v) => k -> str(v))*))

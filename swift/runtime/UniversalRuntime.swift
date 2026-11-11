@@ -567,71 +567,65 @@ func uiSocketClose(_ h: V) -> V {
     return .vNull
 }
 
-func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ done: V) -> V {
-    guard let u = URL(string: rtS(url)) else {
-        RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url))])
-        return .vNull
+/// One request through URLSession (uiHttp, uiHttpBytes), then `answer(status, headersJson, data, why)` on the main
+/// queue: the status the server gave with its headers (a JSON object of names to values) and its body, or -1 and why
+/// where no answer came (no connection, no such host, a refused certificate, App Transport Security, the time up),
+/// which the network module fails the task with. URLSession follows redirects and gives up after a minute without a
+/// byte (`timeoutInterval`), as Spice's client keeps its minute elsewhere.
+func uiRequest(_ method: V, _ url: V, _ headersJson: V, _ body: Data?,
+               _ answer: @escaping (Int, String, Data?, String) -> Void) {
+    guard let u = URL(string: rtS(url)), u.scheme != nil else {
+        answer(-1, "{}", nil, "not an address: " + rtS(url))
+        return
     }
     var request = URLRequest(url: u)
     request.httpMethod = rtS(method)
+    request.timeoutInterval = 60
     if let data = rtS(headersJson).data(using: .utf8),
        let headers = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
         for (k, v) in headers { request.setValue("\(v)", forHTTPHeaderField: k) }
     }
-    if hasBody.rtTrue { request.httpBody = rtS(body).data(using: .utf8) }
-    // held for the collector while it is under way
-    let held = RtHeld.hold(done)
+    request.httpBody = body
     URLSession.shared.dataTask(with: request) { data, response, error in
         DispatchQueue.main.async {
-            defer { RtHeld.release(held) }
-            if let error = error {
-                RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription)])
+            guard error == nil, let http = response as? HTTPURLResponse else {
+                answer(-1, "{}", nil, error?.localizedDescription ?? "no answer")
                 return
             }
-            let http = response as? HTTPURLResponse
             var headers: [String: String] = [:]
-            http?.allHeaderFields.forEach { headers["\($0.key)"] = "\($0.value)" }
-            let headersJson = (try? JSONSerialization.data(withJSONObject: headers)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-            let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            RtGuard("a request", done, [.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text)])
+            http.allHeaderFields.forEach { headers["\($0.key)"] = "\($0.value)" }
+            let json = (try? JSONSerialization.data(withJSONObject: headers)).map {
+                String(decoding: $0, as: UTF8.self)
+            }
+            answer(http.statusCode, json ?? "{}", data, "")
         }
     }.resume()
+}
+
+/// `done(status, headersJson, body)`: the body as UTF-8 text, or why where no answer came (status -1). `done` is held
+/// for the collector while the request is under way.
+func uiHttp(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ done: V) -> V {
+    let held = RtHeld.hold(done)
+    uiRequest(method, url, headersJson, hasBody.rtTrue ? Data(rtS(body).utf8) : nil) { status, headers, data, why in
+        RtHeld.release(held)
+        let text = status < 0 ? why : String(decoding: data ?? Data(), as: UTF8.self)
+        RtGuard("a request", done, [.vInt(status), .vStr(headers), .vStr(text)])
+    }
     return .vNull
 }
 
 /// The same with a body of bytes (`hasBody`), or an answer wanted as bytes (`binary`) as well as text:
 /// `done(status, headersJson, text, bytes)`, a Scala `Array[Byte]`'s numbers from -128 to 127.
 func uiHttpBytes(_ method: V, _ url: V, _ headersJson: V, _ body: V, _ hasBody: V, _ binary: V, _ done: V) -> V {
-    guard let u = URL(string: rtS(url)) else {
-        RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr("bad url: " + rtS(url)), rtArr([])])
-        return .vNull
-    }
-    var request = URLRequest(url: u)
-    request.httpMethod = rtS(method)
-    if let data = rtS(headersJson).data(using: .utf8),
-       let headers = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-        for (k, v) in headers { request.setValue("\(v)", forHTTPHeaderField: k) }
-    }
-    if hasBody.rtTrue { request.httpBody = Data(rtItems(body).map { UInt8(truncatingIfNeeded: Int(rtDouble($0))) }) }
+    let sent = hasBody.rtTrue ? Data(rtItems(body).map { UInt8(truncatingIfNeeded: Int(rtDouble($0))) }) : nil
     let wanted = binary.rtTrue
-    // held for the collector while it is under way
     let held = RtHeld.hold(done)
-    URLSession.shared.dataTask(with: request) { data, response, error in
-        DispatchQueue.main.async {
-            defer { RtHeld.release(held) }
-            if let error = error {
-                RtGuard("a request", done, [.vInt(-1), .vStr("{}"), .vStr(error.localizedDescription), rtArr([])])
-                return
-            }
-            let http = response as? HTTPURLResponse
-            var headers: [String: String] = [:]
-            http?.allHeaderFields.forEach { headers["\($0.key)"] = "\($0.value)" }
-            let headersJson = (try? JSONSerialization.data(withJSONObject: headers)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-            let text = data.map { String(decoding: $0, as: UTF8.self) } ?? ""
-            let bytes: [V] = wanted ? (data.map { d in d.map { V.vInt(Int(Int8(bitPattern: $0))) } } ?? []) : []
-            RtGuard("a request", done, [.vInt(http?.statusCode ?? -1), .vStr(headersJson), .vStr(text), rtArr(bytes)])
-        }
-    }.resume()
+    uiRequest(method, url, headersJson, sent) { status, headers, data, why in
+        RtHeld.release(held)
+        let text = status < 0 ? why : String(decoding: data ?? Data(), as: UTF8.self)
+        let bytes: [V] = wanted ? (data.map { d in d.map { V.vInt(Int(Int8(bitPattern: $0))) } } ?? []) : []
+        RtGuard("a request", done, [.vInt(status), .vStr(headers), .vStr(text), rtArr(bytes)])
+    }
     return .vNull
 }
 

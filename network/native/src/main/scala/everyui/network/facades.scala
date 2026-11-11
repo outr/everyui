@@ -16,7 +16,7 @@ import everyui.compiler.api.native
 @native object uiSocketClose {
   def apply(handle: Any): Unit = native.value
 }
-/** One HTTP request; `done(status, headersJson, body)` — status -1 when the request itself failed. */
+/** One HTTP request; `done(status, headersJson, body)` — status -1 when the request itself failed, the body why. */
 @native object uiHttp {
   def apply(method: String, url: String, headersJson: String, body: String, hasBody: Boolean,
             done: (Int, String, String) => Unit): Unit = native.value

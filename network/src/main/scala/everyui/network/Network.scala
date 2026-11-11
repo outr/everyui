@@ -119,10 +119,11 @@ object Network {
 }
 
 /** An HTTP request: a method, a URL, headers, and a text body with its content type. `timeout` is how many seconds it
-  * may take, where a request is known to be slow (a server writing something new); 0 is the backend's own limit. Only
-  * the backends on Spice's client honour it: a Roku's and tvOS's requests keep their own. `credentials` sends the
-  * browser's cookies and HTTP authentication to another origin, which must then answer with the page's origin rather
-  * than `*`; its own origin has them either way. Only the web has the choice.
+  * may take, where a request is known to be slow (a server writing something new); 0 is the backend's own limit.
+  * Spice's client keeps it itself; on a Roku and an Apple device the task fails once it has passed, a
+  * TimeoutException, as the request runs on to the platform's own limit and its answer is let go. `credentials` sends
+  * the browser's cookies and HTTP authentication to another origin, which must then answer with the page's origin
+  * rather than `*`; its own origin has them either way. Only the web has the choice.
   *
   * `parts` is a multipart/form-data body (`multipart`), sent in place of `body` under a boundary of its own, which the
   * Content-Type names (`contentType` is not used). `bodyBytes` is a body of bytes, sent as they are in place of `body`,

@@ -29,6 +29,8 @@ import scala.concurrent.duration.*
   * missed replayed and a new one is sent what it does not have. `--log-drops=<seconds>` closes every log socket that
   * often, for a check of the resume.
   *
+  * `/check` answers an HTTP request with what it was, and `/echo` is a plain WebSocket that echoes, for demo=net.
+  *
   * Run with `sbt "server/run"`, optionally `sbt "server/run 9000 web/out-js --host=0.0.0.0"` (devices on the LAN
   * need the bind on every interface).
   */
@@ -78,11 +80,42 @@ object WebServer extends StaticHttpServer {
       .flatMap(_ => durable.broadcast("ticker", Tick(n, System.currentTimeMillis())))
       .flatMap(_ => ticker(n + 1L))
 
+  // `/check`: an HTTP request answered with what it was (`{"method", "headers", "body"}`), with the status `?status=`
+  // asks for (200 otherwise) after the wait `?ms=` asks for, and a header of the server's own (X-EveryUI-Check), so a
+  // backend's requests (demo=net) are seen to send and read what Android's do
+  private def check(exchange: spice.http.HttpExchange): Task[spice.http.HttpExchange] = {
+    val url = exchange.request.url
+    val status = url.param("status").flatMap(_.toIntOption).getOrElse(200)
+    val wait = url.param("ms").flatMap(_.toLongOption).getOrElse(0L)
+    val sent = exchange.request.content.map(_.asString).getOrElse(Task.pure(""))
+    Task.sleep(wait.millis).flatMap(_ => sent).flatMap { body =>
+      val headers = exchange.request.headers.map.toList.map((k, vs) => k.toLowerCase -> fabric.str(vs.mkString(", ")))
+      val answer = fabric.obj("method" -> fabric.str(exchange.request.method.value), "headers" -> fabric.obj(headers*),
+        "body" -> fabric.str(body))
+      exchange.modify(response => Task(response.withStatus(spice.http.HttpStatus.byCode(status))
+        .withHeader("X-EveryUI-Check", "yes").withContent(spice.http.content.Content.json(answer))))
+    }
+  }
+
+  // `/echo`: a plain WebSocket that sends back each text it is sent, and closes the line on "drop", for a backend's
+  // socket to be seen to connect, send, receive and come back after a drop (demo=net)
+  private object echo extends spice.http.server.handler.WebSocketHandler {
+    override def connect(exchange: spice.http.HttpExchange, listener: spice.http.WebSocketListener): Task[Unit] = {
+      listener.receive.text.attach { text =>
+        if (text == "drop") Task.sleep(50.millis).map(_ => listener.disconnect()).start()
+        else listener.send.text @= text
+      }
+      Task.unit
+    }
+  }
+
   override protected val handler = new spice.http.server.handler.HttpHandler {
     override def handle(exchange: spice.http.HttpExchange)
                        (using mdc: scribe.mdc.MDC): Task[spice.http.HttpExchange] =
       if (exchange.request.url.path.decoded == "/durable") durable.handle(exchange)
       else if (exchange.request.url.path.decoded == "/logs") logSockets.handle(exchange)
+      else if (exchange.request.url.path.decoded == "/check") check(exchange)
+      else if (exchange.request.url.path.decoded == "/echo") echo.handle(exchange)
       else DirectoryPath(root).apply(exchange).map(_.exchange)
   }
 

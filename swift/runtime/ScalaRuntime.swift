@@ -1027,14 +1027,17 @@ func _mapEq(_ a: V, _ b: V) -> V {
 // task that completes at once; anything that would block is an error here. `sleep` is the main queue's timer.
 
 // Closures the runtime invokes through RtInvoke are `{ fn, env }` objects whose `fn` takes (env, args), like the
-// emitted ones; `run` takes the callback, a callback takes (ok, value).
-func RtTask(_ run: @escaping (V) throws -> V) -> V {
-    rtObj(["_cls": .vStr("Task"), "run": rtClosure({ _, args in try run(rtArg(rtItems(args), 0)) }, .vNull)])
+// emitted ones; `run` takes the callback, a callback takes (ok, value). What the Swift closure captures of the
+// program's values goes in its `env` as well (`keep`), as the Roku's RtTask and RtCb keep theirs: the cycle collector
+// marks through objects' fields and never into a Swift closure, so a task waiting on a request across a collection
+// otherwise had its map function and its callback cleared under it, and the request answered into nothing.
+func RtTask(_ keep: [V], _ run: @escaping (V) throws -> V) -> V {
+    rtObj(["_cls": .vStr("Task"), "run": rtClosure({ _, args in try run(rtArg(rtItems(args), 0)) }, rtArr(keep))])
 }
-func RtCb(_ f: @escaping (V, V) throws -> V) -> V {
-    rtClosure({ _, args in let a = rtItems(args); return try f(rtArg(a, 0), rtArg(a, 1)) }, .vNull)
+func RtCb(_ keep: [V], _ f: @escaping (V, V) throws -> V) -> V {
+    rtClosure({ _, args in let a = rtItems(args); return try f(rtArg(a, 0), rtArg(a, 1)) }, rtArr(keep))
 }
-func rtThunk(_ f: @escaping () throws -> V) -> V { rtClosure({ _, _ in try f() }, .vNull) }
+func rtThunk(_ keep: [V], _ f: @escaping () throws -> V) -> V { rtClosure({ _, _ in try f() }, rtArr(keep)) }
 func rtB(_ v: V) -> Bool { if case .vBool(let b) = v { return b }; return false }
 func rtCall(_ cb: V, _ ok: Bool, _ v: V) throws { _ = try RtInvoke(cb, rtArr([.vBool(ok), v])) }
 /** The exception value of a thrown error, as the emitted `catch` sees it. */
@@ -1052,11 +1055,11 @@ func RapidTask_run(_ t: V, _ cb: V) throws -> V {
     _ = try RtInvoke(t["run"], rtArr([cb]))
     return .vNull
 }
-func RapidTaskObj_pure(_ v: V) -> V { RtTask { cb in try rtCall(cb, true, v); return .vNull } }
+func RapidTaskObj_pure(_ v: V) -> V { RtTask([v]) { cb in try rtCall(cb, true, v); return .vNull } }
 func RapidTaskObj_unit() -> V { RapidTaskObj_pure(.vNull) }
-func RapidTaskObj_error(_ e: V) -> V { RtTask { cb in try rtCall(cb, false, e); return .vNull } }
+func RapidTaskObj_error(_ e: V) -> V { RtTask([e]) { cb in try rtCall(cb, false, e); return .vNull } }
 func RapidTaskObj_apply(_ thunk: V) -> V {
-    RtTask { cb in
+    RtTask([thunk]) { cb in
         let v: V
         do { v = try RtForce(thunk) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
         try rtCall(cb, true, v)
@@ -1064,7 +1067,7 @@ func RapidTaskObj_apply(_ thunk: V) -> V {
     }
 }
 func RapidTaskObj_defer(_ thunk: V) -> V {
-    RtTask { cb in
+    RtTask([thunk]) { cb in
         let t: V
         do { t = try RtForce(thunk) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
         return try RapidTask_run(t, cb)
@@ -1072,7 +1075,10 @@ func RapidTaskObj_defer(_ thunk: V) -> V {
 }
 func RapidTaskObj_sleep(_ d: V) -> V {
     let ms = rtDouble(RtDurationMs(d))
-    return RtTask { cb in RtSetTimeout(ms, rtThunk { try rtCall(cb, true, .vNull); return .vNull }); return .vNull }
+    return RtTask([]) { cb in
+        RtSetTimeout(ms, rtThunk([cb]) { try rtCall(cb, true, .vNull); return .vNull })
+        return .vNull
+    }
 }
 func RapidTaskObj_completable() -> V {
     rtObj(["_cls": .vStr("Completable"), "done": .vBool(false), "ok": .vBool(false), "value": .vNull, "waiters": rtArr([])])
@@ -1088,8 +1094,8 @@ func RtTaskComplete(_ c: V, _ ok: Bool, _ v: V) throws -> V {
 func RapidTask_success(_ c: V, _ v: V) throws -> V { try RtTaskComplete(c, true, v) }
 func RapidTask_failure(_ c: V, _ e: V) throws -> V { try RtTaskComplete(c, false, e) }
 func RapidTask_map(_ t: V, _ f: V) -> V {
-    RtTask { cb in
-        try RapidTask_run(t, RtCb { ok, v in
+    RtTask([t, f]) { cb in
+        try RapidTask_run(t, RtCb([f, cb]) { ok, v in
             if !rtB(ok) { try rtCall(cb, false, v); return .vNull }
             let r: V
             do { r = try RtInvoke(f, rtArr([v])) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
@@ -1099,8 +1105,8 @@ func RapidTask_map(_ t: V, _ f: V) -> V {
     }
 }
 func RapidTask_flatMap(_ t: V, _ f: V) -> V {
-    RtTask { cb in
-        try RapidTask_run(t, RtCb { ok, v in
+    RtTask([t, f]) { cb in
+        try RapidTask_run(t, RtCb([f, cb]) { ok, v in
             if !rtB(ok) { try rtCall(cb, false, v); return .vNull }
             let nt: V
             do { nt = try RtInvoke(f, rtArr([v])) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
@@ -1109,8 +1115,8 @@ func RapidTask_flatMap(_ t: V, _ f: V) -> V {
     }
 }
 func RapidTask_handleError(_ t: V, _ f: V) -> V {
-    RtTask { cb in
-        try RapidTask_run(t, RtCb { ok, v in
+    RtTask([t, f]) { cb in
+        try RapidTask_run(t, RtCb([f, cb]) { ok, v in
             if rtB(ok) { try rtCall(cb, true, v); return .vNull }
             let nt: V
             do { nt = try RtInvoke(f, rtArr([v])) } catch { try rtCall(cb, false, rtErrorValue(error)); return .vNull }
@@ -1119,16 +1125,16 @@ func RapidTask_handleError(_ t: V, _ f: V) -> V {
     }
 }
 func RapidTask_guarantee(_ t: V, _ thunk: V) -> V {
-    RtTask { cb in
-        try RapidTask_run(t, RtCb { ok, v in
-            try RapidTask_run(try RtForce(thunk), RtCb { _, _ in try rtCall(cb, rtB(ok), v); return .vNull })
+    RtTask([t, thunk]) { cb in
+        try RapidTask_run(t, RtCb([thunk, cb]) { ok, v in
+            try RapidTask_run(try RtForce(thunk), RtCb([cb, v]) { _, _ in try rtCall(cb, rtB(ok), v); return .vNull })
         })
     }
 }
 /// task.attempt: always succeeds, with the task's outcome as a Try.
 func RapidTask_attempt(_ t: V) -> V {
-    RtTask { cb in
-        try RapidTask_run(t, RtCb { ok, v in
+    RtTask([t]) { cb in
+        try RapidTask_run(t, RtCb([cb]) { ok, v in
             try rtCall(cb, true, rtB(ok) ? Success(v) : Failure(v))
             return .vNull
         })
@@ -1136,15 +1142,15 @@ func RapidTask_attempt(_ t: V) -> V {
 }
 func RapidTask_timeout(_ t: V, _ d: V) -> V {
     let ms = rtDouble(RtDurationMs(d))
-    return RtTask { cb in
+    return RtTask([t]) { cb in
         let state = rtObj(["fired": .vBool(false)])
-        RtSetTimeout(ms, rtThunk {
+        RtSetTimeout(ms, rtThunk([state, cb]) {
             if rtB(state["fired"]) { return .vNull }
             state["fired"] = .vBool(true)
             try rtCall(cb, false, rtException("TimeoutException", "Task timed out after \(Int(ms)) ms"))
             return .vNull
         })
-        return try RapidTask_run(t, RtCb { ok, v in
+        return try RapidTask_run(t, RtCb([state, cb]) { ok, v in
             if rtB(state["fired"]) { return .vNull }
             state["fired"] = .vBool(true)
             try rtCall(cb, rtB(ok), v)
@@ -1155,7 +1161,7 @@ func RapidTask_timeout(_ t: V, _ d: V) -> V {
 func RapidTask_unit(_ t: V) -> V { RapidTask_map(t, rtClosure({ _, _ in .vNull }, .vNull)) }
 func RapidTask_foreach(_ t: V, _ f: V) throws -> V { try RapidTask_start(RapidTask_map(t, f)) }
 func RapidTask_start(_ t: V) throws -> V {
-    _ = try RapidTask_run(t, RtCb { ok, v in
+    _ = try RapidTask_run(t, RtCb([]) { ok, v in
         // a started task's failure nothing was there to hear: reported, as a thread's uncaught exception is
         if !rtB(ok) {
             print("[rt] task failed: " + rtS(_getMessage(v)))
@@ -1168,7 +1174,10 @@ func RapidTask_start(_ t: V) throws -> V {
 func RapidTask_startUnit(_ t: V) throws -> V { _ = try RapidTask_start(t); return .vNull }
 func RapidTask_sync(_ t: V) throws -> V {
     let box = rtObj(["done": .vBool(false), "ok": .vBool(false), "v": .vNull])
-    _ = try RapidTask_run(t, RtCb { ok, v in box["done"] = .vBool(true); box["ok"] = ok; box["v"] = v; return .vNull })
+    _ = try RapidTask_run(t, RtCb([box]) { ok, v in
+        box["done"] = .vBool(true); box["ok"] = ok; box["v"] = v
+        return .vNull
+    })
     if !rtB(box["done"]) {
         try RtThrow(rtException("IllegalStateException", "Task.sync: the task did not complete at once (one thread)"))
     }

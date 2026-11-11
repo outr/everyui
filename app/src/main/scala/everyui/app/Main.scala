@@ -14,6 +14,8 @@ import everyui.render.Platform
   *
   *   animation  youi's AnimationExample, in youi's example app (the default)
   *   durable    the network module's example: a durable socket to `socket=<url>` (tools/check.sh)
+  *   net        the app's own files (its translations, a file by its path, one it lacks) and HTTP and a WebSocket to
+  *              EveryUI's `server/` (`server=http://host:8731`), each check logged (NetDemo)
   *   input      the input model: focus, the arrows, Enter and the pointer (`probe=1` drives it itself)
   *   hello      the original seam proof plus the frame-rate probe
   *   bench      reactify's per-operation cost
@@ -174,6 +176,7 @@ import everyui.render.Platform
   else if (demo == "easings") EasingTable.run()
   else if (demo == "youibench") YouiBench.run()
   else if (demo == "durable") DurableDemo.run()
+  else if (demo == "net") NetDemo.run()
   else if (demo == "input") InputDemo.run()
   else if (demo == "widgets") WidgetsDemo.run()
   else if (demo == "blur") BlurDemo.run()
