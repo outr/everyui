@@ -50,7 +50,8 @@ import everyui.render.Platform
   *              counts, long names, drags between blocks, a button to draw it as a tree (`style=tree`, `theme=light`,
   *              `rtl=1`, `collapsed=<keys>`, `groups=<keys>`, `find=<words>`)
   *   sections   a day's groups of tasks as section cards (SectionCard), each header the heading of its tasks, two
-  *              open and one closed, one with no header (`backdrop=<picture>`, `see=`, `cards=1` for separate cards,
+  *              open and one closed, one with no header, under a compact card of background work with a spinner, Clear
+  *              and a sub-section (`backdrop=<picture>`, `see=`, `cards=1` for separate cards, `work=0` closed,
   *              `theme=light`, `rtl=1`)
   *   memory     an assistant's memories as blocks that expand in place to their whole Markdown with Pin and Delete,
   *              one at a time or several (`several=1`, `style=tree`, `theme=light`, `rtl=1`, `open=<keys>`, `find=<words>`)

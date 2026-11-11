@@ -6009,17 +6009,21 @@ Where an app draws a group of its own rows that are not a `RichList`'s items (a 
 row, which reads as one more sibling and not as their heading. It is one card: one ground, one edge and one set of
 rounded corners (`SectionCard.radius`, 10) round its header and every row, a hairline across it under the header in
 the edge's colour and a fainter one between rows set in `SectionCard.pad` (10) from its sides, and no gap. Its `title`
-heads it with a chevron (▾ open, ▸ closed, ◂ right to left); the header is a disclosure button, focusable on every
-platform, so a remote reaches it, opened and closed by a click, a tap, Enter or Space; closed, or open with no rows,
-the header alone is the card, its corners all round. An empty `title` gives it no header, and `collapsible` off makes
-the header a heading only, its rows always shown. `open` (`Var[Boolean]`) is the app's, to share between cards. The
-`rows` (`Var[Vector[Component]]`) are any components, drawn as wide as the card's inside and as tall as they are, shown
-and hidden as it opens and closes, and taken apart as they are dropped from `rows` or with the card. A row draws no
-ground or edge of its own, so a translucent theme's picture shows through one ground (the theme's surface, as
-see-through as `Theme.surfaceOpacity` says, unless the app gives the card a `backgroundColor`): the card lights a row
-itself, as a list's row is lit (the pointer over it, the focus drawn on anything in it), and its header, each in a
-rounded light set in `SectionCard.lightInset` (3) from the card's edge, so the light keeps inside its corners on every
-platform (the desktop cuts a box square). The card's `borderColor` is the app's too, and its hairlines follow it.
+heads it with a chevron (▾ open, ▸ closed, ◂ right to left); the header's `toggle` is a disclosure button,
+focusable on every platform, so a remote reaches it, opened and closed by a click, a tap, Enter or Space; closed, or
+open with no rows, the header alone is the card, its corners all round. An empty `title` gives it no header, and
+`collapsible` off makes the toggle a heading only, its rows always shown. `open` (`Var[Boolean]`) is the app's, to
+share between cards. The `rows` (`Var[Vector[Component]]`) are any components, drawn as wide as the card's inside and
+as tall as they are, shown and hidden as it opens and closes, and taken apart as they are dropped from `rows` or with
+the card. A row draws no ground or edge of its own, so a translucent theme's picture shows through one ground (the
+theme's surface, as see-through as `Theme.surfaceOpacity` says, unless the app gives the card a `backgroundColor`):
+the card lights a row itself, as a list's row is lit (a hovering pointer over it, the focus drawn on anything in it),
+and its toggle, each in a rounded light set in `SectionCard.lightInset` (3) from the card's edge, so the light keeps
+inside its corners on every platform (the desktop cuts a box square). A light that follows the pointer follows a
+pointer that hovers, a mouse or a pen, and not a finger: a tap leaves no light behind on any platform, decided per
+input, not per device (`PointerEvents.hover`, `over` but not while the last pointer to come onto it or press it was a
+finger, for any component of an app's that lights under the pointer). The card's `borderColor` is the app's too, and
+its hairlines follow it.
 
 ```scala
 val tasks = new SectionCard(tasksOpen)                   // one choice for every day's group
@@ -6028,6 +6032,45 @@ tasks.size.width @= width
 tasks.borderColor @= tint.withAlpha(0.5)
 tasks.backgroundColor @= tint.withAlpha(0.12)             // or the theme's surface, by default
 tasks.rows @= due.map(taskRow)                            // a tick and words each, no ground or edge of their own
+```
+
+The header holds more than the title where the app gives it. `leading` (`Var[Option[Component]]`, None by default)
+stands between the chevron and the title, part of the toggle: something to see (a `Spinner` while work runs), not a
+control. `trailing` (`Var[Vector[Component]]`, empty by default) are controls at the header's end in reading order
+(an `IconButton` that clears what is finished), `SectionCard.trailingGap` (4) apart and `trailingInset` (6) from the
+end, and the toggle runs from the header's start to them. They are the header's parts beside the toggle, not in it:
+a screen reader hears the disclosure (its title, open or closed) and each control as a control of its own, never a
+button holding buttons; a click, a tap or Enter on one does what it does and neither opens nor closes the card, and
+Space is its own; Tab goes from the toggle to each of them in turn and on to the rows, and Right (Left, right to left)
+from the toggle along them, Down from any of them to the first row. Right to left the toggle is at the right, its
+chevron, leading and title from the right, and the trailing at the left. The app sets and clears either at any time;
+one dropped is taken apart, as a row is. The header is as tall as its words and chevron with `SectionCard.pad` above
+and below, or as its tallest control with `trailingPad` (4), whichever is taller.
+
+`compact` (false by default) makes a closed card only as wide as its header needs (the chevron, the leading, the
+title, the trailing), no wider than `openWidth`, and an open one `openWidth` wide: with it on, give `openWidth` in
+place of `size.width`, which the card then sets (a block of background work over a composer, folded to its header).
+It changes width at once as it opens and closes, as its rows show and hide at once and as a list's section opens.
+
+A card can hold sub-sections, each a row of it: `SectionCard.sub(open)` (`new SectionCard(open, sub = true)`) is a
+card drawn as a part of the one it is in, with no edge, corners or ground of its own, its title smaller (13) in the
+muted colour on a dim rounded ground (`Theme.control` at `SectionCard.subGround`, 0.5), the line under its header and
+those between its rows the card's fainter, inset ones in the card's `borderColor`. It has its own `open`, `leading`,
+`trailing` and `rows`, folds on its own (the card stays open), may hold sub-sections of its own, and lights its own
+toggle and rows: the card does not light it as one row.
+
+```scala
+val work = new SectionCard(workOpen)
+work.title @= "Background work · 2 running"
+work.compact @= true
+work.openWidth := composer.size.width()
+work.leading @= (if (running) Some(new Spinner(18.0, () => Theme.accent())) else None)
+val finished = SectionCard.sub()
+finished.title @= "Finished · 3"
+finished.trailing @= Vector(new IconButton(MaterialIcon.FolderOpen, "Open the folder", () => openFolder()))
+finished.rows @= done.map(workRow)
+work.rows @= running.map(workRow) :+ finished
+work.trailing @= Vector(new IconButton(MaterialIcon.ClearAll, "Clear finished", () => clearFinished()))
 ```
 
 A section can have one thing it does straight from its header ("New conversation"): `RichSection.action`

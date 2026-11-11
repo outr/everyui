@@ -1,17 +1,20 @@
 package everyui.app
 
 import everyui.Color
-import everyui.component.{Backdrop, Checkbox, Column, Component, Container, MaterialIconView, Row, SectionCard,
-  TextView}
+import everyui.component.{Backdrop, Checkbox, Column, Component, Container, IconButton, MaterialIconView, Row,
+  SectionCard, TextView}
 import everyui.component.types.FontWeight
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
+import everyui.kit.Spinner
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
 import reactify.*
 
-/** A day's groups of tasks as section cards (`SectionCard`): under "Today", "Tasks · 3 due" open with three tasks, a
+/** A day's groups of tasks as section cards (`SectionCard`): first "Background work · 2 running", a spinner before
+  * its title, Clear at its end, only as wide as its header while closed (`work=0` starts it closed) and a
+  * "Finished · 3" sub-section in it with a button of its own; under "Today", "Tasks · 3 due" open with three tasks, a
   * tick and a title each and a coloured line under it, "Errands · 2 due" open, and "Done · 4" closed, then "Tomorrow"
   * with a card with no header; each header opens and closes its card. `backdrop=<picture>` draws the picture behind
   * them with the surfaces at `see` (0.8 unless given, `Theme.surfaceOpacity`); `cards=1` draws each header and each
@@ -95,7 +98,34 @@ object SectionsDemo {
       c.rows @= later
       c
     }
-    val page = Column(10.0, padding = 24.0)(heading("Today"), group("Tasks · 3 due", today, open = true),
+    // the work running in the background, as a card over a composer: a spinner before its title, Clear at its end
+    // taking the finished away, only as wide as its header while closed (compact), and what is finished a
+    // sub-section of its own, with a button to open where it went
+    def work(): Component = {
+      val running = Vector(Task("Indexing the mailbox", "Work · 42%"), Task("Syncing the calendar", "Work · Waiting"))
+      val finished = Vector(Task("Exported the report", "Work · Done", done = true),
+        Task("Sent three invites", "Work · Done", done = true),
+        Task("Backed up the photos", "Work · Done", done = true))
+      val opened = Var(Platform.launchArg("work") != "0")
+      opened.attach(o => Platform.log("sections open Background work " + o.toString))
+      val card = new SectionCard(opened)
+      card.title @= "Background work · 2 running"
+      card.compact @= true
+      card.openWidth @= width
+      card.leading @= Some(new Spinner(18.0, () => Theme.accent()))
+      val ended = SectionCard.sub()
+      ended.title @= "Finished · 3"
+      ended.trailing @= Vector(new IconButton(MaterialIcon.FolderOpen, "Open the folder",
+        () => Platform.log("sections work folder")))
+      ended.rows @= finished.map(row)
+      card.rows @= running.map(row) :+ ended
+      card.trailing @= Vector(new IconButton(MaterialIcon.ClearAll, "Clear finished", () => {
+        Platform.log("sections work cleared")
+        card.rows @= card.rows().filter(r => !(r eq ended))
+      }))
+      card
+    }
+    val page = Column(10.0, padding = 24.0)(work(),heading("Today"), group("Tasks · 3 due", today, open = true),
       group("Errands · 2 due", errands, open = true), group("Done · 4", done, open = false), heading("Tomorrow"),
       tomorrow)
     page.backgroundColor @= Color.Clear

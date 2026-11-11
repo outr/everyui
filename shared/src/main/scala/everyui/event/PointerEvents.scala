@@ -44,6 +44,20 @@ class PointerEvents(component: Component) {
     state
   }
 
+  /** Whether a pointer that hovers (a mouse, a pen, a trackpad) is over the component: `over`, but not while the last
+    * pointer to come onto it or press it was a finger (`PointerEvent.finger`). A finger rests nowhere once it is
+    * lifted, yet JavaFX, Android and some browsers count what it tapped as under the pointer until the next touch
+    * lands elsewhere, so a light that follows `over` stays on after a tap. Told by the input, not the device: on a
+    * touch laptop a tap leaves it off, and the mouse moving over it lights it again. What lights under a hovering
+    * pointer follows this; what a finger's press shows (a pressed state) does not need it. */
+  lazy val hover: Val[Boolean] = {
+    val fingered = Var(false)
+    enter.attach(e => fingered @= e.finger)
+    down.attach(e => fingered @= e.finger)
+    move.attach(e => if (!e.finger) fingered @= false)
+    Val(over() && !fingered())
+  }
+
   def channel(kind: PointerKind): Channel[PointerEvent] = {
     val channel = Channel[PointerEvent]
     // a handler that throws is told as this event's, on this component (Errors.guard)
