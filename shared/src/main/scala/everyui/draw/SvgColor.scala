@@ -8,7 +8,7 @@ import everyui.Color
   * which the reader of the file settles itself. */
 object SvgColor {
   def apply(value: String): Option[Color] = {
-    val s = value.trim.toLowerCase
+    val s = if (value == null) "" else value.trim.toLowerCase
     if (s.isEmpty) None
     else if (s == "transparent") Some(Color.Clear)
     else if (s.startsWith("#")) {
@@ -18,21 +18,27 @@ object SvgColor {
       else None
     } else if (s.startsWith("rgb") && s.indexOf('(') > 0 && s.indexOf(')') > s.indexOf('(')) {
       val parts = s.substring(s.indexOf('(') + 1, s.indexOf(')')).split("[\\s,/]+").toList.filter(_.nonEmpty)
-      val channels = parts.take(3).map(p => if (p.endsWith("%")) p.dropRight(1).toDoubleOption.map(_ * 255.0 / 100.0)
-        else p.toDoubleOption)
-      val alpha = parts.drop(3).headOption.map(p => if (p.endsWith("%")) p.dropRight(1).toDoubleOption.map(_ / 100.0)
-        else p.toDoubleOption).getOrElse(Some(1.0))
+      // a finite number (1e999 is none: it came out as a channel of 0)
+      def number(p: String): Option[Double] = p.toDoubleOption.filter(v => v - v == 0.0)
+      val channels = parts.take(3).map(p => if (p.endsWith("%")) number(p.dropRight(1)).map(_ * 255.0 / 100.0)
+        else number(p))
+      val alpha = parts.drop(3).headOption.map(p => if (p.endsWith("%")) number(p.dropRight(1)).map(_ / 100.0)
+        else number(p)).getOrElse(Some(1.0))
       if (parts.length < 3 || channels.exists(_.isEmpty) || alpha.isEmpty) None
       else {
         val c = channels.map(v => math.max(0, math.min(255, math.round(v.get).toInt)))
         Some(Color.fromRGBA(c(0), c(1), c(2), math.max(0.0, math.min(1.0, alpha.get))))
       }
     } else {
-      val at = names.indexOf(" " + s.replace("grey", "gray") + " ")
-      if (at < 0 || s.contains(" ")) None
+      // a name is letters alone, and is a name only where six hex digits follow it: "9acd32" (without its "#") was
+      // found as the last colour and read past the end, and "fffafa" read the name after it as its colour
+      val name = s.replace("grey", "gray")
+      val at = if (name.forall(c => c >= 'a' && c <= 'z')) names.indexOf(" " + name + " ") else -1
+      val hex = at + name.length + 2
+      if (at < 0 || hex + 6 > names.length) None
       else {
-        val hex = at + s.replace("grey", "gray").length + 2
-        Some(Color.fromHex(names.substring(hex, hex + 6)))
+        val code = names.substring(hex, hex + 6)
+        if (code.forall(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) Some(Color.fromHex(code)) else None
       }
     }
   }

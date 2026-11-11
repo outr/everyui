@@ -2073,16 +2073,16 @@ object Host {
     * BitmapFactory says nothing of why. On a loading thread. */
   private def decode(uri: String, raw: java.io.InputStream, kind: String, options: BitmapFactory.Options): Bitmap = {
     val in = new java.io.BufferedInputStream(raw, 64 * 1024)
-    in.mark(4096)
+    in.mark(everyui.image.SvgImage.sniffedBytes * 2)
     val head = headOf(in)
     in.reset()
     if (everyui.image.SvgImage.named(uri, kind) || everyui.image.SvgImage.sniffed(head)) svgBitmap(uri, bytesOf(in))
     else BitmapFactory.decodeStream(in, null, options)
   }
 
-  // the first bytes of `in` as text, enough to tell an SVG by
+  // the first bytes of `in` as text, enough to tell an SVG by (`SvgImage.sniffed`)
   private def headOf(in: java.io.InputStream): String = {
-    val head = new Array[Byte](512)
+    val head = new Array[Byte](everyui.image.SvgImage.sniffedBytes)
     var n = 0
     var read = 0
     while (n < head.length && read >= 0) {
@@ -2161,7 +2161,7 @@ object Host {
           try load
           catch {
             case t: Exception =>
-              Platform.logError("Loading " + uri, t)
+              Platform.logError("Loading " + everyui.log.LoggedAddress(uri), unaddressed(t, uri, 8))
               thrown = true
               null
           }
@@ -2172,6 +2172,16 @@ object Host {
           pending.remove(uri).getOrElse(Nil).reverse.foreach(_(b))
         })
       })
+  }
+
+  // `t` with `uri` in its words (and its causes', `depth` of them) as a log shows the address (`LoggedAddress`), its
+  // stack as it was: a failed connection names the address it was asked for, a signed one's signature with it
+  private def unaddressed(t: Throwable, uri: String, depth: Int): Throwable = {
+    val said = Option(t.getMessage).map(_.replace(uri, everyui.log.LoggedAddress(uri)))
+    val copy = new Exception(t.getClass.getName + said.map(": " + _).getOrElse(""))
+    copy.setStackTrace(t.getStackTrace)
+    Option(t.getCause).filter(c => depth > 0 && (c ne t)).foreach(c => copy.initCause(unaddressed(c, uri, depth - 1)))
+    copy
   }
 
   /** The most pixels one of the APK's own pictures may have and still be decoded on the thread that asked for it: an

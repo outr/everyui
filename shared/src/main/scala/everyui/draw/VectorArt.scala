@@ -1,6 +1,7 @@
 package everyui.draw
 
 import everyui.Color
+import everyui.render.Platform
 
 /** A picture made of shapes in a box of its own (an SVG's viewBox: `left`, `top`, `width` by `height`): each shape a
   * figure, filled or stroked or both, in its own colour (its alpha the shape's opacity). A monochrome mark (an icon, a
@@ -89,8 +90,21 @@ object VectorArt {
     * rgb(), rgba(), "none" or `currentColor` (its `color`, or black). A gradient is drawn in its first colour; text,
     * `<use>`, an embedded image, a filter, a mask, a clip, a marker, a pattern and a CSS `<style>` are not drawn, each
     * named in `skipped`, and what is left drawn. A group's opacity is each shape's (where two of its shapes overlap,
-    * the one under shows through). None where it holds no SVG. */
-  def parse(svg: String): Option[VectorArt] = {
+    * the one under shows through). None where it holds no SVG.
+    *
+    * Total on any text, as a picture from the network may be anything: a tag or attribute whose name is no XML name
+    * (`<:>`, `a:=`) is passed by, a number that is not finite is no number, a shape whose points a transform has taken
+    * past what a Double holds is left out (named in `skipped`), and whatever is cut short is read as far as it goes.
+    * Should anything throw all the same, it is logged and the text is no SVG. */
+  def parse(svg: String): Option[VectorArt] =
+    if (svg == null) None
+    else try read(svg) catch {
+      case e: Exception =>
+        Platform.log("VectorArt: an SVG could not be read (" + e.toString + ")")
+        None
+    }
+
+  private def read(svg: String): Option[VectorArt] = {
     val gradients = firstColours(svg)
     var box: Option[(Double, Double, Double, Double)] = None
     var natural = (0.0, 0.0)
@@ -98,7 +112,9 @@ object VectorArt {
     var shapes: List[Figure] = Nil
     var ends: List[String] = Nil
     var skipped: List[String] = Nil
-    // the attributes each open group hands down, innermost first, and its transform and opacity with all round it
+    // what each open group hands down (its own attributes over all round it's), innermost first, and its transform and
+    // opacity with all round it: one look a shape, however deep (a look through every group for each was the square
+    // of the depth, and a file of nested groups held its thread for minutes)
     var context: List[Map[String, String]] = Nil
     var frames: List[(List[Double], Double)] = Nil
     var hidden = 0
@@ -118,7 +134,8 @@ object VectorArt {
         if (unseen.contains(name) && !selfClosed) hidden += 1
       } else {
         val own = attributes(body)
-        val all = inherited.flatMap(k => own.get(k).orElse(context.flatMap(_.get(k)).headOption).map(k -> _)).toMap
+        val handed = context.headOption.getOrElse(Map.empty[String, String])
+        val all = inherited.flatMap(k => own.get(k).orElse(handed.get(k)).map(k -> _)).toMap
         val (around, through) = frames.headOption.getOrElse((identity, 1.0))
         val m = own.get("transform").map(t => multiply(around, transform(t))).getOrElse(around)
         val opacity = through * own.get("opacity").map(fraction).getOrElse(1.0)
@@ -134,7 +151,7 @@ object VectorArt {
         }
         if (groups.contains(name)) {
           if (!selfClosed) {
-            context = own :: context
+            context = all :: context
             frames = (m, opacity) :: frames
           }
         } else if (name == "text") skip("text")
@@ -151,9 +168,12 @@ object VectorArt {
               math.sqrt(math.abs(m(0) * m(3) - m(1) * m(2)))
             val stroke = if (width <= 0.0) None
               else all.get("stroke").flatMap(s => paint(s, current, gradients, skip)).map(faded(_, "stroke-opacity"))
-            if (fill.nonEmpty || stroke.nonEmpty) {
-              shapes = Figure(path.transformed(m(0), m(1), m(2), m(3), m(4), m(5)), fill = fill, stroke = stroke,
-                width = width, evenOdd = all.get("fill-rule").contains("evenodd")) :: shapes
+            val placed = path.transformed(m(0), m(1), m(2), m(3), m(4), m(5))
+            // (a transform's scale times a large number can be more than a Double holds: no platform draws that)
+            if (!finite(width) || !placed.ops.forall(_.values.forall(finite))) skip("shapes too large to draw")
+            else if (fill.nonEmpty || stroke.nonEmpty) {
+              shapes = Figure(placed, fill = fill, stroke = stroke, width = width,
+                evenOdd = all.get("fill-rule").contains("evenodd")) :: shapes
               ends = (all.getOrElse("stroke-linecap", "butt") + " " + all.getOrElse("stroke-linejoin", "miter")) :: ends
             }
           }
@@ -167,7 +187,8 @@ object VectorArt {
   }
 
   /** Each tag of `svg` in turn to `f`: its name (without a namespace's prefix), what is inside its brackets, whether it
-    * closes an element and whether it closes itself; comments, CDATA, declarations and words between tags passed by. */
+    * closes an element and whether it closes itself; comments, CDATA, declarations, words between tags and a tag whose
+    * name is no XML name (`<:>`, `<a:>`, `< svg>`) passed by. */
   private def tags(svg: String, f: (String, String, Boolean, Boolean) => Unit): Unit = {
     var at = 0
     while (at < svg.length && svg.indexOf('<', at) >= 0) {
@@ -180,10 +201,27 @@ object VectorArt {
         val tag = svg.substring(at + 1, math.min(close, svg.length))
         at = close + 1
         val body = tag.stripPrefix("/").stripSuffix("/")
-        f(body.takeWhile(c => c > ' ').split(':').last, body, tag.startsWith("/"), tag.endsWith("/"))
+        localName(body.takeWhile(c => c > ' ')).foreach(name => f(name, body, tag.startsWith("/"), tag.endsWith("/")))
       }
     }
   }
+
+  /** An XML name without its namespace's prefix ("svg:rect" is "rect", "rect" itself): None where it is none, as for
+    * an empty one, colons alone (":", "::"), a prefix with nothing after it ("a:"), nothing before a colon (":b"),
+    * more than one colon, or a character no name holds. */
+  private[everyui] def localName(qualified: String): Option[String] = {
+    val colon = qualified.indexOf(':')
+    val local = if (colon < 0) qualified else qualified.substring(colon + 1)
+    if (named(local) && (colon < 0 || named(qualified.substring(0, colon)))) Some(local) else None
+  }
+
+  // whether `s` is a name XML allows, with no colon: a letter or "_", then letters, digits, "-", "_" and "."
+  private def named(s: String): Boolean = s.nonEmpty && (s.charAt(0).isLetter || s.charAt(0) == '_') &&
+    s.forall(c => c.isLetter || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')
+
+  // whether `v` is a number a picture can be drawn with: neither infinite nor NaN, as a number less itself is 0 unless
+  // it is one of those (written so, as a Roku has no isNaN or isInfinite)
+  private[everyui] def finite(v: Double): Boolean = v - v == 0.0
 
   /** The first colour of each gradient by its id (one that takes its stops from another, by `href`, that one's), with
     * its stop-opacity: what a shape filled with it is drawn in. Read before the shapes, as a file may define its
@@ -226,19 +264,23 @@ object VectorArt {
           Some(c)
         case None =>
           skip("patterns")
-          if (fallback.nonEmpty) paint(fallback, current, gradients, skip) else None
+          // a fallback is a colour (or none, or currentColor), never another url(): read as one, a value of url()
+          // after url() went as deep as there were of them, and a long one ran out of stack
+          if (fallback.nonEmpty && !fallback.startsWith("url(")) paint(fallback, current, gradients, skip) else None
       }
     } else SvgColor(v).orElse(Some(Color.Black))
   }
 
-  /** `transform`'s functions as one matrix (a, b, c, d, e, f), the first applied last, as SVG has them. */
+  /** `transform`'s functions as one matrix (a, b, c, d, e, f), the first applied last, as SVG has them. Read in one
+    * pass (one that cut off what it had read for each function copied the rest each time, the square of its length). */
   private def transform(t: String): List[Double] = {
     var m = identity
-    var rest = t
-    while (rest.indexOf('(') > 0 && rest.indexOf(')') > rest.indexOf('(')) {
-      val open = rest.indexOf('(')
-      val kind = rest.substring(0, open).filter(_.isLetter)
-      val v = numbers(rest.substring(open + 1, rest.indexOf(')')))
+    var from = 0
+    while (t.indexOf('(', from) > from && t.indexOf(')', from) > t.indexOf('(', from)) {
+      val open = t.indexOf('(', from)
+      val close = t.indexOf(')', from)
+      val kind = t.substring(from, open).filter(_.isLetter)
+      val v = numbers(t.substring(open + 1, close))
       def at(i: Int, otherwise: Double): Double = if (v.length > i) v(i) else otherwise
       val turn = at(0, 0.0) * math.Pi / 180.0
       val step = kind match {
@@ -255,7 +297,7 @@ object VectorArt {
         case _ => identity
       }
       m = multiply(m, step)
-      rest = rest.substring(rest.indexOf(')') + 1)
+      from = close + 1
     }
     m
   }
@@ -280,7 +322,9 @@ object VectorArt {
     i
   }
 
-  /** A tag's attributes by name (without a namespace's prefix), with its `style`'s declarations over them. */
+  /** A tag's attributes by name (without a namespace's prefix), with its `style`'s declarations over them. One whose
+    * name is no XML name (`::=`, `a:=`, `:b=`) is passed by, and of words with no value before a name (`hidden`) the
+    * name alone is taken. */
   private def attributes(tag: String): Map[String, String] = {
     var out = Map.empty[String, String]
     var i = tag.indexWhere(c => c <= ' ')
@@ -288,7 +332,8 @@ object VectorArt {
       val eq = tag.indexOf('=', i)
       if (eq < 0) i = -1
       else {
-        val name = tag.substring(i, eq).trim.split(':').last
+        val words = tag.substring(i, eq).trim
+        val name = localName(words.reverse.takeWhile(c => c > ' ').reverse)
         var q = eq + 1
         while (q < tag.length && tag.charAt(q) <= ' ') q += 1
         if (q >= tag.length) i = -1
@@ -297,7 +342,7 @@ object VectorArt {
           val stop = if (quote == '"' || quote == '\'') tag.indexOf(quote, q + 1) else tag.indexWhere(c => c <= ' ', q)
           val value = if (stop < 0) tag.substring(if (quote == '"' || quote == '\'') q + 1 else q)
             else tag.substring(if (quote == '"' || quote == '\'') q + 1 else q, stop)
-          out = out + (name -> value.trim)
+          name.foreach(n => out = out + (n -> value.trim))
           i = if (stop < 0) -1 else stop + 1
         }
       }
@@ -311,16 +356,17 @@ object VectorArt {
     out
   }
 
+  // the finite numbers in `s` (a NaN or 1e999 no number)
   private def numbers(s: String): List[Double] =
-    s.split("[\\s,]+").toList.filter(_.nonEmpty).flatMap(n => n.toDoubleOption)
+    s.split("[\\s,]+").toList.filter(_.nonEmpty).flatMap(n => n.toDoubleOption.filter(finite))
 
-  // a length's number, its unit ("px") left off
+  // a length's number, its unit ("px") left off; 0 for none, or one that is not finite
   private def length(s: String): Double =
-    s.reverse.dropWhile(c => c.isLetter || c == '%').reverse.trim.toDoubleOption.getOrElse(0.0)
+    s.reverse.dropWhile(c => c.isLetter || c == '%').reverse.trim.toDoubleOption.filter(finite).getOrElse(0.0)
 
-  // an opacity, a number from 0 to 1 or a percentage
+  // an opacity, a number from 0 to 1 or a percentage (whole for one that is no number, NaN among them)
   private def fraction(s: String): Double = {
-    val v = if (s.trim.endsWith("%")) length(s) / 100.0 else s.trim.toDoubleOption.getOrElse(1.0)
+    val v = if (s.trim.endsWith("%")) length(s) / 100.0 else s.trim.toDoubleOption.filter(finite).getOrElse(1.0)
     math.max(0.0, math.min(1.0, v))
   }
 

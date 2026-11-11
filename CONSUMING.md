@@ -4605,12 +4605,13 @@ relative path of the app's own files, or a `data:` address (base64 or percent-en
   (by its .svg, or a `data:image/svg+xml` address) comes as 0 by 0, so an `Avatar` keeps its initial, and the console
   says `Image: <url> is an SVG, which a Roku cannot draw` once for it.
 
-An SVG is known by its type (`image/svg+xml`), its .svg, or its first bytes (`<svg`, or `<?xml`, near the start, as
-when a server sends one with no type and no extension). It is drawn with the platform's own vector drawing (Android's
-Canvas and Path into a Bitmap; JavaFX's GraphicsContext, snapshotted), at the size the view shows it times the
-screen's density, and drawn again larger where a view shows it larger, so it stays sharp. Its size as `Image` reports
-it is its own: its `<svg>`'s width and height, one of them with the other in the viewBox's proportion, else the
-viewBox's.
+An SVG is known by its type (`image/svg+xml`), its .svg, or its first bytes, as when a server sends one with no type
+and no extension: its first element is `<svg>` (or `<svg:svg>`), after any byte-order mark, white space, `<?xml …?>`,
+comments and DOCTYPE (`SvgImage.sniffed`), so other XML (`<rss>`, an Android `<vector>`) is not read as one. It is
+drawn with the platform's own vector drawing (Android's Canvas and Path into a Bitmap; JavaFX's GraphicsContext,
+snapshotted), at the size the view shows it times the screen's density, and drawn again larger where a view shows it
+larger, so it stays sharp. Its size as `Image` reports it is its own: its `<svg>`'s width and height, one of them with
+the other in the viewBox's proportion, else the viewBox's.
 
 What the reader draws (`everyui.draw.VectorArt.parse`, which `VectorIcon` uses too):
 
@@ -4628,7 +4629,10 @@ A gradient is drawn in its first colour. Text, `<use>`, an embedded image, a fil
 and a CSS `<style>` are not drawn: the rest is, and the console says what was left out, once for each picture
 (`Image: <url> is drawn without its gradients (drawn in their first colour), text`). A picture that came but is neither
 an image the platform reads nor an SVG says `Image: <url> could not be decoded (not a raster image or SVG?)`, once,
-and comes as 0 by 0.
+and comes as 0 by 0. The reader never throws, whatever a file holds: a malformed or cut-short SVG is drawn as far as
+it reads, or not at all. Each of these lines (and a picture that failed to load) gives the address as
+`everyui.log.LoggedAddress` does: `scheme://host/path` alone, `?…` where it had a query (a signed address's signature
+is never logged), and a `data:` address as its media type and length.
 
 ### The Roku
 

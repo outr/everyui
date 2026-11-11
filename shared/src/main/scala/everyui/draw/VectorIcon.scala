@@ -62,8 +62,8 @@ object VectorIcon {
       val web = Platform.kind == everyui.PlatformKind.Web
       val where = if (web || url.contains("://")) url else Platform.resolvePath(url)
       Platform.readText(where, text => {
-        val art = if (text.isEmpty) None else VectorArt.parse(text)
-        if (art.isEmpty) Platform.log("VectorIcon: no SVG could be read from " + url)
+        val art = if (text == null || text.isEmpty) None else VectorArt.parse(text)
+        if (art.isEmpty) Platform.log("VectorIcon: no SVG could be read from " + everyui.log.LoggedAddress(url))
         if (art.nonEmpty) kept = kept.updated(url, art)
         val all = waiting.getOrElse(url, Nil)
         waiting = waiting - url

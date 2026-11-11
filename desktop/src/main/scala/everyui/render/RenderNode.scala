@@ -15,6 +15,7 @@ import everyui.font.{Face, Faces}
 import everyui.PlatformKind
 import everyui.draw.VectorArt
 import everyui.image.{DataAddress, SvgImage}
+import everyui.log.LoggedAddress
 import everyui.event.PointerKind
 
 import java.io.File
@@ -1155,7 +1156,9 @@ object Host {
       val loaded = try new Image(at, at.startsWith("http"))
       catch {
         case t: IllegalArgumentException =>
-          Platform.log("image: " + uri + " cannot be loaded (" + t.getMessage + ")")
+          // (the address as a log shows it, in JavaFX's words too: LoggedAddress)
+          val said = Option(t.getMessage).getOrElse("").replace(at, LoggedAddress(at)).replace(uri, LoggedAddress(uri))
+          Platform.log("image: " + LoggedAddress(uri) + " cannot be loaded (" + said + ")")
           new Image(new java.io.ByteArrayInputStream(Array.emptyByteArray))
       }
       images.put(uri, loaded)
@@ -1290,7 +1293,7 @@ object Host {
       val at = address(uri)
       val finish: Option[(String, Array[Byte])] => Unit = read => {
         val art = read.flatMap { case (kind, bytes) =>
-          val svg = SvgImage.named(at, kind) || SvgImage.sniffed(DataAddress.text(bytes.take(1024)))
+          val svg = SvgImage.named(at, kind) || SvgImage.sniffed(DataAddress.text(bytes.take(SvgImage.sniffedBytes)))
           if (svg) SvgImage.art(DataAddress.text(bytes)) else None
         }
         art match {

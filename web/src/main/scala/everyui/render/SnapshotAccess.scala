@@ -265,7 +265,7 @@ object SnapshotAccess {
         reader.onerror = (_: dom.Event) => resolve("")
         reader.readAsDataURL(b)
       })).`catch`[String]((_: Any) => {
-        Platform.log("Snapshot: left out " + url + " (it cannot be read here)")
+        Platform.log("Snapshot: left out " + everyui.log.LoggedAddress(url) + " (it cannot be read here)")
         ""
       }).asInstanceOf[js.Promise[String]]
     })

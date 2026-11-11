@@ -45,7 +45,13 @@ object PathData {
           if (at < d.length && (d.charAt(at) == '+' || d.charAt(at) == '-')) at += 1
           if (digitAt(at)) digits() else at = mark
         }
-        d.substring(from, at).toDouble
+        // one past what a Double holds (1e999) is no number a path can be drawn with: the path ends before it
+        d.substring(from, at).toDoubleOption.filter(v => v - v == 0.0) match {
+          case Some(v) => v
+          case None =>
+            failed = true
+            0.0
+        }
       }
     }
     // an arc's flags are one digit each, and may run into what follows ("a1 1 0 011 1")
@@ -136,8 +142,11 @@ object PathData {
             val (rx, ry, turn) = (number(), number(), number())
             val (large, sweep) = (flag(), flag())
             val (toX, toY) = (number() + dx, number() + dy)
+            // (radii of a size whose square no Double holds make no arc but NaN: the path ends before it)
+            val curves = if (failed) Nil else arc(x, y, rx, ry, turn, large, sweep, toX, toY)
+            if (!curves.forall(_.forall(v => v - v == 0.0))) failed = true
             if (!failed) {
-              arc(x, y, rx, ry, turn, large, sweep, toX, toY).foreach(v => path = path.cubicTo(v(0), v(1), v(2), v(3), v(4), v(5)))
+              curves.foreach(v => path = path.cubicTo(v(0), v(1), v(2), v(3), v(4), v(5)))
               if (rx == 0.0 || ry == 0.0) path = path.lineTo(toX, toY)
               x = toX
               y = toY

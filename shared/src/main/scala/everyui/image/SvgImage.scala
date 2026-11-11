@@ -1,6 +1,7 @@
 package everyui.image
 
 import everyui.draw.VectorArt
+import everyui.log.LoggedAddress
 import everyui.render.Platform
 
 /** An SVG shown as a picture (`Image`, `ImageView`, `Avatar`) where the platform's own decoder reads none: Android and
@@ -20,14 +21,46 @@ object SvgImage {
       (!lower.startsWith("data:") && lower.takeWhile(c => c != '?' && c != '#').endsWith(".svg"))
   }
 
-  /** Whether a file's first bytes, as text, are an SVG's: `<svg`, or an XML declaration, near the start. */
+  /** How many of a file's first bytes `sniffed` is to be given, at least: room for a long comment (a licence) before
+    * the root. */
+  val sniffedBytes: Int = 4096
+
+  /** Whether a file's first bytes, as text, are an SVG's: its first element is `<svg>` (`<svg:svg>` too, under any
+    * prefix), after a byte-order mark, white space, XML declarations and processing instructions (`<?xml …?>`),
+    * comments and a DOCTYPE (with its internal subset), any of them. Other XML (`<rss>`, an Android `<vector>`, an
+    * HTML page) is not, nor are first bytes that end before an element starts. */
   def sniffed(head: String): Boolean = {
-    val start = head.dropWhile(c => c <= ' ' || c == '﻿')
-    start.startsWith("<?xml") || start.startsWith("<svg") || head.take(1024).contains("<svg")
+    var at = 0
+    var root = false
+    var reading = head != null
+    while (reading) {
+      while (at < head.length && (head.charAt(at) <= ' ' || head.charAt(at) == '﻿')) at += 1
+      if (head.startsWith("<?", at)) at = past(head, head.indexOf("?>", at + 2), 2)
+      else if (head.startsWith("<!--", at)) at = past(head, head.indexOf("-->", at + 4), 3)
+      else if (head.startsWith("<!", at)) at = past(head, declarationEnd(head, at), 1)
+      else {
+        reading = false
+        if (head.startsWith("<", at)) {
+          var end = at + 1
+          while (end < head.length && head.charAt(end) > ' ' && head.charAt(end) != '/' && head.charAt(end) != '>')
+            end += 1
+          // the name must have ended within the bytes: "<svgfoo" cut at "<svg" is not "<svg"
+          root = end < head.length && VectorArt.localName(head.substring(at + 1, end)).contains("svg")
+        }
+      }
+    }
+    root
   }
 
-  /** `text` as art: None where it holds no SVG, or one of no size. Safe on any thread. */
-  def art(text: String): Option[VectorArt] = VectorArt.parse(text).filter(a => a.width > 0.0 && a.height > 0.0)
+  /** `text` as art: None where it holds no SVG, or one of no size, never an exception, whatever it holds
+    * (`VectorArt.parse`). Safe on any thread. */
+  def art(text: String): Option[VectorArt] =
+    try VectorArt.parse(text).filter(a => a.width > 0.0 && a.height > 0.0)
+    catch {
+      case e: Exception =>
+        Platform.log("SvgImage: an SVG could not be read (" + e.toString + ")")
+        None
+    }
 
   /** What of the SVG at `url` was not drawn (a gradient, text, a filter), logged once for it, where there is any. */
   def drawn(url: String, art: VectorArt): Unit =
@@ -63,6 +96,19 @@ object SvgImage {
     Platform.log(message)
   }
 
-  // an address as it is logged: a data: address by its start alone
-  private def shown(url: String): String = if (url.startsWith("data:") && url.length > 48) url.take(48) + "..." else url
+  // an address as it is logged: without its query, or a data: address's contents (LoggedAddress)
+  private def shown(url: String): String = LoggedAddress(url)
+
+  // the place after a mark found at `found` `length` long; the end of `head` where it was not found
+  private def past(head: String, found: Int, length: Int): Int = if (found < 0) head.length else found + length
+
+  // the `>` that ends a declaration (`<!DOCTYPE svg …>`) starting at `from`, past an internal subset in [ ]; -1 if none
+  private def declarationEnd(head: String, from: Int): Int = {
+    val close = head.indexOf('>', from)
+    val subset = head.indexOf('[', from)
+    if (subset >= 0 && (close < 0 || subset < close)) {
+      val ended = head.indexOf(']', subset)
+      if (ended < 0) -1 else head.indexOf('>', ended)
+    } else close
+  }
 }
