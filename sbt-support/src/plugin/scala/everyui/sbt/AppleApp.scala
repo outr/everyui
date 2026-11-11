@@ -48,7 +48,7 @@ object AppleApp {
     * puts everything here but the Swift, the Info.plist and the icons into the app's bundle as it lies
     * (tools/tvos-run.sh). */
   def assemble(out: File, runtime: Seq[File], infoPlist: File, assetCatalog: Option[File], images: Seq[File],
-               fonts: Seq[File], files: Seq[(String, File)] = Nil): File = {
+               fonts: Seq[File], files: Seq[(String, File)]): File = {
     runtime.foreach(f => IO.copyFile(f, out / f.getName))
     IO.copyFile(infoPlist, out / "Info.plist")
     assetCatalog.foreach(c => IO.copyDirectory(c, out / "Assets.xcassets"))
@@ -57,6 +57,11 @@ object AppleApp {
     files.foreach { case (path, f) => IO.copyFile(f, out / path) }
     out
   }
+
+  /** The same with no files of the app's own: kept as it was, so a build compiled against an earlier sbt-everyui still
+    * finds it. */
+  def assemble(out: File, runtime: Seq[File], infoPlist: File, assetCatalog: Option[File], images: Seq[File],
+               fonts: Seq[File]): File = assemble(out, runtime, infoPlist, assetCatalog, images, fonts, Nil)
 
   /** Set the app's version in the Info.plist in `out` (after `assemble`), as `Platform.appVersionName` and
     * `appVersion` read it: CFBundleShortVersionString is the release's numbers (`2.0.0` of `2.0.0-SNAPSHOT`, three at
