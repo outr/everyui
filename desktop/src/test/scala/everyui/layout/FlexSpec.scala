@@ -136,8 +136,8 @@ class FlexSpec extends FxSpec {
       }
       lefts(row()) shouldBe List(4.0, 60.0, 60.0)
       widths(row()) shouldBe List(50.0, 0.0, 80.0)
-      // mirrored within the run, as a row given its width after its layout always was
-      rtl(lefts(row()) shouldBe List(90.0, 84.0, 4.0))
+      // mirrored within its own width, given after its layout as before it (RtlRowWidthSpec)
+      rtl(lefts(row()) shouldBe List(446.0, 440.0, 360.0))
     }
   }
 

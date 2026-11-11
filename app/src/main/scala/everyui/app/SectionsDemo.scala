@@ -6,7 +6,6 @@ import everyui.component.{Backdrop, Checkbox, Column, Component, Container, Mate
 import everyui.component.types.FontWeight
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
-import everyui.layout.HorizontalLayout
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -48,12 +47,8 @@ object SectionsDemo {
       name.font.weight @= FontWeight.SemiBold
       name.maxWidth @= width - 70.0
       val when = TextView(task.detail, 11.0, Theme.successText())
-      // (its width given before its layout, so right to left it is mirrored across that width, not its run)
-      val r = new Container
+      val r = Row(8.0, middle = true, padding = 10.0)(box, Column(2.0)(name, when))
       r.size.width @= width
-      r.padding @= 10.0
-      r.layout @= Some(HorizontalLayout(8.0, middle = true))
-      r.children ++= List(box, Column(2.0)(name, when))
       if (cards) {
         r.radius @= 10.0
         r.borderWidth @= 1.0

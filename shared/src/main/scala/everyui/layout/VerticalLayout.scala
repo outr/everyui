@@ -6,9 +6,10 @@ import everyui.i18n.Direction
 
 /** Top to bottom, each child at the start edge (the left, or the right in a right-to-left language); with `center`,
   * each child centred on the widest (or on the container's own width, when it has one). A container given its
-  * width before its layout keeps it; one given its layout first follows its widest child. A child with a `flex`
-  * (`Component.flex`) is given the height the others leave, where the column has a height of its own: a body under a
-  * header, which shrinks as the header grows. */
+  * width before its layout keeps it; one given its layout first follows its widest child, until it is given a width
+  * (then it is the container's own, as if given first). A child with a `flex` (`Component.flex`) is given the height
+  * the others leave, where the column has a height of its own: a body under a header, which shrinks as the header
+  * grows. */
 case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extends Layout {
   override def fitsWidth(): Boolean = true
 
@@ -24,8 +25,9 @@ case class VerticalLayout(spacing: Double = 0.0, center: Boolean = false) extend
     val shared = Layout.share(container, children, spacing, across = false)
     var widest = 0.0
     children.foreach(child => if (!child.roomless && child.size.width() > widest) widest = child.size.width())
-    // within the widest child when the container follows its children, else within its own width
-    val inner = if (container.widthFollowsContent || !container.size.width.explicit) widest else container.size.width() - pad * 2.0
+    // within the widest child when the container follows its children, else within its own width (given before its
+    // layout or after it)
+    val inner = if (container.widthIsRun) widest else container.size.width() - pad * 2.0
     val rtl = Direction.rtl()
     var y = pad
     children.foreach { child =>

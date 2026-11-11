@@ -25,8 +25,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   lazy val layout: Var[Option[Layout]] = own(Var(None))
   /** Space between the edges and the children, on every side. */
   lazy val padding: Var[Double] = own(Var(0.0))
-  /** Whether the width follows the children (a row or a column given no width): a mirrored row then spans its own run,
-    * not the width its last placement made. */
+  /** Whether the layout bound the width to the children (a row or a column given no width). It stays set once the app
+    * gives the width another (`Row(...)` then `size.width := card.size.width()`): `widthIsRun` says whether it still
+    * follows them. */
   var widthFollowsContent: Boolean = false
   /** Whether the height was bound to the children's reach by the layout (a row or a column given no height). */
   private var heightFollowsContent: Boolean = false
@@ -87,6 +88,11 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   // whether the width is still the one the layout gave it, its children's reach (`contentWidth`): one given another
   // after its layout (`Column(...)` then `size.width := 760.0`) keeps `widthFollowsContent` but has a width of its own
   private def sizedToRun(read: Set[Val[?]]): Boolean = widthFollowsContent && read.contains(contentWidth)
+
+  /** Whether its width is its children's run: given none, or still the one the layout bound to their reach. A row or
+    * a column mirrors right to left within that run then (its last placement's width would be stale), and within its
+    * own width otherwise, given before its layout or after it, constant or bound. */
+  private[everyui] def widthIsRun: Boolean = !size.width.explicit || sizedToRun(size.width.references)
 
   // Where words in this lie in their box (`TextView.textOverflow`), as of the look at boxes under way
   // (TextView.looks), worked out once for all the words in it: where it starts in the box, from the box's start edge

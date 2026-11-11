@@ -32,10 +32,9 @@ case class HorizontalLayout(spacing: Double = 0.0, middle: Boolean = false) exte
     }
     if (inRow > 0) run = run + spacing * (inRow - 1)
     // mirrored within the run the children make when the container follows them, else within its own width (which a
-    // row sharing its room has)
-    val width =
-      if (shared) container.size.width()
-      else if (container.widthFollowsContent || !container.size.width.explicit) run + pad * 2.0 else container.size.width()
+    // row sharing its room has, and one given a width after its layout: it is no longer the run, though the layout
+    // once bound it)
+    val width = if (shared || !container.widthIsRun) container.size.width() else run + pad * 2.0
     val rtl = Direction.rtl()
     var x = pad
     children.foreach { child =>
