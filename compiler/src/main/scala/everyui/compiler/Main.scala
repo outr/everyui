@@ -19,8 +19,8 @@ import scala.jdk.CollectionConverters.*
   *    reaches the Roku.
   *  - `--strict`: exit non-zero if anything could not be translated, listing
   *    each gap at its Scala source.
-  *  - `--target`: `roku` (the default, a channel) or `swift` (the Swift spike: one `App.swift` over
-  *    `swift/runtime/ScalaRuntime.swift`).
+  *  - `--target`: `roku` (the default, a channel) or `swift` (the program as `App.swift`, `App2.swift` and on, over
+  *    the Swift runtime in `swift/runtime`).
   */
 object Main {
   def main(args: Array[String]): Unit = {

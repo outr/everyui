@@ -4685,9 +4685,13 @@ store package on a keyed Roku.
 
 ### The Apple TV
 
-The same compiler writes the app as Swift (`App.swift`), and `AppleApp.assemble` puts the runtime, the launcher, the
-Info.plist, the icons and the assets beside it. The build itself is Xcode's (swiftc and actool, on a Mac); EveryUI's
-`tools/tvos-run.sh` shows the commands.
+The same compiler writes the app as Swift (`App.swift`, `App2.swift` and on, a megabyte or so each), and
+`AppleApp.assemble` puts the runtime, the launcher, the Info.plist, the icons and the assets beside it. The build itself
+is Xcode's (swiftc and actool, on a Mac); EveryUI's `tools/tvos-run.sh` shows the commands. Give swiftc every
+`App*.swift` and `-j` with the Mac's cores (`-j$(sysctl -n hw.ncpu)`): the parts are type-checked in parallel, which
+takes a large app from many minutes on one core to a minute or two. `AppleApp.emit` fails, listing each, on anything the
+compiler cannot translate, as `RokuChannel.emit` does, a function the Swift calls that the Swift runtime lacks among
+them; `-Deveryui.allowGaps=true` emits such an app anyway.
 
 The same Swift builds for an iPhone and an iPad (`tools/tvos-run.sh --ios`): the runtime chooses what differs between
 them as it is compiled, with `#if os(iOS)`, so one emitted app serves both. A WebView is a WKWebView on iOS, and WebKit

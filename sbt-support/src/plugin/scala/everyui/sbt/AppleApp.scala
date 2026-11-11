@@ -11,7 +11,8 @@ import sbt.*
 object AppleApp {
   /** Run the compiler (`compilerClasspath`: EveryUI's `compiler` project, or `everyuiCompiler` in an app) over
     * `classes`, and the `libraries` compiled through with it (`everyuiEmitLibraries`), resolving against `classpath`,
-    * into a fresh `out`. `sourceRoot` is where gaps are reported against.
+    * into a fresh `out`: the program as `App.swift`, `App2.swift` and on (the module's files, built together).
+    * `sourceRoot` is where gaps are reported against.
     *
     * Anything the compiler cannot translate fails the build, each listed at its Scala source, as RokuChannel.emit's
     * does: a construct it has no Swift for, or a function the emitted Swift calls that the Swift runtime does not

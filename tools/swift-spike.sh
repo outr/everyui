@@ -33,22 +33,23 @@ FAILED=0
 
 step "emit: $PROJECT → Swift"
 if "$SBT" "$PROJECT/emitSwift" > "$LOGS/emit.log" 2>&1 && [ -f $DIR/out-swift/App.swift ]; then
-  pass "$(wc -l < $DIR/out-swift/App.swift) lines"
+  pass "$(cat $DIR/out-swift/App*.swift | wc -l) lines"
 else
   fail "(target/swift-spike/emit.log)"; tail -n 20 "$LOGS/emit.log"; exit 1
 fi
 
 step "ship to $MAC:$MAC_DIR"
 STAGE=$(mktemp -d)
-cp swift/runtime/ScalaRuntime.swift $DIR/out-swift/App.swift "$STAGE/" && cp swift/spike/$HARNESS "$STAGE/main.swift"
+cp swift/runtime/ScalaRuntime.swift $DIR/out-swift/App*.swift "$STAGE/" && cp swift/spike/$HARNESS "$STAGE/main.swift"
 $SSH "$MAC" "mkdir -p $MAC_DIR" > /dev/null 2>&1
-if rsync -a --delete "$STAGE/" "$MAC:$MAC_DIR/src/" > "$LOGS/ship.log" 2>&1; then pass "3 files"; else fail "(target/swift-spike/ship.log)"; exit 1; fi
+if rsync -a --delete "$STAGE/" "$MAC:$MAC_DIR/src/" > "$LOGS/ship.log" 2>&1; then pass "$(ls "$STAGE" | wc -l) files"; else fail "(target/swift-spike/ship.log)"; exit 1; fi
 rm -rf "$STAGE"
 
-# build NAME SDK [swiftc flags…]: compile the three sources on the Mac into bin/NAME (SDK "" is the host's)
+# build NAME SDK [swiftc flags…]: compile the runtime, the program (App.swift, App2.swift, …) and the harness on the
+# Mac into bin/NAME (SDK "" is the host's)
 build() {
   local name=$1 sdk=$2; shift 2
-  $SSH "$MAC" "cd $MAC_DIR && mkdir -p bin && rm -f bin/$name && xcrun ${sdk:+-sdk $sdk} swiftc -O -suppress-warnings $* src/ScalaRuntime.swift src/App.swift src/main.swift -o bin/$name 2>&1 | grep -v '^$'; test -x bin/$name"
+  $SSH "$MAC" "cd $MAC_DIR && mkdir -p bin && rm -f bin/$name && xcrun ${sdk:+-sdk $sdk} swiftc -O -j\$(sysctl -n hw.ncpu) -suppress-warnings $* src/ScalaRuntime.swift src/App*.swift src/main.swift -o bin/$name 2>&1 | grep -v '^$'; test -x bin/$name"
 }
 
 step "build: macOS (arm64)"

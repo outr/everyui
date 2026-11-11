@@ -53,8 +53,8 @@ FAILED=0
 
 step "emit: everyui → Swift"
 if "$SBT" "checks/checksClasspath; tvos/emitSwift" > "$LOGS/emit.log" 2>&1 && [ -f tvos/out-swift/App.swift ]; then
-  todos=$(grep -c 'RtTodo(' tvos/out-swift/App.swift || true)
-  pass "$(wc -l < tvos/out-swift/App.swift) lines, $todos todo(s)"
+  todos=$(cat tvos/out-swift/App*.swift | grep -c 'RtTodo(' || true)
+  pass "$(cat tvos/out-swift/App*.swift | wc -l) lines, $todos todo(s)"
 else
   fail "(target/tvos/emit.log)"; tail -n 20 "$LOGS/emit.log"; exit 1
 fi
@@ -67,9 +67,9 @@ if rsync -a --delete tvos/out-swift/ "$MAC:$APP/src/" > "$LOGS/ship.log" 2>&1; t
 step "build: EveryUI.app ($OS simulator, arm64)"
 SDK_VERSION=$($SSH "$MAC" "xcrun --sdk $SDK --show-sdk-version" | tr -d '\r')
 $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
-  xcrun -sdk $SDK swiftc -O -suppress-warnings -target arm64-apple-${OS}${SDK_VERSION}-simulator \
+  xcrun -sdk $SDK swiftc -O -j\$(sysctl -n hw.ncpu) -suppress-warnings -target arm64-apple-${OS}${SDK_VERSION}-simulator \
     -framework UIKit -framework CoreText -framework QuartzCore \
-    src/ScalaRuntime.swift src/UniversalRuntime.swift src/App.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
+    src/ScalaRuntime.swift src/UniversalRuntime.swift src/App*.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
   test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && cp -r src/images src/fonts EveryUI.app/ && \
   { cp src/*.html EveryUI.app/ 2>/dev/null; true; } && \
   plutil -replace UIDeviceFamily -json '$FAMILY' EveryUI.app/Info.plist && \

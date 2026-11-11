@@ -2531,7 +2531,10 @@ class SwiftEmitter(
   def writeOutput(): Unit = {
     val declared = declareLocals(out.toString + "\n// ── defunctionalised closures ──\n" + closures.toString)
     checkNames(declared)
-    write("App.swift", SwiftEmitter.header + declared + wideSlots(declared))
+    val code = declared + wideSlots(declared)
+    split(code, SwiftEmitter.PartBytes).zipWithIndex.foreach { (part, i) =>
+      write(SwiftEmitter.partName(i), SwiftEmitter.header + part)
+    }
   }
 
   /** `rtFn` for a method of more than the ten parameters the runtime's overloads take (a constructor's defaults
@@ -2552,6 +2555,25 @@ class SwiftEmitter(
     * (SwiftRuntimeNames, generated from swift/runtime at build time), and the code is checked for BrightScript the
     * derivation left untranslated: either is a gap, so `--strict` fails the emit here rather than swiftc on a Mac. */
   private def checkNames(code: String): Unit = todos ++= SwiftEmitter.gaps(code)
+
+  /** `code` cut before a top-level function once a part has passed `limit` bytes. Swift's globals are the module's,
+    * so the parts call one another freely, and swiftc type-checks them in parallel. */
+  private def split(code: String, limit: Int): List[String] = {
+    val parts = mutable.ListBuffer[String]()
+    val part = new StringBuilder
+    var bytes = 0
+    code.split("\n", -1).foreach { line =>
+      if (bytes > limit && line.startsWith("func ")) {
+        parts += part.toString
+        part.clear()
+        bytes = 0
+      }
+      part.append(line).append('\n')
+      bytes += line.getBytes(StandardCharsets.UTF_8).length + 1
+    }
+    parts += part.toString
+    parts.toList
+  }
 
   /** BrightScript creates a local on first assignment; Swift needs a declaration. Every name a function
     * assigns (a Scala local, a hoisted temp, a pattern binding) is declared once at the top of its body. */
@@ -2645,6 +2667,14 @@ object SwiftEmitter {
       .map((b, uses) => s"unsupported: BrightScript left in the Swift: `$b` (${uses.size} time(s))")
     unbound ++ left
   }
+
+  /** How much of the program one file holds before the next begins (`App.swift`, `App2.swift`, …): swiftc
+    * type-checks a file in one job, so a large program in one file takes one core for many minutes, and in parts of
+    * this size takes every core the Mac has. */
+  val PartBytes: Int = 1 << 20
+
+  /** The program's files: `App.swift`, then `App2.swift`, `App3.swift` and on. */
+  def partName(i: Int): String = if (i == 0) "App.swift" else "App" + (i + 1) + ".swift"
 
   /** `code` with every string literal emptied, so what is checked is code alone. */
   def withoutStrings(code: String): String = """"(?:[^"\\\n]|\\.)*"""".r.replaceAllIn(code, "\"\"")
