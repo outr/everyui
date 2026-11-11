@@ -967,7 +967,31 @@ func _setIntersect(_ a: V, _ b: V) -> V { rtArr(rtItems(a).filter { _setHas(b, $
 func _mapEmpty() -> V { rtObj(["_map": .vBool(true), "entries": rtArr([])]) }
 func _rtIsEntryMap(_ m: V) -> Bool { rtHas(m, "_map") }
 func _mapSize(_ m: V) -> V { _rtIsEntryMap(m) ? rtCount(m["entries"]) : rtCount(m) }
-func _mapFind(_ m: V, _ k: V) -> Int { rtItems(m["entries"]).firstIndex { rtEq($0["k"], k) } ?? -1 }
+/// Where each String key of a large map is in its entries, made the first time the map is looked in and kept with it
+/// (`_index`): a map is never changed in place (`_mapPut` makes another), so it stays true. A table of an app's words
+/// (thousands of them) was searched from its start at every lookup, and made one copy of itself per entry.
+final class RtMapIndex {
+    let at: [String: Int]
+    init(_ at: [String: Int]) { self.at = at }
+}
+func rtMapIndex(_ m: V) -> RtMapIndex? {
+    if case .vRef(let o) = m["_index"], let index = o as? RtMapIndex { return index }
+    let entries = rtItems(m["entries"])
+    if entries.count < 16 { return nil }
+    var at: [String: Int] = [:]
+    for (i, e) in entries.enumerated() {
+        guard case .vStr(let k) = e["k"] else { return nil }
+        if at[k] == nil { at[k] = i }
+    }
+    let index = RtMapIndex(at)
+    m["_index"] = .vRef(index)
+    return index
+}
+/// The entry of `k`, or -1: by the index where the map is large and keyed by Strings.
+func _mapFind(_ m: V, _ k: V) -> Int {
+    if case .vStr(let s) = k, let index = rtMapIndex(m) { return index.at[s] ?? -1 }
+    return rtItems(m["entries"]).firstIndex { rtEq($0["k"], k) } ?? -1
+}
 func _mapGet(_ m: V, _ k: V) -> V {
     if case .vNull = m { return .vNull }
     if !_rtIsEntryMap(m) { return m[rtS(k)] }
@@ -1008,7 +1032,20 @@ func _mapRemove(_ m: V, _ k: V) -> V {
 func _mapKeys(_ m: V) -> V { rtArr(rtItems(m["entries"]).map { $0["k"] }) }
 func _mapValues(_ m: V) -> V { rtArr(rtItems(m["entries"]).map { $0["v"] }) }
 func _mapToList(_ m: V) -> V { rtArr(rtItems(m["entries"]).map { Tuple2($0["k"], $0["v"]) }) }
-func _mapFromPairs(_ pairs: V) -> V { rtItems(pairs).reduce(_mapEmpty()) { _mapPut($0, $1["_1"], $1["_2"]) } }
+/// A map of `pairs`, a later key's value in place of an earlier's: in one pass where every key is a String, as an
+/// app's table of words is, where a put per pair copied the whole map each time.
+func _mapFromPairs(_ pairs: V) -> V {
+    let items = rtItems(pairs)
+    var at: [String: Int] = [:]
+    var entries: [V] = []
+    entries.reserveCapacity(items.count)
+    for p in items {
+        guard case .vStr(let k) = p["_1"] else { return items.reduce(_mapEmpty()) { _mapPut($0, $1["_1"], $1["_2"]) } }
+        let e = rtObj(["k": p["_1"], "v": p["_2"]])
+        if let i = at[k] { entries[i] = e } else { at[k] = entries.count; entries.append(e) }
+    }
+    return rtObj(["_map": .vBool(true), "entries": rtArr(entries)])
+}
 func _mapConcat(_ m: V, _ pairs: V) -> V { rtItems(pairs).reduce(m) { _mapPut($0, $1["_1"], $1["_2"]) } }
 func _mapRemoveAll(_ m: V, _ keys: V) -> V { rtItems(keys).reduce(m) { _mapRemove($0, $1) } }
 func _mapEq(_ a: V, _ b: V) -> V {

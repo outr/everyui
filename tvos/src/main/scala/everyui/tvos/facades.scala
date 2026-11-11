@@ -161,6 +161,10 @@ class SGNode
 @native object uiReadTextThen {
   def apply(path: String, done: String => Unit): Unit = native.value
 }
+/** An ARB file's messages, parsed natively, its metadata left out ("" is none). */
+@native object uiArbMessages {
+  def apply(text: String): Map[String, String] = native.value
+}
 /** Both coordinates at once. */
 @native object uiSetTranslation {
   def apply(node: SGNode, x: Double, y: Double): Unit = native.value

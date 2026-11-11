@@ -368,6 +368,22 @@ func uiLoadImage(_ uri: V, _ loaded: V) throws -> V {
     return .vNull
 }
 
+/// An ARB file's messages as a map of Strings (Platform.parseMessages), parsed by JSONSerialization with its metadata
+/// (`@key`, `@@locale`) and anything that is not a string left out, as a Roku's uiArbMessages parses them natively:
+/// the Scala parser over the emitted String's characters took an app's table of thousands of words minutes, its first
+/// screen with it. Text that is not a JSON object throws, as the parser does.
+func uiArbMessages(_ text: V) throws -> V {
+    if rtS(text).isEmpty { return _mapEmpty() }   // no file, no words, as on a Roku
+    guard let any = try? JSONSerialization.jsonObject(with: Data(rtS(text).utf8)),
+          let json = any as? [String: Any] else {
+        return try RtThrow(rtException("RuntimeException", "not an ARB file: " + String(rtS(text).prefix(80))))
+    }
+    var pairs: [V] = []
+    pairs.reserveCapacity(json.count)
+    for (k, v) in json where !k.hasPrefix("@") { if let s = v as? String { pairs.append(Tuple2(.vStr(k), .vStr(s))) } }
+    return _mapFromPairs(rtArr(pairs))
+}
+
 /// A text file as UTF-8, then `done(text)` on the main queue (Platform.readText): one in the bundle by its path (a
 /// leading `/` is the bundle's root, as Android reads its assets and a Roku `pkg:/`), a `file:` URL, or one at an
 /// http(s) URL (an SVG icon), read off the main thread either way. One that is not there, or will not read, is logged

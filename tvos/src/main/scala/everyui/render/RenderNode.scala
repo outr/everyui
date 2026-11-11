@@ -822,8 +822,9 @@ object Platform {
   /** `f` once `seconds` have passed, on the main queue (uiAfter). */
   def after(seconds: Double, f: () => Unit): Unit = uiAfter(seconds, f)
 
-  /** An ARB file's messages (everyui.i18n.Arb). */
-  def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
+  /** An ARB file's messages, parsed by JSONSerialization (uiArbMessages): the Scala parser (everyui.i18n.Arb) took an
+    * app's thousands of words minutes here, as it did a Roku most of a minute. */
+  def parseMessages(arb: String): Map[String, String] = uiArbMessages(arb)
 
   /** A text file in the app's bundle (a translation, `/l10n/app_en.arb`: a leading `/` is the bundle's root, as an
     * Android app's assets and a Roku's `pkg:/` are), a `file:` URL, or one at an http(s) URL (an SVG icon), read off
