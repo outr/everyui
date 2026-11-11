@@ -1123,12 +1123,16 @@ func uiLog(_ message: V) -> V {
 /// Milliseconds on a monotonic clock — the animation clock.
 func uiTicks() -> V { .vDbl(CACurrentMediaTime() * 1000.0) }
 
-/// `f()` once `seconds` have passed, on the main queue (Platform.after), held for the collector until then.
+/// `f()` once `seconds` have passed, on the main queue (Platform.after), held for the collector until then; what it
+/// throws is reported with the timer and who set it (RtTimerRun).
 func uiAfter(_ seconds: V, _ f: V) -> V {
     let held = RtHeld.hold(f)
-    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.0, dbl(seconds))) {
+    RtTimers.next += 1
+    let id = RtTimers.next
+    let s = max(0.0, dbl(seconds))
+    DispatchQueue.main.asyncAfter(deadline: .now() + s) {
         RtHeld.release(held)
-        RtGuard("a timer", f, [])
+        RtTimerRun(id, s, f)
     }
     return .vNull
 }

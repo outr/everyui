@@ -1231,12 +1231,62 @@ func RapidTask_sync(_ t: V) throws -> V {
     return box["v"]
 }
 /** A one-shot timer on the main queue: `cb` (a zero-argument closure) runs after `ms`, held for the cycle collector
-  * until then, and what it throws is reported (RtReportError) as nothing caught it. */
+  * until then, and what it throws is reported (RtReportError) as nothing caught it, the timer said with it
+  * (RtTimerRun). */
 func RtSetTimeout(_ ms: Double, _ cb: V) {
     let held = RtHeld.hold(cb)
+    RtTimers.next += 1
+    let id = RtTimers.next
     DispatchQueue.main.asyncAfter(deadline: .now() + max(ms, 0) / 1000.0) {
         RtHeld.release(held)
-        _ = RtGuard("a timer", cb, [])
+        RtTimerRun(id, ms / 1000.0, cb)
+    }
+}
+
+/** The timers set (RtSetTimeout, uiAfter, uiLater), each numbered for what it says should it fail. */
+enum RtTimers {
+    static var next = 0
+}
+
+/** A timer's closure run (the timer `id`, set `seconds` ahead): what it throws, or a closure that is not one any more,
+  * is reported as RtGuard reports it, saying which timer it was and who set it (RtDescribe of its closure, held since).
+  * "in a timer: RuntimeException: not a function: nil" said only that something had failed in one. */
+func RtTimerRun(_ id: Int, _ seconds: Double, _ cb: V) {
+    func place() -> String {
+        "a timer (#\(id), \(seconds == 0 ? "the next turn" : String(format: "%.3g s", seconds)), set by " +
+            RtDescribe(cb, 3) + ")"
+    }
+    if !rtIsFn(cb) {
+        RtReportProblem(place(), "the timer's closure is gone: " + rtKindName(cb), "")
+        return
+    }
+    do { _ = try RtInvoke(cb, rtArr([])) }
+    catch { RtReportError(place(), error) }
+}
+
+/** A closure of the program's said for a person reading a report: the class whose code made it (its env's `self`)
+  * and the names it holds, or, for one of the runtime's (RtCb, rtThunk), the closures it keeps, `depth` deep. An
+  * object the collector cleared says so: it has no fields left. */
+func RtDescribe(_ v: V, _ depth: Int) -> String {
+    guard case .vObj(let o) = v else { return rtKindName(v) }
+    if o.fields.isEmpty { return "an object the collector cleared" }
+    guard rtIsFn(v) else {
+        if case .vStr(let c) = v["_cls"] { return "a " + c }
+        return "an object"
+    }
+    switch v["env"] {
+    case .vObj(let env):
+        let me = env.fields["self"] ?? .vNull
+        var owner = "an object"
+        if case .vStr(let c) = me["_cls"] { owner = c } else if case .vNull = me { owner = "no object" }
+        let names = env.fields.keys.filter { $0 != "self" }.sorted()
+        return "a closure of " + owner + (names.isEmpty ? "" : " holding " + names.joined(separator: ", "))
+    case .vArr(let kept):
+        let inner = kept.items.filter { rtIsFn($0) }
+        if inner.isEmpty || depth <= 0 { return "a closure of the runtime's" }
+        return "a closure of the runtime's for " + inner.map { RtDescribe($0, depth - 1) }.joined(separator: " and ")
+    default:
+        return "a closure"
     }
 }
 
