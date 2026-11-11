@@ -262,6 +262,11 @@ its own goes there by `Platform.later` first. On Android a change made elsewhere
 frame was asked of that thread's Choreographer, which threw), and every scroll and animation after it stood still;
 the frame now goes to the main thread whatever thread asks, and the first few such wakes are logged (`frames: woken
 off the main thread`) with the stack that made them, to be moved.
+Where the loop is guarded (Android) a frame asked for and not come in a second is asked for again, and a warning
+says so (`frames: a frame asked for … ms ago has not come, asked again`). Which it was is known when one of the two
+comes: the first frame coming after all means the main thread was only held up (a long build), said as info; the one
+asked in its place coming first means the frame was lost, an error (`… never came, the one asked in its place did`).
+A busy main thread so costs one warning, and only a frame really lost is an error.
 
 Work done in `update` every frame must say it needs frames, or it stops when nothing else needs them:
 

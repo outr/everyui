@@ -58,10 +58,12 @@ object Frames {
   private var askedAt = 0.0
   /** Whether the frame waited for was asked by the frame before it, rather than by what woke the loop. */
   private var chained = false
-  /** The loop whose frame was last given up on (`overdue`), and when that frame was asked: one that comes after all
-    * says the thread was held up rather than the frame lost. */
+  /** The first loop whose frame was given up on (`overdue`) and is not yet known to be lost or late, or -1; when that
+    * frame was asked, and by what. One that comes after all says the thread was held up; the one asked in its place
+    * coming first says it was lost. */
   private var givenUp = -1
   private var givenAt = 0.0
+  private var givenBy = ""
   /** Where what woke the loop last came from, as [[origin]] had it. */
   private var wokeFrom: AnyRef = null
 
@@ -151,6 +153,7 @@ object Frames {
     wokeAt = -1.0
     loop += 1
     chained = false
+    givenUp = -1
     next(loop)
   }
 
@@ -158,7 +161,7 @@ object Frames {
     * without a Looper) leaves the loop idle, for the next wake to ask again, rather than running with nothing asked. */
   private def next(of: Int): Unit = {
     askedAt = Platform.ticks()
-    try schedule(() => if (of == loop) step() else if (of == givenUp) late())
+    try schedule(() => if (of == loop) step() else if (givenUp >= 0 && of >= givenUp) late())
     catch {
       case t: Throwable =>
         asleep = true
@@ -170,6 +173,7 @@ object Frames {
   /** One frame of the loop on demand, and the next asked for if anything needs it. A frame that fails is logged and
     * the loop goes on, as it would have without it: a loop stopped by one failure never ran again. */
   private def step(): Unit = {
+    if (givenUp >= 0) confirmLost()
     val woke = wokeAt
     wokeAt = -1.0
     stepped += 1
@@ -199,15 +203,24 @@ object Frames {
   }
 
   /** The frame the loop waits for, if it has not come in [[patience]] ms, given up on and asked for again: the one
-    * asked was lost (Android's, posted to a Choreographer that never ran it). Logged, with where it was asked from. */
+    * asked may be lost (Android's, posted to a Choreographer that never ran it), or only late (the thread held up by a
+    * long build). A warning says so, with where it was asked from; which it was is known when one of the two comes
+    * (frames come in the order asked): the one given up on first is late, said as info ([[late]]), and the one asked
+    * in its place first means it was lost, an error ([[step]]). A busy thread so costs one warning, and a frame lost
+    * one warning and one error. Given up on again before either comes, the frame is asked again and nothing more is
+    * said. */
   private def overdue(): Unit = if (demand && !stepping) {
     val waited = Platform.ticks() - askedAt
     if (waited > patience) {
-      lost += 1
-      everyui.scribe.error("frames: a frame asked for " + waited.toInt.toString + " ms ago never came, asked again; it was asked " +
-        (if (chained) "by the frame before it" else "on waking, from " + (if (wokeFrom == null) "unknown" else wokeFrom.toString)))
-      givenUp = loop
-      givenAt = askedAt
+      if (givenUp < 0) {
+        lost += 1
+        givenBy = if (chained) "by the frame before it"
+          else "on waking, from " + (if (wokeFrom == null) "unknown" else wokeFrom.toString)
+        everyui.scribe.warn("frames: a frame asked for " + waited.toInt.toString + " ms ago has not come, asked " +
+          "again; it was asked " + givenBy)
+        givenUp = loop
+        givenAt = askedAt
+      }
       loop += 1
       wokeAt = Platform.ticks()
       chained = false
@@ -216,12 +229,20 @@ object Frames {
   }
 
   /** A frame given up on came after all: the thread that runs frames was held up (a long build), not the frame lost.
-    * Said once, so the report before it is read for what it was; the one asked in its place runs the loop on. */
+    * Said once, as info, so the warning before it is read for what it was; the one asked in its place runs the loop
+    * on. */
   private def late(): Unit = {
     givenUp = -1
     lost -= 1
-    everyui.scribe.warn("frames: the frame given up on came after all, " + (Platform.ticks() - givenAt).toInt.toString +
+    everyui.scribe.info("frames: the frame given up on came after all, " + (Platform.ticks() - givenAt).toInt.toString +
       " ms after it was asked: the thread was held up, not the frame lost")
+  }
+
+  /** The frame asked in place of one given up on came first: that one was lost, an error. */
+  private def confirmLost(): Unit = {
+    givenUp = -1
+    everyui.scribe.error("frames: a frame asked for " + (Platform.ticks() - givenAt).toInt.toString + " ms ago never " +
+      "came, the one asked in its place did; it was asked " + givenBy)
   }
 
   /** One frame of the loop where every frame runs. */

@@ -284,6 +284,9 @@ class FramesSpec extends FxSpec {
         Frames.lost shouldBe before + 1
         frames() shouldBe 2
         Frames.running shouldBe false
+        // a warning when given up on, an error only once the one asked in its place came first
+        warnings.size shouldBe 1
+        warnings.head should include("has not come")
         errors.size shouldBe 1
         errors.head should include("never came")
         errors.head should include("on waking, from the spec's wake")
@@ -302,10 +305,47 @@ class FramesSpec extends FxSpec {
         // that one, and the one asked in its place, which runs the loop on: two frames, no more
         frames() shouldBe 2
         Frames.lost shouldBe before
-        errors.size shouldBe 1
+        // a busy thread: one warning, no error, its coming after all said as info only
+        errors shouldBe empty
         warnings.size shouldBe 1
-        warnings.head should include("came after all")
+        warnings.head should include("has not come")
         Frames.running shouldBe false
+      }
+    }
+
+    "warn once for a thread held up past several give-ups, with no error when the first frame comes" in fx {
+      guarded(20.0) {
+        fresh()
+        val before = Frames.lost
+        Frames.wake()
+        Thread.sleep(40L)
+        Frames.wake()
+        Thread.sleep(40L)
+        Frames.wake()
+        Frames.lost shouldBe before + 1
+        // the first, late; the two asked after it, the last of which runs the loop on
+        frames() should be >= 2
+        Frames.lost shouldBe before
+        errors shouldBe empty
+        warnings.size shouldBe 1
+        Frames.running shouldBe false
+      }
+    }
+
+    "say a frame is lost, as an error, only once the one asked in its place comes before it" in fx {
+      guarded(20.0) {
+        fresh()
+        asking = _ => ()
+        Frames.wake()
+        asking = keep
+        Thread.sleep(40L)
+        Frames.wake()
+        // given up on and asked again, but nothing known yet: a warning and no error
+        warnings.size shouldBe 1
+        errors shouldBe empty
+        frames() shouldBe 2
+        errors.size shouldBe 1
+        errors.head should include("never came")
       }
     }
 
