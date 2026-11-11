@@ -71,6 +71,7 @@ $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
     -framework UIKit -framework CoreText -framework QuartzCore \
     src/ScalaRuntime.swift src/UniversalRuntime.swift src/App.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
   test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && cp -r src/images src/fonts EveryUI.app/ && \
+  { cp src/*.html EveryUI.app/ 2>/dev/null; true; } && \
   plutil -replace UIDeviceFamily -json '$FAMILY' EveryUI.app/Info.plist && \
   xcrun actool src/Assets.xcassets --compile EveryUI.app --platform $SDK $TARGETS --minimum-deployment-target 15.0 \
     --app-icon '$APPICON' --output-partial-info-plist icons.plist > actool.log 2>&1 && \

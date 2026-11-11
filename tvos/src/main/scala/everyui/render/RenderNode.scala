@@ -130,16 +130,25 @@ class RenderNode(val sg: SGNode) {
   def setMediaSpectrum(on: Boolean): Unit = ()
   def mediaBands(): List[Double] = Nil
 
-  // ---- a page of the web ----
-  def setWebSource(url: String): Unit = ()
-  def setWebAgent(agent: String): Unit = ()
-  def setWebSandbox(flags: Option[Set[String]]): Unit = ()
-  def setWebClear(clear: Boolean): Unit = ()
-  def runWebScript(script: String): Unit = ()
-  def onWebMessage(f: String => Unit): Unit = ()
-  def setWebHearSandboxed(on: Boolean): Unit = ()
-  def askWeb(id: Int, request: String): Boolean = false
-  def onWebReply(f: (Int, String) => Unit): Unit = ()
+  // ---- a page of the web: a WKWebView on iOS (uiWeb), which keeps its state; nothing on tvOS (no WebKit) ----
+  /** Show this address: a path the bundle holds is that file, a site-absolute one it does not the app's server's. */
+  def setWebSource(url: String): Unit = uiWebLoad(sg, url, Platform.origin())
+  /** Who the page is told is asking, for the loads after this one; empty is the engine's own. */
+  def setWebAgent(agent: String): Unit = uiWebAgent(sg, agent)
+  /** The page sandboxed with `flags` allowed, as near as WebKit comes to it after the view is made. */
+  def setWebSandbox(flags: Option[Set[String]]): Unit =
+    uiWebSandbox(sg, flags.nonEmpty, flags.map(f => f.mkString(",")).getOrElse(""))
+  /** The view drawn clear rather than black, so a transparent page shows what is behind it. */
+  def setWebClear(clear: Boolean): Unit = uiWebClear(sg, clear)
+  /** Say something to the page, in its own language: nothing where it is sandboxed. */
+  def runWebScript(script: String): Unit = uiWebRun(sg, script)
+  /** Hear what the page says back through its bridge. */
+  def onWebMessage(f: String => Unit): Unit = uiWebOnMessage(sg, f)
+  /** A sandboxed page heard too (`on`): lent the bridge, which is all it is lent, the page loaded again with it. */
+  def setWebHearSandboxed(on: Boolean): Unit = uiWebHearSandboxed(sg, on)
+  /** `request` posted to the page as `{everyui: "ask", session, id, request}`; false where it cannot be asked. */
+  def askWeb(id: Int, request: String): Boolean = uiWebAsk(sg, id, request)
+  def onWebReply(f: (Int, String) => Unit): Unit = uiWebOnReply(sg, f)
   def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = ()
   // ---- a rich document's editing surface: none here yet (Platform.richEditing); the editor edits its Markdown ----
   def setRichDoc(doc: everyui.rich.RichDoc, selection: everyui.rich.RichRange): Unit = ()
@@ -149,7 +158,8 @@ class RenderNode(val sg: SGNode) {
   def onRichHeight(f: Double => Unit): Unit = ()
   def focusRich(selection: everyui.rich.RichRange): Unit = ()
   def richSelection(): Option[everyui.rich.RichRange] = None
-  def releaseWeb(): Unit = ()
+  /** Heard no more, its page stopped, left on about:blank and taken off the screen: the app is done with it. */
+  def releaseWeb(): Unit = uiWebRelease(sg)
 
   // ---- an embed (everyui.component.Embed): tvOS lends no web engine (WebKit is not public there), so its fallback
   // shows ----
@@ -404,8 +414,9 @@ object Nodes {
   /** A form (`everyui.form.Form`): a container here. */
   def form(kind: String): RenderNode = container()
 
-  /** A page of the web: nothing here, where the platform has no engine of its own to lend. */
-  def web(bridge: String): RenderNode = container()
+  /** A page of the web: a WKWebView on iOS, its page lent `<bridge>.postMessage("...")`; an empty view on tvOS,
+    * which has no WebKit. */
+  def web(bridge: String): RenderNode = new RenderNode(uiWeb(bridge))
 
   /** An embed's box (everyui.component.Embed): a plain view, which holds its fallback. */
   def embed(name: String, site: everyui.component.EmbedSite): RenderNode = container()
@@ -460,10 +471,10 @@ object Platform {
   def sizesOf(nodes: List[RenderNode]): List[(Double, Double)] = nodes.map(_.getSize())
 
   /** Whether this device can go on playing in a corner of whatever the viewer does next, and doing it. */
-  /** Whether this platform has a browser engine to lend a page (Nodes.web): not yet here. */
-  def webViews(): Boolean = false
-  /** No engine to warm (WebView.prewarm). */
-  def prewarmWeb(): Unit = ()
+  /** Whether this platform has a browser engine to lend a page (Nodes.web): WebKit on iOS, none on tvOS. */
+  def webViews(): Boolean = uiWebViews()
+  /** One web view made ready, its page process started, for the next page to take (WebView.prewarm): on iOS. */
+  def prewarmWeb(): Unit = uiWebPrewarm()
   /** Whether a web guest runs in an embed here: no engine to run one. */
   def embeds(): Boolean = false
 

@@ -458,6 +458,9 @@ lazy val tvos = (project in file("tvos"))
       AppleApp.assemble(outDir, Seq(swift / "runtime" / "ScalaRuntime.swift", swift / "runtime" / "UniversalRuntime.swift",
         swift / "app" / "main.swift"), everyuiAppleInfoPlist.value, Some(swift / "app" / "Assets.xcassets"),
         Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"))
+      // demo=webview's pages, in the bundle beside the app as they are beside the web build
+      Seq("webview.html", "sandbox.html").foreach(p => IO.copyFile(root / "web" / p, outDir / p))
+      outDir
     }
   )
 

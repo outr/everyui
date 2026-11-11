@@ -4689,6 +4689,11 @@ The same compiler writes the app as Swift (`App.swift`), and `AppleApp.assemble`
 Info.plist, the icons and the assets beside it. The build itself is Xcode's (swiftc and actool, on a Mac); EveryUI's
 `tools/tvos-run.sh` shows the commands.
 
+The same Swift builds for an iPhone and an iPad (`tools/tvos-run.sh --ios`): the runtime chooses what differs between
+them as it is compiled, with `#if os(iOS)`, so one emitted app serves both. A WebView is a WKWebView on iOS, and WebKit
+is imported, and linked, only there (`otool -L` on a tvOS build shows no WebKit); on tvOS `Platform.webViews()` is false
+and the view an empty box (see WebView).
+
 ```scala
 @transient lazy val emitSwift = taskKey[File]("The app as Swift, with what an Apple TV build takes, in out-swift/")
 
@@ -5153,9 +5158,9 @@ chords the app keeps (`Keymap.embed(name, chords*)`); a key it does not want it 
 ## WebView (`everyui.component.WebView`)
 
 A page of the web drawn in place by the platform's own engine, for what is only ever published as a page (a YouTube
-embed): Android's WebView, and on the web an `<iframe>` filling the box (`allow="autoplay; encrypted-media;
-fullscreen"`, no border, out of the tab order). `Platform.webViews()` says whether there is an engine; where there is
-none (the desktop for now, the Roku, the Apple TV) it is an empty box.
+embed): Android's WebView, a WKWebView on iOS (an iPhone or an iPad), and on the web an `<iframe>` filling the box
+(`allow="autoplay; encrypted-media; fullscreen"`, no border, out of the tab order). `Platform.webViews()` says whether
+there is an engine; where there is none (the desktop for now, the Roku, the Apple TV) it is an empty box.
 
 ```scala
 val page = new WebView("naboBridge")   // the page calls naboBridge.postMessage("...")
@@ -5215,6 +5220,30 @@ Android 13 and later so its video is tinted with the rest, at a frame of the app
 `demo=webview` shows `web/webview.html` (copied beside the build), or `src=<url>` for the same page served from another
 origin.
 
+**iOS.** The same build serves an iPhone, an iPad and an Apple TV, and the Swift runtime tells them apart as it is
+compiled (`#if os(iOS)`): WebKit is imported, and so linked, on iOS alone, and an Apple TV build neither references
+nor links it (tvOS has no WebKit), its `webViews()` false and its WebView an empty box as before. On iOS a WebView is a
+WKWebView placed in the app's view tree as any other node is, configured as Android's is: script and storage on,
+video inline (`allowsInlineMediaPlayback`) and playing without a touch (`mediaTypesRequiringUserActionForPlayback`
+empty), picture in picture allowed. The bridge is put on the page's window as it starts to load
+(`window.<bridge>.postMessage(string)`, a string as Android's is; what the page posts reaches WebKit's message handler
+of that name), from the page's own frame alone; `run` is WebKit's `evaluateJavaScript`, and as on Android a script run
+before the page has loaded is not kept for it. `ask` posts as on Android, and its reply comes back over the bridge.
+`clear` draws the view clear rather than black, `agent` is WebKit's `customUserAgent`. A source that is a path
+(`webview.html`, `/pages/help.html`) is the app bundle's file where the bundle holds one, a site-absolute one it does
+not is the app's server's (`Platform.origin()`), and anything else is loaded as it is (`https:`, `data:`). Taken apart,
+the page is stopped, left on `about:blank`, its bridge taken off and the view taken out of the tree. `WebView.prewarm()`
+makes one WKWebView ahead, its page process started on `about:blank`, for the next WebView to take. A page whose
+process iOS ends to have its memory back is shown again rather than left blank, and a page that fails to load is
+logged (`[ui] web: …`). The view is not in the app's focus: touches reach it as UIKit gives them, and a field in the
+page takes the keyboard as it would in Safari. `Platform.tint` draws nothing on Apple devices, so there is no tint to
+reach the page. There is no title or navigation event to hear, on iOS as on every platform.
+
+A YouTube embed (`https://www.youtube.com/embed/<id>`) loaded as the view's own address is refused by YouTube
+("Error 153") on iOS, as it is wherever the request carries no referrer: show it from a page of the app's own server
+that holds the embed (`/yt-embed?v=...`, as above), and add `playsinline=1` to the embed's address, which an iPhone
+needs to play it in its box rather than full screen.
+
 `sandbox` (`Prop[Option[Set[String]]]`, `None` by default: no sandbox, as before) keeps a page apart from the app, as
 an iframe's `sandbox` attribute does: `Some(flags)` allows only the iframe flags it names, `Some(Set())` nothing. Set
 it before `source`; a change loads the page again, since an engine honours it only as a page loads. A sandboxed page
@@ -5245,6 +5274,14 @@ What each platform honours:
   cookies (one store for the whole app) still go with its requests, and with "allow-scripts" its script can read the
   ones not HttpOnly and call that origin as itself; a form sent by GET is a link to the WebView, and goes. Show a
   sandboxed page from an origin that holds nothing of the app's, or as a `data:` address.
+- **iOS.** As near as WebKit comes once the view is made, again loading the page as it changes. Sandboxed at all:
+  the bridge taken off the page's window, `run` doing nothing, and a navigation to anything but a page (`http:`,
+  `https:`, `about:`, `data:`, `blob:`, or the source the app gave) going nowhere. By flag: the page's script only with
+  "allow-scripts" (`allowsContentJavaScript`, each load); a form sent (GET or POST) refused without "allow-forms"; a
+  new window opening nowhere without "allow-popups", and with it, as unsandboxed, replacing the page. It cannot give
+  the page an origin of its own or take its storage away: the store is the app's, so without "allow-same-origin" its
+  cookies and storage are still there. Show a sandboxed page from an origin that holds nothing of the app's, or as a
+  `data:` address.
 - **The desktop, the Roku and the Apple TV.** No engine lends a page there (`Platform.webViews()` is false), so the
   view is an empty box and `sandbox` is ignored with it.
 
@@ -5260,6 +5297,7 @@ still does nothing. Set it before `source`.
 
 - **Web**: the iframe's messages, from its opaque origin. The page posts with `parent.postMessage(m, '*')`.
 - **Android**: the page is lent `<bridge>` and nothing more.
+- **iOS**: as on Android, `<bridge>` on the page's window and nothing more.
 
 A page written for both says it however it can:
 

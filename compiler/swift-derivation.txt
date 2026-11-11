@@ -100,7 +100,8 @@ class SwiftEmitter(
         case '\n' => sb.append("\\n")
         case '\r' => sb.append("\\r")
         case '\t' => sb.append("\\t")
-        case c if c < ' ' => sb.append("\\u{" + c.toInt.toHexString + "}")
+        // every control character escaped: swiftc refuses DEL and the C1 controls written as they are
+        case c if c < ' ' || (c >= '\u007f' && c <= '\u009f') => sb.append("\\u{" + c.toInt.toHexString + "}")
         case c => sb.append(c)
       }
       sb.append("\"").toString

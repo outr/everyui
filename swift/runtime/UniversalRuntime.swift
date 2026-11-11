@@ -1,4 +1,4 @@
-// everyui — the UIKit support runtime for the Swift backend (tvOS, and iOS to come).
+// everyui — the UIKit support runtime for the Swift backend (tvOS and iOS).
 //
 // The render seam's primitives as plain Swift functions over `V`, one per `@native` facade in
 // tvos/src/main/scala/everyui/tvos/facades.scala — the twin of roku/runtime/UniversalRuntime.brs. A node is a
@@ -10,6 +10,9 @@ import UIKit
 import CoreText
 import QuartzCore
 import MediaAccessibility
+#if os(iOS)
+import WebKit   // WebView: there is no WebKit on tvOS, so a tvOS build neither references nor links it
+#endif
 
 // MARK: - app state
 
@@ -816,6 +819,312 @@ func uiCaptionsUnlisten(_ id: V) -> V {
     NotificationCenter.default.removeObserver(observer)
     return .vNull
 }
+
+// MARK: - a page of the web (everyui.component.WebView): a WKWebView on iOS; tvOS has no WebKit, so an empty box
+
+#if os(iOS)
+
+/// What a page posts through its bridge, handed to the page it came from. A handler of its own, holding the page
+/// weakly: WebKit keeps a message handler as long as its controller, and the page holds the controller.
+final class WebSaid: NSObject, WKScriptMessageHandler {
+    weak var page: WebPage?
+    init(_ page: WebPage) { self.page = page }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        // only what the page's own frame says is heard, as on the web
+        if message.frameInfo.isMainFrame { page?.said(message.body) }
+    }
+}
+
+/// A page of the web: a WKWebView configured as Android's WebView is (`Nodes.web`): script and storage on, media
+/// that plays inline and without a touch, black behind the page until the app makes it clear. Its page is lent
+/// `window.<bridge>.postMessage(string)`, which reaches `heard`; a reply to `ask` (`{everyui: "reply", session, id,
+/// reply}`, this showing's session) reaches `replied` instead. A sandbox comes as near to an iframe's as WebKit lets it
+/// after the view is made (`sandbox`).
+final class WebPage: WKWebView, WKNavigationDelegate, WKUIDelegate {
+    /// The one made ready by WebView.prewarm, for the next page to take.
+    static var spare: WebPage? = nil
+
+    let content: WKUserContentController
+    var bridge = ""
+    var heard: V = .vNull
+    var replied: V = .vNull
+    /// This showing's: new as each source is set, so a reply from a page no longer showing is not this one's.
+    var session = ""
+    var source = ""
+    /// The app's server, for a site-absolute source the bundle does not hold.
+    var origin = ""
+    /// What the app last asked to show, which a sandbox lets through whatever its scheme.
+    var asked: URL? = nil
+    /// The sandbox's flags, or nil for none; and whether a sandboxed page is heard all the same.
+    var flags: Set<String>? = nil
+    var hearing = false
+    var released = false
+
+    init() {
+        let content = WKUserContentController()
+        let c = WKWebViewConfiguration()
+        c.userContentController = content
+        // an embed that waits for a touch, or plays only full screen, is a YouTube trailer that never plays in its box
+        c.allowsInlineMediaPlayback = true
+        c.mediaTypesRequiringUserActionForPlayback = []
+        c.allowsPictureInPictureMediaPlayback = true
+        self.content = content
+        super.init(frame: .zero, configuration: c)
+        navigationDelegate = self
+        uiDelegate = self
+        scrollView.contentInsetAdjustmentBehavior = .never
+        setClear(false)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    var sandboxed: Bool { flags != nil }
+    /// Whether the page is lent the bridge and heard: unsandboxed, or sandboxed and heard all the same.
+    var lent: Bool { !sandboxed || hearing }
+    func allows(_ flag: String) -> Bool { flags.map { $0.contains(flag) } ?? true }
+
+    /// The bridge on the page's window from the loads after this, or taken off it.
+    func lend() {
+        content.removeAllUserScripts()
+        content.removeScriptMessageHandler(forName: bridge)
+        if bridge.isEmpty || !lent || released { return }
+        content.add(WebSaid(self), name: bridge)
+        let name = webJson(bridge)
+        let script = "window[\(name)] = { postMessage: function (m) { " +
+            "window.webkit.messageHandlers[\(name)].postMessage(String(m)); } };"
+        content.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    func setClear(_ clear: Bool) {
+        let ground: UIColor = clear ? .clear : .black
+        isOpaque = false
+        backgroundColor = ground
+        scrollView.backgroundColor = ground
+        underPageBackgroundColor = ground
+    }
+
+    /// Show `url`: a path the app's bundle holds is that file; a site-absolute one it does not, the app's server's
+    /// (`origin`) where it has one; anything else as it is.
+    func show(_ url: String, _ origin: String) {
+        source = url.trimmingCharacters(in: .whitespaces)
+        session = String(Int.random(in: 0..<Int(1.0e12)), radix: 36)
+        navigate(origin)
+    }
+
+    func navigate(_ origin: String) {
+        self.origin = origin
+        if source.isEmpty || released { return }
+        if URL(string: source)?.scheme == nil {
+            let path = String(source.prefix { $0 != "?" && $0 != "#" })
+            let file = bundlePath(path)
+            if !path.isEmpty, FileManager.default.fileExists(atPath: file), let root = Bundle.main.resourceURL {
+                let at = URL(fileURLWithPath: file)
+                asked = at
+                loadFileURL(at, allowingReadAccessTo: root)
+                return
+            }
+        }
+        var at = source
+        if source.hasPrefix("//") { at = "https:" + source }
+        else if source.hasPrefix("/") && !origin.isEmpty {
+            at = (origin.hasSuffix("/") ? String(origin.dropLast()) : origin) + source
+        }
+        guard let u = URL(string: at) else { print("[ui] web: not an address: \(source)"); return }
+        asked = u
+        load(URLRequest(url: u))
+    }
+
+    /// Sandboxed with `allowed` (nil: not at all), and the page loaded again where it shows one.
+    func sandbox(_ allowed: Set<String>?) {
+        if allowed == flags { return }
+        flags = allowed
+        lend()
+        navigate(origin)
+    }
+
+    func hear(_ on: Bool) {
+        if on == hearing { return }
+        hearing = on
+        if sandboxed {
+            lend()
+            navigate(origin)
+        }
+    }
+
+    func said(_ body: Any) {
+        if released { return }
+        let message = webText(body)
+        if message.hasPrefix("{\"everyui\":\"reply\"") {
+            if let data = message.data(using: .utf8),
+               let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                if reply["session"] as? String == session, let id = reply["id"] as? Int {
+                    _ = try? RtInvoke(replied, rtArr([.vInt(id), .vStr(reply["reply"].map(webText) ?? "")]))
+                }
+                return
+            }
+        }
+        _ = try? RtInvoke(heard, rtArr([.vStr(message)]))
+    }
+
+    /// Heard no more, its page stopped and left on about:blank, and taken off the screen: the app is done with it.
+    func release() {
+        if released { return }
+        released = true
+        heard = .vNull
+        replied = .vNull
+        stopLoading()
+        load(URLRequest(url: URL(string: "about:blank")!))
+        content.removeAllUserScripts()
+        content.removeScriptMessageHandler(forName: bridge)
+        navigationDelegate = nil
+        uiDelegate = nil
+        removeFromSuperview()
+    }
+
+    // script by "allow-scripts"; sandboxed, a form posted is refused without "allow-forms", and a link anywhere but a
+    // page goes nowhere, as Android's SandboxClient has it
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
+                 decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        preferences.allowsContentJavaScript = allows("allow-scripts")
+        if sandboxed && action.targetFrame?.isMainFrame != false && action.request.url != asked {
+            let scheme = action.request.url?.scheme?.lowercased() ?? ""
+            let form = action.navigationType == .formSubmitted || action.navigationType == .formResubmitted
+            if (form && !allows("allow-forms")) || !["http", "https", "about", "data", "blob"].contains(scheme) {
+                decisionHandler(.cancel, preferences)
+                return
+            }
+        }
+        decisionHandler(.allow, preferences)
+    }
+
+    // a new window (window.open, target="_blank") replaces the page, as on Android; sandboxed, only with "allow-popups"
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if allows("allow-popups") { load(action.request) }
+        return nil
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        failed(error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
+
+    func failed(_ error: Error) {
+        let e = error as NSError
+        if e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled { return }
+        print("[ui] web: \(source) did not load: \(e.localizedDescription)")
+    }
+
+    // iOS ends a page's process to have its memory back, which leaves the view blank: the page is shown again
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        print("[ui] web: the page's process ended; showing \(source) again")
+        navigate(origin)
+    }
+}
+
+/// A string as a JSON string, for script.
+func webJson(_ s: String) -> String {
+    guard let data = try? JSONSerialization.data(withJSONObject: [s]), let a = String(data: data, encoding: .utf8)
+    else { return "\"\"" }
+    return String(a.dropFirst().dropLast())
+}
+
+/// What a page said as a string: a string as it is, anything else as its JSON.
+func webText(_ body: Any) -> String {
+    if let s = body as? String { return s }
+    if JSONSerialization.isValidJSONObject(body), let data = try? JSONSerialization.data(withJSONObject: body),
+       let s = String(data: data, encoding: .utf8) { return s }
+    return "\(body)"
+}
+
+func webPage(_ node: V) -> WebPage? { view(node) as? WebPage }
+
+func uiWebViews() -> V { .vBool(true) }
+
+/// A view made ready, with its page process started, for the next WebView to take (WebView.prewarm).
+func uiWebPrewarm() -> V {
+    if WebPage.spare == nil {
+        let began = CACurrentMediaTime()
+        let page = WebPage()
+        page.load(URLRequest(url: URL(string: "about:blank")!))
+        WebPage.spare = page
+        print("[ui] web: warmed, a view made in \(Int((CACurrentMediaTime() - began) * 1000.0)) ms")
+    }
+    return .vNull
+}
+
+func uiWeb(_ bridge: V) -> V {
+    let page = WebPage.spare ?? WebPage()
+    WebPage.spare = nil
+    page.bridge = rtS(bridge)
+    page.lend()
+    place(page, Geo())
+    return .vRef(page)
+}
+
+func uiWebLoad(_ node: V, _ url: V, _ origin: V) -> V { webPage(node)?.show(rtS(url), rtS(origin)); return .vNull }
+
+func uiWebAgent(_ node: V, _ agent: V) -> V {
+    let a = rtS(agent).trimmingCharacters(in: .whitespaces)
+    webPage(node)?.customUserAgent = a.isEmpty ? nil : a
+    return .vNull
+}
+
+/// Sandboxed (`on`) with `flags`, comma-separated, allowed.
+func uiWebSandbox(_ node: V, _ on: V, _ flags: V) -> V {
+    let allowed = rtB(on) ? Set(rtS(flags).split(separator: ",").map { String($0) }) : nil
+    webPage(node)?.sandbox(allowed)
+    return .vNull
+}
+
+func uiWebHearSandboxed(_ node: V, _ on: V) -> V { webPage(node)?.hear(rtB(on)); return .vNull }
+
+func uiWebClear(_ node: V, _ clear: V) -> V { webPage(node)?.setClear(rtB(clear)); return .vNull }
+
+/// Script run in the page, where it is not sandboxed.
+func uiWebRun(_ node: V, _ script: V) -> V {
+    if let page = webPage(node), !page.sandboxed, !page.released {
+        page.evaluateJavaScript(rtS(script), completionHandler: nil)
+    }
+    return .vNull
+}
+
+/// `{everyui: "ask", session, id, request}` posted to the page; false where it is not heard or shows nothing.
+func uiWebAsk(_ node: V, _ id: V, _ request: V) -> V {
+    guard let page = webPage(node), page.lent, !page.released, !page.session.isEmpty else { return .vBool(false) }
+    let message: [String: Any] = [
+        "everyui": "ask", "session": page.session, "id": Int(dbl(id)), "request": rtS(request)]
+    guard let data = try? JSONSerialization.data(withJSONObject: message),
+          let json = String(data: data, encoding: .utf8) else { return .vBool(false) }
+    page.evaluateJavaScript("window.postMessage(" + json + ", '*')", completionHandler: nil)
+    return .vBool(true)
+}
+
+func uiWebOnMessage(_ node: V, _ f: V) -> V { if let p = webPage(node), !p.released { p.heard = f }; return .vNull }
+
+func uiWebOnReply(_ node: V, _ f: V) -> V { if let p = webPage(node), !p.released { p.replied = f }; return .vNull }
+
+func uiWebRelease(_ node: V) -> V { webPage(node)?.release(); return .vNull }
+
+#else
+
+// tvOS: WebKit is not public here, so nothing of it is referenced or linked, and a page is an empty box
+func uiWebViews() -> V { .vBool(false) }
+func uiWebPrewarm() -> V { .vNull }
+func uiWeb(_ bridge: V) -> V { uiContainer() }
+func uiWebLoad(_ node: V, _ url: V, _ origin: V) -> V { .vNull }
+func uiWebAgent(_ node: V, _ agent: V) -> V { .vNull }
+func uiWebSandbox(_ node: V, _ on: V, _ flags: V) -> V { .vNull }
+func uiWebHearSandboxed(_ node: V, _ on: V) -> V { .vNull }
+func uiWebClear(_ node: V, _ clear: V) -> V { .vNull }
+func uiWebRun(_ node: V, _ script: V) -> V { .vNull }
+func uiWebAsk(_ node: V, _ id: V, _ request: V) -> V { .vBool(false) }
+func uiWebOnMessage(_ node: V, _ f: V) -> V { .vNull }
+func uiWebOnReply(_ node: V, _ f: V) -> V { .vNull }
+func uiWebRelease(_ node: V) -> V { .vNull }
+
+#endif
 
 // MARK: - lifecycle
 

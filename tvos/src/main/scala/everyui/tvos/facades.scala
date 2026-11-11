@@ -258,3 +258,47 @@ class SGNode
 @native object uiOnLifecycle {
   def apply(resumed: () => Unit, away: () => Unit): Unit = native.value
 }
+/** A page of the web (everyui.component.WebView): a WKWebView on iOS, lent `window.<bridge>.postMessage(string)`; on
+  * tvOS, which has no WebKit, an empty view, and every call after it does nothing (`uiWebViews` is false there). */
+@native object uiWebViews {
+  def apply(): Boolean = native.value
+}
+@native object uiWebPrewarm {
+  def apply(): Unit = native.value
+}
+@native object uiWeb {
+  def apply(bridge: String): SGNode = native.value
+}
+/** Show `url`: a path the app's bundle holds is that file, a site-absolute one it does not is `origin`'s. */
+@native object uiWebLoad {
+  def apply(node: SGNode, url: String, origin: String): Unit = native.value
+}
+@native object uiWebAgent {
+  def apply(node: SGNode, agent: String): Unit = native.value
+}
+/** Sandboxed (`on`) with `flags` allowed, by commas, and the page loaded again. */
+@native object uiWebSandbox {
+  def apply(node: SGNode, on: Boolean, flags: String): Unit = native.value
+}
+@native object uiWebHearSandboxed {
+  def apply(node: SGNode, on: Boolean): Unit = native.value
+}
+@native object uiWebClear {
+  def apply(node: SGNode, clear: Boolean): Unit = native.value
+}
+@native object uiWebRun {
+  def apply(node: SGNode, script: String): Unit = native.value
+}
+@native object uiWebAsk {
+  def apply(node: SGNode, id: Int, request: String): Boolean = native.value
+}
+@native object uiWebOnMessage {
+  def apply(node: SGNode, f: String => Unit): Unit = native.value
+}
+@native object uiWebOnReply {
+  def apply(node: SGNode, f: (Int, String) => Unit): Unit = native.value
+}
+/** Heard no more, its page stopped and left on about:blank, and taken off the screen. */
+@native object uiWebRelease {
+  def apply(node: SGNode): Unit = native.value
+}
