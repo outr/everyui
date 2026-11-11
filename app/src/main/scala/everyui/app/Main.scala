@@ -49,6 +49,9 @@ import everyui.render.Platform
   *   blocks     a sidebar's conversations as blocks (RichStyle.Blocks): groups, workspaces open and closed, unread
   *              counts, long names, drags between blocks, a button to draw it as a tree (`style=tree`, `theme=light`,
   *              `rtl=1`, `collapsed=<keys>`, `groups=<keys>`, `find=<words>`)
+  *   sections   a day's groups of tasks as section cards (SectionCard), each header the heading of its tasks, two
+  *              open and one closed, one with no header (`backdrop=<picture>`, `see=`, `cards=1` for separate cards,
+  *              `theme=light`, `rtl=1`)
   *   memory     an assistant's memories as blocks that expand in place to their whole Markdown with Pin and Delete,
   *              one at a time or several (`several=1`, `style=tree`, `theme=light`, `rtl=1`, `open=<keys>`, `find=<words>`)
   *   scale      the size the app is drawn at (UiScale), turned up and down over words, rows, a field, buttons and menus,
@@ -187,6 +190,7 @@ import everyui.render.Platform
   else if (demo == "richlist") RichListDemo.run()
   else if (demo == "avatars") AvatarsDemo.run()
   else if (demo == "blocks") BlocksDemo.run()
+  else if (demo == "sections") SectionsDemo.run()
   else if (demo == "memory") MemoryDemo.run()
   else if (demo == "scale") ScaleDemo.run()
   else if (demo == "menus") MenusDemo.run()

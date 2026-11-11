@@ -5940,6 +5940,34 @@ sidebar.style @= RichStyle.Blocks
 Theme.palette @= Theme.palette().copy(extras = Theme.palette().extras + ("list.block" -> Color.fromHex("7c4dff").withAlpha(0.06)))
 ```
 
+A block is one panel for its header and its items: the header is the top of the block, not a card of its own, and the
+items run on under it with no gap and no edge between them, so the header reads as the heading of the items under it.
+Where an app draws a group of its own rows that are not a `RichList`'s items (a tick box and words, a form's fields),
+`SectionCard` (`everyui.component`) draws the same for them, rather than a card for the header and another for each
+row, which reads as one more sibling and not as their heading. It is one card: one ground, one edge and one set of
+rounded corners (`SectionCard.radius`, 10) round its header and every row, a hairline across it under the header in
+the edge's colour and a fainter one between rows set in `SectionCard.pad` (10) from its sides, and no gap. Its `title`
+heads it with a chevron (▾ open, ▸ closed, ◂ right to left); the header is a disclosure button, focusable on every
+platform, so a remote reaches it, opened and closed by a click, a tap, Enter or Space; closed, or open with no rows,
+the header alone is the card, its corners all round. An empty `title` gives it no header, and `collapsible` off makes
+the header a heading only, its rows always shown. `open` (`Var[Boolean]`) is the app's, to share between cards. The
+`rows` (`Var[Vector[Component]]`) are any components, drawn as wide as the card's inside and as tall as they are, shown
+and hidden as it opens and closes, and taken apart as they are dropped from `rows` or with the card. A row draws no
+ground or edge of its own, so a translucent theme's picture shows through one ground (the theme's surface, as
+see-through as `Theme.surfaceOpacity` says, unless the app gives the card a `backgroundColor`): the card lights a row
+itself, as a list's row is lit (the pointer over it, the focus drawn on anything in it), and its header, each in a
+rounded light set in `SectionCard.lightInset` (3) from the card's edge, so the light keeps inside its corners on every
+platform (the desktop cuts a box square). The card's `borderColor` is the app's too, and its hairlines follow it.
+
+```scala
+val tasks = new SectionCard(tasksOpen)                   // one choice for every day's group
+tasks.title @= "Tasks · 3 due"
+tasks.size.width @= width
+tasks.borderColor @= tint.withAlpha(0.5)
+tasks.backgroundColor @= tint.withAlpha(0.12)             // or the theme's surface, by default
+tasks.rows @= due.map(taskRow)                            // a tick and words each, no ground or edge of their own
+```
+
 A section can have one thing it does straight from its header ("New conversation"): `RichSection.action`
 (`Option[RichAction]`, `None` by default), a `RichAction(icon, label, run)`. It is a small icon button in the header,
 always shown, the ⋮'s size, lit as the ⋮ is under the pointer and following the theme: in a block just before the
