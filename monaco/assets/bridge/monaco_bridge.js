@@ -611,7 +611,18 @@
   // Language providers: Monaco asks, the app answers (languages.respond)
   // ------------------------------------------------------------------------------------------------------------
 
+  // A provider's request of the app, answered as nothing (null, which each provider turns into what Monaco takes for
+  // nothing: no hover, no suggestions, no locations) when the app says it failed or does not answer in
+  // providerTimeoutMs, with a warning in the console: a rejected provider is reported by Monaco as an error nothing
+  // caught, thrown into the page, for what is only a hover or a suggestion that did not come.
   function ask(type, providerId, model, position, extra) {
+    return asked(type, providerId, model, position, extra).catch(function (err) {
+      console.warn('[monacoBridge] ' + String(err && err.message || err) + '; answered with nothing');
+      return null;
+    });
+  }
+
+  function asked(type, providerId, model, position, extra) {
     var requestId = 'req-' + (bridge._nextRequest++);
     return new Promise(function (resolve, reject) {
       var timer = setTimeout(function () {

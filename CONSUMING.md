@@ -5538,6 +5538,11 @@ MonacoThemes.followPalette()                                    // the app's pal
 MonacoLanguages.registerDefinitionProvider("scala", MonacoDefinitionProvider(p => lookUp(p.value, p.position)))
 ```
 
+A provider's request the app does not answer in 8 seconds, or answers with an error, is answered as nothing (no
+hover, no suggestions, no signature help, no definition, no references, no symbols) with a warning in the page's
+console (`[monacoBridge] language.hover.request timed out after 8000ms; answered with nothing`), never an error
+thrown into the page. `node tools/monaco-bridge-check.js` checks every provider's timeout and error without a browser.
+
 `MonacoDiffEditor` / `MonacoDiffController` are the diff editor. `changes` (and `onDidUpdateDiff`) are its changed regions as
 `MonacoLineChange`s, with their character changes; `checks` puts checkboxes in the modified gutter, a change's or a
 line's, ticked as the app says, and `onGutterClick` hears a click on one with the change it belongs to;
