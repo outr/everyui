@@ -25,7 +25,11 @@ import reactify.*
   * An `aside` follows the summary on its line, muted and a little smaller, its feet level with the summary's, where
   * both fit in the room the line has; else it goes on a line of its own under the summary at its start edge, wrapped
   * within the room where even it alone is too long, never cut. Its `asideHint` is a tip as the pointer rests on it or
-  * while `cursorOn` holds (the transcript's cursor brought to the call by the keys). An empty aside takes no room. */
+  * while `cursorOn` holds (the transcript's cursor brought to the call by the keys). An empty aside takes no room.
+  *
+  * The card is drawn as see-through as the theme's surfaces are (`ActivityView.fill`, `Theme.surfaceOpacity`), as a
+  * bubble is, and the code blocks in its body as on that ground; its quiet words are kept reading on it
+  * (`ActivityView.quiet`). */
 class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Option[Component],
                    render: (Val[String], Val[Double]) => Component = MessageMarkdown.render,
                    lines: => Int = 3, cursorOn: => Boolean = false) extends Container {
@@ -93,7 +97,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     content := a.aside()
     direction @= TextDirection.Auto
     font.size @= ActivityView.asideSize
-    color := Theme.muted()
+    color := ActivityView.quiet()
     visible := hasAside()
     whiteSpace := (if (wholeAside.size.width() > summaryRoom() + 0.5) WhiteSpace.Normal else WhiteSpace.NoWrap)
     size.width := (if (hasAside()) math.min(wholeAside.size.width(), summaryRoom()) else 0.0)
@@ -185,7 +189,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
       size.width @= ActivityView.badge
       size.height @= ActivityView.badge
       radius @= ActivityView.badge / 2.0
-      backgroundColor := Theme.surface()
+      backgroundColor := ActivityView.fill()
       semantics := Semantics.image(ActivityView.said(a.status()))
       children ++= (mark +: also)
     }
@@ -251,7 +255,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     radius @= 10.0
     borderWidth @= 1.0
     borderColor := Theme.border()
-    backgroundColor := Theme.surface()
+    backgroundColor := ActivityView.fill()
     cursor := (if (a.opens) "pointer" else "")
     children := (if (hasBody()) Vector(line, clip, holder) else Vector(line, holder))
   }
@@ -356,7 +360,7 @@ object ActivityView {
       content @= words
       font.size @= 11.0
       font.weight @= FontWeight.SemiBold
-      color := Theme.muted()
+      color := quiet()
       // a copy across input and output says which is which
       copyAs @= "p"
     }
@@ -395,4 +399,41 @@ object ActivityView {
     if (status == ActivityStatus.Failed) MaterialIcon.Error else MaterialIcon.CheckCircle
   def tint(status: ActivityStatus): everyui.Color =
     if (status == ActivityStatus.Failed) Theme.danger() else Theme.success()
+
+  /** The card's colour, open or closed (and the badge's on a lead's corner, which is cut out of what is under it by
+    * the card's colour): the theme's surface, as much of it drawn as the theme's surfaces are
+    * (`Theme.surfaceOpacity`, as everybody else's bubble is), so a picture behind a conversation shows through a tool
+    * call as through a message; whole, exactly the surface, while they are. The code blocks in its body find it as
+    * the ground they are on and let a little less through (`MarkdownView.codeOver`). */
+  def fill(): everyui.Color = {
+    val c = Theme.surface()
+    val o = math.max(0.0, math.min(1.0, Theme.surfaceOpacity()))
+    if (o >= 1.0) c else c.withAlpha(c.alpha * o)
+  }
+
+  /** The quiet words on the card (the aside, and the headings of `textDetails`): the theme's muted colour while the
+    * card is whole, exactly as before; where it lets a picture through, the muted colour taken towards the text
+    * colour until it reads at 4.5 to 1 on the card over a white picture and over a black one, the worst there could
+    * be (as far as the text colour, where even that falls short). */
+  def quiet(): everyui.Color = {
+    val m = Theme.muted()
+    val ground = fill()
+    if (ground.alpha >= 1.0) m
+    else {
+      val text = Theme.text()
+      var out = m
+      var t = 0.0
+      while (t < 1.0 && !readsOn(out, ground)) {
+        t = math.min(1.0, t + 0.05)
+        out = m.blend(text, t)
+      }
+      out
+    }
+  }
+
+  /** Whether `words` read at 4.5 to 1 on `ground` over a white picture and over a black one. */
+  def readsOn(words: everyui.Color, ground: everyui.Color, floor: Double = 4.5): Boolean =
+    List(everyui.Color.White, everyui.Color.Black).forall { behind =>
+      everyui.access.Access.contrast(words, ground.withAlpha(1.0).blend(behind, 1.0 - ground.alpha)) >= floor
+    }
 }

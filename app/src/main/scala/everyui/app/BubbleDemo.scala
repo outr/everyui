@@ -3,6 +3,7 @@ package everyui.app
 import everyui.Color
 import everyui.chat.*
 import everyui.component.Backdrop
+import everyui.font.MaterialIcon
 import everyui.markdown.MarkdownView
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
@@ -15,11 +16,12 @@ import reactify.*
   * over four seconds. Each bubble must hold every line, the meta line under it. `theme=light`. Logs `bubbles ok`, and
   * `bubbles streamed` once the last is whole.
   *
-  * `code=1` adds a reply with a code block and a terminal's coloured output; `backdrop=<picture>` draws the picture
-  * behind the conversation with the theme's surfaces at `see` (0.8 unless given, `Theme.surfaceOpacity`), so the
-  * bubbles and the code wash let it through. `codeOpacity=<0 to 1>` draws the code wash that whole
-  * (`MarkdownView.codeOpacity`), and `codeContrast=<ratio>` gives the contrast its words keep where it is worked out
-  * (`MarkdownView.codeContrast`, 4.5 unless given). */
+  * `code=1` adds a reply with a code block and a terminal's coloured output, and a tool call that ran the tests, its
+  * command and output in its body as code, opened onto its details (`tool=closed` leaves it closed);
+  * `backdrop=<picture>` draws the picture behind the conversation with the theme's surfaces at `see` (0.8 unless
+  * given, `Theme.surfaceOpacity`), so the bubbles, the tool call's card and the code wash let it through.
+  * `codeOpacity=<0 to 1>` draws the code wash that whole (`MarkdownView.codeOpacity`), and `codeContrast=<ratio>`
+  * gives the contrast its words keep where it is worked out (`MarkdownView.codeContrast`, 4.5 unless given). */
 object BubbleDemo {
   private def luma: Participant = Participant("agent-luma", "Luma")
   private def you: Participant = Participant("u-you", "You")
@@ -48,8 +50,13 @@ object BubbleDemo {
       said("own", you, "Move `voidcraft-eb24f-firebase-adminsdk.json` out of `backend/src/main/resources/` and " +
         "into `.env.firebase`, then delete it.", "Sent", self = true)
     ))
-    if (Platform.launchArg("code") == "1") entries @= entries() :+ said("code", luma, BubbleDemo.code,
-      "Qwen3.5-9b · 4s")
+    if (Platform.launchArg("code") == "1") {
+      val ran = ChatEntry.activity("ran", "Ran the tests", ActivityStatus.Failed,
+        Some(() => ActivityView.textDetails("sbt test", "1 failed")), Some(at),
+        ActivityLead.Icon(MaterialIcon.Terminal), BubbleDemo.ran, aside = "9:42:13 AM · 12 s")
+      ran.expanded @= Platform.launchArg("tool") != "closed"
+      entries @= entries() :+ ran :+ said("code", luma, BubbleDemo.code, "Qwen3.5-9b · 4s")
+    }
     val chat = new ChatView(entries)
     chat.size.width := ui.size.width()
     chat.size.height := ui.size.height()
@@ -83,6 +90,10 @@ object BubbleDemo {
     })
     Platform.log("bubbles ok")
   }
+
+  // a tool call's body: the command it ran and what the terminal said (`code=1`)
+  private val ran: String = "```sh\nsbt 'testOnly *GroundSpec'\n```\n\n```ansi\n" +
+    "\u001b[1;32m[info]\u001b[0m Compiling 3 Scala sources\n\u001b[31m[error]\u001b[0m GroundSpec: 1 failed\n```"
 
   // a reply with a code span, a code block and a terminal's output in its colours (`code=1`)
   private val code: String = "Run `sbt test` again; the spec is:\n\n```scala\nobject Ground {\n  // a comment, " +

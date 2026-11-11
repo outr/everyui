@@ -2243,7 +2243,7 @@ less of it, for an app that shows a picture behind its conversations and wants i
 one's own (a wash of the accent): about 0.8 keeps the words easy to read. It is the app's, every conversation following
 it, the bubbles shown too. It is the theme's `Theme.surfaceOpacity`, the same `Var`, so the code blocks in a message
 let the picture through too, a little less than the bubble (above, under `MarkdownView`); the words and the tables in
-a message are drawn as they are.
+a message are drawn as they are. A tool call's card follows it too (Tool calls, below).
 
 ```scala
 chat.onAuthor @= Some(p => showProfile(p.participant.id))
@@ -2364,6 +2364,24 @@ run.status.attach { s =>
 }
 ChatEntry.activity("c-12", "Read 3 files", ActivityStatus.Succeeded, aside = "9:42:13 AM · 0.4 s",
   asideHint = "Started at 9:42:13 AM, took 0.4 seconds")
+```
+
+A tool call's card, open or closed, is the theme's surface drawn as see-through as the theme's surfaces are
+(`ActivityView.fill()`: `Theme.surfaceOpacity`, the `Var` everybody else's bubble follows as
+`MessageView.othersOpacity`), so a picture behind the conversation shows through a tool call as through a message,
+and the badge on a lead's corner with it; while the surfaces are whole (1, the default) it is the surface exactly, as
+it always was. The code blocks and the terminal's output in its body find the card as the ground they are on, as a
+message's find their bubble, and let a little less of the picture through (`MarkdownView.codeOver`), or as much as the
+app says (`MarkdownView.codeOpacity`). The summary and the body are drawn in the text colour, which reads on the card
+at 0.8 over a white picture and a black one (6.6 to 1 and more). The aside and the headings of `textDetails`, muted on
+a whole card, are drawn on a see-through one in `ActivityView.quiet()`: the muted colour taken towards the text colour
+until it reads at 4.5 to 1 there too (at 0.8, #bbbbbb in the dark palette and #545455 in the light, where muted would
+read at 3.5 and 4.0). The status marks, the spinner and the chevron are glyphs and keep 3 to 1 or more. The rail is
+the app's colour, outside the card, and is not a surface.
+
+```scala
+Theme.surfaceOpacity @= 0.8                 // bubbles and tool calls let the picture behind through
+MarkdownView.codeOpacity @= Some(0.7)       // and the code in either, 0.7 whole
 ```
 
 ### Threads (`ChatEntry.rail`, `Transcript.rails`)
