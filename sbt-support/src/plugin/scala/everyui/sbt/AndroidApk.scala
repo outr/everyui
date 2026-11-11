@@ -42,10 +42,13 @@ object AndroidApk {
     log(s"AndroidApk: mapping kept as ${kept.getName} (${kept.length / 1048576} MB)")
   }
 
+  /** `libraries` are the app's Android archives (`everyuiAndroidLibraries`, every one among its dependencies): each
+    * one's classes are dexed with the program unless it holds them already, its rules applied with `rules`, and its
+    * resources, where its classes read them, linked with its R class written. An app opens no archive of its own. */
   def build(log: String => Unit, sdk: File, platform: String, buildTools: String, minSdk: String, targetSdk: String,
             program: Seq[File], manifest: File, resources: File, assets: File, rules: Seq[File], work: File, apk: File,
             versionName: String, versionCode: Int, signing: Signing, desugar: Option[Desugar] = None,
-            bundletool: Option[Seq[File]] = None, libraries: Seq[AarResources] = Nil): File = {
+            bundletool: Option[Seq[File]] = None, libraries: Seq[AndroidArchive] = Nil): File = {
     val tools = sdk / "build-tools" / buildTools
     val androidJar = sdk / "platforms" / platform / "android.jar"
     IO.delete(work)
@@ -57,10 +60,11 @@ object AndroidApk {
 
     // the resources first: linked with those of the archives whose classes read them (`libraries`), whose R classes
     // are written here and compiled, to be shrunk and dexed with the program (an archive's R is the app's to write,
-    // since the ids are the app's)
+    // since the ids are the app's); one an R package, the first, where two archives name the same
+    val linking = libraries.flatMap(_.resources).groupBy(_.packageName).values.map(_.head).toSeq.sortBy(_.name)
     val compiled = work / "res.zip"
     exec(Seq((tools / "aapt2").toString, "compile", "--dir", resources.toString, "-o", compiled.toString))
-    val libraryZips = libraries.zipWithIndex.map { case (l, i) =>
+    val libraryZips = linking.zipWithIndex.map { case (l, i) =>
       val zip = work / "libraries" / s"$i-${l.name}.zip"
       IO.createDirectory(zip.getParentFile)
       exec(Seq((tools / "aapt2").toString, "compile", "--dir", l.res.toString, "-o", zip.toString))
@@ -70,17 +74,20 @@ object AndroidApk {
     val linked = work / "linked.apk"
     // the libraries the base, the app's own over them (it may give one of theirs its own value)
     val resourceInputs =
-      if (libraries.isEmpty) Seq(compiled.toString)
+      if (linking.isEmpty) Seq(compiled.toString)
       else libraryZips.map(_.toString) ++ Seq("-R", compiled.toString, "--auto-add-overlay",
-        "--java", rSources.toString, "--extra-packages", libraries.map(_.packageName).distinct.mkString(":"))
+        "--java", rSources.toString, "--extra-packages", linking.map(_.packageName).mkString(":"))
     exec(Seq((tools / "aapt2").toString, "link", "-o", linked.toString, "--manifest", manifest.toString,
       "-I", androidJar.toString, "-A", assets.toString) ++ resourceInputs ++
       Seq("--min-sdk-version", minSdk, "--target-sdk-version", targetSdk,
         "--version-code", versionCode.toString, "--version-name", versionName) ++
       (if (bundletool.nonEmpty) Seq("--proto-format") else Nil))
-    val rJar = if (libraries.isEmpty) None else Some(compileR(rSources, work / "r-classes", work / "r.jar", log))
-    // d8 and R8 read jars, so class directories are zipped first
-    val inputs = (program.filterNot(_ == androidJar) ++ rJar.toSeq).zipWithIndex.map { case (f, i) =>
+    val rJar = if (linking.isEmpty) None else Some(compileR(rSources, work / "r-classes", work / "r.jar", log))
+    // the program (not android.jar, nor an archive itself, which is not dexable) with each archive's classes it
+    // does not hold already, each jar once (AndroidArchive.dexed); d8 and R8 read jars, so class directories are
+    // zipped first
+    val dexable = program.filterNot(f => f == androidJar || f.getName.endsWith(".aar"))
+    val inputs = (AndroidArchive.dexed(dexable, libraries) ++ rJar.toSeq).zipWithIndex.map { case (f, i) =>
       if (f.isDirectory) {
         val jar = work / "classes" / s"$i.jar"
         IO.zip(Path.allSubpaths(f).filterNot(_._1.isDirectory), jar, None)
@@ -107,7 +114,8 @@ object AndroidApk {
     // reaches, so the back-port goes in whole rather than shrunk to them.)
     val desugarArgs = desugar.toList.flatMap(d => Seq("--desugared-lib", d.config.toString))
     exec(Seq("java", "-cp", (tools / "lib" / "d8.jar").toString, "com.android.tools.r8.R8",
-      "--release", "--min-api", minSdk, "--lib", androidJar.toString) ++ desugarArgs ++ rules.flatMap(r => Seq("--pg-conf", r.toString)) ++
+      "--release", "--min-api", minSdk, "--lib", androidJar.toString) ++ desugarArgs ++
+      AndroidArchive.rules(rules, libraries).flatMap(r => Seq("--pg-conf", r.toString)) ++
       Seq("--pg-map-output", (work / "mapping.txt").toString, "--pg-conf", diagnostics.toString, "--output", dex.toString) ++
       inputs.map(_.toString))
     keepMapping(work / "mapping.txt", apk.getParentFile / "mappings", versionCode, log)

@@ -63,7 +63,7 @@ object EveryUIPlugin extends AutoPlugin {
 
     // what runs with the app closed on Android (AndroidBackground): nothing unless everyuiBackground names one
     val everyuiBackground = settingKey[Option[String]]("What runs with the app closed on Android: the BackgroundApp object (\"com.example.Background\"), whose handlers hear scheduled work, an ongoing notice's actions and the device starting again, or None, the default, for none")
-    @transient val everyuiAndroidLibraries = taskKey[Seq[AarResources]]("The resources of the Android archives the project depends on whose classes read their own R class (WorkManager's among them), opened for AndroidApk.build's libraries, which links them and writes those R classes")
+    @transient val everyuiAndroidLibraries = taskKey[Seq[AndroidArchive]]("Every Android archive among the project's dependencies, each once (one a module, at the version resolved), opened: its classes, which the plugin puts on the compile classpath, its shrinker rules, and its resources where its classes read their own R class, for AndroidApk.build's libraries, which dexes, applies and links them")
     @transient val everyuiBackgroundRules = taskKey[Seq[File]]("The shrinker's rules for what runs with the app closed: the BackgroundApp object, EveryUI's receiver and job service, or none without everyuiBackground (everyuiAndroidRules has them too)")
   }
   import autoImport.*
@@ -252,10 +252,11 @@ object EveryUIPlugin extends AutoPlugin {
       }
     },
     everyuiBackground := None,
-    everyuiAndroidLibraries := Def.uncached {
-      Aars.resources(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")),
-        Aars.room)
-    },
+    everyuiAndroidLibraries := Def.uncached(Aars.archives(streams.value.log.info(_), update.value, Aars.room)),
+    // every archive's classes on the classpath, so the app compiles against them and its program holds them: an app
+    // opens none itself (uncached: the task is transient, so a cached list would never hear of an archive added since)
+    Compile / unmanagedJars ++= Def.uncached(everyuiAndroidLibraries.value.flatMap(_.classes)
+      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
     everyuiBackgroundRules := Def.uncached {
       everyuiBackground.value match {
         case None => Nil

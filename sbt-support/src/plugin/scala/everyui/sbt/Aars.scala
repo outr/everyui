@@ -31,9 +31,9 @@ object Aars {
 
   /** The classes jar of each archive, and the shrinker rules any of them ship, opened under `into`.
     *
-    * Resources are opened with them but not returned here: `resources` returns those of the archives whose classes
-    * read them, which `AndroidApk.build` links (`libraries`). An archive that has resources is named in the log as it
-    * is opened. */
+    * An app needs neither this nor any opening of its own: the plugin opens every archive among a project's
+    * dependencies (`archives`, `everyuiAndroidLibraries`), puts their classes on its classpath and hands them, with
+    * their rules and resources, to `AndroidApk.build`. Kept for builds written before it did. */
   def open(log: String => Unit, archives: Seq[File], into: File): (Seq[File], Seq[File]) = {
     IO.createDirectory(into)
     AarCache.clean(into)
@@ -41,32 +41,38 @@ object Aars {
       val fresh = AarCache.open(aar, into)
       if (fresh && AarCache.resources(aar, into).isDirectory)
         log(s"Aars: ${AarCache.nameOf(aar)} carries resources (linked only where its classes read its R class: " +
-          "Aars.resources)")
+          "AndroidLibraries)")
       fresh
     }
-    val classes = archives.map(AarCache.classes(_, into)).filter(_.isFile)
-    val rules = archives.map(AarCache.rules(_, into)).filter(_.isFile)
+    val classes = archives.distinct.map(AarCache.classes(_, into)).filter(_.isFile)
+    val rules = archives.distinct.map(AarCache.rules(_, into)).filter(_.isFile)
     if (opened > 0)
       log(s"Aars: $opened opened of ${archives.size}; ${classes.size} with classes, ${rules.size} with rules")
     (classes, rules)
   }
 
-  /** The resources of each archive whose classes read them through their own R class (AndroidLibraries), opened under
-    * `into`, for `AndroidApk.build` to link and write that R class for (`libraries`). Archives whose classes read no
-    * R class of their own are left out, their resources with them. Opened once for the machine, as `open` opens. */
-  def resources(log: String => Unit, archives: Seq[File], into: File): Seq[AarResources] = {
-    IO.createDirectory(into)
-    AarCache.clean(into)
-    val found = archives.distinct.flatMap { aar =>
-      AndroidLibraries.needsResources(aar).map { pkg =>
-        AarCache.open(aar, into)
-        AarResources(AarCache.nameOf(aar), pkg, AarCache.resources(aar, into))
+  /** Every Android archive among a project's resolved dependencies (`update`'s report: those the compiler sees,
+    * `provided` among them), each once, opened under `into`: one a module, whichever ways it was reached, at the
+    * version the resolution kept (AndroidArchive.chosen). What `everyuiAndroidLibraries` is, whose classes the plugin
+    * puts on the classpath and whose classes, rules and resources `AndroidApk.build` takes (`libraries`). Opened once
+    * for the machine, as `open` opens. */
+  def archives(log: String => Unit, report: UpdateReport, into: File): Seq[AndroidArchive] = {
+    val config = report.configuration(ConfigRef("compile-internal")).orElse(report.configuration(ConfigRef("compile")))
+    val found = config.toSeq.flatMap(_.modules).filterNot(_.evicted).flatMap { m =>
+      m.artifacts.collect { case (a, f) if a.extension == "aar" && f.isFile =>
+        (m.module.organization, m.module.name, m.module.revision, f)
       }
     }
-    // one for each package: the first, where two versions of an archive are on the classpath
-    val kept = found.groupBy(_.packageName).values.map(_.head).toSeq.sortBy(_.name)
-    if (kept.nonEmpty)
-      log(s"Aars: resources linked for ${kept.map(r => r.name + " (" + r.packageName + ")").mkString(", ")}")
-    kept
+    val chosen = AndroidArchive.chosen(found)
+    if (chosen.isEmpty) Nil
+    else {
+      IO.createDirectory(into)
+      AarCache.clean(into)
+      val opened = chosen.count { case (_, aar) => AarCache.open(aar, into) }
+      val all = chosen.map { case (module, aar) => AndroidArchive.open(module, aar, into) }
+      if (opened > 0) log(s"Aars: $opened opened of ${all.size} archives; ${all.count(_.rules.nonEmpty)} with rules, " +
+        s"resources linked for ${all.flatMap(_.resources).map(r => s"${r.name} (${r.packageName})").mkString(", ")}")
+      all
+    }
   }
 }

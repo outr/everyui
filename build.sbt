@@ -541,8 +541,6 @@ lazy val androidBuildTools = "37.0.0"
 lazy val androidMinSdk = "30"
 lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
 @transient val packageApk = taskKey[File]("Compile the Android backend and package it as a debug-signed APK in android/out-apk/")
-@transient val androidAars = taskKey[Seq[File]]("Open the Android archives the backend depends on: their classes, as jars")
-@transient val androidAarRules = taskKey[Seq[File]]("The shrinker rules those archives ship")
 
 lazy val media3Version = EveryUILibraries.media3Version
 lazy val media3Modules = EveryUILibraries.media3Modules
@@ -559,7 +557,8 @@ lazy val android = (project in file("android"))
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
     // Media3 (ExoPlayer): what a television needs from a player and `MediaPlayer` has no answer to — its own
     // timeouts, a buffer that can be chosen, and a measurement of what the link is carrying. It ships as Android
-    // archives, so the classes are opened out of them (Aars, in sbt-support) before anything compiles against them.
+    // archives, whose classes sbt-everyui opens out of them before anything compiles against them
+    // (everyuiAndroidLibraries).
     libraryDependencies ++= media3Modules.map(m =>
       ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
     // Credential Manager, which passkeys ask (EveryUILibraries.credentials), and Firebase Cloud Messaging, which push
@@ -576,13 +575,7 @@ lazy val android = (project in file("android"))
     // decoder's buffers through it
     libraryDependencies += "androidx.collection" % "collection-jvm" % "1.5.0",
     libraryDependencies += ("androidx.core" % "core" % "1.13.1").intransitive() artifacts Artifact("core", "aar", "aar"),
-    androidAars := Aars.open(streams.value.log.info(_),
-      update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-    androidAarRules := Aars.open(streams.value.log.info(_),
-      update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._2,
-    // uncached: androidAars is transient, so a cached list would never hear of an archive added since
-    Compile / unmanagedJars ++= Def.uncached(androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
+    // the archives' classes are on the classpath by sbt-everyui (everyuiAndroidLibraries), as in an app's build
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: AndroidRuntime, in sbt-support)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
@@ -609,9 +602,8 @@ lazy val android = (project in file("android"))
         AndroidRuntime.classpath((Compile / fullClasspath).value.map(e => conv.toPath(e.data).toFile).filterNot(_.getName.endsWith(".aar")),
           androidMinSdk, target.value / "android-runtime", streams.value.log.info(_)),
         everyuiAndroidManifest.value, everyuiAndroidResources.value, assets,
-        // with the archives' own rules (WorkManager's, Room's, Media3's), as a Gradle build applies them
-        (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value ++
-          androidAarRules.value,
+        // the archives' own rules (WorkManager's, Room's, Media3's) come with them (libraries), as Gradle applies them
+        (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value,
         target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
         version.value, 1, AndroidApk.debug, libraries = everyuiAndroidLibraries.value)
@@ -659,10 +651,6 @@ lazy val androidPublished = (project in file("published/android"))
       "org.typelevel" %% "fabric-io" % fabricVersion),   // the network module and the store's codec use it
     resolvers += EveryUILibraries.google,
     libraryDependencies ++= (EveryUILibraries.android ++ EveryUILibraries.firebase).map(_ % Provided),
-    androidAars := Aars.open(streams.value.log.info(_),
-      update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-    Compile / unmanagedJars ++= Def.uncached(androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     Compile / resourceGenerators += fontResources.taskValue,
@@ -918,14 +906,9 @@ lazy val monacoAndroid = (project in file("monaco/android"))
     libraryDependencies += "com.outr" %% "spice-client-okhttp" % spiceVersion,
     libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
-    libraryDependencies ++= media3Modules.map(m =>
-      ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
-    libraryDependencies ++= EveryUILibraries.credentials +: EveryUILibraries.firebase,
-    libraryDependencies ++= EveryUILibraries.work,   // WorkManager, which the backend's scheduled work runs on
-    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
-    androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-    Compile / unmanagedJars ++= Def.uncached(androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
+    // what the backend compiles against and leaves to the app, as an app adds it (EveryUILibraries.android: Media3,
+    // Credential Manager, WorkManager, and androidx's collections and core, which Media3's classes reach for)
+    libraryDependencies ++= EveryUILibraries.android ++ EveryUILibraries.firebase,
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: AndroidRuntime, in sbt-support)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
@@ -1037,14 +1020,9 @@ lazy val terminalAndroid = (project in file("terminal/android"))
     libraryDependencies += "com.outr" %% "spice-client-okhttp" % spiceVersion,
     libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
     resolvers += "Google" at "https://dl.google.com/dl/android/maven2/",
-    libraryDependencies ++= media3Modules.map(m =>
-      ("androidx.media3" % m % media3Version).intransitive() artifacts Artifact(m, "aar", "aar")),
-    libraryDependencies ++= EveryUILibraries.credentials +: EveryUILibraries.firebase,
-    libraryDependencies ++= EveryUILibraries.work,   // WorkManager, which the backend's scheduled work runs on
-    libraryDependencies ++= Seq("androidx.annotation" % "annotation-jvm" % "1.9.1", "com.google.guava" % "guava" % "33.4.0-android"),
-    androidAars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-    Compile / unmanagedJars ++= Def.uncached(androidAars.value
-      .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
+    // what the backend compiles against and leaves to the app, as an app adds it (EveryUILibraries.android: Media3,
+    // Credential Manager, WorkManager, and androidx's collections and core, which Media3's classes reach for)
+    libraryDependencies ++= EveryUILibraries.android ++ EveryUILibraries.firebase,
     Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
     // lazy vals without a VarHandle, which Android lacks before API 33 (the libraries are rewritten: project/AndroidRuntime.scala)
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
@@ -1094,10 +1072,6 @@ def embedAndroid(sources: File, resources: Def.Initialize[Task[Seq[File]]]): Seq
   libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion,
   resolvers += EveryUILibraries.google,
   libraryDependencies ++= (EveryUILibraries.android ++ EveryUILibraries.firebase).map(_ % Provided),
-  androidAars := Aars.open(streams.value.log.info(_),
-    update.value.select(artifact = artifactFilter(extension = "aar")), Aars.room)._1,
-  Compile / unmanagedJars ++= Def.uncached(androidAars.value
-    .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath)))),
   Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
   Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals", "-encoding", "UTF-8"),
   Compile / resourceGenerators += resources.taskValue

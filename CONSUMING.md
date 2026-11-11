@@ -3835,8 +3835,8 @@ everyuiBackground := Some("com.example.AppBackground")
 // WorkManager and what it runs with (in EveryUILibraries.android too; the build fails without it)
 libraryDependencies ++= EveryUILibraries.work
 // and where the app passes them to AndroidApk.build itself: the background's rules with the app's own, and the
-// resources of the archives whose classes read their own R class (WorkManager's among them), linked with their R
-// classes written
+// archives (WorkManager's among them), whose resources are linked with their R classes written where their classes
+// read them
 (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value
 AndroidApk.build(..., libraries = everyuiAndroidLibraries.value)
 ```
@@ -4612,7 +4612,7 @@ An iPhone or an iPad is laid out inside its safe area as an Android phone is (se
 JavaFX and the Android archives are `provided` in the backends, because only the app's build knows the form it needs:
 JavaFX's jars are one per operating system (`javafx()` names base, graphics, controls and media for the machine the
 build runs on; name others to add them, `javafx("base", "graphics", "controls", "media", "web")`), and an Android
-archive is opened rather than put on a classpath (`Aars`).
+archive is opened rather than put on a classpath (the plugin opens them: [Android](#android)).
 
 The plugin's tasks, on every project:
 
@@ -4626,7 +4626,7 @@ The plugin's tasks, on every project:
 | `everyuiAndroidResources` | the resources for `AndroidApk.build`: the app's own (`everyuiAndroidRes`, `res` under the project) as they are, or with EveryUI's widget layouts (`everyuiWidgetLayouts`, out of everyui-android) and each widget's `appwidget-provider` |
 | `everyuiWidgets`, `everyuiWidgetKinds` | the app's home-screen widgets on Android, settings: none by default ([Home-screen widgets](#home-screen-widgets-everyuiwidget)) |
 | `everyuiBackground`, `everyuiBackgroundRules` | what runs with the app closed on Android: the `BackgroundApp` object, none by default, and the shrinker's rules for it ([With the app closed](#with-the-app-closed-everyuibackground)) |
-| `everyuiAndroidLibraries` | the resources of the Android archives whose classes read their own R class (WorkManager's among them), opened for `AndroidApk.build`'s `libraries`, which links them and writes those R classes |
+| `everyuiAndroidLibraries` | every Android archive among the project's dependencies, each once, opened: its classes (which the plugin puts on the compile classpath), its shrinker rules, and its resources where its classes read their own R class, for `AndroidApk.build`'s `libraries`, which dexes, applies and links them ([Android](#android)) |
 | `everyuiEmbedAssets` | the files of the embeds on the classpath (everyui-monaco-android's Monaco, everyui-terminal-android's xterm.js), out of their jars: a directory whose contents go into an APK's assets as they are |
 | `everyuiCompiler` | the Roku and Swift compiler (everyui-compiler at `everyuiVersion`, fetched with the build's resolvers) and what it runs with |
 | `everyuiEmitLibraries` | what the compiler compiles through with the app: everyui-roku or everyui-tvos, reactify, and Spice's durable client |
@@ -4637,8 +4637,8 @@ The plugin's tasks, on every project:
 And its helpers, plain objects an app's tasks call: `AndroidApk` (R8, aapt2, zipalign and apksigner, or bundletool for
 an app bundle), `AndroidRuntime` (the classpath an APK is dexed from, with Scala 3's VarHandle lazy vals rewritten for
 Android before 13, and the build failing if one is left), `Aars` (Android archives opened into jars, shrinker
-rules and, where their classes read them, resources), `RokuChannel` (emit, assemble, version, fallback fonts, the store package), `AppleApp` (emit and assemble) and
-`EveryUILibraries`.
+rules and, where their classes read them, resources, which the plugin does for every archive itself), `RokuChannel`
+(emit, assemble, version, fallback fonts, the store package), `AppleApp` (emit and assemble) and `EveryUILibraries`.
 
 `Aars` opens each archive once for the machine, under `~/.cache/everyui/aar` (the environment's `EVERYUI_AAR_CACHE`
 names another), into an entry of its own named for the archive and its content, which appears whole by a rename and is
@@ -4673,7 +4673,6 @@ has no manifest of its own, and its only resources, the layouts a home-screen wi
 ```scala
 lazy val androidSdk = file(sys.env.getOrElse("ANDROID_HOME", sys.props("user.home") + "/opt/android-sdk"))
 lazy val androidJar = androidSdk / "platforms" / "android-37.0" / "android.jar"
-@transient lazy val aars = taskKey[Seq[File]]("The Android archives' classes, as jars")
 @transient lazy val apk = taskKey[File]("The app as a signed APK")
 
 lazy val android = project.in(file("android"))
@@ -4681,9 +4680,7 @@ lazy val android = project.in(file("android"))
     libraryDependencies += "com.outr" %% "everyui-android" % everyuiVersion.value,
     resolvers += EveryUILibraries.google,
     libraryDependencies ++= EveryUILibraries.android,
-    aars := Aars.open(streams.value.log.info(_), update.value.select(artifact = artifactFilter(extension = "aar")),
-      Aars.room)._1,
-    Compile / unmanagedJars ++= (aars.value :+ androidJar)
+    Compile / unmanagedJars += androidJar
       .map(j => Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(j.toPath))),
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     apk := {
@@ -4695,10 +4692,31 @@ lazy val android = project.in(file("android"))
           .filterNot(_.getName.endsWith(".aar")), "23", target.value / "android-runtime", streams.value.log.info(_)),
         everyuiAndroidManifest.value, everyuiAndroidResources.value, assets,
         Seq(everyuiAndroidRules.value, baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
-        baseDirectory.value / "out-apk" / "myapp.apk", version.value, 1, AndroidApk.debug)
+        baseDirectory.value / "out-apk" / "myapp.apk", version.value, 1, AndroidApk.debug,
+        libraries = everyuiAndroidLibraries.value)
     }
   )
 ```
+
+**Android archives.** An app opens no `.aar` itself. The plugin opens every Android archive among the project's
+resolved dependencies, EveryUI's (`EveryUILibraries.android`) and the app's own alike (Firebase, Play services, any
+other `.aar` in `libraryDependencies`), and each once: one a module (`group:name`), however many ways it is reached, at
+the version the resolution kept. Each archive's classes jar goes on the compile classpath (`Compile / unmanagedJars`),
+so the app compiles against it and its program holds it, and `everyuiAndroidLibraries` hands each one to
+`AndroidApk.build` (`libraries`), which dexes its classes where the program does not hold them already, applies the
+shrinker rules it ships (`proguard.txt`) with the app's, and, where its classes read their own R class (WorkManager's
+do), links its resources and writes that R class. Gradle links every archive's resources; here only those read are,
+so a library's strings in eighty languages stay out of the APK. An archive's manifest is not merged into the app's:
+the entries one needs (Firebase's services and meta-data, say) go in the app's own `AndroidManifest.xml`, as before.
+
+`AndroidApk.build` counts every jar once: one of the same bytes as another is left out, and an archive's classes the
+program already holds byte for byte (a copy the app's build opened itself) are taken once. A jar holding some of an
+archive's classes, or other bytes for them (another version, opened by hand), stops the build with the archive and the
+jar named, where R8 would stop on the first class "defined multiple times" naming neither. So a build that opened
+archives itself (an `Aars.open` task, its jars in `unmanagedJars`, its rules passed to `AndroidApk.build`) drops all of
+that and passes `libraries = everyuiAndroidLibraries.value`; an archive the app wants is a dependency like any other,
+with its version named, `.intransitive()` and with `.artifacts(Artifact(name, "aar", "aar"))` as
+`EveryUILibraries.android` names its own (an archive's dependencies are archives too, and only those named are taken).
 
 Without widgets, `everyuiAndroidManifest` and `everyuiAndroidResources` are the app's own manifest and `res`, so the APK
 is what it was; with them, they add what the widgets need (below).
