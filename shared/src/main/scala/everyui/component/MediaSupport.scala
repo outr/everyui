@@ -89,7 +89,8 @@ trait MediaSupport { self: Component =>
 
   /** Whether the platform can make voices clearer in what is playing, so an app can hide the setting where it cannot:
     * where [[centerMixSupported]] says the centre can be reached (Android; a browser for hls.js and its own origin's
-    * files), and not on a Roku, the Apple TV or the desktop. Told again with each source. */
+    * files), and on Apple through VLCKit's own equaliser and compressor; not on a Roku or the desktop. Told again with
+    * each source. */
   val voiceClaritySupported: Var[Boolean] = Var(node.mediaAidsSupported())
 
   /** Whether [[voiceClarity]] is being heard now: above 0, and the sound going through it. */

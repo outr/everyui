@@ -4035,8 +4035,10 @@ channels folds, more (or an output that does not say) lifts.
   heard with another channel. One limit: a file from another origin that does not allow the page, played later on an
   element already taken, plays silent, and says so (`scribe.error`); an element that will play such files after a
   same-origin one is best left at 0.
-- **Roku, Apple TV, desktop**: not supported; `centerMixSupported` is false and the device or JavaFX folds as it
-  does.
+- **Apple TV, iPhone, iPad** (VLCKit): not supported; `centerMixSupported` is false. VLC decodes every format it
+  plays itself (AC-3 and E-AC-3 included: nothing is passed through encoded) and folds surround to stereo with its own
+  fixed mixer, which has no level for the centre and no way in for one from the app.
+- **Roku, desktop**: not supported; `centerMixSupported` is false and the device or JavaFX folds as it does.
 
 `demo=centermix` plays a 5.1 file (`src=`, `centre51.mp4` beside the page by default) with buttons for -6, 0, +3, +6
 and +12 dB; `db=` starts it there, `steps=1` walks 0, +3, +6 and 0 every four seconds, `then=` plays another
@@ -4094,7 +4096,13 @@ peak needs and comes back over 0.2 s), since both can make a peak louder (`every
   change it logs `media: listening aids at voice clarity 1.00, night mode 0.00: in left -24.4 right -24.4 dBFS, out left
   -18.5 right -18.5 dBFS, night mode -0.4 dB and +0.0 made up, peak out -15.4 dBFS` (the browser's reduction, then the
   shared makeup).
-- **Roku, Apple TV, desktop**: not supported; `voiceClaritySupported` and `nightModeSupported` are false.
+- **Apple TV, iPhone, iPad** (VLCKit): both supported, on VLC's own filters rather than the shared ones. Voice
+  clarity is VLC's ten-band equaliser (60 Hz to 16 kHz) set as near the shared curve as its bands allow (-6 dB at
+  60 Hz for the high-pass, -3 at 310, +6 at 3 kHz and +2 at 6 kHz, in proportion to the level, the whole 3 dB lower),
+  heard at once but not glided. Night mode is VLC's compressor set to the shared curve (threshold, ratio, a 6 dB knee,
+  5 ms and 200 ms, the same makeup), which VLC puts in its chain as a source opens: a new level opens the source again
+  where it had reached, a moment's break. There is no shared limiter after them.
+- **Roku, desktop**: not supported; `voiceClaritySupported` and `nightModeSupported` are false.
 
 `demo=listening` plays a stereo file (`src=`, `listening.mp4` beside the page by default) with buttons for each aid
 off, at half and at full; `clarity=` and `night=` start it there, `db=` sets a centre mix ahead of them, `steps=1`
@@ -4717,6 +4725,76 @@ lazy val tvos = project.in(file("tvos"))
     }
   )
 ```
+
+### Video and sound on Apple: VLCKit
+
+A `VideoView` and an `AudioPlayer` play through VideoLAN's VLCKit on the Apple TV (TVVLCKit 3.7.4) and on an iPhone
+and an iPad (MobileVLCKit 3.7.5): MKV, MP4, HLS and the rest of what VLC plays, its sound tracks and subtitles (SRT,
+SubStation styled through libass, the file's own and sidecars), each decoded on the device. VideoToolbox decodes the
+picture in hardware where the device has a decoder for it (VLC's default; a simulator has none, so it decodes in
+software there).
+
+VLCKit is LGPL 2.1, so it is **dynamically linked**: the app's binary refers to `@rpath/<name>.framework`, and the
+framework is embedded unchanged in the bundle's `Frameworks/` folder, signed with the app, where anybody can replace it
+with another build of the same interface, as the LGPL asks. It is not on Maven and no EveryUI artifact carries it.
+`VLCKit.stage` (sbt-everyui) downloads VideoLAN's release once, checks it against its pinned SHA-256, keeps it in
+`~/.cache/everyui/vlckit/`, and puts both xcframeworks beside an emitted app that plays anything (its App.swift makes a
+player), with their licence; an app that plays nothing gets nothing. Neither has bitcode (App Store builds take none);
+strip it with `xcrun bitcode_strip -r` should a later release have some.
+
+```scala
+      AppleApp.assemble(out, everyuiSwiftRuntime.value, ...)
+      VLCKit.stage(streams.value.log.info(_), out)   // out/Frameworks/TVVLCKit.xcframework, MobileVLCKit.xcframework
+```
+
+On the Mac, compile `MediaRuntime.swift` with the other runtime files, and for the slice being built
+(`tvos-arm64`, `tvos-arm64_x86_64-simulator`, `ios-arm64_armv7_armv7s`, `ios-arm64_x86_64-simulator`):
+
+```sh
+swiftc ... -F Frameworks/TVVLCKit.xcframework/tvos-arm64 -framework TVVLCKit \
+  -Xlinker -rpath -Xlinker @executable_path/Frameworks \
+  ScalaRuntime.swift UniversalRuntime.swift MediaRuntime.swift App.swift main.swift -o App.app/App
+mkdir -p App.app/Frameworks && cp -R Frameworks/TVVLCKit.xcframework/tvos-arm64/TVVLCKit.framework App.app/Frameworks/
+rm -rf App.app/Frameworks/TVVLCKit.framework/{Headers,PrivateHeaders,Modules}
+lipo App.app/Frameworks/TVVLCKit.framework/TVVLCKit -thin arm64 -output ...   # MobileVLCKit's device slice has armv7
+codesign --force --sign "$IDENTITY" App.app/Frameworks/TVVLCKit.framework && codesign ... App.app
+```
+
+`MediaRuntime.swift` imports VLCKit only where it can (`canImport`): built without `-F` to it, the app compiles as
+before and its players are empty views (`Platform` says nothing plays: `rates` and `voiceClaritySupported` are false).
+EveryUI's `tools/tvos-run.sh` does all of this on the Mac for its example (fetching with `tools/vlckit.sh`). Ship the
+framework's licence (`Frameworks/<name>-COPYING.txt`) with the app and name VLCKit in its notices.
+
+What maps, against the Android player:
+
+- **Play, pause, seek, playhead, duration, buffering** (`waiting`: opening, or buffering with the playhead still),
+  `loop`, `rate` (0.1 to 4, pitch kept), `volume` (VLC's software mixer, made linear; past 1 louder, up to 4, unlimited
+  so it can clip), `muted`, `cover` (the picture covering its box, cut at the edges; subtitles are drawn on the
+  picture, so a covered picture's may be cut too), `open(url, from)` (the start said with the opening), `buffering`
+  (VLC's network caching: 600, 1500 or 5000 ms), `videoSize`, `bandwidth` (what VLC's input has read), `diagnostics`.
+- **Events**: `ready` (its first picture or sound), `ended`, `error` (`diagnostics.failure` is VLC's last error), and
+  with `nowPlaying` set, `paused` and `resumed` where another app takes the sound and gives it back.
+- **Tracks**: `audioTracks` and `textTracks` with the file's language (two letters where Apple knows the three), name
+  and a subtitle's format; `audioTrack`, `captions` (the device's caption setting as on the other platforms),
+  `languages` (the sound's language said with each opening, the text's chosen once it is ready) and `sidecars` (VLC's
+  subtitle slaves, with the label and language given). A subtitle chosen as it plays shows from the line being spoken:
+  the file is read again from where it is.
+- **headers**: VLC sends only a `User-Agent`, a `Referer` and a `Cookie`; any other (an `Authorization` token) is not
+  sent, and is said once in the log. A server that needs one must take it in the address.
+- **nowPlaying**: the system's now-playing (MPNowPlayingInfoCenter: the Apple TV's, Control Center, a phone's lock
+  screen) with its title, artist, album, picture, place and rate, and its transport (MPRemoteCommandCenter) arriving
+  as the keys of the same names as Android's (`MediaPlay`, `MediaPause`, `MediaPlayPause`, `MediaStop`,
+  `MediaTrackNext`, `MediaTrackPrevious`), a seek to a place going straight to the player. The audio session is
+  `playback` (heard with the ring switch on silent and the screen locked), mixed with other apps' sound until
+  `nowPlaying` is set, when it takes the sound over. To go on playing in the background (music, a book), the app's
+  Info.plist lists `audio` in `UIBackgroundModes`; EveryUI's template does not, since an app that plays nothing in the
+  background must not.
+- **Listening aids**: voice clarity and night mode on VLC's equaliser and compressor; no centre mix (above).
+- **Not here**: `cues`/`spoken` (VLC draws its own subtitles), `spectrum`/`bands` (VLCKit lends no tap on the sound),
+  `keepClip`, `direct`, `retrying`.
+
+`demo=player` (PlayerDemo) plays an MKV with two sound tracks and two subtitles, an MP4 and a sound alone (`src=`),
+with a bar for each control; `script=1` walks them all itself and logs each step and event.
 
 ## Launches (`Platform.launchArg`, `Platform.onLaunch`)
 

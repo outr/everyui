@@ -34,6 +34,7 @@ object EveryUIPlugin extends AutoPlugin {
     def Aars: everyui.sbt.Aars.type = everyui.sbt.Aars
     def RokuChannel: everyui.sbt.RokuChannel.type = everyui.sbt.RokuChannel
     def AppleApp: everyui.sbt.AppleApp.type = everyui.sbt.AppleApp
+    def VLCKit: everyui.sbt.VLCKit.type = everyui.sbt.VLCKit
     def EveryUILibraries: everyui.sbt.EveryUILibraries.type = everyui.sbt.EveryUILibraries
 
     val everyuiVersion = settingKey[String]("The EveryUI release this plugin belongs to, for the app's EveryUI dependencies")

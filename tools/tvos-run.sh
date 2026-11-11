@@ -12,6 +12,9 @@
 # Environment: MAC (ssh host, default mbp), MAC_DIR (default ~/everyui-spike), TVOS_DEVICE (default
 # "Apple TV 4K (3rd generation) (at 1080p)"), IOS_DEVICE (default "iPhone 17 Pro"), LIVE_SECONDS. Logs and the
 # screenshot go to target/tvos/ (target/ios/ with --ios).
+#
+# An app that plays (App.swift calls uiMedia) is linked with VLCKit (tools/vlckit.sh, fetched and checked on the Mac),
+# its framework embedded in the bundle's Frameworks folder, any bitcode stripped, and signed with the app.
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -59,6 +62,25 @@ else
   fail "(target/tvos/emit.log)"; tail -n 20 "$LOGS/emit.log"; exit 1
 fi
 
+# VLCKit where the app plays: TVVLCKit or MobileVLCKit, its simulator slice (swift/runtime/MediaRuntime.swift)
+LINK=""
+EMBED="true"
+if grep -q 'uiMedia(' tvos/out-swift/App*.swift; then
+  if [ $PLATFORM = ios ]; then FW=MobileVLCKit SLICE=ios-arm64_x86_64-simulator
+  else FW=TVVLCKit SLICE=tvos-arm64_x86_64-simulator; fi
+  step "vlckit: $FW on $MAC"
+  if XCF=$($SSH "$MAC" "bash -s -- $PLATFORM" < tools/vlckit.sh 2> "$LOGS/vlckit.log"); then pass "$XCF"
+  else fail "(target/$PLATFORM/vlckit.log)"; exit 1; fi
+  LINK="-F $XCF/$SLICE -framework $FW -Xlinker -rpath -Xlinker @executable_path/Frameworks"
+  # the framework copied in without its headers, its bitcode stripped where it has any, thinned to arm64, signed
+  B="EveryUI.app/Frameworks/$FW.framework"
+  EMBED="mkdir -p EveryUI.app/Frameworks && cp -R $XCF/$SLICE/$FW.framework EveryUI.app/Frameworks/ && \
+    rm -rf $B/Headers $B/PrivateHeaders $B/Modules && \
+    { if otool -l $B/$FW | grep -q __LLVM; then xcrun bitcode_strip -r $B/$FW -o $B/$FW; fi; true; } && \
+    { lipo $B/$FW -thin arm64 -output $B/$FW.thin 2>/dev/null && mv $B/$FW.thin $B/$FW; true; } && \
+    codesign --force --sign - $B > /dev/null 2>&1"
+fi
+
 APP="$MAC_DIR/app-$PLATFORM"
 step "ship to $MAC:$APP"
 $SSH "$MAC" "mkdir -p $APP" > /dev/null 2>&1
@@ -69,13 +91,15 @@ SDK_VERSION=$($SSH "$MAC" "xcrun --sdk $SDK --show-sdk-version" | tr -d '\r')
 $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
   xcrun -sdk $SDK swiftc -O -j\$(sysctl -n hw.ncpu) -suppress-warnings -target arm64-apple-${OS}${SDK_VERSION}-simulator \
     -framework UIKit -framework CoreText -framework QuartzCore \
-    src/ScalaRuntime.swift src/UniversalRuntime.swift src/App*.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
+    $LINK src/ScalaRuntime.swift src/UniversalRuntime.swift src/MediaRuntime.swift \
+    src/App*.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
   test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && cp -r src/images src/fonts EveryUI.app/ && \
   { cp src/*.html EveryUI.app/ 2>/dev/null; true; } && \
   plutil -replace UIDeviceFamily -json '$FAMILY' EveryUI.app/Info.plist && \
   xcrun actool src/Assets.xcassets --compile EveryUI.app --platform $SDK $TARGETS --minimum-deployment-target 15.0 \
     --app-icon '$APPICON' --output-partial-info-plist icons.plist > actool.log 2>&1 && \
   /usr/libexec/PlistBuddy -c 'Merge icons.plist' EveryUI.app/Info.plist && \
+  $EMBED && \
   codesign --force --sign - EveryUI.app > /dev/null 2>&1; test -x EveryUI.app/EveryUI" > "$LOGS/build.log" 2>&1
 if [ $? = 0 ]; then pass "$OS $SDK_VERSION"; else fail "(target/$PLATFORM/build.log)"; grep -E "error:" "$LOGS/build.log" | head -n 20; exit 1; fi
 

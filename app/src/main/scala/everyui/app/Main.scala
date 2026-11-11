@@ -111,6 +111,9 @@ import everyui.render.Platform
   *   audio      a looping track, a clip that takes the player from it and gives it back, and effects over both, the
   *              hand-offs logged ("[ui] audio: uiMedia2 demo-clip.wav takes the player from uiMedia1 demo-music.wav");
   *              `unfit=1` adds an effect a Roku cannot mix, reported as an error and played through the player (AudioDemo)
+  *   player     a video over local test media (an MKV with two sound tracks and two subtitles, an MP4, a sound alone):
+  *              play, pause, seeks, tracks, rate, volume and each end; `script=1` drives it, `src=` plays others
+  *              (PlayerDemo)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
   *   rowtips    a project's files in a tree, each with its whole path as its tip, shown as the pointer, the cursor or
   *              a finger rests on it (`n=<files>`, `menu=1`, `theme=light`, `rtl=1`); not on a Roku or an Apple TV
@@ -222,6 +225,7 @@ import everyui.render.Platform
   else if (demo == "unwind") UnwindDemo.run()
   else if (demo == "confirm") ConfirmDemo.run()
   else if (demo == "audio") AudioDemo.run()
+  else if (demo == "player") PlayerDemo.run()
   else if (demo == "leave") LeaveDemo.run()
   else if (demo == "reparent") ReparentDemo.run()
   else if (demo == "fill") FillDemo.run()

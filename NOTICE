@@ -51,3 +51,10 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+--- VLCKit (TVVLCKit 3.7.4, MobileVLCKit 3.7.5, https://code.videolan.org/videolan/VLCKit), not in any artifact ---
+
+An Apple app built with EveryUI that plays video or sound links VideoLAN's VLCKit dynamically and embeds it, unchanged,
+in its bundle's Frameworks folder. VLCKit is under the GNU Lesser General Public License 2.1 (its COPYING.txt), not the
+Apache License; it is not part of EveryUI, can be replaced in the bundle by another build of the same interface, and
+its source is at the address above. THIRD-PARTY.md says how it is fetched and what an app shipping it carries.

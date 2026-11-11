@@ -466,8 +466,8 @@ lazy val tvos = (project in file("tvos"))
       val swift = root / "swift"
       // the example's app icons (tools/make-icons.py)
       AppleApp.assemble(outDir, Seq(swift / "runtime" / "ScalaRuntime.swift", swift / "runtime" / "UniversalRuntime.swift",
-        swift / "app" / "main.swift"), everyuiAppleInfoPlist.value, Some(swift / "app" / "Assets.xcassets"),
-        Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"))
+        swift / "runtime" / "MediaRuntime.swift", swift / "app" / "main.swift"), everyuiAppleInfoPlist.value,
+        Some(swift / "app" / "Assets.xcassets"), Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"))
       // demo=webview's pages, in the bundle beside the app as they are beside the web build
       Seq("webview.html", "sandbox.html").foreach(p => IO.copyFile(root / "web" / p, outDir / p))
       outDir
@@ -709,8 +709,8 @@ lazy val tvosPublished = (project in file("published/tvos"))
     Compile / resourceGenerators += sharedLicenses.taskValue,
     // the runtime, the launcher and the Info.plist template (everyuiSwiftRuntime, everyuiAppleInfoPlist)
     Compile / resourceGenerators += bundled("everyui/swift", root => Seq(root / "swift" / "runtime" / "ScalaRuntime.swift",
-      root / "swift" / "runtime" / "UniversalRuntime.swift", root / "swift" / "app" / "main.swift",
-      root / "swift" / "app" / "Info.plist")).taskValue
+      root / "swift" / "runtime" / "UniversalRuntime.swift", root / "swift" / "runtime" / "MediaRuntime.swift",
+      root / "swift" / "app" / "main.swift", root / "swift" / "app" / "Info.plist")).taskValue
   )
 
 // --- webcheck: the web build in a real browser ---------------------------------

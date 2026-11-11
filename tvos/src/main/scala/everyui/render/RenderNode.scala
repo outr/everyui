@@ -92,41 +92,56 @@ class RenderNode(val sg: SGNode) {
   /** Detach from the parent, if attached. */
   def remove(): Unit = uiRemove(sg)
 
-  // media is not played on tvOS yet (an AVPlayer layer is to come): a video or an audio node is an empty view
-  def setMediaHeaders(headers: Map[String, String]): Unit = ()
-  def setMediaSource(url: String): Unit = ()
-  def setMediaStart(seconds: Double): Unit = ()
-  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
-  def setMediaPlaying(playing: Boolean): Unit = ()
-  def setMediaLoop(loop: Boolean): Unit = ()
-  def setMediaMuted(muted: Boolean): Unit = ()
-  def setMediaVolume(volume: Double): Unit = ()
-  def setMediaRate(rate: Double): Unit = ()
-  def mediaRates(): Boolean = false
-  /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): said once it plays here. */
+  // ---- media: VLCKit's player behind the view (uiMedia, swift/runtime/MediaRuntime.swift) where the app is built
+  // with it; a node that is no player, or an app built without VLCKit, plays nothing and says nothing ----
+  /** The headers it is opened with: VLC sends a User-Agent, a Referer and a Cookie, and says once of any other that
+    * it cannot. */
+  def setMediaHeaders(headers: Map[String, String]): Unit =
+    uiMediaHeaders(sg, headers.toList.map(h => h._1 + ": " + h._2).mkString("\n"))
+  def setMediaSource(url: String): Unit = uiMediaSource(sg, url)
+  def setMediaStart(seconds: Double): Unit = uiMediaStart(sg, seconds)
+  /** Offered beside the file's own tracks, as VLC's subtitle slaves, with the label and language each was given. */
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit =
+    uiMediaSidecars(sg, sidecars.map(_.url).mkString("\n"), sidecars.map(_.label).mkString("\n"),
+      sidecars.map(_.language).mkString("\n"))
+  def setMediaPlaying(playing: Boolean): Unit = uiMediaPlaying(sg, playing)
+  def setMediaLoop(loop: Boolean): Unit = uiMediaLoop(sg, loop)
+  def setMediaMuted(muted: Boolean): Unit = uiMediaMuted(sg, muted)
+  /** 0 to 1, and past it VLC's software mixer made louder, up to 4 (unlimited: it can clip). */
+  def setMediaVolume(volume: Double): Unit = uiMediaVolume(sg, volume)
+  def setMediaRate(rate: Double): Unit = uiMediaRate(sg, rate)
+  def mediaRates(): Boolean = uiMediaPlays()
+  /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): VLC fetches as it plays. */
   def mediaPlaysThrough(): Boolean = true
-  // nothing plays here yet, so nothing is folded
+  // VLC folds surround to stereo itself, with no level for the centre: nothing here reaches it
   def setMediaCenterMix(db: Double): Unit = ()
   def mediaCenterMixes(): Boolean = false
   def mediaCenterMixing(): Boolean = false
-  def setMediaAids(clarity: Double, night: Double): Unit = ()
-  def mediaAidsSupported(): Boolean = false
-  def mediaAidsHeard(): Boolean = false
-  // neither what it holds nor what it waits for can be told here
-  def setMediaBuffering(named: String): Unit = ()
+  /** Clearer voices on VLC's equaliser, heard at once; night mode on its compressor, which is in the chain from the
+    * opening, so a change of it opens the source again where it had reached. */
+  def setMediaAids(clarity: Double, night: Double): Unit = uiMediaAids(sg, clarity, night)
+  def mediaAidsSupported(): Boolean = uiMediaPlays()
+  def mediaAidsHeard(): Boolean = uiMediaAidsHeard(sg)
+  /** What VLC holds from the network before it plays. */
+  def setMediaBuffering(named: String): Unit = uiMediaCaching(sg, named)
   // nowhere of its own to keep a clip: every one is fetched as it plays
   def setMediaCached(cached: Boolean): Unit = ()
-  // it does not say whether it is waiting; the playhead standing still is what tells a viewer
-  def mediaBuffering(): Boolean = false
-  // nothing here counts what the link is carrying
-  def mediaBandwidth(): Long = 0L
-  def mediaSize(): (Double, Double) = (0.0, 0.0)
-  /** The words on screen: "" here, where the platform draws its own subtitles. */
+  /** Waiting for something to play: opening, or buffering with the playhead standing still. */
+  def mediaBuffering(): Boolean = uiMediaWaiting(sg)
+  /** What VLC's input has been reading, in bits a second. */
+  def mediaBandwidth(): Long = uiMediaBandwidth(sg)
+  def mediaSize(): (Double, Double) = (uiMediaSize(sg, false), uiMediaSize(sg, true))
+  /** The words on screen: "" here, where VLC draws its own subtitles (SRT and SubStation, styled, through libass). */
   def mediaCues(): String = ""
   def mediaCueList(): List[everyui.component.MediaCue] = Nil
+  // VLC retries on its own and says nothing until it gives up
   def mediaRetry(): Option[everyui.component.MediaRetry] = None
-  // nothing here shows what is playing, or hears it
-  def setNowPlaying(about: everyui.component.NowPlaying): Unit = ()
+  /** The system's now-playing (MPNowPlayingInfoCenter: the Apple TV's, Control Center, a phone's lock screen), its
+    * transport heard as the keys of the same names (MediaPlay, MediaPause, MediaTrackNext...), and the sound taken over
+    * from other apps while it plays. */
+  def setNowPlaying(about: everyui.component.NowPlaying): Unit =
+    uiMediaNowPlaying(sg, about.title, about.artist, about.album, about.art, about.seconds)
+  // VLCKit lends no tap on the sound it plays
   def setMediaSpectrum(on: Boolean): Unit = ()
   def mediaBands(): List[Double] = Nil
 
@@ -171,23 +186,86 @@ class RenderNode(val sg: SGNode) {
   def onEmbedFocus(f: Boolean => Unit): Unit = ()
   def releaseEmbed(): Unit = ()
 
-  /** What to hear and read this in: nothing here, where the platform chooses its own tracks. */
-  def setMediaLanguages(audio: String, text: String): Unit = ()
+  /** What to hear and read this in: the sound's language said with each opening, and the text chosen from its tracks
+    * once it is playing, where it has one in that language. */
+  def setMediaLanguages(audio: String, text: String): Unit = {
+    uiMediaHear(sg, audio)
+    wantText = text.trim
+  }
+  private var wantText = ""
 
-  def mediaTracks(): List[everyui.component.MediaTrack] = Nil
-  /** What was decoded: nothing this player says. */
-  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
-  def selectMediaTrack(kind: String, id: String): Unit = ()
-  def setMediaText(choice: everyui.component.TextChoice): Unit = ()
-  def setMediaCover(cover: Boolean): Unit = ()
+  def mediaTracks(): List[everyui.component.MediaTrack] = List.tabulate(uiMediaTrackCount(sg)) { i =>
+    everyui.component.MediaTrack(uiMediaTrack(sg, i, 0), uiMediaTrack(sg, i, 1), uiMediaTrack(sg, i, 2),
+      uiMediaTrack(sg, i, 3), uiMediaTrack(sg, i, 4))
+  }
+  // the text language asked for, from the tracks it turned out to have; without one found there, the captions as the
+  // app chose them, else as the device has them
+  private def chooseText(): Unit = {
+    val tracks = mediaTracks()
+    val tag = everyui.component.MediaTrack.languageTag(wantText)
+    val asked =
+      if (wantText.isEmpty || textChosen) None
+      else tracks.find(t => t.kind == "text" && everyui.component.MediaTrack.languageTag(t.language) == tag)
+    asked match {
+      case Some(t) => uiMediaSelect(sg, "text", t.id)
+      case None => showCaptions(tracks)
+    }
+  }
+  /** Captions by the rule of `everyui.text.Captions`: the text track the app chose, or none; until it chooses, the
+    * device's (Settings, Accessibility, Subtitles and Captioning) with its captions on, the track in its caption
+    * language, else the first. A change of the setting by the viewer is theirs: the app's choice goes, and the
+    * device's is followed. */
+  private def showCaptions(tracks: List[everyui.component.MediaTrack]): Unit = {
+    if (captionWatch.isEmpty) captionWatch = Some(everyui.text.Captions.listen(_ => {
+      textChosen = false
+      textChoice = ""
+      showCaptions(mediaTracks())
+    }))
+    val choice =
+      if (textChosen) everyui.component.TextChoice.fromTrack(Some(textChoice))
+      else everyui.component.TextChoice.TextFromDevice
+    uiMediaSelect(sg, "text", everyui.text.Captions.choose(choice, CaptionAccess.device(), tracks).getOrElse(""))
+  }
+  private var textChosen = false
+  private var textChoice = ""
+  private var captionWatch: Option[() => Unit] = None
+  /** What VLC decoded: the sound's and the picture's formats, the sound tracks, and the last error. */
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics(
+    uiMediaDiagnostics(sg, "audio"), uiMediaDiagnostics(sg, "video"), uiMediaDiagnostics(sg, "audioTracks"),
+    uiMediaDiagnostics(sg, "failure"))
+  /** A track to hear or read, by its id ("" reads none). The text track chosen is the app's choice from then on, put
+    * to each source as it opens (showCaptions). */
+  def selectMediaTrack(kind: String, id: String): Unit =
+    if (kind == "text") {
+      textChosen = true
+      textChoice = id
+      showCaptions(mediaTracks())
+    }
+    else if (id.nonEmpty) uiMediaSelect(sg, kind, id)
+  def setMediaText(choice: everyui.component.TextChoice): Unit = choice match {
+    case everyui.component.TextChoice.TextFromDevice =>
+      textChosen = false
+      textChoice = ""
+      showCaptions(mediaTracks())
+    case other => selectMediaTrack("text", everyui.component.TextChoice.asTrack(other).getOrElse(""))
+  }
+  def setMediaCover(cover: Boolean): Unit = uiMediaCover(sg, cover)
+  // VLC draws in the app's own layers, the one way it has
   def setMediaDirect(direct: Boolean): Unit = ()
-  // an effect (AudioPlayer.effect) is as any sound here, which plays nothing yet
+  // an effect (AudioPlayer.effect) is a player of its own, which VLC mixes with every other
   def setMediaEffect(effect: Boolean): Unit = ()
-  def getMediaPosition(): Double = 0.0
-  def getMediaDuration(): Double = 0.0
-  def seekMedia(seconds: Double): Unit = ()
-  def onMediaEvent(f: String => Unit): Unit = ()
-  def releaseMedia(): Unit = ()
+  def getMediaPosition(): Double = uiMediaPosition(sg)
+  def getMediaDuration(): Double = uiMediaDuration(sg)
+  def seekMedia(seconds: Double): Unit = uiMediaSeek(sg, seconds)
+  def onMediaEvent(f: String => Unit): Unit = uiMediaOnEvent(sg, e => {
+    if (e == "ready") chooseText()
+    f(e)
+  })
+  def releaseMedia(): Unit = {
+    uiMediaRelease(sg)
+    captionWatch.foreach(stop => stop())
+    captionWatch = None
+  }
 
   def setWidth(width: Double): Unit = uiSetWidth(sg, width)
   def setHeight(height: Double): Unit = uiSetHeight(sg, height)
@@ -455,10 +533,11 @@ object Nodes {
     node.setText(glyph)
     node
   }
-  /** A video: an empty view until tvOS plays media. */
-  def video(): RenderNode = container()
-  /** Sound: an empty view until tvOS plays media. */
-  def audio(): RenderNode = container()
+  /** A video: VLCKit's player drawing into the view (swift/runtime/MediaRuntime.swift); an empty view in an app built
+    * without VLCKit. */
+  def video(): RenderNode = new RenderNode(uiMedia(true))
+  /** Sound: VLCKit's player with nothing to draw, a view taking no room. */
+  def audio(): RenderNode = new RenderNode(uiMedia(false))
 
   /** An image node — a `UIImageView` loading from the app bundle. */
   def image(uri: String, width: Double, height: Double): RenderNode =
@@ -705,8 +784,8 @@ object Platform {
   def later(f: () => Unit): Unit = f()
   /** `f` once what is running now is done: `later` here. */
   def afterTurn(f: () => Unit): Unit = later(f)
-  /** Nothing waits here yet, so nothing comes of it. */
-  def after(seconds: Double, f: () => Unit): Unit = ()
+  /** `f` once `seconds` have passed, on the main queue (uiAfter). */
+  def after(seconds: Double, f: () => Unit): Unit = uiAfter(seconds, f)
 
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)

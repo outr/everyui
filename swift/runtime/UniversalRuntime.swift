@@ -335,6 +335,12 @@ func uiLog(_ message: V) -> V {
 /// Milliseconds on a monotonic clock — the animation clock.
 func uiTicks() -> V { .vDbl(CACurrentMediaTime() * 1000.0) }
 
+/// `f()` once `seconds` have passed, on the main queue (Platform.after).
+func uiAfter(_ seconds: V, _ f: V) -> V {
+    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.0, dbl(seconds))) { _ = try? RtInvoke(f, rtArr([])) }
+    return .vNull
+}
+
 func uiFreezeSeconds() -> V { .vDbl(UI.freeze) }
 
 /// Whether Reduce Motion is on in Accessibility.

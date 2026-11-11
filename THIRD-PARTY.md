@@ -76,3 +76,21 @@ Under `everyui-terminal/6.0.0/`.
 | @xterm/xterm | 6.0.0 | MIT | `everyui-terminal/6.0.0/licenses/xterm.txt` | https://github.com/xtermjs/xterm.js |
 | @xterm/addon-fit | 0.11.0 | MIT | `everyui-terminal/6.0.0/licenses/addon-fit.txt` | https://github.com/xtermjs/xterm.js/tree/master/addons/addon-fit |
 | @xterm/addon-web-links | 0.12.0 | MIT | `everyui-terminal/6.0.0/licenses/addon-web-links.txt` | https://github.com/xtermjs/xterm.js/tree/master/addons/addon-web-links |
+
+## VLCKit, beside an Apple app that plays (not in any artifact)
+
+An Apple app's video and sound are played by VLCKit (everyui-tvos's `swift/runtime/MediaRuntime.swift`): TVVLCKit on
+the Apple TV, MobileVLCKit on an iPhone and an iPad. No EveryUI artifact carries it. sbt-everyui's `VLCKit` (and
+EveryUI's `tools/vlckit.sh`) downloads VideoLAN's own release, checks it against the SHA-256 pinned there and keeps it
+in `~/.cache/everyui/vlckit/`, and the app's build links it DYNAMICALLY and embeds it, unchanged, in the bundle's
+`Frameworks/` folder, where it can be replaced with another build of the same interface, as the LGPL asks. Its licence
+text, `COPYING.txt` in the release, is staged beside it as `Frameworks/<name>-COPYING.txt`; an app that ships with it
+carries that text and says in its own notices that it uses VLCKit under the LGPL 2.1, with where its source is (the
+LGPL's section 6). VLCKit is built on libvlc and the libraries VideoLAN compiles into it (FFmpeg's libavcodec, libass,
+FreeType, FriBidi, HarfBuzz and others), each under the LGPL 2.1 or a licence compatible with it, as VideoLAN's
+release says.
+
+| Component | Version | Licence | Licence text | Upstream |
+|---|---|---|---|---|
+| TVVLCKit | 3.7.4 | GNU LGPL 2.1 or later | `COPYING.txt` in the release (`Frameworks/TVVLCKit-COPYING.txt` once staged) | https://code.videolan.org/videolan/VLCKit |
+| MobileVLCKit | 3.7.5 | GNU LGPL 2.1 or later | `COPYING.txt` in the release (`Frameworks/MobileVLCKit-COPYING.txt` once staged) | https://code.videolan.org/videolan/VLCKit |
