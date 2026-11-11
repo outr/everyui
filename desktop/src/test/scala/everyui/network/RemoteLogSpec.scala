@@ -117,6 +117,32 @@ class RemoteLogSpec extends FxSpec {
     }
   }
 
+  "A remote log's benign messages" should {
+    "be known whole, by how they start, and after a browser's Uncaught" in {
+      RemoteLog.isBenign("ResizeObserver loop completed with undelivered notifications.") shouldBe true
+      RemoteLog.isBenign("Uncaught ResizeObserver loop limit exceeded") shouldBe true
+      RemoteLog.isBenign("ResizeObserver loop limit exceeded") shouldBe true
+      RemoteLog.isBenign("TypeError: ResizeObserver loop limit exceeded") shouldBe false
+      RemoteLog.isBenign("ResizeObserver broke") shouldBe false
+      RemoteLog.isBenign("Script error.", Vector("Script error")) shouldBe true
+      RemoteLog.isBenign("anything", Vector("")) shouldBe false
+    }
+    "not be sent when nothing caught them, while every other problem is" in logging() { log =>
+      fx {
+        log.problem(everyui.error.Problem("uncaught",
+          "ResizeObserver loop completed with undelivered notifications.", ""))
+        log.problem(everyui.error.Problem("uncaught", "Uncaught ResizeObserver loop limit exceeded", ""))
+        log.problem(everyui.error.Problem("uncaught", "TypeError: x is undefined", ""))
+        // the same words thrown by the app's own code, where EveryUI caught them, are the app's: sent
+        Errors.report("pointer Click on Card", new IllegalStateException("ResizeObserver loop limit exceeded"))
+      }
+      eventually(lines.size == 2) shouldBe true
+      Thread.sleep(300L)
+      sent.map(_("message")).sorted shouldBe
+        List("TypeError: x is undefined", "java.lang.IllegalStateException: ResizeObserver loop limit exceeded")
+    }
+  }
+
   "A log's throttle" should {
     "take the ids and numbers out of a line" in {
       LogThrottle.normal("card 812 (c42, 9f3e2a1c-77ab) failed after 3.5s") shouldBe "card # (#, #) failed after #"

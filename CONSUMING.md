@@ -5839,6 +5839,11 @@ dropped, never logged, and nothing it does while sending is sent. Its endpoint i
 (a minute) with its ids and numbers taken out (`LogThrottle.normal`: "card 812 failed" and "card 813 failed" are one
 line). A message is cut to 2000 characters, a stack to 8000.
 
+What browsers raise on the window when nothing is wrong with the app is not sent: `RemoteLog.benign`, "ResizeObserver
+loop completed with undelivered notifications" (Chrome and Firefox) and "ResizeObserver loop limit exceeded" (older
+Chrome), each matched against the whole message or its start, after any "Uncaught " before it, and only for what
+nothing caught. Add an app's own with `new RemoteLog(..., benign = RemoteLog.benign :+ "...")`.
+
 ```scala
 import everyui.network.{RemoteLog, Reported}
 

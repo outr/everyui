@@ -17,6 +17,8 @@ import rapid.Task
   * forget, its failure dropped rather than told (which would send again), and none starts while one is being made;
   * the endpoint is never observed (`Network.unobserved`). `LogThrottle` keeps it to `perMinute` lines a minute, a line
   * once in `repeatMs` with its ids and numbers taken out. A message is cut to 2000 characters and a stack to 8000.
+  * An error nothing caught whose message is one of `benign` ([[RemoteLog.benign]]: what browsers raise on the window
+  * when nothing is wrong with the app) is not sent.
   *
   * {{{
   *   val log = new RemoteLog("/api/client/log",
@@ -31,7 +33,8 @@ class RemoteLog(endpoint: String,
                 build: String = "",
                 perMinute: Int = 20,
                 repeatMs: Double = 60000.0,
-                slowMs: Long = 3000L) {
+                slowMs: Long = 3000L,
+                benign: Vector[String] = RemoteLog.benign) {
   private val throttle = new LogThrottle(perMinute, repeatMs)
   @volatile private var sending = false
   private var stops: List[() => Unit] = Nil
@@ -76,8 +79,9 @@ class RemoteLog(endpoint: String,
   def error(message: String, t: Throwable): Unit = send("error", "", message + ": " + t.toString, Platform.stackOf(t))
   def warn(message: String): Unit = send("warn", "", message, "")
   def info(message: String): Unit = send("info", "", message, "")
-  /** A problem `Errors` heard, as an error. */
-  def problem(p: Problem): Unit = send("error", p.where, p.message, p.stack)
+  /** A problem `Errors` heard, as an error, unless nothing caught it and it is one of `benign`. */
+  def problem(p: Problem): Unit =
+    if (!(p.where == "uncaught" && RemoteLog.isBenign(p.message, benign))) send("error", p.where, p.message, p.stack)
 
   private def request(call: HttpCall, outcome: Either[Throwable, HttpResult], ms: Long): Unit = {
     val line = "http " + call.method + " " + call.url + " -> " + outcome.fold(_ => 0, _.status).toString + " in " +
@@ -116,5 +120,20 @@ class RemoteLog(endpoint: String,
 }
 
 object RemoteLog {
+  /** What browsers raise as an error on the window (`window.onerror`) when nothing is wrong with the app, which
+    * `RemoteLog` does not send: a ResizeObserver whose callback changed a size it observes, its notifications kept
+    * for the next frame (Chrome and Firefox's words, then older Chrome's). An app adds its own with
+    * `benign = RemoteLog.benign :+ "..."`. Each is matched against the whole message or its start ([[isBenign]]). */
+  val benign: Vector[String] = Vector(
+    "ResizeObserver loop completed with undelivered notifications",
+    "ResizeObserver loop limit exceeded")
+
+  /** Whether `message` is one of `known`: the whole of it, or how it starts (so a browser's full stop or more words
+    * after it do not matter), after any "Uncaught " a browser puts before it. */
+  def isBenign(message: String, known: Vector[String] = benign): Boolean = {
+    val words = message.stripPrefix("Uncaught ").trim
+    known.exists(k => k.nonEmpty && words.startsWith(k))
+  }
+
   private def cut(s: String, most: Int): String = if (s.length <= most) s else s.substring(0, most) + "..."
 }
