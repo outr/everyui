@@ -32,6 +32,8 @@ class TooltipSpec extends FxSpec {
     }
     try test finally fx {
       Tooltip.hide()
+      Tooltip.delay @= 0.6
+      Tooltip.onFocus @= true
       ui.children.clear()
       Focus.focused @= None
     }
