@@ -44,6 +44,10 @@ enum UI {
     /// Told as the root changes size (a rotation, a split view), and as the system's light or dark changes.
     static var resized: [V] = []
     static var schemes: [V] = []
+    /// The text dialog up (uiEditText), and what closes it, Done (true) or Cancel, for the drive's keys and typing.
+    static var editing: (UIAlertController, (Bool) -> Void)? = nil
+    /// The drive's hook into the program (uiOnDrive), where the app was built and launched to be driven.
+    static var drive: V = .vNull
     /// The event being reported: its modifiers (ctrl, meta, alt, shift), whether a finger made it, its button.
     static var modifiers: (Bool, Bool, Bool, Bool) = (false, false, false, false)
     static var finger = true
@@ -52,7 +56,7 @@ enum UI {
 
 /// The program's closures the runtime holds itself, roots of the collector with what RtHeld holds.
 func uiHooks() -> [V] {
-    var all: [V] = [UI.tick, UI.key] + UI.resized + UI.schemes
+    var all: [V] = [UI.tick, UI.key, UI.drive] + UI.resized + UI.schemes
     all.append(contentsOf: uiPointerRoots())
     all.append(contentsOf: uiWebRoots())
     all.append(contentsOf: uiMediaRoots())
@@ -820,16 +824,18 @@ func uiEditText(_ title: V, _ value: V, _ secure: V, _ autofill: V, _ done: V) -
             field.autocorrectionType = .no
         }
     }
-    // `done` held for the collector while the dialog is up
+    // `done` held for the collector while the dialog is up, and the dialog known to the drive (uiDriveRun) till then
     let held = RtHeld.hold(done)
     let submit: (Bool) -> Void = { taken in
         RtHeld.release(held)
+        UI.editing = nil
         if taken { RtGuard("a text dialog", done, [.vStr(alert.textFields?.first?.text ?? "")]) }
     }
     alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in submit(false) })
     let ok = UIAlertAction(title: "Done", style: .default) { _ in submit(true) }
     alert.addAction(ok)
     alert.preferredAction = ok
+    UI.editing = (alert, submit)
     var top = UI.root.window?.rootViewController
     while let shown = top?.presentedViewController { top = shown }
     top?.present(alert, animated: true)
@@ -1493,7 +1499,7 @@ enum Touch {
     static let slop: CGFloat = 10
 }
 
-/// A touch's phase ("down", "move", "up", "cancel") at `p`, the root's points, from RootViewController.
+/// A touch's phase ("down", "move", "up", "cancel") at `p`, the root's points, from RootViewController or the drive.
 /// As Android has it: what it went down on hears it to the end (and the root its moves and its lift, for a drag
 /// followed from there); a finger held still on what has a menu asks for it; a drag along a scroll further than a tap
 /// may is taken by the scroll (what it went down on told it was lifted); and a lift where it went down, no further than
@@ -1597,3 +1603,148 @@ func uiWheel(_ p: CGPoint, _ dx: CGFloat, _ dy: CGFloat) {
     guard let f = pointerHandlers(v, false)?.kinds["wheel"] else { return }
     RtGuard("pointer wheel", f, [.vDbl(Double(dx)), .vDbl(Double(dy))])
 }
+
+// MARK: - the drive: input from a test, over localhost, in a build made for it (tools/apple-drive.sh)
+
+/// The drive's hook into the program (Platform's, which answers each line), and whether the drive listens at all: only
+/// in a build compiled with `-D EVERYUI_DRIVE` (tools/tvos-run.sh's) and launched with `--drive=<port>` or
+/// EVERYUI_DRIVE=<port> in its environment. A release build has none of it.
+func uiOnDrive(_ f: V) -> V {
+    UI.drive = f
+    return .vNull
+}
+
+#if EVERYUI_DRIVE
+
+/// The port asked for at launch, or 0.
+func uiDrivePort() -> Int {
+    for a in CommandLine.arguments where a.hasPrefix("--drive=") { return Int(a.dropFirst(8)) ?? 0 }
+    return Int(ProcessInfo.processInfo.environment["EVERYUI_DRIVE"] ?? "") ?? 0
+}
+
+func uiDriveOn() -> V { .vBool(uiDrivePort() > 0) }
+
+/// Listen on 127.0.0.1 at the port asked for: each connection a line at a time, each line answered with one, its work
+/// done on the main queue between frames.
+func uiDriveStart() {
+    let port = uiDrivePort()
+    if port <= 0 { return }
+    let server = socket(AF_INET, SOCK_STREAM, 0)
+    var yes: Int32 = 1
+    setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+    var address = sockaddr_in()
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = in_port_t(UInt16(port).bigEndian)
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    let bound = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(server, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        }
+    }
+    if bound != 0 || listen(server, 4) != 0 {
+        print("[ui] drive: could not listen on 127.0.0.1:\(port)")
+        return
+    }
+    print("[ui] drive: listening on 127.0.0.1:\(port)")
+    Thread.detachNewThread {
+        while true {
+            let client = accept(server, nil, nil)
+            if client < 0 { continue }
+            Thread.detachNewThread { uiDriveServe(client) }
+        }
+    }
+}
+
+func uiDriveServe(_ client: Int32) {
+    var pending = Data()
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    while true {
+        let n = read(client, &buffer, buffer.count)
+        if n <= 0 { break }
+        pending.append(contentsOf: buffer[0..<n])
+        while let end = pending.firstIndex(of: 10) {
+            let line = String(decoding: pending[pending.startIndex..<end], as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            pending.removeSubrange(pending.startIndex...end)
+            if line.isEmpty { continue }
+            let done = DispatchSemaphore(value: 0)
+            var reply = ""
+            DispatchQueue.main.async { uiDriveRun(line) { said in reply = said; done.signal() } }
+            done.wait()
+            // a reply is its lines and then an empty one, so a client reads to the empty line
+            let out = Array((reply + "\n\n").utf8)
+            _ = out.withUnsafeBytes { write(client, $0.baseAddress, out.count) }
+        }
+    }
+    close(client)
+}
+
+/// One line: the program reads it (everyui.drive.Drive) and answers what to do, `<action>\t<reply>`, which is done
+/// here and the reply given. The actions: `tap x y`, `hold x y ms`, `swipe x1 y1 x2 y2 ms` (the app's units), `key
+/// name`, `type words`, and `say` (nothing to do).
+func uiDriveRun(_ line: String, _ answer: @escaping (String) -> Void) {
+    guard rtIsFn(UI.drive) else { answer("error the app has not started"); return }
+    let said = rtS(RtGuard("the drive", UI.drive, [.vStr(line)]))
+    let parts = said.components(separatedBy: "\t")
+    let action = parts[0], reply = parts.count > 1 ? parts[1...].joined(separator: "\t") : "ok"
+    let words = action.split(separator: " ", maxSplits: 1).map(String.init)
+    let numbers = action.split(separator: " ").dropFirst().compactMap { Double($0) }
+    // the app's units to the root's points
+    func point(_ i: Int) -> CGPoint { CGPoint(x: numbers[i] * UI.scale, y: numbers[i + 1] * UI.scale) }
+    switch words.first ?? "" {
+    case "tap" where numbers.count >= 2:
+        uiDrivePress(point(0), point(0), 0.06) { answer(reply) }
+    case "hold" where numbers.count >= 3:
+        uiDrivePress(point(0), point(0), numbers[2] / 1000.0) { answer(reply) }
+    case "swipe" where numbers.count >= 5:
+        uiDrivePress(point(0), point(2), numbers[4] / 1000.0) { answer(reply) }
+    case "key" where words.count > 1:
+        if case let (alert, close)? = UI.editing, ["Enter", "Escape", "Back"].contains(words[1]) {
+            alert.dismiss(animated: false)
+            close(words[1] == "Enter")
+        } else {
+            uiKey(words[1], true)
+            uiKey(words[1], false)
+        }
+        answer(reply)
+    case "type" where words.count > 1:
+        if case let (alert, _)? = UI.editing, let field = alert.textFields?.first {
+            field.text = (field.text ?? "") + words[1]
+        } else {
+            for c in words[1] {
+                uiKey(String(c), true)
+                uiKey(String(c), false)
+            }
+        }
+        answer(reply)
+    default:
+        answer(reply)
+    }
+}
+
+/// A finger down at `from`, moved to `to` over `seconds` (a frame at a time) and lifted there, through uiTouch as a
+/// real one is.
+func uiDrivePress(_ from: CGPoint, _ to: CGPoint, _ seconds: Double, _ done: @escaping () -> Void) {
+    UI.button = 0
+    uiTouch("down", from, true)
+    let steps = max(1, Int(seconds * 60.0))
+    func step(_ i: Int) {
+        let t = CGFloat(i) / CGFloat(steps)
+        let p = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+        if from != to { uiTouch("move", p, true) }
+        if i >= steps {
+            uiTouch("up", to, true)
+            done()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds / Double(steps)) { step(i + 1) }
+        }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds / Double(steps)) { step(1) }
+}
+
+#else
+
+func uiDriveOn() -> V { .vBool(false) }
+func uiDriveStart() {}
+
+#endif

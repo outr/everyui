@@ -500,8 +500,12 @@ object Nodes {
   /** An embed's box (everyui.component.Embed): a plain view, which holds its fallback. */
   def embed(name: String, site: everyui.component.EmbedSite): RenderNode = container()
 
-  /** The root view controller's render root. */
-  def root(): RenderNode = new RenderNode(uiRoot())
+  /** The root view controller's render root; and the drive's answers (everyui.drive.Drive) lent the runtime, where the
+    * build takes a test's input (tools/apple-drive.sh). */
+  def root(): RenderNode = {
+    if (uiDriveOn()) uiOnDrive((line: String) => everyui.drive.Drive.answer(line))
+    new RenderNode(uiRoot())
+  }
   /** A paragraph of styled runs (`everyui.component.RichText`): a text node here, which draws them. */
   def richText(): RenderNode = text()
 

@@ -8,6 +8,9 @@
 #   tools/tvos-run.sh --console       run for LIVE_SECONDS with EXTRA_ARGS on the launch and print the console
 #   tools/tvos-run.sh --show          also open the Simulator window on the Mac
 #   tools/tvos-run.sh --ios           an iPhone simulator instead of the Apple TV
+#   tools/tvos-run.sh --drive         launch it to take a test's input on the Mac's 127.0.0.1:$DRIVE_PORT (47001),
+#                                     and leave it running, for tools/apple-drive.sh (this build is always compiled to
+#                                     be driven, -D EVERYUI_DRIVE; an app's release build is not, and has none of it)
 #
 # Environment: MAC (ssh host, default mbp), MAC_DIR (default ~/everyui-spike), TVOS_DEVICE (default
 # "Apple TV 4K (3rd generation) (at 1080p)"), IOS_DEVICE (default "iPhone 17 Pro"), LIVE_SECONDS. Logs and the
@@ -38,6 +41,7 @@ for arg in "$@"; do
     --console) MODE=console ;;   # run for LIVE_SECONDS with EXTRA_ARGS on the launch and print the console (the durable demo)
     --show) SHOW=1 ;;
     --ios) PLATFORM=ios ;;
+    --drive) MODE=drive ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -89,7 +93,7 @@ if rsync -a --delete tvos/out-swift/ "$MAC:$APP/src/" > "$LOGS/ship.log" 2>&1; t
 step "build: EveryUI.app ($OS simulator, arm64)"
 SDK_VERSION=$($SSH "$MAC" "xcrun --sdk $SDK --show-sdk-version" | tr -d '\r')
 $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
-  xcrun -sdk $SDK swiftc -O -j\$(sysctl -n hw.ncpu) -suppress-warnings -target arm64-apple-${OS}${SDK_VERSION}-simulator \
+  xcrun -sdk $SDK swiftc -O -j\$(sysctl -n hw.ncpu) -suppress-warnings -D EVERYUI_DRIVE -target arm64-apple-${OS}${SDK_VERSION}-simulator \
     -framework UIKit -framework CoreText -framework QuartzCore \
     $LINK src/ScalaRuntime.swift src/UniversalRuntime.swift src/MediaRuntime.swift \
     src/App*.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
@@ -116,10 +120,12 @@ ARGS=""
 [ -n "${EXTRA_ARGS:-}" ] && ARGS="$ARGS $EXTRA_ARGS"
 SECONDS_TO_RUN=$LIVE_SECONDS
 [ $MODE = freeze ] && SECONDS_TO_RUN=12
+[ $MODE = drive ] && SECONDS_TO_RUN=10 && ARGS="$ARGS --drive=${DRIVE_PORT:-47001}"
 # macOS has no `timeout`: the launch (which stays attached to the app's console) runs in the background for
 # SECONDS_TO_RUN; with --show the app is left running on the simulator afterwards.
 STOP="xcrun simctl terminate $UDID $BUNDLE > /dev/null 2>&1"
 [ $SHOW = 1 ] && [ $MODE = live ] && STOP="true"
+[ $MODE = drive ] && STOP="true"
 $SSH "$MAC" "cd $APP && xcrun simctl terminate $UDID $BUNDLE > /dev/null 2>&1; xcrun simctl install $UDID EveryUI.app && \
   (nohup xcrun simctl launch --console-pty $UDID $BUNDLE $ARGS > console.log 2>&1 &) ; sleep $SECONDS_TO_RUN; \
   xcrun simctl io $UDID screenshot screen.png > /dev/null 2>&1; sleep 1; xcrun simctl io $UDID screenshot screen2.png > /dev/null 2>&1; $STOP; \
@@ -127,6 +133,10 @@ $SSH "$MAC" "cd $APP && xcrun simctl terminate $UDID $BUNDLE > /dev/null 2>&1; x
 scp -q "$MAC:$APP/screen.png" "$LOGS/screen.png" 2>/dev/null; scp -q "$MAC:$APP/screen2.png" "$LOGS/screen2.png" 2>/dev/null
 if grep -aq '\[ui\] root' "$LOGS/console.log"; then pass "$(grep -aoE '\[ui\] root .*' "$LOGS/console.log")"; else fail "(target/$PLATFORM/console.log)"; tail -n 15 "$LOGS/console.log"; exit 1; fi
 if [ $MODE = console ]; then grep -a '\[ui\]' "$LOGS/console.log"; exit 0; fi
+if [ $MODE = drive ]; then
+  echo "driven: tools/apple-drive.sh ping (DEVICE=$UDID for a screenshot); the console is $MAC:$APP/console.log"
+  exit 0
+fi
 
 if [ $MODE = freeze ]; then
   step "frame vs golden"

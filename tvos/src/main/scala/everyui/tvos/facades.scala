@@ -381,3 +381,11 @@ class SGNode
 @native object uiErrorsSeen {
   def apply(): Int = native.value
 }
+/** Whether this build takes a test's input (compiled with `-D EVERYUI_DRIVE` and launched with `--drive=<port>`), and
+  * the program's answer to each line it is sent. */
+@native object uiDriveOn {
+  def apply(): Boolean = native.value
+}
+@native object uiOnDrive {
+  def apply(f: String => String): Unit = native.value
+}

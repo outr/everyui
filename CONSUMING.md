@@ -4762,6 +4762,34 @@ lazy val tvos = project.in(file("tvos"))
   )
 ```
 
+#### Driving an app on the simulators (`tools/apple-drive.sh`)
+
+A build made to be driven takes a test's input, as a Roku takes ECP's: compiled with `-D EVERYUI_DRIVE` and launched
+with `--drive=<port>` (or `SIMCTL_CHILD_EVERYUI_DRIVE=<port>` in `xcrun simctl launch`'s environment), it listens on
+`127.0.0.1:<port>`, which the simulator shares with the Mac, and does what each line says through its own input: a tap
+is a touch the app hears as any other, a key a key. Nothing touches the Mac's own mouse or keyboard. A release build is
+compiled without the flag and has none of it; one with it listens only when launched to. `tools/tvos-run.sh --drive
+[--ios]` builds EveryUI's example so and leaves it running; `tools/apple-drive.sh` (MAC, DRIVE_PORT, DEVICE) sends:
+
+| Command | What it does |
+|---|---|
+| `ping` | the platform, the device, whether a remote drives it, the version |
+| `tap x y`, `hold x y [ms]`, `swipe x1 y1 x2 y2 [ms]` | a finger, at the screen's points (a screenshot's pixels over its scale) |
+| `key name` | `up`, `down`, `left`, `right`, `select` (`ok`, `enter`), `back` (`menu`), `escape`, `tab`, `space`, `backspace`, `play`, or any web key name |
+| `type words` | into the text dialog that is up (`key enter` is its Done, `key escape` its Cancel), else a key a character |
+| `press label` | a tap on the middle of what is showing named so: its label or its words, exactly, then in any case, then a part; what takes the focus first |
+| `find label`, `labels`, `focused` | where something is; each focusable thing showing, by name and place; what has the focus |
+| `screenshot [file]` | the simulator's screen (`xcrun simctl io … screenshot`), on its own line of the shell (not in a script of lines) |
+
+Each answer is a line starting `ok` or `error`, and the tool exits 1 on an error, so a session can sign in and walk its
+screens with a script of lines on its standard input:
+
+```
+tools/apple-drive.sh press "English"
+printf 'press Sign in\ntype me@example.com\nkey enter\nlabels\n' | tools/apple-drive.sh
+tools/apple-drive.sh screenshot target/signed-in.png
+```
+
 ### Video and sound on Apple: VLCKit
 
 A `VideoView` and an `AudioPlayer` play through VideoLAN's VLCKit on the Apple TV (TVVLCKit 3.7.4) and on an iPhone

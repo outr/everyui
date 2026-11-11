@@ -2,6 +2,8 @@
 //
 //   --freeze=<seconds>   step the animation that far on a virtual clock and stop (tools/check.sh)
 //   --viewport=WxH       lay out at that size whatever the screen (the frame check on a phone)
+//   --drive=<port>       take a test's input on 127.0.0.1:<port>, in a build compiled with -D EVERYUI_DRIVE
+//                        (tools/apple-drive.sh); EVERYUI_DRIVE=<port> in the environment does the same
 
 import UIKit
 
@@ -166,6 +168,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             }
         }
         uiCrashGuard()
+        uiDriveStart()
         let w = UIWindow(frame: UIScreen.main.bounds)
         w.backgroundColor = .white
         w.rootViewController = RootViewController()
