@@ -389,3 +389,45 @@ class SGNode
 @native object uiOnDrive {
   def apply(f: String => String): Unit = native.value
 }
+/** `text` on the pasteboard with `html` beside it where it is not "", and the pasteboard's text ("" for none): on an
+  * iPhone or an iPad; an Apple TV has no pasteboard. */
+@native object uiClipboardSet {
+  def apply(text: String, html: String): Unit = native.value
+}
+@native object uiClipboardGet {
+  def apply(): String = native.value
+}
+/** `url` opened by the system (the browser, or the app that owns the address), logged where nothing opens it. */
+@native object uiOpenUrl {
+  def apply(url: String): Unit = native.value
+}
+/** The text size the person chose (Dynamic Type) as a scale of the default, and `f` told it each time it changes: on
+  * an iPhone or an iPad; 1 on an Apple TV. */
+@native object uiTextScale {
+  def apply(): Double = native.value
+}
+@native object uiOnTextScale {
+  def apply(f: Double => Unit): Unit = native.value
+}
+/** The screen kept on, or let dim and lock again (the system's idle timer). */
+@native object uiKeepAwake {
+  def apply(on: Boolean): Unit = native.value
+}
+/** Words read out by VoiceOver, where it is on. */
+@native object uiAnnounce {
+  def apply(words: String): Unit = native.value
+}
+/** A value kept across launches (UserDefaults), "" for none; "" kept forgets it. */
+@native object uiSettingGet {
+  def apply(name: String): String = native.value
+}
+@native object uiSettingPut {
+  def apply(name: String, value: String): Unit = native.value
+}
+/** A value kept across launches in the Keychain, "" for none; "" kept forgets it. */
+@native object uiSecretGet {
+  def apply(name: String): String = native.value
+}
+@native object uiSecretPut {
+  def apply(name: String, value: String): Unit = native.value
+}

@@ -2655,11 +2655,14 @@ if (Clipboard.readable) paste.event.click.attach(_ => Clipboard.read().map(_.for
 - **Desktop**: JavaFX's system clipboard, answered at once.
 - **Android**: the ClipboardManager's first item as text. Android 10 on lets only the app in front read it, and
   Android 12 on tells the person it was read.
+- **iPhone, iPad**: UIPasteboard's text, at once; iOS asks the person first where another app put it there.
 - **Roku, Apple TV**: no clipboard; `readable` and `copies` are false, and a read answers None.
 
 `Clipboard.copyRich(html, text)` puts both flavours on it at once: an email or a document pastes the HTML, a terminal
 or a plain field the text (the web's `navigator.clipboard.write` with a `ClipboardItem`, falling back to `writeText`;
-JavaFX's `putHtml` and `putString`; Android's `ClipData.newHtmlText`). `Clipboard.copyMarkdown(markdown)` is built on
+JavaFX's `putHtml` and `putString`; Android's `ClipData.newHtmlText`;
+on an iPhone or an iPad one pasteboard item, public.html beside the text).
+`Clipboard.copyMarkdown(markdown)` is built on
 it: the Markdown as clean semantic HTML (`MarkdownHtml`: `p`, `strong`, `em`, `h1`–`h6`, lists, `a href`, `code`,
 `pre`, `blockquote`, `hr`, tables, and no style, class, colour or font) and as readable prose (`MarkdownPlain`: a blank
 line between paragraphs, "- " and "1. " items, the marks gone, a link as "words (url)", a table's cells apart by
@@ -4739,6 +4742,21 @@ a web page, a player, the lifecycle), a started task's failure, and an Objective
 ("RuntimeException: what went wrong") and where it was thrown out of (an Objective-C exception's stack); the app goes on.
 A crash the app cannot go on from (a Swift trap, a bad access, an abort) is noted as it happens and told to the hook at
 the next launch, once, as "the app ended on signal N". `Platform.errorsSeen()` counts them.
+
+The system's services, as Android's are: `Platform.openUrl` (and `navigate`) asks the system to open the address (the
+browser, or the app that owns its scheme); an Apple TV has no browser, so a web address opens nothing there, and what
+nothing opens is logged (`[ui] openUrl: nothing opens …`) and otherwise ignored. On an iPhone or an iPad the clipboard
+is the general pasteboard (`Clipboard.copy`, `copyRich` and `copyMarkdown` with their HTML beside the text, `read`);
+an Apple TV has none. `Platform.systemTextScale()` is the text size the person chose (Larger Text, Dynamic Type) as a
+scale of the default, body text's size at it over its size at Large (1.1 at Extra Large, 2.8 at the largest
+accessibility size), followed as it changes, so `UiScale.system` draws the app larger as Android's font scale does (held
+to what leaves it 320 across); an Apple TV says 1. `keepAwake` turns the system's idle timer off and on, `announce`
+and `alert` speak through VoiceOver where it is on, `setting`/`saveSetting` are kept in the app's UserDefaults (under
+`everyui.<name>`) and `secret`/`saveSecret` in the Keychain, a generic password of the bundle id's, kept on this
+device only; an app the Keychain refuses (signed with no entitlements) keeps its secrets with its settings and says so
+once in the log. `tools/tvos-run.sh` gives its simulator build the entitlements Xcode would, so the Keychain is used
+there too.
+
 
 ```scala
 @transient lazy val emitSwift = taskKey[File]("The app as Swift, with what an Apple TV build takes, in out-swift/")

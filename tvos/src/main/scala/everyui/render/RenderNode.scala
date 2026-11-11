@@ -665,10 +665,12 @@ object Platform {
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
-  /** No browser, no clipboard. */
-  def openUrl(url: String): Unit = ()
-  /** An Apple TV app has no browser to go to. */
-  def navigate(url: String): Unit = ()
+  /** The browser (or the app that owns the address) at `url`, by the system (UIApplication.open). An Apple TV has no
+    * browser, so a web address opens nothing there, and an app's own scheme only where that app is installed: what
+    * nothing opens is logged and nothing happens, as a link that cannot open does nothing elsewhere. */
+  def openUrl(url: String): Unit = uiOpenUrl(url)
+  /** An app has no page to leave: the system opens `url`. */
+  def navigate(url: String): Unit = openUrl(url)
   /** An Apple TV app has no title bar. */
   /** A page's description of itself (`everyui.seo.SEO`): only its title has a place here. */
   def setSEO(meta: everyui.seo.SEO): Unit = setTitle(meta.title)
@@ -688,18 +690,21 @@ object Platform {
   def reduceMotion(): Boolean = uiReduceMotion()
   /** The setting as it changes, read again as the app comes back to the front. */
   def watchReduceMotion(f: Boolean => Unit): Unit = onResume(() => f(reduceMotion()))
-  /** No text size of the system's is read here: 1. */
-  def systemTextScale(): Double = 1.0
-  def watchTextScale(f: Double => Unit): Unit = ()
+  /** The text size the person chose on an iPhone or an iPad (Larger Text, Dynamic Type), as a scale of the default:
+    * body text's size at their size over its size at Large, as Android's font scale. 1 on an Apple TV. */
+  def systemTextScale(): Double = if (tv()) 1.0 else uiTextScale()
+  /** The text size as the person changes it, told at once (the system says so as it changes). */
+  def watchTextScale(f: Double => Unit): Unit = if (!tv()) uiOnTextScale(f)
   /** No setting for more time to read or act is read here: 1. */
   def timeScale(): Double = 1.0
   /** The system's light or dark on an iPhone or an iPad, as it changes; a television's apps are dark, and the Apple
     * TV's appearance is not read. */
   def systemColorScheme(): String = if (tv()) "dark" else uiColorScheme()
   def watchColorScheme(f: String => Unit): Unit = if (!tv()) uiOnColorScheme(f)
-  /** Words for a screen reader to read out (a new message in a chat): not yet said here. */
-  def announce(words: String): Unit = ()
-  def alert(words: String): Unit = ()
+  /** `words` read out by VoiceOver when it next can, where it is on (a new message in a chat). */
+  def announce(words: String): Unit = uiAnnounce(words)
+  /** At once: VoiceOver has no other way to say it than `announce`. */
+  def alert(words: String): Unit = announce(words)
   def setTitle(title: String): Unit = ()
   /** A count of what is new on the app's icon: no badge is shown here. */
   def setBadge(count: Int): Unit = ()
@@ -710,17 +715,22 @@ object Platform {
   def askNotificationPermission(): Unit = ()
   /** A notification: none is shown here. */
   def showNotice(notice: everyui.push.Notice, onClick: () => Unit): Unit = ()
-  /** Whether copyText reaches a clipboard: the television has none to paste from, so a caller offers something else. */
-  def clipboard(): Boolean = false
+  /** Whether copyText reaches a clipboard: the pasteboard on an iPhone or an iPad; an Apple TV has none to paste from,
+    * so a caller offers something else there. */
+  def clipboard(): Boolean = !tv()
   /** Whether people select text with a pointer (`Component.selectable`): not here. */
   def selectsText(): Boolean = false
   def selectedText(): String = ""
   /** The words selected, as HTML and as text (`Clipboard.selection`): none here. */
   def selectedRich(): Option[(String, String)] = None
-  def copyText(text: String): Unit = ()
-  def copyRich(html: String, text: String): Unit = ()
-  /** The device keeps its own screen timing here. */
-  def keepAwake(on: Boolean): Unit = ()
+  /** `text` on the pasteboard, in place of what was there: nothing on an Apple TV. */
+  def copyText(text: String): Unit = if (!tv()) uiClipboardSet(text, "")
+  /** `html` and `text` on the pasteboard together: an app that takes styled words pastes the HTML, any other the
+    * text. */
+  def copyRich(html: String, text: String): Unit = if (!tv()) uiClipboardSet(text, html)
+  /** The screen kept on (while something is shown that is meant to be watched without a touch), or let dim, lock or
+    * go to the screen saver again: the system's idle timer off, or on. */
+  def keepAwake(on: Boolean): Unit = uiKeepAwake(on)
   /** The device names itself to the servers its pictures come from. */
   def identify(app: String): Unit = ()
   /** Nothing here can scale the screen's colours: an app that wants it dimmed does it itself. */
@@ -825,13 +835,17 @@ object Platform {
 
   def setDirection(rtl: Boolean): Unit = ()
 
-  /** Not kept yet: the registry is still to be wired to the runtime. */
-  def setting(name: String): String = ""
-  // nowhere safer than the settings to keep a secret here
-  def secret(name: String): String = setting(name)
-  def saveSecret(name: String, value: String): Unit = saveSetting(name, value)
+  /** A value kept across launches (the app's UserDefaults), or "" when there is none. */
+  def setting(name: String): String = uiSettingGet(name)
+  /** Keep `value` under `name`; "" forgets it. */
+  def saveSetting(name: String, value: String): Unit = uiSettingPut(name, value)
 
-  def saveSetting(name: String, value: String): Unit = ()
+  /** A value that must not be readable off the device (a session's token), kept across launches in the Keychain,
+    * never moved to another device, or "" when there is none; in the settings where the Keychain refuses the app (one
+    * signed with no entitlements), which is said once in the log. */
+  def secret(name: String): String = uiSecretGet(name)
+  /** Keep `value` under `name` in the Keychain; "" forgets it. */
+  def saveSecret(name: String, value: String): Unit = uiSecretPut(name, value)
 
   /** The device's own store of documents (see [[everyui.store.Store]]). Files under the app's Caches directory: a
     * television app has no other place of its own to keep them, and the system may empty it whenever it wants the

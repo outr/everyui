@@ -11,6 +11,7 @@ import CoreText
 import QuartzCore
 import MediaAccessibility
 import GameController
+import Security
 #if os(iOS)
 import WebKit   // WebView: there is no WebKit on tvOS, so a tvOS build neither references nor links it
 #endif
@@ -44,6 +45,10 @@ enum UI {
     /// Told as the root changes size (a rotation, a split view), and as the system's light or dark changes.
     static var resized: [V] = []
     static var schemes: [V] = []
+    /// What hears the text size change (uiOnTextScale), kept as long as the app runs.
+    static var textScaleObservers: [NSObjectProtocol] = []
+    /// Whether the Keychain has refused a secret (uiSecretPut), said once.
+    static var secretsUnkept = false
     /// The text dialog up (uiEditText), and what closes it, Done (true) or Cancel, for the drive's keys and typing.
     static var editing: (UIAlertController, (Bool) -> Void)? = nil
     /// The drive's hook into the program (uiOnDrive), where the app was built and launched to be driven.
@@ -155,9 +160,13 @@ func uiText() -> V {
 
 func uiGetText(_ node: V) -> V { .vStr((view(node) as? UILabel)?.text ?? "") }
 
+/// The words, as many lines as they were written with (a line break in them is one, as Android's setText has it):
+/// a label is otherwise one line, and showed the words up to the first break alone.
 func uiSetText(_ node: V, _ text: V) -> V {
     guard let l = view(node) as? UILabel else { return .vNull }
-    l.text = rtS(text)
+    let s = rtS(text)
+    l.numberOfLines = s.reduce(1) { $1 == "\n" || $1 == "\r\n" || $1 == "\r" ? $0 + 1 : $0 }
+    l.text = s
     place(l, geo(l))
     return .vNull
 }
@@ -1366,6 +1375,135 @@ func uiModifier(_ which: V) -> V {
 }
 func uiPointerFinger() -> V { .vBool(UI.finger) }
 func uiPointerButton() -> V { .vInt(UI.button) }
+
+// MARK: - the system's services: the clipboard, links, the text size, the screen kept on, a screen reader, settings
+
+/// `text` on the general pasteboard, in place of what was there, with `html` beside it where there is any: an app that
+/// takes styled words pastes the HTML, any other the text. An Apple TV has no pasteboard, so nothing.
+func uiClipboardSet(_ text: V, _ html: V) -> V {
+    #if os(iOS)
+    var item: [String: Any] = ["public.utf8-plain-text": rtS(text)]
+    let h = rtS(html)
+    if !h.isEmpty { item["public.html"] = h }
+    UIPasteboard.general.items = [item]
+    #endif
+    return .vNull
+}
+/// The pasteboard's text, "" where it holds none (iOS asks the person first where another app put it there). An
+/// Apple TV has none.
+func uiClipboardGet() -> V {
+    #if os(iOS)
+    return .vStr(UIPasteboard.general.string ?? "")
+    #else
+    return .vStr("")
+    #endif
+}
+
+/// `url` opened by the system: the browser, or the app that owns the address. Where nothing opens it (an Apple TV has
+/// no browser, so a web address opens nothing there) it is logged and nothing happens, as a link that cannot open
+/// does nothing elsewhere.
+func uiOpenUrl(_ url: V) -> V {
+    let s = rtS(url)
+    guard let u = URL(string: s), u.scheme != nil else {
+        print("[ui] openUrl: not an address: " + s)
+        return .vNull
+    }
+    UIApplication.shared.open(u, options: [:]) { opened in
+        print("[ui] openUrl: " + (opened ? "opened " : "nothing opens ") + s)
+    }
+    return .vNull
+}
+
+/// The text size the person chose (Display & Text Size, Larger Text: Dynamic Type) as a scale of the one an iPhone
+/// comes with: body text's size at their size over its size at the default, Large (17 points), so 19/17 at Extra Large
+/// and up to 53/17 at the largest accessibility size, as Android's font scale is told. 1 on an Apple TV, whose text
+/// size is not followed.
+func uiTextScale() -> V {
+    #if os(iOS)
+    let at = UITraitCollection(preferredContentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
+    return .vDbl(Double(UIFontMetrics(forTextStyle: .body).scaledValue(for: 17.0, compatibleWith: at) / 17.0))
+    #else
+    return .vDbl(1.0)
+    #endif
+}
+/// `f(scale)` each time the person changes the text size, on the main queue, held for the collector for good as the
+/// observer is.
+func uiOnTextScale(_ f: V) -> V {
+    #if os(iOS)
+    _ = RtHeld.hold(f)
+    UI.textScaleObservers.append(NotificationCenter.default.addObserver(
+        forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: .main) { _ in
+        RtGuard("the text size", f, [uiTextScale()])
+    })
+    #endif
+    return .vNull
+}
+
+/// The screen kept on (something is being watched without a touch), or let dim and lock as the system's idle timer
+/// says: the idle timer off and on again.
+func uiKeepAwake(_ on: V) -> V {
+    UIApplication.shared.isIdleTimerDisabled = on.rtTrue
+    return .vNull
+}
+
+/// `words` read out by VoiceOver when it next can, where it is on (a new message in a chat); nothing where it is off.
+func uiAnnounce(_ words: V) -> V {
+    if UIAccessibility.isVoiceOverRunning {
+        UIAccessibility.post(notification: .announcement, argument: rtS(words))
+    }
+    return .vNull
+}
+
+/// A value kept across launches (Platform.setting), in the app's UserDefaults under `everyui.<name>`, or "" when there
+/// is none; "" kept forgets it.
+func uiSettingGet(_ name: V) -> V {
+    .vStr(UserDefaults.standard.string(forKey: "everyui." + rtS(name)) ?? "")
+}
+func uiSettingPut(_ name: V, _ value: V) -> V {
+    let key = "everyui." + rtS(name), v = rtS(value)
+    if v.isEmpty { UserDefaults.standard.removeObject(forKey: key) } else { UserDefaults.standard.set(v, forKey: key) }
+    return .vNull
+}
+
+/// A value that must not be readable off the device (a session's token), kept across launches in the Keychain as a
+/// generic password of the app's (its bundle id the service, `name` the account), readable once the device has been
+/// unlocked after a restart and never moved to another device; "" where there is none, and "" kept forgets it. An app
+/// the Keychain refuses (signed with no entitlements: errSecMissingEntitlement, -34018) keeps it in its UserDefaults
+/// instead, as the settings are kept, and says so once.
+func uiSecretGet(_ name: V) -> V {
+    var query = uiSecretQuery(rtS(name))
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    var found: CFTypeRef? = nil
+    if SecItemCopyMatching(query as CFDictionary, &found) == errSecSuccess, let data = found as? Data {
+        return .vStr(String(decoding: data, as: UTF8.self))
+    }
+    return .vStr(UserDefaults.standard.string(forKey: "everyui.secret." + rtS(name)) ?? "")
+}
+func uiSecretPut(_ name: V, _ value: V) -> V {
+    let query = uiSecretQuery(rtS(name)), v = rtS(value), unkept = "everyui.secret." + rtS(name)
+    SecItemDelete(query as CFDictionary)
+    UserDefaults.standard.removeObject(forKey: unkept)
+    if !v.isEmpty {
+        var add = query
+        add[kSecValueData as String] = Data(v.utf8)
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(add as CFDictionary, nil)
+        if status != errSecSuccess {
+            UserDefaults.standard.set(v, forKey: unkept)
+            if !UI.secretsUnkept {
+                UI.secretsUnkept = true
+                print("[ui] secret: the Keychain refused one (\(status)), so secrets are kept with the settings")
+            }
+        }
+    }
+    return .vNull
+}
+private func uiSecretQuery(_ name: String) -> [String: Any] {
+    [kSecClass as String: kSecClassGenericPassword,
+     kSecAttrService as String: Bundle.main.bundleIdentifier ?? "everyui",
+     kSecAttrAccount as String: name]
+}
 
 // MARK: - what nothing caught: the program's (RtReportError), Objective-C's, and a crash, told to Platform.onError
 

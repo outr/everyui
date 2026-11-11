@@ -92,9 +92,16 @@ if rsync -a --delete tvos/out-swift/ "$MAC:$APP/src/" > "$LOGS/ship.log" 2>&1; t
 
 step "build: EveryUI.app ($OS simulator, arm64)"
 SDK_VERSION=$($SSH "$MAC" "xcrun --sdk $SDK --show-sdk-version" | tr -d '\r')
+# the entitlements a simulator build carries in its binary, as Xcode writes them (no profile is checked there), so the
+# Keychain keeps the app's secrets (Platform.secret) as it does for an app signed with its team
+XCENT="rm -f sim.xcent && plutil -create xml1 sim.xcent && \
+  plutil -insert application-identifier -string EVERYUI.$BUNDLE sim.xcent && \
+  plutil -insert keychain-access-groups -json '[\"EVERYUI.$BUNDLE\"]' sim.xcent"
 $SSH "$MAC" "cd $APP && rm -rf EveryUI.app && mkdir -p EveryUI.app && \
+  $XCENT && \
   xcrun -sdk $SDK swiftc -O -j\$(sysctl -n hw.ncpu) -suppress-warnings -D EVERYUI_DRIVE -target arm64-apple-${OS}${SDK_VERSION}-simulator \
     -framework UIKit -framework CoreText -framework QuartzCore \
+    -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker sim.xcent \
     $LINK src/ScalaRuntime.swift src/UniversalRuntime.swift src/MediaRuntime.swift \
     src/App*.swift src/main.swift -o EveryUI.app/EveryUI 2>&1 | grep -v '^\$'; \
   test -x EveryUI.app/EveryUI && cp src/Info.plist EveryUI.app/ && cp -r src/images src/fonts EveryUI.app/ && \
