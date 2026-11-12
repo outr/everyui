@@ -10,7 +10,8 @@ import everyui.theme.Theme
 class FontFeature(component: Component) {
   /** The theme's family (`Theme.family`, as it is when the text is made) until this names its own. */
   lazy val family: Prop[String] = component.own(
-    new Prop[String](Theme.family(), _ => applyFont(), () => restyled()))
+    // (as it is, not followed: made inside a value being worked out, it would have that value follow the theme)
+    new Prop[String](Theme.family.option.getOrElse(""), _ => applyFont(), () => restyled()))
 
   lazy val weight: Prop[FontWeight] = component.own(new Prop[FontWeight](FontWeight.Normal, w => {
     if (w.family.nonEmpty) family @= w.family

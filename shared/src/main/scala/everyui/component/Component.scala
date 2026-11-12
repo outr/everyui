@@ -3,7 +3,7 @@ package everyui.component
 import reactify.*
 import everyui.{Color, Gradient, Shadow}
 import everyui.component.feature.{MeasuredFeature, PositionFeature, SizeFeature}
-import everyui.component.types.{Live, Prop, Semantics, WhiteSpace}
+import everyui.component.types.{Live, Plain, Prop, Semantics, WhiteSpace}
 import everyui.event.{Events, Key, KeyEvent}
 import everyui.focus.Focus
 import everyui.motion.Track
@@ -135,7 +135,7 @@ class Component(val node: RenderNode) {
     * form's field shown only later leaves no gap until it is. */
   lazy val collapses: Var[Boolean] = {
     collapsesMade = true
-    val v = own(Var(false))
+    val v = own(Plain[Boolean](false))
     v.attach(_ => roomChanged())
     v
   }
@@ -332,7 +332,7 @@ class Component(val node: RenderNode) {
     * size along the row or column, replacing what it was bound to; across it, its size is its own as before. */
   lazy val flex: Var[Double] = {
     flexMade = true
-    val share = own(Var(0.0))
+    val share = own(Plain[Double](0.0))
     share.attach(_ => parent().flatMap(_.asContainer).foreach(_.layoutFor("flex")))
     share
   }
@@ -354,7 +354,7 @@ class Component(val node: RenderNode) {
   lazy val effectiveHeight: Val[Double] = own(Val(size.height()))
 
   /** The container this is in, kept by ContainerFeature. */
-  val parent: Var[Option[Component]] = own(Var(None))
+  val parent: Var[Option[Component]] = own(Plain[Option[Component]](None))
   /** The container this was last taken out of, and where in it: where the focus goes when it was on this as it went
     * (`Focus.successor`), to what took its place. */
   private[everyui] var leftParent: Option[Component] = None
@@ -462,7 +462,7 @@ class Component(val node: RenderNode) {
   lazy val event: Events = new Events(this)
   /** Whether the focus can land here: by `focus()`, the arrows from a neighbour or Tab (everyui.focus.Focus), and a
     * click where a remote moves the focus or this takes it from a click (`clickFocus`). */
-  lazy val focusable: Var[Boolean] = own(Var(false))
+  lazy val focusable: Var[Boolean] = own(Plain[Boolean](false))
   /** Whether the focus is here: set by the focus layer as it moves (`Focus.listen`). */
   lazy val focused: Val[Boolean] = focusedNow
   private[everyui] lazy val focusedNow: Var[Boolean] = {
@@ -487,7 +487,7 @@ class Component(val node: RenderNode) {
     * worked by the keys (a field, an editor, a list, a table, a slider, a map). A button, a chip, a tab or a panel
     * clicked takes no focus, and the click takes it from where it was. A remote's platform focuses whatever is
     * clicked, as ever. */
-  lazy val clickFocus: Var[Boolean] = own(Var(false))
+  lazy val clickFocus: Var[Boolean] = own(Plain[Boolean](false))
   // whether a click on it leaves the focus where it is, rather than letting it go: a split's handle, clicked beside a
   // field being typed in, takes nothing from it
   private[everyui] var clickLeavesFocus: Boolean = false

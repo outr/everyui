@@ -2,7 +2,7 @@ package everyui.component
 
 import everyui.component.feature.ContainerFeature
 import everyui.layout.{FlowLayout, HorizontalLayout, Layout, LayoutPass, VerticalLayout}
-import everyui.component.types.Prop
+import everyui.component.types.{Plain, Prop}
 import everyui.render.{Nodes, Platform, RenderNode}
 import reactify.*
 
@@ -22,9 +22,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     * their sizes change, through the layout pass (`LayoutPass`: the deepest container first, in a loop). A container
     * given a layout sizes itself to its content, unless a size was set: its height always, its width when the layout
     * fits it (a column, a row; not a flow, which wraps to the width it is given). */
-  lazy val layout: Var[Option[Layout]] = own(Var(None))
+  lazy val layout: Var[Option[Layout]] = own(Plain[Option[Layout]](None))
   /** Space between the edges and the children, on every side. */
-  lazy val padding: Var[Double] = own(Var(0.0))
+  lazy val padding: Var[Double] = own(Plain[Double](0.0))
   /** Whether the layout bound the width to the children (a row or a column given no width). It stays set once the app
     * gives the width another (`Row(...)` then `size.width := card.size.width()`): `widthIsRun` says whether it still
     * follows them. */
@@ -270,8 +270,8 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   // How far the children reach, kept up as each one moves or changes size (ChildWatch, Extent): a Val over every child
   // walked them all again for each child laid out, which for a table of a few hundred rows kept a browser busy for
   // seconds.
-  private lazy val reachedWidth: Var[Double] = own(Var(0.0))
-  private lazy val reachedHeight: Var[Double] = own(Var(0.0))
+  private lazy val reachedWidth: Var[Double] = own(Plain[Double](0.0))
+  private lazy val reachedHeight: Var[Double] = own(Plain[Double](0.0))
   private val reachAcross: Extent = new Extent
   private val reachDown: Extent = new Extent
   private var reachFollowed: Boolean = false

@@ -6,9 +6,9 @@ import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.Color
 import everyui.component.feature.ContainerFeature
-import everyui.component.types.Prop
+import everyui.component.types.{Plain, Prop}
 import everyui.render.Platform
-import everyui.theme.Theme
+import everyui.theme.{Palette, Theme}
 import everyui.task.*
 import reactify.*
 import reactify.reaction.Reaction
@@ -37,7 +37,7 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   /** How far the content is scrolled from its start, in pixels: a rail's start is its right end in a right-to-left
     * language, so it stays on its first items at 0 however it grows or narrows. Set, it scrolls there at once, as
     * `scrollTo` does, on every platform (the web's own scroll too), and holds as far as it could go. */
-  val offset: Var[Double] = own(Var(0.0))
+  val offset: Var[Double] = own(Plain[Double](0.0))
   // a rail in a right-to-left language, which runs from the right unless it runs from its left in every language
   private val fromRight: Val[Boolean] = own(Val(horizontal && followsDirection && Direction.rtl()))
   // how far the page's own scroll has moved the content on the screen, across or down: back along a rail from the right
@@ -60,23 +60,25 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
 
   /** How much room `reveal` leaves around what it brings into view: enough for whatever sits beside it and should be
     * seen with it (a rail's name, above its titles). */
-  val revealMargin: Var[Double] = own(Var(16.0))
+  val revealMargin: Var[Double] = own(Plain[Double](16.0))
 
   /** The scrollbar's colour, where the platform draws one (the web: a thin one, on a clear track). */
-  lazy val scrollbar: Prop[Color] = own(new Prop[Color](Theme.border(), c => node.setScrollbarColor(Component.css(c))))
+  lazy val scrollbar: Prop[Color] = own(new Prop[Color](
+    // (the theme's as it is, not followed: FontFeature.family)
+    Theme.palette.option.getOrElse(Palette.dark).border, c => node.setScrollbarColor(Component.css(c))))
 
   /** Whether the platform's scrollbar shows, where it draws one (the web): off, it draws none and keeps no room for
     * one (`scrollbarRoom` is 0), and the wheel, a finger, the keys, `offset`, `scrollTo` and `reveal` scroll it as
     * before. For a strip too narrow to give a bar its room (a rail of tiles down a window's edge). The other backends
     * draw no scrollbar of their own. */
-  val bar: Var[Boolean] = own(Var(true))
+  val bar: Var[Boolean] = own(Plain[Boolean](true))
 
   /** How long a fade is at each end that has more beyond it, in pixels (0, the default: none): the content goes to
     * clear over that length, showing what is behind it, at the start once it has scrolled from there and at the end
     * while there is more to come, following the scroll and the viewport's size, never more than half the viewport.
     * The web masks the node (`mask-image`), the desktop clips it to a gradient, and Android fades its edges as its own
     * scrolling views do; a Roku and an Apple TV draw no fade. */
-  val edgeFade: Var[Double] = own(Var(0.0))
+  val edgeFade: Var[Double] = own(Plain[Double](0.0))
 
   /** The room a rail's own scrollbar takes along its foot while it has more than shows, which what holds it adds to
     * its height so the scrollbar is under the content rather than over it: where the page draws one (the web,
@@ -216,8 +218,8 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
 
   /** How far an arrow moves it, and over how long, in seconds (0: at once). A page of text read with a remote wants a
     * long stride that glides, so the eye can follow where the words went. */
-  val step: Var[Double] = own(Var(40.0))
-  val glide: Var[Double] = own(Var(0.0))
+  val step: Var[Double] = own(Plain[Double](40.0))
+  val glide: Var[Double] = own(Plain[Double](0.0))
 
   private def stride(delta: Double): Unit = glideTo((if (glideRun.nonEmpty) glideAim else offset()) + delta, glide())
 

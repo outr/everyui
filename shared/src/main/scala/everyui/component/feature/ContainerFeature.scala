@@ -2,6 +2,7 @@ package everyui.component.feature
 
 import reactify.{Priority, Val, Var}
 import everyui.component.Component
+import everyui.component.types.Plain
 import everyui.layout.LayoutPass
 
 /** youi's `ContainerFeature`: the children, as a reactify `Var`. Changing it adds and removes the children's
@@ -9,7 +10,7 @@ import everyui.layout.LayoutPass
   *
   * A change costs its own size and the list's, once: what came and what went are found by marking one list and reading
   * the marks off the other, and the container is laid out once for the change, after what was added is measured. */
-class ContainerFeature(val component: Component) extends Var[Vector[Component]](Vector.empty) {
+class ContainerFeature(val component: Component) extends Plain[Vector[Component]](Vector.empty) {
   /** The children whose nodes are placed under the container's now: what a change is worked out from. Not the change's
     * own previous value, which can be one whose nodes were never placed: a change made deep in a chain of changes is
     * heard once the chain unwinds, and is dropped when a later one, made nearer the top, was heard first, so the later

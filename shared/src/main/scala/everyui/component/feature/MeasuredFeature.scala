@@ -1,6 +1,7 @@
 package everyui.component.feature
 
 import reactify.{Val, Var}
+import everyui.component.types.Plain
 import everyui.component.Component
 import everyui.render.Platform
 
@@ -20,8 +21,10 @@ class MeasuredFeature(private[feature] val component: Component) {
   // asked for out of the page and not read since, and read since (`peek`) but not yet set
   private var stale: Boolean = false
   private var peeked: Boolean = false
-  // the width last set, read without reading `width` (which, in a value being worked out, would make it depend on it)
+  // the width and height last set, read without reading `width` (which, in a value being worked out, would make it
+  // depend on it): a size read again as it was is not set again
   private var setWidth: Double = 0.0
+  private var setHeight: Double = 0.0
   /** Whether its size was last read with its node out of the page (lent to it, on the web, where nothing it will be in
     * holds it to a width): read again as a kept view it is in is put back in the page (`ContainerFeature`), where what
     * it is in decides how it measures (words wrapped at their box). */
@@ -89,9 +92,16 @@ class MeasuredFeature(private[feature] val component: Component) {
     stale = false
     peeked = false
     val wider = readWidth != setWidth
-    setWidth = readWidth
-    w @= readWidth
-    h @= readHeight
+    // (set only where it changed: a component is read again for each container it is put in, and setting the size it
+    // had, which changes nothing, was most of what reading it again cost a Roku)
+    if (wider) {
+      setWidth = readWidth
+      w @= readWidth
+    }
+    if (readHeight != setHeight) {
+      setHeight = readHeight
+      h @= readHeight
+    }
     if (!everRead) {
       everRead = true
       if (knownNow != null) knownNow @= true
@@ -145,7 +155,7 @@ object MeasuredFeature {
 
   // a measured size: on the web, one asked for out of the page and not read since is read as it is read (`peek`)
   private def size(m: MeasuredFeature, across: Boolean): Var[Double] =
-    if (!Platform.measuresInBatches) Var(0.0) else new Var[Double](0.0) {
+    if (!Platform.measuresInBatches) Plain[Double](0.0) else new Plain[Double](0.0) {
       override def get: Double = m.peek(across, super.get)
     }
 

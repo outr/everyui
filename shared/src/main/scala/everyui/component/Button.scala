@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.Color
-import everyui.component.types.{Semantics, TextAlign, TextOverflow, WhiteSpace}
+import everyui.component.types.{Plain, Semantics, TextAlign, TextOverflow, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.theme.Theme
 import reactify.*
@@ -13,18 +13,18 @@ import reactify.*
 class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = ButtonStyle.Tonal,
              glyph: Option[MaterialIcon] = None, points: Double = 13.0) extends Container {
   /** What it says; bind it to change it. */
-  val label: Var[String] = own(Var(name))
+  val label: Var[String] = own(Plain[String](name))
   /** Whether it does anything. A disabled one is muted, does nothing, and says so to whatever reads the page (the web's
     * `aria-disabled`, `Component.disabled`); the focus still reaches it, so a focused button turned off leaves the
     * focus where it was, and a screen reader can still find it and say why. */
-  val enabled: Var[Boolean] = own(Var(true))
+  val enabled: Var[Boolean] = own(Plain[Boolean](true))
   /** At least this wide, its content centred: a button as wide as the form it ends. */
-  val minWidth: Var[Double] = own(Var(0.0))
+  val minWidth: Var[Double] = own(Plain[Double](0.0))
   /** Extra space after each letter of the words, in pixels (`FontFeature.letterSpacing`): Material's labelLarge is
     * 0.1. */
-  val letterSpacing: Var[Double] = own(Var(0.0))
+  val letterSpacing: Var[Double] = own(Plain[Double](0.0))
   /** Its words slanted (`FontFeature.italic`). */
-  val italic: Var[Boolean] = own(Var(false))
+  val italic: Var[Boolean] = own(Plain[Boolean](false))
   /** How many lines its words may take in the room it has (`TextView.textOverflow`): 0, the default, wraps them onto as
     * many as they need where they pass it, the button as tall as they are (Matt's ruling of 2026-10-27: words wrap by
     * default); more wraps them onto up to that many, the last cut short; 1 keeps them on one line, cut short with an
@@ -34,17 +34,17 @@ class Button(name: String, action: () => Unit = () => (), style: ButtonStyle = B
   val labelLines: Var[Int] = own(Var(if (TextOverflow.default() == TextOverflow.Ellipsis) 1 else 0))
   /** Where wrapped words line up (`labelLines`): at the start, the reading direction's, as a paragraph and the
     * one-line choices beside it do; `Center` or `End` where a design wants them so. */
-  val labelAlign: Var[TextAlign] = own(Var(TextAlign.Start))
+  val labelAlign: Var[TextAlign] = own(Plain[TextAlign](TextAlign.Start))
   /** Where its glyph and words sit across its width: `Center`, the default, in the middle; `Start` or `End` at that edge
     * of the reading direction, inside its padding (a full-width button as a rail's item, its icon and name at the
     * start). `labelAlign` lines the words up among themselves. */
-  val contentAlign: Var[TextAlign] = own(Var(TextAlign.Center))
+  val contentAlign: Var[TextAlign] = own(Plain[TextAlign](TextAlign.Center))
   /** Whether what it does cannot be undone (Delete): its words, an outlined one's edge and a filled one's plate in the
     * danger colour rather than the accent. */
-  val danger: Var[Boolean] = own(Var(false))
+  val danger: Var[Boolean] = own(Plain[Boolean](false))
   /** At work (a save under way): a spinner turns in the glyph's place (before the words, where it has none), a press does
     * nothing until it is set back, and a screen reader hears that it is busy ("Save, busy"; the web's `aria-busy`). */
-  val busy: Var[Boolean] = own(Var(false))
+  val busy: Var[Boolean] = own(Plain[Boolean](false))
 
   // The focus is unmistakable from across a room: a filled button turns to the text colour, anything else gets a ring
   // in the accent over the lit fill. The pointer resting on it only lights it.

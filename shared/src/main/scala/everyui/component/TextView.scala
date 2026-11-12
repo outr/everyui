@@ -2,7 +2,7 @@ package everyui.component
 
 import everyui.{Color, Gradient}
 import everyui.component.feature.FontFeature
-import everyui.component.types.{Elide, Prop, Semantics, TextAlign, TextDirection, TextOverflow, WhiteSpace}
+import everyui.component.types.{Elide, Plain, Prop, Semantics, TextAlign, TextDirection, TextOverflow, WhiteSpace}
 import everyui.render.{Nodes, Platform, RenderNode}
 import everyui.theme.Theme
 import reactify.Var
@@ -20,15 +20,15 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   /** The widest these words may be drawn: what will not fit on a line wraps onto another (`TextOverflow.Wrap`, the
     * default), or is cut short with an ellipsis (`TextOverflow.Ellipsis`), as a title beside a chip is, so whatever sits
     * after them keeps its place. 0 for no limit. */
-  lazy val maxWidth: Var[Double] = own(Var(0.0))
+  lazy val maxWidth: Var[Double] = own(Plain[Double](0.0))
   /** The most lines wrapped words may take: what will not fit is cut short at a word with an ellipsis, as a synopsis
     * under an episode's name is. 0 for no limit. */
-  lazy val maxLines: Var[Int] = own(Var(0))
+  lazy val maxLines: Var[Int] = own(Plain[Int](0))
   /** Where words wider than `maxWidth` are cut: at the end, the default; at the start, for a path whose end says the
     * most ("…/backend/app"); or in the middle. Wrapped words cut to `maxLines` are cut at the end. */
-  lazy val elide: Var[Elide] = own(Var(Elide.End))
+  lazy val elide: Var[Elide] = own(Plain[Elide](Elide.End))
   /** Whether the words are drawn cut short to fit (`maxWidth`, `maxLines`, their box), as last measured. */
-  lazy val elided: Var[Boolean] = own(Var(false))
+  lazy val elided: Var[Boolean] = own(Plain[Boolean](false))
   /** What the words do where they are wider than their box, the room what they are in gives them (a column's width
     * less its padding, a row's less what else is in it, the screen's), or than `maxWidth`: wrapped within it
     * (`TextOverflow.Wrap`, the default, `TextOverflow.default`), taking as many lines as they need; cut short with an
