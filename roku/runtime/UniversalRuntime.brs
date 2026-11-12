@@ -811,6 +811,16 @@ end function
 function uiRichText(label as object, text as string, baseUri as string, weight as integer, size as float, color as string) as float
     if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if label = invalid then return -1.0
+    ' text of ASCII alone is in the Latin script or none, which the label draws itself: one test of the whole, where the
+    ' letters were looked at one by one (a synopsis's 300, each time its words were cut to their box)
+    ga = GetGlobalAA()
+    if ga.uiNonAscii = invalid then ga.uiNonAscii = CreateObject("roRegex", "[^\x01-\x7F]", "")
+    if not ga.uiNonAscii.IsMatch(text)
+        children = label.getChildCount()
+        if children > 0 then label.removeChildrenIndex(children, 0)
+        label.text = text
+        return -1.0
+    end if
     ' words, each with the script its letters are in ("" for a word of spaces-and-punctuation only)
     words = []
     complex = false

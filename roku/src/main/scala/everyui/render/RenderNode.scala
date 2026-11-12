@@ -35,6 +35,10 @@ class RenderNode(val sg: SGNode) {
   private var fontWeight: Int = 400
   private var colorHex: String = ""
   private var richWidth: Double = -1.0
+  // How wide its words are whole, at its face and size, as last measured (uiTextWidth), or -1 until they are measured
+  // again: the words, the face or the size changed. A text is read for each container it is put in and as its box
+  // changes, and each read set a probe Label's font and words and laid them out, the same words at the same size.
+  private var wholeWidth: Double = -1.0
   // Whether the text wraps at its width (`setWhiteSpace`), so its height is its lines rather than one
   private var wrapping: Boolean = false
   // The clip last set, and the MaskGroup its children are in when its corners are rounded too
@@ -74,9 +78,17 @@ class RenderNode(val sg: SGNode) {
   }
 
   /** In the text's face, or in runs of faces that have its glyphs (Arabic, CJK) once a face is set. */
-  private def drawText(): Unit =
+  private def drawText(): Unit = {
+    wholeWidth = -1.0
     if (fontUri.isEmpty) uiSetText(sg, textValue)
     else richWidth = uiRichText(sg, textValue, fontUri, fontWeight, px(fontSize), colorHex)
+  }
+
+  // the words' whole width (uiTextWidth), measured once for the words, face and size they have
+  private def whole(): Double = {
+    if (wholeWidth < 0.0) wholeWidth = uiTextWidth(sg, fontUri, fontSize)
+    wholeWidth
+  }
 
   def getX(): Double = left
   def setX(x: Double): Unit = if (drawn) {
@@ -100,7 +112,10 @@ class RenderNode(val sg: SGNode) {
   /** Drawn larger or smaller about its own centre, the pivot the size keeps. */
   def setScale(factor: Double): Unit = if (drawn) uiSetScale(sg, factor)
 
-  def setFontSize(size: Double): Unit = uiSetFontSize(sg, px(size))
+  def setFontSize(size: Double): Unit = {
+    wholeWidth = -1.0
+    uiSetFontSize(sg, px(size))
+  }
 
   /** `"#rrggbb"`. */
   def setColor(hex: String): Unit = {
@@ -112,6 +127,7 @@ class RenderNode(val sg: SGNode) {
   /** A bundled face (`assets/fonts/`, copied to `pkg:/fonts/`): family, CSS
     * weight, size in pixels. */
   def setFont(family: String, weight: Int, size: Double): Unit = {
+    wholeWidth = -1.0
     if (family.nonEmpty) {
       // drawn in the face it is measured by: the registered or bundled file every other backend draws with
       val face = (if (italic) Faces.italic(family, weight) else None).getOrElse(Faces(family, weight))
@@ -136,14 +152,14 @@ class RenderNode(val sg: SGNode) {
     if (richWidth >= 0.0) richWidth / uiScale()
     else if (fontSize > 0.0) {
       // (held to its limit, the Label wraps within it)
-      val whole = uiTextWidth(sg, fontUri, fontSize)
-      if (textLimit > 0.0) math.min(whole, textLimit) else whole
+      val words = whole()
+      if (textLimit > 0.0) math.min(words, textLimit) else words
     }
     else math.max(if (boxWidth >= 0.0) boxWidth else 0.0, uiGetWidth(sg) / uiScale()) // (a Group is only its children)
   /** How wide the words are whole, whatever width the Label is given or held to. */
   def textWidth(): Double =
     if (richWidth >= 0.0) richWidth / uiScale()
-    else if (fontSize > 0.0) uiTextWidth(sg, fontUri, fontSize)
+    else if (fontSize > 0.0) whole()
     else 0.0
   /** Its width and height, read together (the web reads a node out of the page once for both). */
   def getSize(): (Double, Double) = (getWidth(), getHeight())
@@ -696,7 +712,7 @@ class RenderNode(val sg: SGNode) {
     * (TextView). */
   def setTextLimit(width: Double, lines: Int): Unit = if (fontSize > 0.0) {
     val was = textLimit
-    textLimit = if (wrapping && width > 0.0 && uiTextWidth(sg, fontUri, fontSize) > width) width else 0.0
+    textLimit = if (wrapping && width > 0.0 && whole() > width) width else 0.0
     if (textLimit != was) {
       uiSetWidth(sg, px(if (textLimit > 0.0) textLimit else math.max(0.0, boxWidth)))
       if (richWidth >= 0.0) drawText()
@@ -709,7 +725,10 @@ class RenderNode(val sg: SGNode) {
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
   def getValue(): String = uiGetText(sg)
-  def setValue(value: String): Unit = uiSetText(sg, value)
+  def setValue(value: String): Unit = {
+    wholeWidth = -1.0
+    uiSetText(sg, value)
+  }
   def setPlaceholder(text: String): Unit = ()
   def setInputAction(action: String): Unit = ()
   // what a field asks for (`Autofill.token`): nothing here fills fields

@@ -5535,9 +5535,15 @@ class RokuEmitter(
       |function _eq(a as dynamic, b as dynamic) as boolean
       |    ' Fast path: identical primitive types compare directly.
       |    ta = type(a)
-      |    ' Instances of classes (and case objects) without case fields are equal only to themselves.
       |    if ta = "roAssociativeArray" and type(b) = "roAssociativeArray"
+      |        ' the very same object, where its identity has been asked for, is equal to itself, as a case class's
+      |        ' `equals` begins with `eq`
+      |        id = a._id
+      |        if id <> invalid and id = b._id then return true
+      |        ' Instances of classes (and case objects) without case fields are equal only to themselves.
       |        if a._fields = invalid and b._fields = invalid and (a._cls <> invalid or b._cls <> invalid) then return RtIdentity(a, b)
+      |        ' (two objects: what follows for "aa", without asking each its kind)
+      |        return _eqObjects(a, b)
       |    end if
       |    if ta = type(b)
       |        if ta = "Integer" or ta = "Float" or ta = "Double" or ta = "String" or ta = "Boolean" then return a = b
@@ -5564,6 +5570,12 @@ class RokuEmitter(
       |        return true
       |    end if
       |    if ka <> "aa" then return false
+      |    return _eqObjects(a, b)
+      |end function
+      |
+      |' `_eq` of two assoc arrays: a map's entries, a case class's fields, a closure (or anything else carrying a
+      |' function) by identity, and a plain record field by field.
+      |function _eqObjects(a as object, b as object) as boolean
       |    if a.DoesExist("_map") or b.DoesExist("_map") then return _mapEq(a, b)
       |    if a._fields <> invalid and b._fields <> invalid
       |        if a._cls <> b._cls then return false
@@ -5572,7 +5584,8 @@ class RokuEmitter(
       |        end for
       |        return true
       |    end if
-      |    if _rtHasFn(a) or _rtHasFn(b) then return RtIdentity(a, b)
+      |    ' (a closure's function first, which is what most of them are, before looking through each)
+      |    if _rtKind(a.fn) = "fn" or _rtHasFn(a) or _rtHasFn(b) then return RtIdentity(a, b)
       |    na = 0
       |    for each k in a
       |        if LCase(k) <> "_id"
@@ -6597,6 +6610,8 @@ class RokuEmitter(
       |    return invalid
       |end function
       |function ThreadLocal_get(self as object) as dynamic
+      |    ' (set: the one test of the many reads, a reactive value's status and evaluation read on every change)
+      |    if self.__tlSet = true then return self.__tlValue
       |    seeded = false
       |    if self.DoesExist("__tlSet") then seeded = self.__tlSet
       |    if not seeded
