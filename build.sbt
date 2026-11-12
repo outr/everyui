@@ -538,9 +538,57 @@ lazy val desktop = (project in file("desktop"))
 lazy val androidSdk = file(sys.env.getOrElse("ANDROID_HOME", sys.props("user.home") + "/opt/android-sdk"))
 lazy val androidPlatform = "android-37.0"
 lazy val androidBuildTools = "37.0.0"
-lazy val androidMinSdk = "30"
+// The oldest Android the published backend runs on: Android 6, whose televisions are still in living rooms (an app
+// builds for it or newer). The example apps are built for it too, so they meet what an older Android lacks: built for
+// 11, the example never ran where an unguarded Android 11 call crashed every app at launch on Android 7 to 10.
+lazy val androidMinSdk = "23"
+lazy val androidLibraryMinSdk = androidMinSdk.toInt
 lazy val androidJar = androidSdk / "platforms" / androidPlatform / "android.jar"
 @transient val packageApk = taskKey[File]("Compile the Android backend and package it as a debug-signed APK in android/out-apk/")
+
+// androidApiCheck fails the published Android jars, and so their publish, on any reference to a newer class, method or
+// field that no Build.VERSION.SDK_INT guard keeps from running there (AndroidApiCheck, in sbt-support), less the
+// methods android/api-allowed.txt names with why they are safe.
+@transient val androidApiCheck = taskKey[Unit]("Fail on an Android API newer than androidLibraryMinSdk used unguarded")
+def androidApiChecked: Seq[Setting[?]] = Seq(
+  androidApiCheck := {
+    val conv = fileConverter.value
+    val _ = (Compile / compile).value
+    val classes = (Compile / classDirectory).value
+    val others = (Compile / dependencyClasspath).value.map(e => conv.toPath(e.data).toFile)
+    val levels = AndroidApiCheck.levels(androidSdk / "platforms" / androidPlatform / "data" / "api-versions.xml")
+    val allowed = AndroidApiCheck.allowedIn((ThisBuild / baseDirectory).value / "android" / "api-allowed.txt")
+    AndroidApiCheck.require(levels, androidLibraryMinSdk, Seq(classes), others, allowed, streams.value.log.info(_))
+  },
+  Compile / packageBin := (Compile / packageBin).dependsOn(androidApiCheck).value
+)
+
+// Google's back-port of the Java library, dexed into the example apps as an app built for before Android 8 dexes it
+// (CONSUMING.md: AndroidApk.Desugar): spice reads java.time as its headers load, which Android 6 and 7 do not have.
+// The back-port and the configuration saying what it covers at the same version, as R8 and L8 require.
+lazy val desugarJdkLibsVersion = "2.1.5"
+def desugarJdkLibs: Def.Initialize[Task[AndroidApk.Desugar]] = Def.task {
+  val resolution = dependencyResolution.value
+  val into = (ThisBuild / baseDirectory).value / "target" / "desugar"
+  def fetch(name: String): File = {
+    val module = ModuleID("com.android.tools", name, desugarJdkLibsVersion)
+    resolution.retrieve(resolution.wrapDependencyInModule(module), into / name, sbt.util.Logger.Null) match {
+      case Right(files) => files.find(f => f.getName.startsWith(name + "-") && f.getName.endsWith(".jar"))
+        .getOrElse(sys.error(s"AndroidApk: $name $desugarJdkLibsVersion fetched no jar"))
+      case Left(problem) => sys.error(s"AndroidApk: could not fetch $name $desugarJdkLibsVersion: $problem")
+    }
+  }
+  val library = fetch("desugar_jdk_libs")
+  val configuration = fetch("desugar_jdk_libs_configuration")
+  val config = into / "desugar.json"
+  val zip = new java.util.zip.ZipFile(configuration)
+  try {
+    val entry = Option(zip.getEntry("META-INF/desugar/d8/desugar.json"))
+      .getOrElse(sys.error("AndroidApk: no desugar.json in " + configuration.getName))
+    IO.write(config, zip.getInputStream(entry).readAllBytes())
+  } finally zip.close()
+  AndroidApk.Desugar(config, library, Some(configuration))
+}
 
 lazy val media3Version = EveryUILibraries.media3Version
 lazy val media3Modules = EveryUILibraries.media3Modules
@@ -606,7 +654,8 @@ lazy val android = (project in file("android"))
         (baseDirectory.value / "proguard-rules.pro" +: everyuiWidgetRules.value) ++ everyuiBackgroundRules.value,
         target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
-        version.value, 1, AndroidApk.debug, libraries = everyuiAndroidLibraries.value)
+        version.value, 1, AndroidApk.debug, desugar = Some(desugarJdkLibs.value),
+        libraries = everyuiAndroidLibraries.value)
     }
   )
 
@@ -643,6 +692,7 @@ lazy val androidPublished = (project in file("published/android"))
   .settings(
     name := "everyui-android",
     description := "EveryUI's UI layer over Android's Views, with the network module",
+    androidApiChecked,
     excludeDependencies := Nil,
     Compile / unmanagedSourceDirectories ++= publishedSources("android", "android", spice = true),
     libraryDependencies ++= Seq(
@@ -929,7 +979,8 @@ lazy val monacoAndroid = (project in file("monaco/android"))
         baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-monaco.apk",
-        version.value, 1, AndroidApk.debug, libraries = everyuiAndroidLibraries.value)
+        version.value, 1, AndroidApk.debug, desugar = Some(desugarJdkLibs.value),
+        libraries = everyuiAndroidLibraries.value)
     }
   )
 
@@ -1043,7 +1094,8 @@ lazy val terminalAndroid = (project in file("terminal/android"))
         baseDirectory.value / "AndroidManifest.xml", buildRoot / "android" / "res", assets,
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-terminal.apk",
-        version.value, 1, AndroidApk.debug, libraries = everyuiAndroidLibraries.value)
+        version.value, 1, AndroidApk.debug, desugar = Some(desugarJdkLibs.value),
+        libraries = everyuiAndroidLibraries.value)
     }
   )
 
@@ -1075,7 +1127,7 @@ def embedAndroid(sources: File, resources: Def.Initialize[Task[Seq[File]]]): Seq
   Compile / unmanagedJars += Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(androidJar.toPath)),
   Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals", "-encoding", "UTF-8"),
   Compile / resourceGenerators += resources.taskValue
-)
+) ++ androidApiChecked
 
 lazy val monacoDesktopPublished = (project in file("published/monaco-desktop"))
   .dependsOn(desktopPublished % Provided)

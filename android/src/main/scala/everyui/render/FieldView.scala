@@ -235,15 +235,17 @@ object FieldView {
         // focus on any of them was ignored as "already entered", which no cancel undoes. A field Android has not met is
         // asked about as its focus comes, as an ordinary request (one asked by hand, a password manager answered with
         // nothing). An id is given only to a view out of its window: taken out and put back where it was, as it was.
-        val id = if (android.os.Build.VERSION.SDK_INT >= 28 && !field.hasFocus) manager.getNextAutofillId else null
-        if (id != null) field.getParent match {
-          case parent: android.view.ViewGroup =>
-            val at = parent.indexOfChild(field)
-            val params = field.getLayoutParams
-            parent.removeView(field)
-            field.setAutofillId(id)
-            parent.addView(field, at, params)
-          case _ => ()
+        if (android.os.Build.VERSION.SDK_INT >= 28 && !field.hasFocus) {
+          val id = manager.getNextAutofillId
+          if (id != null) field.getParent match {
+            case parent: android.view.ViewGroup =>
+              val at = parent.indexOfChild(field)
+              val params = field.getLayoutParams
+              parent.removeView(field)
+              field.setAutofillId(id)
+              parent.addView(field, at, params)
+            case _ => ()
+          }
         }
       }
     } finally entering = false

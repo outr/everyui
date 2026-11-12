@@ -31,6 +31,7 @@ object EveryUIPlugin extends AutoPlugin {
     // them needs (AndroidRuntime's ASM) for a build that packages no Android app
     def AndroidApk: everyui.sbt.AndroidApk.type = everyui.sbt.AndroidApk
     def AndroidRuntime: everyui.sbt.AndroidRuntime.type = everyui.sbt.AndroidRuntime
+    def AndroidApiCheck: everyui.sbt.AndroidApiCheck.type = everyui.sbt.AndroidApiCheck
     def Aars: everyui.sbt.Aars.type = everyui.sbt.Aars
     def RokuChannel: everyui.sbt.RokuChannel.type = everyui.sbt.RokuChannel
     def AppleApp: everyui.sbt.AppleApp.type = everyui.sbt.AppleApp

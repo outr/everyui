@@ -928,7 +928,7 @@ and Android (83–106 for "BackIn Example").
   it), single-line `TextView` (no font padding, baseline moved onto the shared
   line box), `ImageView`. No Gradle: `sbt android/packageApk` runs d8 over the
   program, reactify and the Scala 3.8 library (5.6 MB of dex in 3s), aapt2 for
-  the manifest and assets, zipalign, and apksigner with the debug key. minSdk 30,
+  the manifest and assets, zipalign, and apksigner with the debug key. minSdk 23,
   target 35, a LEANBACK launcher entry so it runs on Android TV — verified on the
   Google TV Streamer (2026-09-13): the app is listed by the TV launcher, the
   frozen frame matches the golden, and it holds 60 fps live at the Streamer's

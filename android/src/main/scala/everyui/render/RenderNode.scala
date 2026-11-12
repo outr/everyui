@@ -769,8 +769,8 @@ class RenderNode(val view: View) {
 
   // the view's tip made the one of the run the pointer is over, as it moves: Android has one tip a view, shown as the
   // pointer rests on it (and kept up to date while it shows), and none for a span of its text
-  private def tipOver(e: MotionEvent): Unit = (view, android.os.Build.VERSION.SDK_INT >= 26) match {
-    case (t: TextView, true) =>
+  private def tipOver(e: MotionEvent): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) view match {
+    case t: TextView =>
       val at = if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) -1 else t.getOffsetForPosition(e.getX, e.getY)
       val tip = runTips.find(r => at >= r._1 && at < r._2).map(_._3).getOrElse(ownTip)
       val now = t.getTooltipText
@@ -1809,13 +1809,16 @@ object Host {
         (left, bars.top, right, bars.bottom)
       }
       else {
-        // the window's bottom inset holds the keyboard too before Android 11, which is Host.keyboard's, not the bar's
-        val cut = if (android.os.Build.VERSION.SDK_INT >= 28) Option(insets.getDisplayCutout) else None
-        (math.max(insets.getSystemWindowInsetLeft, cut.map(_.getSafeInsetLeft).getOrElse(0)),
-          math.max(insets.getSystemWindowInsetTop, cut.map(_.getSafeInsetTop).getOrElse(0)),
-          math.max(insets.getSystemWindowInsetRight, cut.map(_.getSafeInsetRight).getOrElse(0)),
-          math.max(math.min(insets.getSystemWindowInsetBottom, insets.getStableInsetBottom),
-            cut.map(_.getSafeInsetBottom).getOrElse(0)))
+        // the window's bottom inset holds the keyboard too before Android 11, which is Host.keyboard's, not the bar's;
+        // a cutout is Android 9's, read in no lambda, which would run its calls out of sight of the guard
+        val cut = if (android.os.Build.VERSION.SDK_INT >= 28) insets.getDisplayCutout else null
+        val (cutLeft, cutTop, cutRight, cutBottom) =
+          if (android.os.Build.VERSION.SDK_INT >= 28 && cut != null)
+            (cut.getSafeInsetLeft, cut.getSafeInsetTop, cut.getSafeInsetRight, cut.getSafeInsetBottom)
+          else (0, 0, 0, 0)
+        (math.max(insets.getSystemWindowInsetLeft, cutLeft), math.max(insets.getSystemWindowInsetTop, cutTop),
+          math.max(insets.getSystemWindowInsetRight, cutRight),
+          math.max(math.min(insets.getSystemWindowInsetBottom, insets.getStableInsetBottom), cutBottom))
       }
     if (found != safe) {
       safe = found
@@ -2095,7 +2098,7 @@ object Host {
   }
 
   // the rest of `in` (an InputStream's own readAllBytes is Android 13's)
-  private def bytesOf(in: java.io.InputStream): Array[Byte] = {
+  private[render] def bytesOf(in: java.io.InputStream): Array[Byte] = {
     val out = new java.io.ByteArrayOutputStream()
     val buffer = new Array[Byte](16 * 1024)
     var read = in.read(buffer)
@@ -2104,6 +2107,16 @@ object Host {
       read = in.read(buffer)
     }
     out.toByteArray
+  }
+
+  // all of `file`, and `bytes` as all of it: java.nio.file is Android 8's
+  private[render] def fileBytes(file: java.io.File): Array[Byte] = {
+    val in = new java.io.FileInputStream(file)
+    try bytesOf(in) finally in.close()
+  }
+  private[render] def writeFile(file: java.io.File, bytes: Array[Byte]): Unit = {
+    val out = new java.io.FileOutputStream(file)
+    try out.write(bytes) finally out.close()
   }
 
   // the SVG `bytes` at `uri` drawn at its own size times the screen's density, and kept for drawing again; null where
@@ -2561,7 +2574,16 @@ object Platform {
 
   /** Put what is playing into that corner. True when the platform took it. */
   def toCorner(): Boolean =
-    try Host.activity.enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build())
+    try {
+      // its parameters are Android 8's; Android 7 (a television's) takes it with none
+      if (android.os.Build.VERSION.SDK_INT >= 26)
+        Host.activity.enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build())
+      else if (android.os.Build.VERSION.SDK_INT >= 24) {
+        Host.activity.enterPictureInPictureMode()
+        true
+      }
+      else false
+    }
     catch {
       case t: Throwable =>
         log("corner: " + t.getMessage)
@@ -3010,7 +3032,9 @@ object Platform {
   def setDirection(rtl: Boolean): Unit = {
     Host.rtl = rtl
     Host.root.setLayoutDirection(if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
-    Host.aligned.forEach(_.applyAlign())
+    // by its iterator: Iterable.forEach is Android 7's
+    val each = Host.aligned.iterator
+    while (each.hasNext) each.next().applyAlign()
   }
 
   /** `f` on a thread that does not draw, for work a frame should not wait on (a large document parsed or written);

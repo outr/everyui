@@ -182,7 +182,7 @@ object FileAccess {
     * it reads no file sandboxed. */
   def source(bytes: Array[Byte], mime: String): String = {
     val file = java.io.File.createTempFile("everyui-", "." + FileTypes.extensionOf(mime), sourceDir)
-    java.nio.file.Files.write(file.toPath, bytes)
+    Host.writeFile(file, bytes)
     val address = android.net.Uri.fromFile(file).toString
     sources = sources + (address -> file)
     mimes = mimes + (address -> mime)
@@ -191,7 +191,7 @@ object FileAccess {
 
   /** What a `source` holds, and its type, where `address` is one. */
   private[render] def held(address: String): Option[(Array[Byte], String)] = sources.get(address).flatMap { file =>
-    try Some((java.nio.file.Files.readAllBytes(file.toPath), mimes.getOrElse(address, "text/html")))
+    try Some((Host.fileBytes(file), mimes.getOrElse(address, "text/html")))
     catch { case _: java.io.IOException => None }
   }
 

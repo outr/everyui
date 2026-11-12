@@ -18,6 +18,12 @@ object Credentials {
 
   private def manager: CredentialManager = CredentialManager.Companion.create(Host.activity)
 
+  // its answers on the thread that draws: Activity.getMainExecutor is Android 9's
+  private lazy val main: java.util.concurrent.Executor = {
+    val handler = new android.os.Handler(android.os.Looper.getMainLooper)
+    (r: Runnable) => { handler.post(r); () }
+  }
+
   /** The options as Credential Manager takes them: the object itself, not under "publicKey". */
   private def bare(options: String): String = {
     val json = new org.json.JSONObject(options)
@@ -26,7 +32,7 @@ object Credentials {
 
   def create(options: String, done: PasskeyResult => Unit): Unit =
     manager.createCredentialAsync(Host.activity, new CreatePublicKeyCredentialRequest(bare(options)), new CancellationSignal,
-      Host.activity.getMainExecutor, new CredentialManagerCallback[CreateCredentialResponse, CreateCredentialException] {
+      main, new CredentialManagerCallback[CreateCredentialResponse, CreateCredentialException] {
         override def onResult(r: CreateCredentialResponse): Unit = r match {
           case p: CreatePublicKeyCredentialResponse => done(PasskeyResult.Credential(p.getRegistrationResponseJson))
           case other => done(PasskeyResult.PasskeyFailed("Not a passkey: " + other.getType))
@@ -42,8 +48,8 @@ object Credentials {
 
   def get(options: String, done: PasskeyResult => Unit): Unit =
     manager.getCredentialAsync(Host.activity,
-      new GetCredentialRequest(java.util.List.of(new GetPublicKeyCredentialOption(bare(options)))), new CancellationSignal,
-      Host.activity.getMainExecutor, new CredentialManagerCallback[GetCredentialResponse, GetCredentialException] {
+      new GetCredentialRequest(java.util.Collections.singletonList(new GetPublicKeyCredentialOption(bare(options)))),
+      new CancellationSignal, main, new CredentialManagerCallback[GetCredentialResponse, GetCredentialException] {
         override def onResult(r: GetCredentialResponse): Unit = r.getCredential match {
           case p: PublicKeyCredential => done(PasskeyResult.Credential(p.getAuthenticationResponseJson))
           case other => done(PasskeyResult.PasskeyFailed("Not a passkey: " + other.getType))

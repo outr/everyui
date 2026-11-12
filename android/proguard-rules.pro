@@ -58,6 +58,8 @@
 -dontwarn javax.xml.stream.**
 -dontwarn org.codehaus.stax2.**
 -dontwarn com.fasterxml.jackson.**
+# and its StAX parser's (Woodstox) OSGi service annotations, which R8 asks for when it builds for before Android 8
+-dontwarn aQute.bnd.annotation.**
 # java.util.EnumSet reaches a Java enum's `values()` by reflection (Enum.enumValues); R8 must keep it.
 -keepclassmembers enum * { public static **[] values(); public static ** valueOf(java.lang.String); }
 

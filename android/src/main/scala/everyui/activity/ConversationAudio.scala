@@ -19,6 +19,9 @@ case class ConversationAudioStatus(selected: Option[CommunicationRoute], recordi
 final class ConversationAudio(context: Context, input: Array[Byte] => Unit, drained: Long => Unit,
                               interrupted: String => Unit, report: ConversationAudioStatus => Unit,
                               focusChanged: Boolean => Unit = _ => ()) extends AutoCloseable {
+  // its focus request and its routes are Android 8's and 12's: made on anything older, it fails on the first
+  if (android.os.Build.VERSION.SDK_INT < 31)
+    throw new UnsupportedOperationException("ConversationAudio needs Android 12")
   private val manager = context.getApplicationContext.getSystemService(Context.AUDIO_SERVICE).asInstanceOf[AudioManager]
   private val main = new Handler(Looper.getMainLooper)
   private val live = new AtomicBoolean(false)

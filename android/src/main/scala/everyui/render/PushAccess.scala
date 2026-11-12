@@ -1,6 +1,6 @@
 package everyui.render
 
-import android.app.{ActivityManager, Notification, NotificationChannel, NotificationManager, PendingIntent}
+import android.app.{ActivityManager, Notification, NotificationManager, PendingIntent}
 import android.content.{Context, Intent}
 import android.graphics.drawable.Icon
 import android.os.{Build, Bundle, Handler, Looper}
@@ -39,12 +39,12 @@ object PushAccess {
   def permission(done: Permission => Unit): Unit = done(
     if (!supported()) Permission.Refused
     else if (Build.VERSION.SDK_INT >= 33) Permissions.state(notifications)
-    else if (manager(Host.activity).areNotificationsEnabled) Permission.Granted
+    else if (NoticeChannels.enabled(manager(Host.activity))) Permission.Granted
     else Permission.Refused)
 
   def permit(done: Boolean => Unit): Unit =
     if (!supported()) done(false)
-    else if (Build.VERSION.SDK_INT < 33) done(manager(Host.activity).areNotificationsEnabled)
+    else if (Build.VERSION.SDK_INT < 33) done(NoticeChannels.enabled(manager(Host.activity)))
     else Permissions.ask(notifications)(granted => done(granted && manager(Host.activity).areNotificationsEnabled))
 
   /** The device's FCM token, once the person lets the app notify them. `key` is the web's; the token's project is the
@@ -101,13 +101,12 @@ object PushAccess {
 
   private def show(context: Context, message: PushMessage): Unit = {
     val notify = manager(context)
-    if (notify.getNotificationChannel(channel) == null)
-      notify.createNotificationChannel(new NotificationChannel(channel, "Notifications", NotificationManager.IMPORTANCE_DEFAULT))
+    NoticeChannels.ensure(notify, channel, "Notifications", NotificationManager.IMPORTANCE_DEFAULT)
     val id = (message.title + message.body + message.path.getOrElse("") + System.nanoTime().toString).hashCode
     val launch = put(launcher(context), message, None)
     message.path.foreach(p => launch.putExtra("path", p))
     val info = context.getApplicationInfo
-    val builder = new Notification.Builder(context, channel)
+    val builder = NoticeChannels.builder(context, channel, NotificationManager.IMPORTANCE_DEFAULT)
       .setSmallIcon(NoticeIcon.of(context))
       .setContentTitle(if (message.title.nonEmpty) message.title else context.getPackageManager.getApplicationLabel(info).toString)
       .setContentText(message.body)

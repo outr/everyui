@@ -5,6 +5,7 @@ import android.location.{LocationListener, LocationManager, Location => AndroidL
 import android.os.{Build, CancellationSignal, Handler, Looper}
 import everyui.Permission
 import everyui.location.{LocationAnswer, Position}
+import scala.jdk.CollectionConverters.*
 
 /** Where the device is (`everyui.location.Location`) through the LocationManager: the fused provider where the device
   * has one, satellites for a precise fix and the network's for a rough one otherwise. The manifest declares
@@ -40,8 +41,16 @@ object LocationAccess {
         cancel.cancel()
         once(LocationAnswer.LocationUnavailable)
       }, (timeout * 1000.0).toLong)
-      manager.getCurrentLocation(provider(precise), cancel, Host.activity.getMainExecutor,
-        (l: AndroidLocation) => once(if (l == null) LocationAnswer.LocationUnavailable else located(l)))
+      val heard = (l: AndroidLocation) => once(if (l == null) LocationAnswer.LocationUnavailable else located(l))
+      if (Build.VERSION.SDK_INT >= 30)
+        manager.getCurrentLocation(provider(precise), cancel, Host.activity.getMainExecutor,
+          (l: AndroidLocation) => heard(l))
+      else {
+        // before Android 11, one update asked for, and no longer once the timeout cancels it
+        val single = listening(heard, () => ())
+        cancel.setOnCancelListener(() => manager.removeUpdates(single))
+        manager.requestSingleUpdate(provider(precise), single, Looper.getMainLooper)
+      }
     }
 
   def watch(precise: Boolean, distance: Double, answer: LocationAnswer => Unit): () => Unit = {
@@ -49,12 +58,12 @@ object LocationAccess {
     var stopped = false
     allowed(answer) { provider =>
       if (!stopped) {
-        val heard: LocationListener = new LocationListener {
-          override def onLocationChanged(l: AndroidLocation): Unit = answer(located(l))
-          override def onProviderDisabled(name: String): Unit = answer(LocationAnswer.LocationUnavailable)
-        }
+        val heard = listening(l => answer(located(l)), () => answer(LocationAnswer.LocationUnavailable))
         listener = Some(heard)
-        manager.requestLocationUpdates(provider(precise), 1000L, distance.toFloat, Host.activity.getMainExecutor, heard)
+        if (Build.VERSION.SDK_INT >= 30)
+          manager.requestLocationUpdates(provider(precise), 1000L, distance.toFloat, Host.activity.getMainExecutor,
+            heard)
+        else manager.requestLocationUpdates(provider(precise), 1000L, distance.toFloat, heard, Looper.getMainLooper)
       }
     }
     () => {
@@ -70,7 +79,7 @@ object LocationAccess {
     if (!supported()) done(LocationAnswer.LocationUnsupported)
     else permit { granted =>
       if (!granted) done(LocationAnswer.LocationDenied)
-      else if (!manager.isLocationEnabled) done(LocationAnswer.LocationUnavailable)
+      else if (!enabled) done(LocationAnswer.LocationUnavailable)
       else {
         val on = (name: String) => manager.getProviders(true).contains(name)
         val fused = Build.VERSION.SDK_INT >= 31 && on(LocationManager.FUSED_PROVIDER)
@@ -83,6 +92,21 @@ object LocationAccess {
         catch { case t: SecurityException => done(LocationAnswer.LocationDenied) }
       }
     }
+
+  /** Whether location is turned on: Android 9 says so; before it, whether a provider other than the passive one is. */
+  private def enabled: Boolean =
+    if (Build.VERSION.SDK_INT >= 28) manager.isLocationEnabled
+    else manager.getProviders(true).asScala.exists(_ != LocationManager.PASSIVE_PROVIDER)
+
+  /** A listener hearing each place, and its provider turned off. Its status and its provider turned on are heard too,
+    * as nothing: Android 11 made them default methods, and before it a listener without them is an AbstractMethodError
+    * the first time the provider says anything. */
+  private def listening(heard: AndroidLocation => Unit, off: () => Unit): LocationListener = new LocationListener {
+    override def onLocationChanged(l: AndroidLocation): Unit = heard(l)
+    override def onProviderDisabled(name: String): Unit = off()
+    override def onProviderEnabled(name: String): Unit = ()
+    override def onStatusChanged(name: String, status: Int, extras: android.os.Bundle): Unit = ()
+  }
 
   private def located(l: AndroidLocation): LocationAnswer = LocationAnswer.Located(Position(l.getLatitude, l.getLongitude,
     if (l.hasAccuracy) l.getAccuracy.toDouble else 0.0, if (l.hasAltitude) Some(l.getAltitude) else None,

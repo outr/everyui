@@ -5,7 +5,12 @@ final class Tally {
   private val counts = new java.util.HashMap[String, Array[Long]]
 
   def add(key: String, nanos: Long): Unit = {
-    val entry = counts.computeIfAbsent(key, _ => new Array[Long](2))
+    // not computeIfAbsent, which is Android 7's
+    var entry = counts.get(key)
+    if (entry == null) {
+      entry = new Array[Long](2)
+      counts.put(key, entry)
+    }
     entry(0) += 1L
     entry(1) += nanos
   }

@@ -52,6 +52,7 @@ object SettingsPages {
   }
 
   def unusedAppRestrictions(done: Boolean => Unit): Unit = done(
-    try !ServiceRuntime.context.getPackageManager.isAutoRevokeWhitelisted
-    catch { case _: Throwable => false })
+    // Android 11 takes an unused app's permissions away; nothing does before it
+    android.os.Build.VERSION.SDK_INT >= 30 &&
+      (try !ServiceRuntime.context.getPackageManager.isAutoRevokeWhitelisted catch { case _: Throwable => false }))
 }

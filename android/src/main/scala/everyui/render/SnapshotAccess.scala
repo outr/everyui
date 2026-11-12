@@ -43,6 +43,22 @@ object SnapshotAccess {
     val activity = Host.activity
     val decor = if (activity == null) null else activity.getWindow.getDecorView
     if (decor == null || decor.getWidth <= 0 || decor.getHeight <= 0) done(None)
+    else if (android.os.Build.VERSION.SDK_INT < 26)
+      // PixelCopy is Android 8's: before it the window as its views draw it, as a component's picture is drawn
+      try {
+        val ratio = scale / Host.scale
+        val bitmap = Bitmap.createBitmap(math.max(1, math.round(decor.getWidth * ratio).toInt),
+          math.max(1, math.round(decor.getHeight * ratio).toInt), Bitmap.Config.ARGB_8888)
+        val canvas = new Canvas(bitmap)
+        canvas.scale(ratio.toFloat, ratio.toFloat)
+        decor.draw(canvas)
+        textures(decor, decor, canvas)
+        compressed(bitmap, done)
+      } catch {
+        case t: Throwable =>
+          Platform.logError("Snapshot: could not draw the window", t)
+          done(None)
+      }
     else {
       val shown = Bitmap.createBitmap(decor.getWidth, decor.getHeight, Bitmap.Config.ARGB_8888)
       PixelCopy.request(activity.getWindow, shown, (result: Int) => {
@@ -123,8 +139,8 @@ object SnapshotAccess {
     dir.mkdirs()
     previews += 1
     val file = new java.io.File(dir, System.currentTimeMillis().toString + "-" + previews.toString + ".png")
-    java.nio.file.Files.write(file.toPath, png)
-    file.toPath.toUri.toString
+    Host.writeFile(file, png)
+    android.net.Uri.fromFile(file).toString
   }
 
   private def compressed(bitmap: Bitmap, done: Option[SnapshotImage] => Unit): Unit =
@@ -186,8 +202,10 @@ object SnapshotAccess {
 
   private def solid(d: android.graphics.drawable.Drawable): Option[Int] = d match {
     case c: ColorDrawable if android.graphics.Color.alpha(c.getColor) == 255 => Some(c.getColor)
-    case g: GradientDrawable if g.getColors == null && g.getColor != null &&
-      android.graphics.Color.alpha(g.getColor.getDefaultColor) == 255 => Some(g.getColor.getDefaultColor)
+    // its colours are Android 7's to read
+    case g: GradientDrawable if android.os.Build.VERSION.SDK_INT >= 24 && g.getColors == null &&
+      g.getColor != null && android.graphics.Color.alpha(g.getColor.getDefaultColor) == 255 =>
+      Some(g.getColor.getDefaultColor)
     case _ => None
   }
 }

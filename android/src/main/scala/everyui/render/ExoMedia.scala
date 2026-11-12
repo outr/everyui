@@ -875,7 +875,10 @@ object ExoMedia {
     val at = new Array[Int](2)
     s.getLocationOnScreen(at)
     val decor = Host.activity.getWindow.getDecorView
-    val window = Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds
+    // the window's metrics are Android 11's: before it the decor's size again
+    val window =
+      if (android.os.Build.VERSION.SDK_INT >= 30) Host.activity.getWindowManager.getCurrentWindowMetrics.getBounds
+      else new android.graphics.Rect(0, 0, decor.getWidth, decor.getHeight)
     val display = Option(s.getDisplay)
     val real = new android.graphics.Point
     display.foreach(_.getRealSize(real))

@@ -41,12 +41,12 @@ object BusyDisplay {
 
   def supported(): Boolean = context != null && !tv()
 
-  def permitted(): Boolean = supported() && manager.areNotificationsEnabled &&
+  def permitted(): Boolean = supported() && NoticeChannels.enabled(manager) &&
     (Build.VERSION.SDK_INT < 33 || Permissions.held("android.permission.POST_NOTIFICATIONS"))
 
   def permit(done: Boolean => Unit): Unit =
     if (!supported()) done(false)
-    else if (Build.VERSION.SDK_INT < 33) done(manager.areNotificationsEnabled)
+    else if (Build.VERSION.SDK_INT < 33) done(NoticeChannels.enabled(manager))
     else Permissions.ask("android.permission.POST_NOTIFICATIONS")(granted => done(granted && manager.areNotificationsEnabled))
 
   /** `still` (AppBusy.stillAfter) is the web's: a notification's bar shows no orbit. */
@@ -83,7 +83,7 @@ object BusyDisplay {
     val launch = Option(context.getPackageManager.getLaunchIntentForPackage(context.getPackageName))
       .getOrElse(new Intent(context, context.getClass))
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-    val builder = new Notification.Builder(context, channel)
+    val builder = NoticeChannels.builder(context, channel, NotificationManager.IMPORTANCE_LOW)
       .setSmallIcon(android.R.drawable.stat_notify_sync)
       .setContentTitle(b.name.getOrElse(context.getPackageManager.getApplicationLabel(info).toString))
       .setProgress(100, b.percent.getOrElse(0), b.percent.isEmpty)
@@ -91,17 +91,19 @@ object BusyDisplay {
       .setOnlyAlertOnce(true)
       .setShowWhen(false)
       .setCategory(Notification.CATEGORY_PROGRESS)
-      .setTimeoutAfter(refresh * 3)
       .setContentIntent(PendingIntent.getActivity(context, id, launch,
         PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
+    if (Build.VERSION.SDK_INT >= 26) builder.setTimeoutAfter(refresh * 3)
     b.percent.foreach(p => builder.setContentText(p.toString + "%"))
     builder.build()
   }
 
   private def ensureChannel(): Unit = if (!channelMade) {
-    val made = new NotificationChannel(channel, "In progress", NotificationManager.IMPORTANCE_LOW)
-    made.setShowBadge(false)
-    manager.createNotificationChannel(made)
+    if (Build.VERSION.SDK_INT >= 26) {
+      val made = new NotificationChannel(channel, "In progress", NotificationManager.IMPORTANCE_LOW)
+      made.setShowBadge(false)
+      manager.createNotificationChannel(made)
+    }
     channelMade = true
   }
 

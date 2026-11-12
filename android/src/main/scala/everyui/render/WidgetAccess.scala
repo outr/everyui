@@ -100,7 +100,11 @@ object WidgetAccess {
     provider(context, id).flatMap(kindKey(context, _)).flatMap(Widgets.kind)
 
   private def providers(context: Context): Vector[ComponentName] =
-    manager(context).getInstalledProvidersForPackage(context.getPackageName, null).asScala.map(_.provider).toVector
+    // the package's own by name before Android 8, which has no call for them
+    if (Build.VERSION.SDK_INT >= 26)
+      manager(context).getInstalledProvidersForPackage(context.getPackageName, null).asScala.map(_.provider).toVector
+    else manager(context).getInstalledProviders.asScala.map(_.provider)
+      .filter(_.getPackageName == context.getPackageName).toVector
 
   // --- what each widget was set to, and what it drew last -------------------------------------------------------
 

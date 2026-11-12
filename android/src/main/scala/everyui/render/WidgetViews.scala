@@ -62,7 +62,8 @@ final class WidgetViews(context: Context, id: Int, dark: Boolean, receiver: Comp
     views.removeAllViews(content)
     place(views, content, node)
     // after the parts, so the list it is aimed at is in the tree
-    list.foreach { items =>
+    // a list's rows are Android 12's (`items`), and only there is one kept
+    if (Build.VERSION.SDK_INT >= 31) list.foreach { items =>
       val at = WidgetViews.id(context, "everyui_widget_list")
       views.setRemoteAdapter(at, items)
       views.setEmptyView(at, WidgetViews.id(context, "everyui_widget_empty"))

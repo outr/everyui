@@ -142,7 +142,7 @@ object MediaServerSearch {
     c.setConnectTimeout(700)
     c.setReadTimeout(700)
     try {
-      val json = new org.json.JSONObject(new String(c.getInputStream.readAllBytes(), UTF_8))
+      val json = new org.json.JSONObject(new String(Host.bytesOf(c.getInputStream), UTF_8))
       val id = json.optString("Id")
       if (id.isEmpty || !json.optString("ProductName").toLowerCase.contains("jellyfin")) None
       else Some(MediaServer("jellyfin", json.optString("ServerName", host), id, address))

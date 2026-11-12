@@ -1,0 +1,4 @@
+# Methods of the published Android jars that reach an API newer than androidLibraryMinSdk (build.sbt) behind a guard
+# AndroidApiCheck cannot follow: a Boolean kept from an SDK_INT comparison, an Option only ever set behind one. One a
+# line, as the check names it (everyui.render.Host$.safeFrom), with the guard that keeps it safe in a comment. Prefer
+# writing the guard where the check can see it: `if (Build.VERSION.SDK_INT >= N)` around the call.

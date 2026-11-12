@@ -109,7 +109,7 @@ object IdleAudit {
   private def threads(): Map[String, Long] =
     Option(new java.io.File("/proc/self/task").listFiles).map(_.toList).getOrElse(Nil).flatMap { task =>
       try {
-        val stat = new String(java.nio.file.Files.readAllBytes(new java.io.File(task, "stat").toPath))
+        val stat = new String(Host.fileBytes(new java.io.File(task, "stat")))
         val name = stat.substring(stat.indexOf('(') + 1, stat.lastIndexOf(')'))
         val fields = stat.substring(stat.lastIndexOf(')') + 2).split(' ')
         // after the name: state is the first, utime the twelfth, stime the thirteenth

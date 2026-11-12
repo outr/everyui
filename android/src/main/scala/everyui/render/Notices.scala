@@ -1,6 +1,6 @@
 package everyui.render
 
-import android.app.{ActivityManager, Notification, NotificationChannel, NotificationManager, PendingIntent}
+import android.app.{ActivityManager, Notification, NotificationManager, PendingIntent}
 import android.content.Intent
 import android.os.Build
 import everyui.Permission
@@ -32,7 +32,7 @@ object Notices {
   private def read(): Permission =
     if (!supported()) Permission.Refused
     else if (Build.VERSION.SDK_INT >= 33 && !Permissions.held(notifications)) Permissions.state(notifications)
-    else if (manager.areNotificationsEnabled) Permission.Granted
+    else if (NoticeChannels.enabled(manager)) Permission.Granted
     else Permission.Refused
 
   def ask(): Unit =
@@ -51,13 +51,12 @@ object Notices {
       while (taps.size > 100) taps.remove(taps.head._1)
       val context = Host.activity
       val notify = manager
-      if (notify.getNotificationChannel(channel) == null)
-        notify.createNotificationChannel(new NotificationChannel(channel, "Notifications", NotificationManager.IMPORTANCE_DEFAULT))
+      NoticeChannels.ensure(notify, channel, "Notifications", NotificationManager.IMPORTANCE_DEFAULT)
       val launch = Option(context.getPackageManager.getLaunchIntentForPackage(context.getPackageName))
         .getOrElse(new Intent(Intent.ACTION_MAIN).setPackage(context.getPackageName))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
         .putExtra("everyui.notice", key)
-      val notification = new Notification.Builder(context, channel)
+      val notification = NoticeChannels.builder(context, channel, NotificationManager.IMPORTANCE_DEFAULT)
         .setSmallIcon(NoticeIcon.of(context))
         .setContentTitle(notice.title)
         .setContentText(notice.body)

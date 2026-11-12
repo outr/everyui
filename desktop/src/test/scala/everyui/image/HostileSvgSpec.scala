@@ -217,6 +217,17 @@ class HostileSvgSpec extends FxSpec {
     }
   }
 
+  "A base64 data: address" should {
+    "read as a MIME decoder reads it, line breaks and all, by hand (java.util.Base64 is Android 8's)" in {
+      val random = new scala.util.Random(7)
+      for (length <- 0 to 70) {
+        val bytes = Array.fill(length)(random.nextInt(256).toByte)
+        val written = java.util.Base64.getMimeEncoder(16, "\r\n".getBytes).encodeToString(bytes)
+        DataAddress("data:application/octet-stream;base64," + written).map(_._2.toList) shouldBe Some(bytes.toList)
+      }
+    }
+  }
+
   "First bytes" should {
     "be an SVG's only where the first element is <svg>, after a preamble of any length" in {
       val preamble = "﻿ \n<?xml version=\"1.0\"?>\n<!-- a licence " + "x" * 2000 + " -->\n" +
