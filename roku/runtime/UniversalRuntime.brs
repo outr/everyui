@@ -1345,11 +1345,25 @@ function uiMemoryNote() as string
 end function
 
 ' The first screen is up and can be used: Roku's launch beacon, which certification requires and times the launch by.
+' Sent once, whoever asks (Platform.launchComplete, or uiBeacon by its name).
 sub uiLaunchComplete()
     ga = GetGlobalAA()
     if ga.uiLaunchBeaconed = true then return
     ga.uiLaunchBeaconed = true
+    print "[beacon] AppLaunchComplete"
     ga.appScene.signalBeacon("AppLaunchComplete")
+end sub
+
+' One of the beacons certification reads, by name: AppDialogInitiate and AppDialogComplete around a screen shown before
+' the first real one (a sign-in, a profile picker), whose time is then not counted as the launch's.
+sub uiBeacon(name as string)
+    if name = "AppLaunchComplete"
+        uiLaunchComplete()
+        return
+    end if
+    print "[beacon] "; name
+    ga = GetGlobalAA()
+    ga.appScene.signalBeacon(name)
 end sub
 
 ' A packaged text file by its pkg:/ path (a translation), or "".

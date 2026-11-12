@@ -2913,6 +2913,9 @@ object Platform {
     hearUncaught
     uncaughtHooks = uncaughtHooks :+ f
   }
+  /** The launch beacon and the other certification beacons a Roku channel sends (`beacon`): none here. */
+  def launchComplete(): Unit = ()
+  def beacon(name: String): Unit = ()
   /** `t`'s stack as the JVM prints it, with what caused it. */
   def stackOf(t: Throwable): String = {
     val out = new java.io.StringWriter

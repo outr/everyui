@@ -436,6 +436,11 @@ class SGNode
 @native object uiLaunchComplete {
   def apply(): Unit = native.value
 }
+/** One of Roku's certification beacons by name (`AppDialogInitiate`, `AppDialogComplete`; `AppLaunchComplete` once, as
+  * uiLaunchComplete sends it). */
+@native object uiBeacon {
+  def apply(name: String): Unit = native.value
+}
 /** Roku's own keyboard over the app (a StandardKeyboardDialog, with voice entry), headed `title`, holding `value`, its
   * `keyboardDomain` `domain`, hiding what is typed when `secure`, its buttons `ok` and `cancel`: `ok` hands the words
   * to `done`; `cancel`, Back and a second dialog asked for over it hand nothing. */

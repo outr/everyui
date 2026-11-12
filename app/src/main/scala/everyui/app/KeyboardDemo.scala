@@ -6,6 +6,7 @@ import everyui.kit.SearchField
 import everyui.render.Platform
 import everyui.theme.Theme
 import everyui.ui
+import reactify.*
 
 /** The platform's keyboard for fields with no field of their own (a Roku's StandardKeyboardDialog, an Apple TV's text
   * dialog): an email address, a password, a PIN of digits, hidden, and a search box, the email focused. OK on one
@@ -24,6 +25,10 @@ import everyui.ui
   *   [keyboard] open: domain email, secure false, 0 characters, 'Email'
   *   [keyboard] done: 15 characters
   *   [keyboard] cancelled
+  *
+  * It stands for a sign-in before an app's home, as certification times one: it sends `AppDialogInitiate` as it comes
+  * up, and `AppDialogComplete` and then `AppLaunchComplete` the first time the email address is submitted (`[beacon]
+  * AppDialogInitiate` on the console, and the device's own `[beacon.signal]` lines on its debug console).
   */
 object KeyboardDemo {
   def run(): Unit = {
@@ -32,7 +37,15 @@ object KeyboardDemo {
     val email = new TextInput("Email", width = width)
     email.autofill @= Some(Autofill.Email)
     email.value.attach(v => Platform.log("keyboard email=" + v))
-    email.submitted.attach(_ => Platform.log("keyboard email submitted"))
+    val signedIn = Var(false)
+    email.submitted.attach { _ =>
+      Platform.log("keyboard email submitted")
+      if (!signedIn()) {
+        signedIn @= true
+        Platform.beacon("AppDialogComplete")
+        Platform.launchComplete()
+      }
+    }
     val password = new TextInput("Password", secure = true, width = width)
     password.autofill @= Some(Autofill.CurrentPassword)
     password.value.attach(v => Platform.log("keyboard password of " + v.length.toString))
@@ -46,5 +59,6 @@ object KeyboardDemo {
     body.position.top @= 40.0
     ui.children += body
     email.focus()
+    Platform.beacon("AppDialogInitiate")
   }
 }

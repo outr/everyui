@@ -854,8 +854,15 @@ object Platform {
   /** A throwable's stack: none to be had here, where the device's own backtrace comes with `onError`. */
   def stackOf(t: Throwable): String = ""
 
-  /** The first screen is up and can be used: the launch beacon a certified channel sends. */
+  /** The first screen is up and can be used: the launch beacon a certified channel sends (AppLaunchComplete), once,
+    * however often it is called. Nothing sends it but this: an app calls it as its first screen is ready (its home,
+    * not a sign-in or a profile picker before it, which `beacon` brackets), or on a deep link as the first frame plays.
+    * Nothing elsewhere. */
   def launchComplete(): Unit = uiLaunchComplete()
+  /** One of the beacons Roku's certification reads, by name: `AppDialogInitiate` as a screen comes up before the first
+    * real one (a sign-in, a profile picker) and `AppDialogComplete` as it goes, so its time is not counted as the
+    * launch's; `AppLaunchComplete` is `launchComplete`, sent once. Logged as `[beacon] <name>`. Nothing elsewhere. */
+  def beacon(name: String): Unit = uiBeacon(name)
 
   def resumed(): Unit = resumers.foreach(f => f())
 

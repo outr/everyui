@@ -1021,6 +1021,9 @@ object Platform {
   def onUncaught(f: (String, String) => Unit): Unit = onError(f)
   private var errorHooks: List[(String, String) => Unit] = Nil
   private var hearing: Boolean = false
+  /** The launch beacon and the other certification beacons a Roku channel sends (`beacon`): none here. */
+  def launchComplete(): Unit = ()
+  def beacon(name: String): Unit = ()
   /** A throwable's stack: none to be had here. */
   def stackOf(t: Throwable): String = ""
   /** Turns cut off by the platform (a Roku's): none here. */

@@ -2632,6 +2632,9 @@ object Platform {
       f("promise: " + WebErrors.message(reason), jsStack(reason))
     })
   }
+  /** The launch beacon and the other certification beacons a Roku channel sends (`beacon`): none here. */
+  def launchComplete(): Unit = ()
+  def beacon(name: String): Unit = ()
   /** `t`'s stack as the browser keeps it (a Scala.js throwable is a JS error), with what caused it. */
   def stackOf(t: Throwable): String = {
     val own = jsStack(t.asInstanceOf[js.Dynamic])

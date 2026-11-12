@@ -4892,6 +4892,24 @@ up. The console says what was opened and how it closed (`[keyboard] open: domain
 'Email'`, `[keyboard] done: 15 characters`, `[keyboard] cancelled`), never the words. `demo=keyboard` in the example
 app has a field of each kind.
 
+#### Certification beacons (`Platform.launchComplete`, `Platform.beacon`)
+
+Roku's certification times a channel's launch by beacons it sends. EveryUI sends none of the launch's by itself (only
+`AppResumeComplete`, as Instant Resume brings the channel back): the app says when it is ready, since only it knows
+which screen is its first real one. `Platform.launchComplete()` sends `AppLaunchComplete`, once however often it is
+called: as the home screen can be used, or on a deep link to something to play, as its first frame plays. A screen
+shown before home (a sign-in, a profile picker) is bracketed by `Platform.beacon("AppDialogInitiate")` as it comes up
+and `Platform.beacon("AppDialogComplete")` as it goes, so its time is not counted as the launch's.
+`Platform.beacon("AppLaunchComplete")` is `launchComplete`. Each is said on the console (`[beacon] AppDialogInitiate`).
+Both are there on every platform, and do nothing but on a Roku, so shared code calls them as it is.
+
+```scala
+Platform.beacon("AppDialogInitiate")      // the sign-in is up
+// … signed in
+Platform.beacon("AppDialogComplete")
+Platform.launchComplete()                 // home can be used
+```
+
 ### The Apple TV
 
 The same compiler writes the app as Swift (`App.swift`, `App2.swift` and on, a megabyte or so each), and
