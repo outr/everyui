@@ -148,6 +148,10 @@ object LayoutPass {
     if (batches == 0 && !waits) flush()
   }
 
+  /** Lay out what has been asked for so far, inside a batch as outside one, unless it waits for sizes still to be read
+    * (`MeasuredFeature.layoutWaits`): what is about to be put on the screen, laid out before it is drawn. */
+  def settle(): Unit = if (!waits) flush()
+
   // whether what is asked for waits for the sizes held back to be read (`MeasuredFeature.layoutWaits`), which lays it
   // out then, once, rather than now with sizes not yet known and again once they are
   private def waits: Boolean = everyui.component.feature.MeasuredFeature.layoutWaits

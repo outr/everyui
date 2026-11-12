@@ -61,7 +61,7 @@ class ScreenTurnsSpec extends FxSpec {
 
     override protected def activate(): Task[Unit] = super.activate().map { _ =>
       stage(name + " activate")
-      // the rows are not laid out until the whole change is: the batch held across every turn of it
+      // the rows are laid out as the screen is put on the screen, not a turn after it was drawn where it landed
       laidOutAtArrival = rows.childComponents.last.position.top() > 0.0
     }
 
@@ -96,7 +96,7 @@ class ScreenTurnsSpec extends FxSpec {
   }
 
   "A screen's first showing" should {
-    "take a turn for each stage, held in one layout pass, laid out before the focus moves" in {
+    "take a turn for each stage, held in one layout pass, laid out before it arrives" in {
       val next = fx(new Form(Manager, "next"))
       val focusAtShown = fx {
         stages = Vector.empty
@@ -111,7 +111,7 @@ class ScreenTurnsSpec extends FxSpec {
       // as wide as the same words made on the page, read as they were made
       fx(next.namedWidth) should be > 0.0
       fx(next.namedWidth) shouldBe fx(TextView("Streaming services", 18.0).size.width())
-      fx(next.laidOutAtArrival) shouldBe false
+      fx(next.laidOutAtArrival) shouldBe true
       fx(next.rows.childComponents.last.position.top()) should be > 0.0
       eventually(focusAtShown().exists(_ eq next.go)) shouldBe true
     }

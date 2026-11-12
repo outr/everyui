@@ -79,6 +79,9 @@ trait UIScreen extends Screen with PathActivation {
   /** Showing a screen swaps its container into the host, in front of the backdrop and its washes when those share the
     * host. */
   override protected def activate(): Task[Unit] = {
+    // laid out before it is put on the screen: a screen built in a change of screen is laid out at the end of the change,
+    // a turn after this, and a television drew it once in between, every part where it was made, at its corner
+    everyui.layout.LayoutPass.settle()
     manager.host.children @= manager.host.children().filter(c => (c eq manager.backdrop) || (c eq manager.washes)) :+
       container
     super.activate()
