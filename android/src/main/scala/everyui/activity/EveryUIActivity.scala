@@ -50,6 +50,11 @@ abstract class EveryUIActivity extends Activity {
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     // a television's whole screen, a phone's or a tablet's with its bars (everyui.render.Platform.safeArea)
     if (everyui.render.Platform.remoteNavigation()) immersive(window) else edgeToEdge(window)
+    // before Android 11 the keyboard comes in the window's insets only where the window is to be resized for it, which
+    // the insets listener then does not do (`keyboard`); left to Android, a television's window was panned instead
+    if (android.os.Build.VERSION.SDK_INT < 30) window.setSoftInputMode(
+      (window.getAttributes.softInputMode & ~WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST) |
+        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     // the frames it draws, measured again for this window where the app is listening (FrameTimings)
     everyui.render.FrameTimings.attach(this)
 
@@ -79,8 +84,7 @@ abstract class EveryUIActivity extends Activity {
     // the window is drawn under the bars, so the keyboard resizes nothing (adjustResize included): its height comes
     // as an inset instead, and the app is laid out above it
     root.setOnApplyWindowInsetsListener((view, insets) => {
-      Host.keyboardInset(if (insets.isVisible(WindowInsets.Type.ime())) insets.getInsets(WindowInsets.Type.ime()).bottom
-        else 0)
+      Host.keyboardInset(keyboard(insets))
       // and what the bars, a cutout and the rounded corners leave, which the app is laid out inside
       Host.safeFrom(insets)
       view.onApplyWindowInsets(insets)
@@ -89,6 +93,16 @@ abstract class EveryUIActivity extends Activity {
     if (Host.viewportWidth <= 0.0) Host.density = getResources.getDisplayMetrics.density.toDouble
     Host.scaleRoot()
   }
+
+  /** How much of the window the on-screen keyboard covers, in pixels from its bottom, as Android 11's ime inset says.
+    * Before 11 the window's own bottom inset holds the keyboard on top of the navigation bar, which the stable inset
+    * is alone, so the keyboard is up while the one is past the other. */
+  private def keyboard(insets: WindowInsets): Int =
+    if (android.os.Build.VERSION.SDK_INT >= 30) ImeInsets.bottom(insets)
+    else {
+      val bottom = insets.getSystemWindowInsetBottom
+      if (bottom > insets.getStableInsetBottom) bottom else 0
+    }
 
   /** The render root a previous activity of this process made, moved into this one, as it is. */
   private def adopt(): Unit = {

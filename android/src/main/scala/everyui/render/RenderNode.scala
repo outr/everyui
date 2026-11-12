@@ -1809,11 +1809,13 @@ object Host {
         (left, bars.top, right, bars.bottom)
       }
       else {
+        // the window's bottom inset holds the keyboard too before Android 11, which is Host.keyboard's, not the bar's
         val cut = if (android.os.Build.VERSION.SDK_INT >= 28) Option(insets.getDisplayCutout) else None
         (math.max(insets.getSystemWindowInsetLeft, cut.map(_.getSafeInsetLeft).getOrElse(0)),
           math.max(insets.getSystemWindowInsetTop, cut.map(_.getSafeInsetTop).getOrElse(0)),
           math.max(insets.getSystemWindowInsetRight, cut.map(_.getSafeInsetRight).getOrElse(0)),
-          math.max(insets.getSystemWindowInsetBottom, cut.map(_.getSafeInsetBottom).getOrElse(0)))
+          math.max(math.min(insets.getSystemWindowInsetBottom, insets.getStableInsetBottom),
+            cut.map(_.getSafeInsetBottom).getOrElse(0)))
       }
     if (found != safe) {
       safe = found
