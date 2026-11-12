@@ -436,6 +436,13 @@ class SGNode
 @native object uiLaunchComplete {
   def apply(): Unit = native.value
 }
+/** Roku's own keyboard over the app (a StandardKeyboardDialog, with voice entry), headed `title`, holding `value`, its
+  * `keyboardDomain` `domain`, hiding what is typed when `secure`, its buttons `ok` and `cancel`: `ok` hands the words
+  * to `done`; `cancel`, Back and a second dialog asked for over it hand nothing. */
+@native object uiEditText {
+  def apply(title: String, value: String, secure: Boolean, domain: String, ok: String, cancel: String,
+            done: String => Unit): Unit = native.value
+}
 /** The build's number (the manifest's app_version_code), its release, and where it was installed from. */
 @native object uiAppVersion {
   def apply(): Int = native.value

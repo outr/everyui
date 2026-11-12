@@ -1212,13 +1212,35 @@ object Platform {
 
   def deviceName(): String = uiDeviceName()
 
-  /** No text fields of its own. */
+  /** No text fields of its own: a field shows its words, and asks Roku's keyboard for new ones (`editText`). */
   def nativeInput(): Boolean = false
-  /** The platform keyboard is still to be wired to the runtime, so no value comes back yet. */
-  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
-  /** `editText` for a field asking for `autofill` (`Autofill.token`), which says nothing more here. */
-  def editField(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit =
-    editText(title, value, secure, done)
+  /** New words from Roku's own keyboard: a StandardKeyboardDialog over the app (with voice entry, where the remote has
+    * a microphone), headed `title`, holding `value`, hiding what is typed when `secure`. Its Done hands the words to
+    * `done`; Cancel and Back hand nothing, and the value stays as it was. The app's focus never leaves the field, and
+    * the app hears no key while the dialog is up. */
+  def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit =
+    editField(title, value, secure, "", false, done)
+  /** `editText` for a field asking for `autofill` (`Autofill.token`), holding digits where `numeric`: the keyboard's
+    * domain says so (`keyboardDomain`), as certification asks of a field for an email address, a password or a PIN,
+    * for the voice entry and the keys that suit it. */
+  def editField(title: String, value: String, secure: Boolean, autofill: String, numeric: Boolean,
+                done: String => Unit): Unit = {
+    val password = autofill == "current-password" || autofill == "new-password"
+    uiEditText(title, value, secure || password, keyboardDomain(secure || password, autofill, numeric),
+      everyui.i18n.Words.done, everyui.i18n.Words.cancel, done)
+  }
+  /** The keyboard a field is given: digits for a numeric field (a PIN, hidden or not), a one-time code, a phone or a
+    * card number; a password's for a hidden one; an email address's for an email address or a sign-in's name, which
+    * is one more often than not; letters and digits for a one-time code of both; else the whole keyboard. */
+  private def keyboardDomain(secure: Boolean, autofill: String, numeric: Boolean): String =
+    if (numeric || (autofill match {
+      case "one-time-code" | "tel" | "cc-number" | "cc-csc" | "cc-exp-month" | "cc-exp-year" => true
+      case _ => false
+    })) "numeric"
+    else if (secure) "password"
+    else if (autofill == "email" || autofill == "username") "email"
+    else if (autofill == "one-time-code-text") "alphanumeric"
+    else "generic"
 
   /** Faces are files the runtime opens by name. */
   def registerFont(face: Face): Unit = ()

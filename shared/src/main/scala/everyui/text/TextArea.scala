@@ -141,7 +141,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     clipTo(width, minHeight)
     size.height.attach(h => clipTo(size.width(), h))
     event.click.attach(_ => if (!readOnly())
-      Platform.editField(hint(), value(), false, Autofill.resolve(autofill()).map(Autofill.token).getOrElse(""), v => value @= v))
+      Platform.editField(hint(), value(), false, Autofill.resolve(autofill()).map(Autofill.token).getOrElse(""), false,
+        v => value @= v))
     children += shown
   }
   event.key.down.attach(k => if (editing() && TextArea.submit.matches(k)) submitted @= value())

@@ -4870,6 +4870,28 @@ lazy val roku = project.in(file("roku"))
 a channel the Roku refuses to compile wipes the dev channel and what it kept. `RokuChannel.packageChannel` makes the
 store package on a keyed Roku.
 
+#### Fields and the Roku's keyboard
+
+A Roku has no text field of its own (`Platform.nativeInput()` is false), so a `TextInput`, a `TextArea` or a
+`SearchField` shows its words, and OK on it opens Roku's own keyboard, a `StandardKeyboardDialog` over the app with
+voice entry where the remote has a microphone (`Platform.editField`), headed by the field's label (a search box's
+placeholder) and holding its value. Its keyboard follows what the field says it is, as certification asks for an email
+address, a password and a PIN (criterion 4.12):
+
+| The field | `keyboardDomain` | Hidden |
+| --- | --- | --- |
+| `numeric` (a PIN), or `autofill` a one-time code, a phone number, a card's number or code | `numeric` | if `secure` |
+| `secure`, or `autofill` `CurrentPassword` or `NewPassword` | `password` | yes |
+| `autofill` `Email` or `Username` | `email` | no |
+| `autofill` `OneTimeCodeText` | `alphanumeric` | no |
+| anything else | `generic` | no |
+
+Done hands the words to the field (its `value`, and a `TextInput`'s or a `SearchField`'s `submitted`); Cancel and
+Back leave it as it was. The app's focus stays on the field throughout, and the app hears no key while the dialog is
+up. The console says what was opened and how it closed (`[keyboard] open: domain email, secure false, 0 characters,
+'Email'`, `[keyboard] done: 15 characters`, `[keyboard] cancelled`), never the words. `demo=keyboard` in the example
+app has a field of each kind.
+
 ### The Apple TV
 
 The same compiler writes the app as Swift (`App.swift`, `App2.swift` and on, a megabyte or so each), and

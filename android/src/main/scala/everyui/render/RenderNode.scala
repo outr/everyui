@@ -3144,9 +3144,10 @@ object Platform {
   def nativeInput(): Boolean = true
   /** Only a platform without text fields asks its keyboard for a value. */
   def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
-  /** `editText` for a field asking for `autofill` (`Autofill.token`), which says nothing more here. */
-  def editField(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit =
-    editText(title, value, secure, done)
+  /** `editText` for a field asking for `autofill` (`Autofill.token`), and holding digits where `numeric` (a PIN, a
+    * code), which say nothing more here. */
+  def editField(title: String, value: String, secure: Boolean, autofill: String, numeric: Boolean,
+                done: String => Unit): Unit = editText(title, value, secure, done)
 
   /** A registered face loads from the APK's `assets/fonts/` when first used. */
   def registerFont(face: Face): Unit = ()

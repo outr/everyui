@@ -2735,8 +2735,10 @@ object Platform {
   def nativeInput(): Boolean = true
   /** Only a platform without text fields asks its keyboard for a value. */
   def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit = ()
-  /** `editText` for a field asking for `autofill` (`Autofill.token`): the same nothing here. */
-  def editField(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit = ()
+  /** `editText` for a field asking for `autofill` (`Autofill.token`), and holding digits where `numeric`: the same
+    * nothing here. */
+  def editField(title: String, value: String, secure: Boolean, autofill: String, numeric: Boolean,
+                done: String => Unit): Unit = ()
 
   /** An app's face, served beside the bundled ones in `fonts/`, added to the page's fonts. Where the page preloads it
     * (`<link rel="preload" as="font">`), from that very address, versioned or not, so the preloaded download is the one

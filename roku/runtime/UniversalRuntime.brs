@@ -1747,10 +1747,96 @@ end function
 sub uiOnPointer(_target as object, _kind as string, _f as dynamic)
 end sub
 
-' The key hook (everyui.focus.Focus); the generated runtime's RtKeyEvent feeds it from AppScene's onKeyEvent.
+' The key hook (everyui.focus.Focus); the generated runtime's RtKeyEvent feeds it from AppScene's onKeyEvent. One set
+' while the keyboard is up (uiEditText) is the one put back as it closes.
 sub uiOnKey(f as dynamic)
     ga = GetGlobalAA()
-    ga.uiKey = f
+    if ga.uiEditing <> invalid then ga.uiEditKey = f else ga.uiKey = f
+end sub
+
+' ── the keyboard: Platform.editText ──
+
+' Roku's own keyboard over the app: a StandardKeyboardDialog on the scene's dialog field, which brings voice entry with
+' it where the remote has a microphone, headed `title`, holding `value`, its keyboard `domain` ("generic", "email",
+' "password", "numeric", "alphanumeric"), hiding what is typed when `secure`. Its first button (`ok`) hands the words
+' to `done`; its second (`cancel`), Back, and another asked for while it is up hand nothing. The app's focus stays where
+' it was (on the field), and the app hears no key while the dialog is up: what is pressed there is the dialog's.
+sub uiEditText(title as string, value as string, secure as boolean, domain as string, ok as string, cancel as string, done as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiEditing <> invalid then uiEditClose(false)
+    dialog = CreateObject("roSGNode", "StandardKeyboardDialog")
+    dialog.title = title
+    dialog.buttons = [ok, cancel]
+    if dialog.hasField("keyboardDomain") then dialog.keyboardDomain = domain
+    editBox = dialog.textEditBox
+    if editBox <> invalid
+        ' (a TextEditBox keeps 15 characters unless told otherwise, which an email address is often longer than)
+        editBox.maxTextLength = 255
+        editBox.secureMode = secure
+    end if
+    if dialog.hasField("secureMode") then dialog.secureMode = secure
+    if dialog.hasField("text")
+        dialog.text = value
+    else if editBox <> invalid
+        editBox.text = value
+    end if
+    if editBox <> invalid and editBox.hasField("cursorPosition") then editBox.cursorPosition = Len(value)
+    dialog.observeField("buttonSelected", "uiOnEditButton")
+    dialog.observeField("wasClosed", "uiOnEditClosed")
+    ga.uiEditing = { dialog: dialog, done: done }
+    ' the app's key hook set aside while the dialog has the keys: a key the dialog does not take is not passed on to it
+    ga.uiEditKey = ga.uiKey
+    ga.uiKey = { fn: uiEditSwallow }
+    print "[keyboard] open: domain "; domain; ", secure "; secure; ", "; Len(value); " characters, '"; title; "'"
+    ga.appScene.dialog = dialog
+end sub
+
+' A key while the keyboard is up: taken, so none reaches the app or (Back) closes the channel.
+function uiEditSwallow(_env as object, _args as object) as dynamic
+    return true
+end function
+
+' The dialog's first button is Done, the second Cancel.
+sub uiOnEditButton(event as object)
+    ga = GetGlobalAA()
+    if ga.uiEditing = invalid or not ga.uiEditing.dialog.isSameNode(event.getRoSGNode()) then return
+    uiEditClose(event.getData() = 0)
+end sub
+
+' Closed by Back (or the options key), never by a button: nothing is handed back.
+sub uiOnEditClosed(event as object)
+    ga = GetGlobalAA()
+    if ga.uiEditing = invalid or not ga.uiEditing.dialog.isSameNode(event.getRoSGNode()) then return
+    uiEditClose(false)
+end sub
+
+' The keyboard put away, the words handed to `done` where `taken`. The app's key hook is put back with the release of
+' the OK that opened the dialog, which went to the dialog: the focus layer counts a press held until it is let go, and
+' would take the next OK on the field for a repeat of it. The scene has the remote's keys again.
+sub uiEditClose(taken as boolean)
+    ga = GetGlobalAA()
+    editing = ga.uiEditing
+    if editing = invalid then return
+    ga.uiEditing = invalid
+    dialog = editing.dialog
+    words = ""
+    if dialog.hasField("text")
+        words = dialog.text
+    else if dialog.textEditBox <> invalid
+        words = dialog.textEditBox.text
+    end if
+    if words = invalid then words = ""
+    dialog.unobserveField("buttonSelected")
+    dialog.unobserveField("wasClosed")
+    if dialog.wasClosed <> true then dialog.close = true
+    scene = ga.appScene
+    if scene.dialog <> invalid and scene.dialog.isSameNode(dialog) then scene.dialog = invalid
+    scene.setFocus(true)
+    ga.uiKey = ga.uiEditKey
+    ga.uiEditKey = invalid
+    if taken then print "[keyboard] done: "; Len(words); " characters" else print "[keyboard] cancelled"
+    if ga.uiKey <> invalid then RtGuard(ga.uiKey, ["Enter", false])
+    if taken then RtGuard(editing.done, [words])
 end sub
 
 ' Clip a Group to width by height (a scroll viewport).
@@ -1760,7 +1846,7 @@ sub uiSetClip(node as object, width as float, height as float)
 end sub
 
 ' A linear gradient behind a node's children, which SceneGraph cannot draw: a strip of it, 256 pixels along the
-' gradient and one across, drawn on the device the first time it is asked for and stretched over the box. `angle` is
+' gradient and one across, drawn on the device the first time it is asked for and stretched over the editBox. `angle` is
 ' CSS's (0 bottom to top, 90 left to right), taken to the nearest side; `stops` is "#rrggbbaa at,#rrggbbaa at".
 function uiGradient(parent as object, existing as dynamic, angle as float, stops as string, width as float, height as float) as object
     p = existing
@@ -2399,7 +2485,7 @@ end function
 
 ' ── emoji, which a Roku has no face for ──
 ' Its own font draws a star and a dot and nothing else of the emoji an app writes (a date's calendar, a streak's fire, a
-' country's flag), each as an empty box. What has a Material icon of the same meaning is drawn as that icon, in the
+' country's flag), each as an empty editBox. What has a Material icon of the same meaning is drawn as that icon, in the
 ' text's colour (uiEmojiIcon); the rest is left out, with the space it leaves (uiEmojiDropped). Platform.emoji says so,
 ' for an app to put a word where the emoji carried one (a country's code for its flag).
 

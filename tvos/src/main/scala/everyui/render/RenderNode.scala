@@ -1069,12 +1069,13 @@ object Platform {
   /** New words from the platform's keyboard: a text field in a dialog over the app, headed `title`, holding `value`,
     * hiding what is typed when `secure`; its Done hands the words to `done`, and Cancel hands nothing. */
   def editText(title: String, value: String, secure: Boolean, done: String => Unit): Unit =
-    editField(title, value, secure, "", done)
+    editField(title, value, secure, "", false, done)
   /** `editText` for a field asking for `autofill` (`Autofill.token`): the dialog's field says so (its
     * `textContentType`), so a sign-in offers AutoFill from the Keychain and an iPhone nearby can fill it (the
-    * Continuity keyboard). */
-  def editField(title: String, value: String, secure: Boolean, autofill: String, done: String => Unit): Unit =
-    uiEditText(title, value, secure, autofill, done)
+    * Continuity keyboard). `numeric` (a PIN, a code) says nothing more here yet: the dialog shows its whole
+    * keyboard. */
+  def editField(title: String, value: String, secure: Boolean, autofill: String, numeric: Boolean,
+                done: String => Unit): Unit = uiEditText(title, value, secure, autofill, done)
 
   /** Faces are files the runtime opens by name. */
   def registerFont(face: Face): Unit = ()

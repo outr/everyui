@@ -142,7 +142,8 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     shown.size.width := size.width() - 28.0
     shown.position.top @= 26.0
     event.click.attach(_ => if (!readOnly())
-      Platform.editField(title(), value(), hidden, Autofill.resolve(autofill()).map(Autofill.token).getOrElse(""), v => {
+      Platform.editField(title(), value(), hidden, Autofill.resolve(autofill()).map(Autofill.token).getOrElse(""),
+        numeric(), v => {
         value @= v
         submitted @= v
       }))

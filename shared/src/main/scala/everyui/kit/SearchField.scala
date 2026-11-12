@@ -118,7 +118,7 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     shown.position.left := ListRow.along(SearchField.lead, shown.size.width(), size.width())
     shown.position.top := (size.height() - shown.size.height()) / 2.0
     event.click.attach(_ => Platform.editField(placeholder(), value(), false,
-      Autofill.resolve(autofill()).map(Autofill.token).getOrElse(""), v => {
+      Autofill.resolve(autofill()).map(Autofill.token).getOrElse(""), numeric(), v => {
       value @= v
       submitted @= v
     }))
