@@ -525,3 +525,8 @@ class SGNode
 @native object uiCaptionsSetMode {
   def apply(mode: String): Boolean = native.value
 }
+/** Run `f` at the end of the turn under way, before the scene is drawn: once, however often it is asked for before then
+  * (the backgrounds and edges a turn changed, painted once each: RenderNode.paintLater). */
+@native object uiPaintSoon {
+  def apply(f: () => Unit): Unit = native.value
+}

@@ -4920,6 +4920,30 @@ Platform.beacon("AppDialogComplete")
 Platform.launchComplete()                 // home can be used
 ```
 
+#### Where a frame's time goes (`rokuperf=1`, `httplog=1`)
+
+Launched with `rokuperf=1` (an ECP launch parameter), the runtime says on the console what each frame did that did
+anything, or took 50 ms or more, as the next begins: its length, the app's update in it (`tick`), the keys handled and
+how long they took, the later and after turns, what is left (`sg`: SceneGraph drawing, and any handler not timed),
+the nodes made and taken out, the runtime's writes to nodes and the texts measured:
+
+```
+[perf] 312ms: tick 4, keys 1 in 280, later 20, after 0, sg 8; nodes +14 -3, writes 220, measures 6
+```
+
+With it, or with `httplog=1`, each HTTP request says where its time went: waiting for one of the eight workers, on the
+wire (each worker keeps its connection from one request to the next), and back to the render thread, which waits for
+whatever the render thread is doing first:
+
+```
+[http] uiHttp12 200 POST https://api.example.com/x: 540 ms = queued 3, wire 520, back 17
+```
+
+A video says how long it took from being asked to play to playing (`[video] uiMedia3 playing 2400 ms after it was
+asked (the device: 2.1 s)`), and the cycle collector how long each run took (`[gc] freed 120 of 9000 in 640 ms`); it
+runs two seconds after the last screen was let go, and waits while the remote is in use. The example app's
+`demo=railperf`, `demo=pageopen` and `demo=httpperf` are the cases to run it over.
+
 ### The Apple TV
 
 The same compiler writes the app as Swift (`App.swift`, `App2.swift` and on, a megabyte or so each), and

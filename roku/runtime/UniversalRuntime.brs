@@ -43,11 +43,11 @@ end function
 ' A SceneGraph Label, sized for 1080p and visible against the generated
 ' scene's light background.
 function uiText() as object
-    n = CreateObject("roSGNode", "Label")
+    n = uiNode("Label")
     n.color = "0x1C1B1FFF"
     ga = GetGlobalAA()
     if ga.uiDefaultFont = invalid
-        ga.uiDefaultFont = CreateObject("roSGNode", "Font")
+        ga.uiDefaultFont = uiNode("Font")
         ga.uiDefaultFont.uri = "font:BoldSystemFontFile"
         ga.uiDefaultFont.size = 48
     end if
@@ -63,6 +63,7 @@ function uiGetText(node as object) as string
 end function
 
 sub uiSetText(node as object, text as string)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node <> invalid then node.text = text
 end sub
 
@@ -74,6 +75,7 @@ function uiGetX(node as object) as float
 end function
 
 sub uiSetX(node as object, x as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     t = node.translation
     y = 0.0
@@ -89,6 +91,7 @@ function uiGetY(node as object) as float
 end function
 
 sub uiSetY(node as object, y as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     t = node.translation
     x = 0.0
@@ -102,7 +105,7 @@ end sub
 ' field is `scaleRotateCenter` (Group, in LOCAL PIXELS); `rotationPivot` does
 ' not exist and Roku only warns about it at runtime.
 function uiImage(uri as string, width as float, height as float) as object
-    n = CreateObject("roSGNode", "Poster")
+    n = uiNode("Poster")
     n.uri = uri
     n.width = width
     n.height = height
@@ -121,12 +124,14 @@ function uiGetRotation(node as object) as float
 end function
 
 sub uiSetRotation(node as object, radians as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node <> invalid then node.rotation = -radians
 end sub
 
 ' Larger or smaller about the node's own centre, which uiSetWidth and uiSetHeight keep as its pivot,
 ' so a focused card grows where the DOM and the view systems grow it.
 sub uiSetScale(node as object, factor as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     node.scale = [factor, factor]
 end sub
@@ -135,6 +140,7 @@ end sub
 ' left, which uiSetWidth and uiSetHeight leave as its pivot. SceneGraph enlarges what it has drawn, as a picture is
 ' enlarged, so words drawn larger than 1 are a little soft.
 sub uiSetRootScale(factor as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     root = GetGlobalAA().appRoot
     if root = invalid then return
     root.scaleRotateCenter = [0.0, 0.0]
@@ -142,8 +148,9 @@ sub uiSetRootScale(factor as float)
 end sub
 
 sub uiSetFontSize(node as object, size as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
-    f = CreateObject("roSGNode", "Font")
+    f = uiNode("Font")
     f.uri = "font:BoldSystemFontFile"
     f.size = Int(size)
     node.font = f
@@ -160,6 +167,7 @@ function uiScreenHeight() as float
 end function
 
 sub uiAppend(parent as object, child as object)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if parent <> invalid and child <> invalid then
         ' out of the parent it is in first, as uiInsert does: a component put in another container is moved
         old = child.getParent()
@@ -169,6 +177,7 @@ sub uiAppend(parent as object, child as object)
 end sub
 
 sub uiInsert(parent as object, child as object, index as integer)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if parent <> invalid and child <> invalid then
         old = child.getParent()
         if old <> invalid then old.removeChild(child)
@@ -200,9 +209,10 @@ end function
 ' against the display's, and skips some.)
 sub uiAnimate(tick as dynamic)
     ga = GetGlobalAA()
+    uiPerfStart()
     ga.uiTick = tick
     ga.uiFast = 0
-    t = CreateObject("roSGNode", "Timer")
+    t = uiNode("Timer")
     t.repeat = true
     t.duration = 0
     ga.appScene.appendChild(t)
@@ -230,8 +240,71 @@ sub uiOnFrame()
         t.control = "start"
     end if
     ga.uiFrameAt = now
+    if ga.uiPerf <> invalid then uiPerfFrame(now)
     if ga.uiTick <> invalid then RtGuard(ga.uiTick, [])
+    if ga.uiPerf <> invalid then ga.uiPerf.tick = uiTicks() - now
 end sub
+
+' ── what each frame cost: rokuperf=1 ──
+
+' Launched with rokuperf=1 (an ECP launch parameter, or pkg:/rokuperf.txt), each frame that did anything, or took 50 ms
+' or more, is said on the console when the next begins: from its start to the next one's, how long the frame's own
+' update took (tick), the keys handled since and how long they took, the later and after turns, and what is left of the
+' frame (sg): SceneGraph drawing, and any handler not timed here (a picture loaded, a player's state); then the nodes
+' made and taken out of their parents, the runtime's writes to nodes (each a field or a few) and the texts measured.
+'
+'   [perf] 312ms: tick 4, keys 1 in 280, later 20, after 0, sg 8; nodes +14 -3, writes 220, measures 6
+'
+' Off, nothing is counted: each count is one test of an unset field.
+sub uiPerfStart()
+    ga = GetGlobalAA()
+    if ga.uiPerf <> invalid or uiLaunchArg("rokuperf") <> "1" then return
+    ga.uiPerf = { at: -1.0, tick: 0.0, keys: 0, key: 0.0, later: 0.0, after: 0.0, nodes: 0, removes: 0, writes: 0, measures: 0 }
+    print "[perf] counting each frame (rokuperf=1)"
+end sub
+
+' The frame before this one, said, and the counts begun again.
+sub uiPerfFrame(now as float)
+    p = GetGlobalAA().uiPerf
+    if p.at >= 0
+        ms = now - p.at
+        timed = p.tick + p.key + p.later + p.after
+        if ms >= 50 or p.keys > 0 or p.nodes > 0 or p.removes > 0 or p.writes > 0
+            print "[perf] "; Int(ms); "ms: tick "; Int(p.tick); ", keys "; p.keys; " in "; Int(p.key); ", later "; Int(p.later); ", after "; Int(p.after); ", sg "; Int(ms - timed); "; nodes +"; p.nodes; " -"; p.removes; ", writes "; p.writes; ", measures "; p.measures
+        end if
+    end if
+    p.at = now
+    p.tick = 0.0
+    p.keys = 0
+    p.key = 0.0
+    p.later = 0.0
+    p.after = 0.0
+    p.nodes = 0
+    p.removes = 0
+    p.writes = 0
+    p.measures = 0
+end sub
+
+' A key to the hook it stands for (uiOnKey), when it came kept (the cycle collector waits for the keys to stop), and
+' timed with rokuperf=1.
+function uiKeyHeard(env as object, args as object) as dynamic
+    at = uiTicks()
+    ga = GetGlobalAA()
+    ga.uiKeyAt = at
+    taken = RtInvoke(env.inner, args)
+    p = ga.uiPerf
+    if p <> invalid
+        p.keys = p.keys + 1
+        p.key = p.key + uiTicks() - at
+    end if
+    return taken
+end function
+
+' A SceneGraph node of `kind`, counted (rokuperf=1).
+function uiNode(kind as string) as object
+    if m.uiPerf <> invalid then m.uiPerf.nodes = m.uiPerf.nodes + 1
+    return CreateObject("roSGNode", kind)
+end function
 
 ' Run `f` on a later turn of the render thread's event loop, on a fresh stack: a one-shot Timer drains the queue.
 sub uiLater(f as dynamic)
@@ -239,7 +312,7 @@ sub uiLater(f as dynamic)
     if ga.uiLaterQueue = invalid then ga.uiLaterQueue = []
     ga.uiLaterQueue.push(f)
     if ga.uiLaterTimer = invalid
-        t = CreateObject("roSGNode", "Timer")
+        t = uiNode("Timer")
         t.repeat = false
         t.duration = 0.001
         ga.appScene.appendChild(t)
@@ -252,17 +325,23 @@ sub uiLater(f as dynamic)
     end if
 end sub
 
-' Run `f` once `seconds` have passed: a one-shot Timer of its own, forgotten when it fires.
+' Run `f` once `seconds` have passed: a one-shot Timer of its own while it waits. The Timers are kept on the scene
+' once they have fired, and used again: the focus layer alone waits a quarter second at a time, all the time, and a
+' Timer made, put on the scene, watched and taken off again for each was a node a frame for the render thread.
 sub uiAfter(seconds as float, f as dynamic)
     ga = GetGlobalAA()
     if ga.uiAfters = invalid then ga.uiAfters = {}
-    t = CreateObject("roSGNode", "Timer")
-    t.id = "uiAfter" + RtNextId().ToStr()
-    t.repeat = false
+    if ga.uiAfterIdle = invalid then ga.uiAfterIdle = []
+    t = ga.uiAfterIdle.Pop()
+    if t = invalid
+        t = uiNode("Timer")
+        t.id = "uiAfter" + RtNextId().ToStr()
+        t.repeat = false
+        ga.appScene.appendChild(t)
+        t.observeField("fire", "uiOnAfter")
+    end if
     t.duration = seconds
     ga.uiAfters[t.id] = { f: f, node: t }
-    ga.appScene.appendChild(t)
-    t.observeField("fire", "uiOnAfter")
     t.control = "start"
 end sub
 
@@ -272,8 +351,10 @@ sub uiOnAfter(event as object)
     entry = ga.uiAfters[t.id]
     if entry = invalid then return
     ga.uiAfters.Delete(t.id)
-    ga.appScene.removeChild(t)
+    ga.uiAfterIdle.Push(t)
+    at = uiTicks()
     RtGuard(entry.f, [])
+    if ga.uiPerf <> invalid then ga.uiPerf.after = ga.uiPerf.after + uiTicks() - at
 end sub
 
 sub uiOnLater()
@@ -282,9 +363,11 @@ sub uiOnLater()
     ga.uiLaterArmed = false
     queue = ga.uiLaterQueue
     ga.uiLaterQueue = []
+    at = uiTicks()
     for each f in queue
         RtGuard(f, [])
     end for
+    if ga.uiPerf <> invalid then ga.uiPerf.later = ga.uiPerf.later + uiTicks() - at
 end sub
 
 ' Math intrinsics for Platform.sqrt / pow / sin / cos.
@@ -311,6 +394,7 @@ end function
 
 ' "#rrggbb" -> SceneGraph's "0xRRGGBBAA".
 sub uiSetColor(node as object, hex as string)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     node.color = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
 end sub
@@ -339,9 +423,9 @@ function uiCalibratedSize(uri as string, size as float) as integer
     key = uri + "@" + Str(size)
     cached = ga.uiFontSizes[key]
     if cached <> invalid then return cached
-    probe = CreateObject("roSGNode", "Label")
+    probe = uiNode("Label")
     probe.text = "Hamburgefonstiv Example 0123"
-    big = CreateObject("roSGNode", "Font")
+    big = uiNode("Font")
     big.uri = uri
     big.size = Int(size * 4.0 + 0.5)
     probe.font = big
@@ -349,7 +433,7 @@ function uiCalibratedSize(uri as string, size as float) as integer
     best = Int(size + 0.5)
     bestErr = 1.0e9
     for candidate = Int(size + 0.5) to Int(size * 1.25 + 1.0)
-        f = CreateObject("roSGNode", "Font")
+        f = uiNode("Font")
         f.uri = uri
         f.size = candidate
         probe.font = f
@@ -566,7 +650,7 @@ function uiFontNode(uri as string, size as float) as object
     key = uri + "@" + Str(size)
     f = ga.uiFontNodes[key]
     if f = invalid
-        f = CreateObject("roSGNode", "Font")
+        f = uiNode("Font")
         f.uri = uri
         f.size = uiCalibratedSize(uri, size)
         ga.uiFontNodes[key] = f
@@ -576,8 +660,9 @@ end function
 
 ' How wide and tall `text` is in a face at a size in pixels.
 function uiMeasureText(text as string, uri as string, size as float) as object
+    if m.uiPerf <> invalid then m.uiPerf.measures = m.uiPerf.measures + 1
     ga = GetGlobalAA()
-    if ga.uiRunProbe = invalid then ga.uiRunProbe = CreateObject("roSGNode", "Label")
+    if ga.uiRunProbe = invalid then ga.uiRunProbe = uiNode("Label")
     probe = ga.uiRunProbe
     probe.font = uiFontNode(uri, size)
     probe.text = text
@@ -668,6 +753,7 @@ end function
 ' first letter is Arabic) so is the order of the runs. Returns the width drawn in pixels, or -1 for text in the Latin
 ' script alone, which the label draws itself.
 function uiRichText(label as object, text as string, baseUri as string, weight as integer, size as float, color as string) as float
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if label = invalid then return -1.0
     ' words, each with the script its letters are in ("" for a word of spaces-and-punctuation only)
     words = []
@@ -734,7 +820,7 @@ function uiRichText(label as object, text as string, baseUri as string, weight a
             node = invalid
             if index < children then node = label.getChild(index)
             if node = invalid
-                node = CreateObject("roSGNode", "Label")
+                node = uiNode("Label")
                 label.appendChild(node)
             end if
             node.font = uiFontNode(uri, size)
@@ -817,11 +903,13 @@ end function
 
 ' A face by its file (pkg:/fonts/<file>.ttf): the one the text is measured by, whatever its family.
 sub uiSetFontFile(node as object, uri as string, size as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     node.font = uiFontNode(uri, size)
 end sub
 
 sub uiSetFont(node as object, family as string, weight as integer, size as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     uri = uiFontUri(family, weight)
     node.font = uiFontNode(uri, size)
@@ -846,17 +934,18 @@ end function
 ' probe Label and one Font per face and size are reused, so measuring creates
 ' no nodes.
 function uiTextWidth(node as object, uri as string, size as float) as float
+    if m.uiPerf <> invalid then m.uiPerf.measures = m.uiPerf.measures + 1
     if node = invalid then return 0.0
     ga = GetGlobalAA()
     if ga.uiMeasureLabel = invalid
-        ga.uiMeasureLabel = CreateObject("roSGNode", "Label")
+        ga.uiMeasureLabel = uiNode("Label")
         ga.uiMeasureFonts = {}
     end if
     big = Int(size * 32.0 + 0.5)
     key = uri + "@" + big.ToStr()
     f = ga.uiMeasureFonts[key]
     if f = invalid
-        f = CreateObject("roSGNode", "Font")
+        f = uiNode("Font")
         f.uri = uri
         f.size = big
         ga.uiMeasureFonts[key] = f
@@ -871,14 +960,14 @@ end function
 ' transparent one, and a screen of them (rails a few thousand pixels long) held a Roku to 30 frames a second; a
 ' container with a colour has a Rectangle behind its children instead (uiFill).
 function uiContainer() as object
-    n = CreateObject("roSGNode", "Group")
+    n = uiNode("Group")
     n.translation = [0.0, 0.0]
     return n
 end function
 
 ' A transparent Rectangle, to be given a colour and a size (a square edge).
 function uiRect() as object
-    n = CreateObject("roSGNode", "Rectangle")
+    n = uiNode("Rectangle")
     n.color = "0x00000000"
     n.width = 0
     n.height = 0
@@ -889,6 +978,7 @@ end function
 ' A container's colour: a Rectangle `width` by `height` behind its children (`existing`, or a new one), or none for
 ' "". Anything else (the render root, a Rectangle) takes the colour itself.
 function uiFill(node as object, existing as dynamic, hex as string, width as float, height as float) as dynamic
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return invalid
     if node.subtype() <> "Group" or node.isSameNode(GetGlobalAA().appRoot)
         uiSetBackgroundColor(node, hex)
@@ -911,6 +1001,7 @@ end function
 
 ' Posters keep rotating about their centre as their size changes.
 sub uiSetWidth(node as object, width as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     if not node.hasField("width")
         ' a Group has no size of its own, but grows about its middle all the same; the root about the screen's corner
@@ -928,6 +1019,7 @@ end sub
 ' Where a Label's lines sit in its width: "start", "center" or "end" by the reading direction (uiSetDirection), so a
 ' Latin line in Arabic starts on the right as the Arabic lines do.
 sub uiSetTextAlign(node as object, align as string)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid or node.subtype() <> "Label" then return
     if not node.hasField("uiAlign") then node.addField("uiAlign", "string", false)
     node.uiAlign = align
@@ -991,6 +1083,7 @@ sub uiRealign(root as object)
 end sub
 
 sub uiSetHeight(node as object, height as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     if not node.hasField("height")
         if node.hasField("scaleRotateCenter") and not node.isSameNode(GetGlobalAA().appRoot)
@@ -1011,6 +1104,7 @@ function uiPosterSide(node as object, side as float) as float
 end function
 
 sub uiSetBackgroundColor(node as object, hex as string)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     color = "0x00000000"
     if hex <> ""
@@ -1033,11 +1127,13 @@ end sub
 ' A Poster's picture in one colour: its blend colour, which multiplies a white picture into that colour and keeps
 ' its transparency. "" draws it as it is.
 sub uiSetTint(node as object, hex as string)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid or not node.hasField("blendColor") then return
     if hex = "" then node.blendColor = "0xFFFFFFFF" else node.blendColor = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
 end sub
 
 sub uiSetImageSource(node as object, uri as string)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     if node.hasField("uri") then node.uri = uri
 end sub
@@ -1047,6 +1143,7 @@ end sub
 ' screen is a 654 pixel image drawn at about 260 on a 720p panel, and came out stepped and harsh beside the
 ' splash, which the firmware blits at its own size and never scales at all.
 sub uiSetImageSized(node as object, uri as string, width as float, height as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     if not node.hasField("uri") then return
     ' the size SceneGraph composes at, NOT the panel's: the scene is laid out in the 1920x1080 design space and the
@@ -1069,6 +1166,7 @@ sub uiSetImageSized(node as object, uri as string, width as float, height as flo
 end sub
 
 sub uiRemove(node as object)
+    if m.uiPerf <> invalid then m.uiPerf.removes = m.uiPerf.removes + 1
     if node = invalid then return
     p = node.getParent()
     if p <> invalid then p.removeChild(node)
@@ -1125,7 +1223,7 @@ sub uiImageStart(job as object)
     if ga.uiImageLoads = invalid then ga.uiImageLoads = {}
     if ga.uiImageSeq = invalid then ga.uiImageSeq = 0
     ga.uiImageSeq = ga.uiImageSeq + 1
-    p = CreateObject("roSGNode", "Poster")
+    p = uiNode("Poster")
     p.id = "uiImageLoad" + ga.uiImageSeq.ToStr()
     p.visible = false
     ' read no larger than the screen it is for: a photo from a library came at 2560 by 2590, forty megabytes of texture
@@ -1166,6 +1264,7 @@ sub uiOnImageLoadStatus(event as object)
 end sub
 
 sub uiSetTranslation(node as object, x as float, y as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node <> invalid then node.translation = [x, y]
 end sub
 
@@ -1585,7 +1684,7 @@ function uiSocketOpen(url as string, onOpen as dynamic, onText as dynamic, onClo
         ga.uiSocketSeq = 0
     end if
     ga.uiSocketSeq = ga.uiSocketSeq + 1
-    t = CreateObject("roSGNode", "EveryUISocketTask")
+    t = uiNode("EveryUISocketTask")
     t.id = "uiSocket" + ga.uiSocketSeq.ToStr()
     ga.uiSockets[t.id] = { onOpen: onOpen, onText: onText, onClose: onClose, node: t }
     t.observeField("socketEvent", "uiOnSocketEvent")
@@ -1663,8 +1762,9 @@ sub uiHttpEnqueue(request as object, done as dynamic)
         ga.uiHttpQueue = []
         ga.uiHttpIdle = []
         ga.uiHttpPool = []
+        ga.uiHttpLog = ga.uiPerf <> invalid or uiLaunchArg("httplog") = "1"
         for i = 1 to uiHttpWorkers()
-            t = CreateObject("roSGNode", "EveryUIHttpTask")
+            t = uiNode("EveryUIHttpTask")
             t.observeField("result", "uiOnHttpResult")
             t.observeField("ready", "uiOnHttpReady")
             t.control = "RUN"
@@ -1673,15 +1773,17 @@ sub uiHttpEnqueue(request as object, done as dynamic)
     end if
     ga.uiHttpSeq = ga.uiHttpSeq + 1
     request.id = "uiHttp" + ga.uiHttpSeq.ToStr()
+    request.asked = uiClockMs()
     ga.uiHttps[request.id] = done
     ga.uiHttpQueue.Push(request)
     uiHttpNext()
 end sub
 
 function uiHttpWorkers() as integer
-    ' one more than the four a screen's calls want, since the line's long poll (nabo's WirePoll) holds one for most of a
-    ' minute at a time
-    return 5
+    ' a screen opened asks for half a dozen things or more at once (a title's page: nine), and five, one held most of a
+    ' minute at a time by an app's long poll, answered them in waves of four, each wave waiting for the one before;
+    ' each worker keeps its connection, so more of them is more connections kept open, not more handshakes per call
+    return 8
 end function
 
 ' Hand the oldest waiting request to an idle worker, if both there are.
@@ -1699,10 +1801,31 @@ sub uiOnHttpReady(event as object)
     uiHttpNext()
 end sub
 
+' Where a request's time went, with rokuperf=1 or httplog=1: waiting for a worker, on the wire (the worker's own, its
+' connection made or kept, the request and the answer), and back to the render thread, which waits for whatever the
+' render thread is doing first (a screen being built).
+'
+'   [http] uiHttp12 200 POST https://api.example.com/x: 540 ms = queued 3, wire 520, back 17
+sub uiHttpSaid(r as object)
+    if r.began = invalid or r.ended = invalid then return
+    now = uiClockMs()
+    asked = r.began
+    if r.asked <> invalid then asked = r.asked
+    print "[http] "; r.id; " "; r.status; " "; r.method; " "; Left(_str(r.url), 100); ": "; Int(now - asked); " ms = queued "; Int(r.began - asked); ", wire "; Int(r.ended - r.began); ", back "; Int(now - r.ended)
+end sub
+
+' The time of day in milliseconds, which every thread reads alike (UpTime, a Float, loses its milliseconds once the box
+' has been up a while).
+function uiClockMs() as double
+    d = CreateObject("roDateTime")
+    return d.AsSeconds() * 1000# + d.GetMilliseconds()
+end function
+
 sub uiOnHttpResult(event as object)
     ga = GetGlobalAA()
     ga.uiHttpIdle.Push(event.getRoSGNode())
     r = event.getData()
+    if ga.uiHttpLog = true then uiHttpSaid(r)
     done = ga.uiHttps[r.id]
     ga.uiHttps.Delete(r.id)
     uiHttpNext()
@@ -1728,9 +1851,10 @@ end sub
 ' A shape behind a node's children, tinted: a rounded fill or edge (a white 9-patch in images/rr, made by the channel
 ' build), created the first time at `index` among the children, then updated. "#rrggbb" or "#rrggbbaa".
 function uiShape(parent as object, existing as dynamic, uri as string, hex as string, width as float, height as float, index as integer) as object
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     p = existing
     if p = invalid
-        p = CreateObject("roSGNode", "Poster")
+        p = uiNode("Poster")
         parent.insertChild(p, index)
     end if
     if p.uri <> uri then p.uri = uri
@@ -1765,6 +1889,7 @@ end sub
 ' while the keyboard is up (uiEditText) is the one put back as it closes.
 sub uiOnKey(f as dynamic)
     ga = GetGlobalAA()
+    if f <> invalid then f = { fn: uiKeyHeard, inner: f }
     if ga.uiEditing <> invalid then ga.uiEditKey = f else ga.uiKey = f
 end sub
 
@@ -1778,7 +1903,7 @@ end sub
 sub uiEditText(title as string, value as string, secure as boolean, domain as string, ok as string, cancel as string, done as dynamic)
     ga = GetGlobalAA()
     if ga.uiEditing <> invalid then uiEditClose(false)
-    dialog = CreateObject("roSGNode", "StandardKeyboardDialog")
+    dialog = uiNode("StandardKeyboardDialog")
     dialog.title = title
     dialog.buttons = [ok, cancel]
     if dialog.hasField("keyboardDomain") then dialog.keyboardDomain = domain
@@ -1855,6 +1980,7 @@ end sub
 
 ' Clip a Group to width by height (a scroll viewport).
 sub uiSetClip(node as object, width as float, height as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     node.clippingRect = [0, 0, width, height]
 end sub
@@ -1863,9 +1989,10 @@ end sub
 ' gradient and one across, drawn on the device the first time it is asked for and stretched over the editBox. `angle` is
 ' CSS's (0 bottom to top, 90 left to right), taken to the nearest side; `stops` is "#rrggbbaa at,#rrggbbaa at".
 function uiGradient(parent as object, existing as dynamic, angle as float, stops as string, width as float, height as float) as object
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     p = existing
     if p = invalid
-        p = CreateObject("roSGNode", "Poster")
+        p = uiNode("Poster")
         p.loadDisplayMode = "scaleToFill"
         parent.insertChild(p, 0)
     end if
@@ -1939,9 +2066,10 @@ end function
 ' MaskGroup (made once, `existing` after) whose mask is a white rounded rectangle of exactly this size. A mask is
 ' stretched to its maskSize, never 9-patched, so it is drawn for each size, in panel pixels as maskSize is, and kept.
 function uiRoundClip(node as object, existing as dynamic, width as float, height as float, radius as float) as object
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     group = existing
     if group = invalid
-        group = CreateObject("roSGNode", "MaskGroup")
+        group = uiNode("MaskGroup")
         kids = []
         for i = 0 to node.getChildCount() - 1
             kids.push(node.getChild(i))
@@ -2009,12 +2137,14 @@ end function
 
 ' The pixels between a Label's lines, rather than the theme's.
 sub uiSetLineSpacing(node as object, spacing as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid or not node.hasField("lineSpacing") then return
     node.lineSpacing = spacing
 end sub
 
 ' A Label wraps its words at its width (and draws every line), or keeps one line and cuts it short.
 sub uiSetWrap(node as object, wrap as boolean)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid or not node.hasField("wrap") then return
     node.wrap = wrap
     if wrap then node.maxLines = 0
@@ -2022,11 +2152,13 @@ end sub
 
 ' Whether a node and everything under it is drawn: what a scroll has out of sight costs a Roku nothing.
 sub uiSetVisible(node as object, visible as boolean)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     node.visible = visible
 end sub
 
 sub uiSetOpacity(node as object, opacity as float)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     node.opacity = opacity
 end sub
@@ -2040,22 +2172,23 @@ end function
 ' interpolator, a child of the node itself. Positions and scales are pairs (`a`, `b`); a rotation is already
 ' SceneGraph's way round.
 function uiMotion(node as object, property as string, seconds as float, delay as float, fractions as object, a as object, b as object, owner as dynamic) as object
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node.id = "" then node.id = "uiMotion" + RtNextId().ToStr()
-    anim = CreateObject("roSGNode", "Animation")
+    anim = uiNode("Animation")
     anim.duration = seconds
     anim.delay = delay
     anim.repeat = true
     anim.easeFunction = "linear"
     values = []
     if property = "position" or property = "scale"
-        interp = CreateObject("roSGNode", "Vector2DFieldInterpolator")
+        interp = uiNode("Vector2DFieldInterpolator")
         for i = 0 to a.Count() - 1
             values.Push([a[i], b[i]])
         end for
         field = "scale"
         if property = "position" then field = "translation"
     else
-        interp = CreateObject("roSGNode", "FloatFieldInterpolator")
+        interp = uiNode("FloatFieldInterpolator")
         for each value in a
             values.Push(value)
         end for
@@ -2079,6 +2212,7 @@ end function
 ' field once more, and by then the node is often off the scene or leaving it (a spinner taken away as what it waited
 ' for arrives, and disposed of in the same turn), which is "Could not find node uiMotion…" again.
 sub uiStopMotion(anim as object)
+    if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if anim = invalid then return
     motions = uiMotions()
     e = motions[anim.id]
@@ -2097,7 +2231,7 @@ function uiMotions() as object
     ga = GetGlobalAA()
     if ga.uiMotions = invalid
         ga.uiMotions = {}
-        ga.rtAfterTurn = { fn: uiMotionsSettle, env: ga.uiMotions }
+        ga.rtAfterTurn = { fn: uiTurnEnded }
     end if
     return ga.uiMotions
 end function
@@ -2116,6 +2250,29 @@ function uiOnScene(node as object) as boolean
     return false
 end function
 ' Each motion running if its node is on the scene, and paused (or not yet started) if it is not.
+' The end of a turn (RtAfterTurn), before the scene is drawn: what was asked to be painted then (uiPaintSoon), and the
+' motions started or paused as their nodes came on or went off the scene.
+sub uiTurnEnded(_env as dynamic)
+    ga = GetGlobalAA()
+    paint = ga.uiPaint
+    if paint <> invalid
+        ga.uiPaint = invalid
+        try
+            RtInvoke(paint, [])
+        catch e
+            RtReportError(e)
+        end try
+    end if
+    if ga.uiMotions <> invalid then uiMotionsSettle(ga.uiMotions)
+end sub
+
+' `f` at the end of the turn under way (uiTurnEnded), once.
+sub uiPaintSoon(f as dynamic)
+    ga = GetGlobalAA()
+    ga.uiPaint = f
+    ga.rtAfterTurn = { fn: uiTurnEnded }
+end sub
+
 sub uiMotionsSettle(motions as object)
     for each id in motions
         e = motions[id]
@@ -2182,7 +2339,7 @@ end function
 ' asked, and an id its state listener is found by. SceneGraph's Video letterboxes: it has no cover mode.
 
 function uiVideo() as object
-    n = CreateObject("roSGNode", "Video")
+    n = uiNode("Video")
     n.enableUI = false
     n.translation = [0.0, 0.0]
     uiMediaFields(n)
@@ -2190,7 +2347,7 @@ function uiVideo() as object
 end function
 
 function uiAudio() as object
-    n = CreateObject("roSGNode", "Audio")
+    n = uiNode("Audio")
     uiMediaFields(n)
     return n
 end function
@@ -2200,16 +2357,18 @@ sub uiMediaFields(n as object)
     if ga.uiMediaSeq = invalid then ga.uiMediaSeq = 0
     ga.uiMediaSeq = ga.uiMediaSeq + 1
     n.id = "uiMedia" + ga.uiMediaSeq.ToStr()
-    n.addFields({ uiPlaying: true, uiLoop: false, uiReady: false, uiHandoff: false, uiStart: 0.0, uiHeaders: [], uiSidecars: [], uiAudioLanguage: "", uiTextLanguage: "" })
+    n.addFields({ uiAskedAt: 0.0, uiPlaying: true, uiLoop: false, uiReady: false, uiHandoff: false, uiStart: 0.0, uiHeaders: [], uiSidecars: [], uiAudioLanguage: "", uiTextLanguage: "" })
 end sub
 
 sub uiSetMediaSource(node as object, url as string)
     if node = invalid then return
     print "[video] "; node.id; " source "; Left(url, 120)
-    node.control = "stop"
+    at = uiTicks()
+    ' a player with nothing in it has nothing to stop, and a stop is done before the render thread goes on
+    if node.content <> invalid then node.control = "stop"
     node.uiReady = false
     if url = "" then return
-    c = CreateObject("roSGNode", "ContentNode")
+    c = uiNode("ContentNode")
     c.url = url
     ' where it starts, said with the content so the stream opens there rather than seeking after it; once
     if node.uiStart > 0 then c.PlayStart = Int(node.uiStart)
@@ -2224,6 +2383,9 @@ sub uiSetMediaSource(node as object, url as string)
     node.content = c
     node.loop = node.uiLoop
     if node.uiPlaying then node.control = "play"
+    ' when it was asked for, for how long it takes to play (uiOnMediaState), and how long asking took the render thread
+    node.uiAskedAt = uiTicks()
+    print "[video] "; node.id; " asked to play in "; Int(node.uiAskedAt - at); " ms"
 end sub
 
 ' Where the next source starts, in seconds.
@@ -2288,7 +2450,13 @@ sub uiOnMediaState(event as object)
     state = event.getData()
     n = event.getRoSGNode()
     ' what a player does is otherwise invisible, and a picture of the screen shows no video to tell by
-    print "[video] "; n.id; " "; state
+    if state = "playing" and not n.uiReady and n.uiAskedAt > 0
+        said = ""
+        if n.hasField("timeToStartStreaming") then said = " (the device: " + _str(n.timeToStartStreaming) + " s)"
+        print "[video] "; n.id; " playing "; Int(uiTicks() - n.uiAskedAt); " ms after it was asked"; said
+    else
+        print "[video] "; n.id; " "; state
+    end if
     if state = "error" then print "[video] "; n.id; " failed: "; n.errorCode; " "; n.errorMsg; " "; n.errorStr
     if state = "playing" then n.uiHandoff = false
     ' refused the player just handed to it, the one before not yet let go of it: asked again, once, a moment later
@@ -2317,7 +2485,11 @@ end sub
 
 sub uiReleaseMedia(node as object)
     if node = invalid then return
-    node.control = "stop"
+    ' stopped without holding the render thread while it does (Roku OS 12.5): the node is not used again
+    if node.content <> invalid
+        if node.hasField("asyncStopSemantics") then node.asyncStopSemantics = true
+        node.control = "stop"
+    end if
     node.unobserveField("state")
     ga = GetGlobalAA()
     if ga.uiMediaListeners <> invalid then ga.uiMediaListeners.Delete(node.id)
@@ -2349,7 +2521,7 @@ end sub
 
 ' Play again in a moment, if it is still to.
 sub uiMediaAgain(node as object)
-    t = CreateObject("roSGNode", "Timer")
+    t = uiNode("Timer")
     t.repeat = false
     t.duration = 0.25
     t.addField("uiTarget", "node", false)
@@ -2400,7 +2572,7 @@ function uiEffect(uri as string) as object
     end for
     order.Push(uri)
     if n = invalid
-        n = CreateObject("roSGNode", "SoundEffect")
+        n = uiNode("SoundEffect")
         n.addFields({ uiPending: false, uiVolume: 100 })
         n.observeField("loadStatus", "uiOnEffectLoad")
         n.observeField("state", "uiOnEffectState")
@@ -2866,11 +3038,13 @@ end sub
 ' ── the cycle collector ──
 
 ' Run BrightScript's cycle collector two seconds after the last call: a screen or a scene let go refers to itself and is
-' freed only by it, and a run costs half a second, so it waits for things to go quiet.
+' freed only by it, and a run costs half a second or more, all of it a frame the render thread does not draw, so it
+' waits for things to go quiet: two seconds after the last call, and then for as long as the remote is in use, until two
+' seconds have passed with no key. How long each run took is said.
 sub uiCollect()
     ga = GetGlobalAA()
     if ga.uiCollector = invalid
-        t = CreateObject("roSGNode", "Timer")
+        t = uiNode("Timer")
         t.repeat = false
         t.duration = 2
         t.observeField("fire", "uiOnCollect")
@@ -2882,6 +3056,12 @@ sub uiCollect()
 end sub
 
 sub uiOnCollect()
+    ga = GetGlobalAA()
+    if ga.uiKeyAt <> invalid and uiTicks() - ga.uiKeyAt < 2000
+        ga.uiCollector.control = "start"
+        return
+    end if
+    at = uiTicks()
     freed = RunGarbageCollector()
-    if freed <> invalid and freed.ORPHANED <> invalid then print "[gc] freed "; freed.ORPHANED; " of "; freed.COUNT
+    if freed <> invalid and freed.ORPHANED <> invalid then print "[gc] freed "; freed.ORPHANED; " of "; freed.COUNT; " in "; Int(uiTicks() - at); " ms"
 end sub

@@ -584,7 +584,17 @@ class RenderNode(val sg: SGNode) {
   /** Styled runs are drawn as the paragraph's own style, their words run together. */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = setText(runs.map(r => r.text).mkString)
 
-  private def paint(): Unit = {
+  // The fill and the edge are painted at the end of the turn, once, for the box as it is by then: a component sets its
+  // colour, its corners, its border and its size one after another as it is made, and each painted at once made a
+  // Rectangle for a square fill, took it away again for a rounded one, and placed the edges at every size on the way.
+  private var paintDue: Boolean = false
+  private def paint(): Unit = if (!paintDue) {
+    paintDue = true
+    RenderNode.paintLater(this)
+  }
+
+  private[render] def paintNow(): Unit = if (paintDue) {
+    paintDue = false
     val fill = if (gradientHex.nonEmpty) gradientHex else fillHex
     val w = if (boxWidth >= 0.0) boxWidth else getWidth()
     val h = if (boxHeight >= 0.0) boxHeight else getHeight()
@@ -738,6 +748,37 @@ class RenderNode(val sg: SGNode) {
 
 /** Backend node factories. */
 object RenderNode {
+  // the nodes whose fill and edge are to be painted at the end of the turn (`paint`), in an array grown as it fills (a
+  // list added to is a copy of it each time on a Roku)
+  private var due: Array[RenderNode] = new Array[RenderNode](64)
+  private var dueCount: Int = 0
+
+  private def paintLater(node: RenderNode): Unit = {
+    if (dueCount == due.length) {
+      val bigger = new Array[RenderNode](due.length * 2)
+      var i = 0
+      while (i < dueCount) {
+        bigger(i) = due(i)
+        i += 1
+      }
+      due = bigger
+    }
+    due(dueCount) = node
+    dueCount += 1
+    if (dueCount == 1) uiPaintSoon(() => paintAll())
+  }
+
+  private def paintAll(): Unit = {
+    var i = 0
+    while (i < dueCount) {
+      val node = due(i)
+      due(i) = null
+      i += 1
+      node.paintNow()
+    }
+    dueCount = 0
+  }
+
   /** The first colour of `everyui.Gradient`'s encoding, as the seam takes a colour. */
   def firstStop(stops: String): String = {
     val space = stops.indexOf(' ')

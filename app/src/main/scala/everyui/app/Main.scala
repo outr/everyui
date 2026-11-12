@@ -130,6 +130,13 @@ import everyui.render.Platform
   *   player     a video over local test media (an MKV with two sound tracks and two subtitles, an MP4, a sound alone):
   *              play, pause, seeks, tracks, rate, volume and each end; `script=1` drives it, `src=` plays others,
   *              `cycle=<seconds>` lets one go mid-playback and opens another, again and again (PlayerDemo)
+  *   railperf   a Home cut down to a move of the focus along a rail: a hero of words over `rails=<k>` rails of `n=<cards>`
+  *              ringed cards that glide with the focus; OK takes the rail apart and builds it again, or starts `video=`;
+  *              each move and each frame of 50 ms or more logged, `rokuperf=1` for a Roku's own counts (RailPerfDemo)
+  *   pageopen   a title's page of about 200 components (a hero, tabs, `rails=` rails of `n=` cards) opened on OK and
+  *              timed, taken apart after Back; `auto=<opens>` opens and closes it by itself (PageOpenDemo)
+  *   httpperf   `n=` requests to `url=` one after another and then all at once, each timed (`method=POST`, `body=`;
+  *              `httplog=1` or `rokuperf=1` for where a Roku's time went) (HttpPerfDemo)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
   *   rowtips    a project's files in a tree, each with its whole path as its tip, shown as the pointer, the cursor or
   *              a finger rests on it (`n=<files>`, `menu=1`, `theme=light`, `rtl=1`); not on a Roku or an Apple TV
@@ -230,6 +237,9 @@ import everyui.render.Platform
   else if (demo == "readonly") ReadOnlyDemo.run()
   else if (demo == "typing") TypingDemo.run()
   else if (demo == "keyboard") KeyboardDemo.run()
+  else if (demo == "railperf") RailPerfDemo.run()
+  else if (demo == "httpperf") HttpPerfDemo.run()
+  else if (demo == "pageopen") PageOpenDemo.run()
   else if (demo == "rtlwrap") RtlWrapDemo.run()
   else if (demo == "captions") CaptionsDemo.run()
   else if (demo == "dispose") DisposeDemo.run()

@@ -16,6 +16,7 @@ sub runTask()
         msg = wait(0, port)
         if type(msg) = "roSGNodeEvent" and msg.getField() = "request"
             req = msg.getData()
+            began = clockMs()
             if u = invalid then u = newTransfer(req.url)
             r = fetch(u, req)
             ' a transfer that will not start is one still busy with something it lost track of (the channel held in the
@@ -26,20 +27,34 @@ sub runTask()
                 u = newTransfer(req.url)
                 r = fetch(u, req)
             end if
+            ' when it began and ended here, for where a request's time went (uiOnHttpResult)
+            r.asked = req.asked
+            r.url = req.url
+            r.method = req.method
+            r.began = began
+            r.ended = clockMs()
             m.top.result = r
         end if
     end while
 end sub
 
+' The time of day in milliseconds, as the render thread reads it (uiClockMs).
+function clockMs() as double
+    d = CreateObject("roDateTime")
+    return d.AsSeconds() * 1000# + d.GetMilliseconds()
+end function
+
+' The one transfer kept for every request this worker takes, so its connection lasts from one to the next
+' (EnableFreshConnection off, where the box has it), with the certificates set once whatever the first request's
+' address: an https request after an http one goes over the same transfer.
 function newTransfer(url as string) as object
     u = CreateObject("roUrlTransfer")
     u.SetMessagePort(CreateObject("roMessagePort"))
     u.EnableEncodings(true)
     u.RetainBodyOnError(true)
-    if Left(url, 6) = "https:"
-        u.SetCertificatesFile("common:/certs/ca-bundle.crt")
-        u.InitClientCertificates()
-    end if
+    if FindMemberFunction(u, "EnableFreshConnection") <> invalid then u.EnableFreshConnection(false)
+    u.SetCertificatesFile("common:/certs/ca-bundle.crt")
+    u.InitClientCertificates()
     return u
 end function
 
