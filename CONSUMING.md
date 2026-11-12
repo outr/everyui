@@ -4944,6 +4944,22 @@ asked (the device: 2.1 s)`), and the cycle collector how long each run took (`[g
 runs two seconds after the last screen was let go, and waits while the remote is in use. The example app's
 `demo=railperf`, `demo=pageopen` and `demo=httpperf` are the cases to run it over.
 
+A channel already running (as a sideload leaves it) is not started again by an ECP launch: Roku resumes it, or hands
+the launch to it as an input event. The flags are read again whenever a launch reaches it, so `rokuperf` and `httplog`
+are turned on (`=1`) or off (`=0`) there and then, without a cold start, by a launch, a resume or ECP's `/input`:
+
+```
+curl -d '' "http://<roku>:8060/input?rokuperf=1"
+curl -d '' "http://<roku>:8060/launch/dev?rokuperf=1&httplog=1"
+```
+
+To keep them on for every start, `everyui_perf=1` the same way writes `everyui_perf` = `1` into the channel's settings
+(the registry's `everyui` section), and turns both on now; `everyui_perf=0` takes it out and turns them off. An app may
+set it itself, from a hidden switch of its own: `Platform.saveSetting("everyui_perf", "1")`, read at the next start.
+A flag given with a launch wins over the key for that run. The console says each change (`[perf] counting each frame
+(rokuperf=1)`, `[perf] off`, `[perf] kept on for every start (everyui_perf=1)`, `[http] timing each request
+(httplog=1)`).
+
 ### The Apple TV
 
 The same compiler writes the app as Swift (`App.swift`, `App2.swift` and on, a megabyte or so each), and

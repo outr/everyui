@@ -209,7 +209,7 @@ end function
 ' against the display's, and skips some.)
 sub uiAnimate(tick as dynamic)
     ga = GetGlobalAA()
-    uiPerfStart()
+    uiDebugFlags()
     ga.uiTick = tick
     ga.uiFast = 0
     t = uiNode("Timer")
@@ -256,11 +256,60 @@ end sub
 '   [perf] 312ms: tick 4, keys 1 in 280, later 20, after 0, sg 8; nodes +14 -3, writes 220, measures 6
 '
 ' Off, nothing is counted: each count is one test of an unset field.
-sub uiPerfStart()
+'
+' The flags are read as the channel starts and again whenever a launch reaches it while it runs (uiArrived): a launch
+' of a channel already running, which a sideload leaves running, is a resume or an input event (ECP /input), not a
+' start, so `rokuperf=0` or `=1` and `httplog=0` or `=1` sent either way turn them off or on there and then. Kept on
+' for every start until turned off: `everyui_perf=1` (a launch, an input event or a resume), which writes the
+' key `everyui_perf` in the registry's everyui section, as an app may itself (Platform.saveSetting); `everyui_perf=0`
+' takes it out. A flag given with a launch wins over the key for that run.
+sub uiDebugFlags()
     ga = GetGlobalAA()
-    if ga.uiPerf <> invalid or uiLaunchArg("rokuperf") <> "1" then return
-    ga.uiPerf = { at: -1.0, tick: 0.0, keys: 0, key: 0.0, later: 0.0, after: 0.0, nodes: 0, removes: 0, writes: 0, measures: 0 }
-    print "[perf] counting each frame (rokuperf=1)"
+    section = CreateObject("roRegistrySection", "everyui")
+    kept = section.Read("everyui_perf") = "1"
+    perf = uiFlagSaid("rokuperf", kept)
+    if perf and ga.uiPerf = invalid
+        ga.uiPerf = { at: -1.0, tick: 0.0, keys: 0, key: 0.0, later: 0.0, after: 0.0, nodes: 0, removes: 0, writes: 0, measures: 0 }
+        print "[perf] counting each frame (rokuperf=1)"
+    else if not perf and ga.uiPerf <> invalid
+        ga.uiPerf = invalid
+        print "[perf] off"
+    end if
+    http = perf or uiFlagSaid("httplog", kept)
+    if http <> (ga.uiHttpLog = true)
+        if http then print "[http] timing each request (httplog=1)" else print "[http] timing off"
+    end if
+    ga.uiHttpLog = http
+end sub
+
+' Whether the launch flag `name` is on: as the launch said ("1" on, anything else off), or `otherwise` where it said
+' nothing of it.
+function uiFlagSaid(name as string, otherwise as boolean) as boolean
+    params = GetGlobalAA().uiLaunchParams
+    if params = invalid or not params.DoesExist(name) then return otherwise
+    return uiLaunchArg(name).Trim() = "1"
+end function
+
+' `everyui_perf=1` or `=0` from a launch that reached the running channel: the registry's key written or taken out,
+' and the flags read again.
+sub uiDebugArrived(own as object)
+    said = own.everyui_perf
+    if said <> invalid
+        section = CreateObject("roRegistrySection", "everyui")
+        if said.Trim() = "1"
+            section.Write("everyui_perf", "1")
+            print "[perf] kept on for every start (everyui_perf=1)"
+        else
+            section.Delete("everyui_perf")
+            print "[perf] no longer kept on (everyui_perf=0)"
+        end if
+        section.Flush()
+        ' (the key decides from now on, over a flag an earlier launch gave, unless this one gives it too)
+        params = GetGlobalAA().uiLaunchParams
+        if own.rokuperf = invalid then params.Delete("rokuperf")
+        if own.httplog = invalid then params.Delete("httplog")
+    end if
+    if said <> invalid or own.rokuperf <> invalid or own.httplog <> invalid then uiDebugFlags()
 end sub
 
 ' The frame before this one, said, and the counts begun again.
@@ -1379,6 +1428,8 @@ sub uiArrived(params as dynamic)
         if ga.uiMotionDebug then section.Write("debug_motion", "1") else section.Delete("debug_motion")
         section.Flush()
     end if
+    ' (rokuperf, httplog and everyui_perf turned on or off as they arrive: a resumed channel never starts again)
+    uiDebugArrived(own)
     uiLinked(params)
     if ga.uiLaunchHook <> invalid then RtGuard(ga.uiLaunchHook, [own])
 end sub
@@ -1769,7 +1820,7 @@ sub uiHttpEnqueue(request as object, done as dynamic)
         ga.uiHttpQueue = []
         ga.uiHttpIdle = []
         ga.uiHttpPool = []
-        ga.uiHttpLog = ga.uiPerf <> invalid or uiLaunchArg("httplog") = "1"
+        if ga.uiHttpLog = invalid then uiDebugFlags()
         for i = 1 to uiHttpWorkers()
             t = uiNode("EveryUIHttpTask")
             t.observeField("result", "uiOnHttpResult")
