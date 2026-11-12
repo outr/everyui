@@ -12,7 +12,10 @@ import reactify.*
   * sound and subtitle tracks, the rate (1, 1.5, 2, 0.5) and the volume (1, 0.5, 0.25, 0), and opens the next source,
   * which follows by itself at each end. `script=1` drives it all itself, for a device with nothing to press on: pause
   * and play, a seek, the second sound track, each subtitle, 1.5 times, half volume, and a seek to near the end, for
-  * each source in turn. `now=1` tells the system what plays (`nowPlaying`). Logs `player <event>` as each is heard, a
+  * each source in turn. `now=1` tells the system what plays (`nowPlaying`). `start=<seconds>` opens each source that
+  * far in (`open(url, start)`, a resume), `text=<language>` asks for its subtitles in that language (`languages`), and
+  * `seek=<seconds>` with `after=<seconds>` seeks there that long after each opening (a viewer's seek as it opens).
+  * Logs `player <event>` as each is heard, a
   * `player step <what>` for each scripted step, and each second `player probe src=<index> t=<playhead>
   * d=<duration> playing=<on> waiting=<on> rate=<r> volume=<v> audio=<n>/<chosen> text=<n>/<chosen> size=<w>x<h>
   * tracks=<kind:language:label:format|...>`, then `player diagnostics <audio> | <video> | <audio tracks>` once each
@@ -31,6 +34,10 @@ object PlayerDemo {
       case list => list.split(',').toList.map(_.trim).filter(_.nonEmpty)
     }
     val scripted = Platform.launchArg("script") == "1"
+    def number(name: String, otherwise: Double): Double = Platform.launchArg(name).toDoubleOption.getOrElse(otherwise)
+    val start = number("start", 0.0)
+    val seekTo = number("seek", -1.0)
+    val seekAfter = number("after", 0.5)
     val at = Var(0)
     val heard = Var(List.empty[String])
     val video = new VideoView
@@ -44,8 +51,13 @@ object PlayerDemo {
       video.volume @= 1.0
       val name = sources(i).split('/').lastOption.getOrElse(sources(i))
       if (Platform.launchArg("now") == "1") video.nowPlaying @= NowPlaying(name, "EveryUI", "Test media")
-      video.source @= sources(i)
-      Platform.log("player open " + i.toString + " " + sources(i))
+      if (Platform.launchArg("text").nonEmpty) video.languages("", Platform.launchArg("text"))
+      if (start > 0.0) video.open(sources(i), start) else video.source @= sources(i)
+      Platform.log("player open " + i.toString + " " + sources(i) + " from " + tenths(start))
+      if (seekTo >= 0.0) Platform.after(seekAfter, () => if (at() == i) {
+        Platform.log("player step seek " + tenths(seekTo) + " at " + tenths(video.playhead()))
+        video.seek(seekTo)
+      })
     }
     def trackName(tracks: List[MediaTrack], id: Option[String]): String =
       id.flatMap(i => tracks.find(_.id == i)).map(_.name).getOrElse(if (id.contains("")) "off" else "default")

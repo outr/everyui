@@ -124,6 +124,14 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
     var start = 0.0
     var from = 0.0
     var pending: Double? = nil
+    /// Where this opening was asked to start, until VLC first says where it is: if it is still at the beginning then
+    /// (a stream or format that took no `:start-time`), it is sent there once. A seek made before that is the app's.
+    var landing: Double? = nil
+    /// Whether VLC has said where it is since this opening: VLCMediaPlayer's `time` is the last it was told (0 before
+    /// that), so until then the place is where it opened, or was sent.
+    var timed = false
+    /// Opened, and not yet playing, ended or failed: VLC says it is stopped a moment after `play`, until it opens.
+    var opening = false
     var headers: [(String, String)] = []
     var sidecars: [(url: String, label: String, language: String)] = []
     var wanted = true
@@ -194,6 +202,8 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
         from = start
         start = 0
         pending = nil
+        landing = from > 0 ? from : nil
+        timed = false
         if from > 0 { media.addOption(":start-time=\(from)") }
         media.addOption(":network-caching=\(caching)")
         if !wanted { media.addOption(":start-paused") }
@@ -220,17 +230,24 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
         failure = ""
         lastTick = CACurrentMediaTime()
         MediaSession.play(about != nil)
+        opening = true
         p.play()
         fit()
         equalize()
     }
 
     func stop() {
+        opening = false
         guard let p = player else { return }
         p.delegate = nil
         p.stop()
         p.delegate = self
         ready = false
+    }
+
+    /// The player sent to `at` seconds.
+    func go(_ at: Double) {
+        player?.time = VLCTime(int: Int32(min(max(0.0, at) * 1000.0, Double(Int32.max))))
     }
 
     /// Let go for good: the player stopped and dropped, the view left as it is (a source set again makes another).
@@ -243,6 +260,7 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
         player = nil
         built = []
         ready = false
+        opening = false
         if MediaView.speaking === self {
             MediaView.speaking = nil
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -254,7 +272,10 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
         guard let p = player, !source.isEmpty else { return }
         if on {
             MediaSession.play(about != nil)
-            if p.state == .ended || p.state == .stopped || p.state == .error { open() } else { p.play() }
+            // opened again where it has stopped for good; one opening (a source set a moment ago, from its start) is
+            // left to open, not opened again from the beginning
+            let over = p.state == .ended || p.state == .error || (p.state == .stopped && !opening)
+            if over { open() } else { p.play() }
         } else if p.isPlaying || p.state == .opening || p.state == .buffering {
             p.pause()
         }
@@ -267,6 +288,8 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
             start = at
             return
         }
+        // the app's own place, which the start's second chance (landing) does not undo
+        landing = nil
         if !ready {
             pending = at
             return
@@ -278,14 +301,15 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
             open()
             return
         }
-        p.time = VLCTime(int: Int32(min(at * 1000.0, Double(Int32.max))))
+        go(at)
+        if !timed { from = at }
         lastTick = CACurrentMediaTime()
         speak()
     }
 
     var position: Double {
         guard let p = player else { return start }
-        if !ready { return pending ?? from }
+        if !ready || !timed { return pending ?? from }
         return Double(p.time.intValue) / 1000.0
     }
 
@@ -501,11 +525,10 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
             if chosen == p.currentVideoSubTitleIndex { return }
             p.currentVideoSubTitleIndex = chosen
             // a track the file holds is read as the file is: what it said before it was chosen has gone by, so it is
-            // read again from here, and the line being spoken shows now rather than at the next
-            if chosen >= 0, ready, p.isSeekable, p.state != .ended {
-                let now = p.time
-                p.time = now
-            }
+            // read again from here, and the line being spoken shows now rather than at the next. Here is `position`,
+            // not VLC's `time`, which is 0 until it first says where it is: a track chosen as it opens (the language
+            // asked for) sent a resume back to the beginning
+            if chosen >= 0, ready, p.isSeekable, p.state != .ended { go(position) }
         } else if let n = Int32(id) {
             p.currentAudioTrackIndex = n
         }
@@ -601,7 +624,11 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
     func arrived() {
         guard let p = player, !ready else { return }
         ready = true
-        if let at = pending { p.time = VLCTime(int: Int32(min(at * 1000.0, Double(Int32.max)))) }
+        opening = false
+        if let at = pending {
+            go(at)
+            from = at
+        }
         pending = nil
         sound()
         fit()
@@ -613,6 +640,21 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
         tell("mixing")
     }
 
+    /// VLC's first word of where it is since this opening, its place from then on; and a start it did not take (still
+    /// at the beginning, opened further in) made by a seek there, once.
+    func placed(_ p: VLCMediaPlayer) {
+        timed = true
+        guard let at = landing else { return }
+        landing = nil
+        let now = Double(p.time.intValue) / 1000.0
+        if now < min(2.0, at / 2.0) {
+            print("[ui] media: opened at \(now) s, not \(at) s: sent there")
+            go(at)
+            from = at
+            timed = false
+        }
+    }
+
     func mediaPlayerStateChanged(_ aNotification: Notification) {
         guard let p = player else { return }
         switch p.state {
@@ -620,6 +662,7 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
             if ready { sound() } else { arrived() }
             speak()
         case .ended:
+            opening = false
             if looping {
                 reopened = true
                 DispatchQueue.main.async { [weak self] in self?.open() }
@@ -628,6 +671,7 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
                 tell("ended")
             }
         case .error:
+            opening = false
             failure = VLCLibrary.currentErrorMessage ?? "VLC could not play it"
             reopened = false
             tell("error")
@@ -638,7 +682,7 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
 
     func mediaPlayerTimeChanged(_ aNotification: Notification) {
         lastTick = CACurrentMediaTime()
-        if !ready, player?.state != .error { arrived() }
+        if !ready, player?.state != .error { arrived() } else if ready, !timed, let p = player { placed(p) }
         // the picture's size, which cover goes by, can come a moment after the first of it
         if cover, video, canvas.frame.size == bounds.size, player?.videoSize != .zero { fit() }
     }
