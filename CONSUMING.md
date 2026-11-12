@@ -4335,6 +4335,16 @@ Captions.setDevice(CaptionMode.CaptionsOnReplay)    // On instant replay
 Captions.setDevice(CaptionMode.CaptionsWhenMuted)   // On mute (a Roku TV)
 ```
 
+**How they look.** `Platform.captionStyle()` is the viewer's caption appearance, `Option[CaptionStyle(text,
+background, window, edge, edgeColor, scale)]`, for an app that draws its own subtitles. Android reads its
+CaptioningManager's user style. A Roku reads roDeviceInfo's `GetCaptionsOption` (Text/Color and Opacity,
+Background/Color and Opacity, Window/Color and Opacity, Text/Effect, Text/Size), in the colours and sizes the device
+draws them: its White a light grey (#B0B0B0) and Bright white white; Uniform an outline, either Drop shadow a shadow;
+Extra small to Extra large as 0.69 to 1.40 of Medium. The edge colour is black. A setting left at Default is the
+device's own: White words, opaque, on Black, opaque, with no window. It is None where every one is at Default, the
+video's own look. A Roku says nothing when the style changes, only the mode, so each call reads it again: read it as a
+video starts, on `listen` and as the app comes back. The Apple TV, the web and the desktop answer None.
+
 **A video's captions** are `captions: Prop[TextChoice]` on a `VideoView` (or an `AudioPlayer`):
 
 - `TextChoice.TextFromDevice` (what it starts as): the device's setting decides, by `Captions.choose`: captions on,

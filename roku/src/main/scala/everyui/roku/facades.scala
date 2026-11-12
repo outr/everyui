@@ -507,6 +507,12 @@ class SGNode
 @native object uiCaptionsUnlisten {
   def apply(id: Int): Unit = native.value
 }
+/** The device's caption appearance (roDeviceInfo.GetCaptionsOption) as fourteen numbers: the text's red, green, blue
+  * and alpha (0 to 255), the background's, the window's, the edge (0 none, 1 outline, 2 shadow, 3 raised, 4 depressed)
+  * and the size as a multiple of the usual; empty where the box does not say or every one is left at Default. */
+@native object uiCaptionStyle {
+  def apply(): List[Double] = native.value
+}
 /** A video's captions as the app chose them: a track shown, the device's mode written On, or "" for none, written Off.
   * As the device has them, with a track to read where one is known (uiCaptionsFollow). The device's mode written as the
   * viewer would, and heard as theirs (uiCaptionsSetMode; false where the box refused it). */

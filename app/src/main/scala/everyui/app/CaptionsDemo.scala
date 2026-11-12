@@ -12,7 +12,9 @@ import reactify.*
   * off, none. The first button steps `captions` from the device's choice to none, through the tracks and back; the
   * second writes the device's mode where the platform lets it (On, Off, On replay, When mute on a Roku). `src=` plays
   * another stream. Logs `captions device <mode> <language>` at the start and at each change, `captions ready <n> text
-  * tracks, the device's choice <id>` once the video is, and `captions setDevice <mode> <written>` for each write. */
+  * tracks, the device's choice <id>` once the video is, and `captions setDevice <mode> <written>` for each write; and
+  * `captions style <text, background, window, edge, scale | none>` with each `captions device` line, the device's
+  * caption appearance (`Platform.captionStyle`). */
 object CaptionsDemo {
   private def said(p: Option[CaptionPreference]): String = p match {
     case Some(pref) =>
@@ -27,13 +29,22 @@ object CaptionsDemo {
     case None => "none on this platform"
   }
 
+  // the device's caption appearance (Platform.captionStyle), as it reads now
+  private def style(): String = Platform.captionStyle() match {
+    case Some(s) => "text " + s.text.toHexAlpha + " background " + s.background.toHexAlpha + " window " +
+      s.window.toHexAlpha + " edge " + s.edge + " " + s.edgeColor.toHexAlpha + " scale " + s.scale.toString
+    case None => "none"
+  }
+
   def run(): Unit = {
     ui.backgroundColor := Theme.background()
     val device = Var(said(Captions.device))
     Platform.log("captions device " + device())
+    Platform.log("captions style " + style())
     Captions.listen(p => {
       device @= said(p)
       Platform.log("captions device " + device())
+      Platform.log("captions style " + style())
     })
     val video = new VideoView
     video.cover @= false

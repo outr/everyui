@@ -2666,6 +2666,72 @@ function uiCaptionsLanguage() as string
     return language
 end function
 
+' The device's caption appearance (its Accessibility > Captions style settings, GetCaptionsOption), as uiCaptionStyleOf
+' reads it; empty where the box does not say.
+function uiCaptionStyle() as object
+    info = CreateObject("roDeviceInfo")
+    if FindMemberFunction(info, "GetCaptionsOption") = invalid then return []
+    said = {}
+    for each name in ["Text/Color", "Text/Opacity", "Background/Color", "Background/Opacity", "Window/Color", "Window/Opacity", "Text/Effect", "Text/Size"]
+        said[name] = info.GetCaptionsOption(name)
+    end for
+    return uiCaptionStyleOf(said)
+end function
+
+' Caption settings by their names ("Text/Color": "Red"…) as fourteen numbers: the words' red, green, blue and alpha
+' (0 to 255), the background's, the window's, the edge (0 none, 1 outline, 2 a drop shadow, 3 raised, 4 depressed) and
+' the size as a multiple of the usual (Medium's). Empty where every one is Default, which is the video's own look; where
+' some are set, the rest are Roku's defaults: its white words, opaque, on black, opaque, no window, no edge, Medium.
+' The colours and sizes are those the device draws (as brs-engine has them): its "White" a light grey, "Bright white"
+' white.
+function uiCaptionStyleOf(settings as object) as object
+    chosen = false
+    said = {}
+    for each name in settings
+        v = settings[name]
+        if v = invalid then v = ""
+        v = LCase(_str(v).Trim())
+        if v = "" then v = "default"
+        if v <> "default" then chosen = true
+        said[name] = v
+    end for
+    if not chosen then return []
+    style = []
+    style.Append(uiCaptionColour(said["Text/Color"], "white", said["Text/Opacity"], "100%"))
+    style.Append(uiCaptionColour(said["Background/Color"], "black", said["Background/Opacity"], "100%"))
+    style.Append(uiCaptionColour(said["Window/Color"], "black", said["Window/Opacity"], "off"))
+    effect = said["Text/Effect"]
+    edge = 0
+    if effect = "uniform" then edge = 1
+    if Left(effect, 11) = "drop shadow" then edge = 2
+    if effect = "raised" then edge = 3
+    if effect = "depressed" then edge = 4
+    style.Push(edge * 1.0)
+    sizes = { "extra small": 20, "small": 21.5, "medium": 29, "large": 37.5, "extra large": 40.5 }
+    size = sizes[said["Text/Size"]]
+    if size = invalid then size = 29
+    style.Push(size / 29.0)
+    return style
+end function
+
+' A colour Roku names ("White", "Red"…; Default is `otherwise`) at an opacity it names ("75%", "Off"; Default is
+' `usual`), as red, green, blue and alpha.
+function uiCaptionColour(name as dynamic, otherwise as string, opacity as dynamic, usual as string) as object
+    colours = { "bright white": [255, 255, 255], "white": [176, 176, 176], "black": [0, 0, 0], "red": [202, 0, 0], "green": [0, 187, 0], "blue": [3, 4, 208], "yellow": [178, 180, 0], "magenta": [197, 0, 197], "cyan": [0, 187, 185] }
+    rgb = invalid
+    if name <> invalid then rgb = colours[name]
+    if rgb = invalid then rgb = colours[otherwise]
+    if opacity = invalid or opacity = "default" then opacity = usual
+    alpha = 255.0
+    if opacity = "off"
+        alpha = 0.0
+    else
+        percent = Val(opacity.Replace("%", ""))
+        if percent >= 0 and percent <= 100 then alpha = Int(percent * 255.0 / 100.0 + 0.5) * 1.0
+    end if
+    return [rgb[0] * 1.0, rgb[1] * 1.0, rgb[2] * 1.0, alpha]
+end function
+
 ' `changed()` each time the viewer changes the mode, until uiCaptionsUnlisten(the id answered).
 function uiCaptionsListen(changed as dynamic) as integer
     ga = GetGlobalAA()

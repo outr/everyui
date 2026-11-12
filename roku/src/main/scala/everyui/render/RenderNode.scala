@@ -1214,8 +1214,23 @@ object Platform {
   def appVersion(): Int = uiAppVersion()
   def appVersionName(): String = uiAppVersionName()
 
-  /** The device's own caption settings, where it has any: not here. */
-  def captionStyle(): Option[everyui.text.CaptionStyle] = None
+  /** The device's own caption appearance, as the viewer set it in its settings (Accessibility, Captions style): the
+    * words' colour and opacity, the background's and the window's, the edge (Raised and Depressed as they are,
+    * Uniform an outline, either Drop shadow a shadow; none at Default) and the size against Medium's (Extra small 0.69
+    * to Extra large 1.40), in the colours and sizes the device draws (uiCaptionStyleOf: its White a light grey). A
+    * setting left at Default is Roku's own: White words, opaque, on Black, opaque, no window, black edges. None
+    * where the box does not say, or where the viewer has left every one at Default, which is the video's own look, so
+    * an app draws its subtitles as it would. The device signals no change of it (only of the caption mode,
+    * `everyui.text.Captions.listen`), so each call reads it afresh: read it as a video starts and as the app comes
+    * back. Its font is not among CaptionStyle's, and is not read. */
+  def captionStyle(): Option[everyui.text.CaptionStyle] = {
+    val s = uiCaptionStyle()
+    def colour(i: Int): everyui.Color = new everyui.Color(s(i).toInt, s(i + 1).toInt, s(i + 2).toInt, s(i + 3).toInt)
+    val edges = List("none", "outline", "shadow", "raised", "depressed")
+    if (s.length < 14) None
+    else Some(everyui.text.CaptionStyle(colour(0), colour(4), colour(8), edges(s(12).toInt),
+      new everyui.Color(0, 0, 0, 255), s(13)))
+  }
 
   def deviceName(): String = uiDeviceName()
 
