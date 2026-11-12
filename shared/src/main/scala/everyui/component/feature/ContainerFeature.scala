@@ -393,17 +393,51 @@ object ContainerFeature {
     order.foreach(_.measured.refresh())
   }
 
-  /** Measure `roots` and everything under them, deepest first. */
+  /** Measure `roots` and everything under them, deepest first: each after all that come after it in tree order, so what
+    * is under a component before it. Walked with arrays grown as they fill, rather than a list of what is still to
+    * walk joined to each one's children, which on a Roku is a copy of the list for every component (a title's page put
+    * together a rail at a time walked each rail's cards again for every level it was put in). */
   def measureUnder(roots: List[Component]): Unit = {
-    var order: List[Component] = Nil
-    var pending: List[Component] = roots
-    while (pending.nonEmpty) {
-      val c = pending.head
-      c.readAwayBelow = false
-      order = c :: order
-      pending = c.childComponents.toList ++ pending.tail
+    var stack = new Array[Component](64)
+    var depth = 0
+    roots.reverse.foreach { r =>
+      if (depth == stack.length) stack = grown(stack, depth)
+      stack(depth) = r
+      depth += 1
     }
-    order.foreach(_.measured.refresh())
+    var order = new Array[Component](64)
+    var count = 0
+    while (depth > 0) {
+      depth -= 1
+      val c = stack(depth)
+      c.readAwayBelow = false
+      if (count == order.length) order = grown(order, count)
+      order(count) = c
+      count += 1
+      val kids = c.childComponents
+      var i = kids.length - 1
+      while (i >= 0) {
+        if (depth == stack.length) stack = grown(stack, depth)
+        stack(depth) = kids(i)
+        depth += 1
+        i -= 1
+      }
+    }
+    while (count > 0) {
+      count -= 1
+      order(count).measured.refresh()
+    }
+  }
+
+  /** `items`, `count` of them kept, in an array twice as long. */
+  private def grown(items: Array[Component], count: Int): Array[Component] = {
+    val bigger = new Array[Component](items.length * 2)
+    var i = 0
+    while (i < count) {
+      bigger(i) = items(i)
+      i += 1
+    }
+    bigger
   }
 }
 

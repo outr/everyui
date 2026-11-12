@@ -196,6 +196,13 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and
     // all it held, for as long as this scroll lived
     content.children.attach(_ => recull())
+    // and drawn or not as the viewport moves over it, or changes its length
+    offset.attach(_ => showAll())
+    (if (horizontal) size.width else size.height).attach(_ => showAll())
+    if (horizontal) {
+      content.size.width.attach(_ => if (fromRight()) showAll())
+      fromRight.attach(_ => showAll())
+    }
     event.key.down.attach { k =>
       val along = if (horizontal) size.width() else size.height()
       val on = if (fromRight()) Key.ArrowLeft else if (horizontal) Key.ArrowRight else Key.ArrowDown
@@ -292,23 +299,57 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     * half a screen of slack on each side means one is drawn before it can be seen (a whole screen each way was two
     * more screens of cards for a Roku to draw); a quarter at Reduced and a tenth at Minimal (`everyui.perf.Quality`).
     *
+    * Worked out for every child in one pass as the viewport moves, rather than each child's `visible` bound to the
+    * offset: a glide moves the offset every frame, and a rail of cards each working out its own (a reactive value apiece,
+    * its reads followed) cost a Roku more than the rest of the frame.
+    *
     * The web scrolls the node itself, and a browser already draws only what shows. */
   private def cull(c: Component): Unit = if (!culling.contains(c)) {
     // and what is out of sight lets its pictures go until it comes back
-    culling = culling.updated(c, c.visible.attach(on => ImageView.showing(c, on)))
-    c.visible := {
-      val along = if (horizontal) size.width() else size.height()
-      val start = if (horizontal) c.position.left() else c.position.top()
-      val end = start + (if (horizontal) c.size.width() else c.size.height())
-      // where the viewport is over the content, from its left in a rail running from the right
-      val at = if (fromRight()) content.size.width() - along - offset() else offset()
-      val slack = everyui.perf.Quality.slack
-      end > at - along * slack && start < at + along * (1.0 + slack)
+    val pictures = c.visible.attach(on => ImageView.showing(c, on))
+    // and it is placed again as its place or its length along changes
+    val placed = (if (horizontal) c.position.left else c.position.top).attach(_ => show(c))
+    val length = (if (horizontal) c.size.width else c.size.height).attach(_ => show(c))
+    culling = culling.updated(c, () => {
+      c.visible.reactions -= pictures
+      (if (horizontal) c.position.left else c.position.top).reactions -= placed
+      (if (horizontal) c.size.width else c.size.height).reactions -= length
+    })
+    Component.unbind(c.visible)
+    show(c)
+  }
+
+  /** Whether `c` is drawn, for where the viewport is now. */
+  private def show(c: Component): Unit = {
+    val along = if (horizontal) size.width() else size.height()
+    showIn(c, along, viewAt(along), everyui.perf.Quality.slack)
+  }
+
+  // where the viewport is over the content, `along` long, from its left in a rail running from the right
+  private def viewAt(along: Double): Double = if (fromRight()) content.size.width() - along - offset() else offset()
+
+  private def showIn(c: Component, along: Double, at: Double, slack: Double): Unit = {
+    val start = if (horizontal) c.position.left() else c.position.top()
+    val end = start + (if (horizontal) c.size.width() else c.size.height())
+    val on = end > at - along * slack && start < at + along * (1.0 + slack)
+    if (c.visible() != on) c.visible @= on
+  }
+
+  /** Every child culled, for where the viewport is now (each of the content's children is). */
+  private def showAll(): Unit = {
+    val all = culled
+    val along = if (horizontal) size.width() else size.height()
+    val at = viewAt(along)
+    val slack = everyui.perf.Quality.slack
+    var i = 0
+    while (i < all.length) {
+      showIn(all(i), along, at, slack)
+      i += 1
     }
   }
 
-  // the children culled, each with what lets its pictures go
-  private var culling: Map[Component, Reaction[Boolean]] = Map.empty
+  // the children culled, each with what stops it following the viewport
+  private var culling: Map[Component, () => Unit] = Map.empty
   // the content's children as they were last culled
   private var culled: Vector[Component] = Vector.empty
 
@@ -327,10 +368,9 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
 
   /** A child taken out of the content is no longer culled: its `visible` stays as it was and stops following the
     * viewport (which would otherwise hold it for as long as this lived). */
-  private def uncull(c: Component): Unit = culling.get(c).foreach { shows =>
+  private def uncull(c: Component): Unit = culling.get(c).foreach { stop =>
     culling = culling - c
-    c.visible.reactions -= shows
-    Component.unbind(c.visible)
+    stop()
   }
 
   /** Whether `c` is somewhere under `content`. */

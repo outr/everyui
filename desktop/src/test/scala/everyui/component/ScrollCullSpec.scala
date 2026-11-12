@@ -14,7 +14,7 @@ class ScrollCullSpec extends FxSpec {
     size.height @= 50.0
   }
 
-  // how many reactions the scroll's own values carry: each child culled adds one to each
+  // how many reactions the scroll's own values carry, which no child culled adds to (they are culled in one pass)
   private def held(scroll: ScrollContainer): Int = fx {
     scroll.offset.reactions().size + scroll.size.width.reactions().size + scroll.size.height.reactions().size
   }
@@ -81,6 +81,8 @@ class ScrollCullSpec extends FxSpec {
       (1 to 12).foreach { depth =>
         scrolling { scroll =>
           val bare = fx(scroll.offset.reactions().size)
+          // what a child carries on its own, in no scroll
+          val alone = fx(row().visible.reactions().size)
           val first = Vector(row(), row(), row())
           fx(scroll.content.children @= first)
           val start = reactify.Var(0)
@@ -93,11 +95,12 @@ class ScrollCullSpec extends FxSpec {
           fx(start @= 1)
           withClue("depth " + depth.toString + ": ") {
             val now = fx(scroll.content.children())
-            // what the content holds follows the viewport, one reaction each on its offset, and nothing else does
-            fx(scroll.offset.reactions().size) shouldBe bare + now.size
+            // what the content holds follows the viewport, the scroll's one reaction on it culling them all, and is heard
+            // as it shows (letting its pictures go); nothing else is
+            fx(scroll.offset.reactions().size) shouldBe bare
             (first ++ later ++ rows).foreach { c =>
               val held = now.exists(_ eq c)
-              fx(c.visible.references.nonEmpty) shouldBe held
+              fx(c.visible.reactions().size) shouldBe alone + (if (held) 1 else 0)
             }
           }
         }

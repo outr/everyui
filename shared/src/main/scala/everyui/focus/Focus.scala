@@ -424,7 +424,7 @@ object Focus {
     val parts = box.childComponents.filterNot(_ eq gone)
     val at = math.max(0, math.min(index, parts.length))
     val order = parts.drop(at) ++ parts.take(at).reverse
-    order.find(p => candidates(p).nonEmpty).flatMap(pick).orElse(entered(box).flatMap(pick))
+    order.find(p => hasCandidate(p)).flatMap(pick).orElse(entered(box).flatMap(pick))
   }
 
   /** Where the focus starts over: the confined region's entry or its first, else an open dialog's, else the screen's
@@ -433,7 +433,7 @@ object Focus {
     case Some(f) => pick(f.region)
     case None => dialog() match {
       case Some(sheet) => pick(sheet)
-      case None => home()().filter(c => showing(c) && candidates(c).nonEmpty).flatMap(pick).orElse(pick(ui))
+      case None => home()().filter(c => showing(c) && hasCandidate(c)).flatMap(pick).orElse(pick(ui))
     }
   }
 
@@ -676,7 +676,8 @@ object Focus {
   /** Move the focus an arrow's way (see above). Whether it moved. */
   def move(direction: Key): Boolean = {
     val root = area()
-    val all = candidates(root)
+    // (walked only where the focus starts again: every component on the screen, on every arrow, cost a television)
+    def all: Vector[Component] = candidates(root)
     focused() match {
       // where a pointer is used, with nothing focused and the keys not moving the focus, the arrow is the page's (or a
       // list's) to scroll by
@@ -775,7 +776,7 @@ object Focus {
     while (at.nonEmpty && !at.exists(_ eq root)) {
       at.get match {
         case box: Container if !within(from, box) =>
-          box.focusEntry.filter(e => showing(e) && candidates(e).nonEmpty).foreach(e => entry = Some(e))
+          box.focusEntry.filter(e => showing(e) && hasCandidate(e)).foreach(e => entry = Some(e))
         case _ => ()
       }
       at = at.flatMap(_.parent())
@@ -789,16 +790,17 @@ object Focus {
     if (target.focusable()) Some(target)
     else if (entered(target).nonEmpty) entered(target).flatMap(e => pick(e))
     else {
-      val all = candidates(target)
-      target match {
-        case box: Container => box.remembered.filter(r => all.exists(_ eq r)).orElse(all.headOption)
-        case _ => all.headOption
+      // (what it remembers, if that still takes the focus and is still in it, before it walks what it holds for its first)
+      val kept = target match {
+        case box: Container => box.remembered.filter(r => r.focusable() && within(r, target))
+        case _ => None
       }
+      kept.orElse(candidates(target).headOption)
     }
 
   // the part a container says an arrival lands on, when it has one to take the focus
   private def entered(target: Component): Option[Component] = target match {
-    case c: Container => c.focusEntry.filter(e => candidates(e).nonEmpty)
+    case c: Container => c.focusEntry.filter(e => hasCandidate(e))
     case _ => None
   }
 
@@ -851,7 +853,7 @@ object Focus {
       pending = c.childComponents.toList ++ pending.tail
       c match {
         case box: Container if box.layout().isEmpty =>
-          val parts = box.children().filter(child => candidates(child).nonEmpty)
+          val parts = box.children().filter(child => hasCandidate(child))
           def states(c: Component): Boolean = c match {
             case b: Container => List(Key.ArrowUp, Key.ArrowDown, Key.ArrowLeft, Key.ArrowRight)
               .exists(d => b.focusExit(d).nonEmpty || b.focusAction(d).nonEmpty)
@@ -936,18 +938,74 @@ object Focus {
   /** Whether `c` is on screen: under `ui`, focusable or not. */
   def showing(c: Component): Boolean = within(c, ui)
 
-  /** The focusable components under `root`, in tree order. Walked with a list rather than by recursion: a Roku's
-    * stack is small, and every level of a deep tree (a dialog on its sheet) costs it several frames. */
+  /** The focusable components under `root`, in tree order. Walked with a stack of its own rather than by recursion: a
+    * Roku's stack is small, and every level of a deep tree (a dialog on its sheet) costs it several frames. The stack
+    * and what is found are arrays grown as they fill: a list or a vector added to a part at a time is a copy of it per
+    * part on a Roku, and a Home of rails is thousands of parts. */
   def candidates(root: Component): Vector[Component] = {
-    var found: Vector[Component] = Vector.empty
-    var pending: List[Component] = List(root)
-    while (pending.nonEmpty) {
-      val c = pending.head
-      pending = c.childComponents.toList ++ pending.tail
-      if (c.focusable()) found = found :+ c
+    var stack = new Array[Component](64)
+    var depth = 0
+    var found = new Array[Component](16)
+    var count = 0
+    var first = false
+    stack(0) = root
+    depth = 1
+    while (depth > 0) {
+      depth -= 1
+      val c = stack(depth)
+      if (c.focusable()) {
+        if (count == found.length) found = grown(found, count)
+        found(count) = c
+        count += 1
+        if (c.tabFirst) first = true
+      }
+      val kids = c.childComponents
+      var i = kids.length - 1
+      while (i >= 0) {
+        if (depth == stack.length) stack = grown(stack, depth)
+        stack(depth) = kids(i)
+        depth += 1
+        i -= 1
+      }
     }
+    val all = found.take(count).toVector
     // what is marked to come first (a skip link, drawn last to be over the screen) before the rest
-    if (found.exists(_.tabFirst)) found.filter(_.tabFirst) ++ found.filterNot(_.tabFirst) else found
+    if (first) all.filter(_.tabFirst) ++ all.filterNot(_.tabFirst) else all
+  }
+
+  /** Whether anything under `root` (or `root` itself) takes the focus: found at the first that does. */
+  def hasCandidate(root: Component): Boolean = {
+    var stack = new Array[Component](64)
+    stack(0) = root
+    var depth = 1
+    var found = false
+    while (depth > 0 && !found) {
+      depth -= 1
+      val c = stack(depth)
+      if (c.focusable()) found = true
+      else {
+        val kids = c.childComponents
+        var i = kids.length - 1
+        while (i >= 0) {
+          if (depth == stack.length) stack = grown(stack, depth)
+          stack(depth) = kids(i)
+          depth += 1
+          i -= 1
+        }
+      }
+    }
+    found
+  }
+
+  /** `items`, `count` of them kept, in an array twice as long. */
+  private def grown(items: Array[Component], count: Int): Array[Component] = {
+    val bigger = new Array[Component](items.length * 2)
+    var i = 0
+    while (i < count) {
+      bigger(i) = items(i)
+      i += 1
+    }
+    bigger
   }
 
   private def centerX(c: Component): Double = c.absoluteLeft + c.size.center()
