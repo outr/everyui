@@ -536,3 +536,20 @@ class SGNode
 @native object uiPaintSoon {
   def apply(f: () => Unit): Unit = native.value
 }
+/** `length` bytes of `url` from byte `from` (a `Range` request, `headers` as "name:value" with it) through the HTTP
+  * workers, off the render thread: `done(status, bytes)`, the bytes the worker's own byte array (each 0 to 255), none
+  * where the answer was longer than `length` (a server that sent the whole file) or there was none (status -1). */
+@native object uiByteRange {
+  def apply(url: String, headers: List[String], from: Int, length: Int, done: (Int, Array[Byte]) => Unit): Unit =
+    native.value
+}
+/** The same range written to a file of its own in tmp: (a frame for a Poster), `done(status, path)`: the path only for
+  * a 206 of exactly `length` bytes, the file taken away otherwise. */
+@native object uiRangeFile {
+  def apply(url: String, headers: List[String], from: Int, length: Int, done: (Int, String) => Unit): Unit =
+    native.value
+}
+/** A file in tmp: taken away. */
+@native object uiTmpDelete {
+  def apply(path: String): Unit = native.value
+}

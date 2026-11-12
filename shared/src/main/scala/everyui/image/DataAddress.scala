@@ -18,6 +18,25 @@ object DataAddress {
     }
   }
 
+  /** `bytes` written into an address of their own, `kind` their media type (`image/jpeg`): base64, by hand as it
+    * is read (java.util.Base64 is Android 8's). */
+  def of(kind: String, bytes: Array[Byte]): String = {
+    val letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    val out = new StringBuilder(kind.length + 13 + (bytes.length + 2) / 3 * 4)
+    out.append("data:").append(kind).append(";base64,")
+    var i = 0
+    while (i < bytes.length) {
+      val left = bytes.length - i
+      val b = ((bytes(i) & 0xff) << 16) | ((if (left > 1) bytes(i + 1) & 0xff else 0) << 8) |
+        (if (left > 2) bytes(i + 2) & 0xff else 0)
+      out.append(letters.charAt((b >> 18) & 63)).append(letters.charAt((b >> 12) & 63))
+      out.append(if (left > 1) letters.charAt((b >> 6) & 63) else '=')
+      out.append(if (left > 2) letters.charAt(b & 63) else '=')
+      i += 3
+    }
+    out.toString
+  }
+
   /** Bytes as words, read as UTF-8. */
   def text(bytes: Array[Byte]): String = new String(bytes, "UTF-8")
 

@@ -29,6 +29,8 @@ sub runTask()
             end if
             ' when it began and ended here, for where a request's time went (uiOnHttpResult)
             r.asked = req.asked
+            if req.keep <> invalid then r.keep = req.keep
+            if req.raw <> invalid then r.raw = req.raw
             r.url = req.url
             r.method = req.method
             r.began = began
@@ -97,6 +99,9 @@ function fetchBytes(u as object, req as object, method as string) as object
     end if
     got = invalid
     if req.binary = true then got = base + "-answer"
+    ' a range kept in a file of its own (`keep`, a trick-play frame a Poster shows): left there, and named in the answer
+    ' ({file}) where it came whole, as a 206 of the length asked
+    if req.keep <> invalid then got = req.keep
     started = false
     if method = "HEAD"
         started = u.AsyncHead()
@@ -116,7 +121,23 @@ function fetchBytes(u as object, req as object, method as string) as object
             r.status = msg.GetResponseCode()
             r.headers = FormatJson(msg.GetResponseHeaders())
             r.body = msg.GetString()
+            ' no more than `most` bytes are taken (a range asked of a server that sent the whole file instead)
+            size = -1
             if got <> invalid and fs.Exists(got)
+                stat = fs.Stat(got)
+                if stat <> invalid and stat.size <> invalid then size = stat.size
+            end if
+            if req.keep <> invalid
+                if r.status = 206 and req.most <> invalid and size = req.most then r.file = got
+                r.body = ""
+            else if req.most <> invalid and size > req.most
+                r.body = "longer than asked"
+            else if got <> invalid and fs.Exists(got) and req.raw = true
+                answer = CreateObject("roByteArray")
+                answer.ReadFile(got)
+                r.hex = answer.ToHexString()
+                r.body = ""
+            else if got <> invalid and fs.Exists(got)
                 answer = CreateObject("roByteArray")
                 answer.ReadFile(got)
                 r.hex = answer.ToHexString()
@@ -128,6 +149,6 @@ function fetchBytes(u as object, req as object, method as string) as object
         end if
     end if
     if sent <> invalid then fs.Delete(sent)
-    if got <> invalid and fs.Exists(got) then fs.Delete(got)
+    if got <> invalid and r.file = invalid and fs.Exists(got) then fs.Delete(got)
     return r
 end function

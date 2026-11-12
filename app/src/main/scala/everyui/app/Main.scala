@@ -101,6 +101,8 @@ import everyui.render.Platform
   *              `rtl=1`)
   *   captions   the device's caption setting as it changes, over a video that follows it until a subtitle track is
   *              chosen (`src=<stream>`)
+  *   trickplay  trick-play thumbnails from a BIF and from tile sheets beside each other, following one place moved by
+  *              -10 s and +10 s (`origin=`, `bif=`, `tiles=`, `at=<seconds>`, `auto=1` walks it) (TrickPlayDemo)
   *   tabs       tabs led by an avatar or an icon, and the ring around somebody at work, turning and stopped (`busy=0`,
   *              `add=1` for a "+" after the last tab, `theme=light`, `rtl=1`)
   *   tabgroups  tabs in groups split across and down, as an editor splits its files: menus, drags, each group's
@@ -245,6 +247,7 @@ import everyui.render.Platform
   else if (demo == "pageopen") PageOpenDemo.run()
   else if (demo == "rtlwrap") RtlWrapDemo.run()
   else if (demo == "captions") CaptionsDemo.run()
+  else if (demo == "trickplay") TrickPlayDemo.run()
   else if (demo == "dispose") DisposeDemo.run()
   else if (demo == "textcut") TextCutDemo.run()
   else if (demo == "spinner") SpinnerDemo.run()

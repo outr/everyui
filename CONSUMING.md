@@ -4255,6 +4255,48 @@ off, at half and at full; `clarity=` and `night=` start it there, `db=` sets a c
 walks clarity on and off, then night mode, both, and neither, every four seconds, and `muted=1` plays it muted (still
 measured where it is decoded here).
 
+## Trick-play thumbnails (`VideoView.thumbnails`, `TrickPlayThumb`)
+
+A scrubber of the app's own shows where it is with a thumbnail of the picture there, as the stores ask of anything
+long enough to seek through (Roku's certification, 4.7: VOD over fifteen minutes). The app says where the thumbnails
+are, per title, on the `VideoView`, after `headers` (they go with each request), and places a `TrickPlayThumb` that
+follows the scrubber's place:
+
+```scala
+video.thumbnails @= ThumbnailSource.BifFile(item.bifUrl)          // Plex, Emby: a BIF
+video.thumbnails @= ThumbnailSource.TileSheets(template, intervalMs, // Jellyfin: tile sheets, `{index}` in the template
+  width, height, columns, rows, count)
+val thumb = new TrickPlayThumb(video, scrubbedTo, 320.0, 180.0)    // scrubbedTo: a Val[Double] of seconds
+thumb.visible := thumb.showing() && scrubbing()
+```
+
+The thumb fills its box with the frame for the place (the thumbnails' proportions are the app's to keep), keeps the
+one before until the next arrives, and `showing` is false while it has none. `video.thumbnail(seconds, show)` hands
+over the frame itself (`ThumbFrame`: a picture's address and which cell of it), for an app that draws it its own way.
+Only the latest ask is answered, so a scrubber moved quickly shows where it stopped.
+
+- **Tile sheets**: the n-th thumbnail is on sheet n / (columns × rows), left to right and then down; every sheet is the
+  whole grid, as Jellyfin writes them. A sheet is a picture like any other, drawn at the grid's size and moved so the
+  cell is in the thumb's box, which cuts it. Every platform, the Roku and the Apple TV included.
+- **BIF**: its header and index are read once (one `Range` request of the first 28 KB, the index of two hours at a
+  frame every two seconds, and a second for a longer one), and each frame by its own range when it is first asked for,
+  then the ones either side of it; the last 24 are kept. The server must answer a range with 206 (Plex and Emby do):
+  one that sends the whole file shows no thumbnails. Each platform fetches off the thread that draws: a Roku through
+  the runtime's HTTP workers, each frame a file in `tmp:` shown by a Poster and deleted once let go; Android and the
+  desktop on a thread of their own, the frame a `data:` picture (Android's decoded by BitmapFactory); a browser by
+  `fetch` (a single range is a CORS-safelisted header, so another origin need only allow the page to read it), the
+  frame a `blob:` picture. Not on the Apple TV yet: a BIF shows none there.
+
+The parsing (`everyui.trickplay.BifIndex`) and the tile arithmetic (`everyui.trickplay.TileGrid`) are shared code, the
+same on every platform. The Roku's own trick-play bar is not used: its Video has `enableUI` off, as the app's controls
+are its own, and a Video's BIF fields (`SDBifUrl`, `HDBifUrl`, `FHDBifUrl`) feed only that bar and its `bifDisplay`,
+which follow the Video's own fast-forward and rewind, not a place the app seeks to, and read no tile sheets.
+
+`demo=trickplay` shows both side by side, following one place (`-10 s`, `+10 s`, `at=<seconds>`, `auto=1` walks it
+and logs each frame as it is shown with the one it should be: `[ui] trickplay bif at 125s: frame 12 (wanted 12)
+tmp:/everyui-range-4.jpg`); `origin=` names where `/trick/film.bif` and `/trick/tiles/{index}.jpg` are, or `bif=` and
+`tiles=` the files themselves (a 20-minute film, a thumbnail every 10 seconds, 320 by 180, 5 by 4 to a sheet).
+
 ## Sound: players that take turns, and effects (`AudioPlayer`)
 
 Every platform but one mixes as many `AudioPlayer`s as play at once. A Roku plays one Audio node at a time: a second

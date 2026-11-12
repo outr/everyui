@@ -1809,6 +1809,51 @@ sub uiHttpBytes(method as string, url as string, headersJson as string, body as 
     uiHttpEnqueue(request, done)
 end sub
 
+' `length` bytes of `url` from byte `first` (ByteRanges.read: a BIF's header and index), through the workers: `done`
+' hears (status, bytes), the bytes an roByteArray as it is (each 0 to 255), read by index and masked by the Scala that
+' reads them, so no byte is walked here on the render thread; none where the answer was longer than asked.
+sub uiByteRange(url as string, headers as object, first as integer, length as integer, done as dynamic)
+    request = { url: url, method: "GET", headers: uiRangeHeaders(headers, first, length), body: "", hasBody: false }
+    request.bytes = true
+    request.binary = true
+    request.raw = true
+    request.most = length
+    uiHttpEnqueue(request, done)
+end sub
+
+' The same range into a file of its own in tmp: (ByteRanges.picture: a trick-play frame, for a Poster): `done` hears
+' (status, path), the path "" unless a 206 brought exactly `length` bytes. Each file is named afresh, so a Poster never
+' shows one it decoded before under the same name.
+sub uiRangeFile(url as string, headers as object, first as integer, length as integer, done as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiRangeSeq = invalid then ga.uiRangeSeq = 0
+    ga.uiRangeSeq = ga.uiRangeSeq + 1
+    request = { url: url, method: "GET", headers: uiRangeHeaders(headers, first, length), body: "", hasBody: false }
+    request.bytes = true
+    request.keep = "tmp:/everyui-range-" + ga.uiRangeSeq.ToStr() + ".jpg"
+    request.most = length
+    uiHttpEnqueue(request, done)
+end sub
+
+' Headers given as "name:value", and the Range for `length` bytes from `first`.
+function uiRangeHeaders(headers as object, first as integer, length as integer) as object
+    out = {}
+    for each h in headers
+        at = Instr(1, h, ":")
+        if at > 1 then out[Left(h, at - 1)] = Mid(h, at + 1)
+    end for
+    last = first + length - 1
+    out["Range"] = "bytes=" + first.ToStr() + "-" + last.ToStr()
+    return out
+end function
+
+' A file in tmp: taken away (a trick-play frame no longer kept).
+sub uiTmpDelete(path as string)
+    if Left(path, 5) <> "tmp:/" then return
+    fs = CreateObject("roFileSystem")
+    if fs.Exists(path) then fs.Delete(path)
+end sub
+
 ' An roByteArray as a Scala Array[Byte] is kept: numbers from -128 to 127, read by index (not every engine walks a byte
 ' array with for each as a device does).
 function uiSignedBytes(ba as object) as object
@@ -1902,7 +1947,17 @@ sub uiOnHttpResult(event as object)
     ga.uiHttps.Delete(r.id)
     uiHttpNext()
     if done = invalid then return
-    if r.bytes <> invalid
+    if r.keep <> invalid
+        ' a range kept in a file (uiRangeFile): its path, or "" where it did not come whole
+        path = ""
+        if r.file <> invalid then path = r.file
+        RtGuard(done, [r.status, path])
+    else if r.raw = true
+        ' a range read (uiByteRange): the byte array as it is, each byte 0 to 255
+        ba = CreateObject("roByteArray")
+        if r.hex <> invalid then ba.FromHexString(r.hex)
+        RtGuard(done, [r.status, ba])
+    else if r.bytes <> invalid
         ' the bytes back from hex, as a Scala Array[Byte] is kept: numbers from -128 to 127
         bytes = []
         if r.hex <> invalid
