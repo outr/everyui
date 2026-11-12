@@ -15,6 +15,10 @@ import reactify.*
   * each source in turn. `now=1` tells the system what plays (`nowPlaying`). `start=<seconds>` opens each source that
   * far in (`open(url, start)`, a resume), `text=<language>` asks for its subtitles in that language (`languages`), and
   * `seek=<seconds>` with `after=<seconds>` seeks there that long after each opening (a viewer's seek as it opens).
+  * `cycle=<seconds>` instead lets the player go mid-playback, as a screen left then does, a tenth of that to the whole
+  * of it after it was opened (as it opens, as it buffers, as it plays, in turn), and opens the first source in a new
+  * VideoView at once or `rest=<seconds>` later (with `same=1` in the same one at once), `cycles=<n>` times (30),
+  * logging `player cycle <n> at <playhead>`; `volume=` sets each one's volume and `now=1` tells the system what plays.
   * Logs `player <event>` as each is heard, a
   * `player step <what>` for each scripted step, and each second `player probe src=<index> t=<playhead>
   * d=<duration> playing=<on> waiting=<on> rate=<r> volume=<v> audio=<n>/<chosen> text=<n>/<chosen> size=<w>x<h>
@@ -33,6 +37,53 @@ object PlayerDemo {
       case "" => defaults
       case list => list.split(',').toList.map(_.trim).filter(_.nonEmpty)
     }
+    val cycle = Platform.launchArg("cycle").toDoubleOption.getOrElse(0.0)
+    if (cycle > 0.0) cycling(sources.head, cycle, Platform.launchArg("cycles").toIntOption.getOrElse(30))
+    else demo(sources)
+  }
+
+  // a VideoView made, played and let go mid-playback, again and again, each the moment the last is let go
+  private def cycling(source: String, seconds: Double, times: Int): Unit = {
+    val rest = Platform.launchArg("rest").toDoubleOption.getOrElse(0.0)
+    val same = Platform.launchArg("same") == "1"
+    def made(n: Int): VideoView = {
+      val video = new VideoView
+      video.size.width := ui.size.width()
+      video.size.height := ui.size.height()
+      ui.children += video
+      if (Platform.launchArg("now") == "1") {
+        video.nowPlaying @= NowPlaying("Cycle " + n.toString, "EveryUI", "Test media")
+      }
+      video.volume @= Platform.launchArg("volume").toDoubleOption.getOrElse(1.0)
+      video.events(e => Platform.log("player " + e))
+      video
+    }
+    // let go a tenth to the whole of `seconds` in, in turn: as it opens, as it buffers, as it plays
+    def round(video: VideoView, n: Int): Unit = {
+      video.source @= source
+      Platform.after(seconds * ((n * 7) % 10 + 1) / 10.0, () => {
+        Platform.log("player cycle " + n.toString + " at " + tenths(video.playhead()))
+        if (n >= times) {
+          ui.children -= video
+          video.release()
+          Platform.log("player cycle done")
+        }
+        else if (same) {
+          // the same view's player let go and another opened in it at once
+          video.source @= ""
+          round(video, n + 1)
+        }
+        else {
+          ui.children -= video
+          video.release()
+          if (rest > 0.0) Platform.after(rest, () => round(made(n + 1), n + 1)) else round(made(n + 1), n + 1)
+        }
+      })
+    }
+    round(made(1), 1)
+  }
+
+  private def demo(sources: List[String]): Unit = {
     val scripted = Platform.launchArg("script") == "1"
     def number(name: String, otherwise: Double): Double = Platform.launchArg(name).toDoubleOption.getOrElse(otherwise)
     val start = number("start", 0.0)

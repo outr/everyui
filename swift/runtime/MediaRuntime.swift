@@ -98,6 +98,13 @@ struct NowPlayingAbout {
     var title = "", artist = "", album = "", art = "", seconds = 0.0
 }
 
+/// Something done as the object it is tied to (objc_setAssociatedObject) is freed, on whatever thread frees it.
+final class Freed: NSObject {
+    let then: () -> Void
+    init(_ then: @escaping () -> Void) { self.then = then }
+    deinit { then() }
+}
+
 /// One thing playing: VLCKit's VLCMediaPlayer drawing into this view (a video), or into none (a sound). Its settings
 /// are kept here, so a source opened later, or the player made again after it was let go, takes them all.
 final class MediaView: UIView, VLCMediaPlayerDelegate {
@@ -185,10 +192,8 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
         let at = MediaView.address(source)
         // a player whose audio chain is what the aids now ask for: VLC builds the chain as a player first plays
         let chain = MediaView.chain(clarity, night)
-        if player != nil && !MediaView.same(chain, built) {
-            player?.delegate = nil
-            player?.stop()
-            player?.drawable = nil
+        if let old = player, !MediaView.same(chain, built) {
+            MediaView.letGo(old)
             player = nil
         }
         let fresh = player == nil
@@ -252,11 +257,7 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
 
     /// Let go for good: the player stopped and dropped, the view left as it is (a source set again makes another).
     func release() {
-        if let p = player {
-            p.delegate = nil
-            p.stop()
-            p.drawable = nil
-        }
+        if let p = player { MediaView.letGo(p) }
         player = nil
         built = []
         ready = false
@@ -265,6 +266,42 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
             MediaView.speaking = nil
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         }
+    }
+
+    /// Players let go, each freed here, never on the main queue.
+    static let freeing = DispatchQueue(label: "everyui.media.free", qos: .utility)
+
+    /// A player let go: silent and deaf to this view at once, and freed on `freeing`. VLCKit's stop only hands what
+    /// it was playing to the player's own thread to close, and freeing libvlc's player waits for that thread to
+    /// finish: as long as its decoders take to stop (up to 1.7 s of 4K HEVC on an iPhone simulator), and for ever
+    /// on the main queue where it was let go as it opened, the picture's view being made there and the opening
+    /// waiting for it. VLCKit frees it with the VLCMediaPlayer, wherever that goes last, often the main queue (one of
+    /// VLCKit's own events on its way there holding it), so libvlc's player is held once more here and let go on
+    /// `freeing` as the VLCMediaPlayer goes (an object tied to it, freed with it), the last hold.
+    static func letGo(_ p: VLCMediaPlayer) {
+        p.delegate = nil
+        p.audio?.isMuted = true
+        p.stop()
+        p.drawable = nil
+        typealias Hold = @convention(c) (UnsafeMutableRawPointer) -> Void
+        let any = UnsafeMutableRawPointer(bitPattern: -2)   // RTLD_DEFAULT
+        guard let r = dlsym(any, "libvlc_media_player_retain"), let f = dlsym(any, "libvlc_media_player_release"),
+              let held = libVLC(p) else { return }
+        let retain = unsafeBitCast(r, to: Hold.self), release = unsafeBitCast(f, to: Hold.self)
+        retain(held)
+        let address = UInt(bitPattern: held)
+        objc_setAssociatedObject(p, &MediaView.freed, Freed {
+            freeing.async { release(UnsafeMutableRawPointer(bitPattern: address)!) }
+        }, .OBJC_ASSOCIATION_RETAIN)
+    }
+    static var freed = 0   // the key a player's Freed is tied by
+
+    /// libvlc's own player under a VLCMediaPlayer (its `libvlc_media_player_t`, which is a VLC object).
+    static func libVLC(_ p: VLCMediaPlayer) -> UnsafeMutableRawPointer? {
+        typealias Getter = @convention(c) (AnyObject, Selector) -> UnsafeMutableRawPointer?
+        let held = NSSelectorFromString("libVLCMediaPlayer")
+        guard p.responds(to: held) else { return nil }
+        return unsafeBitCast(p.method(for: held), to: Getter.self)(p, held)
     }
 
     func setPlaying(_ on: Bool) {
@@ -400,13 +437,10 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
     static func setVars(_ p: VLCMediaPlayer, _ vars: [(String, Any)]) {
         typealias Create = @convention(c) (UnsafeMutableRawPointer, UnsafePointer<CChar>, Int32) -> Int32
         typealias Assign = @convention(c) (UnsafeMutableRawPointer, UnsafePointer<CChar>, Int32, UInt64) -> Int32
-        typealias Getter = @convention(c) (AnyObject, Selector) -> UnsafeMutableRawPointer?
         let any = UnsafeMutableRawPointer(bitPattern: -2)   // RTLD_DEFAULT
-        let held = NSSelectorFromString("libVLCMediaPlayer")
         typealias Output = @convention(c) (UnsafeMutableRawPointer, UnsafePointer<CChar>) -> Int32
         guard let c = dlsym(any, "var_Create"), let s = dlsym(any, "var_SetChecked"),
-              let o = dlsym(any, "libvlc_audio_output_set"), p.responds(to: held),
-              let object = unsafeBitCast(p.method(for: held), to: Getter.self)(p, held) else {
+              let o = dlsym(any, "libvlc_audio_output_set"), let object = libVLC(p) else {
             print("[ui] media: night mode cannot be set on this VLCKit")
             return
         }
