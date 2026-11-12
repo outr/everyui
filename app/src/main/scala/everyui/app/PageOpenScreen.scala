@@ -94,6 +94,9 @@ class PageOpenScreen extends UIScreen {
 
   override def defaultFocus(): Component = play
 
+  /** The screen's container, for the demo's tree (`dump=1`). */
+  def root: Container = container
+
   override def createUI(): Task[Unit] = Task {
     container.backgroundColor @= Color.fromHex("#101418")
     page.content.children @= Vector(hero, tabs) ++ Vector.tabulate(railCount)(rail)
