@@ -124,6 +124,28 @@ RX PASS emit.seq.collectfirst = 2
 RX PASS emit.seq.array.ints = 1
 RX PASS emit.seq.fill = 1,2,3
 RX PASS emit.seq.tabulate = 0,1,4
+RX PASS emit.split.char = 4<a><b><><c>
+RX PASS emit.split.char.dot = 2<a><b>
+RX PASS emit.split.char.lead = 2<><q=1>
+RX PASS emit.split.plain = 3<a><b><c>
+RX PASS emit.split.none = 1<abc>
+RX PASS emit.split.empty.text = 1<>
+RX PASS emit.split.only.seps = 0
+RX PASS emit.split.class = 3<en><US><x>
+RX PASS emit.split.class.none = 1<en>
+RX PASS emit.split.spaces = 4<><1><2><3>
+RX PASS emit.split.escaped = 3<a><b><c>
+RX PASS emit.split.escaped.dot = 3<1><2><3>
+RX PASS emit.split.digits = 2<12><30>
+RX PASS emit.split.dot.pattern = 0
+RX PASS emit.split.chars = 3<a><b><c>
+RX PASS emit.split.lookahead = 3<one><Two><Three>
+RX PASS emit.split.limit.keep = 5<a><><b><><>
+RX PASS emit.split.limit.two = 2<k><v=w>
+RX PASS emit.split.limit.one = 1<k=v>
+RX PASS emit.split.limit.pattern = 2<a><b22c>
+RX PASS emit.split.limit.zero = 2<a><b>
+RX PASS emit.reverse = cba|
 RX PASS emit.isa.app.class = 100000000000
 RX PASS emit.isa.lib.class = 110010000000
 RX PASS emit.isa.lib.parent = 111011100000
@@ -140,4 +162,4 @@ RX PASS emit.isa.negated = true
 RX PASS emit.isa.cast.ok = nav 2
 RX PASS emit.isa.cast.fails = ClassCastException
 RX PASS emit.isa.cast.null = true
-RX DONE 142/142
+RX DONE 164/164

@@ -513,18 +513,52 @@ func _substr(_ s: V, _ a: V, _ b: V) -> V {
 }
 func _substr1(_ s: V, _ a: V) -> V { _substr(s, a, rtLen(s)) }
 func _trim(_ s: V) -> V { .vStr(rtS(s).trimmingCharacters(in: .whitespaces)) }
-/// A String split where `sep` matches: a pattern, as Java takes it, where it is more than one character and holds one of
-/// a pattern's marks (`"[\\s,]+"`, `"\\."`), else the very characters (a Char is one); empty pieces left out.
-func _split(_ s: V, _ sep: V) -> V {
-    let str = rtS(s), by = rtCharOrString(sep)
-    if by.isEmpty { return rtArr(str.map { .vStr(String($0)) }) }
-    if by.count > 1, by.contains(where: { "[]\\^$.|?*+(){}".contains($0) }),
-       let pattern = try? NSRegularExpression(pattern: by) {
-        let marked = pattern.stringByReplacingMatches(in: str, range: NSRange(str.startIndex..., in: str),
-                                                      withTemplate: "\u{0}")
-        return rtArr(marked.components(separatedBy: "\u{0}").filter { !$0.isEmpty }.map { .vStr($0) })
+/// A String split on a Char, as Java splits on a plain separator: an empty piece between two separators or before the
+/// first is kept, the empty ones at the end are dropped, and a string with no separator in it is itself.
+func _split(_ s: V, _ sep: V) -> V { rtSplit(rtS(s) as NSString, rtCharOrString(sep), nil, 0) }
+/// `s.split(regex)` and `s.split(regex, limit)` for a String, as Java splits: the separator is a pattern (`"[\\s,]+"`,
+/// `"[-_]"`) unless it has none of a pattern's marks or is a backslash and a character that is neither a letter nor a
+/// digit (`"\\|"`), which Java takes as that character. A negative limit keeps the empty pieces at the end, and a
+/// positive one makes at most that many pieces, the last holding the rest.
+func _splitString(_ s: V, _ sep: V, _ limit: V = .vInt(0)) -> V {
+    let str = rtS(s) as NSString, by = rtS(sep)
+    var lim = 0
+    if case .vInt(let l) = limit { lim = l }
+    if by.utf16.count == 2, by.first == "\\", let c = by.last, !(c.isASCII && (c.isLetter || c.isNumber)) {
+        return rtSplit(str, String(c), nil, lim)
     }
-    return rtArr(str.components(separatedBy: by).filter { !$0.isEmpty }.map { .vStr($0) })
+    if by.isEmpty || !by.contains(where: { ".$|()[{^?*+\\".contains($0) }) { return rtSplit(str, by, nil, lim) }
+    guard let pattern = try? NSRegularExpression(pattern: by) else { return rtArr([.vStr(str as String)]) }
+    return rtSplit(str, by, pattern, lim)
+}
+/// Java's Pattern.split over `str`, where `pattern` matches or else where the very characters `by` are: an empty match
+/// at the very start makes no empty first piece.
+func rtSplit(_ str: NSString, _ by: String, _ pattern: NSRegularExpression?, _ lim: Int) -> V {
+    var found: [NSRange] = []
+    if let p = pattern {
+        found = p.matches(in: str as String, range: NSRange(location: 0, length: str.length)).map { $0.range }
+    } else if by.isEmpty {
+        found = (0...str.length).map { NSRange(location: $0, length: 0) }
+    } else {
+        var from = 0
+        while from < str.length {
+            let r = str.range(of: by, options: .literal, range: NSRange(location: from, length: str.length - from))
+            if r.location == NSNotFound { break }
+            found.append(r)
+            from = r.location + r.length
+        }
+    }
+    var pieces: [V] = [], index = 0
+    for r in found {
+        if lim > 0 && pieces.count >= lim - 1 { break }
+        if r.length == 0 && r.location == 0 { continue }
+        pieces.append(.vStr(str.substring(with: NSRange(location: index, length: r.location - index))))
+        index = r.location + r.length
+    }
+    if index == 0 { return rtArr([.vStr(str as String)]) }
+    pieces.append(.vStr(str.substring(from: index)))
+    if lim == 0 { while let last = pieces.last, rtS(last).isEmpty { pieces.removeLast() } }
+    return rtArr(pieces)
 }
 func _startsWith(_ s: V, _ p: V) -> V { .vBool(rtS(s).hasPrefix(rtS(p))) }
 /// Whether a String has a prefix at an index (Java's startsWith(prefix, offset)), by UTF-16 unit as Java counts.

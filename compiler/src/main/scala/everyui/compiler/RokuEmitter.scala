@@ -2161,7 +2161,9 @@ class RokuEmitter(
             case Select(recv, "toLowerCase") => s"LCase(${emitTerm(recv)})"
             case Select(recv, "toUpperCase") => s"UCase(${emitTerm(recv)})"
             case Select(recv, "trim")        => s"_trim(${emitTerm(recv)})"
-            case Select(recv, "split")       => s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "split") if fqnOf(args.head.tpe) == "scala.Char" =>
+              s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "split") => s"_splitString(${(recv :: args).map(emitTerm(_)).mkString(", ")})"
             case Select(recv, "startsWith")  => s"_startsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "endsWith")    => s"_endsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
             case Select(recv, "stripPrefix") if args.size == 1 => s"_stripPrefix(${emitTerm(recv)}, ${emitTerm(args.head)})"
@@ -4885,32 +4887,74 @@ class RokuEmitter(
       |    t = _str(s)
       |    return t.Trim()
       |end function
-      |' a Char separator arrives as its code
-      |' s.split(sep) as Java splits on a plain separator: an empty piece between two separators or before the first is
-      |' kept, the empty ones at the end are dropped, and a string with no separator in it is itself. (Tokenize dropped
-      |' every empty piece and split on each character of the separator: "?q=1".split('?')(0) came out "q=1", and "" gave
-      |' nothing at all to take the first of.)
+      |' a Char separator arrives as its code, or as the one character of a literal
+      |' s.split(c) for a Char c, as Java splits on a plain separator: an empty piece between two separators or before
+      |' the first is kept, the empty ones at the end are dropped, and a string with no separator in it is itself.
+      |' (Tokenize dropped every empty piece and split on each character of the separator: "?q=1".split('?')(0) came
+      |' out "q=1", and "" gave nothing at all to take the first of.)
       |function _split(s as dynamic, sep as dynamic) as object
-      |    t = _str(s)
       |    if _rtKind(sep) = "n" then sep = Chr(sep)
+      |    return _splitOn(_str(s), _str(sep), 0)
+      |end function
+      |' s.split(regex) and s.split(regex, limit) for a String, as Java splits: the separator is a pattern ("[-_]",
+      |' "\\s+") unless it has none of a pattern's marks (.$|()[{^?*+\) or is a backslash and a character that is
+      |' neither a letter nor a digit ("\\|"), which Java takes as that character. A negative limit keeps the empty
+      |' pieces at the end, and a positive one makes at most that many pieces, the last holding the rest. (Every
+      |' separator was the very characters it is, so "en-US".split("[-_]") was "en-US" whole.)
+      |function _splitString(s as dynamic, sep as dynamic, limit = 0 as integer) as object
+      |    t = _str(s)
       |    d = _str(sep)
+      |    alnum = CreateObject("roRegex", "^[0-9A-Za-z]$", "")
+      |    if Len(d) = 2 and Left(d, 1) = "\" and not alnum.IsMatch(Mid(d, 2)) then return _splitOn(t, Mid(d, 2), limit)
+      |    marks = CreateObject("roRegex", "[.$|()\[{^?*+\\]", "")
+      |    if d <> "" and not marks.IsMatch(d) then return _splitOn(t, d, limit)
+      |    ' the pattern found with what comes before it, as Match gives no place, from where the last match ended: an
+      |    ' empty match is not looked for twice at one place, and one at the very start makes no empty first piece
+      |    re = CreateObject("roRegex", "^([\s\S]*?)(?:" + d + ")", "")
+      |    r = []
+      |    index = 0
+      |    from = 0
+      |    n = Len(t)
+      |    while from <= n and (limit <= 0 or r.Count() < limit - 1)
+      |        found = re.Match(Mid(t, from + 1))
+      |        if found.Count() = 0 then exit while
+      |        a = from + Len(found[1])
+      |        b = a + Len(found[0]) - Len(found[1])
+      |        if b > a or a > 0
+      |            r.Push(Mid(t, index + 1, a - index))
+      |            index = b
+      |        end if
+      |        from = b
+      |        if b = a then from = b + 1
+      |    end while
+      |    if index = 0 then return [t]
+      |    r.Push(Mid(t, index + 1))
+      |    if limit = 0 then _splitTrim(r)
+      |    return r
+      |end function
+      |' t split where the very characters d are, at most `limit` pieces where it is positive
+      |function _splitOn(t as string, d as string, limit as integer) as object
       |    if d = "" then return t.Split("")
       |    if t = "" then return [""]
       |    r = []
       |    n = Len(d)
       |    start = 1
       |    i = Instr(start, t, d)
-      |    while i > 0
+      |    while i > 0 and (limit <= 0 or r.Count() < limit - 1)
       |        r.Push(Mid(t, start, i - start))
       |        start = i + n
       |        i = Instr(start, t, d)
       |    end while
       |    r.Push(Mid(t, start))
+      |    if limit = 0 then _splitTrim(r)
+      |    return r
+      |end function
+      |' the empty pieces at the end of a split taken off
+      |sub _splitTrim(r as object)
       |    while r.Count() > 0 and r[r.Count() - 1] = ""
       |        r.Pop()
       |    end while
-      |    return r
-      |end function
+      |end sub
       |' s.contains(sub), or a Char
       |function _strContains(s as dynamic, x as dynamic) as boolean
       |    return _strIndexOf(s, x) >= 0

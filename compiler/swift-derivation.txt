@@ -996,7 +996,9 @@ class SwiftEmitter(
             case Select(recv, "toLowerCase") => s"LCase(${emitTerm(recv)})"
             case Select(recv, "toUpperCase") => s"UCase(${emitTerm(recv)})"
             case Select(recv, "trim")        => s"_trim(${emitTerm(recv)})"
-            case Select(recv, "split")       => s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "split") if fqnOf(args.head.tpe) == "scala.Char" =>
+              s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "split") => s"_splitString(${(recv :: args).map(emitTerm(_)).mkString(", ")})"
             case Select(recv, "startsWith")  => s"_startsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
 @@ new
               s"_substr(${emitTerm(recv)}, ${emitTerm(args(0))}, ${emitTerm(args(1))})"
@@ -1005,7 +1007,9 @@ class SwiftEmitter(
             case Select(recv, "toLowerCase") => s"rtLower(${emitTerm(recv)})"
             case Select(recv, "toUpperCase") => s"rtUpper(${emitTerm(recv)})"
             case Select(recv, "trim")        => s"_trim(${emitTerm(recv)})"
-            case Select(recv, "split")       => s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "split") if fqnOf(args.head.tpe) == "scala.Char" =>
+              s"_split(${emitTerm(recv)}, ${emitTerm(args.head)})"
+            case Select(recv, "split") => s"_splitString(${(recv :: args).map(emitTerm(_)).mkString(", ")})"
             case Select(recv, "startsWith")  => s"_startsWith(${emitTerm(recv)}, ${emitTerm(args.head)})"
 @@ old
             case Select(recv, "exists") if isOptionType(recv) =>
