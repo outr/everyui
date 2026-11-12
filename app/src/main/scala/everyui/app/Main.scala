@@ -122,6 +122,9 @@ import everyui.render.Platform
   *   device     what the platform says of the device (its kind, name, version, safe area, input), a button that counts
   *              its presses, and errors thrown on purpose from a press and from a timer, each logged as Errors hears
   *              it (DeviceDemo)
+  *   userdata   the person's account details asked for as a sign-up or sign-in would (AccountDetails): on a Roku its
+  *              own dialog (ChannelStore getUserData), elsewhere nothing shared (`auto=1`, `auto=email`, `fakestore=1`)
+  *              (UserDataDemo)
   *   unwind     a form whose content is set once it is built, as NaboTV's last setup step: shown, or with `throw=deep` a
   *              throw at depth in the children change, told with its backtrace (UnwindDemo)
   *   audio      a looping track, a clip that takes the player from it and gives it back, and effects over both, the
@@ -257,6 +260,7 @@ import everyui.render.Platform
   else if (demo == "quality") QualityDemo.run()
   else if (demo == "launch") LaunchDemo.run()
   else if (demo == "device") DeviceDemo.run()
+  else if (demo == "userdata") UserDataDemo.run()
   else if (demo == "lifecycle") LifecycleDemo.run()
   else if (demo == "unwind") UnwindDemo.run()
   else if (demo == "confirm") ConfirmDemo.run()

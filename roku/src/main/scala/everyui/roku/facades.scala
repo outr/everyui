@@ -448,6 +448,12 @@ class SGNode
   def apply(title: String, value: String, secure: Boolean, domain: String, ok: String, cancel: String,
             done: String => Unit): Unit = native.value
 }
+/** The details of the person's Roku account named in `fields` ("email,firstname"), asked through a ChannelStore's
+  * getUserData, as for signing in where `signIn`: Roku's own dialog asks the person to share them, and `done` is
+  * handed what was shared, each a non-empty value, or None where they declined or shared nothing. */
+@native object uiUserData {
+  def apply(fields: String, signIn: Boolean, done: Option[Map[String, String]] => Unit): Unit = native.value
+}
 /** The build's number (the manifest's app_version_code), its release, and where it was installed from. */
 @native object uiAppVersion {
   def apply(): Int = native.value

@@ -2050,6 +2050,78 @@ sub uiEditClose(taken as boolean)
     if taken then RtGuard(editing.done, [words])
 end sub
 
+' ── the account's details: AccountDetails ──
+
+' The details of the person's Roku account named in `fields` ("email", or "email,firstname,lastname"), asked through a
+' ChannelStore node's getUserData (Request for Information, which certification asks of a channel that signs people
+' in): Roku shows its own dialog naming them, and `done` is handed what the person shared, a table of the fields asked
+' for that have a value, or invalid where they declined or shared nothing. `signIn` asks as for signing in
+' (requestedUserDataInfo's context "signin", where Roku offers the email address and phone alone); otherwise as for
+' signing up. One request at a time: another asked for while one waits answers the first invalid. The node is kept
+' (with `done`) until it answers, and let go then. A sideloaded channel launched with fakestore=1 asks the store's fake
+' server, which answers at once with made-up details and no dialog, to try the flow.
+sub uiUserData(fields as string, signIn as boolean, done as dynamic)
+    ga = GetGlobalAA()
+    if ga.uiUserAsk <> invalid then uiUserDataEnd(invalid)
+    store = uiNode("ChannelStore")
+    if uiFlagSaid("fakestore", false) then store.fakeServer = true
+    store.requestedUserData = fields
+    if signIn
+        info = uiNode("ContentNode")
+        info.addFields({ context: "signin" })
+        store.requestedUserDataInfo = info
+    end if
+    store.observeField("userData", "uiOnUserData")
+    ga.uiUserAsk = { store: store, done: done, fields: fields }
+    said = "[account] asking for " + fields
+    if signIn then said = said + " (sign-in)"
+    print said
+    store.command = "getUserData"
+end sub
+
+' The store's answer: a ContentNode of the fields shared, or invalid where the person declined.
+sub uiOnUserData(event as object)
+    ga = GetGlobalAA()
+    asked = ga.uiUserAsk
+    if asked = invalid or not asked.store.isSameNode(event.getRoSGNode()) then return
+    data = event.getData()
+    shared = invalid
+    kind = type(data)
+    if kind = "roSGNode" or kind = "roAssociativeArray"
+        shared = {}
+        shared.SetModeCaseSensitive()
+        for each named in asked.fields.Split(",")
+            name = named.Trim()
+            value = invalid
+            if kind = "roSGNode"
+                if name <> "" and data.hasField(name) then value = data.getField(name)
+            else if name <> ""
+                value = data.Lookup(name)
+            end if
+            if value <> invalid and GetInterface(value, "ifString") <> invalid
+                if value <> "" then shared[name] = value
+            end if
+        end for
+        if shared.Count() = 0 then shared = invalid
+    end if
+    uiUserDataEnd(shared)
+end sub
+
+' The request ended: the node let go and `done` handed `shared` (a table, or invalid).
+sub uiUserDataEnd(shared as dynamic)
+    ga = GetGlobalAA()
+    asked = ga.uiUserAsk
+    if asked = invalid then return
+    ga.uiUserAsk = invalid
+    asked.store.unobserveField("userData")
+    if shared = invalid
+        print "[account] nothing shared"
+    else
+        print "[account] shared " + shared.Count().ToStr() + " of " + asked.fields
+    end if
+    RtGuard(asked.done, [shared])
+end sub
+
 ' Clip a Group to width by height (a scroll viewport).
 sub uiSetClip(node as object, width as float, height as float)
     if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1

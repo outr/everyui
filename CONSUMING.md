@@ -5437,6 +5437,33 @@ A television has no browser to sign in in, so `signInWith` answers None at once 
 the screen instead. EveryUI has no iOS target yet. Where it does, signing in will be an ASWebAuthenticationSession
 with `callback.scheme`, registered as one of the app's URL types; tvOS has no such session.
 
+### The account's own details (`everyui.auth.AccountDetails`)
+
+Roku's certification asks every channel that signs people in to offer the email address the person's Roku account
+holds, through Roku's Request for Information (the ChannelStore's getUserData), in its sign-up and sign-in flows; its
+static analysis fails a channel that never asks. `AccountDetails` asks: Roku shows its own dialog naming the fields,
+and the answer is what the person agreed to share, or None where they declined.
+
+```scala
+import everyui.auth.AccountDetails
+
+// on the sign-in screen, from a "Use my Roku account's email" button, or as the form shows
+AccountDetails.email(signIn = true).map {
+  case Some(address) => emailField.text @= address
+  case None => ()                                   // declined, nothing shared, or not a Roku
+}.start()
+
+// signing up: the name too
+AccountDetails.ask(List("email", "firstname", "lastname")).map { shared => … }.start()
+```
+
+The fields are Roku's names: `email`, `firstname`, `lastname`, `phone`, `street`, `city`, `state`, `zip`, `country`,
+`birth` and `gender`; each shared is a non-empty value. `signIn = true` asks as for signing in, where Roku offers the
+email address (and phone) alone. One request at a time: another asked for while one waits answers the first None.
+Everywhere but a Roku `AccountDetails.supported` is false and every request answers None on a later turn. A sideloaded
+channel launched with `fakestore=1` asks the store's fake server, which answers at once with made-up details and no
+dialog, to try the flow; `demo=userdata` asks both ways (`auto=1`, `auto=email`).
+
 ## Sign-in, autofill and password managers
 
 Every text field (`TextInput`, `TextArea`, and `InputView` beneath them) says what it asks for with `autofill`, an
