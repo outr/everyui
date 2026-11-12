@@ -44,17 +44,17 @@ function clockMs() as double
     return d.AsSeconds() * 1000# + d.GetMilliseconds()
 end function
 
-' The one transfer kept for every request this worker takes, so its connection lasts from one to the next
-' (EnableFreshConnection off, where the box has it), with the certificates set once whatever the first request's
-' address: an https request after an http one goes over the same transfer.
+' The one transfer kept for every request this worker takes, so its connection lasts from one to the next (a transfer
+' reuses its connection by default, and the certification checks refuse any call that asks for a fresh one, even to
+' turn it off), with the certificates set once whatever the first request's address: an https request after an http
+' one goes over the same transfer. The CA bundle is all https needs (the device's own client certificate, which the
+' checks also call deprecated, is not asked for).
 function newTransfer(url as string) as object
     u = CreateObject("roUrlTransfer")
     u.SetMessagePort(CreateObject("roMessagePort"))
     u.EnableEncodings(true)
     u.RetainBodyOnError(true)
-    if FindMemberFunction(u, "EnableFreshConnection") <> invalid then u.EnableFreshConnection(false)
     u.SetCertificatesFile("common:/certs/ca-bundle.crt")
-    u.InitClientCertificates()
     return u
 end function
 
