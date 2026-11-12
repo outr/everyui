@@ -14,6 +14,11 @@ trait CallEngine {
 
   /** A room for one call, which tells `feed` all that happens in it. */
   def room(feed: CallFeed): CallRoom
+
+  /** The camera and the microphone opened before a call (a `CallPreview`), as tracks of this engine's that its room can
+    * send (`CallRoom.take`), telling `feed` the microphone's level. None here (`PreviewMedia.unavailable`) unless the
+    * engine gives them. */
+  def preview(feed: PreviewFeed): PreviewMedia = PreviewMedia.unavailable
 }
 
 object CallEngine {

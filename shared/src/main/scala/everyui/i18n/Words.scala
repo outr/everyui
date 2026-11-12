@@ -168,7 +168,12 @@ object Words {
     "map.zoomIn" -> "Zoom in", "map.zoomOut" -> "Zoom out", "graph.graph" -> "Graph",
     "markdown.copy" -> "Copy", "markdown.done" -> "done", "markdown.notDone" -> "not done",
     "call.muted" -> "Muted", "call.speaking" -> "speaking", "call.screenOf" -> "{name}'s screen",
-    "call.microphone" -> "Microphone {n}", "call.camera" -> "Camera {n}", "call.speaker" -> "Speaker {n}")
+    "call.microphone" -> "Microphone {n}", "call.camera" -> "Camera {n}", "call.speaker" -> "Speaker {n}",
+    "call.preview" -> "Your camera", "call.cameraOff" -> "Camera is off",
+    "call.cameraDenied" -> "Camera access is blocked", "call.noCamera" -> "No camera found",
+    "call.cameraFailed" -> "Camera can't start", "call.micLevel" -> "Microphone level",
+    "call.microphoneSwitch" -> "Microphone", "call.cameraSwitch" -> "Camera",
+    "call.soundSwitch" -> "Sound")
 
   private lazy val german: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Abbrechen", "close" -> "Schließen",
     "done" -> "Fertig", "yes" -> "Ja",
@@ -257,7 +262,12 @@ object Words {
     "map.zoomIn" -> "Vergrößern", "map.zoomOut" -> "Verkleinern", "graph.graph" -> "Graph",
     "markdown.copy" -> "Kopieren", "markdown.done" -> "erledigt", "markdown.notDone" -> "nicht erledigt",
     "call.muted" -> "Stummgeschaltet", "call.speaking" -> "spricht", "call.screenOf" -> "Bildschirm von {name}",
-    "call.microphone" -> "Mikrofon {n}", "call.camera" -> "Kamera {n}", "call.speaker" -> "Lautsprecher {n}")
+    "call.microphone" -> "Mikrofon {n}", "call.camera" -> "Kamera {n}", "call.speaker" -> "Lautsprecher {n}",
+    "call.preview" -> "Ihre Kamera", "call.cameraOff" -> "Kamera ist aus",
+    "call.cameraDenied" -> "Kamerazugriff ist blockiert", "call.noCamera" -> "Keine Kamera gefunden",
+    "call.cameraFailed" -> "Kamera kann nicht starten", "call.micLevel" -> "Mikrofonpegel",
+    "call.microphoneSwitch" -> "Mikrofon", "call.cameraSwitch" -> "Kamera",
+    "call.soundSwitch" -> "Ton")
 
   private lazy val spanish: Map[String, String] = Map("ok" -> "Aceptar", "cancel" -> "Cancelar", "close" -> "Cerrar",
     "done" -> "Listo", "yes" -> "Sí",
@@ -346,7 +356,12 @@ object Words {
     "map.zoomIn" -> "Acercar", "map.zoomOut" -> "Alejar", "graph.graph" -> "Grafo",
     "markdown.copy" -> "Copiar", "markdown.done" -> "hecho", "markdown.notDone" -> "sin hacer",
     "call.muted" -> "Silenciado", "call.speaking" -> "hablando", "call.screenOf" -> "Pantalla de {name}",
-    "call.microphone" -> "Micrófono {n}", "call.camera" -> "Cámara {n}", "call.speaker" -> "Altavoz {n}")
+    "call.microphone" -> "Micrófono {n}", "call.camera" -> "Cámara {n}", "call.speaker" -> "Altavoz {n}",
+    "call.preview" -> "Tu cámara", "call.cameraOff" -> "La cámara está apagada",
+    "call.cameraDenied" -> "El acceso a la cámara está bloqueado", "call.noCamera" -> "No se encontró ninguna cámara",
+    "call.cameraFailed" -> "No se puede iniciar la cámara", "call.micLevel" -> "Nivel del micrófono",
+    "call.microphoneSwitch" -> "Micrófono", "call.cameraSwitch" -> "Cámara",
+    "call.soundSwitch" -> "Sonido")
 
   private lazy val french: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuler", "close" -> "Fermer",
     "done" -> "Terminé", "yes" -> "Oui",
@@ -436,7 +451,12 @@ object Words {
     "map.zoomIn" -> "Zoom avant", "map.zoomOut" -> "Zoom arrière", "graph.graph" -> "Graphe",
     "markdown.copy" -> "Copier", "markdown.done" -> "fait", "markdown.notDone" -> "à faire",
     "call.muted" -> "Micro coupé", "call.speaking" -> "parle", "call.screenOf" -> "Écran de {name}",
-    "call.microphone" -> "Micro {n}", "call.camera" -> "Caméra {n}", "call.speaker" -> "Haut-parleur {n}")
+    "call.microphone" -> "Micro {n}", "call.camera" -> "Caméra {n}", "call.speaker" -> "Haut-parleur {n}",
+    "call.preview" -> "Votre caméra", "call.cameraOff" -> "La caméra est coupée",
+    "call.cameraDenied" -> "L'accès à la caméra est bloqué", "call.noCamera" -> "Aucune caméra trouvée",
+    "call.cameraFailed" -> "Impossible de démarrer la caméra", "call.micLevel" -> "Niveau du micro",
+    "call.microphoneSwitch" -> "Micro", "call.cameraSwitch" -> "Caméra",
+    "call.soundSwitch" -> "Son")
 
   private lazy val italian: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annulla", "close" -> "Chiudi",
     "done" -> "Fine", "yes" -> "Sì", "no" -> "No",
@@ -522,7 +542,12 @@ object Words {
     "map.zoomIn" -> "Aumenta zoom", "map.zoomOut" -> "Riduci zoom", "graph.graph" -> "Grafo",
     "markdown.copy" -> "Copia", "markdown.done" -> "fatto", "markdown.notDone" -> "da fare",
     "call.muted" -> "Microfono disattivato", "call.speaking" -> "sta parlando", "call.screenOf" -> "Schermo di {name}",
-    "call.microphone" -> "Microfono {n}", "call.camera" -> "Videocamera {n}", "call.speaker" -> "Altoparlante {n}")
+    "call.microphone" -> "Microfono {n}", "call.camera" -> "Videocamera {n}", "call.speaker" -> "Altoparlante {n}",
+    "call.preview" -> "La tua videocamera", "call.cameraOff" -> "La videocamera è spenta",
+    "call.cameraDenied" -> "L'accesso alla videocamera è bloccato", "call.noCamera" -> "Nessuna videocamera trovata",
+    "call.cameraFailed" -> "Impossibile avviare la videocamera", "call.micLevel" -> "Livello del microfono",
+    "call.microphoneSwitch" -> "Microfono", "call.cameraSwitch" -> "Videocamera",
+    "call.soundSwitch" -> "Audio")
 
   private lazy val dutch: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuleren", "close" -> "Sluiten",
     "done" -> "Klaar", "yes" -> "Ja",
@@ -611,7 +636,12 @@ object Words {
     "map.zoomIn" -> "Inzoomen", "map.zoomOut" -> "Uitzoomen", "graph.graph" -> "Graaf",
     "markdown.copy" -> "Kopiëren", "markdown.done" -> "klaar", "markdown.notDone" -> "niet klaar",
     "call.muted" -> "Gedempt", "call.speaking" -> "spreekt", "call.screenOf" -> "Scherm van {name}",
-    "call.microphone" -> "Microfoon {n}", "call.camera" -> "Camera {n}", "call.speaker" -> "Luidspreker {n}")
+    "call.microphone" -> "Microfoon {n}", "call.camera" -> "Camera {n}", "call.speaker" -> "Luidspreker {n}",
+    "call.preview" -> "Je camera", "call.cameraOff" -> "Camera staat uit",
+    "call.cameraDenied" -> "Toegang tot de camera is geblokkeerd", "call.noCamera" -> "Geen camera gevonden",
+    "call.cameraFailed" -> "Camera kan niet starten", "call.micLevel" -> "Microfoonniveau",
+    "call.microphoneSwitch" -> "Microfoon", "call.cameraSwitch" -> "Camera",
+    "call.soundSwitch" -> "Geluid")
 
   private lazy val portuguese: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Cancelar", "close" -> "Fechar",
     "done" -> "Concluído", "yes" -> "Sim",
@@ -697,7 +727,12 @@ object Words {
     "map.zoomIn" -> "Aumentar zoom", "map.zoomOut" -> "Diminuir zoom", "graph.graph" -> "Grafo",
     "markdown.copy" -> "Copiar", "markdown.done" -> "concluído", "markdown.notDone" -> "não concluído",
     "call.muted" -> "Silenciado", "call.speaking" -> "falando", "call.screenOf" -> "Tela de {name}",
-    "call.microphone" -> "Microfone {n}", "call.camera" -> "Câmera {n}", "call.speaker" -> "Alto-falante {n}")
+    "call.microphone" -> "Microfone {n}", "call.camera" -> "Câmera {n}", "call.speaker" -> "Alto-falante {n}",
+    "call.preview" -> "Sua câmera", "call.cameraOff" -> "A câmera está desligada",
+    "call.cameraDenied" -> "O acesso à câmera está bloqueado", "call.noCamera" -> "Nenhuma câmera encontrada",
+    "call.cameraFailed" -> "Não foi possível iniciar a câmera", "call.micLevel" -> "Nível do microfone",
+    "call.microphoneSwitch" -> "Microfone", "call.cameraSwitch" -> "Câmera",
+    "call.soundSwitch" -> "Som")
 
   private lazy val turkish: Map[String, String] = Map("ok" -> "Tamam", "cancel" -> "İptal", "close" -> "Kapat",
     "done" -> "Bitti", "yes" -> "Evet",
@@ -781,7 +816,12 @@ object Words {
     "map.zoomIn" -> "Yakınlaştır", "map.zoomOut" -> "Uzaklaştır", "graph.graph" -> "Çizge",
     "markdown.copy" -> "Kopyala", "markdown.done" -> "tamamlandı", "markdown.notDone" -> "tamamlanmadı",
     "call.muted" -> "Sesi kapalı", "call.speaking" -> "konuşuyor", "call.screenOf" -> "Ekran: {name}",
-    "call.microphone" -> "Mikrofon {n}", "call.camera" -> "Kamera {n}", "call.speaker" -> "Hoparlör {n}")
+    "call.microphone" -> "Mikrofon {n}", "call.camera" -> "Kamera {n}", "call.speaker" -> "Hoparlör {n}",
+    "call.preview" -> "Kameranız", "call.cameraOff" -> "Kamera kapalı",
+    "call.cameraDenied" -> "Kamera erişimi engellendi", "call.noCamera" -> "Kamera bulunamadı",
+    "call.cameraFailed" -> "Kamera başlatılamıyor", "call.micLevel" -> "Mikrofon seviyesi",
+    "call.microphoneSwitch" -> "Mikrofon", "call.cameraSwitch" -> "Kamera",
+    "call.soundSwitch" -> "Ses")
 
   // Arabic counts: =2 is the dual, few (3 to 10) a plural, many (11 to 99) and other (100 and up) a singular.
   private lazy val arabic: Map[String, String] = Map("ok" -> "موافق", "cancel" -> "إلغاء", "close" -> "إغلاق",
@@ -871,7 +911,12 @@ object Words {
     "map.zoomIn" -> "تكبير", "map.zoomOut" -> "تصغير", "graph.graph" -> "مخطط",
     "markdown.copy" -> "نسخ", "markdown.done" -> "مكتمل", "markdown.notDone" -> "غير مكتمل",
     "call.muted" -> "مكتوم", "call.speaking" -> "يتحدث", "call.screenOf" -> "شاشة {name}",
-    "call.microphone" -> "الميكروفون {n}", "call.camera" -> "الكاميرا {n}", "call.speaker" -> "مكبر الصوت {n}")
+    "call.microphone" -> "الميكروفون {n}", "call.camera" -> "الكاميرا {n}", "call.speaker" -> "مكبر الصوت {n}",
+    "call.preview" -> "الكاميرا الخاصة بك", "call.cameraOff" -> "الكاميرا متوقفة",
+    "call.cameraDenied" -> "الوصول إلى الكاميرا محظور", "call.noCamera" -> "لم يتم العثور على كاميرا",
+    "call.cameraFailed" -> "تعذر تشغيل الكاميرا", "call.micLevel" -> "مستوى الميكروفون",
+    "call.microphoneSwitch" -> "الميكروفون", "call.cameraSwitch" -> "الكاميرا",
+    "call.soundSwitch" -> "الصوت")
 
   private lazy val chinese: Map[String, String] = Map("ok" -> "确定", "cancel" -> "取消", "close" -> "关闭",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -949,7 +994,12 @@ object Words {
     "map.zoomIn" -> "放大", "map.zoomOut" -> "缩小", "graph.graph" -> "图",
     "markdown.copy" -> "复制", "markdown.done" -> "已完成", "markdown.notDone" -> "未完成",
     "call.muted" -> "已静音", "call.speaking" -> "正在讲话", "call.screenOf" -> "{name} 的屏幕", "call.microphone" -> "麦克风 {n}",
-    "call.camera" -> "摄像头 {n}", "call.speaker" -> "扬声器 {n}")
+    "call.camera" -> "摄像头 {n}", "call.speaker" -> "扬声器 {n}",
+    "call.preview" -> "你的摄像头", "call.cameraOff" -> "摄像头已关闭",
+    "call.cameraDenied" -> "摄像头访问已被阻止", "call.noCamera" -> "未找到摄像头",
+    "call.cameraFailed" -> "无法启动摄像头", "call.micLevel" -> "麦克风音量",
+    "call.microphoneSwitch" -> "麦克风", "call.cameraSwitch" -> "摄像头",
+    "call.soundSwitch" -> "声音")
 
   private lazy val traditionalChinese: Map[String, String] = Map("ok" -> "確定", "cancel" -> "取消", "close" -> "關閉",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -1027,5 +1077,10 @@ object Words {
     "map.zoomIn" -> "放大", "map.zoomOut" -> "縮小", "graph.graph" -> "圖",
     "markdown.copy" -> "複製", "markdown.done" -> "已完成", "markdown.notDone" -> "未完成",
     "call.muted" -> "已靜音", "call.speaking" -> "正在說話", "call.screenOf" -> "{name} 的螢幕", "call.microphone" -> "麥克風 {n}",
-    "call.camera" -> "攝影機 {n}", "call.speaker" -> "喇叭 {n}")
+    "call.camera" -> "攝影機 {n}", "call.speaker" -> "喇叭 {n}",
+    "call.preview" -> "你的攝影機", "call.cameraOff" -> "攝影機已關閉",
+    "call.cameraDenied" -> "攝影機存取已被封鎖", "call.noCamera" -> "找不到攝影機",
+    "call.cameraFailed" -> "無法啟動攝影機", "call.micLevel" -> "麥克風音量",
+    "call.microphoneSwitch" -> "麥克風", "call.cameraSwitch" -> "攝影機",
+    "call.soundSwitch" -> "聲音")
 }

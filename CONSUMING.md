@@ -4005,13 +4005,58 @@ meter.stop()
 Safari and Firefox on Android choose no speaker (`speakersChosen` false, `speakers` empty): the sound goes where the
 system sends it.
 
+### Before joining: a preview (`CallPreview`)
+
+A meeting's "ready to join?" page shows the person their own camera and how loud their microphone is, lets them turn
+either off and choose another, and then joins with what they chose. `CallPreview` opens both as it is made, together,
+under one prompt; `Call.join` takes its open tracks over and sends those very tracks, so the browser neither asks again
+nor opens the device again (no light blinking off and on), and the call starts with each on or off as it was.
+
+```scala
+val preview = new CallPreview                        // startCamera = false, startMic = false to begin with one off
+val picture = new CameraPreview(preview)             // mirrored, filling, rounded as the tiles; sized by the app
+picture.face @= Some(Participant("guest", name))     // shown while the camera is turned off
+val meter = MicLevel(preview)                        // a bar, `new MicLevel(meter.level())` for a MicMeter
+val toggles = Row(12.0)(new MediaToggle(preview.micOn, DeviceKind.Microphone),
+  new MediaToggle(preview.cameraOn, DeviceKind.Camera))
+blocked.visible := preview.cameraState().isInstanceOf[PreviewState.Denied]
+join.event.click.attach(_ => call.join(url, token, preview))
+...
+preview.dispose()                                    // left without joining: both closed, lights off
+```
+
+- **Where each stands.** `cameraState` and `micState`: `Starting` (the prompt may be up), `Live`, `Off` (turned off
+  by the person: closed, its light off, opened again when turned on), `Denied(why)` (`ByPerson`, or `ByPolicy`),
+  `NoDevice` (none plugged in, or unplugged while open), `Unavailable` (no calls on this platform), and `Failed(why)`
+  (`InUse`: another app holds it). `refused` is true of the last four, and a call joined from the preview starts with
+  such a device off. `level` is the microphone's, 0 to 1, and 0 while it is not live.
+- **Devices.** `camera` and `microphone` are `MediaDevices.camera` and `.microphone`, kept on the device: another
+  chosen while previewing is opened in place of the one open (the old one stopped first), which a browser does
+  without a new prompt once the page has been let.
+- **Views.** `CameraPreview` draws the picture (`cover` to fill or fit, `mirror` on by default, a radius of 12) or,
+  without one, the face while the camera is turned off, else an icon with words saying why (`CallWords`:
+  "call.cameraOff", "call.cameraDenied", "call.noCamera", "call.cameraFailed", worded by an app with `Words.add`, or
+  `message.visible @= false` for its own); a screen reader hears it as "Your camera" and why there is no picture.
+  `MicLevel` is a meter (role `meter`, "Microphone level"). `MediaToggle` is a round button, on the danger colour
+  while off, heard as a switch named "Microphone", "Camera" or "Sound".
+- **The hand-over.** `join` hands the preview's tracks to the room before connecting; once in the room, the first time
+  the camera or the microphone is sent it is the preview's track that is published (LiveKit's
+  `localParticipant.publishTrack` of the `LocalVideoTrack` and `LocalAudioTrack` the preview made with
+  `createLocalTracks`), waiting for it if it is still opening. After that it is the call's: `setCamera(false)` mutes it
+  (LiveKit stops the camera, its light off) and `setCamera(true)` unmutes it; leaving stops it. The preview, handed
+  over, opens and closes nothing more, and its `dispose` stops nothing. The preview and the call must use the same
+  engine (both the platform's by default); another engine's room closes the preview's tracks and opens its own.
+- **The microphone's level** comes from an analyser on the preview's own track, not a second capture. A browser starts
+  a page's sound suspended until the page is used, so the level may stay at 0 until the first click or key.
+
 **Where it runs.** In a browser on a secure context (https, or localhost). The desktop, Android, the Roku and the
-Apple TV have no engine yet: `Call.supported` is false, a call ends as it connects with `CallEnd.Unavailable`, and
-`MediaDevices` lists nothing.
+Apple TV have no engine yet: `Call.supported` is false, a call ends as it connects with `CallEnd.Unavailable`,
+`MediaDevices` lists nothing, and a `CallPreview`'s camera and microphone are both `PreviewState.Unavailable`.
 
 **Shipping it.** LiveKit's browser client (livekit-client 2.23.0, the whole client in one script) comes in the
 everyui-web jar under `everyui-livekit/<version>/`, copied out beside the page by `everyuiWebGuests` as hls.js is,
-and loaded by a `<script src>` the first time a call connects, never from a CDN. A Content-Security-Policy needs:
+and loaded by a `<script src>` the first time a call connects or a preview opens, never from a CDN. A
+Content-Security-Policy needs:
 
 ```
 script-src 'self'; connect-src <the LiveKit server's wss: and https: origins>; media-src 'self' blob: mediastream:

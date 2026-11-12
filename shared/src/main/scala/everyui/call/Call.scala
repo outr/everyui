@@ -12,6 +12,9 @@ import reactify.*
   * the chosen speaker (`MediaDevices.speaker`); a browser may hold it back until the page is used (`audioBlocked`),
   * when a click on anything calls `startAudio`.
   *
+  * Joined from a [[CallPreview]] (`join`, a meeting's "ready to join?" page), it sends the camera and the microphone
+  * the preview opened, those very tracks, each on or off as it was there.
+  *
   * The engine is the platform's (`CallEngine.default`: LiveKit's client in a browser, which is loaded the first time
   * a call connects) or the app's own. Where there is none (`supported` false: the desktop, Android, a Roku, an Apple
   * TV for now) a call ends as it connects, with `CallEnd.Unavailable`.
@@ -82,6 +85,17 @@ class Call(val engine: CallEngine = CallEngine.default) {
         .flatMap(k => MediaDevices.chosen(k).map(k -> _)).toMap
       room.connect(url, token, devices)
     }
+
+  /** Join the room at `url` with `token` from a [[CallPreview]]: the camera and the microphone it has open are taken
+    * over and sent once in, the very tracks (no second prompt, the device not opened again), and each starts on or
+    * off as it is there (one refused, missing or failed starts off). The preview previews nothing more; its views
+    * draw on until they are taken apart. Only once, as `connect`. */
+  def join(url: String, token: String, preview: CallPreview): Unit = if (stateNow() == CallState.Idle) {
+    val microphone = preview.micOn() && !preview.micState().refused
+    val camera = preview.cameraOn() && !preview.cameraState().refused
+    room.take(preview.handOver())
+    connect(url, token, microphone, camera)
+  }
 
   /** Leave the room: everything it holds let go, and the call ended (`CallEnd.Left`). */
   def leave(): Unit = stateNow() match {

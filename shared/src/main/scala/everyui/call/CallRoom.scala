@@ -8,6 +8,11 @@ trait CallRoom {
     * chosen (by kind; one not given is the system's own). */
   def connect(url: String, token: String, devices: Map[DeviceKind, String]): Unit
 
+  /** Take over a preview's devices (`Call.join`), before `connect`: once in the room, `send` sends the open camera's
+    * and microphone's tracks rather than opening them again, and the room closes them as it is left. A room that
+    * cannot (the media is another engine's, or this one has no preview) closes them, and opens its own. */
+  def take(media: PreviewMedia): Unit = media.stop()
+
   /** Leave the room and let go of everything it holds: its devices, its tracks, its elements. */
   def leave(): Unit
 

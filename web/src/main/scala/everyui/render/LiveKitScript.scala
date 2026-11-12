@@ -5,10 +5,10 @@ import org.scalajs.dom
 import scala.scalajs.js
 
 /** LiveKit's client in the page, for a call (LiveKitEngine): loaded by `<script src>` from the files served next to
-  * the page, once, the first time a call connects, and never before. The files come in everyui-web
-  * (`everyui-livekit/<version>/`), and sbt-everyui's `everyuiWebGuests` copies them out beside the page, so a
-  * Content-Security-Policy of `script-src 'self'` holds (a call also needs `connect-src` to reach the LiveKit server's
-  * `wss:` address).
+  * the page, once, the first time a call connects or a preview opens (LiveKitPreview), and never before. The files
+  * come in everyui-web (`everyui-livekit/<version>/`), and sbt-everyui's `everyuiWebGuests` copies them out beside the
+  * page, so a Content-Security-Policy of `script-src 'self'` holds (a call also needs `connect-src` to reach the
+  * LiveKit server's `wss:` address).
   *
   * {{{
   *   LiveKitScript.root = "/static/everyui-livekit/" + LiveKitScript.version   // served somewhere else

@@ -21,6 +21,9 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
   private var sounds: Map[String, html.Element] = Map.empty
   // each picture drawn, by its track's sid and the box it is drawn in
   private var pictures: Map[(String, CallVideo), html.Element] = Map.empty
+  // a preview's devices taken over as the call was joined (Call.join), and the kinds of them sent once already
+  private var taken: Option[LiveKitPreview] = None
+  private var handed: Set[DeviceKind] = Set.empty
 
   def connect(url: String, token: String, devices: Map[DeviceKind, String]): Unit = LiveKitScript.load { ok =>
     if (!left) {
@@ -68,13 +71,45 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
     })
   }
 
+  override def take(media: PreviewMedia): Unit = media match {
+    case mine: LiveKitPreview if !left => taken = Some(mine)
+    case other => other.stop()
+  }
+
   def leave(): Unit = if (!left) {
     left = true
     release()
     if (room != null) room.disconnect()
   }
 
-  def send(source: TrackSource, on: Boolean, device: Option[String], done: Option[MediaRefusal] => Unit): Unit =
+  def send(source: TrackSource, on: Boolean, device: Option[String], done: Option[MediaRefusal] => Unit): Unit = {
+    val kind = source match {
+      case TrackSource.Microphone => Some(DeviceKind.Microphone)
+      case TrackSource.Camera => Some(DeviceKind.Camera)
+      case _ => None
+    }
+    (taken, kind) match {
+      // the preview's own track, the first time its kind is sent: published as it is, its device not opened again
+      // (from then on it is LiveKit's, muted and unmuted by `enable`)
+      case (Some(preview), Some(k)) if on && room != null && !left && !handed.contains(k) =>
+        handed += k
+        preview.whenOpen(k) {
+          case Some(t) if room != null && !left =>
+            LiveKitRoom.after(room.localParticipant.publishTrack(t))(_ => {
+              refresh()
+              done(None)
+            }, e => {
+              refresh()
+              done(Some(CallAccess.refusal(e)))
+            })
+          case _ => enable(source, on, device, done)
+        }
+      case _ => enable(source, on, device, done)
+    }
+  }
+
+  private def enable(source: TrackSource, on: Boolean, device: Option[String],
+                     done: Option[MediaRefusal] => Unit): Unit =
     if (room == null || left) done(if (on) Some(MediaRefusal.Unavailable) else None)
     else {
       val local = room.localParticipant
@@ -173,6 +208,9 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
 
   // every element let go of: the sounds' taken out of the page, the pictures' out of their boxes
   private def release(): Unit = {
+    // the preview's tracks: those sent LiveKit stops itself as the room is left, and any not sent are stopped here
+    taken.foreach(_.stop())
+    taken = None
     sounds.values.foreach(el => if (el.parentNode != null) el.parentNode.removeChild(el))
     sounds = Map.empty
     pictures.values.foreach(el => if (el.parentNode != null) el.parentNode.removeChild(el))

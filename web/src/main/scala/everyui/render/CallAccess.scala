@@ -89,28 +89,10 @@ object CallAccess {
         if (stopped) stop(stream)
         else {
           opened()
-          val kind = if (LiveKitRoom.defined(window.AudioContext)) window.AudioContext else window.webkitAudioContext
-          val context = js.Dynamic.newInstance(kind)()
-          val analyser = context.createAnalyser()
-          analyser.fftSize = 1024
-          context.createMediaStreamSource(stream).connect(analyser)
-          if (String.valueOf(context.state) == "suspended") context.resume()
-          val samples = new Float32Array(1024)
-          val timer = dom.window.setInterval(() => {
-            analyser.getFloatTimeDomainData(samples)
-            var sum = 0.0
-            var i = 0
-            while (i < samples.length) {
-              sum += samples(i) * samples(i)
-              i += 1
-            }
-            val rms = math.sqrt(sum / samples.length)
-            level(if (rms <= 0.0) 0.0 else math.max(0.0, math.min(1.0, (20.0 * math.log10(rms) + 60.0) / 60.0)))
-          }, 50)
+          val hearing = analyse(stream, level)
           close = () => {
-            dom.window.clearInterval(timer)
+            hearing()
             stop(stream)
-            context.close()
           }
         }
       }, e => if (!stopped) refused(refusal(e)))
@@ -119,6 +101,40 @@ object CallAccess {
         close()
       }
     }
+
+  /** `stream`'s sound heard through an analyser, its loudness told every 50 ms as 0 to 1 (-60 dB to 0 dB), until the
+    * function answered is called (the stream itself is the caller's to stop). A page not used yet starts its sound
+    * suspended, and the analyser hears silence: it is let run at the first press of a key or a pointer. */
+  def analyse(stream: js.Dynamic, level: Double => Unit): () => Unit = {
+    val kind = if (LiveKitRoom.defined(window.AudioContext)) window.AudioContext else window.webkitAudioContext
+    val context = js.Dynamic.newInstance(kind)()
+    val analyser = context.createAnalyser()
+    analyser.fftSize = 1024
+    context.createMediaStreamSource(stream).connect(analyser)
+    val wake: js.Function1[js.Any, Unit] = _ => if (String.valueOf(context.state) == "suspended") context.resume()
+    val unwake = () => List("pointerdown", "keydown").foreach(e => dom.document.removeEventListener(e, wake, true))
+    if (String.valueOf(context.state) == "suspended") {
+      context.resume()
+      List("pointerdown", "keydown").foreach(e => dom.document.addEventListener(e, wake, true))
+    }
+    val samples = new Float32Array(1024)
+    val timer = dom.window.setInterval(() => {
+      analyser.getFloatTimeDomainData(samples)
+      var sum = 0.0
+      var i = 0
+      while (i < samples.length) {
+        sum += samples(i) * samples(i)
+        i += 1
+      }
+      val rms = math.sqrt(sum / samples.length)
+      level(if (rms <= 0.0) 0.0 else math.max(0.0, math.min(1.0, (20.0 * math.log10(rms) + 60.0) / 60.0)))
+    }, 50)
+    () => {
+      dom.window.clearInterval(timer)
+      unwake()
+      context.close()
+    }
+  }
 
   /** Why the browser would not give a microphone, a camera or a screen (what getUserMedia, getDisplayMedia or
     * LiveKit rejected with). */

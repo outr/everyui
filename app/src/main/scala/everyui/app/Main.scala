@@ -136,6 +136,8 @@ import everyui.render.Platform
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not
   *              on a Roku or an Apple TV (app/full: FullDemos)
+  *   prejoin    a meeting's "ready to join?" page (the camera's picture, the microphone's level, their switches) that
+  *              joins `livekit=` with `token=`, handing its tracks to the call; a browser only (app/full: PreJoinDemo)
   *   platform   the platform's services: saving a file, the clipboard, passkeys (`rp=`), push notifications (`vapid=`),
   *              the location; not on a Roku or an Apple TV (app/full: FullDemos)
   *   zoom       a project map on a canvas that pans and zooms (ZoomCanvas): semantic zoom over 2,578 boxes, and a
