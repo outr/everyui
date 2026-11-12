@@ -270,7 +270,14 @@ sub uiPerfFrame(now as float)
         ms = now - p.at
         timed = p.tick + p.key + p.later + p.after
         if ms >= 50 or p.keys > 0 or p.nodes > 0 or p.removes > 0 or p.writes > 0
-            print "[perf] "; Int(ms); "ms: tick "; Int(p.tick); ", keys "; p.keys; " in "; Int(p.key); ", later "; Int(p.later); ", after "; Int(p.after); ", sg "; Int(ms - timed); "; nodes +"; p.nodes; " -"; p.removes; ", writes "; p.writes; ", measures "; p.measures
+            ' one string, built up and printed whole: the device's compiler refused this as one long print list
+            said = "[perf] " + Int(ms).ToStr() + "ms: tick " + Int(p.tick).ToStr()
+            said = said + ", keys " + Int(p.keys).ToStr() + " in " + Int(p.key).ToStr()
+            said = said + ", later " + Int(p.later).ToStr() + ", after " + Int(p.after).ToStr()
+            said = said + ", sg " + Int(ms - timed).ToStr() + "; nodes +" + Int(p.nodes).ToStr()
+            said = said + " -" + Int(p.removes).ToStr() + ", writes " + Int(p.writes).ToStr()
+            said = said + ", measures " + Int(p.measures).ToStr()
+            print said
         end if
     end if
     p.at = now
@@ -1811,7 +1818,11 @@ sub uiHttpSaid(r as object)
     now = uiClockMs()
     asked = r.began
     if r.asked <> invalid then asked = r.asked
-    print "[http] "; r.id; " "; r.status; " "; r.method; " "; Left(_str(r.url), 100); ": "; Int(now - asked); " ms = queued "; Int(r.began - asked); ", wire "; Int(r.ended - r.began); ", back "; Int(now - r.ended)
+    ' one string, built up and printed whole, as uiPerfFrame's (the device's compiler refuses a long print list)
+    said = "[http] " + _str(r.id) + " " + _str(r.status) + " " + _str(r.method) + " " + Left(_str(r.url), 100)
+    said = said + ": " + Int(now - asked).ToStr() + " ms = queued " + Int(r.began - asked).ToStr()
+    said = said + ", wire " + Int(r.ended - r.began).ToStr() + ", back " + Int(now - r.ended).ToStr()
+    print said
 end sub
 
 ' The time of day in milliseconds, which every thread reads alike (UpTime, a Float, loses its milliseconds once the box
