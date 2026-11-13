@@ -612,6 +612,7 @@ class SwiftEmitter(
       if (name == "Nil") "[]"
       else if (name == "None" && sym.exists && sym.fullName.endsWith(".None")) "invalid"
       else if (isFacade(sym)) name
+      else if (moduleAliases.contains(sym)) emitTerm(moduleAliases(sym))
       else if (modelModuleOf(sym).isDefined) moduleAccessor(modelModuleOf(sym).get)
       // A symbol with no denotation (some local/synthetic Idents) has no owner —
 @@ new
@@ -621,6 +622,7 @@ class SwiftEmitter(
       if (name == "Nil") rtArr(Nil)
       else if (name == "None" && sym.exists && sym.fullName.endsWith(".None")) NULL
       else if (isFacade(sym)) name
+      else if (moduleAliases.contains(sym)) emitTerm(moduleAliases(sym))
       else if (modelModuleOf(sym).isDefined) moduleAccessor(modelModuleOf(sym).get)
       // A symbol with no denotation (some local/synthetic Idents) has no owner —
 @@ old

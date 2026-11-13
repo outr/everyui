@@ -162,4 +162,10 @@ RX PASS emit.isa.negated = true
 RX PASS emit.isa.cast.ok = nav 2
 RX PASS emit.isa.cast.fails = ClassCastException
 RX PASS emit.isa.cast.null = true
-RX DONE 164/164
+RX PASS emit.modassign.set = y
+RX PASS emit.modassign.list = a,b,c,a,b,c
+RX PASS emit.modassign.int = 6
+RX PASS emit.modassign.nested = 18
+RX PASS emit.modassign.companion = w,z
+RX PASS emit.modassign.model = boot,r,s,r,s
+RX DONE 170/170

@@ -402,5 +402,6 @@ class TxnRef(var t: Transaction)
   Collections.seqs(ok, total)
   Strings.splits(ok, total)
   reactifytest.app.Kinds.run(ok, total)
+  reactifytest.app.Offerer.run(ok, total)
   println("RX DONE " + ok.n.toString + "/" + total.n.toString)
 }

@@ -193,6 +193,10 @@ class RokuEmitter(
     // Local `var`s captured by a closure / thunk / local class: boxed as
     // `{ v: … }` so the capture and the enclosing scope share one cell.
     val boxedVars = mutable.Set[Symbol]()
+    // scalac's temporaries bound to an object (`val _1 = AccountOffer` before `_1.offered = _1.offered + "x"`, its
+    // lowering of `AccountOffer.offered += "x"`): the temporary is not written, and each use of it is the object's own
+    // reference, as a plain object has no value a local could hold (see moduleAlias).
+    val moduleAliases = mutable.Map[Symbol, Term]()
     // Local (anonymous) classes: generated name, enclosing class, captures.
     val typeNameOverride = mutable.Map[Symbol, String]()
     val anonOuter = mutable.Map[Symbol, Symbol]()
@@ -1564,6 +1568,7 @@ class RokuEmitter(
       if (name == "Nil") "[]"
       else if (name == "None" && sym.exists && sym.fullName.endsWith(".None")) "invalid"
       else if (isFacade(sym)) name
+      else if (moduleAliases.contains(sym)) emitTerm(moduleAliases(sym))
       else if (modelModuleOf(sym).isDefined) moduleAccessor(modelModuleOf(sym).get)
       // A symbol with no denotation (some local/synthetic Idents) has no owner —
       // `sym.owner` would throw NoDenotation.owner — so emit the bare safe name.
@@ -3056,9 +3061,24 @@ class RokuEmitter(
     /** The object an assignment writes a var of, where that is an object of the object model and the code is outside it
       * (see outsideModelModule): `Registry` in `Registry.seen = …`, the object itself for a bare `shown = …`. */
     def moduleFieldOutside(lhs: Term): Option[Term] = lhs match {
-      case Select(q, _) if !isThis(q) && modelModuleOf(q.symbol).isDefined => Some(q)
+      case Select(q, _) if !isThis(q) && modelModuleOf(unalias(q).symbol).isDefined => Some(unalias(q))
       case id: Ident if id.symbol.exists && outsideModelModule(id.symbol.owner) => Some(This(id.symbol.owner))
       case _ => None
+    }
+
+    /** The object a temporary of scalac's is bound to (`val _1 = AccountOffer`, `val _1 = AccountOffer.Inner`, made for
+      * `AccountOffer.offered += "x"` from outside the object): never a user's `val`, which keeps its local. */
+    def moduleAlias(vd: ValDef): Option[Term] = vd.rhs.map(unwrap).filter { r =>
+      val sy = vd.symbol
+      sy.exists && !sy.flags.is(Flags.Mutable) && isTempVals(List(vd)) && (r match {
+        case _: Ident | _: Select => r.symbol.exists && r.symbol.flags.is(Flags.Module)
+        case _                    => false
+      })
+    }
+    /** A reference to such a temporary as the object's own reference. */
+    def unalias(q: Term): Term = q match {
+      case id: Ident if moduleAliases.contains(id.symbol) => moduleAliases(id.symbol)
+      case _ => q
     }
 
     def emitStat(st: Statement): String = st match {
@@ -3070,6 +3090,9 @@ class RokuEmitter(
         val tmp = s"_mv$anfCounter"
         List(emitInto(rhs, tmp), stmtTerm(s"_setField(${emitTerm(q)}, ${brStr(fieldName(lhs.symbol, lhs.symbol.name))}, $tmp)"))
           .filter(_.trim.nonEmpty).mkString("\n")
+      case vd: ValDef if moduleAlias(vd).isDefined =>
+        moduleAliases(vd.symbol) = moduleAlias(vd).get
+        ""
       case vd @ ValDef(name, _, Some(rhs)) =>
         val lhs = brLocal(name)
         if (boxedVars.contains(vd.symbol))
