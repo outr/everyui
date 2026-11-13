@@ -4072,7 +4072,8 @@ class RokuEmitter(
     write("source/Main.brs", mainBrs)
     write("components/AppScene.brs", sceneBrs)
     val appCode = out.toString + "\n' ── defunctionalised closures ──\n" + closures.toString
-    val parts = RokuEmitter.split(appBrsHeader + RokuEmitter.compact(injectGa(appCode), runtimeFnNames), RokuEmitter.partBytes)
+    val program = RokuEmitter.wrap(RokuEmitter.compact(injectGa(appCode), runtimeFnNames))
+    val parts = RokuEmitter.split(appBrsHeader + program, RokuEmitter.partBytes)
     // a part from a larger build before this one would still be listed nowhere, but it would ship
     val components = outDir.resolve("components")
     if (Files.isDirectory(components)) {
@@ -4880,6 +4881,14 @@ class RokuEmitter(
       |    return r
       |end function
       |' ── String helpers (Scala String methods → BrightScript; Mid() is 1-indexed) ──
+      |' A string literal too long for one line, put together from its pieces (RokuEmitter.wrap)
+      |function RtCat(parts as object) as string
+      |    s = ""
+      |    for each p in parts
+      |        s = s + p
+      |    end for
+      |    return s
+      |end function
       |function _substr(s as dynamic, a as integer, b as integer) as string
       |    return Mid(_str(s), a + 1, b - a)
       |end function
@@ -7764,6 +7773,261 @@ object RokuEmitter {
       else out
     }.mkString("\n")
   }
+
+  /** How long a line of the program may be before `wrap` spreads it: Roku's static analysis warns of every line of
+    * 1,000 characters or more. */
+  val lineChars: Int = 900
+
+  /** The program with no line longer than `limit` characters where it can be helped: a long array or associative
+    * array literal (a table of words, a list of a thousand emoji) is spread over lines after its commas, as
+    * BrightScript lets a literal run on (a call's parentheses and an expression do not, there being no line
+    * continuation), each line filled to `limit`; and a string literal longer than `limit` is put together from pieces
+    * of it in such a literal (`RtCat(["…",` / `"…"])`). A break is never put where the line after it would begin
+    * with a call and then a method call (`f(x).g(y)`), which reads as a statement the device refuses. Strings,
+    * comments and what a line means are as they were. */
+  def wrap(code: String, limit: Int = lineChars): String =
+    if (!code.split("\n", -1).exists(_.length > limit)) code
+    else code.split("\n", -1).map(line => if (line.length > limit) wrapLine(line, limit) else line)
+      .mkString("\n")
+
+  private val callThenMethod = "^\\s*\\w+\\([^()]*\\)(\\.\\w+)+\\(".r
+  private val literalAfter: Set[String] = Set("return", "and", "or", "not", "then", "else", "in", "to", "step", "mod")
+
+  /** Where the string literal opening at `i` closes: its last quote, past each doubled one, or the line's end. */
+  private def stringEnd(line: String, i: Int): Int = {
+    var j = i + 1
+    while (j < line.length && !(line(j) == '"' && !(j + 1 < line.length && line(j + 1) == '"'))) {
+      j += (if (line(j) == '"') 2 else 1)
+    }
+    j
+  }
+
+  private def wrapLine(line: String, limit: Int): String = {
+    val cut = cutStrings(line, limit)
+    if (cut.length <= limit || oneLineIf(cut)) breakLiterals(cut, limit)
+    else splitSum(cut, limit).map(l => if (l.length > limit) breakLiterals(l, limit) else l).mkString("\n")
+  }
+
+  /** Whether `line` is a single-line `if … then …`, one statement to its end, which is left as it is. */
+  private def oneLineIf(line: String): Boolean = {
+    val code = line.replaceAll("\"(?:[^\"]|\"\")*\"", "\"\"").replaceAll("'.*$", "")
+    "(?i)(^|[^A-Za-z0-9_])then [^ ']".r.findFirstIn(code).nonEmpty
+  }
+
+  private val statementStart: Set[String] =
+    Set("if", "else", "elseif", "for", "while", "print", "end", "function", "sub", "exit", "goto", "dim", "stop")
+  // what a sum may be given to: a name, its fields, an index of a name, a number or a string
+  private val target = ("^" + identifier + "(?:\\." + identifier + "|\\[(?:[A-Za-z0-9_]+|\"[^\"]*\")\\])*$").r
+  // what may stand between a sum's terms outside brackets and strings: a name, a field, a number
+  private val plainTerm = "^[A-Za-z0-9_.#&%!$]*$".r
+
+  /** A long `return a + b + …` or `x = a + b + …` (a string put together from many: Scala's `+` and interpolation) as
+    * statements, each under `limit`, adding to a local of its own (`__cat`) from left to right as the sum did, then
+    * the statement with that local for the sum: `__cat = a + b`, `__cat = __cat + c`, `return __cat`. Left as it is
+    * where it is not such a statement, the sum has another operator outside its brackets, or a term alone is too
+    * long. */
+  private def splitSum(line: String, limit: Int): List[String] = {
+    val word = line.takeWhile(c => c.isLetterOrDigit || c == '_').toLowerCase
+    val parts: Option[(String, String)] =
+      if (word == "return" && line.startsWith("return ")) Some(("return ", line.substring(7)))
+      else if (statementStart(word)) None
+      else {
+        val eq = topLevel(line, "=")
+        if (eq.isEmpty) None
+        else {
+          val lhs = line.substring(0, eq.head).trim
+          if (target.matches(lhs)) Some((lhs + "=", line.substring(eq.head + 1))) else None
+        }
+      }
+    parts.flatMap { case (head, expr) => terms(expr.trim).map(ts => (head, ts)) } match {
+      case Some((head, ts)) if ts.size >= 2 && ts.forall(_.length < limit - 20) =>
+        val lines = mutable.ListBuffer[String]()
+        var current = "__cat=" + ts.head
+        ts.tail.foreach { t =>
+          if (current.length + t.length + 3 > limit) {
+            lines += current
+            current = "__cat=__cat + " + t
+          }
+          else current = current + " + " + t
+        }
+        lines += current
+        lines += head + "__cat"
+        lines.toList
+      case _ => List(line)
+    }
+  }
+
+  /** The terms of a sum, left to right (`((a + b) + c) + d` is a, b, c, d: the left one taken apart again, as `+`
+    * groups from the left), or None where the expression has an operator other than `+` outside its brackets. */
+  private def terms(expr: String): Option[List[String]] = {
+    val pluses = topLevel(expr, " + ")
+    if (pluses.isEmpty) {
+      if (expr.startsWith("(") && expr.endsWith(")") && closingParen(expr, 0) == expr.length - 1)
+        terms(expr.substring(1, expr.length - 1).trim)
+      else Some(List(expr))
+    }
+    else {
+      val cuts = (-3 +: pluses) :+ expr.length
+      val pieces = cuts.sliding(2).map { case Seq(a, b) => expr.substring(a + 3, b).trim }.toList
+      if (!pieces.forall(p => p.nonEmpty && plainTerm.matches(outside(p)))) None
+      else terms(pieces.head).map(_ ++ pieces.tail)
+    }
+  }
+
+  /** Where `op` occurs in `code` outside brackets and strings. */
+  private def topLevel(code: String, op: String): List[Int] = {
+    val found = mutable.ListBuffer[Int]()
+    var depth = 0
+    var i = 0
+    while (i < code.length) {
+      val c = code(i)
+      if (c == '"') i = stringEnd(code, i) + 1
+      else {
+        if (c == '(' || c == '[' || c == '{') depth += 1
+        else if (c == ')' || c == ']' || c == '}') depth -= 1
+        else if (depth == 0 && code.startsWith(op, i)) found += i
+        i += 1
+      }
+    }
+    found.toList
+  }
+
+  /** `code` with what is inside its brackets and strings taken out: the text at its top level. */
+  private def outside(code: String): String = {
+    val sb = new StringBuilder
+    var depth = 0
+    var i = 0
+    while (i < code.length) {
+      val c = code(i)
+      if (c == '"') i = stringEnd(code, i) + 1
+      else {
+        if (c == '(' || c == '[' || c == '{') depth += 1
+        else if (c == ')' || c == ']' || c == '}') depth -= 1
+        else if (depth == 0) sb.append(c)
+        i += 1
+      }
+    }
+    sb.toString
+  }
+
+  /** Where the bracket opening at `from` closes, strings aside, or -1. */
+  private def closingParen(code: String, from: Int): Int = {
+    var depth = 0
+    var i = from
+    var at = -1
+    while (i < code.length && at < 0) {
+      val c = code(i)
+      if (c == '"') i = stringEnd(code, i) + 1
+      else {
+        if (c == '(' || c == '[' || c == '{') depth += 1
+        else if (c == ')' || c == ']' || c == '}') { depth -= 1; if (depth == 0) at = i }
+        i += 1
+      }
+    }
+    at
+  }
+
+  private def breakLiterals(line: String, limit: Int): String = {
+    // where a break may go: after a comma directly inside an array or associative array literal ('[' after an operator,
+    // a comma or an opening bracket, or at the start; every '{' is one), outside strings and comments
+    val breaks = mutable.ArrayBuffer[Int]()
+    val stack = mutable.Stack[Boolean]()
+    var i = 0
+    var done = false
+    var last = ' '
+    while (i < line.length && !done) {
+      val c = line(i)
+      if (c == '"') {
+        i = stringEnd(line, i) + 1
+        last = '"'
+      }
+      else if (c == '\'') done = true
+      else {
+        c match {
+          case '[' =>
+            // an index follows a name, a call, an index or a string; a literal follows anything else, a keyword too
+            val word = line.substring(0, i).reverse.dropWhile(_ == ' ')
+              .takeWhile(ch => ch.isLetterOrDigit || ch == '_').reverse
+            val indexed = last == ')' || last == ']' || last == '"' ||
+              (word.nonEmpty && !literalAfter(word.toLowerCase))
+            stack.push(!indexed)
+          case '{' => stack.push(true)
+          case '(' => stack.push(false)
+          case ']' | '}' | ')' => if (stack.nonEmpty) stack.pop()
+          case ',' => if (stack.nonEmpty && stack.top) breaks += i + 1
+          case _ => ()
+        }
+        if (c != ' ') last = c
+        i += 1
+      }
+    }
+    if (breaks.isEmpty || oneLineIf(line)) line
+    else {
+      val usable = breaks.filter(b => b < line.length && callThenMethod.findFirstIn(line.substring(b)).isEmpty)
+      val out = new StringBuilder
+      var start = 0
+      var prev = -1
+      usable.foreach { b =>
+        if (b - start > limit && prev > start) {
+          out.append(line.substring(start, prev)).append('\n')
+          start = prev
+        }
+        prev = b
+      }
+      if (line.length - start > limit && prev > start) {
+        out.append(line.substring(start, prev)).append('\n')
+        start = prev
+      }
+      out.append(line.substring(start)).toString
+    }
+  }
+
+  /** `line` with each string literal longer than `limit` put together from pieces (`RtCat(["…","…"])`), whose commas
+    * `wrapLine` may break after. A piece never ends between the two halves of a doubled quote or of a surrogate
+    * pair. */
+  private def cutStrings(line: String, limit: Int): String =
+    if (line.length <= limit) line
+    else {
+      val out = new StringBuilder
+      var i = 0
+      var done = false
+      while (i < line.length && !done) {
+        val c = line(i)
+        if (c == '"') {
+          val j = stringEnd(line, i)
+          val inner = line.substring(i + 1, math.min(j, line.length))
+          if (j < line.length && inner.length > limit) {
+            val piece = math.max(limit / 2, 1)
+            val pieces = mutable.ArrayBuffer[String]()
+            var k = 0
+            while (k < inner.length) {
+              var e = math.min(k + piece, inner.length)
+              // not between a doubled quote's two halves (a run of quotes is pairs from its start), nor a surrogate
+              // pair's
+              var q = e
+              while (q > k && inner(q - 1) == '"') q -= 1
+              if ((e - q) % 2 == 1 && e < inner.length) e -= 1
+              if (e < inner.length && e > k && Character.isHighSurrogate(inner(e - 1))) e -= 1
+              if (e <= k) e = math.min(k + piece, inner.length)
+              pieces += inner.substring(k, e)
+              k = e
+            }
+            out.append("RtCat([").append(pieces.map(p => "\"" + p + "\"").mkString(",")).append("])")
+          }
+          else out.append(line.substring(i, math.min(j + 1, line.length)))
+          i = j + 1
+        }
+        else if (c == '\'') {
+          out.append(line.substring(i))
+          done = true
+        }
+        else {
+          out.append(c)
+          i += 1
+        }
+      }
+      out.toString
+    }
 
   /** The program's files: `App.brs`, then `App2.brs`, `App3.brs` and on. */
   def partName(i: Int): String = if (i == 0) "App.brs" else "App" + (i + 1) + ".brs"
