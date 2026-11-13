@@ -4962,6 +4962,25 @@ Platform.beacon("AppDialogComplete")
 Platform.launchComplete()                 // home can be used
 ```
 
+#### Signed in (`Platform.signedIn`)
+
+An app that needs a sign-in (a subscription's) must tell Roku whether the viewer is signed in (certification's 4.3,
+"must use the Roku Event Dispatcher"). `Platform.signedIn(true)`, said as the app starts with an account it kept and as
+the viewer signs in, sends RED's `Roku_Authenticated` event, as Roku's "Prioritizing authenticated apps" shows: an
+`AnalyticsNode` of the `roku_analytics` component library (every channel's manifest names it,
+`sg_component_libs_required=roku_analytics`), RED made its provider (`init = {RED: {}}`), and the event set on its
+`trackEvent`. It is sent once a launch, and again as Instant Resume brings the channel back while signed in;
+`Platform.signedIn(false)` sends nothing (RED has no event for it), and a later `true` sends it again. Each is said on
+the console (`[signin] Roku_Authenticated sent through the Roku Event Dispatcher`), and `reddebug=1` at launch turns on
+the node's own debug lines. It does nothing elsewhere, so shared code calls it as it is. The example's
+`demo=device` says it as it starts with `signedin=1`.
+
+```scala
+if (session.isDefined) Platform.signedIn(true)   // as the app starts
+// … signed in, or out
+Platform.signedIn(account.isDefined)
+```
+
 #### Where a frame's time goes (`rokuperf=1`, `httplog=1`)
 
 Launched with `rokuperf=1` (an ECP launch parameter), the runtime says on the console what each frame did that did

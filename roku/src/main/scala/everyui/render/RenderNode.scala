@@ -924,7 +924,26 @@ object Platform {
     * launch's; `AppLaunchComplete` is `launchComplete`, sent once. Logged as `[beacon] <name>`. Nothing elsewhere. */
   def beacon(name: String): Unit = uiBeacon(name)
 
-  def resumed(): Unit = resumers.foreach(f => f())
+  def resumed(): Unit = {
+    // a channel brought back by Instant Resume is launched again as the viewer sees it: said again (signedIn)
+    if (signedInNow) uiSignedIn()
+    resumers.foreach(f => f())
+  }
+
+  /** Whether the viewer is signed in, for an app that needs a sign-in (a subscription's): said as the app starts with
+    * an account it kept, and again as the viewer signs in or out. Signed in, Roku is told through the Roku Event
+    * Dispatcher (its `Roku_Authenticated` event, the roku_analytics library), as certification's 4.3 asks of such an
+    * app: once a launch, and again as Instant Resume brings the channel back; signed out, nothing is sent (RED has no
+    * event for it), and signing in again says it again. Logged as `[signin] …`. Nothing elsewhere. */
+  def signedIn(on: Boolean): Unit = {
+    if (on && !signedInNow) {
+      uiOnLifecycle(() => resumed(), () => away())
+      uiSignedIn()
+    }
+    signedInNow = on
+  }
+
+  private var signedInNow: Boolean = false
 
   private var resumers: List[() => Unit] = Nil
 

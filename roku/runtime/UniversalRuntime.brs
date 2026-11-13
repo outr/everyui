@@ -1854,6 +1854,25 @@ sub uiTmpDelete(path as string)
     if fs.Exists(path) then fs.Delete(path)
 end sub
 
+' The viewer is signed in (Platform.signedIn): Roku's `Roku_Authenticated` event through the Roku Event Dispatcher, as
+' certification's 4.3 asks of an app that needs a sign-in and Roku's "Prioritizing authenticated apps" shows: an
+' AnalyticsNode of the roku_analytics component library (the manifest's sg_component_libs_required), made once, RED
+' made its provider, and the event set on its trackEvent. `reddebug=1` at launch turns on the node's own debug lines.
+sub uiSignedIn()
+    ga = GetGlobalAA()
+    if ga.uiRed = invalid
+        ga.uiRed = CreateObject("roSGNode", "Roku_Analytics:AnalyticsNode")
+        if ga.uiRed = invalid
+            print "[signin] no Roku_Analytics:AnalyticsNode: is roku_analytics in sg_component_libs_required?"
+            return
+        end if
+        if uiLaunchArg("reddebug") = "1" then ga.uiRed.debug = true
+        ga.uiRed.init = { RED: {} }
+    end if
+    ga.uiRed.trackEvent = { RED: { eventName: "Roku_Authenticated" } }
+    print "[signin] Roku_Authenticated sent through the Roku Event Dispatcher"
+end sub
+
 ' An roByteArray as a Scala Array[Byte] is kept: numbers from -128 to 127, read by index (not every engine walks a byte
 ' array with for each as a device does).
 function uiSignedBytes(ba as object) as object

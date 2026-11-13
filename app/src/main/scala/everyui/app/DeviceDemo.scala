@@ -24,6 +24,9 @@ import reactify.*
   *   [ui] device pasted copied\tfrom EveryUI 1
   *   [ui] device text scale 1.0980392156862746
   *   [ui] device launches 2 secret before "secret 1" kept true
+  *
+  * `signedin=1` says the viewer is signed in as it starts (`Platform.signedIn`: on a Roku, the Roku Event Dispatcher's
+  * `Roku_Authenticated`, logged as `[signin] …`), and `signedin=0` signed out.
   */
 object DeviceDemo {
   private def hundredths(d: Double): String = ((d * 100.0).round / 100.0).toString
@@ -41,6 +44,7 @@ object DeviceDemo {
     val secretKept = Platform.secret("device.secret") == "secret " + launches.toString
     Platform.log("device launches " + launches.toString + " secret before \"" + secretBefore + "\" kept " +
       secretKept.toString)
+    if (Platform.launchArg("signedin").nonEmpty) Platform.signedIn(Platform.launchArg("signedin") == "1")
     val facts = List(
       s"${Platform.kind} · ${Platform.deviceName()} · ${Platform.deviceModel()}",
       s"remote ${Platform.remoteNavigation()} · touch ${Platform.touchSupport()} · " +

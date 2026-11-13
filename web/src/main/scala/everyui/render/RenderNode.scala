@@ -2635,6 +2635,8 @@ object Platform {
   /** The launch beacon and the other certification beacons a Roku channel sends (`beacon`): none here. */
   def launchComplete(): Unit = ()
   def beacon(name: String): Unit = ()
+  /** Whether the viewer is signed in: told to a Roku (its Roku Event Dispatcher, certification's 4.3); nothing here. */
+  def signedIn(on: Boolean): Unit = ()
   /** `t`'s stack as the browser keeps it (a Scala.js throwable is a JS error), with what caused it. */
   def stackOf(t: Throwable): String = {
     val own = jsStack(t.asInstanceOf[js.Dynamic])

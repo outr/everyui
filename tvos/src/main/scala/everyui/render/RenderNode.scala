@@ -1024,6 +1024,8 @@ object Platform {
   /** The launch beacon and the other certification beacons a Roku channel sends (`beacon`): none here. */
   def launchComplete(): Unit = ()
   def beacon(name: String): Unit = ()
+  /** Whether the viewer is signed in: told to a Roku (its Roku Event Dispatcher, certification's 4.3); nothing here. */
+  def signedIn(on: Boolean): Unit = ()
   /** A throwable's stack: none to be had here. */
   def stackOf(t: Throwable): String = ""
   /** Turns cut off by the platform (a Roku's): none here. */

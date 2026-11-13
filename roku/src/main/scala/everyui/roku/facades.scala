@@ -553,3 +553,8 @@ class SGNode
 @native object uiTmpDelete {
   def apply(path: String): Unit = native.value
 }
+/** That the viewer is signed in, said to Roku through the Roku Event Dispatcher (RED, the roku_analytics component
+  * library): its `Roku_Authenticated` event, which certification's 4.3 asks of an app that needs a sign-in. */
+@native object uiSignedIn {
+  def apply(): Unit = native.value
+}
