@@ -167,15 +167,43 @@ object RokuChannel {
           |splash_screen_sd=pkg:/images/splash-sd.png
           |""".stripMargin)
     }
-    // The scene is generated; add the runtime to its <script> list so the ui* globals resolve in the component's scope.
+    // The scene is generated; add the runtime to its <script> list so the ui* globals resolve in the component's scope
+    // (with its remote assets, RemoteAssets.brs, where the runtime has them).
     val scene = out / "components" / "AppScene.xml"
     val original = IO.read(scene)
+    val assets = if ((runtime / "RemoteAssets.brs").exists)
+      """<script type="text/brightscript" uri="pkg:/components/RemoteAssets.brs" />
+  """ else ""
     val patched = original.replace(
       """<script type="text/brightscript" uri="pkg:/components/App.brs" />""",
       """<script type="text/brightscript" uri="pkg:/components/UniversalRuntime.brs" />
-  <script type="text/brightscript" uri="pkg:/components/App.brs" />""")
+  """ + assets + """<script type="text/brightscript" uri="pkg:/components/App.brs" />""")
     if (patched == original) sys.error("emitRoku: AppScene.xml no longer has the App.brs script line to patch")
     IO.write(scene, patched)
+    out
+  }
+
+  /** The assembled channel in `out` split as `settings` says (`RokuRemote`): what it needs to start stays in its
+    * package, and the rest goes to `bundle` (emptied first), named by its hash, with the table the channel fetches it
+    * by (`RokuAssets.bundle`), for the app's server to host at `settings.base`. Then the package is held to
+    * `settings.budget`, zipped: over it, the build fails, naming what is biggest in it. The bundle directory. */
+  def remote(log: String => Unit, warn: String => Unit, out: File, settings: RokuRemote, bundle: File): File = {
+    val (before, _) = RokuAssets.packageSize(out)
+    val moved = RokuAssets.bundle(log, warn, out, settings, bundle)
+    val (after, _) = RokuAssets.packageSize(out)
+    log(s"RokuChannel.remote: the package is ${RokuAssets.megabytes(after)} zipped (${RokuAssets.megabytes(before)} " +
+      s"with everything in it), of a budget of ${RokuAssets.megabytes(settings.budget)}; the bundle " +
+      s"${RokuAssets.megabytes(moved.map(f => f.size + f.media.map(_.size).getOrElse(0L)).sum)} in ${moved.size} files")
+    RokuAssets.overBudget(out, settings.budget).foreach(why => sys.error("RokuChannel.remote: " + why))
+    bundle
+  }
+
+  /** The package of the channel in `out` held to `budget` bytes zipped (certification 3.7: 4 MB), with nothing sent
+    * remote: over it, the build fails, naming what is biggest in it. */
+  def budget(log: String => Unit, out: File, budget: Long = RokuRemote.budget): File = {
+    val (size, _) = RokuAssets.packageSize(out)
+    log(s"RokuChannel.budget: the package is ${RokuAssets.megabytes(size)} zipped, of ${RokuAssets.megabytes(budget)}")
+    RokuAssets.overBudget(out, budget).foreach(why => sys.error("RokuChannel.budget: " + why))
     out
   }
 

@@ -37,6 +37,10 @@ object EveryUIPlugin extends AutoPlugin {
     def AppleApp: everyui.sbt.AppleApp.type = everyui.sbt.AppleApp
     def VLCKit: everyui.sbt.VLCKit.type = everyui.sbt.VLCKit
     def EveryUILibraries: everyui.sbt.EveryUILibraries.type = everyui.sbt.EveryUILibraries
+    // a Roku channel's split into its package and the remote bundle (RokuChannel.remote)
+    type RokuRemote = everyui.sbt.RokuRemote
+    def RokuRemote: everyui.sbt.RokuRemote.type = everyui.sbt.RokuRemote
+    def RokuAssets: everyui.sbt.RokuAssets.type = everyui.sbt.RokuAssets
 
     val everyuiVersion = settingKey[String]("The EveryUI release this plugin belongs to, for the app's EveryUI dependencies")
     @transient val everyuiFonts = taskKey[File]("EveryUI's fonts, taken out of the EveryUI backend on the classpath, with everyuiAppFonts: a directory of .ttf files for the app's assets")
