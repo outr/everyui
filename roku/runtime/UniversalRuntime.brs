@@ -2591,7 +2591,7 @@ sub uiMediaFields(n as object)
     if ga.uiMediaSeq = invalid then ga.uiMediaSeq = 0
     ga.uiMediaSeq = ga.uiMediaSeq + 1
     n.id = "uiMedia" + ga.uiMediaSeq.ToStr()
-    n.addFields({ uiAskedAt: 0.0, uiPlaying: true, uiLoop: false, uiReady: false, uiHandoff: false, uiStart: 0.0, uiHeaders: [], uiSidecars: [], uiAudioLanguage: "", uiTextLanguage: "" })
+    n.addFields({ uiAskedAt: 0.0, uiPlaying: true, uiLoop: false, uiReady: false, uiReadyAt: 0.0, uiFailure: "", uiHandoff: false, uiStart: 0.0, uiHeaders: [], uiSidecars: [], uiAudioLanguage: "", uiTextLanguage: "" })
 end sub
 
 sub uiSetMediaSource(node as object, url as string)
@@ -2601,6 +2601,7 @@ sub uiSetMediaSource(node as object, url as string)
     ' a player with nothing in it has nothing to stop, and a stop is done before the render thread goes on
     if node.content <> invalid then node.control = "stop"
     node.uiReady = false
+    node.uiFailure = ""
     if url = "" then return
     ' (a sound the build sent away: its compressed form's copy, or its address: RemoteAssets.brs)
     url = uiAssetUrl(url, true)
@@ -2673,7 +2674,11 @@ sub uiSeekMedia(node as object, seconds as float)
     if node <> invalid then node.seek = seconds
 end sub
 
-' `f` hears "ready" (first playing), "ended" and "error".
+' `f` hears "ready" (first playing), "ended" and "error". An end from a source that never played (no "playing" since
+' it was asked for, or a Video's that played for a moment with its position never past the start) is an error, not an
+' end: a device refuses some streams with "finished" rather than "error" (an HEVC Matroska file over the internet, just
+' after the same file on the network failed with -5, "finished" 9 ms after it was asked, and an app took it for the
+' end of an episode). What the device said is its uiFailure, which the app reads as MediaDiagnostics.failure.
 sub uiOnMediaEvent(node as object, f as dynamic)
     if node = invalid then return
     ga = GetGlobalAA()
@@ -2683,27 +2688,39 @@ sub uiOnMediaEvent(node as object, f as dynamic)
 end sub
 
 sub uiOnMediaState(event as object)
-    state = event.getData()
-    n = event.getRoSGNode()
+    uiMediaState(event.getRoSGNode(), event.getData())
+end sub
+
+sub uiMediaState(n as object, state as string)
     ' what a player does is otherwise invisible, and a picture of the screen shows no video to tell by
     if state = "playing" and not n.uiReady and n.uiAskedAt > 0
         said = ""
         if n.hasField("timeToStartStreaming") then said = " (the device: " + _str(n.timeToStartStreaming) + " s)"
-        print "[video] "; n.id; " playing "; Int(uiTicks() - n.uiAskedAt); " ms after it was asked"; said
+        print "[video] " + n.id + " playing " + Int(uiTicks() - n.uiAskedAt).ToStr() + " ms after it was asked" + said
     else
-        print "[video] "; n.id; " "; state
+        print "[video] " + n.id + " " + state
     end if
-    if state = "error" then print "[video] "; n.id; " failed: "; n.errorCode; " "; n.errorMsg; " "; n.errorStr
+    if state = "error"
+        n.uiFailure = uiMediaError(n)
+        print "[video] " + n.id + " failed: " + n.uiFailure
+    end if
+    if state = "finished" and not uiMediaPlayed(n)
+        said = "ended without playing; "
+        if n.uiReady then said = "ended at its start, having played nothing; "
+        n.uiFailure = said + uiMediaError(n)
+        print "[video] " + n.id + " " + n.uiFailure + ": an error, not the end"
+        state = "error"
+    end if
     if state = "playing" then n.uiHandoff = false
     ' refused the player just handed to it, the one before not yet let go of it: asked again, once, a moment later
     if state = "error" and n.uiHandoff and n.errorCode = -5
         n.uiHandoff = false
-        print "[video] "; n.id; " asks again for the player it was handed"
+        print "[video] " + n.id + " asks again for the player it was handed"
         uiMediaAgain(n)
         return
     end if
     if state = "error" and n.subtype() = "Audio"
-        RtReportError({ _cls: "AudioError", message: "audio: " + n.id + " failed: " + _str(n.errorCode) + " " + _str(n.errorMsg) + " (" + uiMediaUrl(n) + ")" })
+        RtReportError({ _cls: "AudioError", message: "audio: " + n.id + " failed: " + n.uiFailure + " (" + uiMediaUrl(n) + ")" })
     end if
     ga = GetGlobalAA()
     if ga.uiMediaListeners = invalid then return
@@ -2711,6 +2728,7 @@ sub uiOnMediaState(event as object)
     if f = invalid then return
     if state = "playing" and not n.uiReady
         n.uiReady = true
+        n.uiReadyAt = uiTicks()
         RtGuard(f, ["ready"])
     else if state = "finished"
         RtGuard(f, ["ended"])
@@ -2718,6 +2736,40 @@ sub uiOnMediaState(event as object)
         RtGuard(f, ["error"])
     end if
 end sub
+
+' Whether the source the node was last given has played: said "playing" since it was asked for, and, a Video, gone
+' past its start or played for a second and a half (a clip that short is no video).
+function uiMediaPlayed(n as object) as boolean
+    if not n.uiReady then return false
+    if n.subtype() <> "Video" then return true
+    at = n.position
+    if at <> invalid and at > 0.5 then return true
+    return uiTicks() - n.uiReadyAt >= 1500
+end function
+
+' What the device said of the node's last error: its errorCode, errorMsg and errorStr, those it has, an address in them
+' taken out (it carries a token).
+function uiMediaError(n as object) as string
+    said = ""
+    if n.hasField("errorCode") and n.errorCode <> invalid and n.errorCode <> 0 then said = "code " + _str(n.errorCode)
+    if n.hasField("errorMsg") and n.errorMsg <> invalid and n.errorMsg <> ""
+        if said <> "" then said = said + ", "
+        said = said + _str(n.errorMsg)
+    end if
+    if n.hasField("errorStr") and n.errorStr <> invalid and n.errorStr <> ""
+        if said <> "" then said = said + ", "
+        said = said + _str(n.errorStr)
+    end if
+    if said = "" then return "the device said nothing more"
+    re = CreateObject("roRegex", "[a-zA-Z]+://[^ ,;]+", "")
+    return re.ReplaceAll(said, "<address>")
+end function
+
+' The node's last failure (uiMediaError), "" while it has none: what MediaDiagnostics.failure says on a Roku.
+function uiMediaFailure(node as object) as string
+    if node = invalid or not node.hasField("uiFailure") then return ""
+    return node.uiFailure
+end function
 
 sub uiReleaseMedia(node as object)
     if node = invalid then return

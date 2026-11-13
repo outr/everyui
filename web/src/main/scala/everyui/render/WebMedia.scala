@@ -54,7 +54,10 @@ final class WebMedia(el: html.Element) {
   // refuses; it plays on once it is on the page again, and the page is in sight. A pause while it is on the page (a
   // media key, the browser's own controls) is the person's, and stands
   el.addEventListener("pause", (_: dom.Event) => if (meantToPlay && !el.isConnected) onThePage())
-  el.addEventListener("playing", (_: dom.Event) => tries = 0)
+  el.addEventListener("playing", (_: dom.Event) => {
+    tries = 0
+    played = true
+  })
 
   /** Hear `error`, and `retry` while hls.js retries a load; the element's own events are heard where they happen. */
   def listen(f: String => Unit): Unit = listeners = listeners :+ f
@@ -410,6 +413,7 @@ final class WebMedia(el: html.Element) {
 
   private def close(): Unit = {
     opened += 1
+    played = false
     url = None
     tries = 0
     allowed = false
@@ -426,6 +430,11 @@ final class WebMedia(el: html.Element) {
     el.removeAttribute("src")
     m.load()
   }
+
+  /** Its end, as the element says it: the end where the source played, and otherwise an error, as on every platform
+    * (a source that never played has not been watched). */
+  def ended(f: String => Unit): Unit = if (played) f("ended") else fail("ended without playing")
+  private var played = false
 
   private def fail(why: String): Unit = {
     failure = why

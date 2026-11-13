@@ -324,8 +324,10 @@ class RenderNode(val sg: SGNode) {
   private var textChosen = false
   private var textChoice = ""
   private var captionWatch: Option[() => Unit] = None
-  /** What was decoded: nothing this player says. */
-  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
+  /** What was decoded: nothing this player says; and its last failure, as the device said it (its errorCode, errorMsg
+    * and errorStr), or an end from a source that never played (uiMediaState), "" while it has none. */
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics =
+    everyui.component.MediaDiagnostics(failure = uiMediaFailure(sg))
   /** A track to hear or read, by its id ("" reads none). The text track chosen is the app's choice from then on, put
     * to each source as it opens (showCaptions). */
   def selectMediaTrack(kind: String, id: String): Unit =

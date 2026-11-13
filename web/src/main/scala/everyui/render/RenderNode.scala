@@ -834,7 +834,7 @@ class RenderNode(val el: html.Element) {
   def seekMedia(seconds: Double): Unit = media.foreach(_.currentTime = seconds)
   def onMediaEvent(f: String => Unit): Unit = if (media.nonEmpty) {
     el.addEventListener("playing", (_: dom.Event) => f("ready"))
-    el.addEventListener("ended", (_: dom.Event) => f("ended"))
+    el.addEventListener("ended", (_: dom.Event) => webMedia.ended(f))
     webMedia.listen(f)
   }
   def releaseMedia(): Unit = setMediaSource("")

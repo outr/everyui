@@ -272,9 +272,11 @@ trait MediaSupport { self: Component =>
   }
   watch()
 
-  /** Hear `ready` (it is showing, or sounding), `ended` (it reached its end, and does not loop) and `error` — and,
-    * with [[nowPlaying]] set, `paused` and `resumed` where the platform stopped or restarted it itself (another app
-    * took the sound, then gave it back), so what the screen shows can follow. */
+  /** Hear `ready` (it is showing, or sounding), `ended` (it reached its end, and does not loop) and `error` (the
+    * player's own, or an end from a source that never played: no `ready` since it was opened, which on a Roku is also
+    * a Video that went no further than its start; [[diagnostics]]' `failure` says which, and what the device said)
+    * — and, with [[nowPlaying]] set, `paused` and `resumed` where the platform stopped or restarted it itself (another
+    * app took the sound, then gave it back), so what the screen shows can follow. */
   def events(f: String => Unit): Unit = listeners = listeners :+ f
 
   /** Seconds in. */

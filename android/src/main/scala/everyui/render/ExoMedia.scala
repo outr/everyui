@@ -191,6 +191,12 @@ class ExoMedia(frame: Option[VideoFrame]) {
               listener("ready")
               darkWatch(made)
             }
+            // an end from a source that was never ready played nothing: an error, as on every platform, not the end
+            else if (state == Player.STATE_ENDED && !looping && !said) {
+              failure = "ended without playing"
+              Platform.log("media: " + url + " ended without playing: an error, not the end")
+              listener("error")
+            }
             else if (state == Player.STATE_ENDED && !looping) listener("ended")
           }
           override def onRenderedFirstFrame(): Unit = framed = true

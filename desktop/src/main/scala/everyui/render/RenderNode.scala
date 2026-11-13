@@ -1017,8 +1017,9 @@ class RenderNode(val fx: Node) {
   def setMediaLanguages(audio: String, text: String): Unit = ()
 
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
-  /** What was decoded: nothing this player says. */
-  def mediaDiagnostics(): everyui.component.MediaDiagnostics = everyui.component.MediaDiagnostics()
+  /** What was decoded: nothing this player says; and its last failure. */
+  def mediaDiagnostics(): everyui.component.MediaDiagnostics =
+    everyui.component.MediaDiagnostics(failure = media.map(_.failure).getOrElse(""))
   // JavaFX lists its tracks but will not switch between them
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaText(choice: everyui.component.TextChoice): Unit = ()

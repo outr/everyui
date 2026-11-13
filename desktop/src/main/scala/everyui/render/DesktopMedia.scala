@@ -19,6 +19,8 @@ class DesktopMedia(pane: Option[Pane]) {
   private var rate = 1.0
   private var cover = true
   private var listener: String => Unit = _ => ()
+  /** The last failure, "" while there is none (MediaDiagnostics.failure). */
+  var failure = ""
 
   pane.foreach { p =>
     val clip = new Rectangle()
@@ -36,22 +38,36 @@ class DesktopMedia(pane: Option[Pane]) {
   def setSource(url: String): Unit = if (url != source) {
     source = url
     close()
+    failure = ""
     if (url.nonEmpty) {
       try {
         val from = start
         start = 0.0
         val made = new MediaPlayer(new Media(url))
+        var ready = false
         made.setCycleCount(if (looping) MediaPlayer.INDEFINITE else 1)
         made.setMute(muted)
         made.setVolume(volume)
         made.setOnReady(() => {
           fit()
           if (from > 0.0) made.seek(Duration.seconds(from))
+          ready = true
           if (playing) made.play()
           listener("ready")
         })
-        made.setOnEndOfMedia(() => if (!looping) listener("ended"))
-        made.setOnError(() => listener("error"))
+        // an end from a source that was never ready played nothing: an error, as on every platform, not the end
+        made.setOnEndOfMedia(() => if (!looping) {
+          if (ready) listener("ended")
+          else {
+            failure = "ended without playing"
+            listener("error")
+          }
+        })
+        made.setOnError(() => {
+          failure = Option(made.getError).map(e => DesktopMedia.unaddressed(e.getType.toString + ": " + e.getMessage))
+            .getOrElse("")
+          listener("error")
+        })
         player = Some(made)
         pane.foreach { p =>
           val v = new MediaView(made)
@@ -62,6 +78,7 @@ class DesktopMedia(pane: Option[Pane]) {
       } catch {
         case t: Throwable =>
           Platform.logError("media: " + url, t)
+          failure = DesktopMedia.unaddressed(t.getClass.getSimpleName + ": " + t.getMessage)
           listener("error")
       }
     }
@@ -157,4 +174,9 @@ class DesktopMedia(pane: Option[Pane]) {
       v.setLayoutY((h - vh * scale) / 2.0)
     }
   }
+}
+
+object DesktopMedia {
+  /** A failure's words without the address in them, which may carry a token. */
+  def unaddressed(said: String): String = said.replaceAll("[a-zA-Z][a-zA-Z0-9+.-]*://[^\\s,;)]+", "<address>")
 }

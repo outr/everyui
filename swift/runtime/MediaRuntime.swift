@@ -700,6 +700,10 @@ final class MediaView: UIView, VLCMediaPlayerDelegate {
             if looping {
                 reopened = true
                 DispatchQueue.main.async { [weak self] in self?.open() }
+            } else if !ready {
+                // an end from a source that never opened played nothing: an error, as on every platform, not the end
+                failure = "ended without playing"
+                tell("error")
             } else {
                 speak()
                 tell("ended")

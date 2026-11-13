@@ -418,6 +418,10 @@ class SGNode
 @native object uiMediaId {
   def apply(node: SGNode): String = native.value
 }
+/** A player's last failure, "" while it has none (MediaDiagnostics.failure). */
+@native object uiMediaFailure {
+  def apply(node: SGNode): String = native.value
+}
 /** A sound effect (SceneGraph's SoundEffect, a WAV on the device): loaded to play later, played at a volume of 0 to
   * 1, and stopped. */
 @native object uiLoadEffect {
