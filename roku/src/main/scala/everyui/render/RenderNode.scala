@@ -39,6 +39,8 @@ class RenderNode(val sg: SGNode) {
   // again: the words, the face or the size changed. A text is read for each container it is put in and as its box
   // changes, and each read set a probe Label's font and words and laid them out, the same words at the same size.
   private var wholeWidth: Double = -1.0
+  // Whether its words are drawn in a stand-in while a face they are in is fetched (`textMeasurable`)
+  private var fontWaiting: Boolean = false
   // Whether the text wraps at its width (`setWhiteSpace`), so its height is its lines rather than one
   private var wrapping: Boolean = false
   // The clip last set, and the MaskGroup its children are in when its corners are rounded too
@@ -720,8 +722,23 @@ class RenderNode(val sg: SGNode) {
   }
   /** Whether words held to a limit wrap at it here: they do, the Label given its width. */
   def wrapsToLimit(): Boolean = true
-  /** Words measure as they will be drawn from the moment they are set. */
-  def textMeasurable(ready: () => Unit): Boolean = true
+  /** Words measure as they will be drawn from the moment they are set, but for words in a face the channel fetches
+    * (RokuChannel.remote) that has not arrived: drawn in its stand-in meanwhile, they are drawn again in it as it
+    * arrives (or in the stand-in for good, where it cannot be had), and `ready` is told. */
+  def textMeasurable(ready: () => Unit): Boolean =
+    if (fontUri.isEmpty) true
+    else if (fontWaiting) false
+    else if (uiFontWait(sg, () => faceArrived(ready))) true
+    else {
+      fontWaiting = true
+      false
+    }
+  private def faceArrived(ready: () => Unit): Unit = {
+    fontWaiting = false
+    uiSetFontFile(sg, fontUri, px(fontSize))
+    drawText()
+    ready()
+  }
 
   /** A field here is a line of text (TextInput asks the keyboard for its value), so its contents are its text. */
   def getValue(): String = uiGetText(sg)
@@ -1156,7 +1173,9 @@ object Platform {
   def after(seconds: Double, f: () => Unit): Unit = uiAfter(seconds, f)
 
   /** A packaged file (`pkg:/l10n/app_en.arb`), read at once. */
-  def readText(path: String, done: String => Unit): Unit = done(uiReadText(path))
+  def readText(path: String, done: String => Unit): Unit =
+    // (a translation the channel fetches, as it arrives: RokuChannel.remote)
+    if (uiAssetDue(path)) uiReadLater(path, done) else done(uiReadText(path))
   /** An ARB file's messages, parsed by the Roku's own JSON parser into a keyed table: a Scala parser and an entry-list
     * Map take the Roku most of a minute over a translation file of a few thousand entries. */
   def parseMessages(arb: String): Map[String, String] = uiArbMessages(arb)

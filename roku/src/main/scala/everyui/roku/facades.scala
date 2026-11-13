@@ -188,6 +188,19 @@ class SGNode
 @native object uiReadText {
   def apply(path: String): String = native.value
 }
+/** Whether a packaged file is one the channel fetches (RokuChannel.remote) and has not yet: its fetch begun. */
+@native object uiAssetDue {
+  def apply(path: String): Boolean = native.value
+}
+/** The text of a packaged file the channel fetches, handed to `done` as it arrives ("" where it cannot be had). */
+@native object uiReadLater {
+  def apply(path: String, done: String => Unit): Unit = native.value
+}
+/** Whether `label`'s words are drawn in their own faces: false while one is a face the channel fetches and has not yet,
+  * drawn in a stand-in meanwhile, `ready` then called once it has arrived (or will not). */
+@native object uiFontWait {
+  def apply(label: SGNode, ready: () => Unit): Boolean = native.value
+}
 /** Draw `text` in `label`, in runs of faces that have its glyphs when its own has not: the width drawn, or -1. */
 @native object uiRichText {
   def apply(label: SGNode, text: String, baseUri: String, weight: Int, size: Double, color: String): Double = native.value

@@ -67,6 +67,7 @@ function fetch(u as object, req as object) as object
     u.SetHeaders(headers)
     method = UCase(req.method)
     u.SetRequest(method)
+    if req.save <> invalid then return fetchSave(u, req)
     if req.bytes <> invalid then return fetchBytes(u, req, method)
     started = false
     if method = "GET"
@@ -151,4 +152,66 @@ function fetchBytes(u as object, req as object, method as string) as object
     if sent <> invalid then fs.Delete(sent)
     if got <> invalid and r.file = invalid and fs.Exists(got) then fs.Delete(got)
     return r
+end function
+
+' A remote asset (RemoteAssets.brs) fetched into the cache as `save`, its name: written to cachefs:, which lasts across
+' launches while the device has room, or where that cannot be written to tmp:, under a name of its own (.part) until it
+' is whole and its size and SHA-256 are the table's (`size`, `sha`), then given its own. The answer's body is where it
+' is, status 200; a file that came but was not right is taken away, status -2.
+function fetchSave(u as object, req as object) as object
+    r = { id: req.id, status: -1, headers: "{}", body: "" }
+    for each dir in ["cachefs:/", "tmp:/"]
+        part = dir + req.save + ".part"
+        DeleteFile(part)
+        if u.AsyncGetToFile(part)
+            msg = wait(120000, u.GetMessagePort())
+            if type(msg) <> "roUrlEvent"
+                u.AsyncCancel()
+                DeleteFile(part)
+                r.body = "timeout"
+                return r
+            end if
+            r.status = msg.GetResponseCode()
+            if r.status <> 200
+                DeleteFile(part)
+                r.body = msg.GetFailureReason()
+                return r
+            end if
+            why = savedWrong(part, req)
+            if why = ""
+                whole = dir + req.save
+                DeleteFile(whole)
+                if MoveFile(part, whole)
+                    r.body = whole
+                    return r
+                end if
+            else if why <> "unwritten"
+                DeleteFile(part)
+                r.status = -2
+                r.body = why
+                return r
+            end if
+        end if
+        DeleteFile(part)
+        r.body = "not written to " + dir
+    end for
+    return r
+end function
+
+' Why the file at `path` is not the one asked for ("unwritten" where it is not there at all), or "".
+function savedWrong(path as string, req as object) as string
+    fs = CreateObject("roFileSystem")
+    if not fs.Exists(path) then return "unwritten"
+    stat = fs.Stat(path)
+    if req.size <> invalid and stat <> invalid and stat.size <> invalid
+        if stat.size <> req.size then return "size " + stat.size.ToStr() + " where " + req.size.ToStr() + " was due"
+    end if
+    if req.sha = invalid then return ""
+    bytes = CreateObject("roByteArray")
+    if not bytes.ReadFile(path) then return "unreadable"
+    digest = CreateObject("roEVPDigest")
+    if digest = invalid then return ""
+    if digest.Setup("sha256") <> 0 then return ""
+    if LCase(digest.Process(bytes)) <> LCase(req.sha) then return "not its SHA-256"
+    return ""
 end function

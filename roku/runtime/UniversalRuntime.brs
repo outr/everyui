@@ -106,7 +106,7 @@ end sub
 ' not exist and Roku only warns about it at runtime.
 function uiImage(uri as string, width as float, height as float) as object
     n = uiNode("Poster")
-    n.uri = uri
+    n.uri = uiAssetUrl(uri, false)
     n.width = width
     n.height = height
     n.scaleRotateCenter = [width / 2.0, height / 2.0]
@@ -506,6 +506,8 @@ end function
 ' The language the app is in (Platform.setLanguage): which CJK glyphs a text takes, Traditional for zh_Hant.
 sub uiSetLanguage(code as string)
     GetGlobalAA().uiLanguageCode = code
+    ' its script's face fetched now, where the build sent it away (RemoteAssets.brs)
+    uiAssetLanguage(code)
 end sub
 
 ' The script a character is written in, for choosing a face: "arabic", "cjk", "latin" (a letter or a digit), or ""
@@ -689,6 +691,8 @@ function uiScriptFace(script as string, baseUri as string, weight as integer) as
                     ga.uiFontListing[entry] = true
                 end for
             end if
+            ' and those it fetches (RemoteAssets.brs)
+            uiAssetListFonts(ga.uiFontListing)
         end if
         uri = ""
         if weight >= 600 and ga.uiFontListing.DoesExist("fallback-" + name + "-bold" + ext) then uri = "pkg:/fonts/fallback-" + name + "-bold" + ext
@@ -707,8 +711,10 @@ function uiFontNode(uri as string, size as float) as object
     f = ga.uiFontNodes[key]
     if f = invalid
         f = uiNode("Font")
-        f.uri = uri
-        f.size = uiCalibratedSize(uri, size)
+        ' (a face the build sent away is drawn in its stand-in until it arrives: RemoteAssets.brs)
+        file = uiAssetFont(uri, f, size, key)
+        f.uri = file
+        f.size = uiAssetFontSize(file, size)
         ga.uiFontNodes[key] = f
     end if
     return f
@@ -1012,7 +1018,7 @@ function uiTextWidth(node as object, uri as string, size as float) as float
     f = ga.uiMeasureFonts[key]
     if f = invalid
         f = uiNode("Font")
-        f.uri = uri
+        f.uri = uiAssetFontFile(uri)
         f.size = big
         ga.uiMeasureFonts[key] = f
     end if
@@ -1201,7 +1207,7 @@ end sub
 sub uiSetImageSource(node as object, uri as string)
     if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
-    if node.hasField("uri") then node.uri = uri
+    if node.hasField("uri") then node.uri = uiAssetUrl(uri, false)
 end sub
 
 ' Decode a picture at the size it is actually drawn, so the resampling is the DECODER's. Left to itself the
@@ -1212,6 +1218,8 @@ sub uiSetImageSized(node as object, uri as string, width as float, height as flo
     if m.uiPerf <> invalid then m.uiPerf.writes = m.uiPerf.writes + 1
     if node = invalid then return
     if not node.hasField("uri") then return
+    ' (one the build sent away, its copy or its address: RemoteAssets.brs)
+    uri = uiAssetUrl(uri, false)
     ' the size SceneGraph composes at, NOT the panel's: the scene is laid out in the 1920x1080 design space and the
     ' box scales the finished frame to the panel afterwards. Decoding at panel pixels handed the renderer a picture
     ' two thirds the size it needed and it enlarged it again, which turned every poster soft.
@@ -1255,7 +1263,10 @@ end sub
 sub uiLoadImage(uri as string, loaded as dynamic)
     ga = GetGlobalAA()
     if ga.uiImageQueue = invalid then ga.uiImageQueue = []
-    job = { uri: uri, loaded: loaded, tries: 0, local: LCase(Left(uri, 4)) = "pkg:" }
+    ' (one the build sent away read from its copy, which is on the box too, or over https: RemoteAssets.brs)
+    uri = uiAssetUrl(uri, false)
+    head = LCase(Left(uri, 4))
+    job = { uri: uri, loaded: loaded, tries: 0, local: head = "pkg:" or head = "tmp:" or head = "cach" }
     if job.local
         uiImageStart(job)
     else
@@ -1479,6 +1490,7 @@ sub uiResumed(args as dynamic)
     ga = GetGlobalAA()
     print "[launch] resumed ("; uiLifeReason(args); "), memory "; uiMemoryNote()
     ga.uiStoreFiles = invalid
+    ga.uiAssetHere = invalid
     if ga.uiResumeHook <> invalid then RtGuard(ga.uiResumeHook, [])
     if type(args) = "roAssociativeArray"
         if type(args.launchParams) = "roAssociativeArray" then uiArrived(args.launchParams) else uiArrived(args)
@@ -1533,9 +1545,12 @@ sub uiBeacon(name as string)
     ga.appScene.signalBeacon(name)
 end sub
 
-' A packaged text file by its pkg:/ path (a translation), or "".
+' A packaged text file by its pkg:/ path (a translation), or "": one the build sent away read from its copy, "" until
+' it is here (Platform.readText waits for it: uiAssetDue, uiReadLater).
 function uiReadText(path as string) as string
-    return ReadAsciiFile(path)
+    file = uiAssetFile(path)
+    if file = "" then return ""
+    return ReadAsciiFile(file)
 end function
 
 ' An ARB file's messages as a string-keyed assoc array, which the runtime reads as a Scala Map: parsed natively, with
@@ -2003,7 +2018,8 @@ function uiShape(parent as object, existing as dynamic, uri as string, hex as st
         p = uiNode("Poster")
         parent.insertChild(p, index)
     end if
-    if p.uri <> uri then p.uri = uri
+    real = uiAssetUrl(uri, false)
+    if p.uri <> real then p.uri = real
     alpha = 255
     if Len(hex) = 9 then alpha = Val(Mid(hex, 8, 2), 16)
     p.blendColor = "0x" + UCase(Mid(hex, 2, 6)) + "FF"
@@ -2304,7 +2320,7 @@ function uiRoundClip(node as object, existing as dynamic, width as float, height
     if w < 1 or h < 1 then return group
     ' a round one (a face) is cut by the package's disc, stretched to it: one drawn here came out empty
     if w = h and r * 2 >= w - 1
-        uri = "pkg:/images/rr/circle.png"
+        uri = uiAssetUrl("pkg:/images/rr/circle.png", false)
     else
         uri = uiRoundMask(w, h, r)
     end if
@@ -2586,6 +2602,8 @@ sub uiSetMediaSource(node as object, url as string)
     if node.content <> invalid then node.control = "stop"
     node.uiReady = false
     if url = "" then return
+    ' (a sound the build sent away: its compressed form's copy, or its address: RemoteAssets.brs)
+    url = uiAssetUrl(url, true)
     c = uiNode("ContentNode")
     c.url = url
     ' where it starts, said with the content so the stream opens there rather than seeking after it; once
@@ -2794,7 +2812,10 @@ function uiEffect(uri as string) as object
         n.addFields({ uiPending: false, uiVolume: 100 })
         n.observeField("loadStatus", "uiOnEffectLoad")
         n.observeField("state", "uiOnEffectState")
-        n.uri = uri
+        ' (a WAV the build sent away: its address, which a SoundEffect reads itself, none where there is no base:
+        ' RemoteAssets.brs)
+        source = uiAssetUrl(uri, false)
+        if source <> "" then n.uri = source
         ga.appScene.appendChild(n)
         fx.nodes[uri] = n
         ' the one used longest ago let go, unless it is sounding
