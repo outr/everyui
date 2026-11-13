@@ -238,6 +238,10 @@ def bundled(path: String, files: File => Seq[File]): Def.Initialize[Task[Seq[Fil
 def exampleTranslations(root: File): Seq[(String, File)] =
   (root / "assets" / "l10n" * "*.arb").get().map(f => ("l10n/" + f.getName, f))
 
+/** The Chinese words of the example's demo=remote (RemoteDemo.chinese, the same), which a split channel's CJK face is
+  * cut to. */
+lazy val remoteDemoWords = "远程资源：图片、声音和文字"
+
 /** EveryUI's fonts (and Material Icons' codepoints), in each backend's jar under everyui/fonts/, which an app copies out
   * (sbt-everyui's everyuiFonts, and everyuiWebFonts on the web). */
 lazy val fontResources = bundled("everyui/fonts", root => (root / "assets" / "fonts" * ("*.ttf" | "*.codepoints")).get())
@@ -352,6 +356,19 @@ lazy val roku = (project in file("roku"))
       RokuChannel.assemble(outDir, root / "roku" / "runtime", Seq(root / "assets" / "images"), Seq(root / "assets" / "fonts"),
         (root / "assets" / "sounds" * "*.wav").get().map(f => ("sounds/" + f.getName, f)) ++ exampleTranslations(root),
         Some(baseDirectory.value / "images"))
+      // -Deveryui.rokuAssets=<base>: split as an app's channel is (RokuChannel.remote), its pictures, its other faces,
+      // its sounds and its French to roku/out-roku-assets for <base> to serve (http only for a test: brs-engine has no
+      // https), with the Arabic and CJK faces cut to demo=remote's words; otherwise every file ships, held to the
+      // budget
+      val log = streams.value.log
+      sys.props.get("everyui.rokuAssets") match {
+        case Some(base) =>
+          RokuChannel.fallbackFonts(log.info(_), outDir, remoteDemoWords)
+          RokuChannel.remote(log.info(_), log.warn(_), outDir, RokuRemote(base, allowHttp = base.startsWith("http://")),
+            baseDirectory.value / "out-roku-assets")
+        case None => RokuChannel.budget(log.info(_), outDir)
+      }
+      outDir
     }
   )
 

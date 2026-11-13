@@ -4922,6 +4922,75 @@ lazy val roku = project.in(file("roku"))
 a channel the Roku refuses to compile wipes the dev channel and what it kept. `RokuChannel.packageChannel` makes the
 store package on a keyed Roku.
 
+#### A package of 4 MB: remote assets (`RokuChannel.remote`, `RokuRemote`)
+
+Certification (3.7) holds a channel's package to 4 MB. `RokuChannel.remote`, after `assemble`, keeps in the package
+only what the channel needs to start, moves the rest to a remote bundle for the app's server to host, and fails the
+build if the package is still over its budget, naming its biggest parts and files:
+
+```scala
+      RokuChannel.assemble(out, everyuiRokuRuntime.value, Seq(images), Seq(everyuiFonts.value), files, Some(art))
+      RokuChannel.remote(streams.value.log.info(_), streams.value.log.warn(_), out,
+        RokuRemote("https://cdn.example.com/roku",
+          coreFonts = Seq("Roboto-Regular.ttf", "Roboto-Medium.ttf", "MaterialIcons-Regular.ttf"),
+          languages = Seq("en")),
+        baseDirectory.value / "out-roku-assets")
+```
+
+`RokuRemote` decides, by globs over the files' paths in the package (`*` within a directory, `**` across them):
+
+| Setting | Default | |
+| --- | --- | --- |
+| `base` | (required) | where the bundle is served, https; `""` sends nothing and only checks the budget (`RokuRemote.none`, or `RokuChannel.budget(log, out)`) |
+| `remote` | `images/**`, `fonts/**`, `sounds/**`, `l10n/**` | what goes to the bundle |
+| `local` | `images/rr/**` | what stays whatever `remote` says: the corners every rounded box is drawn with |
+| `coreFonts` | Roboto Regular and Medium, Open Sans Regular and SemiBold, Material Icons | the faces that ship (file names under `fonts/`) |
+| `languages` | `en` | the translations that ship (`l10n/app_en.arb`: a name that is the code or ends `_<code>`) |
+| `prefetch` | `fonts/**` | fetched in the background, one at a time, five seconds after the start; a script's face (`fonts/fallback-*`) never |
+| `transcode` | `Some("mp3")` | a remote WAV's compressed form for an Audio node (`"mp3"` or `"m4a"`, by ffmpeg); the WAV goes too |
+| `needTranscoder` | `false` | fail the build without ffmpeg, rather than send the WAVs alone with a warning |
+| `budget` | 4,000,000 bytes | the most the package may come to, zipped as a sideload is |
+| `allowHttp` | `false` | an http `base`, for a test against a local server only |
+
+The manifest, the code, the icons and splash screens, and `<name>.txt` flags at the root always ship.
+
+**The bundle** is a directory of the remote files, each named by the SHA-256 of its bytes and its extension
+(`<hash>.png`, `<hash>.9.png` for a 9-patch, `<hash>.ttf`, a sound's `<hash>.wav` and `<hash>.mp3`), with
+`everyui-assets.json`, the table the channel also carries at `pkg:/everyui-assets.json`: each remote path's hash
+(`h`), extension (`e`) and size (`s`), a font's stand-in (`f`, the core face of its family nearest its weight, else
+the plainest), a sound's compressed form (`mh`, `me`, `ms`), the `base` and what is prefetched. Serve the files at
+`<base>/<hash>.<ext>` over https; named by their contents, every release's can sit side by side in one place, so copy
+each release's bundle in beside the last without deleting, and the channels already installed go on finding theirs.
+The table in the bundle is for reference; nothing fetches it.
+
+**On the device**, a path the build sent away (`pkg:/images/x.png`, as `Platform.resolvePath` gives it) resolves to
+its copy in `cachefs:` once fetched (kept across launches while the device has room, and listed again as the channel
+comes back from behind another; `tmp:` where `cachefs:` cannot be written), and otherwise:
+
+- a picture to its address, which the Poster reads itself, a copy fetched in the background for the next launch;
+- a sound to its address, always: Roku documents a SoundEffect as playing the package's WAVs or a server's, not a
+  file in `cachefs:`, and keeps what it downloads; an Audio node is given the compressed form;
+- a font to its stand-in, the face fetched at once and the words in it drawn and measured again as it arrives (a face
+  for Chinese, Japanese, Korean or Arabic is fetched as the app's language is set to one, or as words in it are
+  first drawn);
+- a translation fetched before `Platform.readText` hands it over.
+
+Every fetch goes through the runtime's HTTP workers, one file at a time, never on the render thread; a file is kept
+only once its size and SHA-256 are the table's, and a cached copy no longer in the table (an earlier release's) is
+taken out a few seconds after the start. A file that cannot be had is said once (`[assets] images/x.png could not be
+fetched (404 ) from https://…: left out`) and left out: no picture, the stand-in face, an empty translation (the app's
+own words). The base is the build's unless the registry's `assets_base` (`Platform.saveSetting("assets_base", url)`,
+read at the next start) or a launch's `everyui_assets=<url>` says otherwise; one that is not https is said once and
+nothing is fetched.
+
+A Font node's `uri` is documented for the package's files only. As each fetched face is first drawn the console says
+how wide a line is in it and in its stand-in (`[assets] fonts/Roboto-Bold.ttf drawn from cachefs:/…: 480 wide where
+its stand-in is 426`); the same width on a device means it drew the stand-in, and the face has to ship.
+
+The example's `roku/emitRoku` with `-Deveryui.rokuAssets=<base>` is split so, with Arabic and CJK faces cut to
+`demo=remote`'s words, into `roku/out-roku-assets`; `demo=remote` draws a picture, Roboto Mono, Chinese, the French
+translation and a cheer from it.
+
 #### Fields and the Roku's keyboard
 
 A Roku has no text field of its own (`Platform.nativeInput()` is false), so a `TextInput`, a `TextArea` or a

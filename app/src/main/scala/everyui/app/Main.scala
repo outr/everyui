@@ -18,6 +18,8 @@ import everyui.render.Platform
   *              EveryUI's `server/` (`server=http://host:8731`), each check logged (NetDemo)
   *   input      the input model: focus, the arrows, Enter and the pointer (`probe=1` drives it itself)
   *   hello      the original seam proof plus the frame-rate probe
+  *   remote     what a split Roku channel fetches (RokuChannel.remote): a picture, a face, Chinese words, a
+  *              translation and an effect
   *   bench      reactify's per-operation cost
   *   easings    every easing curve as numbers
   *   blur       blur as the screensaver draws it: a photo over its blurred copy, and a blur coming clear
@@ -197,6 +199,7 @@ import everyui.render.Platform
   // any demo, with the overlap check on (`overlaps=1`)
   if (Platform.launchArg("overlaps") == "1") everyui.layout.Overlaps.warn @= true
   if (demo == "hello") HelloWorld.run()
+  else if (demo == "remote") RemoteDemo.run()
   else if (demo == "bench") ReactifyBench.run()
   else if (demo == "easings") EasingTable.run()
   else if (demo == "youibench") YouiBench.run()
