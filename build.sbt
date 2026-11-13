@@ -205,7 +205,7 @@ def backendSources(backend: String, spice: Boolean): Seq[File] =
 // The shared layer names `everyui.render.RenderNode` and a backend supplies it at compile time, so it ships inside
 // each backend's artifact rather than as a core of its own. reactify comes as its published snapshot here (4.2.1,
 // what the `reactive` project compiles from source), which evicts the older release Spice depends on.
-lazy val reactifyVersion = "4.2.1"
+lazy val reactifyVersion = "4.2.2"
 /** The commit a published artifact is built from, "-dirty" after it when the tree had uncommitted changes: written into
   * each published jar's manifest as EveryUI-Commit, so an app's build can say which EveryUI it has (sbt-everyui's
   * everyuiCommit) while the version stays 0.1.0-SNAPSHOT. */
