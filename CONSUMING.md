@@ -5453,6 +5453,19 @@ These cover what a web app would otherwise reach the browser for directly, so th
 - **Codecs.** `Platform.decodes(codec)` answers on the web too. It takes a media server's name ("vp9", "hevc", "aac")
   or a whole MIME type with its codecs (`video/webm; codecs="vp9"`). The browser is asked through Media Source's
   `isTypeSupported`, falling back to `canPlayType`. DTS and TrueHD are always no, and a name not known here is yes.
+  `Platform.decodes(codec, container, profile, level, bitDepth)` asks after a file as it is, for an app deciding
+  whether to play it directly: `container` "mkv", "mp4", "ts", "hls" (a server's "matroska" or "mpegts" too),
+  `profile` "main", "main 10", "high", `level` "5.1" (or a server's "51", and HEVC's "153", the level times 30) and
+  `bitDepth` 10 for ten bits, each "" or 0 for any (`everyui.component.MediaFormat` reads them). A Roku asks
+  roDeviceInfo's `CanDecodeVideo` or `CanDecodeAudio` with the codec in its own names ("mpeg4 avc", "hevc"), the
+  profile ("main 10" where only ten bits is said), the level and the container, and says each question and the
+  device's whole answer on its console once (`[decodes] video {…}: {…}`, the closest format where it says no); many a
+  Roku decodes HEVC in MP4 or TS and not in Matroska, or at 8 bits and not 10, so ask with the container before a
+  direct play. Android asks for a decoder listing the profile at the level or above (the container rules nothing
+  out: Media3 opens them all); the web asks with the MIME type that says them all (`video/x-matroska` for
+  Matroska, which few browsers say they play); Apple (VLCKit) and the desktop answer as `decodes(codec)` does. The
+  plain `decodes(codec)` asks after the codec alone: on a Roku the device in any container, profile and level (it
+  answered yes to everything before), so a yes there is that it has a decoder, not that it plays every file in it.
 - **Timing marks.** `everyui.perf.Marks.mark(name)` marks a moment at `Platform.ticks()`, keeping the last 200
   (`Marks.recent`, `Marks.last(name)`), for a check outside the app to time the gaps between. The web also keeps them on
   `window.everyuiMarks` (`{name, at}` each). Other platforms log them, as `[mark] name at`, when launched with

@@ -2771,6 +2771,44 @@ function uiMediaFailure(node as object) as string
     return node.uiFailure
 end function
 
+' Whether the device decodes a format: roDeviceInfo's CanDecodeVideo ("video") or CanDecodeAudio ("audio"), asked with
+' the codec and, where each is not "", the profile, the level and the container, in lower-case keys as Roku OS before
+' 14.1 wants them. Its whole answer is kept for uiDecodeAnswer (where it says no, the closest format it plays), and said
+' on the console the first time each question is asked.
+function uiCanDecode(kind as string, codec as string, profile as string, level as string, container as string) as boolean
+    asked = { codec: codec }
+    if profile <> "" then asked["profile"] = profile
+    if level <> "" then asked["level"] = level
+    if container <> "" then asked["container"] = container
+    info = CreateObject("roDeviceInfo")
+    answer = invalid
+    if kind = "video" and FindMemberFunction(info, "CanDecodeVideo") <> invalid then answer = info.CanDecodeVideo(asked)
+    if kind = "audio" and FindMemberFunction(info, "CanDecodeAudio") <> invalid then answer = info.CanDecodeAudio(asked)
+    ga = GetGlobalAA()
+    if answer = invalid
+        ga.uiDecodeLast = "{}"
+        return true
+    end if
+    ga.uiDecodeLast = FormatJson(answer)
+    ' each question said once, with the device's answer, for what a device plays to be read off its console
+    if ga.uiDecodeSaid = invalid then ga.uiDecodeSaid = {}
+    key = kind + " " + FormatJson(asked)
+    if not ga.uiDecodeSaid.DoesExist(key)
+        ga.uiDecodeSaid[key] = true
+        print "[decodes] " + key + ": " + ga.uiDecodeLast
+    end if
+    r = answer["result"]
+    if type(r) = "Boolean" or type(r) = "roBoolean" then return r
+    return true
+end function
+
+' The device's whole answer to the last uiCanDecode, as JSON ("" before one).
+function uiDecodeAnswer() as string
+    said = GetGlobalAA().uiDecodeLast
+    if said = invalid then return ""
+    return said
+end function
+
 sub uiReleaseMedia(node as object)
     if node = invalid then return
     ' stopped without holding the render thread while it does (Roku OS 12.5): the node is not used again

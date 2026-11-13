@@ -1,6 +1,7 @@
 package everyui.render
 
-import android.media.{AudioAttributes, AudioFormat, AudioTrack, MediaCodecList}
+import android.media.{AudioAttributes, AudioFormat, AudioTrack, MediaCodecInfo, MediaCodecList}
+import everyui.component.MediaFormat
 
 /** What this device can play, by the names a media server gives codecs ("hevc", "ac3", "dca"): a decoder for it, or
   * for sound a way to pass it through untouched to the television or the receiver.
@@ -60,4 +61,67 @@ object Codecs {
     val name = codec.trim.toLowerCase
     name.isEmpty || playable.isEmpty || playable.contains(name)
   }
+
+  /** Whether it can play `f`: the codec (as [[plays]]), and, where a profile, a level or ten bits is asked of a
+    * picture's codec, a decoder for it that lists the profile at that level or above (HEVC's Main or Main 10, H.264's
+    * Baseline, Main, High or High 10, VP9's 0 or 2, AV1's Main at 8 or 10 bits; levels for HEVC and H.264). Media3
+    * opens every container a server sends (MP4, Matroska, WebM, TS, HLS, DASH), so the container rules nothing out. A
+    * decoder that lists no profiles, or a profile not known here, is a yes. */
+  def plays(f: MediaFormat): Boolean =
+    if (!plays(f.codec)) false
+    else if (!f.video || (f.profile.isEmpty && f.level <= 0.0 && !f.deep)) true
+    else mimes.get(f.codec).forall { mime =>
+      val wanted = profileOf(f)
+      val level = levelOf(f)
+      if (wanted.isEmpty && level == 0) true
+      else try {
+        val lists = new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos.toList
+          .filter(i => !i.isEncoder && i.getSupportedTypes.exists(_.equalsIgnoreCase(mime)))
+          .map(i => i.getCapabilitiesForType(mime).profileLevels.toList)
+        lists.isEmpty || lists.exists(pls => pls.isEmpty || pls.exists(pl =>
+          wanted.forall(_ == pl.profile) && pl.level >= level))
+      }
+      catch {
+        case t: Throwable =>
+          Platform.logError("codecs: the device would not list " + mime + "'s profiles", t)
+          true
+      }
+    }
+
+  private def profileOf(f: MediaFormat): Option[Int] = {
+    import MediaCodecInfo.CodecProfileLevel as P
+    val p = f.profile
+    f.codec match {
+      case "hevc" =>
+        if (p == "main10" || (p.isEmpty && f.deep)) Some(P.HEVCProfileMain10)
+        else if (p == "main") Some(P.HEVCProfileMain)
+        else None
+      case "h264" =>
+        if (p == "high10" || (p.isEmpty && f.deep)) Some(P.AVCProfileHigh10)
+        else if (p == "high") Some(P.AVCProfileHigh)
+        else if (p == "main") Some(P.AVCProfileMain)
+        else if (p == "baseline" || p == "constrainedbaseline") Some(P.AVCProfileBaseline)
+        else None
+      case "vp9" =>
+        if (p == "2" || (p.isEmpty && f.deep)) Some(P.VP9Profile2)
+        else if (p == "0") Some(P.VP9Profile0)
+        else None
+      case "av1" =>
+        if (f.deep) Some(P.AV1ProfileMain10) else if (p == "main") Some(P.AV1ProfileMain8) else None
+      case _ => None
+    }
+  }
+
+  /** The level as MediaCodecInfo's constant for it (each a bit, higher for a higher level), 0 for any. */
+  private def levelOf(f: MediaFormat): Int =
+    if (f.level <= 0.0) 0
+    else {
+      val (levels, step) =
+        if (f.codec == "hevc") (List(1.0, 2.0, 2.1, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1, 5.2, 6.0, 6.1, 6.2), 2)
+        else if (f.codec == "h264")
+          (List(1.0, 1.0, 1.1, 1.2, 1.3, 2.0, 2.1, 2.2, 3.0, 3.1, 3.2, 4.0, 4.1, 4.2, 5.0, 5.1, 5.2, 6.0, 6.1, 6.2), 1)
+        else (Nil, 1)
+      val i = levels.indexWhere(_ >= f.level - 0.001)
+      if (levels.isEmpty || i < 0) 0 else 1 << (i * step)
+    }
 }

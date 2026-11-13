@@ -126,6 +126,8 @@ import everyui.render.Platform
   *   device     what the platform says of the device (its kind, name, version, safe area, input), a button that counts
   *              its presses, and errors thrown on purpose from a press and from a timer, each logged as Errors hears
   *              it (DeviceDemo)
+  *   decodes    what the device says it decodes (Platform.decodes): HEVC Main and Main 10 in MP4, Matroska and TS, H.264,
+  *              VP9, AV1 and the sounds, each logged and shown; on a Roku with roDeviceInfo's answers in full (DecodesDemo)
   *   userdata   the person's account details asked for as a sign-up or sign-in would (AccountDetails): on a Roku its
   *              own dialog (ChannelStore getUserData), elsewhere nothing shared (`auto=1`, `auto=email`, `fakestore=1`)
   *              (UserDataDemo)
@@ -266,6 +268,7 @@ import everyui.render.Platform
   else if (demo == "quality") QualityDemo.run()
   else if (demo == "launch") LaunchDemo.run()
   else if (demo == "device") DeviceDemo.run()
+  else if (demo == "decodes") DecodesDemo.run()
   else if (demo == "userdata") UserDataDemo.run()
   else if (demo == "lifecycle") LifecycleDemo.run()
   else if (demo == "unwind") UnwindDemo.run()

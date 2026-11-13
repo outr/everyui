@@ -1034,7 +1034,10 @@ object Platform {
   /** What the app is showing, as a PNG in base64: nothing here can take one. */
   def screenshot(): String = ""
 
+  // VLCKit plays every codec, in software where the device has no decoder for it, in every container it opens
   def decodes(codec: String): Boolean = true
+  def decodes(codec: String, container: String, profile: String = "", level: String = "", bitDepth: Int = 0): Boolean =
+    true
   // an app here is updated by whatever put it here, never by itself
   def canInstallApps(): Boolean = false
   def openInstallSettings(): Unit = ()

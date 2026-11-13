@@ -2026,6 +2026,9 @@ object Platform {
 
   // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
   def decodes(codec: String): Boolean = true
+  /** The same, whatever the container, profile, level and bit depth: nothing here says. */
+  def decodes(codec: String, container: String, profile: String = "", level: String = "", bitDepth: Int = 0): Boolean =
+    decodes(codec)
   // an app here is updated by whatever put it here, never by itself
   def canInstallApps(): Boolean = false
   def openInstallSettings(): Unit = ()

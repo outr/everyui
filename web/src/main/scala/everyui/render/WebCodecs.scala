@@ -46,4 +46,47 @@ object WebCodecs {
       try video.canPlayType(mime).asInstanceOf[String].nonEmpty catch { case _: Throwable => bySource.getOrElse(true) }
     }
   }
+
+  /** Whether the browser plays `f`: a picture's codec asked as the MIME type that says its container, profile, level
+    * and bit depth (`video/mp4; codecs="hvc1.2.4.L153.B0"` for HEVC Main 10 at 5.1); a TS or HLS stream as MP4, which
+    * hls.js turns it into, Matroska as `video/x-matroska`, which few browsers say they play; a sound's codec as
+    * [[plays]] has it. */
+  def plays(f: everyui.component.MediaFormat): Boolean =
+    mime(f).fold(plays(f.codec))(m => asked.getOrElse(m, {
+      val answer = !none.contains(f.codec) && supported(m)
+      asked = asked + (m -> answer)
+      answer
+    }))
+
+  /** The MIME type with its codecs that asks after `f`, or None for a codec not written out here. */
+  def mime(f: everyui.component.MediaFormat): Option[String] = {
+    val base = f.container match {
+      case "webm" => "video/webm"
+      case "mkv" => "video/x-matroska"
+      case _ => "video/mp4"
+    }
+    def two(n: Int): String = if (n < 10) "0" + n else n.toString
+    val depth = if (f.deep) 10 else 8
+    val codecs = f.codec match {
+      case "hevc" =>
+        val level = if (f.level > 0.0) math.round(f.level * 30.0).toInt else 93
+        Some((if (f.profile == "main10" || f.deep) "hvc1.2.4.L" else "hvc1.1.6.L") + level + ".B0")
+      case "h264" =>
+        val profile =
+          if (f.profile == "high10" || f.deep) "6E00" else if (f.profile == "high") "6400"
+          else if (f.profile == "main") "4D40" else "42E0"
+        val level = if (f.level > 0.0) math.round(f.level * 10.0).toInt else 30
+        Some("avc1." + profile + (if (level < 16) "0" else "") + Integer.toHexString(level).toUpperCase)
+      case "vp9" =>
+        val level = if (f.level > 0.0) math.round(f.level * 10.0).toInt else 10
+        Some("vp09." + (if (f.profile == "2" || f.deep) "02" else "00") + "." + two(level) + "." + two(depth))
+      case "av1" =>
+        // seq_level_idx: (major - 2) * 4 + minor, 5 (3.1) where none is said
+        val level = if (f.level >= 2.0) (f.level.toInt - 2) * 4 + math.round((f.level - f.level.toInt) * 10.0).toInt
+          else 5
+        Some("av01.0." + two(level) + "M." + two(depth))
+      case _ => None
+    }
+    codecs.map(c => base + "; codecs=\"" + c + "\"")
+  }
 }

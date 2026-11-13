@@ -2573,6 +2573,11 @@ object Platform {
   /** Whether the browser plays `codec`, by a media server's name for it ("vp9", "hevc", "aac") or a whole MIME type
     * with its codecs (WebCodecs). */
   def decodes(codec: String): Boolean = WebCodecs.plays(codec)
+  /** Whether the browser plays `codec` in `container` ("mp4", "webm", "mkv", "ts", "hls"; "" for any), at
+    * `profile`, `level` and `bitDepth` ("" or 0 for any), asked as the MIME type with its codecs that says them
+    * all (WebCodecs). */
+  def decodes(codec: String, container: String, profile: String = "", level: String = "", bitDepth: Int = 0): Boolean =
+    WebCodecs.plays(everyui.component.MediaFormat.of(codec, container, profile, level, bitDepth))
   // an app here is updated by whatever put it here, never by itself
   def canInstallApps(): Boolean = false
   def openInstallSettings(): Unit = ()

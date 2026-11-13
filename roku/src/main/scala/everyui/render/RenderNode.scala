@@ -1282,8 +1282,17 @@ object Platform {
   def screenshot(): String = ""
 
   def launchesApps(): Boolean = false
-  // nothing here says which codecs it has, so none is ruled out: a wrong no costs a transcode nobody needed
-  def decodes(codec: String): Boolean = true
+  /** Whether the device decodes `codec` (a media server's name for it: "hevc", "ac3"), asked of it (RokuCodecs) in any
+    * container, profile and level: a yes says it has a decoder, not that it plays every file in that codec. Before
+    * playing a file directly, ask with what the file is (the form below): many a Roku plays HEVC in MP4 or TS and not
+    * in Matroska, or HEVC at 8 bits and not at 10. */
+  def decodes(codec: String): Boolean = RokuCodecs.plays(everyui.component.MediaFormat.of(codec, "", "", "", 0))
+  /** Whether the device decodes `codec` in `container` ("mkv", "mp4", "ts", "hls"; "" for any), at `profile` ("main",
+    * "main 10", "high"), `level` ("5.1", or a server's "51" or HEVC "153") and `bitDepth` (10 asks the ten-bit profile
+    * where none is named), each "" or 0 for any: roDeviceInfo's CanDecodeVideo or CanDecodeAudio, as Roku documents
+    * them (RokuCodecs; the device's answer is `RokuCodecs.last()`). */
+  def decodes(codec: String, container: String, profile: String = "", level: String = "", bitDepth: Int = 0): Boolean =
+    RokuCodecs.plays(everyui.component.MediaFormat.of(codec, container, profile, level, bitDepth))
   // an app here is updated by whatever put it here, never by itself
   def canInstallApps(): Boolean = false
   def openInstallSettings(): Unit = ()

@@ -2965,6 +2965,11 @@ object Platform {
   /** Whether it can play `codec` (a media server's name for it: "hevc", "ac3"), with a decoder of its own or by passing
     * the sound through: see [[Codecs]]. */
   def decodes(codec: String): Boolean = Codecs.plays(codec)
+  /** Whether it can play `codec` in `container` ("mkv", "mp4", "ts"; "" for any), at `profile` ("main", "main 10",
+    * "high"), `level` ("5.1", or a server's "51" or HEVC "153") and `bitDepth` (10 asks the ten-bit profile where none
+    * is named), each "" or 0 for any: a decoder that lists that profile at that level or above ([[Codecs]]). */
+  def decodes(codec: String, container: String, profile: String = "", level: String = "", bitDepth: Int = 0): Boolean =
+    Codecs.plays(everyui.component.MediaFormat.of(codec, container, profile, level, bitDepth))
 
   /** Whether this copy may install a newer build of itself ([[AppInstaller]]): the viewer's "install unknown apps". */
   def canInstallApps(): Boolean = AppInstaller.allowed

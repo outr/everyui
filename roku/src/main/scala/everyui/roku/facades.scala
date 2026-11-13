@@ -422,6 +422,15 @@ class SGNode
 @native object uiMediaFailure {
   def apply(node: SGNode): String = native.value
 }
+/** Whether the device decodes a format (roDeviceInfo's CanDecodeVideo for `kind` "video", CanDecodeAudio for "audio"),
+  * each of `profile`, `level` and `container` asked only where it is not "" (RokuCodecs). */
+@native object uiCanDecode {
+  def apply(kind: String, codec: String, profile: String, level: String, container: String): Boolean = native.value
+}
+/** The device's whole answer to the last uiCanDecode, as JSON. */
+@native object uiDecodeAnswer {
+  def apply(): String = native.value
+}
 /** A sound effect (SceneGraph's SoundEffect, a WAV on the device): loaded to play later, played at a volume of 0 to
   * 1, and stopped. */
 @native object uiLoadEffect {
