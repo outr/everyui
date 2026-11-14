@@ -1,6 +1,6 @@
 package everyui.kit
 
-import everyui.component.{Component, Container, Modal}
+import everyui.component.{Component, Container, Modal, TextView}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.keymap.Keymap
@@ -378,6 +378,80 @@ class TabGroupsSpec extends FxSpec {
         }
         fx(other.tabLayout) shouldBe l
         fx(other.groups().map(_.selected())) shouldBe List(Some("c"), Some("c"), Some("c"))
+      }
+    }
+  }
+
+  "Without the strips" should {
+    "fill each group with what it shows, keep every tab, group and split, and show the strips again as they were" in {
+      val views = new Views
+      val g = groupsOf(views)
+      shown(g) {
+        opened(g, "a", "b", "c")
+        val first = fx(g.groups().head)
+        fx(g.openRight(first, "c"))
+        val second = fx(g.groups()(1))
+        fx(first.select("b"))
+        val ratio = fx(g.tabLayout.ratio)
+        val heard = new scala.collection.mutable.ListBuffer[TabLayout]
+        fx(g.layoutChanged.attach(l => heard += l))
+        fx(g.barShown @= false)
+        fx(g.groups().map(_.bar.visible())) shouldBe List(false, false)
+        fx(g.groups().map(_.body.position.top())) shouldBe List(0.0, 0.0)
+        fx(g.groups().map(x => x.body.size.height() == x.size.height())) shouldBe List(true, true)
+        fx(first.contentOf("b").get.size.height()) shouldBe fx(first.size.height())
+        keysOf(g) shouldBe List(List("a", "b"), List("c"))
+        fx(g.groups().map(_.selected())) shouldBe List(Some("b"), Some("c"))
+        fx(g.tabLayout.ratio) shouldBe ratio
+        // opening, showing and closing go on as ever
+        fx(g.openIn(second, "d"))
+        fx(second.selected()) shouldBe Some("d")
+        fx(g.close(first, "a"))
+        keysOf(g) shouldBe List(List("b"), List("c", "d"))
+        // a group made while they are off shows none either
+        fx(g.openDown(second, "d"))
+        fx(g.groups()(2).bar.visible()) shouldBe false
+        fx(g.groups()(2).body.position.top()) shouldBe 0.0
+        heard.size should be > 0
+        fx(g.barShown @= true)
+        fx(g.groups().map(_.bar.visible())) shouldBe List(true, true, true)
+        fx(g.groups().map(_.body.position.top())) shouldBe List(TabBar.height, TabBar.height, TabBar.height)
+        fx(first.body.size.height()) shouldBe fx(first.size.height() - TabBar.height)
+        keysOf(g) shouldBe List(List("b"), List("c"), List("d"))
+      }
+    }
+
+    "drag nothing, and give a tab's focus to what it shows" in {
+      val g = fx {
+        val t = new TabGroups[String](k => k, k => new TextView {
+          content @= k
+          focusable @= true
+        }, k => k)
+        t.size.width @= 1200.0
+        t.size.height @= 700.0
+        t
+      }
+      shown(g) {
+        opened(g, "a", "b")
+        val first = fx(g.groups().head)
+        fx(first.focusTab())
+        fx(Focus.focused().exists(f => Focus.within(f, first.bar))) shouldBe true
+        // a drag under way stops as the strips go
+        fx(g.press(first, "a", 30.0, 15.0))
+        fx(g.dragTo(400.0, 300.0))
+        fx(g.barShown @= false)
+        fx(ui.children().size) shouldBe 1
+        fx(g.drop(400.0, 300.0))
+        keysOf(g) shouldBe List(List("a", "b"))
+        // the focus, on the tab shown, goes to what it shows, and stays in it
+        fx(Focus.focused().exists(f => Focus.within(f, first.contentOf("b").get))) shouldBe true
+        fx(first.focusTab())
+        fx(Focus.focused().exists(f => Focus.within(f, first.contentOf("b").get))) shouldBe true
+        press(KeyCode.UP)
+        fx(Focus.focused().exists(f => Focus.within(f, first.contentOf("b").get))) shouldBe true
+        fx(g.barShown @= true)
+        fx(first.focusTab())
+        fx(Focus.focused().exists(f => Focus.within(f, first.bar))) shouldBe true
       }
     }
   }

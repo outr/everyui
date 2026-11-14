@@ -7118,6 +7118,11 @@ group whose "+" was pressed so the app opens its new tabs there with `openIn`; e
 every group's tabs, groups made later too: `Some(Color.Clear)` lets a picture behind the screen (a `Backdrop`) show
 through what the tabs show, the strip of tabs keeping the theme's background; `barBackground` (the same, for every group's strip of
 tabs) gives the strip one too, a colour with some alpha letting the picture through it, the tab shown keeping its mark.
+`barShown` (`Var[Boolean]`, true by default) set false hides every group's strip, groups made later too, and what each
+shows fills its whole group, as a phone shows one view at a time with the app listing the open ones its own way (a
+drawer): the tabs, their order, the one shown, the groups and their splits stay as they are and `open`, `close` and the
+rest work as ever, nothing is dragged and no "+" drops its menu, and a tab focused as it goes gives the focus to what
+it shows. Set true again, the strips are back as they were.
 `commands` puts the actions on a keymap, as Primary+\ (open right), Primary+Shift+\ (down), Primary+Alt+Right and Left
 (the next and the previous group), Primary+W or Primary+F4 (close) and Primary+Shift+Enter (maximize, below), which
 the app can `rebind`. Arrows keep to the focus layer's rules: Down from a bar goes into what it shows, Up comes back,

@@ -32,11 +32,14 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   keepEmpty.attach(_ => owner.changed())
   data.attach(_ => owner.changed())
   val bar: TabBar = new TabBar(shown, size.width(), showOnFocus = false)
+  bar.visible := owner.barShown()
+  // the height of the strip over the body: none while the groups show no strip (`TabGroups.barShown`)
+  private def barHeight: Double = if (owner.barShown()) TabBar.height else 0.0
   /** Where the tab being shown shows its content. */
   val body: Container = new Container {
     size.width := TabGroup.this.size.width()
-    size.height := math.max(0.0, TabGroup.this.size.height() - TabBar.height)
-    position.top @= TabBar.height
+    size.height := math.max(0.0, TabGroup.this.size.height() - barHeight)
+    position.top := barHeight
   }
   body.size.width.attach(_ => body.clipTo(body.size.width(), body.size.height()))
   body.size.height.attach(_ => body.clipTo(body.size.width(), body.size.height()))
@@ -92,7 +95,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   follow(owner.trailing, (f: TabGroup[K] => List[Component]) => bar.trailing @= f(this))
   // between the tabs and what the one shown shows, said rather than found by where they lie
   bar.exitAction(Key.ArrowDown, () => Focus.candidates(body).headOption.foreach(_.focus()))
-  body.exitAction(Key.ArrowUp, () => focusTab())
+  body.exitAction(Key.ArrowUp, () => if (owner.barShown()) focusTab())
   shown.attach(_ => show())
   keys.attach(_ => show())
 
@@ -143,8 +146,14 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   /** The content made for `k` here, where it has been shown: none for a tab that shares the group's view. */
   def contentOf(k: K): Option[Component] = made.get(k)
 
-  /** The focus on the tab being shown, or on the empty group's button, or its words where it has none. */
-  def focusTab(): Unit = bar(shown()).map(_.focus()).getOrElse(if (closer.visible()) closer.focus() else empty.focus())
+  /** The focus on the tab being shown, or on the empty group's button, or its words where it has none; with no strip
+    * (`TabGroups.barShown` off), on the first thing that takes it in what the tab shown shows, else as an empty group. */
+  def focusTab(): Unit = {
+    val tab = if (owner.barShown()) bar(shown()) else None
+    // (no strip, the focus goes into what the tab shown shows)
+    def inside: Option[Component] = if (owner.barShown()) None else Focus.candidates(body).find(c => !(c eq empty))
+    tab.map(_.focus()).orElse(inside.map(_.focus())).getOrElse(if (closer.visible()) closer.focus() else empty.focus())
+  }
 
   // what the tab being shown shows, made the first time; the rest off the screen, alive, or where they keep their place
   // (`TabGroups.keepsMounted`), there but hidden

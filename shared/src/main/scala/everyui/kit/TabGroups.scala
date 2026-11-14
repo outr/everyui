@@ -99,6 +99,12 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     * closes, and an empty group in a layout `restore`d is kept: off by default, a group left empty closing. Turned off,
     * groups empty already stay until they are closed or given a tab. */
   val keepEmptyGroups: Var[Boolean] = own(Var(false))
+  /** Whether the groups show their strips of tabs: on by default. Off, as a phone shows one view at a time (the app
+    * listing the open ones its own way, a drawer), no group draws its strip and what each shows fills the whole group;
+    * its tabs, their order, the one shown, the groups and their splits stay as they are, `open`, `close` and the rest
+    * work as ever, and nothing is dragged and no "+" drops its menu. A tab focused as it goes off gives the focus to what
+    * it shows. */
+  val barShown: Var[Boolean] = own(Var(true))
   /** The groups, first to last. */
   val groups: Var[List[TabGroup[K]]] = own(Var(Nil))
   /** Heard with the layout each time it changes: a tab opened, closed, moved or shown, a split made or undone, a
@@ -130,6 +136,14 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   place()
   follow(Focus.focused, (f: Option[Component]) => f.foreach { c =>
     groups().find(g => Focus.within(c, g)).foreach(g => if (!(focusedGroup() eq g)) focusedGroup @= g)
+  })
+  // the strips gone, a drag under way stops and a tab focused gives the focus to what it shows
+  barShown.attach(on => if (!on) {
+    if (pressed.nonEmpty) {
+      ui.children -= catcher
+      cancelDrag()
+    }
+    groups().find(g => Focus.focused().exists(c => Focus.within(c, g.bar))).foreach(_.focusTab())
   })
 
   // ---- tabs ----
@@ -564,7 +578,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   private[kit] def draggable(g: TabGroup[K], k: K, tab: TabItem): Unit = {
     tab.event.pointer.down.attach { e =>
       val onClose = tab.closeButton.exists(b => e.x >= b.absoluteLeft && e.x < b.absoluteLeft + b.size.width())
-      if (e.button == PointerEvent.PrimaryButton && !onClose && pressed.isEmpty) {
+      if (e.button == PointerEvent.PrimaryButton && !onClose && pressed.isEmpty && barShown()) {
         e.consume()
         press(g, k, e.x, e.y)
       }
