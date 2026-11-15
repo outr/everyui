@@ -1,13 +1,14 @@
 package everyui.render
 
-import android.app.{ActivityManager, Notification, NotificationManager, PendingIntent}
+import android.app.{ActivityManager, Notification, NotificationChannel, NotificationChannelGroup, NotificationManager,
+  PendingIntent, RemoteInput}
 import android.content.{Context, Intent}
 import android.graphics.drawable.Icon
 import android.os.{Build, Bundle, Handler, Looper}
 import everyui.Permission
 import everyui.activity.ServiceRuntime
 import everyui.background.Background
-import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushMessage, PushToken}
+import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushMessage, PushToken, ReplyOutcome}
 import scala.jdk.CollectionConverters.*
 
 /** Push notifications (`everyui.push.Push`) through Firebase Cloud Messaging (the app adds `EveryUILibraries.firebase`
@@ -15,16 +16,19 @@ import scala.jdk.CollectionConverters.*
   * it has not, or on a television, which shows no notifications of this kind, there is no push.
   *
   * A message is a data message, `{"title", "body", "path"}`, which `PushService` hears whether or not the app is in
-  * front: in front, it goes to `Push.received`; otherwise it is posted as a notification on a channel of its own
-  * ("everyui.push", "Notifications"), whose tap opens the app with the path (`Host.path` for a launch; `tapped`, from
+  * front: in front, it goes to `Push.received`; otherwise it is posted as a notification on the channel it names
+  * (`PushChannel`, made or renamed as it is named) or EveryUI's own ("everyui.push", "Notifications"), stacked under its
+  * group's summary where it has a group, whose tap opens the app with the path (`Host.path` for a launch; `tapped`, from
   * the activity's new intent, for an app already running). A notification message (with "notification") the system
   * shows itself when the app is not in front; its data's "path" still reaches the app on a tap. Android 13 and later ask
   * the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). */
 object PushAccess {
-  private val channel = "everyui.push"
   /** A notification's button that runs in the background, as `BackgroundReceiver` hears it. */
   val actionIntent = "everyui.push.ACTION"
   private val actionExtra = "everyui.push.action"
+  private val messageExtra = "everyui.push.message"
+  // the words of a reply, as RemoteInput hands them over
+  private val replyKey = "everyui.push.reply"
   // the id every notification with a tag is shown under: its tag tells it from the others
   private val tagged = 0
   private val notifications = "android.permission.POST_NOTIFICATIONS"
@@ -76,8 +80,7 @@ object PushAccess {
       Push.chose(actionOf(intent), go = true)
     }
     // one of the app's own: the push whole, its buttons and data with it
-    else if (intent != null && intent.hasExtra("everyui.push") && intent.hasExtra("everyui.push.actions"))
-      Push.tapped(actionOf(intent).message)
+    else if (intent != null && intent.hasExtra(messageExtra)) Push.tapped(actionOf(intent).message)
     else if (intent != null && (intent.hasExtra("everyui.push") || intent.hasExtra("google.message_id"))) {
       val text = (names: List[String]) => names.flatMap(n => Option(intent.getStringExtra(n))).headOption.getOrElse("")
       Push.tapped(PushMessage(text(List("everyui.push.title", "gcm.notification.title")),
@@ -99,46 +102,90 @@ object PushAccess {
   /** The notifications shown with `tag` taken away: `Push.close`, or a message of `{"close": tag}` (`PushService`). */
   def withdraw(context: Context, tag: String): Unit = manager(context).cancel(tag, tagged)
 
-  private def show(context: Context, message: PushMessage): Unit = {
+  /** `message` posted: as `at` (its tag and id) where it is posted again in its own place, else under its shown tag or
+    * an id of its own; quietly where it is posted again, with `replies` under it (Android's reply history). */
+  private def show(context: Context, message: PushMessage, at: Option[(String, Int)] = None,
+                   replies: Vector[String] = Vector.empty): Unit = {
     val notify = manager(context)
-    NoticeChannels.ensure(notify, channel, "Notifications", NotificationManager.IMPORTANCE_DEFAULT)
+    val channel = message.channel.getOrElse(PushChannel.default)
+    open(notify, channel)
     val id = (message.title + message.body + message.path.getOrElse("") + System.nanoTime().toString).hashCode
+    val shownAs = at.getOrElse(message.shownTag.map(t => (t, tagged)).getOrElse(("", id)))
     val launch = put(launcher(context), message, None)
     message.path.foreach(p => launch.putExtra("path", p))
     val info = context.getApplicationInfo
-    val builder = NoticeChannels.builder(context, channel, NotificationManager.IMPORTANCE_DEFAULT)
+    val title = if (message.title.nonEmpty) message.title else context.getPackageManager.getApplicationLabel(info).toString
+    val builder = NoticeChannels.builder(context, channel.id, NotificationManager.IMPORTANCE_DEFAULT)
       .setSmallIcon(NoticeIcon.of(context))
-      .setContentTitle(if (message.title.nonEmpty) message.title else context.getPackageManager.getApplicationLabel(info).toString)
+      .setContentTitle(title)
       .setContentText(message.body)
       .setStyle(new Notification.BigTextStyle().bigText(message.body))
       .setAutoCancel(true)
       // in place of the one shown with its tag, sounding again only where it says so
-      .setOnlyAlertOnce(message.tag.nonEmpty && !message.renotify)
+      .setOnlyAlertOnce(at.nonEmpty || (message.shownTag.nonEmpty && !message.renotify))
       .setContentIntent(PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
-    // its buttons: one that runs in the background a broadcast to the BackgroundReceiver where the app has a
-    // BackgroundApp, else (and one that opens the app) the app's launch with the button chosen
-    val shownAs = (message.tag.getOrElse(""), if (message.tag.nonEmpty) tagged else id)
+    message.group.foreach(g => builder.setGroup(g))
+    if (message.summary && message.group.nonEmpty) {
+      builder.setGroupSummary(true)
+      if (message.lines.nonEmpty) {
+        val inbox = new Notification.InboxStyle().setBigContentTitle(title)
+        message.lines.foreach(l => inbox.addLine(l))
+        if (message.body.nonEmpty) inbox.setSummaryText(message.body)
+        builder.setStyle(inbox)
+      }
+      // the summary never sounds: the newest of the group does as it comes
+      if (Build.VERSION.SDK_INT >= 26) builder.setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
+    }
+    // silenced as NotificationCompat silences one: a group's child alerting only through a summary it never has
+    else if (message.silent && Build.VERSION.SDK_INT >= 26) {
+      if (message.group.isEmpty) builder.setGroup("everyui.silent")
+      builder.setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY)
+    }
+    if (replies.nonEmpty && Build.VERSION.SDK_INT >= 24) builder.setRemoteInputHistory(replies.toArray[CharSequence])
+    // its buttons: one that runs in the background, or takes a reply, a broadcast to the BackgroundReceiver where the
+    // app has a BackgroundApp, else (and one that opens the app) the app's launch with the button chosen
     message.actions.take(PushButton.most).zipWithIndex.foreach { (b, i) =>
-      val code = (shownAs._2.toString + "#" + message.tag.getOrElse("") + "#" + i.toString).hashCode
+      val code = (shownAs._2.toString + "#" + shownAs._1 + "#" + i.toString).hashCode
       val flags = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+      val takes = b.input && Background.supported && Build.VERSION.SDK_INT >= 24
       val chosen =
-        if (b.background && Background.supported)
+        if (takes || (b.background && Background.supported))
           PendingIntent.getBroadcast(context, code, chose(put(new Intent(context, classOf[BackgroundReceiver])
-            .setAction(actionIntent), message, Some(b.id)), shownAs), flags)
+            .setAction(actionIntent), message, Some(b.id)), shownAs), if (takes) mutable else flags)
         else {
           val opening = chose(put(launcher(context), message, Some(b.id)), shownAs)
           b.path.orElse(message.path).foreach(p => opening.putExtra("path", p))
           PendingIntent.getActivity(context, code, opening, flags)
         }
-      builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, NoticeIcon.of(context)),
-        b.label, chosen).build())
+      val action = new Notification.Action.Builder(Icon.createWithResource(context, NoticeIcon.of(context)), b.label, chosen)
+      if (takes) action.addRemoteInput(new RemoteInput.Builder(replyKey)
+        .setLabel(if (b.hint.nonEmpty) b.hint else b.label).build())
+      builder.addAction(action.build())
     }
     val notification = builder.build()
-    try message.tag match {
-      case Some(tag) => notify.notify(tag, tagged, notification)
-      case None => notify.notify(id, notification)
+    try {
+      if (shownAs._1.nonEmpty) notify.notify(shownAs._1, shownAs._2, notification) else notify.notify(shownAs._2, notification)
     }
     catch { case t: SecurityException => android.util.Log.w("everyui", "notification not posted: " + t.getMessage) }
+  }
+
+  /** A reply's intent: the system writes the words into it, so mutable, which Android 12 must be told. */
+  private def mutable: Int =
+    if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+    else PendingIntent.FLAG_UPDATE_CURRENT
+
+  /** `channel` made where it is not yet, or its name (or group) brought up to date (Android 8 and later): Android
+    * keeps the importance it was made with, and the person's own choices. */
+  private def open(notify: NotificationManager, channel: PushChannel): Unit = if (Build.VERSION.SDK_INT >= 26) {
+    val had = notify.getNotificationChannel(channel.id)
+    val group = Option(channel.group).filter(_.nonEmpty)
+    if (had == null || had.getName.toString != channel.name || group.exists(g => had.getGroup != g)) {
+      group.foreach(g => notify.createNotificationChannelGroup(new NotificationChannelGroup(g,
+        if (channel.groupName.nonEmpty) channel.groupName else g)))
+      val made = new NotificationChannel(channel.id, channel.name, NotificationManager.IMPORTANCE_DEFAULT)
+      group.foreach(g => made.setGroup(g))
+      notify.createNotificationChannel(made)
+    }
   }
 
   private def launcher(context: Context): Intent =
@@ -146,18 +193,12 @@ object PushAccess {
       .getOrElse(new Intent(Intent.ACTION_MAIN).setPackage(context.getPackageName))
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
-  /** `intent` carrying `message` whole (and the button chosen, where one was), for `actionOf` to read back. */
+  /** `intent` carrying `message` whole, as the keys it was sent with (and the button chosen, where one was), for
+    * `actionOf` to read back. */
   private def put(intent: Intent, message: PushMessage, button: Option[String]): Intent = {
-    val data = new Bundle
-    message.data.foreach((k, v) => data.putString(k, v))
-    intent.putExtra("everyui.push", true)
-      .putExtra("everyui.push.title", message.title)
-      .putExtra("everyui.push.body", message.body)
-      .putExtra("everyui.push.renotify", message.renotify)
-      .putExtra("everyui.push.actions", PushButton.json(message.actions))
-      .putExtra("everyui.push.data", data)
-    message.path.foreach(p => intent.putExtra("everyui.push.path", p))
-    message.tag.foreach(t => intent.putExtra("everyui.push.tag", t))
+    val fields = new Bundle
+    message.fields.foreach((k, v) => fields.putString(k, v))
+    intent.putExtra("everyui.push", true).putExtra(messageExtra, fields)
     button.foreach(b => intent.putExtra(actionExtra, b))
     intent
   }
@@ -166,15 +207,13 @@ object PushAccess {
   private def chose(intent: Intent, shownAs: (String, Int)): Intent =
     intent.putExtra("everyui.push.shownTag", shownAs._1).putExtra("everyui.push.shownId", shownAs._2)
 
-  /** The button chosen and its push, from an intent `put` wrote. */
+  /** The button chosen and its push, from an intent `put` wrote, with the words of a reply typed into it. */
   def actionOf(intent: Intent): PushAction = {
-    val text = (k: String) => Option(intent.getStringExtra(k)).getOrElse("")
-    val data = Option(intent.getBundleExtra("everyui.push.data")).map(b =>
+    val fields = Option(intent.getBundleExtra(messageExtra)).map(b =>
       b.keySet.asScala.toList.flatMap(k => Option(b.getString(k)).map(k -> _)).toMap)
       .getOrElse(Map.empty[String, String])
-    PushAction(text(actionExtra), PushMessage(text("everyui.push.title"), text("everyui.push.body"),
-      Some(text("everyui.push.path")).filter(_.nonEmpty), Some(text("everyui.push.tag")).filter(_.nonEmpty),
-      intent.getBooleanExtra("everyui.push.renotify", false), PushButton.parse(text("everyui.push.actions")), data))
+    val reply = Option(RemoteInput.getResultsFromIntent(intent)).flatMap(r => Option(r.getCharSequence(replyKey)))
+    PushAction(Option(intent.getStringExtra(actionExtra)).getOrElse(""), PushMessage.of(fields), reply.map(_.toString))
   }
 
   /** The notification a button was chosen on taken away: Android leaves it showing. */
@@ -185,6 +224,18 @@ object PushAccess {
       try { if (tag.nonEmpty) manager(context).cancel(tag, id) else manager(context).cancel(id) }
       catch { case _: Throwable => () }
     }
+
+  /** A reply handled (`BackgroundApp.onPushReply`): the notification it was typed into posted again in its place, with
+    * the reply or as another, or taken away, as `outcome` says; Android spins on it until one or the other. */
+  def replied(context: Context, intent: Intent, action: PushAction, outcome: ReplyOutcome): Unit = {
+    val at = (Option(intent.getStringExtra("everyui.push.shownTag")).getOrElse(""), intent.getIntExtra("everyui.push.shownId", 0))
+    try outcome match {
+      case ReplyOutcome.ReplyClosed => dismiss(context, intent)
+      case ReplyOutcome.ReplyShown => show(context, action.message, Some(at), action.text.toVector)
+      case ReplyOutcome.ReplyUpdated(message) => show(context, message, Some(at))
+    }
+    catch { case t: Throwable => Platform.logError("push: the notification replied to not updated", t) }
+  }
 
   /** The activity started by a button that opens the app: `Push.acted` hears it once the app's `main` has run (it is
     * already at the path). */

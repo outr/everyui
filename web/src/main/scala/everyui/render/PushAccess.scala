@@ -31,7 +31,8 @@ object PushAccess {
         val kind = String.valueOf(data.everyui)
         if (kind == "push") Push.received @= message(data.message)
         else if (kind == "open") Push.tapped(message(data.message))
-        else if (kind == "act") Push.chose(PushAction(String.valueOf(data.id), message(data.message)), go = true)
+        else if (kind == "act")
+          Push.chose(PushAction(String.valueOf(data.id), message(data.message), reply(data.text)), go = true)
         else if (kind == "subscription") Push.tokens @= PushToken("webpush", String.valueOf(data.subscription))
       }
     })
@@ -46,11 +47,13 @@ object PushAccess {
       val pushed = try message(js.JSON.parse(Option(params.get("everyui-push")).getOrElse("{}")))
         catch { case _: Throwable => PushMessage("", "", None) }
       params.delete("everyui-action")
+      val text = Option(params.get("everyui-text"))
       params.delete("everyui-push")
+      params.delete("everyui-text")
       val rest = params.toString
       dom.window.history.replaceState(dom.window.history.state, "",
         dom.window.location.pathname + (if (rest.isEmpty) "" else "?" + rest) + dom.window.location.hash)
-      dom.window.setTimeout(() => Push.chose(PushAction(id, pushed), go = false), 0)
+      dom.window.setTimeout(() => Push.chose(PushAction(id, pushed, text), go = false), 0)
     }
   }
 
@@ -133,15 +136,20 @@ object PushAccess {
     }
   }
 
+  /** A reply's words as the service worker handed them over, where the browser took any. */
+  private def reply(v: js.Dynamic): Option[String] =
+    if (v == null || js.isUndefined(v)) None else Some(String.valueOf(v))
+
   private def message(m: js.Dynamic): PushMessage = {
     val text = (v: js.Dynamic) => if (v == null || js.isUndefined(v)) "" else String.valueOf(v)
-    val path = text(m.path)
-    val tag = text(m.tag)
+    val some = (v: js.Dynamic) => Some(text(v)).filter(_.nonEmpty)
     val buttons = if (js.isUndefined(m.actions) || m.actions == null) Vector.empty[PushButton]
       else PushButton.parse(js.JSON.stringify(m.actions))
     val data = if (js.isUndefined(m.data) || m.data == null) Map.empty[String, String]
       else m.data.asInstanceOf[js.Dictionary[Any]].toMap.map((k, v) => k -> String.valueOf(v))
-    PushMessage(text(m.title), text(m.body), if (path.isEmpty) None else Some(path), if (tag.isEmpty) None else Some(tag),
-      (m.renotify: Any) == true, buttons, data)
+    val lines = if (js.isUndefined(m.lines) || m.lines == null) Vector.empty[String]
+      else m.lines.asInstanceOf[js.Array[Any]].toVector.map(String.valueOf)
+    PushMessage(text(m.title), text(m.body), some(m.path), some(m.tag), (m.renotify: Any) == true, buttons, data,
+      some(m.group), (m.summary: Any) == true, lines, (m.silent: Any) == true)
   }
 }

@@ -8,7 +8,7 @@ import everyui.activity.ServiceRuntime
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
 import everyui.background.{Background, BackgroundApp, RestartReason, WorkRequest}
-import everyui.push.OngoingNotice
+import everyui.push.{OngoingNotice, ReplyOutcome}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.jdk.CollectionConverters.*
 
@@ -114,7 +114,9 @@ object BackgroundAccess {
     start(context)
     val action = Option(intent).flatMap(i => Option(i.getAction)).getOrElse("")
     val notice = Option(intent).flatMap(i => Option(i.getStringExtra(noticeExtra))).getOrElse("")
+    val reply = Option.when(action == PushAccess.actionIntent)(PushAccess.actionOf(intent)).filter(_.text.nonEmpty)
     val handled: Option[(String, () => Task[Unit])] = action match {
+      case _ if reply.nonEmpty => None
       case Intent.ACTION_BOOT_COMPLETED => Some("restart (booted)" -> (() => Background.restart(RestartReason.Booted)))
       case Intent.ACTION_MY_PACKAGE_REPLACED =>
         Some("restart (updated)" -> (() => Background.restart(RestartReason.Updated)))
@@ -138,11 +140,20 @@ object BackgroundAccess {
         Platform.log("background: nothing to do for " + other)
         None
     }
-    handled match {
-      case Some((what, handler)) =>
+    (reply, handled) match {
+      // a reply: the BackgroundApp's alone, app open or closed, and the notification posted again or taken away as it
+      // answers, or shown with the reply once its deadline has passed
+      case (Some(chosen), _) =>
+        val what = "push reply " + chosen.id
+        Platform.log("background: " + what)
+        run(what, Background.pushReply(chosen), receiverDeadline, ReplyOutcome.ReplyShown) { outcome =>
+          PushAccess.replied(context, intent, chosen, outcome)
+          finish()
+        }
+      case (None, Some((what, handler))) =>
         Platform.log("background: " + what)
         run(what, handler(), receiverDeadline, ())(_ => finish())
-      case None => finish()
+      case (None, None) => finish()
     }
   }
 

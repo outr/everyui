@@ -3622,9 +3622,10 @@ the push service with 404 or 410 at the next send; delete it then, and the app s
   with `-keep class everyui.render.PushService` in its shrinker rules. Firebase's own manifest entries (its component
   registrars, the Play services version) must be in the app's manifest too, since the Android packaging here does not
   merge archives' manifests or resources. The server sends a data message with the payload's three keys as `data`; it
-  reaches the app whether or not it is in front, and the app shows it as a notification (channel "everyui.push") when it
-  is not. A notification message the system shows itself; its `data.path` still reaches the app on a tap. Android 13
-  and later ask the person first. Not on an Android TV. Without Firebase in the app, `Push.supported` is false.
+  reaches the app whether or not it is in front, and the app shows it as a notification (on the channel it names,
+  else "everyui.push": [Groups, summaries and channels](#groups-summaries-and-channels-group-groupsummary-channel))
+  when it is not. A notification message the system shows itself; its `data.path` still reaches the app on a tap. Android
+  13 and later ask the person first. Not on an Android TV. Without Firebase in the app, `Push.supported` is false.
   The small icon is the app's drawable `everyui_notice`, which an app supplies: a monochrome white shape on
   transparent, at each density (`res/drawable-mdpi` to `-xxxhdpi`, or one vector drawable), since Android draws a small
   icon as a silhouette and a full-colour launcher icon shows as a blank square; the app's icon where it has none. The
@@ -3645,7 +3646,9 @@ values are all text; Web Push may send the array itself):
 
 Each button has an `id` (what the app is told), a `label` (the id where it has none), `background` (true or "true":
 it runs with the app left closed; false, the default, opens the app) and a `path` where an opening one goes (the
-push's otherwise). Any other key (`task` above) is the push's `data`, handed back with it (`PushMessage.data`).
+push's otherwise); `input` and `hint` make it a reply
+([Replies typed into a push](#replies-typed-into-a-push-pushbuttoninput-onpushreply)). Any other key (`task` above)
+is the push's `data`, handed back with it (`PushMessage.data`).
 
 ```scala
 Push.acted.attach { a =>                       // PushAction(id, message): the button and the push
@@ -3676,6 +3679,90 @@ path, or as the app starts at it), and by `BackgroundApp.onPushAction` for a bac
 
 `demo=platform` allows notifications, subscribes (`vapid=<public key>`), and shows what arrives or is tapped.
 `demo=background` delivers a reminder and an approval with buttons on Android, as the push service would.
+
+### Groups, summaries and channels (`group`, `groupSummary`, `channel`)
+
+A mail app with several accounts stacks each account's messages under a line of its own, and lets the person give
+each account its own sound. Each message names its group, and after it the server sends the group's summary, the
+same group with `groupSummary` and its `lines` (JSON text of an array, the newest first):
+
+```json
+{"title": "Bea", "body": "Lunch on Friday?", "tag": "a-17", "group": "ann@example.com",
+ "channel": "mail.ann", "channelName": "Mail: ann@example.com", "channelGroup": "mail", "channelGroupName": "Mail"}
+{"title": "3 new", "body": "ann@example.com", "group": "ann@example.com", "groupSummary": "true", "silent": "true",
+ "lines": "[\"Bea: Lunch on Friday?\",\"Cal: The draft\",\"Dee: Re: tickets\"]",
+ "channel": "mail.ann", "channelName": "Mail: ann@example.com"}
+```
+
+- `group` stacks a push with the others of its group. A summary (`"groupSummary": "true"`) is shown under the group's
+  tag where it has no tag of its own, so each takes the place of the last, and `{"close": "ann@example.com"}` takes
+  the summary away (a group's messages are closed by their own tags). Its `lines` are its expanded view, under its
+  title, with its body beside the app's name.
+- `"silent": "true"` posts a push with no sound or buzz. A summary never sounds: each message does as it comes, so
+  only the newest alerts (and Android spaces an app's alerts out, so not every message sounds when they come close
+  together).
+- `channel` is the Android channel it is posted into, made the first time a push names it, `channelName` what the
+  settings call it (the id where it has none), at the default importance; a later push with another name renames it,
+  and the sound, buzz and importance stay the person's. `channelGroup` and `channelGroupName` list it under a heading
+  in the settings. A push that names none is posted into EveryUI's own, "everyui.push", "Notifications", as before.
+- They are the push's own keys, not its `data`: `PushMessage.group`, `summary`, `lines`, `silent` and `channel`. One
+  that arrives with the app in front goes to `Push.received` as any does, summaries too, for the app to leave be.
+
+- **Android**: a message's group is its `setGroup`; a summary is `setGroupSummary` with an `InboxStyle` of its lines
+  and alerts only through its children (`GROUP_ALERT_CHILDREN`, Android 8 and later); silence is NotificationCompat's,
+  a child alerting only through a summary it never has (Android 8 and later; before it EveryUI's pushes make no
+  sound). From Android 7 the shade shows a group as one stack under the app's name, a stack of one as the message
+  alone, and the summary only as the stack's header; on Android 6 the summary is what shows, its children going only
+  to a watch. A summary is what keeps a group together: with none, Android 7 and later stack four or more of an app's
+  notifications as one group of their own. Channels are Android 8's; before it there are none, and the channel keys
+  do nothing.
+- **Web**: a browser stacks nothing, so a group is the tag of a push that has none, and a group shows as one
+  notification, the newest in place of the last; a summary shows its lines under its body; silent is the
+  notification's `silent`. Channels are Android's alone.
+- **Apple**: EveryUI has no push on an Apple device (an Apple TV shows none). For an app of its own the server's
+  `group` is APNs' `thread-id`.
+
+### Replies typed into a push (`PushButton.input`, `onPushReply`)
+
+A button with `"input": true` is a reply: the person types into the notification itself, `hint` in the empty field
+(the label where it has none), and the words reach the app's `BackgroundApp` with the app left closed:
+
+```json
+{"title": "Bea", "body": "Lunch on Friday?", "tag": "a-17", "group": "ann@example.com", "uid": "17",
+ "actions": "[{\"id\":\"reply\",\"label\":\"Reply\",\"input\":true,\"hint\":\"Reply to Bea\"},{\"id\":\"archive\",\"label\":\"Archive\",\"background\":true}]"}
+```
+
+```scala
+object AppBackground extends BackgroundApp {
+  override def onPushReply(a: PushAction): Task[ReplyOutcome] =
+    Mail.reply(a.message.data("uid"), a.text.getOrElse("")).map {
+      case true => ReplyOutcome.ReplyClosed                            // sent: the conversation answered
+      case false => ReplyOutcome.ReplyUpdated(a.message.copy(body = "Not sent: " + a.text.getOrElse("")))
+    }
+}
+```
+
+Android spins on a notification replied to until it is posted again or taken away, so the answer says which:
+`ReplyShown` posts it again as it was with the reply under it (the conventional answer, and the default),
+`ReplyClosed` takes it away, and `ReplyUpdated(message)` posts `message` in its place ("Sent", or the conversation
+with the reply in it). Each is posted quietly. By default `onPushReply` hands the reply to `onPushAction`, the words in
+`PushAction.text`, and answers `ReplyShown`; one that has not answered within the ten seconds a receiver has is shown
+with the reply too. A reply goes on to the server whatever the app shows, so it is `onPushReply`'s with the app open as
+well as closed, never `Push.acted`'s.
+
+- **Android**: a `RemoteInput` on the action, its broadcast's PendingIntent mutable (`FLAG_MUTABLE` from Android 12,
+  as a reply must be), to EveryUI's `BackgroundReceiver`, from Android 7 (which first lets the shade take text) and
+  where the build names a `BackgroundApp`. Elsewhere the button opens the app at its path, as a plain one does, and
+  `Push.acted` hears it with no text. `ReplyShown` is Android's reply history (`setRemoteInputHistory`).
+- **Web**: Chrome's action `type: "text"` where a browser takes it, the words heard by `Push.acted` in
+  `PushAction.text` (a page has no background); where it does not, a plain button with no text. The browser takes the
+  notification away as a button is chosen, so the answer has nothing to do there.
+- **Apple**: none here; an app of its own would make it a `UNTextInputNotificationAction`.
+
+`demo=background`'s "Mail for three accounts" pushes three accounts' mail as a server would, on Android: each account
+a channel under "Mail" and a stack under its summary, a stack of one among them, and Reply on each message, which
+ExampleBackground notes with its words and answers with each kind of `ReplyOutcome`.
+
 
 ## The app's own notifications and the unread badge (`Platform.showNotice`, `Platform.setBadge`)
 

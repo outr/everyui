@@ -1,7 +1,7 @@
 package everyui.background
 
 import everyui.async.Task
-import everyui.push.PushAction
+import everyui.push.{PushAction, ReplyOutcome}
 
 /** The app's code that runs with no screen: an object the platform loads by name where the app is not running (on
   * Android, the manifest's meta-data "everyui.background", which sbt-everyui writes from `everyuiBackground`), whose
@@ -44,6 +44,13 @@ trait BackgroundApp {
   /** A push notification's button that runs in the background (`PushButton.background`) chosen while the app's
     * screens do not run: a reminder ticked off, a request approved. While they run, `Push.acted` hears it instead. */
   def onPushAction(action: PushAction): Task[Unit] = Task.unit
+
+  /** A reply typed into a push notification (`PushButton.input`), the words in `action.text`, app open or closed: a
+    * reply goes on to the server in the background whatever the app shows, so it is heard here alone, never by
+    * `Push.acted`. What becomes of the notification once it is handled: posted again with the reply under it
+    * (`ReplyShown`), taken away (`ReplyClosed`) or posted as another (`ReplyUpdated`). By default it goes to
+    * `onPushAction` and is shown with the reply; one that has not answered in ten seconds is shown so too. */
+  def onPushReply(action: PushAction): Task[ReplyOutcome] = onPushAction(action).map(_ => ReplyOutcome.ReplyShown)
 
   /** The device started again, or the app was updated: what the platform forgot then (an ongoing notice) is put back
     * here. Scheduled work is kept through both and needs nothing. It may be heard with no restart (Android 15 tells

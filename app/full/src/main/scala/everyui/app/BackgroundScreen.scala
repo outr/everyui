@@ -17,8 +17,9 @@ import reactify.*
   * network, once at once (expedited) and every 15 minutes, and cancelled; the status notice shown and cleared (its
   * Pause, Resume and Open run in ExampleBackground); each settings page opened, and whether unused-app restrictions
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
-  * ExampleBackground with the app closed and are heard by Push.acted with it running. Under each, what
-  * ExampleBackground has noted, read again every two seconds and as the app comes back. */
+  * ExampleBackground with the app closed and are heard by Push.acted with it running; and mail for three accounts
+  * (Push.deliver), each message stacked under its account's summary on its account's channel, with a Reply typed into
+  * it. Under each, what ExampleBackground has noted, read again every two seconds and as the app comes back. */
 class BackgroundScreen extends UIScreen {
   override def manager: ScreenManager = BackgroundDemo
   override def title: String = "In the background"
@@ -77,7 +78,8 @@ class BackgroundScreen extends UIScreen {
         page("Device location", SettingsPage.DeviceLocation)),
       section("Push notifications with buttons, in 3 s", pushed)(
         new Button("A reminder", () => push(reminder)),
-        new Button("An approval", () => push(approval))),
+        new Button("An approval", () => push(approval)),
+        new Button("Mail for three accounts", () => mail())),
       section("Restarts", restarted)())
     val scroll = new ScrollContainer {
       size.width := ui.size.width()
@@ -137,6 +139,32 @@ class BackgroundScreen extends UIScreen {
     "path" -> "/background", "tag" -> "approval-7", "request" -> "7", "actions" -> PushButton.json(Vector(
       PushButton("approve", "Approve", background = true), PushButton("deny", "Deny", background = true),
       PushButton("look", "Look", path = Some("/background/opened")))))
+
+  /** Mail for three accounts as a mail server pushes it, from three seconds on, half a second apart: each message on
+    * its account's channel (under "Mail" in the settings) and in its account's group, with Reply (typed into it, its
+    * "after" saying what ExampleBackground makes of the notification then) and Archive, followed by the group's summary
+    * listing its messages, newest first, which makes no sound. The third account has one message. */
+  private def mail(): Unit = {
+    val accounts = Vector(("ann@example.com", "a", Vector("Lunch on Friday?", "The draft, attached", "Re: tickets")),
+      ("work@example.com", "w", Vector("Standup moved to 10", "Build 42 failed", "Review requested")),
+      ("solo@example.com", "s", Vector("Just the one")))
+    val pushes = accounts.flatMap { (account, key, subjects) =>
+      val channel = Map("group" -> account, "channel" -> ("mail." + key), "channelName" -> ("Mail: " + account),
+        "channelGroup" -> "mail", "channelGroupName" -> "Mail", "path" -> "/background")
+      subjects.indices.toVector.flatMap { i =>
+        val sender = "Sender " + (i + 1).toString
+        val message = channel ++ Map("title" -> sender, "body" -> subjects(i), "tag" -> (key + "-" + i.toString),
+          "after" -> (if (key == "w") "close" else if (i == 0) "update" else "show"),
+          "actions" -> PushButton.json(Vector(PushButton("reply", "Reply", input = true, hint = "Reply to " + sender),
+            PushButton("archive", "Archive", background = true))))
+        val summary = channel ++ Map("title" -> ((i + 1).toString + " new"), "body" -> account, "groupSummary" -> "true",
+          "silent" -> "true", "lines" -> subjects.take(i + 1).reverse.map(s => "\"" + s + "\"").mkString("[", ",", "]"))
+        Vector(message, summary)
+      }
+    }
+    Platform.log("example background: mail in 3 s, " + pushes.size.toString + " pushes")
+    pushes.zipWithIndex.foreach((p, i) => Platform.after(3.0 + i * 0.5, () => Push.deliver(p)))
+  }
 
   /** A push delivered in three seconds as the push service would (Push.deliver), time to leave the app first. */
   private def push(data: Map[String, String]): Unit = {

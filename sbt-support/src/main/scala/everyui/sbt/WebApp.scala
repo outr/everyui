@@ -110,7 +110,9 @@ object WebApp {
        |});
        |const windows = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true });
        |const tell = (client, data) => client.postMessage(data);
-       |const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions'];
+       |const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group', 'groupSummary', 'lines',
+       |  'silent', 'channel', 'channelName', 'channelGroup', 'channelGroupName'];
+       |const yes = v => v === true || v === 'true';
        |self.addEventListener('push', e => {
        |  let m = {};
        |  try { m = e.data ? e.data.json() : {}; } catch (x) { m = { body: e.data.text() }; }
@@ -118,13 +120,17 @@ object WebApp {
        |  let actions = m.actions;
        |  if (typeof actions === 'string') { try { actions = JSON.parse(actions); } catch (x) { actions = []; } }
        |  actions = (Array.isArray(actions) ? actions : []).filter(a => a && a.id).map(a => ({ id: String(a.id),
-       |    label: String(a.label || a.id), background: a.background === true || a.background === 'true',
-       |    path: a.path ? String(a.path) : null }));
+       |    label: String(a.label || a.id), background: yes(a.background),
+       |    path: a.path ? String(a.path) : null, input: yes(a.input), hint: a.hint ? String(a.hint) : '' }));
+       |  let lines = m.lines;
+       |  if (typeof lines === 'string') { try { lines = JSON.parse(lines); } catch (x) { lines = []; } }
+       |  lines = (Array.isArray(lines) ? lines : []).map(String);
        |  const data = {};
        |  Object.keys(m).filter(k => !KEYS.includes(k))
        |    .forEach(k => { data[k] = typeof m[k] === 'string' ? m[k] : JSON.stringify(m[k]); });
        |  const message = { title: String(m.title || ''), body: String(m.body || ''), path: m.path ? String(m.path) : null,
-       |    tag: m.tag ? String(m.tag) : null, renotify: m.renotify === true || m.renotify === 'true', actions, data };
+       |    tag: m.tag ? String(m.tag) : null, renotify: yes(m.renotify), actions, data, group: m.group ? String(m.group) : null,
+       |    summary: yes(m.groupSummary), lines, silent: yes(m.silent) };
        |  // those shown with a tag taken away (read elsewhere), and nothing more where that is all the push is
        |  const closing = m.close ? self.registration.getNotifications({ tag: String(m.close) })
        |    .then(shown => shown.forEach(n => n.close())) : Promise.resolve();
@@ -132,10 +138,15 @@ object WebApp {
        |  e.waitUntil(closing.then(() => windows()).then(list => {
        |    const seen = list.find(c => c.focused || c.visibilityState === 'visible');
        |    if (seen) return tell(seen, { everyui: 'push', message });
-       |    // one with a tag in place of the one shown with it, sounding again only where it says so
-       |    const options = { body: message.body, data: message };
-       |    if (message.tag) { options.tag = message.tag; options.renotify = message.renotify; }
-       |    if (actions.length) options.actions = actions.map(a => ({ action: a.id, title: a.label }));
+       |    // one with a tag (or a group: a browser stacks nothing, so a group shows as one) in place of the one shown with
+       |    // it, sounding again only where it says so; a summary's lines under its body; a reply's field where the browser
+       |    // has one (Chrome's type "text"; elsewhere it is a plain button)
+       |    const body = message.summary ? [message.body].concat(message.lines).filter(l => l).join('\\n') : message.body;
+       |    const options = { body, data: message, silent: message.silent };
+       |    const tag = message.tag || message.group;
+       |    if (tag) { options.tag = tag; options.renotify = message.renotify && !message.silent; }
+       |    if (actions.length) options.actions = actions.map(a => a.input
+       |      ? { action: a.id, title: a.label, type: 'text', placeholder: a.hint || a.label } : { action: a.id, title: a.label });
        |    return self.registration.showNotification(message.title, options);
        |  }));
        |});
@@ -159,16 +170,18 @@ object WebApp {
        |  // app opened at its path with the button and the push in its address, for the page to read as it starts
        |  const chosen = e.action && Array.isArray(message.actions) ? message.actions.find(a => a.id === e.action) : null;
        |  if (chosen) {
+       |    const text = chosen.input && typeof e.reply === 'string' ? e.reply : null;
        |    let at = new URL(chosen.path || message.path || './', self.registration.scope);
        |    if (at.origin !== self.location.origin) at = new URL('./', self.registration.scope);
        |    return e.waitUntil(windows().then(list => {
        |      const open = list.find(c => c.url.startsWith(self.registration.scope));
        |      if (open) {
-       |        tell(open, { everyui: 'act', id: chosen.id, message });
-       |        return chosen.background ? undefined : open.focus();
+       |        tell(open, { everyui: 'act', id: chosen.id, message, text });
+       |        return chosen.background || text !== null ? undefined : open.focus();
        |      }
        |      at.searchParams.set('everyui-action', chosen.id);
        |      at.searchParams.set('everyui-push', JSON.stringify(message));
+       |      if (text !== null) at.searchParams.set('everyui-text', text);
        |      return self.clients.openWindow(at.href);
        |    }));
        |  }

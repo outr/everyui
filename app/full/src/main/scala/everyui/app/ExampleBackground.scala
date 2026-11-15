@@ -3,14 +3,15 @@ package everyui.app
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
 import everyui.background.{BackgroundApp, RestartReason, WorkResult}
-import everyui.push.{NoticeAction, NoticeChannel, NoticeTap, Ongoing, OngoingNotice, PushAction}
+import everyui.push.{NoticeAction, NoticeChannel, NoticeTap, Ongoing, OngoingNotice, PushAction, ReplyOutcome}
 import everyui.render.Platform
 
 /** What the example runs with the app closed (build.sbt names this object, `everyuiBackground`; `demo=background`
   * drives it): each run of scheduled work noted with its time, whether the app was open, and how many runs there have
   * been; an ongoing notice ("status") whose Pause and Resume run here and whose Open opens `/background/opened`, shown
   * again when it is swiped away and after a restart; each restart noted with its reason; a push notification's button
-  * that runs in the background noted with its push. What it notes is in the
+  * that runs in the background noted with its push; a reply typed into a mail push noted with its words, the push
+  * then shown with the reply, taken away or shown as sent as its data's "after" says. What it notes is in the
   * settings ("example.bg.*"), which the demo reads, and in the log ("[ui] example background: ..."). */
 object ExampleBackground extends BackgroundApp {
   val channel: NoticeChannel = NoticeChannel("example.status", "Status", "What the example does in the background")
@@ -48,6 +49,20 @@ object ExampleBackground extends BackgroundApp {
       action.message.data.toList.sorted.map((k, v) => k + "=" + v).mkString(" ") + ") with the app closed")
     Platform.saveSetting("example.bg.push", action.id + " on \"" + action.message.title + "\" at " + now() +
       " with the app closed")
+  }
+
+  override def onPushReply(action: PushAction): Task[ReplyOutcome] = Task {
+    val open = if (ScreenManager.running.nonEmpty) "open" else "closed"
+    note("push reply " + action.id + " \"" + action.text.getOrElse("") + "\" on " + action.message.title + " (" +
+      action.message.body + ") with the app " + open)
+    Platform.saveSetting("example.bg.push", "replied \"" + action.text.getOrElse("") + "\" to \"" + action.message.body +
+      "\" at " + now() + " with the app " + open)
+    action.message.data.getOrElse("after", "") match {
+      case "close" => ReplyOutcome.ReplyClosed
+      case "update" => ReplyOutcome.ReplyUpdated(action.message.copy(body = "Sent: " + action.text.getOrElse(""),
+        actions = Vector.empty))
+      case _ => ReplyOutcome.ReplyShown
+    }
   }
 
   override def onRestart(reason: RestartReason): Task[Unit] = Task {

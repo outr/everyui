@@ -56,6 +56,9 @@ object Background {
   private[everyui] def pushAction(action: everyui.push.PushAction): Task[Unit] =
     started.map(_.onPushAction(action)).getOrElse(Task.unit)
 
+  private[everyui] def pushReply(action: everyui.push.PushAction): Task[everyui.push.ReplyOutcome] =
+    started.map(_.onPushReply(action)).getOrElse(Task.pure(everyui.push.ReplyOutcome.ReplyShown))
+
   private[everyui] def restart(reason: RestartReason): Task[Unit] =
     started.map(_.onRestart(reason)).getOrElse(Task.unit)
 }

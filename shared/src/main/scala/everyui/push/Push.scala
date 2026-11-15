@@ -34,7 +34,9 @@ object Push {
   /** A button on a notification chosen (`PushButton`): its id and the push. One that opens the app is heard here
     * before the app goes to its path, with the app running or as it starts. One that runs in the background is heard
     * here while the app's screens run, and by the app's `BackgroundApp.onPushAction` while they do not (on
-    * Android; a browser opens the app for it where no window of it is open): once either way. */
+    * Android; a browser opens the app for it where no window of it is open): once either way. A reply typed into one
+    * (`PushButton.input`) goes to `BackgroundApp.onPushReply` on Android, app open or closed, and is heard here on
+    * the web, with its words in `PushAction.text` where the browser took any. */
   val acted: Channel[PushAction] = Channel[PushAction]
 
   /** A new token for the server, where the platform replaced the one it had (a refreshed FCM token, a Web Push
