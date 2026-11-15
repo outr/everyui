@@ -60,9 +60,11 @@ object FileAccess {
       if (mime.startsWith("image/")) Some(file.toPath.toUri.toString) else None)
   }
 
-  /** Done with a picked file's `preview` (the file's own, which is kept), or a `source`, whose file is deleted. */
+  /** Done with a picked file's `preview` (the file's own, which is kept), or a `source`, whose file is deleted and whose
+    * picture, where one was drawn from it, leaves the cache of pictures. */
   def release(preview: String): Unit = if (sources.contains(preview)) {
     sources = sources - preview
+    Host.forgetImage(preview)
     try new java.io.File(new java.net.URI(preview)).delete() catch { case _: Exception => false }
     ()
   }

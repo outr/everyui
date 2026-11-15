@@ -10,7 +10,9 @@ import reactify.*
 
 /** One group of a `TabGroups`: a `TabBar` over what its tab being shown shows. Each tab's content is made the first
   * time it is shown and kept, the tabs not shown off the screen but alive, until the tab closes (disposed of) or moves
-  * to another group (taken along). A tab that keeps its place (`TabGroups.keepsMounted`) stays where it is, hidden. An
+  * to another group (taken along), or is let go after it has been out of sight a while (`TabGroups.evictAfter`) and
+  * made again as it is next shown. What is out of sight lets its pictures go (`ImageView.showing`), and draws them
+  * again as it shows. A tab that keeps its place (`TabGroups.keepsMounted`) stays where it is, hidden. An
   * empty group says so, and that is where the focus lands in it; one `TabGroups.keepEmptyGroups` keeps, while there is
   * another, has a button under its words closing it, which takes the focus instead. */
 class TabGroup[K](owner: TabGroups[K]) extends Container {
@@ -67,6 +69,14 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     * and the tab it was last told it shows. */
   private var shared: Option[GroupContent[K]] = None
   private var told: Option[K] = None
+  // what shows in the body now, its pictures drawn; whether the group is out of sight whole (hidden by another group
+  // maximized, or set aside), and whether what it showed was let go meanwhile, to be made again as it comes back
+  private var current: Option[Component] = None
+  private var out = false
+  private var stale = false
+  // while `TabGroups.evictAfter` is set: since when each content made here, and the shared view, has been out of sight
+  private var away: Map[K, Long] = Map.empty
+  private var sharedAway: Long = -1L
 
   backgroundColor := (if (owner.contentBackground().isEmpty && owner.barBackground().isEmpty) Theme.background()
     else Color.Clear)
@@ -128,7 +138,9 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
       body.children -= c
       mounted = mounted.filterNot(_ eq c)
       c.visible @= true
+      if (current.exists(_ eq c)) current = None
     }
+    away = away - k
     bar.remove(owner.id(k))
     keys @= keys().filterNot(_ == k)
     content
@@ -143,7 +155,8 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   /** The view this group shows its tabs that share one in, once it has shown one. */
   def groupView: Option[GroupContent[K]] = shared
 
-  /** The content made for `k` here, where it has been shown: none for a tab that shares the group's view. */
+  /** The content made for `k` here, where it has been shown and not let go since (`TabGroups.evictAfter`): none for a
+    * tab that shares the group's view. */
   def contentOf(k: K): Option[Component] = made.get(k)
 
   /** The focus on the tab being shown, or on the empty group's button, or its words where it has none; with no strip
@@ -155,9 +168,10 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     tab.map(_.focus()).orElse(inside.map(_.focus())).getOrElse(if (closer.visible()) closer.focus() else empty.focus())
   }
 
-  // what the tab being shown shows, made the first time; the rest off the screen, alive, or where they keep their place
-  // (`TabGroups.keepsMounted`), there but hidden
-  private def show(): Unit = {
+  // what the tab being shown shows, made the first time (or again, let go while it was out of sight); the rest off the
+  // screen, alive, or where they keep their place (`TabGroups.keepsMounted`), there but hidden. `tell` says the layout
+  // changed: not as what was let go is made again, which changes nothing of it
+  private def show(tell: Boolean = true): Unit = {
     // (read afresh: `selected` may not have heard the change yet)
     val on = keys().find(k => owner.id(k) == shown())
     val content: Option[Component] = on.map { k =>
@@ -192,7 +206,84 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     val keep = Vector(empty) ++ mounted ++ content.toVector.filterNot(c => mounted.exists(_ eq c))
     if (body.children().size != keep.size || !body.children().zip(keep).forall { case (a, b) => a eq b })
       body.children @= keep
-    owner.changed()
+    // the pictures of what went out of sight let go, and those of what came drawn
+    if (!current.exists(c => content.exists(_ eq c))) {
+      current.foreach(c => ImageView.showing(c, false))
+      content.foreach(c => ImageView.showing(c, !out))
+      current = content
+    }
+    if (tell) owner.changed()
+    owner.hid()
+  }
+
+  /** The whole group out of sight (hidden by another group maximized, or set aside), or back: what it shows lets its
+    * pictures go, or, back, draws them again, made again first where it was let go meanwhile. */
+  private[kit] def setOut(on: Boolean): Unit = if (on != out) {
+    out = on
+    if (!on && stale) {
+      stale = false
+      show(tell = false)
+    }
+    else current.foreach(c => ImageView.showing(c, !on))
+  }
+
+  // whether `k`'s content may be let go, by the groups' say: not one that keeps its place, holds unsaved work, or that
+  // the app keeps
+  private def mayGo(k: K): Boolean = !owner.keepsMounted(k) && !owner.isDirty(k) && owner.evictable()(k)
+  private def holdsFocus(c: Component): Boolean = Focus.focused().exists(f => Focus.within(f, c))
+
+  /** Each content out of sight `after` ms or more by `now` let go (disposed of, to be made again through `content`
+    * as its tab is next shown), and the time the next of those it may let go falls due (Long.MaxValue for none). What
+    * shows is never let go, and the shared view only once every tab sharing it may be. */
+  private[kit] def evict(now: Long, after: Long): Long = {
+    val on = if (out) None else keyOf(shown())
+    var next = Long.MaxValue
+    made.toList.foreach { case (k, c) =>
+      if (on.contains(k)) away = away - k
+      else {
+        val since = away.getOrElse(k, now)
+        away = away.updated(k, since)
+        if (mayGo(k) && !holdsFocus(c)) {
+          if (now - since >= after) letGo(c, () => {
+            made = made - k
+            away = away - k
+          })
+          else next = math.min(next, since + after)
+        }
+      }
+    }
+    shared.foreach { view =>
+      if (on.exists(owner.sharesGroupContent)) sharedAway = -1L
+      else {
+        if (sharedAway < 0L) sharedAway = now
+        if (keys().filter(owner.sharesGroupContent).forall(mayGo) && !holdsFocus(view)) {
+          if (now - sharedAway >= after) letGo(view, () => {
+            shared = None
+            told = None
+            sharedAway = -1L
+          })
+          else next = math.min(next, sharedAway + after)
+        }
+      }
+    }
+    next
+  }
+
+  // `c` let go: off the body where it is on it (all a group out of sight shows), forgotten, and disposed of
+  private def letGo(c: Component, forget: () => Unit): Unit = {
+    forget()
+    if (current.exists(_ eq c)) {
+      current = None
+      stale = true
+    }
+    body.children -= c
+    c.dispose()
+  }
+
+  /** The times each content went out of sight forgotten, as `TabGroups.evictAfter` is unset. */
+  private[kit] def forget(): Unit = {
+    away = Map.empty
+    sharedAway = -1L
   }
 
   private def fit(c: Component): Unit = {
@@ -208,6 +299,9 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     shared.foreach(_.dispose())
     shared = None
     told = None
+    current = None
+    stale = false
+    forget()
   }
 
   override def kind: String = "TabGroup"

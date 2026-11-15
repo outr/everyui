@@ -1172,6 +1172,9 @@ object Host {
       loaded
   }
 
+  /** The picture at `uri` no longer cached: its source is gone (`FileAccess.release`), so none will ask for it again. */
+  def forgetImage(uri: String): Unit = images.remove(uri).foreach(had => imageBytes -= bytesOf(had))
+
   /** Where `uri` is read from: a site-absolute path (`/api/portrait/3`) the app's own file under `assets` where there
     * is one, else the app's server's (`Platform.origin`) where it has one; anything else as it is. */
   def address(uri: String): String =

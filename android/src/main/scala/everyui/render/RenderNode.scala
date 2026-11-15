@@ -1989,6 +1989,10 @@ object Host {
     b
   }
 
+  /** The picture at `uri` no longer kept: its source is gone (`FileAccess.release`), so none will ask for it again. */
+  def forgetBitmap(uri: String): Unit =
+    bitmaps.remove(address(uri)).foreach(b => bitmapBytes -= b.getAllocationByteCount.toLong)
+
   /** Keep `b` under `uri`, letting the longest-unwanted go until the rest fit the budget. */
   private def keep(uri: String, b: Bitmap): Unit = if (b != null && !bitmaps.contains(uri)) {
     bitmaps.put(uri, b)

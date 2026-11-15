@@ -358,6 +358,9 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
 
   // the children culled, each with what stops it following the viewport
   private var culling: Map[Component, () => Unit] = Map.empty
+  /** Whether `c`, one of what it holds, is out of sight now for being out of its view: its pictures drawn again as it
+    * comes back into it (`ImageView.showing`). */
+  private[everyui] def outOfView(c: Component): Boolean = culling.contains(c) && !c.notHidden
   // the content's children as they were last culled
   private var culled: Vector[Component] = Vector.empty
 

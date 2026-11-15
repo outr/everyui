@@ -170,9 +170,10 @@ object FileAccess {
     })
 
   /** Done with a picked file's `preview` (the content's own address, which holds nothing), or a `source`, whose file
-    * is deleted. */
+    * is deleted and whose picture, where one was drawn from it, leaves the cache of pictures. */
   def release(preview: String): Unit = sources.get(preview).foreach { file =>
     sources = sources - preview
+    Host.forgetBitmap(preview)
     mimes = mimes - preview
     file.delete()
   }

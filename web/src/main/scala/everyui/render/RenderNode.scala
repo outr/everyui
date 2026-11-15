@@ -686,8 +686,10 @@ class RenderNode(val el: html.Element) {
 
   def setWhiteSpace(value: String): Unit = el.style.whiteSpace = value
 
+  /** The picture the `img` draws, or none: its `src` taken away, so the page holds nothing decoded for it while it is
+    * out of sight (`ImageView.showing`), and set again as it comes back, from the page's own store of pictures. */
   def setImageSource(uri: String): Unit = {
-    el.setAttribute("src", uri)
+    if (uri.isEmpty) el.removeAttribute("src") else el.setAttribute("src", uri)
     // a tint set before the picture came masks with it now: set first, it had masked with no picture, and drew nothing
     if (tint.nonEmpty) masked()
   }

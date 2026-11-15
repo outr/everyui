@@ -4835,6 +4835,16 @@ default). A view the app sizes itself, such as an avatar or a picture fitted to 
 (`sizedByPicture @= false`) and keeps its size whatever picture comes. `Avatar`, `ImageViewer`, `AttachmentChip` and
 `ImageView(source, height)` do so.
 
+**A picture out of sight.** An `ImageView` out of sight lets its decoded picture go and draws it again as it comes
+back, its `image` remembered either way: one in a tab not shown, in a group hidden by another maximized or set aside
+(`TabGroups`), or in a card scrolled out of a `ScrollContainer`'s view off the web, which draws them again as the
+card comes back into it, not before. An app hiding a view of its own the same way says so with
+`ImageView.showing(view, on)`. What letting go frees is each platform's: the web takes the `<img>`'s `src` away (set
+again from the page's own store of pictures, with no fetch), the desktop's and Android's views drop their bitmap (held
+on only by the platform's cache of pictures, which lets the longest unwanted go), and a Roku's Poster and tvOS's view
+their texture. `showBytes(bytes, mime)` shows a picture from bytes through a source made for the view alone
+(`Files.source`), which it lets go (`Files.release`) as another picture takes its place or the view is disposed of.
+
 **Which pictures each platform draws.** `Image(url)`, `ImageView` and `Avatar` take an http(s) URL, a site-absolute or
 relative path of the app's own files, or a `data:` address (base64 or percent-encoded).
 
@@ -7144,6 +7154,25 @@ def switchTo(next: String): Unit = {
   asides.remove(next).foreach(editor.putBack)   // a first visit opens its tabs in the empty group instead
   current = next
 }
+```
+
+What is out of sight can be let go after a while (`evictAfter: Var[Option[FiniteDuration]]`, None by default, which
+lets nothing go and sets no timer): a tab's content out of sight that long is disposed of and made again through
+`content` as its tab is next shown, so the app makes it from its own state (the file, the scroll position, the draft
+it keeps). Out of sight is a tab not shown in its group, a group hidden by another maximized, or a whole set aside: a
+`TabsAside` keeps its groups, tabs and splits however long it is aside, and its contents only as long as `evictAfter`
+says, `putBack` making each again as it shows. Never let go: the tab shown, one that keeps its place (`keepsMounted`:
+a page of the web, a video), one marked `dirty`, and any `evictable` (`Var[K => Boolean]`, every one by default) says
+to keep. A group's shared view (`groupContent`) goes once every tab sharing it may go and none has shown for that
+long, and the one made again is told the tab it shows (`GroupContent.show`). Letting go is no change of layout:
+`layoutChanged` hears nothing of it, nor of the content made again. `TabsAside.asideSince` is when it was set aside,
+for an app keeping a few workspaces to dispose of the oldest. One timer serves every group and every set aside, set
+for the next to fall due.
+
+```scala
+editor.evictAfter @= Some(10.minutes)
+editor.evictable @= (d => !d.isBuilding)   // the app keeps what it would rather not make again
+asides.filter(_._2.asideSince < now - 1.hour.toMillis).foreach { case (k, a) => a.dispose(); asides.remove(k) }
 ```
 A tab closes only once `canClose` (`K => Task[Boolean]`, always true by default) lets it, by the ×, the menu, the keys
 and `closeAllTabs()`: the app asks as it likes (`Dialogs.saveChanges`) and a tab it answers false for stays. It is asked

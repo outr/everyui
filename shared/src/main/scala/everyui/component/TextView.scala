@@ -47,10 +47,10 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   private def overflow: TextOverflow = if (overflowMade) textOverflow() else overflowAtFirst
   /** A shadow behind the letters themselves, not the box: an edge that keeps words readable over a picture. None at
     * Minimal (`everyui.perf.Quality`). */
-  lazy val textShadow: types.Prop[Option[everyui.Shadow]] = new types.Prop[Option[everyui.Shadow]](None, _ => {
+  lazy val textShadow: types.Prop[Option[everyui.Shadow]] = own(new types.Prop[Option[everyui.Shadow]](None, _ => {
     textShadowed = true
     drawTextShadow()
-  })
+  }))
   private var textShadowed = false
   private def drawTextShadow(): Unit = textShadow() match {
     case Some(sh) if everyui.perf.Quality.textEffects => node.setTextShadow(sh.x, sh.y, sh.blur, Component.css(sh.color))
@@ -62,11 +62,11 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   }
   /** A hard edge round the letters, where a shadow would only blur: words kept readable over bright footage, as the
     * Flutter screensaver edges them. Where a platform draws no outline, the words are drawn without one. */
-  lazy val textOutline: types.Prop[Option[everyui.TextOutline]] = new types.Prop[Option[everyui.TextOutline]](None, o =>
+  lazy val textOutline: types.Prop[Option[everyui.TextOutline]] = own(new types.Prop[Option[everyui.TextOutline]](None, o =>
     o match {
       case Some(line) => node.setTextOutline(line.width, Component.css(line.color))
       case None => node.setTextOutline(0.0, "")
-    })
+    }))
   val font: FontFeature = new FontFeature(this)
   /** Where the text sits in its box, by the reading direction: it matters once the box is wider than the words
     * (wrapped, or given a width). */

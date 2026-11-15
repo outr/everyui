@@ -7,10 +7,14 @@ import everyui.focus.Focus
 import everyui.i18n.{Direction, Words}
 import everyui.keymap.{Chord, Command, Keymap}
 import everyui.menu.MenuItem
+import everyui.render.Platform
 import everyui.split.SplitPane
 import everyui.theme.Theme
+import everyui.util.Clock
 import everyui.{Color, Shadow, ui}
 import reactify.*
+
+import scala.concurrent.duration.FiniteDuration
 
 /** Tabs in groups, as an editor splits its files: one group or more, each a `TabBar` over what its tab being shown
   * shows, lying in splits whose handles drag (`SplitPane`), across and down. `content` makes what a tab shows the first
@@ -53,6 +57,10 @@ import reactify.*
   * stays where it is, hidden, and is shown again as it is chosen. A page of the web (`WebView`, a frame), a video or a
   * canvas wants that, since one taken off and put back loads or starts again, losing where it was scrolled to, what
   * was typed and who signed in. Each kept costs what it holds while it is not shown.
+  *
+  * What is out of sight lets its pictures go (`ImageView.showing`) until it shows again. With `evictAfter`, a content
+  * out of sight that long is let go whole and made again through `content` as its tab is next shown: the app keeps
+  * what it needs to make it again (a file, a scroll position) in its own state.
   *
   * {{{
   *   val editor = new TabGroups[File](_.name, f => new TerminalView(f), _.path, allowsTwice = _ => true,
@@ -110,6 +118,22 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   /** Heard with the layout each time it changes: a tab opened, closed, moved or shown, a split made or undone, a
     * handle dragged. */
   val layoutChanged: Channel[TabLayout] = Channel[TabLayout]
+  /** How long a tab's content may be out of sight before it is let go: disposed of, and made again through `content`
+    * as its tab is next shown, so the app makes it from its own state. Out of sight is a tab not shown in its group, a
+    * group hidden by another maximized (`maximize`), or all of them set aside (`setAside`, a `TabsAside` holding its
+    * contents to that time too, its layout kept). Never the tab shown, one that keeps its place (`keepsMounted`), one
+    * marked `dirty` or one `evictable` keeps; a group's shared view (`groupContent`) goes once every tab sharing it may
+    * go and none has shown for that long, and is told the tab it shows (`GroupContent.show`) as it is made again.
+    * Letting go changes no layout: `layoutChanged` hears nothing of it. None, the default, lets nothing go and times
+    * nothing. */
+  val evictAfter: Var[Option[FiniteDuration]] = own(Var[Option[FiniteDuration]](None))
+  /** Which tabs' contents `evictAfter` may let go: every one, by default. */
+  val evictable: Var[K => Boolean] = own(Var((_: K) => true))
+  // the sets of groups put aside and not yet put back or disposed of, whose contents `evictAfter` times as well; when
+  // the timer waiting for the next to fall due fires (Long.MaxValue: none waits); and whether they are being let go
+  private var asides: List[TabsAside[K]] = Nil
+  private var due: Long = Long.MaxValue
+  private var sweeping = false
 
   private var tree: TabTree[K] = TabTree.Leaf(new TabGroup[K](this))
   /** The group the focus is in, or was in last. */
@@ -134,6 +158,9 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
 
   groups @= TabTrees.groups(tree)
   place()
+  evictAfter.attach(_ => sweep())
+  evictable.attach(_ => hid())
+  dirtyKeys.attach(_ => hid())
   follow(Focus.focused, (f: Option[Component]) => f.foreach { c =>
     groups().find(g => Focus.within(c, g)).foreach(g => if (!(focusedGroup() eq g)) focusedGroup @= g)
   })
@@ -441,7 +468,10 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     * is, one empty group left in its place: `putBack` puts it all back as it was, nothing made again, where `restore`
     * of a `tabLayout` makes every group, tab and slot again and closes what was open. An app showing one workspace's
     * tabs at a time sets each aside as it leaves it and puts it back on its return; one it will not put back it
-    * disposes of (`TabsAside.dispose`). `layoutChanged` hears of the empty group, and `tabLayout` is its layout.
+    * disposes of (`TabsAside.dispose`), or lets go once it has been aside long enough (`TabsAside.asideSince`). With
+    * `evictAfter` the contents it holds are let go as those out of sight here are, its groups, tabs and splits kept, and
+    * `putBack` makes them again through `content` as each shows. `layoutChanged` hears of the empty group, and
+    * `tabLayout` is its layout.
     * {{{
     *   val kept = mutable.Map.empty[String, TabsAside[File]]
     *   def switchTo(next: String): Unit = {
@@ -451,7 +481,9 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     *   }
     * }}} */
   def setAside(): TabsAside[K] = {
-    val aside = new TabsAside[K](tree, alone(), focusedGroup(), root)
+    val aside = new TabsAside[K](this, tree, alone(), focusedGroup(), root, TabGroups.clock())
+    asides = aside :: asides
+    TabTrees.groups(tree).foreach(_.setOut(true))
     // (the empty group last put back over, where there is one: an app setting aside and putting back makes none)
     val empty = spare.getOrElse(new TabGroup[K](this))
     spare = None
@@ -459,6 +491,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     alone @= None
     mount(TabTrees.groups(tree).head)
     focusedGroup @= groups().head
+    hid()
     aside
   }
 
@@ -469,6 +502,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     * disposed of) changes nothing. */
   def putBack(aside: TabsAside[K]): Unit = if (!aside.spent) {
     aside.spent = true
+    forgetAside(aside)
     val old = groups()
     val was = root
     tree = aside.tree
@@ -501,8 +535,43 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     root.size.height := size.height()
     groups @= TabTrees.groups(tree)
     children @= Vector(root, zone)
+    showGroups()
     focus.filter(c => Focus.showing(c)).foreach(c => if (!Focus.focused().contains(c)) c.focus())
     changed()
+  }
+
+  // each group out of sight where another is maximized, and in sight otherwise
+  private def showGroups(): Unit = {
+    groups().foreach(g => g.setOut(alone().exists(a => !(a eq g))))
+    hid()
+  }
+
+  /** Something went out of sight: what has been out of sight long enough let go, where `evictAfter` is set. */
+  private[kit] def hid(): Unit = if (evictAfter().nonEmpty) sweep()
+
+  /** `aside` put back or disposed of: its contents no longer timed here. */
+  private[kit] def forgetAside(aside: TabsAside[K]): Unit = asides = asides.filterNot(_ eq aside)
+
+  // what has been out of sight for `evictAfter` let go, in every group and every set aside, and a timer set for the
+  // next to fall due where none waits for it sooner: one timer for them all, and none while nothing is to let go
+  private def sweep(): Unit = if (!takenApart && !sweeping) {
+    val all = groups() ++ asides.flatMap(a => TabTrees.groups(a.tree))
+    evictAfter() match {
+      case None => all.foreach(_.forget())
+      case Some(d) =>
+        sweeping = true
+        val now = TabGroups.clock()
+        var next = Long.MaxValue
+        all.foreach(g => next = math.min(next, g.evict(now, d.toMillis)))
+        sweeping = false
+        if (next < due) {
+          due = next
+          TabGroups.after(math.max(0L, next - now).toDouble / 1000.0, () => {
+            if (due == next) due = Long.MaxValue
+            sweep()
+          })
+        }
+    }
   }
 
   /** The layout told, as it changes. */
@@ -563,6 +632,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     root.size.height := size.height()
     groups @= TabTrees.groups(tree)
     children @= Vector(root, zone)
+    showGroups()
     focus.filter(c => Focus.showing(c)).foreach(c => if (!Focus.focused().contains(c)) c.focus())
     changed()
   }
@@ -713,6 +783,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   } else false)
   onDispose(() => {
     escape()
+    asides = Nil
     groups().foreach(_.disposeContents())
     spare.foreach(_.dispose())
     // and what catches a drag, bound to the screen's size and on it only while a tab is dragged: left, the screen held
@@ -730,6 +801,11 @@ object TabGroups {
   val dragStart: Double = 6.0
   /** How near a group's edge, as a share of its size, a tab dragged over it splits it there. */
   val edge: Double = 0.25
+
+  /** The clock (ms) contents out of sight are timed by (`evictAfter`), and how a wait is waited out: the platform's, or
+    * a spec's own, which runs what falls due exactly when the spec says the time has passed (as `Ticker`'s). */
+  private[everyui] var clock: () => Long = () => Clock.real()
+  private[everyui] var after: (Double, () => Unit) => Unit = (seconds, f) => Platform.after(seconds, f)
 
   private def word(key: String, english: String): String = {
     val said = Words(key)
