@@ -167,8 +167,10 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
         if (across != 0.0) scrollBy(if (fromRight()) -across else across)
       }
     }
-    // a drag moves the content as it goes, once it has settled along the scroll (DragAxis): one mostly across it is
-    // left to what it is in, or what is in it, a rail in a list to the list, and moves nothing here
+    // a drag moves the content as it goes, from its first move, until it settles across the scroll (DragAxis): then
+    // the content goes back to where the press found it and the drag is left to what it is in, or what is in it, a
+    // rail in a list to the list. It follows at once rather than from the slop on, which held the content still for a
+    // finger's first few pixels and then jumped it by them, a hitch at the start of every flick on a phone
     var dragFrom: Option[Double] = None
     var dragOffset = 0.0
     val axis = new DragAxis(!horizontal)
@@ -188,17 +190,19 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     }
     event.pointer.move.attach { e =>
       dragFrom.foreach { from =>
+        val was = axis.across
         axis.move(e.x, e.y)
-        if (axis.along) {
+        if (!axis.across) {
           scrollTo(dragOffset - (along(e) - from))
           flick.at(along(e))
           // dragged further than a tap may, and the content moved: a scroll, whose release clicks nothing in it
           if (math.abs(along(e) - from) > ScrollPress.slop && offset() != dragOffset) ScrollPress.scrolled()
         }
+        else if (!was) scrollTo(dragOffset)
       }
     }
     event.pointer.up.attach { _ =>
-      if (finger && dragFrom.nonEmpty && axis.along) flick.lift()
+      if (finger && dragFrom.nonEmpty && !axis.across) flick.lift()
       dragFrom = None
     }
     // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and

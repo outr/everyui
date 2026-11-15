@@ -874,6 +874,10 @@ class RenderNode(val view: View) {
     }
     else if (action == MotionEvent.ACTION_CANCEL) {
       letGo()
+      // cancelled as a scroll it is in took the drag, on the move it took it on: heard as that move first, so a scroll
+      // this is settles the drag across itself (DragAxis) and puts its content back, rather than flinging what the
+      // finger wobbled it by
+      fire(PointerKind.Move, e)
       fire(PointerKind.Up, e)
       toRoot(PointerKind.Up, e)
     }
@@ -884,13 +888,21 @@ class RenderNode(val view: View) {
     * the finger went down on (`takesDrags`). */
   def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = takesDrags(if (vertical) 1 else if (horizontal) 2 else 0)
   // a finger's drag along it (1 down, 2 across) taken from what the finger went down on (`NodeGroup.onInterceptTouchEvent`):
-  // it hears the finger go down where it did, then the move it was taken on, and every move after as its own
+  // it hears the finger go down a tap's reach (the slop the drag settled at) from where it did, along the way it went,
+  // then the move it was taken on and every move after as its own, so the content takes up the drag from where it was
+  // taken rather than jumping by the slop; a drag, never a long press, and no click as it lifts
   private def takesDrags(along: Int): Unit = view match {
     case g: NodeGroup =>
       g.scrollsAlong = along
       g.takeDrag = (moved, x, y) => {
-        val down = MotionEvent.obtain(moved.getDownTime, moved.getEventTime, MotionEvent.ACTION_DOWN, x, y, 0)
+        val slop = (everyui.event.ScrollPress.slop * Host.touchScale).toFloat
+        val down = if (along == 1) MotionEvent.obtain(moved.getDownTime, moved.getEventTime, MotionEvent.ACTION_DOWN, x,
+          y + math.signum(moved.getRawY - y) * slop, 0)
+          else MotionEvent.obtain(moved.getDownTime, moved.getEventTime, MotionEvent.ACTION_DOWN,
+            x + math.signum(moved.getRawX - x) * slop, y, 0)
         try touch(down) finally down.recycle()
+        letGo()
+        strayed = true
         touch(moved)
       }
     case _ => ()

@@ -10,7 +10,8 @@ import javafx.scene.input.{MouseButton, MouseEvent}
 /** A drag's way, settled once (`DragAxis`): by the first move further than a tap may, along where it went mostly
   * along, and never again in that press. On a page of a rail and a button (a scroll down holding a scroll across), a
   * finger's drag down that starts on the rail scrolls the page alone, one across it the rail alone, one that turns
-  * after it settled stays settled, a flick down glides the page and not the rail, and a drag down that starts on the
+  * after it settled stays settled, the page follows a finger from its first move with no jump where the drag settles
+  * (a page or a list), a flick down glides the page and not the rail, and a drag down that starts on the
   * button scrolls the page and clicks nothing, while a tap on it still clicks. Each press is fired at what it lands on
   * and climbs to the page, as JavaFX sends a touch screen's finger, in one turn of the FX thread. */
 class DragAxisSpec extends FxSpec {
@@ -151,6 +152,52 @@ class DragAxisSpec extends FxSpec {
       }
       fx(p.clicks) shouldBe 1
       fx(p.page.offset()) shouldBe 0.0
+    }
+    "follow a finger from its first move, with no jump where the drag settles" in onScreen { p =>
+      val (x, y) = fx(p.middle(p.button))
+      // two pixels at a time, past the slop: the page under the finger at every move, never still and then caught up
+      val seen = onFx {
+        mouse(p.button, MouseEvent.MOUSE_PRESSED, x, y)
+        val at = (1 to 10).toList.map { i =>
+          now += 16.0
+          mouse(p.button, MouseEvent.MOUSE_DRAGGED, x, y - 2.0 * i, still = false)
+          p.page.offset()
+        }
+        mouse(p.button, MouseEvent.MOUSE_RELEASED, x, y - 20.0, still = false)
+        at
+      }
+      seen shouldBe (1 to 10).toList.map(_ * 2.0)
+    }
+    "follow a finger on a list from its first move, with no jump where the drag settles" in {
+      val l = fx {
+        val l = everyui.list.VirtualList.text[String](reactify.Var((0 until 200).map("r" + _).toVector), s => s, s => s)
+        l.size.width @= 300.0
+        l.size.height @= 400.0
+        l
+      }
+      fx {
+        Flick.ticks = () => now
+        ui.children.clear()
+        ui.children += l
+      }
+      try {
+        val seen = onFx {
+          mouse(l, MouseEvent.MOUSE_PRESSED, 100.0, 300.0)
+          val at = (1 to 10).toList.map { i =>
+            now += 16.0
+            mouse(l, MouseEvent.MOUSE_DRAGGED, 100.0, 300.0 - 2.0 * i, still = false)
+            l.offset()
+          }
+          now += Fling.stopped + 10.0
+          mouse(l, MouseEvent.MOUSE_RELEASED, 100.0, 280.0, still = false)
+          at
+        }
+        seen shouldBe (1 to 10).toList.map(_ * 2.0)
+      }
+      finally fx {
+        Flick.ticks = () => everyui.render.Platform.ticks()
+        ui.children.clear()
+      }
     }
   }
 }

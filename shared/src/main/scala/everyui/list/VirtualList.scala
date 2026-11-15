@@ -516,10 +516,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   // the rows following a finger that went down at `pressX`, `pressY`, and gliding on from how fast it went as it lifts;
-  // once it has gone further from there than a tap may it is a scroll, whose lift taps no row. Up and down only once
-  // the drag has settled that way (DragAxis), sideways (`dragAcross`) only once it has settled across: a swipe down
-  // that starts on a code block in a row scrolls the rows, and one across it the code, never the rows as well. `now`
-  // is a move the finger has made already.
+  // once it has gone further from there than a tap may it is a scroll, whose lift taps no row. Up and down from its
+  // first move, as a finger's drag always moved them, until the drag settles across (DragAxis): then the rows go back
+  // to where the press found them, and sideways (`dragAcross`) is the drag's from then on, so a swipe across a code
+  // block in a row scrolls the code and leaves the rows. `now` is a move the finger has made already.
   private def fingerScroll(pressX: Double, pressY: Double, now: Option[PointerEvent] = None): Unit = {
     var at = pressY
     var across = pressX
@@ -527,20 +527,25 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     axis.down(pressX, pressY)
     flick.down(at)
     def moved(m: PointerEvent): Unit = {
+      val was = axis.across
       axis.move(m.x, m.y)
       if (ScrollPress.beyond(pressX, pressY, m.x, m.y)) ScrollPress.scrolled()
-      if (axis.along) {
+      if (!axis.across) {
         scrollBy(at - m.y)
         at = m.y
         flick.at(at)
       }
-      else if (axis.across) {
+      else {
+        if (!was) {
+          scrollBy(at - pressY)
+          at = pressY
+        }
         if (m.x != across) dragAcross @= across - m.x
         across = m.x
       }
     }
     now.foreach(moved)
-    Pointers.track(moved, _ => if (axis.along) flick.lift())
+    Pointers.track(moved, _ => if (!axis.across) flick.lift())
   }
   thumb.event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton) {
     e.consume()
