@@ -145,12 +145,24 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
 
   // a focus moved by the keys, a remote or the app is brought into view; on the web one a pointer just moved is not,
   // since it lands where it was clicked or hovered, which is already in view
+  // (what it is in drawn first, where it was out of view: the focus is never on something not drawn)
   follow(Focus.focused, (f: Option[Component]) => f.foreach { c =>
+    if (holds(c)) showAll()
     if (holds(c) && (!Platform.nativeScroll() || Platform.remoteNavigation() || !Pointer.recent)) reveal(c)
   })
   // and a field being typed into in it kept in sight as the view grows shorter: the keyboard coming up, a rotation,
   // a fold (a browser scrolls a field into view itself; elsewhere nothing would)
   size.height.attach(_ => Focus.focused().filter(c => c.takesTyping && holds(c)).foreach(reveal), Priority.Low)
+  // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and
+  // all it held, for as long as this scroll lived
+  content.children.attach(_ => recull())
+  // and drawn or not as the viewport moves over it, or changes its length (on the web too, where the page scrolls it)
+  offset.attach(_ => showAll())
+  (if (horizontal) size.width else size.height).attach(_ => showAll())
+  if (horizontal) {
+    content.size.width.attach(_ => if (fromRight()) showAll())
+    fromRight.attach(_ => showAll())
+  }
   if (!Platform.nativeScroll()) {
     size.width.attach(_ => clip())
     size.height.attach(_ => clip())
@@ -204,16 +216,6 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     event.pointer.up.attach { _ =>
       if (finger && dragFrom.nonEmpty && !axis.across) flick.lift()
       dragFrom = None
-    }
-    // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and
-    // all it held, for as long as this scroll lived
-    content.children.attach(_ => recull())
-    // and drawn or not as the viewport moves over it, or changes its length
-    offset.attach(_ => showAll())
-    (if (horizontal) size.width else size.height).attach(_ => showAll())
-    if (horizontal) {
-      content.size.width.attach(_ => if (fromRight()) showAll())
-      fromRight.attach(_ => showAll())
     }
     event.key.down.attach { k =>
       val along = if (horizontal) size.width() else size.height()
@@ -315,37 +317,66 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     * offset: a glide moves the offset every frame, and a rail of cards each working out its own (a reactive value apiece,
     * its reads followed) cost a Roku more than the rest of the frame.
     *
-    * The web scrolls the node itself, and a browser already draws only what shows. */
+    * On the web, where the page scrolls the node itself, a child out of sight is hidden from the page instead
+    * (`RenderNode.setCulled`: laid out and drawn no more, its pictures let go) with its own `visible` left to the app,
+    * and found again by the browser's find in page, which brings it into view. Whatever holds the focus is drawn
+    * wherever it is. */
   private def cull(c: Component): Unit = if (!culling.contains(c)) {
-    // and what is out of sight lets its pictures go until it comes back
-    val pictures = c.visible.attach(on => ImageView.showing(c, on))
+    val paged = Platform.nativeScroll()
+    // and what is out of sight lets its pictures go until it comes back (on the web, as it is hidden from the page)
+    val pictures = if (paged) None else Some(c.visible.attach(on => ImageView.showing(c, on)))
     // and it is placed again as its place or its length along changes
     val placed = (if (horizontal) c.position.left else c.position.top).attach(_ => show(c))
     val length = (if (horizontal) c.size.width else c.size.height).attach(_ => show(c))
     culling = culling.updated(c, () => {
-      c.visible.reactions -= pictures
+      pictures.foreach(p => c.visible.reactions -= p)
       (if (horizontal) c.position.left else c.position.top).reactions -= placed
       (if (horizontal) c.size.width else c.size.height).reactions -= length
     })
-    Component.unbind(c.visible)
+    if (!paged) Component.unbind(c.visible)
     show(c)
   }
 
   /** Whether `c` is drawn, for where the viewport is now. */
   private def show(c: Component): Unit = {
     val along = if (horizontal) size.width() else size.height()
-    showIn(c, along, viewAt(along), everyui.perf.Quality.slack)
+    showIn(c, along, viewAt(along), everyui.perf.Quality.slack, keeper())
+  }
+
+  // the child of the content the focus is in, if it is in one: drawn wherever it is
+  private def keeper(): Option[Component] = Focus.focused().flatMap { f =>
+    var at: Option[Component] = Some(f)
+    var found: Option[Component] = None
+    while (found.isEmpty && at.nonEmpty) {
+      if (at.get.parent().exists(_ eq content)) found = at
+      at = at.flatMap(_.parent())
+    }
+    found
   }
 
   // where the viewport is over the content, `along` long, from its left in a rail running from the right
   private def viewAt(along: Double): Double = if (fromRight()) content.size.width() - along - offset() else offset()
 
-  private def showIn(c: Component, along: Double, at: Double, slack: Double): Unit = {
+  private def showIn(c: Component, along: Double, at: Double, slack: Double, kept: Option[Component]): Unit = {
     val start = if (horizontal) c.position.left() else c.position.top()
     val end = start + (if (horizontal) c.size.width() else c.size.height())
-    val on = end > at - along * slack && start < at + along * (1.0 + slack)
-    if (c.visible() != on) c.visible @= on
+    val on = (end > at - along * slack && start < at + along * (1.0 + slack)) || kept.exists(_ eq c)
+    // (on the web, nothing hidden before the viewport has a length: what it holds is still being laid out)
+    if (Platform.nativeScroll()) {
+      if (outOfPage.contains(c) == (on || along <= 0.0)) seen(c, on || along <= 0.0)
+    }
+    else if (c.visible() != on) c.visible @= on
   }
+
+  // on the web, `c` hidden from the page or shown in it again, with its pictures, unless the app hid it itself; found
+  // by the browser's find in page, it is shown, and the page scrolls to it
+  private def seen(c: Component, on: Boolean): Unit = {
+    outOfPage = if (on) outOfPage - c else outOfPage + c
+    c.node.setCulled(!on, () => if (outOfPage.contains(c)) seen(c, true))
+    if (c.notHidden) ImageView.showing(c, on)
+  }
+  // the children hidden from the page (the web)
+  private var outOfPage: Set[Component] = Set.empty
 
   /** Every child culled, for where the viewport is now (each of the content's children is). */
   private def showAll(): Unit = {
@@ -353,9 +384,10 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     val along = if (horizontal) size.width() else size.height()
     val at = viewAt(along)
     val slack = everyui.perf.Quality.slack
+    val kept = keeper()
     var i = 0
     while (i < all.length) {
-      showIn(all(i), along, at, slack)
+      showIn(all(i), along, at, slack, kept)
       i += 1
     }
   }
@@ -364,7 +396,7 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   private var culling: Map[Component, () => Unit] = Map.empty
   /** Whether `c`, one of what it holds, is out of sight now for being out of its view: its pictures drawn again as it
     * comes back into it (`ImageView.showing`). */
-  private[everyui] def outOfView(c: Component): Boolean = culling.contains(c) && !c.notHidden
+  private[everyui] def outOfView(c: Component): Boolean = culling.contains(c) && (!c.notHidden || outOfPage.contains(c))
   // the content's children as they were last culled
   private var culled: Vector[Component] = Vector.empty
 
@@ -386,6 +418,12 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
   private def uncull(c: Component): Unit = culling.get(c).foreach { stop =>
     culling = culling - c
     stop()
+    // (on the web, shown in the page again wherever it goes)
+    if (outOfPage.contains(c)) {
+      outOfPage = outOfPage - c
+      c.node.setCulled(false, () => ())
+      if (c.notHidden) ImageView.showing(c, true)
+    }
   }
 
   /** Whether `c` is somewhere under `content`. */

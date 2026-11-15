@@ -48,6 +48,8 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     size.height @= 16.0
     children ++= List(spinner, glyph)
   }
+  // (out of the line while a lead stands in its place, kept to be put back, and taken apart with the view)
+  Component.heldAside(status)
   spinner.position.left @= 1.0
   spinner.position.top @= 1.0
 

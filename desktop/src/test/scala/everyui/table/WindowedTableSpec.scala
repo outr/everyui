@@ -121,15 +121,47 @@ class WindowedTableSpec extends FxSpec {
       }
     }
     "be drawn as before where it is short, or as tall as its rows" in {
-      val short = long(50)
+      val short = long(10)
       onScreen(short) {
         fx(short.windowed()) shouldBe false
-        fx(drawn(short).size) shouldBe 50
+        fx(drawn(short).size) shouldBe 10
+      }
+      // more than show within its tallest, past the short ones' count: only those that show
+      val more = long(50)
+      onScreen(more) {
+        fx(more.windowed()) shouldBe true
+        eventually(drawn(more).nonEmpty) shouldBe true
+        fx(drawn(more).size) should be < 50
       }
       val tall = long(1000)
       fx(tall.maxHeight @= 0.0)
       onScreen(tall) {
         fx(tall.windowed()) shouldBe false
+      }
+    }
+  }
+
+  "A long table as tall as its rows, in a page that scrolls" should {
+    "make only the rows the page shows, and those it scrolls to" in {
+      val t = long(300)
+      val page = fx {
+        t.maxHeight @= 0.0
+        val s = new everyui.component.ScrollContainer
+        s.size.height @= 400.0
+        s.content.children += t
+        s
+      }
+      onScreen(page) {
+        eventually(t.windowed() && drawn(t).nonEmpty) shouldBe true
+        fx(drawn(t).size) should be < 60
+        fx(drawn(t).head) shouldBe "row 0"
+        // as tall as all its rows: the page scrolls, not the table
+        fx(t.size.height()) should be > 3000.0
+        fx(page.scrollTo(4000.0))
+        eventually(drawn(t).exists(r => r.stripPrefix("row ").toInt > 120)) shouldBe true
+        fx(drawn(t).contains("row 0")) shouldBe false
+        fx(drawn(t).size) should be < 60
+        fx(t.csv().split("\r\n").length) shouldBe 301
       }
     }
   }

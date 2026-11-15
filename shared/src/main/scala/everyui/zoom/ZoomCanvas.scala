@@ -328,7 +328,8 @@ class ZoomCanvas extends Container {
         p.seen = generation
         p.component.getOrElse {
           val c = cache.getOrElse(p.id, {
-            val fresh = p.item.make()
+            // (kept in the cache while it waits off the view, to be put back: held aside)
+            val fresh = Component.heldAside(p.item.make())
             cache = cache + (p.id -> fresh)
             fresh
           })

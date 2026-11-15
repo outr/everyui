@@ -34,6 +34,17 @@ class ListRow[T] extends Container {
   /** Whether the row has an item to show. */
   val present: Val[Boolean] = own(Val(item().nonEmpty))
 
+  /** `part` of this row (an avatar, a box) made its checkbox: a click or a tap on it puts the row among its list's
+    * chosen rows or takes it out (`VirtualList.toggleRow`), with no modifier held; Shift with it, the rows from the last
+    * one chosen. The click goes no further: the row is neither chosen alone nor activated. */
+  def checks(part: everyui.component.Component): Unit = part.event.click.attach { e =>
+    e.consume()
+    parent() match {
+      case Some(list: VirtualList[T] @unchecked) => list.toggleRow(index(), e.shift)
+      case _ => ()
+    }
+  }
+
   /** Whether this row stands in for one not come (a `PlaceholderRow`). */
   def standsIn: Boolean = false
 

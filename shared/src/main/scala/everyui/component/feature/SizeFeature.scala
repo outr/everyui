@@ -12,10 +12,23 @@ class SizeFeature(component: Component) {
   private val measuredWidth: Val[Double] = component.measured.width
   private val measuredHeight: Val[Double] = component.measured.height
 
-  lazy val width: SizeProperty = SizeFeature.size(component, measuredWidth, across = true,
-    d => component.node.setWidth(d))
-  lazy val height: SizeProperty = SizeFeature.size(component, measuredHeight, across = false,
-    d => component.node.setHeight(d))
+  // whether each size has been made: one never made has nothing bound to unbind as the component is taken apart
+  private var widthMade = false
+  private var heightMade = false
+  lazy val width: SizeProperty = {
+    widthMade = true
+    SizeFeature.size(component, measuredWidth, across = true, d => component.node.setWidth(d))
+  }
+  lazy val height: SizeProperty = {
+    heightMade = true
+    SizeFeature.size(component, measuredHeight, across = false, d => component.node.setHeight(d))
+  }
+
+  /** Each size made unbound from what it follows (`Component.dispose`), without making one that was never made. */
+  private[everyui] def unbind(): Unit = {
+    if (widthMade) Component.unbind(width)
+    if (heightMade) Component.unbind(height)
+  }
 
   lazy val center: Val[Double] = Val(width / 2.0)
   lazy val middle: Val[Double] = Val(height / 2.0)

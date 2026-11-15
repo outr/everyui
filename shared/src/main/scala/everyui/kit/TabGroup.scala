@@ -16,6 +16,8 @@ import reactify.*
   * empty group says so, and that is where the focus lands in it; one `TabGroups.keepEmptyGroups` keeps, while there is
   * another, has a button under its words closing it, which takes the focus instead. */
 class TabGroup[K](owner: TabGroups[K]) extends Container {
+  // out of the splits while another group is maximized, and while the splits are made again: kept, not left
+  Component.heldAside(this)
   /** Its tabs, in order. */
   val keys: Var[Vector[K]] = own(Var(Vector.empty[K]))
   /** The id of the tab being shown (the bar's `current`). */
@@ -61,6 +63,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   // (over the body rather than in it, which holds the words and the tabs' contents)
   closer.position.top := body.position.top() + empty.position.top() + empty.size.height() + 8.0
 
+  // (each held aside: kept out of the body while another tab shows, not left)
   private var made: Map[K, Component] = Map.empty
   // the contents of the tabs that stay in place while another shows (`TabGroups.keepsMounted`), in the order they were
   // first shown, which never changes: a frame moved in the page loads again
@@ -118,7 +121,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
   def add(k: K, at: Int = -1, content: Option[Component] = None): Unit = if (!has(k)) {
     content.foreach { c =>
       fit(c)
-      made = made + (k -> c)
+      made = made + (k -> Component.heldAside(c))
     }
     val tab = bar.add(owner.id(k), owner.label(k), closable = true, at = at, lead = owner.lead(k))
     owner.draggable(this, k, tab)
@@ -137,6 +140,8 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
     content.foreach { c =>
       body.children -= c
       mounted = mounted.filterNot(_ eq c)
+      // (the caller's now, and told of if it is left)
+      c.keptAside = false
       c.visible @= true
       if (current.exists(_ eq c)) current = None
     }
@@ -191,7 +196,7 @@ class TabGroup[K](owner: TabGroups[K]) extends Container {
       else made.getOrElse(k, {
         val c = owner.content(k)
         fit(c)
-        made = made + (k -> c)
+        made = made + (k -> Component.heldAside(c))
         c
       })
     }

@@ -21,8 +21,10 @@ object MemoryCases {
     MemoryCase("ImageView", "view", 100, () => stacked(_ => ImageView(Platform.resolvePath("images/everyui-mark.png"),
       32.0))),
     MemoryCase("ScrollContainer", "scroll", 50, () => stacked(i => scroll(i))),
+    MemoryCase("ScrollContainer of cards", "card", 100, () => cards()),
     MemoryCase("VirtualList of 1,000 rows", "list", 4, () => stacked(_ => list())),
     MemoryCase("DataTable of 100 rows", "table", 4, () => stacked(_ => table())),
+    MemoryCase("DataTable of 100 rows in a page", "table", 4, () => pageOfTables()),
     MemoryCase("TabGroups", "tab group", 10, () => stacked(i => tabGroups(i))),
     MemoryCase("TabGroups, tabs not shown", "hidden tab", 10, () => hiddenTabs()),
     MemoryCase("Transcript, plain", "message", 100, () => transcript(i => message(i, "Sounds good, go ahead."))),
@@ -69,6 +71,30 @@ object MemoryCases {
     s
   }
 
+  // one scroll a screen tall, its content a column of cards of words: most out of its view
+  private def cards(): MemoryRig = new MemoryRig {
+    private val s = new ScrollContainer
+    s.size.width @= 400.0
+    s.size.height @= 600.0
+    s.content.layout @= Some(VerticalLayout(8.0))
+    private var made = 0
+    def root: Component = s
+    def add(n: Int): Unit = {
+      s.content.children ++= (made until made + n).map(i => card(i))
+      made += n
+    }
+  }
+
+  private def card(i: Int): Container = {
+    val c = new Container
+    c.layout @= Some(VerticalLayout(4.0))
+    c.padding @= 8.0
+    c.backgroundColor @= Color.fromHex("33669922")
+    c.children ++= List(words("Card " + i.toString), words("From someone about something, number " + i.toString),
+      words("A line of what it says, long enough to be a line of a preview of a message"))
+    c
+  }
+
   private def list(): VirtualList[String] = {
     val l = VirtualList.text[String](Var((0 until 1000).toVector.map(i => "Row " + i.toString)), s => s, s => s)
     l.size.width @= 400.0
@@ -80,6 +106,24 @@ object MemoryCases {
     Vector("Name", "Kind", "Size", "Changed", "Owner").map(t => DataColumn(t)),
     (0 until 100).toVector.map(r => Vector("file-" + r.toString + ".scala", "Scala", (r * 37 % 900).toString + " KB",
       "2026-11-" + (r % 28 + 1).toString, "Ada").map(c => DataCell(c))))
+
+  // tables as tall as their rows in a page a screen tall, which scrolls them
+  private def pageOfTables(): MemoryRig = new MemoryRig {
+    private val s = new ScrollContainer
+    s.size.width @= 800.0
+    s.size.height @= 600.0
+    s.content.layout @= Some(VerticalLayout(8.0))
+    private var made = 0
+    def root: Component = s
+    def add(n: Int): Unit = {
+      s.content.children ++= (made until made + n).map { _ =>
+        val t = table()
+        t.maxHeight @= 0.0
+        t
+      }
+      made += n
+    }
+  }
 
   private def tabGroups(i: Int): TabGroups[String] = {
     val g = new TabGroups[String](k => k, k => words("The tab " + k), k => k)

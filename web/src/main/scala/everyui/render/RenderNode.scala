@@ -638,6 +638,29 @@ class RenderNode(val el: html.Element) {
     // no longer laid out only to be measured (RenderNode.reveal)
     if (el.style.visibility.nonEmpty) el.style.visibility = ""
   }
+  /** Hidden from the page by the scroll it is in, out of its view, or shown again: `hidden="until-found"`, which the
+    * browser lays out and draws no more (`content-visibility: hidden`, the box kept) while its find in page still
+    * finds the words in it, telling `found` (`beforematch`) as it shows it and scrolls to it. A browser without it hides
+    * it as `hidden` does, and finds nothing in it. */
+  def setCulled(culled: Boolean, found: () => Unit): Unit = {
+    counted("culled", culled.toString)
+    if (culled) {
+      if (finding.isEmpty) {
+        val heard: js.Function1[dom.Event, Unit] = _ => found()
+        el.addEventListener("beforematch", heard)
+        finding = Some(heard)
+      }
+      el.setAttribute("hidden", "until-found")
+    }
+    else {
+      el.removeAttribute("hidden")
+      // (heard only while it is hidden)
+      finding.foreach(f => el.removeEventListener("beforematch", f))
+      finding = None
+    }
+    WebHover.changed()
+  }
+  private var finding: Option[js.Function1[dom.Event, Unit]] = None
   def setOpacity(opacity: Double): Unit = {
     counted("opacity", opacity.toString)
     el.style.opacity = opacity.toString

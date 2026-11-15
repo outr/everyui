@@ -32,8 +32,7 @@ class Component(val node: RenderNode) {
     // each property bound to something (`color := Theme.text()`) stops listening to it, so what it is bound to no
     // longer holds it; and the size, which a screen binds to its host's
     owned.foreach(v => Component.unbind(v))
-    Component.unbind(size.width)
-    Component.unbind(size.height)
+    size.unbind()
     // taken off the screen as it is taken apart: a focus on it moves on to what is there in its place, and the
     // containers it was in no longer remember the focus on it
     parent().foreach { p =>

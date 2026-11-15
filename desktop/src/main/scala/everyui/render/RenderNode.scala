@@ -442,6 +442,9 @@ class RenderNode(val fx: Node) {
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
   def setScrollbarShown(shown: Boolean): Unit = ()
+  /** Hidden from the page by the scroll it is in, out of its view, and found again by the page's find (the web's): here
+    * a scroll hides what is out of its view by its `visible`, and nothing is done. */
+  def setCulled(culled: Boolean, found: () => Unit): Unit = ()
   /** Its ends faded to clear over `start` and `end` pixels (its left and right, or its top and bottom), showing what is
     * behind: its clip (`setClip`) filled with a gradient from clear to solid and back, which JavaFX draws through as
     * a mask, set again as the clip is. */

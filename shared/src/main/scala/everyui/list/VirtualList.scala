@@ -12,13 +12,17 @@ import reactify.*
   *
   * `items` is the app's, and the list follows it; each item has a `key`, by which the cursor, the selection and the
   * scroll are kept while items come and go around them. Rows are `rowHeight` tall, or with `measuredRows` as tall as
-  * each one draws itself (`rowHeight` is then the guess for one not yet drawn).
+  * each one draws itself (`rowHeight` is then the guess for one not yet drawn): a row that grows or shrinks where it
+  * is (a card unfolded) moves the rows after it, the row under the cursor staying where it is on the screen. `gap`
+  * sets rows apart, and `padding` (a container's) is room round them all, the rows that much narrower than the list.
+  * `nearEnd` asks for more as the end comes near, and `replace` puts a changed item in, drawing only its row again.
   *
   * The list takes the focus as one component, with a cursor (`current`) among its rows: the arrows, Page Up and Down,
   * Home and End move it (Shift extends the selection, the primary modifier moves it alone), Enter activates the row
   * (`activated`), and a letter jumps to the next row whose label starts with it. At either end an arrow leaves the list
   * as the focus layer says. A click picks a row, Shift+click a range, Primary+click one more; Primary+A picks them all.
-  * `selection` is the app's to read and set. On a remote only one row is chosen, and it follows the cursor.
+  * `selection` is the app's to read and set; a part of a row made its checkbox (`ListRow.checks`) adds or takes away
+  * its row with no modifier (`toggleRow`). On a remote only one row is chosen, and it follows the cursor.
   *
   * Given a `source`, the rows are read from it by place instead of from `items`, and only those in view are asked
   * for: a server's millions, paged (`everyui.paging.PagedSource`). A row not here yet is drawn by `placeholder` (a
@@ -78,6 +82,15 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** Rows made beyond each end of what shows, so a short scroll has them ready: half as many at Reduced, and one at
     * Minimal (`everyui.perf.Quality`). */
   val overscan: Var[Int] = own(Var(4))
+  /** Room between one row and the next, in pixels: a list of cards set apart from each other. 0 by default. A click
+    * in it picks no row. */
+  val gap: Var[Double] = own(Var(0.0))
+  /** Told, with how many items there are, as the rows shown come within `nearEndScreens` of the list's height of the
+    * end of its items: once for each count, so an app reads its next page here and appends it to `items` (what shows
+    * stays where it is). Not told of a list over a `source`, which pages itself. */
+  val nearEnd: Channel[Int] = Channel[Int]
+  /** How near the end, in the list's heights, `nearEnd` is told: 1 by default, a screen ahead. */
+  val nearEndScreens: Var[Double] = own(Var(1.0))
   /** Whether the rows are kept scrolled to their end as they come, go and are drawn at heights of their own, rather
     * than with the first that shows kept where it is: a chat's transcript while its newest message is in view. */
   val followsEnd: Var[Boolean] = own(Var(false))
@@ -102,6 +115,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   // (immutable maps: a Roku keeps one keyed by strings as an associative array, and has no mutable one)
   private var indexes: Map[String, Int] = Map.empty
   private var heights: Map[String, Double] = Map.empty
+  /** How many rows' heights the list keeps, for a spec: one for each item drawn that is still in it. */
+  private[everyui] def keptHeights: Int = heights.size
   private var tops: Array[Double] = Array(0.0)
   private var topsStale = false
   private var placed: Map[Int, ListRow[T]] = Map.empty
@@ -112,6 +127,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   // whether the loading view shows in place of the rows
   private var blank = false
   private var currentAt = -1
+  // the count `nearEnd` was last told of; and whether an item is being put in place of another (`replace`)
+  private var toldNear = -1
+  private var replacing = false
   private var laying = false
   private var again = false
 
@@ -162,35 +180,44 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       if (keys.isEmpty) Vector.empty else shown.filter(t => keys.contains(keyOf(t)))
   }
 
-  /** Where row `index` starts, from the top of the first. */
-  def top(index: Int): Double =
-    if (sizedSource) source.get.top(math.max(0, math.min(index, count)))
-    else if (!ownHeights) index * rowHeight
-    else {
-      if (topsStale) retop()
-      tops(math.max(0, math.min(index, tops.length - 1)))
-    }
-  def heightAt(index: Int): Double =
-    if (sizedSource) top(index + 1) - top(index)
-    else if (!ownHeights) rowHeight else heights.getOrElse(keyOf(shown(index)), guessAt(index))
-  /** How tall all the rows are together. */
-  def total: Double = top(count)
-
-  /** The row at `y` down the rows (0 at the first's top), kept within the list. */
-  def indexAt(y: Double): Int = if (count == 0) -1 else if (sizedSource) {
-    math.max(0, math.min(count - 1, source.get.indexAt(y)))
-  } else if (!ownHeights) {
-    math.max(0, math.min(count - 1, (y / rowHeight).toInt))
-  } else {
-    if (topsStale) retop()
-    var low = 0
-    var high = count - 1
-    while (low < high) {
-      val mid = (low + high + 1) / 2
-      if (tops(mid) <= y) low = mid else high = mid - 1
-    }
-    low
+  /** Where row `index` starts, from the top of the list's content: its padding, then the rows before it and the gap
+    * after each. */
+  def top(index: Int): Double = padding() + along(index)
+  // where row `index` starts from the first's top, the gaps between those before it among it
+  private def along(index: Int): Double = {
+    val before =
+      if (sizedSource) source.get.top(math.max(0, math.min(index, count)))
+      else if (!ownHeights) index * rowHeight
+      else {
+        if (topsStale) retop()
+        tops(math.max(0, math.min(index, tops.length - 1)))
+      }
+    before + math.max(0, math.min(index, count)) * gap()
   }
+  def heightAt(index: Int): Double =
+    if (sizedSource) source.get.top(index + 1) - source.get.top(index)
+    else if (!ownHeights) rowHeight else heights.getOrElse(keyOf(shown(index)), guessAt(index))
+  /** How tall all the rows are together, with the gaps between them and the padding round them. */
+  def total: Double = if (count == 0) 0.0 else top(count) - gap() + padding()
+
+  /** The row at `y` down the list's content (0 at its top, above its padding), kept within the list. */
+  def indexAt(y: Double): Int = if (count == 0) -1 else {
+    val down = y - padding()
+    if (sizedSource && gap() == 0.0) math.max(0, math.min(count - 1, source.get.indexAt(down)))
+    else if (!ownHeights && !sizedSource) math.max(0, math.min(count - 1, (down / (rowHeight + gap())).toInt))
+    else {
+      var low = 0
+      var high = count - 1
+      while (low < high) {
+        val mid = (low + high + 1) / 2
+        if (along(mid) <= down) low = mid else high = mid - 1
+      }
+      low
+    }
+  }
+
+  // whether `down` (as `indexAt` takes it) is on row `index`, not in a gap or the padding
+  private def onRow(index: Int, down: Double): Boolean = down >= top(index) && down < top(index) + heightAt(index)
 
   /** How tall a row is taken to be until it has drawn itself, where the rows are as tall as each draws (`measuredRows`):
     * `rowHeight` unless the list is told better (a chat's message by its length), so that the rows made first are about
@@ -266,8 +293,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** Scrolled the least that shows all of row `index`. */
   def reveal(index: Int): Unit = if (index >= 0 && index < count) {
     stopFling()
-    val start = top(index)
-    val end = start + heightAt(index)
+    // (the padding shown with the first and the last)
+    val start = if (index == 0) 0.0 else top(index)
+    val end = if (index == count - 1) total else top(index) + heightAt(index)
     if (start < offset()) scrollTop(start)
     else if (end > offset() + size.height()) scrollTop(end - size.height())
   }
@@ -325,6 +353,53 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   def select(key: String): Unit = {
     val i = indexOf(key)
     if (i >= 0) moveTo(i)
+  }
+
+  /** Row `index` put among the chosen rows, or taken out of them, the others left as they are, with no modifier held:
+    * what a row's checkbox does (an avatar standing for one, `ListRow.checks`). With `range`, every row from the anchor
+    * to it is put in, as Shift with a checkbox does. The anchor and the cursor go to it. */
+  def toggleRow(index: Int, range: Boolean = false): Unit = if (index >= 0 && index < count) {
+    val key = keyAt(index)
+    if (!selection.multiple()) selection.only(key)
+    else {
+      val from = if (range) selection.anchor().map(indexOf).filter(_ >= 0) else None
+      from match {
+        case Some(a) =>
+          var keys = selection.keys()
+          var i = math.min(a, index)
+          while (i <= math.max(a, index)) {
+            val k = keyAt(i)
+            // (put in: in `keys`, or out of them where every row is chosen but those)
+            if (!selection.contains(k)) keys = if (keys.contains(k)) keys - k else keys + k
+            i += 1
+          }
+          selection.keys @= keys
+          selection.anchor @= Some(key)
+        case None => selection.toggle(key)
+      }
+    }
+    current @= Some(key)
+  }
+
+  /** `item` in place of the item with its key, and only its row drawn again: the others keep what they show, and the
+    * list's places and the scroll are kept as they are (a card's new state, a message marked read). `items` changes
+    * with it. Whether an item had its key; nothing changes where none had, or over a `source`. */
+  def replace(item: T): Boolean = source.isEmpty && {
+    val key = keyOf(item)
+    val i = indexes.getOrElse(key, -1)
+    val base = items()
+    val at = if (i < 0) -1 else if (standIn.isEmpty && i < base.length && keyOf(base(i)) == key) i
+      else base.indexWhere(t => keyOf(t) == key)
+    at >= 0 && {
+      replacing = true
+      try items @= base.updated(at, item) finally replacing = false
+      if (i >= 0) {
+        shown = shown.updated(i, item)
+        if (i < guesses.length) guesses(i) = 0.0
+      }
+      refresh()
+      true
+    }
   }
 
   /** Row `index` activated, as Enter or a double click does. */
@@ -437,7 +512,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     * finger's tap (`PointerEvent.finger`), which activates it where `clickActivates` leaves it to each click. */
   private[everyui] def clickAt(x: Double, y: Double, held: Modifiers, finger: Boolean = false): Unit = {
     val down = y - absoluteTop + offset()
-    if (down >= 0.0 && down < total && !blank) {
+    if (down >= 0.0 && down < total && !blank && onRow(indexAt(down), down)) {
       val i = indexAt(down)
       val along = if (Direction.rtl()) absoluteLeft + size.width() - x else x - absoluteLeft
       if (!clicks(i, along)) press(i, held, finger)
@@ -484,7 +559,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   // asked for; the page's own menu shows unless something answered (Pointer.menuAnswered)
   event.pointer.menu.attach { e =>
     val down = e.y - absoluteTop + offset()
-    if (down >= 0.0 && down < total && !blank) {
+    if (down >= 0.0 && down < total && !blank && onRow(indexAt(down), down)) {
       val i = indexAt(down)
       if (!selection.contains(keyAt(i))) selection.only(keyAt(i))
       current @= Some(keyAt(i))
@@ -800,7 +875,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     h > 0.0 && row.item().exists { t =>
       val key = keyOf(t)
       !heights.get(key).contains(h) && {
-        if (held.isEmpty) held = firstShowing()
+        if (held.isEmpty) held = anchorShowing()
         heights = heights.updated(key, h)
         topsStale = true
         true
@@ -845,6 +920,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private def place(): Unit = {
     val height = size.height()
     val width = size.width()
+    val pad = padding()
+    val rowWidth = math.max(0.0, width - pad * 2.0)
     val searching = source.exists(_.searching())
     blank = searching && loadingView().nonEmpty
     // fewer beyond on a slower device (`everyui.perf.Quality`)
@@ -901,7 +978,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
         placed.get(at).foreach { row =>
           val item = itemAt(at)
           val key = keyAt(at)
-          row.size.width @= width
+          row.size.width @= rowWidth
+          row.position.left @= pad
           row.index @= at
           row.item @= item
           if (row.tip().nonEmpty) tips.watch(row)
@@ -929,6 +1007,12 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     })
     placeEditor(width, height)
     placeDropLine(width)
+    // near the end of the items, the app told, once for each count, to bring more
+    if (source.isEmpty && height > 0.0 && count > 0 && count != toldNear &&
+      offset() + height * (1.0 + nearEndScreens()) >= total) {
+      toldNear = count
+      nearEnd @= count
+    }
     // the drop line and the thumb last, over the rows
     if (children().lastOption.forall(c => !(c eq thumb)))
       children @= children().filterNot(c => (c eq thumb) || (c eq dropLine)) :+ dropLine :+ thumb
@@ -984,6 +1068,14 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private def firstShowing(): Option[(String, Double)] = if (count == 0 || offset() <= 0.0) None else {
     val i = indexAt(offset())
     Some((keyAt(i), top(i) - offset()))
+  }
+  // where rows drawn at heights of their own are kept from moving: the row under the cursor where it shows (a row
+  // above it unfolding moves what is above it, not it), else the first that shows; nothing at the very top
+  private def anchorShowing(): Option[(String, Double)] = if (count == 0 || offset() <= 0.0) None else {
+    val at = currentAt
+    if (at >= 0 && at < count && top(at) + heightAt(at) > offset() && top(at) < offset() + size.height())
+      Some((keyAt(at), top(at) - offset()))
+    else firstShowing()
   }
   private var held: Option[(String, Double)] = None
   // the row `scrollTo` brought to a place of the view, and where (its `align`), while the rows are not scrolled since
@@ -1131,6 +1223,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       }
       // made in one go: a Roku's map copies itself for each key added, and 5000 rows added a key at a time took minutes
       indexes = (0 until shown.length).toVector.map(i => keyOf(shown(i)) -> i).toMap
+      // and the heights of items gone let go: a transcript switched between conversations kept every message it had
+      // drawn
+      if (heights.nonEmpty) heights = heights.filter { case (k, _) => indexes.contains(k) }
       topsStale = ownHeights
       guesses = new Array[Double](0)
       // items put in before the rows made, all of them moved on by as many (an earlier page of a chat): each row
@@ -1204,7 +1299,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
   // the cursor drawn as the keys come to move the focus, and no longer once a pointer is put down (Focus.visible)
   if (!Platform.remoteNavigation()) focusShown.attach(_ => refresh())
-  items.attach(_ => reindex())
+  items.attach(_ => if (!replacing) reindex())
   source.foreach(s => follow(s.changed, (_: Unit) => reindex()))
   follow(Direction.rtl, (_: Boolean) => refresh())
   selection.keys.attach(_ => refresh())
@@ -1255,6 +1350,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     refresh()
   }
   dropHover.attach(_ => refresh())
+  gap.attach(_ => refresh())
+  padding.attach(_ => refresh())
   clip()
   reindex()
 }

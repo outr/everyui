@@ -1,7 +1,7 @@
 package everyui.terminal
 
 import everyui.component.types.Semantics
-import everyui.component.{Embed, EmbedSite, TextView}
+import everyui.component.{Embed, EmbedSite, OnScreen, TextView}
 import everyui.focus.Focus
 import everyui.keymap.{Chord, Keymap}
 import everyui.render.Platform
@@ -65,6 +65,9 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
   val fontSize: Var[Double] = own(Var(options.fontSize))
   /** Its colours: the palette's, following it as it changes, until the app sets its own. */
   val theme: Var[TerminalTheme] = own(Var(TerminalTheme.of(Theme.palette())))
+  /** How many lines that have gone off the top are kept to scroll back to: `TerminalOptions.scrollback` (1000) to
+    * begin with, and changed as it runs. Each line kept costs the engine its cells, about 7 MB for 5000 lines. */
+  val scrollback: Var[Int] = own(Var(options.scrollback))
   /** Whether a clicked link is also opened in the platform's browser (`Platform.openUrl`). */
   var openLinks: Boolean = true
 
@@ -84,6 +87,7 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
     }
     onSize((_, _) => if (made) say("fit") else make())
     fontSize.attach(points => if (made) say("options", TerminalWire.obj("fontSize" -> TerminalWire.num(points))))
+    scrollback.attach(lines => if (made) say("options", TerminalWire.obj("scrollback" -> TerminalWire.num(lines.toDouble))))
     theme.attach(t => if (made) say("options", TerminalWire.obj("theme" -> TerminalWire.theme(t))))
     follow(Keymap.embeds, (_: Map[String, List[Chord]]) => if (made) say("keep", TerminalWire.chords(Terminal.kept())))
   }
@@ -92,6 +96,8 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
     * as one. */
   def write(data: String): Unit = if (live && !disposed && data.nonEmpty) {
     waiting.append(data)
+    // before it is made (a terminal in a tab not yet shown), only the end is kept: as much as it scrolls back over
+    if (!made && waiting.length > Terminal.waitingMost) trimWaiting()
     if (made && !flushing) {
       flushing = true
       Platform.after(0.0, () => flush())
@@ -120,15 +126,32 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
   /** Scrolled `lines` down (up, for fewer than none). */
   def scrollLines(lines: Int): Unit = say("scrollLines", lines.toString)
 
-  // made once the box is on the screen: on the web the terminal measures its cells in the page
+  // made once the box is on the screen: on the web the terminal measures its cells in the page. Until then it waits for
+  // that (OnScreen.once) rather than looking again every 50 ms, which a terminal in a tab never shown did for as long
+  // as the app ran
+  private var waitingToShow = false
+  // how many times it has looked whether it can be made, and how much output waits for it, for a spec
+  private[terminal] var looked = 0
+  private[terminal] def waitingLength: Int = waiting.length
   private def make(): Unit = if (!made && !disposed) {
-    if (!Focus.showing(this)) Platform.after(0.05, () => make())
+    looked += 1
+    if (!Focus.showing(this)) {
+      if (!waitingToShow) {
+        waitingToShow = true
+        // (a moment after it comes, as it always was: a web view made the turn it was put on the screen crashed the
+        // desktop's WebKit later on)
+        OnScreen.once(this)(() => Platform.after(0.05, () => {
+          waitingToShow = false
+          make()
+        }))
+      }
+    }
     else {
       made = true
       import TerminalWire.{bool, chords, message, num, obj, str}
       send(message("create", id, obj(
         "fontFamily" -> str(options.fontFamily), "fontSize" -> num(fontSize()), "lineHeight" -> num(options.lineHeight),
-        "scrollback" -> num(options.scrollback.toDouble), "cursorStyle" -> str(options.cursor.name),
+        "scrollback" -> num(scrollback().toDouble), "cursorStyle" -> str(options.cursor.name),
         "cursorBlink" -> bool(options.cursorBlink), "optionIsMeta" -> bool(options.optionIsMeta),
         "screenReader" -> bool(options.screenReader), "links" -> bool(options.links),
         "theme" -> TerminalWire.theme(this.theme()), "keep" -> chords(Terminal.kept()))))
@@ -137,11 +160,23 @@ class Terminal(val options: TerminalOptions = TerminalOptions())
     }
   }
 
+  // the output waiting for the terminal cut to the last half of `Terminal.waitingMost` characters, from the start of a
+  // line, and how much went told as it is first drawn (`Terminal.dropped`)
+  private var droppedChars = 0L
+  private def trimWaiting(): Unit = {
+    val cut = waiting.length - Terminal.waitingMost / 2
+    val line = waiting.indexOf("\n", cut)
+    val from = if (line >= 0 && line < waiting.length - 1) line + 1 else cut
+    droppedChars += from
+    waiting.delete(0, from)
+  }
+
   // what was written since the last flush, as one message; anything else said goes after it
   private def flush(): Unit = {
     flushing = false
     if (waiting.nonEmpty && !disposed) {
-      val data = waiting.toString
+      val data = (if (droppedChars > 0L) Terminal.dropped(droppedChars) else "") + waiting.toString
+      droppedChars = 0L
       waiting.clear()
       send(TerminalWire.message("write", id, data))
     }
@@ -193,7 +228,16 @@ object Terminal {
   /** Where the terminal's files are: served next to the app's page on the web (`everyui-terminal/<version>/`, relative
     * to it, or a whole address), read from the classpath on the desktop, and from the APK's assets on Android. */
   var site: EmbedSite = EmbedSite(embedName, "everyui-terminal/" + version, "host.html",
-    List("xterm.js", "addon-fit.js", "addon-web-links.js", "bridge/terminal_bridge.js?v=touch-scroll-1"))
+    List("xterm.js", "addon-fit.js", "addon-web-links.js", "bridge/terminal_bridge.js?v=scrollback-1"))
+
+  /** How many characters written to a terminal not yet made (one in a tab never shown) wait for it: past it, the
+    * oldest half goes, from the start of a line, and the terminal says how much as it is first drawn (`dropped`). The
+    * engine keeps no more than its scrollback anyway. */
+  var waitingMost: Int = 512 * 1024
+
+  /** What a terminal writes first where `n` characters written before it was made were let go (`waitingMost`): a dim
+    * line of its own. */
+  var dropped: Long => String = n => "\u001b[2m[" + n.toString + " earlier characters not kept]\u001b[0m\r\n"
 
   /** What shows where no web engine can run a terminal. */
   var unavailable: String = "A terminal needs a web engine, which this device does not have."

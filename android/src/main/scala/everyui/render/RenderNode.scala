@@ -915,6 +915,9 @@ class RenderNode(val view: View) {
   /** The shared ScrollContainer draws no scrollbar here. */
   def setScrollbarColor(hex: String): Unit = ()
   def setScrollbarShown(shown: Boolean): Unit = ()
+  /** Hidden from the page by the scroll it is in, out of its view, and found again by the page's find (the web's): here
+    * a scroll hides what is out of its view by its `visible`, and nothing is done. */
+  def setCulled(culled: Boolean, found: () => Unit): Unit = ()
   /** Its ends faded to clear over `start` and `end` (its left and right, or its top and bottom), showing what is
     * behind: the view's own fading edges, as Android's scrolling views fade theirs, told which ends have more
     * (`NodeGroup.fades`) since the content is moved within it rather than scrolled by it. */

@@ -1,6 +1,6 @@
 package everyui.monaco
 
-import everyui.component.{Button, Container, Embed, TextView}
+import everyui.component.{Button, Container, Embed, OnScreen, TextView}
 import everyui.focus.Focus
 import everyui.keymap.{Chord, Command, Keymap}
 import everyui.kit.CodeView
@@ -68,9 +68,20 @@ class MonacoEditor(val controller: MonacoController = MonacoController(), transp
   /** Whether its editor has been made. */
   def made: Boolean = editorId.nonEmpty
 
-  // made once the box is on the screen: on the web the editor measures itself in the page
+  // made once the box is on the screen: on the web the editor measures itself in the page. Until then it waits for that
+  // (OnScreen.once) rather than looking again every 50 ms, which an editor in a tab never shown did as long as it lived
+  private var waitingToShow = false
   private def make(): Unit = if (!making && !disposed && editorId.isEmpty) {
-    if (!Focus.showing(this)) Platform.after(0.05, () => make())
+    if (!Focus.showing(this)) {
+      if (!waitingToShow) {
+        waitingToShow = true
+        // (a moment after it comes, as it always was, the page laid out round it)
+        OnScreen.once(this)(() => Platform.after(0.05, () => {
+          waitingToShow = false
+          make()
+        }))
+      }
+    }
     else {
       making = true
       val to = Monaco.bridge(this)

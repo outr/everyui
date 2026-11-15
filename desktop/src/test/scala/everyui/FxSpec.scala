@@ -165,6 +165,8 @@ trait FxSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
         javafx.scene.input.KeyCode.SHIFT, false, false, false, false))
       // nor the focus left shown by the keys a spec before this one pressed: it starts as the spec says
       everyui.focus.Focus.visible @= keyed
+      // a run with EVERYUI_WARN_UNDISPOSED set tells of each component taken out of its container and left
+      if (sys.env.contains("EVERYUI_WARN_UNDISPOSED")) everyui.component.Component.warnUndisposed @= true
       // nor a tip left showing, nor tips set as a spec before this one wanted them (one that turned the focus's tips
       // off left a later spec's focus with none): as Tooltip starts
       everyui.tooltip.Tooltip.hide()

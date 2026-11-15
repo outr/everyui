@@ -10,7 +10,9 @@ import everyui.render.Platform
   * `@main` and calls it from the generated scene, and Scala.js links it as the module initializer, so there can
   * only be one.
   *
-  * `overlaps=1` turns the overlap check on (`Overlaps.warn`) whatever runs.
+  * `overlaps=1` turns the overlap check on (`Overlaps.warn`) whatever runs, and `undisposed=1` the warning for a
+  * component taken out of its container and left (`Component.warnUndisposed`); `shotafter=2` saves the frame two
+  * seconds in, with `--screenshot=` on the desktop.
   *
   *   animation  youi's AnimationExample, in youi's example app (the default)
   *   durable    the network module's example: a durable socket to `socket=<url>` (tools/check.sh)
@@ -200,6 +202,10 @@ import everyui.render.Platform
   val demo = Platform.launchArg("demo")
   // any demo, with the overlap check on (`overlaps=1`)
   if (Platform.launchArg("overlaps") == "1") everyui.layout.Overlaps.warn @= true
+  // and the warning for a component taken out of its container and left (`undisposed=1`)
+  if (Platform.launchArg("undisposed") == "1") everyui.component.Component.warnUndisposed @= true
+  // and the frame as it is after so many seconds, for a screenshot (`shotafter=2`, with `--screenshot=` on the desktop)
+  Platform.launchArg("shotafter").toDoubleOption.foreach(s => Platform.after(s, () => Platform.frozen()))
   if (demo == "hello") HelloWorld.run()
   else if (demo == "remote") RemoteDemo.run()
   else if (demo == "bench") ReactifyBench.run()

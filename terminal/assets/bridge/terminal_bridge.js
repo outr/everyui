@@ -330,6 +330,7 @@
         e.term.options.fontSize = options.fontSize * e.scale;
       }
       if (options.fontFamily) e.term.options.fontFamily = options.fontFamily;
+      if (options.scrollback !== undefined) e.term.options.scrollback = options.scrollback;
       scheduleFit(e);
     });
   };

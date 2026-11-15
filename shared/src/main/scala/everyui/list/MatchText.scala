@@ -54,7 +54,10 @@ class MatchText(width: => Double, height: => Double, points: Double = 13.0) exte
     val last = before
     run.size.width := last.map(l => l.position.left() + l.size.width()).getOrElse(0.0)
     run.size.height := views.map(_.size.height()).maxOption.getOrElse(0.0)
+    val was = run.children()
     run.children @= views
+    // the pieces drawn before taken apart: each bound to the theme's colours, and kept for as long as the row lived
+    was.foreach(c => if (!views.exists(_ eq c)) c.dispose())
   }
 
   text.attach(_ => show())

@@ -229,7 +229,10 @@ class DataTableSpec extends FxSpec {
       val t = fx(DataTable(columns, (0 until 40).toVector.map(i => rows(i % 5))))
       fx(t.maxHeight @= 300.0)
       onScreen(t) {
-        eventually(names(t).size == 40 && t.size.height() > 0.0) shouldBe true
+        // more rows than show: only those that show made
+        eventually(names(t).nonEmpty && t.size.height() > 0.0) shouldBe true
+        fx(t.windowed()) shouldBe true
+        fx(names(t).size) should be < 40
         val r = fx(rowsScroll(t))
         fx(grid(t).size.height()) shouldBe 300.0 +- 1.0
         fx(body(t).size.height()) should be > 600.0
@@ -245,6 +248,8 @@ class DataTableSpec extends FxSpec {
     }
     "make a long table a page at a time, measuring its widest cells" in {
       val t = fx(DataTable(columns, (0 until 300).toVector.map(i => rows(i % 5).updated(0, rows(i % 5).head + " " + i))))
+      // (as tall as its rows, in no scroll: every row made)
+      fx(t.maxHeight @= 0.0)
       onScreen(t) {
         fx(body(t).children().size) should be < 300
         eventually(body(t).children().size == 300) shouldBe true

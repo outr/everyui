@@ -340,6 +340,9 @@ class RenderNode(val sg: SGNode) {
   def setScrollbarColor(hex: String): Unit = ()
   /** No scrollbar is drawn here, and no fade: what is out of the viewport is cut at its edge. */
   def setScrollbarShown(shown: Boolean): Unit = ()
+  /** Hidden from the page by the scroll it is in, out of its view, and found again by the page's find (the web's): here
+    * a scroll hides what is out of its view by its `visible`, and nothing is done. */
+  def setCulled(culled: Boolean, found: () => Unit): Unit = ()
   def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = ()
   def setScrollTop(y: Double): Unit = ()
   /** How far the node has scrolled its own overflow: never, here, where the ScrollContainer shifts the content. */

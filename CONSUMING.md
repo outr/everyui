@@ -2389,6 +2389,41 @@ Theme.surfaceOpacity @= 0.8                 // bubbles and tool calls let the pi
 MarkdownView.codeOpacity @= Some(0.7)       // and the code in either, 0.7 whole
 ```
 
+### A message that asks, and its own actions (`ChatEntry.Message.attention`, `actions`)
+
+A message can ask something of the person using the app: an open question to them, from an agent or another person.
+`attention` (a `Var[Option[Attention]]`, None by default) says so, and is set, changed and cleared at any time:
+
+- `Attention.Asking(label)`: the bubble gets an edge in the theme's warning tone and a light wash of it, and `label`,
+  where it has one, goes under the bubble in small words of that tone with a question mark before them.
+  `Attention.asking` is the usual one, labelled "Question for you" in the language in use (`chat.questionForYou`);
+  `Asking(Some("Waiting on you"))` gives the app's words, `Asking(None)` the edge and wash alone.
+- `Attention.SetAside`: a question the person has put off, the edge alone, dimmed, with no wash and no words.
+
+The edge is drawn inside the bubble, so the bubble neither moves nor changes size as it comes and goes; only the words
+under it, where there are any, make the row taller. A screen reader hears it after the message's words ("Helper:
+Shall I cut the release now?, Question for you", or ", Set aside"), and hears "Helper, Question for you" said as a
+message on the screen comes to ask. It is drawn the same on every platform.
+
+`actions` (a `Var[List[MessageAction]]`, none by default) are the app's own actions on one message, shown under it
+always as small buttons with their icon and their words, rather than beside one message at a time as `messageActions`
+are: an "Ignore" on a question, say. A press runs the action, and an action with `done` has its words said. The
+forward arrow on the message goes onto them first, the arrows along them, and on past the last onto the buttons
+beside the message; back from the first, Up, Down, Escape or Back go back to the message. One that takes itself away
+(Ignore, which sets the question aside) leaves the focus on the message.
+
+```scala
+reply.attention @= Some(Attention.asking)
+reply.actions @= List(MessageAction(MaterialIcon.VisibilityOff, "Ignore", () => {
+  reply.attention @= Some(Attention.SetAside)
+  reply.actions @= Nil
+}))
+```
+
+Neither costs a message anything until the app asks for it: both are made the first time they are read or set, and
+until then nothing drawing the message listens for them, binds an edge or makes a component. `demo=chat` shows a
+question with Ignore under it and one set aside.
+
 ### Threads (`ChatEntry.rail`, `Transcript.rails`)
 
 Any entry (a message, a tool call, reasoning, a note, the app's component) can have a rail: a thin line in a colour of
@@ -2617,12 +2652,27 @@ composer.queueAfterStop @= QueueAfterStop.Drain     // Pause, the default for no
   reader, the ⋮ "More queue actions", and the count is said again as Send next or Clear queue changes it. An action
   that ends the line (Resume, the last message sent, Clear queue) puts the focus back in the field. None show while
   the queue is not paused.
+- **Each message's own actions**: `queuedActions` (a `Var[Draft => List[QueuedAction]]`, none by default) puts the
+  app's buttons on a queued message's chip, before Edit and Remove, in order, each a glyph with its `label` as its
+  tooltip and its name to a screen reader. A press runs `action`, which answers whether the message leaves the queue
+  (true: it was sent or dropped by the app) or stays where it is (false); the chip is taken off for it, never sent by
+  the composer. They are stops for the focus of their own after the chip: the forward arrow (Right, Left right to
+  left) goes from the chip onto them and along them, back from the first, Up, Down or Escape back to the chip, and
+  once one takes its message off, the focus goes to the chip that took its place. The function is asked again as it
+  changes, and may give each message its own, or none.
+
+  ```scala
+  composer.queuedActions @= (d => List(
+    QueuedAction(MaterialIcon.Send, "Send now", () => { chat.sendNow(d); true }),
+    QueuedAction(MaterialIcon.StopCircle, "Stop and send", () => { chat.stop(); chat.sendNow(d); true })))
+  ```
 - `edit(draft)`, `unqueue(draft)`, `resume()`, `sendNext()` and `clearQueue()` do from the app what the queue's own
   controls do. No callback says which was pressed: a message Send next sends reaches `onSend`, as every drained one
   does, so a send and a removal are already told apart, and `queue` shows every change.
 - On a Roku or an Apple TV, where a message is written on the platform's keyboard, it is off unless the app turns it
   on. `demo=chat&queue=1` shows it, each reply streaming for some seconds (`afterstop=drain` to go on after Stop,
-  `seed=1` for a paused queue), with an app action, "Stop tools", on the paused line.
+  `seed=1` for a paused queue), with an app action, "Stop tools", on the paused line, and Send now and Stop and send
+  on each queued message.
 
 ### Files (`everyui.file`)
 
@@ -6169,6 +6219,13 @@ for a dark or light ground). `selection` is the selected text; `copy()`, `paste(
 `reset()`, `scrollToBottom()` and `scrollLines(n)` are there for a menu; `onBell`, `onLink` (a clicked address, opened
 in the browser too while `openLinks`) and `onBinary` (old mouse reports) are heard.
 
+`scrollback` is 1000 lines unless `TerminalOptions` says otherwise (each line kept costs the engine its cells: about 7
+MB for 5000), and `term.scrollback` (a `Var[Int]`) changes it as it runs. A terminal is made the first time it is on
+the screen; until then what is written to it waits, only its last `Terminal.waitingMost` characters (512 KB) kept, cut
+at the start of a line, and it says how much it let go in a dim line of its own as it is first drawn
+(`Terminal.dropped`, words an app may change). It waits for the screen without looking again and again, as a Monaco
+editor waits for it too.
+
 **Keys.** While it has the focus every key is the program's, Tab, Escape and the arrows included, so no key of its own
 takes the focus out. The app's shortcuts still run inside it exactly where they do inside a Monaco editor: a command
 with `inEmbeds`, a chord left to terminals (`Terminal.keep`, which is `Keymap.embed("terminal", ...)`), a double-tap
@@ -6403,6 +6460,46 @@ val line = new TextView { selectable @= true }     // or on a container: everyth
 Over a `source` (any `ListSource`, a server's pages or a log's lines) rows are `rowHeight` tall, unless the source
 knows its rows' heights itself without drawing them (`sized`, with `top(index)` and `indexAt(y)`: a log's wrapped
 lines). `dragAcross` reports a finger dragged across the rows, for a list whose rows scroll sideways themselves.
+
+#### A list of cards (an inbox)
+
+A list of cards set apart, each as tall as it draws, is a `VirtualList` with `measuredRows`: only the cards that show
+are made, however many have been loaded. `gap` is the room between one row and the next, and `padding` (a container's)
+the room round them all, the rows that much narrower than the list; a click in a gap picks nothing. A card that grows
+or shrinks where it is (a thread unfolded into its messages, folded again) moves the cards after it, and the card
+under the cursor stays where it is on the screen. `nearEnd` is told, with the count, as the rows shown come within a
+screen of the end (`nearEndScreens`), once for each count: read the next page there and append it to `items`, and
+what shows stays put. `replace(item)` puts a changed item in place of the one with its key and draws only its row
+again (a message marked read), with `items` changed to match. A part of a row made its checkbox (`ListRow.checks`:
+the sender's avatar) adds its row to the selection or takes it away with no modifier held, Shift with it the rows from
+the last one chosen (`toggleRow`), and the click goes no further; a click elsewhere on a card still picks it alone, and
+Shift and Primary with a click, the keys and Primary+A work as in any list.
+
+```scala
+val list = new VirtualList[Mail](mails, _.id, _.subject, rowHeight = 108.0, measuredRows = true)(() => new MailCard)
+list.gap @= 8.0
+list.padding @= 8.0
+list.nearEnd.attach(_ => if (!loading) server.page(next).foreach(more => mails @= mails() ++ more))
+server.changed.attach(m => list.replace(m))
+
+class MailCard extends ListRow[Mail] {
+  private val avatar = new Avatar(...)
+  children += avatar
+  checks(avatar)                                    // the avatar adds or takes away this card
+  WhileHovered(this, focusShown())(() => tools())   // the hover tools, made only while wanted
+  size.height := item().map(m => if (m.unfolded) 108.0 + m.thread.size * 64.0 else 108.0).getOrElse(108.0)
+}
+```
+
+`WhileHovered(host)(make)` (`everyui.component`) is a part made only while it is wanted: the pointer over `host`, the
+focus in the part, or what `also` says (a card's focus drawn), and always on a screen with no pointer to hover with. It
+is put in `host` as it is first wanted and taken out and disposed of as it stops being wanted, so a list's hover tools
+cost nothing on the rows the pointer is not over. It works in any container, a list's row or a card in a column, and
+goes with `host`; `made` is the part while it is there.
+
+A list keeps a row's height for each item it has drawn only while the item is in `items`: a transcript switched from
+one conversation to another lets the first's go. A plain text row (`VirtualList.text`) is three components; its icon,
+badge and badge tail are made only once a row's decoration has them.
 
 ### Tree (`everyui.tree`)
 
@@ -6918,6 +7015,12 @@ all fit, else sharing the width so cells wrap, no word ever cut, scrolling sidew
 are too wide, a shade at the edge with more beyond). Cells wrap rather than being cut, so nothing is hidden behind a
 tip. Taller than `maxHeight` (420 by default; 0 for none), the rows scroll under a header that stays, with room kept
 for the page's scrollbar on the web. A table whose words read right to left has its first column at the right.
+
+Past `DataTable.windowAfter` rows (15), where they are more than show at once, a table makes only the rows that show
+(`windowed`): those its `maxHeight` shows as they scroll within it, or, as tall as its rows (`maxHeight` 0), those the
+scroll it is in shows of it (a page's `ScrollContainer`, a `VirtualList`'s row: a chat's message), the page scrolling
+and never the table. A table of a hundred rows costs about what one of twenty does; sort, filter, copies and exports
+are over every row as before. A short table, all of which shows, is made whole.
 
 ```scala
 import everyui.table.{ColumnKind, DataColumn, DataTable}

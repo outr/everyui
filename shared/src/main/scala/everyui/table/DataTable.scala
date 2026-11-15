@@ -2,7 +2,7 @@ package everyui.table
 
 import everyui.{Color, Gradient, GradientStop}
 import everyui.clipboard.Clipboard
-import everyui.component.{Component, Container, Link, MaterialIconView, RichText, ScrollContainer, TextView}
+import everyui.component.{Component, Container, Link, MaterialIconView, OnScreen, RichText, ScrollContainer, TextView}
 import everyui.component.types.{Semantics, TextAlign, WhiteSpace}
 import everyui.component.feature.MeasuredFeature
 import everyui.event.{Key, KeyEvent, PointerEvent}
@@ -12,7 +12,7 @@ import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.{SearchField, Toast}
 import everyui.layout.{Layout, LayoutPass, VerticalLayout}
-import everyui.list.{ListRow, Pointers}
+import everyui.list.{ListRow, Pointers, VirtualList}
 import everyui.markdown.{TableLook, TableWidths}
 import everyui.menu.{Menu, MenuItem}
 import everyui.paging.PagedSource
@@ -65,9 +65,11 @@ import reactify.*
   * of each column (by their characters and their longest words) are measured for the columns' widths, so a long table
   * does not hold the page up as it is made, nor as it is filtered: a cell wider than those measured wraps.
   *
-  * Past `DataTable.virtualAfter` rows (with a `maxHeight`, so its rows scroll), only the rows that show are made, each
-  * as tall as it is drawn, a row not yet drawn taken to be a line tall: a table of a hundred thousand rows costs what
-  * one of fifty does, its filter, sort, copies and exports still over every row.
+  * Past `DataTable.windowAfter` rows, where they are more than show at once, only the rows that show are made, each as
+  * tall as it is drawn, a row not yet drawn taken to be a line tall: those its `maxHeight` shows as they scroll within
+  * it, or, as tall as its rows (`maxHeight` 0), those the scroll it is in shows (a page's `ScrollContainer`, a
+  * `VirtualList`'s row, a chat's message). A table of a hundred thousand rows costs what one of fifty does, its filter,
+  * sort, copies and exports still over every row; a short one, all of which shows, is made whole.
   *
   * A table of a server's rows, a page at a time (`DataTable.paged`, over a `PagedSource` of rows of cells, a file read a
   * page at a time as much as a server's results), is drawn and worked the same way, what has not come yet a grey bar
@@ -142,9 +144,15 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   // the cell being typed over, and what lets it go; and the last click, for a second on the same cell
   private var editing: Option[() => Unit] = None
   private var lastClick: Option[(Int, Int, Double)] = None
-  /** Whether only the rows that show are made: a table of a server's rows, or one past `DataTable.virtualAfter` rows
-    * whose rows scroll (`maxHeight`). */
-  val windowed: Val[Boolean] = own(Val(source.nonEmpty || (maxHeight() > 0.0 && cells().size > DataTable.virtualAfter)))
+  // the scroll the table is in, where it is as tall as its rows (`maxHeight` 0): what shows of its rows is what that
+  // scroll shows of it
+  private val pageScroll: Var[Option[Component]] = own(Var(None))
+  // what stops it following that scroll
+  private var unfollowPage: () => Unit = () => ()
+  /** Whether only the rows that show are made: a table of a server's rows, or one past `DataTable.windowAfter` rows
+    * that are more than show, scrolled within its `maxHeight` or, as tall as its rows, in a scroll it is in. */
+  val windowed: Val[Boolean] = own(Val(source.nonEmpty || (cells().size > DataTable.windowAfter &&
+    (if (maxHeight() > 0.0) cells().size * DataTable.lineHeight(style) > maxHeight() else pageScroll().nonEmpty))))
   /** How many rows an export of a server's rows has written so far, while it runs. */
   private val written: Var[Option[Int]] = own(Var(None))
   val exporting: Val[Option[Int]] = written
@@ -400,6 +408,13 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     sort.attach(now => s.sort @= now.map(o => Sorting(keyOf(o.column), o.ascending)))
   }
   build()
+  // the scroll it is in found as it comes onto the screen, and followed while it is there (a table as tall as its rows)
+  private val screen = new OnScreen(this, on => if (on) findPage() else unfollowPage())
+  if (screen()) findPage()
+  onDispose(() => {
+    screen.stop()
+    unfollowPage()
+  })
   // the tools and the filter, made once they are first wanted
   barred.attach(on => if (on) showBar())
   if (barred()) showBar()
@@ -611,10 +626,10 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     try {
       val n = placeCount
       heights.resize(n)
-      val view = math.max(heights.estimate, if (maxHeight() > 0.0) math.max(rows.size.height(), maxHeight() - headHeight())
-        else rows.size.height())
-      val top = heights.rowAt(rows.offset())
-      val foot = heights.rowAt(rows.offset() + view)
+      val (from, length) = band()
+      val view = math.max(heights.estimate, length)
+      val top = heights.rowAt(from)
+      val foot = heights.rowAt(from + view)
       val first = math.max(0, top - DataTable.overscan)
       val last = math.min(n - 1, foot + DataTable.overscan)
       source.foreach(s => if (n > 0) s.showing(top, foot))
@@ -654,6 +669,62 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     } finally filling = false
   }
 
+  /** Where what shows of the rows starts, down them, and how long it is: the rows' own scroll's, or, where the table is
+    * as tall as its rows in a scroll (`page`), the part of them that scroll shows. */
+  private def band(): (Double, Double) = pageScroll() match {
+    case Some(p) if maxHeight() <= 0.0 =>
+      // (none of it, where the page shows none: the rows by the end nearest what shows)
+      val start = p.absoluteTop - rows.absoluteTop
+      val all = heights.total
+      val from = math.max(0.0, math.min(start, all))
+      (from, math.max(0.0, math.min(all, start + p.size.height()) - from))
+    case _ =>
+      (rows.offset(), if (maxHeight() > 0.0) math.max(rows.size.height(), maxHeight() - headHeight()) else rows.size.height())
+  }
+
+  /** The scroll the table is in, as it comes onto the screen, followed for the rows it shows: the first up from it that
+    * scrolls down (a `ScrollContainer` not a rail, a `VirtualList`), or none. */
+  private def findPage(): Unit = {
+    var at = parent()
+    var found: Option[Component] = None
+    while (found.isEmpty && at.nonEmpty) {
+      at.get match {
+        case s: ScrollContainer if !s.horizontal => found = Some(s)
+        case l: VirtualList[?]  => found = Some(l)
+        case _ => ()
+      }
+      at = at.flatMap(_.parent())
+    }
+    val same = (found, pageScroll()) match {
+      case (Some(a), Some(b)) => a eq b
+      case (None, None) => true
+      case _ => false
+    }
+    unfollowPage()
+    found.foreach(followPage)
+    if (!same) pageScroll @= found
+  }
+  private def followPage(p: Component): Unit = {
+    val moved: Var[Double] = p match {
+      case s: ScrollContainer => s.offset
+      case l: VirtualList[?]  => l.offset
+      case _ => Var(0.0)
+    }
+    val scrolled = moved.attach(_ => fill())
+    val sized = p.size.height.attach(_ => fill())
+    unfollowPage = () => {
+      moved.reactions -= scrolled
+      p.size.height.reactions -= sized
+      unfollowPage = () => ()
+    }
+  }
+  // scrolled by `by`, where the table is as tall as its rows in a scroll: rows above what shows drawn taller or shorter
+  private def pageBy(by: Double): Unit = pageScroll() match {
+    case Some(s: ScrollContainer) => s.scrollBy(by)
+    case Some(l: VirtualList[?] ) => l.scrollBy(by)
+    case _ => rows.scrollTo(rows.offset() + by)
+  }
+
   /** Each row drawn placed where the rows before it end, the rows as tall as they are together. */
   private def placeWindow(): Unit = {
     window.foreach { case (p, (_, _, drawn)) => drawn.position.top @= heights.top(p) }
@@ -664,11 +735,11 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     * and where it is above the top of what shows, the scroll with them, so what shows stays still. */
   private def measured(place: Int, drawn: Container, height: Double): Unit =
     if (height > 0.0 && window.get(place).exists(_._3 eq drawn)) {
-      val above = heights.top(place) + heights.heightOf(place) <= rows.offset() + 0.5
+      val above = heights.top(place) + heights.heightOf(place) <= band()._1 + 0.5
       val change = heights.measure(place, height)
       if (change != 0.0) {
         placeWindow()
-        if (above) rows.scrollTo(rows.offset() + change)
+        if (above) pageBy(change)
         // fewer rows may fill what shows now, or more be wanted
         Platform.later(() => fill())
       }
@@ -1310,11 +1381,14 @@ object DataTable {
   val eager: Int = 60
   val lead: Int = 12
   val page: Int = 16
-  /** How many rows a table has, with a `maxHeight`, before it makes only the rows that show; and how many more it makes
-    * each way beyond them, so a scroll finds them made. */
+  /** How many rows a Markdown table has before it is given a height of its own to scroll its rows in (`MarkdownTable`). */
   val virtualAfter: Int = 400
+  /** How many rows a table has before it makes only the rows that show, where they are more than show at once: a short
+    * table (a chat's answer's) is made whole, and scrolls nowhere within itself. */
+  val windowAfter: Int = 15
   // what a measuring cell's faces arriving tells: nothing, as it is measured again then anyway
   private[table] val noted: () => Unit = () => ()
+  /** How many more rows a table makes each way beyond those that show, so a scroll finds them made. */
   val overscan: Int = 8
   /** How soon a second click on a cell after the first is a double-click, in ms, and how tall the field a cell is typed
     * over in is at least. */

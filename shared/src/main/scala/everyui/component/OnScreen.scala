@@ -59,3 +59,28 @@ class OnScreen(c: Component, changed: Boolean => Unit) {
     }
   }
 }
+
+object OnScreen {
+  /** `f` once `c` is on the screen (as `OnScreen` has it: in `ui`, nothing it is in hidden): now where it is, else as
+    * it comes onto it, listening meanwhile only to `c` and the containers it is in, with no timer however long it
+    * waits; never once `c` is disposed of. What is made only once it can be measured in the page (a terminal, an
+    * editor) waits for it this way rather than asking again and again. */
+  def once(c: Component)(f: () => Unit): Unit = {
+    var done = false
+    var watch: Option[OnScreen] = None
+    val w = new OnScreen(c, on => if (on && !done) {
+      done = true
+      watch.foreach(_.stop())
+      if (!c.takenApart) f()
+    })
+    if (w()) {
+      done = true
+      w.stop()
+      f()
+    }
+    else {
+      watch = Some(w)
+      c.onDispose(() => w.stop())
+    }
+  }
+}

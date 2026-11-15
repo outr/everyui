@@ -137,7 +137,8 @@ private[map] class TileLayer(map: MapView) {
     // (one let go while it was on its way is forgotten)
     if (entries.get(e.tile.id).exists(_ eq e)) {
       if (w > 0.0 && h > 0.0) {
-        val view = new ImageView
+        // (kept in the cache while off the frame, to be put back: held aside)
+        val view = Component.heldAside(new ImageView)
         view.image @= new Image(uri, w, h)
         e.view = Some(view)
       }

@@ -514,7 +514,7 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   }
   // the room between the title's words and the header's count (its badge, in a tree)
   private lazy val besideRoom: Val[Double] = own(Val(heading.size.width() - heading.textStart -
-    heading.label.size.width() - RowLabel.pad - (if (heading.badge.visible()) heading.badge.size.width() + RowLabel.pad
+    heading.label.size.width() - RowLabel.pad - (if (heading.badgeShown() > 0.0) heading.badgeShown() + RowLabel.pad
     else 0.0)))
   private lazy val beside: Val[Boolean] = own(Val(subtitleLine.size.width() <= besideRoom()))
   /** The section's subtitle, muted: on the title's line after it where it fits there, else under it, wrapped within the
