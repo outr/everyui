@@ -6,16 +6,15 @@ import rapid.*
 import robobrowser.{BrowserConfig, RoboBrowser, RoboBrowserConfig, TabSelector}
 
 import java.nio.file.{Files, Path, Paths}
-import scala.concurrent.duration.*
 
 /** The web's memory check: each case of the memory page (memory/web, `MemoryPage`) in a headless Chrome, measured over
   * the DevTools protocol, against the baseline. For each case, on a page of its own: the case's rig is put on the
-  * screen and given a step of its units, and the page is let settle, its garbage collected three times
-  * (`HeapProfiler.collectGarbage`) and read (the JavaScript heap used, and Blink's, where the DOM's nodes and styles
-  * live, `Runtime.getHeapUsage`; the DOM nodes and event listeners, `Performance.getMetrics`; the live components,
-  * `Component.liveNow`); then another step, read again, and the rig taken
-  * apart, read once more. A unit costs the difference between the two steps over the step, so what the first of them
-  * set up once is left out; "components left" is what taking the rig apart did not let go, per unit.
+  * screen and given a step of its units, and the page is let settle and read: the JavaScript heap used, and Blink's,
+  * where the DOM's nodes and styles live (`Runtime.getHeapUsage`), each the least of `collections` readings taken
+  * straight after a collection (`HeapProfiler.collectGarbage`); the DOM nodes and event listeners
+  * (`Performance.getMetrics`); the live components (`Component.liveNow`). Then another step, read again, and the rig
+  * taken apart, read once more. A unit costs the difference between the two steps over the step, so what the first of
+  * them set up once is left out; "components left" is what taking the rig apart did not let go, per unit.
   *
   * The table is written to `out`, and each measure held to the baseline's with a tenth's margin (`margin`, and a heap's
   * noise, `slack`): one over fails the check. With `--update` the table becomes the baseline instead.
@@ -25,9 +24,17 @@ import scala.concurrent.duration.*
 object MemoryCheck extends RapidApp {
   private val columns = Vector("JS heap bytes", "DOM heap bytes", "DOM nodes", "listeners", "components",
     "components left")
-  /** How far over its baseline each measure may go: a tenth, and a quarter for Blink's heap, which after collecting
-    * still moves by up to a tenth from run to run (a tool call opened, say). */
-  def margin(column: String): Double = if (column == "DOM heap bytes") 0.25 else 0.1
+  /** How far over its baseline each measure may go: a tenth. Blink's heap had a quarter while it moved by up to a
+    * quarter from run to run, which was a transcript's hidden spinner turning (`RenderNode.setMotion`) and its clock
+    * (`collections`); read as it is now, it moves by a few bytes in ten runs. */
+  def margin(column: String): Double = 0.1
+
+  /** How many times each reading collects the garbage and reads the heaps, the least of them kept. A heap read straight
+    * after a collection is what is live, but for what the page allocated between the two: a transcript's clock, which
+    * moves on every second, now and then lands there, and what it allocated (some 25 KB of JavaScript and 400 KB of
+    * Blink's heap in a transcript of 400 messages) is read with the heap until the next collection. One reading in ten
+    * or so was caught that way; the least of four is caught only where all four are. */
+  val collections: Int = 4
 
   /** What a measure may move by with nothing changed: a heap read after collecting moves by some tens of kilobytes over
     * a step, which is less per unit the more units a step has; a count does not move. */
@@ -113,21 +120,20 @@ object MemoryCheck extends RapidApp {
     }
   }
 
-  // the page settled and its garbage collected, then: the heaps used, the DOM nodes, the listeners, the live components
+  // the page settled, then: the heaps used, the least of `collections` readings each straight after a collection, the
+  // DOM nodes, the listeners, the live components
   private def read(browser: RoboBrowser): Task[Vector[Double]] = for {
     _ <- browser.eval("return new Promise(r => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(" +
       "() => setTimeout(() => r(0), 100))), 1000))", awaitPromise = true)
-    _ <- browser.send("HeapProfiler.collectGarbage")
-    _ <- browser.send("HeapProfiler.collectGarbage")
-    _ <- Task.sleep(100.millis)
-    _ <- browser.send("HeapProfiler.collectGarbage")
-    heap <- browser.send("Runtime.getHeapUsage")
+    heaps <- (1 to collections).toList.map(_ => browser.send("HeapProfiler.collectGarbage").flatMap(_ =>
+      browser.send("Runtime.getHeapUsage")).map(h => (h.result.value("usedSize").asDouble,
+      h.result.value("embedderHeapUsedSize").asDouble))).tasks
     metrics <- browser.send("Performance.getMetrics")
     live <- browser.eval("return everyuiMemory.live()")
   } yield {
     val named = metrics.result.value("metrics").asVector.map(m => m("name").asString -> m("value").asDouble).toMap
-    Vector(heap.result.value("usedSize").asDouble, heap.result.value("embedderHeapUsedSize").asDouble, named("Nodes"),
-      named("JSEventListeners"), live("result")("value").asDouble)
+    Vector(heaps.map(_._1).min, heaps.map(_._2).min, named("Nodes"), named("JSEventListeners"),
+      live("result")("value").asDouble)
   }
 
   private def text(result: Json): String = result("result")("value").asString

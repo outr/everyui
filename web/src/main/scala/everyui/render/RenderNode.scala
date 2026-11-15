@@ -295,10 +295,14 @@ class RenderNode(val el: html.Element) {
 
   private var animations: List[js.Dynamic] = Nil
 
-  /** Each track an animation of one of the element's own transform properties (`translate`, `rotate`, `scale`), which
-    * the browser applies before `transform` and runs off the page's thread, or of its opacity. */
   /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
   def setMotionOwner(owner: () => String): Unit = ()
+  /** Each track an animation of one of the element's own transform properties (`translate`, `rotate`, `scale`), which
+    * the browser applies before `transform` and runs off the page's thread, or of its opacity, paused while the
+    * element is hidden (`setVisible`): Chrome runs an animation of an element hidden by its own `display: none` on the
+    * page's thread, a style recalculation each frame for as long as it lasts (a transcript's spinner for older
+    * messages, hidden until they load, did so for the transcript's life), where one hidden by a box it is in costs
+    * nothing. As the desktop's and Android's Motion stop theirs. */
   def setMotion(tracks: List[everyui.motion.Track]): Unit = {
     import everyui.motion.Track
     turning(turnedStill, tracks.exists(t => t.property == Track.Rotation || t.property == Track.Scale))
@@ -316,7 +320,9 @@ class RenderNode(val el: html.Element) {
       }
       val timing = js.Dynamic.literal(duration = track.seconds * 1000.0, delay = track.delay * 1000.0,
         iterations = Double.PositiveInfinity, easing = "linear")
-      el.asInstanceOf[js.Dynamic].animate(js.Array(frames*), timing)
+      val animation = el.asInstanceOf[js.Dynamic].animate(js.Array(frames*), timing)
+      if (el.style.display == "none") animation.pause()
+      animation
     }
   }
 
@@ -634,6 +640,7 @@ class RenderNode(val el: html.Element) {
   def setVisible(visible: Boolean): Unit = {
     counted("display", visible.toString)
     el.style.display = if (visible) "" else "none"
+    animations.foreach(a => if (visible) a.play() else a.pause())
     WebHover.changed()
     // no longer laid out only to be measured (RenderNode.reveal)
     if (el.style.visibility.nonEmpty) el.style.visibility = ""
