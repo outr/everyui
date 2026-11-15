@@ -39,6 +39,7 @@ import reactify.*
   *    another message is sent, which goes first. Paused, its line also has Send next (the next message only, the queue
   *    still paused), Clear queue (at once, unasked: what it takes off is in sight) and the app's `queueActions`; where
   *    they do not fit beside its words, Resume stays and the rest go, in order, into a ⋮ menu.
+  *    Each chip can carry the app's own actions on its message too (`queuedActions`), before Edit and Remove.
   *  - '''A suggestion''' (`suggestion`, the app's guess at the next message) shows in the accent colour in the empty
   *    field, in the placeholder's place. Tab or Right takes it (`onAcceptSuggestion` hears it and it is written in,
   *    the caret after it); typing puts it away while there is anything in the field, and it is back once the field is
@@ -89,6 +90,14 @@ class Composer(onSend: Draft => Unit,
                maxHeight: Double = 200.0,
                val touch: Boolean = Composer.touchScreen(),
                width: Double = 640.0) extends Container {
+  // the parts shown and taken away again as the composer changes (`aside`): kept while away, and taken apart with it
+  // whether they show or not
+  private var asides: List[Component] = Nil
+  private def aside[C <: Component](c: C): C = {
+    asides = Component.heldAside(c) :: asides
+    c
+  }
+
   /** What is written, both ways: the app can set it, or clear it. */
   val text: Var[String] = own(Var(""))
   /** The files going with it, both ways. */
@@ -106,8 +115,8 @@ class Composer(onSend: Draft => Unit,
   /** The app's guess at the next message, shown in the empty field (or as a chip) until it is taken or put away. */
   val suggestion: Var[Option[String]] = own(Var(None))
   /** The app's own controls before the field (a model to choose), and after it, before Send (a microphone). */
-  val leading: Container = Composer.slot()
-  val trailing: Container = Composer.slot()
+  val leading: Container = aside(Composer.slot())
+  val trailing: Container = aside(Composer.slot())
   /** Narrower than this, it is a phone's: smaller controls, and `leading` folded behind "+". */
   val compactWidth: Var[Double] = own(Var(480.0))
   /** What a paste into the field becomes, asked with the words on the clipboard before they land (`ComposerPaste`): they
@@ -158,6 +167,10 @@ class Composer(onSend: Draft => Unit,
   /** The app's own actions on a paused queue ("Stop running commands"), on its line after Resume, Send next and Clear
     * queue, in order; those that do not fit beside its words go into a ⋮ menu at its end. */
   val queueActions: Var[List[QueueAction]] = own(Var(Nil))
+  /** The app's own actions on each queued message ("Send now", "Stop and send"), as small buttons on its chip before
+    * Edit and Remove, in order: none by default. A press runs one, and the message leaves the queue where it answers
+    * true. */
+  val queuedActions: Var[Draft => List[QueuedAction]] = own(Var((_: Draft) => Nil))
 
   /** Whether the controls are a phone's. */
   val compact: Val[Boolean] = own(Val(size.width() < compactWidth()))
@@ -222,24 +235,24 @@ class Composer(onSend: Draft => Unit,
     color := Theme.accentText()
   }
   // the "+" at the start of the line, opening the menu of what can go with a message; on a phone, its entry in the tray
-  private lazy val plusButton: IconButton = new IconButton(MaterialIcon.Add, words.add, () => openPlus(plusButton))
-  private val moreButton = new IconButton(MaterialIcon.Add, words.more, () => trayOpen @= !trayOpen())
-  private lazy val emojiButton: IconButton = new IconButton(MaterialIcon.InsertEmoticon, everyui.emoji.EmojiWords.emoji,
-    () => everyui.emoji.EmojiPicker.open(emojiButton, emoji => insert(emoji)))
+  private lazy val plusButton: IconButton = aside(new IconButton(MaterialIcon.Add, words.add, () => openPlus(plusButton)))
+  private val moreButton = aside(new IconButton(MaterialIcon.Add, words.more, () => trayOpen @= !trayOpen()))
+  private lazy val emojiButton: IconButton = aside(new IconButton(MaterialIcon.InsertEmoticon,
+    everyui.emoji.EmojiWords.emoji, () => everyui.emoji.EmojiPicker.open(emojiButton, emoji => insert(emoji))))
   private lazy val trayPlus: Button =
-    new Button(words.add, () => openPlus(trayPlus), ButtonStyle.Text, Some(MaterialIcon.Add), 13.0)
-  private val sendButton = new SendButton(words.send, words.stop)
+    aside(new Button(words.add, () => openPlus(trayPlus), ButtonStyle.Text, Some(MaterialIcon.Add), 13.0))
+  private val sendButton = aside(new SendButton(words.send, words.stop))
   private val start = Row(4.0, middle = true)()
   private val end = Row(4.0, middle = true)()
-  private val tray = Row(6.0, middle = true)()
-  private val chips = new Container
-  private val chip = new Container
+  private val tray = aside(Row(6.0, middle = true)())
+  private val chips = aside(new Container)
+  private val chip = aside(new Container)
   private val chipWords = new TextView {
     font.size @= 13.0
     color := Theme.accentText()
   }
-  private val shield = new Container
-  private val veil = new Container
+  private val shield = aside(new Container)
+  private val veil = aside(new Container)
 
   /** Whether `leading` is folded behind "+". */
   private val crowded: Val[Boolean] = own(Val(compact() && leading.children().nonEmpty))
@@ -262,17 +275,17 @@ class Composer(onSend: Draft => Unit,
   private lazy val queueView: DraftQueue = {
     queueMade = true
     val q = new DraftQueue(queue, queuePaused, queueMaxHeight, field, d => edit(d), d => unqueue(d), () => resume(),
-      () => sendNext(), nextReady, () => clearQueue(), queueActions)
+      () => sendNext(), nextReady, () => clearQueue(), queueActions, queuedActions)
     q.position.left := pad()
     q.position.top := pad()
     q.size.width := card.size.width() - pad() * 2.0
-    q
+    aside(q)
   }
   private lazy val queueButton: SendButton = {
     val b = new SendButton(ChatWords.addToQueue, words.stop)
     b.usable := enabled() && sendable()
     b.pressed.attach(_ => send())
-    b
+    aside(b)
   }
   private val queueSpace: Val[Double] = own(Val(if (queueShown()) queueView.size.height() + gap else 0.0))
 
@@ -911,6 +924,7 @@ class Composer(onSend: Draft => Unit,
   override def dispose(): Unit = {
     closeCompletions()
     super.dispose()
+    asides.foreach(_.dispose())
   }
 
   override def kind: String = "Composer"

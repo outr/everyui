@@ -30,7 +30,9 @@ import reactify.*
   * the light theme, `rtl=1` for right to left. `rails=1` gives every entry its topic's rail (`ChatEntry.rail`), one
   * of twelve colours by the topic's index (`topicColors`), each topic begun by its marker; a reply gets its rail once
   * it is whole. `queue=1` writes with a Composer whose messages queue while a reply comes (`afterstop=drain` to go on
-  * after Stop, `seed=1` to start with a paused queue). `working=inline` shows who is working in the transcript
+  * after Stop, `seed=1` to start with a paused queue), each queued message with Send now and Stop and send of the
+  * app's (`Composer.queuedActions`), logged. Helper asks you a question (`ChatEntry.Message.attention`), Ignore under it
+  * (`ChatEntry.Message.actions`) setting it aside, as Scout's already is. `working=inline` shows who is working in the transcript
   * (`ChatView.workingInline`) rather than over the composer, the release notes' worker with a long brief, cut to three
   * lines. Helper's first message links a file shared in the room (`demo-file:plan.md`), which the app answers
   * (`Link.handle`), logging `chat file plan.md`. Logs `chat ok` once built. */
@@ -173,6 +175,16 @@ object ChatDemo {
     // an app's own action on the paused queue's line, after the composer's
     composer.queueActions @= List(QueueAction("Stop tools", () => Platform.log("chat queue action stop tools"),
       Some(MaterialIcon.StopCircle)))
+    // and its own on each queued message, before Edit and Remove: each takes the message off the queue
+    composer.queuedActions @= (d => List(
+      QueuedAction(MaterialIcon.Send, "Send now", () => {
+        Platform.log("chat queue send now " + d.text)
+        true
+      }),
+      QueuedAction(MaterialIcon.StopCircle, "Stop and send", () => {
+        Platform.log("chat queue stop and send " + d.text)
+        true
+      })))
     // `seed=1`: a queue kept from before a reload, paused until it is resumed, one of its messages with two files
     if (Platform.launchArg("seed") == "1") {
       composer.queue @= List(Draft("Kept from before the reload", Nil), Draft("With the two logs from last night",
@@ -302,8 +314,27 @@ object ChatDemo {
       Some(ChatEntry.textDetails("ls -la backend/src", "drwxr-xr-x  main\ndrwxr-xr-x  test")), Some(start - 260000L),
       ActivityLead.Icon(MaterialIcon.Terminal), "`ls -la backend/src`"), 140L),
     ticking(ChatEntry.activity("o-watch", "Watching CI run 413", time = Some(start - 250000L))),
-    ChatEntry.message("o5", layla, self = false, "صباح الخير! هل ملاحظات الإصدار جاهزة؟", Some(start - 240000L)))
+    ChatEntry.message("o5", layla, self = false, "صباح الخير! هل ملاحظات الإصدار جاهزة؟", Some(start - 240000L)),
+    setAside(ChatEntry.message("q0", scout, self = false, "Should the notes mention the old sync API, or leave it for 2.1?",
+      Some(start - 200000L))),
+    asks(ChatEntry.message("q1", helper, self = false,
+      "Shall I cut the release candidate now, or wait for the reconnect fix?", Some(start - 120000L))))
     .map(e => topic(e, 21))
+
+  // a question for you, with Ignore under it, which sets it aside
+  private def asks(m: ChatEntry.Message): ChatEntry.Message = {
+    m.attention @= Some(Attention.asking)
+    m.actions @= List(MessageAction(MaterialIcon.VisibilityOff, "Ignore", () => {
+      Platform.log("chat ignored " + m.id)
+      setAside(m)
+    }))
+    m
+  }
+  private def setAside(m: ChatEntry.Message): ChatEntry.Message = {
+    m.attention @= Some(Attention.SetAside)
+    m.actions @= Nil
+    m
+  }
 
   // the conversation, played on timers
   private def play(entries: Var[Vector[ChatEntry]], working: Var[Vector[Working]], connection: Var[ConnectionState],

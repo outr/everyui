@@ -4,17 +4,21 @@ import everyui.component.{Container, MaterialIconView, TextView}
 import everyui.component.types.{Semantics, TextDirection}
 import everyui.event.{Key, KeyEvent, PointerDrag}
 import everyui.font.MaterialIcon
+import everyui.i18n.Direction
 import everyui.kit.Mirror
 import everyui.theme.Theme
 import everyui.Color
 import reactify.*
 
 /** A message waiting in a [[Composer]]'s queue ([[DraftQueue]]): a handle to drag it by, the first line of its words
-  * (cut short to fit), how many files go with it, and Edit and Remove. It is one stop for the focus, its keys handed
-  * to `keys` (`QueueChip.keeps` says which), and a press on it, or Enter, edits it; its buttons are for a pointer or
-  * a finger. `index` and `count` are where it stands, for a screen reader. */
+  * (cut short to fit), how many files go with it, the app's `actions` for it, and Edit and Remove. It is one stop for
+  * the focus, its keys handed to `keys` (`QueueChip.keeps` says which), and a press on it, or Enter, edits it; Edit and
+  * Remove are for a pointer or a finger. The app's actions are stops of their own after it, the forward arrow going
+  * onto them and along them, back, Up, Down or Escape back to the chip; one whose doing says so takes the message off
+  * the queue (`remove`). `index` and `count` are where it stands, for a screen reader. */
 class QueueChip(val draft: Draft, edit: () => Unit, remove: () => Unit, keys: KeyEvent => Unit,
-                drag: Double => Unit, dropped: () => Unit) extends Container {
+                drag: Double => Unit, dropped: () => Unit,
+                actions: Val[Draft => List[QueuedAction]] = Val((_: Draft) => Nil)) extends Container {
   /** Where it stands in the queue, from 0, and how many there are. */
   val index: Var[Int] = own(Var(0))
   val count: Var[Int] = own(Var(1))
@@ -30,6 +34,9 @@ class QueueChip(val draft: Draft, edit: () => Unit, remove: () => Unit, keys: Ke
     font.size @= points
     color := Theme.text()
   }
+  // the app's actions on it, made while it has some, and the room they take before Edit
+  private val extras: Var[Vector[Container]] = own(Var(Vector.empty))
+  private val extraRoom: Val[Double] = own(Val(extras().length * (26.0 + 2.0)))
   private val attached = draft.attachments.length
   private val clip = new MaterialIconView(MaterialIcon.AttachFile, 14.0)
   private val fileCount = TextView(attached.toString, 12.0, Theme.muted())
@@ -64,14 +71,14 @@ class QueueChip(val draft: Draft, edit: () => Unit, remove: () => Unit, keys: Ke
   // a queued message's chip is a line tall, its first line cut short and read whole in its tip (pressed, it is edited)
   words.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
   words.tooltip := (if (words.elided()) words.content() else "")
-  words.maxWidth := math.max(20.0, size.width() - 26.0 - 8.0 - 4.0 - 54.0 -
+  words.maxWidth := math.max(20.0, size.width() - 26.0 - 8.0 - 4.0 - 54.0 - extraRoom() -
     (if (attached > 0) 6.0 + fileCount.size.width() + 2.0 + 14.0 else 0.0))
   Mirror.place(handle, () => size.width(), () => 0.0)
   Mirror.place(words, () => size.width(), () => 26.0)
   Mirror.place(removeButton, () => size.width(), () => size.width() - 4.0 - 26.0)
   Mirror.place(editButton, () => size.width(), () => size.width() - 4.0 - 26.0 - 2.0 - 26.0)
-  Mirror.place(fileCount, () => size.width(), () => size.width() - 64.0 - fileCount.size.width())
-  Mirror.place(clip, () => size.width(), () => size.width() - 64.0 - fileCount.size.width() - 2.0 - 14.0)
+  Mirror.place(fileCount, () => size.width(), () => size.width() - 64.0 - extraRoom() - fileCount.size.width())
+  Mirror.place(clip, () => size.width(), () => size.width() - 64.0 - extraRoom() - fileCount.size.width() - 2.0 - 14.0)
   words.position.middle := size.middle()
   fileCount.position.middle := size.middle()
   clip.position.middle := size.middle()
@@ -85,6 +92,40 @@ class QueueChip(val draft: Draft, edit: () => Unit, remove: () => Unit, keys: Ke
     edit()
   }
   event.key.down.attach(e => if (QueueChip.keeps(e)) keys(e))
+
+  // the app's actions as buttons before Edit, in order, made again as they change
+  private def made(list: List[QueuedAction]): Unit = {
+    extras().foreach { b =>
+      children -= b
+      b.dispose()
+    }
+    val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
+    val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
+    val buttons = list.toVector.map(a => QueueChip.button(a.icon, a.label, () => if (a.action()) remove(), Some(this)))
+    buttons.zipWithIndex.foreach { case (b, i) =>
+      // (before Edit, the last of them nearest it)
+      val before = (buttons.length - i) * 28.0
+      Mirror.place(b, () => size.width(), () => size.width() - 58.0 - before)
+      b.position.middle := size.middle()
+      // (the chip itself, not the nearest of its parts)
+      if (i > 0) b.exitFocus(back, buttons(i - 1)) else b.exitAction(back, () => focus())
+      if (i < buttons.length - 1) b.exitFocus(forward, buttons(i + 1)) else b.stopFocus(forward)
+      b.exitAction(Key.ArrowUp, () => focus())
+      b.exitAction(Key.ArrowDown, () => focus())
+    }
+    extras @= buttons
+    children ++= buttons
+    buttons.headOption match {
+      case Some(b) => exitFocus(forward, b)
+      case None => dropExit(forward)
+    }
+  }
+  private val offered: Val[List[QueuedAction]] = own(Val(actions()(draft)))
+  follow(offered, made)
+  made(offered())
+
+  /** The app's actions on it, in order, while it has some. */
+  def actionButtons: Vector[Container] = extras()
 
   override def keepsEvent(e: KeyEvent): Boolean = QueueChip.keeps(e) || super.keepsEvent(e)
 
@@ -119,17 +160,29 @@ object QueueChip {
     d.text.trim + (if (n == 0) "" else (if (d.text.trim.isEmpty) "" else ", ") + ChatWords.fileCount(n))
   }
 
-  // a small round glyph that does something, for a pointer or a finger: the chip itself is the focus's stop
-  private def button(glyph: MaterialIcon, tip: String, action: () => Unit): Container = {
-    val b = new Container
+  // a small round glyph that does something, for a pointer or a finger, the chip itself being the focus's stop; or,
+  // given the chip it is on (the app's actions), a stop of its own, ringed in the accent with the focus on it and
+  // Escape back to the chip
+  private def button(glyph: MaterialIcon, tip: String, action: () => Unit,
+                     stopOf: Option[Container] = None): Container = {
+    val b = new Container {
+      override def keepsEvent(e: KeyEvent): Boolean = (stopOf.nonEmpty && e.key == Key.Escape) || super.keepsEvent(e)
+    }
     val icon = new MaterialIconView(glyph, 16.0)
     b.size.width @= 26.0
     b.size.height @= 26.0
     b.radius @= 13.0
     b.tooltip @= tip
     b.semantics @= Semantics.button(tip)
-    b.backgroundColor := (if (b.event.pointer.over()) Theme.control() else Color.Clear)
-    icon.color := (if (b.event.pointer.over()) Theme.text() else Theme.muted())
+    b.backgroundColor := (if ((stopOf.nonEmpty && b.focusShown()) || b.event.pointer.over()) Theme.control()
+      else Color.Clear)
+    icon.color := (if ((stopOf.nonEmpty && b.focusShown()) || b.event.pointer.over()) Theme.text() else Theme.muted())
+    stopOf.foreach { chip =>
+      b.focusable @= true
+      b.borderWidth := (if (b.focusShown()) 2.0 else 0.0)
+      b.borderColor := Theme.accent()
+      b.event.key.down.attach(e => if (e.key == Key.Escape) chip.focus())
+    }
     icon.position.left @= 5.0
     icon.position.top @= 5.0
     b.children += icon

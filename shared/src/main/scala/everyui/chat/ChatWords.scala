@@ -56,6 +56,10 @@ object ChatWords {
   def copied: String = word("chat.copied")
   /** What a message's row of actions is, to a screen reader. */
   def messageActions: String = word("chat.messageActions")
+  /** A message asking the person something (`Attention.Asking`), under its bubble and to a screen reader. */
+  def questionForYou: String = word("chat.questionForYou")
+  /** A question the person set aside (`Attention.SetAside`), to a screen reader. */
+  def setAside: String = word("chat.setAside")
   def selectAll: String = word("chat.selectAll")
   /** "About Ada", the menu's way to a message's author. */
   def about(name: String): String = word("chat.about").replace("{name}", name)

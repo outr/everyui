@@ -21,7 +21,8 @@ import reactify.*
   * menu at the end. Left and Right go along them, Down to the first chip and Up from it to Resume. */
 class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[Double], field: Component,
                  edit: Draft => Unit, remove: Draft => Unit, resume: () => Unit, sendNext: () => Unit,
-                 nextReady: Val[Boolean], clear: () => Unit, actions: Val[List[QueueAction]]) extends Container {
+                 nextReady: Val[Boolean], clear: () => Unit, actions: Val[List[QueueAction]],
+                 queuedActions: Val[Draft => List[QueuedAction]] = Val((_: Draft) => Nil)) extends Container {
   private val header = new Container
   private val said: Val[String] = own(Val(if (paused()) ChatWords.queuePaused + " · " + ChatWords.queued(queue().length)
     else ChatWords.queued(queue().length)))
@@ -36,13 +37,14 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
   /** What takes every message off the queue. */
   val clearButton: Button = action(ChatWords.clearQueue, Some(MaterialIcon.ClearAll), () => clear())
   /** The actions after Resume that do not fit beside the words, as a menu. */
-  val moreButton: IconButton = new IconButton(MaterialIcon.MoreVert, ChatWords.queueMore, () => more()) {
-    size.width @= 26.0
-    size.height @= 26.0
-    radius @= 13.0
-    icon.position.left @= 2.0
-    icon.position.top @= 2.0
-  }
+  val moreButton: IconButton =
+    Component.heldAside(new IconButton(MaterialIcon.MoreVert, ChatWords.queueMore, () => more()) {
+      size.width @= 26.0
+      size.height @= 26.0
+      radius @= 13.0
+      icon.position.left @= 2.0
+      icon.position.top @= 2.0
+    })
   // the app's actions as buttons, made again as they change
   private val appButtons: Var[List[Button]] = own(Var(Nil))
   /** Every action after Resume, in order: Send next, Clear queue, and the app's. */
@@ -63,7 +65,7 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
       n
     }
   })
-  private val bar = Row(DraftQueue.spacing, middle = true)()
+  private val bar = Component.heldAside(Row(DraftQueue.spacing, middle = true)())
   /** The chips, scrolled past `maxHeight`. */
   val list: ScrollContainer = new ScrollContainer
   private val divider = new Container
@@ -155,7 +157,7 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
   private def chip(d: Draft): QueueChip = {
     var made: Option[QueueChip] = None
     val c = new QueueChip(d, () => edit(d), () => removed(d), e => made.foreach(m => key(m, e)),
-      y => made.foreach(m => drag(m, y)), () => made.foreach(m => drop(m)))
+      y => made.foreach(m => drag(m, y)), () => made.foreach(m => drop(m)), queuedActions)
     made = Some(c)
     c.size.width := list.size.width()
     c
@@ -216,7 +218,7 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
   // a message taken off: the focus, where it was on the queue, on the chip that took its place
   private def removed(d: Draft): Unit = {
     val at = chips.indexWhere(_.draft eq d)
-    val inside = Focus.focused().exists(f => chips.exists(_ eq f))
+    val inside = Focus.focused().exists(f => chips.exists(c => Focus.within(f, c)))
     remove(d)
     if (inside) focusAt(at)
   }
@@ -239,7 +241,7 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
   // an action on the line: the focus, if it was on the line and the action took that away (the queue resumed, sent or
   // cleared), back to the field
   private def action(words: String, glyph: Option[MaterialIcon], run: () => Unit): Button =
-    new Button(words, () => acted(run), ButtonStyle.Text, glyph, 11.5)
+    Component.heldAside(new Button(words, () => acted(run), ButtonStyle.Text, glyph, 11.5))
 
   private def acted(run: () => Unit): Unit = {
     val inside = Focus.focused().exists(f => (moreButton :: resumeButton :: rest()).exists(_ eq f))
@@ -271,6 +273,11 @@ class DraftQueue(queue: Var[List[Draft]], paused: Val[Boolean], maxHeight: Val[D
       MenuItem(ChatWords.clearQueue, () => acted(() => clear()), MaterialIcon.ClearAll) :: app
     Menu.below(moreButton, items.drop(fitting()))
   }
+
+  // the line's actions and the line itself, put in and taken out as it changes and kept while out (held aside): taken
+  // apart with it whether they show or not
+  onDispose(() =>
+    (bar :: moreButton :: resumeButton :: sendNextButton :: clearButton :: appButtons()).foreach(_.dispose()))
 
   override def kind: String = "DraftQueue"
 }

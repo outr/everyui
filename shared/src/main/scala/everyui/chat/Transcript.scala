@@ -51,6 +51,8 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
   * one under its cursor (where a tap puts it). There is one row of them, drawn over the rows (`MessageActions`), so
   * nothing moves as it comes and goes. The forward arrow on a message goes onto them (Tab too, in the page's order,
   * after what the rows hold); an arrow out of them, Escape or Back, back to the message.
+  * The app's own actions on a message (`ChatEntry.Message.actions`) show under it, always: the forward arrow goes onto
+  * them first, and on past the last onto the buttons beside it.
   *
   * Where the app says which entries start a turn (`turnHeader`: the person's messages, say), a compact header over the
   * top edge names the turn the entries at the top belong to while its start is scrolled out of sight above, and takes
@@ -248,7 +250,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       val work = s.working()
       work.who.name + ", " + ChatWords.busy + ", " + work.what
     }.getOrElse("")
-    case m: ChatEntry.Message => m.author.name + ": " + spoken(m.text())
+    case m: ChatEntry.Message =>
+      val asks = Attention.said(m.attentionNow)
+      m.author.name + ": " + spoken(m.text()) + (if (asks.isEmpty) "" else ", " + asks)
     case a: ChatEntry.Activity => a.summary() + (if (a.aside().isEmpty) "" else ", " + a.aside()) +
       (if (a.asideHint().isEmpty) "" else ", " + a.asideHint()) +
       (if (a.body().isEmpty) "" else ": " + spoken(a.body())) + ", " + ActivityView.said(a.status())
@@ -266,7 +270,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case m: ChatEntry.Message => new MessageView(m, leading, row.inner, ticker.now, words(m), !dayMarkers(),
       () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()),
       reactionsEnabled(), (emoji: String, on: Boolean) => onReact @= Reacted(m.id, emoji, on),
-      (at: Component) => pickReaction(m, at))
+      (at: Component) => pickReaction(m, at), (s: String) => if (announces()) Platform.announce(s), Some(list),
+      () => toBar(m), () => row.resay())
     case a: ChatEntry.Activity =>
       new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), words(a), bodyLines(),
         row.current() && row.cursorShown())
@@ -555,14 +560,17 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   /** Which message the buttons are beside: the one the pointer is over; else, where the keys (or a tap) brought the
     * focus, the one they are for while it is on them, or the one under the transcript's cursor while it is on that. */
-  private def retarget(): Unit = {
-    val wanted = hovered().flatMap(messageOf).orElse {
-      if (!keyed && Platform.pointerSupport()) None
-      else if (bar.exists(_.holdsFocus)) bar.flatMap(_.message())
-      else if (pressedBar) bar.flatMap(_.message())
-      else if (list.focused()) Transcript.message(list.currentItem)
-      else None
-    }.filter(m => list.indexOf(m.id) >= 0)
+  private def retarget(): Unit = place(hovered().flatMap(messageOf).orElse {
+    if (!keyed && Platform.pointerSupport()) None
+    else if (bar.exists(_.holdsFocus)) bar.flatMap(_.message())
+    else if (pressedBar) bar.flatMap(_.message())
+    else if (list.focused()) Transcript.message(list.currentItem)
+    else None
+  })
+
+  // the buttons beside `target`, where it is in the list and they offer anything; else put away
+  private def place(target: Option[ChatEntry.Message]): Unit = {
+    val wanted = target.filter(m => list.indexOf(m.id) >= 0)
     val offered = wanted.map(offeredFor).getOrElse(Nil)
     if (offered.nonEmpty && bar.isEmpty) {
       val made = new MessageActions(list, () => {
@@ -586,14 +594,25 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   private[chat] def rowMoved(row: ChatRow): Unit = bar.foreach(_.rowMoved(row))
 
-  // a forward arrow on a message: onto its buttons
+  // a forward arrow on a message: onto the app's actions under it, where it has any, else the buttons beside it
   private def toActions(entry: ChatEntry): Option[() => Unit] = entry match {
+    case m: ChatEntry.Message if m.actionsNow.nonEmpty => (list.rowAt(list.indexOf(m.id)) match {
+      case Some(r: ChatRow) => r.message.flatMap(_.actionButtons.headOption)
+      case _ => None
+    }).map(b => () => b.focus())
     case m: ChatEntry.Message if offeredFor(m).nonEmpty => Some(() => {
       keyed = true
       retarget()
       bar.filter(_.showing()).flatMap(_.actionButtons.headOption).foreach(_.focus())
     })
     case _ => None
+  }
+
+  // on past the last of the app's actions under `m`: onto the buttons beside it, where it has any
+  private def toBar(m: ChatEntry.Message): Unit = if (offeredFor(m).nonEmpty) {
+    keyed = true
+    place(Some(m))
+    bar.filter(_.showing()).flatMap(_.actionButtons.headOption).foreach(_.focus())
   }
 
   // Ctrl or Command+C with no words selected: the message under the cursor, whole (`copyText`); Ctrl or Command+A:

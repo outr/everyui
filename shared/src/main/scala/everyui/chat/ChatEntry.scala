@@ -41,6 +41,36 @@ object ChatEntry {
     val meta: Var[Option[String]] = Var(None)
     /** What people reacted to it with, the app's to keep (`Transcript.reactionsEnabled` shows them). */
     val reactions: Var[List[ChatReaction]] = Var(Nil)
+
+    // `attention` and `actions`, made the first time they are asked for, so a message given neither costs nothing and
+    // nothing drawing it listens for them: what draws it is told (`made`) as either is made
+    private var attentionMade: Option[Var[Option[Attention]]] = None
+    private var actionsMade: Option[Var[List[MessageAction]]] = None
+    private[chat] var made: List[() => Unit] = Nil
+
+    /** Whether it asks something of the person (`Attention`): None by default, an open question (`Attention.asking`)
+      * edged and washed in the warning tone with words under it, or one set aside, its edge dimmed. It can be set,
+      * changed and cleared at any time, and the bubble keeps its size. */
+    def attention: Var[Option[Attention]] = attentionMade.getOrElse {
+      val v: Var[Option[Attention]] = Var(None)
+      attentionMade = Some(v)
+      made.foreach(_())
+      v
+    }
+    /** The app's own actions on it, under the bubble as small buttons with an icon and words ("Ignore"): none by
+      * default, which makes nothing. They show on the message itself, always, where the transcript's
+      * `messageActions` show beside one message at a time; the forward arrow on the message goes onto them first. */
+    def actions: Var[List[MessageAction]] = actionsMade.getOrElse {
+      val v: Var[List[MessageAction]] = Var(Nil)
+      actionsMade = Some(v)
+      made.foreach(_())
+      v
+    }
+    /** What it asks, and its actions, as they stand, without making either: followed where they have been made. */
+    private[chat] def attentionNow: Option[Attention] = attentionMade.flatMap(_())
+    private[chat] def actionsNow: List[MessageAction] = actionsMade.map(_()).getOrElse(Nil)
+    private[chat] def attentionKept: Boolean = attentionMade.nonEmpty
+    private[chat] def actionsKept: Boolean = actionsMade.nonEmpty
   }
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it
