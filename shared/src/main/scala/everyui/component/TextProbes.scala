@@ -1,5 +1,6 @@
 package everyui.component
 
+import everyui.render.Platform
 import reactify.*
 
 /** Words measured out of sight, once, for how wide they are, and what measured them let go: a paragraph's lines each on
@@ -7,9 +8,10 @@ import reactify.*
   * columns are). The probes (`RichText`s set as the words are drawn, so they measure as the words do) go in a container
   * of their own in `owner`, which takes no room and is not drawn, so they inherit what the words do; they are read with
   * the turn's other sizes where the platform reads sizes in a batch (the web), and once each has been read in the faces
-  * its words are drawn in (`RenderNode.textMeasurable`) they are taken apart and only the numbers kept (`widths`). A
-  * twin kept beside each line for as long as it showed cost as much again as the line. A probe whose face is still
-  * coming is kept until it has been read in it, as it measures again once it has (`RichText`). */
+  * its words are drawn in (`RenderNode.textMeasurable`) only the numbers are kept (`widths`) and they are taken apart,
+  * on the next turn, what this one still has for them heard first. A twin kept beside each line for as long as it
+  * showed cost as much again as the line. A probe whose face is still coming is kept until it has been read in it, as
+  * it measures again once it has (`RichText`). */
 private[everyui] class TextProbes(owner: Container) {
   /** How wide each probe last measured was, in the order they were given: none until every one has been read. */
   val widths: Var[Option[Vector[Double]]] = owner.own(Var[Option[Vector[Double]]](None))
@@ -54,13 +56,23 @@ private[everyui] class TextProbes(owner: Container) {
   /** Whatever is being measured let go, unread. */
   def dispose(): Unit = drop()
 
-  // every probe read, in its faces: the numbers kept and the probes let go
+  // every probe read, in its faces: the numbers kept, and the probes let go on the next turn. Not at once: a change
+  // that runs through a long chain of values runs the rest flat once the stack unwinds (reactify), so the words, face
+  // and size a probe was given may reach its node, and be read, after it already read once without them, still in this
+  // turn; kept till the next, it is heard again then (an Android phone's chat had a message a letter wide, every
+  // letter on a line of its own, from a probe read before its words were in it and let go at once)
   private def check(): Unit = if (!placing && probes.nonEmpty &&
     probes.forall(p => p.measured.known() && p.node.textMeasurable(noted))) {
     val read = probes.map(_.size.width())
-    drop()
-    widths @= Some(read)
+    if (!widths().contains(read)) widths @= Some(read)
+    if (!leaving.exists(b => box.exists(_ eq b))) {
+      val those = box
+      leaving = those
+      Platform.later(() => if (box.exists(b => those.exists(_ eq b))) drop())
+    }
   }
+  // the probes' container to be let go on the next turn
+  private var leaving: Option[Container] = None
 
   private def drop(): Unit = {
     val gone = box

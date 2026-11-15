@@ -4,11 +4,13 @@ import everyui.component.{Component, Container, RichText}
 import everyui.component.types.{TextDirection, WhiteSpace}
 import everyui.focus.Focus
 import everyui.{FxSpec, ui}
+import reactify.*
 
 /** Words measured once, out of sight, and only the number kept (`TextProbes`): a measuring view's paragraphs are as
   * wide as the same words drawn on one line, as the twin each line had beside it measured them, with nothing left
-  * beside the lines once read, and measured again as the words change; a table's columns are as wide as before with
-  * no measuring cells left (`DataTableProbesSpec` for one that sorts). */
+  * beside the lines once read, measured again as the words change, and as wide as its words though they
+  * arrive at the end of a long chain of changes (where a read waits for the chain to unwind); a table's columns are as
+  * wide as before with no measuring cells left (`DataTableProbesSpec` for one that sorts). */
 class TextProbesSpec extends FxSpec {
   private def onScreen[T](c: Component)(test: => T): T = {
     fx {
@@ -92,6 +94,30 @@ class TextProbesSpec extends FxSpec {
         eventually(lines.forall(_.size.width() > 0.0)) shouldBe true
         eventually(view.natural().exists(w => math.abs(w - lines.map(_.size.width()).max) < 0.5)) shouldBe true
         eventually(extras(view) == 0) shouldBe true
+      }
+    }
+
+    "be as wide as its words when they arrive at the end of a long chain of changes, as a message's stream in" in {
+      // a dozen values each following the one before, the last setting the words: past reactify's depth budget, so a
+      // read asked for as the probes' words are set waits for the chain to unwind, as a transcript's rows made deep in
+      // a change have it
+      val start = Var("…")
+      val chain = (1 to 12).foldLeft(start: Val[String])((at, _) => Val(at()))
+      val view = fx(measured("…"))
+      onScreen(view) {
+        fx(chain.attach(t => view.content @= t))
+        Vector("On it.", "On it. I'll look through the open issues", "On it. I'll look through the open issues and " +
+          "the test runs first, as [the plan](https://example.com) says.").foreach { text =>
+          fx(start @= text)
+          val lines = fx(twins(text))
+          fx(ui.children += new Container {
+            children ++= lines
+          })
+          eventually(lines.forall(_.size.width() > 0.0)) shouldBe true
+          val widest = fx(lines.map(_.size.width()).max)
+          // as wide as the words, never 0 for words that are there
+          eventually(view.natural().exists(w => math.abs(w - widest) < 0.5)) shouldBe true
+        }
       }
     }
   }
