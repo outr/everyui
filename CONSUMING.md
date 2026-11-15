@@ -2499,11 +2499,11 @@ chat.transcript.turnHeader @= Some {
 
 A transcript makes only the rows that show, but keeps what it made for an entry that is the app's (a
 `ChatEntry.Custom`'s component, a tool call's details once opened) until the entry leaves, so what was typed or chosen in
-it stays as it is scrolled away. `evictAfter` (a `Var[Option[FiniteDuration]]`, None by default, which keeps each as it
-always was) lets such a component go once it has been out of sight that long, its row scrolled away: it is made again
+it stays as it is scrolled away. `evictAfter` (a `Var[Option[FiniteDuration]]`, two minutes by default; None keeps each as it always
+was) lets such a component go once it has been out of sight that long, its row scrolled away: it is made again
 through `make` or `details` as it next shows, the tool call still open or closed as its `expanded` says, and each
 `ScrollContainer` in it scrolled where it was (in the order they are in it). Never one holding the focus. An app whose
-component holds what was typed in it only in the component leaves it unset, or makes it again from its own state.
+component holds what was typed in it only in the component sets it to None, or makes it again from its own state.
 
 ```scala
 chat.transcript.evictAfter @= Some(2.minutes)
@@ -7178,8 +7178,8 @@ def switchTo(next: String): Unit = {
 }
 ```
 
-What is out of sight can be let go after a while (`evictAfter: Var[Option[FiniteDuration]]`, None by default, which
-lets nothing go and sets no timer): a tab's content out of sight that long is disposed of and made again through
+What is out of sight can be let go after a while (`evictAfter: Var[Option[FiniteDuration]]`, five minutes by default, as
+EveryUI saves memory for every app; None lets nothing go and sets no timer): a tab's content out of sight that long is disposed of and made again through
 `content` as its tab is next shown, so the app makes it from its own state (the file, the scroll position, the draft
 it keeps). Out of sight is a tab not shown in its group, a group hidden by another maximized, or a whole set aside: a
 `TabsAside` keeps its groups, tabs and splits however long it is aside, and its contents only as long as `evictAfter`

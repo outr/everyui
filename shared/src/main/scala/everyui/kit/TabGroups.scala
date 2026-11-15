@@ -14,7 +14,7 @@ import everyui.util.Clock
 import everyui.{Color, Shadow, ui}
 import reactify.*
 
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 /** Tabs in groups, as an editor splits its files: one group or more, each a `TabBar` over what its tab being shown
   * shows, lying in splits whose handles drag (`SplitPane`), across and down. `content` makes what a tab shows the first
@@ -124,9 +124,10 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
     * contents to that time too, its layout kept). Never the tab shown, one that keeps its place (`keepsMounted`), one
     * marked `dirty` or one `evictable` keeps; a group's shared view (`groupContent`) goes once every tab sharing it may
     * go and none has shown for that long, and is told the tab it shows (`GroupContent.show`) as it is made again.
-    * Letting go changes no layout: `layoutChanged` hears nothing of it. None, the default, lets nothing go and times
-    * nothing. */
-  val evictAfter: Var[Option[FiniteDuration]] = own(Var[Option[FiniteDuration]](None))
+    * Letting go changes no layout: `layoutChanged` hears nothing of it. Five minutes by default (`TabGroups.evictDefault`),
+    * as memory is saved in EveryUI for every app; an app whose tab content holds what it cannot make again marks it
+    * `dirty`, keeps it with `evictable`, or sets this to None, which lets nothing go and times nothing. */
+  val evictAfter: Var[Option[FiniteDuration]] = own(Var[Option[FiniteDuration]](Some(TabGroups.evictDefault)))
   /** Which tabs' contents `evictAfter` may let go: every one, by default. */
   val evictable: Var[K => Boolean] = own(Var((_: K) => true))
   // the sets of groups put aside and not yet put back or disposed of, whose contents `evictAfter` times as well; when
@@ -134,6 +135,12 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   private var asides: List[TabsAside[K]] = Nil
   private var due: Long = Long.MaxValue
   private var sweeping = false
+  // what a wait does as it falls due, held through this cell alone and emptied as this is taken apart: a wait cannot
+  // be called off, and one still pending would keep every group and its contents alive until it fell due
+  private val wake: Array[Option[Long => Unit]] = Array(Some((at: Long) => {
+    if (due == at) due = Long.MaxValue
+    sweep()
+  }))
 
   private var tree: TabTree[K] = TabTree.Leaf(new TabGroup[K](this))
   /** The group the focus is in, or was in last. */
@@ -566,10 +573,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
         sweeping = false
         if (next < due) {
           due = next
-          TabGroups.after(math.max(0L, next - now).toDouble / 1000.0, () => {
-            if (due == next) due = Long.MaxValue
-            sweep()
-          })
+          val h = wake
+          TabGroups.after(math.max(0L, next - now).toDouble / 1000.0, () => h(0).foreach(_(next)))
         }
     }
   }
@@ -783,6 +788,7 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
   } else false)
   onDispose(() => {
     escape()
+    wake(0) = None
     asides = Nil
     groups().foreach(_.disposeContents())
     spare.foreach(_.dispose())
@@ -797,6 +803,8 @@ class TabGroups[K](val label: K => String, val content: K => Component, val id: 
 }
 
 object TabGroups {
+  /** How long a tab's content may be out of sight before it is let go, unless the app says otherwise (`evictAfter`). */
+  val evictDefault: FiniteDuration = 5.minutes
   /** How far a pressed tab moves before it is dragged. */
   val dragStart: Double = 6.0
   /** How near a group's edge, as a share of its size, a tab dragged over it splits it there. */

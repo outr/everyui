@@ -16,6 +16,7 @@ import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 /** A conversation's entries, oldest at the top, as a chat shows them: messages in bubbles (one's own at the end edge,
   * everybody else's at the start under their avatar and name, a run by the same author grouped), tool calls and
@@ -171,17 +172,23 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** How long what the transcript keeps for an entry (a tool call's details once opened, the app's own component of a
     * `ChatEntry.Custom`) may be out of sight, its row scrolled away, before it is let go: made again as it next shows,
     * through the entry's `details` or `make`, the call open or closed as it was (its `expanded`), and each scroll in it
-    * (`everyui.component.ScrollContainer`, in the order they are in it) where it was. None, the default, keeps each
-    * until its entry leaves, as it always was. What holds the focus is never let go. An app whose component keeps what
-    * was typed or chosen in it only in the component (not in the app's state) leaves it unset, or makes it from that
-    * state again. */
+    * (`everyui.component.ScrollContainer`, in the order they are in it) where it was. Two minutes by default
+    * (`Transcript.evictDefault`), as memory is saved in EveryUI for every app; None keeps each until its entry leaves. What
+    * holds the focus is never let go. An app whose component keeps what was typed or chosen in it only in the component
+    * (not in the app's state) sets it to None, or makes it from that state again. */
   val evictAfter: Var[Option[scala.concurrent.duration.FiniteDuration]] =
-    own(Var[Option[scala.concurrent.duration.FiniteDuration]](None))
+    own(Var[Option[scala.concurrent.duration.FiniteDuration]](Some(Transcript.evictDefault)))
   // when each kept by entry went out of sight (`Transcript.clock`), the scrolls of each let go, and when the timer
   // waiting for the next to fall due fires (Long.MaxValue: none waits)
   private var hidden: Map[String, Long] = Map.empty
   private var scrolls: Map[String, Vector[Double]] = Map.empty
   private var due: Long = Long.MaxValue
+  // what a wait does as it falls due, held through this cell alone and emptied as this is taken apart: a wait cannot
+  // be called off, and one still pending would keep the transcript and all it made alive until it fell due
+  private val wake: Array[Option[Long => Unit]] = Array(Some((at: Long) => {
+    if (due == at) due = Long.MaxValue
+    sweep()
+  }))
   // the entries that were first when earlier ones by the same author came in above them: they keep their header
   private var headed: Set[String] = Set.empty
 
@@ -324,10 +331,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     }
     if (next < due) {
       due = next
-      Transcript.after(math.max(0L, next - now).toDouble / 1000.0, () => {
-        if (due == next) due = Long.MaxValue
-        sweep()
-      })
+      val h = wake
+      Transcript.after(math.max(0L, next - now).toDouble / 1000.0, () => h(0).foreach(_(next)))
     }
   }
 
@@ -992,6 +997,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   reactionsEnabled.attach(_ => retarget())
   onDispose(() => {
     stopTurnGlide()
+    wake(0) = None
     kept.values.foreach(_.dispose())
     kept = Map.empty
     hidden = Map.empty
@@ -1007,6 +1013,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 }
 
 object Transcript {
+  /** How long what the transcript keeps for an entry may be out of sight before it is let go, unless the app says
+    * otherwise (`evictAfter`). */
+  val evictDefault: FiniteDuration = 2.minutes
   /** How much room a field typed into in an entry is kept from the view's edge (`typing`). */
   val typingMargin: Double = 16.0
   /** A row's height before it has drawn itself. */

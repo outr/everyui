@@ -149,6 +149,8 @@ class TabEvictSpec extends FxSpec {
     "set no timer while evictAfter is None, and forget the times as it is unset" in timed {
       val views = new Views
       val g = groupsOf(views)
+      // (on by default: turned off, as an app does)
+      fx(g.evictAfter @= None)
       fx(List("a", "b", "c").foreach(k => g.open(k)))
       fx(g.open("a"))
       fx(waits.size) shouldBe 0

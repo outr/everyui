@@ -124,6 +124,8 @@ class TranscriptEvictSpec extends FxSpec {
     "be kept for good while evictAfter is unset" in timed {
       val m = new Made
       val (t, _) = fx(transcript(m))
+      // (on by default: turned off, as an app does)
+      fx(t.evictAfter @= None)
       fx(ui.children += t)
       toTop(t)
       eventually(m.count("custom") == 1 && m.count("call") == 1) shouldBe true
