@@ -10,11 +10,12 @@ import everyui.tooltip.Tooltip
 import everyui.{FxSpec, ui}
 import reactify.*
 
-/** A tool call's summary as inline Markdown on one line (`MarkdownLine`): its marks parsed into runs (code, bold,
-  * slanted, a link as its words, a block's marks as the words they are), said without them, a summary that fits a pill
-  * as wide as it is, and one too long cut to the line with an ellipsis, a code span cut short keeping its wash with the
-  * ellipsis inside it, the card as wide as it may be, and its words shown whole in a tip, left to right and right to
-  * left, at a desktop's width and a phone's. */
+/** A tool call's summary as inline Markdown (`MarkdownLine`): its marks parsed into runs (code, bold, slanted, a link
+  * as its words, a block's marks as the words they are), said without them, and a summary that fits a pill as wide as
+  * it is, on one line, right-to-left words too. Cut to one line (`oneLine`, `Transcript.oneLineSummaries`), one too
+  * long is cut with an ellipsis, a code span cut short keeping its wash with the ellipsis inside it, the card as wide
+  * as it may be, and its words shown whole in a tip, left to right and right to left, at a desktop's width and a
+  * phone's. (Wrapped, the default: ActivityWrapSpec.) */
 class ActivitySummarySpec extends FxSpec {
   override protected def keyed: Boolean = true
 
@@ -111,7 +112,8 @@ class ActivitySummarySpec extends FxSpec {
       s"be one line cut with an ellipsis inside the code, the card as wide as it may be ($width, rtl $rtl)" in {
         fx(Direction.set(rtl))
         try {
-          val v = fx(new ActivityView(ChatEntry.activity("long", long, ActivityStatus.Succeeded), width, () => None))
+          val v = fx(new ActivityView(ChatEntry.activity("long", long, ActivityStatus.Succeeded), width, () => None,
+            oneLine = true))
           shown(v) {
             val widest = Transcript.widest(width)
             // (right to left the row of its line books no gap before its empty chevron, as left to right it does)
@@ -155,7 +157,7 @@ class ActivitySummarySpec extends FxSpec {
 
     "show its words whole in a tip where it is cut, as the pointer rests on it and as the keys bring the cursor" in {
       val a = ChatEntry.activity("long", long, ActivityStatus.Succeeded)
-      val v = fx(new ActivityView(a, 600.0, () => None))
+      val v = fx(new ActivityView(a, 600.0, () => None, oneLine = true))
       shown(v) {
         fx(v.summaryView.runs().last.text) should endWith("…")
         fx(v.summaryView.event.pointer.enter @= PointerEvent(PointerKind.Enter, 0.0, 0.0))
@@ -167,6 +169,7 @@ class ActivitySummarySpec extends FxSpec {
       }
       val t = fx(new Transcript(Var(Vector[ChatEntry](a))))
       fx {
+        t.oneLineSummaries @= true
         t.size.width @= 600.0
         t.size.height @= 400.0
       }

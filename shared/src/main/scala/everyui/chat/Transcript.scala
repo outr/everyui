@@ -94,6 +94,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   val dayMarkers: Var[Boolean] = own(Var(true))
   /** How many lines of a tool call's `body` show before it is opened. */
   val bodyLines: Var[Int] = own(Var(3))
+  /** Whether a tool call's summary too long for its line is cut to one line with an ellipsis, its words whole in a tip,
+    * rather than wrapped within its card (off, the default: words wrap unless an app asks otherwise). */
+  val oneLineSummaries: Var[Boolean] = own(Var(false))
   /** Whether messages' words (and tool calls' bodies) are plain text, said as they are, a terminal's escapes taken out
     * (`AnsiText.unescaped`): on for a transcript given `render = MessageText.plain`. Off, the default, they are
     * Markdown, as `MessageMarkdown` draws them, and said as their words (`MarkdownPlain.spoken`): no fences, marks or
@@ -276,7 +279,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       () => toBar(m), () => row.resay())
     case a: ChatEntry.Activity =>
       new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), words(a), bodyLines(),
-        row.current() && row.cursorShown())
+        row.current() && row.cursorShown(), oneLineSummaries())
     case t: ChatEntry.Thinking => new ThinkingView(t, row.inner, ticker.now)
     case w: ChatEntry.Marker if Grouping.isWork(w) && slotOf(w).nonEmpty =>
       val s = slotOf(w).get

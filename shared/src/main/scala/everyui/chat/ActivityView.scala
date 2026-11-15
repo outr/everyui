@@ -25,10 +25,11 @@ import reactify.*
   * words), selectable, cut to `lines` lines and shown whole while the line is open. With neither, it is the line
   * alone.
   *
-  * The summary is inline Markdown on one line (`MarkdownLine`): code spans in the code face on their wash, bold and
-  * slanted words, a link as its words. Too long for the line, it is cut with an ellipsis (inside a code span's wash
-  * where the cut falls in one), the card as wide as it may be, and its words shown whole in a tip as the pointer rests
-  * on it or while `cursorOn` holds, where the aside has no hint to show.
+  * The summary is inline Markdown (`MarkdownLine`): code spans in the code face on their wash, bold and slanted words,
+  * a link as its words. Too long for the line, it wraps within the card, the card as wide as it may be (words wrap by
+  * default); with `oneLine` it is cut with an ellipsis instead (inside a code span's wash where the cut falls in one),
+  * and its words are shown whole in a tip as the pointer rests on it or while `cursorOn` holds, where the aside has no
+  * hint to show.
   *
   * An `aside` (inline Markdown too) follows the summary on its line, muted and a little smaller, its feet level with
   * the summary's, where both fit in the room the line has; else it goes on a line of its own under the summary at its
@@ -41,7 +42,7 @@ import reactify.*
   * (`ActivityView.quiet`). */
 class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Option[Component],
                    render: (Val[String], Val[Double]) => Component = MessageMarkdown.render,
-                   lines: => Int = 3, cursorOn: => Boolean = false) extends Container {
+                   lines: => Int = 3, cursorOn: => Boolean = false, oneLine: => Boolean = false) extends Container {
   private val widest: Val[Double] = own(Val(Transcript.widest(width)))
   private val running: Val[Boolean] = own(Val(a.status() == ActivityStatus.Running))
 
@@ -66,8 +67,9 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   private val markWidth: Val[Double] = own(Val(if (leading().isEmpty) 16.0 else ActivityView.room))
 
   // the summary's words, inline Markdown (`MarkdownLine`), and their room on the line; measured whole, on one line and
-  // out of sight: words that fit are as wide as they are, and the card with them; words that do not are cut to the
-  // room with an ellipsis (the card as wide as it may be), and shown whole in a tip
+  // out of sight: words that fit are as wide as they are, and the card with them; words that do not are as wide as the
+  // room, wrapped within it (the card as wide as it may be, rather than following its words as they wrap, narrower
+  // each time), or, `oneLine`, cut to it with an ellipsis and shown whole in a tip
   private val summaryRuns: Val[List[TextRun]] = own(Val(MarkdownLine.runs(a.summary(), 13.0)))
   private val summaryRoom: Val[Double] =
     own(Val(math.max(20.0, widest() - Transcript.padX * 2.0 - markWidth() - 16.0 - (if (a.opens) 18.0 else 0.0))))
@@ -84,10 +86,13 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     children += wholeSummary
   }
   private val summary: RichText = new RichText {
-    whiteSpace @= WhiteSpace.NoWrap
     direction @= TextDirection.Auto
     font.size @= 13.0
-    runs := MarkdownLine.fit(wholeSummary, summaryRuns(), wholeSummary.size.width(), summaryRoom() - 1.0)
+    wrapAnywhere @= true
+    whiteSpace := (if (oneLine || ActivityView.spared(wholeSummary.size.width()) <= summaryRoom() + 0.5)
+      WhiteSpace.NoWrap else WhiteSpace.Normal)
+    runs := (if (!oneLine) summaryRuns()
+      else MarkdownLine.fit(wholeSummary, summaryRuns(), wholeSummary.size.width(), summaryRoom() - 1.0))
     size.width := math.min(ActivityView.spared(wholeSummary.size.width()), summaryRoom())
   }
   // whether the summary is cut short (`MarkdownLine.fit` gives the runs back as they were where they fit)

@@ -75,8 +75,9 @@ object ChatEntry {
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it
     * (its input and output as text, an image, a table): made the first time the line is opened, and kept. The summary
-    * is inline Markdown ("Read `src/A.scala`"): code, bold and slanted words drawn as a message draws them, on one line,
-    * cut with an ellipsis where it is too long for it (`everyui.markdown.MarkdownLine`).
+    * is inline Markdown ("Read `src/A.scala`"): code, bold and slanted words drawn as a message draws them
+    * (`everyui.markdown.MarkdownLine`), wrapped within its card where it is too long for its line, or cut to one line
+    * with an ellipsis where the transcript says so (`Transcript.oneLineSummaries`).
     *
     * `lead` is what goes first on the line (`ActivityLead`): by default the status mark alone; somebody's avatar, a
     * ring turning around it while the call runs and the status on its corner once it has; or an icon, with the status

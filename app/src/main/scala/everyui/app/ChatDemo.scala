@@ -115,6 +115,8 @@ object ChatDemo {
         Platform.after(0.8, () => reply(entries, working, scout, "Noted: \"" + text.trim + "\". I'll fold it into the plan."))
       }
     }
+    // tool call summaries cut to one line rather than wrapped (`oneline=1`)
+    if (Platform.launchArg("oneline") == "1") chat.transcript.oneLineSummaries @= true
     if (Platform.launchArg("author") == "log")
       chat.onAuthor @= Some((p: AuthorPressed) =>
         Platform.log("chat author " + p.participant.id + " " + p.messageId.getOrElse("-")))
