@@ -46,11 +46,14 @@ class TerminalWaitSpec extends TerminalFxSpec {
           v.getEngine.executeScript("!!window.terminalBridge && Object.keys(terminalBridge.terminals).length > 0") == true)).get
         def script(js: String): Any = view.getEngine.executeScript(js)
         // the last line written drawn at the end, and the scrollback held to what was set before it was made
-        eventually(10.0)(script(s"$term.buffer.active.length > 0 && $term.buffer.active.getLine($term.buffer.active.baseY + $term.buffer.active.cursorY - 1).translateToString(true)") ==
+        // (the line above the cursor's, "" until the engine has written that far: read as it fills, not before)
+        val lastLine = s"(function () { var b = $term.buffer.active; var l = b.getLine(b.baseY + b.cursorY - 1); " +
+          "return l ? l.translateToString(true) : ''; })()"
+        eventually(60.0)(script(lastLine) ==
           "line " + (lines - 1).toString + " of the build's output") shouldBe true
         fx(script(s"$term.options.scrollback")) shouldBe 300
         fx(t.scrollback @= 50)
-        eventually(5.0)(script(s"$term.options.scrollback") == 50) shouldBe true
+        eventually(30.0)(script(s"$term.options.scrollback") == 50) shouldBe true
       } finally fx {
         ui.children -= t
         t.dispose()

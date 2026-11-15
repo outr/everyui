@@ -13,7 +13,8 @@ import reactify.*
   * `items` is the app's, and the list follows it; each item has a `key`, by which the cursor, the selection and the
   * scroll are kept while items come and go around them. Rows are `rowHeight` tall, or with `measuredRows` as tall as
   * each one draws itself (`rowHeight` is then the guess for one not yet drawn): a row that grows or shrinks where it
-  * is (a card unfolded) moves the rows after it, the row under the cursor staying where it is on the screen. `gap`
+  * is (a card unfolded) keeps its top where it is and moves the rows after it, and one above the view moves nothing
+  * that shows. `gap`
   * sets rows apart, and `padding` (a container's) is room round them all, the rows that much narrower than the list.
   * `nearEnd` asks for more as the end comes near, and `replace` puts a changed item in, drawing only its row again.
   *
@@ -875,7 +876,10 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     h > 0.0 && row.item().exists { t =>
       val key = keyOf(t)
       !heights.get(key).contains(h) && {
-        if (held.isEmpty) held = anchorShowing()
+        // the first that shows kept where it is, as it was before any row changed this turn: a row changing in view
+        // (at or after it) keeps its top and grows or shrinks downward, one above the view moves nothing that shows,
+        // and one below it nothing at all; where several change, the topmost in view is where the rows move from
+        if (held.isEmpty) held = firstShowing()
         heights = heights.updated(key, h)
         topsStale = true
         true
@@ -1068,14 +1072,6 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   private def firstShowing(): Option[(String, Double)] = if (count == 0 || offset() <= 0.0) None else {
     val i = indexAt(offset())
     Some((keyAt(i), top(i) - offset()))
-  }
-  // where rows drawn at heights of their own are kept from moving: the row under the cursor where it shows (a row
-  // above it unfolding moves what is above it, not it), else the first that shows; nothing at the very top
-  private def anchorShowing(): Option[(String, Double)] = if (count == 0 || offset() <= 0.0) None else {
-    val at = currentAt
-    if (at >= 0 && at < count && top(at) + heightAt(at) > offset() && top(at) < offset() + size.height())
-      Some((keyAt(at), top(at) - offset()))
-    else firstShowing()
   }
   private var held: Option[(String, Double)] = None
   // the row `scrollTo` brought to a place of the view, and where (its `align`), while the rows are not scrolled since

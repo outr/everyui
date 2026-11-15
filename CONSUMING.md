@@ -6466,8 +6466,9 @@ lines). `dragAcross` reports a finger dragged across the rows, for a list whose 
 A list of cards set apart, each as tall as it draws, is a `VirtualList` with `measuredRows`: only the cards that show
 are made, however many have been loaded. `gap` is the room between one row and the next, and `padding` (a container's)
 the room round them all, the rows that much narrower than the list; a click in a gap picks nothing. A card that grows
-or shrinks where it is (a thread unfolded into its messages, folded again) moves the cards after it, and the card
-under the cursor stays where it is on the screen. `nearEnd` is told, with the count, as the rows shown come within a
+or shrinks where it is (a thread unfolded into its messages, folded again) keeps its top where it is and moves
+the cards after it, whether or not the cursor is on it; one scrolled past above the view moves nothing that shows, and
+one below it nothing at all. `nearEnd` is told, with the count, as the rows shown come within a
 screen of the end (`nearEndScreens`), once for each count: read the next page there and append it to `items`, and
 what shows stays put. `replace(item)` puts a changed item in place of the one with its key and draws only its row
 again (a message marked read), with `items` changed to match. A part of a row made its checkbox (`ListRow.checks`:

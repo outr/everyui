@@ -7,10 +7,10 @@ import everyui.{FxSpec, ui}
 import reactify.*
 
 /** What a list of cards (an inbox) asks of a virtual list: gaps between the rows and padding round them, a card that
-  * unfolds where it is with the one under the cursor kept still, more items asked for near the end and appended in
-  * place, one item replaced with only its row drawn again, a part made while hovered and let go after, and a
-  * checkbox in a row that adds or takes away its row with no modifier. And what the list keeps: the heights of items
-  * gone are let go, and a plain row is three components. */
+  * unfolds in view keeping its top where it is (one above the view moving nothing that shows), more items asked for
+  * near the end and appended in place, one item replaced with only its row drawn again, a part made while hovered and
+  * let go after, and a checkbox in a row that adds or takes away its row with no modifier. And what the list keeps:
+  * the heights of items gone are let go, and a plain row is three components. */
 class CardListSpec extends FxSpec {
   // a card: its item's name, as tall as the item says ("name:height"), counting the times it is handed an item
   private var handed = 0
@@ -87,35 +87,56 @@ class CardListSpec extends FxSpec {
       }
     }
 
-    "keep the row under the cursor still as a card above it unfolds, and the rest moved on" in {
+    "keep a card that unfolds in view where it is, the cursor's or not, and the rows below moved on" in {
       val items = cards(40)
       val list = fx(made(items))
       onScreen(list) {
         fx(list.scrollTop(600.0))
-        fx(list.current @= Some("c12"))
+        // the cursor on another card, below it
+        fx(list.current @= Some("c13"))
         fx(())
-        val cursorAt = screenTop(list, "c12")
-        val belowAt = screenTop(list, "c14")
-        // c11, shown above the cursor, unfolds to 200
+        val at = screenTop(list, "c11")
+        val below = screenTop(list, "c12")
+        val cursor = screenTop(list, "c13")
+        // c11, in view, unfolds to 200: its top unmoved, the rows below it 140 further down
         fx(list.replace("c11:200"))
         fx(())
         fx(())
-        screenTop(list, "c12") shouldBe cursorAt
-        screenTop(list, "c14") shouldBe belowAt
+        screenTop(list, "c11") shouldBe at
+        screenTop(list, "c12") shouldBe below + 140.0
+        screenTop(list, "c13") shouldBe cursor + 140.0
         fx(list.heightAt(list.indexOf("c11"))) shouldBe 200.0
-        // and folds again, the cursor's still where it was
+        // and folds again, where it was
         fx(list.replace("c11:60"))
         fx(())
         fx(())
-        screenTop(list, "c12") shouldBe cursorAt
-        // with no cursor in view, a card unfolding below the first that shows moves only those after it
-        fx(list.current @= None)
+        screenTop(list, "c11") shouldBe at
+        screenTop(list, "c12") shouldBe below
+        screenTop(list, "c13") shouldBe cursor
+      }
+    }
+
+    "keep what shows still as a card above the view unfolds and folds" in {
+      val items = cards(40)
+      val list = fx(made(items))
+      onScreen(list) {
+        fx(list.scrollTop(600.0))
+        fx(())
         val first = screenTop(list, "c10")
-        fx(list.replace("c13:150"))
+        val later = screenTop(list, "c14")
+        // c7, scrolled past (drawn, a few beyond the view), unfolds to 200 and folds again: nothing that shows moves
+        fx(list.replace("c7:200"))
         fx(())
         fx(())
         screenTop(list, "c10") shouldBe first
-        screenTop(list, "c14") shouldBe first + 4 * 60.0 + 150.0 - 60.0
+        screenTop(list, "c14") shouldBe later
+        fx(list.offset()) shouldBe 740.0
+        fx(list.replace("c7:60"))
+        fx(())
+        fx(())
+        screenTop(list, "c10") shouldBe first
+        screenTop(list, "c14") shouldBe later
+        fx(list.offset()) shouldBe 600.0
       }
     }
 
