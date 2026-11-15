@@ -698,6 +698,8 @@ lazy val desktopPublished = (project in file("published/desktop"))
     excludeDependencies := Nil,   // the published reactify
     // with the web view's guest (desktop/web), which runs only where the app adds javafx-web (WebGuest)
     Compile / unmanagedSourceDirectories ++= publishedSources("desktop", "jvm", spice = true) :+ desktopWebSources,
+    // what a native image is told of the tray's native calls (META-INF/native-image)
+    Compile / unmanagedResourceDirectories += (file("desktop") / "src" / "main" / "resources").getAbsoluteFile,
     libraryDependencies ++= Seq(
       "com.outr" %% "reactify" % reactifyVersion,
       "com.outr" %% "spice-client-jvm" % spiceVersion,

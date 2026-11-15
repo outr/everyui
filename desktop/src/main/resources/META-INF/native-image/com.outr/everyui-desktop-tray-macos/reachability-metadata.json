@@ -1,0 +1,55 @@
+{
+  "reflection": [
+    {
+      "type": "everyui.tray.ObjC$",
+      "methods": [{"name": "work", "parameterTypes": ["java.lang.foreign.MemorySegment"]}]
+    },
+    {
+      "type": "everyui.tray.MacTray$",
+      "methods": [{"name": "answer", "parameterTypes": ["java.lang.foreign.MemorySegment",
+        "java.lang.foreign.MemorySegment", "java.lang.foreign.MemorySegment"]}]
+    },
+    {
+      "type": "everyui.tray.MacNotifier$",
+      "methods": [
+        {"name": "answer", "parameterTypes": ["java.lang.foreign.MemorySegment", "java.lang.foreign.MemorySegment",
+          "java.lang.foreign.MemorySegment", "java.lang.foreign.MemorySegment", "java.lang.foreign.MemorySegment"]},
+        {"name": "allowed", "parameterTypes": ["java.lang.foreign.MemorySegment", "boolean",
+          "java.lang.foreign.MemorySegment"]}
+      ]
+    }
+  ],
+  "foreign": {
+    "downcalls": [
+      {"returnType": "void*", "parameterTypes": ["void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*", "void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*", "jlong"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*", "void*", "jlong"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "jlong"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "jlong", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "jboolean"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "jdouble"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "struct(jdouble, jdouble)"]},
+      {"returnType": "jlong", "parameterTypes": ["void*", "void*"]},
+      {"returnType": "struct(jdouble, jdouble, jdouble, jdouble)", "parameterTypes": ["void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "jlong", "jlong", "jlong", "jlong",
+        "jboolean", "jboolean", "void*", "jlong", "jlong", "jlong"]},
+      {"returnType": "void*", "parameterTypes": ["void*"]},
+      {"returnType": "jboolean", "parameterTypes": ["void*", "void*", "void*", "void*"]},
+      {"returnType": "jboolean", "parameterTypes": ["void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": []},
+      {"returnType": "void", "parameterTypes": ["void*", "void*", "void*"]},
+      {"returnType": "void", "parameterTypes": ["void*"]},
+      {"returnType": "void", "parameterTypes": ["void*", "jlong"]}
+    ],
+    "upcalls": [
+      {"returnType": "void", "parameterTypes": ["void*"]},
+      {"returnType": "void", "parameterTypes": ["void*", "void*", "void*"]},
+      {"returnType": "void", "parameterTypes": ["void*", "void*", "void*", "void*", "void*"]},
+      {"returnType": "void", "parameterTypes": ["void*", "jboolean", "void*"]}
+    ]
+  }
+}
