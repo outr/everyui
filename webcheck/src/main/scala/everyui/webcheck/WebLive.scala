@@ -24,7 +24,7 @@ object WebLive extends RapidApp {
     val seconds = args.lift(1).flatMap(_.toIntOption).getOrElse(60)
     val screenshot = args.lift(2)
     val earlier = args.lift(3)   // a second before the last one, for the motion check
-    RoboBrowser.withBrowser(RoboBrowserConfig(
+    Profiles.around(RoboBrowser.withBrowser(RoboBrowserConfig(
       browserConfig = BrowserConfig(noSandbox = true),
       tabSelector = TabSelector.FirstPage,
       virtualDisplay = Some(VirtualDisplayConfig(width = 1920, height = 1080))
@@ -46,6 +46,6 @@ object WebLive extends RapidApp {
         _ <- screenshot.map(path => browser.screenshot(Paths.get(path))).getOrElse(Task.unit)
       }
       yield ()
-    }
+    })
   }
 }

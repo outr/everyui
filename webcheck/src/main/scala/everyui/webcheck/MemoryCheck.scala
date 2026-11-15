@@ -41,7 +41,7 @@ object MemoryCheck extends RapidApp {
     val out = Paths.get(args(2))
     val update = args.contains("--update")
     val only = args.collectFirst { case a if a.startsWith("--only=") => a.stripPrefix("--only=") }
-    RoboBrowser.withBrowser(RoboBrowserConfig(
+    Profiles.around(RoboBrowser.withBrowser(RoboBrowserConfig(
       browserConfig = BrowserConfig(noSandbox = true, extraArgs = List("--mute-audio", "--window-size=1920,1080")),
       tabSelector = TabSelector.FirstPage
     )) { browser =>
@@ -54,7 +54,7 @@ object MemoryCheck extends RapidApp {
           done.flatMap(rows => measure(browser, page, name, unit, step).map(rows :+ _))
         }
       } yield report(MemoryTable(columns, rows), cases.map(c => c._1 -> c._3).toMap, baseline, out, update)
-    }.map(within => if (!within) sys.exit(1)) // once the browser is closed
+    }).map(within => if (!within) sys.exit(1)) // once the browser is closed
   }
 
   // the table written, and held to the baseline: whether it is within its budgets

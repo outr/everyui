@@ -18,7 +18,7 @@ object WebDrive extends RapidApp {
     val script = Files.readString(Paths.get(args(1)))
     val screenshot = args.lift(2)
     val seconds = args.lift(3).flatMap(_.toIntOption).getOrElse(2)
-    RoboBrowser.withBrowser(RoboBrowserConfig(
+    Profiles.around(RoboBrowser.withBrowser(RoboBrowserConfig(
       browserConfig = BrowserConfig(noSandbox = true),
       tabSelector = TabSelector.FirstPage,
       virtualDisplay = Some(VirtualDisplayConfig(width = 1920, height = 1080))
@@ -38,6 +38,6 @@ object WebDrive extends RapidApp {
         _ <- screenshot.map(path => browser.screenshot(Paths.get(path))).getOrElse(Task.unit)
       }
       yield ()
-    }
+    })
   }
 }

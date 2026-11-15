@@ -17,7 +17,7 @@ object WebInput extends RapidApp {
 
   override def run(args: List[String]): Task[Unit] = {
     val url = args.headOption.getOrElse(sys.error("usage: WebInput <url>"))
-    RoboBrowser.withBrowser(RoboBrowserConfig(
+    Profiles.around(RoboBrowser.withBrowser(RoboBrowserConfig(
       browserConfig = BrowserConfig(noSandbox = true),
       tabSelector = TabSelector.FirstPage,
       virtualDisplay = Some(VirtualDisplayConfig(width = 1920, height = 1080))
@@ -42,6 +42,6 @@ object WebInput extends RapidApp {
         _ <- Task.sleep(1.second)
       }
       yield ()
-    }
+    })
   }
 }
