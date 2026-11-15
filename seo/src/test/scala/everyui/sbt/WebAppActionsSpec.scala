@@ -12,17 +12,20 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
   "The worker" should {
     "read a push's buttons from an array or JSON text, and keep the rest as its data" in {
       worker should include("if (typeof actions === 'string') { try { actions = JSON.parse(actions); }")
-      worker should include("background: a.background === true || a.background === 'true'")
-      worker should include("const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions'];")
-      worker should include("renotify: m.renotify === true || m.renotify === 'true', actions, data };")
+      worker should include("const yes = v => v === true || v === 'true';")
+      worker should include("background: yes(a.background)")
+      worker should include("const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group',")
+      worker should include("renotify: yes(m.renotify), actions, data,")
     }
-    "show them as the notification's actions" in {
+    "show them as the notification's actions, one that takes words as a text action" in {
+      worker should include("if (actions.length) options.actions = actions.map(a => a.input")
       worker should include(
-        "if (actions.length) options.actions = actions.map(a => ({ action: a.id, title: a.label }));")
+        "? { action: a.id, title: a.label, type: 'text', placeholder: a.hint || a.label } : { action: a.id, title: a.label });")
     }
     "tell an open window of a choice, or open the app with it" in {
-      worker should include("tell(open, { everyui: 'act', id: chosen.id, message });")
-      worker should include("return chosen.background ? undefined : open.focus();")
+      worker should include("tell(open, { everyui: 'act', id: chosen.id, message, text });")
+      // (words typed in the notification bring no window forward, as a background button does not)
+      worker should include("return chosen.background || text !== null ? undefined : open.focus();")
       worker should include("at.searchParams.set('everyui-action', chosen.id);")
       worker should include("at.searchParams.set('everyui-push', JSON.stringify(message));")
     }
