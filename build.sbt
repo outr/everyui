@@ -311,7 +311,12 @@ lazy val networkJvm = (project in file("network/jvm"))
       "com.outr" %% "spice-client-jvm" % spiceVersion,
       "com.outr" %% "reactify" % reactifyVersion,
       // its own code reads and writes JSON (Network, FormPart): named, rather than the release spice-core brings
-      "org.typelevel" %% "fabric-io" % fabricVersion
+      "org.typelevel" %% "fabric-io" % fabricVersion,
+      // Android's client (OkHttp), tried here against an HTTP/2 server whose connections go dead (DeadConnectionSpec)
+      "org.scalatest" %% "scalatest" % "3.2.20" % Test,
+      "com.outr" %% "spice-client-okhttp" % spiceVersion % Test,
+      "com.squareup.okhttp3" % "mockwebserver3" % okhttpVersion % Test,
+      "com.squareup.okhttp3" % "okhttp-tls" % okhttpVersion % Test
     )
   )
 
@@ -378,6 +383,8 @@ lazy val roku = (project in file("roku"))
 // a dev-only prop — where API endpoints, WebSocket hot-reload or OpenAPI go
 // when the framework needs them. Consumed from ~/.ivy2/local.
 lazy val spiceVersion = "1.10.10"
+// the OkHttp spice-client-okhttp is built on, for the network's tests of it
+lazy val okhttpVersion = "5.5.1"
 
 // --- seo: what a page says to search and answer engines, written by an app's server -------------------------
 // Plain Scala over the shared PageMeta and Alternate (every backend has those); the rest (the page's content as HTML

@@ -19,6 +19,13 @@ object SpiceHttp {
     try HttpClientImplementationManager.register(_ => implementation)
     catch case _: IllegalArgumentException => ()
 
+  /** How often a connection that speaks HTTP/2 is pinged: one whose pong has not come by the next ping is taken for
+    * dead, failed with every call on it, and dropped from the pool, so what comes after goes out on a fresh one. A
+    * connection the network dropped without a word (a television asleep, a router's table cleared) was otherwise found
+    * only by a call's timing out on it, a minute later, each call sent on it meanwhile waiting the same minute. Where
+    * the client has no pings (the JDK's), nothing changes. */
+  val ping: FiniteDuration = 15.seconds
+
   def client(implementation: HttpClientImplementation): HttpClient = HttpClient(
     request = HttpRequest(),
     implementation = implementation,
@@ -27,7 +34,7 @@ object SpiceHttp {
     saveDirectory = ClientPlatform.defaultSaveDirectory,
     timeout = 60.seconds,
     streamingTimeout = None,
-    pingInterval = None,
+    pingInterval = Some(ping),
     dns = DNS.default,
     dropNullValuesInJson = false,
     sessionManager = None,
