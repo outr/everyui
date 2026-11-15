@@ -881,11 +881,13 @@ class RenderNode(val view: View) {
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips, and takes a finger's drag along it from what
-    * the finger went down on (`NodeGroup.onInterceptTouchEvent`): it hears the finger go down where it did, then the
-    * move it was taken on, and every move after as its own. */
-  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = view match {
+    * the finger went down on (`takesDrags`). */
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = takesDrags(if (vertical) 1 else if (horizontal) 2 else 0)
+  // a finger's drag along it (1 down, 2 across) taken from what the finger went down on (`NodeGroup.onInterceptTouchEvent`):
+  // it hears the finger go down where it did, then the move it was taken on, and every move after as its own
+  private def takesDrags(along: Int): Unit = view match {
     case g: NodeGroup =>
-      g.scrollsAlong = if (vertical) 1 else if (horizontal) 2 else 0
+      g.scrollsAlong = along
       g.takeDrag = (moved, x, y) => {
         val down = MotionEvent.obtain(moved.getDownTime, moved.getEventTime, MotionEvent.ACTION_DOWN, x, y, 0)
         try touch(down) finally down.recycle()
@@ -983,12 +985,14 @@ class RenderNode(val view: View) {
     case d: DrawingView => d.figures(figures)
     case _ => ()
   }
-  /** Only a web page scrolls under a finger that drags: nothing to do here. */
   /** A finger dragged on it drags it, rather than scrolling what it is in: as it goes down, a scroll holding it is told
     * not to take the drag (`NodeGroup.onInterceptTouchEvent`), for that touch. */
   def setTouchDrags(on: Boolean): Unit = keepsDrag = on
   private var keepsDrag = false
-  def setTouchScrolls(on: Boolean): Unit = ()
+  /** A finger dragged up or down on it is its own (a list that scrolls its rows itself), taken from what in it the finger
+    * went down on as a scroll's is (`takesDrags`): a row's button, a code block's rail, a link held every touch that
+    * began on it, and a swipe that started there scrolled nothing. */
+  def setTouchScrolls(on: Boolean): Unit = takesDrags(if (on) 1 else 0)
   /** Only a page is read for how far a list has scrolled: nothing to do here. */
   def setScrolled(at: Double, furthest: Double): Unit = ()
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
@@ -1698,28 +1702,47 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
   // where the finger went down, as each touch passes on to what is under it
   private var downX = 0f
   private var downY = 0f
+  // the way this touch settled, once it went further than a tap may (everyui.event.DragAxis): 1 along this scroll, -1
+  // across it, 0 not yet; and whether it was just taken, for the drag to be handed over once what had it is cancelled
+  private var settled = 0
+  private var taking = false
 
   /** A finger that moves along the scroll further than a tap may takes the drag from what it went down on, as a
-    * ScrollView does: that is told it was cancelled (no tap), and the scroll hears it go down where it did and every
-    * move after. Without it, a card a tap is heard on held every touch that began on it, and a swipe scrolled nothing
-    * unless it began between the cards. Only a move mostly along the scroll is taken: a page lets a rail in it have a
-    * sideways swipe, and a slider across it its drag. */
+    * ScrollView does: that is told it was cancelled (no tap, its press let go), and the scroll then hears it go down
+    * where it did and every move after. Without it, a card a tap is heard on held every touch that began on it, and a
+    * swipe scrolled nothing unless it began between the cards. The first move further than a tap may settles it for
+    * the whole touch, as the shared scrolls settle their own drags (DragAxis, with the same slop, so both settle on
+    * the same move): only one mostly along the scroll is taken, and one mostly across never is, so a page lets a rail
+    * in it have a sideways swipe, and a slider across it its drag, and a rail lets the page have a swipe down. Nor is
+    * a drag taken from a scroll the same way in this one, under the finger: the innermost has it. */
   override def onInterceptTouchEvent(e: MotionEvent): Boolean = scrollsAlong != 0 && takeDrag != null && {
     val action = e.getActionMasked
     if (action == MotionEvent.ACTION_DOWN) {
       downX = e.getRawX
       downY = e.getRawY
+      settled = 0
+      taking = false
       false
     }
-    else if (action == MotionEvent.ACTION_MOVE) {
-      val across = math.abs(e.getRawX - downX)
-      val down = math.abs(e.getRawY - downY)
-      val (along, other) = if (scrollsAlong == 1) (down, across) else (across, down)
-      val taken = along > android.view.ViewConfiguration.get(getContext).getScaledTouchSlop && along > other
-      if (taken) takeDrag(e, downX, downY)
-      taken
+    else if (action == MotionEvent.ACTION_MOVE && settled == 0) {
+      settled = everyui.event.DragAxis.settle(e.getRawX - downX, e.getRawY - downY, scrollsAlong == 1,
+        everyui.event.ScrollPress.slop * Host.touchScale)
+      taking = settled > 0 && !NodeGroup.scrollUnder(this, scrollsAlong, downX, downY)
+      taking
     }
     else false
+  }
+
+  // the drag taken (`onInterceptTouchEvent`) handed to the scroll once the view that had it has heard it cancelled,
+  // so its lift (heard at the root too) ends nothing the scroll starts
+  override def dispatchTouchEvent(e: MotionEvent): Boolean = {
+    val handled = super.dispatchTouchEvent(e)
+    if (taking) {
+      taking = false
+      takeDrag(e, downX, downY)
+      true
+    }
+    else handled
   }
 
   /** A blur drawn by hand before Android 12 (SoftBlur), made when one is first asked for. */
@@ -1762,6 +1785,28 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
   private def spec(size: Int): Int =
     if (size >= 0) View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY)
     else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+}
+
+object NodeGroup {
+  /** Whether a scroll the way `along` goes (`NodeGroup.scrollsAlong`) lies inside `group` under the point `x`, `y` on
+    * the screen, where a finger went down: a list in a dialog's scroll, a panel that scrolls in a list's row. */
+  private[render] def scrollUnder(group: ViewGroup, along: Int, x: Float, y: Float): Boolean =
+    (0 until group.getChildCount).exists { i =>
+      group.getChildAt(i) match {
+        case child: ViewGroup if child.getVisibility == View.VISIBLE && holds(child, x, y) =>
+          (child match {
+            case g: NodeGroup => g.scrollsAlong == along && g.takeDrag != null
+            case _ => false
+          }) || scrollUnder(child, along, x, y)
+        case _ => false
+      }
+    }
+
+  private def holds(view: View, x: Float, y: Float): Boolean = {
+    val at = Array(0, 0)
+    view.getLocationOnScreen(at)
+    x >= at(0) && y >= at(1) && x < at(0) + view.getWidth * view.getScaleX && y < at(1) + view.getHeight * view.getScaleY
+  }
 }
 
 /** What the Activity hands the backend: itself, the render root, and how it was launched. */

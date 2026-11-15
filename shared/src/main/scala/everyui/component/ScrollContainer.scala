@@ -1,7 +1,7 @@
 package everyui.component
 
 import everyui.easing.Easing
-import everyui.event.{Flick, Key, Pointer, PointerEvent, ScrollPress}
+import everyui.event.{DragAxis, Flick, Key, Pointer, PointerEvent, ScrollPress}
 import everyui.focus.Focus
 import everyui.i18n.Direction
 import everyui.Color
@@ -167,9 +167,11 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
         if (across != 0.0) scrollBy(if (fromRight()) -across else across)
       }
     }
-    // a drag moves the content as it goes
+    // a drag moves the content as it goes, once it has settled along the scroll (DragAxis): one mostly across it is
+    // left to what it is in, or what is in it, a rail in a list to the list, and moves nothing here
     var dragFrom: Option[Double] = None
     var dragOffset = 0.0
+    val axis = new DragAxis(!horizontal)
     // and a finger's flick carries on once it lifts, slowing as a phone's own scrolling does: whether it is a finger
     // is each press's own (`PointerEvent.finger`), so a touch laptop's finger flicks and its mouse drags
     var finger = false
@@ -181,18 +183,22 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
       if (finger) stopGlide() else flick.stop()
       dragFrom = Some(along(e))
       dragOffset = offset()
+      axis.down(e.x, e.y)
       flick.down(along(e))
     }
     event.pointer.move.attach { e =>
       dragFrom.foreach { from =>
-        scrollTo(dragOffset - (along(e) - from))
-        flick.at(along(e))
-        // dragged further than a tap may, and the content moved: a scroll, whose release clicks nothing in it
-        if (math.abs(along(e) - from) > ScrollPress.slop && offset() != dragOffset) ScrollPress.scrolled()
+        axis.move(e.x, e.y)
+        if (axis.along) {
+          scrollTo(dragOffset - (along(e) - from))
+          flick.at(along(e))
+          // dragged further than a tap may, and the content moved: a scroll, whose release clicks nothing in it
+          if (math.abs(along(e) - from) > ScrollPress.slop && offset() != dragOffset) ScrollPress.scrolled()
+        }
       }
     }
     event.pointer.up.attach { _ =>
-      if (finger && dragFrom.nonEmpty) flick.lift()
+      if (finger && dragFrom.nonEmpty && axis.along) flick.lift()
       dragFrom = None
     }
     // what comes into the content is culled, and what leaves it is let go: a child followed on after it had gone held it, and

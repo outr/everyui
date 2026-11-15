@@ -1,7 +1,7 @@
 package everyui.list
 
 import everyui.component.{Component, Container}
-import everyui.event.{Flick, Key, KeyEvent, Modifiers, Pointer, PointerEvent, ScrollPress}
+import everyui.event.{DragAxis, Flick, Key, KeyEvent, Modifiers, Pointer, PointerEvent, ScrollPress}
 import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -512,23 +512,35 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     caught = e.finger && flick.gliding
     stopFling()
     // (a row that can be dragged is held a moment first, and scrolls only once the finger moves: see below)
-    if (e.finger && e.button == PointerEvent.PrimaryButton && !dragsRow(e)) fingerScroll(e.x, e.y, e.x, e.y)
+    if (e.finger && e.button == PointerEvent.PrimaryButton && !dragsRow(e)) fingerScroll(e.x, e.y)
   }
 
-  // the rows following a finger from `from`, and gliding on from how fast it went as it lifts; the finger went down at
-  // `pressX`, `pressY`, and once it has gone further from there than a tap may it is a scroll, whose lift taps no row
-  private def fingerScroll(fromX: Double, from: Double, pressX: Double, pressY: Double): Unit = {
-    var at = from
-    var across = fromX
+  // the rows following a finger that went down at `pressX`, `pressY`, and gliding on from how fast it went as it lifts;
+  // once it has gone further from there than a tap may it is a scroll, whose lift taps no row. Up and down only once
+  // the drag has settled that way (DragAxis), sideways (`dragAcross`) only once it has settled across: a swipe down
+  // that starts on a code block in a row scrolls the rows, and one across it the code, never the rows as well. `now`
+  // is a move the finger has made already.
+  private def fingerScroll(pressX: Double, pressY: Double, now: Option[PointerEvent] = None): Unit = {
+    var at = pressY
+    var across = pressX
+    val axis = new DragAxis(true)
+    axis.down(pressX, pressY)
     flick.down(at)
-    Pointers.track({ m =>
-      scrollBy(at - m.y)
+    def moved(m: PointerEvent): Unit = {
+      axis.move(m.x, m.y)
       if (ScrollPress.beyond(pressX, pressY, m.x, m.y)) ScrollPress.scrolled()
-      at = m.y
-      if (m.x != across) dragAcross @= across - m.x
-      across = m.x
-      flick.at(at)
-    }, _ => flick.lift())
+      if (axis.along) {
+        scrollBy(at - m.y)
+        at = m.y
+        flick.at(at)
+      }
+      else if (axis.across) {
+        if (m.x != across) dragAcross @= across - m.x
+        across = m.x
+      }
+    }
+    now.foreach(moved)
+    Pointers.track(moved, _ => if (axis.along) flick.lift())
   }
   thumb.event.pointer.down.attach(e => if (e.button == PointerEvent.PrimaryButton) {
     e.consume()
@@ -582,8 +594,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
           if (!e.finger || Platform.ticks() - pressed >= VirtualList.holdSeconds * 1000.0) startDrag(i, m.x, m.y)
           else {
             pressedAt = None
-            scrollBy(y - m.y)
-            fingerScroll(m.x, m.y, x, y)
+            fingerScroll(x, y, Some(m))
           }
         }
       }, u => {

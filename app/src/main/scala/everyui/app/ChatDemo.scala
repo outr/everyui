@@ -344,7 +344,7 @@ object ChatDemo {
       reply(entries, working, helper, "Here is where things stand:\n\n" +
         "1. Two `TODO`s remain, both small.\n2. The test suite has **one failure**, in `SocketSpec` (reconnecting after " +
         "a drop).\n3. Everything else since 1.4 is merged.\n\n| Area | Status |\n|---|---|\n| Tests | 412 passed, 1 failed |\n" +
-        "| TODOs | 2 open |\n\nThe check that fails:\n\n```scala\nsocket.drop()\nassert(socket.reconnected)\n```\n\n" +
+        "| TODOs | 2 open |\n\nThe check that fails:\n\n```scala\nsocket.drop()\nassert(socket.reconnected, \"the socket comes back within the first three tries of its back-off policy after a drop\")\n```\n\n" +
         "I'd fix the reconnect test before we cut the release; the TODOs can wait. The log is in " +
         "[run 412](https://ci.example.com/runs/412).", "w-helper")
     })
