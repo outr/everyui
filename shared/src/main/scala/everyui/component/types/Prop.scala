@@ -35,7 +35,6 @@ class Prop[T](getter: => T, setter: T => Unit, callbacks: (() => Unit)*) extends
   }
 
   private def start(first: T): Unit = {
-    function = () => first
     state = Success(first)
   }
 

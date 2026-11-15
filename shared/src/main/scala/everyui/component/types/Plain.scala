@@ -13,7 +13,6 @@ import scala.util.Success
   * Only for a value that reads nothing as it is made: `Var(Theme.accent())` follows the theme until it is set, and this
   * would not. */
 class Plain[T](value: T) extends Var[T]() {
-  function = () => value
   state = Success(value)
 }
 

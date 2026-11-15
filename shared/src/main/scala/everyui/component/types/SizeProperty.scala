@@ -29,7 +29,6 @@ class SizeProperty(measured: Val[Double], write: Double => Unit) extends Var[Dou
 
   /** Its first value, for a size with nothing to follow. */
   protected def start(first: Double): Unit = {
-    function = () => first
     state = Success(first)
   }
 
