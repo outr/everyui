@@ -2347,6 +2347,14 @@ ChatEntry.activity("c-10", "Ran a command", ActivityStatus.Succeeded, lead = Act
 call.status @= ActivityStatus.Failed       // the ring stops, a cross on the face's corner
 ```
 
+The summary is inline Markdown, as an agent writes it ("Read `src/A.scala`", "Ran `sed -i …` and 2 more"): code spans in
+the code face on the theme's code wash, bold and slanted words as a message draws them; a link is drawn as its words (the
+line is pressed as a whole), and what would start a block (`#`, `-`, a fence) is the words it is. It stays one line: too
+long for it, it is cut with an ellipsis, inside a code span's wash where the cut falls in one, the card as wide as the
+transcript lets it be, and its words are shown whole in a tip as the pointer rests on it or as the keys bring the cursor
+to the call (where the aside has no hint to show). A screen reader hears the words without the marks. The aside is inline
+Markdown too. `everyui.markdown.MarkdownLine` does the same for an app's own line of words: `runs`, `cut` and `fit`.
+
 `aside` is a quiet note after the summary, on its line: when the call ran, how long it took, what it cost ("9:42:13 AM ·
 1.2 s"). It is drawn in `Theme.muted()`, a little smaller than the summary (11.5 to its 13), its feet level with the
 summary's, and follows it in reading order (to its left, right to left). Where the line has no room for both (a phone,

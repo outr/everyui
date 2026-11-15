@@ -11,7 +11,7 @@ import everyui.i18n.Direction
 import everyui.kit.Spinner
 import everyui.list.{ListRow, VirtualList}
 import everyui.log.AnsiText
-import everyui.markdown.MarkdownPlain
+import everyui.markdown.{MarkdownLine, MarkdownPlain}
 import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.theme.Theme
@@ -238,8 +238,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     Grouping.leads(if (index > 0 && index <= list.count) Some(list(index - 1)) else None, entry)
 
   /** How an entry is read out: a message by its author and words, a tool call by what it does, its aside and the
-    * aside's hint, its body and how it stands; then its rail's `railLabel`, where it has one. A message's words and a
-    * body are said as they read (`spoken`), not as the Markdown they were written in. */
+    * aside's hint, its body and how it stands; then its rail's `railLabel`, where it has one. A message's words, a
+    * summary, an aside and a body are said as they read (`spoken`, `MarkdownLine.words`), not as the Markdown they
+    * were written in. */
   def said(entry: ChatEntry): String = {
     val label = entry.railLabel()
     if (label.isEmpty) saidOf(entry) else saidOf(entry) + ", " + label.get
@@ -253,7 +254,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case m: ChatEntry.Message =>
       val asks = Attention.said(m.attentionNow)
       m.author.name + ": " + spoken(m.text()) + (if (asks.isEmpty) "" else ", " + asks)
-    case a: ChatEntry.Activity => a.summary() + (if (a.aside().isEmpty) "" else ", " + a.aside()) +
+    case a: ChatEntry.Activity => MarkdownLine.words(a.summary()) +
+      (if (a.aside().isEmpty) "" else ", " + MarkdownLine.words(a.aside())) +
       (if (a.asideHint().isEmpty) "" else ", " + a.asideHint()) +
       (if (a.body().isEmpty) "" else ": " + spoken(a.body())) + ", " + ActivityView.said(a.status())
     case t: ChatEntry.Thinking => t.done().map(d => ChatWords.thoughtFor(ChatTime.span(d))).getOrElse(ChatWords.thinking)

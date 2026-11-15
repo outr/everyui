@@ -1,6 +1,7 @@
 package everyui.chat
 
-import everyui.component.{Component, Container, TextView}
+import everyui.component.{Component, Container, RichText, TextView}
+import everyui.markdown.MarkdownLine
 import everyui.event.{PointerEvent, PointerKind}
 import everyui.focus.Focus
 import everyui.i18n.Direction
@@ -90,10 +91,9 @@ class ActivityAsideSpec extends FxSpec {
           fx(v.asideBeside) shouldBe true
           val s = v.summaryView
           val aside = v.asideView
-          fx(aside.content()) shouldBe when
+          fx(MarkdownLine.plain(aside.runs())) shouldBe when
           fx(aside.color()) shouldBe fx(Theme.muted())
           fx(aside.font.size()) should be < fx(s.font.size())
-          fx(aside.elided()) shouldBe false
           val (sl, st) = fx(inBox(v, s))
           val (al, at) = fx(inBox(v, aside))
           al shouldBe (sl + fx(s.size.width()) + ActivityView.asideGap +- 0.5)
@@ -120,7 +120,6 @@ class ActivityAsideSpec extends FxSpec {
         al shouldBe (sl +- 0.5)
         at should be >= st + fx(s.size.height())
         fx(aside.size.height()) shouldBe oneLine(ActivityView.asideSize) +- 0.5
-        fx(aside.elided()) shouldBe false
         // inside the box, which is as tall as the summary and the aside need
         (al + fx(aside.size.width())) should be <= fx(box(v).size.width()) - Transcript.padX + 0.5
         (at + fx(aside.size.height())) should be <= fx(box(v).size.height()) - 5.5
@@ -135,7 +134,6 @@ class ActivityAsideSpec extends FxSpec {
         })
         val wanted = math.ceil(fx(whole.size.width()) / fx(aside.size.width()))
         fx(whole.dispose())
-        fx(aside.elided()) shouldBe false
         val lines = fx(aside.size.height()) / oneLine(ActivityView.asideSize)
         lines should be > 1.5
         lines should be <= wanted + 1.5
@@ -166,7 +164,7 @@ class ActivityAsideSpec extends FxSpec {
         (1 to 5).foreach { s =>
           fx(call.aside @= "9:42:13 AM · " + s + " s")
           (1 to 2).foreach(_ => fx(()))
-          fx(view.asideView.content()) shouldBe "9:42:13 AM · " + s + " s"
+          fx(MarkdownLine.plain(view.asideView.runs())) shouldBe "9:42:13 AM · " + s + " s"
           fx(ofCall eq view) shouldBe true
           val after = fx(rows.map(r => (r.item().get.id, r.shown.get, r.position.top(), r.size.height())))
           after.map(_._1) shouldBe before.map(_._1)
@@ -213,7 +211,7 @@ class ActivityAsideSpec extends FxSpec {
         // the keys bringing the cursor to it show the tip
         fx(t.focus())
         fx(t.list.current @= Some("t"))
-        def aside: Option[TextView] = all(t.list).collectFirst { case v: ActivityView => v.asideView }
+        def aside: Option[RichText] = all(t.list).collectFirst { case v: ActivityView => v.asideView }
         eventually(aside.exists(x => Tooltip.shownFor.exists(_ eq x))) shouldBe true
         fx(t.list.current @= None)
         eventually(Tooltip.shownFor.isEmpty) shouldBe true

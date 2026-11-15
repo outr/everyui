@@ -1,8 +1,8 @@
 package everyui.chat
 
-import everyui.component.{Component, Container, TextView}
+import everyui.component.{Component, Container, RichText, TextView}
 import everyui.focus.Focus
-import everyui.markdown.MarkdownView
+import everyui.markdown.{MarkdownLine, MarkdownView}
 import everyui.{FxSpec, ui}
 import reactify.*
 
@@ -67,7 +67,7 @@ class ActivityDetailsSpec extends FxSpec {
         eventually(v.size.height() > 0.0) shouldBe true
         fx(box(v).selectable()) shouldBe false
         fx(all(line(v)).exists(reads)) shouldBe false
-        fx(all(line(v)).collect { case t: TextView => t.content() }) should contain("Ran the tests")
+        fx(all(line(v)).collect { case t: RichText => MarkdownLine.plain(t.runs()) }) should contain("Ran the tests")
         fx(v.bodyView.exists(_.selectable())) shouldBe true
       }
     }

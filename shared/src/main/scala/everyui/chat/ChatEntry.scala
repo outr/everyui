@@ -74,7 +74,9 @@ object ChatEntry {
   }
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it
-    * (its input and output as text, an image, a table): made the first time the line is opened, and kept.
+    * (its input and output as text, an image, a table): made the first time the line is opened, and kept. The summary
+    * is inline Markdown ("Read `src/A.scala`"): code, bold and slanted words drawn as a message draws them, on one line,
+    * cut with an ellipsis where it is too long for it (`everyui.markdown.MarkdownLine`).
     *
     * `lead` is what goes first on the line (`ActivityLead`): by default the status mark alone; somebody's avatar, a
     * ring turning around it while the call runs and the status on its corner once it has; or an icon, with the status
@@ -82,8 +84,9 @@ object ChatEntry {
     * sent, the command that ran): Markdown, drawn as the transcript draws a message's words, cut to the transcript's
     * `bodyLines` and shown whole once the line is opened. Empty by default.
     *
-    * `aside` is a quiet note after the summary on its line (when it ran, how long it took, what it cost: "9:42:13 AM ·
-    * 1.2 s"), muted and a little smaller, wrapped under the summary where the line has no room for both and never cut;
+    * `aside` is a quiet note, inline Markdown too, after the summary on its line (when it ran, how long it took, what
+    * it cost: "9:42:13 AM · 1.2 s"), muted and a little smaller, wrapped under the summary where the line has no room
+    * for both and never cut;
     * `asideHint` is what a tip on it says (the pointer resting on it, or the keys bringing the transcript's cursor to
     * the call) and is read out after the summary and the aside. Both are empty by default, and an empty aside takes no
     * room. Nothing ticks for it: an app showing a running call's time binds it to `everyui.util.Clock.now` itself. */

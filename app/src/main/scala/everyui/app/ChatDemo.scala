@@ -313,6 +313,16 @@ object ChatDemo {
     timed(ChatEntry.activity("o-ls", "Ran a command", ActivityStatus.Succeeded,
       Some(ChatEntry.textDetails("ls -la backend/src", "drwxr-xr-x  main\ndrwxr-xr-x  test")), Some(start - 260000L),
       ActivityLead.Icon(MaterialIcon.Terminal), "`ls -la backend/src`"), 140L),
+    // summaries in inline Markdown, as an agent writes them: code, bold and slanted words, and a long command cut
+    timed(ChatEntry.activity("o-read", "Read `src/main/scala/everyui/chat/ActivityView.scala`",
+      ActivityStatus.Succeeded, time = Some(start - 258000L)), 30L),
+    timed(ChatEntry.activity("o-edit", "**Edited** `Transcript.scala`, *one line* changed", ActivityStatus.Succeeded,
+      time = Some(start - 256000L)), 60L),
+    timed(ChatEntry.activity("o-sed", "Ran `sed -i 's/^import everyui.old.{Thing, Other}/import everyui.{Thing, " +
+      "Other}/' shared/src/main/scala/everyui/chat/*.scala` and 2 more", ActivityStatus.Succeeded,
+      Some(ChatEntry.textDetails("sed -i …", "")), Some(start - 255000L), ActivityLead.Icon(MaterialIcon.Terminal)), 90L),
+    timed(ChatEntry.activity("o-ar", "قرأت `src/A.scala` و**عدّلت** سطرًا واحدًا", ActivityStatus.Succeeded,
+      time = Some(start - 254000L)), 40L),
     ticking(ChatEntry.activity("o-watch", "Watching CI run 413", time = Some(start - 250000L))),
     ChatEntry.message("o5", layla, self = false, "صباح الخير! هل ملاحظات الإصدار جاهزة؟", Some(start - 240000L)),
     setAside(ChatEntry.message("q0", scout, self = false, "Should the notes mention the old sync API, or leave it for 2.1?",

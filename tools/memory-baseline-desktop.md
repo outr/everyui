@@ -17,6 +17,6 @@
 | Transcript, Markdown paragraph | message | 13.0 | 20.0 | 0.0 | 135003 |
 | Transcript, code block of 40 lines | message | 19.0 | 499.0 | 0.0 | 1603625 |
 | Transcript, Markdown table | message | 49.0 | 73.0 | 0.0 | 435078 |
-| Transcript, tool call folded | message | 16.0 | 15.0 | 0.0 | 124699 |
-| Transcript, tool call open | message | 22.0 | 21.0 | 0.0 | 173593 |
+| Transcript, tool call folded | message | 16.0 | 17.0 | 0.0 | 113939 |
+| Transcript, tool call open | message | 22.0 | 23.0 | 0.0 | 153409 |
 | Transcript in 900 px, plain | message | 0.0 | 0.0 | 0.0 | 11424 |

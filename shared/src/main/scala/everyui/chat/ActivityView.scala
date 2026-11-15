@@ -1,11 +1,13 @@
 package everyui.chat
 
-import everyui.component.{Component, Container, MaterialIconView, Row, TextView}
-import everyui.component.types.{FontWeight, Semantics, TextDirection, TextOverflow, WhiteSpace}
+import everyui.component.{Component, Container, MaterialIconView, RichText, Row, TextView}
+import everyui.component.types.{FontWeight, Semantics, TextDirection, WhiteSpace}
 import everyui.font.MaterialIcon
 import everyui.kit.{BusyRing, Spinner}
 import everyui.list.ListRow
+import everyui.markdown.MarkdownLine
 import everyui.render.Platform
+import everyui.text.TextRun
 import everyui.theme.Theme
 import everyui.tooltip.Tooltip
 import reactify.*
@@ -23,10 +25,16 @@ import reactify.*
   * words), selectable, cut to `lines` lines and shown whole while the line is open. With neither, it is the line
   * alone.
   *
-  * An `aside` follows the summary on its line, muted and a little smaller, its feet level with the summary's, where
-  * both fit in the room the line has; else it goes on a line of its own under the summary at its start edge, wrapped
-  * within the room where even it alone is too long, never cut. Its `asideHint` is a tip as the pointer rests on it or
-  * while `cursorOn` holds (the transcript's cursor brought to the call by the keys). An empty aside takes no room.
+  * The summary is inline Markdown on one line (`MarkdownLine`): code spans in the code face on their wash, bold and
+  * slanted words, a link as its words. Too long for the line, it is cut with an ellipsis (inside a code span's wash
+  * where the cut falls in one), the card as wide as it may be, and its words shown whole in a tip as the pointer rests
+  * on it or while `cursorOn` holds, where the aside has no hint to show.
+  *
+  * An `aside` (inline Markdown too) follows the summary on its line, muted and a little smaller, its feet level with
+  * the summary's, where both fit in the room the line has; else it goes on a line of its own under the summary at its
+  * start edge, wrapped within the room where even it alone is too long, never cut. Its `asideHint` is a tip as the
+  * pointer rests on it or while `cursorOn` holds (the transcript's cursor brought to the call by the keys). An empty
+  * aside takes no room.
   *
   * The card is drawn as see-through as the theme's surfaces are (`ActivityView.fill`, `Theme.surfaceOpacity`), as a
   * bubble is, and the code blocks in its body as on that ground; its quiet words are kept reading on it
@@ -57,16 +65,17 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   private val leading: Var[Option[Component]] = own(Var(None))
   private val markWidth: Val[Double] = own(Val(if (leading().isEmpty) 16.0 else ActivityView.room))
 
-  // the summary's room on its line, and the summary measured whole, on one line and out of sight: one that fits is as
-  // wide as it is, and the card with it; one that does not is as wide as the room, wrapped within it (words wrap by
-  // default), so the card is as wide as it may be rather than following its words as they wrap, narrower each time
+  // the summary's words, inline Markdown (`MarkdownLine`), and their room on the line; measured whole, on one line and
+  // out of sight: words that fit are as wide as they are, and the card with them; words that do not are cut to the
+  // room with an ellipsis (the card as wide as it may be), and shown whole in a tip
+  private val summaryRuns: Val[List[TextRun]] = own(Val(MarkdownLine.runs(a.summary(), 13.0)))
   private val summaryRoom: Val[Double] =
     own(Val(math.max(20.0, widest() - Transcript.padX * 2.0 - markWidth() - 16.0 - (if (a.opens) 18.0 else 0.0))))
-  private val wholeSummary: TextView = new TextView {
-    content := a.summary()
+  private val wholeSummary: RichText = new RichText {
+    whiteSpace @= WhiteSpace.NoWrap
     direction @= TextDirection.Auto
     font.size @= 13.0
-    textOverflow @= TextOverflow.Visible
+    runs := summaryRuns()
   }
   private val measuring: Container = new Container {
     size.width @= 0.0
@@ -74,36 +83,39 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     visible @= false
     children += wholeSummary
   }
-  private val summary: TextView = new TextView {
-    content := a.summary()
+  private val summary: RichText = new RichText {
+    whiteSpace @= WhiteSpace.NoWrap
     direction @= TextDirection.Auto
     font.size @= 13.0
-    color := Theme.text()
-    whiteSpace := (if (wholeSummary.size.width() > summaryRoom() + 0.5) WhiteSpace.Normal else WhiteSpace.NoWrap)
-    size.width := math.min(wholeSummary.size.width(), summaryRoom())
+    runs := MarkdownLine.fit(wholeSummary, summaryRuns(), wholeSummary.size.width(), summaryRoom() - 1.0)
+    size.width := math.min(ActivityView.spared(wholeSummary.size.width()), summaryRoom())
   }
+  // whether the summary is cut short (`MarkdownLine.fit` gives the runs back as they were where they fit)
+  private def summaryCut: Boolean = !(summary.runs() eq summaryRuns())
 
-  // the aside (`ChatEntry.Activity.aside`), measured whole as the summary is: after the summary on its line where both
-  // fit in the room, else on a line of its own under it, wrapped within the room where even it alone does not fit; an
-  // empty one takes no room, the summary alone where it was
+  // the aside (`ChatEntry.Activity.aside`), inline Markdown measured whole as the summary is: after the summary on its
+  // line where both fit in the room, else on a line of its own under it, wrapped within the room where even it alone
+  // does not fit; an empty one takes no room, the summary alone where it was
   private val hasAside: Val[Boolean] = own(Val(a.aside().nonEmpty))
-  private val wholeAside: TextView = new TextView {
-    content := a.aside()
+  private val asideRuns: Val[List[TextRun]] = own(Val(MarkdownLine.runs(a.aside(), ActivityView.asideSize)))
+  private val wholeAside: RichText = new RichText {
+    whiteSpace @= WhiteSpace.NoWrap
     direction @= TextDirection.Auto
     font.size @= ActivityView.asideSize
-    textOverflow @= TextOverflow.Visible
+    runs := asideRuns()
   }
   measuring.children += wholeAside
-  private val together: Val[Boolean] = own(Val(hasAside() &&
-    wholeSummary.size.width() + ActivityView.asideGap + wholeAside.size.width() <= summaryRoom() + 0.5))
-  private val aside: TextView = new TextView {
-    content := a.aside()
+  private val together: Val[Boolean] = own(Val(hasAside() && ActivityView.spared(wholeSummary.size.width()) +
+    ActivityView.asideGap + ActivityView.spared(wholeAside.size.width()) <= summaryRoom() + 0.5))
+  private val aside: RichText = new RichText {
     direction @= TextDirection.Auto
     font.size @= ActivityView.asideSize
     color := ActivityView.quiet()
     visible := hasAside()
+    wrapAnywhere @= true
     whiteSpace := (if (wholeAside.size.width() > summaryRoom() + 0.5) WhiteSpace.Normal else WhiteSpace.NoWrap)
-    size.width := (if (hasAside()) math.min(wholeAside.size.width(), summaryRoom()) else 0.0)
+    runs := asideRuns()
+    size.width := (if (hasAside()) math.min(ActivityView.spared(wholeAside.size.width()), summaryRoom()) else 0.0)
   }
   // the summary and its aside, in reading order: side by side on one line, their feet level, or one under the other
   // at the start edge
@@ -124,14 +136,35 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     else summary.size.height() + ActivityView.asideUnder)
 
   // the aside's hint as a tip: the pointer resting on the aside, or the keys bringing the transcript's cursor to the
-  // call (`cursorOn`) where the focus shows tips (`Tooltip.onFocus`)
+  // call (`cursorOn`) where the focus shows tips (`Tooltip.onFocus`); a summary cut short shows its words whole in one
+  // the same ways (as the keys bring the cursor, where there is no aside's hint to show)
   private val hint: () => Option[String] = () => Some(a.asideHint()).filter(h => h.nonEmpty && hasAside())
-  private def unhint(): Unit = if (Tooltip.shownFor.exists(_ eq aside)) Tooltip.hideFor(aside)
+  private val whole: () => Option[String] = () => if (summaryCut) Some(MarkdownLine.plain(summaryRuns())) else None
+  private def unhint(): Unit =
+    List(aside, summary).foreach(t => if (Tooltip.shownFor.exists(_ eq t)) Tooltip.hideFor(t))
   aside.event.pointer.enter.attach(e => if (!e.finger && hint().nonEmpty) Tooltip.askFor(aside, hint))
   aside.event.pointer.leave.attach(_ => Tooltip.hideFor(aside))
   aside.event.pointer.down.attach(_ => unhint())
-  private val keyed: Val[Boolean] = own(Val(cursorOn && hasAside() && a.asideHint().nonEmpty))
-  keyed.attach(on => if (on && Tooltip.onFocus()) Tooltip.askFor(aside, hint) else unhint())
+  // (the summary heard by the pointer once it is first cut short, so a call that never is costs nothing for it)
+  private var tipped = false
+  private def tipWhenCut(): Unit = if (!tipped && summaryCut) {
+    tipped = true
+    summary.event.pointer.enter.attach(e => if (!e.finger && whole().nonEmpty) Tooltip.askFor(summary, whole))
+    summary.event.pointer.leave.attach(_ => Tooltip.hideFor(summary))
+    summary.event.pointer.down.attach(_ => unhint())
+  }
+  summary.runs.attach(_ => tipWhenCut())
+  tipWhenCut()
+  // what the keys bringing the cursor to the call show: the aside's hint (1), else the summary whole where it is cut
+  // short (2), else nothing (0)
+  private val keyed: Val[Int] = own(Val(if (!cursorOn) 0 else if (hasAside() && a.asideHint().nonEmpty) 1
+    else if (summaryCut) 2 else 0))
+  keyed.attach { k =>
+    unhint()
+    if (k > 0 && Tooltip.onFocus()) {
+      if (k == 1) Tooltip.askFor(aside, hint) else Tooltip.askFor(summary, whole)
+    }
+  }
   onDispose(() => unhint())
 
   private val chevron: MaterialIconView = new MaterialIconView(MaterialIcon.ExpandMore, 18.0)
@@ -332,8 +365,8 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   def bodyView: Option[Component] = words
 
   /** The summary's words as drawn, and the aside's after them (`ChatEntry.Activity.aside`). */
-  def summaryView: TextView = summary
-  def asideView: TextView = aside
+  def summaryView: RichText = summary
+  def asideView: RichText = aside
 
   /** Whether the aside shows on the summary's line, rather than under it. */
   def asideBeside: Boolean = together()
@@ -357,6 +390,11 @@ object ActivityView {
   val asideSize: Double = 11.5
   val asideGap: Double = 6.0
   val asideUnder: Double = 1.0
+
+  /** How wide words measured `whole` on one line are drawn: with a pixel to spare, as a message's are
+    * (`MessageMarkdown`), since words with right-to-left letters are broken into lines at the width they are given on
+    * the desktop (`RichFlow`), and a width read a hair narrow put their last word on a line of its own. */
+  def spared(whole: Double): Double = if (whole <= 0.0) 0.0 else math.ceil(whole) + 1.0
 
   /** Input and output as plain text under small headings, wrapped to the width it is given (its parent's). Words
     * selected across them copy as the headings' paragraphs and the text's code blocks. */
