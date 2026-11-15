@@ -5,7 +5,6 @@ import fabric.*
 import rapid.*
 import robobrowser.{BrowserConfig, RoboBrowser, RoboBrowserConfig, TabSelector}
 
-import java.io.File
 import java.nio.file.{Files, Path, Paths}
 import scala.concurrent.duration.*
 
@@ -42,10 +41,8 @@ object MemoryCheck extends RapidApp {
     val out = Paths.get(args(2))
     val update = args.contains("--update")
     val only = args.collectFirst { case a if a.startsWith("--only=") => a.stripPrefix("--only=") }
-    val profile = new File("/data/storage/everyui-scratch/memory-check-chrome")
     RoboBrowser.withBrowser(RoboBrowserConfig(
-      browserConfig = BrowserConfig(userDataDir = profile, noSandbox = true, extraArgs = List("--mute-audio",
-        "--window-size=1920,1080")),
+      browserConfig = BrowserConfig(noSandbox = true, extraArgs = List("--mute-audio", "--window-size=1920,1080")),
       tabSelector = TabSelector.FirstPage
     )) { browser =>
       for {
@@ -57,10 +54,12 @@ object MemoryCheck extends RapidApp {
           done.flatMap(rows => measure(browser, page, name, unit, step).map(rows :+ _))
         }
       } yield report(MemoryTable(columns, rows), cases.map(c => c._1 -> c._3).toMap, baseline, out, update)
-    }
+    }.map(within => if (!within) sys.exit(1)) // once the browser is closed
   }
 
-  private def report(table: MemoryTable, steps: Map[String, Int], baseline: Path, out: Path, update: Boolean): Unit = {
+  // the table written, and held to the baseline: whether it is within its budgets
+  private def report(table: MemoryTable, steps: Map[String, Int], baseline: Path, out: Path,
+                     update: Boolean): Boolean = {
     val heading = "# EveryUI's memory on the web, per unit of each case (MemoryCheck; headless Chrome)\n\n"
     Files.createDirectories(out.toAbsolutePath.getParent)
     Files.writeString(out, heading + table.markdown)
@@ -68,13 +67,17 @@ object MemoryCheck extends RapidApp {
     if (update) {
       Files.writeString(baseline, heading + table.markdown)
       println("[memory] baseline written: " + baseline)
+      true
     }
-    else if (!Files.exists(baseline)) println("[memory] no baseline at " + baseline + ": nothing to hold the run to")
+    else if (!Files.exists(baseline)) {
+      println("[memory] no baseline at " + baseline + ": nothing to hold the run to")
+      true
+    }
     else {
       val over = table.over(MemoryTable.parse(Files.readString(baseline)), margin, slack(steps))
       over.foreach(o => println("[memory] OVER " + o))
-      if (over.nonEmpty) sys.exit(1)
-      println("[memory] ok: " + table.rows.size.toString + " cases within their budgets")
+      if (over.isEmpty) println("[memory] ok: " + table.rows.size.toString + " cases within their budgets")
+      over.isEmpty
     }
   }
 
