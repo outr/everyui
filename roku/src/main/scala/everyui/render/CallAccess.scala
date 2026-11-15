@@ -25,4 +25,6 @@ object CallAccess {
     refused(MediaRefusal.Unavailable)
     () => ()
   }
+
+  def testSound(speaker: Option[String]): () => Unit = () => ()
 }

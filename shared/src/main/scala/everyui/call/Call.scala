@@ -15,6 +15,9 @@ import reactify.*
   * Joined from a [[CallPreview]] (`join`, a meeting's "ready to join?" page), it sends the camera and the microphone
   * the preview opened, those very tracks, each on or off as it was there.
   *
+  * It sends as `CallSettings` says (the microphone's processing, the camera's quality, or no camera at all), and
+  * follows a change made during the call at once.
+  *
   * The engine is the platform's (`CallEngine.default`: LiveKit's client in a browser, which is loaded the first time
   * a call connects) or the app's own. Where there is none (`supported` false: the desktop, Android, a Roku, an Apple
   * TV for now) a call ends as it connects, with `CallEnd.Unavailable`.
@@ -68,13 +71,22 @@ class Call(val engine: CallEngine = CallEngine.default) {
   /** Whether it has connected and not ended. */
   def live: Boolean = stateNow() == CallState.Connected || stateNow() == CallState.Reconnecting
 
-  /** Join the room at `url` with `token`, sending the microphone and the camera as asked once in. Only once: a call
-    * that ended is not joined again. */
+  /** Join the room at `url` with `token`, sending the microphone and the camera as asked once in (the camera not while
+    * `CallSettings.quality` is Audio only). Only once: a call that ended is not joined again. */
   def connect(url: String, token: String, microphone: Boolean = true, camera: Boolean = false): Unit =
     if (stateNow() == CallState.Idle) {
       if (microphone) wish(TrackSource.Microphone, true, _ => ())
-      if (camera) wish(TrackSource.Camera, true, _ => ())
+      if (camera && CallSettings.quality() != VideoQuality.AudioOnly) wish(TrackSource.Camera, true, _ => ())
       stateNow @= CallState.Connecting
+      // sent as the settings say, and as they change; Audio only turns the camera off
+      room.choose(CallSettings.current())
+      val choosing = CallSettings.current.attach(c => if (!stateNow().isInstanceOf[CallState.Ended]) room.choose(c))
+      val audioOnly = CallSettings.quality.attach(q => if (q == VideoQuality.AudioOnly) setCamera(false))
+      val unfollow: () => Unit = () => {
+        CallSettings.current.reactions -= choosing
+        CallSettings.quality.reactions -= audioOnly
+      }
+      letGo = unfollow :: letGo
       follow(MediaDevices.microphone, DeviceKind.Microphone)
       follow(MediaDevices.camera, DeviceKind.Camera)
       follow(MediaDevices.speaker, DeviceKind.Speaker)
@@ -111,8 +123,12 @@ class Call(val engine: CallEngine = CallEngine.default) {
   def setMicrophone(on: Boolean, done: Option[MediaRefusal] => Unit = _ => ()): Unit =
     set(TrackSource.Microphone, on, done)
 
-  /** Send the camera, or stop, as `setMicrophone`. */
-  def setCamera(on: Boolean, done: Option[MediaRefusal] => Unit = _ => ()): Unit = set(TrackSource.Camera, on, done)
+  /** Send the camera, or stop, as `setMicrophone`. Turned on while `CallSettings.quality` is Audio only, it goes back
+    * to Auto. */
+  def setCamera(on: Boolean, done: Option[MediaRefusal] => Unit = _ => ()): Unit = {
+    if (on && CallSettings.quality() == VideoQuality.AudioOnly) CallSettings.quality @= VideoQuality.Auto
+    set(TrackSource.Camera, on, done)
+  }
 
   /** Share a screen (a window, a tab: the browser asks which, and the person may cancel, `MediaRefusal.ByPerson`), or
     * stop, as `setMicrophone`. Its sound is shared too where the browser offers it. */
@@ -149,6 +165,9 @@ class Call(val engine: CallEngine = CallEngine.default) {
     val o = choice.attach(id => if (live) room.device(kind, id))
     letGo = (() => choice.reactions -= o) :: letGo
   }
+
+  /** This person's own microphone as sent, its loudness told to `level` until the function answered is called. */
+  private[call] def meter(level: Double => Unit): () => Unit = room.meter(level)
 
   private[call] def show(track: CallTrack, into: CallVideo): Unit = if (live) room.show(track, into)
   private[call] def hide(track: CallTrack, into: CallVideo): Unit = room.hide(track, into)

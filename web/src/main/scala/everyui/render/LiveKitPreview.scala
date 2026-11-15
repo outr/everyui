@@ -14,7 +14,8 @@ import scala.scalajs.js
   * the one open (the old track stopped first, as a camera may not open twice); the browser asks nothing once it has
   * been let. The camera is drawn in each preview's box as a `<video>` LiveKit attaches, and the microphone is heard
   * through an analyser (`CallAccess.analyse`) on the track itself. A track ending by itself (unplugged) is told as
-  * lost, for want of the device. */
+  * lost, for want of the device. Both open as the call's settings say (LiveKitOptions: the microphone's processing, the
+  * camera's size), and change on the open tracks as they change (`choose`). */
 class LiveKitPreview(feed: PreviewFeed) extends PreviewMedia {
   private var stopped = false
   private var serial = 0
@@ -28,6 +29,8 @@ class LiveKitPreview(feed: PreviewFeed) extends PreviewMedia {
   // each view's element, with the track it shows
   private var drawn: Map[CameraPreview, (js.Dynamic, html.Element)] = Map.empty
   private var hearing: () => Unit = () => ()
+  // what the devices are opened with, and changed to as it changes
+  private var chosen: CallChoices = CallChoices()
 
   def open(wanted: Map[DeviceKind, Option[String]], done: (DeviceKind, Option[MediaRefusal]) => Unit): Unit =
     if (!stopped) {
@@ -56,6 +59,23 @@ class LiveKitPreview(feed: PreviewFeed) extends PreviewMedia {
       t.stop()
     }
     resolve(kind, None)
+  }
+
+  /** The microphone's processing changed on its open track (LiveKitOptions.process), and the camera opened again at
+    * the size of another quality (`restartTrack`, the picture drawn on from the new track). */
+  override def choose(choices: CallChoices): Unit = {
+    val was = chosen
+    chosen = choices
+    if (!stopped) {
+      if (!was.sameProcessing(choices)) tracks.get(DeviceKind.Microphone).foreach { t =>
+        LiveKitOptions.process(t, choices, choices.microphone, _ => ())
+      }
+      if (was.quality != choices.quality && choices.video.nonEmpty) tracks.get(DeviceKind.Camera).foreach { t =>
+        val device = choices.camera.orElse(LiveKitOptions.device(t))
+        LiveKitRoom.after(t.restartTrack(LiveKitOptions.video(choices, device)))(
+          _ => (), e => Platform.log("[call] could not film at " + choices.quality.name + ": " + WebErrors.message(e)))
+      }
+    }
   }
 
   def show(into: CameraPreview): Unit = if (!stopped) {
@@ -122,8 +142,8 @@ class LiveKitPreview(feed: PreviewFeed) extends PreviewMedia {
 
   private def capture(wanted: Map[DeviceKind, Option[String]], kind: DeviceKind): js.Any = wanted.get(kind) match {
     case None => false
-    case Some(None) => true
-    case Some(Some(id)) => js.Dynamic.literal(deviceId = id)
+    case Some(id) =>
+      if (kind == DeviceKind.Camera) LiveKitOptions.video(chosen, id) else LiveKitOptions.audio(chosen, id)
   }
 
   private def install(kind: DeviceKind, t: js.Dynamic): Unit = {
@@ -133,10 +153,18 @@ class LiveKitPreview(feed: PreviewFeed) extends PreviewMedia {
     t.on("ended", ended)
     if (kind == DeviceKind.Camera) views.foreach(v => attach(v, t))
     else {
-      val stream = js.Dynamic.newInstance(dom.window.asInstanceOf[js.Dynamic].MediaStream)(js.Array(t.mediaStreamTrack))
-      hearing = CallAccess.analyse(stream, l => if (tracks.get(kind).exists(_ eq t)) feed.level(l))
+      hear(t)
+      // opened again with other processing: its new track heard
+      t.on("restarted", (() => if (tracks.get(kind).exists(_ eq t)) hear(t)): js.Function0[Unit])
     }
     resolve(kind, Some(t))
+  }
+
+  // the microphone's track heard through an analyser, in place of any heard before
+  private def hear(t: js.Dynamic): Unit = {
+    hearing()
+    val stream = js.Dynamic.newInstance(dom.window.asInstanceOf[js.Dynamic].MediaStream)(js.Array(t.mediaStreamTrack))
+    hearing = CallAccess.analyse(stream, l => if (tracks.get(DeviceKind.Microphone).exists(_ eq t)) feed.level(l))
   }
 
   private def fail(kind: DeviceKind, why: MediaRefusal, done: (DeviceKind, Option[MediaRefusal]) => Unit): Unit = {

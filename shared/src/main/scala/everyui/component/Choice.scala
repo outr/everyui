@@ -5,8 +5,9 @@ import everyui.component.types.Semantics
 import reactify.*
 
 /** One of a set of choices: the chosen one wears the accent, the rest are muted; a click, a tap or Enter chooses it.
-  * The focus shows as it does on a button: the chosen one turns to the text colour, the rest get a ring in the accent. */
-class Choice(label: String, chosen: Boolean, choose: () => Unit) extends Container {
+  * The focus shows as it does on a button: the chosen one turns to the text colour, the rest get a ring in the accent.
+  * `chosen` is read reactively, so a set of them follows a choice kept elsewhere. */
+class Choice(label: String, chosen: => Boolean, choose: () => Unit) extends Container {
   private val text = new TextView {
     content @= label
     font.size @= 12.0
@@ -17,7 +18,7 @@ class Choice(label: String, chosen: Boolean, choose: () => Unit) extends Contain
   focusable @= true
   radius @= 11.0
   // one of a set, chosen or not
-  semantics @= Semantics("radio", label = label, checked = Some(chosen))
+  semantics := Semantics("radio", label = label, checked = Some(chosen))
   size.width := text.size.width + 20.0
   size.height := text.size.height + 8.0
   backgroundColor := {

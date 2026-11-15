@@ -4208,9 +4208,65 @@ preview.dispose()                                    // left without joining: bo
 - **The microphone's level** comes from an analyser on the preview's own track, not a second capture. A browser starts
   a page's sound suspended until the page is used, so the level may stay at 0 until the first click or key.
 
+### Settings (`CallSettings`)
+
+How this person's calls sound and look on this device, kept on it as the devices are (`everyui.call.*` in the
+platform's settings: `localStorage` on the web): the microphone's processing, `noiseSuppression`, `echoCancellation`
+and `autoGain` (all on to begin with), and the camera's `quality`, a `VideoQuality`. `CallSettings.current` is all of
+it with the devices (`CallChoices`). A `Call` joins with it and follows a change at once; so does a `CallPreview`, so
+what is set before joining is what the call sends. `CallSettings.open` puts up the dialog that sets it:
+
+```scala
+// the call bar's gear, during the call: the call's own camera and microphone, nothing opened again
+bar.children += new CallSettingsButton(() => CallSettings.open(Some(call)))
+// the "ready to join?" page's: the preview's own camera and microphone
+page.children += new CallSettingsButton(() => CallSettings.open(preview))
+// anywhere else: a camera and microphone of its own, opened as it opens and closed as it closes
+CallSettings.open()
+CallSettings.current.attach(c => log("sending at " + c.quality.name))
+```
+
+- **The dialog** (`CallSettingsView`, which a settings page of the app's own can hold too): the camera's picture
+  (mirrored, 16:9 up to 180 high), the microphone with its level under it, the camera, the speaker with "Play test
+  sound" (a short chime through the chosen speaker, as the call's sound is played: an `<audio>` on its `setSinkId`;
+  `MediaDevices.testSound()` plays it for an app's own button), the three processing switches, and the quality as
+  Auto, 720p, 360p and Audio only. Each change is kept as it is made; Done or Back closes it. The meter and the test
+  sound stop, and a preview of its own closes (its light off), as it closes; nothing is made before it opens. The keys
+  reach every part (the selects too), a screen reader hears the level in fifths rather than each flicker, and each
+  select by its heading. Where a speaker cannot be chosen (Safari) the test is there alone; on a narrow screen it goes
+  under the speakers. `CallSettingsButton` is a round gear drawn as a `MediaToggle`, named "Settings".
+- **The processing** is the browser's getUserMedia constraints of those names (`autoGainControl` for `autoGain`). On a
+  microphone already open, a preview's or a call's, it is changed with `applyConstraints` where the browser changes it
+  so, which `getSettings` then says; Chrome (157) does not, so there the microphone is opened again with it
+  (LiveKit's `restartTrack`): a call's sender takes the new track in place of the old, nothing published again, and a
+  moment of the sound is lost. The meter follows the new track.
+- **The quality** is what the camera is captured at and published with (`VideoQuality.send`, a `VideoSend`):
+
+  | Quality | Captured and published | Beside it (simulcast) | Under strain |
+  | --- | --- | --- | --- |
+  | Auto | 1280x720, 1.7 Mb/s, 30 fps | 320x180, 640x360 | smaller, frames kept |
+  | 720p | 1280x720, 1.7 Mb/s, 30 fps | 640x360 | frames dropped, size kept (`maintain-resolution`) |
+  | 360p | 640x360, 500 kb/s, 30 fps | 320x180 | smaller, frames kept |
+  | Audio only | no camera | | |
+
+  On the web these are LiveKit's capture `resolution` and publish options (`videoEncoding`, `simulcast`,
+  `videoSimulcastLayers`, `degradationPreference`). Changed in a preview, the camera is opened again at the new size;
+  in a call, it is taken off, opened again at the new size and published again with its layers, so those watching
+  see this person's face for a moment. A camera turned off when the quality changes is taken off and published afresh
+  as it is next turned on.
+- **Audio only** sends no camera. Chosen, it turns a preview's camera off (closed, its light off) and a call's off
+  (taken off the room, not just muted), a call joined (`connect` with `camera = true`, or `join`) starts without one,
+  and a `CallPreview` made while it is chosen starts with `cameraOn` false. Turning the camera on again (a preview's
+  `cameraOn`, `Call.setCamera(true)`) goes back to Auto; choosing another quality alone leaves the camera off.
+- **An engine of the app's own** hears the settings through `CallRoom.choose` (before `connect` and on each change)
+  and `PreviewMedia.choose` (before the first `open`), and meters the call's own microphone for the dialog through
+  `CallRoom.meter`; all three do nothing by default. A `Select` now takes `label`, what a screen reader calls it.
+
 **Where it runs.** In a browser on a secure context (https, or localhost). The desktop, Android, the Roku and the
 Apple TV have no engine yet: `Call.supported` is false, a call ends as it connects with `CallEnd.Unavailable`,
-`MediaDevices` lists nothing, and a `CallPreview`'s camera and microphone are both `PreviewState.Unavailable`.
+`MediaDevices` lists nothing, and a `CallPreview`'s camera and microphone are both `PreviewState.Unavailable`. There
+`CallSettings` keeps its choices all the same (for a call should one come), and its dialog opens with "System default"
+alone in each list, the camera's words saying it cannot start, the meter at 0, and no test sound.
 
 **Shipping it.** LiveKit's browser client (livekit-client 2.23.0, the whole client in one script) comes in the
 everyui-web jar under `everyui-livekit/<version>/`, copied out beside the page by `everyuiWebGuests` as hls.js is,

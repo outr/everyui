@@ -12,10 +12,11 @@ import reactify.*
   *   val meter = MicLevel(preview)
   *   val checking = new MicLevel(MediaDevices.meter().level(), 160.0)
   * }}} */
-class MicLevel(level: => Double, width: Double = 120.0, height: Double = 6.0) extends ProgressBar(width, height) {
+class MicLevel(level: => Double, width: Double = 120.0, height: Double = 6.0, steps: Int = 100)
+  extends ProgressBar(width, height) {
   fraction := level
   semantics := {
-    val percent = math.round(math.max(0.0, math.min(1.0, fraction())) * 100.0).toDouble
+    val percent = math.round(math.max(0.0, math.min(1.0, fraction())) * steps) * 100.0 / steps
     Semantics("meter", label = CallWords.micLevel,
       range = Some(SemanticRange(percent, 0.0, 100.0, percent.toInt.toString + "%")))
   }

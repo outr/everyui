@@ -29,6 +29,35 @@ object CallWords {
   def cameraSwitch: String = Words("call.cameraSwitch")
   /** A [[MediaToggle]]'s name for the sound. */
   def soundSwitch: String = Words("call.soundSwitch")
+  /** The settings dialog's title, and its button's name ([[CallSettingsButton]]). */
+  def settings: String = Words("call.settings")
+  /** The device chosen by none: the system's own. */
+  def systemDefault: String = Words("call.systemDefault")
+  /** The settings dialog's heading over the speakers. */
+  def speakerChoice: String = Words("call.speakerChoice")
+  /** The button that plays a chime through the chosen speaker. */
+  def testSound: String = Words("call.testSound")
+  /** The settings dialog's heading over the microphone's processing. */
+  def processing: String = Words("call.processing")
+  /** The switch for `CallSettings.noiseSuppression`. */
+  def noiseSuppression: String = Words("call.noiseSuppression")
+  /** The switch for `CallSettings.echoCancellation`. */
+  def echoCancellation: String = Words("call.echoCancellation")
+  /** The switch for `CallSettings.autoGain`. */
+  def autoGain: String = Words("call.autoGain")
+  /** The settings dialog's heading over the camera's quality. */
+  def videoQuality: String = Words("call.videoQuality")
+  /** `VideoQuality.Auto`'s name. */
+  def qualityAuto: String = Words("call.qualityAuto")
+  /** `VideoQuality.AudioOnly`'s name. */
+  def audioOnly: String = Words("call.audioOnly")
+  /** What a quality is called: its own words, or its size ("720p"), which every language writes the same. */
+  def quality(q: VideoQuality): String = q match {
+    case VideoQuality.Auto => qualityAuto
+    case VideoQuality.High => "720p"
+    case VideoQuality.Standard => "360p"
+    case VideoQuality.AudioOnly => audioOnly
+  }
   /** "Microphone 2": a device the platform has given no label yet. */
   def device(kind: DeviceKind, n: Int): String = Words(kind match {
     case DeviceKind.Microphone => "call.microphone"

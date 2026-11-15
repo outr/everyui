@@ -10,8 +10,9 @@ import reactify.*
 /** One of a list of `options`, chosen from a drop-down: the page's own `<select>` on the web (its keyboard, its list,
   * its accessibility), its open list drawn in the theme as a Menu is where the browser lets the page draw it
   * (Chromium's), and on the theme's colours where it draws its own; elsewhere the chosen option's words, a click, a
-  * tap or Enter moving to the next. `selected` is the chosen option's index. Give it a size: it is drawn in a box of
-  * its own (`boxed`), its words set in from the box's edge, so it is seen to be something to choose from. */
+  * tap or Enter moving to the next. Either way the keys reach it as they reach any control, ringed in the accent while
+  * focused. `selected` is the chosen option's index. Give it a size: it is drawn in a box of its own (`boxed`), its
+  * words set in from the box's edge, so it is seen to be something to choose from. */
 class Select(options: => List[String]) extends Container {
   override def kind: String = "Select"
 
@@ -28,9 +29,12 @@ class Select(options: => List[String]) extends Container {
   /** Whether it is drawn in a box of its own: an edge, rounded, on the control colour, its words set in from it. On,
     * the default; off, its words alone, for a box of the app's. */
   val boxed: Var[Boolean] = own(Var(true))
+  /** What a screen reader calls it ("Microphone"), before the option chosen; "" for nothing more than the option. */
+  val label: Var[String] = own(Var(""))
   private val inset: Val[Double] = own(Val(if (boxed()) Select.inset else 0.0))
-  borderWidth := (if (boxed()) 1.0 else 0.0)
-  borderColor := Theme.edge()
+  // the focus on it a ring in the accent, as on the other controls
+  borderWidth := (if (focusShown()) 2.5 else if (boxed()) 1.0 else 0.0)
+  borderColor := (if (focusShown()) Theme.accent() else Theme.edge())
   radius := (if (boxed()) Select.radius else 0.0)
   backgroundColor := (if (boxed()) Theme.control() else everyui.Color.Clear)
   // the page's select fills the box, its words set in by the browser, so a click anywhere on it opens it and its list
@@ -51,6 +55,12 @@ class Select(options: => List[String]) extends Container {
     }
     selected.attach(i => if (field.node.getValue() != i.toString) field.node.setValue(i.toString))
     field.node.onValue(v => v.toIntOption.foreach(i => if (selected() != i) selected @= i))
+    field.semantics := Semantics(label = label())
+    // reached by the keys as any control is, the page's select then taking them (Space opens its list, a letter
+    // finds an option), and focused by a click, as a field is
+    focusable @= true
+    clickFocus @= true
+    focused.attach(f => field.node.focusInput(f))
   } else {
     field match {
       case words: TextView => words.content := choices().lift(selected()).getOrElse("")
@@ -59,8 +69,9 @@ class Select(options: => List[String]) extends Container {
     field.position.middle := size.middle()
     focusable @= true
     event.click.attach(_ => if (choices().nonEmpty) selected @= (selected() + 1) % choices().size)
-    // a button that steps through the choices, named by the one it shows
-    semantics @= Semantics.button()
+    // a button that steps through the choices, named by the one it shows (after its label, where it has one)
+    semantics := Semantics.button(
+      if (label().isEmpty) "" else label() + ", " + choices().lift(selected()).getOrElse(""))
   }
   children += field
 }

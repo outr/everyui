@@ -66,7 +66,7 @@ object Tooltip {
   def hide(): Unit = {
     asked += 1
     pending = None
-    showing.foreach(s => ui.children -= s._2)
+    showing.foreach(s => drop(s._2))
     showing = None
   }
 
@@ -81,7 +81,7 @@ object Tooltip {
       pending = None
     }
     if (showing.exists(_._1 eq target)) {
-      showing.foreach(s => ui.children -= s._2)
+      showing.foreach(s => drop(s._2))
       showing = None
     }
   }
@@ -104,8 +104,14 @@ object Tooltip {
     if (Focus.showing(target)) text().foreach(t => show(target, words(t)))
   }
 
+  // a tip taken away for good: off the screen, and taken apart, as nothing shows it again
+  private def drop(plate: Component): Unit = {
+    ui.children -= plate
+    plate.dispose()
+  }
+
   private def show(target: Component, content: Component): Unit = {
-    showing.foreach(s => ui.children -= s._2)
+    showing.foreach(s => drop(s._2))
     val plate = new Container {
       size.width := content.size.width() + 20.0
       size.height := content.size.height() + 12.0

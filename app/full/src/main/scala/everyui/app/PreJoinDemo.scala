@@ -3,8 +3,9 @@ package everyui.app
 import everyui.call.*
 import everyui.chat.Participant
 import everyui.component.{Button, ButtonStyle, Column, Row, Select, TextView}
+import everyui.i18n.{Direction, Language, Strings}
 import everyui.render.Platform
-import everyui.theme.Theme
+import everyui.theme.{Palette, Theme}
 import everyui.ui
 import reactify.*
 
@@ -13,9 +14,18 @@ import reactify.*
   * (MediaToggle), the camera to use, and where each stands; Join joins `livekit=<wss url>` with `token=<jwt>` from the
   * preview, its tracks handed over and its mute carried in, and shows this person's own tile and what the call sends.
   * Each change is logged: `[ui] prejoin camera Live`, `prejoin microphone Off`, `prejoin call Connected camera=true
-  * microphone=false`. Calls run in a browser only; elsewhere both say Unavailable. */
+  * microphone=false`. The gear beside the switches opens the call's settings over the preview (CallSettings.open), and
+  * once in the call another opens them over the call; each change of them is logged (`prejoin settings quality=360p
+  * noise=true echo=true gain=true`). `settings=1` opens them as the page opens; `theme=light` and `lang=<code>` (`ar`
+  * right to left) draw it so. Calls run in a browser only; elsewhere both say Unavailable. */
 object PreJoinDemo {
   def run(): Unit = {
+    if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
+    val code = Platform.launchArg("lang")
+    if (code.nonEmpty) {
+      Strings.language @= Language(code, code, code, rtl = code == "ar")
+      Direction.set(code == "ar")
+    }
     ui.backgroundColor := Theme.background()
     val preview = new CallPreview
     val picture = new CameraPreview(preview)
@@ -25,6 +35,9 @@ object PreJoinDemo {
     val meter = MicLevel(preview, 200.0, 8.0)
     val mic = new MediaToggle(preview.micOn, DeviceKind.Microphone)
     val cam = new MediaToggle(preview.cameraOn, DeviceKind.Camera)
+    val settings = new CallSettingsButton(() => CallSettings.open(preview))
+    CallSettings.current.attach(c => Platform.log("prejoin settings quality=" + c.quality.name + " noise=" +
+      c.noiseSuppression + " echo=" + c.echoCancellation + " gain=" + c.autoGain))
     // the cameras by label (or "Camera 2" before the browser gives labels), the system's own first
     val cameras = new Select("Default camera" :: MediaDevices.cameras().toList.map(_.shown))
     cameras.size.width @= 260.0
@@ -49,12 +62,13 @@ object PreJoinDemo {
     val page = Column(16.0, padding = 24.0)(
       TextView("Ready to join?", 22.0),
       picture,
-      Row(12.0, middle = true)(mic, cam, meter),
+      Row(12.0, middle = true)(mic, cam, settings, meter),
       cameras,
       status,
       Row(12.0, middle = true)(joining, sent)
     )
     ui.children += page
+    if (Platform.launchArg("settings") == "1") Platform.later(() => CallSettings.open(preview))
 
     // in the call: this person's own tile, from the very track the preview opened
     call.state.attach {
@@ -62,7 +76,7 @@ object PreJoinDemo {
         val tile = new VideoTile(call, call.local().map(_.identity).getOrElse(""))
         tile.size.width @= 240.0
         tile.size.height @= 135.0
-        page.children += tile
+        page.children += Row(12.0, middle = true)(tile, new CallSettingsButton(() => CallSettings.open(Some(call))))
       case _ =>
     }
   }

@@ -15,6 +15,9 @@ import reactify.*
   * camera and the microphone on or off as they are here; one refused starts off. A preview never joined is let go
   * with `dispose`, which closes both.
   *
+  * It records and films as `CallSettings` says (the microphone's processing, the camera's quality, Audio only
+  * keeping the camera off), following a change as it is made, so a call joined from it sends what was set here.
+  *
   * The engine is the platform's (LiveKit's in a browser, which is loaded as the preview opens) or a call's own; it
   * must be the engine of the call that joins with it, or the call opens the devices again. Where there is none (the
   * desktop, Android, a Roku, an Apple TV for now) both are `PreviewState.Unavailable`.
@@ -46,8 +49,9 @@ class CallPreview(val engine: CallEngine = CallEngine.default, startCamera: Bool
   val camera: Var[Option[String]] = MediaDevices.camera
   /** The microphone previewed and sent, by id (None: the system's own): `MediaDevices.microphone`. */
   val microphone: Var[Option[String]] = MediaDevices.microphone
-  /** Whether the camera is on: off closes it, and a call joined from here starts without it. */
-  val cameraOn: Var[Boolean] = Var(startCamera)
+  /** Whether the camera is on: off closes it, and a call joined from here starts without it. Off to begin with where
+    * `CallSettings.quality` is Audio only, and turned off as that is chosen; turned on, it goes back to Auto. */
+  val cameraOn: Var[Boolean] = Var(startCamera && CallSettings.quality() != VideoQuality.AudioOnly)
   /** Whether the microphone is on: off closes it, and a call joined from here starts muted. */
   val micOn: Var[Boolean] = Var(startMic)
   /** Where the camera stands. */
@@ -131,7 +135,11 @@ class CallPreview(val engine: CallEngine = CallEngine.default, startCamera: Bool
     }
 
   private def turned(kind: DeviceKind, now: Boolean): Unit = if (active) {
-    if (now) open(List(kind))
+    if (now) {
+      if (kind == DeviceKind.Camera && CallSettings.quality() == VideoQuality.AudioOnly)
+        CallSettings.quality @= VideoQuality.Auto
+      open(List(kind))
+    }
     else {
       asked -= kind
       media.close(kind)
@@ -144,7 +152,7 @@ class CallPreview(val engine: CallEngine = CallEngine.default, startCamera: Bool
     letGo = Nil
   }
 
-  private def follow[T](v: Var[T], f: T => Unit): Unit = {
+  private def follow[T](v: Val[T], f: T => Unit): Unit = {
     val r = v.attach(f)
     letGo = (() => v.reactions -= r) :: letGo
   }
@@ -154,5 +162,9 @@ class CallPreview(val engine: CallEngine = CallEngine.default, startCamera: Bool
   // another device chosen: opened in place of the one open (a refused one is tried again with it)
   follow[Option[String]](camera, _ => if (active && on(DeviceKind.Camera)) open(List(DeviceKind.Camera)))
   follow[Option[String]](microphone, _ => if (active && on(DeviceKind.Microphone)) open(List(DeviceKind.Microphone)))
+  // the settings recorded and filmed with, as they change; Audio only turns the camera off
+  follow[CallChoices](CallSettings.current, c => if (active) media.choose(c))
+  follow[VideoQuality](CallSettings.quality, q => if (active && q == VideoQuality.AudioOnly) cameraOn @= false)
+  media.choose(CallSettings.current())
   open(List(DeviceKind.Camera, DeviceKind.Microphone))
 }

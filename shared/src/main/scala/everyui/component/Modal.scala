@@ -180,7 +180,8 @@ object Modal {
     above.foreach(_.before = layer.before)
     layers = layers.filterNot(_ eq layer)
     layer.release()
-    ui.children -= layer.sheet
+    // taken apart a turn from now (`let`), not left: no undisposed warning (Component.warnUndisposed)
+    ui.children -= Component.heldAside(layer.sheet)
     unheard()
     if (top) {
       Focus.scope @= (if (covered()) None else ruling())
@@ -211,7 +212,7 @@ object Modal {
   private def let(layer: ModalLayer): Unit = {
     // the panel off the sheet now, and no longer placed by it: one put up again goes on a sheet of its own, which
     // taking this one apart must not reach, and one kept would hold this one by where it was and how it was placed
-    layer.sheet.children -= layer.panel
+    layer.sheet.children -= Component.heldAside(layer.panel)
     layer.panel.leftParent = None
     if (layer.centred) {
       Component.unbind(layer.panel.position.left)

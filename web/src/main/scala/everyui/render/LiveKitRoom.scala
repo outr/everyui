@@ -10,7 +10,9 @@ import scala.scalajs.js
   * says (who is there, their tracks muted or not, who speaks, the connection) is read afresh into `CallParticipant`s
   * on each of its events. Each remote sound plays in a hidden `<audio>` element of its own in the page's body,
   * silenced while the call is not `audible`; each picture is a `<video>` drawn into its `CallVideo`'s box. The adaptive
-  * stream is on, so a picture is sent only as large as its box draws it, and not at all while none does. */
+  * stream is on, so a picture is sent only as large as its box draws it, and not at all while none does. It records
+  * and sends as the call's settings say (LiveKitOptions: the microphone's processing, the camera's size and layers),
+  * and changes what it sends as they change (`choose`). */
 class LiveKitRoom(feed: CallFeed) extends CallRoom {
   private var room: js.Dynamic = null
   private var left = false
@@ -24,6 +26,11 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
   // a preview's devices taken over as the call was joined (Call.join), and the kinds of them sent once already
   private var taken: Option[LiveKitPreview] = None
   private var handed: Set[DeviceKind] = Set.empty
+  // what is recorded and sent with (CallChoices), the quality the camera was last published at, and whether it is
+  // being published again at another
+  private var chosen: CallChoices = CallChoices()
+  private var sentQuality: VideoQuality = VideoQuality.Auto
+  private var resending = false
 
   def connect(url: String, token: String, devices: Map[DeviceKind, String]): Unit = LiveKitScript.load { ok =>
     if (!left) {
@@ -34,9 +41,10 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
   private def open(url: String, token: String, devices: Map[DeviceKind, String]): Unit = {
     val client = LiveKitScript.client
     if (!js.isUndefined(client.setLogLevel)) client.setLogLevel("warn")
-    val options = js.Dynamic.literal(adaptiveStream = true, dynacast = true)
-    devices.get(DeviceKind.Microphone).foreach(id => options.audioCaptureDefaults = js.Dynamic.literal(deviceId = id))
-    devices.get(DeviceKind.Camera).foreach(id => options.videoCaptureDefaults = js.Dynamic.literal(deviceId = id))
+    val options = js.Dynamic.literal(adaptiveStream = true, dynacast = true,
+      audioCaptureDefaults = LiveKitOptions.audio(chosen, devices.get(DeviceKind.Microphone)),
+      videoCaptureDefaults = LiveKitOptions.video(chosen, devices.get(DeviceKind.Camera)),
+      publishDefaults = LiveKitOptions.publish(chosen))
     devices.get(DeviceKind.Speaker).foreach(id => options.audioOutput = js.Dynamic.literal(deviceId = id))
     val r = js.Dynamic.newInstance(client.Room)(options)
     room = r
@@ -95,7 +103,9 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
         handed += k
         preview.whenOpen(k) {
           case Some(t) if room != null && !left =>
-            LiveKitRoom.after(room.localParticipant.publishTrack(t))(_ => {
+            if (k == DeviceKind.Camera) sentQuality = chosen.quality
+            val publishing = if (k == DeviceKind.Camera) LiveKitOptions.publish(chosen) else js.Dynamic.literal()
+            LiveKitRoom.after(room.localParticipant.publishTrack(t, publishing))(_ => {
               refresh()
               done(None)
             }, e => {
@@ -113,10 +123,11 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
     if (room == null || left) done(if (on) Some(MediaRefusal.Unavailable) else None)
     else {
       val local = room.localParticipant
-      val capture: js.Any = device.map(id => js.Dynamic.literal(deviceId = id): js.Any).getOrElse(js.undefined)
       val asked: Option[js.Dynamic] = source match {
-        case TrackSource.Microphone => Some(local.setMicrophoneEnabled(on, capture))
-        case TrackSource.Camera => Some(local.setCameraEnabled(on, capture))
+        case TrackSource.Microphone => Some(local.setMicrophoneEnabled(on, LiveKitOptions.audio(chosen, device)))
+        case TrackSource.Camera =>
+          if (on) sentQuality = chosen.quality
+          Some(local.setCameraEnabled(on, LiveKitOptions.video(chosen, device), LiveKitOptions.publish(chosen)))
         // its sound too, where the browser offers it (a tab's)
         case TrackSource.Screen => Some(local.setScreenShareEnabled(on, js.Dynamic.literal(audio = true)))
         case TrackSource.ScreenAudio => None
@@ -145,6 +156,83 @@ class LiveKitRoom(feed: CallFeed) extends CallRoom {
       LiveKitRoom.after(room.switchActiveDevice(named, id.getOrElse("default"), id.nonEmpty))(_ => (),
         e => Platform.log("[call] could not switch " + named + ": " + WebErrors.message(e)))
     }
+  }
+
+  /** The settings recorded and sent with: before the room is reached, those its tracks are made with; once in it, the
+    * microphone's processing changed on the track sent (LiveKitOptions.process), and the camera sent again at another
+    * quality (taken off, opened again at the new size and published with its layers: those watching see its face for
+    * a moment), or, for Audio only or a camera turned off, taken off and stopped, published afresh as it is next
+    * turned on. */
+  override def choose(choices: CallChoices): Unit = {
+    val was = chosen
+    chosen = choices
+    if (room != null && !left && joined) {
+      if (!was.sameProcessing(choices)) own("microphone").foreach { t =>
+        LiveKitOptions.process(t, choices, choices.microphone, _ => ())
+      }
+      if (was.quality != choices.quality) resend()
+    }
+  }
+
+  // the camera published again at the quality chosen, one change at a time, the last one chosen winning
+  private def resend(): Unit = if (!resending && room != null && !left) {
+    val local = room.localParticipant
+    val pub = local.getTrackPublication("camera")
+    if (LiveKitRoom.defined(pub) && LiveKitRoom.defined(pub.track) && sentQuality != chosen.quality) {
+      val t = pub.track
+      val q = chosen
+      sentQuality = q.quality
+      resending = true
+      val done: Any => Unit = _ => {
+        resending = false
+        refresh()
+        resend()
+      }
+      if (q.video.isEmpty || pub.isMuted.asInstanceOf[Boolean]) {
+        LiveKitRoom.after(local.unpublishTrack(t, true))(done, done)
+      }
+      else {
+        val failed: Any => Unit = e => {
+          Platform.log("[call] could not send the camera at " + q.quality.name + ": " + WebErrors.message(e))
+          done(e)
+        }
+        LiveKitRoom.after(local.unpublishTrack(t, false))(_ =>
+          LiveKitRoom.after(t.restartTrack(LiveKitOptions.video(q, q.camera.orElse(LiveKitOptions.device(t)))))(_ =>
+            LiveKitRoom.after(local.publishTrack(t, LiveKitOptions.publish(q)))(done, failed), failed), failed)
+      }
+    }
+  }
+
+  /** The microphone sent, heard through an analyser (`CallAccess.analyse`) on its own track: looked for again every
+    * half second, so a microphone published, taken off or opened again (another device, other processing) is
+    * followed; silent while there is none, or while it is muted. */
+  override def meter(level: Double => Unit): () => Unit = {
+    var heard: Option[js.Dynamic] = None
+    var hearing: () => Unit = () => ()
+    val look = () => {
+      val now = own("microphone").map(_.mediaStreamTrack)
+      if (now.map(_.asInstanceOf[js.Any]) != heard.map(_.asInstanceOf[js.Any])) {
+        hearing()
+        heard = now
+        level(0.0)
+        hearing = now.map { m =>
+          CallAccess.analyse(js.Dynamic.newInstance(dom.window.asInstanceOf[js.Dynamic].MediaStream)(js.Array(m)), level)
+        }.getOrElse(() => ())
+      }
+    }
+    look()
+    val timer = dom.window.setInterval(() => look(), 500)
+    () => {
+      dom.window.clearInterval(timer)
+      hearing()
+      hearing = () => ()
+    }
+  }
+
+  // this person's own track of `source` ("microphone", "camera"), where one is published
+  private def own(source: String): Option[js.Dynamic] = if (room == null || left) None else {
+    val pub = room.localParticipant.getTrackPublication(source)
+    if (LiveKitRoom.defined(pub) && LiveKitRoom.defined(pub.track)) Some(pub.track.asInstanceOf[js.Dynamic]) else None
   }
 
   def audible(on: Boolean): Unit = {

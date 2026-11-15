@@ -13,6 +13,16 @@ trait CallRoom {
     * cannot (the media is another engine's, or this one has no preview) closes them, and opens its own. */
   def take(media: PreviewMedia): Unit = media.stop()
 
+  /** Record, film and send as `choices` say (`CallSettings.current`): told before `connect`, and again whenever they
+    * change, to change what is being sent where the engine can (the microphone's processing, the camera's quality).
+    * Nothing by default, for an engine that sends as it always has. */
+  def choose(choices: CallChoices): Unit = ()
+
+  /** This person's own microphone as it is sent, its loudness (0 to 1) told to `level` as it changes, until the
+    * function answered is called: a settings dialog's meter during a call, from the very track sent, not a second
+    * capture. Nothing by default (the level stays at 0). */
+  def meter(level: Double => Unit): () => Unit = () => ()
+
   /** Leave the room and let go of everything it holds: its devices, its tracks, its elements. */
   def leave(): Unit
 

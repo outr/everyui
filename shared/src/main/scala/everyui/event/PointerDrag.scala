@@ -15,9 +15,15 @@ import everyui.ui
 class PointerDrag(target: Component, place: (Double, Double) => Unit, end: () => Unit = () => (),
                   take: (Double, Double) => Boolean = (_, _) => true) {
   private var grabbed: Boolean = false
-  private val catcher: Container = new Container
+  // put up for each drag and kept between them (held aside), and taken apart with the target, as it follows the
+  // screen's size
+  private val catcher: Container = Component.heldAside(new Container)
   catcher.size.width := ui.size.width()
   catcher.size.height := ui.size.height()
+  target.onDispose(() => {
+    if (grabbed) ui.children -= catcher
+    catcher.dispose()
+  })
   target.touchDrags @= true
 
   target.event.pointer.down.attach(e => press(e))

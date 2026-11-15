@@ -175,7 +175,12 @@ object Words {
     "call.cameraDenied" -> "Camera access is blocked", "call.noCamera" -> "No camera found",
     "call.cameraFailed" -> "Camera can't start", "call.micLevel" -> "Microphone level",
     "call.microphoneSwitch" -> "Microphone", "call.cameraSwitch" -> "Camera",
-    "call.soundSwitch" -> "Sound")
+    "call.soundSwitch" -> "Sound",
+    "call.settings" -> "Settings", "call.systemDefault" -> "System default", "call.speakerChoice" -> "Speaker",
+    "call.testSound" -> "Play test sound", "call.processing" -> "Audio processing",
+    "call.noiseSuppression" -> "Noise suppression", "call.echoCancellation" -> "Echo cancellation",
+    "call.autoGain" -> "Automatic gain control", "call.videoQuality" -> "Video quality", "call.qualityAuto" -> "Auto",
+    "call.audioOnly" -> "Audio only")
 
   private lazy val german: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Abbrechen", "close" -> "Schließen",
     "done" -> "Fertig", "yes" -> "Ja",
@@ -271,7 +276,12 @@ object Words {
     "call.cameraDenied" -> "Kamerazugriff ist blockiert", "call.noCamera" -> "Keine Kamera gefunden",
     "call.cameraFailed" -> "Kamera kann nicht starten", "call.micLevel" -> "Mikrofonpegel",
     "call.microphoneSwitch" -> "Mikrofon", "call.cameraSwitch" -> "Kamera",
-    "call.soundSwitch" -> "Ton")
+    "call.soundSwitch" -> "Ton",
+    "call.settings" -> "Einstellungen", "call.systemDefault" -> "Systemstandard",
+    "call.speakerChoice" -> "Lautsprecher", "call.testSound" -> "Testton abspielen",
+    "call.processing" -> "Audioverarbeitung", "call.noiseSuppression" -> "Rauschunterdrückung",
+    "call.echoCancellation" -> "Echounterdrückung", "call.autoGain" -> "Automatische Pegelanpassung",
+    "call.videoQuality" -> "Videoqualität", "call.qualityAuto" -> "Automatisch", "call.audioOnly" -> "Nur Audio")
 
   private lazy val spanish: Map[String, String] = Map("ok" -> "Aceptar", "cancel" -> "Cancelar", "close" -> "Cerrar",
     "done" -> "Listo", "yes" -> "Sí",
@@ -367,7 +377,12 @@ object Words {
     "call.cameraDenied" -> "El acceso a la cámara está bloqueado", "call.noCamera" -> "No se encontró ninguna cámara",
     "call.cameraFailed" -> "No se puede iniciar la cámara", "call.micLevel" -> "Nivel del micrófono",
     "call.microphoneSwitch" -> "Micrófono", "call.cameraSwitch" -> "Cámara",
-    "call.soundSwitch" -> "Sonido")
+    "call.soundSwitch" -> "Sonido",
+    "call.settings" -> "Ajustes", "call.systemDefault" -> "Predeterminado del sistema",
+    "call.speakerChoice" -> "Altavoz", "call.testSound" -> "Reproducir sonido de prueba",
+    "call.processing" -> "Procesamiento de audio", "call.noiseSuppression" -> "Supresión de ruido",
+    "call.echoCancellation" -> "Cancelación de eco", "call.autoGain" -> "Control automático de ganancia",
+    "call.videoQuality" -> "Calidad de vídeo", "call.qualityAuto" -> "Automática", "call.audioOnly" -> "Solo audio")
 
   private lazy val french: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuler", "close" -> "Fermer",
     "done" -> "Terminé", "yes" -> "Oui",
@@ -464,7 +479,13 @@ object Words {
     "call.cameraDenied" -> "L'accès à la caméra est bloqué", "call.noCamera" -> "Aucune caméra trouvée",
     "call.cameraFailed" -> "Impossible de démarrer la caméra", "call.micLevel" -> "Niveau du micro",
     "call.microphoneSwitch" -> "Micro", "call.cameraSwitch" -> "Caméra",
-    "call.soundSwitch" -> "Son")
+    "call.soundSwitch" -> "Son",
+    "call.settings" -> "Paramètres", "call.systemDefault" -> "Par défaut du système",
+    "call.speakerChoice" -> "Haut-parleur", "call.testSound" -> "Lire un son de test",
+    "call.processing" -> "Traitement audio", "call.noiseSuppression" -> "Suppression du bruit",
+    "call.echoCancellation" -> "Annulation de l'écho", "call.autoGain" -> "Contrôle automatique du gain",
+    "call.videoQuality" -> "Qualité vidéo", "call.qualityAuto" -> "Automatique",
+    "call.audioOnly" -> "Audio uniquement")
 
   private lazy val italian: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annulla", "close" -> "Chiudi",
     "done" -> "Fine", "yes" -> "Sì", "no" -> "No",
@@ -557,7 +578,12 @@ object Words {
     "call.cameraDenied" -> "L'accesso alla videocamera è bloccato", "call.noCamera" -> "Nessuna videocamera trovata",
     "call.cameraFailed" -> "Impossibile avviare la videocamera", "call.micLevel" -> "Livello del microfono",
     "call.microphoneSwitch" -> "Microfono", "call.cameraSwitch" -> "Videocamera",
-    "call.soundSwitch" -> "Audio")
+    "call.soundSwitch" -> "Audio",
+    "call.settings" -> "Impostazioni", "call.systemDefault" -> "Predefinito di sistema",
+    "call.speakerChoice" -> "Altoparlante", "call.testSound" -> "Riproduci suono di prova",
+    "call.processing" -> "Elaborazione audio", "call.noiseSuppression" -> "Soppressione del rumore",
+    "call.echoCancellation" -> "Cancellazione dell'eco", "call.autoGain" -> "Controllo automatico del guadagno",
+    "call.videoQuality" -> "Qualità video", "call.qualityAuto" -> "Automatica", "call.audioOnly" -> "Solo audio")
 
   private lazy val dutch: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuleren", "close" -> "Sluiten",
     "done" -> "Klaar", "yes" -> "Ja",
@@ -651,7 +677,12 @@ object Words {
     "call.cameraDenied" -> "Toegang tot de camera is geblokkeerd", "call.noCamera" -> "Geen camera gevonden",
     "call.cameraFailed" -> "Camera kan niet starten", "call.micLevel" -> "Microfoonniveau",
     "call.microphoneSwitch" -> "Microfoon", "call.cameraSwitch" -> "Camera",
-    "call.soundSwitch" -> "Geluid")
+    "call.soundSwitch" -> "Geluid",
+    "call.settings" -> "Instellingen", "call.systemDefault" -> "Systeemstandaard",
+    "call.speakerChoice" -> "Luidspreker", "call.testSound" -> "Testgeluid afspelen",
+    "call.processing" -> "Audioverwerking", "call.noiseSuppression" -> "Ruisonderdrukking",
+    "call.echoCancellation" -> "Echo-onderdrukking", "call.autoGain" -> "Automatische versterking",
+    "call.videoQuality" -> "Videokwaliteit", "call.qualityAuto" -> "Automatisch", "call.audioOnly" -> "Alleen audio")
 
   private lazy val portuguese: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Cancelar", "close" -> "Fechar",
     "done" -> "Concluído", "yes" -> "Sim",
@@ -744,7 +775,13 @@ object Words {
     "call.cameraDenied" -> "O acesso à câmera está bloqueado", "call.noCamera" -> "Nenhuma câmera encontrada",
     "call.cameraFailed" -> "Não foi possível iniciar a câmera", "call.micLevel" -> "Nível do microfone",
     "call.microphoneSwitch" -> "Microfone", "call.cameraSwitch" -> "Câmera",
-    "call.soundSwitch" -> "Som")
+    "call.soundSwitch" -> "Som",
+    "call.settings" -> "Configurações", "call.systemDefault" -> "Padrão do sistema",
+    "call.speakerChoice" -> "Alto-falante", "call.testSound" -> "Tocar som de teste",
+    "call.processing" -> "Processamento de áudio", "call.noiseSuppression" -> "Supressão de ruído",
+    "call.echoCancellation" -> "Cancelamento de eco", "call.autoGain" -> "Controle automático de ganho",
+    "call.videoQuality" -> "Qualidade do vídeo", "call.qualityAuto" -> "Automática",
+    "call.audioOnly" -> "Somente áudio")
 
   private lazy val turkish: Map[String, String] = Map("ok" -> "Tamam", "cancel" -> "İptal", "close" -> "Kapat",
     "done" -> "Bitti", "yes" -> "Evet",
@@ -835,7 +872,12 @@ object Words {
     "call.cameraDenied" -> "Kamera erişimi engellendi", "call.noCamera" -> "Kamera bulunamadı",
     "call.cameraFailed" -> "Kamera başlatılamıyor", "call.micLevel" -> "Mikrofon seviyesi",
     "call.microphoneSwitch" -> "Mikrofon", "call.cameraSwitch" -> "Kamera",
-    "call.soundSwitch" -> "Ses")
+    "call.soundSwitch" -> "Ses",
+    "call.settings" -> "Ayarlar", "call.systemDefault" -> "Sistem varsayılanı", "call.speakerChoice" -> "Hoparlör",
+    "call.testSound" -> "Test sesi çal", "call.processing" -> "Ses işleme",
+    "call.noiseSuppression" -> "Gürültü bastırma", "call.echoCancellation" -> "Yankı engelleme",
+    "call.autoGain" -> "Otomatik kazanç kontrolü", "call.videoQuality" -> "Video kalitesi",
+    "call.qualityAuto" -> "Otomatik", "call.audioOnly" -> "Yalnızca ses")
 
   // Arabic counts: =2 is the dual, few (3 to 10) a plural, many (11 to 99) and other (100 and up) a singular.
   private lazy val arabic: Map[String, String] = Map("ok" -> "موافق", "cancel" -> "إلغاء", "close" -> "إغلاق",
@@ -932,7 +974,12 @@ object Words {
     "call.cameraDenied" -> "الوصول إلى الكاميرا محظور", "call.noCamera" -> "لم يتم العثور على كاميرا",
     "call.cameraFailed" -> "تعذر تشغيل الكاميرا", "call.micLevel" -> "مستوى الميكروفون",
     "call.microphoneSwitch" -> "الميكروفون", "call.cameraSwitch" -> "الكاميرا",
-    "call.soundSwitch" -> "الصوت")
+    "call.soundSwitch" -> "الصوت",
+    "call.settings" -> "الإعدادات", "call.systemDefault" -> "الافتراضي للنظام", "call.speakerChoice" -> "مكبر الصوت",
+    "call.testSound" -> "تشغيل صوت تجريبي", "call.processing" -> "معالجة الصوت",
+    "call.noiseSuppression" -> "كتم الضوضاء", "call.echoCancellation" -> "إلغاء الصدى",
+    "call.autoGain" -> "التحكم التلقائي في الكسب", "call.videoQuality" -> "جودة الفيديو",
+    "call.qualityAuto" -> "تلقائي", "call.audioOnly" -> "الصوت فقط")
 
   private lazy val chinese: Map[String, String] = Map("ok" -> "确定", "cancel" -> "取消", "close" -> "关闭",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -1017,7 +1064,11 @@ object Words {
     "call.cameraDenied" -> "摄像头访问已被阻止", "call.noCamera" -> "未找到摄像头",
     "call.cameraFailed" -> "无法启动摄像头", "call.micLevel" -> "麦克风音量",
     "call.microphoneSwitch" -> "麦克风", "call.cameraSwitch" -> "摄像头",
-    "call.soundSwitch" -> "声音")
+    "call.soundSwitch" -> "声音",
+    "call.settings" -> "设置", "call.systemDefault" -> "系统默认", "call.speakerChoice" -> "扬声器",
+    "call.testSound" -> "播放测试音", "call.processing" -> "音频处理", "call.noiseSuppression" -> "降噪",
+    "call.echoCancellation" -> "回声消除", "call.autoGain" -> "自动增益控制", "call.videoQuality" -> "视频质量",
+    "call.qualityAuto" -> "自动", "call.audioOnly" -> "仅音频")
 
   private lazy val traditionalChinese: Map[String, String] = Map("ok" -> "確定", "cancel" -> "取消", "close" -> "關閉",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -1102,5 +1153,9 @@ object Words {
     "call.cameraDenied" -> "攝影機存取已被封鎖", "call.noCamera" -> "找不到攝影機",
     "call.cameraFailed" -> "無法啟動攝影機", "call.micLevel" -> "麥克風音量",
     "call.microphoneSwitch" -> "麥克風", "call.cameraSwitch" -> "攝影機",
-    "call.soundSwitch" -> "聲音")
+    "call.soundSwitch" -> "聲音",
+    "call.settings" -> "設定", "call.systemDefault" -> "系統預設", "call.speakerChoice" -> "喇叭",
+    "call.testSound" -> "播放測試音", "call.processing" -> "音訊處理", "call.noiseSuppression" -> "降噪",
+    "call.echoCancellation" -> "回音消除", "call.autoGain" -> "自動增益控制", "call.videoQuality" -> "視訊品質",
+    "call.qualityAuto" -> "自動", "call.audioOnly" -> "僅音訊")
 }

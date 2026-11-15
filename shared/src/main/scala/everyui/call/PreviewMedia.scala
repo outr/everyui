@@ -20,6 +20,11 @@ trait PreviewMedia {
   /** Stop drawing the camera in `into`. */
   def hide(into: CameraPreview): Unit
 
+  /** Record and film as `choices` say (`CallSettings.current`): told before the first `open`, and again whenever
+    * they change, to change what is open where the engine can (the microphone's processing, the camera's size).
+    * Nothing by default. */
+  def choose(choices: CallChoices): Unit = ()
+
   /** Close everything, for good. */
   def stop(): Unit
 }

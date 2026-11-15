@@ -79,6 +79,11 @@ object MediaDevices {
     meter
   }
 
+  /** A short chime played through `speaker` (the chosen one unless given; None, the system's own), as a call's sound
+    * is, to check that it is heard: stopped early by calling the function answered. Nothing plays where there are no
+    * calls (`supported` false). */
+  def testSound(speaker: Option[String] = chosen(DeviceKind.Speaker)): () => Unit = CallAccess.testSound(speaker)
+
   /** The chosen device of `kind`, where one is chosen and still plugged in. */
   def chosen(kind: DeviceKind): Option[String] = {
     val choice = kind match {

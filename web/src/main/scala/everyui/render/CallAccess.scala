@@ -3,6 +3,7 @@ package everyui.render
 import everyui.Permission
 import everyui.call.{CallEngine, DeviceKind, MediaDevice, MediaRefusal}
 import org.scalajs.dom
+import org.scalajs.dom.html
 
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Float32Array
@@ -133,6 +134,56 @@ object CallAccess {
       dom.window.clearInterval(timer)
       unwake()
       context.close()
+    }
+  }
+
+  /** A chime (three rising notes, about a second) made in an AudioContext and played through a hidden `<audio>` on
+    * `speaker` (its `setSinkId`, where the browser has it; None, the system's own), the way a call's sound is played,
+    * until it ends or the function answered is called. Best started from a click: a page not used yet plays nothing. */
+  def testSound(speaker: Option[String]): () => Unit = if (!supported()) () => () else {
+    val kind = if (LiveKitRoom.defined(window.AudioContext)) window.AudioContext else window.webkitAudioContext
+    val context = js.Dynamic.newInstance(kind)()
+    val out = context.createMediaStreamDestination()
+    val start = context.currentTime.asInstanceOf[Double] + 0.05
+    List(523.25, 659.25, 783.99).zipWithIndex.foreach { case (hz, i) =>
+      val at = start + i * 0.18
+      val tone = context.createOscillator()
+      tone.frequency.value = hz
+      val gain = context.createGain()
+      gain.gain.setValueAtTime(0.0, at)
+      gain.gain.linearRampToValueAtTime(0.2, at + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, at + 0.6)
+      tone.connect(gain)
+      gain.connect(out)
+      tone.start(at)
+      tone.stop(at + 0.62)
+    }
+    val el = dom.document.createElement("audio").asInstanceOf[html.Audio]
+    el.style.display = "none"
+    el.asInstanceOf[js.Dynamic].srcObject = out.stream
+    dom.document.body.appendChild(el)
+    var done = false
+    val stop = () => if (!done) {
+      done = true
+      el.pause()
+      el.asInstanceOf[js.Dynamic].srcObject = null
+      if (el.parentNode != null) el.parentNode.removeChild(el)
+      context.close()
+    }
+    val timer = dom.window.setTimeout(() => stop(), 1500)
+    val play = () => if (!done) LiveKitRoom.after(el.asInstanceOf[js.Dynamic].play())(_ => (), e => {
+      Platform.log("[call] the test sound could not play: " + WebErrors.message(e))
+      stop()
+    })
+    val sink = el.asInstanceOf[js.Dynamic].setSinkId
+    speaker match {
+      case Some(id) if js.typeOf(sink) == "function" =>
+        LiveKitRoom.after(el.asInstanceOf[js.Dynamic].setSinkId(id))(_ => play(), _ => play())
+      case _ => play()
+    }
+    () => {
+      dom.window.clearTimeout(timer)
+      stop()
     }
   }
 
