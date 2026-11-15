@@ -1,0 +1,42 @@
+{
+  "reflection": [
+    {
+      "type": "everyui.tray.WinWindow$",
+      "methods": [{"name": "proc", "parameterTypes": ["java.lang.foreign.MemorySegment", "int", "long", "long"]}]
+    },
+    {
+      "type": "everyui.tray.WinTrayIcon$",
+      "methods": [{"name": "monitor", "parameterTypes": ["java.lang.foreign.MemorySegment",
+        "java.lang.foreign.MemorySegment", "java.lang.foreign.MemorySegment", "long"]}]
+    }
+  ],
+  "foreign": {
+    "downcalls": [
+      {"returnType": "jint", "parameterTypes": ["jint", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*"]},
+      {"returnType": "jchar", "parameterTypes": ["void*"]},
+      {"returnType": "void*", "parameterTypes": ["jint", "void*", "void*", "jint", "jint", "jint", "jint", "jint",
+        "void*", "void*", "void*", "void*"]},
+      {"returnType": "jint", "parameterTypes": ["void*"]},
+      {"returnType": "jlong", "parameterTypes": ["void*", "jint", "jlong", "jlong"]},
+      {"returnType": "jint", "parameterTypes": ["void*", "void*", "jint", "jint"]},
+      {"returnType": "jlong", "parameterTypes": ["void*"]},
+      {"returnType": "jint", "parameterTypes": ["void*", "jint", "jlong", "jlong"]},
+      {"returnType": "void", "parameterTypes": ["jint"]},
+      {"returnType": "jint", "parameterTypes": ["void*", "jint", "jint", "void*"]},
+      {"returnType": "jint", "parameterTypes": ["jint", "jint"]},
+      {"returnType": "jint", "parameterTypes": ["jint"]},
+      {"returnType": "jint", "parameterTypes": ["void*", "void*", "void*", "jlong"]},
+      {"returnType": "void*", "parameterTypes": []},
+      {"returnType": "jint", "parameterTypes": ["void*", "jint", "jlong", "void*"]},
+      {"returnType": "jint", "parameterTypes": ["void*", "jint", "jint", "jint", "jint", "void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*"]},
+      {"returnType": "void*", "parameterTypes": ["void*", "void*", "jint", "void*", "void*", "jint"]},
+      {"returnType": "void*", "parameterTypes": ["jint", "jint", "jint", "jint", "void*"]}
+    ],
+    "upcalls": [
+      {"returnType": "jlong", "parameterTypes": ["void*", "jint", "jlong", "jlong"]},
+      {"returnType": "jint", "parameterTypes": ["void*", "void*", "void*", "jlong"]}
+    ]
+  }
+}
