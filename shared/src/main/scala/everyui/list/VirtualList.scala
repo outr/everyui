@@ -809,7 +809,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   /** The rows placed again: those that can be seen, handed their items, the rest put aside. */
-  def refresh(): Unit = if (laying) again = true
+  def refresh(): Unit = if (takenApart) ()
+    else if (laying) again = true
     else if (!node.onPage) {
       // out of the page (a view built before it is shown, on the web), the rows wait for the end of the turn, by which
       // an app has put it there: made in the page, their sizes are read in the turn's one batch, where out of it each
@@ -826,7 +827,9 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     else lay()
   private var offPage = false
 
-  private def lay(): Unit = if (laying) again = true else {
+  // (nothing once it is taken apart: a turn it waited for, as it was, made a screenful of rows again that nothing
+  // would take apart)
+  private def lay(): Unit = if (takenApart) () else if (laying) again = true else {
     laying = true
     try {
       again = true

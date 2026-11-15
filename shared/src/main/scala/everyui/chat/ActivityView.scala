@@ -13,8 +13,9 @@ import reactify.*
 /** A tool call in the transcript, `width` wide: one line in a quiet box (a spinner while it runs, a tick or a cross once
   * it has, what it does, and a chevron where there is more), which a click (or Enter, from the transcript) opens onto
   * its details. `details` hands over what the entry's `details` made, the first time it is opened: the transcript keeps
-  * it, so it is not made again, and takes it back (`release`) before this is taken apart. Their words are selectable,
-  * whoever made them, and a drag that selects some opens or closes nothing.
+  * it, so it is not made again (unless `Transcript.evictAfter` lets it go a while after its row is scrolled away),
+  * and takes it back (`release`) before this is taken apart. Their words are selectable, whoever made them, and a drag
+  * that selects some opens or closes nothing.
   *
   * Where the entry has a `lead`, it goes first in place of the status mark: somebody's avatar, a ring turning around it
   * while the call runs (`Avatar.busy`), or an icon with a spinner on its corner while it runs; once it has, a tick or a
@@ -212,7 +213,8 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
   private val bodyWidth: Var[Double] = own(Var(0.0))
   private val bodyHeight: Var[Double] = own(Var(0.0))
   private val lineHeight: Var[Double] = own(Var(0.0))
-  private val clip: Container = new Container
+  // (out of the box while there is no body, and taken apart with this whether it is in it or not)
+  private val clip: Container = Component.heldAside(new Container)
   private var words: Option[Component] = None
   private def write(): Unit = if (words.isEmpty && hasBody()) {
     val made = render(own(Val(a.body())), own(Val(bodyWidest())))
@@ -307,6 +309,7 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     case _ => ()
   }
   onDispose(() => if (leading().nonEmpty) status.dispose())
+  onDispose(() => clip.dispose())
 
   box.position.left := ListRow.along(Transcript.indent(width), box.size.width(), width)
   box.position.top @= Transcript.lineGap + 2.0
