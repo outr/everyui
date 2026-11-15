@@ -75,9 +75,33 @@ class RichFlow extends TextFlow {
     val fonts = shown.map(run => face(run, rtl))
     val width = getPrefWidth
     val words = if (rtl && width > 0.0) RtlText.lines(shown.map(_.text).zip(fonts), width) else shown.map(_.text)
-    getChildren.setAll(shown.indices.map(i =>
-      if (shown(i).image.nonEmpty) picture(shown(i), fonts(i)) else piece(shown(i), words(i), fonts(i)))*)
+    val now = shown.zip(words).zip(fonts).map(p => (p._1._1, p._1._2, p._2))
+    // the nodes of the runs that begin as the last did kept, only those from the first that changed made again: code
+    // that grows as an answer streams in draws its last lines, not the whole block
+    var kept = 0
+    if (colour == drawnColour && italic == drawnItalic && getChildren.size == drawn.size) {
+      var was = drawn
+      var next = now
+      while (was.nonEmpty && next.nonEmpty && was.head == next.head) {
+        kept += 1
+        was = was.tail
+        next = next.tail
+      }
+    }
+    val made = now.drop(kept).map(p => if (p._1.image.nonEmpty) picture(p._1, p._3) else piece(p._1, p._2, p._3))
+    if (kept == 0) getChildren.setAll(made*)
+    else {
+      getChildren.remove(kept, getChildren.size)
+      getChildren.addAll(made*)
+    }
+    drawn = now
+    drawnColour = colour
+    drawnItalic = italic
   }
+  // what the nodes draw (`draw`): each run with its words and face, and the paragraph's colour and slant
+  private var drawn: List[(TextRun, String, Font)] = Nil
+  private var drawnColour = ""
+  private var drawnItalic = false
 
   // the face `run` is drawn in: its own, or the paragraph's; for right-to-left words, one that has their letters
   // unless it is the run's own (code)

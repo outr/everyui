@@ -18,7 +18,7 @@ class RichText(node: everyui.render.RenderNode = Nodes.richText()) extends Compo
     * opened (`Link.follow`). */
   var follow: String => Unit = href => Link.follow(href, newTab = !RichText.inApp(href))
   lazy val runs: Prop[List[TextRun]] = own(new Prop[List[TextRun]](Nil,
-    r => node.setRuns(r.map(Link.titled), href => follow(href)), () => measure.trigger()))
+    r => node.setRuns(TextRun.merged(r.map(Link.titled)), href => follow(href)), () => measure.trigger()))
 
   /** A shadow behind the letters, as [[TextView.textShadow]] has it: a subtitle's edge over a picture. */
   lazy val textShadow: Prop[Option[everyui.Shadow]] = own(new Prop[Option[everyui.Shadow]](None, s => s match {

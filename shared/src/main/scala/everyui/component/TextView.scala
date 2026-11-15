@@ -273,8 +273,10 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   }
 
   // what the last cut went by, and whether it has gone stale since, where something the key does not hold changed what
-  // the words measure: a face loaded, the words measured whole, broken anywhere
+  // the words measure: a face loaded, the words measured whole, broken anywhere. The words are kept apart from the rest:
+  // joined into one key they were a copy of the words, held as long as they showed
   private var cutKey = ""
+  private var cutWords = ""
   private var stale = true
 
   /** The words cut to their room, as `fit` says; false where all it goes by is as at the last cut, the words drawn and
@@ -289,15 +291,16 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     // the width drawn before, which only words kept to their box look back at: read only then, since a read of words not
     // yet on the page lends them to it, and made the browser lay the page out for every label of a screen being built
     val before = if (box > 0.0 || boxed) measured.width() else 0.0
-    val key = wanted + "|" + limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString + "|" +
+    val key = limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString + "|" +
       whiteSpace().value + "|" + overflow.toString + "|" + elide().toString + "|" +
       // a width of its own, which words that wrap wrap at, and how many times its face has changed
       (if (size.width.explicit) size.width().toString else "") + "|" + font.changes.toString
-    val same = key == cutKey && !stale && !unfit
-    everyui.perf.PerfCounters.fit(same)
-    if (same) false
+    val alike = wanted == cutWords && key == cutKey && !stale && !unfit
+    everyui.perf.PerfCounters.fit(alike)
+    if (alike) false
     else {
       cutKey = key
+      cutWords = wanted
       stale = false
       drawCut(wanted, limit, lines, box, own, before)
       true

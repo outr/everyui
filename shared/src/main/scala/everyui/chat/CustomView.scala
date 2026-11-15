@@ -7,8 +7,8 @@ import reactify.*
 
 /** The app's own component (`ChatEntry.Custom`) in the transcript, `width` wide: at the start edge in line with the
   * messages, as it made it. The transcript keeps the component, so what was typed or chosen in it stays while it is
-  * scrolled away; `release` hands it back before this is taken apart. An arrow up or down that nothing in it answers
-  * goes back to the transcript (`list`). */
+  * scrolled away (unless `Transcript.evictAfter` lets it go a while after); `release` hands it back before this is
+  * taken apart. An arrow up or down that nothing in it answers goes back to the transcript (`list`). */
 class CustomView(val component: Component, width: => Double, list: Component) extends Container {
   component.parent().foreach {
     case p: Container => p.children -= component

@@ -49,7 +49,10 @@ object TextFit {
       if (style.fontWeight.isEmpty) outer._3 else style.fontWeight)
     val own = of(el.style, ("", "normal", "400"))
     val runs = el.children
-    (own :: (0 until runs.length).toList.map(i => of(runs(i).asInstanceOf[html.Element].style, own))).distinct
+    // (a run with no style of its own, a highlighted token, is in the paragraph's face: its style is not asked for,
+    // which would give each such span a style of its own to hold)
+    (own :: (0 until runs.length).toList.map(i => runs(i).asInstanceOf[html.Element])
+      .map(r => if (r.hasAttribute("style")) of(r.style, own) else own)).distinct
   }
 
   // The faces of `face`'s family (the first named: the others are fallbacks for what it cannot draw) and slant that

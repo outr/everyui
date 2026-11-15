@@ -59,9 +59,6 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   words.position.left := ListRow.along(Transcript.padX, words.size.width(), bubble.size.width())
   words.position.top @= Transcript.padY
 
-  private val spinner: Spinner = new Spinner(12.0, () => Theme.muted())
-  spinner.size.width := (if (m.streaming()) 12.0 else 0.0)
-  spinner.visible := m.streaming()
   private val meta: TextView = new TextView {
     content := m.meta().getOrElse("")
     direction @= TextDirection.Auto
@@ -69,7 +66,25 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     color := Theme.muted()
     maxWidth := Transcript.widest(width)
   }
-  private val footer: Container = Row(6.0, middle = true)(spinner, meta)
+  private val footer: Container = Row(6.0, middle = true)(meta)
+  // the small spinner before the meta line while the words are still arriving, made only then: a message done with
+  // keeps none, nor its turning
+  private var spinner: Option[Spinner] = None
+  private def spin(on: Boolean): Unit =
+    if (on && spinner.isEmpty) {
+      val made = new Spinner(12.0, () => Theme.muted())
+      spinner = Some(made)
+      footer.children @= made +: footer.children()
+    }
+    else if (!on) spinner.foreach { s =>
+      spinner = None
+      footer.children -= s
+      s.dispose()
+    }
+  follow(m.streaming, spin)
+  spin(m.streaming())
+  /** The spinner under the bubble, while the words are still arriving. */
+  private[chat] def spinning: Option[Spinner] = spinner
 
   // the reactions under the bubble, made while the transcript shows them: on one line as wide as they are, or wrapped
   // at the bubble's widest

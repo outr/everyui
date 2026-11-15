@@ -22,11 +22,13 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
   private val look = table.style.look
   private val pad = look.vertical(header)
   val cells: Vector[RichText] = content.indices.toVector.map(cell)
-  /** The cells on one line, and a word to a line, where they are measured. */
-  val lines: Vector[Option[RichText]] =
+  // the cells on one line, and a word to a line, where they are measured, until they have been read (`settle`)
+  private var lines: Vector[Option[RichText]] =
     content.indices.toVector.map(c => if (sized(c)) Some(twin(c, words = false)) else None)
-  val words: Vector[Option[RichText]] =
+  private var words: Vector[Option[RichText]] =
     content.indices.toVector.map(c => if (sized(c)) Some(twin(c, words = true)) else None)
+  // what each was read at, on one line and a word to a line, once it has been
+  private val read: Var[Vector[Option[(Double, Double)]]] = own(Var(Vector.fill(content.size)(None)))
   /** Whether the filter lets it show. */
   val shown: Val[Boolean] = own(Val(header || table.passes(index)))
   private val tall: Val[Double] = own(Val(cells.foldLeft(0.0)((h, c) => math.max(h, c.size.height())) + pad * 2.0))
@@ -74,6 +76,40 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
   }
   // what is measured is let go with the row
   onDispose(() => table.letGo(lines.flatten ++ words.flatten))
+
+  /** How wide column `c`'s cell is on one line, or a word to a line (`words`), where it is measured: as its measuring
+    * cell reads, or as it read once it has been let go. */
+  def measure(c: Int, words: Boolean): Option[Double] = (if (words) this.words else lines).lift(c).flatten match {
+    case Some(t) => Some(t.size.width())
+    case None => read().lift(c).flatten.map(r => if (words) r._2 else r._1)
+  }
+
+  /** Each measured column, how wide its cell is on one line and a word to a line, as they are (not read for the
+    * asking). */
+  def measures: Vector[(Int, Double, Double)] = sized.toVector.flatMap { c =>
+    (lines.lift(c).flatten, words.lift(c).flatten) match {
+      case (Some(l), Some(w)) => Vector((c, l.size.width.get, w.size.width.get))
+      case _ => read.get.lift(c).flatten.toVector.map(r => (c, r._1, r._2))
+    }
+  }
+
+  /** The measuring cells `done` says have been read turned to what they read, and handed back to be let go. */
+  def settle(done: RichText => Boolean): Vector[RichText] = {
+    var gone = Vector.empty[RichText]
+    var now = read.get
+    content.indices.foreach { c =>
+      (lines.lift(c).flatten, words.lift(c).flatten) match {
+        case (Some(l), Some(w)) if done(l) && done(w) =>
+          now = now.updated(c, Some((l.size.width.get, w.size.width.get)))
+          lines = lines.updated(c, None)
+          words = words.updated(c, None)
+          gone = gone ++ Vector(l, w)
+        case _ => ()
+      }
+    }
+    if (gone.nonEmpty) read @= now
+    gone
+  }
 
   // the arrow, made where it is first wanted: by the header the rows are sorted by, up or down
   private def sorted(): Unit = if (arrow.isEmpty) {

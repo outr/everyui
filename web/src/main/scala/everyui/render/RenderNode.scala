@@ -26,6 +26,7 @@ class RenderNode(val el: html.Element) {
   def getText(): String = el.textContent
   def setText(text: String): Unit = {
     counted("text", text)
+    drawnRuns = Nil
     el.textContent = text
   }
 
@@ -373,37 +374,65 @@ class RenderNode(val el: html.Element) {
     }
   }
 
-  /** The text as styled runs: spans, and `<a>`s for links. A click on a link is `follow`ed (a path on this site shown in
-    * place, any other opened, unless the app says otherwise); one clicked with a modifier is the browser's (a new tab). */
+  /** The text as styled runs: spans, `<a>`s for links, and the words alone for a run in the paragraph's own style. A
+    * click on a link is `follow`ed (a path on this site shown in place, any other opened, unless the app says
+    * otherwise); one clicked with a modifier is the browser's (a new tab). Runs that begin as the last did keep what
+    * draws them, only those from the first that changed made again: code that grows as an answer streams in writes its
+    * last lines, not the whole block. A run's colour, lines and wash are a class of the page's (`RenderNode.runClass`),
+    * one for each look, rather than a style on each span; its face, weight, slant, size and spacing stay on the span,
+    * where the faces its words wait for are found (`TextFit`). */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
-    el.textContent = ""
-    runs.foreach { run =>
-      val span = dom.document.createElement(if (run.href.nonEmpty) "a" else "span").asInstanceOf[html.Element]
-      if (run.image.isEmpty) span.textContent = run.text
-      else {
-        // a picture in place of the words, a square as tall as the letters, so the lines are the same before it loads;
-        // its words are what is read out, shown on a hover and copied (RichCopy)
-        val img = dom.document.createElement("img").asInstanceOf[html.Image]
-        img.src = run.image
-        img.alt = run.text
-        img.title = if (run.title.nonEmpty) run.title else run.text
-        img.setAttribute("draggable", "false")
-        img.className = "everyui-run-picture"
-        img.style.width = everyui.text.TextRun.pictureEm.toString + "em"
-        img.style.height = everyui.text.TextRun.pictureEm.toString + "em"
-        img.style.setProperty("object-fit", "contain")
-        img.style.verticalAlign = "-0.3em"
-        span.appendChild(img)
+    // (its nodes are the runs drawn, one each, unless something else wrote it since)
+    var kept = 0
+    if (el.childNodes.length == drawnRuns.size) {
+      var was = drawnRuns
+      var now = runs
+      while (was.nonEmpty && now.nonEmpty && was.head == now.head) {
+        kept += 1
+        was = was.tail
+        now = now.tail
       }
-      // what it is when it is copied (RichCopy): bold, slanted, struck, code
-      val marks = (if (run.weight >= 600) "b" else "") + (if (run.italic) "i" else "") + (if (run.strike) "s" else "") +
-        (if (run.family.toLowerCase.contains("mono")) "c" else "")
-      if (marks.nonEmpty) span.setAttribute("data-run", marks)
-      if (run.family.nonEmpty) span.style.fontFamily = RenderNode.families(run.family)
-      if (run.weight > 0) span.style.fontWeight = run.weight.toString
-      if (run.italic) span.style.fontStyle = "italic"
-      if (run.size > 0.0) span.style.fontSize = run.size.toString + "px"
-      run.letterSpacing.foreach(px => span.style.letterSpacing = px.toString + "px")
+    }
+    if (kept == 0) el.textContent = ""
+    else while (el.childNodes.length > kept) el.removeChild(el.lastChild)
+    // (words in the paragraph's own style, code between its tokens, are words alone, with no span of their own)
+    runs.drop(kept).foreach(run => el.appendChild(
+      if (run == everyui.text.TextRun(run.text)) dom.document.createTextNode(run.text) else runSpan(run, follow)))
+    drawnRuns = runs
+  }
+  // the runs its nodes draw (`setRuns`)
+  private var drawnRuns: List[everyui.text.TextRun] = Nil
+
+  // a run drawn: a span, or an `<a>` for a link
+  private def runSpan(run: everyui.text.TextRun, follow: String => Unit): html.Element = {
+    val span = dom.document.createElement(if (run.href.nonEmpty) "a" else "span").asInstanceOf[html.Element]
+    if (run.image.isEmpty) span.textContent = run.text
+    else {
+      // a picture in place of the words, a square as tall as the letters, so the lines are the same before it loads;
+      // its words are what is read out, shown on a hover and copied (RichCopy)
+      val img = dom.document.createElement("img").asInstanceOf[html.Image]
+      img.src = run.image
+      img.alt = run.text
+      img.title = if (run.title.nonEmpty) run.title else run.text
+      img.setAttribute("draggable", "false")
+      img.className = "everyui-run-picture"
+      img.style.width = everyui.text.TextRun.pictureEm.toString + "em"
+      img.style.height = everyui.text.TextRun.pictureEm.toString + "em"
+      img.style.setProperty("object-fit", "contain")
+      img.style.verticalAlign = "-0.3em"
+      span.appendChild(img)
+    }
+    // what it is when it is copied (RichCopy): bold, slanted, struck, code
+    val marks = (if (run.weight >= 600) "b" else "") + (if (run.italic) "i" else "") + (if (run.strike) "s" else "") +
+      (if (run.family.toLowerCase.contains("mono")) "c" else "")
+    if (marks.nonEmpty) span.setAttribute("data-run", marks)
+    if (run.family.nonEmpty) span.style.fontFamily = RenderNode.families(run.family)
+    if (run.weight > 0) span.style.fontWeight = run.weight.toString
+    if (run.italic) span.style.fontStyle = "italic"
+    if (run.size > 0.0) span.style.fontSize = run.size.toString + "px"
+    run.letterSpacing.foreach(px => span.style.letterSpacing = px.toString + "px")
+    val look = RenderNode.runClass(run.color, run.underline, run.strike, run.background)
+    if (look.isEmpty) {
       if (run.color.nonEmpty) span.style.color = run.color
       if (run.strike || run.underline)
         span.style.textDecoration = List(Option.when(run.underline)("underline"), Option.when(run.strike)("line-through"))
@@ -413,33 +442,36 @@ class RenderNode(val el: html.Element) {
         span.style.padding = "0.08em 0.35em"
         span.style.borderRadius = "5px"
       }
-      // what it says on a hover (a link's by `Link.describe`), and to a screen reader as its description, after its
-      // words, which stay its name
-      if (run.title.nonEmpty) {
-        span.title = run.title
-        span.setAttribute("aria-description", run.title)
+    }
+    // what it says on a hover (a link's by `Link.describe`), and to a screen reader as its description, after its
+    // words, which stay its name
+    if (run.title.nonEmpty) {
+      span.title = run.title
+      span.setAttribute("aria-description", run.title)
+    }
+    if (run.href.nonEmpty && everyui.component.NavigationUrl.safe(run.href)) {
+      span.setAttribute("href", run.href)
+      span.className = if (look.isEmpty) "everyui-link" else "everyui-link " + look
+      val inApp = run.href.startsWith("/") && !run.href.startsWith("//")
+      if (!inApp) {
+        span.setAttribute("target", "_blank")
+        span.setAttribute("rel", "noopener")
       }
-      if (run.href.nonEmpty &&everyui.component.NavigationUrl.safe(run.href)) {
-        span.setAttribute("href", run.href)
-        span.className = "everyui-link"
-        val inApp = run.href.startsWith("/") && !run.href.startsWith("//")
-        if (!inApp) {
-          span.setAttribute("target", "_blank")
-          span.setAttribute("rel", "noopener")
+      span.addEventListener("click", (e: dom.MouseEvent) => {
+        e.stopPropagation()
+        if (!RenderNode.modified(e)) {
+          e.preventDefault()
+          follow(run.href)
         }
-        span.addEventListener("click", (e: dom.MouseEvent) => {
-          e.stopPropagation()
-          if (!RenderNode.modified(e)) {
-            e.preventDefault()
-            follow(run.href)
-          }
-        })
-        // its right click is the browser's, whatever menu the app has around it: open in a new tab, copy the address
-        span.addEventListener("contextmenu", (e: dom.MouseEvent) => e.stopPropagation())
-      }
+      })
+      // its right click is the browser's, whatever menu the app has around it: open in a new tab, copy the address
+      span.addEventListener("contextmenu", (e: dom.MouseEvent) => e.stopPropagation())
+    }
+    else {
+      if (look.nonEmpty) span.className = look
       // the app's to answer (a mention, a link of a scheme of its own: `Link.handle`): pressed as a link is, but no
       // address, to open or to copy; one the app does not answer either goes nowhere, as on every platform
-      else if (run.href.nonEmpty) {
+      if (run.href.nonEmpty) {
         span.setAttribute("role", "link")
         span.style.cursor = "pointer"
         span.addEventListener("click", (e: dom.MouseEvent) => {
@@ -448,8 +480,8 @@ class RenderNode(val el: html.Element) {
           follow(run.href)
         })
       }
-      el.appendChild(span)
     }
+    span
   }
 
   /** CSS `position`; `""` is static. */
@@ -1422,6 +1454,41 @@ object RenderNode {
     val app = dom.document.getElementById("app")
     (if (app != null) app else dom.document.body).appendChild(d)
     d
+  }
+
+  /** The page's class for a run's colour, its underline and strike, and its wash (a code span's, a little inset, its
+    * corners rounded): one class for each look there has been, its rule written the first time it is wanted; "" for a
+    * run with none of them, or with a colour not plainly written as one, which is left to the span's own style. Each
+    * is `!important`, as a style on the span outranked the page's rules (a link's underline on a hover). A highlighted
+    * block of code is a few looks over hundreds of spans, each of which held a style of its own. */
+  def runClass(color: String, underline: Boolean, strike: Boolean, background: String): String =
+    if ((color.isEmpty && !underline && !strike && background.isEmpty) || !plainColour(color) ||
+      !plainColour(background)) ""
+    else {
+      val key = color + "|" + underline.toString + "|" + strike.toString + "|" + background
+      runClasses.get(key) match {
+        case Some(name) => name
+        case None =>
+          val name = "everyui-run-" + runClasses.size.toString
+          val lines = List(Option.when(underline)("underline"), Option.when(strike)("line-through")).flatten
+          val rule = (if (color.isEmpty) "" else "color:" + color + " !important;") +
+            (if (lines.isEmpty) "" else "text-decoration:" + lines.mkString(" ") + " !important;") +
+            (if (background.isEmpty) "" else "background-color:" + background +
+              " !important;padding:0.08em 0.35em !important;border-radius:5px !important;")
+          val sheet = runSheet.asInstanceOf[js.Dynamic]
+          sheet.insertRule("." + name + "{" + rule + "}", sheet.cssRules.length)
+          runClasses(key) = name
+          name
+      }
+    }
+  // a colour written into a rule as it is: only the letters, digits and marks a colour is written with, nothing that
+  // could end the rule
+  private def plainColour(c: String): Boolean = c.forall(ch => ch.isLetterOrDigit || "#(),.% -".indexOf(ch.toInt) >= 0)
+  private val runClasses = js.Dictionary.empty[String]
+  private lazy val runSheet: dom.CSSStyleSheet = {
+    val style = dom.document.createElement("style").asInstanceOf[html.Style]
+    dom.document.head.appendChild(style)
+    style.sheet.asInstanceOf[dom.CSSStyleSheet]
   }
 
   /** Whether `el` can be lent to the page to be measured: not if it is or holds a frame, which would load again. */

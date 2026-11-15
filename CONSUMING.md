@@ -2495,6 +2495,28 @@ chat.transcript.turnHeader @= Some {
 }
 ```
 
+### What a transcript keeps, and its memory (`Transcript.evictAfter`)
+
+A transcript makes only the rows that show, but keeps what it made for an entry that is the app's (a
+`ChatEntry.Custom`'s component, a tool call's details once opened) until the entry leaves, so what was typed or chosen in
+it stays as it is scrolled away. `evictAfter` (a `Var[Option[FiniteDuration]]`, None by default, which keeps each as it
+always was) lets such a component go once it has been out of sight that long, its row scrolled away: it is made again
+through `make` or `details` as it next shows, the tool call still open or closed as its `expanded` says, and each
+`ScrollContainer` in it scrolled where it was (in the order they are in it). Never one holding the focus. An app whose
+component holds what was typed in it only in the component leaves it unset, or makes it again from its own state.
+
+```scala
+chat.transcript.evictAfter @= Some(2.minutes)
+```
+
+Without anything set, a message costs less than it did: its spinner is made only while it streams; a paragraph that
+measures its width (a bubble as narrow as a short reply) and a table's columns read their words once, out of sight,
+and keep only the number, where each line and each cell had one or two twins kept beside it; on the web a highlighted
+token's colour is a class of the page's, one for each colour, and code between the tokens is words alone, with no span
+of its own; and code that grows as it streams is drawn again from the first run that changed, not whole. Runs drawn
+alike one after another are one run (`TextRun.merged`), and a highlighted block joins tokens of one colour with only
+spaces between them (`Highlight`). Nothing looks different.
+
 ### Composer (`everyui.chat`)
 
 Where a chat's next message is written. It knows nothing of where messages go: `onSend` hears each `Draft` (its

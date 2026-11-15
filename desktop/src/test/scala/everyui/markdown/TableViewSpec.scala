@@ -38,7 +38,7 @@ class TableViewSpec extends FxSpec {
     case row: Container if row.children().exists(_.isInstanceOf[RichText]) =>
       row.children().collect { case t: RichText => t }
   }
-  private def shades(table: TableView): (Component, Component) = (table.children()(2), table.children()(3))
+  private def shades(table: TableView): (Component, Component) = (table.children()(1), table.children()(2))
 
   "A Markdown table" should {
     "lay its columns out on one line where they fit, no wider than its words" in {

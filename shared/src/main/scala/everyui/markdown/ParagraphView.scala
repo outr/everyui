@@ -1,11 +1,12 @@
 package everyui.markdown
 
 import everyui.Color
-import everyui.component.{Container, Link, RichText}
+import everyui.component.{Container, Link, RichText, TextProbes}
 import everyui.component.types.WhiteSpace
 import everyui.event.Key
 import everyui.layout.VerticalLayout
 import everyui.menu.{Menu, MenuItem}
+import everyui.text.TextRun
 import everyui.theme.Theme
 import everyui.tooltip.Tooltip
 import reactify.*
@@ -29,21 +30,23 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
         .filter(r => everyui.component.RichText.acts(r.href)).map(r => (r.text, r.href))
         .foldLeft(List.empty[(String, String)])((out, l) => if (out.exists(_._2 == l._2)) out else out :+ l))))
   private var shape = ""
-  // where the view measures (`MarkdownContext.measures`): each line again on one line, out of sight and taking no room
-  private val twins: Container = new Container {
-    size.width @= 0.0
-    size.height @= 0.0
-    visible @= false
-  }
+  // where the view measures (`MarkdownContext.measures`): each line again on one line, out of sight, its width kept and
+  // what measured it let go
+  private lazy val probes: TextProbes = new TextProbes(this)
   private val pictures: Var[Boolean] = own(Var(false))
 
   /** How wide it would be drawn on its own: its widest line, or none where it holds a picture (which takes the
-    * width) or the view does not measure, nor until each line's width has been read (`MeasuredFeature.known`), where
-    * a line not yet read is 0 wide for want of the read: a message's bubble sized by it was laid out at no width, its
-    * words read there, and all of it again once they were. */
+    * width) or the view does not measure, nor until each line's width has been read (`TextProbes`), where a line not
+    * yet read is 0 wide for want of the read: a message's bubble sized by it was laid out at no width, its words read
+    * there, and all of it again once they were. As its words change it is as wide as they were until they are read
+    * again, or none where they are other lines. */
   val natural: Val[Option[Double]] = own(Val(
-    if (!ctx.measures || pictures() || !twins.children().forall(_.measured.known())) None
-    else Some(twins.children().foldLeft(0.0)((w, t) => math.max(w, t.size.width())))))
+    if (!ctx.measures || pictures()) None else probes.widths().map(_.foldLeft(0.0)((w, l) => math.max(w, l)))))
+  // the runs of each line of words, measured where the view measures
+  private val measured: Val[Vector[List[TextRun]]] = own(Val(if (!ctx.measures) Vector.empty
+    else MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions()).toVector
+      .filter(_.image.isEmpty).map(_.runs)))
+  private var lineCount = -1
 
   size.width := width
   layout @= Some(VerticalLayout(0.0))
@@ -52,6 +55,10 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   backgroundColor := (if (focusShown()) Theme.controlLit() else Color.Clear)
   inlines.attach(_ => build())
   build()
+  if (ctx.measures) {
+    measured.attach(measure)
+    measure(measured())
+  }
 
   override def keepsKey(key: Key): Boolean = key == Key.Enter && links().nonEmpty
   event.key.down.attach(k => if (k.key == Key.Enter) openLinks())
@@ -104,26 +111,32 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     if (now != shape) {
       shape = now
       pictures @= parts.exists(_.image.nonEmpty)
-      val old = children().filterNot(_ eq twins)
+      val old = children().filterNot(c => ctx.measures && probes.held.exists(_ eq c))
       val lines = parts.indices.toVector.map(i => parts(i).image match {
         case Some(image) => new MarkdownImage(image, ctx, size.width())
-        case None => line(i, wrapped = true)
+        case None => line(i)
       })
-      if (ctx.measures) {
-        val oldTwins = twins.children()
-        twins.children @= parts.indices.toVector.filter(i => parts(i).image.isEmpty).map(i => line(i, wrapped = false))
-        oldTwins.foreach(_.dispose())
-        children @= lines :+ twins
-      }
-      else children @= lines
+      children @= (if (ctx.measures) lines ++ probes.held else lines)
       old.foreach(_.dispose())
     }
   }
 
-  // line `i`, wrapped to the paragraph's width, or on one line as it would be drawn on its own
-  private def line(i: Int, wrapped: Boolean): RichText = new RichText {
-    if (wrapped) size.width := ParagraphView.this.size.width()
-    else whiteSpace @= WhiteSpace.NoWrap
+  // each line's words measured on one line, as they would be drawn on their own: afresh where they are other lines
+  private def measure(lines: Vector[List[TextRun]]): Unit = {
+    val fresh = lines.size != lineCount
+    lineCount = lines.size
+    probes.measure(lines.map(shown => new RichText {
+      whiteSpace @= WhiteSpace.NoWrap
+      font.size @= points
+      direction @= ctx.direction
+      wrapAnywhere @= true
+      runs @= shown
+    }), fresh)
+  }
+
+  // line `i`, wrapped to the paragraph's width
+  private def line(i: Int): RichText = new RichText {
+    size.width := ParagraphView.this.size.width()
     font.size @= points
     color := (if (ctx.quiet) Theme.muted() else Theme.text())
     direction @= ctx.direction

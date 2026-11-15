@@ -168,6 +168,20 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private var dayOfEntry: Map[String, Option[String]] = Map.empty
   // what is kept by entry, made once: the app's components, tool calls' details
   private var kept: Map[String, Component] = Map.empty
+  /** How long what the transcript keeps for an entry (a tool call's details once opened, the app's own component of a
+    * `ChatEntry.Custom`) may be out of sight, its row scrolled away, before it is let go: made again as it next shows,
+    * through the entry's `details` or `make`, the call open or closed as it was (its `expanded`), and each scroll in it
+    * (`everyui.component.ScrollContainer`, in the order they are in it) where it was. None, the default, keeps each
+    * until its entry leaves, as it always was. What holds the focus is never let go. An app whose component keeps what
+    * was typed or chosen in it only in the component (not in the app's state) leaves it unset, or makes it from that
+    * state again. */
+  val evictAfter: Var[Option[scala.concurrent.duration.FiniteDuration]] =
+    own(Var[Option[scala.concurrent.duration.FiniteDuration]](None))
+  // when each kept by entry went out of sight (`Transcript.clock`), the scrolls of each let go, and when the timer
+  // waiting for the next to fall due fires (Long.MaxValue: none waits)
+  private var hidden: Map[String, Long] = Map.empty
+  private var scrolls: Map[String, Vector[Double]] = Map.empty
+  private var due: Long = Long.MaxValue
   // the entries that were first when earlier ones by the same author came in above them: they keep their header
   private var headed: Set[String] = Set.empty
 
@@ -263,13 +277,58 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   private def made(c: ChatEntry.Custom): Component = keep(c.id, c.make)
 
-  // what was made for entry `id`, made by `make` the first time
-  private def keep(id: String, make: () => Component): Component = kept.get(id) match {
-    case Some(c) => c
-    case None =>
-      val c = make()
-      kept = kept.updated(id, c)
-      c
+  // what was made for entry `id`, made by `make` the first time, and again once it has been let go (`evictAfter`), its
+  // scrolls where they were
+  private def keep(id: String, make: () => Component): Component = {
+    if (hidden.contains(id)) hidden = hidden - id
+    kept.get(id) match {
+      case Some(c) => c
+      case None =>
+        // (taken out of its row as the row moves on, on purpose: `warnUndisposed` passes it by)
+        val c = Component.heldAside(make())
+        kept = kept.updated(id, c)
+        scrolls.get(id).foreach { at =>
+          scrolls = scrolls - id
+          Transcript.scrollBack(c, at)
+        }
+        c
+    }
+  }
+
+  /** What is kept for entry `id`, where something is, gone out of sight: its row scrolled away. */
+  private[chat] def hid(id: String): Unit = if (kept.contains(id)) {
+    hidden = hidden.updated(id, Transcript.clock())
+    sweep()
+  }
+
+  /** What is kept for each entry, by its id: a tool call's details, the app's own component. */
+  private[chat] def keptNow: Map[String, Component] = kept
+
+  // what has been out of sight for `evictAfter` let go, and a timer set for the next to fall due where none waits for
+  // it sooner: one timer for them all, and none while nothing is to be let go
+  private def sweep(): Unit = if (!takenApart && hidden.nonEmpty) evictAfter().foreach { d =>
+    val now = Transcript.clock()
+    var next = Long.MaxValue
+    hidden.foreach { case (id, since) =>
+      val held = kept.get(id).exists(c => Focus.focused().exists(f => Focus.within(f, c)))
+      if (now - since >= d.toMillis && !held) {
+        val c = kept(id)
+        val at = Transcript.scrollsOf(c)
+        if (at.exists(_ > 0.0)) scrolls = scrolls.updated(id, at)
+        kept = kept - id
+        hidden = hidden - id
+        c.dispose()
+      }
+      // (one holding the focus looked at again a while later)
+      else next = math.min(next, if (held) now + d.toMillis else since + d.toMillis)
+    }
+    if (next < due) {
+      due = next
+      Transcript.after(math.max(0L, next - now).toDouble / 1000.0, () => {
+        if (due == next) due = Long.MaxValue
+        sweep()
+      })
+    }
   }
 
   private def dayOf(e: ChatEntry): Option[String] = dayOfEntry.get(e.id) match {
@@ -314,13 +373,15 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     lastIds = ids
     pin.entries(ids)
     // what is kept for entries that have gone goes with them
-    if (kept.nonEmpty || headed.nonEmpty || dayOfEntry.size > ids.length) {
+    if (kept.nonEmpty || headed.nonEmpty || dayOfEntry.size > ids.length || scrolls.nonEmpty) {
       val here = ids.toSet
       val gone = kept.filter { case (id, _) => !here.contains(id) }
       if (gone.nonEmpty) {
         gone.values.foreach(_.dispose())
         kept = kept.filter { case (id, _) => here.contains(id) }
       }
+      if (hidden.nonEmpty) hidden = hidden.filter { case (id, _) => here.contains(id) }
+      if (scrolls.nonEmpty) scrolls = scrolls.filter { case (id, _) => here.contains(id) }
       if (dayOfEntry.size > ids.length) dayOfEntry = dayOfEntry.filter { case (id, _) => here.contains(id) }
       if (headed.nonEmpty) headed = headed.filter(here.contains)
     }
@@ -933,7 +994,10 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     stopTurnGlide()
     kept.values.foreach(_.dispose())
     kept = Map.empty
+    hidden = Map.empty
+    scrolls = Map.empty
   })
+  evictAfter.attach(_ => sweep())
   reshow()
   list.scrollTop(list.total)
   Platform.later(() => nearTop())
@@ -1038,5 +1102,41 @@ object Transcript {
   def message(entry: Option[ChatEntry]): Option[ChatEntry.Message] = entry match {
     case Some(m: ChatEntry.Message) => Some(m)
     case _ => None
+  }
+
+  /** The clock (ms) what is kept out of sight is timed by (`evictAfter`), and how a wait is waited out: the platform's,
+    * or a spec's own, which runs what falls due exactly when the spec says the time has passed (as `Ticker`'s). */
+  private[everyui] var clock: () => Long = () => everyui.util.Clock.real()
+  private[everyui] var after: (Double, () => Unit) => Unit = (seconds, f) => Platform.after(seconds, f)
+
+  /** How far each scroll in `c` is scrolled (`ScrollContainer.offset`), in the order they are in it. */
+  def scrollsOf(c: Component): Vector[Double] = scrollsIn(c).map(_.offset())
+
+  // the scrolls in `c`, it first, then each child's in turn
+  private def scrollsIn(c: Component): Vector[everyui.component.ScrollContainer] = {
+    val own = c match {
+      case s: everyui.component.ScrollContainer => Vector(s)
+      case _ => Vector.empty
+    }
+    own ++ c.childComponents.flatMap(scrollsIn)
+  }
+
+  /** Each scroll in `c` taken back to `at` (as `scrollsOf` read them): at once where it is long enough already, else as
+    * it grows, until it is there. */
+  def scrollBack(c: Component, at: Vector[Double]): Unit = scrollsIn(c).zip(at).foreach { case (s, to) =>
+    if (to > 0.0) {
+      s.scrollTo(to)
+      if (math.abs(s.offset() - to) >= 0.5) {
+        val length = if (s.horizontal) s.content.size.width else s.content.size.height
+        var waiting: Option[reactify.reaction.Reaction[Double]] = None
+        waiting = Some(length.attach { _ =>
+          s.scrollTo(to)
+          if (math.abs(s.offset() - to) < 0.5 || s.takenApart) waiting.foreach { r =>
+            length.reactions -= r
+            waiting = None
+          }
+        })
+      }
+    }
   }
 }

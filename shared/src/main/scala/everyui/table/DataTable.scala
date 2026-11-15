@@ -170,8 +170,10 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private var making = 0
   // the words of each row, in lower case, for the filter
   private var haystacks: Vector[String] = Vector.empty
-  // the cells of a long table measured for its columns' widths: each one's column, on one line and a word to a line
+  // the cells of a long table measured for its columns' widths: each one's column, on one line and a word to a line,
+  // until they have been read; then what they read (`settle`)
   private var samples: Vector[(Int, RichText, RichText)] = Vector.empty
+  private var sampled: Vector[(Int, Double, Double)] = Vector.empty
   // the measuring cells made and not yet out of sight with the others
   private var unplaced: Vector[RichText] = Vector.empty
   // what each column holds, found once for the cells it was found for
@@ -373,7 +375,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     // rows come, or go: drawn where they show, and the columns sized by the first page to come
     follow(s.changed, (_: Unit) => {
       sourced @= sourced() + 1
-      if (samples.isEmpty) sampleFirst()
+      if (samples.isEmpty && sampled.isEmpty) sampleFirst()
       fill()
     })
     // a new query, or sort: from the top, and nothing chosen
@@ -790,24 +792,35 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     val body = if (words) bodyLeast() else bodyMost()
     val top = Option(head())
     (0 until columnCount()).toVector.map { c =>
-      val heading = top.flatMap(r => (if (words) r.words else r.lines).lift(c).flatten)
-        .map(t => math.ceil(t.size.width()) + arrowRoom(c, header = true)).getOrElse(0.0)
+      val heading = top.flatMap(_.measure(c, words)).map(w => math.ceil(w) + arrowRoom(c, header = true)).getOrElse(0.0)
       math.max(heading, body.lift(c).getOrElse(0.0)) + pad * 2.0
     }
   }
 
-  // each column's widest measured cell of the rows, found from them all, read where they are and not read for the asking
+  // each column's widest measured cell of the rows, found from them all, read where they are and not read for the
+  // asking; and the measuring cells read in their faces let go, what they read kept
   private def recount(): Unit = MeasuredFeature.withBatch {
+    settle()
     val n = columnCount()
-    val measured: Vector[(Int, RichText, RichText)] = samples ++ slots.flatten.flatMap { row =>
-      row.sized.toVector.flatMap(c => for (l <- row.lines.lift(c).flatten; w <- row.words.lift(c).flatten) yield (c, l, w))
-    }
+    val measured: Vector[(Int, Double, Double)] = sampled ++
+      samples.map(s => (s._1, s._2.size.width.get, s._3.size.width.get)) ++ slots.flatten.flatMap(_.measures)
     def of(words: Boolean): Vector[Double] = (0 until n).toVector.map { c =>
-      measured.foldLeft(0.0)((w, m) =>
-        if (m._1 != c) w else math.max(w, math.ceil((if (words) m._3 else m._2).size.width.get)))
+      measured.foldLeft(0.0)((w, m) => if (m._1 != c) w else math.max(w, math.ceil(if (words) m._3 else m._2)))
     }
     bodyLeast @= of(words = true)
     bodyMost @= of(words = false)
+  }
+
+  // the measuring cells that have been read, in the faces their words are drawn in, let go and what they read kept: two
+  // kept beside each cell drawn cost twice as much again as it
+  private def settle(): Unit = {
+    def done(t: RichText): Boolean = t.measured.known() && t.node.textMeasurable(DataTable.noted)
+    val read = samples.filter(s => done(s._2) && done(s._3))
+    if (read.nonEmpty) {
+      sampled = sampled ++ read.map(s => (s._1, s._2.size.width.get, s._3.size.width.get))
+      samples = samples.filterNot(s => read.exists(_ eq s))
+    }
+    letGo(read.flatMap(s => Vector(s._2, s._3)) ++ (Option(head()).toVector ++ slots.flatten).flatMap(_.settle(done)))
   }
 
   // ---- making the rows ----
@@ -847,6 +860,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     // a server's rows: measured by the first page, drawn as they show
     letGo(samples.flatMap(s => Vector(s._2, s._3)))
     samples = Vector.empty
+    sampled = Vector.empty
     aligns @= (0 until columnCount()).toVector.map(alignOf)
     sampleFirst()
     dropWindow()
@@ -867,6 +881,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     old.flatten.filterNot(kept.contains).foreach(_.dispose())
     letGo(samples.flatMap(s => Vector(s._2, s._3)))
     samples = Vector.empty
+    sampled = Vector.empty
     if (selection().exists(_ >= content.size)) selection @= selection().filter(_ < content.size)
     if (opened().exists(_ >= content.size)) opened @= None
     // what the rows make is measured with the turn's batch (the web), as the table goes into the page, rather than read by
@@ -1298,6 +1313,8 @@ object DataTable {
   /** How many rows a table has, with a `maxHeight`, before it makes only the rows that show; and how many more it makes
     * each way beyond them, so a scroll finds them made. */
   val virtualAfter: Int = 400
+  // what a measuring cell's faces arriving tells: nothing, as it is measured again then anyway
+  private[table] val noted: () => Unit = () => ()
   val overscan: Int = 8
   /** How soon a second click on a cell after the first is a double-click, in ms, and how tall the field a cell is typed
     * over in is at least. */

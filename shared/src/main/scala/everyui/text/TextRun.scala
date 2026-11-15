@@ -27,4 +27,24 @@ case class TextRun(text: String,
 object TextRun {
   /** How big a run's picture (`image`) is, a square, in times the size of its letters. */
   val pictureEm: Double = 1.25
+
+  /** `runs` with each run drawn just as the one before it (in every way but its words, and neither a picture) joined
+    * to it: one span or node for a stretch of one style, where code's tokens of one colour came one after another. */
+  def merged(runs: List[TextRun]): List[TextRun] = {
+    var out: List[TextRun] = Nil
+    var last: Option[TextRun] = None
+    var joined = false
+    runs.foreach { r =>
+      if (last.exists(l => r.image.isEmpty && l.image.isEmpty && r.copy(text = l.text) == l)) {
+        last = last.map(l => l.copy(text = l.text + r.text))
+        joined = true
+      }
+      else {
+        last.foreach(l => out = l :: out)
+        last = Some(r)
+      }
+    }
+    last.foreach(l => out = l :: out)
+    if (joined) out.reverse else runs
+  }
 }

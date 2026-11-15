@@ -1,7 +1,7 @@
 package everyui.markdown
 
 import everyui.{Gradient, GradientStop}
-import everyui.component.{Container, RichText, ScrollContainer}
+import everyui.component.{Container, RichText, ScrollContainer, TextProbes}
 import everyui.component.types.{Semantics, TextAlign, WhiteSpace}
 import everyui.i18n.Direction
 import everyui.render.Gestures
@@ -29,16 +29,12 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
   // its columns from the right where its words read right to left, as a DataTable finds it from its header
   private val mirrored = everyui.text.Bidi.rightToLeft(ctx.direction.value,
     table.header.map(MdInline.plain).mkString(" "), Direction.rtl())
-  // each cell measured out of sight and taking no room: on one line, and a word to a line
-  private val twins: Container = new Container {
-    size.width @= 0.0
-    size.height @= 0.0
-    visible @= false
-  }
-  private val lines: Vector[Vector[RichText]] = contents.map(_.map(runs => twin(runs, words = false)))
-  private val words: Vector[Vector[RichText]] = contents.map(_.map(runs => twin(runs, words = true)))
-  private val least: Val[Vector[Double]] = own(Val(widest(words)))
-  private val most: Val[Vector[Double]] = own(Val(widest(lines)))
+  // each cell measured out of sight, on one line and a word to a line, and only the widths kept (`TextProbes`): the
+  // lines' first, row by row, then the words'
+  private val probes = new TextProbes(this)
+  private val cellCount = contents.foldLeft(0)((n, row) => n + row.size)
+  private val least: Val[Vector[Double]] = own(Val(widest(words = true)))
+  private val most: Val[Vector[Double]] = own(Val(widest(words = false)))
   private val widths: Val[Vector[Double]] = own(Val(TableWidths(least(), most(), width)))
   private val cells: Vector[Vector[RichText]] = contents.indices.toVector.map { r =>
     contents(r).indices.toVector.map(c => cell(contents(r)(c), r, c))
@@ -99,7 +95,9 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
   scroll.focusable := across() > width
   size.width := width
   size.height := scroll.size.height()
-  children ++= List(twins, scroll, leftShade, rightShade)
+  children ++= List(scroll, leftShade, rightShade)
+  probes.measure(contents.flatMap(_.map(runs => twin(runs, words = false))) ++
+    contents.flatMap(_.map(runs => twin(runs, words = true))))
 
   // where column `c` starts, from the table's left: from its right where the columns run from the right
   private def left(c: Int): Double = {
@@ -110,9 +108,19 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
   // the room for column `c`'s words
   private def inner(c: Int): Double = if (c < widths().size) widths()(c) - pad * 2.0 else 0.0
 
-  // each column's widest, of `twins`, with the cells' padding: a whole pixel more, so a cell given it never wraps
-  private def widest(twins: Vector[Vector[RichText]]): Vector[Double] = (0 until columns).toVector.map { c =>
-    twins.foldLeft(0.0)((w, row) => if (c < row.size) math.max(w, math.ceil(row(c).size.width())) else w) + pad * 2.0
+  // each column's widest, of the cells measured a word to a line or on one line, with the cells' padding: a whole
+  // pixel more, so a cell given it never wraps; 0 wide until they are read
+  private def widest(words: Boolean): Vector[Double] = {
+    val read = probes.widths().getOrElse(Vector.empty)
+    var at = if (words) cellCount else 0
+    var wide = Vector.fill(columns)(0.0)
+    contents.foreach { row =>
+      row.indices.foreach { c =>
+        if (c < columns && at < read.size) wide = wide.updated(c, math.max(wide(c), math.ceil(read(at))))
+        at += 1
+      }
+    }
+    wide.map(_ + pad * 2.0)
   }
 
   /** A rule across above row `at`, or down before column `at`. */
@@ -172,7 +180,6 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
       direction @= ctx.direction
       runs @= (if (words) shown.map(run => run.copy(text = TableView.broken(run.text))) else shown)
     }
-    twins.children += text
     text
   }
 

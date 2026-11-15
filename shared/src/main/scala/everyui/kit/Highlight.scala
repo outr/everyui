@@ -104,6 +104,13 @@ object Highlight {
           if (colour.isEmpty) {
             if (plain < 0) plain = k
           }
+          // a token of the colour of the one before, with only spaces and line breaks between: one run, the spaces
+          // drawn in its colour (`case class`, a comment over several lines)
+          else if (out.nonEmpty && out.head.color == colour && (plain < 0 || blank(code, plain, k))) {
+            val between = if (plain >= 0) code.substring(plain, k) else ""
+            out = out.head.copy(text = out.head.text + between + token) :: out.tail
+            plain = -1
+          }
           else {
             if (plain >= 0) {
               out = TextRun(code.substring(plain, k)) :: out
@@ -166,6 +173,14 @@ object Highlight {
   }
 
   private def identifier(c: Char): Boolean = c.isLetterOrDigit || c == '_' || c == '$'
+
+  // whether `code` from `from` to `to` is only spaces, tabs and line breaks
+  private def blank(code: String, from: Int, to: Int): Boolean = {
+    var k = from
+    while (k < to && (code.charAt(k) == ' ' || code.charAt(k) == '\t' || code.charAt(k) == '\n' || code.charAt(k) == '\r'))
+      k += 1
+    k == to
+  }
 
   private def lineEnd(code: String, from: Int): Int = {
     val nl = code.indexOf("\n", from)

@@ -39,6 +39,8 @@ class ChatRow(transcript: Transcript) extends ListRow[ChatEntry] {
           case a: ActivityView => a.release()
           case _ => ()
         }
+        // what the transcript keeps for the entry is out of sight now, and let go a while after (`evictAfter`)
+        madeFor.foreach(e => transcript.hid(e.id))
         children -= v
         v.dispose()
       }
