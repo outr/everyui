@@ -70,6 +70,8 @@ class ContainerFeature(val component: Component) extends Plain[Vector[Component]
           // and how wide it was, for its return: out of every container it is drawn nowhere, so its words are not cut
           // or wrapped again for no box, and a kept view put back where it was finds them as it left them
           c.leftWidth = ContainerFeature.widthOf(component)
+          // and looked at again as the turn ends, where that is asked for (`Component.warnUndisposed`)
+          if (Component.watchesTakenOut) Component.takenOut(c, component)
         }
       }
       if (grown || (removed.isEmpty && ContainerFeature.startsWith(current, old))) added.foreach { c =>

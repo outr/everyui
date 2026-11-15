@@ -538,6 +538,8 @@ lazy val desktop = (project in file("desktop"))
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
     // the web's choice of which faces words wait for (FaceWait), plain Scala, checked here with the rest
     Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
+    // the memory cases (MemorySpec), the same the web's memory check measures
+    Test / unmanagedSourceDirectories += memoryCaseSources,
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),
     Compile / run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,
@@ -805,6 +807,8 @@ lazy val webcheck = (project in file("webcheck"))
       // spice's HTTP client is pluggable; RoboBrowser talks to Chrome's debug endpoint through it
       "com.outr" %% "spice-client-netty" % spiceVersion
     ),
+    // the memory check's table (MemoryCheck), shared with the memory cases
+    Compile / unmanagedSources ++= Seq("MemoryTable.scala", "MemoryRow.scala").map(memoryCaseSources / "everyui" / "memory" / _),
     webcheckClasspath := {
       val conv = fileConverter.value
       val cp = (Runtime / fullClasspath).value.map(e => conv.toPath(e.data).toAbsolutePath.toString)
@@ -812,6 +816,58 @@ lazy val webcheck = (project in file("webcheck"))
       IO.write(out, cp.mkString(java.io.File.pathSeparator))
       out
     }
+  )
+
+// --- memory: what EveryUI's components cost, held to a baseline ---------------
+// The cases (memory/src: each common kind of component, a transcript's message of each kind, a tab not shown) are
+// measured on the desktop by MemorySpec, in desktop/testFull, against tools/memory-baseline-desktop.md, and on the web
+// by the memory page (memory/web) in a headless Chrome, measured over the DevTools protocol (webcheck's MemoryCheck):
+//
+//   sbt memory/memoryCheck      the web's numbers, in target/memory/web.md, each held to tools/memory-baseline-web.md
+//   sbt memory/memoryBaseline   the same, written as the baseline (after a change meant to move it)
+lazy val memoryCaseSources = (file("memory") / "src" / "main" / "scala").getAbsoluteFile
+@transient val memoryBundle = taskKey[File]("Link the memory page and put it, its page, fonts and pictures in memory/out-web")
+@transient val memoryCheck = taskKey[Unit]("Measure the web's memory per case in a headless Chrome, held to tools/memory-baseline-web.md")
+@transient val memoryBaseline = taskKey[Unit]("Measure the web's memory per case in a headless Chrome, as tools/memory-baseline-web.md")
+
+/** The web's memory check run on the linked page (MemoryCheck, from webcheck's classpath): it fails where a case goes
+  * over its baseline, or, with `update`, writes the baseline. */
+def memoryRun(update: Boolean) = Def.task {
+  val page = memoryBundle.value
+  val conv = fileConverter.value
+  val cp = (webcheck / Runtime / fullClasspath).value.map(e => conv.toPath(e.data).toAbsolutePath.toString)
+  val root = (ThisBuild / baseDirectory).value
+  val command = Seq(sys.props("java.home") + "/bin/java", "-cp", cp.mkString(java.io.File.pathSeparator),
+    "everyui.webcheck.MemoryCheck", page.getAbsolutePath, (root / "tools" / "memory-baseline-web.md").getAbsolutePath,
+    (root / "target" / "memory" / "web.md").getAbsolutePath) ++ (if (update) Seq("--update") else Nil)
+  if (scala.sys.process.Process(command, root).! != 0) sys.error("the web's memory is over its baseline (target/memory/web.md)")
+}
+
+lazy val memory = (project in file("memory"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(web)
+  .settings(
+    name := "everyui-memory",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories += (file("memory") / "web" / "src" / "main" / "scala").getAbsoluteFile,
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := Some("everyui.memory.MemoryPage"),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.NoModule)
+      .withESFeatures(_.withESVersion(org.scalajs.linker.interface.ESVersion.ES2021))),
+    memoryBundle := {
+      val root = (ThisBuild / baseDirectory).value
+      val out = baseDirectory.value / "out-web"
+      val linked = (Compile / fastLinkJS).value
+      val dir = (Compile / fastLinkJS / scalaJSLinkerOutputDirectory).value
+      IO.delete(out)
+      IO.copyFile(dir / "main.js", out / "main.js")
+      IO.copyFile(baseDirectory.value / "web" / "index.html", out / "index.html")
+      (root / "assets" / "fonts" * "*.ttf").get().foreach(f => IO.copyFile(f, out / "fonts" / f.getName))
+      (root / "assets" / "images" * "*").get().foreach(f => IO.copyFile(f, out / "images" / f.getName))
+      out
+    },
+    memoryCheck := memoryRun(update = false).value,
+    memoryBaseline := memoryRun(update = true).value
   )
 
 // --- checks: the helpers behind tools/check.sh and the device scripts -------
@@ -842,7 +898,7 @@ lazy val checks = (project in file("checks"))
 
 lazy val root = (project in file("."))
   .aggregate(compiler, compilerApi, reactive, reactiveTest, roku, tvos, desktop, android, webcheck, checks, server, seo,
-    web, networkJvm, networkJs, monaco, terminal, sbtEveryui, seoJs,
+    web, networkJvm, networkJs, monaco, terminal, sbtEveryui, seoJs, memory,
     desktopPublished, androidPublished, rokuPublished, tvosPublished, monacoDesktopPublished, monacoAndroidPublished,
     terminalDesktopPublished, terminalAndroidPublished)
   .settings(

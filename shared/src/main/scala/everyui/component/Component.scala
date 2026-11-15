@@ -23,6 +23,7 @@ class Component(val node: RenderNode) {
     * and a player lets its player go. Nothing is to be shown again once it is disposed of. */
   def dispose(): Unit = if (!takenApart) {
     takenApart = true
+    Component.gone(this)
     val undo = cleanups
     cleanups = Nil
     undo.foreach(f => f())
@@ -45,6 +46,10 @@ class Component(val node: RenderNode) {
 
   /** Whether this has been taken apart (`dispose`): taking it apart again does nothing. */
   private[everyui] var takenApart: Boolean = false
+  /** The kind it is counted under in `Component.liveByKind`, "" where it is not counted. */
+  private[everyui] var countedAs: String = ""
+  /** Whether it is kept out of every container on purpose for a while (`Component.heldAside`): not warned of. */
+  private[everyui] var keptAside: Boolean = false
 
   /** What to undo when this is disposed of: a reaction it put on something that lives on, above all. */
   private var cleanups: List[() => Unit] = Nil
@@ -103,6 +108,8 @@ class Component(val node: RenderNode) {
   Component.making().foreach(f => f(this))
   // and to a bound list rendering, if one is (ContainerFeature.bind), so it can take apart what its render made
   if (Component.rendering(0)) Component.rendered(0) = this :: Component.rendered(0)
+  // and counted (`Component.live`)
+  Component.made(this)
   lazy val position: PositionFeature = new PositionFeature(this)
 
   // whether it cuts what it holds to a box of its own (`clipTo`, a container's `clipsToBox`): what runs past it is cut,
@@ -554,6 +561,133 @@ object Component {
   // a Var, whose previous value would hold what was made, nor a `var` here, which a Roku may not be able to set
   private[everyui] val rendering: Array[Boolean] = Array(false)
   private[everyui] val rendered: Array[List[Component]] = Array(Nil)
+
+  // how many are made and not yet disposed of; whether `live` follows that, a turn's end is due to settle it, and kinds
+  // are counted; those made this turn whose kind is not counted yet, and the count by kind (arrays of one, as above)
+  private val counted: Array[Int] = Array(0)
+  private val following: Array[Boolean] = Array(false)
+  private val settling: Array[Boolean] = Array(false)
+  private val kinds: Array[Boolean] = Array(false)
+  private val uncounted: Array[List[Component]] = Array(Nil)
+  private val byKind: Array[Map[String, Int]] = Array(Map.empty)
+  private val liveCount: Var[Int] = Var(0)
+
+  /** How many components are made and not yet disposed of (`dispose`), on every platform: what a check holds to a
+    * number, as a screen left and taken apart brings it back to where it was. One let go without being disposed of is
+    * counted for good, as what it was bound to (the theme, the language) may hold it still. It follows the count from
+    * its first use, settling once at the end of each turn the count changed in (`Platform.later`), so until something
+    * asks, making a component costs a count and nothing else; `liveNow` is the count at this moment.
+    * {{{
+    *   Component.live.attach(n => status.content @= n.toString + " components")
+    * }}} */
+  lazy val live: Val[Int] = {
+    following(0) = true
+    liveCount @= counted(0)
+    liveCount
+  }
+
+  /** How many components are made and not yet disposed of, at this moment (`live`, without waiting for the turn). */
+  def liveNow: Int = counted(0)
+
+  /** Count the components made from now on by their kind, for `liveByKind`. Off until asked: then each one made is kept
+    * until its turn ends, when it is whole and can say what it is. */
+  def countKinds(): Unit = {
+    kinds(0) = true
+    settleLater()
+  }
+
+  /** The components made since `countKinds` and not yet disposed of, counted by `kind` up to any "(" (each
+    * `Slider(Volume)` a "Slider"); empty where kinds are not counted. */
+  def liveByKind(): Map[String, Int] = {
+    settleKinds()
+    byKind(0).filter(_._2 != 0)
+  }
+
+  private[component] def made(c: Component): Unit = {
+    counted(0) += 1
+    if (kinds(0)) uncounted(0) = c :: uncounted(0)
+    if (following(0) || kinds(0)) settleLater()
+  }
+
+  private[component] def gone(c: Component): Unit = {
+    counted(0) -= 1
+    if (c.countedAs.nonEmpty) {
+      byKind(0) = byKind(0).updated(c.countedAs, byKind(0).getOrElse(c.countedAs, 0) - 1)
+      c.countedAs = ""
+    }
+    if (following(0)) settleLater()
+  }
+
+  // `live` and the kinds brought up to date once the turn is done
+  private def settleLater(): Unit = if (!settling(0)) {
+    settling(0) = true
+    everyui.render.Platform.later(() => {
+      settling(0) = false
+      settleKinds()
+      if (following(0)) liveCount @= counted(0)
+    })
+  }
+
+  private def settleKinds(): Unit = if (uncounted(0).nonEmpty) {
+    val made = uncounted(0)
+    uncounted(0) = Nil
+    made.foreach { c =>
+      if (!c.takenApart) {
+        val named = c.kind
+        val cut = named.indexOf("(")
+        val kind = if (cut < 0) named else named.substring(0, cut)
+        c.countedAs = kind
+        byKind(0) = byKind(0).updated(kind, byKind(0).getOrElse(kind, 0) + 1)
+      }
+    }
+  }
+
+  /** Whether a component taken out of its container (`children -= c`, left out of a list set with `@=`, `clear()`)
+    * that by the end of that turn is neither disposed of nor in a container again is warned of (`scribe.warn`), with
+    * its kind and what it was taken out of:
+    * {{{
+    *   Component.warnUndisposed @= true
+    *   // WARN undisposed: Column taken out of Container < ProvidersPanel < Container < ui$; dispose() it, or mark it
+    *   // Component.heldAside where it is kept to be put back
+    * }}}
+    * One left so stays bound to what it follows that lives on (the theme, the language), and is held, with all it
+    * holds, for as long as that is. What is kept off the screen on purpose for a while (a view kept to be put back) is
+    * marked `heldAside`, and is not warned of. A check for while an app is being made: off, as it is by default, it
+    * costs a test of a flag as a child is taken out, and keeps nothing. */
+  val warnUndisposed: Var[Boolean] = Var(false)
+  // read as a child is taken out, without the cost of a Var's read, and those taken out this turn, with where from
+  private val warning: Array[Boolean] = Array(false)
+  private val takenThisTurn: Array[List[(Component, String)]] = Array(Nil)
+  warnUndisposed.attach(w => warning(0) = w)
+
+  /** `c`, marked as kept out of every container on purpose for a while (a view kept to be put back): `warnUndisposed`
+    * passes it by. */
+  def heldAside[C <: Component](c: C): C = {
+    c.keptAside = true
+    c
+  }
+
+  /** Whether children taken out are looked at again at the turn's end (`warnUndisposed`). */
+  private[everyui] def watchesTakenOut: Boolean = warning(0)
+
+  /** `c` was taken out of `from`, and is in no container: looked at again once the turn is done. */
+  private[everyui] def takenOut(c: Component, from: Component): Unit = if (warning(0) && !c.keptAside) {
+    if (takenThisTurn(0).isEmpty) everyui.render.Platform.later(() => lookAgain())
+    takenThisTurn(0) = (c, lineage(from)) :: takenThisTurn(0)
+  }
+
+  private def lookAgain(): Unit = {
+    val taken = takenThisTurn(0).reverse
+    takenThisTurn(0) = Nil
+    var told: List[Component] = Nil
+    taken.foreach { case (c, from) =>
+      if (!c.takenApart && c.parent().isEmpty && !c.keptAside && !told.exists(_ eq c)) {
+        told = c :: told
+        everyui.scribe.warn("undisposed: " + c.kind + " taken out of " + from + "; dispose() it, or mark it " +
+          "Component.heldAside where it is kept to be put back")
+      }
+    }
+  }
 
   /** What is under `root` (and `root` itself) drawn again as `Quality.level` now has it: its shadows, blurs and motion.
     * What was drawn at this level already is passed over, with what is under it. Walked with a list rather than by
