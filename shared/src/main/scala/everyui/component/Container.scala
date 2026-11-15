@@ -18,11 +18,19 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     super.dispose()
   }
 
+  // whether `layout` has been made: most containers never have one, and a look at which one need not make it
+  private var layoutMade = false
   /** youi's `LayoutSupport`: the layout, if any, places the children again whenever they, the container's size or
     * their sizes change, through the layout pass (`LayoutPass`: the deepest container first, in a loop). A container
     * given a layout sizes itself to its content, unless a size was set: its height always, its width when the layout
     * fits it (a column, a row; not a flow, which wraps to the width it is given). */
-  lazy val layout: Var[Option[Layout]] = own(Plain[Option[Layout]](None))
+  lazy val layout: Var[Option[Layout]] = {
+    layoutMade = true
+    val v = own(Plain[Option[Layout]](None))
+    v.attach(laidOutBy)
+    v
+  }
+  private def laidBy: Option[Layout] = if (layoutMade) layout() else None
   /** Space between the edges and the children, on every side. */
   lazy val padding: Var[Double] = own(Plain[Double](0.0))
   /** Whether the layout bound the width to the children (a row or a column given no width). It stays set once the app
@@ -141,7 +149,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   }
 
   // whether this lays its children along a row: what comes after one leaves it less room as it grows
-  private def lays: Boolean = layout() match {
+  private def lays: Boolean = laidBy match {
     case Some(_: HorizontalLayout) => true
     case _ => false
   }
@@ -149,7 +157,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   /** Where `child` starts inside this, from its start edge (its left, or its right in a right-to-left language), as
     * the layout puts it: in a row, past the children before it with their gaps and the padding; in a column, which puts
     * a child too wide for it at the start, the padding; elsewhere where it is placed. */
-  private[component] def startOf(child: Component): Double = layout() match {
+  private[component] def startOf(child: Component): Double = laidBy match {
     case Some(h: HorizontalLayout) =>
       var start = padding()
       var seen = false
@@ -167,7 +175,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     * their whole width, so words before them are cut first) and the padding; in a column or a flow, which put a child
     * too wide for them at the start on its own, the padding; placed by hand, what is left of this past the child where
     * this is sized to it, else nothing. */
-  private[component] def endOf(child: Component): Double = layout() match {
+  private[component] def endOf(child: Component): Double = laidBy match {
     case Some(_: HorizontalLayout) if TextView.boxedCount(0) == 0 && sizedToRun(size.width.references) =>
       // sized to its run, where nothing is cut to its box: what is left of the run past the child
       if (TextView.lookRtl(0)) child.position.left() else size.width() - child.position.left() - child.size.width()
@@ -249,7 +257,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   override private[everyui] def boxShrunk: Double = {
     val kids = children()
     if (!followsChildren) 0.0
-    else layout() match {
+    else laidBy match {
       case Some(_: HorizontalLayout) => kids.foldLeft(0.0)((sum, c) => sum + c.boxShrunk)
       case _ =>
         val whole = kids.foldLeft(0.0)((most, c) => math.max(most, c.position.left() + c.size.width() + c.boxShrunk))
@@ -272,8 +280,9 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   // seconds.
   private lazy val reachedWidth: Var[Double] = own(Plain[Double](0.0))
   private lazy val reachedHeight: Var[Double] = own(Plain[Double](0.0))
-  private val reachAcross: Extent = new Extent
-  private val reachDown: Extent = new Extent
+  // (made once the reach is followed: most containers never follow it)
+  private lazy val reachAcross: Extent = new Extent
+  private lazy val reachDown: Extent = new Extent
   private var reachFollowed: Boolean = false
 
   private def followReach(): Unit = if (!reachFollowed) {
@@ -429,7 +438,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
       placedIn = everyui.perf.PerfCounters.placedOne(kind, placedIn, askedFor)
       askedFor = ""
     }
-    try layout().foreach(_.layout(this, children()))
+    try laidBy.foreach(_.layout(this, children()))
     finally placing = false
   }
 
@@ -443,7 +452,8 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     LayoutPass.request(this)
   }
   override def requestLayout(): Unit = layoutFor("asked")
-  layout.attach { l =>
+  // a layout set: what it moves is followed, and the size follows what it holds where it has none of its own
+  private def laidOutBy(l: Option[Layout]): Unit = {
     l.foreach { lay =>
       follow()
       if (!size.height.explicit) {
@@ -465,9 +475,10 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   private var following: Boolean = false
   private def follow(): Unit = if (!following) {
     following = true
-    padding.attach(_ => layoutFor("padding"))
-    size.width.attach(_ => layoutFor("size"))
-    size.height.attach(_ => layoutFor("size"))
+    padding.reactions += new LayoutAsk(this, "padding")
+    val sized = new LayoutAsk(this, "size")
+    size.width.reactions += sized
+    size.height.reactions += sized
     watchChildren()
   }
 

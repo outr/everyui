@@ -12,18 +12,26 @@ import scala.util.Success
   * rather than worked out as a function of what it reads, followed, and then let go of again by a refresh, which for
   * the dozen properties of each component was a tenth of building a screen on a television. `getter` is read where the
   * property is made, so one made from a value (the theme's family) is given it as it is (`option`), not read as a value
-  * being worked out reads one, which would follow it. */
+  * being worked out reads one, which would follow it.
+  *
+  * A change is heard by a reaction of its own (`PropWrite`) rather than a function attached to it: a component makes a
+  * dozen of these, and each function attached cost a closure, its scope and a reaction wrapping it. */
 class Prop[T](getter: => T, setter: T => Unit, callbacks: (() => Unit)*) extends Var[T]() {
   private var valueChanging = false
+  // (kept as a list, which is nothing where there are none, rather than the arguments as they were passed)
+  private val after: List[() => Unit] = if (callbacks.isEmpty) Nil else callbacks.toList
 
   start(getter)
-  attach { v =>
+  reactions += new PropWrite[T](this)
+
+  /** `v` set: written out, unless it is being pulled back in (`refresh`), and the callbacks told. */
+  private[types] def written(v: T): Unit = {
     if (!valueChanging) {
       setter(v)
       // drawn differently: the frame loop runs, if it was idle (Frames)
       everyui.task.Frames.wake()
     }
-    if (callbacks.nonEmpty) callbacks.foreach(_())
+    if (after.nonEmpty) after.foreach(_())
   }
 
   private def start(first: T): Unit = {

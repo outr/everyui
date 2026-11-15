@@ -8,22 +8,39 @@ import everyui.theme.Theme
   * `variations`). Setting a weight converted from a Google Fonts weight
   * sets the family too. */
 class FontFeature(component: Component) {
+  // the family, weight, size and line height as they are, read without making their properties: most words set a size
+  // alone, and each property made cost a dozen objects
+  private var familyNow: String = Theme.family.option.getOrElse("")
+  private var weightNow: FontWeight = FontWeight.Normal
+  private var sizeNow: Double = 16.0
+  private var lineHeightNow: Double = 0.0
+
   /** The theme's family (`Theme.family`, as it is when the text is made) until this names its own. */
   lazy val family: Prop[String] = component.own(
     // (as it is, not followed: made inside a value being worked out, it would have that value follow the theme)
-    new Prop[String](Theme.family.option.getOrElse(""), _ => applyFont(), () => restyled()))
+    new Prop[String](familyNow, f => {
+      familyNow = f
+      applyFont()
+    }, () => restyled()))
 
-  lazy val weight: Prop[FontWeight] = component.own(new Prop[FontWeight](FontWeight.Normal, w => {
+  lazy val weight: Prop[FontWeight] = component.own(new Prop[FontWeight](weightNow, w => {
+    weightNow = w
     if (w.family.nonEmpty) family @= w.family
     applyFont()
   }, () => restyled()))
 
   lazy val size: Prop[Double] = component.own(
-    new Prop[Double](16.0, _ => applyFont(), () => restyled()))
+    new Prop[Double](sizeNow, s => {
+      sizeNow = s
+      applyFont()
+    }, () => restyled()))
   /** The height of a line as a multiple of the size (a paragraph's 1.7, say); 0 is the face's own line box. Only the
     * web spaces lines by it so far. */
   lazy val lineHeight: Prop[Double] = component.own(
-    new Prop[Double](0.0, _ => applyFont(), () => restyled()))
+    new Prop[Double](lineHeightNow, h => {
+      lineHeightNow = h
+      applyFont()
+    }, () => restyled()))
   /** Extra space after each letter, in pixels (negative draws them closer); 0 is the face's own. A browser, Android and
     * an Apple TV space the letters and measure the spaced width; JavaFX has no letter spacing, so the desktop draws the
     * letters as the face sets them but takes the spaced width, keeping the layout; a Roku's Label spaces none.
@@ -87,9 +104,9 @@ class FontFeature(component: Component) {
   }
 
   private def applyFont(): Unit = {
-    component.node.setFont(family(), weight().value, size())
+    component.node.setFont(familyNow, weightNow.value, sizeNow)
     if (slanted) component.node.setItalic(true)
-    if (lineHeight() > 0.0) component.node.setLineHeight(lineHeight() * size())
+    if (lineHeightNow > 0.0) component.node.setLineHeight(lineHeightNow * sizeNow)
     // spacing given in ems where the platform takes them is kept in pixels as the size changes
     if (spacing != 0.0) component.node.setLetterSpacing(spacing)
     // (a shorthand a platform sets for a field puts the axes back to its own: set again after it)

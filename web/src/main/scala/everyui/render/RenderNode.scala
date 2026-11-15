@@ -1376,6 +1376,14 @@ object RenderNode {
     style.textContent = ".everyui-nobar { scrollbar-width: none; } .everyui-nobar::-webkit-scrollbar { display: none; }"
     dom.document.head.appendChild(style)
   }
+  // the rule that gives a text node the rest of its starting font (`Nodes.text`), put in the page once
+  private var textRule = false
+  private[render] def textClass(): Unit = if (!textRule) {
+    textRule = true
+    val style = dom.document.createElement("style")
+    style.textContent = ".everyui-text { font: 600 32px system-ui, sans-serif; }"
+    dom.document.head.appendChild(style)
+  }
   /** How many of the app's nodes are turned or scaled now, by their own transform or a motion's: while none is, a box
     * read is the laid-out one, and nothing is read twice to tell (`transformed`). */
   private[render] var turned: Int = 0
@@ -1969,7 +1977,13 @@ object Nodes {
     el.style.position = "absolute"
     el.style.left = "0px"
     el.style.top = "0px"
-    el.style.font = "600 32px system-ui, sans-serif"
+    // its starting font: the face, weight and size its own, and the rest of the shorthand (each of a font's dozen and
+    // more other parts at its start) the class's, shared by every text node rather than written into each one's style
+    RenderNode.textClass()
+    el.className = "everyui-text"
+    el.style.fontFamily = "system-ui, sans-serif"
+    el.style.fontWeight = "600"
+    el.style.fontSize = "32px"
     el.style.color = "#1c1b1f"
     el.style.whiteSpace = "nowrap"
     new RenderNode(el)

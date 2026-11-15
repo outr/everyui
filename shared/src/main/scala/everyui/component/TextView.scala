@@ -17,18 +17,48 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     fit(why = "content")
     everyui.access.LiveRegions.changed()
   }))
+  // whether each limit has been made, and each as it is, read without making it: most words have none
+  private var maxWidthMade = false
+  private var maxLinesMade = false
+  private var elideMade = false
+  private var elidedMade = false
+  private def widest: Double = if (maxWidthMade) maxWidth() else 0.0
+  private def mostLines: Int = if (maxLinesMade) maxLines() else 0
+  private def elideSide: Elide = if (elideMade) elide() else Elide.End
+  private def cutShort: Boolean = elidedMade && elided()
   /** The widest these words may be drawn: what will not fit on a line wraps onto another (`TextOverflow.Wrap`, the
     * default), or is cut short with an ellipsis (`TextOverflow.Ellipsis`), as a title beside a chip is, so whatever sits
     * after them keeps its place. 0 for no limit. */
-  lazy val maxWidth: Var[Double] = own(Plain[Double](0.0))
+  lazy val maxWidth: Var[Double] = {
+    maxWidthMade = true
+    val v = own(Plain[Double](0.0))
+    v.attach { _ =>
+      wholeNow()
+      fit(why = "maxWidth")
+    }
+    v
+  }
   /** The most lines wrapped words may take: what will not fit is cut short at a word with an ellipsis, as a synopsis
     * under an episode's name is. 0 for no limit. */
-  lazy val maxLines: Var[Int] = own(Plain[Int](0))
+  lazy val maxLines: Var[Int] = {
+    maxLinesMade = true
+    val v = own(Plain[Int](0))
+    v.attach(_ => fit(why = "maxLines"))
+    v
+  }
   /** Where words wider than `maxWidth` are cut: at the end, the default; at the start, for a path whose end says the
     * most ("…/backend/app"); or in the middle. Wrapped words cut to `maxLines` are cut at the end. */
-  lazy val elide: Var[Elide] = own(Plain[Elide](Elide.End))
+  lazy val elide: Var[Elide] = {
+    elideMade = true
+    val v = own(Plain[Elide](Elide.End))
+    v.attach(_ => if (widest > 0.0) fit(why = "elide"))
+    v
+  }
   /** Whether the words are drawn cut short to fit (`maxWidth`, `maxLines`, their box), as last measured. */
-  lazy val elided: Var[Boolean] = own(Plain[Boolean](false))
+  lazy val elided: Var[Boolean] = {
+    elidedMade = true
+    own(Plain[Boolean](false))
+  }
   /** What the words do where they are wider than their box, the room what they are in gives them (a column's width
     * less its padding, a row's less what else is in it, the screen's), or than `maxWidth`: wrapped within it
     * (`TextOverflow.Wrap`, the default, `TextOverflow.default`), taking as many lines as they need; cut short with an
@@ -91,27 +121,28 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   }))
 
   // wrapped to a width that changes, the words take a different number of lines; given a width of their own, words
-  // kept to their box are left to it, and a line is kept to that width (`ownRoom`)
-  size.width.attach(_ => if (size.width.explicit) {
+  // kept to their box are left to it, and a line is kept to that width (`ownRoom`) (heard as the width changes, from the
+  // width itself, `ComponentSize`, rather than by a function attached to it)
+  override private[everyui] def widthHeard(): Unit = if (size.width.explicit) {
     if (boxed) fit(why = "width")
-    else if (whiteSpace() != WhiteSpace.NoWrap) {
-      if (maxLines() > 0) fit(why = "width") else measure.trigger()
+    else if (whiteSpaceNow != WhiteSpace.NoWrap) {
+      if (mostLines > 0) fit(why = "width") else measure.trigger()
     }
-    else if (ownRoom > 0.0 || wrappedToFit || elided()) fit(why = "width")
-  })
+    else if (ownRoom > 0.0 || wrappedToFit || cutShort) fit(why = "width")
+  }
   /** The room a line of words given a width of their own has: that width, where nothing else holds them to less
     * (`maxWidth`, `maxLines`) and they are not let run past it (`TextOverflow.Visible`); 0 for none. Wider than it,
     * they wrap within it (the platform wraps words at a width of their own everywhere), or are cut short to it with an
     * ellipsis (`TextOverflow.Ellipsis`): a heading in a card the card has narrowed. */
   private def ownRoom: Double =
-    if (size.width.explicit && whiteSpace() == WhiteSpace.NoWrap && keepsToBox && overflow != TextOverflow.Visible &&
-      maxWidth() <= 0.0 && maxLines() <= 0) size.width() else 0.0
+    if (size.width.explicit && whiteSpaceNow == WhiteSpace.NoWrap && keepsToBox && overflow != TextOverflow.Visible &&
+      widest <= 0.0 && mostLines <= 0) size.width() else 0.0
   // the cut is being made, whether it was made where the words could not yet be measured as they will be drawn (off
   // the page, or in a face still loading), and whether the page holds them to their room while it waits (setTextLimit)
   private var fitting = false
   private var unfit = false
   private var held = false
-  private def limited: Boolean = maxWidth() > 0.0 || maxLines() > 0 || boxed
+  private def limited: Boolean = widest > 0.0 || mostLines > 0 || boxed
   // how wide they are whole, where they are cut to their box (`boxShrunk`): what they are cut by follows the width they
   // are drawn at, which the web reads a moment later
   private var boxWhole = 0.0
@@ -135,7 +166,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   // measured whole where they wrap at a limit of their own (`maxWidth`) or a box (`measureWhole`), with no width of
   // their own: what holds them, sized to them (a pill round a note), is no limit, though the web wraps them at it, and
   // words first measured in a pill not yet grown round them were wrapped at its width, a few letters wide, and kept so
-  private def wholeNow(): Unit = node.setTextWhole((wholeToBox || maxWidth() > 0.0) && !size.width.explicit)
+  private def wholeNow(): Unit = node.setTextWhole((wholeToBox || widest > 0.0) && !size.width.explicit)
   private[everyui] def measureWhole(on: Boolean): Unit = if (on != wholeToBox) {
     wholeToBox = on
     wholeNow()
@@ -235,14 +266,9 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     fit(why = "box")
   }
 
-  maxWidth.attach { _ =>
-    wholeNow()
-    fit(why = "maxWidth")
-  }
-  maxLines.attach(_ => fit(why = "maxLines"))
-  elide.attach(_ => if (maxWidth() > 0.0) fit(why = "elide"))
-  // drawn in another face or size, the words are cut again: the cut was made in the one before
-  measure.on(if (!fitting && limited) fit(why = "face"))
+  // drawn in another face or size, the words are cut again: the cut was made in the one before (heard just after the
+  // size is read, `MeasuredFeature`, rather than by a function of its own attached to `measure`)
+  override private[everyui] def measureHeard(): Unit = if (!fitting && limited) fit(why = "face")
 
   // words that could not be measured when they were set are cut once they can be: as they join the page, whose sizes
   // are read then, or once their face has loaded; words not cut are measured again once it has
@@ -275,7 +301,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   // what the last cut went by, and whether it has gone stale since, where something the key does not hold changed what
   // the words measure: a face loaded, the words measured whole, broken anywhere. The words are kept apart from the rest:
   // joined into one key they were a copy of the words, held as long as they showed
-  private var cutKey = ""
+  private var cutKey: TextCut = null
   private var cutWords = ""
   private var stale = true
 
@@ -283,19 +309,19 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     * measured then, which nothing is done again for (a change of room that came to the same room, words set again). */
   private def cut(): Boolean = {
     val wanted = content()
-    val limit = maxWidth()
-    val lines = if (maxLines() > 0 && (whiteSpace() != WhiteSpace.NoWrap || wraps)) maxLines() else 0
+    val limit = widest
+    val lines = if (mostLines > 0 && (whiteSpaceNow != WhiteSpace.NoWrap || wraps)) mostLines else 0
     // the box's room, where the words were kept to it or ran past it as last measured (keepToBox)
     val box = if ((boxed || toBox) && !followed && !size.width.explicit) roomNow else 0.0
     val own = ownRoom
     // the width drawn before, which only words kept to their box look back at: read only then, since a read of words not
     // yet on the page lends them to it, and made the browser lay the page out for every label of a screen being built
     val before = if (box > 0.0 || boxed) measured.width() else 0.0
-    val key = limit.toString + "|" + lines.toString + "|" + box.toString + "|" + own.toString + "|" +
-      whiteSpace().value + "|" + overflow.toString + "|" + elide().toString + "|" +
-      // a width of its own, which words that wrap wrap at, and how many times its face has changed
-      (if (size.width.explicit) size.width().toString else "") + "|" + font.changes.toString
-    val alike = wanted == cutWords && key == cutKey && !stale && !unfit
+    val explicit = size.width.explicit
+    // (with a width of its own, which words that wrap wrap at, and how many times its face has changed)
+    val key = TextCut(limit, lines, box, own, whiteSpaceNow, overflow, elideSide, explicit,
+      if (explicit) size.width() else 0.0, font.changes)
+    val alike = !stale && !unfit && wanted == cutWords && key == cutKey
     everyui.perf.PerfCounters.fit(alike)
     if (alike) false
     else {
@@ -336,7 +362,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     // (a link in a row too wide for its box, which leaves the words first in it a pixel) the words wrap between words
     // alone, each whole on its line, the room taken as their widest word, rather than one letter to a line
     val box = if (!unfit && boxRoom > 0.0 && boxRoom < TextView.breakingRoom * font.size() &&
-      whiteSpace() != WhiteSpace.Pre && (wraps || whiteSpace() != WhiteSpace.NoWrap))
+      whiteSpaceNow != WhiteSpace.Pre && (wraps || whiteSpaceNow != WhiteSpace.NoWrap))
       math.max(boxRoom, widestWord(wanted)) else boxRoom
     held = asked
     if (unfit) {
@@ -358,7 +384,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
         cutRoom = boxRoom
         drawnBefore = before
         // words that wrap wrap within it, where the platform wraps them there; a line, and words it does not, are cut
-        if (whiteSpace() != WhiteSpace.NoWrap && whiteSpace() != WhiteSpace.Pre) {
+        if (whiteSpaceNow != WhiteSpace.NoWrap && whiteSpaceNow != WhiteSpace.Pre) {
           node.setTextLimit(box, 0)
           if (node.getWidth() > box + 0.5) node.setTextLimit(0.0, 0) else wrapAt = box
         }
@@ -380,14 +406,16 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
       if (own > 0.0 && !surely(own) && node.textWidth() > own + 0.5) {
         if (wraps) wrapToFit() else cutTo(wanted, own, 0, whole = true)
       }
-      elided @= node.getText() != wanted
+      // (made only once they are cut: most words never are)
+      val short = node.getText() != wanted
+      if (short || elidedMade) elided @= short
       val kept = if (wrapAt > 0.0 && (single == 0.0 || wrapAt < single)) wrapAt else single
       held = asked || boxed
       if (held) node.setTextLimit(kept, lines)
       if (boxed) drawnAfter = node.getWidth()
       // let go of their box, they are whole already, though the web reads the width they are drawn at a moment later
       boxWhole = if (boxed || was) whole else 0.0
-      if (elided() || described.nonEmpty) describe(wanted)
+      if (cutShort || described.nonEmpty) describe(wanted)
     }
   }
 
@@ -421,14 +449,14 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   // whether words too wide wrap rather than end in an ellipsis (`TextOverflow.Wrap`): not words laid out as they are
   // written (`WhiteSpace.Pre`, code), which keep their lines, nor where the platform cannot wrap words at a width (an
   // Apple TV, for now), where they are cut as before rather than run past their room
-  private def wraps: Boolean = overflow == TextOverflow.Wrap && whiteSpace() != WhiteSpace.Pre && node.wrapsToLimit()
+  private def wraps: Boolean = overflow == TextOverflow.Wrap && whiteSpaceNow != WhiteSpace.Pre && node.wrapsToLimit()
   // whether the words are wrapped to fit their room, where they would otherwise be on one line
   private var wrappedToFit = false
 
   /** The words let wrap where they are on one line, and a word too long for a line broken, to fit their room. */
   private def wrapToFit(): Unit = if (!wrappedToFit) {
     wrappedToFit = true
-    if (whiteSpace() == WhiteSpace.NoWrap) node.setWhiteSpace(WhiteSpace.Normal.value)
+    if (whiteSpaceNow == WhiteSpace.NoWrap) node.setWhiteSpace(WhiteSpace.Normal.value)
     node.setWrapAnywhere(true)
   }
 
@@ -436,18 +464,18 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
   private def unwrap(): Unit = {
     wrappedToFit = false
     node.setTextLimit(0.0, 0)
-    node.setWhiteSpace(whiteSpace().value)
+    node.setWhiteSpace(whiteSpaceNow.value)
     node.setWrapAnywhere(wrapAnywhere())
   }
 
   // cut short, the words are named whole for whatever reads the page (`semantics`); a name the app gave them stands
   private def describe(wanted: String): Unit = {
     val ours = semantics() == Semantics(label = described)
-    if (elided() && (ours || semantics() == Semantics.Plain)) {
+    if (cutShort && (ours || semantics() == Semantics.Plain)) {
       described = wanted
       semantics @= Semantics(label = wanted)
     }
-    else if (!elided() && ours) {
+    else if (!cutShort && ours) {
       described = ""
       semantics @= Semantics.Plain
     }
@@ -458,7 +486,7 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
     def wide: Double = if (whole) node.textWidth() else node.getWidth()
     if (limit > 0.0 && !surely(limit) && wide > limit) {
       // the most letters kept, found in as many measures as halvings: a Roku measures each one
-      val side = elide()
+      val side = elideSide
       var fewest = 0
       var most = wanted.length
       while (fewest < most) {

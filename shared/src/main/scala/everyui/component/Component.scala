@@ -85,6 +85,10 @@ class Component(val node: RenderNode) {
     * (MeasuredFeature): words look at their box again then. */
   private[everyui] def containerChanged(): Unit = ()
   private[everyui] def widthRemeasured(): Unit = ()
+  /** Its width changed (`size.width`, as it is written out), and its size was read again as it was measured
+    * (`MeasuredFeature`, as `measure` fires): words fit themselves to it again. */
+  private[everyui] def widthHeard(): Unit = ()
+  private[everyui] def measureHeard(): Unit = ()
   /** How much narrower this is drawn than it would be whole, for words in it cut short to their box: what comes before
     * it in a row is kept to the room it leaves whole, so the two are not each cut for the other. */
   private[everyui] def boxShrunk: Double = 0.0
@@ -323,8 +327,13 @@ class Component(val node: RenderNode) {
   lazy val radius: Prop[Double] = own(new Prop[Double](0.0, r => node.setRadius(r)))
   /** In turns, as youi has it (1.0 is a full revolution). */
   lazy val rotation: Prop[Double] = own(new Prop[Double](0.0, turns => node.setRotation(turns * 2.0 * math.Pi)))
-  lazy val whiteSpace: Prop[WhiteSpace] =
+  // whether `whiteSpace` has been made, and what it is, read without making it: most words keep to one line
+  private var whiteSpaceMade = false
+  lazy val whiteSpace: Prop[WhiteSpace] = {
+    whiteSpaceMade = true
     own(new Prop[WhiteSpace](WhiteSpace.NoWrap, ws => node.setWhiteSpace(ws.value), () => measure.trigger()))
+  }
+  private[everyui] def whiteSpaceNow: WhiteSpace = if (whiteSpaceMade) whiteSpace() else WhiteSpace.NoWrap
 
   // whether `flex` has been made: one never made is 0, and a layout looking at every child's need not make it
   private var flexMade = false

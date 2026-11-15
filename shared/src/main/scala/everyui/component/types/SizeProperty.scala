@@ -9,13 +9,23 @@ class SizeProperty(measured: Val[Double], write: Double => Unit) extends Var[Dou
   /** Whether something has set this, rather than it following the measured size. */
   def explicit: Boolean = explicitlySet
 
-  attach { d =>
+  // heard by a reaction of its own (`SizeWrite`), not a function attached to it, which cost a closure and its scope
+  reactions += new SizeWrite(this)
+
+  private[types] def written(d: Double): Unit = {
     if (explicitlySet) writeOut(d)
+    changed()
   }
+
+  /** The size written out to the node: `write`, unless a kind of size writes it itself. */
+  protected def writeTo(d: Double): Unit = write(d)
+
+  /** Heard as it changes, after it is written out: for a kind of size that tells what it sizes. */
+  protected def changed(): Unit = ()
 
   // written out, and drawn: the frame loop runs, if it was idle (Frames)
   private def writeOut(d: Double): Unit = {
-    write(d)
+    writeTo(d)
     everyui.task.Frames.wake()
   }
 

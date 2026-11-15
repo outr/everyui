@@ -1,6 +1,7 @@
 package everyui.component.feature
 
 import reactify.{Val, Var}
+import reactify.reaction.{Reaction, ReactionStatus}
 import everyui.component.types.Plain
 import everyui.component.Component
 import everyui.render.Platform
@@ -11,7 +12,7 @@ import everyui.render.Platform
   * Where the platform reads sizes in batches (the web: `Platform.measuresInBatches`), a refresh is queued and every one
   * asked for in a turn is read together before the frame is drawn — all the reads, then all the sizes set — rather
   * than each read forcing the browser to lay the page out again after the change before it. */
-class MeasuredFeature(private[feature] val component: Component) {
+class MeasuredFeature(private[feature] val component: Component) extends Reaction[Unit] {
   private val w: Var[Double] = MeasuredFeature.size(this, across = true)
   private val h: Var[Double] = MeasuredFeature.size(this, across = false)
   // queued for the turn's batch, and the size its read found, until the batch sets it
@@ -110,7 +111,15 @@ class MeasuredFeature(private[feature] val component: Component) {
     if (wider) component.widthRemeasured()
   }
 
-  component.measure.on(refresh())
+  // refreshed as the component is measured: heard by this, not a function attached to it, which for every component
+  // cost a closure, its scope and a reaction wrapping it
+  component.measure.reactions += this
+
+  override def apply(value: Unit, previous: Option[Unit]): ReactionStatus = {
+    refresh()
+    component.measureHeard()
+    ReactionStatus.Continue
+  }
 }
 
 object MeasuredFeature {

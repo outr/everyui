@@ -1,6 +1,6 @@
 package everyui.component.feature
 
-import reactify.{Priority, Val, Var}
+import reactify.{Val, Var}
 import everyui.component.Component
 import everyui.component.types.Plain
 import everyui.layout.LayoutPass
@@ -27,10 +27,12 @@ class ContainerFeature(val component: Component) extends Plain[Vector[Component]
   private var grownFrom: Vector[Component] = Vector.empty
   private var grownTo: Vector[Component] = Vector.empty
 
-  attach(_ => place())
+  // heard by reactions of their own (`ChildrenPlace`, and `ChildrenMeasure` below), not functions attached, which for
+  // every container cost a closure, its scope and a reaction wrapping each
+  reactions += new ChildrenPlace(this)
 
   /** Place the nodes as the children are now, and again for any change made while doing so. */
-  private def place(): Unit = if (!placing) {
+  private[feature] def place(): Unit = if (!placing) {
     placing = true
     try {
       while (!(placed eq get)) {
@@ -275,7 +277,7 @@ class ContainerFeature(val component: Component) extends Plain[Vector[Component]
 
   // Measuring the container measures everything under it first, deepest first, in one walk rather than a trigger per
   // level: a Roku runs out of stack a few levels into a chain of triggers (a dialog on its sheet is enough).
-  component.measure.on(ContainerFeature.measureUnder(get.toList), Priority.High)
+  component.measure.reactions += new ChildrenMeasure(this)
 }
 
 object ContainerFeature {
