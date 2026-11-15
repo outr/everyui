@@ -2,8 +2,73 @@ package everyui.tray
 
 import everyui.Color
 
-/** A tray icon's picture: `width` by `height` pixels, each ARGB (alpha in the top byte), row by row. */
-case class TrayImage(width: Int, height: Int, argb: Array[Int]) {
+/** A tray icon's picture: `width` by `height` pixels, each ARGB (alpha in the top byte), row by row; with the same
+  * picture at other sizes (`alternates`, made with `TrayImage.of`), each platform showing the size it wants (`sized`).
+  * A `template` one (`asTemplate`), black where it is drawn and clear elsewhere, macOS colours as its menu bar's text,
+  * light or dark; elsewhere it shows as it is. */
+case class TrayImage(width: Int, height: Int, argb: Array[Int], template: Boolean = false,
+                     alternates: List[TrayImage] = Nil) {
+  /** Every size of the picture, this one first, each without its alternates. */
+  def sizes: List[TrayImage] = copy(alternates = Nil) :: alternates.flatMap(_.sizes)
+
+  /** As a template image, every size of it: macOS draws it in its menu bar's colour, by its alpha alone. */
+  def asTemplate: TrayImage = copy(template = true, alternates = alternates.map(_.asTemplate))
+
+  /** The picture `px` pixels wide: the size that is, or else the smallest bigger one scaled down, or the biggest
+    * scaled up, its height kept in proportion. */
+  def sized(px: Int): TrayImage = {
+    val all = sizes
+    all.find(_.width == px).getOrElse {
+      val from = all.filter(_.width > px).sortBy(_.width).headOption.getOrElse(all.maxBy(_.width))
+      from.scaled(px, math.max(1, math.round(from.height.toDouble * px / from.width).toInt))
+    }
+  }
+
+  /** This size of the picture drawn `w` by `h`: each pixel the average of what it covers going down, its alpha
+    * weighting its colour, and the nearest going up. */
+  def scaled(w: Int, h: Int): TrayImage = if (w == width && h == height) copy(alternates = Nil) else {
+    val out = new Array[Int](w * h)
+    val sx = width.toDouble / w
+    val sy = height.toDouble / h
+    var y = 0
+    while (y < h) {
+      var x = 0
+      while (x < w) {
+        val x0 = x * sx
+        val y0 = y * sy
+        val x1 = math.max(x0 + 1e-9, (x + 1) * sx)
+        val y1 = math.max(y0 + 1e-9, (y + 1) * sy)
+        var a, r, g, b, area = 0.0
+        var py = math.floor(y0).toInt
+        while (py < math.min(height.toDouble, math.ceil(y1))) {
+          val cy = math.min(y1, py + 1.0) - math.max(y0, py.toDouble)
+          var px = math.floor(x0).toInt
+          while (px < math.min(width.toDouble, math.ceil(x1))) {
+            val cx = math.min(x1, px + 1.0) - math.max(x0, px.toDouble)
+            val weight = math.max(0.0, cx) * math.max(0.0, cy)
+            val p = argb(py * width + px)
+            val pa = ((p >>> 24) & 0xff) * weight
+            a += pa
+            r += ((p >>> 16) & 0xff) * pa
+            g += ((p >>> 8) & 0xff) * pa
+            b += (p & 0xff) * pa
+            area += weight
+            px += 1
+          }
+          py += 1
+        }
+        out(y * w + x) = if (a <= 0.0) 0 else {
+          def ch(v: Double): Int = math.max(0, math.min(255, math.round(v).toInt))
+          (ch(a / area) << 24) | (ch(r / a) << 16) | (ch(g / a) << 8) | ch(b / a)
+        }
+        x += 1
+      }
+      y += 1
+    }
+    TrayImage(w, h, out, template)
+  }
+
+
   /** The pixels as StatusNotifierItem wants them: four bytes each, A R G B, in that order. */
   def bytes: Array[Byte] = {
     val out = new Array[Byte](argb.length * 4)
@@ -20,8 +85,12 @@ case class TrayImage(width: Int, height: Int, argb: Array[Int]) {
   }
 
   /** With a dot of `colour` at its lower corner (a status: connected, away), a ring of nothing round it so it stands
-    * clear of the picture under it. */
-  def badged(colour: Color): TrayImage = {
+    * clear of the picture under it, on every size; no longer a template, which could not show the colour. */
+  def badged(colour: Color): TrayImage =
+    if (alternates.nonEmpty) TrayImage.of(sizes.head.badged(colour), alternates.flatMap(_.sizes).map(_.badged(colour))*)
+    else dotted(colour)
+
+  private def dotted(colour: Color): TrayImage = {
     val out = argb.clone()
     val d = math.max(4.0, width * 0.42)
     val cx = width - d / 2.0 - 0.5
@@ -61,6 +130,11 @@ case class TrayImage(width: Int, height: Int, argb: Array[Int]) {
 }
 
 object TrayImage {
+  /** `first` with `others`, the same picture at other sizes, among its `alternates`: a platform shows the size it wants
+    * (`sized`), a 16, 20, 24 or 32 pixel one on Windows by the screen's scale, the 1x or 2x on macOS. */
+  def of(first: TrayImage, others: TrayImage*): TrayImage =
+    first.copy(alternates = first.alternates ++ others.toList.flatMap(_.sizes))
+
   /** A PNG's pixels, decoded by JavaFX (no AWT, which a native image leaves out). */
   def png(bytes: Array[Byte]): TrayImage = {
     val image = new javafx.scene.image.Image(new java.io.ByteArrayInputStream(bytes))

@@ -5,14 +5,15 @@ import everyui.component.Component
 import everyui.menu.MenuItem
 import reactify.*
 
-/** An icon in the desktop's tray (`Tray.show`), served on its own D-Bus connection as a StatusNotifierItem under
-  * `name`: what it shows (`icon`, with a dot of `badge` at its corner), what a pointer resting on it says (`title`
-  * over `tooltip`), whether it asks to be looked at (`attention`), and the panel's menu of `menu` (`TrayMenu`) on a
-  * right click. A left click opens `popover`, where there is one, beside the icon (`TrayPopover`), and tells
-  * `activated` where it was. Each is a Var: set it as things change (a status, a line of live numbers), and the panel
-  * is told. Registered with the panel's watcher, and again each time a new one starts (the panel restarted). */
-class TrayIcon private[tray] (bus: DBusConnection, val name: String, first: TrayImage, firstTip: String,
-                             appTitle: String) {
+/** An icon in the desktop's tray (`Tray.show`): what it shows (`icon`, with a dot of `badge` at its corner), what a
+  * pointer resting on it says (`title` over `tooltip`), whether it asks to be looked at (`attention`), and its menu of
+  * `menu`. A left click opens `popover`, where there is one, beside the icon (`TrayPopover`), and tells `activated`
+  * where it was; a right click opens the menu (on macOS, with no popover, any click does). Each is a Var: set it as
+  * things change (a status, a line of live numbers), and the tray is told. Shown by each platform's own (`TrayHost`):
+  * a StatusNotifierItem over D-Bus on Linux, served under `name`; an NSStatusItem on macOS; a notification-area icon
+  * on Windows. */
+class TrayIcon private[tray] (val name: String, first: TrayImage, firstTip: String, appTitle: String,
+                             host: TrayIcon => TrayHost) {
   val icon: Var[TrayImage] = Var(first)
   val badge: Var[Option[Color]] = Var(None)
   val title: Var[String] = Var(appTitle)
@@ -21,87 +22,37 @@ class TrayIcon private[tray] (bus: DBusConnection, val name: String, first: Tray
   val menu: Var[List[MenuItem]] = Var(Nil)
   /** What a left click opens beside the icon, made afresh each time it opens; None, nothing opens. */
   val popover: Var[Option[() => Component]] = Var(None)
-  /** A left click on the icon, where the panel says it was, in the screen's pixels. */
+  /** A left click on the icon, where the tray says it was, in the screen's pixels. */
   val activated: Channel[(Int, Int)] = Channel[(Int, Int)]
 
-  private val menuServed = new TrayMenu(bus, everyui.render.Host.rtl)
   private val shown = new TrayPopover
   private var gone = false
+  private[tray] val platform: TrayHost = host(this)
 
-  private def picture: TrayImage = badge().map(c => icon().badged(c)).getOrElse(icon())
-  private def pixmaps: Vector[DBusStruct] = {
-    val p = picture
-    Vector(DBusStruct(List(p.width, p.height, p.bytes)))
+  platform.picture(icon(), badge())
+  platform.tip(title(), tooltip())
+  platform.popover(popover().nonEmpty)
+  icon.attach(i => if (!gone) platform.picture(i, badge()))
+  badge.attach(b => if (!gone) platform.picture(icon(), b))
+  title.attach(t => if (!gone) platform.tip(t, tooltip()))
+  tooltip.attach(t => if (!gone) platform.tip(title(), t))
+  attention.attach(on => if (!gone) platform.attention(on))
+  menu.attach(items => if (!gone) platform.menu(items))
+  popover.attach(p => if (!gone) platform.popover(p.nonEmpty))
+
+  /** A left click at `x`, `y`, as the platform tells it, on the app's thread: `activated` told, and the popover opened
+    * or shut. The point is in JavaFX's screen coordinates, unless it is a Linux panel's (`panelPoint`), which Plasma
+    * under Wayland says its own way (`TrayScreen.locate`). */
+  private[tray] def clicked(x: Int, y: Int, panelPoint: Boolean = false): Unit = if (!gone) {
+    activated @= (x, y)
+    popover().foreach(make => shown.toggle(make, x, y, panelPoint && TrayScreen.plasmaWayland))
   }
-  private def status: String = if (attention()) "NeedsAttention" else "Active"
-
-  private def property(n: String): Option[DBusVariant] = n match {
-    case "Category" => Some(DBusVariant("s", "ApplicationStatus"))
-    case "Id" => Some(DBusVariant("s", appTitle))
-    case "Title" => Some(DBusVariant("s", title()))
-    case "Status" => Some(DBusVariant("s", status))
-    case "WindowId" => Some(DBusVariant("i", 0))
-    case "IconThemePath" => Some(DBusVariant("s", ""))
-    case "IconName" => Some(DBusVariant("s", ""))
-    case "IconPixmap" => Some(DBusVariant("a(iiay)", pixmaps))
-    case "AttentionIconName" => Some(DBusVariant("s", ""))
-    case "AttentionIconPixmap" => Some(DBusVariant("a(iiay)", pixmaps))
-    case "OverlayIconName" => Some(DBusVariant("s", ""))
-    case "OverlayIconPixmap" => Some(DBusVariant("a(iiay)", Vector.empty[DBusStruct]))
-    case "AttentionMovieName" => Some(DBusVariant("s", ""))
-    case "ToolTip" => Some(DBusVariant("(sa(iiay)ss)",
-      DBusStruct(List("", Vector.empty[DBusStruct], title(), tooltip()))))
-    case "ItemIsMenu" => Some(DBusVariant("b", false))
-    case "Menu" => Some(DBusVariant("o", DBusPath(TrayMenu.Path)))
-    case _ => None
-  }
-
-  private def answer(m: DBusMessage): Option[(String, List[Any])] = (m.interface, m.member) match {
-    case (TrayIcon.Interface, "Activate") =>
-      val (x, y) = (m.body.head.asInstanceOf[Int], m.body(1).asInstanceOf[Int])
-      activated @= (x, y)
-      popover().foreach(make => shown.toggle(make, x, y))
-      Some(("", Nil))
-    case (TrayIcon.Interface, "SecondaryActivate" | "ContextMenu" | "Scroll" | "ProvideXdgActivationToken") =>
-      Some(("", Nil))
-    case (TrayMenu.Properties, "Get") => property(m.body(1).toString).map(v => ("v", List(v)))
-    case (TrayMenu.Properties, "GetAll") =>
-      Some(("a{sv}", List(TrayIcon.properties.flatMap(n => property(n).map(n -> _)).toVector)))
-    case (TrayMenu.Introspectable, "Introspect") => Some(("s", List(TrayIcon.introspection)))
-    case _ => None
-  }
-
-  bus.serve(TrayIcon.Path)(answer)
-  bus.serve(TrayMenu.Path)(menuServed.answer)
-  icon.attach(_ => signal("NewIcon"))
-  badge.attach(_ => signal("NewIcon"))
-  title.attach(_ => {
-    signal("NewTitle")
-    signal("NewToolTip")
-  })
-  tooltip.attach(_ => signal("NewToolTip"))
-  attention.attach(_ => bus.signal(TrayIcon.Path, TrayIcon.Interface, "NewStatus", "s", List(status)))
-  menu.attach(items => menuServed.set(items))
-
-  // the panel's watcher, told of the icon now and whenever a new one takes the name (the panel started again)
-  bus.addMatch("type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus'," +
-    "member='NameOwnerChanged',arg0='" + TrayIcon.Watcher + "'")
-  bus.onSignal { m =>
-    if (m.member == "NameOwnerChanged" && m.body.headOption.contains(TrayIcon.Watcher) &&
-      m.body.lift(2).exists(_.toString.nonEmpty) && !gone) register()
-  }
-
-  private def signal(member: String): Unit = if (!gone) bus.signal(TrayIcon.Path, TrayIcon.Interface, member)
-
-  /** Told to the panel's watcher, where there is one. */
-  private[tray] def register(): Unit =
-    bus.call(TrayIcon.Watcher, TrayIcon.WatcherPath, TrayIcon.Watcher, "RegisterStatusNotifierItem", "s", List(name))()
 
   /** The icon taken out of the tray, for good. */
   def hide(): Unit = if (!gone) {
     gone = true
     shown.close()
-    bus.close()
+    platform.close()
   }
 
   /** The popover shut, where it is open. */
@@ -118,11 +69,11 @@ object TrayIcon {
   val Interface: String = "org.kde.StatusNotifierItem"
   val Watcher: String = "org.kde.StatusNotifierWatcher"
   val WatcherPath: String = "/StatusNotifierWatcher"
-  private val properties: List[String] = List("Category", "Id", "Title", "Status", "WindowId", "IconThemePath",
+  private[tray] val properties: List[String] = List("Category", "Id", "Title", "Status", "WindowId", "IconThemePath",
     "IconName", "IconPixmap", "AttentionIconName", "AttentionIconPixmap", "OverlayIconName", "OverlayIconPixmap",
     "AttentionMovieName", "ToolTip", "ItemIsMenu", "Menu")
 
-  private val introspection: String =
+  private[tray] val introspection: String =
     """<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
       | "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
       |<node>

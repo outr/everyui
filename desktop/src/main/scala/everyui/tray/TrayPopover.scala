@@ -21,10 +21,10 @@ class TrayPopover {
   def showing: Boolean = stage.exists(_.isShowing)
   private[tray] def scene: Option[Scene] = stage.filter(_.isShowing).map(_.getScene)
 
-  def toggle(make: () => Component, x: Int, y: Int): Unit =
-    if (showing) close() else if (System.currentTimeMillis() - shutAt > 300L) open(make(), x, y)
+  def toggle(make: () => Component, x: Int, y: Int, plasma: Boolean = false): Unit =
+    if (showing) close() else if (System.currentTimeMillis() - shutAt > 300L) open(make(), x, y, plasma)
 
-  private def open(c: Component, x: Int, y: Int): Unit = {
+  private def open(c: Component, x: Int, y: Int, plasma: Boolean): Unit = {
     val root = new Pane()
     c.position.left @= 0.0
     c.position.top @= 0.0
@@ -49,7 +49,7 @@ class TrayPopover {
       val shown = (0 until all.size).toList.map(all.get)
       val boxes = shown.map(sc => TrayScreen(sc.getBounds.getMinX, sc.getBounds.getMinY, sc.getBounds.getWidth,
         sc.getBounds.getHeight, sc.getOutputScaleX))
-      val (at, px, py) = TrayScreen.locate(x, y, boxes, TrayScreen.plasmaWayland)
+      val (at, px, py) = TrayScreen.locate(x, y, boxes, plasma)
       val area = shown(at).getVisualBounds
       val left = if (px > area.getMinX + area.getWidth / 2.0) px - w else px
       val top = if (py > area.getMinY + area.getHeight / 2.0) py - h - 8.0 else py + 8.0

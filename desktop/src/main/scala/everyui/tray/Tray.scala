@@ -2,10 +2,14 @@ package everyui.tray
 
 import java.util.concurrent.atomic.AtomicInteger
 
-/** The desktop's tray (the status icons at a panel's edge), for an app that goes on in the background: a status, a
-  * menu of live lines, a popover of its own components. On Linux the icon is a StatusNotifierItem and its menu a
-  * DBusMenu, spoken over the session bus (`DBusConnection`), which KDE, COSMIC, XFCE and others draw; GNOME only with
-  * its AppIndicator extension. AWT's tray is not used: under Wayland it is broken, and a native image leaves it out.
+/** The desktop's tray (the status icons at a panel's edge, the menu bar's on macOS, the notification area on
+  * Windows), for an app that goes on in the background: a status, a menu of live lines, a popover of its own
+  * components. On Linux the icon is a StatusNotifierItem and its menu a DBusMenu, spoken over the session bus
+  * (`DBusConnection`), which KDE, COSMIC, XFCE and others draw; GNOME only with its AppIndicator extension. On macOS it
+  * is an NSStatusItem with an NSMenu (`MacTray`), and on Windows a `Shell_NotifyIconW` icon with a popup menu
+  * (`WinTray`), both reached through the FFM API, on the JVM and in a native image alike (run with
+  * `--enable-native-access=ALL-UNNAMED`). AWT's tray is not used: under Wayland it is broken, and a native image
+  * leaves it out.
   *
   * {{{
   *   if (Tray.supported) Tray.show(TrayImage.png(logo), "Voidcraft client").foreach { t =>
@@ -39,10 +43,18 @@ object Tray {
     shared
   }
 
-  /** Whether a tray is there to show an icon in: a StatusNotifierWatcher on the session bus (KDE's panel, COSMIC's,
-    * XFCE's, GNOME's AppIndicator extension). False on GNOME without it, off Linux for now, and with no session bus:
-    * an app then says what it would have shown with `notify`. */
-  def supported: Boolean = bus.exists(b => owned(b, TrayIcon.Watcher))
+  /** Whether a tray is there to show an icon in: on Linux, a StatusNotifierWatcher on the session bus (KDE's panel,
+    * COSMIC's, XFCE's, GNOME's AppIndicator extension), false on GNOME without it and with no session bus; the menu
+    * bar on macOS (`MacTray`); the notification area on Windows (`WinTray`). Where there is none, an app says what it
+    * would have shown with `notify`. */
+  def supported: Boolean = platform match {
+    case TrayPlatform.Mac => MacTray.supported
+    case TrayPlatform.Windows => WinTray.supported
+    case TrayPlatform.Linux => bus.exists(b => owned(b, TrayIcon.Watcher))
+  }
+
+  // the platform's own tray; a spec's bus (`busPath`) is Linux's wherever it runs
+  private def platform: TrayPlatform = if (busPath.nonEmpty) TrayPlatform.Linux else TrayPlatform.current
 
   private def owned(b: DBusConnection, name: String): Boolean =
     b.ask(DBusConnection.Bus, DBusConnection.BusPath, DBusConnection.Bus, "NameHasOwner", "s", List(name))
@@ -50,13 +62,24 @@ object Tray {
 
   /** `icon` in the tray, `tooltip` said under the app's name as a pointer rests on it; None where it cannot be shown
     * (`supported`). The app goes on with its windows closed while it is there. */
-  def show(icon: TrayImage, tooltip: String): Option[TrayIcon] = if (!supported) None else connect().map { c =>
-    val name = "org.kde.StatusNotifierItem-" + ProcessHandle.current().pid() + "-" + made.incrementAndGet()
-    c.ask(DBusConnection.Bus, DBusConnection.BusPath, DBusConnection.Bus, "RequestName", "su", List(name, 4))
-    javafx.application.Platform.setImplicitExit(false)
-    val t = new TrayIcon(c, name, icon, tooltip, everyui.render.Host.app)
-    t.register()
-    t
+  def show(icon: TrayImage, tooltip: String): Option[TrayIcon] = if (!supported) None else {
+    val app = everyui.render.Host.app
+    val shown = platform match {
+      case TrayPlatform.Mac => Some(new TrayIcon(app, icon, tooltip, app, MacTray.host))
+      case TrayPlatform.Windows => Some(new TrayIcon(app, icon, tooltip, app, WinTray.host))
+      case TrayPlatform.Linux => connect().map { c =>
+        val name = "org.kde.StatusNotifierItem-" + ProcessHandle.current().pid() + "-" + made.incrementAndGet()
+        c.ask(DBusConnection.Bus, DBusConnection.BusPath, DBusConnection.Bus, "RequestName", "su", List(name, 4))
+        val t = new TrayIcon(name, icon, tooltip, app, i => new SniTray(c, name, i, app))
+        t.platform match {
+          case s: SniTray => s.register()
+          case _ => ()
+        }
+        t
+      }
+    }
+    if (shown.nonEmpty) javafx.application.Platform.setImplicitExit(false)
+    shown
   }
 
   // the notifications shown, by their id, with what each action key does
@@ -74,11 +97,20 @@ object Tray {
     }
   }
 
-  /** A notification from the app, through the desktop's notification server (any Linux desktop's, GNOME's included):
-    * `title` over `body`, with a button for each of `actions` (its words, and what choosing it does), and `clicked`
-    * run where the notification itself is clicked. Nothing where there is no server. */
+  /** A notification from the app: `title` over `body`, with a button for each of `actions` (its words, and what
+    * choosing it does), and `clicked` run where the notification itself is clicked. On Linux, through the desktop's
+    * notification server (any Linux desktop's, GNOME's included); on Windows, a balloon from the notification area,
+    * which Windows 10 and 11 show as a toast, with no buttons (`actions` are left out); on macOS, through the
+    * notification centre where the app runs from a signed .app bundle. Nothing where there is no way to show one. */
   def notify(title: String, body: String, actions: List[(String, () => Unit)] = Nil,
-             clicked: Option[() => Unit] = None): Unit = bus.foreach { b =>
+             clicked: Option[() => Unit] = None): Unit = platform match {
+    case TrayPlatform.Mac => MacTray.notify(title, body, actions, clicked)
+    case TrayPlatform.Windows => WinTray.notify(title, body, clicked)
+    case TrayPlatform.Linux => notifyOverBus(title, body, actions, clicked)
+  }
+
+  private def notifyOverBus(title: String, body: String, actions: List[(String, () => Unit)],
+                            clicked: Option[() => Unit]): Unit = bus.foreach { b =>
     val keyed = actions.zipWithIndex.map { case ((label, run), i) => ("a" + i, label, run) }
     val pairs = (clicked.map(_ => List("default", "")).getOrElse(Nil) ++ keyed.flatMap(k => List(k._1, k._2))).toVector
     val runs = keyed.map(k => k._1 -> k._3).toMap ++ clicked.map(c => "default" -> c).toMap
