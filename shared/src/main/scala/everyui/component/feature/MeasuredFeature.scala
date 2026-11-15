@@ -13,8 +13,6 @@ import everyui.render.Platform
   * asked for in a turn is read together before the frame is drawn — all the reads, then all the sizes set — rather
   * than each read forcing the browser to lay the page out again after the change before it. */
 class MeasuredFeature(private[feature] val component: Component) extends Reaction[Unit] {
-  private val w: Var[Double] = MeasuredFeature.size(this, across = true)
-  private val h: Var[Double] = MeasuredFeature.size(this, across = false)
   // queued for the turn's batch, and the size its read found, until the batch sets it
   private[feature] var queued: Boolean = false
   private[feature] var readWidth: Double = 0.0
@@ -24,8 +22,8 @@ class MeasuredFeature(private[feature] val component: Component) extends Reactio
   private var peeked: Boolean = false
   // the width and height last set, read without reading `width` (which, in a value being worked out, would make it
   // depend on it): a size read again as it was is not set again
-  private var setWidth: Double = 0.0
-  private var setHeight: Double = 0.0
+  private[feature] var setWidth: Double = 0.0
+  private[feature] var setHeight: Double = 0.0
   /** Whether its size was last read with its node out of the page (lent to it, on the web, where nothing it will be in
     * holds it to a width): read again as a kept view it is in is put back in the page (`ContainerFeature`), where what
     * it is in decides how it measures (words wrapped at their box). */
@@ -33,8 +31,19 @@ class MeasuredFeature(private[feature] val component: Component) extends Reactio
   /** Whether it has been read, or waits in the turn's batch to be. */
   private[everyui] def readOrQueued: Boolean = everRead || queued
 
-  val width: Val[Double] = w
-  val height: Val[Double] = h
+  // each, once made
+  private var w: Var[Double] = null
+  private var h: Var[Double] = null
+  /** The size as last read, as values to follow: made where something asks (most never do: a component's own size is
+    * told it directly, `SizeFeature.measuredAs`), from the size last read. */
+  lazy val width: Val[Double] = {
+    w = MeasuredFeature.size(this, across = true, setWidth)
+    w
+  }
+  lazy val height: Val[Double] = {
+    h = MeasuredFeature.size(this, across = false, setHeight)
+    h
+  }
   /** Whether its size has been read: from the first read on. Before then, where sizes are read in batches (the web), it
     * is 0 by 0 for want of a read, not for being nothing: what is worked out from it (the widest of some lines) waits
     * for it rather than taking that 0 for its size. */
@@ -97,11 +106,13 @@ class MeasuredFeature(private[feature] val component: Component) extends Reactio
     // had, which changes nothing, was most of what reading it again cost a Roku)
     if (wider) {
       setWidth = readWidth
-      w @= readWidth
+      component.size.measuredAs(true, readWidth)
+      if (w != null) w @= readWidth
     }
     if (readHeight != setHeight) {
       setHeight = readHeight
-      h @= readHeight
+      component.size.measuredAs(false, readHeight)
+      if (h != null) h @= readHeight
     }
     if (!everRead) {
       everRead = true
@@ -135,8 +146,7 @@ object MeasuredFeature {
     * then is a step on the way (a message's bubble with its words still 0 tall). */
   def settled: Boolean = pending.isEmpty && !flushing
 
-  // how deep in `withBatch` (or the making of a size that follows the measured one, which reads it as it is: what reads
-  // that size peeks first)
+  // how deep in `withBatch`
   private var holding: Int = 0
   private def quiet: Boolean = holding > 0
 
@@ -160,11 +170,10 @@ object MeasuredFeature {
     holding += 1
     try f finally holding -= 1
   }
-  private[feature] def quietly[T](f: => T): T = withBatch(f)
 
   // a measured size: on the web, one asked for out of the page and not read since is read as it is read (`peek`)
-  private def size(m: MeasuredFeature, across: Boolean): Var[Double] =
-    if (!Platform.measuresInBatches) Plain[Double](0.0) else new Plain[Double](0.0) {
+  private def size(m: MeasuredFeature, across: Boolean, first: Double): Var[Double] =
+    if (!Platform.measuresInBatches) Plain[Double](first) else new Plain[Double](first) {
       override def get: Double = m.peek(across, super.get)
     }
 

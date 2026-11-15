@@ -31,7 +31,11 @@ class Component(val node: RenderNode) {
     if (ownMotion) node.setMotion(Nil)
     // each property bound to something (`color := Theme.text()`) stops listening to it, so what it is bound to no
     // longer holds it; and the size, which a screen binds to its host's
-    owned.foreach(v => Component.unbind(v))
+    var i = ownedCount
+    while (i > 0) {
+      i -= 1
+      Component.unbind(owned(i))
+    }
     size.unbind()
     // taken off the screen as it is taken apart: a focus on it moves on to what is there in its place, and the
     // containers it was in no longer remember the focus on it
@@ -61,10 +65,23 @@ class Component(val node: RenderNode) {
     onDispose(() => to.reactions -= reaction)
   }
 
-  /** The properties made for this component so far (a lazy one is made on first use), for `dispose` to unbind. */
-  private var owned: List[Val[?]] = Nil
+  /** The properties made for this component so far (a lazy one is made on first use), for `dispose` to unbind: an
+    * array grown as it fills, the newest last, where a list cost a cell for each. */
+  private var owned: Array[Val[?]] = null
+  private var ownedCount: Int = 0
   def own[V <: Val[?]](v: V): V = {
-    owned = v :: owned
+    if (owned == null) owned = new Array[Val[?]](8)
+    else if (ownedCount == owned.length) {
+      val more = new Array[Val[?]](owned.length * 2)
+      var i = 0
+      while (i < ownedCount) {
+        more(i) = owned(i)
+        i += 1
+      }
+      owned = more
+    }
+    owned(ownedCount) = v
+    ownedCount += 1
     v
   }
   /** Ask for this to be laid out again: a container asks the layout pass (`LayoutPass`); anything else has nothing
