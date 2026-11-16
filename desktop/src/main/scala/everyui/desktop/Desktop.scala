@@ -21,7 +21,13 @@ import java.io.File
   *   --headless=1           no window: the app runs in the background (a tray icon, `everyui.tray.Tray`)
   * }}}
   *
-  * Every other `--name=value` reaches the app as `Platform.launchArg(name)`. `icon` is an image under the assets. */
+  * Every other `--name=value` reaches the app as `Platform.launchArg(name)`. `icon` is an image under the assets.
+  *
+  * `run` is where the app goes on: it runs on JavaFX's thread once the desktop is up. The thread that called `launch`
+  * must not wait for it. On macOS in a native image that thread is the process's first, which AppKit, and so JavaFX
+  * and a tray icon, need free: `main` waiting on a latch `run` counts down holds the desktop back for as long as it
+  * waits (on the JVM `main` is another thread, and it works). Do what follows in `run`, and let `main` return; JavaFX's threads keep the app alive. Where
+  * the desktop has not started a few seconds on in that case, `launch` says so. */
 object Desktop {
   def launch(args: Array[String], title: String, icon: String)(run: () => Unit): Unit = {
     def arg(name: String): Option[String] =
@@ -37,7 +43,10 @@ object Desktop {
     Host.args = args.collect { case a if a.startsWith("--") && a.contains('=') =>
       val eq = a.indexOf('='); a.substring(2, eq) -> a.substring(eq + 1) }.toMap
 
+    val started = new java.util.concurrent.atomic.AtomicBoolean(false)
+    if (Desktop.nativeMac) Desktop.watchStart(started)
     javafx.application.Platform.startup(() => {
+      started.set(true)
       val root = new Pane()
       // The render root is a viewport: content past its edges is clipped, as on every other backend.
       val clip = new Rectangle()
@@ -68,5 +77,22 @@ object Desktop {
 
       run()
     })
+  }
+
+  // a native image on macOS, where `main` is the first thread
+  private def nativeMac: Boolean =
+    System.getProperty("org.graalvm.nativeimage.imagecode") == "runtime" &&
+      System.getProperty("os.name", "").toLowerCase.startsWith("mac")
+
+  // said where the desktop has not started five seconds on: the thread that called `launch` waiting for it
+  private def watchStart(started: java.util.concurrent.atomic.AtomicBoolean): Unit = {
+    val t = new Thread(() => {
+      Thread.sleep(5000L)
+      if (!started.get()) System.err.println("[everyui] the desktop has not started 5 s after Desktop.launch: on macOS " +
+        "in a native image the thread that called it is the first, which JavaFX needs; do what follows in launch's " +
+        "`run` and return from main, rather than wait for it there")
+    }, "everyui-desktop-start-watch")
+    t.setDaemon(true)
+    t.start()
   }
 }
