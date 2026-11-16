@@ -31,6 +31,55 @@ class MonacoModelsSpec extends MonacoFxSpec {
     fx(guest.say("model.contentChange", obj((List("uri" -> str(uri), "versionId" -> num(2),
       "changes" -> arr(obj("rangeOffset" -> num(offset), "rangeLength" -> num(0), "text" -> str(text)))) ++ extra)*)))
 
+  private def setModels(guest: FakeGuest): List[String] =
+    fx(guest.calls.filter(_._1 == "editor.setModel").map(c => Wire.string(c._2, "uri")))
+
+  "A controller switching models" should {
+    "switch in the order asked before its editor is made, the last file shown last" in {
+      // Voidcraft's reload: a file's tab shown rendered (its editor hidden, not yet made) asks for its model, then another
+      // file's tab brought to the front asks for its own, each waiting on `ready`; made, the editor showed the first
+      val guest = fx(new FakeGuest("models-order-1", answering()))
+      val bridge = fx(Monaco.bridge(guest))
+      fx(bridge.attach(guest))
+      eventually()(bridge.isReady) shouldBe true
+      val logo = fx(MonacoModels.open("file:///order/logo.svg", "logo", "xml"))
+      val broken = fx(MonacoModels.open("file:///order/broken.svg", "broken", "xml"))
+      val controller = fx(MonacoController(initialValue = ""))
+      val first = fx(controller.ready.flatMap(_ => controller.switchToModel(logo.uri))(using Monaco.uiThread))
+      val second = fx(controller.ready.flatMap(_ => controller.switchToModel(broken.uri))(using Monaco.uiThread))
+      fx(controller.attach(bridge, obj("editorId" -> str("o1"), "uri" -> str("inmemory://model/o1"),
+        "versionId" -> num(1), "value" -> str(""))))
+      eventually()(first.isCompleted && second.isCompleted) shouldBe true
+      setModels(guest).lastOption shouldBe Some(broken.uri)
+      fx(controller.dispose())
+      fx(MonacoModels.close(logo.uri))
+      fx(MonacoModels.close(broken.uri))
+      fx(bridge.close())
+    }
+
+    "show the last model asked for when an earlier one's copy comes after it" in {
+      val slow = "file:///order/slow.svg"
+      val guest = fx(new FakeGuest("models-order-2", (m, a) =>
+        if (m == "models.open" && Wire.string(a, "uri") == slow) None else answering()(m, a)))
+      val (bridge, controller) = editorOn(guest, "o2")
+      val held = fx(MonacoModels.open(slow, "slow", "xml"))
+      val quick = fx(MonacoModels.open("file:///order/quick.svg", "quick", "xml"))
+      val first = fx(controller.switchToModel(held.uri))
+      val second = fx(controller.switchToModel(quick.uri))
+      eventually()(second.isCompleted) shouldBe true
+      setModels(guest) shouldBe List(quick.uri)
+      // the slow copy made at last: the switch to it, overtaken, is let go of
+      val n = fx(guest.calls.indexWhere(c => c._1 == "models.open" && Wire.string(c._2, "uri") == slow))
+      fx(guest.reply(n, obj("uri" -> str(slow), "versionId" -> num(1), "value" -> str("slow"))))
+      eventually()(first.isCompleted) shouldBe true
+      setModels(guest) shouldBe List(quick.uri)
+      fx(controller.dispose())
+      fx(MonacoModels.close(held.uri))
+      fx(MonacoModels.close(quick.uri))
+      fx(bridge.close())
+    }
+  }
+
   "The model registry" should {
     "open a model once, copy it into a Monaco as an editor comes to show it, share its dirty state, and keep it while shown" in {
       val guest = fx(new FakeGuest("models-1", answering()))

@@ -97,14 +97,27 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   private var editorId: String = ""
   private var mirror = new TextMirror(startText, 0)
   private var stopListening: () => Unit = () => ()
-  private var attachedOnce = Promise[Unit]()
+  // what waits for the next editor, told in the order it asked: one Promise's callbacks run in no stated order (newest
+  // first on the web), and two files shown before the editor was made switched to it the wrong way round, the first
+  // shown last
+  private var waiting = Vector.empty[Promise[Unit]]
+  // the switches asked for (switchToModel): only the last one asked for is made, whatever order theirs come ready in
+  private var switches = 0L
   private var disposed = false
   private val actions = scala.collection.mutable.LinkedHashMap.empty[String, MonacoAction]
   private val commands = scala.collection.mutable.LinkedHashMap.empty[String, (Int, Option[String], () => Unit)]
   private var commandsMade = 0
 
-  /** Completes once an editor is showing this; after a detach, once one is again. */
-  def ready: Future[Unit] = attachedOnce.future
+  /** Completes once an editor is showing this; after a detach, once one is again. What waits for it is run in the order
+    * it asked (`ready.flatMap(...)` twice before the editor is made: the first, then the second). */
+  def ready: Future[Unit] =
+    if (disposed) Future.failed(new MonacoBridgeException("the controller was disposed"))
+    else if (isAttached) Future.unit
+    else {
+      val p = Promise[Unit]()
+      waiting = waiting :+ p
+      p.future
+    }
   def isAttached: Boolean = bridge.nonEmpty
   def isDisposed: Boolean = disposed
 
@@ -270,19 +283,27 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
   /** The editor shows `uri`: a model opened through MonacoModels (shared with every other editor showing it), or one
     * made by `createModel`. The editor keeps its own cursor, selection, scroll and folding in each model it has shown,
     * and has them back as it shows that model again. */
-  def switchToModel(uri: String): Future[Unit] = MonacoModels.get(uri) match {
-    case Some(m) =>
-      check()
-      val done = MonacoModels.use(uri)
-      val switched = (if (isAttached) Future.unit else ready).flatMap { _ =>
-        bridge match {
-          case Some(to) => m.in(to).flatMap(_ => invoke("editor.setModel", obj("uri" -> str(uri))))
-          case None => Future.failed(new MonacoBridgeException("no editor is showing this controller", "editor.setModel"))
+  def switchToModel(uri: String): Future[Unit] = {
+    check()
+    switches += 1L
+    val asked = switches
+    // a later switch asked for meanwhile is the one shown: this one, still waiting (for the editor, or for its model's
+    // copy in Monaco), is let go of rather than made after it
+    def setModel(): Future[Unit] =
+      if (asked != switches) Future.unit else invoke("editor.setModel", obj("uri" -> str(uri))).map(_ => ())
+    MonacoModels.get(uri) match {
+      case Some(m) =>
+        val done = MonacoModels.use(uri)
+        val switched = ready.flatMap { _ =>
+          bridge match {
+            case Some(to) => m.in(to).flatMap(_ => setModel())
+            case None => Future.failed(new MonacoBridgeException("no editor is showing this controller", "editor.setModel"))
+          }
         }
-      }.map(_ => ())
-      switched.onComplete(_ => done())
-      switched
-    case None => whenReady("editor.setModel", obj("uri" -> str(uri))).map(_ => ())
+        switched.onComplete(_ => done())
+        switched
+      case None => ready.flatMap(_ => setModel())
+    }
   }
 
   /** A model made by `createModel` let go (switch away from it first if the editor shows it); one opened through
@@ -301,7 +322,9 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     detach()
     was.foreach(b => b.call("editor.dispose", obj("editorId" -> str(id))))
     disposed = true
-    attachedOnce.tryFailure(new MonacoBridgeException("the controller was disposed"))
+    val left = waiting
+    waiting = Vector.empty
+    left.foreach(_.tryFailure(new MonacoBridgeException("the controller was disposed")))
   }
 
   // ---- what MonacoEditor does with it ----
@@ -339,7 +362,10 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     live @= true
     actions.values.foreach(a => invoke("editor.addAction", a.toJson))
     commands.keys.foreach(id => invoke("editor.addCommand", command(id)))
-    attachedOnce.trySuccess(())
+    // in the order they asked
+    val now = waiting
+    waiting = Vector.empty
+    now.foreach(_.trySuccess(()))
   }
 
   /** Its editor gone: calls wait for the next one. */
@@ -350,7 +376,6 @@ class MonacoController(initialValue: String = "", initialLanguage: String = "pla
     bridge = None
     editorId = ""
     live @= false
-    if (attachedOnce.isCompleted) attachedOnce = Promise[Unit]()
     MonacoModels.release(model())
   }
 
