@@ -1,7 +1,7 @@
 package everyui.memory
 
 import everyui.Color
-import everyui.chat.{ActivityStatus, ChatEntry, Participant, Transcript}
+import everyui.chat.{ActivityStatus, ChatEntry, ChatTime, Participant, Transcript}
 import everyui.component.{Button, Component, Container, ImageView, ScrollContainer, TextView}
 import everyui.kit.TabGroups
 import everyui.layout.VerticalLayout
@@ -16,6 +16,7 @@ import reactify.*
 object MemoryCases {
   val all: List[MemoryCase] = List(
     MemoryCase("TextView", "view", 200, () => stacked(i => words("A line of words, number " + i.toString))),
+    MemoryCase("TextView, ticking", "view", 200, () => tickingWords()),
     MemoryCase("Button", "button", 200, () => stacked(i => new Button("Button " + i.toString))),
     MemoryCase("Container", "container", 200, () => stacked(_ => box())),
     MemoryCase("ImageView", "view", 100, () => stacked(_ => ImageView(Platform.resolvePath("images/everyui-mark.png"),
@@ -33,6 +34,7 @@ object MemoryCases {
     MemoryCase("Transcript, Markdown table", "message", 20, () => transcript(i => message(i, markdownTable))),
     MemoryCase("Transcript, tool call folded", "message", 100, () => transcript(i => call(i, open = false))),
     MemoryCase("Transcript, tool call open", "message", 50, () => transcript(i => call(i, open = true))),
+    MemoryCase("Transcript, tool call running", "message", 20, () => runningCalls()),
     MemoryCase("Transcript in 900 px, plain", "message", 200,
       () => transcript(i => message(i, "Sounds good, go ahead."), height = 900.0))
   )
@@ -46,6 +48,24 @@ object MemoryCases {
     def add(n: Int): Unit = {
       column.children ++= (made until made + n).map(make)
       made += n
+    }
+  }
+
+  // views of words in a column, each how long something has run, bound to a clock that each tick moves on a second
+  private def tickingWords(): MemoryRig = {
+    val clock = Var(1790000000000L)
+    val column = stacked { i =>
+      val t = new TextView
+      t.content := "Running for " + ChatTime.span(clock() - (1790000000000L - i * 7000L))
+      t
+    }
+    new MemoryRig {
+      def root: Component = column.root
+      def add(n: Int): Unit = column.add(n)
+      override def tick(): Boolean = {
+        clock @= clock() + 1000L
+        true
+      }
     }
   }
 
@@ -177,6 +197,29 @@ object MemoryCases {
     val a = ChatEntry.activity("a" + i.toString, "Ran the test suite", ActivityStatus.Succeeded,
       Some(ChatEntry.textDetails("sbt test", "[info] 412 tests passed")), Some(1790000000000L + i * 60000L))
     a.expanded @= open
+    a
+  }
+
+  // tool calls running, each with when it began and how long it has run as its aside, bound to a clock (as an app binds
+  // it to `Clock.now`) that each tick moves on a second
+  private def runningCalls(): MemoryRig = {
+    val clock = Var(1790000000000L)
+    val calls = transcript(i => running(i, clock))
+    new MemoryRig {
+      def root: Component = calls.root
+      def add(n: Int): Unit = calls.add(n)
+      override def tick(): Boolean = {
+        clock @= clock() + 1000L
+        true
+      }
+    }
+  }
+
+  private def running(i: Int, clock: Val[Long]): ChatEntry = {
+    val began = 1790000000000L - i * 7000L
+    val a = ChatEntry.activity("r" + i.toString, "Ran `sbt test`", ActivityStatus.Running, time = Some(began))
+    a.aside := "9:42:13 AM · " + ChatTime.span(clock() - began)
+    a.asideHint := "Started at 9:42:13 AM, running for " + ChatTime.span(clock() - began)
     a
   }
 

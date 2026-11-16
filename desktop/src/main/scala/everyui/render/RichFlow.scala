@@ -77,12 +77,14 @@ class RichFlow extends TextFlow {
     val words = if (rtl && width > 0.0) RtlText.lines(shown.map(_.text).zip(fonts), width) else shown.map(_.text)
     val now = shown.zip(words).zip(fonts).map(p => (p._1._1, p._1._2, p._2))
     // the nodes of the runs that begin as the last did kept, only those from the first that changed made again: code
-    // that grows as an answer streams in draws its last lines, not the whole block
+    // that grows as an answer streams in draws its last lines, not the whole block; a run drawn as the one in its place
+    // in every way but its words keeps its node too, its words written into it (a line whose time moves on each second)
     var kept = 0
     if (colour == drawnColour && italic == drawnItalic && getChildren.size == drawn.size) {
       var was = drawn
       var next = now
-      while (was.nonEmpty && next.nonEmpty && was.head == next.head) {
+      while (was.nonEmpty && next.nonEmpty && (was.head == next.head || RichFlow.rewordable(was.head, next.head))) {
+        if (was.head != next.head) getChildren.get(kept).asInstanceOf[Text].setText(next.head._2)
         kept += 1
         was = was.tail
         next = next.tail
@@ -168,6 +170,11 @@ class RichFlow extends TextFlow {
 }
 
 object RichFlow {
+  /** Whether `now` (a run, its words and its face) is drawn as `was` in every way but its words, neither a picture: its
+    * node is kept, its words written into it. */
+  def rewordable(was: (TextRun, String, Font), now: (TextRun, String, Font)): Boolean =
+    was._1.image.isEmpty && now._1.image.isEmpty && was._3 == now._3 && was._1.copy(text = now._1.text) == now._1
+
   // the runs' pictures by address, loaded once, behind the drawing: a custom emoji is in many messages
   private val pictures = scala.collection.mutable.HashMap.empty[String, javafx.scene.image.Image]
 

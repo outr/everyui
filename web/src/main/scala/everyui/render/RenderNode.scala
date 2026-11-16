@@ -24,10 +24,12 @@ import scala.scalajs.js
   */
 class RenderNode(val el: html.Element) {
   def getText(): String = el.textContent
+  /** The words, written into the text node already there where they are one (a clock's seconds, a count), so a change
+    * makes no node of the page's; otherwise as the element's whole content. */
   def setText(text: String): Unit = {
     counted("text", text)
     drawnRuns = Nil
-    el.textContent = text
+    if (text.isEmpty || !RenderNode.reworded(el, text)) el.textContent = text
   }
 
   // a write to the page, counted where `PerfCounters` counts: whether it wrote what this last wrote there
@@ -384,16 +386,19 @@ class RenderNode(val el: html.Element) {
     * click on a link is `follow`ed (a path on this site shown in place, any other opened, unless the app says
     * otherwise); one clicked with a modifier is the browser's (a new tab). Runs that begin as the last did keep what
     * draws them, only those from the first that changed made again: code that grows as an answer streams in writes its
-    * last lines, not the whole block. A run's colour, lines and wash are a class of the page's (`RenderNode.runClass`),
-    * one for each look, rather than a style on each span; its face, weight, slant, size and spacing stay on the span,
-    * where the faces its words wait for are found (`TextFit`). */
+    * last lines, not the whole block. A run drawn as the one in its place in every way but its words keeps its node
+    * too, its words written into it (`RenderNode.reworded`), so a line whose time moves on each second makes nothing of
+    * the page's. A run's colour, lines and wash are a class of the page's (`RenderNode.runClass`), one for each look,
+    * rather than a style on each span; its face, weight, slant, size and spacing stay on the span, where the faces its
+    * words wait for are found (`TextFit`). */
   def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
     // (its nodes are the runs drawn, one each, unless something else wrote it since)
     var kept = 0
     if (el.childNodes.length == drawnRuns.size) {
       var was = drawnRuns
       var now = runs
-      while (was.nonEmpty && now.nonEmpty && was.head == now.head) {
+      while (was.nonEmpty && now.nonEmpty && (was.head == now.head || RenderNode.rewordable(was.head, now.head) &&
+        RenderNode.reworded(el.childNodes(kept), now.head.text))) {
         kept += 1
         was = was.tail
         now = now.tail
@@ -928,8 +933,9 @@ class RenderNode(val el: html.Element) {
 
   /** What the element is to a screen reader or a crawler: its ARIA role, a heading's level, its name. */
   def setSemantics(role: String, level: Int, label: String): Unit = {
+    // (one as it was is not written again: a row whose label follows a clock writes its label alone)
     def attribute(name: String, value: String): Unit =
-      if (value.isEmpty) el.removeAttribute(name) else el.setAttribute(name, value)
+      if (value.isEmpty) el.removeAttribute(name) else if (el.getAttribute(name) != value) el.setAttribute(name, value)
     attribute("role", role)
     attribute("aria-level", if (role == "heading" && level > 0) level.toString else "")
     attribute("aria-label", label)
@@ -1372,6 +1378,21 @@ class RenderNode(val el: html.Element) {
 }
 
 object RenderNode {
+  /** Whether `now` is drawn as `was` in every way but its words, neither a picture: its node can be kept, its words
+    * written into it (`reworded`). */
+  def rewordable(was: everyui.text.TextRun, now: everyui.text.TextRun): Boolean =
+    was.image.isEmpty && now.image.isEmpty && was.copy(text = now.text) == now
+
+  /** `words` written into `node` where it is a text node, or an element holding one alone, rather than a node made for
+    * them: whether it was (a node of any other shape is left as it is). Words the same as before write nothing. */
+  def reworded(node: dom.Node, words: String): Boolean = {
+    val text = if (node.nodeType == dom.Node.TEXT_NODE) node
+      else if (node.childNodes.length == 1 && node.firstChild.nodeType == dom.Node.TEXT_NODE) node.firstChild
+      else null
+    if (text != null && text.nodeValue != words) text.nodeValue = words
+    text != null
+  }
+
   // the rule that takes a scroll's scrollbar away where it has none (`setScrollbarShown`), put in the page once
   private var barRule = false
   private[render] def barless(): Unit = if (!barRule) {

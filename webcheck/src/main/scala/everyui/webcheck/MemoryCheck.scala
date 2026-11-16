@@ -14,7 +14,10 @@ import java.nio.file.{Files, Path, Paths}
   * straight after a collection (`HeapProfiler.collectGarbage`); the DOM nodes and event listeners
   * (`Performance.getMetrics`); the live components (`Component.liveNow`). Then another step, read again, and the rig
   * taken apart, read once more. A unit costs the difference between the two steps over the step, so what the first of
-  * them set up once is left out; "components left" is what taking the rig apart did not let go, per unit.
+  * them set up once is left out; "components left" is what taking the rig apart did not let go, per unit. Where the
+  * case shows a clock (`MemoryRig.tick`), it is moved on `ticks` seconds before the rig is taken apart, each let draw,
+  * and the DOM nodes the page made meanwhile counted, per unit and second ("nodes made per tick"; a MutationObserver's
+  * added nodes, with what each holds): a line whose time moves on writes its words in place, and makes nothing.
   *
   * The table is written to `out`, and each measure held to the baseline's with a tenth's margin (`margin`, and a heap's
   * noise, `slack`): one over fails the check. With `--update` the table becomes the baseline instead.
@@ -23,11 +26,14 @@ import java.nio.file.{Files, Path, Paths}
   */
 object MemoryCheck extends RapidApp {
   private val columns = Vector("JS heap bytes", "DOM heap bytes", "DOM nodes", "listeners", "components",
-    "components left")
+    "components left", "nodes made per tick")
   /** How far over its baseline each measure may go: a tenth. Blink's heap had a quarter while it moved by up to a
     * quarter from run to run, which was a transcript's hidden spinner turning (`RenderNode.setMotion`) and its clock
     * (`collections`); read as it is now, it moves by a few bytes in ten runs. */
   def margin(column: String): Double = 0.1
+
+  /** How many seconds a case's clock is moved on (`MemoryRig.tick`) while the nodes the page makes are counted. */
+  val ticks: Int = 10
 
   /** How many times each reading collects the garbage and reads the heaps, the least of them kept. A heap read straight
     * after a collection is what is live, but for what the page allocated between the two: a transcript's clock, which
@@ -108,17 +114,31 @@ object MemoryCheck extends RapidApp {
       first <- read(browser)
       _ <- browser.eval("everyuiMemory.add(" + step.toString + "); return 0")
       second <- read(browser)
+      made <- ticked(browser)
       _ <- browser.eval("everyuiMemory.dispose(); return 0")
       after <- read(browser)
     } yield {
       val per = second.indices.map(i => (second(i) - first(i)) / step).toVector
-      val row = MemoryRow(name, unit, per :+ (after(4) - before(4)) / (2 * step))
+      val row = MemoryRow(name, unit, per :+ (after(4) - before(4)) / (2 * step) :+ made / (ticks * 2 * step))
       println("[memory] " + name + ": " + columns.indices.map(i => columns(i) + " " +
         MemoryTable.show(columns(i), row.values(i))).mkString(", "))
       System.out.flush()
       row
     }
   }
+
+  // the DOM nodes the page made as the case's clock moved on `ticks` seconds, each let draw (two frames and a turn):
+  // none where it shows no clock
+  private def ticked(browser: RoboBrowser): Task[Double] = for {
+    made <- browser.eval("return new Promise(r => { let made = 0; const count = n => { let c = 1; " +
+      "for (const k of n.childNodes) c += count(k); return c; }; " +
+      "const watch = new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => made += count(n)))); " +
+      "watch.observe(document.body, { subtree: true, childList: true }); let left = " + ticks.toString + "; " +
+      "const next = () => { if (left-- == 0 || !everyuiMemory.tick()) { " +
+      "watch.takeRecords().forEach(m => m.addedNodes.forEach(n => made += count(n))); watch.disconnect(); r(made); " +
+      "} else { requestAnimationFrame(() => " +
+      "requestAnimationFrame(() => setTimeout(next, 0))); } }; next(); })", awaitPromise = true)
+  } yield made("result")("value").asDouble
 
   // the page settled, then: the heaps used, the least of `collections` readings each straight after a collection, the
   // DOM nodes, the listeners, the live components

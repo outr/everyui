@@ -3,6 +3,7 @@
 | case | unit | components | JavaFX nodes | components left | heap bytes |
 |---|---|---:|---:|---:|---:|
 | TextView | view | 1.0 | 1.0 | 0.0 | 5824 |
+| TextView, ticking | view | 1.0 | 1.0 | 0.0 | 5925 |
 | Button | button | 3.0 | 3.0 | 0.0 | 22801 |
 | Container | container | 1.0 | 1.0 | 0.0 | 5865 |
 | ImageView | view | 1.0 | 1.0 | 0.0 | 3584 |
@@ -19,4 +20,5 @@
 | Transcript, Markdown table | message | 49.0 | 73.0 | 0.0 | 400845 |
 | Transcript, tool call folded | message | 16.0 | 17.0 | 0.0 | 101112 |
 | Transcript, tool call open | message | 22.0 | 23.0 | 0.0 | 135564 |
+| Transcript, tool call running | message | 16.0 | 21.0 | 0.0 | 117080 |
 | Transcript in 900 px, plain | message | 0.0 | 0.0 | 0.0 | 10170 |

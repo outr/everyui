@@ -12,6 +12,7 @@ import scala.scalajs.js as sjs
   *  - `cases()`: the cases, a line each of name, unit and step, apart by tabs;
   *  - `start(name)`: the case's rig on the screen;
   *  - `add(n)`: `n` more of its units;
+  *  - `tick()`: its clock moved on a second, where it shows one, and whether it does;
   *  - `live()`: `Component.liveNow`;
   *  - `dispose()`: the rig off the screen and taken apart. */
 object MemoryPage {
@@ -29,6 +30,7 @@ object MemoryPage {
         rig = Some(made)
       }): sjs.Function1[String, Unit],
       add = ((n: Int) => rig.foreach(_.add(n))): sjs.Function1[Int, Unit],
+      tick = (() => rig.exists(_.tick())): sjs.Function0[Boolean],
       live = (() => Component.liveNow): sjs.Function0[Int],
       dispose = (() => rig.foreach { r =>
         ui.children -= r.root
