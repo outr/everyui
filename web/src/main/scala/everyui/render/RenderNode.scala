@@ -640,7 +640,11 @@ class RenderNode(val el: html.Element) {
   def setVisible(visible: Boolean): Unit = {
     counted("display", visible.toString)
     el.style.display = if (visible) "" else "none"
-    animations.foreach(a => if (visible) a.play() else a.pause())
+    // only what is running is paused, and only what was paused goes on: a finished one played again would start over
+    animations.foreach { a =>
+      val state = a.playState.asInstanceOf[String]
+      if (visible) { if (state == "paused") a.play() } else if (state == "running") a.pause()
+    }
     WebHover.changed()
     // no longer laid out only to be measured (RenderNode.reveal)
     if (el.style.visibility.nonEmpty) el.style.visibility = ""
