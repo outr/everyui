@@ -10,6 +10,28 @@ class MonacoDiffSpec extends MonacoFxSpec {
   private val deletion = MonacoLineChange(7, 8, 8, 0)
   private val edit = MonacoLineChange(4, 5, 4, 6, List(MonacoCharChange(MonacoRange(4, 20, 4, 21), MonacoRange(4, 20, 4, 30))))
 
+  "A diff controller waiting for its editor" should {
+    "run what waits on ready in the order asked as it attaches, and fail it in that order as it is disposed of" in {
+      val guest = fx(new FakeGuest("diff-order", (_, _) => Some(Null)))
+      val bridge = fx(Monaco.bridge(guest))
+      fx(bridge.attach(guest))
+      eventually()(bridge.isReady) shouldBe true
+      val controller = fx(MonacoDiffController("a", "b", "scala"))
+      val asked = fx((1 to 3).toList.map(n => controller.ready.flatMap(_ => controller.revealLine(n))(using Monaco.uiThread)))
+      fx(controller.attach(bridge, "diff-order-1"))
+      eventually()(asked.forall(_.isCompleted)) shouldBe true
+      fx(guest.calls.filter(_._1 == "diff.revealLine").map(c => Wire.int(c._2, "line"))) shouldBe List(1, 2, 3)
+      // a second editor's controller, disposed of before it is made: what waited fails, first asked first
+      val gone = fx(MonacoDiffController("c", "d"))
+      var failed: List[Int] = Nil
+      fx((1 to 3).foreach(n => gone.ready.failed.foreach(_ => failed = failed :+ n)(using Monaco.uiThread)))
+      fx(gone.dispose())
+      failed shouldBe List(1, 2, 3)
+      fx(controller.dispose())
+      fx(bridge.close())
+    }
+  }
+
   "A diff controller" should {
     "read the changes Monaco reports, map a gutter click to its change, and send the checks and hunk edits" in {
       val guest = fx(new FakeGuest("diff-spec", (_, _) => Some(Null)))

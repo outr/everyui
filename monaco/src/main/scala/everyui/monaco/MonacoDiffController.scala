@@ -47,10 +47,21 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
   private var leftMirror = new TextMirror(originalValue, 0)
   private var rightMirror = new TextMirror(modifiedValue, 0)
   private var stopListening: () => Unit = () => ()
-  private var attachedOnce = Promise[Unit]()
+  // what waits for the next diff editor, told in the order it asked: one Promise's callbacks run in no stated order
+  // (newest first on the web), as MonacoController's did
+  private var waiting = Vector.empty[Promise[Unit]]
   private var disposed = false
 
-  def ready: Future[Unit] = attachedOnce.future
+  /** Completes once a diff editor is showing this; after a detach, once one is again. What waits for it is run in the
+    * order it asked. */
+  def ready: Future[Unit] =
+    if (disposed) Future.failed(new MonacoBridgeException("the controller was disposed"))
+    else if (isAttached) Future.unit
+    else {
+      val p = Promise[Unit]()
+      waiting = waiting :+ p
+      p.future
+    }
   def isAttached: Boolean = bridge.nonEmpty
   def isDisposed: Boolean = disposed
 
@@ -119,7 +130,9 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
     detach()
     was.foreach(_.call("diff.dispose", obj("diffId" -> str(id))))
     disposed = true
-    attachedOnce.tryFailure(new MonacoBridgeException("the controller was disposed"))
+    val failing = waiting
+    waiting = Vector.empty
+    failing.foreach(_.tryFailure(new MonacoBridgeException("the controller was disposed")))
   }
 
   private[monaco] def createArgs: Json = obj(
@@ -137,7 +150,10 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
     stopListening = to.listen(event => if (event.diffId == diffId) heard(event))
     if (checks().nonEmpty) sendChecks()
     live @= true
-    attachedOnce.trySuccess(())
+    // in the order they asked
+    val now = waiting
+    waiting = Vector.empty
+    now.foreach(_.trySuccess(()))
   }
 
   private[monaco] def detach(): Unit = if (isAttached) {
@@ -145,7 +161,6 @@ class MonacoDiffController(originalValue: String = "", modifiedValue: String = "
     bridge = None
     diffId = ""
     live @= false
-    if (attachedOnce.isCompleted) attachedOnce = Promise[Unit]()
   }
 
   private def heard(event: BridgeEvent): Unit = event.`type` match {
