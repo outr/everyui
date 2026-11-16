@@ -155,6 +155,13 @@ class Component(val node: RenderNode) {
     }))
   }
 
+  /** Whether, while it is hidden (`visible` false), it is still laid out where the platform would otherwise drop its
+    * layout (the web, which lays out nothing under `display: none`): what is hidden only to be measured, and measured
+    * again as its words change (a clock's), is then read where it is, rather than laid out afresh for each read and
+    * dropped again. It is drawn no more for it, takes no pointer, adds nothing to a scroll and is passed over by a
+    * screen reader. Off by default; elsewhere what is hidden is laid out already, and it changes nothing. */
+  lazy val laidOutHidden: Prop[Boolean] = own(new Prop[Boolean](false, k => node.setLaidOutHidden(k)))
+
   private var collapsesMade = false
   /** Whether, while it is hidden (`visible` false), it takes no room either: left out of its column, row or flow and
     * out of its container's size, as a child with no size is, and back in its place as it is shown again. Off by
@@ -405,7 +412,14 @@ class Component(val node: RenderNode) {
   lazy val tooltip: Prop[String] = own(new Prop[String]("", t => node.setTooltip(t)))
   /** What whatever reads the page hears of it after its name (a list row's tip): the web's `aria-describedby`, TalkBack's
     * hint; nothing where the platform has no reader of descriptions. */
-  lazy val accessibleDescription: Prop[String] = own(new Prop[String]("", _ => describe()))
+  lazy val accessibleDescription: Prop[String] = {
+    describedMade = true
+    own(new Prop[String]("", _ => describe()))
+  }
+  // whether `accessibleDescription` has been made: one never made is empty, and a look at it need not make it
+  private var describedMade = false
+  /** Its description as it stands (`accessibleDescription`), without making it. */
+  private[everyui] def describedNow: String = if (describedMade) accessibleDescription() else ""
   // its description and, after it, what is wrong with it (`invalid`)
   private def describe(): Unit =
     node.setDescription(List(accessibleDescription(), invalid()).filter(_.nonEmpty).mkString(". "))

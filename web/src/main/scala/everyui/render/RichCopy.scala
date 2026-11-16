@@ -193,7 +193,7 @@ object RichCopy {
 
   // whether the selection reaches `n`, and it shows and is not left out
   private def taken(n: dom.Node, range: dom.Range): Boolean = reaches(range, n) && (n match {
-    case e: html.Element => tag(e) != "none" && e.style.display != "none"
+    case e: html.Element => tag(e) != "none" && e.style.display != "none" && e.style.visibility != "hidden"
     case _ => true
   })
 

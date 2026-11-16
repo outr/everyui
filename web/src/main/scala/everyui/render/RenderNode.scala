@@ -644,7 +644,8 @@ class RenderNode(val el: html.Element) {
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = {
     counted("display", visible.toString)
-    el.style.display = if (visible) "" else "none"
+    hiddenNow = !visible
+    if (laidOut) undrawn(!visible) else el.style.display = if (visible) "" else "none"
     // only what is running is paused, and only what was paused goes on: a finished one played again would start over
     animations.foreach { a =>
       val state = a.playState.asInstanceOf[String]
@@ -652,7 +653,37 @@ class RenderNode(val el: html.Element) {
     }
     WebHover.changed()
     // no longer laid out only to be measured (RenderNode.reveal)
-    if (el.style.visibility.nonEmpty) el.style.visibility = ""
+    if (!laidOut && el.style.visibility.nonEmpty) el.style.visibility = ""
+  }
+  // whether it is hidden (`setVisible`), and laid out all the same while it is (`setLaidOutHidden`)
+  private var hiddenNow = false
+  private var laidOut = false
+  /** Laid out while it is hidden, or not: hidden, it is `visibility: hidden` rather than `display: none`, so its
+    * boxes are kept and a read of its size lays out only what changed in it, and it is cut to its box
+    * (`overflow: clip`, where it has no clip of its own), so what it holds adds nothing to the page's scroll. A screen
+    * reader passes over what is not visible either way. */
+  def setLaidOutHidden(on: Boolean): Unit = if (on != laidOut) {
+    laidOut = on
+    if (hiddenNow) {
+      if (on) el.style.display = ""
+      undrawn(on)
+      if (!on) el.style.display = "none"
+    }
+  }
+  // (the clip it was given for it, to be taken away with it)
+  private var undrawnClip = false
+  private def undrawn(on: Boolean): Unit = {
+    el.style.visibility = if (on) "hidden" else ""
+    if (on && el.style.overflow.isEmpty) {
+      el.style.overflow = "clip"
+      undrawnClip = true
+    }
+    else if (!on && undrawnClip) {
+      if (el.style.overflow == "clip") el.style.overflow = ""
+      undrawnClip = false
+    }
+    // (hidden on purpose now, not laid out for a read and hidden again before the frame: `RenderNode.reveal`)
+    if (on) RenderNode.unreveal(el)
   }
   /** Hidden from the page by the scroll it is in, out of its view, or shown again: `hidden="until-found"`, which the
     * browser lays out and draws no more (`content-visibility: hidden`, the box kept) while its find in page still
@@ -716,7 +747,8 @@ class RenderNode(val el: html.Element) {
       described = Some(made)
       made
     }
-    d.textContent = text
+    // (written into the words there are, where it has some: a description that follows a clock makes no nodes)
+    if (!RenderNode.reworded(d, text)) d.textContent = text
   }
   /** A drawing's figures (everyui.draw.Drawing): a `<path>` each in its `<svg>`, the elements kept and only their
     * attributes changed, so a row of a long list handed another item does no more than that. */
@@ -1664,6 +1696,11 @@ object RenderNode {
     }
     boxes.map(r => (r.width / at, r.height / at))
   }
+
+  /** `el` no longer one `reveal` hides again before the frame: it is hidden on purpose now, laid out
+    * (`setLaidOutHidden`). */
+  private[render] def unreveal(el: html.Element): Unit =
+    if (revealed.exists(_ eq el)) revealed = revealed.filterNot(_ eq el)
 
   // hidden again, unless it was shown or hidden since (setVisible clears the visibility)
   private def hide(): Unit = {

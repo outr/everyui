@@ -110,6 +110,9 @@ class ActivityView(a: ChatEntry.Activity, width: => Double, details: () => Optio
     runs := asideRuns()
   }
   measuring.children += wholeAside
+  // laid out while hidden once the aside changes (a running call's time, each second): measured again where it is,
+  // rather than laid out afresh for each read and dropped again; a call whose aside holds still keeps no layout for it
+  asideRuns.attach(_ => if (!measuring.laidOutHidden()) measuring.laidOutHidden @= true)
   private val together: Val[Boolean] = own(Val(hasAside() && ActivityView.spared(wholeSummary.size.width()) +
     ActivityView.asideGap + ActivityView.spared(wholeAside.size.width()) <= summaryRoom() + 0.5))
   private val aside: RichText = new RichText {

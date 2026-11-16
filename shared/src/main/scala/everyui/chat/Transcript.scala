@@ -244,10 +244,36 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     * aside's hint, its body and how it stands; then its rail's `railLabel`, where it has one. A message's words, a
     * summary, an aside and a body are said as they read (`spoken`, `MarkdownLine.words`), not as the Markdown they
     * were written in. */
-  def said(entry: ChatEntry): String = {
-    val label = entry.railLabel()
-    if (label.isEmpty) saidOf(entry) else saidOf(entry) + ", " + label.get
+  def said(entry: ChatEntry): String = railed(entry, saidOf(entry))
+
+  /** An entry's name to a screen reader, as its row has it: what `said` says, less what may follow a clock (a running
+    * tool call's time, in its aside and the aside's hint), which would change the name each second and have a reader
+    * say it again as it did. That is its description (`describedOf`), heard after the name, which is kept up to date
+    * and not said again as it changes; the rest of the transcript keeps its clocks out of its names already (a
+    * message's time, reasoning's and work's). */
+  def named(entry: ChatEntry): String = entry match {
+    case a: ChatEntry.Activity => railed(a, activitySaid(a, ""))
+    case _ => said(entry)
   }
+
+  /** What a screen reader hears of an entry after its name (`named`): a tool call's aside and the aside's hint, said as
+    * they read; nothing for the rest. */
+  def describedOf(entry: ChatEntry): String = entry match {
+    case a: ChatEntry.Activity => (if (a.aside().isEmpty) "" else MarkdownLine.words(a.aside())) +
+      (if (a.aside().isEmpty || a.asideHint().isEmpty) "" else ", ") + a.asideHint()
+    case _ => ""
+  }
+
+  // the entry's words, then its rail's label, where it has one
+  private def railed(entry: ChatEntry, words: String): String = {
+    val label = entry.railLabel()
+    if (label.isEmpty) words else words + ", " + label.get
+  }
+
+  // a tool call by what it does, then what is `described` of it, its body and how it stands
+  private def activitySaid(a: ChatEntry.Activity, described: String): String = MarkdownLine.words(a.summary()) +
+    (if (described.isEmpty) "" else ", " + described) +
+    (if (a.body().isEmpty) "" else ": " + spoken(a.body())) + ", " + ActivityView.said(a.status())
 
   private def saidOf(entry: ChatEntry): String = entry match {
     case w: ChatEntry.Marker if Grouping.isWork(w) => slotOf(w).map { s =>
@@ -257,10 +283,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case m: ChatEntry.Message =>
       val asks = Attention.said(m.attentionNow)
       m.author.name + ": " + spoken(m.text()) + (if (asks.isEmpty) "" else ", " + asks)
-    case a: ChatEntry.Activity => MarkdownLine.words(a.summary()) +
-      (if (a.aside().isEmpty) "" else ", " + MarkdownLine.words(a.aside())) +
-      (if (a.asideHint().isEmpty) "" else ", " + a.asideHint()) +
-      (if (a.body().isEmpty) "" else ": " + spoken(a.body())) + ", " + ActivityView.said(a.status())
+    case a: ChatEntry.Activity => activitySaid(a, describedOf(a))
     case t: ChatEntry.Thinking => t.done().map(d => ChatWords.thoughtFor(ChatTime.span(d))).getOrElse(ChatWords.thinking)
     case m: ChatEntry.Marker => m.text()
     case _: ChatEntry.Custom => ""

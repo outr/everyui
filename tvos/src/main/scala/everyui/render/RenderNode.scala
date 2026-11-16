@@ -350,6 +350,8 @@ class RenderNode(val sg: SGNode) {
   def scrollSmoothly(to: Double, horizontal: Boolean): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
   def setVisible(visible: Boolean): Unit = uiSetVisible(sg, visible)
+  /** Laid out while hidden: a hidden label measures here as a shown one does. */
+  def setLaidOutHidden(on: Boolean): Unit = ()
   def setOpacity(opacity: Double): Unit = uiSetOpacity(sg, opacity)
   def setClip(width: Double, height: Double): Unit = {
     ownClip = true

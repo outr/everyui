@@ -17,7 +17,10 @@ import java.nio.file.{Files, Path, Paths}
   * them set up once is left out; "components left" is what taking the rig apart did not let go, per unit. Where the
   * case shows a clock (`MemoryRig.tick`), it is moved on `ticks` seconds before the rig is taken apart, each let draw,
   * and the DOM nodes the page made meanwhile counted, per unit and second ("nodes made per tick"; a MutationObserver's
-  * added nodes, with what each holds): a line whose time moves on writes its words in place, and makes nothing.
+  * added nodes, with what each holds): a line whose time moves on writes its words in place, and makes nothing. So are
+  * its role and ARIA attributes written meanwhile ("aria writes per tick"): a name that followed the clock would be
+  * written each second, and a screen reader on it could say it again each time, where its time belongs in its
+  * description, which is words in place.
   *
   * The table is written to `out`, and each measure held to the baseline's with a tenth's margin (`margin`, and a heap's
   * noise, `slack`): one over fails the check. With `--update` the table becomes the baseline instead.
@@ -26,7 +29,7 @@ import java.nio.file.{Files, Path, Paths}
   */
 object MemoryCheck extends RapidApp {
   private val columns = Vector("JS heap bytes", "DOM heap bytes", "DOM nodes", "listeners", "components",
-    "components left", "nodes made per tick")
+    "components left", "nodes made per tick", "aria writes per tick")
   /** How far over its baseline each measure may go: a tenth. Blink's heap had a quarter while it moved by up to a
     * quarter from run to run, which was a transcript's hidden spinner turning (`RenderNode.setMotion`) and its clock
     * (`collections`); read as it is now, it moves by a few bytes in ten runs. */
@@ -114,12 +117,13 @@ object MemoryCheck extends RapidApp {
       first <- read(browser)
       _ <- browser.eval("everyuiMemory.add(" + step.toString + "); return 0")
       second <- read(browser)
-      made <- ticked(browser)
+      ticking <- ticked(browser)
       _ <- browser.eval("everyuiMemory.dispose(); return 0")
       after <- read(browser)
     } yield {
       val per = second.indices.map(i => (second(i) - first(i)) / step).toVector
-      val row = MemoryRow(name, unit, per :+ (after(4) - before(4)) / (2 * step) :+ made / (ticks * 2 * step))
+      val row = MemoryRow(name, unit, per :+ (after(4) - before(4)) / (2 * step) :+
+        ticking._1 / (ticks * 2 * step) :+ ticking._2 / (ticks * 2 * step))
       println("[memory] " + name + ": " + columns.indices.map(i => columns(i) + " " +
         MemoryTable.show(columns(i), row.values(i))).mkString(", "))
       System.out.flush()
@@ -127,18 +131,24 @@ object MemoryCheck extends RapidApp {
     }
   }
 
-  // the DOM nodes the page made as the case's clock moved on `ticks` seconds, each let draw (two frames and a turn):
-  // none where it shows no clock
-  private def ticked(browser: RoboBrowser): Task[Double] = for {
-    made <- browser.eval("return new Promise(r => { let made = 0; const count = n => { let c = 1; " +
+  // the DOM nodes the page made, and the role and ARIA attributes it wrote, as the case's clock moved on `ticks`
+  // seconds, each let draw (two frames and a turn): none where it shows no clock
+  private def ticked(browser: RoboBrowser): Task[(Double, Double)] = for {
+    seen <- browser.eval("return new Promise(r => { let made = 0, aria = 0; const count = n => { let c = 1; " +
       "for (const k of n.childNodes) c += count(k); return c; }; " +
-      "const watch = new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => made += count(n)))); " +
-      "watch.observe(document.body, { subtree: true, childList: true }); let left = " + ticks.toString + "; " +
+      "const heard = ms => ms.forEach(m => { if (m.type == 'childList') m.addedNodes.forEach(n => made += count(n)); " +
+      "else if (m.attributeName == 'role' || m.attributeName.startsWith('aria-')) aria++; }); " +
+      "const watch = new MutationObserver(heard); " +
+      "watch.observe(document.body, { subtree: true, childList: true, attributes: true }); let left = " +
+      ticks.toString + "; " +
       "const next = () => { if (left-- == 0 || !everyuiMemory.tick()) { " +
-      "watch.takeRecords().forEach(m => m.addedNodes.forEach(n => made += count(n))); watch.disconnect(); r(made); " +
+      "heard(watch.takeRecords()); watch.disconnect(); r([made, aria]); " +
       "} else { requestAnimationFrame(() => " +
       "requestAnimationFrame(() => setTimeout(next, 0))); } }; next(); })", awaitPromise = true)
-  } yield made("result")("value").asDouble
+  } yield {
+    val both = seen("result")("value").asVector
+    (both(0).asDouble, both(1).asDouble)
+  }
 
   // the page settled, then: the heaps used, the least of `collections` readings each straight after a collection, the
   // DOM nodes, the listeners, the live components

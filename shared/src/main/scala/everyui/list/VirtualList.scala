@@ -1007,7 +1007,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     if (!lit) toldRow = ""
     else cursor.foreach(k => if (k != toldRow) placed.values.find(_.current()).foreach { row =>
       toldRow = k
-      node.setActiveRow(row.node, () => everyui.access.Access.nameOf(row))
+      node.setActiveRow(row.node, () => everyui.access.Access.toldOf(row))
     })
     placeEditor(width, height)
     placeDropLine(width)

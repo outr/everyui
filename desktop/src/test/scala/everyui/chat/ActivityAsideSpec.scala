@@ -15,7 +15,8 @@ import reactify.*
   * summary's; where the line has no room it goes under the summary at its start edge, wrapped where even it alone is
   * too long, never cut and never a word to a line; it follows its entry in place, the view and the transcript's other
   * rows left as they were; its hint is a tip as the pointer rests on it and as the keys bring the cursor to the call,
-  * and is read out after the summary and the aside; and right to left it follows the summary leftwards. */
+  * and is read out after the summary and the aside, though its row is named without them and described by them,
+  * so a running call's time moving on leaves the name as it was; and right to left it follows the summary leftwards. */
 class ActivityAsideSpec extends FxSpec {
   // the transcript's cursor as the keys move it, for its tip
   override protected def keyed: Boolean = true
@@ -203,7 +204,18 @@ class ActivityAsideSpec extends FxSpec {
         (1 to 5).foreach(_ => fx(t.list.refresh()))
         val said = "Ran the tests, " + when + ", " + hint + ", " + ChatWords.succeeded
         fx(t.said(a)) shouldBe said
-        eventually(all(t.list).exists(c => c.isInstanceOf[ChatRow] && c.semantics().label == said)) shouldBe true
+        // its row named without them, which would follow a running call's clock, and described by them
+        def row: Option[ChatRow] = all(t.list).collectFirst { case r: ChatRow if r.item().exists(_ eq a) => r }
+        eventually(row.map(_.semantics().label).contains("Ran the tests, " + ChatWords.succeeded)) shouldBe true
+        fx(row.map(_.accessibleDescription())) shouldBe Some(when + ", " + hint)
+        fx(t.named(a)) shouldBe "Ran the tests, " + ChatWords.succeeded
+        fx(t.describedOf(a)) shouldBe when + ", " + hint
+        // the time moving on changes the description alone
+        fx(a.aside @= "9:42:13 AM · 2.2 s")
+        fx(row.map(_.semantics().label)) shouldBe Some("Ran the tests, " + ChatWords.succeeded)
+        fx(row.map(_.accessibleDescription())) shouldBe Some("9:42:13 AM · 2.2 s, " + hint)
+        fx(row.map(_.node.fx.getAccessibleHelp)) shouldBe Some("9:42:13 AM · 2.2 s, " + hint)
+        fx(a.aside @= when)
         // with a body, the body after them
         fx(a.body @= "Hello")
         fx(t.said(a)) shouldBe "Ran the tests, " + when + ", " + hint + ": Hello, " + ChatWords.succeeded
@@ -213,6 +225,9 @@ class ActivityAsideSpec extends FxSpec {
         fx(t.list.current @= Some("t"))
         def aside: Option[RichText] = all(t.list).collectFirst { case v: ActivityView => v.asideView }
         eventually(aside.exists(x => Tooltip.shownFor.exists(_ eq x))) shouldBe true
+        // and the list tells a screen reader its name, then its description
+        eventually(t.list.node.fx.getAccessibleText ==
+          "Ran the tests, " + ChatWords.succeeded + ", " + when + ", " + hint) shouldBe true
         fx(t.list.current @= None)
         eventually(Tooltip.shownFor.isEmpty) shouldBe true
       }

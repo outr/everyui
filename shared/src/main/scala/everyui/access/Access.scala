@@ -200,6 +200,16 @@ object Access {
     own.orElse(Some(held).filter(_.nonEmpty)).getOrElse(c.tooltip().trim)
   }
 
+  /** What a screen reader is told of `c` as the keys bring a list's cursor to it, where the platform tells it rather
+    * than the reader reading it (`RenderNode.setActiveRow`): its name (`nameOf`), then its description
+    * (`Component.accessibleDescription`, a row's tip, a running tool call's time), where it has one, as a reader reads
+    * a row it is on itself. */
+  def toldOf(c: Component): String = {
+    val name = nameOf(c)
+    val described = c.describedNow.trim
+    if (described.isEmpty || described == name) name else if (name.isEmpty) described else name + ", " + described
+  }
+
   /** Roles named only as they are given a name, never by the words they hold: a list box is named by its label, not
     * by its options, which a screen reader says one at a time. */
   val wholes: Set[String] = Set("listbox", "list", "tree", "treegrid", "grid", "table", "menu", "menubar", "tablist",

@@ -90,10 +90,13 @@ class ChatRow(transcript: Transcript) extends ListRow[ChatEntry] {
     case _ => None
   }
 
-  /** Its name to a screen reader, bound again once what its message asks is made (`ChatEntry.Message.attention`), which
-    * it could not follow before. */
-  private[chat] def resay(): Unit =
-    semantics := item().map(e => Semantics("listitem", label = transcript.said(e))).getOrElse(Semantics.Plain)
+  /** Its name to a screen reader (`Transcript.named`), which holds still while a running call's time moves on, and what
+    * is heard after it (`Transcript.describedOf`), which follows it; bound again once what its message asks is made
+    * (`ChatEntry.Message.attention`), which it could not follow before. */
+  private[chat] def resay(): Unit = {
+    semantics := item().map(e => Semantics("listitem", label = transcript.named(e))).getOrElse(Semantics.Plain)
+    accessibleDescription := item().map(transcript.describedOf).getOrElse("")
+  }
   resay()
   item.attach { _ =>
     rebuild()

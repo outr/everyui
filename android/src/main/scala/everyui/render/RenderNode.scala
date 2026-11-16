@@ -948,6 +948,8 @@ class RenderNode(val view: View) {
       Motion.visibilityChanged()
     }
   }
+  /** Laid out while hidden: a hidden view is laid out here already (INVISIBLE), and measures where it is. */
+  def setLaidOutHidden(on: Boolean): Unit = ()
   def setOpacity(opacity: Double): Unit = view.setAlpha(opacity.toFloat)
 
   def setClip(width: Double, height: Double): Unit = view match {

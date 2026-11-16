@@ -496,6 +496,8 @@ class RenderNode(val fx: Node) {
     // what moves in it, or is it, runs only while it can be seen (Motion)
     Motion.visibilityChanged()
   }
+  /** Laid out while hidden: a hidden node is laid out here already, and measures where it is. */
+  def setLaidOutHidden(on: Boolean): Unit = ()
   def setOpacity(opacity: Double): Unit = fx.setOpacity(opacity)
 
   /** What shows of it cut to `width` by `height`, with its corners rounded as its own are (`setRadius`), as the web's
