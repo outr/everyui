@@ -21,10 +21,16 @@ class TrayPopover {
   def showing: Boolean = stage.exists(_.isShowing)
   private[tray] def scene: Option[Scene] = stage.filter(_.isShowing).map(_.getScene)
 
+  /** Opened, where it is not (unless it shut a moment ago), or shut, where it is, as a click on the icon does. */
   def toggle(make: () => Component, x: Int, y: Int, plasma: Boolean = false): Unit =
-    if (showing) close() else if (System.currentTimeMillis() - shutAt > 300L) open(make(), x, y, plasma)
+    if (showing) close() else if (System.currentTimeMillis() - shutAt > 300L) show(make(), x, y, plasma)
 
-  private def open(c: Component, x: Int, y: Int, plasma: Boolean): Unit = {
+  /** Opened beside `x`, `y` (a Plasma panel's point under Wayland where `plasma`), holding what `make` makes; nothing
+    * where it is open already. */
+  def open(make: () => Component, x: Int, y: Int, plasma: Boolean = false): Unit =
+    if (!showing) show(make(), x, y, plasma)
+
+  private def show(c: Component, x: Int, y: Int, plasma: Boolean): Unit = {
     val root = new Pane()
     c.position.left @= 0.0
     c.position.top @= 0.0

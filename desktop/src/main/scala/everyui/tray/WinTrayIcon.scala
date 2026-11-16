@@ -159,6 +159,16 @@ private[tray] class WinTrayIcon(icon: TrayIcon) extends TrayHost {
 
   def popover(on: Boolean): Unit = ()
 
+  // the icon's middle, as the shell has it, in JavaFX's logical pixels
+  def locate(found: Option[(Int, Int)] => Unit): Unit =
+    if (!made) found(None)
+    else window.post(() => {
+      val middle = Win32.iconRect(window.hwnd).map { case (l, t, r, b) => ((l + r) / 2, (t + b) / 2) }
+      val monitors = WinTrayIcon.monitors()
+      javafx.application.Platform.runLater(() =>
+        found(middle.map { case (x, y) => Win32.logical(x, y, monitors, WinTrayIcon.screens()) }))
+    })
+
   /** A notification from the icon: `title` over `body`, with its own picture, `clicked` run where it is clicked. */
   def balloon(title: String, body: String, clicked: Option[() => Unit]): Unit = window.post(() => {
     balloonClicked = clicked

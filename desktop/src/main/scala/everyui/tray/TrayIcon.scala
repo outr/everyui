@@ -7,11 +7,11 @@ import reactify.*
 
 /** An icon in the desktop's tray (`Tray.show`): what it shows (`icon`, with a dot of `badge` at its corner), what a
   * pointer resting on it says (`title` over `tooltip`), whether it asks to be looked at (`attention`), and its menu of
-  * `menu`. A left click opens `popover`, where there is one, beside the icon (`TrayPopover`), and tells `activated`
-  * where it was; a right click opens the menu (on macOS, with no popover, any click does). Each is a Var: set it as
-  * things change (a status, a line of live numbers), and the tray is told. Shown by each platform's own (`TrayHost`):
-  * a StatusNotifierItem over D-Bus on Linux, served under `name`; an NSStatusItem on macOS; a notification-area icon
-  * on Windows. */
+  * `menu`. A left click opens `popover`, where there is one, beside the icon (`TrayPopover`; `openPopover` opens it
+  * from code), and tells `activated` where it was; a right click opens the menu (on macOS, with no popover, any click
+  * does). Each is a Var: set it as things change (a status, a line of live numbers), and the tray is told. Shown by
+  * each platform's own (`TrayHost`): a StatusNotifierItem over D-Bus on Linux, served under `name`; an NSStatusItem on
+  * macOS; a notification-area icon on Windows. */
 class TrayIcon private[tray] (val name: String, first: TrayImage, firstTip: String, appTitle: String,
                              host: TrayIcon => TrayHost) {
   val icon: Var[TrayImage] = Var(first)
@@ -27,6 +27,8 @@ class TrayIcon private[tray] (val name: String, first: TrayImage, firstTip: Stri
 
   private val shown = new TrayPopover
   private var gone = false
+  // where the last click was, as `clicked` was told it, for `openPopover` where the platform cannot say where the icon is
+  private var lastClick: Option[(Int, Int, Boolean)] = None
   private[tray] val platform: TrayHost = host(this)
 
   platform.picture(icon(), badge())
@@ -44,8 +46,10 @@ class TrayIcon private[tray] (val name: String, first: TrayImage, firstTip: Stri
     * or shut. The point is in JavaFX's screen coordinates, unless it is a Linux panel's (`panelPoint`), which Plasma
     * under Wayland says its own way (`TrayScreen.locate`). */
   private[tray] def clicked(x: Int, y: Int, panelPoint: Boolean = false): Unit = if (!gone) {
+    val plasma = panelPoint && TrayScreen.plasmaWayland
+    lastClick = Some((x, y, plasma))
     activated @= (x, y)
-    popover().foreach(make => shown.toggle(make, x, y, panelPoint && TrayScreen.plasmaWayland))
+    popover().foreach(make => shown.toggle(make, x, y, plasma))
   }
 
   /** The icon taken out of the tray, for good. */
@@ -55,8 +59,30 @@ class TrayIcon private[tray] (val name: String, first: TrayImage, firstTip: Stri
     platform.close()
   }
 
+  /** The popover opened beside the icon, as a left click opens it, where there is one and it is not open already: for
+    * an app to open it from code (a shortcut, a first run, a run traced for a native image's metadata). It is put where
+    * the platform says the icon is (macOS, Windows); where it cannot (a Linux panel says so only with a click), where
+    * the last click was, or by the main screen's corner before any. `activated` is not told. */
+  def openPopover(): Unit = if (!gone && !shown.showing && popover().nonEmpty) platform.locate { at =>
+    if (!gone) popover().foreach { make =>
+      val (x, y, plasma) = at.map { case (x, y) => (x, y, false) }.orElse(lastClick).getOrElse(corner)
+      shown.open(make, x, y, plasma)
+    }
+  }
+
+  // the corner of the main screen's free area where the tray's icons are as a rule: the bottom right on Windows, the
+  // top right elsewhere (macOS's menu bar, GNOME's top bar)
+  private def corner: (Int, Int, Boolean) = {
+    val area = javafx.stage.Screen.getPrimary.getVisualBounds
+    val bottom = TrayPlatform.current == TrayPlatform.Windows
+    (area.getMaxX.toInt, (if (bottom) area.getMaxY else area.getMinY).toInt, false)
+  }
+
   /** The popover shut, where it is open. */
   def closePopover(): Unit = shown.close()
+
+  /** Whether the popover is open. */
+  def popoverShown: Boolean = shown.showing
 
   /** Whether it is in the tray still (not `hide`n). */
   def isShown: Boolean = !gone

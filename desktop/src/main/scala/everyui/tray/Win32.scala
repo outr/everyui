@@ -162,6 +162,7 @@ private[tray] object Win32 {
   /** Every function called, by name, with its shape; a native image's metadata lists each shape (WinTraySpec). */
   val downcalls: Map[String, FunctionDescriptor] = Map(
     "Shell_NotifyIconW" -> FunctionDescriptor.of(I, I, P),
+    "Shell_NotifyIconGetRect" -> FunctionDescriptor.of(I, P, P),
     "GetModuleHandleW" -> FunctionDescriptor.of(P, P),
     "RegisterClassExW" -> FunctionDescriptor.of(JAVA_CHAR, P),
     "CreateWindowExW" -> FunctionDescriptor.of(P, I, P, P, I, I, I, I, I, P, P, P, P),
@@ -203,6 +204,7 @@ private[tray] object Win32 {
     find(lib, name).getOrElse(throw new UnsatisfiedLinkError(name))
 
   lazy val Shell_NotifyIconW: MethodHandle = fn(shell32, "Shell_NotifyIconW")
+  lazy val Shell_NotifyIconGetRect: Option[MethodHandle] = find(shell32, "Shell_NotifyIconGetRect")
   lazy val GetModuleHandleW: MethodHandle = fn(kernel32, "GetModuleHandleW")
   lazy val RegisterClassExW: MethodHandle = fn(user32, "RegisterClassExW")
   lazy val CreateWindowExW: MethodHandle = fn(user32, "CreateWindowExW")
@@ -265,6 +267,21 @@ private[tray] object Win32 {
     d.set(JAVA_INT, at("uFlags"), flags)
     d.set(JAVA_INT, at("uCallbackMessage"), WM_TRAY)
     d
+  }
+
+  /** Where icon 1 of `hwnd` is on the screen, in physical pixels (left, top, right, bottom), where the shell says
+    * (Windows 7 on): Shell_NotifyIconGetRect over a NOTIFYICONIDENTIFIER, its GUID left empty. */
+  def iconRect(hwnd: MemorySegment): Option[(Int, Int, Int, Int)] = Shell_NotifyIconGetRect.flatMap { f =>
+    val arena = Arena.ofConfined()
+    try {
+      val id = arena.allocate(40L, 8L)   // cbSize, hWnd at 8, uID at 16, guidItem at 20, to 36 and aligned
+      id.set(JAVA_INT, 0L, 40)
+      id.set(ADDRESS, 8L, hwnd)
+      id.set(JAVA_INT, 16L, 1)
+      val r = arena.allocate(16L, 4L)
+      if ((f.invokeExact(id, r): Int) != 0) None
+      else Some((r.get(JAVA_INT, 0L), r.get(JAVA_INT, 4L), r.get(JAVA_INT, 8L), r.get(JAVA_INT, 12L)))
+    } finally arena.close()
   }
 
   /** Shell_NotifyIconW(`op`, `data`): whether the shell took it. */

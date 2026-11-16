@@ -1808,7 +1808,9 @@ and the app then goes on with its windows closed. Each of its parts is a Var, an
   is open;
 - `popover`, what a left click opens beside the icon: a component the app makes afresh each time, in a window of its
   own with no frame, which takes the focus and shuts as it loses it, with Escape, or with another click. `activated`
-  hears each left click.
+  hears each left click. `openPopover()` opens it from code, beside the icon (where macOS and Windows say the icon
+  is; on Linux, whose panel says so only with a click, where the last click was, or before one at the main screen's
+  corner where trays are as a rule), and `closePopover()` shuts it.
 
 `Tray.notify(title, body, actions, clicked)` shows a notification through the desktop's notification server, with a
 button for each action. It works where there is no tray too, so an app with none says there what it would have shown.
@@ -1829,8 +1831,44 @@ else Tray.notify("Client", "Running in the background")
 On Linux the icon is a StatusNotifierItem and its menu a DBusMenu, spoken over the session bus by EveryUI itself
 (`DBusConnection`, with no library and nothing AWT, for a native image). KDE, COSMIC, XFCE and others draw them, and
 GNOME does only with its AppIndicator extension; on GNOME without it `supported` is false. The icon registers again as
-a panel restarts. macOS and Windows are not done yet: `supported` is false there. The example app shows it all with
-`--demo=tray` (`sbt "desktop/run --demo=tray --headless=1"`).
+a panel restarts. On macOS it is an NSStatusItem in the menu bar with an NSMenu, and on Windows an icon in the
+notification area, both reached through the FFM API. The example app shows it all with `--demo=tray`
+(`sbt "desktop/run --demo=tray --headless=1"`).
+
+#### In a native image
+
+The `everyui-desktop` jar carries GraalVM metadata under `META-INF/native-image/com.outr/`, which `native-image` reads
+from the classpath with nothing to pass:
+
+- `everyui-desktop-tray-macos` and `everyui-desktop-tray-windows`: the tray's native calls (the FFM downcalls and
+  upcalls, and what they are found by);
+- `everyui-desktop-javafx-macos` and `everyui-desktop-javafx-windows`: what JavaFX needs there to start, open a window
+  and draw: glass's window, view and menu bar classes and the JNI they speak, the fonts' (Core Text, DirectWrite),
+  every stock shader and effect of Prism (ES2 on macOS, Direct3D on Windows, and the software pipeline on both), and
+  JavaFX's native libraries. An entry for a type every platform has applies only once glass's application for that
+  platform is reached (but for the few the toolkit reaches as it starts, which every platform needs alike), so neither
+  set changes what an image for another platform does. VoiceOver and Windows' accessibility are not in them (GraalVM
+  25 cannot build glass's accessibility classes for macOS). The macOS set is proved by a native image on macOS; the
+  Windows set was traced under Wine and has not yet been built natively.
+
+An app's own classes (its components' lazy values, what it reaches by reflection, its resources) are still its own to
+trace, with GraalVM's agent: `java -agentlib:native-image-agent=config-output-dir=<dir> ...` on a run that goes through
+what the app does, its own windows and popovers included, then `-H:ConfigurationFileDirectories=<dir>` for the build.
+A run that opens no window records nothing of JavaFX's windows. On macOS and Windows an app can leave JavaFX's own
+entries out of what it traced, and rely on EveryUI's.
+
+`everyui.tray.TrayProbe` shows a tray icon with a menu and a popover, and says each callback: a platform's tray, and the
+metadata, checked with no app. With `--popover` it opens its popover from code and shuts it, then opens a plain window
+(a framed Stage with a few components) and shuts that, and says so (`[probe] popover opened`, `[probe] popover closed`,
+`[probe] window opened`, `[probe] window closed`):
+
+```
+java --enable-native-access=ALL-UNNAMED -cp <everyui-desktop, its dependencies and JavaFX> everyui.tray.TrayProbe \
+  --popover --seconds=12
+```
+
+Built as a native image and run so, it is the check that an image opens a window; run under the agent, it records what
+a window reaches on that platform.
 
 ### SplitButton (`everyui.menu`)
 

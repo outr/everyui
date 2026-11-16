@@ -19,6 +19,9 @@ private[tray] trait TrayHost {
   /** Whether a left click opens a popover (`TrayIcon.popover`): where it does not, a platform whose clicks all open the
     * menu (macOS) opens it on a left click too. */
   def popover(on: Boolean): Unit
+  /** Where the icon is, as its click would say it, told to `found` on the app's thread: None where the platform has no
+    * way to ask (a StatusNotifierItem's panel tells only a click). */
+  def locate(found: Option[(Int, Int)] => Unit): Unit
   /** The icon out of the tray, for good. */
   def close(): Unit
 }

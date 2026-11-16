@@ -91,14 +91,22 @@ private[tray] class MacStatusItem(icon: TrayIcon) extends TrayHost {
     val right = !isNil(event) &&
       (long(event, "type") == MacTray.RightMouseUp || (long(event, "modifierFlags") & MacTray.ControlKey) != 0L)
     if (right || !popping) popMenu()
+    else point.foreach { case (x, y) => javafx.application.Platform.runLater(() => icon.clicked(x, y)) }
+  }
+
+  def locate(found: Option[(Int, Int)] => Unit): Unit = ObjC.main {
+    val at = if (gone) None else point
+    javafx.application.Platform.runLater(() => found(at))
+  }
+
+  // the item's middle at the foot of the menu bar, in JavaFX's coordinates (on the main thread)
+  private def point: Option[(Int, Int)] = {
+    val window = if (isNil(button)) NULL else id(button, "window")
+    val primary = id(id(cls("NSScreen"), "screens"), "firstObject")
+    if (isNil(window) || isNil(primary)) None
     else {
-      val window = id(button, "window")
-      val primary = id(id(cls("NSScreen"), "screens"), "firstObject")
-      if (!isNil(window) && !isNil(primary)) {
-        val f = rect(window, "frame")
-        val (x, y) = MacTray.javafxPoint(f(0), f(1), f(2), rect(primary, "frame")(3))
-        javafx.application.Platform.runLater(() => icon.clicked(x, y))
-      }
+      val f = rect(window, "frame")
+      Some(MacTray.javafxPoint(f(0), f(1), f(2), rect(primary, "frame")(3)))
     }
   }
 

@@ -97,6 +97,9 @@ private[tray] class SniTray(bus: DBusConnection, name: String, icon: TrayIcon, a
   // (the panel opens the menu on a right click, and asks for Activate on a left one, whatever the popover)
   def popover(on: Boolean): Unit = ()
 
+  // the panel says where the icon is only as it is clicked
+  def locate(found: Option[(Int, Int)] => Unit): Unit = found(None)
+
   def close(): Unit = if (!gone) {
     gone = true
     bus.close()

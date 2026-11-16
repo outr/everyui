@@ -1,7 +1,7 @@
 package everyui.tray
 
 import everyui.Color
-import everyui.component.{Container, TextView}
+import everyui.component.{Button, Checkbox, Container, TextInput, TextView}
 import everyui.desktop.Desktop
 import everyui.layout.VerticalLayout
 import everyui.menu.MenuItem
@@ -15,6 +15,12 @@ import reactify.*
   * `[probe] toggle on=<b>`, `[probe] notify clicked`. Two seconds in, it shows a notification and badges the icon
   * green. It exits after `--seconds=N` (120 by default), or on Quit.
   *
+  * With `--popover` it opens its popover from code (`TrayIcon.openPopover`) three seconds in and shuts it two seconds
+  * later, then opens a plain window (a framed Stage holding a few components) and shuts that: `[probe] popover
+  * opened`, `[probe] popover closed`, `[probe] window opened`, `[probe] window closed`, or what failed. Traced with
+  * GraalVM's agent, it records what JavaFX's windows reach on the platform (glass's window, view and menu bar classes,
+  * their JNI), which a probe that opens nothing never does.
+  *
   * With `--selftest=1` on Windows it sends its own window what the shell would (the notification clicked, a left
   * click, a right click with the menu's toggle chosen by the keyboard, Explorer starting again with the icon gone, then
   * Quit chosen), so a desktop with no one to click checks the same. With `--notify-first=1` it shows a notification
@@ -22,7 +28,7 @@ import reactify.*
   *
   * {{{
   *   java --enable-native-access=ALL-UNNAMED -cp <desktop and JavaFX> everyui.tray.TrayProbe [--seconds=N] [--selftest=1]
-  *     [--notify-first=1]
+  *     [--notify-first=1] [--popover]
   * }}} */
 object TrayProbe {
   private def say(line: String): Unit = {
@@ -34,11 +40,12 @@ object TrayProbe {
     val seconds = args.collectFirst { case a if a.startsWith("--seconds=") => a.drop(10).toDouble }.getOrElse(120.0)
     val selfTest = args.contains("--selftest=1")
     val notifyFirst = args.contains("--notify-first=1")
+    val popover = args.contains("--popover") || args.contains("--popover=1")
     Desktop.launch(args :+ "--headless=1", "EveryUI tray probe", "images/everyui-mark.png")(() =>
-      run(seconds, selfTest, notifyFirst))
+      run(seconds, selfTest, notifyFirst, popover))
   }
 
-  private def run(seconds: Double, selfTest: Boolean, notifyFirst: Boolean): Unit = {
+  private def run(seconds: Double, selfTest: Boolean, notifyFirst: Boolean, popover: Boolean): Unit = {
     say("supported=" + Tray.supported + " platform=" + TrayPlatform.current)
     if (notifyFirst) Tray.notify("Tray probe", "Before the icon", clicked = Some(() => say("first notify clicked")))
     Platform.after(seconds, () => quit(None))
@@ -72,11 +79,51 @@ object TrayProbe {
         t.badge @= Some(Color.Green)
         say("notified and badged")
       })
+      if (popover) windows(t)
       if (selfTest) t.platform match {
         case w: WinTrayIcon => windowsSelfTest(w)
         case _ => say("selftest: only on Windows")
       }
     }
+  }
+
+  // the popover opened from code and shut, then a plain window opened and shut, each said, or what went wrong
+  private def windows(t: TrayIcon): Unit = {
+    def step(what: String)(f: => Unit): Unit = try f catch {
+      case e: Throwable =>
+        say(what + " failed: " + e)
+        e.printStackTrace()
+    }
+    Platform.after(3.0, () => step("popover")(t.openPopover()))
+    Platform.after(4.0, () => say(t.popoverScene.map(_.getWindow).map(w =>
+      "popover opened at " + w.getX.round + "," + w.getY.round + ", " + w.getWidth.round + "x" + w.getHeight.round)
+      .getOrElse("popover not open")))
+    Platform.after(5.0, () => step("popover")({
+      t.closePopover()
+      say(if (t.popoverShown) "popover still open" else "popover closed")
+    }))
+    Platform.after(6.0, () => step("window")({
+      val content = new Container {
+        size.width @= 360.0
+        padding @= 16.0
+        backgroundColor := Theme.surface()
+        layout @= Some(VerticalLayout(10.0))
+        children ++= List(TextView("Tray probe", 16.0), new TextInput("Name"), new Checkbox("Checked"),
+          new Button("Done"))
+      }
+      val root = new javafx.scene.layout.Pane()
+      root.getChildren.add(content.node.fx)
+      val stage = new javafx.stage.Stage()
+      stage.setTitle("Tray probe")
+      stage.setScene(new javafx.scene.Scene(root, 360.0, 240.0, javafx.scene.paint.Color.web(Theme.surface().toHex)))
+      stage.show()
+      say("window " + (if (stage.isShowing) "opened" else "not shown"))
+      Platform.after(2.0, () => step("window")({
+        stage.hide()
+        content.dispose()
+        say("window closed")
+      }))
+    }))
   }
 
   private def quit(t: Option[TrayIcon]): Unit = {
