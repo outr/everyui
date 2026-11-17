@@ -22,6 +22,9 @@ import reactify.*
   * prints one line to compare across platforms:
   *
   *   [ui] typing ok name=Hi search=a words=qx done=qx
+  *
+  * With `select=1` the search box holds an address and chooses all of it as the caret arrives in it, as a browser's
+  * address bar does (`SearchField.selectOnFocus`).
   */
 object TypingDemo {
   def run(): Unit = {
@@ -33,6 +36,10 @@ object TypingDemo {
     val search = new SearchField(width = width)
     search.value.attach(v => Platform.log("typing search=" + v))
     search.submitted.attach(v => Platform.log("typing search submitted=" + v))
+    if (Platform.launchArg("select") == "1") {
+      search.value @= "https://everyui.com/start"
+      search.selectOnFocus @= true
+    }
     // the app's own keyboard, editing the words over it
     val words: Var[String] = Var("")
     val done: Var[String] = Var("")

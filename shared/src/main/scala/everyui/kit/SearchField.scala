@@ -136,6 +136,19 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     if (native && direct) editing @= true
   }
 
+  /** All of what it holds chosen as the caret arrives in it, by Tab, a click or a tap (`InputView.selectOnFocus`), as a
+    * browser's address bar does. A second click places the caret, and a drag chooses a range. Off by default; where the
+    * platform has no field of its own (a Roku, an Apple TV) it changes nothing. */
+  lazy val selectOnFocus: Var[Boolean] = {
+    val on = own(Var(false))
+    platformField.foreach(input => on.attach(s => input.selectOnFocus @= s))
+    on
+  }
+
+  /** All of what it holds chosen, so what is typed next replaces it (`InputView.selectAll`); where the platform has no
+    * field of its own (a Roku, an Apple TV), nothing, its words being edited in the platform's keyboard. */
+  def selectAll(): Unit = platformField.foreach(_.selectAll())
+
   override private[everyui] def refocus(): Unit = platformField.foreach(_.retake(editing, direct))
 
   /** Escape is its own while it holds something (it empties it); empty, Escape goes on. */

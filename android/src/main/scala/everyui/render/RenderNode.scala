@@ -1176,6 +1176,11 @@ class RenderNode(val view: View) {
     case e: EditText => e.selectAll()
     case _ => ()
   }
+  /** All of what the field holds chosen as it takes the focus, or not (`FieldView.selectOnFocus`). */
+  def setSelectOnFocus(on: Boolean): Unit = view match {
+    case e: FieldView => e.selectOnFocus(on)
+    case _ => ()
+  }
   /** Where the field's caret is, in characters from the start: the start of any selection. */
   def getCaret(): Int = view match {
     case e: EditText => math.max(0, e.getSelectionStart)

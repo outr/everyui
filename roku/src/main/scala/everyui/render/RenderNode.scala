@@ -770,6 +770,8 @@ class RenderNode(val sg: SGNode) {
   def onInputDone(f: () => Unit): Unit = ()
   def onInputAction(f: () => Unit): Unit = ()
   def selectAllInput(): Unit = ()
+  /** No field of its own here, whose words the platform's keyboard edits: nothing is chosen. */
+  def setSelectOnFocus(on: Boolean): Unit = ()
   /** No field of its own here: the caret is always after the words. */
   def getCaret(): Int = 0
   def setCaret(at: Int): Unit = ()

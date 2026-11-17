@@ -96,6 +96,14 @@ class InputView(secure: Boolean = false, multiline: Boolean = false)
   /** Choose all of what it holds, so what is typed next replaces it (a value being changed rather than added to). */
   def selectAll(): Unit = node.selectAllInput()
 
+  /** All of what it holds chosen as it takes the keyboard, as a browser's address bar does, so what is typed next
+    * replaces it: by Tab, by the app (`focus`), or by a click or a tap on it, whose release chooses it all unless the
+    * press dragged out a range of its own, which is kept. A click once it has the keyboard places the caret as ever, and
+    * the keyboard given back to it (the window come back to, the field put back after it moved) chooses nothing. Off by
+    * default. The web, the desktop and Android do as it says; a Roku's and an Apple TV's fields are only their words
+    * there, edited in the platform's keyboard, so it changes nothing there. */
+  lazy val selectOnFocus: Prop[Boolean] = own(new Prop[Boolean](false, s => node.setSelectOnFocus(s)))
+
   /** Where the caret is, in characters from the start of `text` (where the platform has no caret, 0). */
   def caret: Int = node.getCaret()
 

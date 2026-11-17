@@ -843,6 +843,14 @@ class RenderNode(val fx: Node) {
     case field: TextInputControl => field.selectAll()
     case _ => ()
   }
+  /** All of what a text field holds chosen as it takes the keyboard, or not (`SelectOnFocus`). */
+  def setSelectOnFocus(on: Boolean): Unit = fx match {
+    case field: TextInputControl =>
+      if (selecting == null && on) selecting = new SelectOnFocus(field)
+      if (selecting != null) selecting.on = on
+    case _ => ()
+  }
+  private var selecting: SelectOnFocus = null
   /** Where a text field's caret is, in characters from the start. */
   def getCaret(): Int = fx match {
     case field: TextInputControl => field.getCaretPosition

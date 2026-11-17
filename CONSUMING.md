@@ -1958,6 +1958,28 @@ still type letters, so a field that must hold digits alone checks them (`pasted`
 left to right, as a literal field's do. The desktop has no keyboard of its own, and a Roku's and an Apple TV's is
 the platform's.
 
+### Choosing all a field holds (`selectAll`, `selectOnFocus`)
+
+`selectAll()` on an `InputView`, a `TextInput` or a `SearchField` chooses all it holds, so what is typed next replaces
+it. `selectOnFocus @= true` does it each time the caret arrives in the field, as a browser's address bar does: a
+click or a tap on the field chooses it all as the press lets go, Tab or the app's `focus()` chooses it at once, a
+second click once the field has the caret places the caret as ever, and a press that drags out a range keeps that
+range. Focus given back to a field rather than newly taken (the window or the tab come back to, a field put back after
+it moved, still being typed in) chooses nothing. It is off by default.
+
+```scala
+val address = new SearchField(width = 600.0)
+address.value @= tab.url
+address.selectOnFocus @= true    // a click in it, then typing, replaces the address
+```
+
+On the web the choice waits for the press's click, since the browser places the caret as the press goes down and moves
+it again as it lets go; the desktop does the same over JavaFX's field, and Android uses its `EditText`'s own
+`setSelectAllOnFocus`. Left off, each keeps its field's own ways: a browser puts back the field's last choice on Tab,
+and JavaFX chooses all of a field the keys or the app focus anyway (never one a press focuses). A Roku's and an Apple
+TV's fields are only their words, edited in the platform's keyboard: there both change nothing, and focus arriving by
+the remote never chooses anything.
+
 ### Completing what is typed (`completions`, `CompletionSource`)
 
 `completions` on a `TextInput` or a `TextArea` (`Var[Option[CompletionSource]]`, None by default) lists choices for

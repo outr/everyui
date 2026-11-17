@@ -1305,6 +1305,15 @@ class RenderNode(val el: html.Element) {
     el.addEventListener("keydown", (e: dom.KeyboardEvent) => if (e.key == "Enter" && !e.shiftKey) f())
   /** All of what the field holds chosen, so what is typed next replaces it. */
   def selectAllInput(): Unit = el.asInstanceOf[js.Dynamic].select()
+  /** All of what the field holds chosen as it takes the keyboard, or not (`SelectOnFocus`). */
+  def setSelectOnFocus(on: Boolean): Unit = el match {
+    case _: html.Input | _: html.TextArea =>
+      if (selecting == null && on)
+        selecting = new SelectOnFocus(el, () => selectAllInput(), () => getSelectionStart() == getSelectionEnd())
+      if (selecting != null) selecting.on = on
+    case _ => ()
+  }
+  private var selecting: SelectOnFocus = null
   /** Where the field's caret is, counted in the words' UTF-16 units from the start: the start of any selection. */
   def getCaret(): Int = el match {
     case i: html.Input => i.selectionStart

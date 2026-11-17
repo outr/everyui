@@ -69,6 +69,39 @@ final class FieldView(context: Context) extends EditText(context) {
     edit(editing)
   }
 
+  // its words all chosen as it takes the focus (`selectOnFocus`); not as it is given the focus back after it moved
+  // (`kept`); and whether it lost the focus just now, as a field taken off the screen does on its way off
+  private var selectsAll = false
+  private var kept = false
+  private var blurred = false
+
+  /** All of its words chosen as it takes the focus (`InputView.selectOnFocus`), Android's own way
+    * (`setSelectAllOnFocus`), which leaves a tap on it once it has the focus to place the caret; but not as the focus is
+    * given back to it, put back on the screen after it moved (`Component.refocus`), still being typed in. */
+  def selectOnFocus(on: Boolean): Unit = {
+    selectsAll = on
+    setSelectAllOnFocus(on && !kept)
+  }
+
+  override def onFocusChanged(focused: Boolean, direction: Int, previous: android.graphics.Rect): Unit = {
+    super.onFocusChanged(focused, direction, previous)
+    if (focused && kept) {
+      kept = false
+      setSelectAllOnFocus(selectsAll)
+    } else if (!focused) {
+      blurred = true
+      post(() => blurred = false)
+    }
+  }
+
+  override def onDetachedFromWindow(): Unit = {
+    if (selectsAll && (blurred || isFocused)) {
+      kept = true
+      setSelectAllOnFocus(false)
+    }
+    super.onDetachedFromWindow()
+  }
+
   override def dispatchTouchEvent(event: MotionEvent): Boolean = editing && super.dispatchTouchEvent(event)
 
   override def onAttachedToWindow(): Unit = {

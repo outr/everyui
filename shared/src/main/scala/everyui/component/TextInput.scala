@@ -73,6 +73,19 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
   /** The platform's own field it wraps, where the platform has one (not a Roku's or an Apple TV's): for its caret and
     * what is chosen in it (`InputView.selection`, `select`, `replace`, `selected`). */
   def field: Option[InputView] = platformField
+
+  /** All of what it holds chosen as the caret arrives in it, by Tab, a click or a tap (`InputView.selectOnFocus`): an
+    * address to be replaced rather than added to. A second click places the caret, and a drag chooses a range. Off by
+    * default; where the platform has no field of its own (a Roku, an Apple TV) it changes nothing. */
+  lazy val selectOnFocus: Var[Boolean] = {
+    val on = own(Var(false))
+    platformField.foreach(input => on.attach(s => input.selectOnFocus @= s))
+    on
+  }
+
+  /** All of what it holds chosen, so what is typed next replaces it (`InputView.selectAll`); where the platform has no
+    * field of its own (a Roku, an Apple TV), nothing, its words being edited in the platform's keyboard. */
+  def selectAll(): Unit = platformField.foreach(_.selectAll())
   private val caption = new TextView {
     content := title()
     font.size @= 12.0
