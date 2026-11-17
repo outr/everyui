@@ -45,6 +45,51 @@ class SelectOnFocusSpec extends FxSpec {
 
   private def selection(input: InputView): TextRange = fx(input.selection)
 
+  // a pulse of the scene gone by, its focus cleanup among it (which comes before its layout)
+  private def pulse(): Unit = {
+    val done = new java.util.concurrent.CountDownLatch(1)
+    val pulsed: Runnable = () => done.countDown()
+    fx {
+      window.addPostLayoutPulseListener(pulsed)
+      javafx.application.Platform.requestNextPulse()
+    }
+    done.await(60, java.util.concurrent.TimeUnit.SECONDS) shouldBe true
+    fx(window.removePostLayoutPulseListener(pulsed))
+  }
+
+  // `c` put on the screen in the turn that takes off a node holding the window's focus (another spec's, left over),
+  // its caret moved and then `choose` run in that turn too; and the pulse after it gone by, whose focus cleanup moves
+  // the window's focus off the node that went: what a spec before this one can leave, and under load the pulse came
+  // after the choice rather than before it. What is chosen once it has.
+  private def afterLeftover(c: Component, input: InputView)(choose: => Unit): TextRange = {
+    val leftover = fx(new Button("Leftover"))
+    fx {
+      ui.children.clear()
+      ui.children += leftover
+      leftover.focus()
+    }
+    eventually(leftover.node.fx.isFocused) shouldBe true
+    try {
+      fx {
+        ui.children.clear()
+        ui.children += c
+        // skinned, as onScreen has it: the skin brings the behaviour that answers the focus moving
+        c.node.fx.applyCss()
+        input.moveCaret(3)
+        choose
+      }
+      pulse()
+      fx(window.getFocusOwner eq leftover.node.fx) shouldBe false
+      selection(input)
+    } finally fx {
+      ui.children.clear()
+      leftover.dispose()
+      c.dispose()
+      Focus.focused @= None
+      Focus.visible @= false
+    }
+  }
+
   private val words = "https://everyui.com/start"
 
   // in a window in front (under Xvfb, with no window manager to hold one back), as the field's focus needs one
@@ -91,21 +136,13 @@ class SelectOnFocusSpec extends FxSpec {
   }
 
   "selectAll" should {
-    "choose all a TextInput holds" in {
+    "choose all a TextInput holds, kept as a focus left from before goes" in {
       val (t, input) = field(select = false)
-      onScreen(t) {
-        fx(input.moveCaret(3))
-        fx(t.selectAll())
-        selection(input) shouldBe TextRange(0, words.length)
-      }
+      afterLeftover(t, input)(t.selectAll()) shouldBe TextRange(0, words.length)
     }
-    "choose all a SearchField holds" in {
+    "choose all a SearchField holds, kept as a focus left from before goes" in {
       val (s, input) = search(select = false)
-      onScreen(s) {
-        fx(input.moveCaret(3))
-        fx(s.selectAll())
-        selection(input) shouldBe TextRange(0, words.length)
-      }
+      afterLeftover(s, input)(s.selectAll()) shouldBe TextRange(0, words.length)
     }
   }
 
