@@ -301,10 +301,12 @@ class RenderNode(val el: html.Element) {
   def setMotionOwner(owner: () => String): Unit = ()
   /** Each track an animation of one of the element's own transform properties (`translate`, `rotate`, `scale`), which
     * the browser applies before `transform` and runs off the page's thread, or of its opacity, paused while the
-    * element is hidden (`setVisible`): Chrome runs an animation of an element hidden by its own `display: none` on the
-    * page's thread, a style recalculation each frame for as long as it lasts (a transcript's spinner for older
-    * messages, hidden until they load, did so for the transcript's life), where one hidden by a box it is in costs
-    * nothing. As the desktop's and Android's Motion stop theirs. */
+    * element is hidden (`setVisible`) or out of the browser's view (an IntersectionObserver's word): Chrome runs an
+    * animation of an element hidden by its own `display: none`, or one it does not paint as it is out of the view, on
+    * the page's thread, a style recalculation each frame for as long as it lasts (a transcript's spinner for older
+    * messages, hidden until they load, did so for the transcript's life, and the spinners of running tool calls
+    * scrolled below the window, each frame), where one hidden by a box it is in costs nothing. As the desktop's and
+    * Android's Motion stop theirs. */
   def setMotion(tracks: List[everyui.motion.Track]): Unit = {
     import everyui.motion.Track
     turning(turnedStill, tracks.exists(t => t.property == Track.Rotation || t.property == Track.Scale))
@@ -322,9 +324,35 @@ class RenderNode(val el: html.Element) {
       }
       val timing = js.Dynamic.literal(duration = track.seconds * 1000.0, delay = track.delay * 1000.0,
         iterations = Double.PositiveInfinity, easing = "linear")
-      val animation = el.asInstanceOf[js.Dynamic].animate(js.Array(frames*), timing)
-      if (el.style.display == "none") animation.pause()
-      animation
+      el.asInstanceOf[js.Dynamic].animate(js.Array(frames*), timing)
+    }
+    pace()
+  }
+  // whether it is in the browser's view, as the observer watching it while it is shown with a motion last said
+  private var inView = true
+  private var viewWatch: js.Dynamic = null
+
+  // its animations run while it is shown and in the browser's view, and are paused otherwise; only what is running is
+  // paused, and only what was paused goes on: a finished one played again would start over
+  private def pace(): Unit = {
+    val watching = animations.nonEmpty && !hiddenNow
+    if (watching && viewWatch == null && !js.isUndefined(js.Dynamic.global.IntersectionObserver)) {
+      val heard: js.Function1[js.Array[js.Dynamic], Unit] = entries => entries.lastOption.foreach { e =>
+        inView = e.isIntersecting.asInstanceOf[Boolean]
+        pace()
+      }
+      viewWatch = js.Dynamic.newInstance(js.Dynamic.global.IntersectionObserver)(heard)
+      viewWatch.observe(el)
+    }
+    else if (!watching && viewWatch != null) {
+      viewWatch.disconnect()
+      viewWatch = null
+      inView = true
+    }
+    val run = !hiddenNow && inView
+    animations.foreach { a =>
+      val state = a.playState.asInstanceOf[String]
+      if (run) { if (state == "paused") a.play() } else if (state == "running") a.pause()
     }
   }
 
@@ -646,11 +674,7 @@ class RenderNode(val el: html.Element) {
     counted("display", visible.toString)
     hiddenNow = !visible
     if (laidOut) undrawn(!visible) else el.style.display = if (visible) "" else "none"
-    // only what is running is paused, and only what was paused goes on: a finished one played again would start over
-    animations.foreach { a =>
-      val state = a.playState.asInstanceOf[String]
-      if (visible) { if (state == "paused") a.play() } else if (state == "running") a.pause()
-    }
+    pace()
     WebHover.changed()
     // no longer laid out only to be measured (RenderNode.reveal)
     if (!laidOut && el.style.visibility.nonEmpty) el.style.visibility = ""
