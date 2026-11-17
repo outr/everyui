@@ -500,7 +500,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
 
   /** The languages it can be heard and read in, as the stream carries them. The id is the group's index and the
     * track's within it, which is what [[selectTrack]] takes back. */
-  def tracks(): List[MediaTrack] = player.toList.flatMap { p =>
+  def tracks(): List[MediaTrack] = if (Hop.offThread) last.tracks else {
+    last.tracks = tracksNow()
+    last.tracks
+  }
+  private def tracksNow(): List[MediaTrack] = player.toList.flatMap { p =>
     try {
       val groups = p.getCurrentTracks.getGroups
       (0 until groups.size()).toList.flatMap { g =>
@@ -638,7 +642,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
 
   /** What was decoded, and the last error on this source: the formats the renderers took, the audio tracks with the
     * one chosen, as the Flutter player reports them once it is ready. */
-  def diagnostics(): everyui.component.MediaDiagnostics = player match {
+  def diagnostics(): everyui.component.MediaDiagnostics = if (Hop.offThread) last.diagnostics else {
+    last.diagnostics = diagnosticsNow()
+    last.diagnostics
+  }
+  private def diagnosticsNow(): everyui.component.MediaDiagnostics = player match {
     case Some(p) =>
       try {
         val audio = Option(p.getAudioFormat).map(f => Option(f.sampleMimeType).getOrElse("?") + " ch=" +
@@ -689,7 +697,10 @@ class ExoMedia(frame: Option[VideoFrame]) {
   def size(): (Double, Double) = (videoWidth.toDouble, videoHeight.toDouble)
 
   /** Whether the player is waiting for something to play rather than playing. */
-  def buffering(): Boolean = player.exists(_.getPlaybackState == Player.STATE_BUFFERING)
+  def buffering(): Boolean = if (Hop.offThread) last.buffering else {
+    last.buffering = player.exists(_.getPlaybackState == Player.STATE_BUFFERING)
+    last.buffering
+  }
 
   /** What the link has been carrying, in bits a second, as the player has measured it — or 0 where it has not
     * measured anything yet. What a retry should ask for is a fraction of this, rather than a number chosen in
@@ -698,9 +709,18 @@ class ExoMedia(frame: Option[VideoFrame]) {
     try androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.getSingletonInstance(Host.activity).getBitrateEstimate
     catch { case _: Throwable => 0L }
 
-  def position(): Double = player.map(_.getCurrentPosition / 1000.0).getOrElse(0.0)
+  def position(): Double = if (Hop.offThread) last.position else {
+    last.position = player.map(_.getCurrentPosition / 1000.0).getOrElse(0.0)
+    last.position
+  }
   /** How long it is, or 0 where the player does not know yet (ExoPlayer says TIME_UNSET, a large negative). */
-  def duration(): Double = player.map(_.getDuration / 1000.0).filter(_ > 0.0).getOrElse(0.0)
+  def duration(): Double = if (Hop.offThread) last.duration else {
+    last.duration = player.map(_.getDuration / 1000.0).filter(_ > 0.0).getOrElse(0.0)
+    last.duration
+  }
+  // what the player last said on the main thread, which a read off it is answered with: a player is the main thread's,
+  // and throws for a call from another (`Hop.offThread`)
+  private val last = new MediaSaid
 
   def seek(seconds: Double): Unit = player.foreach(_.seekTo(math.round(seconds * 1000.0)))
 

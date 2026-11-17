@@ -63,8 +63,13 @@ class MeasuredFeature(private[feature] val component: Component) extends Reactio
     * for laid the page out again for every read, and again for each container the node went into: a chat's transcript of
     * long answers took seconds to build. */
   def refresh(): Unit = if (!Platform.measuresInBatches) {
-    read()
-    set()
+    // a node on the screen changed from another thread (an app's task) is read on the thread that draws, once the
+    // change has been made there (`Platform.readsLater`): read here, it is what it was before
+    if (Platform.readsLater(component.node)) Platform.later(() => if (!component.takenApart) refresh())
+    else {
+      read()
+      set()
+    }
   } else {
     if (!component.node.onPage) stale = true
     peeked = false

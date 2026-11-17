@@ -291,6 +291,40 @@ its own goes there by `Platform.later` first. On Android a change made elsewhere
 frame was asked of that thread's Choreographer, which threw), and every scroll and animation after it stood still;
 the frame now goes to the main thread whatever thread asks, and the first few such wakes are logged (`frames: woken
 off the main thread`) with the stack that made them, to be moved.
+
+A component changed off that thread anyway is drawn right on the desktop and Android (`Hop`). On the JVM a rapid task
+goes on, after a socket's answer, an HTTP call or a `Task.sleep`, on a thread of rapid's own (a pool on Android, a
+virtual thread on the desktop), so `ask(…).map { … }.startUnit()` changes its components there. The components (their
+`Var`s, their children) change where they are changed; what that does to a node on the screen (a child added, removed
+or moved, words, a colour, a size, the focus) is queued and made on the thread that draws, in the order it was made in,
+before anything that thread changes after it. A node not on the screen yet (a row being built) is changed where it is,
+as both platforms allow. A player and a web page are their thread's alone, and every call to one goes there. What is
+read off that thread is answered as it was last made there: a size is read again on the thread that draws once the
+change has been made there (`Platform.readsLater`), and a player's place, length, tracks and buffering are what it last
+said there. Nothing ever waits for the other thread. Without this, JavaFX threw (`Not on FX application thread`) for a
+child added to a node in a window, and Android threw `CalledFromWrongThreadException` (Android 11) or logged it and
+lost a child taken away while it drew (a calendar left empty).
+
+It costs each change made off the thread a closure, and its size a turn, so make the change there yourself where you
+can. `onScreen` (`import everyui.network.onScreen`) runs a task's answer there, at once where it already is (the
+web's one thread):
+
+```scala
+server.ask(Month(at)).onScreen(month => days.children @= month.days.map(DayCell(_))).startUnit()
+```
+
+The task answers with what the function gives back, or fails as it fails; what follows `onScreen` goes on on rapid's
+thread again. To find what still changes components elsewhere, Android logs the first change from each place in the app
+in a debug build, or launched with `--es hops 1`, and the desktop with `-Deveryui.hops=1` (or `EVERYUI_HOPS=1`):
+
+```
+[ui] hop: RenderNode.append made on rapid-v2-worker, off the main thread, taken there; from app.CalendarPanel.month(CalendarPanel.scala:88)
+```
+
+The place is the first frame outside EveryUI, reactify, rapid, Scala and the platform; in a shrunk build its names are
+the shrinker's, retraced with the build's mapping. The example app's `demo=hops` changes a column of chips from
+`Task.sleep` every 150 ms (`onscreen=1` makes the changes with `onScreen`).
+
 Where the loop is guarded (Android) a frame asked for and not come in a second is asked for again, and a warning
 says so (`frames: a frame asked for … ms ago has not come, asked again`). Which it was is known when one of the two
 comes: the first frame coming after all means the main thread was only held up (a long build), said as info; the one

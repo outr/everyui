@@ -24,6 +24,9 @@ abstract class EveryUIActivity extends Activity {
     // a frame the loop asked for and never had is asked for again, and logged with where the loop was woken from
     everyui.task.Frames.guarded = true
     everyui.task.Frames.origin = () => new everyui.render.WokeFrom
+    // where a change made off the main thread was made, logged in a debug build or where the launch asks (`--es hops 1`)
+    everyui.render.Hop.audit = (getApplicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 ||
+      everyui.render.Platform.launchArg("hops") == "1"
     Host.freeze = extra("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
     Host.path = extra("path").getOrElse("")
     extra("viewport").map(_.split('x')).foreach {

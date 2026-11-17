@@ -2681,6 +2681,11 @@ object Platform {
   /** A page has one thread: the work is done at once, and what it hands back by `later` comes on a turn after. */
   def offThread(f: () => Unit): Unit = f()
 
+  /** Whether this is the thread that draws: the only one there is here. */
+  def onDrawingThread(): Boolean = true
+  /** Whether `node` is read on the thread that draws rather than here: never, this being it. */
+  def readsLater(node: RenderNode): Boolean = false
+
   def later(f: () => Unit): Unit = dom.window.setTimeout(() => f(), 0)
   /** `f` once what is running now is done, before the browser draws (a microtask): what follows from it is drawn in
     * the same frame, where `later` can come after a frame drawn in between. */

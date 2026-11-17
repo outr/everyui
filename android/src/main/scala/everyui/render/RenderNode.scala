@@ -45,7 +45,7 @@ class RenderNode(val view: View) {
     case _ => ""
   }
 
-  def setText(text: String): Unit = view match {
+  def setText(text: String): Unit = if (Hop.needed(this)) Hop(() => setText(text)) else view match {
     case t: TextView =>
       // what the face has nothing for (an emoji newer than the device's own fonts) in the app's fallback face
       t.setText(FaceSpan.fallen(text, t.getPaint))
@@ -62,7 +62,7 @@ class RenderNode(val view: View) {
   }
 
   def getX(): Double = left
-  def setX(x: Double): Unit = {
+  def setX(x: Double): Unit = if (Hop.needed(this)) Hop(() => setX(x)) else {
     left = x
     view.setTranslationX(x.toFloat)
     moved()
@@ -70,7 +70,7 @@ class RenderNode(val view: View) {
   }
 
   def getY(): Double = top
-  def setY(y: Double): Unit = {
+  def setY(y: Double): Unit = if (Hop.needed(this)) Hop(() => setY(y)) else {
     top = y
     placeY()
     if (tracks.nonEmpty) animate()
@@ -79,18 +79,18 @@ class RenderNode(val view: View) {
   /** Radians, clockwise, about the node's own centre — a View's rotation is degrees, clockwise, and pivots on its
     * centre unless told otherwise. */
   def getRotation(): Double = rotation
-  def setRotation(radians: Double): Unit = {
+  def setRotation(radians: Double): Unit = if (Hop.needed(this)) Hop(() => setRotation(radians)) else {
     rotation = radians
     view.setRotation(math.toDegrees(radians).toFloat)
   }
 
   /** Drawn larger or smaller about its own centre, which is what a View pivots on unless told otherwise. */
-  def setScale(factor: Double): Unit = {
+  def setScale(factor: Double): Unit = if (Hop.needed(this)) Hop(() => setScale(factor)) else {
     view.setScaleX(factor.toFloat)
     view.setScaleY(factor.toFloat)
   }
 
-  def setFontSize(size: Double): Unit = view match {
+  def setFontSize(size: Double): Unit = if (Hop.needed(this)) Hop(() => setFontSize(size)) else view match {
     case t: TextView =>
       fontSize = size
       t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size.toFloat)
@@ -100,13 +100,13 @@ class RenderNode(val view: View) {
   }
 
   /** `"#rrggbb"`. */
-  def setColor(hex: String): Unit = view match {
+  def setColor(hex: String): Unit = if (Hop.needed(this)) Hop(() => setColor(hex)) else view match {
     case t: TextView => t.setTextColor(android.graphics.Color.parseColor(hex))
     case _ => ()
   }
 
   /** A bundled face (`assets/fonts/`, packaged as the APK's `assets/fonts/`): family, CSS weight, size in pixels. */
-  def setFont(family: String, weight: Int, size: Double): Unit = view match {
+  def setFont(family: String, weight: Int, size: Double): Unit = if (Hop.needed(this)) Hop(() => setFont(family, weight, size)) else view match {
     case t: TextView =>
       face = Faces(family, weight)
       fontSize = size
@@ -178,8 +178,12 @@ class RenderNode(val view: View) {
 
   /** What the words come to: measured once, and again only when they, the face or the width they wrap at change.
     * Laying text out is the costliest measurement there is, and a screen of cards asks for it thousands of times a
-    * second while it loads. */
-  private def measure(t: TextView): Unit = {
+    * second while it loads.
+    *
+    * Off the main thread, a view in the window is not measured again, as the main thread may be measuring it: what it
+    * measured last is the answer, and it is read again on the main thread once its changes are made there (`Hop`,
+    * `Platform.readsLater`). */
+  private def measure(t: TextView): Unit = if (!Hop.needed(this)) {
     val text = t.getText
     val paint = t.getPaint
     // wrapped at its width, or at the limit it is held to (setTextLimit); with neither, on the lines its words make (-1)
@@ -225,7 +229,7 @@ class RenderNode(val view: View) {
   /** Add `child` at the end, MOVING it here if it is somewhere else — as a browser's appendChild, JavaFX and a Roku's
     * SceneGraph all do. Android alone throws for a view that already has a parent, and on a television that throw
     * was the app gone: a component put back into a panel built again (a search's results, reopened) did exactly that. */
-  def append(child: RenderNode): Unit = view match {
+  def append(child: RenderNode): Unit = if (Hop.needed(this, child)) Hop.joining(child, () => append(child)) else view match {
     case g: ViewGroup =>
       child.view.getParent match {
         case old: ViewGroup => old.removeView(child.view)
@@ -236,7 +240,8 @@ class RenderNode(val view: View) {
   }
 
   /** `child` at `index` among this node's children, drawn over those before it and under those after. */
-  def insert(child: RenderNode, index: Int): Unit = view match {
+  def insert(child: RenderNode, index: Int): Unit =
+    if (Hop.needed(this, child)) Hop.joining(child, () => insert(child, index)) else view match {
     case g: ViewGroup =>
       child.view.getParent match {
         case old: ViewGroup => old.removeView(child.view)
@@ -247,34 +252,35 @@ class RenderNode(val view: View) {
   }
 
   /** Detach from the parent, if attached. */
-  def setMediaHeaders(headers: Map[String, String]): Unit = media.foreach(_.setHeaders(headers))
+  def setMediaHeaders(headers: Map[String, String]): Unit = if (Hop.offThread) Hop(() => setMediaHeaders(headers)) else media.foreach(_.setHeaders(headers))
   /** A site-absolute path is the APK's asset (Media3's `asset:///`), or the app's server's where it holds none
     * (`Host.address`). */
-  def setMediaSource(url: String): Unit = media.foreach { m =>
+  def setMediaSource(url: String): Unit = if (Hop.offThread) Hop(() => setMediaSource(url)) else media.foreach { m =>
     val at = Host.address(url)
     m.setSource(if (url.startsWith("/") && !url.startsWith("//") && at.indexOf("://") < 0) "asset:///" + at else at)
   }
   /** Where the next source starts, in seconds: handed to the player with it, before it is prepared. */
-  def setMediaStart(seconds: Double): Unit = media.foreach(_.setStart(seconds))
-  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = media.foreach(_.setSidecars(sidecars))
-  def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
-  def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
-  def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))
-  def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
-  def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
+  def setMediaStart(seconds: Double): Unit = if (Hop.offThread) Hop(() => setMediaStart(seconds)) else media.foreach(_.setStart(seconds))
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = if (Hop.offThread) Hop(() => setMediaSidecars(sidecars)) else media.foreach(_.setSidecars(sidecars))
+  def setMediaPlaying(playing: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaPlaying(playing)) else media.foreach(_.setPlaying(playing))
+  def setMediaLoop(loop: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaLoop(loop)) else media.foreach(_.setLoop(loop))
+  def setMediaMuted(muted: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaMuted(muted)) else media.foreach(_.setMuted(muted))
+  def setMediaVolume(volume: Double): Unit = if (Hop.offThread) Hop(() => setMediaVolume(volume)) else media.foreach(_.setVolume(volume))
+  def setMediaRate(rate: Double): Unit = if (Hop.offThread) Hop(() => setMediaRate(rate)) else media.foreach(_.setRate(rate))
   /** The centre of a surround stream `db` decibels over the usual, folded to stereo or lifted in place in the player's
     * audio path ([[CenterMixer]]), whether it can reach what is playing, and whether it is heard now. */
-  def setMediaCenterMix(db: Double): Unit = media.foreach(_.setCenterMix(everyui.audio.Downmix.clamp(db)))
+  def setMediaCenterMix(db: Double): Unit = if (Hop.offThread) Hop(() => setMediaCenterMix(db)) else media.foreach(_.setCenterMix(everyui.audio.Downmix.clamp(db)))
   def mediaCenterMixes(): Boolean = media.exists(_.centerMixSupported())
   def mediaCenterMixing(): Boolean = media.exists(_.centerMixing())
   /** Voice clarity and night mode, 0 to 1 each, after the centre in the player's audio path ([[ListeningProcessor]]):
     * where the centre mix can reach what is playing, and heard while the sound goes out as PCM through them. */
   def setMediaAids(clarity: Double, night: Double): Unit =
-    media.foreach(_.setAids(everyui.audio.VoiceClarity.clamp(clarity), everyui.audio.NightMode.clamp(night)))
+    if (Hop.offThread) Hop(() => setMediaAids(clarity, night))
+    else     media.foreach(_.setAids(everyui.audio.VoiceClarity.clamp(clarity), everyui.audio.NightMode.clamp(night)))
   def mediaAidsSupported(): Boolean = media.exists(_.centerMixSupported())
   def mediaAidsHeard(): Boolean = media.exists(_.aidsHeard())
-  def setMediaBuffering(named: String): Unit = media.foreach(_.setBuffering(named))
-  def setMediaCached(cached: Boolean): Unit = media.foreach(_.setCached(cached))
+  def setMediaBuffering(named: String): Unit = if (Hop.offThread) Hop(() => setMediaBuffering(named)) else media.foreach(_.setBuffering(named))
+  def setMediaCached(cached: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaCached(cached)) else media.foreach(_.setCached(cached))
   def mediaRates(): Boolean = true
   /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): said once it plays here. */
   def mediaPlaysThrough(): Boolean = true
@@ -289,15 +295,15 @@ class RenderNode(val view: View) {
   /** The last load the player retried on its own. */
   def mediaRetry(): Option[everyui.component.MediaRetry] = media.flatMap(_.retry())
   /** What is playing, for Android's own now-playing: a media session, with the sound's focus (NowPlayingSession). */
-  def setNowPlaying(about: everyui.component.NowPlaying): Unit = media.foreach(_.setNowPlaying(about))
+  def setNowPlaying(about: everyui.component.NowPlaying): Unit = if (Hop.offThread) Hop(() => setNowPlaying(about)) else media.foreach(_.setNowPlaying(about))
   /** Hear the sound as it plays, for a visualizer: a tap on the decoded audio (SpectrumTap). */
-  def setMediaSpectrum(on: Boolean): Unit = media.foreach(_.setSpectrum(on))
+  def setMediaSpectrum(on: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaSpectrum(on)) else media.foreach(_.setSpectrum(on))
   def mediaBands(): List[Double] = media.map(_.bands()).getOrElse(Nil)
 
   // ---- a page of the web ----
 
   /** Show this address. */
-  def setWebSource(url: String): Unit = if (webSandbox != null) {
+  def setWebSource(url: String): Unit = if (Hop.offThread) Hop(() => setWebSource(url)) else if (webSandbox != null) {
     webSession = java.lang.Long.toString((math.random() * 1.0e12).toLong, 36)
     // a site-absolute path is the APK's page, or the app's server's where it holds none (Host.address)
     val at = Host.address(url)
@@ -306,23 +312,23 @@ class RenderNode(val view: View) {
   }
 
   /** Who the page is told is asking, for the loads after this one; empty is the engine's own. */
-  def setWebAgent(agent: String): Unit = view match {
+  def setWebAgent(agent: String): Unit = if (Hop.offThread) Hop(() => setWebAgent(agent)) else view match {
     case w: android.webkit.WebView => w.getSettings.setUserAgentString(if (agent.trim.isEmpty) null else agent)
     case _ => ()
   }
 
   /** The page sandboxed with `flags` allowed, as near as Android's WebView comes to it (WebSandbox). */
-  def setWebSandbox(flags: Option[Set[String]]): Unit = if (webSandbox != null) webSandbox.set(flags)
+  def setWebSandbox(flags: Option[Set[String]]): Unit = if (Hop.offThread) Hop(() => setWebSandbox(flags)) else if (webSandbox != null) webSandbox.set(flags)
 
   /** The view drawn clear rather than black, so a transparent page shows what is behind it. */
-  def setWebClear(clear: Boolean): Unit = view match {
+  def setWebClear(clear: Boolean): Unit = if (Hop.offThread) Hop(() => setWebClear(clear)) else view match {
     case w: android.webkit.WebView =>
       w.setBackgroundColor(if (clear) android.graphics.Color.TRANSPARENT else android.graphics.Color.BLACK)
     case _ => ()
   }
 
   /** Say something to the page, in its own language. */
-  def runWebScript(script: String): Unit = view match {
+  def runWebScript(script: String): Unit = if (Hop.offThread) Hop(() => runWebScript(script)) else view match {
     case w: android.webkit.WebView => if (webSandbox == null || !webSandbox.sandboxed) w.evaluateJavascript(script, null)
     case _ => ()
   }
@@ -331,7 +337,7 @@ class RenderNode(val view: View) {
   def onWebMessage(f: String => Unit): Unit = webListener = f
 
   /** A sandboxed page heard too (`on`): lent the bridge, which is all it is lent, the page loaded again with it. */
-  def setWebHearSandboxed(on: Boolean): Unit = if (webSandbox != null) webSandbox.hear(on)
+  def setWebHearSandboxed(on: Boolean): Unit = if (Hop.offThread) Hop(() => setWebHearSandboxed(on)) else if (webSandbox != null) webSandbox.hear(on)
 
   /** `request` posted to the page as `{everyui: "ask", session, id, request}`, as a page of the web is posted it; its
     * reply comes back through the bridge (`webSaid`). False where there is no page, or a sandboxed one is not heard. */
@@ -339,7 +345,8 @@ class RenderNode(val view: View) {
     case w: android.webkit.WebView if webSandbox != null && webSandbox.heard && webSession.nonEmpty =>
       val message = new org.json.JSONObject().put("everyui", "ask").put("session", webSession).put("id", id)
         .put("request", request)
-      w.evaluateJavascript("window.postMessage(" + message.toString + ", '*')", null)
+      val post = "window.postMessage(" + message.toString + ", '*')"
+      if (Hop.offThread) Hop(() => w.evaluateJavascript(post, null)) else w.evaluateJavascript(post, null)
       true
     case _ => false
   }
@@ -362,7 +369,7 @@ class RenderNode(val view: View) {
     * holding its memory until the collector happened on the view, if it ever did: on a television short of memory the
     * system went on killing processes and the app on collecting for half a minute after a trailer had gone. It is
     * taken out of its parent first, as a web view destroyed while still in a window is not let go of whole. */
-  def releaseWeb(): Unit = {
+  def releaseWeb(): Unit = if (Hop.offThread) Hop(() => releaseWeb()) else {
     webListener = _ => ()
     webReplier = (_, _) => ()
     view match {
@@ -408,37 +415,37 @@ class RenderNode(val view: View) {
   }
   def embedId(): String = embedView.map(_.id).getOrElse("")
   def embedRuntime(): String = embedView.map(_.id).getOrElse("")
-  def embedSend(message: String): Unit = embedView.foreach(_.send(message))
-  def onEmbedMessage(f: String => Unit): Unit = embedView.foreach(_.hear(f))
-  def focusEmbed(on: Boolean): Unit = embedView.foreach(_.focus(on))
-  def onEmbedFocus(f: Boolean => Unit): Unit = embedView.foreach(_.onFocus(f))
-  def releaseEmbed(): Unit = embedView.foreach(_.release())
+  def embedSend(message: String): Unit = if (Hop.offThread) Hop(() => embedSend(message)) else embedView.foreach(_.send(message))
+  def onEmbedMessage(f: String => Unit): Unit = if (Hop.offThread) Hop(() => onEmbedMessage(f)) else embedView.foreach(_.hear(f))
+  def focusEmbed(on: Boolean): Unit = if (Hop.offThread) Hop(() => focusEmbed(on)) else embedView.foreach(_.focus(on))
+  def onEmbedFocus(f: Boolean => Unit): Unit = if (Hop.offThread) Hop(() => onEmbedFocus(f)) else embedView.foreach(_.onFocus(f))
+  def releaseEmbed(): Unit = if (Hop.offThread) Hop(() => releaseEmbed()) else embedView.foreach(_.release())
 
   /** What to hear and read this in, where the file carries a choice. Said before the source, so the selector picks
     * with it rather than picking the file's own default and switching afterwards. */
-  def setMediaLanguages(audio: String, text: String): Unit = media.foreach(_.languages(audio, text))
+  def setMediaLanguages(audio: String, text: String): Unit = if (Hop.offThread) Hop(() => setMediaLanguages(audio, text)) else media.foreach(_.languages(audio, text))
 
   def mediaTracks(): List[everyui.component.MediaTrack] = media.map(_.tracks()).getOrElse(Nil)
   def mediaDiagnostics(): everyui.component.MediaDiagnostics =
     media.map(_.diagnostics()).getOrElse(everyui.component.MediaDiagnostics())
-  def selectMediaTrack(kind: String, id: String): Unit = media.foreach(_.selectTrack(kind, id))
-  def setMediaText(choice: everyui.component.TextChoice): Unit = media.foreach(_.chooseText(choice))
-  def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
-  def setMediaDirect(direct: Boolean): Unit = media.foreach(_.setDirect(direct))
+  def selectMediaTrack(kind: String, id: String): Unit = if (Hop.offThread) Hop(() => selectMediaTrack(kind, id)) else media.foreach(_.selectTrack(kind, id))
+  def setMediaText(choice: everyui.component.TextChoice): Unit = if (Hop.offThread) Hop(() => setMediaText(choice)) else media.foreach(_.chooseText(choice))
+  def setMediaCover(cover: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaCover(cover)) else media.foreach(_.setCover(cover))
+  def setMediaDirect(direct: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaDirect(direct)) else media.foreach(_.setDirect(direct))
   // an effect (AudioPlayer.effect) plays here as any sound does, mixed with the rest
   def setMediaEffect(effect: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
   def getMediaDuration(): Double = media.map(_.duration()).getOrElse(0.0)
-  def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))
-  def onMediaEvent(f: String => Unit): Unit = media.foreach(_.onEvent(f))
-  def releaseMedia(): Unit = media.foreach(_.release())
+  def seekMedia(seconds: Double): Unit = if (Hop.offThread) Hop(() => seekMedia(seconds)) else media.foreach(_.seek(seconds))
+  def onMediaEvent(f: String => Unit): Unit = if (Hop.offThread) Hop(() => onMediaEvent(f)) else media.foreach(_.onEvent(f))
+  def releaseMedia(): Unit = if (Hop.offThread) Hop(() => releaseMedia()) else media.foreach(_.release())
 
-  def remove(): Unit = view.getParent match {
+  def remove(): Unit = if (Hop.needed(this)) Hop(() => remove()) else view.getParent match {
     case g: ViewGroup => g.removeView(view)
     case _ => ()
   }
 
-  def setWidth(width: Double): Unit = {
+  def setWidth(width: Double): Unit = if (Hop.needed(this)) Hop(() => setWidth(width)) else {
     explicitWidth = width
     val params = view.getLayoutParams
     params.width = math.max(0L, math.round(width * EmbedView.scaleOf(view))).toInt
@@ -446,7 +453,7 @@ class RenderNode(val view: View) {
     sharpen()
   }
 
-  def setHeight(height: Double): Unit = {
+  def setHeight(height: Double): Unit = if (Hop.needed(this)) Hop(() => setHeight(height)) else {
     explicitHeight = height
     val params = view.getLayoutParams
     params.height = math.max(0L, math.round(height * EmbedView.scaleOf(view))).toInt
@@ -459,17 +466,17 @@ class RenderNode(val view: View) {
   private var radius: Float = 0f
   private var borderWidth: Int = 0
   private var borderColor: Int = 0
-  def setBackgroundColor(hex: String): Unit = {
+  def setBackgroundColor(hex: String): Unit = if (Hop.needed(this)) Hop(() => setBackgroundColor(hex)) else {
     // Android wants #aarrggbb; the seam says #rrggbb or #rrggbbaa
     background = if (hex.isEmpty) 0 else RenderNode.color(hex)
     paintBackground()
   }
-  def setRadius(r: Double): Unit = {
+  def setRadius(r: Double): Unit = if (Hop.needed(this)) Hop(() => setRadius(r)) else {
     radius = r.toFloat
     paintBackground()
   }
   /** An edge `width` pixels wide, inside the box. */
-  def setBorder(width: Double, hex: String): Unit = {
+  def setBorder(width: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setBorder(width, hex)) else {
     borderWidth = if (hex.isEmpty) 0 else math.round(width).toInt
     borderColor = if (hex.isEmpty) 0 else RenderNode.color(hex)
     paintBackground()
@@ -479,7 +486,7 @@ class RenderNode(val view: View) {
   /** A linear gradient over the box (`everyui.Gradient`'s encoding, its stops evenly spaced here), or none for `""`. */
   /** A radial gradient, its centre `x`, `y` and its radius in pixels (the box `width` by `height`), its stops from the
     * centre out: the platform's own radial drawable. */
-  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit = {
+  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit = if (Hop.needed(this)) Hop(() => setRadialGradient(x, y, radius, width, height, stops)) else {
     setGradient(0.0, stops)
     radial = if (stops.isEmpty) None
       else Some(((if (width > 0.0) x / width else 0.5).toFloat, (if (height > 0.0) y / height else 0.5).toFloat,
@@ -495,7 +502,7 @@ class RenderNode(val view: View) {
   /** What is behind shows sharp: a view blurs only its own drawing. */
   def setBackdropBlur(radius: Double): Unit = ()
 
-  def setGradient(angle: Double, stops: String): Unit = {
+  def setGradient(angle: Double, stops: String): Unit = if (Hop.needed(this)) Hop(() => setGradient(angle, stops)) else {
     radial = None
     val decoded = everyui.Gradient.decode(stops)
     gradient = decoded.map { case (hex, _) => RenderNode.color(hex) }.toArray
@@ -513,7 +520,8 @@ class RenderNode(val view: View) {
   /** A gaussian blur of deviation `radius` (the web's `filter: blur()`): a RenderEffect on Android 12 and later, and
     * before it a container or a picture blurred by hand (SoftBlur); anything else is drawn sharp there. */
   def setBlur(radius: Double): Unit =
-    if (android.os.Build.VERSION.SDK_INT >= 31) {
+    if (Hop.needed(this)) Hop(() => setBlur(radius))
+    else if (android.os.Build.VERSION.SDK_INT >= 31) {
       val r = SoftBlur.radius(radius).toFloat
       view.setRenderEffect(if (radius <= 0.0) null
       else android.graphics.RenderEffect.createBlurEffect(r, r, android.graphics.Shader.TileMode.CLAMP))
@@ -524,7 +532,8 @@ class RenderNode(val view: View) {
       case _ => ()
     }
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
-    if (hex.isEmpty) view.setElevation(0f)
+    if (Hop.needed(this)) Hop(() => setShadow(x, y, blur, hex))
+    else if (hex.isEmpty) view.setElevation(0f)
     else {
       val colour = android.graphics.Color.parseColor(hex)
       // a coloured shadow is Android 9's; before it the glow is the platform's own dark one, which still lifts
@@ -536,7 +545,7 @@ class RenderNode(val view: View) {
     }
   /** A hardware layer: the view is drawn into a texture once, and again only when it changes. */
   def setCached(cached: Boolean): Unit =
-    view.setLayerType(if (cached) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, null)
+    if (Hop.needed(this)) Hop(() => setCached(cached)) else     view.setLayerType(if (cached) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, null)
 
   private var tracks: List[everyui.motion.Track] = Nil
   /** The motion's animators, run only while the view is in a window and shown (Motion): made on first use. */
@@ -549,8 +558,8 @@ class RenderNode(val view: View) {
   /** Each track an animator of the view's own properties, repeating: a position moves the translation the node is
     * placed by, from where it is placed. */
   /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion; the idle audit here). */
-  def setMotionOwner(owner: () => String): Unit = moves.owner = owner
-  def setMotion(motion: List[everyui.motion.Track]): Unit = {
+  def setMotionOwner(owner: () => String): Unit = if (Hop.needed(this)) Hop(() => setMotionOwner(owner)) else moves.owner = owner
+  def setMotion(motion: List[everyui.motion.Track]): Unit = if (Hop.needed(this)) Hop(() => setMotion(motion)) else {
     tracks = motion
     animate()
   }
@@ -579,7 +588,7 @@ class RenderNode(val view: View) {
   }
 
   /** Each line of wrapped text `advance` pixels below the last: the gap the face leaves, opened or closed to that. */
-  def setLineHeight(advance: Double): Unit = view match {
+  def setLineHeight(advance: Double): Unit = if (Hop.needed(this)) Hop(() => setLineHeight(advance)) else view match {
     case t: TextView =>
       lineAdvance = advance
       spaceLines(t)
@@ -589,7 +598,7 @@ class RenderNode(val view: View) {
   private var lineAdvance: Double = 0.0
 
   /** Slanted or upright (the face set again, `setFont`); the measured width is the slanted words'. */
-  def setItalic(on: Boolean): Unit = if (on != italic) {
+  def setItalic(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setItalic(on)) else if (on != italic) {
     italic = on
     setFont(fontFamily, fontWeight, fontSize)
   }
@@ -602,7 +611,7 @@ class RenderNode(val view: View) {
   /** A variable face's optical sizing and axes: a browser's to set (`FontFeature.opticalSizing`); drawn here as the
     * platform draws the face. */
   def setFontAxes(opticalSizing: String, variations: String): Unit = ()
-  def setLetterSpacing(px: Double): Unit = view match {
+  def setLetterSpacing(px: Double): Unit = if (Hop.needed(this)) Hop(() => setLetterSpacing(px)) else view match {
     case t: TextView =>
       t.setLetterSpacing(if (fontSize > 0.0) (px / fontSize).toFloat else 0f)
       laidOutText = null
@@ -624,7 +633,7 @@ class RenderNode(val view: View) {
                   inset: Double): Unit = ()
   /** Styled runs as spans of one text: each run's colour, marking, weight, slant, size, strike and underline, and a
     * link followed by a tap (its family is the paragraph's); a run's `title` is the view's tip as a hover is over it. */
-  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = view match {
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = if (Hop.needed(this)) Hop(() => setRuns(runs, follow)) else view match {
     case t: TextView =>
       val text = new android.text.SpannableStringBuilder()
       val span: (Any, Int, Int) => Unit = (what, from, to) =>
@@ -730,7 +739,7 @@ class RenderNode(val view: View) {
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", "menu") with its root coordinates.
     * Touches drive down/move/up, a click on an up that stays on the view, and the menu on a long press or a mouse's
     * secondary button; a mouse or a hover drives enter/leave. */
-  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = {
+  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = if (Hop.needed(this)) Hop(() => onPointer(kind, f)) else {
     pointer += kind -> f
     if (kind == PointerKind.Click) PressOwner.mark(view)
     if (kind == PointerKind.Wheel) view.setOnGenericMotionListener { (_, e) =>
@@ -886,7 +895,7 @@ class RenderNode(val view: View) {
 
   /** The shared ScrollContainer shifts the content; the node only clips, and takes a finger's drag along it from what
     * the finger went down on (`takesDrags`). */
-  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = takesDrags(if (vertical) 1 else if (horizontal) 2 else 0)
+  def setScrollable(vertical: Boolean, horizontal: Boolean): Unit = if (Hop.needed(this)) Hop(() => setScrollable(vertical, horizontal)) else takesDrags(if (vertical) 1 else if (horizontal) 2 else 0)
   // a finger's drag along it (1 down, 2 across) taken from what the finger went down on (`NodeGroup.onInterceptTouchEvent`):
   // it hears the finger go down a tap's reach (the slop the drag settled at) from where it did, along the way it went,
   // then the move it was taken on and every move after as its own, so the content takes up the drag from where it was
@@ -921,7 +930,7 @@ class RenderNode(val view: View) {
   /** Its ends faded to clear over `start` and `end` (its left and right, or its top and bottom), showing what is
     * behind: the view's own fading edges, as Android's scrolling views fade theirs, told which ends have more
     * (`NodeGroup.fades`) since the content is moved within it rather than scrolled by it. */
-  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = view match {
+  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = if (Hop.needed(this)) Hop(() => setEdgeFade(horizontal, start, end)) else view match {
     case g: NodeGroup =>
       val on = start > 0.0 || end > 0.0
       g.fades = (if (start > 0.0) 1f else 0f, if (end > 0.0) 1f else 0f)
@@ -940,7 +949,7 @@ class RenderNode(val view: View) {
   def scrollSmoothly(to: Double, horizontal: Boolean): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. Its place and its size are
     * kept (INVISIBLE, not GONE), since the layout is ours and not the view system's. */
-  def setVisible(visible: Boolean): Unit = {
+  def setVisible(visible: Boolean): Unit = if (Hop.needed(this)) Hop(() => setVisible(visible)) else {
     val next = if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE
     if (view.getVisibility != next) {
       view.setVisibility(next)
@@ -950,9 +959,9 @@ class RenderNode(val view: View) {
   }
   /** Laid out while hidden: a hidden view is laid out here already (INVISIBLE), and measures where it is. */
   def setLaidOutHidden(on: Boolean): Unit = ()
-  def setOpacity(opacity: Double): Unit = view.setAlpha(opacity.toFloat)
+  def setOpacity(opacity: Double): Unit = if (Hop.needed(this)) Hop(() => setOpacity(opacity)) else view.setAlpha(opacity.toFloat)
 
-  def setClip(width: Double, height: Double): Unit = view match {
+  def setClip(width: Double, height: Double): Unit = if (Hop.needed(this)) Hop(() => setClip(width, height)) else view match {
     case g: ViewGroup =>
       ownClip = true
       clipAtEdge(g, true)
@@ -960,7 +969,7 @@ class RenderNode(val view: View) {
   }
   // cut to its box by its container (`Container.clipsToBox`), as `setClip` cuts it, never undoing a clip of its own
   private var ownClip = false
-  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = view match {
+  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = if (Hop.needed(this)) Hop(() => setBoxClip(on, width, height)) else view match {
     case g: ViewGroup if !ownClip => clipAtEdge(g, on)
     case _ => ()
   }
@@ -977,7 +986,7 @@ class RenderNode(val view: View) {
     }
     g.setClipToOutline(on)
   }
-  def setTooltip(text: String): Unit = {
+  def setTooltip(text: String): Unit = if (Hop.needed(this)) Hop(() => setTooltip(text)) else {
     ownTip = text
     if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
   }
@@ -987,7 +996,7 @@ class RenderNode(val view: View) {
   /** What TalkBack reads after the view's name (a list row's tip), as its hint (Android 8 on). */
   /** No guess at the words' width here: they are measured. */
   def textWidthGuess(): Double = -1.0
-  def setDescription(text: String): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) {
+  def setDescription(text: String): Unit = if (Hop.needed(this)) Hop(() => setDescription(text)) else if (android.os.Build.VERSION.SDK_INT >= 26) {
     hint = text
     if (!focusDelegate) view.setAccessibilityDelegate(if (text.isEmpty) null else new View.AccessibilityDelegate {
       override def onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo): Unit = {
@@ -998,7 +1007,7 @@ class RenderNode(val view: View) {
     })
   }
   /** A drawing's figures (everyui.draw.Drawing), where this is one. */
-  def setFigures(figures: List[everyui.draw.Figure]): Unit = view match {
+  def setFigures(figures: List[everyui.draw.Figure]): Unit = if (Hop.needed(this)) Hop(() => setFigures(figures)) else view match {
     case d: DrawingView => d.figures(figures)
     case _ => ()
   }
@@ -1009,7 +1018,7 @@ class RenderNode(val view: View) {
   /** A finger dragged up or down on it is its own (a list that scrolls its rows itself), taken from what in it the finger
     * went down on as a scroll's is (`takesDrags`): a row's button, a code block's rail, a link held every touch that
     * began on it, and a swipe that started there scrolled nothing. */
-  def setTouchScrolls(on: Boolean): Unit = takesDrags(if (on) 1 else 0)
+  def setTouchScrolls(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setTouchScrolls(on)) else takesDrags(if (on) 1 else 0)
   /** Only a page is read for how far a list has scrolled: nothing to do here. */
   def setScrolled(at: Double, furthest: Double): Unit = ()
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
@@ -1025,7 +1034,7 @@ class RenderNode(val view: View) {
 
   /** `"normal"` (or `"pre-wrap"`, `"pre-line"`: a TextView keeps the words' own line breaks anyway) wraps a text node
     * at its width; anything else breaks it only where the words themselves do. */
-  def setWhiteSpace(value: String): Unit = view match {
+  def setWhiteSpace(value: String): Unit = if (Hop.needed(this)) Hop(() => setWhiteSpace(value)) else view match {
     case _: EditText => ()
     case t: TextView =>
       wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
@@ -1046,13 +1055,13 @@ class RenderNode(val view: View) {
     case e: EditText => e.getText.toString
     case _ => ""
   }
-  def setValue(value: String): Unit = view match {
+  def setValue(value: String): Unit = if (Hop.needed(this)) Hop(() => setValue(value)) else view match {
     case e: EditText =>
       e.setText(value)
       e.setSelection(value.length)
     case _ => ()
   }
-  def setPlaceholder(text: String): Unit = view match {
+  def setPlaceholder(text: String): Unit = if (Hop.needed(this)) Hop(() => setPlaceholder(text)) else view match {
     case e: EditText => e.setHint(text)
     case _ => ()
   }
@@ -1063,7 +1072,8 @@ class RenderNode(val view: View) {
     * web's; Android has nothing for them. `numeric` makes it a number field whatever the token, a hidden one a number
     * password (`TYPE_NUMBER_VARIATION_PASSWORD`), which takes digits alone. */
   def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean,
-    numeric: Boolean): Unit = view match {
+    numeric: Boolean): Unit = if (Hop.needed(this)) Hop(() => setAutofill(token, section, name, passkey, literal, numeric))
+  else view match {
     case e: EditText if android.os.Build.VERSION.SDK_INT >= 26 =>
       import android.text.InputType as T
       if (token == "off") e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO)
@@ -1114,7 +1124,7 @@ class RenderNode(val view: View) {
   def onSubmit(f: () => Unit): Unit = ()
   /** A form is done with: its autofill session is committed, when accepted, which is the service's cue to offer to
     * save what was typed (in an app of one activity nothing else ends the session), or cancelled. */
-  def formDone(saved: Boolean): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) {
+  def formDone(saved: Boolean): Unit = if (Hop.needed(this)) Hop(() => formDone(saved)) else if (android.os.Build.VERSION.SDK_INT >= 26) {
     val manager = Host.activity.getSystemService(classOf[android.view.autofill.AutofillManager])
     if (manager != null) { if (saved) manager.commit() else manager.cancel() }
   }
@@ -1122,7 +1132,7 @@ class RenderNode(val view: View) {
   def setHiddenUsername(username: String): Unit = ()
   /** What the keyboard's action key says it does ("done", "search", "next", "go", "send"): the key a TV's full-screen
     * keyboard shows beside its letters. */
-  def setInputAction(action: String): Unit = view match {
+  def setInputAction(action: String): Unit = if (Hop.needed(this)) Hop(() => setInputAction(action)) else view match {
     case e: EditText =>
       import android.view.inputmethod.EditorInfo
       val code = if (action == "search") EditorInfo.IME_ACTION_SEARCH else if (action == "next") EditorInfo.IME_ACTION_NEXT
@@ -1132,7 +1142,7 @@ class RenderNode(val view: View) {
     case _ => ()
   }
   /** Every edit, with the new contents. */
-  def onValue(f: String => Unit): Unit = view match {
+  def onValue(f: String => Unit): Unit = if (Hop.needed(this)) Hop(() => onValue(f)) else view match {
     case e: EditText => e.addTextChangedListener(new android.text.TextWatcher {
       override def beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int): Unit = ()
       override def onTextChanged(s: CharSequence, start: Int, before: Int, count: Int): Unit = ()
@@ -1142,42 +1152,42 @@ class RenderNode(val view: View) {
   }
   /** A paste into the field (its menu's Paste, Ctrl+V, a keyboard's), put to `f` with its words before they land
     * (`FieldView.pasting`). */
-  def onPaste(f: String => everyui.component.types.PasteAction): Unit = view match {
+  def onPaste(f: String => everyui.component.types.PasteAction): Unit = if (Hop.needed(this)) Hop(() => onPaste(f)) else view match {
     case e: FieldView => e.pasting = Some(f)
     case _ => ()
   }
   /** The pictures and files of a paste into the field, and a keyboard's pictures, handed to `f` where `wanted` says
     * (`FieldView.pastingFiles`). */
-  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = view match {
+  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = if (Hop.needed(this)) Hop(() => onPasteFiles(wanted, f)) else view match {
     case e: FieldView => e.pastingFiles = Some((wanted, f))
     case _ => ()
   }
   /** The field taking the keyboard itself (a tap on it). */
-  def onInputFocus(f: () => Unit): Unit = view match {
+  def onInputFocus(f: () => Unit): Unit = if (Hop.needed(this)) Hop(() => onInputFocus(f)) else view match {
     case e: EditText => e.setOnFocusChangeListener((_, has) => if (has) f())
     case _ => ()
   }
   /** The field's keyboard finished: its Done (or Next, or Go), or Back putting it away. */
-  def onInputDone(f: () => Unit): Unit = view match {
+  def onInputDone(f: () => Unit): Unit = if (Hop.needed(this)) Hop(() => onInputDone(f)) else view match {
     case e: FieldView =>
       e.done = f
       RenderNode.acting(e)
     case _ => ()
   }
   /** The keyboard's action key (Done, Search, Next), after `onInputDone` has heard the keyboard put away. */
-  def onInputAction(f: () => Unit): Unit = view match {
+  def onInputAction(f: () => Unit): Unit = if (Hop.needed(this)) Hop(() => onInputAction(f)) else view match {
     case e: FieldView =>
       e.action = f
       RenderNode.acting(e)
     case _ => ()
   }
   /** All of what the field holds chosen, so what is typed next replaces it. */
-  def selectAllInput(): Unit = view match {
+  def selectAllInput(): Unit = if (Hop.needed(this)) Hop(() => selectAllInput()) else view match {
     case e: EditText => e.selectAll()
     case _ => ()
   }
   /** All of what the field holds chosen as it takes the focus, or not (`FieldView.selectOnFocus`). */
-  def setSelectOnFocus(on: Boolean): Unit = view match {
+  def setSelectOnFocus(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setSelectOnFocus(on)) else view match {
     case e: FieldView => e.selectOnFocus(on)
     case _ => ()
   }
@@ -1187,7 +1197,7 @@ class RenderNode(val view: View) {
     case _ => 0
   }
   /** The field's caret put at `at`, nothing chosen. */
-  def setCaret(at: Int): Unit = view match {
+  def setCaret(at: Int): Unit = if (Hop.needed(this)) Hop(() => setCaret(at)) else view match {
     case e: EditText => e.setSelection(math.max(0, math.min(at, e.length())))
     case _ => ()
   }
@@ -1198,7 +1208,7 @@ class RenderNode(val view: View) {
     case _ => 0
   }
   /** `start` to `end` chosen in the field. */
-  def setSelection(start: Int, end: Int): Unit = view match {
+  def setSelection(start: Int, end: Int): Unit = if (Hop.needed(this)) Hop(() => setSelection(start, end)) else view match {
     case e: EditText =>
       val n = e.length()
       e.setSelection(math.max(0, math.min(start, n)), math.max(0, math.min(end, n)))
@@ -1206,7 +1216,7 @@ class RenderNode(val view: View) {
   }
   /** `start` to `end` replaced by `words` in the field's own text, as a keyboard puts what it types; the caret after
     * them. Android keeps no undo of its own for a field to take it back with. */
-  def replaceInput(start: Int, end: Int, words: String): Unit = view match {
+  def replaceInput(start: Int, end: Int, words: String): Unit = if (Hop.needed(this)) Hop(() => replaceInput(start, end, words)) else view match {
     case e: EditText =>
       val n = e.length()
       val from = math.max(0, math.min(start, n))
@@ -1215,7 +1225,7 @@ class RenderNode(val view: View) {
     case _ => ()
   }
   /** What is chosen in the field, told as it changes (FieldView.onSelectionChanged). */
-  def onSelection(f: (Int, Int) => Unit): Unit = view match {
+  def onSelection(f: (Int, Int) => Unit): Unit = if (Hop.needed(this)) Hop(() => onSelection(f)) else view match {
     case e: FieldView => e.selecting = f
     case _ => ()
   }
@@ -1223,7 +1233,8 @@ class RenderNode(val view: View) {
   private var importance: Option[Int] = None
   /** Passed over by TalkBack, with all it holds: what a dialog covers. */
   def setReaderHidden(hidden: Boolean): Unit =
-    if (hidden) {
+    if (Hop.needed(this)) Hop(() => setReaderHidden(hidden))
+    else if (hidden) {
       if (importance.isEmpty) importance = Some(view.getImportantForAccessibility)
       view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS)
     }
@@ -1235,7 +1246,7 @@ class RenderNode(val view: View) {
     * dimmed by the app: disabling one would stop the touches that move the focus to it. */
   // out of use (`Component.disabled`): TalkBack reads a button so, though it stays where the focus can reach it
   private var outOfUse = false
-  def setDisabled(disabled: Boolean): Unit = {
+  def setDisabled(disabled: Boolean): Unit = if (Hop.needed(this)) Hop(() => setDisabled(disabled)) else {
     outOfUse = disabled
     view match {
       case e: EditText => e.setEnabled(!disabled)
@@ -1244,12 +1255,12 @@ class RenderNode(val view: View) {
   }
   /** Read-only, or editable again: the field's words can be chosen and copied, but it takes no typing or paste and
     * brings up no keyboard, and TalkBack reads it as a field that cannot be edited (`FieldView.readOnly`). */
-  def setReadOnly(on: Boolean): Unit = view match {
+  def setReadOnly(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setReadOnly(on)) else view match {
     case e: FieldView => e.readOnly(on)
     case _ => ()
   }
   /** Give the field the keyboard (and the soft keyboard where there is no other), or take both away. */
-  def focusInput(on: Boolean): Unit = view match {
+  def focusInput(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => focusInput(on)) else view match {
     case e: FieldView =>
       val keyboard = Host.activity.getSystemService(Context.INPUT_METHOD_SERVICE).asInstanceOf[android.view.inputmethod.InputMethodManager]
       if (on) e.edit(true)
@@ -1269,7 +1280,7 @@ class RenderNode(val view: View) {
 
   /** A shadow behind the letters (a subtitle's edge, as a device's caption settings ask for one); an empty colour, none. */
   /** An edge round the letters, `width` each side, or none for "" ([[OutlinedText]]). */
-  def setTextOutline(width: Double, hex: String): Unit = view match {
+  def setTextOutline(width: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setTextOutline(width, hex)) else view match {
     case t: OutlinedText =>
       if (hex.isEmpty) t.outline(0f, 0)
       else t.outline((width * Host.scale).toFloat, android.graphics.Color.parseColor(
@@ -1277,7 +1288,7 @@ class RenderNode(val view: View) {
     case _ => ()
   }
 
-  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = view match {
+  def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setTextShadow(x, y, blur, hex)) else view match {
     case t: TextView =>
       if (hex.isEmpty) t.setShadowLayer(0f, 0f, 0f, 0)
       else t.setShadowLayer(math.max(0.01, blur * Host.scale).toFloat, (x * Host.scale).toFloat, (y * Host.scale).toFloat,
@@ -1289,7 +1300,7 @@ class RenderNode(val view: View) {
 
   /** Read out by TalkBack: a label as the view's description, and a heading as a heading, where the platform knows
     * one (Android 9 on). */
-  def setSemantics(role: String, level: Int, label: String): Unit = {
+  def setSemantics(role: String, level: Int, label: String): Unit = if (Hop.needed(this)) Hop(() => setSemantics(role, level, label)) else {
     view.setContentDescription(if (label.isEmpty) null else label)
     if (android.os.Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(role == "heading")
   }
@@ -1301,7 +1312,7 @@ class RenderNode(val view: View) {
     * one. */
   def setInvalid(on: Boolean): Unit = wrong = on
   /** Being updated: TalkBack hears "busy" in its state (Android 11 on). */
-  def setUpdating(on: Boolean): Unit = {
+  def setUpdating(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setUpdating(on)) else {
     busyNow = on
     sayState()
   }
@@ -1315,7 +1326,9 @@ class RenderNode(val view: View) {
     * on). */
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String,
-                       current: Boolean, description: String): Unit = {
+                       current: Boolean, description: String): Unit = if (Hop.needed(this))
+    Hop(() => setSemanticState(range, checked, expanded, selected, sort, current, description))
+  else {
     selected.foreach(s => view.setSelected(s))
     stateSaid = range.map(_.text)
       .orElse(expanded.map(open => if (open) "expanded" else "collapsed"))
@@ -1326,7 +1339,7 @@ class RenderNode(val view: View) {
 
   /** A ring in `hex` round the view's edge, where the focus layer draws one for it (`Focus.ring`), as a stroke over
     * what it draws; "" takes it away. */
-  def setFocusRing(hex: String, radius: Double): Unit = if (android.os.Build.VERSION.SDK_INT >= 23) {
+  def setFocusRing(hex: String, radius: Double): Unit = if (Hop.needed(this)) Hop(() => setFocusRing(hex, radius)) else if (android.os.Build.VERSION.SDK_INT >= 23) {
     if (hex.isEmpty) {
       if (focusRing != null && (view.getForeground eq focusRing)) view.setForeground(null)
       focusRing = null
@@ -1343,7 +1356,7 @@ class RenderNode(val view: View) {
   private var focusRing: android.graphics.drawable.Drawable = null
 
   /** The row under a list's cursor (`VirtualList`), read out by TalkBack as it moves, where it is on. */
-  def setActiveRow(row: RenderNode, name: () => String): Unit = if (RenderNode.reading) Platform.announce(name())
+  def setActiveRow(row: RenderNode, name: () => String): Unit = if (Hop.needed(this)) Hop(() => setActiveRow(row, name)) else if (RenderNode.reading) Platform.announce(name())
   /** A field's list of completions (`FieldCompletion`): Android has no active descendant for a field, so where
     * TalkBack is on the lit row is read out as it is lit, as a list's row under its cursor is; the field says whether
     * the list shows in its state ("expanded", `setSemanticState`). */
@@ -1351,12 +1364,12 @@ class RenderNode(val view: View) {
     if (RenderNode.reading && active.nonEmpty) Platform.announce(name())
   /** A tap takes no focus from a field here: a view that is not focusable leaves the field its keyboard. */
   def holdFocusOnPress(): Unit = ()
-  def setAlt(text: String): Unit = view.setContentDescription(if (text.isEmpty) null else text)
+  def setAlt(text: String): Unit = if (Hop.needed(this)) Hop(() => setAlt(text)) else view.setContentDescription(if (text.isEmpty) null else text)
 
   /** The focus landed here (the app's own focus, which Android's does not follow). With a screen reader on, this is
     * where TalkBack's focus goes: read out by its label, or else by the words inside it, as a button that its double
     * tap (or OK) presses. Without one, nothing is done: the checks and the delegate cost nothing on an ordinary run. */
-  def accessibleFocus(click: () => Unit, name: () => String): Unit = if (RenderNode.reading) {
+  def accessibleFocus(click: () => Unit, name: () => String): Unit = if (Hop.needed(this)) Hop(() => accessibleFocus(click, name)) else if (RenderNode.reading) {
     view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES)
     if (android.os.Build.VERSION.SDK_INT >= 28) view.setScreenReaderFocusable(true)
     focusDelegate = true
@@ -1382,14 +1395,14 @@ class RenderNode(val view: View) {
   }
 
   /** "start", "center" or "end", by the reading direction (`Direction`). */
-  def setTextAlign(align: String): Unit = {
+  def setTextAlign(align: String): Unit = if (Hop.needed(this)) Hop(() => setTextAlign(align)) else {
     textAlign = align
     applyAlign()
   }
 
   /** Which way the words run: "" the app's, "auto" their own (the first letter with a direction, falling back to the
     * app's), "ltr" or "rtl". The side their lines start from follows. */
-  def setTextDirection(value: String): Unit = {
+  def setTextDirection(value: String): Unit = if (Hop.needed(this)) Hop(() => setTextDirection(value)) else {
     textDirection = value
     applyAlign()
   }
@@ -1402,7 +1415,7 @@ class RenderNode(val view: View) {
     * given no width of their own wrap at `width` where they would run past it (kept to their box), the view as wide. */
   /** Whether words held to a limit (`setTextLimit`) wrap at it here: they do. */
   def wrapsToLimit(): Boolean = true
-  def setTextLimit(width: Double, lines: Int): Unit = view match {
+  def setTextLimit(width: Double, lines: Int): Unit = if (Hop.needed(this)) Hop(() => setTextLimit(width, lines)) else view match {
     case _: EditText => ()
     case t: TextView if wrapping && explicitWidth < 0.0 =>
       wrapLimit = 0.0
@@ -1439,7 +1452,7 @@ class RenderNode(val view: View) {
   }
 
   /** The picture in one colour (`"#rrggbb"`), its transparency kept, or as it is for `""`. */
-  def setTint(hex: String): Unit = view match {
+  def setTint(hex: String): Unit = if (Hop.needed(this)) Hop(() => setTint(hex)) else view match {
     case i: ImageView =>
       if (hex.isEmpty) i.clearColorFilter()
       else i.setColorFilter(RenderNode.color(hex), android.graphics.PorterDuff.Mode.SRC_IN)
@@ -1448,7 +1461,7 @@ class RenderNode(val view: View) {
 
   /** The picture the view draws, or none (which lets the one it was drawing go): the last one asked for, never one
     * that came after another was. An SVG is drawn again sharper where the view shows it larger than it was drawn. */
-  def setImageSource(uri: String): Unit = view match {
+  def setImageSource(uri: String): Unit = if (Hop.needed(this)) Hop(() => setImageSource(uri)) else view match {
     case i: ImageView =>
       picture = uri
       if (uri.isEmpty) i.setImageDrawable(null)
@@ -2574,7 +2587,7 @@ object Platform {
   /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
   def afterFirstPaint(f: () => Unit): Unit = f()
 
-  def setTitle(title: String): Unit = Host.activity.setTitle(title)
+  def setTitle(title: String): Unit = if (Hop.offThread) Hop(() => setTitle(title)) else Host.activity.setTitle(title)
   /** Whether a `Backdrop` plays a video behind a screen (`videoSource`): not here, where it keeps its picture. */
   def backdropVideo(): Boolean = false
 
@@ -2623,7 +2636,7 @@ object Platform {
   /** The activity's configuration changed (`EveryUIActivity.onConfigurationChanged`). */
   def configurationChanged(): Unit = configured.foreach(_())
   /** `words` read out by TalkBack when it next can, where it is on (a new message in a chat). */
-  def announce(words: String): Unit = if (RenderNode.reading && Host.root != null) Host.root.announceForAccessibility(words)
+  def announce(words: String): Unit = if (Hop.offThread) Hop(() => announce(words)) else if (RenderNode.reading && Host.root != null) Host.root.announceForAccessibility(words)
   /** At once: TalkBack has no other way to say it than `announce`. */
   def alert(words: String): Unit = announce(words)
   /** The app named (`NaboTV (tv.nabo.app)`) to the servers its pictures come from, as their User-Agent: a map's tile
@@ -2719,7 +2732,7 @@ object Platform {
     true
   }
 
-  def keepAwake(on: Boolean): Unit = {
+  def keepAwake(on: Boolean): Unit = if (Hop.offThread) Hop(() => keepAwake(on)) else {
     val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
     if (on) Host.activity.getWindow.addFlags(flag) else Host.activity.getWindow.clearFlags(flag)
   }
@@ -3110,7 +3123,7 @@ object Platform {
   def setLanguage(code: String): Unit = ()
 
   /** The root's layout direction, which fields take, and the side every text starts on. */
-  def setDirection(rtl: Boolean): Unit = {
+  def setDirection(rtl: Boolean): Unit = if (Hop.offThread) Hop(() => setDirection(rtl)) else {
     Host.rtl = rtl
     Host.root.setLayoutDirection(if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
     // by its iterator: Iterable.forEach is Android 7's
@@ -3122,6 +3135,12 @@ object Platform {
     * whatever it hands back goes by `later`. A failure is logged and goes no further: it must not take the app down. */
   def offThread(f: () => Unit): Unit = Host.work.execute(() =>
     try f() catch { case t: Throwable => logError("Off the UI thread", t) })
+
+  /** Whether this is the thread that draws, the main thread: where a change to what is drawn is made at once (`Hop`). */
+  def onDrawingThread(): Boolean = android.os.Looper.myLooper() eq android.os.Looper.getMainLooper
+  /** Whether `node` is read on the main thread rather than here: here is another thread and the view is in the window,
+    * where its changes are on their way to the main thread (`Hop`), so what it measures here is what it was. */
+  def readsLater(node: RenderNode): Boolean = Hop.needed(node)
 
   def later(f: () => Unit): Unit = new android.os.Handler(android.os.Looper.getMainLooper).post(() => f())
   /** `f` once what is running now is done: `later` here. */
@@ -3251,7 +3270,7 @@ object Platform {
   def safeArea(): everyui.layout.Insets = everyui.layout.Insets(Host.safe._2 / Host.scale, Host.safe._3 / Host.scale,
     Host.safe._4 / Host.scale, Host.safe._1 / Host.scale)
   /** The app drawn `factor` times its size (everyui.theme.UiScale), over the density it is already scaled by. */
-  def setUiScale(factor: Double): Unit = Host.scaleRoot()
+  def setUiScale(factor: Double): Unit = if (Hop.offThread) Hop(() => setUiScale(factor)) else Host.scaleRoot()
 
   /** Screen pixels to a layout unit: the window's real width over the width it is laid out in — the display's density,
     * or whatever a `--es viewport` launch set the layout to. */

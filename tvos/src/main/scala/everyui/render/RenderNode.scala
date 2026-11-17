@@ -928,6 +928,10 @@ object Platform {
 
   /** Nothing runs beside the interface here yet: the work is done at once. */
   def offThread(f: () => Unit): Unit = f()
+  /** Whether this is the thread that draws: the only one there is here. */
+  def onDrawingThread(): Boolean = true
+  /** Whether `node` is read on the thread that draws rather than here: never, this being it. */
+  def readsLater(node: RenderNode): Boolean = false
 
   /** `f` on the main queue's next turn, once what runs now is done and after what was asked for before it, as
     * every other backend has it (uiLater); it ran at once here, so a step waiting for its component to be put on the

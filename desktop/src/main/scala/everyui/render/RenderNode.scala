@@ -52,7 +52,7 @@ class RenderNode(val fx: Node) {
     case _ => ""
   }
 
-  def setText(text: String): Unit = fx match {
+  def setText(text: String): Unit = if (Hop.needed(this)) Hop(() => setText(text)) else fx match {
     case t: Text =>
       RtlText.lay(t, text)
       if (textDirection == "auto") applyAlign()
@@ -60,13 +60,13 @@ class RenderNode(val fx: Node) {
   }
 
   def getX(): Double = left
-  def setX(x: Double): Unit = {
+  def setX(x: Double): Unit = if (Hop.needed(this)) Hop(() => setX(x)) else {
     left = x
     fx.setLayoutX(x)
   }
 
   def getY(): Double = top
-  def setY(y: Double): Unit = {
+  def setY(y: Double): Unit = if (Hop.needed(this)) Hop(() => setY(y)) else {
     top = y
     placeY()
   }
@@ -74,18 +74,18 @@ class RenderNode(val fx: Node) {
   /** Radians, clockwise, about the node's own centre — JavaFX's `rotate` is degrees, clockwise, about the centre of
     * the node's layout bounds. */
   def getRotation(): Double = rotation
-  def setRotation(radians: Double): Unit = {
+  def setRotation(radians: Double): Unit = if (Hop.needed(this)) Hop(() => setRotation(radians)) else {
     rotation = radians
     fx.setRotate(math.toDegrees(radians))
   }
 
   /** Drawn larger or smaller about its own centre, which is what JavaFX scales about. */
-  def setScale(factor: Double): Unit = {
+  def setScale(factor: Double): Unit = if (Hop.needed(this)) Hop(() => setScale(factor)) else {
     fx.setScaleX(factor)
     fx.setScaleY(factor)
   }
 
-  def setFontSize(size: Double): Unit = fx match {
+  def setFontSize(size: Double): Unit = if (Hop.needed(this)) Hop(() => setFontSize(size)) else fx match {
     case f: RichFlow =>
       fontSize = size
       f.setSize(size)
@@ -100,7 +100,7 @@ class RenderNode(val fx: Node) {
   }
 
   /** `"#rrggbb"`. */
-  def setColor(hex: String): Unit = fx match {
+  def setColor(hex: String): Unit = if (Hop.needed(this)) Hop(() => setColor(hex)) else fx match {
     case f: RichFlow => f.setColour(hex)
     case t: Text => t.setFill(Color.web(hex))
     case f: TextInputControl =>
@@ -110,7 +110,7 @@ class RenderNode(val fx: Node) {
   }
 
   /** A bundled face (`assets/fonts/`): family, CSS weight, size in pixels. */
-  def setFont(family: String, weight: Int, size: Double): Unit = fx match {
+  def setFont(family: String, weight: Int, size: Double): Unit = if (Hop.needed(this)) Hop(() => setFont(family, weight, size)) else fx match {
     case f: RichFlow =>
       face = Faces(family, weight)
       fontSize = size
@@ -167,12 +167,13 @@ class RenderNode(val fx: Node) {
       case _ => 0.0
     }
 
-  def append(child: RenderNode): Unit = fx match {
+  def append(child: RenderNode): Unit = if (Hop.needed(this, child)) Hop.joining(child, () => append(child)) else fx match {
     case p: Pane => p.getChildren.add(child.fx)
     case _ => ()
   }
 
-  def insert(child: RenderNode, index: Int): Unit = fx match {
+  def insert(child: RenderNode, index: Int): Unit =
+    if (Hop.needed(this, child)) Hop.joining(child, () => insert(child, index)) else fx match {
     case p: Pane =>
       p.getChildren.remove(child.fx)
       p.getChildren.add(math.max(0, math.min(index, p.getChildren.size)), child.fx)
@@ -180,12 +181,12 @@ class RenderNode(val fx: Node) {
   }
 
   /** Detach from the parent, if attached. */
-  def remove(): Unit = fx.getParent match {
+  def remove(): Unit = if (Hop.needed(this)) Hop(() => remove()) else fx.getParent match {
     case p: Pane => p.getChildren.remove(fx)
     case _ => ()
   }
 
-  def setWidth(width: Double): Unit = {
+  def setWidth(width: Double): Unit = if (Hop.needed(this)) Hop(() => setWidth(width)) else {
     explicitWidth = width
     fx match {
       case r: Region =>
@@ -200,7 +201,7 @@ class RenderNode(val fx: Node) {
     }
   }
 
-  def setHeight(height: Double): Unit = {
+  def setHeight(height: Double): Unit = if (Hop.needed(this)) Hop(() => setHeight(height)) else {
     explicitHeight = height
     fx match {
       case r: Region =>
@@ -219,17 +220,17 @@ class RenderNode(val fx: Node) {
   private var radius: Double = 0.0
   private var borderWidth: Double = 0.0
   private var borderColor: String = ""
-  def setBackgroundColor(hex: String): Unit = {
+  def setBackgroundColor(hex: String): Unit = if (Hop.needed(this)) Hop(() => setBackgroundColor(hex)) else {
     background = hex
     paintBackground()
   }
-  def setRadius(r: Double): Unit = {
+  def setRadius(r: Double): Unit = if (Hop.needed(this)) Hop(() => setRadius(r)) else {
     radius = r
     paintBackground()
     roundClip()
   }
   /** An edge `width` pixels wide, inside the box. */
-  def setBorder(width: Double, hex: String): Unit = {
+  def setBorder(width: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setBorder(width, hex)) else {
     borderWidth = width
     borderColor = hex
     paintBackground()
@@ -237,7 +238,7 @@ class RenderNode(val fx: Node) {
   private var gradient: Option[Paint] = None
   /** A linear gradient over the box (`everyui.Gradient`'s encoding), or none for `""`. */
   /** A radial gradient, its centre `x`, `y` and its radius in pixels, its stops from the centre out. */
-  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit = {
+  def setRadialGradient(x: Double, y: Double, radius: Double, width: Double, height: Double, stops: String): Unit = if (Hop.needed(this)) Hop(() => setRadialGradient(x, y, radius, width, height, stops)) else {
     gradient = if (stops.isEmpty) None else Some(new javafx.scene.paint.RadialGradient(0.0, 0.0, x, y,
       math.max(0.01, radius), false, CycleMethod.NO_CYCLE,
       everyui.Gradient.decode(stops).map { case (hex, at) => new Stop(at, Color.web(hex)) }*))
@@ -250,17 +251,17 @@ class RenderNode(val fx: Node) {
   /** What is behind shows sharp: JavaFX blurs only a node's own drawing. */
   def setBackdropBlur(radius: Double): Unit = ()
 
-  def setGradient(angle: Double, stops: String): Unit = {
+  def setGradient(angle: Double, stops: String): Unit = if (Hop.needed(this)) Hop(() => setGradient(angle, stops)) else {
     gradient = RenderNode.linearGradient(angle, stops)
     paintBackground()
   }
   /** The letters painted with a gradient. */
-  def setTextGradient(angle: Double, stops: String): Unit = fx match {
+  def setTextGradient(angle: Double, stops: String): Unit = if (Hop.needed(this)) Hop(() => setTextGradient(angle, stops)) else fx match {
     case t: Text => RenderNode.linearGradient(angle, stops).foreach(t.setFill)
     case _ => ()
   }
   /** JavaFX's cached bitmap of the node. */
-  def setCached(cached: Boolean): Unit = fx.setCache(cached)
+  def setCached(cached: Boolean): Unit = if (Hop.needed(this)) Hop(() => setCached(cached)) else fx.setCache(cached)
 
   private var motionTracks: List[everyui.motion.Track] = Nil
   /** The motion's timelines, run only while the node is in a shown window and visible (Motion): made on first use. */
@@ -268,7 +269,7 @@ class RenderNode(val fx: Node) {
 
   /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
   def setMotionOwner(owner: () => String): Unit = ()
-  def setMotion(tracks: List[everyui.motion.Track]): Unit = {
+  def setMotion(tracks: List[everyui.motion.Track]): Unit = if (Hop.needed(this)) Hop(() => setMotion(tracks)) else {
     motionTracks = tracks
     if (tracks.nonEmpty || motion != null) {
       if (motion == null) motion = new Motion(fx, () => timelines())
@@ -302,13 +303,13 @@ class RenderNode(val fx: Node) {
   }
 
   /** A soft shadow under the box, or none for `""`. */
-  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
+  def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setShadow(x, y, blur, hex)) else {
     dropShadow = if (hex.isEmpty) None else Some(new javafx.scene.effect.DropShadow(blur, x, y, Color.web(hex)))
     paintEffect()
     clipToBox()
   }
   /** A gaussian blur, its kernel three times the spread wide (as far as JavaFX goes), over the shadow if there is one. */
-  def setBlur(radius: Double): Unit = {
+  def setBlur(radius: Double): Unit = if (Hop.needed(this)) Hop(() => setBlur(radius)) else {
     blurRadius = radius
     paintEffect()
   }
@@ -334,7 +335,7 @@ class RenderNode(val fx: Node) {
   /** Slanted: the family's registered italic, or the system's, where it has one (`RichFlow.font`), else its upright
     * letters sheared (`Oblique`); the measured width is the words' as drawn. A field in a family with no italic stays
     * upright. */
-  def setItalic(on: Boolean): Unit = if (on != italic) {
+  def setItalic(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setItalic(on)) else if (on != italic) {
     italic = on
     fx match {
       case f: RichFlow => f.setItalic(on)
@@ -354,7 +355,7 @@ class RenderNode(val fx: Node) {
   /** Styled runs: each in its own style in a `RichFlow` (`Nodes.richText`, a `RichText`'s node). A plain `Text` is one
     * style, so there they are drawn as the paragraph's own, their words run together, underlined where every word of
     * them is (a subtitle underlined whole), since a line under part of it cannot be. */
-  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = {
+  def setRuns(runs: List[everyui.text.TextRun], follow: String => Unit): Unit = if (Hop.needed(this)) Hop(() => setRuns(runs, follow)) else {
     this.runs = runs
     fx match {
       case f: RichFlow =>
@@ -390,7 +391,7 @@ class RenderNode(val fx: Node) {
   def onOver(told: Boolean => Unit): Unit = ()
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * place in the app's units: the scene's over the size the app is drawn at (`Host.unscaled`). */
-  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = if (kind == PointerKind.Wheel)
+  def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = if (Hop.needed(this)) Hop(() => onPointer(kind, f)) else if (kind == PointerKind.Wheel)
     fx.addEventHandler(ScrollEvent.SCROLL, (e: ScrollEvent) => {
       Platform.pointed(0, e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
       f(-e.getDeltaX, -e.getDeltaY)
@@ -448,7 +449,7 @@ class RenderNode(val fx: Node) {
   /** Its ends faded to clear over `start` and `end` pixels (its left and right, or its top and bottom), showing what is
     * behind: its clip (`setClip`) filled with a gradient from clear to solid and back, which JavaFX draws through as
     * a mask, set again as the clip is. */
-  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = {
+  def setEdgeFade(horizontal: Boolean, start: Double, end: Double): Unit = if (Hop.needed(this)) Hop(() => setEdgeFade(horizontal, start, end)) else {
     fade = (horizontal, start, end)
     faded()
   }
@@ -491,18 +492,18 @@ class RenderNode(val fx: Node) {
   def scrolled(horizontal: Boolean): Double = 0.0
   def scrollSmoothly(to: Double, horizontal: Boolean): Unit = ()
   /** Whether the platform draws this: what a scroll has out of sight is not drawn at all. */
-  def setVisible(visible: Boolean): Unit = if (fx.isVisible != visible) {
+  def setVisible(visible: Boolean): Unit = if (Hop.needed(this)) Hop(() => setVisible(visible)) else if (fx.isVisible != visible) {
     fx.setVisible(visible)
     // what moves in it, or is it, runs only while it can be seen (Motion)
     Motion.visibilityChanged()
   }
   /** Laid out while hidden: a hidden node is laid out here already, and measures where it is. */
   def setLaidOutHidden(on: Boolean): Unit = ()
-  def setOpacity(opacity: Double): Unit = fx.setOpacity(opacity)
+  def setOpacity(opacity: Double): Unit = if (Hop.needed(this)) Hop(() => setOpacity(opacity)) else fx.setOpacity(opacity)
 
   /** What shows of it cut to `width` by `height`, with its corners rounded as its own are (`setRadius`), as the web's
     * overflow is: a header band or a picture in a rounded box does not show square corners inside it. */
-  def setClip(width: Double, height: Double): Unit = {
+  def setClip(width: Double, height: Double): Unit = if (Hop.needed(this)) Hop(() => setClip(width, height)) else {
     val r = new Rectangle(width, height)
     clipShape = Some(r)
     fx.setClip(r)
@@ -515,7 +516,7 @@ class RenderNode(val fx: Node) {
   // is left as it is.
   private var boxClip: Rectangle = null
   private var boxWanted = false
-  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = {
+  def setBoxClip(on: Boolean, width: Double, height: Double): Unit = if (Hop.needed(this)) Hop(() => setBoxClip(on, width, height)) else {
     boxWanted = on
     if (boxClip == null) boxClip = new Rectangle(width, height)
     else {
@@ -535,12 +536,12 @@ class RenderNode(val fx: Node) {
       r.setArcHeight(radius * 2.0)
     case _ => ()
   }
-  def setTooltip(text: String): Unit = if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
+  def setTooltip(text: String): Unit = if (Hop.needed(this)) Hop(() => setTooltip(text)) else if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)
   /** What a screen reader hears of it after its name, as JavaFX's help text, with "busy" while it is being updated
     * (`setUpdating`) and "unavailable" while out of use (`setDisabled`). */
   /** No guess at the words' width here: they are measured. */
   def textWidthGuess(): Double = -1.0
-  def setDescription(text: String): Unit = {
+  def setDescription(text: String): Unit = if (Hop.needed(this)) Hop(() => setDescription(text)) else {
     help = text
     sayHelp()
   }
@@ -555,12 +556,12 @@ class RenderNode(val fx: Node) {
   /** JavaFX has no word for a wrong value: why it is wrong is said in its help text (`setDescription`). */
   def setInvalid(on: Boolean): Unit = ()
   /** Being updated, said in its help text. */
-  def setUpdating(on: Boolean): Unit = {
+  def setUpdating(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setUpdating(on)) else {
     busyNow = on
     sayHelp()
   }
   /** A drawing's figures (everyui.draw.Drawing): an SVGPath each, stroked and filled as it says. */
-  def setFigures(figures: List[everyui.draw.Figure]): Unit = fx match {
+  def setFigures(figures: List[everyui.draw.Figure]): Unit = if (Hop.needed(this)) Hop(() => setFigures(figures)) else fx match {
     case p: Pane =>
       p.getChildren.setAll(figures.map { f =>
         val shape = new javafx.scene.shape.SVGPath()
@@ -588,7 +589,7 @@ class RenderNode(val fx: Node) {
   /** What it is when selected words are copied (`Component.copyAs`): no text is selected here, so nothing to do. */
   def setCopyAs(tag: String): Unit = ()
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"); "" for the default. */
-  def setCursor(name: String): Unit = fx.setCursor(name match {
+  def setCursor(name: String): Unit = if (Hop.needed(this)) Hop(() => setCursor(name)) else fx.setCursor(name match {
     case "col-resize" | "ew-resize" => javafx.scene.Cursor.H_RESIZE
     case "row-resize" | "ns-resize" => javafx.scene.Cursor.V_RESIZE
     case "pointer" => javafx.scene.Cursor.HAND
@@ -601,7 +602,7 @@ class RenderNode(val fx: Node) {
 
   /** `"normal"` (or `"pre-wrap"`, `"pre-line"`, which keep the words' own line breaks as a text node always does here)
     * wraps a text node at its width; anything else keeps it on one line. */
-  def setWhiteSpace(value: String): Unit = fx match {
+  def setWhiteSpace(value: String): Unit = if (Hop.needed(this)) Hop(() => setWhiteSpace(value)) else fx match {
     case _: RichFlow => wrapping = value != "nowrap" && value != "pre"
     case t: Text =>
       wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
@@ -614,7 +615,7 @@ class RenderNode(val fx: Node) {
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
   /** An edge round the letters, `width` each side, or none for "": the text's own stroke, laid outside the letters so
     * it never eats into them, as Android's is. */
-  def setTextOutline(width: Double, hex: String): Unit = fx match {
+  def setTextOutline(width: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setTextOutline(width, hex)) else fx match {
     case t: Text =>
       if (hex.isEmpty) t.setStroke(null)
       else {
@@ -631,7 +632,7 @@ class RenderNode(val fx: Node) {
   private var named = false
   // whether a list's name is the row under its cursor (`setActiveRow`), which the focus arriving leaves as it is
   private var rowSaid = false
-  def setSemantics(role: String, level: Int, label: String): Unit = {
+  def setSemantics(role: String, level: Int, label: String): Unit = if (Hop.needed(this)) Hop(() => setSemantics(role, level, label)) else {
     if (!fx.isInstanceOf[javafx.scene.control.Control]) fx.setAccessibleRole(
       if (role.nonEmpty) RenderNode.accessibleRole(role)
       else if (fx.isInstanceOf[javafx.scene.Parent]) javafx.scene.AccessibleRole.PARENT
@@ -644,12 +645,13 @@ class RenderNode(val fx: Node) {
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String,
                        current: Boolean, description: String): Unit =
-    fx.setAccessibleHelp(if (description.isEmpty) null else description)
+    if (Hop.needed(this)) Hop(() => setSemanticState(range, checked, expanded, selected, sort, current, description))
+    else     fx.setAccessibleHelp(if (description.isEmpty) null else description)
   /** The focus landed here: the window's focus put on this node too, so a screen reader follows it and reads it by
     * its role and name (setSemantics), while the keys are still heard by the app (`onKey`, a filter on the scene). A
     * node given no name is named by `name` (`Access.nameOf`: the words inside it, its tooltip), which JavaFX does not
     * work out for itself. A text field or an embed (a web view) takes the window's focus itself, and keeps it. */
-  def accessibleFocus(click: () => Unit, name: () => String): Unit = {
+  def accessibleFocus(click: () => Unit, name: () => String): Unit = if (Hop.needed(this)) Hop(() => accessibleFocus(click, name)) else {
     if (!fx.isInstanceOf[javafx.scene.control.Control] && !rowSaid && (fx.getAccessibleText == null || named)) {
       named = true
       val said = name()
@@ -664,7 +666,8 @@ class RenderNode(val fx: Node) {
   /** A ring in `hex` round the node, where the focus layer draws one for it (`Focus.ring`), as a hard shadow its own
     * shape; "" takes it away. A node with an effect of its own (a blur, a tint) keeps it, and draws no ring. */
   def setFocusRing(hex: String, radius: Double): Unit =
-    if (hex.isEmpty) {
+    if (Hop.needed(this)) Hop(() => setFocusRing(hex, radius))
+    else if (hex.isEmpty) {
       if (fx.getEffect eq focusRing) fx.setEffect(null)
       focusRing = null
     }
@@ -677,7 +680,7 @@ class RenderNode(val fx: Node) {
 
   /** The row under a list's cursor (`VirtualList`), named to a screen reader as the list's own name while it has the
     * focus: JavaFX's readers hear a node's name change, and a list EveryUI makes is not one of JavaFX's ListViews. */
-  def setActiveRow(row: RenderNode, name: () => String): Unit = {
+  def setActiveRow(row: RenderNode, name: () => String): Unit = if (Hop.needed(this)) Hop(() => setActiveRow(row, name)) else {
     rowSaid = true
     fx.setAccessibleText(name())
     fx.notifyAccessibleAttributeChanged(javafx.scene.AccessibleAttribute.TEXT)
@@ -686,7 +689,8 @@ class RenderNode(val fx: Node) {
     * the field is named by that row, as a list is by the row under its cursor, and given its own name back as the list
     * closes. A press on the list takes no focus here anyway (`holdFocusOnPress`). */
   def setCompletionList(on: Boolean, list: Option[RenderNode], active: Option[RenderNode], name: () => String): Unit =
-    if (active.nonEmpty) {
+    if (Hop.needed(this)) Hop(() => setCompletionList(on, list, active, name))
+    else if (active.nonEmpty) {
       if (!completionSaid) ownName = fx.getAccessibleText
       completionSaid = true
       fx.setAccessibleText(name())
@@ -704,14 +708,14 @@ class RenderNode(val fx: Node) {
   def holdFocusOnPress(): Unit = ()
   def setAlt(text: String): Unit = ()
 
-  def setTextAlign(value: String): Unit = {
+  def setTextAlign(value: String): Unit = if (Hop.needed(this)) Hop(() => setTextAlign(value)) else {
     align = value
     applyAlign()
   }
 
   /** Which way the words run: "" the window's, "auto" their own (JavaFX has no such setting, so the first letter
     * with a direction is found here, again as the words change), "ltr" or "rtl". */
-  def setTextDirection(value: String): Unit = {
+  def setTextDirection(value: String): Unit = if (Hop.needed(this)) Hop(() => setTextDirection(value)) else {
     textDirection = value
     applyAlign()
   }
@@ -724,7 +728,7 @@ class RenderNode(val fx: Node) {
     * given no width of their own wrap at `width` where they would run past it (kept to their box). */
   /** Whether words held to a limit (`setTextLimit`) wrap at it here: they do. */
   def wrapsToLimit(): Boolean = true
-  def setTextLimit(width: Double, lines: Int): Unit = fx match {
+  def setTextLimit(width: Double, lines: Int): Unit = if (Hop.needed(this)) Hop(() => setTextLimit(width, lines)) else fx match {
     case t: Text if wrapping && explicitWidth < 0.0 =>
       wrapLimit = 0.0
       applyAlign()
@@ -778,13 +782,13 @@ class RenderNode(val fx: Node) {
     case f: TextInputControl => f.getText
     case _ => ""
   }
-  def setValue(value: String): Unit = fx match {
+  def setValue(value: String): Unit = if (Hop.needed(this)) Hop(() => setValue(value)) else fx match {
     case f: TextInputControl =>
       f.setText(value)
       f.positionCaret(value.length)
     case _ => ()
   }
-  def setPlaceholder(text: String): Unit = fx match {
+  def setPlaceholder(text: String): Unit = if (Hop.needed(this)) Hop(() => setPlaceholder(text)) else fx match {
     case f: TextInputControl => f.setPromptText(text)
     case _ => ()
   }
@@ -798,7 +802,7 @@ class RenderNode(val fx: Node) {
   def formDone(saved: Boolean): Unit = ()
   def setHiddenUsername(username: String): Unit = ()
   /** Every edit of a text field, with its new contents. */
-  def onValue(f: String => Unit): Unit = fx match {
+  def onValue(f: String => Unit): Unit = if (Hop.needed(this)) Hop(() => onValue(f)) else fx match {
     case field: TextInputControl => field.textProperty.addListener(new ChangeListener[String] {
       override def changed(o: ObservableValue[? <: String], was: String, now: String): Unit = {
         // words running by their own first letter turn the field as they change
@@ -810,41 +814,41 @@ class RenderNode(val fx: Node) {
   }
   /** A paste into a text field (Ctrl+V, Shift+Insert, the context menu's Paste), put to `f` with its words before they
     * land (`Pasting`). */
-  def onPaste(f: String => everyui.component.types.PasteAction): Unit = fx match {
+  def onPaste(f: String => everyui.component.types.PasteAction): Unit = if (Hop.needed(this)) Hop(() => onPaste(f)) else fx match {
     case field: TextInputControl => Pasting.hook(field, f)
     case _ => ()
   }
   /** The pictures and files of a paste into a text field, handed to `f` where `wanted` says (`Pasting`). */
-  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = fx match {
+  def onPasteFiles(wanted: () => Boolean, f: List[everyui.file.PickedFile] => Unit): Unit = if (Hop.needed(this)) Hop(() => onPasteFiles(wanted, f)) else fx match {
     case field: TextInputControl => Pasting.hookFiles(field, wanted, f)
     case _ => ()
   }
   /** A text field taking the keyboard focus itself (a click on it). */
-  def onInputFocus(f: () => Unit): Unit = fx match {
+  def onInputFocus(f: () => Unit): Unit = if (Hop.needed(this)) Hop(() => onInputFocus(f)) else fx match {
     case field: TextInputControl => field.focusedProperty.addListener(new ChangeListener[java.lang.Boolean] {
       override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean, now: java.lang.Boolean): Unit = if (now) f()
     })
     case _ => ()
   }
   /** A text field losing the keyboard. */
-  def onInputDone(f: () => Unit): Unit = fx match {
+  def onInputDone(f: () => Unit): Unit = if (Hop.needed(this)) Hop(() => onInputDone(f)) else fx match {
     case field: TextInputControl => field.focusedProperty.addListener(new ChangeListener[java.lang.Boolean] {
       override def changed(o: ObservableValue[? <: java.lang.Boolean], was: java.lang.Boolean, now: java.lang.Boolean): Unit = if (!now) f()
     })
     case _ => ()
   }
   /** Enter in a text field. */
-  def onInputAction(f: () => Unit): Unit = fx match {
+  def onInputAction(f: () => Unit): Unit = if (Hop.needed(this)) Hop(() => onInputAction(f)) else fx match {
     case field: TextField => field.addEventHandler(javafx.event.ActionEvent.ACTION, (_: javafx.event.ActionEvent) => f())
     case _ => ()
   }
   /** All of what a text field holds chosen, so what is typed next replaces it. */
-  def selectAllInput(): Unit = fx match {
+  def selectAllInput(): Unit = if (Hop.needed(this)) Hop(() => selectAllInput()) else fx match {
     case field: TextInputControl => field.selectAll()
     case _ => ()
   }
   /** All of what a text field holds chosen as it takes the keyboard, or not (`SelectOnFocus`). */
-  def setSelectOnFocus(on: Boolean): Unit = fx match {
+  def setSelectOnFocus(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setSelectOnFocus(on)) else fx match {
     case field: TextInputControl =>
       if (selecting == null && on) selecting = new SelectOnFocus(field)
       if (selecting != null) selecting.on = on
@@ -857,7 +861,7 @@ class RenderNode(val fx: Node) {
     case _ => 0
   }
   /** A text field's caret put at `at`, nothing chosen. */
-  def setCaret(at: Int): Unit = fx match {
+  def setCaret(at: Int): Unit = if (Hop.needed(this)) Hop(() => setCaret(at)) else fx match {
     case field: TextInputControl => field.positionCaret(at)
     case _ => ()
   }
@@ -871,19 +875,19 @@ class RenderNode(val fx: Node) {
     case _ => 0
   }
   /** `start` to `end` chosen in a text field. */
-  def setSelection(start: Int, end: Int): Unit = fx match {
+  def setSelection(start: Int, end: Int): Unit = if (Hop.needed(this)) Hop(() => setSelection(start, end)) else fx match {
     case field: TextInputControl => field.selectRange(start, end)
     case _ => ()
   }
   /** `start` to `end` replaced by `words`, which the field's undo takes back as it does typing; the caret after them. */
-  def replaceInput(start: Int, end: Int, words: String): Unit = fx match {
+  def replaceInput(start: Int, end: Int, words: String): Unit = if (Hop.needed(this)) Hop(() => replaceInput(start, end, words)) else fx match {
     case field: TextInputControl =>
       field.replaceText(start, end, words)
       field.positionCaret(start + words.length)
     case _ => ()
   }
   /** What is chosen in a text field, told as it changes, once for each change. */
-  def onSelection(f: (Int, Int) => Unit): Unit = fx match {
+  def onSelection(f: (Int, Int) => Unit): Unit = if (Hop.needed(this)) Hop(() => onSelection(f)) else fx match {
     case field: TextInputControl =>
       field.selectionProperty.addListener(new ChangeListener[javafx.scene.control.IndexRange] {
         override def changed(o: ObservableValue[? <: javafx.scene.control.IndexRange], was: javafx.scene.control.IndexRange,
@@ -896,7 +900,7 @@ class RenderNode(val fx: Node) {
   def setReaderHidden(hidden: Boolean): Unit = ()
   /** Out of use, or back in it: a text field keeps its words but takes no typing. Nothing reads the nodes' roles here
     * (`setSemantics`), so there is nothing to tell. */
-  def setDisabled(disabled: Boolean): Unit = fx match {
+  def setDisabled(disabled: Boolean): Unit = if (Hop.needed(this)) Hop(() => setDisabled(disabled)) else fx match {
     case field: TextInputControl =>
       fieldDisabled = disabled
       field.setEditable(!disabled && !fieldReadOnly)
@@ -907,7 +911,7 @@ class RenderNode(val fx: Node) {
   }
   /** Read-only, or editable again: a text field shows its words, which can be chosen and copied, but takes no typing
     * or paste, and looks as it did (not editable, which JavaFX tells a screen reader, rather than disabled). */
-  def setReadOnly(on: Boolean): Unit = fx match {
+  def setReadOnly(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setReadOnly(on)) else fx match {
     case field: TextInputControl =>
       fieldReadOnly = on
       field.setEditable(!on && !fieldDisabled)
@@ -916,7 +920,7 @@ class RenderNode(val fx: Node) {
   private var fieldDisabled: Boolean = false
   private var fieldReadOnly: Boolean = false
   /** Give a text field the keyboard, or take it back to the window. */
-  def focusInput(on: Boolean): Unit = fx match {
+  def focusInput(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => focusInput(on)) else fx match {
     case field: TextInputControl =>
       if (on && !field.isFocused) field.requestFocus()
       else if (!on && field.isFocused) Host.root.requestFocus()
@@ -924,14 +928,14 @@ class RenderNode(val fx: Node) {
   }
 
   /** The picture in one colour, its transparency kept (the colour blended over it, atop), or as it is for `""`. */
-  def setTint(hex: String): Unit = fx.setEffect(
+  def setTint(hex: String): Unit = if (Hop.needed(this)) Hop(() => setTint(hex)) else fx.setEffect(
     if (hex.isEmpty) null
     else new javafx.scene.effect.Blend(javafx.scene.effect.BlendMode.SRC_ATOP, null,
       new javafx.scene.effect.ColorInput(0, 0, 8192, 8192, Color.web(hex))))
 
   /** The picture the view draws, or none (which lets the one it was drawing go). One JavaFX reads is shown as it
     * loads; an SVG once it is drawn (`Host.imageThen`), at the view's size times the screen's density. */
-  def setImageSource(uri: String): Unit = fx match {
+  def setImageSource(uri: String): Unit = if (Hop.needed(this)) Hop(() => setImageSource(uri)) else fx match {
     case i: ImageView =>
       picture = uri
       if (uri.isEmpty) i.setImage(null)
@@ -954,14 +958,14 @@ class RenderNode(val fx: Node) {
   // JavaFX Media takes no request headers: what it is given is an address and nothing else
   def setMediaHeaders(headers: Map[String, String]): Unit = ()
   /** A site-absolute path is the app's own file, or its server's where it has none (`Host.address`). */
-  def setMediaSource(url: String): Unit = media.foreach(_.setSource(Host.address(url)))
-  def setMediaStart(seconds: Double): Unit = media.foreach(_.setStart(seconds))
+  def setMediaSource(url: String): Unit = if (Hop.offThread) Hop(() => setMediaSource(url)) else media.foreach(_.setSource(Host.address(url)))
+  def setMediaStart(seconds: Double): Unit = if (Hop.offThread) Hop(() => setMediaStart(seconds)) else media.foreach(_.setStart(seconds))
   def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
-  def setMediaPlaying(playing: Boolean): Unit = media.foreach(_.setPlaying(playing))
-  def setMediaLoop(loop: Boolean): Unit = media.foreach(_.setLoop(loop))
-  def setMediaMuted(muted: Boolean): Unit = media.foreach(_.setMuted(muted))
-  def setMediaVolume(volume: Double): Unit = media.foreach(_.setVolume(volume))
-  def setMediaRate(rate: Double): Unit = media.foreach(_.setRate(rate))
+  def setMediaPlaying(playing: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaPlaying(playing)) else media.foreach(_.setPlaying(playing))
+  def setMediaLoop(loop: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaLoop(loop)) else media.foreach(_.setLoop(loop))
+  def setMediaMuted(muted: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaMuted(muted)) else media.foreach(_.setMuted(muted))
+  def setMediaVolume(volume: Double): Unit = if (Hop.offThread) Hop(() => setMediaVolume(volume)) else media.foreach(_.setVolume(volume))
+  def setMediaRate(rate: Double): Unit = if (Hop.offThread) Hop(() => setMediaRate(rate)) else media.foreach(_.setRate(rate))
   def mediaRates(): Boolean = true
   /** Whether the media has enough in hand to play to its end without stopping (`Backdrop`): said once it plays here. */
   def mediaPlaysThrough(): Boolean = true
@@ -1017,11 +1021,11 @@ class RenderNode(val fx: Node) {
   private[render] var guest: Option[WebGuest] = None
   def embedId(): String = guest.map(_.id).getOrElse("")
   def embedRuntime(): String = guest.map(_.id).getOrElse("")
-  def embedSend(message: String): Unit = guest.foreach(_.send(message))
-  def onEmbedMessage(f: String => Unit): Unit = guest.foreach(_.hear(f))
-  def focusEmbed(on: Boolean): Unit = guest.foreach(_.focus(on))
-  def onEmbedFocus(f: Boolean => Unit): Unit = guest.foreach(_.onFocus(f))
-  def releaseEmbed(): Unit = {
+  def embedSend(message: String): Unit = if (Hop.offThread) Hop(() => embedSend(message)) else guest.foreach(_.send(message))
+  def onEmbedMessage(f: String => Unit): Unit = if (Hop.offThread) Hop(() => onEmbedMessage(f)) else guest.foreach(_.hear(f))
+  def focusEmbed(on: Boolean): Unit = if (Hop.offThread) Hop(() => focusEmbed(on)) else guest.foreach(_.focus(on))
+  def onEmbedFocus(f: Boolean => Unit): Unit = if (Hop.offThread) Hop(() => onEmbedFocus(f)) else guest.foreach(_.onFocus(f))
+  def releaseEmbed(): Unit = if (Hop.offThread) Hop(() => releaseEmbed()) else {
     guest.foreach(_.release())
     guest = None
   }
@@ -1036,15 +1040,15 @@ class RenderNode(val fx: Node) {
   // JavaFX lists its tracks but will not switch between them
   def selectMediaTrack(kind: String, id: String): Unit = ()
   def setMediaText(choice: everyui.component.TextChoice): Unit = ()
-  def setMediaCover(cover: Boolean): Unit = media.foreach(_.setCover(cover))
+  def setMediaCover(cover: Boolean): Unit = if (Hop.offThread) Hop(() => setMediaCover(cover)) else media.foreach(_.setCover(cover))
   def setMediaDirect(direct: Boolean): Unit = ()
   // an effect (AudioPlayer.effect) plays here as any sound does, mixed with the rest
   def setMediaEffect(effect: Boolean): Unit = ()
   def getMediaPosition(): Double = media.map(_.position()).getOrElse(0.0)
   def getMediaDuration(): Double = media.map(_.duration()).getOrElse(0.0)
-  def seekMedia(seconds: Double): Unit = media.foreach(_.seek(seconds))
-  def onMediaEvent(f: String => Unit): Unit = media.foreach(_.onEvent(f))
-  def releaseMedia(): Unit = media.foreach(_.release())
+  def seekMedia(seconds: Double): Unit = if (Hop.offThread) Hop(() => seekMedia(seconds)) else media.foreach(_.seek(seconds))
+  def onMediaEvent(f: String => Unit): Unit = if (Hop.offThread) Hop(() => onMediaEvent(f)) else media.foreach(_.onEvent(f))
+  def releaseMedia(): Unit = if (Hop.offThread) Hop(() => releaseMedia()) else media.foreach(_.release())
 
   /** A `Text` is placed by its baseline: put that where the shared line box has it. */
   private def placeY(): Unit = fx match {
@@ -1694,7 +1698,7 @@ object Platform {
   /** `f` once the page has been painted at least once: here, at once, there being no page painted before the app. */
   def afterFirstPaint(f: () => Unit): Unit = f()
 
-  def setTitle(title: String): Unit = Option(Host.scene).flatMap(s => Option(s.getWindow)).foreach {
+  def setTitle(title: String): Unit = if (Hop.offThread) Hop(() => setTitle(title)) else Option(Host.scene).flatMap(s => Option(s.getWindow)).foreach {
     case stage: javafx.stage.Stage => stage.setTitle(title)
     case _ => ()
   }
@@ -1758,13 +1762,13 @@ object Platform {
   def selectedText(): String = ""
   /** The words selected, as HTML and as text (`Clipboard.selection`): none here. */
   def selectedRich(): Option[(String, String)] = None
-  def copyText(text: String): Unit = {
+  def copyText(text: String): Unit = if (Hop.offThread) Hop(() => copyText(text)) else {
     val content = new ClipboardContent()
     content.putString(text)
     Clipboard.getSystemClipboard.setContent(content)
   }
   /** `html` and `text` on the clipboard together: an email or a document pastes the HTML, a plain field the text. */
-  def copyRich(html: String, text: String): Unit = {
+  def copyRich(html: String, text: String): Unit = if (Hop.offThread) Hop(() => copyRich(html, text)) else {
     val content = new ClipboardContent()
     content.putHtml(html)
     content.putString(text)
@@ -1807,7 +1811,7 @@ object Platform {
   def setLanguage(code: String): Unit = ()
 
   /** The window's reading direction: every text node and field re-aligns. */
-  def setDirection(rtl: Boolean): Unit = {
+  def setDirection(rtl: Boolean): Unit = if (Hop.offThread) Hop(() => setDirection(rtl)) else {
     Host.rtl = rtl
     Host.aligned.forEach(_.applyAlign())
   }
@@ -1909,6 +1913,12 @@ object Platform {
     * whatever it hands back goes by `later`. A failure is logged and goes no further. */
   def offThread(f: () => Unit): Unit = RenderNode.work.execute(() =>
     try f() catch { case t: Throwable => logError("Off the FX thread", t) })
+
+  /** Whether this is the thread that draws, the FX thread: where a change to what is drawn is made at once (`Hop`). */
+  def onDrawingThread(): Boolean = javafx.application.Platform.isFxApplicationThread
+  /** Whether `node` is read on the FX thread rather than here: here is another thread and the node is in a window,
+    * where its changes are on their way to the FX thread (`Hop`), so what it measures here is what it was. */
+  def readsLater(node: RenderNode): Boolean = Hop.needed(node)
 
   def later(f: () => Unit): Unit = javafx.application.Platform.runLater(() => f())
   /** `f` once what is running now is done: `later` here. */
@@ -2100,7 +2110,7 @@ object Platform {
   def pixelRatio(): Double =
     Option(Host.scene.getWindow).map(_.getOutputScaleX).filter(_ > 0.0).getOrElse(1.0) * everyui.theme.UiScale()
   /** The app drawn `factor` times its size (everyui.theme.UiScale): the root scaled from its top left. */
-  def setUiScale(factor: Double): Unit = Host.scaleRoot(factor)
+  def setUiScale(factor: Double): Unit = if (Hop.offThread) Hop(() => setUiScale(factor)) else Host.scaleRoot(factor)
 
   /** `--freeze=<seconds>`: step the animation that far on a virtual clock and stop (tools/check.sh). Negative when
     * absent. */

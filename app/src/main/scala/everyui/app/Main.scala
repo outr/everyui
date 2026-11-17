@@ -148,6 +148,9 @@ import everyui.render.Platform
   *              timed, taken apart after Back; `auto=<opens>` opens and closes it by itself (PageOpenDemo)
   *   httpperf   `n=` requests to `url=` one after another and then all at once, each timed (`method=POST`, `body=`;
   *              `httplog=1` or `rokuperf=1` for where a Roku's time went) (HttpPerfDemo)
+  *   hops       words and a column of chips changed every 150 ms from rapid's threads (`Task.sleep`), taken to the thread
+  *              that draws (`Hop`) and logged; `n=<steps>`, `onscreen=1` to make them there (`onScreen`); not on a Roku or
+  *              an Apple TV (app/full: FullDemos)
   *   treebadge  the same in trees; not on a Roku or an Apple TV (app/full: FullDemos)
   *   rowtips    a project's files in a tree, each with its whole path as its tip, shown as the pointer, the cursor or
   *              a finger rests on it (`n=<files>`, `menu=1`, `theme=light`, `rtl=1`); not on a Roku or an Apple TV

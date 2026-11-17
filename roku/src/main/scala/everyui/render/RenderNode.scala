@@ -1172,6 +1172,10 @@ object Platform {
   /** A channel's interface has the render thread alone: the work is done at once, and what it hands back by `later`
     * comes on a turn after. */
   def offThread(f: () => Unit): Unit = f()
+  /** Whether this is the thread that draws: the only one there is here. */
+  def onDrawingThread(): Boolean = true
+  /** Whether `node` is read on the thread that draws rather than here: never, this being it. */
+  def readsLater(node: RenderNode): Boolean = false
 
   /** On a later turn of the render thread, from a fresh stack (a Timer): what a JavaFX runLater or a browser's
     * setTimeout gives, and what keeps a chain of callbacks from nesting into a Roku's small stack. */
