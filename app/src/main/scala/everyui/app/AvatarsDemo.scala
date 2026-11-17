@@ -3,6 +3,7 @@ package everyui.app
 import everyui.Color
 import everyui.chat.{Avatar, AvatarStatus, Participant}
 import everyui.component.{Container, TextView}
+import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.list.{RichList, RichLook, RichSection}
 import everyui.render.Platform
@@ -11,10 +12,12 @@ import everyui.ui
 import reactify.*
 
 /** People's statuses on their avatars (`Avatar.statuses`, `AvatarStatus`): lines of faces at 18 to 96 px, by their
-  * initial, by a picture, busy with a status, a face's own status over the map's, and with none; and beside them a
-  * conversation list whose people have statuses too, set once in the map and shown on their rows. A pointer resting on
-  * a face says its status. `theme=light` for the light palette, `rtl=1` to lay it out right to left, `cycle=<seconds>`
-  * to change everybody's status that often. Logs `avatars ok` once built. */
+  * initial, by a picture, busy with a status, out of office, a face's own status over the map's, and with none; and
+  * beside them a conversation list whose people have statuses too, set once in the map and shown on their rows. A
+  * meeting, away, out of office and busy all day carry an icon (a badge of the status's colour with the glyph on it,
+  * the plain dot on the 18 px faces); online is the plain dot. A pointer resting on a face says its status.
+  * `theme=light` for the light palette, `rtl=1` to lay it out right to left, `cycle=<seconds>` to change everybody's
+  * status that often. Logs `avatars ok` once built. */
 object AvatarsDemo {
   private val sizes: List[Double] = List(18.0, 24.0, 32.0, 48.0, 64.0, 96.0)
   private val ada = Participant("p-ada", "Ada Lovelace")
@@ -22,10 +25,11 @@ object AvatarsDemo {
   private val mark = Participant("p-mark", "EveryUI", Some("images/everyui-mark.png"))
   private val alan = Participant("p-alan", "Alan Turing")
   private val linus = Participant("p-linus", "Linus")
-  private val busy = AvatarStatus(Color.fromHex("#e53935"), "In a meeting · until 3:00 PM")
-  private val away = AvatarStatus(Color.fromHex("#f9a825"), "Away")
+  private val busy = AvatarStatus(Color.fromHex("#e53935"), "In a meeting · until 3:00 PM", Some(MaterialIcon.Event))
+  private val away = AvatarStatus(Color.fromHex("#f9a825"), "Away", Some(MaterialIcon.Schedule))
   private val here = AvatarStatus(Color.fromHex("#43a047"), "Online")
-  private val off = AvatarStatus(Color.fromHex("#9e9e9e"), "Out of office · back Monday")
+  private val off = AvatarStatus(Color.fromHex("#7e57c2"), "Out of office · back Monday", Some(MaterialIcon.Flight))
+  private val allDay = AvatarStatus(Color.fromHex("#c62828"), "Busy all day", Some(MaterialIcon.EventBusy))
 
   private case class Chat(id: String, who: Participant, snippet: String)
 
@@ -44,9 +48,10 @@ object AvatarsDemo {
         face.busyDetail @= "Running bash"
         face
       },
-      "Its own status, over the map's" -> { d =>
+      "Out of office" -> (d => new Avatar(alan, d)),
+      "Its own status, busy all day, over the map's" -> { d =>
         val face = new Avatar(alan, d)
-        face.status @= Some(here)
+        face.status @= Some(allDay)
         face
       },
       "No status" -> (d => new Avatar(linus, d)))
@@ -98,7 +103,7 @@ object AvatarsDemo {
 
   // everybody's status moves on to the next, every `seconds`
   private def cycle(seconds: Double): Unit = Platform.after(seconds, () => {
-    val order = List(busy, away, here, off)
+    val order = List(busy, away, here, off, allDay)
     Avatar.statuses @= Avatar.statuses().map { case (id, s) => id -> order((order.indexOf(s) + 1) % order.size) }
     cycle(seconds)
   })

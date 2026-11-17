@@ -1,17 +1,21 @@
 package everyui.chat
 
+import everyui.access.Access
 import everyui.component.Container
 import everyui.component.types.Semantics
+import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.list.{RichList, RichLook, RichRow, RichSection}
-import everyui.theme.Theme
+import everyui.theme.{Palette, Theme}
 import everyui.{Color, FxSpec, ui}
 import reactify.*
 
 /** Somebody's status on their avatar (`AvatarStatus`): set once for their id in `Avatar.statuses`, shown on every face
   * of theirs, made before or after, and gone as it leaves the map; one face's own over it; said by a pointer and to a
   * screen reader, with and without busy; on a rich list's rows and in what they say; a dot of its size and in its
-  * place at every diameter, past the face's box and not cut by it; and the map let go of as a face is disposed of. */
+  * place at every diameter, past the face's box and not cut by it; with an icon, a badge of its colour with the glyph
+  * in its middle in white or black, whichever reads, the plain dot on a face narrower than `Avatar.badgeFrom`, and what
+  * is said unchanged; and the map let go of as a face is disposed of. */
 class AvatarStatusSpec extends FxSpec {
   private val ada = Participant("p-ada", "Ada")
   private val bo = Participant("p-bo", "Bo")
@@ -239,6 +243,186 @@ class AvatarStatusSpec extends FxSpec {
     }
   }
 
+  private val meetingIcon = meeting.copy(icon = Some(MaterialIcon.Event))
+  private val awayIcon = away.copy(icon = Some(MaterialIcon.Schedule))
+
+  private def inner(face: Avatar): Container = face.statusMark.get.childComponents.head.asInstanceOf[Container]
+
+  "An avatar's status icon" should {
+    "make nothing more where a status has none, the dot drawn as it was" in {
+      val face = fx(new Avatar(ada, 48.0))
+      shown(face) {
+        fx(face.status @= Some(meeting))
+        val mark = fx(face.statusMark).get
+        fx(mark.size.width()) shouldBe Avatar.dotOuter(48.0) +- 1e-9
+        fx(mark.position.top()) shouldBe Avatar.dotStart(48.0) +- 1e-9
+        fx(inner(face).childComponents) shouldBe Nil
+        fx(face.statusGlyph) shouldBe None
+        // an empty icon is none
+        fx(face.status @= Some(meeting.copy(icon = Some(MaterialIcon.Empty))))
+        fx(face.statusGlyph) shouldBe None
+        fx(mark.size.width()) shouldBe Avatar.dotOuter(48.0) +- 1e-9
+      }
+    }
+
+    "be a badge of the status's colour with the glyph in its middle, on the corner the dot is on" in {
+      List(24.0, 32.0, 48.0, 96.0).foreach { d =>
+        val face = fx(new Avatar(ada, d))
+        shown(face) {
+          fx(face.status @= Some(meetingIcon))
+          val mark = fx(face.statusMark).get
+          val ring = Avatar.dotRing(d)
+          val outer = Avatar.badgeOuter(d)
+          val points = Avatar.badgeGlyph(d)
+          fx(mark.size.width()) shouldBe outer +- 1e-9
+          fx(mark.size.height()) shouldBe outer +- 1e-9
+          fx(mark.radius()) shouldBe outer / 2.0 +- 1e-9
+          fx(mark.backgroundColor()) shouldBe fx(Theme.background())
+          fx(inner(face).size.width()) shouldBe outer - ring * 2.0 +- 1e-9
+          fx(inner(face).position.left()) shouldBe ring
+          fx(dotColour(face)) shouldBe meeting.colour
+          // its middle on the face's edge at the bottom-right, as the dot's is
+          val middle = d / 2.0 + d / 2.0 * math.sqrt(0.5)
+          fx(mark.position.left() + outer / 2.0) shouldBe middle +- 1e-9
+          fx(mark.position.top() + outer / 2.0) shouldBe middle +- 1e-9
+          // no smaller than the dot, and the glyph three quarters of the badge inside its ring
+          outer should be >= Avatar.dotOuter(d)
+          points shouldBe (outer - ring * 2.0) * 0.75 +- 1e-9
+          val glyph = fx(face.statusGlyph).get
+          fx(glyph.icon()) shouldBe MaterialIcon.Event
+          fx(glyph.visible()) shouldBe true
+          fx(glyph.font.size()) shouldBe points
+          fx(glyph.position.left()) shouldBe (outer - ring * 2.0 - points) / 2.0 +- 1e-9
+          fx(glyph.position.top()) shouldBe (outer - ring * 2.0 - points) / 2.0 +- 1e-9
+          // drawn there, a glyph's square in the middle of the badge, nothing cutting the badge to the face's box
+          eventually {
+            val b = glyph.node.fx.getBoundsInParent
+            val badge = mark.node.fx.getBoundsInParent
+            math.abs(b.getMinX + b.getWidth / 2.0 + ring - outer / 2.0) < 0.5 &&
+              math.abs(b.getMinY + b.getHeight / 2.0 + ring - outer / 2.0) < 0.5 &&
+              math.abs(b.getWidth - points) < 0.5 && math.abs(badge.getWidth - outer) < 0.5
+          } shouldBe true
+          fx(face.clipsToBox()) shouldBe Some(false)
+          fx(face.node.fx.getClip) shouldBe null
+        }
+      }
+    }
+
+    "show the plain dot on a face narrower than badgeFrom, and the badge from it on" in {
+      Avatar.badgeFrom shouldBe 24.0
+      Avatar.badges(23.9) shouldBe false
+      Avatar.badges(24.0) shouldBe true
+      List(16.0, 18.0, 23.0).foreach { d =>
+        val face = fx(new Avatar(ada, d))
+        shown(face) {
+          fx(face.status @= Some(meetingIcon))
+          fx(face.statusMark.get.size.width()) shouldBe Avatar.dotOuter(d) +- 1e-9
+          fx(face.statusGlyph) shouldBe None
+          fx(inner(face).childComponents) shouldBe Nil
+          fx(dotColour(face)) shouldBe meeting.colour
+        }
+      }
+      val face = fx(new Avatar(ada, 24.0))
+      shown(face) {
+        fx(face.status @= Some(meetingIcon))
+        fx(face.statusMark.get.size.width()) shouldBe Avatar.badgeOuter(24.0) +- 1e-9
+        fx(face.statusGlyph.map(_.visible())) shouldBe Some(true)
+      }
+    }
+
+    "grow from the dot as an icon comes and go back to it as the icon goes, the glyph made once" in {
+      val face = fx(new Avatar(ada, 40.0))
+      shown(face) {
+        fx(face.status @= Some(meeting))
+        val mark = fx(face.statusMark).get
+        fx(Avatar.statuses @= Map(ada.id -> awayIcon))
+        fx(face.status := Avatar.statusOf(ada.id))
+        fx(mark.size.width()) shouldBe Avatar.badgeOuter(40.0) +- 1e-9
+        val glyph = fx(face.statusGlyph).get
+        fx(glyph.icon()) shouldBe MaterialIcon.Schedule
+        fx(Avatar.statuses @= Map(ada.id -> meetingIcon))
+        fx(glyph.icon()) shouldBe MaterialIcon.Event
+        fx(Avatar.statuses @= Map(ada.id -> meeting))
+        fx(mark.size.width()) shouldBe Avatar.dotOuter(40.0) +- 1e-9
+        fx(mark.position.top()) shouldBe Avatar.dotStart(40.0) +- 1e-9
+        fx(glyph.visible()) shouldBe false
+        fx(Avatar.statuses @= Map(ada.id -> meetingIcon))
+        fx(face.statusGlyph) shouldBe Some(glyph)
+        fx(glyph.visible()) shouldBe true
+        fx(inner(face).childComponents.size) shouldBe 1
+      }
+    }
+
+    "draw its glyph white on a dark colour and black on a light one, in either palette" in {
+      List(Palette.dark, Palette.light).foreach { p =>
+        val was = fx(Theme.palette())
+        fx(Theme.palette @= p)
+        try {
+          val face = fx(new Avatar(ada, 48.0))
+          shown(face) {
+            val cases = List("#e53935" -> Color.White, "#c62828" -> Color.White, "#7e57c2" -> Color.White,
+              "#43a047" -> Color.White, "#000000" -> Color.White, "#f9a825" -> Color.Black, "#9e9e9e" -> Color.Black,
+              "#ffeb3b" -> Color.Black, "#ffffff" -> Color.Black)
+            cases.foreach { case (hex, tone) =>
+              val colour = Color.fromHex(hex)
+              fx(face.status @= Some(AvatarStatus(colour, "", Some(MaterialIcon.Event))))
+              val glyph = fx(face.statusGlyph).get
+              withClue(hex + ": ") {
+                fx(glyph.color()) shouldBe tone
+                // white where it stands out 3 to 1, as a graphic needs, else black, which then stands out more
+                val white = Access.contrast(Color.White, colour)
+                val black = Access.contrast(Color.Black, colour)
+                (tone == Color.White) shouldBe (white >= 3.0)
+                math.max(white, black) should be >= 3.0
+                if (tone == Color.Black) black should be > white
+              }
+            }
+          }
+        } finally fx(Theme.palette @= was)
+      }
+    }
+
+    "go to the bottom-left in a right-to-left language" in {
+      val face = fx(new Avatar(ada, 40.0))
+      shown(face) {
+        fx(face.status @= Some(meetingIcon))
+        val mark = fx(face.statusMark).get
+        val outer = Avatar.badgeOuter(40.0)
+        val start = Avatar.markStart(40.0, outer)
+        fx(mark.position.left()) shouldBe start +- 1e-9
+        fx(Direction.rtl @= true)
+        try fx(mark.position.left()) shouldBe 40.0 - start - outer +- 1e-9
+        finally fx(Direction.rtl @= false)
+        fx(mark.position.left()) shouldBe start +- 1e-9
+      }
+    }
+
+    "leave what is said as it was: the words, the glyph passed over" in {
+      val plain = fx(new Avatar(ada, 48.0))
+      val iconed = fx(new Avatar(ada, 48.0))
+      shown(new Container { children ++= List(plain, iconed) }) {
+        fx(plain.status @= Some(meeting))
+        fx(iconed.status @= Some(meetingIcon))
+        fx(iconed.tooltip()) shouldBe fx(plain.tooltip())
+        fx(iconed.semantics()) shouldBe fx(plain.semantics())
+        fx(iconed.semantics()) shouldBe Semantics.image("Ada, In a meeting · until 3:00 PM")
+        val glyph = fx(iconed.statusGlyph).get
+        fx(glyph.readerHidden()) shouldBe true
+        fx(glyph.semantics()) shouldBe Semantics.Plain
+        fx {
+          iconed.busy @= true
+          plain.busy @= true
+        }
+        fx(iconed.semantics()) shouldBe fx(plain.semantics())
+        // no words: nothing said, the glyph included
+        fx(iconed.status @= Some(AvatarStatus(meeting.colour, "", Some(MaterialIcon.Event))))
+        fx(iconed.busy @= false)
+        fx(iconed.semantics()) shouldBe Semantics.Plain
+        fx(iconed.tooltip()) shouldBe ""
+      }
+    }
+  }
+
   "A disposed avatar" should {
     "let go of the map, and follow it no more" in {
       val reactions = fx(Avatar.statuses.reactions().size)
@@ -254,6 +438,13 @@ class AvatarStatusSpec extends FxSpec {
       fx(Avatar.statuses @= Map(ada.id -> meeting))
       fx(dotShown(dotted)) shouldBe true
       fx(dotted.dispose())
+      fx(Avatar.statuses.reactions().size) shouldBe reactions
+      fx(Avatar.statuses @= Map.empty)
+      // and one that showed a glyph
+      val badged = fx(new Avatar(ada, 48.0))
+      fx(Avatar.statuses @= Map(ada.id -> meetingIcon))
+      fx(badged.statusGlyph.map(_.visible())) shouldBe Some(true)
+      fx(badged.dispose())
       fx(Avatar.statuses.reactions().size) shouldBe reactions
       fx(Avatar.statuses @= Map.empty)
     }

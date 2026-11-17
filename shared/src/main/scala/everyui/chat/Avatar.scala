@@ -1,8 +1,10 @@
 package everyui.chat
 
 import everyui.Color
-import everyui.component.{Container, ImageView, TextView}
+import everyui.access.Access
+import everyui.component.{Container, ImageView, MaterialIconView, TextView}
 import everyui.component.types.{FontWeight, Semantics}
+import everyui.font.MaterialIcon
 import everyui.image.Image
 import everyui.kit.BusyRing
 import everyui.list.ListRow
@@ -25,7 +27,10 @@ import reactify.*
   * and its words are said by a pointer resting on the face (under the busy detail, where there is one) and heard by a
   * screen reader after their name and anything busy says. It follows `Avatar.statuses` for their id, so a status the
   * app sets there is on every face of theirs, those already drawn and those drawn after; set on one face, it is that
-  * face's alone. The dot is made the first time one shows. */
+  * face's alone. A status with an `icon` is a badge of its colour with the glyph on it, a little wider than the dot
+  * on a small face so the glyph reads, and the plain dot on a face narrower than `Avatar.badgeFrom`; the glyph is only
+  * drawn, the words said all the same. The dot is made the first time one shows, and the glyph the first time one
+  * does. */
 class Avatar(who: => Participant, diameter: Double = 32.0) extends Container {
   private val person: Val[Participant] = own(Val(who))
   /** Whether they are at work: a ring turns around the face. */
@@ -94,30 +99,53 @@ class Avatar(who: => Participant, diameter: Double = 32.0) extends Container {
   }
   busy.attach(ringed)
 
-  /** The status's dot, once one has shown: its ring in the ground, the status's colour inside it. */
+  /** The status's dot, once one has shown: its ring in the ground, the status's colour inside it, and on that the
+    * status's glyph, where it has one and the face is wide enough to read it on (`Avatar.badges`). */
   private var dot: Option[Container] = None
+  private var glyphView: Option[MaterialIconView] = None
   private val dotShown: Val[Boolean] = own(Val(statusDot() && status().nonEmpty))
   private def dotted(on: Boolean): Unit = if (on && dot.isEmpty) {
-    val outer = Avatar.dotOuter(diameter)
     val ringWidth = Avatar.dotRing(diameter)
+    // the glyph shown on it: none on a face too small to read one on
+    val glyph: Val[Option[MaterialIcon]] =
+      own(Val(if (Avatar.badges(diameter)) status().flatMap(_.icon).filter(_.nonEmpty) else None))
+    def outer(): Double = if (glyph().nonEmpty) Avatar.badgeOuter(diameter) else Avatar.dotOuter(diameter)
     val inner = new Container {
-      size.width @= outer - ringWidth * 2.0
-      size.height @= outer - ringWidth * 2.0
-      radius @= (outer - ringWidth * 2.0) / 2.0
+      size.width := outer() - ringWidth * 2.0
+      size.height := outer() - ringWidth * 2.0
+      radius := (outer() - ringWidth * 2.0) / 2.0
       position.left @= ringWidth
       position.top @= ringWidth
       backgroundColor := status().map(_.colour).getOrElse(Color.Clear)
     }
     val made = new Container {
-      size.width @= outer
-      size.height @= outer
-      radius @= outer / 2.0
+      size.width := outer()
+      size.height := outer()
+      radius := outer() / 2.0
       backgroundColor := statusGround()
-      position.left := ListRow.along(Avatar.dotStart(diameter), outer, diameter)
-      position.top @= Avatar.dotStart(diameter)
+      position.left := ListRow.along(Avatar.markStart(diameter, outer()), outer(), diameter)
+      position.top := Avatar.markStart(diameter, outer())
       visible := dotShown()
       children += inner
     }
+    // the glyph, made the first time one shows: white or black, whichever reads on the status's colour, and only
+    // drawn, the face saying the status's words
+    def glyphed(on: Boolean): Unit = if (on && glyphView.isEmpty) {
+      val points = Avatar.badgeGlyph(diameter)
+      val place = (Avatar.badgeOuter(diameter) - ringWidth * 2.0 - points) / 2.0
+      val view = new MaterialIconView(glyph().getOrElse(MaterialIcon.Empty), points) {
+        icon := glyph().getOrElse(MaterialIcon.Empty)
+        color := Avatar.glyphOn(status().map(_.colour).getOrElse(Color.Clear))
+        position.left @= place
+        position.top @= place
+        visible := glyph().nonEmpty
+        readerHidden @= true
+      }
+      glyphView = Some(view)
+      inner.children += view
+    }
+    glyph.attach(g => glyphed(g.nonEmpty))
+    glyphed(glyph().nonEmpty)
     dot = Some(made)
     // it sits on the face's edge, past its box
     clipsToBox @= Some(false)
@@ -158,6 +186,9 @@ class Avatar(who: => Participant, diameter: Double = 32.0) extends Container {
   /** The status's dot, where one has shown: its ring, holding the dot itself. */
   def statusMark: Option[Container] = dot
 
+  /** The status's glyph on its badge, where one has shown. */
+  def statusGlyph: Option[MaterialIconView] = glyphView
+
   override def kind: String = "Avatar(" + person().name + ")"
 }
 
@@ -182,5 +213,30 @@ object Avatar {
 
   /** Where the dot's box starts from the face's top (and its start edge): its middle on the face's edge, at the
     * bottom corner, so it hangs a little past the face's box. */
-  def dotStart(diameter: Double): Double = diameter / 2.0 * (1.0 + 0.7071067811865476) - dotOuter(diameter) / 2.0
+  def dotStart(diameter: Double): Double = markStart(diameter, dotOuter(diameter))
+
+  /** Where a mark `outer` wide (the dot, or the badge) starts from the face's top and its start edge, its middle on the
+    * face's edge at the bottom corner. */
+  def markStart(diameter: Double, outer: Double): Double = diameter / 2.0 * (1.0 + 0.7071067811865476) - outer / 2.0
+
+  /** The narrowest face a status's icon is drawn on: below it, a glyph small enough to sit on the face's corner is too
+    * small to read, and the status shows as the plain dot. */
+  val badgeFrom: Double = 24.0
+
+  /** Whether a face `diameter` across shows a status's icon on a badge, or only the plain dot. */
+  def badges(diameter: Double): Boolean = diameter >= badgeFrom
+
+  /** How wide the badge is on a face `diameter` across, its ring in the ground included: a third of the face, as the
+    * dot is, and wide enough on a small face for a glyph that reads (`badgeGlyph`). */
+  def badgeOuter(diameter: Double): Double = math.max(14.0, diameter * 0.3) + dotRing(diameter) * 2.0
+
+  /** How large the badge's glyph is, in points, on a face `diameter` across: three quarters of the badge inside its
+    * ring, which leaves Material's glyphs (drawn within the middle 20 of their 24) a margin of the colour around
+    * them. */
+  def badgeGlyph(diameter: Double): Double = (badgeOuter(diameter) - dotRing(diameter) * 2.0) * 0.75
+
+  /** The glyph's tone on a badge of `colour`: white, as a badge's glyph usually is, wherever white stands out from the
+    * colour as a graphic needs to (3 to 1, WCAG's for what is not words), and black on a light colour (amber, yellow,
+    * a light grey), where it then stands out by 7 to 1 or more. */
+  def glyphOn(colour: Color): Color = if (Access.contrast(Color.White, colour) >= 3.0) Color.White else Color.Black
 }

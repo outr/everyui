@@ -2397,8 +2397,10 @@ it goes from every one:
 
 ```scala
 import everyui.chat.{Avatar, AvatarStatus}
+import everyui.font.MaterialIcon
 Avatar.statuses @= Map(
-  "u-17" -> AvatarStatus(Color.fromHex("#e53935"), "In a meeting · until 3:00 PM"),
+  "u-17" -> AvatarStatus(Color.fromHex("#e53935"), "In a meeting · until 3:00 PM", Some(MaterialIcon.Event)),
+  "u-23" -> AvatarStatus(Color.fromHex("#7e57c2"), "Out of office · back Monday", Some(MaterialIcon.Flight)),
   "u-42" -> AvatarStatus(Color.fromHex("#43a047"), "Online"))
 Avatar.statuses @= Avatar.statuses() - "u-17"
 ```
@@ -2415,6 +2417,18 @@ the map by default, `@= Some(…)` puts that face's own over it, `@= None` shows
 line does while its own mark shows there). A `RichList` row whose `who` has a status shows it on its avatar and says
 it with the row. A face takes its watch on the map apart when it is disposed of. `demo=avatars` shows them at 18 to
 96 px, by initial and picture, busy, a face's own, and on a list's rows (`theme=light`, `rtl=1`, `cycle=<seconds>`).
+
+`AvatarStatus(colour, words, icon)` with an `icon` (a `MaterialIcon`: `Event` for a meeting, `Flight` or
+`BeachAccess` for out of office, `EventBusy` for busy all day) draws a badge in place of the dot: a disc of `colour`
+with the glyph in its middle, white wherever white stands out from the colour by 3 to 1 (WCAG's for a graphic), and
+black on a light one (amber, yellow, a light grey: `Avatar.glyphOn`), ringed and placed as the dot is (its middle on
+the bottom corner's edge, mirrored right to left). The badge is the dot's width where the face is wide (30%), and 14 px
+inside its ring at the least, so the glyph (three quarters of that: 10.5 px up to a 46 px face, 21.6 px on a 96 px
+one) reads on a small face. Below `Avatar.badgeFrom` (24 px) the face shows the plain dot: a Material glyph much under
+10 px is a blot, and a badge holding one would cover most of an 18 px face. The icon is only drawn: what the face
+says and what a screen reader hears are the words, as without one. A status without an icon is drawn exactly as
+before and makes nothing more; the glyph is made the first time one shows, and a face going from one to none goes
+back to the dot.
 
 ### Tool calls (`ChatEntry.Activity`: `lead`, `body`, `aside`)
 
