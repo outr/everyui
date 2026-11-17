@@ -1,7 +1,7 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.push.PushAnswer
+import everyui.push.{PushAnswer, PushChannel}
 
 /** Push notifications (`everyui.push.Push`). A desktop app has no push service to be woken by, and what it hears
   * while it runs comes over its own connection to its server; so there is no push here: `supported` is false, the
@@ -20,6 +20,10 @@ object PushAccess {
   def unsubscribe(done: () => Unit): Unit = done()
 
   def close(tag: String): Unit = ()
+
+  def declare(channels: List[PushChannel]): Unit = ()
+
+  def channelSettings(id: String, done: Boolean => Unit): Unit = done(false)
 
   def deliver(data: Map[String, String]): Unit = ()
 }

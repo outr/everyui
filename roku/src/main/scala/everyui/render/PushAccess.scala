@@ -1,7 +1,7 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.push.PushAnswer
+import everyui.push.{PushAnswer, PushChannel}
 
 /** Push notifications (`everyui.push.Push`). A television's platform gives an app no push notifications, so there
   * are none here: `supported` is false, the permission is refused, and a subscription answers at once as
@@ -20,6 +20,10 @@ object PushAccess {
   def unsubscribe(done: () => Unit): Unit = done()
 
   def close(tag: String): Unit = ()
+
+  def declare(channels: List[PushChannel]): Unit = ()
+
+  def channelSettings(id: String, done: Boolean => Unit): Unit = done(false)
 
   def deliver(data: Map[String, String]): Unit = ()
 }

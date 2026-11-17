@@ -3806,9 +3806,10 @@ same group with `groupSummary` and its `lines` (JSON text of an array, the newes
   only the newest alerts (and Android spaces an app's alerts out, so not every message sounds when they come close
   together).
 - `channel` is the Android channel it is posted into, made the first time a push names it, `channelName` what the
-  settings call it (the id where it has none), at the default importance; a later push with another name renames it,
-  and the sound, buzz and importance stay the person's. `channelGroup` and `channelGroupName` list it under a heading
-  in the settings. A push that names none is posted into EveryUI's own, "everyui.push", "Notifications", as before.
+  settings call it (the id where it has none), at the importance `channelImportance` names (default where it names
+  none: [Channel importance](#channel-importance-channelimportance-pushchannels-pushopenchannelsettings)); a later
+  push with another name renames it, and the sound, buzz and importance stay the person's. `channelGroup` and
+  `channelGroupName` list it under a heading in the settings. A push that names none is posted into EveryUI's own, "everyui.push", "Notifications", as before.
 - They are the push's own keys, not its `data`: `PushMessage.group`, `summary`, `lines`, `silent` and `channel`. One
   that arrives with the app in front goes to `Push.received` as any does, summaries too, for the app to leave be.
 
@@ -3825,6 +3826,59 @@ same group with `groupSummary` and its `lines` (JSON text of an array, the newes
   notification's `silent`. Channels are Android's alone.
 - **Apple**: EveryUI has no push on an Apple device (an Apple TV shows none). For an app of its own the server's
   `group` is APNs' `thread-id`.
+
+### Channel importance (`channelImportance`, `Push.channels`, `Push.openChannelSettings`)
+
+Android fixes a channel's importance when the channel is made: from then on only the person changes it, never the
+app. So an app whose kinds of push interrupt differently (a call, a message, a daily digest) says how much each does
+the first time, with `channelImportance` beside `channel`: `min`, `low`, `default`, `high` or `urgent` (in any case;
+any other word, or none, is `default`):
+
+```json
+{"title": "Ann is calling", "body": "Voice call", "path": "/calls/9",
+ "channel": "calls", "channelName": "Calls", "channelGroup": "talk", "channelGroupName": "Talk",
+ "channelImportance": "high"}
+```
+
+It is `PushChannel.importance` (a `NoticeImportance`, the push's own key and not its `data`). `min` folds the
+notification away with no icon in the status bar, `low` shows it silently, `default` sounds, `high` sounds and shows
+it over what is on the screen. `urgent` is `high` on the channel (Android makes none above it: `IMPORTANCE_MAX` is
+unused) and the highest priority before Android 8; EveryUI adds no full-screen intent or call style for it. A push
+asking a channel already made for another importance is posted at the one the channel has, and Android's log says so
+once a channel (at debug: `push: channel calls asked low ...`).
+
+So that the settings list every kind before its first push, for the person to tune in advance, the app declares its
+channels as it starts (in its `main`, or its `BackgroundApp`), with the ids its server posts into:
+
+```scala
+import everyui.push.{NoticeImportance, Push, PushChannel}
+
+Push.channels(List(
+  PushChannel("calls", "Calls", "talk", "Talk", NoticeImportance.High, "Voice and video calls"),
+  PushChannel("messages", "Messages", "talk", "Talk"),                       // default importance
+  PushChannel("digest", "Daily digest", importance = NoticeImportance.Low)))
+
+// a "Notification sound..." link: the channel's own page, answered as the person comes back
+Push.openChannelSettings("messages").map(opened => scribe.info(s"opened: $opened")).start()
+```
+
+A channel not yet made is made at its importance; one already made has its name, description and group brought up
+to date where they differ (as a push's names are), and keeps its importance. Declaring on every start costs a lookup
+a channel.
+
+- **Android**: channels are Android 8's (`NotificationManager.IMPORTANCE_MIN` to `IMPORTANCE_HIGH`). Before it there
+  are none: a push's importance is its notification's priority (`PRIORITY_MIN` to `PRIORITY_MAX`), `Push.channels`
+  does nothing, and `openChannelSettings` opens the app's notification settings (or, where the device lacks that page,
+  the app's details). From 8 on it opens the channel's own page (`ACTION_CHANNEL_NOTIFICATION_SETTINGS`), or the
+  app's notification settings where the channel is not made yet. It answers `true` once the person comes back, false
+  with no window to open it from (a `BackgroundApp`'s handler).
+- **Web**: a browser has no channels; the service worker ignores `channelImportance` (as it does the other channel
+  keys), `Push.channels` does nothing and `openChannelSettings` answers false.
+- **Desktop, Roku, Apple TV**: no push; `Push.channels` does nothing and `openChannelSettings` answers false.
+
+`demo=background`'s "Channels and their importance" declares three channels (low, default and high) under "Example",
+pushes into three more under "Pushed" asking each, then one more into the high one asking low (logged, kept high),
+and opens the high one's page.
 
 ### Replies typed into a push (`PushButton.input`, `onPushReply`)
 

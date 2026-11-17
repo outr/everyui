@@ -1,7 +1,7 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.push.PushAnswer
+import everyui.push.{PushAnswer, PushChannel}
 
 /** Push notifications (`everyui.push.Push`). An Apple TV shows an app's notifications as a badge at most, never as
   * something to read or tap, so there are none here: `supported` is false, the permission is refused, and a
@@ -20,6 +20,10 @@ object PushAccess {
   def unsubscribe(done: () => Unit): Unit = done()
 
   def close(tag: String): Unit = ()
+
+  def declare(channels: List[PushChannel]): Unit = ()
+
+  def channelSettings(id: String, done: Boolean => Unit): Unit = done(false)
 
   def deliver(data: Map[String, String]): Unit = ()
 }

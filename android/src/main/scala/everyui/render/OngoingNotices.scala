@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
 import everyui.activity.ServiceRuntime
-import everyui.push.{NoticeImportance, NoticeTap, OngoingNotice}
+import everyui.push.{NoticeTap, OngoingNotice}
 
 /** Ongoing notices (`everyui.push.Ongoing`) on Android: posted from the application's context, so a `BackgroundApp`'s
   * handler with no activity shows, updates and clears them too. Each is ongoing (not swiped away before Android 14),
@@ -41,20 +41,15 @@ object OngoingNotices {
     else {
       val notify = manager(context)
       val c = notice.channel
-      val importance = c.importance match {
-        case NoticeImportance.Min => NotificationManager.IMPORTANCE_MIN
-        case NoticeImportance.Low => NotificationManager.IMPORTANCE_LOW
-        case NoticeImportance.Default => NotificationManager.IMPORTANCE_DEFAULT
-      }
       if (Build.VERSION.SDK_INT >= 26) {
-        val channel = new NotificationChannel(c.key, c.name, importance)
+        val channel = new NotificationChannel(c.key, c.name, NoticeChannels.level(c.importance))
         if (c.description.nonEmpty) channel.setDescription(c.description)
         channel.setShowBadge(false)
         // made, or its name and description brought up to date: Android keeps the importance it was made with
         notify.createNotificationChannel(channel)
       }
       val icon = NoticeIcon.of(context)
-      val builder = NoticeChannels.builder(context, c.key, importance)
+      val builder = NoticeChannels.builder(context, c.key, c.importance)
         .setSmallIcon(icon)
         .setContentTitle(notice.title)
         .setOngoing(true)

@@ -65,6 +65,28 @@ object Push {
     * they are for read here. Nothing where there are none, or no push. */
   def close(tag: String): Unit = if (tag.nonEmpty) PushAccess.close(tag)
 
+  /** The app's channels made now where they are not yet (Android 8 and later), so the settings list them, for the
+    * person to tune, before the first push of each kind: each at its importance, which Android keeps from then on (the
+    * person's to change, never the app's); a channel already made has its name, description and group brought up to
+    * date. Called as the app starts (or from its `BackgroundApp`), with every channel its server posts into. Nothing
+    * where there are no channels: the web, the desktop, a Roku, an Apple TV, and Android before 8.
+    *
+    * {{{
+    *   Push.channels(List(
+    *     PushChannel("calls", "Calls", "talk", "Talk", NoticeImportance.High),
+    *     PushChannel("messages", "Messages", "talk", "Talk"),
+    *     PushChannel("digest", "Daily digest", importance = NoticeImportance.Low)))
+    * }}} */
+  def channels(list: List[PushChannel]): Unit = PushAccess.declare(list)
+
+  /** The settings page of the channel `id` opened, for the person to give it its sound or importance (an app's
+    * "Notification sound..."), and whether it was: answered as they come back to the app. Android 8 and later open the
+    * channel's own page (the app's notifications where the channel is not made yet); before 8, the app's
+    * notifications or, where the device lacks that page, the app's details. False where there are no such pages (the
+    * web, the desktop, a Roku, an Apple TV), or no window to open one from. */
+  def openChannelSettings(id: String): Task[Boolean] =
+    Task.async[Boolean](done => PushAccess.channelSettings(id, done))
+
   /** A notification tapped: `opened` hears it, then the running screens go to its path. */
   private[everyui] def tapped(message: PushMessage): Unit = {
     opened @= message

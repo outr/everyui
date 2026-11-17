@@ -111,7 +111,7 @@ object WebApp {
        |const windows = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true });
        |const tell = (client, data) => client.postMessage(data);
        |const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group', 'groupSummary', 'lines',
-       |  'silent', 'channel', 'channelName', 'channelGroup', 'channelGroupName'];
+       |  'silent', 'channel', 'channelName', 'channelGroup', 'channelGroupName', 'channelImportance'];
        |const yes = v => v === true || v === 'true';
        |self.addEventListener('push', e => {
        |  let m = {};

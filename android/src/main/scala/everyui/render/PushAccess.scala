@@ -33,6 +33,8 @@ object PushAccess {
   private val tagged = 0
   private val notifications = "android.permission.POST_NOTIFICATIONS"
   private lazy val main = new Handler(Looper.getMainLooper)
+  // the channels a push asked another importance of, said once each
+  private val differing = new java.util.concurrent.ConcurrentHashMap[String, String]
 
   private lazy val present: Boolean = try Firebase.present() catch { case _: LinkageError => false }
 
@@ -115,7 +117,7 @@ object PushAccess {
     message.path.foreach(p => launch.putExtra("path", p))
     val info = context.getApplicationInfo
     val title = if (message.title.nonEmpty) message.title else context.getPackageManager.getApplicationLabel(info).toString
-    val builder = NoticeChannels.builder(context, channel.id, NotificationManager.IMPORTANCE_DEFAULT)
+    val builder = NoticeChannels.builder(context, channel.id, channel.importance)
       .setSmallIcon(NoticeIcon.of(context))
       .setContentTitle(title)
       .setContentText(message.body)
@@ -174,18 +176,44 @@ object PushAccess {
     if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
     else PendingIntent.FLAG_UPDATE_CURRENT
 
-  /** `channel` made where it is not yet, or its name (or group) brought up to date (Android 8 and later): Android
-    * keeps the importance it was made with, and the person's own choices. */
+  /** `channel` made at its importance where it is not yet, or its name, description (or group) brought up to date
+    * (Android 8 and later). Android keeps the importance it was made with, the person's to change and never the app's,
+    * so one that has another than `channel` asks for is left as it is, and said once (at debug). */
   private def open(notify: NotificationManager, channel: PushChannel): Unit = if (Build.VERSION.SDK_INT >= 26) {
     val had = notify.getNotificationChannel(channel.id)
     val group = Option(channel.group).filter(_.nonEmpty)
-    if (had == null || had.getName.toString != channel.name || group.exists(g => had.getGroup != g)) {
+    val level = NoticeChannels.level(channel.importance)
+    if (had != null && had.getImportance != level && differing.putIfAbsent(channel.id, channel.id) == null)
+      android.util.Log.d("everyui", "push: channel " + channel.id + " asked " + channel.importance.word + " (" +
+        level.toString + "), has importance " + had.getImportance.toString + ", as made or as the person set it: kept")
+    if (had == null || had.getName.toString != channel.name || group.exists(g => had.getGroup != g) ||
+      (channel.description.nonEmpty && had.getDescription != channel.description)) {
       group.foreach(g => notify.createNotificationChannelGroup(new NotificationChannelGroup(g,
         if (channel.groupName.nonEmpty) channel.groupName else g)))
-      val made = new NotificationChannel(channel.id, channel.name, NotificationManager.IMPORTANCE_DEFAULT)
-      group.foreach(g => made.setGroup(g))
+      // brought up to date at the importance it has: a lower one would lower it while the person has not touched it
+      val made = new NotificationChannel(channel.id, channel.name, if (had == null) level else had.getImportance)
+      val description = if (channel.description.nonEmpty || had == null) channel.description else had.getDescription
+      if (description != null && description.nonEmpty) made.setDescription(description)
+      group.orElse(Option(had).flatMap(h => Option(h.getGroup))).foreach(g => made.setGroup(g))
       notify.createNotificationChannel(made)
     }
+  }
+
+  /** The app's channels made, or brought up to date, before a push names them (`Push.channels`). */
+  def declare(channels: List[PushChannel]): Unit = if (Build.VERSION.SDK_INT >= 26) {
+    try {
+      val notify = manager(ServiceRuntime.context)
+      channels.foreach(c => open(notify, c))
+    }
+    catch { case t: Throwable => Platform.logError("push: channels not declared", t) }
+  }
+
+  /** The settings page of the channel `id` (`Push.openChannelSettings`), the app's notifications where it is not made
+    * yet or before Android 8. */
+  def channelSettings(id: String, done: Boolean => Unit): Unit = {
+    val made = Build.VERSION.SDK_INT >= 26 && Host.activity != null &&
+      manager(Host.activity).getNotificationChannel(id) != null
+    SettingsPages.channel(id, made, done)
   }
 
   private def launcher(context: Context): Intent =

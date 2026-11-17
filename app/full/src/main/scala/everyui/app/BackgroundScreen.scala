@@ -7,7 +7,7 @@ import everyui.background.{Work, WorkConstraints, WorkNetwork}
 import everyui.component.{Button, ButtonStyle, Column, Component, Container, ScrollContainer, TextView}
 import everyui.layout.FlowLayout
 import everyui.net.*
-import everyui.push.{Ongoing, Push, PushButton}
+import everyui.push.{NoticeImportance, Ongoing, Push, PushButton, PushChannel}
 import everyui.render.Platform
 import everyui.theme.Theme
 import everyui.ui
@@ -19,7 +19,9 @@ import reactify.*
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
   * ExampleBackground with the app closed and are heard by Push.acted with it running; and mail for three accounts
   * (Push.deliver), each message stacked under its account's summary on its account's channel, with a Reply typed into
-  * it. Under each, what ExampleBackground has noted, read again every two seconds and as the app comes back. */
+  * it; three channels declared up front (Push.channels) at low, default and high importance, three more made by
+  * pushes asking each (channelImportance), and the loud one's settings opened (Push.openChannelSettings). Under each,
+  * what ExampleBackground has noted, read again every two seconds and as the app comes back. */
 class BackgroundScreen extends UIScreen {
   override def manager: ScreenManager = BackgroundDemo
   override def title: String = "In the background"
@@ -31,6 +33,7 @@ class BackgroundScreen extends UIScreen {
   private val settled: Var[String] = Var("")
   private val restarted: Var[String] = Var("")
   private val pushed: Var[String] = Var("")
+  private val channeled: Var[String] = Var("")
   private var answered = ""
 
   private val once = new Button("Once in 5 s, with a network", () => {
@@ -80,6 +83,12 @@ class BackgroundScreen extends UIScreen {
         new Button("A reminder", () => push(reminder)),
         new Button("An approval", () => push(approval)),
         new Button("Mail for three accounts", () => mail())),
+      section("Channels and their importance", channeled)(
+        new Button("Declare quiet, normal and loud", () => declare()),
+        new Button("Low, default and high pushes", () => importances()),
+        new Button("Loud's settings", () => Push.openChannelSettings("example.loud").map { opened =>
+          channeled @= "Loud's settings " + (if (opened) "opened, and back" else "not opened")
+        }.start())),
       section("Restarts", restarted)())
     val scroll = new ScrollContainer {
       size.width := ui.size.width()
@@ -164,6 +173,30 @@ class BackgroundScreen extends UIScreen {
     }
     Platform.log("example background: mail in 3 s, " + pushes.size.toString + " pushes")
     pushes.zipWithIndex.foreach((p, i) => Platform.after(3.0 + i * 0.5, () => Push.deliver(p)))
+  }
+
+  /** Three channels declared before any push names them, under "Example", one at each of low, default and high. */
+  private def declare(): Unit = {
+    Push.channels(List(
+      PushChannel("example.quiet", "Quiet", "example", "Example", NoticeImportance.Low, "Declared at low"),
+      PushChannel("example.normal", "Normal", "example", "Example", NoticeImportance.Default, "Declared at default"),
+      PushChannel("example.loud", "Loud", "example", "Example", NoticeImportance.High, "Declared at high")))
+    channeled @= "Declared Quiet (low), Normal (default) and Loud (high)"
+    Platform.log("example background: channels declared")
+  }
+
+  /** From three seconds on, a push into each of three channels under "Pushed" asking low, default and high, and then
+    * one more into the high one asking low, which Android leaves high (said once, at debug). */
+  private def importances(): Unit = {
+    val asks = Vector("low", "default", "high", "low")
+    asks.zipWithIndex.foreach { (importance, i) =>
+      val into = if (i == 3) "high" else importance
+      Platform.after(3.0 + i * 1.0, () => Push.deliver(Map("title" -> ("Asked " + importance),
+        "body" -> ("Into the " + into + " channel"), "path" -> "/background", "tag" -> ("importance-" + i.toString),
+        "channel" -> ("example.push." + into), "channelName" -> ("Pushed " + into), "channelGroup" -> "pushed",
+        "channelGroupName" -> "Pushed", "channelImportance" -> importance)))
+    }
+    channeled @= "Pushing low, default, high, and low into high, from 3 s on"
   }
 
   /** A push delivered in three seconds as the push service would (Push.deliver), time to leave the app first. */

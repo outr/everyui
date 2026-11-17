@@ -1,7 +1,7 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushMessage, PushToken}
+import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushMessage, PushToken}
 import org.scalajs.dom
 
 import scala.scalajs.js
@@ -108,16 +108,22 @@ object PushAccess {
         .`catch`[Unit]((_: Any) => done())
     }
 
-  /** The notifications the page's service worker shows with `tag` closed. */
   /** No push service to hand data to here: the service worker's own push is what delivers. */
   def deliver(data: Map[String, String]): Unit = ()
 
+  /** The notifications the page's service worker shows with `tag` closed. */
   def close(tag: String): Unit = if (supported()) registration {
     case None => ()
     case Some(r) => r.getNotifications(js.Dynamic.literal(tag = tag)).asInstanceOf[js.Promise[js.Array[js.Dynamic]]]
       .`then`[Unit]((shown: js.Array[js.Dynamic]) => shown.foreach(_.close()))
       .`catch`[Unit]((_: Any) => ())
   }
+
+  /** A browser has no channels: a notification's sound and importance are the browser's, so nothing to declare. */
+  def declare(channels: List[PushChannel]): Unit = ()
+
+  /** No page of a browser's settings for one kind of notification: false. */
+  def channelSettings(id: String, done: Boolean => Unit): Unit = done(false)
 
   /** The page's service worker registration once it is running, or None where the page registered none. */
   private def registration(found: Option[js.Dynamic] => Unit): Unit =
