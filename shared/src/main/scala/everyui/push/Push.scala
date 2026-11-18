@@ -3,7 +3,8 @@ package everyui.push
 import everyui.Permission
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
-import everyui.render.PushAccess
+import everyui.background.Background
+import everyui.render.{Platform, PushAccess}
 import reactify.*
 
 /** Push notifications: the person's permission, a subscription (or token) for the server to push to, and what arrives.
@@ -26,6 +27,12 @@ import reactify.*
 object Push {
   /** A notification that arrived while the app was open: the system showed nothing, so the app shows it. */
   val received: Channel[PushMessage] = Channel[PushMessage]
+
+  /** A data push (`PushMessage.isData`: neither title nor body, or `"dataOnly": "true"`) that arrived while the app
+    * was in front, its keys as sent (`PushMessage.dataOf`): the system shows nothing, and the app does what it asks (a
+    * sync). One that arrives while the app is not in front goes to its `BackgroundApp.onPush` instead, on Android
+    * (once either way); where there is none, here. The web hands it to an open window of the app, in sight or not. */
+  val data: Channel[Map[String, String]] = Channel[Map[String, String]]
 
   /** A notification the person tapped while the app was running, before the app goes to its path (if it has one).
     * One tapped while the app was closed opens the app at its path instead, which the app's screens answer as a link. */
@@ -87,6 +94,23 @@ object Push {
     * web, the desktop, a Roku, an Apple TV), or no window to open one from. */
   def openChannelSettings(id: String): Task[Boolean] =
     Task.async[Boolean](done => PushAccess.channelSettings(id, done))
+
+  /** A data push arrived, its keys as sent: heard by `data` where the app's screens are in front (`front`) or no
+    * `BackgroundApp` is made ready in the process, else by its `onPush`, whose task the platform holds the process
+    * for. */
+  private[everyui] def dataArrived(sent: Map[String, String], front: Boolean): Task[Unit] = {
+    val keys = PushMessage.dataOf(sent)
+    val said = "push: data push (" + keys.keys.toList.sorted.mkString(", ") + ") to "
+    Background.app match {
+      case Some(app) if !front =>
+        Platform.log(said + "onPush")
+        app.onPush(keys)
+      case _ =>
+        Platform.log(said + "Push.data")
+        data @= keys
+        Task.unit
+    }
+  }
 
   /** A notification tapped: `opened` hears it, then the running screens go to its path. */
   private[everyui] def tapped(message: PushMessage): Unit = {

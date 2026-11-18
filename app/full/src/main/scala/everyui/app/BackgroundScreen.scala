@@ -21,7 +21,9 @@ import reactify.*
   * running; an agent's answer in Markdown, styled; and mail for three accounts (Push.deliver), each message stacked
   * under its account's summary on its account's channel, with a Reply typed into it; three channels declared up
   * front (Push.channels) at low, default and high importance, three more made by pushes asking each
-  * (channelImportance), and the loud one's settings opened (Push.openChannelSettings). Under each, what
+  * (channelImportance), and the loud one's settings opened (Push.openChannelSettings); data pushes (Push.deliver),
+  * heard by Push.data in front and by ExampleBackground.onPush otherwise, one slow, one handing a long sync to
+  * expedited work, and one delivered from work with the app killed. Under each, what
   * ExampleBackground has noted, read again every two seconds and as the app comes back. */
 class BackgroundScreen extends UIScreen {
   override def manager: ScreenManager = BackgroundDemo
@@ -35,6 +37,8 @@ class BackgroundScreen extends UIScreen {
   private val restarted: Var[String] = Var("")
   private val pushed: Var[String] = Var("")
   private val channeled: Var[String] = Var("")
+  private val synced: Var[String] = Var("")
+  private var heard = ""
   private var answered = ""
 
   private val once = new Button("Once in 5 s, with a network", () => {
@@ -85,6 +89,16 @@ class BackgroundScreen extends UIScreen {
         new Button("An approval", () => push(approval)),
         new Button("Mail for three accounts", () => mail()),
         new Button("An answer in Markdown", () => push(answer))),
+      section("Data pushes (sync now), in 3 s", synced)(
+        new Button("Sync mail", () => push(Map("sync" -> "mail"))),
+        new Button("A slow sync, 15 s", () => push(Map("sync" -> "slow"))),
+        new Button("A long sync, handed to work", () => push(Map("sync" -> "long"))),
+        new Button("With text, dataOnly", () => push(Map("title" -> "Synced", "body" -> "Never shown",
+          "dataOnly" -> "true", "sync" -> "mail"))),
+        new Button("From work in 10 s", () => {
+          Work.once("example.datapush", delay = 10.0, data = Map("sync" -> "mail", "from" -> "work"))
+          synced @= "Delivered from work in 10 s: kill the app (am kill) meanwhile"
+        })),
       section("Channels and their importance", channeled)(
         new Button("Declare quiet, normal and loud", () => declare()),
         new Button("Low, default and high pushes", () => importances()),
@@ -99,6 +113,11 @@ class BackgroundScreen extends UIScreen {
     scroll.content.children += column
     container.children += scroll
     Platform.onResume(() => read())
+    Push.data.attach { d =>
+      heard = "Push.data " + d.toList.sorted.map((k, v) => k + "=" + v).mkString(" ") + " at " + now()
+      Platform.log("example background: " + heard + " with the app open")
+      read()
+    }
     tick()
   }
 
@@ -138,6 +157,10 @@ class BackgroundScreen extends UIScreen {
     val chosen = Platform.setting("example.bg.push")
     pushed @= (if (Platform.kind == PlatformKind.Android) "" else "Delivered only on Android. ") +
       (if (chosen.isEmpty) "No button chosen yet" else "Last: " + chosen)
+    val data = Platform.setting("example.bg.data")
+    val said = List(heard, data).filter(_.nonEmpty).mkString("\n")
+    synced @= (if (Platform.kind == PlatformKind.Android) "" else "Delivered only on Android. ") +
+      (if (said.isEmpty) "None heard yet" else said)
   }
 
   /** A task's reminder: Done ticks it off with the app closed, Open opens it. */

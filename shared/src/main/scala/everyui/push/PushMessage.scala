@@ -27,7 +27,10 @@ package everyui.push
   * `shownTitle`, `shownBody` and `shownLines` are what a platform that shows no styles shows.
   *
   * `actions` are its buttons (`PushButton`, JSON text under "actions"), which the person may choose instead of
-  * tapping it (`Push.acted`); `data` is the rest of what the server sent with it, by key. */
+  * tapping it (`Push.acted`); `data` is the rest of what the server sent with it, by key.
+  *
+  * A push with neither title nor body, or with `"dataOnly": "true"`, is no notification but a data push
+  * (`PushMessage.isData`), never shown: its keys go to the app's `BackgroundApp.onPush`, or `Push.data`. */
 case class PushMessage(title: String, body: String, path: Option[String], tag: Option[String] = None,
                        renotify: Boolean = false, actions: Vector[PushButton] = Vector.empty,
                        data: Map[String, String] = Map.empty, group: Option[String] = None, summary: Boolean = false,
@@ -64,10 +67,28 @@ case class PushMessage(title: String, body: String, path: Option[String], tag: O
 }
 
 object PushMessage {
+  /** The key that makes a push a data push whatever else it says (`"dataOnly": "true"`): `isData`. */
+  val dataOnlyKey: String = "dataOnly"
+
+  /** Whether a push, its keys as sent, is a data push, never shown: one with `dataOnly` true, or one with neither a
+    * title nor a body that is not a close alone (a close with keys of its own closes, then is a data push too). The
+    * app hears it in `BackgroundApp.onPush`, or `Push.data` while it is in front. `silent` is no part of it: a silent
+    * push is shown, with no sound. */
+  def isData(sent: Map[String, String]): Boolean = {
+    val text = (k: String) => sent.getOrElse(k, "")
+    text(dataOnlyKey) == "true" ||
+      (text("title").isEmpty && text("body").isEmpty && (text("close").isEmpty || dataOf(sent).nonEmpty))
+  }
+
+  /** What a data push hands the app: its keys and values as sent, less `dataOnly`, `close` and what the push service
+    * adds itself (keys from "google." and "gcm."). */
+  def dataOf(sent: Map[String, String]): Map[String, String] =
+    sent.filter((k, _) => k != dataOnlyKey && k != "close" && !k.startsWith("google.") && !k.startsWith("gcm."))
+
   /** The keys a push's data says what it is with; the rest are its `data`. */
   val keys: Set[String] = Set("title", "body", "path", "tag", "renotify", "close", "actions", "group", "groupSummary",
     "lines", "silent", "channel", "channelName", "channelGroup", "channelGroupName", "channelImportance",
-    "format")
+    "format", dataOnlyKey)
 
   /** A push from its data as the server sent it, every value text (an FCM data message's): its title, body, path,
     * tag, renotify ("true"), its buttons (`PushButton.parse` of "actions"), its group, whether it is the group's

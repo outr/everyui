@@ -9,7 +9,8 @@ import org.scalatest.wordspec.AnyWordSpec
 /** The web app's worker and a push's buttons (WebApp.worker): read from "actions", an array or JSON text, shown as
   * the notification's actions, and a choice told to an open window or opening the app with it in its address; a
   * Markdown push shown as plain words (WebPushText), and handed to a window as it was sent. Their behaviour is
-  * checked by running the worker in Node (the scratch directory's push-actions probe, and here for Markdown). */
+  * checked by running the worker in Node (the scratch directory's push-actions probe, and here for Markdown and for
+  * a data push, handed to a window of the app and never shown). */
 class WebAppActionsSpec extends AnyWordSpec with Matchers {
   private val worker = WebApp.worker("abc123")
 
@@ -35,8 +36,67 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
       worker should include("at.searchParams.set('everyui-action', chosen.id);")
       worker should include("at.searchParams.set('everyui-push', JSON.stringify(message));")
     }
+    "hand a data push to a window of the app, in sight or not, and show nothing" in {
+      worker should include("'channelImportance', 'format',\n  'dataOnly'];")
+      worker should include("if (yes(m.dataOnly) || (!m.title && !m.body && (!m.close || Object.keys(sent).length)))")
+      worker should include("if (to) tell(to, { everyui: 'data', data: sent });")
+      val out = Files.createTempDirectory("webapp-data").toFile
+      Files.write(new File(out, "sw.js").toPath, worker.getBytes(UTF_8))
+      Files.write(new File(out, "harness.js").toPath,
+        """const handlers = {};
+          |const log = [];
+          |let windows = [];
+          |const page = (name, visible) => ({ url: 'https://app.test/mail', focused: false,
+          |  visibilityState: visible ? 'visible' : 'hidden', postMessage: d => log.push(name + ' ' + JSON.stringify(d)) });
+          |global.self = {
+          |  addEventListener: (kind, f) => { handlers[kind] = f; },
+          |  location: { origin: 'https://app.test' },
+          |  registration: { scope: 'https://app.test/',
+          |    getNotifications: o => Promise.resolve([{ close: () => log.push('closed ' + o.tag) }]),
+          |    showNotification: (title, options) => { log.push('shown ' + JSON.stringify([title, options.body])); return Promise.resolve(); } },
+          |  clients: { matchAll: () => Promise.resolve(windows), claim: () => Promise.resolve() }
+          |};
+          |global.caches = { open: () => Promise.resolve({ add: () => Promise.resolve() }), keys: () => Promise.resolve([]) };
+          |require('./sw.js');
+          |const push = payload => new Promise(done => {
+          |  const waits = [];
+          |  handlers.push({ data: payload === null ? null : { json: () => payload }, waitUntil: p => waits.push(p) });
+          |  Promise.all(waits).then(done);
+          |});
+          |(async () => {
+          |  log.push('-- no window');
+          |  await push({ sync: 'mail' });
+          |  log.push('-- a hidden window and one in sight');
+          |  windows = [{ url: 'https://other.test/', visibilityState: 'visible', postMessage: () => log.push('other') },
+          |    page('hidden', false), page('seen', true)];
+          |  await push({ sync: 'mail', account: 'a1', n: 3 });
+          |  await push({ title: 'Synced', body: '3 new', dataOnly: 'true', sync: 'calendar' });
+          |  await push(null);
+          |  log.push('-- a hidden window alone');
+          |  windows = [page('hidden', false)];
+          |  await push({ close: 'c42', sync: 'mail' });
+          |  await push({ close: 'c42' });
+          |  await push({ title: 'Quiet', body: 'b', silent: 'true' });
+          |  console.log(log.join('\n'));
+          |})();
+          |""".stripMargin.getBytes(UTF_8))
+      val node = new ProcessBuilder("node", "harness.js").directory(out).redirectErrorStream(true).start()
+      val printed = new String(node.getInputStream.readAllBytes(), UTF_8).trim
+      node.waitFor() shouldBe 0
+      printed.split("\n").toList shouldBe List(
+        "-- no window",
+        "-- a hidden window and one in sight",
+        """seen {"everyui":"data","data":{"sync":"mail","account":"a1","n":"3"}}""",
+        """seen {"everyui":"data","data":{"title":"Synced","body":"3 new","sync":"calendar"}}""",
+        """seen {"everyui":"data","data":{}}""",
+        "-- a hidden window alone",
+        "closed c42",
+        """hidden {"everyui":"data","data":{"sync":"mail"}}""",
+        "closed c42",
+        """shown ["Quiet","b"]""")
+    }
     "show a Markdown push as plain words, title, body and lines, and hand the window it as it was sent" in {
-      worker should include("'channelImportance', 'format'];")
+      worker should include("'channelImportance', 'format',")
       worker should include("const pushText = markdown => {")
       worker should include("format: String(m.format || '').trim().toLowerCase() === 'markdown' ? 'markdown' : 'plain' };")
       worker should include("const plain = t => message.format === 'markdown' ? pushText(t) : t;")

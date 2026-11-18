@@ -11,9 +11,10 @@ import scala.scalajs.js.typedarray.Uint8Array
   * `everyui.sbt.WebApp.write` installs (sw.js), which shows a notification that arrives while no window of the app is
   * in sight, opens or focuses the app at its path when it is tapped, and otherwise hands the message to the page. What
   * it hands over comes to the page as a message: `{everyui: "push", message}` (arrived while open), `{everyui: "open",
-  * message}` (tapped), `{everyui: "act", id, message}` (a button chosen), `{everyui: "subscription", subscription}`
-  * (renewed by the browser). A button chosen with no window of the app open opens it with `everyui-action` and
-  * `everyui-push` in its address, which `listen` reads, hands to `Push.acted` and takes out of the address. */
+  * message}` (tapped), `{everyui: "act", id, message}` (a button chosen), `{everyui: "data", data}` (a data push, to
+  * `Push.data`, in sight or not), `{everyui: "subscription", subscription}` (renewed by the browser). A button chosen
+  * with no window of the app open opens it with `everyui-action` and `everyui-push` in its address, which `listen`
+  * reads, hands to `Push.acted` and takes out of the address. */
 object PushAccess {
   private def window: js.Dynamic = dom.window.asInstanceOf[js.Dynamic]
   private def workers: js.Dynamic = dom.window.navigator.asInstanceOf[js.Dynamic].serviceWorker
@@ -33,6 +34,8 @@ object PushAccess {
         else if (kind == "open") Push.tapped(message(data.message))
         else if (kind == "act")
           Push.chose(PushAction(String.valueOf(data.id), message(data.message), reply(data.text)), go = true)
+        else if (kind == "data") Push.dataArrived(data.data.asInstanceOf[js.Dictionary[Any]].toMap
+          .map((k, v) => k -> String.valueOf(v)), front = true).start()
         else if (kind == "subscription") Push.tokens @= PushToken("webpush", String.valueOf(data.subscription))
       }
     })

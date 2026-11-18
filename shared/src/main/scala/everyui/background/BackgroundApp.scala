@@ -5,15 +5,15 @@ import everyui.push.{PushAction, ReplyOutcome}
 
 /** The app's code that runs with no screen: an object the platform loads by name where the app is not running (on
   * Android, the manifest's meta-data "everyui.background", which sbt-everyui writes from `everyuiBackground`), whose
-  * handlers hear what the platform delivers in the background: scheduled work, an ongoing notice's actions, the device
-  * started again or the app updated. The app also registers it as it starts (`Background.register`), which on the
+  * handlers hear what the platform delivers in the background: scheduled work, an ongoing notice's actions, a push's
+  * buttons and replies, a data push, the device started again or the app updated. The app also registers it as it starts (`Background.register`), which on the
   * other platforms runs its scheduled work while the app is open.
   *
   * A handler runs where there may be no window: it reads the settings, the secrets, the store and the network, and
   * never touches a component. It is started on the thread that draws, as the app's own tasks are, so heavy work goes
   * `Task.off`. The platform holds its process until the task answers or a deadline passes: about ten seconds for
-  * an action or a restart (one that needs longer schedules `Work.once` and answers), and nine and a half minutes for
-  * work.
+  * an action, a data push or a restart (one that needs longer schedules `Work.once` and answers), and nine and a
+  * half minutes for work.
   *
   * {{{
   *   object Background extends BackgroundApp {
@@ -51,6 +51,14 @@ trait BackgroundApp {
     * (`ReplyShown`), taken away (`ReplyClosed`) or posted as another (`ReplyUpdated`). By default it goes to
     * `onPushAction` and is shown with the reply; one that has not answered in ten seconds is shown so too. */
   def onPushReply(action: PushAction): Task[ReplyOutcome] = onPushAction(action).map(_ => ReplyOutcome.ReplyShown)
+
+  /** A data push (`PushMessage.isData`: no title and no body, or `"dataOnly": "true"`) that arrived while the app was
+    * not in front, its keys as sent ("sync" -> "mail"): nothing is shown, and the app does what it asks, a sync of
+    * what changed. While the app is in front, `Push.data` hears it instead. On Android it runs in a process started
+    * for it where the app was closed, held about ten seconds (Firebase's window for a message); a longer job schedules
+    * expedited work (`Work.once(key, expedited = true)`, which has minutes) and answers. The web, which runs no app
+    * code with no window open, never calls it. */
+  def onPush(data: Map[String, String]): Task[Unit] = Task.unit
 
   /** The device started again, or the app was updated: what the platform forgot then (an ongoing notice) is put back
     * here. Scheduled work is kept through both and needs nothing. It may be heard with no restart (Android 15 tells

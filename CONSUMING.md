@@ -3686,6 +3686,8 @@ while it lasts) and send it, so the server always has the current one. `Push.uns
 
 `path` is the app's own path, where a tap takes the person; one off the app's origin opens the app at its start. A body
 written in Markdown says so with `"format": "markdown"`: [Markdown in a push](#markdown-in-a-push-format-markdown-pushtext).
+A push with neither a title nor a body is shown never, and handed to the app's code instead:
+[Data pushes](#data-pushes-dataonly-backgroundapponpush-pushdata).
 
 **Grouping and closing.** Two more keys group a conversation's notifications: `"tag": "c42"` shows one in place of
 the one with that tag already showing, rather than beside it, and `"renotify": true` has the replacement sound again
@@ -4034,6 +4036,71 @@ So `PushText.plain("**Done.** See [the log](https://x.io/7).\n\n- `build` passed
 `demo=background`'s "An answer in Markdown" pushes an agent's answer with bold, slanted and code words
 (struck ones left out), a link, a numbered list, a task list and a quote, styled on Android.
 
+### Data pushes (`dataOnly`, `BackgroundApp.onPush`, `Push.data`)
+
+A server tells the app something changed with a push that shows nothing: "sync now", after mail or a calendar
+changed, so the copy on the device is fresh before the person opens the app. A push with neither a title nor a body
+is a data push; `"dataOnly": "true"` makes one of a push that carries text too. Its keys, as sent, are the app's:
+
+```json
+{"sync": "mail", "account": "a1"}
+```
+
+```json
+{"dataOnly": "true", "title": "3 new", "sync": "mail"}
+```
+
+It is never shown. While the app is in front `Push.data` hears it; while it is not, the app's `BackgroundApp.onPush`
+does, on Android with the app closed:
+
+```scala
+object AppBackground extends BackgroundApp {
+  override def onPush(data: Map[String, String]): Task[Unit] = data.get("sync") match {
+    case Some("mail") => Mail.syncChanges()                                 // a few seconds: done here
+    case Some(_) => Task(Work.once("sync", WorkConstraints(network = WorkNetwork.Connected), expedited = true))
+    case None => Task.unit
+  }
+}
+
+Push.data.attach(d => if (d.contains("sync")) Mail.syncChanges().start())  // the app in front
+```
+
+Each push is heard once, by one or the other. The map holds every key the server sent but `dataOnly`, `close` and
+the push service's own (`google.`, `gcm.`): a data push that carries text has its `title` and `body` there too.
+`PushMessage.isData(keys)` says whether a push is one, `PushMessage.dataOf(keys)` what the app is handed. A close
+alone (`{"close": "c42"}`) stays a close; one with keys of its own closes, then is a data push. `silent` is no part of
+it: `"silent": "true"` still means a notification shown with no sound.
+
+- **Android**: an FCM data message (only `data`, no `notification`, or the system shows it itself). `PushService`
+  hears it, app open or closed, starting the app's process where it was not running; with the app out of front,
+  `onPush` runs there, its `BackgroundApp` made ready first (`prepare`). Firebase holds the process for about ten
+  seconds while a message is handled, so `PushService` waits for `onPush` to answer, ten seconds at most (then logs
+  "background: push data had no answer in 10 s" and lets go; what is still running may be stopped with the process).
+  A sync that may take longer is handed to expedited work, `Work.once(key, expedited = true)`, which WorkManager
+  runs at once on Android 12 and later (as ordinary work before), for up to ten minutes, and `onPush` answers: a
+  quota the system sets limits how much expedited work an app runs, past which it runs as ordinary work. Send it with
+  `"android": {"priority": "high"}` so it reaches a sleeping device at once (a normal one waits for the device to
+  wake); FCM may lower to normal the high messages of an app whose high messages show nothing, so keep them few (a
+  sync at most every few minutes).
+- **Web**: the service worker hands it, keys as sent, to a window of the app: the one in sight, else any open one,
+  hidden or minimised, and `Push.data` hears it there. With no window open, nothing runs: a browser runs no app code
+  without a page, and its push subscription is `userVisibleOnly`, a promise that every push shows a notification.
+  The worker shows none (no stand-in notice), so a browser holds each one against the site as it holds a close:
+  Chrome lets a few pass and then shows its own "This site has been updated in the background", Firefox ends the
+  subscription after a few, Safari sooner. So a server sends a browser a data push only while it knows a window is
+  open (the page says so over its own connection), or accepts Chrome's notice; better, an open page hears its server
+  over that connection and needs no push.
+- **Apple**: EveryUI has no push on an Apple device. An app of its own sends a background notification,
+  `{"aps": {"content-available": 1}, "sync": "mail"}` with `apns-push-type: background` and `apns-priority: 5`, heard
+  by `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` with about 30 seconds; iOS delivers two or
+  three an hour at most, and none to an app the person force-quit. That handler would call `onPush`.
+- **Desktop, Roku, Apple TV**: no push.
+
+`demo=background`'s "Data pushes (sync now)" delivers them in three seconds (`Push.deliver`): one heard by `Push.data`
+with the app in front and by `onPush` with it sent home, one that takes 15 s (past its ten), one that hands a 20 s
+sync to expedited work, a `dataOnly` one with text, never shown, and one delivered in ten seconds by work, in a
+process WorkManager starts with the app killed.
+
 
 ## The app's own notifications and the unread badge (`Platform.showNotice`, `Platform.setBadge`)
 
@@ -4273,7 +4340,8 @@ AndroidApk.build(..., libraries = everyuiAndroidLibraries.value)
 
 A handler runs where there may be no window: it reads the settings, the secrets, the store and the network, and
 never touches a component. It starts on the thread that draws (heavy work goes `Task.off`), and the platform holds its
-process until it answers: about ten seconds for an action or a restart (longer work schedules `Work.once` and
+process until it answers: about ten seconds for an action, a data push (`onPush`:
+[Data pushes](#data-pushes-dataonly-backgroundapponpush-pushdata)) or a restart (longer work schedules `Work.once` and
 answers), nine and a half minutes for work, which is then tried again.
 
 - **Work** (`Work.once(key, constraints, expedited, backoff, delay, data)`, `Work.every(key, minutes, ...)`,

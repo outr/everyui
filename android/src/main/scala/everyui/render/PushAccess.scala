@@ -10,6 +10,7 @@ import everyui.activity.ServiceRuntime
 import everyui.background.Background
 import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushFormat, PushMessage,
   PushToken, ReplyOutcome}
+import java.util.concurrent.{CountDownLatch, TimeUnit}
 import scala.jdk.CollectionConverters.*
 
 /** Push notifications (`everyui.push.Push`) through Firebase Cloud Messaging (the app adds `EveryUILibraries.firebase`
@@ -21,8 +22,10 @@ import scala.jdk.CollectionConverters.*
   * (`PushChannel`, made or renamed as it is named) or EveryUI's own ("everyui.push", "Notifications"), stacked under its
   * group's summary where it has a group, whose tap opens the app with the path (`Host.path` for a launch; `tapped`, from
   * the activity's new intent, for an app already running). A notification message (with "notification") the system
-  * shows itself when the app is not in front; its data's "path" still reaches the app on a tap. Android 13 and later ask
-  * the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). */
+  * shows itself when the app is not in front; its data's "path" still reaches the app on a tap. One with neither title
+  * nor body, or with "dataOnly" "true", is a data push (`PushMessage.isData`), never posted: `Push.data` hears it in
+  * front, the app's `BackgroundApp.onPush` otherwise, in a process started for it where the app was closed. Android
+  * 13 and later ask the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). */
 object PushAccess {
   /** A notification's button that runs in the background, as `BackgroundReceiver` hears it. */
   val actionIntent = "everyui.push.ACTION"
@@ -283,20 +286,36 @@ object PushAccess {
     main.post(() => Push.chose(action, go = false))
   }
 
-  /** A data message as `PushService` hears it, with what a notification message says where the data does not: a close
-    * first, then the push, unless a close is all it is. */
+  /** A message as `PushService` hears it, with what a notification message says where the data does not: a close
+    * first, then a data push (`PushMessage.isData`) to the app, or a notification, unless a close is all it is.
+    * `held` (`PushService`, on a thread of its own) waits for a data push's handler to answer, or for its deadline,
+    * as Firebase holds the process only while `onMessageReceived` runs. */
   def handle(context: Context, data: Map[String, String], title: Option[String], body: Option[String],
-             tag: Option[String]): Unit = {
+             tag: Option[String], held: Boolean): Unit = {
     ServiceRuntime.init(context)
     val closing = data.getOrElse("close", "")
     if (closing.nonEmpty) withdraw(context, closing)
-    val sent = PushMessage.of(data)
-    val pushed = sent.copy(title = if (sent.title.nonEmpty) sent.title else title.getOrElse(""),
-      body = if (sent.body.nonEmpty) sent.body else body.getOrElse(""),
-      tag = sent.tag.orElse(tag.filter(_.nonEmpty)))
-    if (closing.isEmpty || pushed.title.nonEmpty || pushed.body.nonEmpty) arrived(context, pushed)
+    val shown = data ++ List("title" -> title, "body" -> body)
+      .collect { case (k, Some(v)) if v.nonEmpty && data.getOrElse(k, "").isEmpty => k -> v }
+    if (PushMessage.isData(shown)) dataArrived(context, shown, held)
+    else {
+      val sent = PushMessage.of(shown)
+      val pushed = sent.copy(tag = sent.tag.orElse(tag.filter(_.nonEmpty)))
+      if (pushed.title.nonEmpty || pushed.body.nonEmpty) arrived(context, pushed)
+    }
   }
 
-  /** `data` handled as `PushService` handles a data message (`Push.deliver`). */
-  def deliver(data: Map[String, String]): Unit = handle(ServiceRuntime.context, data, None, None, None)
+  /** A data push: `Push.data` while the app is in front, else the app's `BackgroundApp.onPush`, made ready in this
+    * process where it is not (a process started for the message), held to the receiver's deadline. Nothing is shown. */
+  private def dataArrived(context: Context, sent: Map[String, String], held: Boolean): Unit = {
+    val front = inFront()
+    if (!front && Background.supported) BackgroundAccess.start(context)
+    val heard = new CountDownLatch(1)
+    BackgroundAccess.run("push data", Push.dataArrived(sent, front), BackgroundAccess.receiverDeadline, ())(_ =>
+      heard.countDown())
+    if (held) heard.await(BackgroundAccess.receiverDeadline + 1000L, TimeUnit.MILLISECONDS)
+  }
+
+  /** `data` handled as `PushService` handles a data message (`Push.deliver`), on the main thread, so not held. */
+  def deliver(data: Map[String, String]): Unit = handle(ServiceRuntime.context, data, None, None, None, held = false)
 }
