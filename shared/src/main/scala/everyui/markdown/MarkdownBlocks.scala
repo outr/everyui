@@ -47,7 +47,7 @@ private[markdown] object MarkdownBlocks {
       // shown as the text it is, never rendered
       val lines = source.split("\n").toList
       new ParagraphView(lines.flatMap(l => List(MdInline.HardBreak, MdInline.CodeSpan(l))).drop(1), ctx.copy(quiet = true),
-        width, ctx.style.points)
+        width, ctx.style.points, markable = false)
     case MdBlock.Definitions(_) => new Container
   }
 

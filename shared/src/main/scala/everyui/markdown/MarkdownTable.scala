@@ -12,11 +12,14 @@ import reactify.*
   * over it (unless it is selecting words), or the focus, makes the `DataTable` in its place. One whose filter shows at
   * rest (past `filterAfter` rows), or on a touch screen, whose tools always show, is a `DataTable` at once. Either way it is
   * as tall as its rows: the wheel turned down over it scrolls what it is in. */
-private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Double) extends Container {
+private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Double) extends Container
+  with Markable {
   private var block = table
   private val view: Var[Component] = own(Var(new Container))
   /** The table that sorts and filters, once it is made. */
   var rich: Option[DataTable] = None
+  // the passages marked in its cells, row by row, the header's first, as last given
+  private var marks: Vector[Vector[MarkSpan]] = Vector.empty
 
   size.width := width
   size.height := view().size.height()
@@ -39,6 +42,7 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
     made.onLink = href => ctx.press(href, made)
     made.hovered := event.pointer.over()
     rich = Some(made)
+    if (marks.exists(_.nonEmpty)) made.cells @= cellsMarked
     focusable @= false
     show(made)
     if (focused()) made.focus()
@@ -52,9 +56,37 @@ private[everyui] class MarkdownTable(table: MdBlock.TableBlock, ctx: MarkdownCon
       case Some(t) =>
         // (its height first: a table grown past the long ones' count turns to making the rows that show before them)
         t.maxHeight @= MarkdownTable.heightFor(next)
-        t.cells @= MarkdownTable.cells(next, ctx)
+        t.cells @= cellsMarked
       case None => show(new TableView(next, ctx, width))
     }
+  }
+
+  def markWords: Vector[String] = (block.header :: block.rows).toVector.flatMap(_.map(Passages.cell))
+
+  /** The passages marked in its cells: in the plain table's, or in the rows of the `DataTable` (its header's are
+    * not). */
+  def mark(spans: Vector[Vector[MarkSpan]]): Unit = {
+    val was = marks
+    marks = spans
+    view() match {
+      case t: TableView => t.mark(spans)
+      case _ => rich.foreach(t => if (spans != was) t.cells @= cellsMarked)
+    }
+  }
+
+  def markUnit(i: Int): Component = view() match {
+    case t: TableView => t.markUnit(i)
+    case _ => this
+  }
+
+  // the rows' cells, with the passages marked in them
+  private def cellsMarked: Vector[Vector[everyui.table.DataCell]] = {
+    var k = block.header.size
+    MarkdownTable.cells(block, ctx).map(_.map { cell =>
+      val spans = marks.lift(k).getOrElse(Vector.empty)
+      k += 1
+      if (spans.isEmpty) cell else cell.copy(runs = Passages.marked(cell.runs, spans))
+    })
   }
 
   // the pointer over it, and not selecting words across it: what it shows is to be acted on

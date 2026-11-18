@@ -646,7 +646,10 @@ class RenderNode(val view: View) {
         if (to > from && run.title.nonEmpty) tips += ((from, to, run.title))
         if (to > from) {
           if (run.color.nonEmpty) span(new android.text.style.ForegroundColorSpan(RenderNode.color(run.color)), from, to)
-          if (run.background.nonEmpty)
+          // a highlighted passage's wash in place of a code span's, and its line under it
+          if (run.mark.nonEmpty) span(new MarkSpan(RenderNode.color(run.mark),
+            if (run.markLine.isEmpty) 0 else RenderNode.color(run.markLine)), from, to)
+          else if (run.background.nonEmpty)
             span(new android.text.style.BackgroundColorSpan(RenderNode.color(run.background)), from, to)
           val bold = run.weight >= 600
           // the family's own italic where it has one, rather than its upright letters slanted

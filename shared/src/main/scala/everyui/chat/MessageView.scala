@@ -29,6 +29,11 @@ import reactify.*
   * them, Up, Down, Escape and Back to `out`, and on past the last is `onward`. Neither is listened for until the app
   * makes it; `kept` is told as what it asks is first made, for what reads it out.
   *
+  * Its highlighted passages (`ChatEntry.Message.highlights`) are marked in its words where they are drawn as Markdown
+  * (`MessageMarkdown`). Where it asks too, the words under the bubble count them ("2 questions for you") where they
+  * are the default's, and a press on them (a click, Enter, a remote's OK) brings the next into view (`reveal`), from
+  * the first again after the last, and says it; the forward arrow on the message comes to them before its actions.
+  *
   * On a phone (`width` under `Transcript.narrow`) everybody else's avatar goes small at the start of the name's line,
   * and the bubble under them takes all the width but the side margins. */
 class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: Val[Long],
@@ -37,7 +42,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
                   reacting: => Boolean = false, react: (String, Boolean) => Unit = (_: String, _: Boolean) => (),
                   addReaction: Component => Unit = (_: Component) => (), announce: String => Unit = (_: String) => (),
                   out: Option[Component] = None, onward: () => Unit = () => (),
-                  kept: () => Unit = () => ()) extends Container {
+                  kept: () => Unit = () => (), reveal: Component => Unit = (_: Component) => ()) extends Container {
   private val top: Double = if (leads) Transcript.groupGap else Transcript.lineGap
 
   private val name: TextView = new TextView {
@@ -189,13 +194,24 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
       bubble.borderWidth := MessageView.edgeWidth(m.attention())
       bubble.borderColor := MessageView.edge(m.attention())
     }
-    val words = a match {
-      case Some(Attention.Asking(label)) => label.filter(_.nonEmpty)
-      case _ => None
+    if (MessageView.label(a).nonEmpty && note.isEmpty) noted()
+    told(a)
+  }
+  // the words under the bubble as they stand, counting the highlights found where they are the default's, and whether
+  // a press on them brings those into view
+  private var jumps = false
+  private def told(a: Option[Attention]): Unit = {
+    val n = found.size
+    val said = MessageView.label(a).map(w => MessageView.counted(w, n))
+    jumps = said.nonEmpty && n > 0
+    noteWords.foreach(_.content @= said.getOrElse(""))
+    note.foreach { made =>
+      made.visible @= said.nonEmpty
+      made.focusable @= jumps
+      made.cursor @= (if (jumps) "pointer" else "default")
+      made.semantics @= (if (jumps) everyui.component.types.Semantics.button(said.get) else
+        everyui.component.types.Semantics.Plain)
     }
-    if (words.nonEmpty && note.isEmpty) noted()
-    noteWords.foreach(_.content @= words.getOrElse(""))
-    note.foreach(_.visible @= words.nonEmpty)
   }
   private def noted(): Unit = {
     val glyph = new everyui.component.MaterialIconView(everyui.font.MaterialIcon.HelpOutline, 14.0)
@@ -207,7 +223,30 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
       color := Theme.warningText()
       maxWidth := Transcript.widest(width) - 18.0
     }
-    val made = Row(4.0, middle = true)(glyph, said)
+    // pressed (a click, Enter, OK) while there are highlights to go to; the keys out of it as out of the actions
+    val made = new Container {
+      override def keepsKey(key: Key): Boolean = key == Key.Enter && jumps
+    }
+    made.layout @= Some(everyui.layout.HorizontalLayout(4.0, true))
+    made.children ++= List(glyph, said)
+    made.radius @= 4.0
+    made.backgroundColor := (if (made.focusShown()) Theme.controlLit() else Color.Clear)
+    made.event.click.attach { e =>
+      if (jumps) {
+        e.consume()
+        jump()
+      }
+    }
+    made.event.key.down.attach { e =>
+      if (e.key == Key.Enter && jumps) jump()
+      else if (e.key == Key.Escape || e.key == Key.Back) out.foreach(_.focus())
+    }
+    val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
+    val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
+    made.exitAction(forward, () => actionButtons.headOption.map(_.focus()).getOrElse(onward()))
+    out.foreach { o =>
+      List(back, Key.ArrowUp, Key.ArrowDown).foreach(k => made.exitAction(k, () => o.focus()))
+    }
     made.position.left := at(made.size.width())
     made.position.top := bubble.position.top() + bubble.size.height() + 4.0
     note = Some(made)
@@ -229,6 +268,35 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   }
   /** The words under the bubble saying what it asks, where they have been made. */
   private[chat] def asking: Option[Container] = note
+  /** The words under the bubble, where a press on them brings its highlights into view. */
+  private[chat] def jumper: Option[Container] = note.filter(_ => jumps)
+
+  // ---- its highlights: nothing made or bound for a message with none ----
+
+  // the Markdown its words are drawn in, which marks them: a message drawn otherwise marks none
+  private def markdown: Option[everyui.markdown.MarkdownView] = words match {
+    case w: MessageMarkdown => Some(w.view)
+    case _ => None
+  }
+  private def mark(list: Vector[MessageHighlight]): Unit = markdown.foreach { v =>
+    val now = list.map(_.passage)
+    if (v.passages() != now) v.passages @= now
+  }
+  // the highlights found in its words, by their index, once there are any
+  private def found: Vector[Int] = if (!m.highlightsKept) Vector.empty
+    else markdown.map(_.passagesFound().zipWithIndex.collect { case (true, i) => i }).getOrElse(Vector.empty)
+  // the one last brought into view
+  private var shown = -1
+
+  /** The next of its highlights found brought into view, from the first after the last, and said. */
+  private[chat] def jump(): Unit = markdown.foreach { v =>
+    val all = found
+    if (all.nonEmpty) {
+      shown = all.find(_ > shown).getOrElse(all.head)
+      v.passageAt(shown).foreach(reveal)
+      m.highlightsNow.lift(shown).foreach(h => announce(h.said))
+    }
+  }
 
   // the app's actions under the rest, made while it has some, and made again as they change
   private var acting: Option[Container] = None
@@ -268,7 +336,8 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
         b.exitAction(Key.ArrowDown, () => o.focus())
         b.event.key.down.attach(e => if (e.key == Key.Escape || e.key == Key.Back) o.focus())
       }
-      if (i > 0) b.exitFocus(back, buttons(i - 1)) else out.foreach(o => b.exitAction(back, () => o.focus()))
+      if (i > 0) b.exitFocus(back, buttons(i - 1))
+      else out.foreach(o => b.exitAction(back, () => jumper.getOrElse(o).focus()))
       if (i < buttons.length - 1) b.exitFocus(forward, buttons(i + 1))
       else b.exitAction(forward, onward)
     }
@@ -340,7 +409,16 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   // until then nothing listens for them
   private var hearing = false
   private var acted = false
+  private var marking = false
   private def watch(): Unit = {
+    if (!marking && m.highlightsKept) {
+      marking = true
+      follow(m.highlights, mark)
+      mark(m.highlightsNow)
+      markdown.foreach(v => follow(v.passagesFound, (_: Vector[Boolean]) => told(m.attentionNow)))
+      told(m.attentionNow)
+      kept()
+    }
     if (!hearing && m.attentionKept) {
       hearing = true
       follow(m.attention, heard)
@@ -360,6 +438,17 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
 }
 
 object MessageView {
+  /** The words under a bubble that asks (`Attention.Asking`), where it has some. */
+  def label(attention: Option[Attention]): Option[String] = attention match {
+    case Some(Attention.Asking(label)) => label.filter(_.nonEmpty)
+    case _ => None
+  }
+
+  /** `label` counting `n` highlights where there are several and it is the default's ("2 questions for you"); else as
+    * it is, an app's own words being the app's. */
+  def counted(label: String, n: Int): String =
+    if (n >= 2 && label == ChatWords.questionForYou) ChatWords.questionsForYou(n) else label
+
   /** `c` pressed is `press`, the click kept from the row under it, and under the hand while it `answers`. */
   def pressable(c: Component, press: () => Unit, answers: => Boolean): Unit = {
     c.event.click.attach { e =>

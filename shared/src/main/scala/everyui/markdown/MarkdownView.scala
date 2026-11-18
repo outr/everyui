@@ -63,6 +63,9 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
     tableLook = () => tableLook.get, mentions = () => mentions(), pressesMentions = () => onMention().nonEmpty,
     onMention = (name, at) => onMention.get.foreach(_(name, at)))
   private var drawn: Vector[MdBlock] = Vector.empty
+  // its passages, and which are found, once the app gives some (`passages`)
+  private var passagesMade: Option[Var[Vector[Passage]]] = None
+  private var foundMade: Option[Var[Vector[Boolean]]] = None
 
   layout @= Some(VerticalLayout(style.spacing))
   content.attach(show)
@@ -115,6 +118,67 @@ class MarkdownView(initial: String = "", val style: MarkdownStyle = MarkdownStyl
     drawn = now
     children @= kept
     gone.foreach(_.dispose())
+    if (passagesMade.nonEmpty) remark()
+  }
+
+  // ---- passages: nothing kept for them until the app gives some ----
+
+  /** The passages highlighted in it (`Passage`): each where its words first are, outside code, on a wash of its tone
+    * with a line of it under. Empty by default, and made the first time it is asked for, so a view never given any
+    * keeps nothing for them. Changed, the marks follow in place; as the content changes (an answer streaming in) they
+    * are found again, so one given before its words arrive is marked once they have. */
+  def passages: Var[Vector[Passage]] = passagesMade.getOrElse {
+    val v = own(Var(Vector.empty[Passage]))
+    foundMade = Some(own(Var(Vector.empty[Boolean])))
+    passagesMade = Some(v)
+    v.attach(_ => remark())
+    v
+  }
+
+  /** Which of `passages` are found in its words, one for each: kept up to date as either changes. */
+  def passagesFound: Val[Vector[Boolean]] = {
+    passages
+    foundMade.get
+  }
+
+  /** What draws the start of passage `i` (a line, a table cell), to be brought into view: none where it is not found. */
+  def passageAt(i: Int): Option[Component] = {
+    val all = markables(this)
+    passagesMade.flatMap { v =>
+      val words = all.map(_.markWords)
+      val spans = Passages.find(words.flatten, v())
+      var k = 0
+      var at: Option[Component] = None
+      all.indices.foreach { b =>
+        val n = words(b).size
+        if (at.isEmpty) (0 until n).find(u => spans(k + u).exists(_.passage == i)).foreach(u => at = Some(all(b).markUnit(u)))
+        k += n
+      }
+      at
+    }
+  }
+
+  // every block's passages found and marked again
+  private def remark(): Unit = passagesMade.foreach { v =>
+    val all = markables(this)
+    val words = all.map(_.markWords)
+    val spans = Passages.find(words.flatten, v())
+    var k = 0
+    all.indices.foreach { b =>
+      val n = words(b).size
+      all(b).mark(spans.slice(k, k + n))
+      k += n
+    }
+    val found = v().indices.toVector.map(p => spans.exists(_.exists(_.passage == p)))
+    foundMade.foreach(f => if (f() != found) f @= found)
+  }
+
+  // the blocks under `c` that passages are marked in, in the order they read: not inside one, nor inside code
+  private def markables(c: Component): Vector[Markable] = c match {
+    case m: Markable => Vector(m)
+    case _: CodeBlockView => Vector.empty
+    case k: Container => k.children().flatMap(markables)
+    case _ => Vector.empty
   }
 
   override def kind: String = "MarkdownView"

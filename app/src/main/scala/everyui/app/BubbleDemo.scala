@@ -21,7 +21,9 @@ import reactify.*
   * `backdrop=<picture>` draws the picture behind the conversation with the theme's surfaces at `see` (0.8 unless
   * given, `Theme.surfaceOpacity`), so the bubbles, the tool call's card and the code wash let it through.
   * `codeOpacity=<0 to 1>` draws the code wash that whole (`MarkdownView.codeOpacity`), and `codeContrast=<ratio>`
-  * gives the contrast its words keep where it is worked out (`MarkdownView.codeContrast`, 4.5 unless given). */
+  * gives the contrast its words keep where it is worked out (`MarkdownView.codeContrast`, 4.5 unless given).
+  * `highlight=1` highlights passages of two replies (`ChatEntry.Message.highlights`): across a link and a code span in
+  * the warning tone, and bold words in the info tone, to be read over a backdrop as over the theme's ground. */
 object BubbleDemo {
   private def luma: Participant = Participant("agent-luma", "Luma")
   private def you: Participant = Participant("u-you", "You")
@@ -50,6 +52,14 @@ object BubbleDemo {
       said("own", you, "Move `voidcraft-eb24f-firebase-adminsdk.json` out of `backend/src/main/resources/` and " +
         "into `.env.firebase`, then delete it.", "Sent", self = true)
     ))
+    if (Platform.launchArg("highlight") == "1") entries().foreach {
+      case m: ChatEntry.Message if m.id == "link" =>
+        m.highlights @= Vector(MessageHighlight("[run 412 on the CI server](https://ci.example.com/runs/412), and its " +
+          "log says `SocketSpec` timed out"))
+      case m: ChatEntry.Message if m.id == "mix" =>
+        m.highlights @= Vector(MessageHighlight("**release notes**", everyui.theme.Tone.Info))
+      case _ => ()
+    }
     if (Platform.launchArg("code") == "1") {
       val ran = ChatEntry.activity("ran", "Ran the tests", ActivityStatus.Failed,
         Some(() => ActivityView.textDetails("sbt test", "1 failed")), Some(at),

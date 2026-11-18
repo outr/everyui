@@ -42,10 +42,11 @@ object ChatEntry {
     /** What people reacted to it with, the app's to keep (`Transcript.reactionsEnabled` shows them). */
     val reactions: Var[List[ChatReaction]] = Var(Nil)
 
-    // `attention` and `actions`, made the first time they are asked for, so a message given neither costs nothing and
-    // nothing drawing it listens for them: what draws it is told (`made`) as either is made
+    // `attention`, `actions` and `highlights`, made the first time they are asked for, so a message given none costs
+    // nothing and nothing drawing it listens for them: what draws it is told (`made`) as one is made
     private var attentionMade: Option[Var[Option[Attention]]] = None
     private var actionsMade: Option[Var[List[MessageAction]]] = None
+    private var highlightsMade: Option[Var[Vector[MessageHighlight]]] = None
     private[chat] var made: List[() => Unit] = Nil
 
     /** Whether it asks something of the person (`Attention`): None by default, an open question (`Attention.asking`)
@@ -66,11 +67,25 @@ object ChatEntry {
       made.foreach(_())
       v
     }
+    /** Passages of it highlighted where they are (`MessageHighlight`): the questions to the person in a long reply, each
+      * on a wash of its tone wherever it lies, in a paragraph, a list item or a table cell, never in code. None by
+      * default, which makes nothing. Set, changed or cleared at any time, the message is marked again in place; set
+      * while it streams, one is marked once its words have arrived. Where it also asks (`Attention.Asking`), the
+      * words under the bubble say how many there are ("2 questions for you") and a press on them (Enter, OK) brings
+      * each into view in turn. Only a message drawn as Markdown (`MessageMarkdown`, the default) shows them. */
+    def highlights: Var[Vector[MessageHighlight]] = highlightsMade.getOrElse {
+      val v: Var[Vector[MessageHighlight]] = Var(Vector.empty)
+      highlightsMade = Some(v)
+      made.foreach(_())
+      v
+    }
     /** What it asks, and its actions, as they stand, without making either: followed where they have been made. */
     private[chat] def attentionNow: Option[Attention] = attentionMade.flatMap(_())
     private[chat] def actionsNow: List[MessageAction] = actionsMade.map(_()).getOrElse(Nil)
     private[chat] def attentionKept: Boolean = attentionMade.nonEmpty
     private[chat] def actionsKept: Boolean = actionsMade.nonEmpty
+    private[chat] def highlightsNow: Vector[MessageHighlight] = highlightsMade.map(_()).getOrElse(Vector.empty)
+    private[chat] def highlightsKept: Boolean = highlightsMade.nonEmpty
   }
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it

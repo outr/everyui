@@ -9,7 +9,10 @@ package everyui.text
   * its letters with the picture fitted in it, its `text` read out and copied for it (a custom emoji's `:name:`); a
   * backend that draws no styled runs shows the words. `title` is what it says as the pointer rests on it and, after
   * its words, to a screen reader (a Markdown link's `"title"`; a link's by `Link.describe` where it has none of its
-  * own): the web's `title` and `aria-description`, the platform's tooltip on the desktop and Android, nothing on a TV. */
+  * own): the web's `title` and `aria-description`, the platform's tooltip on the desktop and Android, nothing on a TV.
+  * A run with a `mark` is part of a highlighted passage: that wash behind its letters, flush with the runs beside it
+  * (no inset, unlike `background`), and a line of `markLine` under it, on the web, the desktop and Android (the wash alone
+  * before Android 10); a backend that draws no styled runs shows neither. */
 case class TextRun(text: String,
                    family: String = "",
                    weight: Int = 0,
@@ -22,7 +25,9 @@ case class TextRun(text: String,
                    underline: Boolean = false,
                    letterSpacing: Option[Double] = None,
                    image: String = "",
-                   title: String = "")
+                   title: String = "",
+                   mark: String = "",
+                   markLine: String = "")
 
 object TextRun {
   /** How big a run's picture (`image`) is, a square, in times the size of its letters. */

@@ -1,7 +1,7 @@
 package everyui.markdown
 
 import everyui.{Gradient, GradientStop}
-import everyui.component.{Container, RichText, ScrollContainer, TextProbes}
+import everyui.component.{Component, Container, RichText, ScrollContainer, TextProbes}
 import everyui.component.types.{Semantics, TextAlign, WhiteSpace}
 import everyui.i18n.Direction
 import everyui.render.Gestures
@@ -17,7 +17,7 @@ import reactify.*
   * giving up more than one of short words, and no word is cut. Only where its widest words alone are wider than `width`
   * (long code, a URL) does it scroll sideways (the arrows scroll it once it has the focus), a shade at each edge with
   * more beyond it. It is drawn exactly as the `DataTable` made in its place once it is wanted (`MarkdownTable`). */
-class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Double) extends Container {
+class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Double) extends Container with Markable {
   private val look = ctx.tableLook()
   private val pad = look.across
   private val points = ctx.style.points * 0.94
@@ -156,6 +156,32 @@ class TableView(table: MdBlock.TableBlock, ctx: MarkdownContext, width: => Doubl
       if (atStart) scroll.offset() > 0.5 else scroll.offset() < beyond() - 0.5
     }
     Gestures.passThrough(node)
+  }
+
+  // the passages marked in each cell, row by row, as last given
+  private var marks: Vector[Vector[MarkSpan]] = Vector.empty
+
+  def markWords: Vector[String] = contents.flatMap(_.map(_.map(_.text).mkString))
+
+  def mark(spans: Vector[Vector[MarkSpan]]): Unit = if (spans != marks && (spans.exists(_.nonEmpty) || marks.nonEmpty)) {
+    val was = marks
+    marks = spans
+    var k = 0
+    cells.indices.foreach { r =>
+      cells(r).indices.foreach { c =>
+        val now = spans.lift(k).getOrElse(Vector.empty)
+        if (now != was.lift(k).getOrElse(Vector.empty)) {
+          val shown = contents(r)(c)
+          if (now.isEmpty) cells(r)(c).runs @= shown else cells(r)(c).runs := Passages.marked(shown, now)
+        }
+        k += 1
+      }
+    }
+  }
+
+  def markUnit(i: Int): Component = {
+    val all = cells.flatten
+    if (i >= 0 && i < all.size) all(i) else this
   }
 
   // a cell drawn: its words on one line where its column has room, else wrapped to the column

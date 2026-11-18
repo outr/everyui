@@ -66,8 +66,10 @@ class RichFlow extends TextFlow {
   // layout throws: they are laid out on the lines they have
   override protected def computePrefHeight(width: Double): Double =
     try super.computePrefHeight(width) catch { case _: ArrayIndexOutOfBoundsException => super.computePrefHeight(-1.0) }
-  override protected def layoutChildren(): Unit =
+  override protected def layoutChildren(): Unit = {
     try super.layoutChildren() catch { case _: ArrayIndexOutOfBoundsException => () }
+    if (marking) shade()
+  }
 
   private def draw(): Unit = {
     val shown = runs.filter(_.text.nonEmpty)
@@ -80,11 +82,13 @@ class RichFlow extends TextFlow {
     // that grows as an answer streams in draws its last lines, not the whole block; a run drawn as the one in its place
     // in every way but its words keeps its node too, its words written into it (a line whose time moves on each second)
     var kept = 0
-    if (colour == drawnColour && italic == drawnItalic && getChildren.size == drawn.size) {
+    // (after the marks behind them, where there are some)
+    val lead = if (marking) 1 else 0
+    if (colour == drawnColour && italic == drawnItalic && getChildren.size == drawn.size + lead) {
       var was = drawn
       var next = now
       while (was.nonEmpty && next.nonEmpty && (was.head == next.head || RichFlow.rewordable(was.head, next.head))) {
-        if (was.head != next.head) getChildren.get(kept).asInstanceOf[Text].setText(next.head._2)
+        if (was.head != next.head) getChildren.get(lead + kept).asInstanceOf[Text].setText(next.head._2)
         kept += 1
         was = was.tail
         next = next.tail
@@ -93,13 +97,59 @@ class RichFlow extends TextFlow {
     val made = now.drop(kept).map(p => if (p._1.image.nonEmpty) picture(p._1, p._3) else piece(p._1, p._2, p._3))
     if (kept == 0) getChildren.setAll(made*)
     else {
-      getChildren.remove(kept, getChildren.size)
+      getChildren.remove(lead + kept, getChildren.size)
       getChildren.addAll(made*)
     }
     drawn = now
+    // a highlighted passage's marks behind its runs while any is marked, drawn as the runs are laid out
+    val marked = now.exists(_._1.mark.nonEmpty)
+    if (marked && !marking) {
+      if (marks == null) {
+        marks = new javafx.scene.Group
+        marks.setManaged(false)
+        marks.setMouseTransparent(true)
+      }
+      getChildren.add(0, marks)
+    }
+    else if (!marked && marking) getChildren.remove(0)
+    if (marked) requestLayout()
     drawnColour = colour
     drawnItalic = italic
   }
+  // the marks of a highlighted passage, behind the runs: made the first time a run is marked
+  private var marks: javafx.scene.Group = null
+  private def marking: Boolean = marks != null && !getChildren.isEmpty && (getChildren.get(0) eq marks)
+
+  // each marked stretch's wash, and its line along the foot of each of its lines, where the runs lie now (a picture
+  // is one character of the flow's)
+  private def shade(): Unit = {
+    val shapes = List.newBuilder[javafx.scene.Node]
+    var at = 0
+    var open: Option[(Int, TextRun)] = None
+    def close(end: Int): Unit = open.foreach { case (start, run) =>
+      RichFlow.boxes(rangeShape(start, end)).foreach { case (x, y, w, h) =>
+        val wash = new javafx.scene.shape.Rectangle(x, y, w, h)
+        wash.setFill(Color.web(run.mark))
+        shapes += wash
+        if (run.markLine.nonEmpty) {
+          val line = new javafx.scene.shape.Rectangle(x, y + h - 2.0, w, 2.0)
+          line.setFill(Color.web(run.markLine))
+          shapes += line
+        }
+      }
+      open = None
+    }
+    drawn.foreach { case (run, words, _) =>
+      val length = if (run.image.nonEmpty) 1 else words.length
+      val same = open.exists(o => o._2.mark == run.mark && o._2.markLine == run.markLine)
+      if (!same) close(at)
+      if (run.mark.nonEmpty && !same) open = Some((at, run))
+      at += length
+    }
+    close(at)
+    marks.getChildren.setAll(shapes.result()*)
+  }
+
   // what the nodes draw (`draw`): each run with its words and face, and the paragraph's colour and slant
   private var drawn: List[(TextRun, String, Font)] = Nil
   private var drawnColour = ""
@@ -170,6 +220,31 @@ class RichFlow extends TextFlow {
 }
 
 object RichFlow {
+  /** The boxes (left, top, width, height) a range's shape is drawn as (`TextFlow.rangeShape`): one for each line it
+    * is on, each begun by a move and traced by lines. */
+  def boxes(shape: Array[javafx.scene.shape.PathElement]): List[(Double, Double, Double, Double)] = {
+    var out: List[(Double, Double, Double, Double)] = Nil
+    var xs: List[Double] = Nil
+    var ys: List[Double] = Nil
+    def done(): Unit = if (xs.nonEmpty) {
+      out = (xs.min, ys.min, xs.max - xs.min, ys.max - ys.min) :: out
+      xs = Nil
+      ys = Nil
+    }
+    shape.foreach {
+      case m: javafx.scene.shape.MoveTo =>
+        done()
+        xs = List(m.getX)
+        ys = List(m.getY)
+      case l: javafx.scene.shape.LineTo =>
+        xs = l.getX :: xs
+        ys = l.getY :: ys
+      case _ => ()
+    }
+    done()
+    out.reverse.filter(b => b._3 > 0.0 && b._4 > 0.0)
+  }
+
   /** Whether `now` (a run, its words and its face) is drawn as `was` in every way but its words, neither a picture: its
     * node is kept, its words written into it. */
   def rewordable(was: (TextRun, String, Font), now: (TextRun, String, Font)): Boolean =

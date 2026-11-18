@@ -60,6 +60,11 @@ object ChatWords {
   def questionForYou: String = word("chat.questionForYou")
   /** A question the person set aside (`Attention.SetAside`), to a screen reader. */
   def setAside: String = word("chat.setAside")
+  /** "2 questions for you": a message asking with several of its passages highlighted (`MessageHighlight`), under its
+    * bubble. */
+  def questionsForYou(n: Int): String = said("chat.questionsForYou", Map("n" -> n.toString))
+  /** A highlighted passage with no label of its own, to a screen reader (`MessageHighlight.said`). */
+  def highlighted: String = word("chat.highlighted")
   def selectAll: String = word("chat.selectAll")
   /** "About Ada", the menu's way to a message's author. */
   def about(name: String): String = word("chat.about").replace("{name}", name)

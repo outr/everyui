@@ -470,13 +470,17 @@ class RenderNode(val el: html.Element) {
     if (run.italic) span.style.fontStyle = "italic"
     if (run.size > 0.0) span.style.fontSize = run.size.toString + "px"
     run.letterSpacing.foreach(px => span.style.letterSpacing = px.toString + "px")
-    val look = RenderNode.runClass(run.color, run.underline, run.strike, run.background)
+    val look = RenderNode.runClass(run.color, run.underline, run.strike, run.background, run.mark, run.markLine)
     if (look.isEmpty) {
       if (run.color.nonEmpty) span.style.color = run.color
       if (run.strike || run.underline)
         span.style.textDecoration = List(Option.when(run.underline)("underline"), Option.when(run.strike)("line-through"))
           .flatten.mkString(" ")
-      if (run.background.nonEmpty) {
+      if (run.mark.nonEmpty) {
+        span.style.backgroundColor = run.mark
+        if (run.markLine.nonEmpty) span.style.boxShadow = "inset 0 -2px 0 " + run.markLine
+      }
+      else if (run.background.nonEmpty) {
         span.style.backgroundColor = run.background
         span.style.padding = "0.08em 0.35em"
         span.style.borderRadius = "5px"
@@ -1585,15 +1589,18 @@ object RenderNode {
   }
 
   /** The page's class for a run's colour, its underline and strike, and its wash (a code span's, a little inset, its
-    * corners rounded): one class for each look there has been, its rule written the first time it is wanted; "" for a
+    * corners rounded), or its mark (a highlighted passage's wash, flush with the runs beside it, a line of `markLine`
+    * along its foot): one class for each look there has been, its rule written the first time it is wanted; "" for a
     * run with none of them, or with a colour not plainly written as one, which is left to the span's own style. Each
     * is `!important`, as a style on the span outranked the page's rules (a link's underline on a hover). A highlighted
     * block of code is a few looks over hundreds of spans, each of which held a style of its own. */
-  def runClass(color: String, underline: Boolean, strike: Boolean, background: String): String =
-    if ((color.isEmpty && !underline && !strike && background.isEmpty) || !plainColour(color) ||
-      !plainColour(background)) ""
+  def runClass(color: String, underline: Boolean, strike: Boolean, background: String, mark: String = "",
+               markLine: String = ""): String =
+    if ((color.isEmpty && !underline && !strike && background.isEmpty && mark.isEmpty) || !plainColour(color) ||
+      !plainColour(background) || !plainColour(mark) || !plainColour(markLine)) ""
     else {
-      val key = color + "|" + underline.toString + "|" + strike.toString + "|" + background
+      val key = color + "|" + underline.toString + "|" + strike.toString + "|" + background +
+        (if (mark.isEmpty) "" else "|" + mark + "|" + markLine)
       runClasses.get(key) match {
         case Some(name) => name
         case None =>
@@ -1601,7 +1608,9 @@ object RenderNode {
           val lines = List(Option.when(underline)("underline"), Option.when(strike)("line-through")).flatten
           val rule = (if (color.isEmpty) "" else "color:" + color + " !important;") +
             (if (lines.isEmpty) "" else "text-decoration:" + lines.mkString(" ") + " !important;") +
-            (if (background.isEmpty) "" else "background-color:" + background +
+            (if (mark.nonEmpty) "background-color:" + mark + " !important;" +
+              (if (markLine.isEmpty) "" else "box-shadow:inset 0 -2px 0 " + markLine + " !important;")
+            else if (background.isEmpty) "" else "background-color:" + background +
               " !important;padding:0.08em 0.35em !important;border-radius:5px !important;")
           val sheet = runSheet.asInstanceOf[js.Dynamic]
           sheet.insertRule("." + name + "{" + rule + "}", sheet.cssRules.length)

@@ -1,7 +1,7 @@
 package everyui.markdown
 
 import everyui.Color
-import everyui.component.{Container, Link, RichText, TextProbes}
+import everyui.component.{Component, Container, Link, RichText, TextProbes}
 import everyui.component.types.WhiteSpace
 import everyui.event.Key
 import everyui.layout.VerticalLayout
@@ -18,9 +18,9 @@ import reactify.*
   * (a title, or the app's words: `Link.describe`) shows as the pointer rests on one and, in a `Tooltip`, as the keys
   * bring the focus to it where the focus shows tips, and beside each in its menu. Its words run the
   * way the view says (`MarkdownContext.direction`), and a word too long for a line (a URL, a path) is broken where it
-  * must be. */
+  * must be. Passages are marked in its lines (`Markable`) unless it is not `markable` (raw HTML, shown as code). */
 class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Double, points: Double,
-                    weight: Int = 400) extends Container {
+                    weight: Int = 400, markable: Boolean = true) extends Container with Markable {
   /** What it shows. */
   val inlines: Var[List[MdInline]] = own(Var(content))
   // its links, and the mentions a press on answers (`MarkdownContext.pressesMentions`), each once
@@ -47,6 +47,8 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     else MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions()).toVector
       .filter(_.image.isEmpty).map(_.runs)))
   private var lineCount = -1
+  // the passages marked in each line, once there have been some (`mark`): until then nothing is kept for them
+  private var marks: Option[Var[Vector[Vector[MarkSpan]]]] = None
 
   size.width := width
   layout @= Some(VerticalLayout(0.0))
@@ -134,6 +136,34 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     }), fresh)
   }
 
+  def markWords: Vector[String] = if (!markable) Vector.empty
+    else MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions()).toVector
+      .map(Passages.words)
+
+  def mark(spans: Vector[Vector[MarkSpan]]): Unit = marks match {
+    case Some(v) => if (v() != spans) v @= spans
+    case None => if (spans.exists(_.nonEmpty)) {
+      marks = Some(own(Var(spans)))
+      // its lines bound again, to follow them
+      children().zipWithIndex.foreach {
+        case (r: RichText, i) => r.runs := runsOf(i)
+        case _ => ()
+      }
+    }
+  }
+
+  def markUnit(i: Int): Component = children().lift(i).getOrElse(this)
+
+  // line `i`'s runs, with the passages in it marked
+  private def runsOf(i: Int): List[TextRun] = {
+    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions())
+    val runs = if (i < parts.size) parts(i).runs else Nil
+    marks match {
+      case Some(v) => Passages.marked(runs, v().lift(i).getOrElse(Vector.empty))
+      case None => runs
+    }
+  }
+
   // line `i`, wrapped to the paragraph's width
   private def line(i: Int): RichText = new RichText {
     size.width := ParagraphView.this.size.width()
@@ -142,10 +172,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     direction @= ctx.direction
     wrapAnywhere @= true
     follow = href => ctx.press(href, this)
-    runs := {
-      val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions())
-      if (i < parts.size) parts(i).runs else Nil
-    }
+    runs := runsOf(i)
   }
 
   override def kind: String = "ParagraphView"

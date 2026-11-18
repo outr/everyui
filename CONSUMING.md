@@ -2542,6 +2542,49 @@ Neither costs a message anything until the app asks for it: both are made the fi
 until then nothing drawing the message listens for them, binds an edge or makes a component. `demo=chat` shows a
 question with Ignore under it and one set aside.
 
+### Passages highlighted where they are (`ChatEntry.Message.highlights`)
+
+An agent's long reply may hold several questions for the person, or one that is not at its end. `highlights` (a
+`Var[Vector[MessageHighlight]]`, empty by default) marks each where it is: on a soft wash of its tone with a line of
+it under, in a paragraph, a heading, a list item, a quote or a table cell, across bold, slanted and linked words and
+code spans, and across lines and blocks (a passage running from one list item into the next marks each part). Code
+blocks are never marked.
+
+`MessageHighlight(text, tone = Tone.Warning, label = "")` names a passage by its words as they are written in the
+message's Markdown, and its first occurrence is marked. It is found whatever the spaces and line breaks between its
+words, and with or without the Markdown marks around them (`**`, `*`, `_`, `~~`, `` ` ``, `|`, a link's brackets and
+`(address)`, a backslash's escape, a list's, quote's or heading's mark at the start of a line), so
+`"**Should the changelog list internal fixes?**"` finds the bold words in a table cell and `"Shall I start with group
+1?"` finds them in a paragraph, though a code block before it holds the same words. A passage that is not there is
+passed over; one set while the message streams is marked once its words arrive. Set, changed or cleared at any time,
+the marks follow in place: nothing is made again, and the bubble keeps its size. `tone` is one of the theme's roles
+(`everyui.theme.Tone`: Accent, Info, Success, Warning, Danger), so the wash reads in a light theme and a dark one, and
+over bubbles that let a backdrop through.
+
+Where the message also asks (`Attention.Asking`), the words under the bubble count the highlights found ("2 questions
+for you", `chat.questionsForYou`, where they are the default's; an app's own words are kept), and are pressed (a click,
+Enter, a remote's OK) to bring the next into view, from the first again after the last, each said as it comes. The
+forward arrow on the message comes to them before its actions; back, Up, Down, Escape or Back go back to the message.
+
+A screen reader hears each passage found after the message, with its label: "Helper: …, 2 questions for you, Question
+for you: Shall I start with group 1?, Question for you: Do you want the old flag kept?", or "Highlighted" where it has
+no label (`chat.highlighted`). Its name changes only as the words or the highlights do.
+
+```scala
+reply.attention @= Some(Attention.asking)
+reply.highlights @= Vector("Shall I start with group 1?", "**Should the changelog list internal fixes?**")
+  .map(MessageHighlight(_, label = ChatWords.questionForYou))
+reply.highlights @= Vector.empty            // cleared
+```
+
+It is made the first time it is read or set, so a message never given any costs nothing more. Only words drawn as
+Markdown (`MessageMarkdown`, the default `render`) are marked. The web, the desktop and Android draw the wash and the
+line (the wash alone before Android 10); a Roku and an Apple TV, which draw no styled runs, show neither, though the
+words under the bubble still count them and bring each into view. A Markdown table turned into a `DataTable` (the
+pointer over it) keeps the marks in its rows, not its header. A `MarkdownView` of its own marks passages the same way
+(`MarkdownView.passages`, `Passage`). `demo=chat` has a long reply with three questions highlighted, and
+`demo=bubbles&highlight=1` two over a backdrop.
+
 ### Threads (`ChatEntry.rail`, `Transcript.rails`)
 
 Any entry (a message, a tool call, reasoning, a note, the app's component) can have a rail: a thin line in a colour of

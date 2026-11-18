@@ -32,7 +32,9 @@ import reactify.*
   * it is whole. `queue=1` writes with a Composer whose messages queue while a reply comes (`afterstop=drain` to go on
   * after Stop, `seed=1` to start with a paused queue), each queued message with Send now and Stop and send of the
   * app's (`Composer.queuedActions`), logged. Helper asks you a question (`ChatEntry.Message.attention`), Ignore under it
-  * (`ChatEntry.Message.actions`) setting it aside, as Scout's already is. `working=inline` shows who is working in the transcript
+  * (`ChatEntry.Message.actions`) setting it aside, as Scout's already is, and asks three more in a long reply,
+  * each highlighted where it is (`ChatEntry.Message.highlights`), the words under it counting them and bringing each
+  * into view in turn. `working=inline` shows who is working in the transcript
   * (`ChatView.workingInline`) rather than over the composer, the release notes' worker with a long brief, cut to three
   * lines. Helper's first message links a file shared in the room (`demo-file:plan.md`), which the app answers
   * (`Link.handle`), logging `chat file plan.md`. Logs `chat ok` once built. */
@@ -330,7 +332,8 @@ object ChatDemo {
     setAside(ChatEntry.message("q0", scout, self = false, "Should the notes mention the old sync API, or leave it for 2.1?",
       Some(start - 200000L))),
     asks(ChatEntry.message("q1", helper, self = false,
-      "Shall I cut the release candidate now, or wait for the reconnect fix?", Some(start - 120000L))))
+      "Shall I cut the release candidate now, or wait for the reconnect fix?", Some(start - 120000L))),
+    highlighted(asks(ChatEntry.message("q2", helper, self = false, ChatDemo.decisions, Some(start - 60000L)))))
     .map(e => topic(e, 21))
 
   // a question for you, with Ignore under it, which sets it aside
@@ -342,6 +345,25 @@ object ChatDemo {
     }))
     m
   }
+  // a long reply with its three questions highlighted where they are: in a paragraph, a list item and a table cell's
+  // bold words; the code block holding the first's words is passed over
+  private def highlighted(m: ChatEntry.Message): ChatEntry.Message = {
+    m.highlights @= Vector("Shall I start with group 1?", "Do you want the old flag kept for one more release?",
+      "**Should the changelog list internal fixes?**").map(MessageHighlight(_, label = ChatWords.questionForYou))
+    m
+  }
+  /** A long reply with three questions in it, none of them at its end. */
+  val decisions: String =
+    "I went through the open issues and grouped them for the release. A note to myself first:\n\n" +
+      "```scala\n// Shall I start with group 1? Ask before opening anything.\nval groups = List(sync, settings)\n```\n\n" +
+      "Group 1 is the sync fixes, group 2 the new settings page. Shall I start with group 1? It is the smaller one " +
+      "and unblocks the beta testers.\n\nThe reconnect fix touches three places:\n\n" +
+      "- `Socket.scala` backs off on reconnect\n- `Main.scala` drops the old flag\n" +
+      "- Do you want the old flag kept for one more release?\n\n" +
+      "| Item | Owner | Status |\n| --- | --- | --- |\n| Release notes | Sam | Drafted |\n" +
+      "| Changelog | Helper | **Should the changelog list internal fixes?** |\n\n" +
+      "Once you answer, I will open the pull requests."
+
   private def setAside(m: ChatEntry.Message): ChatEntry.Message = {
     m.attention @= Some(Attention.SetAside)
     m.actions @= Nil

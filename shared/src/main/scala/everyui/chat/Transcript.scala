@@ -281,12 +281,44 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       work.who.name + ", " + ChatWords.busy + ", " + work.what
     }.getOrElse("")
     case m: ChatEntry.Message =>
-      val asks = Attention.said(m.attentionNow)
-      m.author.name + ": " + spoken(m.text()) + (if (asks.isEmpty) "" else ", " + asks)
+      val marked = highlightsOf(m)
+      val asks = MessageView.label(m.attentionNow).map(MessageView.counted(_, marked.size))
+        .getOrElse(Attention.said(m.attentionNow))
+      m.author.name + ": " + spoken(m.text()) + (if (asks.isEmpty) "" else ", " + asks) +
+        marked.map(", " + _.said).mkString
     case a: ChatEntry.Activity => activitySaid(a, describedOf(a))
     case t: ChatEntry.Thinking => t.done().map(d => ChatWords.thoughtFor(ChatTime.span(d))).getOrElse(ChatWords.thinking)
     case m: ChatEntry.Marker => m.text()
     case _: ChatEntry.Custom => ""
+  }
+
+  // the highlights of `m` found in its words (`ChatEntry.Message.highlights`), in order: none, unless it has some
+  private def highlightsOf(m: ChatEntry.Message): Vector[MessageHighlight] = {
+    val all = m.highlightsNow
+    if (all.isEmpty || plainText()) Vector.empty
+    else all.zip(everyui.markdown.Passages.found(m.text(), all.map(_.passage))).collect { case (h, true) => h }
+  }
+
+  /** `c`, a part of the entry `entryId`'s view (a highlighted passage), brought into view by the least scroll that
+    * shows it with a little room around it, the transcript let go of the bottom where it moves. */
+  private def revealIn(entryId: String, c: Component): Unit = {
+    val i = list.indexOf(entryId)
+    list.rowAt(i).foreach { row =>
+      val room = 24.0
+      val top = list.top(i) + (c.absoluteTop - row.absoluteTop)
+      val bottom = top + c.size.height()
+      val to =
+        if (top - room < list.offset()) top - room
+        else if (bottom + room > list.offset() + list.size.height())
+          math.min(top - room, bottom + room - list.size.height())
+        else list.offset()
+      if (to != list.offset()) {
+        pin.letGo()
+        list.stopFling()
+        list.scrollTop(to)
+        pin.scrolled(list.offset(), furthest)
+      }
+    }
   }
 
   /** `text`, a message's words or a tool call's body, as a screen reader is given it: its Markdown's words
@@ -299,7 +331,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       () => pressAuthor(AuthorPressed(m.author, Some(m.id))), AuthorPressed.answers(m.author, onAuthor()),
       reactionsEnabled(), (emoji: String, on: Boolean) => onReact @= Reacted(m.id, emoji, on),
       (at: Component) => pickReaction(m, at), (s: String) => if (announces()) Platform.announce(s), Some(list),
-      () => toBar(m), () => row.resay())
+      () => toBar(m), () => row.resay(), (c: Component) => revealIn(m.id, c))
     case a: ChatEntry.Activity =>
       new ActivityView(a, row.inner, () => a.details.map(make => keep(a.id, make)), words(a), bodyLines(),
         row.current() && row.cursorShown(), oneLineSummaries())
@@ -622,8 +654,10 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
 
   private[chat] def rowMoved(row: ChatRow): Unit = bar.foreach(_.rowMoved(row))
 
-  // a forward arrow on a message: onto the app's actions under it, where it has any, else the buttons beside it
+  // a forward arrow on a message: onto the words under it that bring its highlights into view, where they do, then the
+  // app's actions under it, where it has any, else the buttons beside it
   private def toActions(entry: ChatEntry): Option[() => Unit] = entry match {
+    case m: ChatEntry.Message if jumperOf(m).nonEmpty => jumperOf(m).map(j => () => j.focus())
     case m: ChatEntry.Message if m.actionsNow.nonEmpty => (list.rowAt(list.indexOf(m.id)) match {
       case Some(r: ChatRow) => r.message.flatMap(_.actionButtons.headOption)
       case _ => None
@@ -633,6 +667,12 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       retarget()
       bar.filter(_.showing()).flatMap(_.actionButtons.headOption).foreach(_.focus())
     })
+    case _ => None
+  }
+
+  // the words under `m` that bring its highlights into view, where it shows them
+  private def jumperOf(m: ChatEntry.Message): Option[Component] = list.rowAt(list.indexOf(m.id)) match {
+    case Some(r: ChatRow) => r.message.flatMap(_.jumper)
     case _ => None
   }
 
