@@ -6,7 +6,7 @@
 
 ThisBuild / scalaVersion := "3.10.0"
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "0.1.16-SNAPSHOT"
+ThisBuild / version := "0.1.16"
 
 // --- publishing: Maven Central, under the Apache License 2.0 ------------------------------------------------------
 // sbt's own Central Portal support (sbt-pgp signs): `publishSigned` stages a release in localStaging, and `sonaRelease`
@@ -44,6 +44,8 @@ lazy val compiler = (project in file("compiler"))
     description := "Scala 3 TASTy to BrightScript and Swift, the compiler sbt-everyui runs for Roku and Apple TV",
     libraryDependencies += "org.scala-lang" %% "scala3-tasty-inspector" % scalaVersion.value,
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
+    // FabricCodecSpec compiles and runs a program of fabric's codecs, the golden its emitted codecs are held to
+    libraryDependencies += "org.typelevel" %% "fabric-io" % fabricVersion % Test,
     // SwiftEmitterSpec reads the derived Swift emitter's templates for the runtime functions they call
     Test / fork := true,
     Test / javaOptions +=
