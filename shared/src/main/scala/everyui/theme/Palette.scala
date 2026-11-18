@@ -9,13 +9,20 @@ import everyui.Color
   * The accent and the states have two tones: their own, for a glyph, a fill, a ring or a mark, which needs 3:1 against
   * what it is on and may be as deep as a theme likes; and one for words in them, which need 4.5:1 (`Theme.accentText`
   * and the rest). The words' tone is worked out from the role's own (`Tones.readable`: the same hue, lighter or darker
-  * as little as reads on every ground) unless the palette gives it (`accentText`, …). */
+  * as little as reads on every ground) unless the palette gives it (`accentText`, …).
+  *
+  * `series` are the colours a chart tells its series apart by, in order (`Theme.series`): eight hues, each at a
+  * lightness picked for this palette's grounds, in an order in which each neighbour stays apart under red-green colour
+  * blindness (a chart offers its data as a table besides, as three of the light ones are under 3:1 on white). None,
+  * the default, takes those of `light` or `dark`, whichever this palette is (`Theme.colorScheme`). They are not the
+  * states: a series is never drawn in success or danger only to be told apart. */
 case class Palette(background: Color, surface: Color, raised: Color, control: Color, controlLit: Color, border: Color,
                    text: Color, muted: Color, accent: Color, accentLit: Color, onAccent: Color, success: Color, warning: Color,
                    danger: Color, info: Color, backdrop: Color, extras: Map[String, Color] = Map.empty,
                    accentText: Option[Color] = None, accentLitText: Option[Color] = None,
                    successText: Option[Color] = None, warningText: Option[Color] = None,
-                   dangerText: Option[Color] = None, infoText: Option[Color] = None)
+                   dangerText: Option[Color] = None, infoText: Option[Color] = None,
+                   series: Vector[Color] = Vector.empty)
 
 // Each one's words (its text, muted, accent, success, warning, danger and info) are 4.5:1 or more against every ground
 // it has (background, surface, raised, control, controlLit), and onAccent against accent and accentLit: WCAG 2.2 AA
@@ -51,7 +58,8 @@ object Palette {
     muted = Color.fromHex("a3a3a3"), accent = Color.fromHex("90caf9"), accentLit = Color.fromHex("bbdefb"),
     onAccent = Color.fromHex("0d1b2a"), success = Color.fromHex("69f0ae"), warning = Color.fromHex("ffab40"),
     danger = Color.fromHex("ff8a80"), info = Color.fromHex("80d8ff"), backdrop = Color.Black.withAlpha(0.6),
-    extras = Map("list.block" -> Color.White.withAlpha(0.05)))
+    extras = Map("list.block" -> Color.White.withAlpha(0.05)),
+    series = Vector("3987e5", "d95926", "199e70", "c98500", "d55181", "0ca30c", "9085e9", "e66767").map(Color.fromHex))
 
   lazy val light: Palette = Palette(
     background = Color.fromHex("fafafa"), surface = Color.White, raised = Color.fromHex("f0f0f0"),
@@ -59,5 +67,6 @@ object Palette {
     muted = Color.fromHex("5e5e5e"), accent = Color.fromHex("135db1"), accentLit = Color.fromHex("1b79cc"),
     onAccent = Color.White, success = Color.fromHex("286c2b"), warning = Color.fromHex("9b4600"),
     danger = Color.fromHex("b42424"), info = Color.fromHex("02629b"), backdrop = Color.Black.withAlpha(0.4),
-    extras = Map("list.block" -> Color.Black.withAlpha(0.04)))
+    extras = Map("list.block" -> Color.Black.withAlpha(0.04)),
+    series = Vector("2a78d6", "eb6834", "1baf7a", "eda100", "e87ba4", "008300", "6250d6", "e34948").map(Color.fromHex))
 }

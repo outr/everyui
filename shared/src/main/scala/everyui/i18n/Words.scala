@@ -90,6 +90,14 @@ object Words {
   def stay: String = apply("stay")
 
   private lazy val english: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Cancel", "close" -> "Close",
+    "chart.bar" -> "Bar chart", "chart.line" -> "Line chart", "chart.area" -> "Area chart",
+    "chart.donut" -> "Donut chart", "chart.pie" -> "Pie chart", "chart.heatmap" -> "Heatmap",
+    "chart.gauge" -> "Gauge", "chart.category" -> "Category", "chart.other" -> "Other", "chart.total" -> "Total",
+    "chart.value" -> "Value", "chart.share" -> "Share", "chart.showTable" -> "Show the data as a table",
+    "chart.showChart" -> "Show the chart",
+    "chart.range" -> "{n, plural, one{# value} other{# values}}, from {low} to {high}",
+    "chart.highest" -> "highest {category}, {value}", "chart.of" -> "{value} of {max}", "chart.up" -> "up {delta}",
+    "chart.down" -> "down {delta}", "chart.noData" -> "No data",
     "done" -> "Done", "yes" -> "Yes", "no" -> "No",
     "save" -> "Save", "discard" -> "Don't save", "delete" -> "Delete", "retry" -> "Try again", "search" -> "Search",
     "noResults" -> "No results", "loading" -> "Loading…", "busy" -> "busy", "unavailable" -> "unavailable", "divider" -> "Divider", "selectAll" -> "Select all", "skipToContent" -> "Skip to content", "suggestion" -> "Suggestion: {words}. Tab to accept.", "acceptSuggestion" -> "Accept", "back" -> "Back", "apply" -> "Apply",
@@ -186,6 +194,14 @@ object Words {
     "push.copied" -> "Copied")
 
   private lazy val german: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Abbrechen", "close" -> "Schließen",
+    "chart.bar" -> "Balkendiagramm", "chart.line" -> "Liniendiagramm", "chart.area" -> "Flächendiagramm",
+    "chart.donut" -> "Ringdiagramm", "chart.pie" -> "Kreisdiagramm", "chart.heatmap" -> "Heatmap",
+    "chart.gauge" -> "Messanzeige", "chart.category" -> "Kategorie", "chart.other" -> "Sonstige",
+    "chart.total" -> "Gesamt", "chart.value" -> "Wert", "chart.share" -> "Anteil",
+    "chart.showTable" -> "Daten als Tabelle zeigen", "chart.showChart" -> "Diagramm zeigen",
+    "chart.range" -> "{n, plural, one{# Wert} other{# Werte}}, von {low} bis {high}",
+    "chart.highest" -> "am höchsten {category}, {value}", "chart.of" -> "{value} von {max}",
+    "chart.up" -> "plus {delta}", "chart.down" -> "minus {delta}", "chart.noData" -> "Keine Daten",
     "done" -> "Fertig", "yes" -> "Ja",
     "no" -> "Nein", "save" -> "Speichern", "discard" -> "Nicht speichern", "delete" -> "Löschen",
     "retry" -> "Erneut versuchen", "search" -> "Suchen", "noResults" -> "Keine Ergebnisse", "loading" -> "Wird geladen…", "busy" -> "beschäftigt", "unavailable" -> "nicht verfügbar", "divider" -> "Trennlinie", "selectAll" -> "Alles auswählen", "skipToContent" -> "Zum Inhalt springen", "suggestion" -> "Vorschlag: {words}. Mit Tab übernehmen.", "acceptSuggestion" -> "Übernehmen",
@@ -290,6 +306,14 @@ object Words {
     "push.copied" -> "Kopiert")
 
   private lazy val spanish: Map[String, String] = Map("ok" -> "Aceptar", "cancel" -> "Cancelar", "close" -> "Cerrar",
+    "chart.bar" -> "Gráfico de barras", "chart.line" -> "Gráfico de líneas", "chart.area" -> "Gráfico de áreas",
+    "chart.donut" -> "Gráfico de anillo", "chart.pie" -> "Gráfico circular", "chart.heatmap" -> "Mapa de calor",
+    "chart.gauge" -> "Indicador", "chart.category" -> "Categoría", "chart.other" -> "Otros", "chart.total" -> "Total",
+    "chart.value" -> "Valor", "chart.share" -> "Proporción", "chart.showTable" -> "Mostrar los datos como tabla",
+    "chart.showChart" -> "Mostrar el gráfico",
+    "chart.range" -> "{n, plural, one{# valor} other{# valores}}, de {low} a {high}",
+    "chart.highest" -> "máximo {category}, {value}", "chart.of" -> "{value} de {max}", "chart.up" -> "sube {delta}",
+    "chart.down" -> "baja {delta}", "chart.noData" -> "Sin datos",
     "done" -> "Listo", "yes" -> "Sí",
     "no" -> "No", "save" -> "Guardar", "discard" -> "No guardar", "delete" -> "Eliminar", "retry" -> "Reintentar",
     "search" -> "Buscar", "noResults" -> "Sin resultados", "loading" -> "Cargando…", "busy" -> "ocupado", "unavailable" -> "no disponible", "divider" -> "Divisor", "selectAll" -> "Seleccionar todo", "skipToContent" -> "Saltar al contenido", "suggestion" -> "Sugerencia: {words}. Tab para aceptar.", "acceptSuggestion" -> "Aceptar", "back" -> "Atrás",
@@ -394,6 +418,14 @@ object Words {
     "push.copied" -> "Copiado")
 
   private lazy val french: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuler", "close" -> "Fermer",
+    "chart.bar" -> "Graphique à barres", "chart.line" -> "Graphique linéaire", "chart.area" -> "Graphique en aires",
+    "chart.donut" -> "Graphique en anneau", "chart.pie" -> "Graphique circulaire",
+    "chart.heatmap" -> "Carte de chaleur", "chart.gauge" -> "Jauge", "chart.category" -> "Catégorie",
+    "chart.other" -> "Autres", "chart.total" -> "Total", "chart.value" -> "Valeur", "chart.share" -> "Part",
+    "chart.showTable" -> "Afficher les données sous forme de tableau", "chart.showChart" -> "Afficher le graphique",
+    "chart.range" -> "{n, plural, one{# valeur} other{# valeurs}}, de {low} à {high}",
+    "chart.highest" -> "maximum {category}, {value}", "chart.of" -> "{value} sur {max}",
+    "chart.up" -> "en hausse de {delta}", "chart.down" -> "en baisse de {delta}", "chart.noData" -> "Aucune donnée",
     "done" -> "Terminé", "yes" -> "Oui",
     "no" -> "Non", "save" -> "Enregistrer", "discard" -> "Ne pas enregistrer", "delete" -> "Supprimer",
     "retry" -> "Réessayer", "search" -> "Rechercher", "noResults" -> "Aucun résultat", "loading" -> "Chargement…", "busy" -> "occupé", "unavailable" -> "indisponible", "divider" -> "Séparateur", "selectAll" -> "Tout sélectionner", "skipToContent" -> "Aller au contenu", "suggestion" -> "Suggestion : {words}. Tab pour accepter.", "acceptSuggestion" -> "Accepter",
@@ -500,6 +532,14 @@ object Words {
     "push.copied" -> "Copié")
 
   private lazy val italian: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annulla", "close" -> "Chiudi",
+    "chart.bar" -> "Grafico a barre", "chart.line" -> "Grafico a linee", "chart.area" -> "Grafico ad area",
+    "chart.donut" -> "Grafico ad anello", "chart.pie" -> "Grafico a torta", "chart.heatmap" -> "Mappa di calore",
+    "chart.gauge" -> "Indicatore", "chart.category" -> "Categoria", "chart.other" -> "Altro",
+    "chart.total" -> "Totale", "chart.value" -> "Valore", "chart.share" -> "Quota",
+    "chart.showTable" -> "Mostra i dati come tabella", "chart.showChart" -> "Mostra il grafico",
+    "chart.range" -> "{n, plural, one{# valore} other{# valori}}, da {low} a {high}",
+    "chart.highest" -> "massimo {category}, {value}", "chart.of" -> "{value} di {max}",
+    "chart.up" -> "in aumento di {delta}", "chart.down" -> "in calo di {delta}", "chart.noData" -> "Nessun dato",
     "done" -> "Fine", "yes" -> "Sì", "no" -> "No",
     "save" -> "Salva", "discard" -> "Non salvare", "delete" -> "Elimina", "retry" -> "Riprova", "search" -> "Cerca",
     "noResults" -> "Nessun risultato", "loading" -> "Caricamento…", "busy" -> "occupato", "unavailable" -> "non disponibile", "divider" -> "Divisore", "selectAll" -> "Seleziona tutto", "skipToContent" -> "Vai al contenuto", "suggestion" -> "Suggerimento: {words}. Tab per accettare.", "acceptSuggestion" -> "Accetta", "back" -> "Indietro", "apply" -> "Applica",
@@ -601,6 +641,14 @@ object Words {
     "push.copied" -> "Copiato")
 
   private lazy val dutch: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuleren", "close" -> "Sluiten",
+    "chart.bar" -> "Staafdiagram", "chart.line" -> "Lijndiagram", "chart.area" -> "Vlakdiagram",
+    "chart.donut" -> "Ringdiagram", "chart.pie" -> "Cirkeldiagram", "chart.heatmap" -> "Heatmap",
+    "chart.gauge" -> "Meter", "chart.category" -> "Categorie", "chart.other" -> "Overig", "chart.total" -> "Totaal",
+    "chart.value" -> "Waarde", "chart.share" -> "Aandeel", "chart.showTable" -> "Gegevens als tabel tonen",
+    "chart.showChart" -> "Grafiek tonen",
+    "chart.range" -> "{n, plural, one{# waarde} other{# waarden}}, van {low} tot {high}",
+    "chart.highest" -> "hoogste {category}, {value}", "chart.of" -> "{value} van {max}",
+    "chart.up" -> "{delta} hoger", "chart.down" -> "{delta} lager", "chart.noData" -> "Geen gegevens",
     "done" -> "Klaar", "yes" -> "Ja",
     "no" -> "Nee", "save" -> "Opslaan", "discard" -> "Niet opslaan", "delete" -> "Verwijderen",
     "retry" -> "Opnieuw proberen", "search" -> "Zoeken", "noResults" -> "Geen resultaten", "loading" -> "Laden…", "busy" -> "bezig", "unavailable" -> "niet beschikbaar", "divider" -> "Scheidingslijn", "selectAll" -> "Alles selecteren", "skipToContent" -> "Naar de inhoud", "suggestion" -> "Suggestie: {words}. Tab om te accepteren.", "acceptSuggestion" -> "Accepteren",
@@ -703,6 +751,14 @@ object Words {
     "push.copied" -> "Gekopieerd")
 
   private lazy val portuguese: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Cancelar", "close" -> "Fechar",
+    "chart.bar" -> "Gráfico de barras", "chart.line" -> "Gráfico de linhas", "chart.area" -> "Gráfico de área",
+    "chart.donut" -> "Gráfico de rosca", "chart.pie" -> "Gráfico de pizza", "chart.heatmap" -> "Mapa de calor",
+    "chart.gauge" -> "Medidor", "chart.category" -> "Categoria", "chart.other" -> "Outros", "chart.total" -> "Total",
+    "chart.value" -> "Valor", "chart.share" -> "Participação", "chart.showTable" -> "Mostrar os dados como tabela",
+    "chart.showChart" -> "Mostrar o gráfico",
+    "chart.range" -> "{n, plural, one{# valor} other{# valores}}, de {low} a {high}",
+    "chart.highest" -> "maior {category}, {value}", "chart.of" -> "{value} de {max}", "chart.up" -> "alta de {delta}",
+    "chart.down" -> "queda de {delta}", "chart.noData" -> "Sem dados",
     "done" -> "Concluído", "yes" -> "Sim",
     "no" -> "Não", "save" -> "Salvar", "discard" -> "Não salvar", "delete" -> "Excluir", "retry" -> "Tentar novamente",
     "search" -> "Pesquisar", "noResults" -> "Nenhum resultado", "loading" -> "Carregando…", "busy" -> "ocupado", "unavailable" -> "indisponível", "divider" -> "Divisor", "selectAll" -> "Selecionar tudo", "skipToContent" -> "Pular para o conteúdo", "suggestion" -> "Sugestão: {words}. Tab para aceitar.", "acceptSuggestion" -> "Aceitar", "back" -> "Voltar",
@@ -805,6 +861,13 @@ object Words {
     "push.copied" -> "Copiado")
 
   private lazy val turkish: Map[String, String] = Map("ok" -> "Tamam", "cancel" -> "İptal", "close" -> "Kapat",
+    "chart.bar" -> "Çubuk grafik", "chart.line" -> "Çizgi grafik", "chart.area" -> "Alan grafiği",
+    "chart.donut" -> "Halka grafik", "chart.pie" -> "Pasta grafik", "chart.heatmap" -> "Isı haritası",
+    "chart.gauge" -> "Gösterge", "chart.category" -> "Kategori", "chart.other" -> "Diğer", "chart.total" -> "Toplam",
+    "chart.value" -> "Değer", "chart.share" -> "Pay", "chart.showTable" -> "Verileri tablo olarak göster",
+    "chart.showChart" -> "Grafiği göster", "chart.range" -> "{n, plural, other{# değer}}, {low} ile {high} arası",
+    "chart.highest" -> "en yüksek {category}, {value}", "chart.of" -> "{value} / {max}",
+    "chart.up" -> "{delta} artış", "chart.down" -> "{delta} düşüş", "chart.noData" -> "Veri yok",
     "done" -> "Bitti", "yes" -> "Evet",
     "no" -> "Hayır", "save" -> "Kaydet", "discard" -> "Kaydetme", "delete" -> "Sil", "retry" -> "Yeniden dene",
     "search" -> "Ara", "noResults" -> "Sonuç yok", "loading" -> "Yükleniyor…", "busy" -> "meşgul", "unavailable" -> "kullanılamıyor", "divider" -> "Ayırıcı", "selectAll" -> "Tümünü seç", "skipToContent" -> "İçeriğe geç", "suggestion" -> "Öneri: {words}. Kabul etmek için Tab.", "acceptSuggestion" -> "Kabul et", "back" -> "Geri", "apply" -> "Uygula",
@@ -905,6 +968,15 @@ object Words {
 
   // Arabic counts: =2 is the dual, few (3 to 10) a plural, many (11 to 99) and other (100 and up) a singular.
   private lazy val arabic: Map[String, String] = Map("ok" -> "موافق", "cancel" -> "إلغاء", "close" -> "إغلاق",
+    "chart.bar" -> "مخطط شريطي", "chart.line" -> "مخطط خطي", "chart.area" -> "مخطط مساحي",
+    "chart.donut" -> "مخطط حلقي", "chart.pie" -> "مخطط دائري", "chart.heatmap" -> "خريطة حرارية",
+    "chart.gauge" -> "مقياس", "chart.category" -> "الفئة", "chart.other" -> "أخرى", "chart.total" -> "الإجمالي",
+    "chart.value" -> "القيمة", "chart.share" -> "الحصة", "chart.showTable" -> "عرض البيانات كجدول",
+    "chart.showChart" -> "عرض المخطط",
+    "chart.range" -> "{n, plural, zero{لا قيم} one{قيمة واحدة} two{قيمتان} few{# قيم} many{# قيمة} other{# قيمة}}، من {low} إلى {high}",
+    "chart.highest" -> "الأعلى {category}، {value}", "chart.of" -> "{value} من {max}",
+    "chart.up" -> "ارتفاع بمقدار {delta}", "chart.down" -> "انخفاض بمقدار {delta}",
+    "chart.noData" -> "لا توجد بيانات",
     "done" -> "تم", "yes" -> "نعم", "no" -> "لا",
     "save" -> "حفظ", "discard" -> "عدم الحفظ", "delete" -> "حذف", "retry" -> "إعادة المحاولة", "search" -> "بحث",
     "noResults" -> "لا توجد نتائج", "loading" -> "جارٍ التحميل…", "busy" -> "مشغول", "unavailable" -> "غير متاح", "divider" -> "فاصل", "selectAll" -> "تحديد الكل", "skipToContent" -> "انتقل إلى المحتوى", "suggestion" -> "اقتراح: {words}. اضغط Tab للقبول.", "acceptSuggestion" -> "قبول", "back" -> "رجوع", "apply" -> "تطبيق", "clear" -> "مسح",
@@ -1009,6 +1081,12 @@ object Words {
     "push.copied" -> "تم النسخ")
 
   private lazy val chinese: Map[String, String] = Map("ok" -> "确定", "cancel" -> "取消", "close" -> "关闭",
+    "chart.bar" -> "条形图", "chart.line" -> "折线图", "chart.area" -> "面积图", "chart.donut" -> "环形图", "chart.pie" -> "饼图",
+    "chart.heatmap" -> "热力图", "chart.gauge" -> "仪表", "chart.category" -> "类别", "chart.other" -> "其他",
+    "chart.total" -> "总计", "chart.value" -> "数值", "chart.share" -> "占比", "chart.showTable" -> "以表格显示数据",
+    "chart.showChart" -> "显示图表", "chart.range" -> "{n} 个值，从 {low} 到 {high}",
+    "chart.highest" -> "最高：{category}，{value}", "chart.of" -> "{value} / {max}", "chart.up" -> "上升 {delta}",
+    "chart.down" -> "下降 {delta}", "chart.noData" -> "无数据",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
     "save" -> "保存", "discard" -> "不保存", "delete" -> "删除", "retry" -> "重试", "search" -> "搜索",
     "noResults" -> "无结果", "loading" -> "正在加载…", "busy" -> "忙碌", "unavailable" -> "不可用", "divider" -> "分隔条", "selectAll" -> "全选", "skipToContent" -> "跳到内容", "suggestion" -> "建议：{words}。按 Tab 接受。", "acceptSuggestion" -> "接受", "back" -> "返回", "apply" -> "应用", "clear" -> "清除",
@@ -1101,6 +1179,12 @@ object Words {
     "push.copied" -> "已复制")
 
   private lazy val traditionalChinese: Map[String, String] = Map("ok" -> "確定", "cancel" -> "取消", "close" -> "關閉",
+    "chart.bar" -> "長條圖", "chart.line" -> "折線圖", "chart.area" -> "面積圖", "chart.donut" -> "環圈圖", "chart.pie" -> "圓餅圖",
+    "chart.heatmap" -> "熱度圖", "chart.gauge" -> "儀表", "chart.category" -> "類別", "chart.other" -> "其他",
+    "chart.total" -> "總計", "chart.value" -> "數值", "chart.share" -> "占比", "chart.showTable" -> "以表格顯示資料",
+    "chart.showChart" -> "顯示圖表", "chart.range" -> "{n} 個值，從 {low} 到 {high}",
+    "chart.highest" -> "最高：{category}，{value}", "chart.of" -> "{value} / {max}", "chart.up" -> "上升 {delta}",
+    "chart.down" -> "下降 {delta}", "chart.noData" -> "無資料",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
     "save" -> "儲存", "discard" -> "不儲存", "delete" -> "刪除", "retry" -> "重試", "search" -> "搜尋",
     "noResults" -> "沒有結果", "loading" -> "正在載入…", "busy" -> "忙碌", "unavailable" -> "無法使用", "divider" -> "分隔線", "selectAll" -> "全選", "skipToContent" -> "跳到內容", "suggestion" -> "建議：{words}。按 Tab 接受。", "acceptSuggestion" -> "接受", "back" -> "返回", "apply" -> "套用", "clear" -> "清除",

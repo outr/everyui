@@ -1,6 +1,7 @@
 package everyui.memory
 
 import everyui.Color
+import everyui.chart.{BarChart, DonutChart, Heatmap, LineChart, Meter, Series, StatTile}
 import everyui.chat.{ActivityStatus, ChatEntry, ChatTime, Participant, Transcript}
 import everyui.component.{Button, Component, Container, ImageView, ScrollContainer, TextView}
 import everyui.kit.TabGroups
@@ -12,7 +13,7 @@ import reactify.*
 
 /** The cases EveryUI's memory is measured by, the same on every platform that measures (the web's page,
   * `MemoryPage`; the desktop's `MemorySpec`): each common kind of component, a transcript's cost per message of each
-  * kind, and a tab group's per tab not shown. */
+  * kind, a tab group's per tab not shown, and each kind of chart (`everyui.chart`) at a card's size. */
 object MemoryCases {
   val all: List[MemoryCase] = List(
     MemoryCase("TextView", "view", 200, () => stacked(i => words("A line of words, number " + i.toString))),
@@ -36,8 +37,39 @@ object MemoryCases {
     MemoryCase("Transcript, tool call open", "message", 50, () => transcript(i => call(i, open = true))),
     MemoryCase("Transcript, tool call running", "message", 20, () => runningCalls()),
     MemoryCase("Transcript in 900 px, plain", "message", 200,
-      () => transcript(i => message(i, "Sounds good, go ahead."), height = 900.0))
+      () => transcript(i => message(i, "Sounds good, go ahead."), height = 900.0)),
+    MemoryCase("BarChart, 7 days by 3 series", "chart", 10, () => stacked(i => sized(BarChart(days,
+      (0 until 3).toVector.map(s => Series("Series " + s.toString,
+        days.indices.toVector.map(d => ((d + s + i) % 7 + 1).toDouble))))))),
+    MemoryCase("LineChart, 30 days", "chart", 10, () => stacked(i => sized(LineChart(
+      (1 to 30).toVector.map(d => "Nov " + d.toString),
+      Vector(Series("Spend", (0 until 30).toVector.map(d => ((d * 7 + i) % 40).toDouble))))))),
+    MemoryCase("DonutChart, 5 parts", "chart", 10, () => stacked(i => sized(DonutChart(
+      Vector("Meetings", "Focus", "Mail", "Reviews", "Travel"), Vector(14.0, 18.5, 6.0, 4.0, 2.0 + i))))),
+    MemoryCase("Heatmap, 7 by 24", "chart", 4, () => stacked(i => sized(Heatmap(days,
+      (0 until 24).toVector.map(_.toString),
+      days.indices.toVector.map(d => (0 until 24).toVector.map(h => ((d * 24 + h + i) % 5).toDouble)))))),
+    MemoryCase("StatTile with a trend", "tile", 20, () => stacked { i =>
+      val t = StatTile("Spend this week", "$" + i.toString, Some(0.12), "vs last week")
+      t.trend @= Vector(3.0, 5.0, 4.0, 6.0, 5.0, 7.0)
+      t.size.width @= 200.0
+      t
+    }),
+    MemoryCase("Meter", "meter", 20, () => stacked { i =>
+      val m = Meter("Budget", 620.0 + i, 1000.0)
+      m.size.width @= 300.0
+      m
+    })
   )
+
+  private val days = Vector("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+  // a chart as a briefing's card holds it
+  private def sized(c: Component): Component = {
+    c.size.width @= 400.0
+    c.size.height @= 220.0
+    c
+  }
 
   // units in a column, one after another
   private def stacked(make: Int => Component): MemoryRig = new MemoryRig {

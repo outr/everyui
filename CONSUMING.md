@@ -1586,6 +1586,69 @@ and Android on a canvas of its own. A Roku and an Apple TV draw no paths: they s
 (`Block.of`): straight strokes across or down, like a commit graph's lanes, and filled rectangles. Diagonals, curves
 and circles are left out there.
 
+### Charts (`everyui.chart`)
+
+Charts take data, not figures: categories and `Series(name, values, tone)`, each bound reactively (`:=` to what the app
+reads), themed from the palette, drawn through `Drawing` and the same on every platform. They fill the size they are
+given (`size.width`, `size.height`), and their values ease to new ones as the data changes (jumping where motion is
+reduced, `ReduceMotion`).
+
+```scala
+import everyui.chart.*
+
+val spend = BarChart(days(), Vector(Series("Spend", amounts())), ChartFormat.money("$"))
+spend.size.width @= 480.0
+spend.size.height @= 220.0
+
+val meetings = BarChart(weekdays, Vector(Series("Meetings", m), Series("1:1s", o), Series("Focus", f)),
+  ChartFormat.hours)                                                // grouped; `stacked = true`, `horizontal = true`
+val usage = LineChart(days, series, points = true)                  // `area = true`, `fromZero @= false`
+val trend = AreaChart.time(dayStarts(), Vector(Series("Spend", amounts())), ChartFormat.money("$"))   // a time axis
+val week = DonutChart(Vector("Meetings", "Focus", "Mail"), Vector(14.0, 18.5, 6.0), ChartFormat.hours)
+week.caption @= "This week"                                         // `centre`, `most` (the rest folded into Other)
+val split = PieChart(accounts, counts)
+val busy = Heatmap(weekdayNames, hourNames, valuesByDayThenHour)    // a week by hours
+val budget = Meter("Monthly budget", spent(), 1000.0, ChartFormat.money("$", 0))   // `warnAt`, `dangerAt`
+val context = Gauge("Context used", used(), 200000.0)
+val tile = StatTile("Spend this week", ChartFormat.money("$")(week()), Some(0.12), "vs last week")
+tile.upIsGood @= false                                              // a rise in spend is bad news: the danger tone
+tile.trend := days().map(_.spend)                                   // a small line, its latest point in the accent
+```
+
+What every chart (`BarChart`, `LineChart`, `DonutChart`, `Heatmap`) has:
+
+- **Axes.** A value axis with round ticks (`LinearScale.nice`: steps of 1, 2 or 5 times a power of ten) written by the
+  chart's `format` (`Double => String`: `ChartFormat.number`, `compact` (12.9K), `money`, `percent`, `hours`, or the
+  app's own), whole ticks without a fraction of nothing ("$100", not "$100.00"); hairline gridlines and a baseline. The
+  categories' labels are thinned (every second, third…) or turned 45 degrees where they would run into each other
+  (`LabelPlan`); down the side a long one is cut short. A time axis (`LineChart.time`, `TimeScale`) puts its ticks on
+  whole seconds, minutes, hours, days, weeks, months or years of the reader's clock.
+- **A legend** over the chart for two series or more (`Legend`, usable alone); none for one, whose title names it.
+- **Pointing.** The pointer over a mark, a press on it, or the arrow keys (where there is a pointer and keys; Escape
+  lets go) tell the app which: `pointed: Channel[Pointed]` (`category`, `series`, `value`, their indexes, `pressed`)
+  and `hovered: Var[Option[Pointed]]`. A mark is heard 24 pixels round at least; a line chart finds the nearest
+  category and the nearest line there. The chart's own tip shows by it, the value first, every series at that
+  category; `tips @= false` for the app's own. `pointAt(x, y, pressed)` and `markAt(x, y)` do the same from the app.
+- **For a screen reader**, the chart is a figure named by `summary`, or, where the app gives none, by a sentence made
+  from its data ("Bar chart: Spend. 7 values, from $4 to $48; highest Wed, $48."). A button at its top end (`tableToggle`)
+  shows the data as a table in its place, and back (`table`), which a screen reader reads as a table and a selection
+  copies as one; the chart's colours are never the only way to read it.
+- **Colours** are the palette's `series` (`Theme.series(i)`): eight hues in an order that keeps neighbours apart under
+  red-green colour blindness, light and dark steps of their own, validated for a categorical palette on the light
+  palette's white and the dark one's `#1e1e1e` (an app's palette may give its own `series`; with none it takes the
+  light or dark ones). A series keeps its colour by its tone (`ChartTone.Slot(n)`), not its place, where series come
+  and go; `ChartTone.Muted` is the grey for context and "Other"; `Success`, `Danger` and the rest only where the
+  colour means that. Past eight, a ninth series is the muted grey, never a new hue: fold the smallest into "Other".
+  Words are always in the text's colours, never a series'.
+- **Marks** follow one style: bars at most 24 pixels thick with their end rounded and their foot square, a 2 pixel gap
+  between bars that touch, between stacked segments and between slices; 2 pixel lines; dots ringed in the surface.
+
+A Roku and the Apple backend (an Apple TV, an iPhone, an iPad) draw no curves and no slanting lines (`Block.of`): there
+bars and cells are plain rectangles, a line chart is its dots (squares), with no area, a donut or a pie is a segmented
+bar of its parts over the same legend, a gauge a bar, and a stat tile's trend small bars; every chart's words, legend,
+tips, keys and table are the same. A remote's arrows move on from a chart rather than along it (it takes no focus where
+the platform navigates by remote), so offer its table, or the values beside it, there.
+
 ### ZoomCanvas (`everyui.zoom`)
 
 `ZoomCanvas` is a surface that pans and zooms over a world of items: a map, a diagram, a project seen from its sections

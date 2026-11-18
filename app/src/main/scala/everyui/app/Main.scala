@@ -99,6 +99,9 @@ import everyui.render.Platform
   *              `src=<url>` (the same page on another origin); an empty box where there is no engine to lend;
   *              `sandbox=none|scripts|<flags>` shows web/sandbox.html sandboxed, trying to reach the app
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
+  *   charts     every chart (everyui.chart) on a daily briefing's data in a grid of cards: spend, meetings, mail per
+  *              account, model use, a donut, a pie, a week by hour heatmap, meters, a gauge and stat tiles; New data
+  *              eases them to the next (`live=1`, `theme=light`, `rtl=1`)
   *   dates      the date pickers: a date field and calendar, a range field and range calendar with presets, and
   *              their dialogs (`dialog=date|range`, `theme=light`, `lang=ar`, `today=`, `min=`, `max=`)
   *   sliders    sliders, range sliders and switches: steps, divisions, value labels, vertical, out of use (`theme=light`,
@@ -232,6 +235,7 @@ import everyui.render.Platform
   else if (demo == "parked") ParkedDemo.run()
   else if (demo == "busy") BusyDemo.run()
   else if (demo == "colors") ColorsDemo.run()
+  else if (demo == "charts") ChartsDemo.run()
   else if (demo == "dates") DatesDemo.run()
   else if (demo == "sliders") SlidersDemo.run()
   else if (demo == "markdown") MarkdownDemo.run()

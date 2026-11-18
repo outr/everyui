@@ -100,6 +100,14 @@ object Theme {
       t
     })
   }
+  /** The colour of a chart's series `i` (0 for the first): the palette's `series`, or the shipped light or dark ones
+    * where it gives none. There are eight; a ninth and on are the muted de-emphasis grey rather than a hue again, as
+    * past eight a chart folds its smallest series into "Other" or splits into small charts. */
+  def series(i: Int): Color = {
+    val p = palette()
+    val all = if (p.series.nonEmpty) p.series else if (colorScheme() == "light") Palette.light.series else Palette.dark.series
+    if (i >= 0 && i < all.size) all(i) else p.muted
+  }
   def backdrop(): Color = palette().backdrop
   /** An app's own colour from the palette's `extras`, or `fallback` where the palette has none. */
   def extra(name: String, fallback: => Color): Color = palette().extras.getOrElse(name, fallback)

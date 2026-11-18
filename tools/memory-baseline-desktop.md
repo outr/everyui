@@ -22,3 +22,9 @@
 | Transcript, tool call open | message | 22.0 | 23.0 | 0.0 | 135564 |
 | Transcript, tool call running | message | 16.0 | 21.0 | 0.0 | 117080 |
 | Transcript in 900 px, plain | message | 0.0 | 0.0 | 0.0 | 10170 |
+| BarChart, 7 days by 3 series | chart | 25.0 | 49.0 | 0.0 | 287445 |
+| LineChart, 30 days | chart | 38.0 | 42.0 | 0.0 | 315441 |
+| DonutChart, 5 parts | chart | 48.0 | 33.0 | 0.0 | 308791 |
+| Heatmap, 7 by 24 | chart | 38.0 | 211.0 | 0.0 | 745556 |
+| StatTile with a trend | tile | 8.0 | 10.0 | 0.0 | 55707 |
+| Meter | meter | 5.0 | 5.0 | 0.0 | 31992 |
