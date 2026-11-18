@@ -34,7 +34,8 @@ import reactify.*
   * app's (`Composer.queuedActions`), logged. Helper asks you a question (`ChatEntry.Message.attention`), Ignore under it
   * (`ChatEntry.Message.actions`) setting it aside, as Scout's already is, and asks three more in a long reply,
   * each highlighted where it is (`ChatEntry.Message.highlights`), the words under it counting them and bringing each
-  * into view in turn. `working=inline` shows who is working in the transcript
+  * into view in turn (`jump=<n>` presses them n times, a second apart). `turns=1` shows a turn header naming the
+  * message of yours each reply answers (`Transcript.turnHeader`). `working=inline` shows who is working in the transcript
   * (`ChatView.workingInline`) rather than over the composer, the release notes' worker with a long brief, cut to three
   * lines. Helper's first message links a file shared in the room (`demo-file:plan.md`), which the app answers
   * (`Link.handle`), logging `chat file plan.md`. Logs `chat ok` once built. */
@@ -117,6 +118,14 @@ object ChatDemo {
         Platform.after(0.8, () => reply(entries, working, scout, "Noted: \"" + text.trim + "\". I'll fold it into the plan."))
       }
     }
+    // a turn header naming the person's message each reply answers (`turns=1`), and the long reply's questions jumped
+    // to that many times, a second apart, once it has settled (`jump=<n>`)
+    if (Platform.launchArg("turns") == "1") chat.transcript.turnHeader @= Some((e: ChatEntry) => e match {
+      case m: ChatEntry.Message if m.self => Some(TurnHeader.of(m))
+      case _ => None
+    })
+    Platform.launchArg("jump").toIntOption.foreach(n => (1 to n).foreach(k =>
+      Platform.after(2.0 + k.toDouble, () => chat.transcript.nextHighlight("q2"))))
     // tool call summaries cut to one line rather than wrapped (`oneline=1`)
     if (Platform.launchArg("oneline") == "1") chat.transcript.oneLineSummaries @= true
     if (Platform.launchArg("author") == "log")

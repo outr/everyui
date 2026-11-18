@@ -299,25 +299,49 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     else all.zip(everyui.markdown.Passages.found(m.text(), all.map(_.passage))).collect { case (h, true) => h }
   }
 
-  /** `c`, a part of the entry `entryId`'s view (a highlighted passage), brought into view by the least scroll that
-    * shows it with a little room around it, the transcript let go of the bottom where it moves. */
+  /** `c`, a part of the entry `entryId`'s view (a highlighted passage), brought into view: left where it is where it
+    * shows whole, clear of what is drawn over the rows (`coveredAt`: the turn header; "Jump to latest" at the foot) with
+    * a little room; else centred in what they leave of the view, or its top shown where it is taller than that, as near
+    * as the rows go. The transcript is let go of the bottom where it moves. */
   private def revealIn(entryId: String, c: Component): Unit = {
     val i = list.indexOf(entryId)
     list.rowAt(i).foreach { row =>
-      val room = 24.0
+      val room = Transcript.revealRoom
+      val h = list.size.height()
       val top = list.top(i) + (c.absoluteTop - row.absoluteTop)
-      val bottom = top + c.size.height()
-      val to =
-        if (top - room < list.offset()) top - room
-        else if (bottom + room > list.offset() + list.size.height())
-          math.min(top - room, bottom + room - list.size.height())
-        else list.offset()
-      if (to != list.offset()) {
+      val tall = c.size.height()
+      // (the jump button, in the foot's end corner, shows once the transcript is let go of the bottom)
+      val below = JumpButton.diameter + JumpButton.margin
+      val now = list.offset()
+      val shows = top >= now + coveredAt(now) + room && top + tall <= now + h - below - room
+      if (!shows) {
+        val (to, _) = clearOf { covered =>
+          val free = h - covered - below
+          if (tall + room * 2.0 > free) top - covered - room else top + tall / 2.0 - covered - free / 2.0
+        }
         pin.letGo()
         list.stopFling()
         list.scrollTop(to)
         pin.scrolled(list.offset(), furthest)
       }
+    }
+  }
+
+  /** How much of the view's top, with the rows scrolled to `offset`, is hidden by what is drawn over them: the turn
+    * header where it would show there (`turnHeader`). What a reveal brings into view goes below it. (The spinner over
+    * the rows while earlier entries load is passed over: it leaves as they come.) */
+  private[chat] def coveredAt(offset: Double): Double =
+    if (turnAt(offset).nonEmpty) TurnHeader.inset + TurnHeader.height else 0.0
+
+  // where to scroll for `place(covered)`, and the `covered` top it is placed under: the turn header comes and goes as
+  // the rows move, so the place worked out without it where it would not show there, else the place under it
+  private def clearOf(place: Double => Double): (Double, Double) = {
+    val none = coveredAt(-1.0)
+    val bare = place(none)
+    if (coveredAt(bare) <= none) (bare, none)
+    else {
+      val covered = coveredAt(bare)
+      (place(covered), covered)
     }
   }
 
@@ -676,6 +700,13 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case _ => None
   }
 
+  /** The next highlight of the message `entryId` brought into view, as a press on the words under it brings it, where
+    * the message is drawn. */
+  private[everyui] def nextHighlight(entryId: String): Unit = list.rowAt(list.indexOf(entryId)) match {
+    case Some(r: ChatRow) => r.message.foreach(_.jump())
+    case _ => ()
+  }
+
   // on past the last of the app's actions under `m`: onto the buttons beside it, where it has any
   private def toBar(m: ChatEntry.Message): Unit = if (offeredFor(m).nonEmpty) {
     keyed = true
@@ -730,8 +761,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private var revealing = 0
 
   /** The entry with id `entryId` brought into view at `align` of it (0 its top at the top, the default; 0.5 its middle
-    * in the middle), the cursor put on it, and the transcript let go of the bottom, as a scroll up lets it go ("Jump to
-    * latest" shows until it is scrolled back down), unless the bottom is where the entry is: the first unread message
+    * in the middle) of what the turn header leaves of the view, where that would show over it (`coveredAt`), the
+    * cursor put on it, and the transcript let go of the bottom, as a scroll up lets it go ("Jump to latest" shows until
+    * it is scrolled back down), unless the bottom is where the entry is: the first unread message
     * under its marker, a search's hit, a link to a message. One not among the entries yet is looked for in earlier
     * ones, asked of `loadOlder` as near the top, until it comes or there are no more. `found` hears whether it was
     * brought into view: false where it is nowhere, or where another reveal was asked for meanwhile, which takes over. */
@@ -743,7 +775,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       if (ask != revealing) found(false)
       else if (i >= 0) {
         pin.letGo()
-        list.scrollTo(i, align)
+        // (aligned in what the turn header leaves of the view, where it would show there)
+        val (_, covered) = clearOf(c => list.top(i) - c - (list.size.height() - c - list.heightAt(i)) * align)
+        list.scrollTo(i, align, covered)
         list.current @= Some(entryId)
         // (where it lies at the bottom, kept there again)
         pin.scrolled(list.offset(), furthest)
@@ -819,9 +853,17 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   // the turn the topmost row in view belongs to (the last start at or above it), named while its start is out of sight
   // above: its start the topmost row itself, at least in part in view, or no start above it, and there is none
   private def findTurn(): Unit = {
-    val next = turnHeader() match {
-      case Some(build) if starts.nonEmpty && list.count > 0 =>
-        val top = list.indexAt(list.offset())
+    val next = turnAt(list.offset())
+    if (!(next.isEmpty && turnShown().isEmpty) && !next.exists(e => turnShown().exists(_ eq e))) turnShown @= next
+    val said = turnShown().flatMap(e => turnOf.get(e.id).flatMap(_._2))
+    if (said != header.header()) header.header @= said
+  }
+
+  // the turn the header names with the rows scrolled to `offset`: none for no offset (below 0)
+  private def turnAt(offset: Double): Option[ChatEntry] =
+    turnHeader() match {
+      case Some(build) if starts.nonEmpty && list.count > 0 && offset >= 0.0 =>
+        val top = list.indexAt(math.max(0.0, math.min(furthest, offset)))
         // the last start at or above it
         var low = 0
         var high = starts.length - 1
@@ -838,10 +880,6 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
         else Some(list(starts(at))).filter(e => turnFor(e, build).nonEmpty)
       case _ => None
     }
-    if (!(next.isEmpty && turnShown().isEmpty) && !next.exists(e => turnShown().exists(_ eq e))) turnShown @= next
-    val said = turnShown().flatMap(e => turnOf.get(e.id).flatMap(_._2))
-    if (said != header.header()) header.header @= said
-  }
 
   /** The transcript taken to `entry`, the start of a turn, as a press on the turn header takes it: its top at the top,
     * the cursor on it (`reveal`), gliding there where it is within two views and motion is not asked to be less
@@ -910,7 +948,11 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   private def bring(i: Int, down: Boolean): Unit = {
     val h = list.size.height()
     if (list.heightAt(i) > h) list.scrollTop(if (down) list.top(i) else list.top(i) + list.heightAt(i) - h)
-    else list.reveal(i)
+    else {
+      list.reveal(i)
+      // (its top clear of the turn header, where that would show over it)
+      if (list.top(i) < list.offset() + coveredAt(list.offset())) list.scrollTop(clearOf(c => list.top(i) - c)._1)
+    }
   }
 
   private def step(down: Boolean): Unit = if (list.count > 0) {
@@ -930,7 +972,10 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       } else list.scrollTop(list.total)
     } else {
       val top = list.top(at)
-      if (top < list.offset() - 1.0) list.scrollBy(-math.min(Transcript.lineStep, list.offset() - top))
+      // (what the turn header hides of it is not yet shown)
+      val covered = coveredAt(list.offset())
+      if (top < list.offset() + covered - 1.0)
+        list.scrollBy(-math.min(Transcript.lineStep, list.offset() + covered - top))
       else if (at > 0) {
         cursorTo(at - 1)
         bring(at - 1, down = false)
@@ -1133,6 +1178,8 @@ object Transcript {
   val lineStep: Double = 48.0
   /** How near the top earlier entries are asked for. */
   val loadAhead: Double = 600.0
+  /** The room a revealed passage keeps from the turn header, the view's edges and "Jump to latest". */
+  val revealRoom: Double = 16.0
   /** How long a press on the turn header glides to the turn's start, in milliseconds. */
   val turnGlide: Long = 250L
   /** Below this width, a phone's: everything in the flow takes all of it but the side margins, the avatar goes small

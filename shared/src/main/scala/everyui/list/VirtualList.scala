@@ -282,14 +282,18 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
 
   /** Row `index` brought to `align` of the view: 0 at the top, 0.5 in the middle, 1 at the bottom, and kept there as
-    * the rows around it draw at heights of their own, until the rows are scrolled some other way. */
-  def scrollTo(index: Int, align: Double = 0.0): Unit = if (index >= 0 && index < count) {
+    * the rows around it draw at heights of their own, until the rows are scrolled some other way. `covered` is how much
+    * of the view's top something drawn over the rows hides (a sticky header): the row is aligned in the rest. */
+  def scrollTo(index: Int, align: Double = 0.0, covered: Double = 0.0): Unit = if (index >= 0 && index < count) {
     stopFling()
-    val to = top(index) - (size.height() - heightAt(index)) * align
+    val to = aimAt(index, align, covered)
     scrollTop(to)
     // (where the rows end before it could get there, the first that shows is kept instead, as ever)
-    if (offset() == to) aimed = Some((keyAt(index), align))
+    if (offset() == to) aimed = Some((keyAt(index), align, covered))
   }
+  // where row `index` is at `align` of the view less the `covered` top
+  private def aimAt(index: Int, align: Double, covered: Double): Double =
+    top(index) - covered - (size.height() - covered - heightAt(index)) * align
 
   /** Scrolled the least that shows all of row `index`. */
   def reveal(index: Int): Unit = if (index >= 0 && index < count) {
@@ -1075,7 +1079,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   }
   private var held: Option[(String, Double)] = None
   // the row `scrollTo` brought to a place of the view, and where (its `align`), while the rows are not scrolled since
-  private var aimed: Option[(String, Double)] = None
+  private var aimed: Option[(String, Double, Double)] = None
 
   /** `change` made with the first row that shows kept where it is, when it is still in the list: where it was before
     * rows were drawn at heights of their own, if they were since; or the row `scrollTo` brought into view, where it
@@ -1086,8 +1090,8 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     change
     if (ownHeights) retop()
     // set once, where it ends up: whatever follows the scroll hears one move, not a step on the way
-    val kept = if (followsEnd()) furthest else aimed.flatMap { case (key, align) => Some(indexOf(key)).filter(_ >= 0)
-      .map(i => top(i) - (size.height() - heightAt(i)) * align) }.orElse(anchor.flatMap { case (key, dy) =>
+    val kept = if (followsEnd()) furthest else aimed.flatMap { case (key, align, covered) => Some(indexOf(key))
+      .filter(_ >= 0).map(i => aimAt(i, align, covered)) }.orElse(anchor.flatMap { case (key, dy) =>
       Some(indexOf(key)).filter(_ >= 0).map(i => top(i) - dy) }).getOrElse(offset())
     offset @= math.max(0.0, math.min(furthest, kept))
   }
