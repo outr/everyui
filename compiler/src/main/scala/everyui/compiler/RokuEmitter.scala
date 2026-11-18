@@ -3026,6 +3026,8 @@ class RokuEmitter(
         case Select(q, "tail") if isCollType(q) => s"_drop(${emitTerm(q)}, 1)"
         case TypeApply(Select(q, "isInstanceOf"), List(t)) => typeTest(t.tpe, emitTerm(q))
         case TypeApply(Select(q, "asInstanceOf"), List(t)) => castTo(q, t.tpe)
+        // the cast the typer puts in itself (an element of an `Array[Val[?]]` handed to a `Val[T]`): unchecked, so x
+        case TypeApply(Select(q, "$asInstanceOf$"), List(_)) => emitTerm(q)
         case sel @ Select(_, _) if modelModuleOf(sel.symbol).isDefined => moduleAccessor(modelModuleOf(sel.symbol).get)
         case sel @ Select(q, n) if inParentArgs && isThis(q) && sel.symbol.flags.is(Flags.ParamAccessor) && sel.symbol.owner == currentClass =>
           if (isByNameParam(sel.symbol)) s"RtForce(${brLocal(n)})" else brLocal(n)
