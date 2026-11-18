@@ -3,12 +3,13 @@ package everyui.sbt
 /** The service worker's reading of a Markdown push (`everyui.push.PushText.plain`, which the app's Scala reads with
   * EveryUI's Markdown parser) as plain words, a browser's notification showing no styles: `pushText(markdown)`, a
   * JavaScript function `WebApp.worker` writes into sw.js. Its rules are the shared ones, kept small, and PushTextJsSpec
-  * checks it gives the Scala's words on the same cases: the marks of bold, slant and strikethrough gone, code without
-  * its backticks, a link its words, a picture its alt text, an escape its letter, the common entities their letters; a
-  * heading its words, a quote's lines without `>`, a fenced code block its lines, a list's items "• " or their
-  * number, a task's box after the bullet, a nested list stood in under its item's words, a table's rows a line each
-  * with their cells apart by tabs; paragraphs and other blocks a blank line apart, a line break a line break. Indented
-  * code and what CommonMark's finer rules decide are read more simply than the parser reads them. */
+  * checks it gives the Scala's words on the same cases: the marks of bold and slant gone, struck words left out (the
+  * spaces either side made one, a line or an item struck whole gone), code without its backticks, a link its words, a
+  * picture its alt text, an escape its letter, the common entities their letters; a heading its words, a quote's
+  * lines without `>`, a fenced code block its lines, a list's items "• " or their number, a task's box after the
+  * bullet, a nested list stood in under its item's words, a table's rows a line each with their cells apart by tabs;
+  * paragraphs and other blocks a blank line apart, a line break a line break. Indented code and what CommonMark's
+  * finer rules decide are read more simply than the parser reads them. */
 object WebPushText {
   val function: String =
     """const pushText = markdown => {
@@ -47,9 +48,17 @@ object WebPushText {
       |        .replace(/(^|[^\w])__(?![\s_])([\s\S]*?[^\s])__(?!\w)/g, '$1$2')
       |        .replace(/\*(?![\s*])([\s\S]*?[^\s*]|[^\s*])\*/g, '$1')
       |        .replace(/(^|[^\w])_(?![\s_])([\s\S]*?[^\s_]|[^\s_])_(?!\w)/g, '$1$2')
-      |        .replace(/~~(?![\s~])([\s\S]*?[^\s~])~~/g, '$1')
-      |        .replace(/(^|[^~])~(?![\s~])([^~]*?[^\s~]|[^\s~])~(?!~)/g, '$1$2');
+      |        .replace(/~~(?![\s~])([\s\S]*?[^\s~])~~/g, '\u0002')
+      |        .replace(/(^|[^~])~(?![\s~])([^~]*?[^\s~]|[^\s~])~(?!~)/g, '$1\u0002');
       |    }
+      |    // struck words left out, the spaces either side of them made one
+      |    const parts = t.split('\u0002');
+      |    t = parts[0];
+      |    parts.slice(1).forEach(p => {
+      |      if (/(^|[ \t])$/.test(t)) p = p.replace(/^[ \t]+/, '');
+      |      if (!p || /^[.,;:!?)]/.test(p)) t = t.replace(/[ \t]+$/, '');
+      |      t += p;
+      |    });
       |    t = t.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, e) => {
       |      if (e[0] !== '#') return entities[e] || m;
       |      const hex = e[1] === 'x' || e[1] === 'X';
@@ -77,7 +86,11 @@ object WebPushText {
       |    const opened = /^ {0,3}(`{3,}|~{3,})/.exec(line);
       |    if (opened) { start(); items = []; fence = opened[1]; last = 'code'; continue; }
       |    const heading = /^ {0,3}#{1,6}(?: +(.*?))?(?: +#+)? *$/.exec(line);
-      |    if (heading) { start(); items = []; out.push(inline(heading[1] || '')); last = 'heading'; continue; }
+      |    if (heading) {
+      |      const words = inline(heading[1] || '');
+      |      if (words) { start(); out.push(words); }
+      |      items = []; last = 'heading'; continue;
+      |    }
       |    if (last === 'text' && !blank && /^ {0,3}(=+|-+) *$/.test(line)) { last = 'heading'; continue; }
       |    if (rule.test(line)) { items = []; last = 'rule'; blank = true; continue; }
       |    if (line.includes('|') && (last !== 'text' || blank) && i + 1 < lines.length &&
@@ -98,29 +111,34 @@ object WebPushText {
       |      const marker = ordered ? item[2].slice(-1) : item[2];
       |      // (another bullet or delimiter than the item before starts another list)
       |      if (sibling && sibling.marker !== marker) sibling = null;
-      |      if (last !== 'item' || (!sibling && !items.length)) start();
-      |      else if (blank || sibling && sibling.loose) { out.push(''); blank = false; }
       |      const pad = items.length ? items[items.length - 1].pad : 0;
       |      const n = ordered ? (sibling ? sibling.n + 1 : +item[3]) : 0;
-      |      let words = item[5];
-      |      const task = /^\[([ xX])\] +(.*)$/.exec(words);
+      |      const task = /^\[([ xX])\] +(.*)$/.exec(item[5]);
       |      const mark = (ordered ? n + '. ' : '\u2022 ') + (task ? (task[1] === ' ' ? '\u2610 ' : '\u2611 ') : '');
-      |      if (task) words = task[2];
-      |      out.push(' '.repeat(pad) + mark + inline(words));
-      |      items.push({ words: at + item[2].length + Math.max(1, item[4].length), pad: pad + mark.length, marker, n,
-      |        loose: !!sibling && (sibling.loose || out[out.length - 2] === '') });
+      |      const words = inline(task ? task[2] : item[5]);
+      |      const entry = { words: at + item[2].length + Math.max(1, item[4].length), pad: pad + mark.length, marker, n,
+      |        loose: !!sibling && sibling.loose };
+      |      // (an item with no words, struck whole, goes, and the next is numbered on from the one before it)
+      |      if (!words) { entry.n = n - 1; items.push(entry); continue; }
+      |      if (last !== 'item' || (!sibling && !items.length)) start();
+      |      else if (blank || entry.loose) { out.push(''); blank = false; entry.loose = !!sibling; }
+      |      out.push(' '.repeat(pad) + mark + words);
+      |      items.push(entry);
       |      last = 'item'; continue;
       |    }
       |    const indent = line.length - line.trimStart().length;
       |    while (blank && items.length && indent < items[items.length - 1].words) items.pop();
+      |    const words = inline(line.trim());
       |    if (items.length) {
+      |      if (!words) continue;
       |      if (blank) { out.push(''); blank = false; items[items.length - 1].loose = true; }
-      |      out.push(' '.repeat(items[items.length - 1].pad) + inline(line.trim()));
+      |      out.push(' '.repeat(items[items.length - 1].pad) + words);
       |      last = 'item'; continue;
       |    }
       |    items = [];
+      |    if (!words) continue;
       |    if (last !== 'text' || blank) start();
-      |    out.push(inline(line.trim()));
+      |    out.push(words);
       |    last = 'text';
       |  }
       |  while (out.length && !out[out.length - 1].trim()) out.pop();

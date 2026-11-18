@@ -8,7 +8,9 @@ import everyui.text.TextRun
   * (`runs`), for a platform that styles a notification's words (Android), or as plain words (`plain`), for one that
   * does not (a browser) and for an app's server to send where the format is not heeded.
   *
-  * The marks of bold, slant and strikethrough go, and code loses its backticks; a link is its words alone (where it
+  * The marks of bold and slant go, and code loses its backticks; struck words are left out, as words the writer took
+  * back, a notification showing no strikethrough (Android 15's shade drops the span), and the spaces either side of
+  * them made one (a line, a paragraph or an item struck whole goes); a link is its words alone (where it
   * goes only where it has no words of its own), since a notification opens no link in its words; a picture is its alt
   * text. A heading is its words, a quote its words without the `>`, a code block its lines; a list's items start
   * "• " ("☐ " or "☑ " after it for a task) or their number, "1. ", an item's further lines and a list inside it stood
@@ -20,8 +22,8 @@ import everyui.text.TextRun
   *     "Done. See the log.\n\n• build passed\n• 2 warnings"
   * }}}
   *
-  * The runs are bold (`weight` 700) for strong words and a heading, `italic` for emphasis, `strike` for
-  * strikethrough, and in the family "monospace" for code; their words are `plain`'s, line breaks and all. */
+  * The runs are bold (`weight` 700) for strong words and a heading, `italic` for emphasis, and in the family
+  * "monospace" for code; their words are `plain`'s, line breaks and all. */
 object PushText {
   /** What starts an item of a list that is not numbered. */
   val bullet: String = "• "
@@ -52,13 +54,12 @@ object PushText {
     case MdBlock.Html(source) => written(MarkdownPlain.trimEnd(source), TextRun(""))
     case MdBlock.Quote(inside) => blocks(inside, blank = true)
     case MdBlock.BulletList(ordered, start, tight, items) =>
-      items.zipWithIndex.flatMap { (it, i) =>
+      // (an item with no words, struck whole, goes, and those after it are numbered on from the one before it)
+      val kept = items.map(it => (it, blocks(it.blocks, !tight))).filter(_._2.nonEmpty)
+      kept.zipWithIndex.flatMap { (pair, i) =>
+        val (it, body) = pair
         val mark = (if (ordered) (start + i).toString + ". " else bullet) + MarkdownPlain.task(it)
         val pad = mark.map(_ => ' ').mkString
-        val body = blocks(it.blocks, !tight) match {
-          case Nil => List(Nil)
-          case lines => lines
-        }
         val item = (TextRun(mark) :: body.head) :: body.tail.map(l => if (l.isEmpty) l else TextRun(pad) :: l)
         if (i > 0 && !tight) Nil :: item else item
       }
@@ -84,7 +85,7 @@ object PushText {
       case MdInline.Text(t) => line = style.copy(text = t) :: line
       case MdInline.Emphasis(c) => add(c, style.copy(italic = true))
       case MdInline.Strong(c) => add(c, style.copy(weight = 700))
-      case MdInline.Strike(c) => add(c, style.copy(strike = true))
+      case MdInline.Strike(_) => line = struck :: line
       case MdInline.CodeSpan(code) => line = style.copy(text = code, family = "monospace") :: line
       case MdInline.Hyperlink(href, _, c) =>
         val words = MdInline.plain(c)
@@ -98,6 +99,39 @@ object PushText {
       case MdInline.Pending(source) => line = style.copy(text = source) :: line
     }
     add(content, style)
-    (line.reverse :: lines).reverse
+    (line.reverse :: lines).reverse.map(closed).filter(_.nonEmpty)
+  }
+
+  // where struck words were left out (`closed`)
+  private val struck = TextRun("\u0000")
+
+  private def space(c: Char): Boolean = c == ' ' || c == '\t'
+
+  // `line` without its struck words: the spaces after one gone where there is a space before it (or it starts the
+  // line), and those before it where punctuation or the line's end follows it
+  private def closed(line: Line): Line = {
+    var out: List[TextRun] = Nil
+    var cut = false
+    def trimEnd(): Unit = {
+      while (out.nonEmpty && out.head.text.forall(space)) out = out.tail
+      out = out match {
+        case h :: t => h.copy(text = h.text.reverse.dropWhile(space).reverse) :: t
+        case Nil => Nil
+      }
+    }
+    line.filter(r => (r eq struck) || r.text.nonEmpty).foreach { r =>
+      if (r eq struck) cut = true
+      else if (!cut) out = r :: out
+      else {
+        val t = if (out.forall(_.text.forall(space)) || space(out.head.text.last)) r.text.dropWhile(space) else r.text
+        if (t.isEmpty || ".,;:!?)".indexOf(t.head.toInt) >= 0) trimEnd()
+        if (t.nonEmpty) {
+          out = r.copy(text = t) :: out
+          cut = false
+        }
+      }
+    }
+    if (cut) trimEnd()
+    out.reverse.filter(_.text.nonEmpty)
   }
 }

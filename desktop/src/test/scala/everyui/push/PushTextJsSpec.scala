@@ -48,6 +48,10 @@ object PushTextJsSpec {
     "```\nunclosed fence\nstill code",
     "Heading\n---\nafter",
     "#NotAHeading and # alone",
-    "Emoji 🎉 **bold 🎉** ok"
+    "Emoji 🎉 **bold 🎉** ok",
+    "- [ ] ~~dropped task~~\n- [x] kept",
+    "~~a~~ ~~b~~ c and x ~~y~~, z",
+    "1. one\n2. ~~two~~\n3. three\n   - ~~gone~~\n   - kept",
+    "| a | ~~b~~ |\n|---|---|\n| ~~1~~ | 2 |"
   )
 }

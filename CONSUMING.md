@@ -3992,7 +3992,9 @@ send them where it would rather not depend on the format (`PushText.runs` gives 
 
 | Markdown | Plain words |
 |---|---|
-| `**bold**`, `*slant*`, `~~struck~~` | `bold`, `slant`, `struck` |
+| `**bold**`, `*slant*` | `bold`, `slant` |
+| `had ~~2~~ 0 failures`, `Done ~~soon~~.` | `had 0 failures`, `Done.`: struck words left out, the spaces either side made one |
+| `- ~~dropped~~`, a paragraph struck whole | nothing: the item or line goes (a numbered list numbered on) |
 | `` `code` `` | `code` |
 | `[the report](https://x.io)` | `the report` (where it goes only where it has no words: `<https://x.io>` is `https://x.io`) |
 | `![a chart](c.png)` | `a chart` |
@@ -4015,10 +4017,11 @@ So `PushText.plain("**Done.** See [the log](https://x.io/7).\n\n- `build` passed
 
 - **Android**: the body is styled (`PushSpans`): strong words and a heading bold (`StyleSpan`), emphasis italic,
   code in the monospaced face (`TypefaceSpan("monospace")`) on a light grey wash that shows on the light shade and
-  the dark, and struck words a `StrikethroughSpan` (which Android 15's shade leaves out, drawing them plain). A link
-  is its words in the text's own colour, with no `URLSpan`: a notification opens no link in its words, and a tap
-  opens the app at the push's path. The expanded view (`BigTextStyle`) is the whole body; the collapsed one its first
-  line, styled. A summary's lines (`InboxStyle`) and its body beside them are plain words.
+  the dark. Struck words are left out, here as everywhere: Android 15's shade draws no `StrikethroughSpan`, and
+  words the writer took back, shown plain, would say what they did not mean ("had 2 0 failures"). A link is its
+  words in the text's own colour, with no `URLSpan`: a notification opens no link in its words, and a tap opens the
+  app at the push's path. The expanded view (`BigTextStyle`) is the whole body; the collapsed one its first line,
+  styled. A summary's lines (`InboxStyle`) and its body beside them are plain words.
 - **Web**: a browser's notification shows plain text only, so the service worker shows the plain words, title, body
   and lines (`WebPushText`, a small reader of its own in JavaScript that gives `PushText.plain`'s words on the
   constructs above, which a spec checks; indented code and CommonMark's finer corners it reads more simply). The
@@ -4028,8 +4031,8 @@ So `PushText.plain("**Done.** See [the log](https://x.io/7).\n\n- `build` passed
   `alert`'s `body`, which is all a standard notification shows.
 - **Desktop, Roku, Apple TV**: no push.
 
-`demo=background`'s "An answer in Markdown" pushes an agent's answer with bold, slanted, struck and code words, a
-link, a numbered list, a task list and a quote, styled on Android.
+`demo=background`'s "An answer in Markdown" pushes an agent's answer with bold, slanted and code words
+(struck ones left out), a link, a numbered list, a task list and a quote, styled on Android.
 
 
 ## The app's own notifications and the unread badge (`Platform.showNotice`, `Platform.setBadge`)

@@ -2,11 +2,11 @@ package everyui.render
 
 import android.graphics.Typeface
 import android.text.{SpannableStringBuilder, Spanned}
-import android.text.style.{BackgroundColorSpan, StrikethroughSpan, StyleSpan, TypefaceSpan}
+import android.text.style.{BackgroundColorSpan, StyleSpan, TypefaceSpan}
 import everyui.push.{PushFormat, PushMessage, PushText}
 
 /** A push's body as a notification shows it (`PushAccess`): a Markdown one (`PushFormat.Markdown`) styled, its words
-  * `PushText.plain`'s, bold and slanted words a StyleSpan, struck ones a StrikethroughSpan, code in the monospaced
+  * `PushText.plain`'s, bold and slanted words a StyleSpan (struck ones left out: PushText), code in the monospaced
   * face on a light wash; a link its words in the text's own colour, with no URLSpan, since a notification opens none.
   * A plain one as it is. */
 private[render] object PushSpans {
@@ -25,7 +25,6 @@ private[render] object PushSpans {
         val bold = r.weight >= 700
         if (bold || r.italic) span(new StyleSpan(
           if (bold && r.italic) Typeface.BOLD_ITALIC else if (bold) Typeface.BOLD else Typeface.ITALIC))
-        if (r.strike) span(new StrikethroughSpan)
         if (r.family == "monospace") {
           span(new TypefaceSpan("monospace"))
           span(new BackgroundColorSpan(wash))

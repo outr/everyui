@@ -4,8 +4,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
 /** A Markdown push (`PushFormat.Markdown`): its words made plain for a platform that shows no styles (`PushText.plain`,
-  * over every case of PushTextCases), its styled runs (`PushText.runs`), and its format read from "format" and written
-  * back, a title and lines always plain words. */
+  * over every case of PushTextCases), its styled runs (`PushText.runs`), struck words left out of both, and its
+  * format read from "format" and written back, a title and lines always plain words. */
 class PushTextSpec extends AnyWordSpec with Matchers {
   "PushText.plain" should {
     PushTextCases.all.foreach { (markdown, plain) =>
@@ -39,7 +39,9 @@ class PushTextSpec extends AnyWordSpec with Matchers {
       run("slant").weight shouldBe 0
       run("both").weight shouldBe 700
       run("both").italic shouldBe true
-      run("gone").strike shouldBe true
+      // (struck words left out, a notification showing no strikethrough)
+      runs.exists(_.text.contains("gone")) shouldBe false
+      runs.exists(_.strike) shouldBe false
       run("code").family shouldBe "monospace"
       run("block").family shouldBe "monospace"
       // a link is its words in the text's own style, with nowhere to go
