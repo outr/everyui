@@ -8,7 +8,8 @@ import android.os.{Build, Bundle, Handler, Looper}
 import everyui.Permission
 import everyui.activity.ServiceRuntime
 import everyui.background.Background
-import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushMessage, PushToken, ReplyOutcome}
+import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushFormat, PushMessage,
+  PushToken, ReplyOutcome}
 import scala.jdk.CollectionConverters.*
 
 /** Push notifications (`everyui.push.Push`) through Firebase Cloud Messaging (the app adds `EveryUILibraries.firebase`
@@ -118,12 +119,14 @@ object PushAccess {
     val launch = put(launcher(context), message, None)
     message.path.foreach(p => launch.putExtra("path", p))
     val info = context.getApplicationInfo
-    val title = if (message.title.nonEmpty) message.title else context.getPackageManager.getApplicationLabel(info).toString
+    // a Markdown body styled (the collapsed view its first line), its title and lines plain words: PushSpans
+    val body = PushSpans.body(message)
+    val title = if (message.title.nonEmpty) message.shownTitle else context.getPackageManager.getApplicationLabel(info).toString
     val builder = NoticeChannels.builder(context, channel.id, channel.importance)
       .setSmallIcon(NoticeIcon.of(context))
       .setContentTitle(title)
-      .setContentText(message.body)
-      .setStyle(new Notification.BigTextStyle().bigText(message.body))
+      .setContentText(if (message.format == PushFormat.Markdown) PushSpans.firstLine(body) else body)
+      .setStyle(new Notification.BigTextStyle().bigText(body))
       .setAutoCancel(true)
       // in place of the one shown with its tag, sounding again only where it says so
       .setOnlyAlertOnce(at.nonEmpty || (message.shownTag.nonEmpty && !message.renotify))
@@ -133,8 +136,8 @@ object PushAccess {
       builder.setGroupSummary(true)
       if (message.lines.nonEmpty) {
         val inbox = new Notification.InboxStyle().setBigContentTitle(title)
-        message.lines.foreach(l => inbox.addLine(l))
-        if (message.body.nonEmpty) inbox.setSummaryText(message.body)
+        message.shownLines.foreach(l => inbox.addLine(l))
+        if (message.body.nonEmpty) inbox.setSummaryText(message.shownBody)
         builder.setStyle(inbox)
       }
       // the summary never sounds: the newest of the group does as it comes

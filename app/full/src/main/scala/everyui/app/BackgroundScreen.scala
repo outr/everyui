@@ -18,11 +18,11 @@ import reactify.*
   * Pause, Resume and Open run in ExampleBackground); each settings page opened, and whether unused-app restrictions
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
   * ExampleBackground with the app closed (Approve once the device is unlocked) and are heard by Push.acted with it
-  * running; and mail for three accounts (Push.deliver), each message stacked under its account's summary on its
-  * account's channel, with a Reply typed into it; three channels declared up front (Push.channels) at low, default
-  * and high importance, three more made by pushes asking each (channelImportance), and the loud one's settings opened
-  * (Push.openChannelSettings). Under each, what ExampleBackground has noted, read again every two seconds and as the
-  * app comes back. */
+  * running; an agent's answer in Markdown, styled; and mail for three accounts (Push.deliver), each message stacked
+  * under its account's summary on its account's channel, with a Reply typed into it; three channels declared up
+  * front (Push.channels) at low, default and high importance, three more made by pushes asking each
+  * (channelImportance), and the loud one's settings opened (Push.openChannelSettings). Under each, what
+  * ExampleBackground has noted, read again every two seconds and as the app comes back. */
 class BackgroundScreen extends UIScreen {
   override def manager: ScreenManager = BackgroundDemo
   override def title: String = "In the background"
@@ -83,7 +83,8 @@ class BackgroundScreen extends UIScreen {
       section("Push notifications with buttons, in 3 s", pushed)(
         new Button("A reminder", () => push(reminder)),
         new Button("An approval", () => push(approval)),
-        new Button("Mail for three accounts", () => mail())),
+        new Button("Mail for three accounts", () => mail()),
+        new Button("An answer in Markdown", () => push(answer))),
       section("Channels and their importance", channeled)(
         new Button("Declare quiet, normal and loud", () => declare()),
         new Button("Low, default and high pushes", () => importances()),
@@ -151,6 +152,12 @@ class BackgroundScreen extends UIScreen {
       PushButton("approve", "Approve", background = true, requiresUnlock = true),
       PushButton("deny", "Deny", background = true),
       PushButton("look", "Look", path = Some("/background/opened")))))
+
+  /** An agent's answer written in Markdown ("format": "markdown"): styled on Android, its title plain words. */
+  private def answer: Map[String, String] = Map("title" -> "**Agent** finished `deploy`", "path" -> "/background",
+    "tag" -> "answer-3", "format" -> "markdown", "body" -> ("I ran **3 checks** on *staging*:\n\n1. `compile` passed\n" +
+      "2. `test` had ~~2~~ ***0 failures***\n3. lint: see [the report](https://ci.example.com/r/9)\n\n- [x] migrations\n" +
+      "- [ ] smoke test\n\n> Next: watch `api-7`."))
 
   /** Mail for three accounts as a mail server pushes it, from three seconds on, half a second apart: each message on
     * its account's channel (under "Mail" in the settings) and in its account's group, with Reply (typed into it, its

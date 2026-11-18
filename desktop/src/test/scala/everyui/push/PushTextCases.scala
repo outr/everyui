@@ -1,0 +1,60 @@
+package everyui.push
+
+/** Markdown and the plain words a notification shows for it (`PushText.plain`), which the Scala (PushTextSpec) and
+  * the web's service worker (PushTextJsSpec) both give. */
+object PushTextCases {
+  val all: List[(String, String)] = List(
+    "**bold** and __bold__" -> "bold and bold",
+    "*slanted* and _slanted_" -> "slanted and slanted",
+    "~~struck~~ and ~struck~" -> "struck and struck",
+    "Run `sbt test` now" -> "Run sbt test now",
+    "``a `tick` inside``" -> "a `tick` inside",
+    "See [the docs](https://x.io/docs \"Docs\") first" -> "See the docs first",
+    "Mail <ann@example.com> or <https://x.io>" -> "Mail ann@example.com or https://x.io",
+    "[](https://x.io/empty)" -> "https://x.io/empty",
+    "![a chart](chart.png) and ![](bare.png)" -> "a chart and bare.png",
+    "# The heading\n\nIts words." -> "The heading\n\nIts words.",
+    "Setext\n======\n\nAnd under" -> "Setext\n\nAnd under",
+    "## Closed ##" -> "Closed",
+    "- one\n- two\n- three" -> "• one\n• two\n• three",
+    "* star\n+ plus" -> "• star\n\n• plus",
+    "1. first\n2. second\n3. third" -> "1. first\n2. second\n3. third",
+    "3. three\n7. four" -> "3. three\n4. four",
+    "1) paren" -> "1. paren",
+    "- [ ] to do\n- [x] done" -> "• ☐ to do\n• ☑ done",
+    "- outer\n  - inner\n  - inner two\n- outer two" -> "• outer\n  • inner\n  • inner two\n• outer two",
+    "1. step\n   - detail\n2. next" -> "1. step\n   • detail\n2. next",
+    "- item\n  more of it" -> "• item\n  more of it",
+    "- loose\n\n- items" -> "• loose\n\n• items",
+    "Before:\n- a list" -> "Before:\n\n• a list",
+    "> quoted\n> more" -> "quoted\nmore",
+    "> one\n>\n> two" -> "one\n\ntwo",
+    "```scala\nval x = 1\nval y = 2\n```" -> "val x = 1\nval y = 2",
+    "Text\n\n```\n**not bold**\n```\n\nAfter" -> "Text\n\n**not bold**\n\nAfter",
+    "~~~\ncode\n~~~" -> "code",
+    "One paragraph.\n\nAnother." -> "One paragraph.\n\nAnother.",
+    "Line one\nline two" -> "Line one\nline two",
+    "Hard  \nbreak" -> "Hard\nbreak",
+    "Above\n\n---\n\nBelow" -> "Above\n\nBelow",
+    "| name | state |\n|---|:---:|\n| build | **ok** |\n| lint | `2` |" -> "name\tstate\nbuild\tok\nlint\t2",
+    "**bold with *slant* inside**" -> "bold with slant inside",
+    "***both***" -> "both",
+    "*slant with **bold** inside*" -> "slant with bold inside",
+    "[**bold link**](https://x.io)" -> "bold link",
+    "- **Fixed** the `parser` ([#12](https://x.io/12))" -> "• Fixed the parser (#12)",
+    "**unclosed bold" -> "**unclosed bold",
+    "*unclosed slant" -> "*unclosed slant",
+    "a ` lone tick" -> "a ` lone tick",
+    "[not a link] (x)" -> "[not a link] (x)",
+    "2 * 3 * 4 and 2*3*4" -> "2 * 3 * 4 and 234",
+    "snake_case_name and __init__" -> "snake_case_name and init",
+    "\\*escaped\\* and \\`tick\\`" -> "*escaped* and `tick`",
+    "Tom &amp; Jerry &lt;3 &#35;1 &#x41;" -> "Tom & Jerry <3 #1 A",
+    "Just words, nothing to strip." -> "Just words, nothing to strip.",
+    "" -> "",
+    "Trailing blank lines\n\n\n" -> "Trailing blank lines",
+    "## Agent finished\n\nI ran **3 checks**:\n\n1. `compile` passed\n2. `test` had *2 failures*\n3. lint: see " +
+      "[report](https://ci.x.io/r/9)\n\n> Next: fix `FooSpec`." ->
+      "Agent finished\n\nI ran 3 checks:\n\n1. compile passed\n2. test had 2 failures\n3. lint: see report\n\nNext: fix FooSpec."
+  )
+}

@@ -74,13 +74,13 @@ object WebApp {
     * `everyui.push.Push.acted`), brought forward unless the button runs in the background, or opens the app at the
     * button's path (else the push's) with `everyui-action` and `everyui-push` in its address (a button's
     * `requiresUnlock` carried with it, and nothing more: a browser's notification is on no lock screen). What else
-    * the push says is its `data`. A path
-    * off the app's own origin opens the app's start instead. A subscription the browser renews is subscribed again
-    * with the same key and handed to the open windows (`everyui.push.Push.tokens`). A notification a page showed itself
-    * (`Platform.showNotice`) is answered by the page: a click on it focuses the window that showed it, which the page
-    * learnt by asking the worker its id (`{everyui: "client"}`), and hands it the click (`{everyui: "notice", key}`);
-    * where that window is not known, every window of the app is told, the one most recently in front focused, and with
-    * none open the app is opened. */
+    * the push says is its `data`. A Markdown push (`"format": "markdown"`) is shown as plain words, its title, body
+    * and lines (`WebPushText`), and handed to a window as it was sent. A path off the app's own origin opens the
+    * app's start instead. A subscription the browser renews is subscribed again with the same key and handed to the
+    * open windows (`everyui.push.Push.tokens`). A notification a page showed itself (`Platform.showNotice`) is
+    * answered by the page: a click on it focuses the window that showed it, which the page learnt by asking the worker
+    * its id (`{everyui: "client"}`), and hands it the click (`{everyui: "notice", key}`); where that window is not known,
+    * every window of the app is told, the one most recently in front focused, and with none open the app is opened. */
   def worker(version: String): String =
     s"""const CACHE = 'everyui-$version';
        |self.addEventListener('install', e => e.waitUntil(
@@ -112,8 +112,9 @@ object WebApp {
        |const windows = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true });
        |const tell = (client, data) => client.postMessage(data);
        |const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group', 'groupSummary', 'lines',
-       |  'silent', 'channel', 'channelName', 'channelGroup', 'channelGroupName', 'channelImportance'];
+       |  'silent', 'channel', 'channelName', 'channelGroup', 'channelGroupName', 'channelImportance', 'format'];
        |const yes = v => v === true || v === 'true';
+       |${WebPushText.function}
        |self.addEventListener('push', e => {
        |  let m = {};
        |  try { m = e.data ? e.data.json() : {}; } catch (x) { m = { body: e.data.text() }; }
@@ -132,7 +133,10 @@ object WebApp {
        |    .forEach(k => { data[k] = typeof m[k] === 'string' ? m[k] : JSON.stringify(m[k]); });
        |  const message = { title: String(m.title || ''), body: String(m.body || ''), path: m.path ? String(m.path) : null,
        |    tag: m.tag ? String(m.tag) : null, renotify: yes(m.renotify), actions, data, group: m.group ? String(m.group) : null,
-       |    summary: yes(m.groupSummary), lines, silent: yes(m.silent) };
+       |    summary: yes(m.groupSummary), lines, silent: yes(m.silent),
+       |    format: String(m.format || '').trim().toLowerCase() === 'markdown' ? 'markdown' : 'plain' };
+       |  // a Markdown push shown as plain words, a notification showing no styles (the window is handed it as it was sent)
+       |  const plain = t => message.format === 'markdown' ? pushText(t) : t;
        |  // those shown with a tag taken away (read elsewhere), and nothing more where that is all the push is
        |  const closing = m.close ? self.registration.getNotifications({ tag: String(m.close) })
        |    .then(shown => shown.forEach(n => n.close())) : Promise.resolve();
@@ -143,13 +147,14 @@ object WebApp {
        |    // one with a tag (or a group: a browser stacks nothing, so a group shows as one) in place of the one shown with
        |    // it, sounding again only where it says so; a summary's lines under its body; a reply's field where the browser
        |    // has one (Chrome's type "text"; elsewhere it is a plain button)
-       |    const body = message.summary ? [message.body].concat(message.lines).filter(l => l).join('\\n') : message.body;
+       |    const body = message.summary ? [message.body].concat(message.lines).map(plain).filter(l => l).join('\\n')
+       |      : plain(message.body);
        |    const options = { body, data: message, silent: message.silent };
        |    const tag = message.tag || message.group;
        |    if (tag) { options.tag = tag; options.renotify = message.renotify && !message.silent; }
        |    if (actions.length) options.actions = actions.map(a => a.input
        |      ? { action: a.id, title: a.label, type: 'text', placeholder: a.hint || a.label } : { action: a.id, title: a.label });
-       |    return self.registration.showNotification(message.title, options);
+       |    return self.registration.showNotification(plain(message.title), options);
        |  }));
        |});
        |self.addEventListener('message', e => {

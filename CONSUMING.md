@@ -3684,7 +3684,8 @@ while it lasts) and send it, so the server always has the current one. `Push.uns
 {"title": "Build done", "body": "voidcraft#42 passed", "path": "/runs/42"}
 ```
 
-`path` is the app's own path, where a tap takes the person; one off the app's origin opens the app at its start.
+`path` is the app's own path, where a tap takes the person; one off the app's origin opens the app at its start. A body
+written in Markdown says so with `"format": "markdown"`: [Markdown in a push](#markdown-in-a-push-format-markdown-pushtext).
 
 **Grouping and closing.** Two more keys group a conversation's notifications: `"tag": "c42"` shows one in place of
 the one with that tag already showing, rather than beside it, and `"renotify": true` has the replacement sound again
@@ -3969,6 +3970,66 @@ by `onPushAction` or `Push.acted`.
 - **Apple**: none here; an app of its own would give the action `UNNotificationActionOptions.authenticationRequired`.
 
 `demo=background`'s "An approval" has Approve require the unlock, and Deny not.
+
+### Markdown in a push (`"format": "markdown"`, `PushText`)
+
+An agent's reply or question is written in Markdown. `"format": "markdown"` says a push's body is, and each platform
+shows it as well as it can: styled where it styles a notification's words, plain words where it does not, never the
+raw `**` and backticks:
+
+```json
+{"title": "**Agent** finished `deploy`", "path": "/runs/42", "tag": "run-42", "format": "markdown",
+ "body": "I ran **3 checks**:\n\n1. `compile` passed\n2. `test` had *2 failures*\n3. lint: see [the report](https://ci.x.io/r/9)"}
+```
+
+It is `PushMessage.format` (`PushFormat.Plain`, the default, or `PushFormat.Markdown`; any other word, or none, is
+plain), the push's own key and not its `data`, written back only where it is Markdown. The body is read by the
+parser a chat's messages are read by, a line break a line break as a chat has it. The title is always made plain
+words, never styled, and so are a summary's `lines`.
+
+`PushText.plain(markdown)` is the plain words, for a platform that shows no styles and for an app's server, which may
+send them where it would rather not depend on the format (`PushText.runs` gives the styled runs):
+
+| Markdown | Plain words |
+|---|---|
+| `**bold**`, `*slant*`, `~~struck~~` | `bold`, `slant`, `struck` |
+| `` `code` `` | `code` |
+| `[the report](https://x.io)` | `the report` (where it goes only where it has no words: `<https://x.io>` is `https://x.io`) |
+| `![a chart](c.png)` | `a chart` |
+| `# Heading` | `Heading` |
+| `- item`, `* item` | `• item` |
+| `3. item` | `3. item` (numbered on from the first) |
+| `- [ ] to do`, `- [x] done` | `• ☐ to do`, `• ☑ done` |
+| a list inside an item | stood in under the item's words: `• outer\n  • inner` |
+| `> quoted` | `quoted` |
+| a fenced code block | its lines |
+| a table | a line to a row, its cells apart by tabs |
+| `---` | the blank line it stands for |
+| paragraphs | a blank line between them |
+| `**unclosed` | `**unclosed`: a mark with no partner stays as it was written |
+
+So `PushText.plain("**Done.** See [the log](https://x.io/7).\n\n- `build` passed\n- 2 warnings")` is
+`"Done. See the log.\n\n• build passed\n• 2 warnings"`. A push that arrives with the app in front goes to
+`Push.received` as it was sent, its format with it, for the app to show its own way (a `MarkdownView`, or
+`m.shownBody` for its words alone; `shownTitle` and `shownLines` likewise).
+
+- **Android**: the body is styled (`PushSpans`): strong words and a heading bold (`StyleSpan`), emphasis italic,
+  code in the monospaced face (`TypefaceSpan("monospace")`) on a light grey wash that shows on the light shade and
+  the dark, and struck words a `StrikethroughSpan` (which Android 15's shade leaves out, drawing them plain). A link
+  is its words in the text's own colour, with no `URLSpan`: a notification opens no link in its words, and a tap
+  opens the app at the push's path. The expanded view (`BigTextStyle`) is the whole body; the collapsed one its first
+  line, styled. A summary's lines (`InboxStyle`) and its body beside them are plain words.
+- **Web**: a browser's notification shows plain text only, so the service worker shows the plain words, title, body
+  and lines (`WebPushText`, a small reader of its own in JavaScript that gives `PushText.plain`'s words on the
+  constructs above, which a spec checks; indented code and CommonMark's finer corners it reads more simply). The
+  window is handed the push as it was sent.
+- **Apple**: EveryUI has no push on an Apple device. For an app of its own, the body as an `AttributedString(markdown:)`
+  where the notification's text takes one (a Notification Content extension), else `PushText.plain`'s words in the
+  `alert`'s `body`, which is all a standard notification shows.
+- **Desktop, Roku, Apple TV**: no push.
+
+`demo=background`'s "An answer in Markdown" pushes an agent's answer with bold, slanted, struck and code words, a
+link, a numbered list, a task list and a quote, styled on Android.
 
 
 ## The app's own notifications and the unread badge (`Platform.showNotice`, `Platform.setBadge`)

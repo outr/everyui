@@ -22,16 +22,31 @@ package everyui.push
   * with no sound or buzz. `channel` is the Android channel it is posted into (`PushChannel`: "channel",
   * "channelName", "channelGroup", "channelGroupName", "channelImportance"), `PushChannel.default` where it names none.
   *
+  * `format` is how its body is written: Plain, or Markdown (`"format": "markdown"`), which Android styles and a
+  * browser shows as plain words (`PushText`); a Markdown push's title and `lines` are always plain words, never styled.
+  * `shownTitle`, `shownBody` and `shownLines` are what a platform that shows no styles shows.
+  *
   * `actions` are its buttons (`PushButton`, JSON text under "actions"), which the person may choose instead of
   * tapping it (`Push.acted`); `data` is the rest of what the server sent with it, by key. */
 case class PushMessage(title: String, body: String, path: Option[String], tag: Option[String] = None,
                        renotify: Boolean = false, actions: Vector[PushButton] = Vector.empty,
                        data: Map[String, String] = Map.empty, group: Option[String] = None, summary: Boolean = false,
                        lines: Vector[String] = Vector.empty, silent: Boolean = false,
-                       channel: Option[PushChannel] = None) {
+                       channel: Option[PushChannel] = None, format: PushFormat = PushFormat.Plain) {
   /** The tag it is shown under: its own, or for a group's summary the group's, so that a summary takes the place of
     * the group's last and a close of the group (`{"close": group}`) takes it away. */
   def shownTag: Option[String] = tag.orElse(if (summary) group else None)
+
+  /** Its title as it is shown: plain words where it is Markdown (`PushText.plain`), as it is where not. */
+  def shownTitle: String = shown(title)
+
+  /** Its body as a platform that shows no styles shows it: plain words where it is Markdown, as it is where not. */
+  def shownBody: String = shown(body)
+
+  /** Its summary's lines as they are shown: plain words where it is Markdown, as they are where not. */
+  def shownLines: Vector[String] = lines.map(shown)
+
+  private def shown(text: String): String = if (format == PushFormat.Markdown) PushText.plain(text) else text
 
   /** The keys and values it was sent with, which `PushMessage.of` reads back as it is. */
   def fields: Map[String, String] = {
@@ -42,7 +57,8 @@ case class PushMessage(title: String, body: String, path: Option[String], tag: O
       "lines" -> (if (lines.isEmpty) "" else lines.map(PushJson.quote).mkString("[", ",", "]")),
       "silent" -> (if (silent) "true" else ""), "channel" -> c.id, "channelName" -> c.name,
       "channelGroup" -> c.group, "channelGroupName" -> c.groupName,
-      "channelImportance" -> (if (c.importance == NoticeImportance.Default) "" else c.importance.word))
+      "channelImportance" -> (if (c.importance == NoticeImportance.Default) "" else c.importance.word),
+      "format" -> (if (format == PushFormat.Plain) "" else format.word))
       .filter((_, v) => v.nonEmpty)
   }
 }
@@ -50,13 +66,15 @@ case class PushMessage(title: String, body: String, path: Option[String], tag: O
 object PushMessage {
   /** The keys a push's data says what it is with; the rest are its `data`. */
   val keys: Set[String] = Set("title", "body", "path", "tag", "renotify", "close", "actions", "group", "groupSummary",
-    "lines", "silent", "channel", "channelName", "channelGroup", "channelGroupName", "channelImportance")
+    "lines", "silent", "channel", "channelName", "channelGroup", "channelGroupName", "channelImportance",
+    "format")
 
   /** A push from its data as the server sent it, every value text (an FCM data message's): its title, body, path,
     * tag, renotify ("true"), its buttons (`PushButton.parse` of "actions"), its group, whether it is the group's
     * summary ("groupSummary": "true") and its lines (a JSON array), silent ("true"), its channel (where "channel"
     * names one: its name "channelName", the id where it has none, "channelGroup" with its "channelGroupName", and
     * its importance "channelImportance", `NoticeImportance.named`: default where it names none it knows),
+    * its format ("format": "markdown", `PushFormat.named`: plain where it names none it knows),
     * and the rest as `data`, less what the push service adds itself (keys from "google." and "gcm."). */
   def of(data: Map[String, String]): PushMessage = {
     val text = (k: String) => data.getOrElse(k, "")
@@ -67,7 +85,8 @@ object PushMessage {
       data.filter((k, _) => !keys.contains(k) && !k.startsWith("google.") && !k.startsWith("gcm.")),
       some("group"), text("groupSummary") == "true", lines(text("lines")), text("silent") == "true",
       some("channel").map(id => PushChannel(id, some("channelName").getOrElse(id), group,
-        some("channelGroupName").getOrElse(group), NoticeImportance.named(text("channelImportance")))))
+        some("channelGroupName").getOrElse(group), NoticeImportance.named(text("channelImportance")))),
+      PushFormat.named(text("format")))
   }
 
   /** The lines of a summary: a JSON array's text, in order; none where it is not one. */
