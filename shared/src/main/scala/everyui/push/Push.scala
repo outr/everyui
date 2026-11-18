@@ -36,7 +36,8 @@ object Push {
     * here while the app's screens run, and by the app's `BackgroundApp.onPushAction` while they do not (on
     * Android; a browser opens the app for it where no window of it is open): once either way. A reply typed into one
     * (`PushButton.input`) goes to `BackgroundApp.onPushReply` on Android, app open or closed, and is heard here on
-    * the web, with its words in `PushAction.text` where the browser took any. */
+    * the web, with its words in `PushAction.text` where the browser took any. One of either kind that requires an unlock
+    * (`PushButton.requiresUnlock`) opens the app before Android 12, and is heard here as one that opens it is. */
   val acted: Channel[PushAction] = Channel[PushAction]
 
   /** A new token for the server, where the platform replaced the one it had (a refreshed FCM token, a Web Push
@@ -93,10 +94,11 @@ object Push {
     message.path.foreach(p => ScreenManager.running.foreach(_.go(p)))
   }
 
-  /** A button chosen: `acted` hears it, then, where it opens the app and `go`, the running screens go to its path. */
-  private[everyui] def chose(action: PushAction, go: Boolean): Unit = {
+  /** A button chosen: `acted` hears it, then, where it opens the app (or `opened` it, a background button that waited
+    * for the unlock: `PushButton.opensToUnlock`) and `go`, the running screens go to its path. */
+  private[everyui] def chose(action: PushAction, go: Boolean, opened: Boolean = false): Unit = {
     acted @= action
-    if (go && !action.background) action.path.foreach(p => ScreenManager.running.foreach(_.go(p)))
+    if (go && (opened || !action.background)) action.path.foreach(p => ScreenManager.running.foreach(_.go(p)))
   }
 
   /** A push handled as if the platform's push service had delivered `data` (an FCM data message's keys): for the

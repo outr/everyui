@@ -3765,8 +3765,10 @@ values are all text; Web Push may send the array itself):
 Each button has an `id` (what the app is told), a `label` (the id where it has none), `background` (true or "true":
 it runs with the app left closed; false, the default, opens the app) and a `path` where an opening one goes (the
 push's otherwise); `input` and `hint` make it a reply
-([Replies typed into a push](#replies-typed-into-a-push-pushbuttoninput-onpushreply)). Any other key (`task` above)
-is the push's `data`, handed back with it (`PushMessage.data`).
+([Replies typed into a push](#replies-typed-into-a-push-pushbuttoninput-onpushreply)), and `requiresUnlock` keeps it
+from running from a locked screen
+([Buttons that ask for the unlock](#buttons-that-ask-for-the-unlock-pushbuttonrequiresunlock)). Any other key (`task`
+above) is the push's `data`, handed back with it (`PushMessage.data`).
 
 ```scala
 Push.acted.attach { a =>                       // PushAction(id, message): the button and the push
@@ -3934,6 +3936,39 @@ well as closed, never `Push.acted`'s.
 `demo=background`'s "Mail for three accounts" pushes three accounts' mail as a server would, on Android: each account
 a channel under "Mail" and a stack under its summary, a stack of one among them, and Reply on each message, which
 ExampleBackground notes with its words and answers with each kind of `ReplyOutcome`.
+
+### Buttons that ask for the unlock (`PushButton.requiresUnlock`)
+
+A background button runs from the lock screen as it is: anyone holding the phone can press it. Where that matters
+(an Approve that lets an agent run a command on the person's computer), `"requiresUnlock": true` has the device
+unlocked first:
+
+```json
+{"title": "Run a command?", "body": "ls -la ~/projects", "path": "/approvals/7", "tag": "approval-7", "request": "7",
+ "actions": "[{\"id\":\"approve\",\"label\":\"Approve\",\"background\":true,\"requiresUnlock\":true},{\"id\":\"deny\",\"label\":\"Deny\",\"background\":true}]"}
+```
+
+```scala
+PushButton("approve", "Approve", background = true, requiresUnlock = true)
+```
+
+It is false by default, and written into a push's `actions` only where it is true. The button is heard as any other,
+by `onPushAction` or `Push.acted`.
+
+- **Android 12 and later**: the action's `setAuthenticationRequired(true)`. Pressed on a locked device, the system asks
+  for the PIN, pattern or fingerprint, and only then runs the button as it would have (in the background, by
+  `onPushAction`); dismissed, it runs nothing. On an unlocked device it runs at once. A reply (`input`) asks for the
+  unlock before its field opens, and its words then reach `onPushReply` as before.
+- **Android before 12**: a button cannot ask for the unlock itself, so a background button or a reply that requires
+  it opens the app instead, at its path (the push's otherwise), as a plain button does; opening an app from the lock
+  screen asks for the unlock. `Push.acted` hears it as the app opens (the reply with no text), and the app then does
+  what it would have done in the background, or asks first. A button that opens the app already asks, so
+  `requiresUnlock` changes nothing for it on any Android. (`PushButton.opensToUnlock(sdk)` says which.)
+- **Web**: nothing to do: a browser's notification is not on a lock screen. The service worker carries the key with
+  the button to the app, where `PushAction.button` has it.
+- **Apple**: none here; an app of its own would give the action `UNNotificationActionOptions.authenticationRequired`.
+
+`demo=background`'s "An approval" has Approve require the unlock, and Deny not.
 
 
 ## The app's own notifications and the unread badge (`Platform.showNotice`, `Platform.setBadge`)

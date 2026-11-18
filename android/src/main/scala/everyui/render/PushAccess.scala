@@ -29,6 +29,8 @@ object PushAccess {
   private val messageExtra = "everyui.push.message"
   // the words of a reply, as RemoteInput hands them over
   private val replyKey = "everyui.push.reply"
+  // a background button opening the app to be unlocked (PushButton.opensToUnlock), going to its path as it opens
+  private val unlockExtra = "everyui.push.unlock"
   // the id every notification with a tag is shown under: its tag tells it from the others
   private val tagged = 0
   private val notifications = "android.permission.POST_NOTIFICATIONS"
@@ -79,7 +81,7 @@ object PushAccess {
   def tapped(intent: Intent): Unit =
     if (intent != null && intent.hasExtra(actionExtra)) {
       dismiss(Host.activity, intent)
-      Push.chose(actionOf(intent), go = true)
+      Push.chose(actionOf(intent), go = true, opened = intent.getBooleanExtra(unlockExtra, false))
     }
     // one of the app's own: the push whole, its buttons and data with it
     else if (intent != null && intent.hasExtra(messageExtra)) Push.tapped(actionOf(intent).message)
@@ -145,23 +147,28 @@ object PushAccess {
     }
     if (replies.nonEmpty && Build.VERSION.SDK_INT >= 24) builder.setRemoteInputHistory(replies.toArray[CharSequence])
     // its buttons: one that runs in the background, or takes a reply, a broadcast to the BackgroundReceiver where the
-    // app has a BackgroundApp, else (and one that opens the app) the app's launch with the button chosen
+    // app has a BackgroundApp, else (and one that opens the app) the app's launch with the button chosen; one that
+    // requires an unlock waits for it from Android 12, and before opens the app, which the lock screen guards
     message.actions.take(PushButton.most).zipWithIndex.foreach { (b, i) =>
       val code = (shownAs._2.toString + "#" + shownAs._1 + "#" + i.toString).hashCode
       val flags = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
-      val takes = b.input && Background.supported && Build.VERSION.SDK_INT >= 24
+      val unlocking = b.opensToUnlock(Build.VERSION.SDK_INT)
+      val takes = b.input && !unlocking && Background.supported && Build.VERSION.SDK_INT >= 24
       val chosen =
-        if (takes || (b.background && Background.supported))
+        if (takes || (b.background && !unlocking && Background.supported))
           PendingIntent.getBroadcast(context, code, chose(put(new Intent(context, classOf[BackgroundReceiver])
             .setAction(actionIntent), message, Some(b.id)), shownAs), if (takes) mutable else flags)
         else {
           val opening = chose(put(launcher(context), message, Some(b.id)), shownAs)
+          if (unlocking) opening.putExtra(unlockExtra, true)
           b.path.orElse(message.path).foreach(p => opening.putExtra("path", p))
           PendingIntent.getActivity(context, code, opening, flags)
         }
       val action = new Notification.Action.Builder(Icon.createWithResource(context, NoticeIcon.of(context)), b.label, chosen)
       if (takes) action.addRemoteInput(new RemoteInput.Builder(replyKey)
         .setLabel(if (b.hint.nonEmpty) b.hint else b.label).build())
+      // the unlock asked for before it runs (Android 12 on: PushButton.unlockSdk)
+      if (b.requiresUnlock && Build.VERSION.SDK_INT >= 31) action.setAuthenticationRequired(true)
       builder.addAction(action.build())
     }
     val notification = builder.build()

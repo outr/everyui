@@ -17,11 +17,12 @@ import reactify.*
   * network, once at once (expedited) and every 15 minutes, and cancelled; the status notice shown and cleared (its
   * Pause, Resume and Open run in ExampleBackground); each settings page opened, and whether unused-app restrictions
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
-  * ExampleBackground with the app closed and are heard by Push.acted with it running; and mail for three accounts
-  * (Push.deliver), each message stacked under its account's summary on its account's channel, with a Reply typed into
-  * it; three channels declared up front (Push.channels) at low, default and high importance, three more made by
-  * pushes asking each (channelImportance), and the loud one's settings opened (Push.openChannelSettings). Under each,
-  * what ExampleBackground has noted, read again every two seconds and as the app comes back. */
+  * ExampleBackground with the app closed (Approve once the device is unlocked) and are heard by Push.acted with it
+  * running; and mail for three accounts (Push.deliver), each message stacked under its account's summary on its
+  * account's channel, with a Reply typed into it; three channels declared up front (Push.channels) at low, default
+  * and high importance, three more made by pushes asking each (channelImportance), and the loud one's settings opened
+  * (Push.openChannelSettings). Under each, what ExampleBackground has noted, read again every two seconds and as the
+  * app comes back. */
 class BackgroundScreen extends UIScreen {
   override def manager: ScreenManager = BackgroundDemo
   override def title: String = "In the background"
@@ -143,10 +144,12 @@ class BackgroundScreen extends UIScreen {
     "tag" -> "reminder-1", "task" -> "pills", "actions" -> PushButton.json(Vector(
       PushButton("done", "Done", background = true), PushButton("open", "Open", path = Some("/background/opened")))))
 
-  /** An agent's request: Approve and Deny with the app closed, Look opens it. */
+  /** An agent's request: Approve and Deny with the app closed, Approve only once the device is unlocked (before
+    * Android 12 it opens the app instead), Look opens it. */
   private def approval: Map[String, String] = Map("title" -> "Approve the deploy?", "body" -> "An agent asks to deploy",
     "path" -> "/background", "tag" -> "approval-7", "request" -> "7", "actions" -> PushButton.json(Vector(
-      PushButton("approve", "Approve", background = true), PushButton("deny", "Deny", background = true),
+      PushButton("approve", "Approve", background = true, requiresUnlock = true),
+      PushButton("deny", "Deny", background = true),
       PushButton("look", "Look", path = Some("/background/opened")))))
 
   /** Mail for three accounts as a mail server pushes it, from three seconds on, half a second apart: each message on

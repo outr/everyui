@@ -72,8 +72,9 @@ object WebApp {
     * app at the path when none is open. Its buttons ("actions", an array or JSON text of one, `everyui.push.PushButton`)
     * are the notification's actions; one chosen tells an open window of the app (`{everyui: "act", id, message}`,
     * `everyui.push.Push.acted`), brought forward unless the button runs in the background, or opens the app at the
-    * button's path (else the push's) with `everyui-action` and `everyui-push` in its address. What else the push says
-    * is its `data`. A path
+    * button's path (else the push's) with `everyui-action` and `everyui-push` in its address (a button's
+    * `requiresUnlock` carried with it, and nothing more: a browser's notification is on no lock screen). What else
+    * the push says is its `data`. A path
     * off the app's own origin opens the app's start instead. A subscription the browser renews is subscribed again
     * with the same key and handed to the open windows (`everyui.push.Push.tokens`). A notification a page showed itself
     * (`Platform.showNotice`) is answered by the page: a click on it focuses the window that showed it, which the page
@@ -121,7 +122,8 @@ object WebApp {
        |  if (typeof actions === 'string') { try { actions = JSON.parse(actions); } catch (x) { actions = []; } }
        |  actions = (Array.isArray(actions) ? actions : []).filter(a => a && a.id).map(a => ({ id: String(a.id),
        |    label: String(a.label || a.id), background: yes(a.background),
-       |    path: a.path ? String(a.path) : null, input: yes(a.input), hint: a.hint ? String(a.hint) : '' }));
+       |    path: a.path ? String(a.path) : null, input: yes(a.input), hint: a.hint ? String(a.hint) : '',
+       |    requiresUnlock: yes(a.requiresUnlock) }));
        |  let lines = m.lines;
        |  if (typeof lines === 'string') { try { lines = JSON.parse(lines); } catch (x) { lines = []; } }
        |  lines = (Array.isArray(lines) ? lines : []).map(String);

@@ -14,6 +14,8 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
       worker should include("if (typeof actions === 'string') { try { actions = JSON.parse(actions); }")
       worker should include("const yes = v => v === true || v === 'true';")
       worker should include("background: yes(a.background)")
+      // (a browser's notification is on no lock screen: requiresUnlock is carried to the app, and changes nothing)
+      worker should include("requiresUnlock: yes(a.requiresUnlock) }));")
       worker should include("const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group',")
       worker should include("renotify: yes(m.renotify), actions, data,")
     }
