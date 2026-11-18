@@ -561,30 +561,15 @@ class SwiftEmitter(
     def isTaskModule(q: Term): Boolean =
       q.symbol.exists && q.symbol.flags.is(Flags.Module) && q.symbol.fullName.stripSuffix("$") == "rapid.Task"
 @@ old
-      val keysL  = fields.map(f => brStr(f.name))
-      // the slot is the field name as the code READS it, which brSafe escapes for a reserved word (`type` → `type_`);
-      // a plain `f.name` here left a non-model case class's `type` decoded under a key its own field access never read
-      val slotsL = fields.map(f => brStr(fieldKey(f)))
-      val rwsL   = types.map(t => rwFor(t, depth))
-      val ctor = if (isModel(cls)) s"${typeName(cls)}_new" else "invalid"
-      // a field the JSON leaves out takes its default, as fabric reads it on the JVM
-      val defaultsL = fields.indices.map(i => caseDefault(cls, i))
-      val defs = defaultsL.map(_.getOrElse("invalid")).mkString(", ")
-      val has = defaultsL.map(d => if (d.isDefined) "true" else "false").mkString(", ")
-      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor, [$defs], [$has])"
-    }
+    def rwArr(items: Seq[String]): String = items.mkString("[", ", ", "]")
+    def rwFlag(b: Boolean): String = if (b) "true" else "false"
+    def rwFn(name: String): String = name
+    def rwNone: String = "invalid"
 @@ new
-      val keysL  = fields.map(f => brStr(f.name))
-      // the slot is the field name as the code READS it, which brSafe escapes for a reserved word (`type` → `type_`);
-      // a plain `f.name` here left a non-model case class's `type` decoded under a key its own field access never read
-      val slotsL = fields.map(f => brStr(fieldKey(f)))
-      val rwsL   = types.map(t => rwFor(t, depth))
-      val ctor = if (isModel(cls)) s"rtFn(${typeName(cls)}_new)" else NULL
-      val defaultsL = fields.indices.map(i => caseDefault(cls, i))
-      val defs = rtArr(defaultsL.map(_.getOrElse(NULL)).toList)
-      val has = rtArr(defaultsL.map(d => if (d.isDefined) ".vBool(true)" else ".vBool(false)").toList)
-      s"_rwGen(${brStr(cls.name)}, ${rtArr(keysL)}, ${rtArr(slotsL)}, ${rtArr(rwsL)}, $ctor, $defs, $has)"
-    }
+    def rwArr(items: Seq[String]): String = rtArr(items.toList)
+    def rwFlag(b: Boolean): String = if (b) ".vBool(true)" else ".vBool(false)"
+    def rwFn(name: String): String = s"rtFn($name)"
+    def rwNone: String = NULL
 @@ old
       val overrides = cls.caseFields.zip(flattenVarargs(args)).collect {
         case (f, arg) if !isCopyDefaultArg(arg) =>

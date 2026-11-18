@@ -1620,8 +1620,12 @@ The spike (`network/emitRoku`, the loopback probe `NetworkProbe`, golden
   one thread, `sleep` on a SceneGraph Timer / the main queue, `sync` only for a
   task that completes at once), fabric's `Json` (native JSON values;
   `ParseJson`/`FormatJson`, `JSONSerialization`), fabric `RW` (the emitter
-  derives `RW.gen[T]` itself: `_rwGen(name, keys, slots, field codecs, ctor)`,
-  with Option/List/Map wrappers), scribe, `ConcurrentHashMap`,
+  decides each codec as fabric's implicit search and `RW.gen` would, the macro's
+  expansion not being in the TASTy: `_rwGen` for a case class, `_rwNamed` for
+  an enum or case objects, `_rwPoly` for a sealed trait or `RW.poly`,
+  `_rwVia` for `RW.string`/`RW.from`, with Option/List/Set/Map wrappers; a
+  shape it cannot follow is a gap; FabricCodecSpec holds them to the JVM's
+  JSON), scribe, `ConcurrentHashMap`,
   `ConcurrentLinkedQueue`, `AtomicLong`, `UUID`, `System.currentTimeMillis`,
   `FiniteDuration` arithmetic.
 - Scala 3 enums' simple cases (`ProtocolState.Active`) as runtime singletons

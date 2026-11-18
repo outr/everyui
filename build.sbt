@@ -540,6 +540,8 @@ lazy val desktop = (project in file("desktop"))
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
     // the web's choice of which faces words wait for (FaceWait), plain Scala, checked here with the rest
     Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
+    // the web service worker's reading of a Markdown push (WebPushText), plain Scala, checked against PushText here
+    Test / unmanagedSources += (file("sbt-support") / "src" / "main" / "scala" / "everyui" / "sbt" / "WebPushText.scala").getAbsoluteFile,
     // the memory cases (MemorySpec), the same the web's memory check measures
     Test / unmanagedSourceDirectories += memoryCaseSources,
     Compile / mainClass := Some("everyui.desktop.DesktopApp"),

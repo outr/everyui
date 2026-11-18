@@ -126,6 +126,8 @@ class RokuEmitter(
     // Class-emission context (mirrors JsEmitter): the class whose method we're
     // emitting; members resolve through the `self` param.
     var currentClass: Symbol = Symbol.noSymbol
+    // where the fabric codec being decided was asked for, for a gap's message (see "fabric's codecs")
+    var rwAt = ""
     // The method whose body is being emitted: a `return` from it is a BrightScript `return`. (A return out of a
     // lambda to the method around it is deprecated in Scala 3 and not written here, so a `return` is the method's own.)
     var returnTarget: Symbol = Symbol.noSymbol
@@ -1353,14 +1355,372 @@ class RokuEmitter(
       case Apply(inner @ Apply(_, _), more) => newChain(inner).map((c, k, a) => (c, k, a ++ more))
       case _ => None
     }
-    // ── fabric RW derivation (`given rw: RW[T] = RW.gen`) ──
-    // The emitted object model carries a case class as `{ _cls, _fields, <field>: … }`, so the runtime can read and
-    // write one by its field names given a codec per field; a model case class is constructed through its `_new`.
-    // Nothing of fabric's macro output is emitted: its ClassRW / Definition machinery has no place here.
+    // ── fabric's codecs (`given rw: RW[T] = RW.gen`, `RW.poly`, `RW.string` …) ──
+    // fabric derives a codec by a macro, and the TASTy the emitter reads holds the call, not its expansion (inlining
+    // runs after pickling). So the codec of every type is decided here as fabric's implicit search and RW.gen decide
+    // it, and written as one of the runtime's (`_rwGen`, `_rwNamed`, `_rwPoly` …), which write and read the JSON
+    // fabric does on the JVM: an enum by its name, a sealed trait's case with its `type`, a Map of other keys than
+    // Strings as key and value pairs, a missing field as its default. A shape it cannot follow is a gap, and its
+    // codec one that throws (`_rwNone`), never one that passes the value through.
+    //
+    // The runtime's codecs are made of arrays, flags and constructors, written by these four (the Swift emitter's own).
+    def rwArr(items: Seq[String]): String = items.mkString("[", ", ", "]")
+    def rwFlag(b: Boolean): String = if (b) "true" else "false"
+    def rwFn(name: String): String = name
+    def rwNone: String = "invalid"
+
+    def rwGap(what: String): String = {
+      todos += s"unsupported: fabric codec: $what$rwAt"
+      s"_rwNone(${brStr(what)})"
+    }
+    /** `T` of a codec's type `RW[T]`. */
+    def rwOf(tp: TypeRepr): Option[TypeRepr] = {
+      val w = try tp.widenTermRefByName.dealias catch case _: Throwable => tp
+      if (fqnOf(w) == "fabric.rw.RW") (try w.typeArgs catch case _: Throwable => Nil).headOption else None
+    }
+    /** fabric's name for a class or a case on the wire (Definition.simpleClassName): its full name from its first
+      * capitalised part, so `app.Shape.Dot` is `Shape.Dot`. */
+    def rwWire(s: Symbol): String = {
+      val parts = s.fullName.replace("$", ".").split('.').filter(_.nonEmpty)
+      val chain = parts.dropWhile(_.head.isLower)
+      if (chain.isEmpty) parts.lastOption.getOrElse(s.name) else chain.mkString(".")
+    }
+    def rwLeaf(wire: String): String = wire.split('.').lastOption.getOrElse(wire).toLowerCase
+    /** Types written as they are: numbers, strings, booleans and fabric's own JSON. */
+    def rwPlain(tp: TypeRepr): Boolean =
+      Set("scala.Boolean", "scala.Byte", "scala.Short", "scala.Int", "scala.Long", "scala.Float", "scala.Double",
+        "java.lang.String", "scala.math.BigDecimal", "scala.math.BigInt").contains(fqnOf(tp))
+        || (try tp.baseClasses.exists(_.fullName == "fabric.Json") catch case _: Throwable => false)
+    def rwSeqs: Set[String] = Set("scala.collection.immutable.List", "scala.collection.immutable.Vector", "scala.collection.immutable.Seq",
+      "scala.collection.Seq", "scala.collection.immutable.IndexedSeq", "scala.collection.IndexedSeq", "scala.Array")
+
+    /** A given or implicit codec, a val or a def of no parameters, and the type it codes. */
+    def rwGivenType(s: Symbol): Option[TypeRepr] =
+      if (!s.exists || !s.isTerm || !(s.flags.is(Flags.Given) || s.flags.is(Flags.Implicit))
+          || (s.isDefDef && s.paramSymss.nonEmpty)) None
+      else try rwOf(s.termRef) catch case _: Throwable => None
+    def rwGivensIn(owner: Symbol): List[Symbol] =
+      if (!owner.exists || !owner.isClassDef) Nil
+      else try owner.declarations.filter(s => rwGivenType(s).isDefined) catch case _: Throwable => Nil
+    lazy val rwProgramGivens: List[Symbol] = allClassDefs.keys.toList.flatMap(rwGivensIn)
+    /** The objects each source file imports from, which decide between two of the program's givens of one type. */
+    lazy val rwImports: Map[String, Set[Symbol]] = {
+      val found = mutable.Map[String, Set[Symbol]]()
+      for (tasty <- tastys)
+        new TreeTraverser {
+          override def traverseTree(t: Tree)(owner: Symbol): Unit = {
+            t match {
+              case Import(expr, _) =>
+                try {
+                  val path = t.pos.sourceFile.path
+                  val m = expr.symbol
+                  val c = if (m.exists && m.flags.is(Flags.Module) && !m.isClassDef) m.moduleClass else m
+                  found(path) = found.getOrElse(path, Set.empty) + c
+                } catch case _: Throwable => ()
+              case _ => ()
+            }
+            super.traverseTree(t)(owner)
+          }
+        }.traverseTree(tasty.ast)(Symbol.noSymbol)
+      found.toMap
+    }
+    /** The codec fabric's implicit search finds for `tp` from `site` (the object a derivation is written in): the
+      * given of `tp`'s companion, then one of `site` and the objects around it, then the program's one given of that
+      * type (or, of several, the one `site`'s file imports). */
+    def rwGiven(tp: TypeRepr, site: Symbol): Option[Symbol] = {
+      def of(ss: List[Symbol]): List[Symbol] = ss.filter(s => rwGivenType(s).exists(_ =:= tp))
+      val comp = try tp.typeSymbol.companionModule.moduleClass catch case _: Throwable => Symbol.noSymbol
+      val around = Iterator.iterate(site)(_.owner).takeWhile(s => s.exists && !s.flags.is(Flags.Package)).toList
+      of(rwGivensIn(comp)).headOption
+        .orElse(around.iterator.map(s => of(rwGivensIn(s))).find(_.nonEmpty).flatMap(_.headOption))
+        .orElse(of(rwProgramGivens) match {
+          case List(one) => Some(one)
+          case Nil       => None
+          case many =>
+            val imported = try rwImports.getOrElse(site.pos.get.sourceFile.path, Set.empty) catch case _: Throwable => Set.empty
+            many.filter(g => imported(g.owner)) match {
+              case List(one) => Some(one)
+              case _ =>
+                rwGap(s"${many.size} codecs of ${tp.show} (${many.map(g => s"${g.owner.name.stripSuffix("$")}.${g.name}").mkString(", ")}), none of them the one in scope")
+                None
+            }
+        })
+    }
+    /** A codec's definition, where its tree can be read. */
+    def rwRhs(s: Symbol): Option[Term] =
+      try s.tree match {
+        case vd: ValDef => vd.rhs
+        case dd: DefDef => dd.rhs
+        case _          => None
+      } catch case _: Throwable => None
+    /** fabric's RW call `t` makes: the method, its type arguments and its argument lists. */
+    def rwCall(t: Term): Option[(Symbol, List[TypeRepr], List[List[Term]])] = {
+      def peel(x: Term, targs: List[TypeRepr], argss: List[List[Term]]): Option[(Symbol, List[TypeRepr], List[List[Term]])] =
+        x match {
+          case Apply(f, as)     => peel(f, targs, as :: argss)
+          case TypeApply(f, ts) => peel(f, ts.map(_.tpe), argss)
+          case f if f.symbol.exists && f.symbol.isDefDef && ownerFqn(f.symbol).startsWith("fabric.rw") =>
+            Some((f.symbol, targs, argss))
+          case _ => None
+        }
+      peel(unwrap(t), Nil, Nil)
+    }
+    /** An argument as written: named arguments out of order are lifted into vals (`list$1`) before the call. */
+    def rwArg(a: Term): Term = a match {
+      case NamedArg(_, v)                             => rwArg(v)
+      case id: Ident if id.symbol.name.contains("$") => rwRhs(id.symbol).getOrElse(id)
+      case v                                          => v
+    }
+    /** RW's builders this compiler writes as the runtime's codecs. */
+    def rwBuilders: Set[String] = Set("gen", "derived", "poly", "enumeration", "string", "int", "long", "double", "dec", "bool", "static", "from")
+    def isRwBuilder(fn: Term): Boolean =
+      fn.symbol.exists && rwBuilders(fn.symbol.name) && ownerFqn(fn.symbol).startsWith("fabric.rw")
+    /** A codec read through to its shape rather than called: a derivation, a poly of them, or another codec named. */
+    def rwStructural(t: Term): Boolean = unwrap(t) match {
+      case _: Ident | _: Select => rwOf(t.tpe).isDefined
+      case _                    => rwCall(t).exists((m, _, _) => Set("gen", "derived", "poly")(m.name))
+    }
+
+    /** The runtime codec of a value of type `tp`, as fabric's implicit search and RW.gen give it from `site`. `seen`
+      * holds the types being derived around it: one met again (a type holding itself) is a gap. */
+    def rwFor(tp0: TypeRepr, site: Symbol, seen: List[Symbol]): String = {
+      val tp   = tp0.widen.dealias
+      val fqn  = fqnOf(tp)
+      val args = try tp.typeArgs catch case _: Throwable => Nil
+      if (fqn == "scala.Option" && args.size == 1) s"_rwOpt(${rwFor(args.head, site, seen)})"
+      else if (args.size == 1 && isSetTpe(tp)) s"_rwSet(${rwFor(args.head, site, seen)})"
+      else if (args.size == 1 && rwSeqs(fqn)) s"_rwList(${rwFor(args.head, site, seen)})"
+      else if (args.size == 2 && isMapTpe(tp))
+        // fabric writes a Map of String keys as an object, and of any other keys as an array of key and value pairs
+        if (fqnOf(args.head) == "java.lang.String") s"_rwMap(${rwFor(args(1), site, seen)})"
+        else s"_rwMapKV(${rwFor(args.head, site, seen)}, ${rwFor(args(1), site, seen)})"
+      else if (rwPlain(tp)) s"_rw(${brStr(fqn)})"
+      else rwGiven(tp, site) match {
+        case Some(g) => rwOfGiven(g, seen)
+        case None    => rwDerive(tp, site, seen)
+      }
+    }
+    /** A given codec: read through where it is a derivation, otherwise the program's own, by its accessor. */
+    def rwOfGiven(g: Symbol, seen: List[Symbol]): String = rwRhs(g) match {
+      case Some(rhs) if rwStructural(rhs) => rwOfTerm(rhs, g.owner, seen)
+      // the program's own, or a parameter or local (a context bound's `evidence$1`): by its name
+      case _ if allClassDefs.contains(g.owner) || !g.owner.isClassDef => emitTerm(rwMemberRef(g))
+      case _ => rwGap(s"${g.owner.name.stripSuffix("$")}.${g.name}, a library's codec whose definition is not readable")
+    }
+    /** The runtime codec a codec expression `t` written in `site` makes. */
+    def rwOfTerm(t: Term, site: Symbol, seen: List[Symbol]): String = unwrap(t) match {
+      case r @ (_: Ident | _: Select) =>
+        if (ownerFqn(r.symbol).startsWith("fabric.")) rwOf(r.tpe).map(rwFor(_, site, seen)).getOrElse(rwGap(r.show))
+        else if (rwOf(r.tpe).isDefined) rwOfGiven(r.symbol, seen)
+        else rwGap(r.show)
+      case u =>
+        rwCall(u) match {
+          case Some((m, targs, argss)) if rwBuilders(m.name) =>
+            def arg(i: Int): Option[Term] = argss.headOption.flatMap(_.lift(i)).map(rwArg)
+            def passed(i: Int): Boolean =
+              arg(i).exists { a => val s = stripTypeApply(unwrap(a)).symbol; !(s.exists && s.name.contains("$default$")) }
+            val target = targs.headOption.orElse(rwOf(u.tpe))
+            m.name match {
+              case "gen" | "derived" => target.map(rwDerive(_, site, seen)).getOrElse(rwGap(u.show))
+              case "poly"            => rwPoly(u, argss, site, seen)
+              case "enumeration" =>
+                // its names are `asString`'s, or each value's class name, which is known here of case objects
+                // CompileRW's (a list alone) reads a name exactly or by its last part in any case, as an enum's; RW's
+                // (with `asString` or `caseSensitive`) the whole name or its last part, in any case unless caseSensitive
+                val mode = if (ownerFqn(m) == "fabric.rw.CompileRW") "enum" else "list"
+                val names = if (passed(1)) Some(emitArgVal(arg(1).get)) else rwObjectNames(arg(0)).map(ns => rwArr(ns.map(brStr)))
+                names match {
+                  case Some(ns) =>
+                    s"_rwNamed(${emitArgVal(arg(0).get)}, $ns, ${brStr(mode)}, ${if (passed(2)) emitArgVal(arg(2).get) else rwFlag(false)})"
+                  case None => rwGap(s"RW.enumeration of ${target.map(_.show).getOrElse("?")} named by its values' classes, which are not case objects")
+                }
+              case "static" => s"_rwStatic(${emitArgVal(arg(0).get)})"
+              case _        => s"_rwVia(${emitArgVal(arg(0).get)}, ${emitArgVal(arg(1).get)})"   // from, string, int …
+            }
+          case _ => rwOf(u.tpe) match {
+            // one of fabric's own (`optionRW(intRW)`), by the type it codes
+            case Some(tp) if rwCall(u).isDefined => rwFor(tp, site, seen)
+            case _ => rwGap(s"${u.show}, which the compiler cannot follow")
+          }
+        }
+    }
+    /** The wire names of a list of case objects (`List(Light, Dark)`), as RW.enumeration names them by default. */
+    def rwObjectNames(list: Option[Term]): Option[List[String]] = list.map(unwrap).flatMap {
+      case Apply(f, xs) if isListApply(stripTypeApply(f)) =>
+        val es = flattenVarargs(xs).map(unwrap)
+        if (es.forall(e => e.symbol.exists && e.symbol.flags.is(Flags.Module) && !isEnumCase(e.symbol))) Some(es.map(e => rwWire(e.symbol)))
+        else None
+      case _ => None
+    }
+
+    /** fabric's RW.gen of `tp`: a simple enum by its cases' names, a sealed trait or an enum with class cases by a
+      * `type` beside its case's fields, a case class by its fields. */
+    def rwDerive(tp: TypeRepr, site: Symbol, seen: List[Symbol]): String = {
+      val s = tp.typeSymbol
+      val comp = try s.companionModule catch case _: Throwable => Symbol.noSymbol
+      if (tp.dealias match { case OrType(_, _) => true; case _ => false }) rwGap(s"the union ${tp.show}")
+      else if (seen.contains(s)) rwGap(s"${s.name}, which holds itself (a codec of the compiler's is made whole, not lazily)")
+      else if (s.flags.is(Flags.Enum) && comp.exists && comp.methodMember("valueOf").nonEmpty)
+        s"_rwNamed(${enumLookup(s)}, ${rwArr(enumCases(s).map(c => brStr(rwWire(s) + "." + c.name)))}, ${brStr("enum")}, ${rwFlag(false)})"
+      else if (s.flags.is(Flags.Sealed) && (s.flags.is(Flags.Trait) || s.flags.is(Flags.Abstract) || s.flags.is(Flags.Enum))) {
+        val children = s.children
+        if (children.nonEmpty && children.forall(c => c.flags.is(Flags.Module) && c.flags.is(Flags.Case)))
+          // case objects alone: RW.enumeration of them, each by its class name
+          s"_rwNamed(${rwArr(children.map(rwSingleton))}, ${rwArr(children.map(c => brStr(rwWire(c))))}, ${brStr("enum")}, ${rwFlag(false)})"
+        else if (children.exists(_.annotations.exists(_.tpe.typeSymbol.fullName == "fabric.rw.unknownCase")))
+          rwGap(s"${s.name}'s @unknownCase")
+        else {
+          val es = rwCases(s, site, s :: seen)
+          rwPolyOf(rwTypeField(s), es.map(e => (e._1, rwLeaf(e._1), e._2, e._3, false)), wrap = true)
+        }
+      }
+      else if (s.flags.is(Flags.Case) && s.isClassDef) rwCase(tp, s, site, s :: seen)
+      else rwGap(s"${tp.show}, which has no codec the compiler can see")
+    }
+    /** A case object, or an enum's simple case, as a value. */
+    def rwSingleton(c: Symbol): String =
+      if (isEnumCase(c)) enumCaseValue(c, c.name)
+      else emitTerm(rwMemberRef(if (c.isClassDef) c.companionModule else c))
+    /** The `type` a sealed trait's case is written with (`@typeField` names another). */
+    def rwTypeField(s: Symbol): String =
+      s.annotations.collectFirst {
+        case a if a.tpe.typeSymbol.fullName == "fabric.rw.typeField" =>
+          a match {
+            case Apply(_, List(Literal(StringConstant(n)))) => n
+            case _                                          => "type"
+          }
+      }.getOrElse("type")
+    /** A sealed trait's cases, as fabric's RW.gen writes them: each one's wire name, what tells a value of it (its
+      * class's `_cls`, or the singleton itself) and its codec. */
+    def rwCases(s: Symbol, site: Symbol, seen: List[Symbol]): List[(String, String, String)] =
+      s.children.map { c =>
+        val codec =
+          if (rwIsSingleton(c)) s"_rwStatic(${rwSingleton(c)})"
+          else if (c.isClassDef && c.flags.is(Flags.Case)) rwFor(c.typeRef, site, seen)
+          else rwGap(s"${c.name} of ${s.name}, neither a case class nor a case object (fabric cannot tell its values apart)")
+        (rwWire(c), rwTag(c), codec)
+      }
+    def rwIsSingleton(c: Symbol): Boolean = c.flags.is(Flags.Module) || isEnumCase(c)
+    /** What tells a value of a case: its class's `_cls` (a string), or the singleton itself. */
+    def rwTag(c: Symbol): String =
+      if (rwIsSingleton(c)) rwSingleton(c)
+      else if (c.isClassDef && c.flags.is(Flags.Case)) brStr(if (isModel(c)) clsTag(c) else c.name)
+      else rwNone
+    /** A member of an object, named by the object (`Shape.rw`), as the program would name it. */
+    def rwMemberRef(g: Symbol): Term = {
+      val m = try if (g.owner.flags.is(Flags.Module)) g.owner.companionModule else Symbol.noSymbol
+        catch case _: Throwable => Symbol.noSymbol
+      if (m.exists) Select(Ref(m), g) else Ref(g)
+    }
+    /** The runtime's polymorphic codec, of entries (wire name, legacy leaf, tag, codec, whether the codec is itself
+      * polymorphic and reads the whole object). */
+    def rwPolyOf(field: String, es: List[(String, String, String, String, Boolean)], wrap: Boolean): String =
+      s"_rwPoly(${brStr(field)}, ${rwArr(es.map(e => brStr(e._1)))}, ${rwArr(es.map(e => brStr(e._2)))}, " +
+        s"${rwArr(es.map(_._3))}, ${rwArr(es.map(_._4))}, ${rwArr(es.map(e => rwFlag(e._5)))}, ${rwFlag(wrap)})"
+    /** `RW.poly[P](fieldName, typeAliases)(rws*)`: each codec registered by its class's wire name, a sealed trait's
+      * by its cases' too; an alias reads as the type it names. */
+    def rwPoly(t: Term, argss: List[List[Term]], site: Symbol, seen: List[Symbol]): String = {
+      def literal(a: Term): Option[String] = unwrap(a) match {
+        case Literal(StringConstant(v)) => Some(v)
+        case NamedArg(_, v)             => literal(v)
+        case _                          => None
+      }
+      def defaulted(a: Term): Boolean = unwrap(a) match {
+        case NamedArg(_, v) => defaulted(v)
+        case x              => stripTypeApply(x).symbol.exists && stripTypeApply(x).symbol.name.contains("$default$")
+      }
+      val first = argss.headOption.getOrElse(Nil).map(rwArg)
+      val field = first.headOption.map(a => if (defaulted(a)) Some("type") else literal(a)).getOrElse(Some("type"))
+      val aliases: Option[List[(String, String)]] = first.lift(1) match {
+        case None                    => Some(Nil)
+        case Some(a) if defaulted(a) => Some(Nil)
+        case Some(a) =>
+          unwrap(a) match {
+            case Apply(f, xs) if isListApply(stripTypeApply(f)) =>
+              // each `"alias" -> "Primary"` (or a tuple of the two): its two strings
+              def strings(x: Term): List[String] = unwrap(x) match {
+                case Literal(StringConstant(s)) => List(s)
+                case Apply(f, as)               => strings(f) ++ as.flatMap(strings)
+                case TypeApply(f, _)            => strings(f)
+                case Select(q, _)               => strings(q)
+                case _                          => Nil
+              }
+              val pairs = flattenVarargs(xs).map(x => strings(x) match {
+                case List(k, v) => Some((k, v))
+                case _          => None
+              })
+              if (pairs.forall(_.isDefined)) Some(pairs.flatten) else None
+            case _ => None
+          }
+      }
+      val registered = argss.lift(1).map(flattenVarargs).getOrElse(Nil)
+      if (field.isEmpty || aliases.isEmpty) rwGap(s"RW.poly whose type field or aliases are not literals")
+      else {
+        val es = registered.flatMap { r =>
+          rwOf(r.tpe).map(_.dealias) match {
+            case Some(ct) =>
+              val c = ct.typeSymbol
+              val rw = rwOfTerm(r, site, seen)
+              val sum = c.flags.is(Flags.Sealed) && (c.flags.is(Flags.Trait) || c.flags.is(Flags.Abstract) || c.flags.is(Flags.Enum))
+              if (sum && !(c.flags.is(Flags.Enum) && c.companionModule.methodMember("valueOf").nonEmpty))
+                (rwWire(c), rwLeaf(rwWire(c)), rwNone, rw, true) :: c.children.map(v => (rwWire(v), "", rwTag(v), rw, true))
+              else if (c.flags.is(Flags.Case) && c.isClassDef && rwDerived(r))
+                List((rwWire(c), rwLeaf(rwWire(c)), brStr(if (isModel(c)) clsTag(c) else c.name), rw, false))
+              else List(("", "", rwNone, rwGap(s"RW.poly of ${r.show}, which is neither RW.gen of a case class nor of a sealed trait"), false))
+            case None => List(("", "", rwNone, rwGap(s"RW.poly of ${r.show}"), false))
+          }
+        }
+        val more = aliases.get.flatMap { (alias, primary) =>
+          es.find(_._1 == primary).orElse(es.find(e => e._2.nonEmpty && e._2 == primary.toLowerCase))
+            .map(e => (alias, "", rwNone, e._4, e._5))
+        }
+        rwPolyOf(field.get, es ++ more, wrap = false)
+      }
+    }
+    /** Whether a codec is fabric's RW.gen (so has its class's name), read through the givens it names. */
+    def rwDerived(t: Term): Boolean = unwrap(t) match {
+      case r @ (_: Ident | _: Select) => rwRhs(r.symbol).exists(rwDerived)
+      case u                          => rwCall(u).exists((m, _, _) => m.name == "gen" || m.name == "derived")
+    }
+    /** fabric's RW.gen of a case class: by its fields, each by its own codec, a missing one taking its default. */
+    def rwCase(tp: TypeRepr, cls: Symbol, site: Symbol, seen: List[Symbol]): String = {
+      val fields = try cls.caseFields catch case _: Throwable => Nil
+      def marked(n: String) = fields.exists(_.annotations.exists(_.tpe.typeSymbol.fullName == n)) ||
+        (try cls.declarations.exists(_.annotations.exists(_.tpe.typeSymbol.fullName == n)) catch case _: Throwable => false)
+      val typeParams = try cls.primaryConstructor.paramSymss.headOption.exists(_.exists(_.isTypeParam)) catch case _: Throwable => false
+      if (typeParams) rwGap(s"${cls.name}, a generic case class (fabric writes its `_generic`)")
+      else if (marked("fabric.rw.serialized") || marked("fabric.rw.notSerialized"))
+        rwGap(s"${cls.name}'s @serialized or @notSerialized members")
+      else if (tp <:< TypeRepr.of[AnyVal]) rwGap(s"${cls.name}, a value class (fabric writes its one field alone)")
+      else if (try tp.baseClasses.exists(_.fullName == "fabric.rw.JsonWrapper") catch case _: Throwable => false)
+        rwGap(s"${cls.name}, a JsonWrapper")
+      else {
+        val keysL  = fields.map(f => brStr(f.name))
+        // the slot is the field name as the code READS it, which brSafe escapes for a reserved word (`type` → `type_`);
+        // a plain `f.name` here left a non-model case class's `type` decoded under a key its own field access never read
+        val slotsL = fields.map(f => brStr(fieldKey(f)))
+        val rwsL   = fields.map(f => rwFor(tp.memberType(f), site, seen))
+        val ctor   = if (isModel(cls)) rwFn(s"${typeName(cls)}_new") else rwNone
+        // a field the JSON leaves out takes its default, as fabric reads it on the JVM
+        val defaultsL = fields.indices.map { i =>
+          val d = caseDefault(cls, i)
+          if (d.isEmpty && caseHasDefault(cls, i)) rwGap(s"${cls.name}.${fields(i).name}'s default, which is not readable")
+          d
+        }
+        s"_rwGen(${brStr(cls.name)}, ${rwArr(keysL)}, ${rwArr(slotsL)}, ${rwArr(rwsL)}, $ctor, " +
+          s"${rwArr(defaultsL.map(_.getOrElse(rwNone)))}, ${rwArr(defaultsL.map(d => rwFlag(d.isDefined)))})"
+      }
+    }
+    def caseHasDefault(cls: Symbol, i: Int): Boolean = {
+      val comp = cls.companionModule
+      comp.exists && comp.methodMember("$lessinit$greater$default$" + (i + 1)).nonEmpty
+    }
+    /** The codec type `RW.gen[T]` is called for, where `call` is one. */
     def rwGenType(call: Tree): Option[TypeRepr] = {
       def find(t: Tree): Option[TypeRepr] = t match {
         case Apply(f, _)                 => find(f)
-        case TypeApply(f, List(targ)) if f.symbol.exists && f.symbol.name == "gen" && ownerFqn(f.symbol).startsWith("fabric.rw.") =>
+        case TypeApply(f, List(targ)) if f.symbol.exists && (f.symbol.name == "gen" || f.symbol.name == "derived")
+            && ownerFqn(f.symbol).startsWith("fabric.rw.") =>
           Some(targ.tpe)
         case TypeApply(f, _)             => find(f)
         case Inlined(_, _, e)            => find(e)
@@ -1369,35 +1729,11 @@ class RokuEmitter(
       }
       try find(call) catch case _: Throwable => None
     }
-    /** The runtime codec for a field of type `tp`: a primitive, a String or a Json value is itself; Option, List
-      * and Map wrap their element's; another case class derives inline. */
-    def rwFor(tp: TypeRepr, depth: Int): String = {
-      val sym  = tp.typeSymbol
-      val fqn  = fqnOf(tp)
-      val args = try tp.typeArgs catch case _: Throwable => Nil
-      if (fqn == "scala.Option" && args.nonEmpty) s"_rwOpt(${rwFor(args.head, depth)})"
-      else if (args.size == 1 && Set("scala.collection.immutable.List", "scala.collection.immutable.Vector",
-          "scala.collection.immutable.Seq", "scala.collection.Seq", "scala.collection.immutable.Set", "scala.Array").contains(fqn))
-        s"_rwList(${rwFor(args.head, depth)})"
-      else if (args.size == 2 && fqn.endsWith(".Map")) s"_rwMap(${rwFor(args(1), depth)})"
-      else if (sym.exists && sym.flags.is(Flags.Case) && !isBuiltin(sym) && depth < 6) emitRwGen(tp, depth + 1)
-      else s"_rw(${brStr("valueRW")})"
-    }
-    def emitRwGen(tp: TypeRepr, depth: Int): String = {
-      val cls    = tp.typeSymbol
-      val fields = try cls.caseFields catch case _: Throwable => Nil
-      val types  = fields.map(f => try f.tree match { case vd: ValDef => vd.tpt.tpe; case _ => TypeRepr.of[Any] } catch case _: Throwable => TypeRepr.of[Any])
-      val keysL  = fields.map(f => brStr(f.name))
-      // the slot is the field name as the code READS it, which brSafe escapes for a reserved word (`type` → `type_`);
-      // a plain `f.name` here left a non-model case class's `type` decoded under a key its own field access never read
-      val slotsL = fields.map(f => brStr(fieldKey(f)))
-      val rwsL   = types.map(t => rwFor(t, depth))
-      val ctor = if (isModel(cls)) s"${typeName(cls)}_new" else "invalid"
-      // a field the JSON leaves out takes its default, as fabric reads it on the JVM
-      val defaultsL = fields.indices.map(i => caseDefault(cls, i))
-      val defs = defaultsL.map(_.getOrElse("invalid")).mkString(", ")
-      val has = defaultsL.map(d => if (d.isDefined) "true" else "false").mkString(", ")
-      s"_rwGen(${brStr(cls.name)}, [${keysL.mkString(", ")}], [${slotsL.mkString(", ")}], [${rwsL.mkString(", ")}], $ctor, [$defs], [$has])"
+    /** A codec asked for at `t` (a given's right-hand side, an argument to `.json`): decided from the class it is in. */
+    def emitRw(t: Term)(make: Symbol => String): String = {
+      val before = rwAt
+      rwAt = where(t)
+      try make(currentClass) finally rwAt = before
     }
     /** The default of a case class's `i`th field (from 0), emitted, if it has one. */
     def caseDefault(cls: Symbol, i: Int): Option[String] = {
@@ -1789,15 +2125,9 @@ class RokuEmitter(
             case _ if pruning && fn.symbol.exists && fn.symbol.isDefDef && !fn.symbol.isClassConstructor
                 && allClassDefs.contains(fn.symbol.owner) && !keepClass(fn.symbol.owner) =>
               s"RtDead(${brStr(fn.symbol.owner.name.stripSuffix("$") + "." + fn.symbol.name)})"
-            // ── a fabric codec made of others (`optionRW(intRW)`, given to `.json`): the runtime's wrapper of them ──
-            case _ if isFabricRW(fn.symbol) && args.nonEmpty =>
-              val inner = args.map(emitArgVal)
-              fn.symbol.name match {
-                case "optionRW"                                   => s"_rwOpt(${inner.head})"
-                case "listRW" | "vectorRW" | "setRW" | "arrayRW" => s"_rwList(${inner.head})"
-                case "mapRW"                                      => s"_rwMap(${inner.last})"
-                case n                                            => s"_rw(${brStr(n)})"
-              }
+            // ── a fabric codec made of others (`optionRW(intRW)`, given to `.json`): the one of the type it codes ──
+            case _ if isFabricRW(fn.symbol) && args.nonEmpty && rwOf(t.tpe).isDefined =>
+              emitRw(t)(site => rwFor(rwOf(t.tpe).get, site, Nil))
             // ── rapid.Task (see "library shims") ──
             case Select(q, m) if isTaskModule(q) =>   // `Task.unit`, `Task.sleep` … inherited by the companion too
               val ea = explicitArgs(fn.symbol, args)
@@ -1819,10 +2149,9 @@ class RokuEmitter(
                 case _                           => shimCall(s"RapidTask_$m", Some(recv), ea)
               }
             // ── fabric.Json, its builders, the parser and formatter, RW ──
-            // `RW.gen[T]` reaches here as a plain call (the macro's expansion is not in the TASTy the emitter reads)
-            case _ if fn.symbol.exists && fn.symbol.name == "gen" && ownerFqn(fn.symbol).startsWith("fabric.rw.")   // RW.gen lives in CompileRW
-                && (try t.tpe.widen.typeArgs.nonEmpty catch case _: Throwable => false) =>
-              emitRwGen(t.tpe.widen.typeArgs.head, 0)   // the call's type is RW[T]
+            // `RW.gen[T]`, `RW.poly(…)(…)` … reach here as plain calls (the macro's expansion is not in the TASTy the emitter
+            // reads): the codec is decided as fabric would (see "fabric's codecs")
+            case _ if isRwBuilder(fn) && rwOf(t.tpe).isDefined => emitRw(t)(site => rwOfTerm(t, site, Nil))
             case Select(recv, "apply") if isFabricJson(fn) && args.size == 1 => shimCall("_jsonGet", Some(recv), args)
             case Select(recv, "get") if isFabricJson(fn) && args.size == 1   => shimCall("_jsonOpt", Some(recv), args)
             case Select(recv, m) if isFabricJson(fn) => shimCall(s"_json_$m", Some(recv), explicitArgs(fn.symbol, args))
@@ -2437,11 +2766,8 @@ class RokuEmitter(
       // outsideModelModule): read through the object, as `self` there is the class's own
       case id: Ident if id.symbol.exists && (id.symbol.isValDef || id.symbol.isDefDef) && !id.symbol.flags.is(Flags.Module) &&
           outsideModelModule(id.symbol.owner) => emitTerm(Select(This(id.symbol.owner), id.symbol))
-      // fabric's `RW.gen[T]`: the emitter derives the codec itself (see emitRwGen); the macro's output is not emitted
-      case Inlined(Some(call), _, _) if rwGenType(call).isDefined => emitRwGen(rwGenType(call).get, 0)
-      case Inlined(call, bs, e) if call.exists(c => c.show.contains("gen")) =>
-        System.err.println("DEBUG inlined call=" + call.map(_.show.take(160)) + " bs=" + bs.size + " expansion=" + e.show.take(200))
-        emitTermU(t0)
+      // fabric's `RW.gen[T]`: the emitter derives the codec itself (see "fabric's codecs"); the macro's output is not emitted
+      case Inlined(Some(call), _, _) if rwGenType(call).isDefined => emitRw(t0)(site => rwDerive(rwGenType(call).get, site, Nil))
       // An inlined call's bindings (`assert`'s message proxy …) are real vals.
       case Inlined(_, bs, e) if bs.nonEmpty && pendingStack.nonEmpty =>
         bs.foreach { bd => val st = emitStat(bd); if (st.trim.nonEmpty) pendingStack.top += st }
@@ -2563,9 +2889,13 @@ class RokuEmitter(
         // fabric's JSON null: BrightScript's own (`invalid`, which FormatJson writes as null)
         case id: Ident if isFabricNull(id.symbol)   => "invalid"
         case sel: Select if isFabricNull(sel.symbol) => "invalid"
-        // a fabric RW instance (`stringRW`, `valueRW`): the runtime's codec of that name
-        case id @ Ident(n) if isFabricRW(id.symbol)       => s"_rw(${brStr(n)})"
-        case sel @ Select(_, n) if isFabricRW(sel.symbol) => s"_rw(${brStr(n)})"
+        // a fabric RW instance (`stringRW`, `valueRW`): the codec of the type it codes
+        case id @ Ident(n) if isFabricRW(id.symbol)       => emitRw(id)(site => rwOf(id.tpe).map(rwFor(_, site, Nil)).getOrElse(s"_rw(${brStr(n)})"))
+        case sel @ Select(_, n) if isFabricRW(sel.symbol) => emitRw(sel)(site => rwOf(sel.tpe).map(rwFor(_, site, Nil)).getOrElse(s"_rw(${brStr(n)})"))
+        // a library's codec (a jar's `Level.rw`): decided here as fabric gave it, as nothing of the library is emitted
+        case r @ (_: Ident | _: Select) if r.symbol.exists && r.symbol.isTerm && !r.symbol.flags.is(Flags.Module)
+            && r.symbol.owner.isClassDef && !allClassDefs.contains(r.symbol.owner) && rwOf(r.tpe).isDefined =>
+          emitRw(r)(_ => rwOfGiven(r.symbol, Nil))
         // an enum's `values`, `valueOf` and `fromOrdinal`: its cases as an array, and one of them by name or ordinal (named
         // bare in its companion too, `values.find(…)`, which was a call to a `Route_values` nothing defines)
         case v @ (Select(_, "values") | Ident("values")) if enumOfMember(v).isDefined => enumValuesOf(enumOfMember(v).get)
@@ -2977,7 +3307,7 @@ class RokuEmitter(
       }
 
     def emitInto(t: Term, sk: String): String = t match {
-      case Inlined(Some(call), _, _) if rwGenType(call).isDefined => withStatement(sinkLine(sk, emitRwGen(rwGenType(call).get, 0)))
+      case Inlined(Some(call), _, _) if rwGenType(call).isDefined => withStatement(sinkLine(sk, emitRw(t)(site => rwDerive(rwGenType(call).get, site, Nil))))
       case Inlined(_, bindings, expansion) if bindings.nonEmpty =>
         (bindings.map(emitStat) :+ emitInto(expansion, sk)).filter(_.trim.nonEmpty).mkString("\n")
       case _ => emitIntoU(unwrap(t), sk)
@@ -4026,20 +4356,48 @@ class RokuEmitter(
                 if (cc.exists && cc.flags.is(Flags.Case)) markClass(cc)
               }
             }
-      // A derived codec constructs its case class, and every case class in its fields, from the JSON it reads: one that
-      // is only ever read (a server's answer) is live through its codec alone.
-      val read = mutable.Set[Symbol]()
-      def markRead(tp: TypeRepr, depth: Int): Unit = if (depth < 6) {
-        (try tp.typeArgs catch case _: Throwable => Nil).foreach(a => markRead(a, depth))
-        val sym = tp.typeSymbol
-        if (sym.exists && sym.flags.is(Flags.Case) && !isBuiltin(sym) && allClassDefs.contains(sym) && read.add(sym)) {
-          markClass(sym)
-          (try sym.caseFields catch case _: Throwable => Nil).foreach { f =>
-            try f.tree match {
-              case vd: ValDef => markRead(vd.tpt.tpe, depth + 1)
-              case _ => ()
-            } catch case _: Throwable => ()
+      // A codec constructs what it reads from the JSON, a case class and every case class, case object and enum in its
+      // fields and cases: one only ever read (a server's answer) is live through its codec alone. It is walked as
+      // `rwFor` decides it, and a codec of the program's it names (an `RW.string`) is live, with what its body names.
+      val read = mutable.Set[(Symbol, Symbol)]()
+      def markRead(tp0: TypeRepr, site: Symbol): Unit = {
+        val tp = try tp0.widen.dealias catch case _: Throwable => tp0
+        val args = try tp.typeArgs catch case _: Throwable => Nil
+        if (args.nonEmpty && (fqnOf(tp) == "scala.Option" || isSetTpe(tp) || isMapTpe(tp) || rwSeqs(fqnOf(tp))))
+          args.foreach(markRead(_, site))
+        else if (!rwPlain(tp) && read.add((tp.typeSymbol, site)))
+          rwGiven(tp, site) match {
+            case Some(g) => markGiven(g)
+            case None    => markDerived(tp, site)
           }
+      }
+      def markGiven(g: Symbol): Unit = {
+        markRef(g)
+        rwRhs(g).filter(rwStructural).foreach(markCodec(_, g.owner))
+      }
+      def markCodec(t: Term, site: Symbol): Unit = unwrap(t) match {
+        case r @ (_: Ident | _: Select) =>
+          if (ownerFqn(r.symbol).startsWith("fabric.")) rwOf(r.tpe).foreach(markRead(_, site)) else markGiven(r.symbol)
+        case u =>
+          rwCall(u) match {
+            case Some((m, targs, argss)) if m.name == "gen" || m.name == "derived" =>
+              targs.headOption.orElse(rwOf(u.tpe)).foreach(markDerived(_, site))
+            case Some((m, _, argss)) if m.name == "poly" => argss.lift(1).toList.flatMap(flattenVarargs).foreach(markCodec(_, site))
+            case _ => rwOf(u.tpe).foreach(markRead(_, site))
+          }
+      }
+      def markDerived(tp: TypeRepr, site: Symbol): Unit = {
+        val s = tp.typeSymbol
+        if (s.flags.is(Flags.Enum) || s.flags.is(Flags.Sealed)) {
+          markClass(s)
+          s.children.foreach { c =>
+            if (rwIsSingleton(c)) markRef(c)
+            else if (c.isClassDef && c.flags.is(Flags.Case)) markRead(c.typeRef, site)
+          }
+        }
+        else if (s.flags.is(Flags.Case) && s.isClassDef && !isBuiltin(s)) {
+          markClass(s)
+          (try s.caseFields catch case _: Throwable => Nil).foreach(f => try markRead(tp.memberType(f), site) catch case _: Throwable => ())
         }
       }
       val walker = new TreeTraverser {
@@ -4053,11 +4411,11 @@ class RokuEmitter(
                 t match {
                   case term: Term =>
                     val w = term.tpe.widen
-                    if (fqnOf(w).startsWith("fabric.rw.")) w.typeArgs.foreach(a => markRead(a, 0))
+                    if (fqnOf(w).startsWith("fabric.rw.")) w.typeArgs.foreach(a => markRead(a, t.symbol.owner))
                   case _ => ()
                 }
               } catch case _: Throwable => ()
-            case Inlined(Some(call), _, _) => rwGenType(call).foreach(tp => markRead(tp, 0))
+            case Inlined(Some(call), _, _) => rwGenType(call).foreach(tp => markDerived(tp, Symbol.noSymbol))
             case _                    => ()
           }
           super.traverseTree(t)(owner)
@@ -4108,7 +4466,7 @@ class RokuEmitter(
     parts.zipWithIndex.foreach { case (code, i) => write("components/" + RokuEmitter.partName(i), code) }
     write("components/AppScene.xml", sceneXml.replace(RokuEmitter.appScript(0),
       parts.indices.map(RokuEmitter.appScript).mkString("\n  ")))
-    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs + enumShimsBrs + collectionShimsBrs + bytesShimsBrs)
+    write("components/ScalaRuntime.brs", runtimeBrs + "\n" + shimsBrs + enumShimsBrs + collectionShimsBrs + codecShimsBrs + bytesShimsBrs)
   }
 
   // Facade access is emitted as `ga.<Module>.<member>` (see the Select case).
@@ -4379,7 +4737,7 @@ class RokuEmitter(
     * Scala local takes. */
   private lazy val runtimeFnNames: Set[String] =
     "(?im)^\\s*(?:function|sub)\\s+([A-Za-z_][A-Za-z0-9_]*)".r
-      .findAllMatchIn(runtimeBrs + "\n" + shimsBrs + enumShimsBrs + collectionShimsBrs).map(_.group(1).toLowerCase).toSet
+      .findAllMatchIn(runtimeBrs + "\n" + shimsBrs + enumShimsBrs + collectionShimsBrs + codecShimsBrs).map(_.group(1).toLowerCase).toSet
 
   /** The core of the Scala runtime: string conversion, collection, String,
    *  Option and Try/Either operations, closure invocation (`RtInvoke`) and the
@@ -6271,86 +6629,6 @@ class RokuEmitter(
       |function _json_toString(j as dynamic) as string
       |    return FormatJson(j)
       |end function
-      |' fabric.rw: codecs. A primitive, a String or a Json value is itself (`_rw(name)`); a case class reads and
-      |' writes by its field names with a codec per field (`_rwGen`, the emitter's derivation of `RW.gen`); Option,
-      |' List and Map wrap their element's codec.
-      |function _rw(name as string) as object
-      |    return { _cls: "RW", name: name }
-      |end function
-      |function _rwGen(cls as string, keys as object, slots as object, rws as object, ctor as dynamic, defs = invalid as dynamic, has = invalid as dynamic) as object
-      |    return { _cls: "RW", kind: "case", cls: cls, keys: keys, slots: slots, rws: rws, ctor: ctor, defs: defs, has: has }
-      |end function
-      |function _rwOpt(inner as object) as object
-      |    return { _cls: "RW", kind: "opt", inner: inner }
-      |end function
-      |function _rwList(inner as object) as object
-      |    return { _cls: "RW", kind: "list", inner: inner }
-      |end function
-      |function _rwMap(inner as object) as object
-      |    return { _cls: "RW", kind: "map", inner: inner }
-      |end function
-      |' JSON → value
-      |function _rwRead(rw as dynamic, j as dynamic) as dynamic
-      |    if rw = invalid or rw.kind = invalid or j = invalid then return j
-      |    if rw.kind = "opt" then return _rwRead(rw.inner, j)
-      |    if rw.kind = "list"
-      |        r = []
-      |        for each x in j
-      |            r.push(_rwRead(rw.inner, x))
-      |        end for
-      |        return r
-      |    end if
-      |    if rw.kind = "map"
-      |        m = _mapEmpty()
-      |        for each k in j
-      |            m = _mapPut(m, k, _rwRead(rw.inner, j[k]))
-      |        end for
-      |        return m
-      |    end if
-      |    n = rw.keys.count()
-      |    args = []
-      |    for i = 0 to n - 1
-      |        ' a field the JSON leaves out, or sends as null, takes the case class's default, where it has one
-      |        if rw.has <> invalid and rw.has[i] = true and (not j.DoesExist(rw.keys[i]) or j[rw.keys[i]] = invalid)
-      |            args.push(rw.defs[i])
-      |        else
-      |            args.push(_rwRead(rw.rws[i], j[rw.keys[i]]))
-      |        end if
-      |    end for
-      |    if rw.ctor <> invalid then return RtCallArgs(rw.ctor, args)
-      |    o = { _cls: rw.cls, _fields: rw.slots }
-      |    for i = 0 to n - 1
-      |        o[rw.slots[i]] = args[i]
-      |    end for
-      |    return o
-      |end function
-      |' value → JSON
-      |function _rwWrite(rw as dynamic, v as dynamic) as dynamic
-      |    if rw = invalid or rw.kind = invalid or v = invalid then return v
-      |    if rw.kind = "opt" then return _rwWrite(rw.inner, v)
-      |    if rw.kind = "list"
-      |        r = []
-      |        for each x in v
-      |            r.push(_rwWrite(rw.inner, x))
-      |        end for
-      |        return r
-      |    end if
-      |    if rw.kind = "map"
-      |        aa = {}
-      |        aa.SetModeCaseSensitive()
-      |        for each t in _mapToList(v)
-      |            aa[_str(t._1)] = _rwWrite(rw.inner, t._2)
-      |        end for
-      |        return aa
-      |    end if
-      |    aa = {}
-      |    aa.SetModeCaseSensitive()
-      |    n = rw.keys.count()
-      |    for i = 0 to n - 1
-      |        aa[rw.keys[i]] = _rwWrite(rw.rws[i], v[rw.slots[i]])
-      |    end for
-      |    return aa
-      |end function
       |' a function reference applied to an argument list (BrightScript cannot spread one)
       |function RtCallArgs(f as function, args as object) as dynamic
       |    n = args.count()
@@ -7330,6 +7608,253 @@ class RokuEmitter(
       |    end for
       |    if first then return invalid
       |    return r
+      |end function
+      |""".stripMargin
+
+  /** fabric's codecs, as fabric writes and reads JSON on the JVM: a constant of its own, under the JVM's cap. */
+  private val codecShimsBrs: String =
+    """
+      |' fabric.rw: codecs, writing and reading the JSON fabric does. A number, a String, a Boolean or a Json value is
+      |' itself (`_rw`); a case class an object of its fields by name, each by its own codec, a missing one taking its
+      |' default (`_rwGen`); an enum, or case objects, a name (`_rwNamed`); a sealed trait's case its own JSON with the
+      |' case's name as its `type` (`_rwPoly`); RW.string, RW.from and the like the app's own functions (`_rwVia`);
+      |' RW.static an empty object. Option, List, Set and Map wrap their elements' codecs, and a Map of other keys than
+      |' Strings is an array of key and value pairs (`_rwMapKV`). `_rwNone` is a codec the compiler could not make (a
+      |' gap of the emit): it throws rather than pass a value through as JSON.
+      |function _rw(name as string) as object
+      |    return { _cls: "RW", name: name }
+      |end function
+      |function _rwGen(cls as string, keys as object, slots as object, rws as object, ctor as dynamic, defs = invalid as dynamic, has = invalid as dynamic) as object
+      |    return { _cls: "RW", kind: "case", cls: cls, keys: keys, slots: slots, rws: rws, ctor: ctor, defs: defs, has: has }
+      |end function
+      |function _rwOpt(inner as object) as object
+      |    return { _cls: "RW", kind: "opt", inner: inner }
+      |end function
+      |function _rwList(inner as object) as object
+      |    return { _cls: "RW", kind: "list", inner: inner }
+      |end function
+      |function _rwSet(inner as object) as object
+      |    return { _cls: "RW", kind: "set", inner: inner }
+      |end function
+      |function _rwMap(inner as object) as object
+      |    return { _cls: "RW", kind: "map", inner: inner }
+      |end function
+      |function _rwMapKV(key as object, inner as object) as object
+      |    return { _cls: "RW", kind: "mapkv", key: key, inner: inner }
+      |end function
+      |' values by their names: an enum's (`Priority.High`, read too by its case alone, any case), or RW.enumeration's
+      |' (`names` an array, or its `asString` to name each value by), read in any case unless `caseSensitive`
+      |function _rwNamed(values as object, names as dynamic, mode as string, caseSensitive as boolean) as object
+      |    if _rtKind(names) <> "arr"
+      |        asString = names
+      |        names = []
+      |        for each v in values
+      |            names.push(RtInvoke(asString, [v]))
+      |        end for
+      |    end if
+      |    return { _cls: "RW", kind: "named", values: values, names: names, mode: mode, cs: caseSensitive }
+      |end function
+      |function _rwVia(w as dynamic, r as dynamic) as object
+      |    return { _cls: "RW", kind: "via", w: w, r: r }
+      |end function
+      |function _rwStatic(value as dynamic) as object
+      |    return { _cls: "RW", kind: "static", value: value }
+      |end function
+      |' a sealed trait's cases, or RW.poly's: each by its wire name, the leaf an older wire form names it by ("" for
+      |' none), what tells its values (its class's `_cls`, or the singleton itself), its codec, and whether that codec
+      |' is polymorphic itself and reads the whole object; `wrap` puts a case written as other than an object under
+      |' `value` (RW.gen's), where RW.poly's writes the `type` alone
+      |function _rwPoly(field as string, wires as object, leaves as object, tags as object, rws as object, nested as object, wrap as boolean) as object
+      |    return { _cls: "RW", kind: "poly", field: field, wires: wires, leaves: leaves, tags: tags, rws: rws, nested: nested, wrap: wrap }
+      |end function
+      |function _rwNone(what as string) as object
+      |    return { _cls: "RW", kind: "none", what: what }
+      |end function
+      |function _rwThrow(message as string) as dynamic
+      |    RtThrow(RuntimeException_new(message))
+      |    return invalid
+      |end function
+      |' JSON → value
+      |function _rwRead(rw as dynamic, j as dynamic) as dynamic
+      |    if rw = invalid or rw.kind = invalid or j = invalid then return j
+      |    k = rw.kind
+      |    if k = "opt" then return _rwRead(rw.inner, j)
+      |    if k = "list" or k = "set"
+      |        r = []
+      |        for each x in j
+      |            r.push(_rwRead(rw.inner, x))
+      |        end for
+      |        if k = "set" then return _distinct(r)
+      |        return r
+      |    end if
+      |    if k = "map"
+      |        m = _mapEmpty()
+      |        for each name in j
+      |            m = _mapPut(m, name, _rwRead(rw.inner, j[name]))
+      |        end for
+      |        return m
+      |    end if
+      |    if k = "mapkv"
+      |        m = _mapEmpty()
+      |        for each e in j
+      |            m = _mapPut(m, _rwRead(rw.key, e["key"]), _rwRead(rw.inner, e["value"]))
+      |        end for
+      |        return m
+      |    end if
+      |    if k = "named" then return _rwNamedRead(rw, j)
+      |    if k = "poly" then return _rwPolyRead(rw, j)
+      |    if k = "via" then return RtInvoke(rw.r, [j])
+      |    if k = "static" then return rw.value
+      |    if k = "none" then return _rwThrow("no codec for " + rw.what + " on this device")
+      |    n = rw.keys.count()
+      |    args = []
+      |    for i = 0 to n - 1
+      |        ' a field the JSON leaves out, or sends as null, takes the case class's default, where it has one
+      |        if rw.has <> invalid and rw.has[i] = true and (not j.DoesExist(rw.keys[i]) or j[rw.keys[i]] = invalid)
+      |            args.push(rw.defs[i])
+      |        else
+      |            args.push(_rwRead(rw.rws[i], j[rw.keys[i]]))
+      |        end if
+      |    end for
+      |    if rw.ctor <> invalid then return RtCallArgs(rw.ctor, args)
+      |    o = { _cls: rw.cls, _fields: rw.slots }
+      |    for i = 0 to n - 1
+      |        o[rw.slots[i]] = args[i]
+      |    end for
+      |    return o
+      |end function
+      |function _rwNamedRead(rw as object, j as dynamic) as dynamic
+      |    if _rtKind(j) <> "s" then return _rwThrow("expected a string for an enumeration, got " + FormatJson(j))
+      |    ' the name as written (an enum's exactly), then the last part of it alone (an enum's in any case)
+      |    for i = 0 to rw.names.count() - 1
+      |        if _rwSame(rw.names[i], j, rw.mode = "enum" or rw.cs) then return rw.values[i]
+      |    end for
+      |    found = -1
+      |    for i = 0 to rw.names.count() - 1
+      |        if _rwSame(_rwLeaf(rw.names[i]), j, rw.mode <> "enum" and rw.cs)
+      |            if found >= 0 then return _rwThrow("ambiguous enumeration value '" + j + "'")
+      |            found = i
+      |        end if
+      |    end for
+      |    if found < 0 then return _rwThrow("unknown enumeration value '" + j + "'")
+      |    return rw.values[found]
+      |end function
+      |function _rwSame(a as string, b as string, caseSensitive as boolean) as boolean
+      |    if caseSensitive then return a = b
+      |    return LCase(a) = LCase(b)
+      |end function
+      |function _rwLeaf(s as string) as string
+      |    parts = s.Split(".")
+      |    for i = parts.count() - 1 to 0 step -1
+      |        if parts[i] <> "" then return parts[i]
+      |    end for
+      |    return s
+      |end function
+      |function _rwPolyRead(rw as object, j as dynamic) as dynamic
+      |    if _rtKind(j) <> "aa" then return _rwThrow("expected a JSON object for a polymorphic type, got " + FormatJson(j))
+      |    t = j[rw.field]
+      |    if _rtKind(t) <> "s" then return _rwThrow("missing or invalid '" + rw.field + "' field in JSON for a polymorphic type")
+      |    i = -1
+      |    for c = 0 to rw.wires.count() - 1
+      |        if rw.wires[c] = t then
+      |            i = c
+      |            exit for
+      |        end if
+      |    end for
+      |    if i < 0
+      |        ' an older wire form: the case's name alone, in any case, where it names one case
+      |        lt = LCase(t)
+      |        for c = 0 to rw.leaves.count() - 1
+      |            if rw.leaves[c] <> "" and rw.leaves[c] = lt
+      |                if i >= 0 then return _rwThrow("ambiguous legacy discriminator '" + t + "'")
+      |                i = c
+      |            end if
+      |        end for
+      |    end if
+      |    if i < 0 then return _rwThrow("unknown type discriminator: " + t)
+      |    if rw.nested[i] then return _rwRead(rw.rws[i], j)
+      |    o = {}
+      |    o.SetModeCaseSensitive()
+      |    for each name in j
+      |        if name <> rw.field then o[name] = j[name]
+      |    end for
+      |    return _rwRead(rw.rws[i], o)
+      |end function
+      |' value → JSON
+      |function _rwWrite(rw as dynamic, v as dynamic) as dynamic
+      |    if rw = invalid or rw.kind = invalid or v = invalid then return v
+      |    k = rw.kind
+      |    if k = "opt" then return _rwWrite(rw.inner, v)
+      |    if k = "list" or k = "set"
+      |        r = []
+      |        for each x in v
+      |            r.push(_rwWrite(rw.inner, x))
+      |        end for
+      |        return r
+      |    end if
+      |    if k = "map"
+      |        aa = {}
+      |        aa.SetModeCaseSensitive()
+      |        for each t in _mapToList(v)
+      |            aa[_str(t._1)] = _rwWrite(rw.inner, t._2)
+      |        end for
+      |        return aa
+      |    end if
+      |    if k = "mapkv"
+      |        r = []
+      |        for each t in _mapToList(v)
+      |            e = {}
+      |            e.SetModeCaseSensitive()
+      |            e["key"] = _rwWrite(rw.key, t._1)
+      |            e["value"] = _rwWrite(rw.inner, t._2)
+      |            r.push(e)
+      |        end for
+      |        return r
+      |    end if
+      |    if k = "named"
+      |        for i = 0 to rw.values.count() - 1
+      |            if _eq(rw.values[i], v) then return rw.names[i]
+      |        end for
+      |        return _rwThrow("no name for " + _str(v))
+      |    end if
+      |    if k = "poly" then return _rwPolyWrite(rw, v)
+      |    if k = "via" then return RtInvoke(rw.w, [v])
+      |    if k = "static"
+      |        aa = {}
+      |        aa.SetModeCaseSensitive()
+      |        return aa
+      |    end if
+      |    if k = "none" then return _rwThrow("no codec for " + rw.what + " on this device")
+      |    aa = {}
+      |    aa.SetModeCaseSensitive()
+      |    n = rw.keys.count()
+      |    for i = 0 to n - 1
+      |        aa[rw.keys[i]] = _rwWrite(rw.rws[i], v[rw.slots[i]])
+      |    end for
+      |    return aa
+      |end function
+      |function _rwPolyWrite(rw as object, v as dynamic) as dynamic
+      |    i = -1
+      |    for c = 0 to rw.tags.count() - 1
+      |        tag = rw.tags[c]
+      |        if _rtKind(tag) = "s"
+      |            if v._cls = tag then i = c
+      |        else if tag <> invalid
+      |            if _eq(v, tag) then i = c
+      |        end if
+      |        if i >= 0 then exit for
+      |    end for
+      |    if i < 0 then return _rwThrow("unknown subtype: " + _str(v))
+      |    j = _rwWrite(rw.rws[i], v)
+      |    if _rtKind(j) = "aa"
+      |        j[rw.field] = rw.wires[i]
+      |        return j
+      |    end if
+      |    o = {}
+      |    o.SetModeCaseSensitive()
+      |    o[rw.field] = rw.wires[i]
+      |    if rw.wrap then o["value"] = j
+      |    return o
       |end function
       |""".stripMargin
 

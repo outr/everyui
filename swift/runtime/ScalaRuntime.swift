@@ -1495,9 +1495,13 @@ func _json_value(_ j: V) -> V {
     return o.fields.keys.sorted().reduce(_mapEmpty()) { _mapPut($0, .vStr($1), o.fields[$1] ?? .vNull) }
 }
 func _json_toString(_ j: V) -> V { _jsonFormat(j) }
-/// fabric.rw: codecs. A primitive, a String or a Json value is itself (`_rw(name)`); a case class reads and writes
-/// by its field names with a codec per field (`_rwGen`, the emitter's derivation of `RW.gen`); Option, List and
-/// Map wrap their element's codec.
+/// fabric.rw: codecs, writing and reading the JSON fabric does. A number, a String, a Boolean or a Json value is
+/// itself (`_rw`); a case class an object of its fields by name, each by its own codec, a missing one taking its
+/// default (`_rwGen`); an enum, or case objects, a name (`_rwNamed`); a sealed trait's case its own JSON with the
+/// case's name as its `type` (`_rwPoly`); RW.string, RW.from and the like the app's own functions (`_rwVia`);
+/// RW.static an empty object. Option, List, Set and Map wrap their elements' codecs, and a Map of other keys than
+/// Strings is an array of key and value pairs (`_rwMapKV`). `_rwNone` is a codec the compiler could not make (a gap
+/// of the emit): it throws rather than pass a value through as JSON. As the Roku's (RokuEmitter's codecShimsBrs).
 func _rw(_ name: V) -> V { rtObj(["_cls": .vStr("RW"), "name": name]) }
 func _rwGen(_ cls: V, _ keys: V, _ slots: V, _ rws: V, _ ctor: V, _ defs: V = .vNull, _ has: V = .vNull) -> V {
     rtObj(["_cls": .vStr("RW"), "kind": .vStr("case"), "cls": cls, "keys": keys, "slots": slots, "rws": rws, "ctor": ctor,
@@ -1505,7 +1509,29 @@ func _rwGen(_ cls: V, _ keys: V, _ slots: V, _ rws: V, _ ctor: V, _ defs: V = .v
 }
 func _rwOpt(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("opt"), "inner": inner]) }
 func _rwList(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("list"), "inner": inner]) }
+func _rwSet(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("set"), "inner": inner]) }
 func _rwMap(_ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("map"), "inner": inner]) }
+func _rwMapKV(_ key: V, _ inner: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("mapkv"), "key": key, "inner": inner]) }
+/// Values by their names: an enum's (`Priority.High`, read too by its case alone, any case), or RW.enumeration's
+/// (`names` an array, or its `asString` to name each value by), read in any case unless `caseSensitive`.
+func _rwNamed(_ values: V, _ names: V, _ mode: V, _ caseSensitive: V) throws -> V {
+    var named = names
+    if case .vArr = names {} else { named = rtArr(try rtItems(values).map { try RtInvoke(names, rtArr([$0])) }) }
+    return rtObj(["_cls": .vStr("RW"), "kind": .vStr("named"), "values": values, "names": named, "mode": mode,
+                  "cs": caseSensitive])
+}
+func _rwVia(_ w: V, _ r: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("via"), "w": w, "r": r]) }
+func _rwStatic(_ value: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("static"), "value": value]) }
+/// A sealed trait's cases, or RW.poly's: each by its wire name, the leaf an older wire form names it by ("" for
+/// none), what tells its values (its class's `_cls`, or the singleton itself), its codec, and whether that codec is
+/// polymorphic itself and reads the whole object; `wrap` puts a case written as other than an object under `value`
+/// (RW.gen's), where RW.poly's writes the `type` alone.
+func _rwPoly(_ field: V, _ wires: V, _ leaves: V, _ tags: V, _ rws: V, _ nested: V, _ wrap: V) -> V {
+    rtObj(["_cls": .vStr("RW"), "kind": .vStr("poly"), "field": field, "wires": wires, "leaves": leaves, "tags": tags,
+           "rws": rws, "nested": nested, "wrap": wrap])
+}
+func _rwNone(_ what: V) -> V { rtObj(["_cls": .vStr("RW"), "kind": .vStr("none"), "what": what]) }
+func rwThrow(_ message: String) throws -> V { try RtThrow(rtException("RuntimeException", message)) }
 /// JSON → value
 func _rwRead(_ rw: V, _ j: V) throws -> V {
     guard case .vObj = rw, case .vStr(let kind) = rw["kind"] else { return j }
@@ -1513,19 +1539,73 @@ func _rwRead(_ rw: V, _ j: V) throws -> V {
     switch kind {
     case "opt": return try _rwRead(rw["inner"], j)
     case "list": return rtArr(try rtItems(j).map { try _rwRead(rw["inner"], $0) })
+    case "set": return _distinct(rtArr(try rtItems(j).map { try _rwRead(rw["inner"], $0) }))
     case "map":
         var m = _mapEmpty()
-        if case .vObj(let o) = j { for (k, x) in o.fields { m = try _mapPut(m, .vStr(k), try _rwRead(rw["inner"], x)) } }
+        if case .vObj(let o) = j { for (k, x) in o.fields { m = _mapPut(m, .vStr(k), try _rwRead(rw["inner"], x)) } }
         return m
+    case "mapkv":
+        var m = _mapEmpty()
+        for e in rtItems(j) { m = _mapPut(m, try _rwRead(rw["key"], e["key"]), try _rwRead(rw["inner"], e["value"])) }
+        return m
+    case "named": return try rwNamedRead(rw, j)
+    case "poly": return try rwPolyRead(rw, j)
+    case "via": return try RtInvoke(rw["r"], rtArr([j]))
+    case "static": return rw["value"]
+    case "none": return try rwThrow("no codec for " + rtS(rw["what"]) + " on this device")
     default:
         let keys = rtItems(rw["keys"]), slots = rtItems(rw["slots"]), rws = rtItems(rw["rws"])
+        let defs = rtItems(rw["defs"]), has = rtItems(rw["has"])
         var args: [V] = []
-        for i in keys.indices { args.append(try _rwRead(rws[i], j[rtS(keys[i])])) }
+        for i in keys.indices {
+            let key = rtS(keys[i])
+            // a field the JSON leaves out, or sends as null, takes the case class's default, where it has one
+            var missing = true
+            if case .vObj(let o) = j, let x = o.fields[key] { if case .vNull = x {} else { missing = false } }
+            if missing && i < has.count && has[i].rtTrue { args.append(defs[i]) }
+            else { args.append(try _rwRead(rws[i], j[key])) }
+        }
         if case .vFn(let f) = rw["ctor"] { return try f.call(args) }
         let o = rtObj(["_cls": rw["cls"], "_fields": rw["slots"]])
         for i in slots.indices { o[rtS(slots[i])] = args[i] }
         return o
     }
+}
+func rwSame(_ a: String, _ b: String, _ caseSensitive: Bool) -> Bool {
+    caseSensitive ? a == b : a.lowercased() == b.lowercased()
+}
+func rwLeaf(_ s: String) -> String { s.split(separator: ".").last.map(String.init) ?? s }
+func rwNamedRead(_ rw: V, _ j: V) throws -> V {
+    guard case .vStr(let name) = j else { return try rwThrow("expected a string for an enumeration, got " + rtS(_jsonFormat(j))) }
+    let names = rtItems(rw["names"]).map(rtS), values = rtItems(rw["values"])
+    let isEnum = rtS(rw["mode"]) == "enum", cs = rw["cs"].rtTrue
+    // the name as written (an enum's exactly), then the last part of it alone (an enum's in any case)
+    if let i = names.firstIndex(where: { rwSame($0, name, isEnum || cs) }) { return values[i] }
+    let leaves = names.indices.filter { rwSame(rwLeaf(names[$0]), name, !isEnum && cs) }
+    if leaves.count > 1 { return try rwThrow("ambiguous enumeration value '\(name)'") }
+    guard let i = leaves.first else { return try rwThrow("unknown enumeration value '\(name)'") }
+    return values[i]
+}
+func rwPolyRead(_ rw: V, _ j: V) throws -> V {
+    guard case .vObj(let o) = j else { return try rwThrow("expected a JSON object for a polymorphic type, got " + rtS(_jsonFormat(j))) }
+    let field = rtS(rw["field"])
+    guard case .vStr(let t) = j[field] else {
+        return try rwThrow("missing or invalid '\(field)' field in JSON for a polymorphic type")
+    }
+    let wires = rtItems(rw["wires"]).map(rtS), leaves = rtItems(rw["leaves"]).map(rtS)
+    var found = wires.firstIndex(of: t)
+    if found == nil {
+        // an older wire form: the case's name alone, in any case, where it names one case
+        let matches = leaves.indices.filter { leaves[$0] != "" && leaves[$0] == t.lowercased() }
+        if matches.count > 1 { return try rwThrow("ambiguous legacy discriminator '\(t)'") }
+        found = matches.first
+    }
+    guard let i = found else { return try rwThrow("unknown type discriminator: \(t)") }
+    let codec = rtItems(rw["rws"])[i]
+    if rtItems(rw["nested"])[i].rtTrue { return try _rwRead(codec, j) }
+    var fields = o.fields
+    fields[field] = nil
+    return try _rwRead(codec, rtObj(fields))
 }
 /// value → JSON
 func _rwWrite(_ rw: V, _ v: V) throws -> V {
@@ -1533,17 +1613,49 @@ func _rwWrite(_ rw: V, _ v: V) throws -> V {
     if case .vNull = v { return v }
     switch kind {
     case "opt": return try _rwWrite(rw["inner"], v)
-    case "list": return rtArr(try rtItems(v).map { try _rwWrite(rw["inner"], $0) })
+    case "list", "set": return rtArr(try rtItems(v).map { try _rwWrite(rw["inner"], $0) })
     case "map":
         var fields: [String: V] = [:]
         for t in rtItems(_mapToList(v)) { fields[rtS(t["_1"])] = try _rwWrite(rw["inner"], t["_2"]) }
         return rtObj(fields)
+    case "mapkv":
+        return rtArr(try rtItems(_mapToList(v)).map {
+            rtObj(["key": try _rwWrite(rw["key"], $0["_1"]), "value": try _rwWrite(rw["inner"], $0["_2"])])
+        })
+    case "named":
+        let values = rtItems(rw["values"])
+        if let i = values.firstIndex(where: { rtEq($0, v) }) { return rtItems(rw["names"])[i] }
+        return try rwThrow("no name for " + rtS(v))
+    case "poly": return try rwPolyWrite(rw, v)
+    case "via": return try RtInvoke(rw["w"], rtArr([v]))
+    case "static": return rtObj([:])
+    case "none": return try rwThrow("no codec for " + rtS(rw["what"]) + " on this device")
     default:
         let keys = rtItems(rw["keys"]), slots = rtItems(rw["slots"]), rws = rtItems(rw["rws"])
         var fields: [String: V] = [:]
         for i in keys.indices { fields[rtS(keys[i])] = try _rwWrite(rws[i], v[rtS(slots[i])]) }
         return rtObj(fields)
     }
+}
+func rwPolyWrite(_ rw: V, _ v: V) throws -> V {
+    let tags = rtItems(rw["tags"])
+    let found = tags.firstIndex(where: { tag in
+        switch tag {
+        case .vStr(let cls): return rtS(v["_cls"]) == cls
+        case .vNull: return false
+        default: return rtEq(v, tag)
+        }
+    })
+    guard let i = found else { return try rwThrow("unknown subtype: " + rtS(v)) }
+    let field = rtS(rw["field"]), wire = rtItems(rw["wires"])[i]
+    let j = try _rwWrite(rtItems(rw["rws"])[i], v)
+    if case .vObj = j {
+        j[field] = wire
+        return j
+    }
+    var fields: [String: V] = [field: wire]
+    if rw["wrap"].rtTrue { fields["value"] = j }
+    return rtObj(fields)
 }
 /// A Scala 3 enum's simple case: one singleton per (enum, case), named by `toString`, ordered by `ordinal`.
 func RtEnum(_ cls: V, _ name: V, _ ordinal: V) -> V {
