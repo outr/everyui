@@ -44,7 +44,8 @@ object Push {
     * Android; a browser opens the app for it where no window of it is open): once either way. A reply typed into one
     * (`PushButton.input`) goes to `BackgroundApp.onPushReply` on Android, app open or closed, and is heard here on
     * the web, with its words in `PushAction.text` where the browser took any. One of either kind that requires an unlock
-    * (`PushButton.requiresUnlock`) opens the app before Android 12, and is heard here as one that opens it is. */
+    * (`PushButton.requiresUnlock`) opens the app before Android 12, and is heard here as one that opens it is. A copy
+    * button (`PushButton.copyText`) is heard neither here nor by `onPushAction` unless it is a background button too. */
   val acted: Channel[PushAction] = Channel[PushAction]
 
   /** A new token for the server, where the platform replaced the one it had (a refreshed FCM token, a Web Push

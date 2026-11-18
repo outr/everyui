@@ -84,8 +84,9 @@ object PushAccess {
   /** The activity's new intent: a tap on one of the app's notifications, or on one the system showed for FCM. */
   def tapped(intent: Intent): Unit =
     if (intent != null && intent.hasExtra(actionExtra)) {
-      dismiss(Host.activity, intent)
-      Push.chose(actionOf(intent), go = true, opened = intent.getBooleanExtra(unlockExtra, false))
+      val action = actionOf(intent)
+      if (opening(Host.activity, intent, action))
+        Push.chose(action, go = true, opened = intent.getBooleanExtra(unlockExtra, false))
     }
     // one of the app's own: the push whole, its buttons and data with it
     else if (intent != null && intent.hasExtra(messageExtra)) Push.tapped(actionOf(intent).message)
@@ -152,22 +153,26 @@ object PushAccess {
       builder.setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY)
     }
     if (replies.nonEmpty && Build.VERSION.SDK_INT >= 24) builder.setRemoteInputHistory(replies.toArray[CharSequence])
-    // its buttons: one that runs in the background, or takes a reply, a broadcast to the BackgroundReceiver where the
-    // app has a BackgroundApp, else (and one that opens the app) the app's launch with the button chosen; one that
-    // requires an unlock waits for it from Android 12, and before opens the app, which the lock screen guards
+    // its buttons: one that runs in the background, takes a reply or copies, a broadcast to the BackgroundReceiver
+    // where the app has a BackgroundApp, else (and one that opens the app) the app's launch with the button chosen;
+    // one that requires an unlock waits for it from Android 12, and before opens the app, which the lock screen guards.
+    // (A copy button's text stays off a locked screen that hides what notifications say: Android shows a private
+    // notification there as the app's name alone, with no buttons.)
     message.actions.take(PushButton.most).zipWithIndex.foreach { (b, i) =>
       val code = (shownAs._2.toString + "#" + shownAs._1 + "#" + i.toString).hashCode
       val flags = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
       val unlocking = b.opensToUnlock(Build.VERSION.SDK_INT)
-      val takes = b.input && !unlocking && Background.supported && Build.VERSION.SDK_INT >= 24
+      val copies = b.copyText.nonEmpty
+      val takes = b.input && !copies && !unlocking && Background.supported && Build.VERSION.SDK_INT >= 24
       val chosen =
-        if (takes || (b.background && !unlocking && Background.supported))
+        if (takes || ((b.background || copies) && !unlocking && Background.supported))
           PendingIntent.getBroadcast(context, code, chose(put(new Intent(context, classOf[BackgroundReceiver])
             .setAction(actionIntent), message, Some(b.id)), shownAs), if (takes) mutable else flags)
         else {
           val opening = chose(put(launcher(context), message, Some(b.id)), shownAs)
           if (unlocking) opening.putExtra(unlockExtra, true)
-          b.path.orElse(message.path).foreach(p => opening.putExtra("path", p))
+          // a copy alone opens the app where it was, copying as it opens
+          if (!copies || b.background) b.path.orElse(message.path).foreach(p => opening.putExtra("path", p))
           PendingIntent.getActivity(context, code, opening, flags)
         }
       val action = new Notification.Action.Builder(Icon.createWithResource(context, NoticeIcon.of(context)), b.label, chosen)
@@ -183,6 +188,26 @@ object PushAccess {
     }
     catch { case t: SecurityException => android.util.Log.w("everyui", "notification not posted: " + t.getMessage) }
   }
+
+  /** A copy button's text put on the clipboard (`PushCopy`), and its notification taken away where it says so
+    * (`copyDismisses`); false, and nothing done, for any other button. */
+  def copied(context: Context, intent: Intent, action: PushAction): Boolean = action.button.flatMap(_.copyText) match {
+    case Some(text) =>
+      PushCopy(context, text)
+      if (action.button.exists(_.copyDismisses)) dismiss(context, intent)
+      true
+    case None => false
+  }
+
+  /** A button that opened the app, as the activity hears it: a copy button's text copied (where the app has no
+    * BackgroundApp to copy it closed, or it waited for the unlock), any other's notification taken away; whether the
+    * app hears it (`Push.acted`), as it does all but a copy alone. */
+  private def opening(context: Context, intent: Intent, action: PushAction): Boolean =
+    if (copied(context, intent, action)) action.background
+    else {
+      dismiss(context, intent)
+      true
+    }
 
   /** A reply's intent: the system writes the words into it, so mutable, which Android 12 must be told. */
   private def mutable: Int =
@@ -281,9 +306,8 @@ object PushAccess {
   /** The activity started by a button that opens the app: `Push.acted` hears it once the app's `main` has run (it is
     * already at the path). */
   def launched(intent: Intent): Unit = if (intent != null && intent.hasExtra(actionExtra)) {
-    dismiss(Host.activity, intent)
     val action = actionOf(intent)
-    main.post(() => Push.chose(action, go = false))
+    if (opening(Host.activity, intent, action)) main.post(() => Push.chose(action, go = false))
   }
 
   /** A message as `PushService` hears it, with what a notification message says where the data does not: a close

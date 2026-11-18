@@ -20,12 +20,12 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
       worker should include("const yes = v => v === true || v === 'true';")
       worker should include("background: yes(a.background)")
       // (a browser's notification is on no lock screen: requiresUnlock is carried to the app, and changes nothing)
-      worker should include("requiresUnlock: yes(a.requiresUnlock) }));")
+      worker should include("requiresUnlock: yes(a.requiresUnlock), copy:")
       worker should include("const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group',")
       worker should include("renotify: yes(m.renotify), actions, data,")
     }
     "show them as the notification's actions, one that takes words as a text action" in {
-      worker should include("if (actions.length) options.actions = actions.map(a => a.input")
+      worker should include("if (shown.length) options.actions = shown.map(a => a.input")
       worker should include(
         "? { action: a.id, title: a.label, type: 'text', placeholder: a.hint || a.label } : { action: a.id, title: a.label });")
     }
@@ -94,6 +94,48 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
         """hidden {"everyui":"data","data":{"sync":"mail"}}""",
         "closed c42",
         """shown ["Quiet","b"]""")
+    }
+    "leave a copy button out of the notification, and hand it to a window in sight with the rest" in {
+      worker should include("copy: a.copy ? String(a.copy) : null,\n    copyDismisses: yes(a.copyDismisses) }));")
+      worker should include("const shown = actions.filter(a => !a.copy);")
+      val out = Files.createTempDirectory("webapp-copy").toFile
+      Files.write(new File(out, "sw.js").toPath, worker.getBytes(UTF_8))
+      Files.write(new File(out, "harness.js").toPath,
+        """const handlers = {};
+          |const log = [];
+          |let windows = [];
+          |global.self = {
+          |  addEventListener: (kind, f) => { handlers[kind] = f; },
+          |  location: { origin: 'https://app.test' },
+          |  registration: { scope: 'https://app.test/', getNotifications: () => Promise.resolve([]),
+          |    showNotification: (title, options) => { log.push(JSON.stringify([title, options.actions || null])); return Promise.resolve(); } },
+          |  clients: { matchAll: () => Promise.resolve(windows), claim: () => Promise.resolve() }
+          |};
+          |global.caches = { open: () => Promise.resolve({ add: () => Promise.resolve() }), keys: () => Promise.resolve([]) };
+          |require('./sw.js');
+          |const push = payload => new Promise(done => {
+          |  const waits = [];
+          |  handlers.push({ data: { json: () => payload }, waitUntil: p => waits.push(p) });
+          |  Promise.all(waits).then(done);
+          |});
+          |const code = '[{"id":"copy","label":"Copy 430151","copy":"430151","copyDismisses":true},{"id":"open","label":"Open"}]';
+          |(async () => {
+          |  await push({ title: 'Your code', body: '430151', actions: code });
+          |  await push({ title: 'Only a copy', body: 'b', actions: [{ id: 'copy', label: 'Copy', copy: 7 }] });
+          |  windows = [{ focused: true, visibilityState: 'visible', postMessage: d => log.push(JSON.stringify(d.message.actions)) }];
+          |  await push({ title: 'Seen', body: 'b', actions: code });
+          |  console.log(log.join('\n'));
+          |})();
+          |""".stripMargin.getBytes(UTF_8))
+      val node = new ProcessBuilder("node", "harness.js").directory(out).redirectErrorStream(true).start()
+      val printed = new String(node.getInputStream.readAllBytes(), UTF_8).trim
+      node.waitFor() shouldBe 0
+      printed.split("\n").toList shouldBe List(
+        """["Your code",[{"action":"open","title":"Open"}]]""",
+        """["Only a copy",null]""",
+        """[{"id":"copy","label":"Copy 430151","background":false,"path":null,"input":false,"hint":"","requiresUnlock":false,""" +
+          """"copy":"430151","copyDismisses":true},{"id":"open","label":"Open","background":false,"path":null,"input":false,""" +
+          """"hint":"","requiresUnlock":false,"copy":null,"copyDismisses":false}]""")
     }
     "show a Markdown push as plain words, title, body and lines, and hand the window it as it was sent" in {
       worker should include("'channelImportance', 'format',")

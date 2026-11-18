@@ -128,7 +128,8 @@ object BackgroundAccess {
         Some(("notice " + notice + " action " + name) -> (() => Background.noticeAction(notice, name, args)))
       case PushAccess.actionIntent =>
         val chosen = PushAccess.actionOf(intent)
-        PushAccess.dismiss(context, intent)
+        // (a copy button copied as it was heard, and is taken away only where it says so)
+        if (chosen.button.forall(_.copyText.isEmpty)) PushAccess.dismiss(context, intent)
         // the app's screens running hear it (Push.acted); otherwise its BackgroundApp does, with the app closed
         if (ScreenManager.running.nonEmpty) {
           main.post(() => everyui.push.Push.chose(chosen, go = false))

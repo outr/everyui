@@ -3813,8 +3813,9 @@ it runs with the app left closed; false, the default, opens the app) and a `path
 push's otherwise); `input` and `hint` make it a reply
 ([Replies typed into a push](#replies-typed-into-a-push-pushbuttoninput-onpushreply)), and `requiresUnlock` keeps it
 from running from a locked screen
-([Buttons that ask for the unlock](#buttons-that-ask-for-the-unlock-pushbuttonrequiresunlock)). Any other key (`task`
-above) is the push's `data`, handed back with it (`PushMessage.data`).
+([Buttons that ask for the unlock](#buttons-that-ask-for-the-unlock-pushbuttonrequiresunlock)); `copy` puts text on
+the clipboard ([Copy buttons](#copy-buttons-pushbuttoncopytext)). Any other key (`task` above) is the push's `data`,
+handed back with it (`PushMessage.data`).
 
 ```scala
 Push.acted.attach { a =>                       // PushAction(id, message): the button and the push
@@ -4015,6 +4016,44 @@ by `onPushAction` or `Push.acted`.
 - **Apple**: none here; an app of its own would give the action `UNNotificationActionOptions.authenticationRequired`.
 
 `demo=background`'s "An approval" has Approve require the unlock, and Deny not.
+
+### Copy buttons (`PushButton.copyText`)
+
+New mail holding a one-time code can offer "Copy 430151" on its notification, as Google Messages does: pressed, the
+code is on the clipboard, with the app left closed. `"copy"` is the text a button copies, and `"copyDismisses": true`
+takes the notification away once it has (it stays by default):
+
+```json
+{"title": "Sign-in code", "body": "Your code is 430151", "path": "/mail/9", "tag": "mail-9",
+ "actions": "[{\"id\":\"copy\",\"label\":\"Copy 430151\",\"copy\":\"430151\",\"copyDismisses\":true},{\"id\":\"open\",\"label\":\"Open\"}]"}
+```
+
+```scala
+PushButton("copy", "Copy 430151", copyText = Some("430151"), copyDismisses = true)
+```
+
+(The field is `copyText`, not `copy`, which would hide the case class's own `copy`.) A copy button copies and nothing
+more: it opens no app, and neither `onPushAction` nor `Push.acted` hears it, unless it is a `background` button as
+well, when they hear it as any background button. `requiresUnlock` asks for the unlock before it copies.
+
+- **Android**: EveryUI's `BackgroundReceiver` copies it (`ClipboardManager.setPrimaryClip`) without starting the
+  app's `BackgroundApp`, marked sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`, so the clipboard preview of
+  Android 13 and later shows dots); the text never goes to the log. Android 13 and later confirm the
+  copy themselves; before 13 a Toast says "Copied". Android lets an app write the clipboard from the background (only
+  reading it is kept to the app in front, from Android 10). The receiver is there where the app has a `BackgroundApp`
+  (`everyuiBackground`); without one, or where the button requires an unlock before Android 12, the button opens the
+  app, which copies as it starts. A locked screen that hides what notifications say (the person's choice, or a work
+  profile's) shows the notification as the app's name alone, with no buttons, and asks for the unlock before it
+  opens, so the code shows nowhere; one that shows everything shows the button as it is labelled, as it does the
+  body. (The Toast's "Copied" is `Words("push.copied")`, in the device's language.)
+- **Web**: a browser writes the clipboard only from a page, as the person acts in it, so the service worker leaves a
+  copy button off the notification. A window of the app in sight is handed the push with it, for the app to offer
+  the copy its own way (`PushAction.button`, `copyText`).
+- **Apple**: none here (for later); an app of its own would handle the action in its notification delegate (an
+  action without `.foreground` runs with the app in the background) and set `UIPasteboard.general.string`, untried.
+
+`demo=background`'s "A one-time code" pushes the code with Copy (it stays, or "Copy closes it") and Open, and "Read
+the clipboard" shows what the clipboard holds.
 
 ### Markdown in a push (`"format": "markdown"`, `PushText`)
 

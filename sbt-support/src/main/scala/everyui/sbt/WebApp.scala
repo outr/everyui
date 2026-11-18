@@ -73,7 +73,9 @@ object WebApp {
     * are the notification's actions; one chosen tells an open window of the app (`{everyui: "act", id, message}`,
     * `everyui.push.Push.acted`), brought forward unless the button runs in the background, or opens the app at the
     * button's path (else the push's) with `everyui-action` and `everyui-push` in its address (a button's
-    * `requiresUnlock` carried with it, and nothing more: a browser's notification is on no lock screen). What else
+    * `requiresUnlock` carried with it, and nothing more: a browser's notification is on no lock screen). A copy
+    * button (`copy`) is not shown, a browser writing the clipboard only from a page as the person acts in it; a window
+    * in sight is handed it with the rest. What else
     * the push says is its `data`. A data push (neither title nor body but more than a close, or `"dataOnly": "true"`,
     * `everyui.push.PushMessage.isData`) is never shown: its keys as sent go to a window of the app, the one in sight
     * or else any (`{everyui: "data", data}`, `everyui.push.Push.data`), and with none open to nothing, a browser
@@ -129,7 +131,8 @@ object WebApp {
        |  actions = (Array.isArray(actions) ? actions : []).filter(a => a && a.id).map(a => ({ id: String(a.id),
        |    label: String(a.label || a.id), background: yes(a.background),
        |    path: a.path ? String(a.path) : null, input: yes(a.input), hint: a.hint ? String(a.hint) : '',
-       |    requiresUnlock: yes(a.requiresUnlock) }));
+       |    requiresUnlock: yes(a.requiresUnlock), copy: a.copy ? String(a.copy) : null,
+       |    copyDismisses: yes(a.copyDismisses) }));
        |  let lines = m.lines;
        |  if (typeof lines === 'string') { try { lines = JSON.parse(lines); } catch (x) { lines = []; } }
        |  lines = (Array.isArray(lines) ? lines : []).map(String);
@@ -168,7 +171,9 @@ object WebApp {
        |    const options = { body, data: message, silent: message.silent };
        |    const tag = message.tag || message.group;
        |    if (tag) { options.tag = tag; options.renotify = message.renotify && !message.silent; }
-       |    if (actions.length) options.actions = actions.map(a => a.input
+       |    // a copy button left out: a browser writes the clipboard only from a page, as the person acts in it
+       |    const shown = actions.filter(a => !a.copy);
+       |    if (shown.length) options.actions = shown.map(a => a.input
        |      ? { action: a.id, title: a.label, type: 'text', placeholder: a.hint || a.label } : { action: a.id, title: a.label });
        |    return self.registration.showNotification(plain(message.title), options);
        |  }));

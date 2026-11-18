@@ -19,7 +19,8 @@ class WordsSpec extends FxSpec {
     "none").map("tabs." + _)
   /** The families of words that were English alone until they were given to Words, and how many each has. */
   private val families = List("chat." -> 54, "composer." -> 14, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 25,
-    "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4, "call." -> 26)
+    "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4, "call." -> 26,
+    "push." -> 1)
 
   /** The names of a message's arguments: `{n}`, `{n, plural, …}`, not a plural's own branches. */
   private def arguments(message: String): Set[String] = "\\{(\\w+)[,}]".r.findAllMatchIn(message).map(_.group(1)).toSet
@@ -57,7 +58,7 @@ class WordsSpec extends FxSpec {
     PickerWords.fileMask, CallWords.settings, CallWords.systemDefault, CallWords.speakerChoice, CallWords.testSound,
     CallWords.processing, CallWords.noiseSuppression, CallWords.echoCancellation, CallWords.autoGain,
     CallWords.videoQuality, CallWords.qualityAuto, CallWords.audioOnly, CallWords.micLevel, CallWords.preview,
-    CallWords.cameraOff, CallWords.screenOf("Ada"), CallWords.device(DeviceKind.Speaker, 2)) ++ {
+    CallWords.cameraOff, CallWords.screenOf("Ada"), CallWords.device(DeviceKind.Speaker, 2), Words("push.copied")) ++ {
     val c = ComposerWords()
     List(c.send, c.stop, c.attach, c.more, c.remove, c.drop, c.suggestion, c.accept, c.tooLarge, c.notAccepted,
       c.unavailable)

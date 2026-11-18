@@ -182,7 +182,8 @@ object Words {
     "call.testSound" -> "Play test sound", "call.processing" -> "Audio processing",
     "call.noiseSuppression" -> "Noise suppression", "call.echoCancellation" -> "Echo cancellation",
     "call.autoGain" -> "Automatic gain control", "call.videoQuality" -> "Video quality", "call.qualityAuto" -> "Auto",
-    "call.audioOnly" -> "Audio only")
+    "call.audioOnly" -> "Audio only",
+    "push.copied" -> "Copied")
 
   private lazy val german: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Abbrechen", "close" -> "Schließen",
     "done" -> "Fertig", "yes" -> "Ja",
@@ -285,7 +286,8 @@ object Words {
     "call.speakerChoice" -> "Lautsprecher", "call.testSound" -> "Testton abspielen",
     "call.processing" -> "Audioverarbeitung", "call.noiseSuppression" -> "Rauschunterdrückung",
     "call.echoCancellation" -> "Echounterdrückung", "call.autoGain" -> "Automatische Pegelanpassung",
-    "call.videoQuality" -> "Videoqualität", "call.qualityAuto" -> "Automatisch", "call.audioOnly" -> "Nur Audio")
+    "call.videoQuality" -> "Videoqualität", "call.qualityAuto" -> "Automatisch", "call.audioOnly" -> "Nur Audio",
+    "push.copied" -> "Kopiert")
 
   private lazy val spanish: Map[String, String] = Map("ok" -> "Aceptar", "cancel" -> "Cancelar", "close" -> "Cerrar",
     "done" -> "Listo", "yes" -> "Sí",
@@ -388,7 +390,8 @@ object Words {
     "call.speakerChoice" -> "Altavoz", "call.testSound" -> "Reproducir sonido de prueba",
     "call.processing" -> "Procesamiento de audio", "call.noiseSuppression" -> "Supresión de ruido",
     "call.echoCancellation" -> "Cancelación de eco", "call.autoGain" -> "Control automático de ganancia",
-    "call.videoQuality" -> "Calidad de vídeo", "call.qualityAuto" -> "Automática", "call.audioOnly" -> "Solo audio")
+    "call.videoQuality" -> "Calidad de vídeo", "call.qualityAuto" -> "Automática", "call.audioOnly" -> "Solo audio",
+    "push.copied" -> "Copiado")
 
   private lazy val french: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuler", "close" -> "Fermer",
     "done" -> "Terminé", "yes" -> "Oui",
@@ -493,7 +496,8 @@ object Words {
     "call.processing" -> "Traitement audio", "call.noiseSuppression" -> "Suppression du bruit",
     "call.echoCancellation" -> "Annulation de l'écho", "call.autoGain" -> "Contrôle automatique du gain",
     "call.videoQuality" -> "Qualité vidéo", "call.qualityAuto" -> "Automatique",
-    "call.audioOnly" -> "Audio uniquement")
+    "call.audioOnly" -> "Audio uniquement",
+    "push.copied" -> "Copié")
 
   private lazy val italian: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annulla", "close" -> "Chiudi",
     "done" -> "Fine", "yes" -> "Sì", "no" -> "No",
@@ -593,7 +597,8 @@ object Words {
     "call.speakerChoice" -> "Altoparlante", "call.testSound" -> "Riproduci suono di prova",
     "call.processing" -> "Elaborazione audio", "call.noiseSuppression" -> "Soppressione del rumore",
     "call.echoCancellation" -> "Cancellazione dell'eco", "call.autoGain" -> "Controllo automatico del guadagno",
-    "call.videoQuality" -> "Qualità video", "call.qualityAuto" -> "Automatica", "call.audioOnly" -> "Solo audio")
+    "call.videoQuality" -> "Qualità video", "call.qualityAuto" -> "Automatica", "call.audioOnly" -> "Solo audio",
+    "push.copied" -> "Copiato")
 
   private lazy val dutch: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Annuleren", "close" -> "Sluiten",
     "done" -> "Klaar", "yes" -> "Ja",
@@ -694,7 +699,8 @@ object Words {
     "call.speakerChoice" -> "Luidspreker", "call.testSound" -> "Testgeluid afspelen",
     "call.processing" -> "Audioverwerking", "call.noiseSuppression" -> "Ruisonderdrukking",
     "call.echoCancellation" -> "Echo-onderdrukking", "call.autoGain" -> "Automatische versterking",
-    "call.videoQuality" -> "Videokwaliteit", "call.qualityAuto" -> "Automatisch", "call.audioOnly" -> "Alleen audio")
+    "call.videoQuality" -> "Videokwaliteit", "call.qualityAuto" -> "Automatisch", "call.audioOnly" -> "Alleen audio",
+    "push.copied" -> "Gekopieerd")
 
   private lazy val portuguese: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Cancelar", "close" -> "Fechar",
     "done" -> "Concluído", "yes" -> "Sim",
@@ -795,7 +801,8 @@ object Words {
     "call.processing" -> "Processamento de áudio", "call.noiseSuppression" -> "Supressão de ruído",
     "call.echoCancellation" -> "Cancelamento de eco", "call.autoGain" -> "Controle automático de ganho",
     "call.videoQuality" -> "Qualidade do vídeo", "call.qualityAuto" -> "Automática",
-    "call.audioOnly" -> "Somente áudio")
+    "call.audioOnly" -> "Somente áudio",
+    "push.copied" -> "Copiado")
 
   private lazy val turkish: Map[String, String] = Map("ok" -> "Tamam", "cancel" -> "İptal", "close" -> "Kapat",
     "done" -> "Bitti", "yes" -> "Evet",
@@ -893,7 +900,8 @@ object Words {
     "call.testSound" -> "Test sesi çal", "call.processing" -> "Ses işleme",
     "call.noiseSuppression" -> "Gürültü bastırma", "call.echoCancellation" -> "Yankı engelleme",
     "call.autoGain" -> "Otomatik kazanç kontrolü", "call.videoQuality" -> "Video kalitesi",
-    "call.qualityAuto" -> "Otomatik", "call.audioOnly" -> "Yalnızca ses")
+    "call.qualityAuto" -> "Otomatik", "call.audioOnly" -> "Yalnızca ses",
+    "push.copied" -> "Kopyalandı")
 
   // Arabic counts: =2 is the dual, few (3 to 10) a plural, many (11 to 99) and other (100 and up) a singular.
   private lazy val arabic: Map[String, String] = Map("ok" -> "موافق", "cancel" -> "إلغاء", "close" -> "إغلاق",
@@ -997,7 +1005,8 @@ object Words {
     "call.testSound" -> "تشغيل صوت تجريبي", "call.processing" -> "معالجة الصوت",
     "call.noiseSuppression" -> "كتم الضوضاء", "call.echoCancellation" -> "إلغاء الصدى",
     "call.autoGain" -> "التحكم التلقائي في الكسب", "call.videoQuality" -> "جودة الفيديو",
-    "call.qualityAuto" -> "تلقائي", "call.audioOnly" -> "الصوت فقط")
+    "call.qualityAuto" -> "تلقائي", "call.audioOnly" -> "الصوت فقط",
+    "push.copied" -> "تم النسخ")
 
   private lazy val chinese: Map[String, String] = Map("ok" -> "确定", "cancel" -> "取消", "close" -> "关闭",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -1088,7 +1097,8 @@ object Words {
     "call.settings" -> "设置", "call.systemDefault" -> "系统默认", "call.speakerChoice" -> "扬声器",
     "call.testSound" -> "播放测试音", "call.processing" -> "音频处理", "call.noiseSuppression" -> "降噪",
     "call.echoCancellation" -> "回声消除", "call.autoGain" -> "自动增益控制", "call.videoQuality" -> "视频质量",
-    "call.qualityAuto" -> "自动", "call.audioOnly" -> "仅音频")
+    "call.qualityAuto" -> "自动", "call.audioOnly" -> "仅音频",
+    "push.copied" -> "已复制")
 
   private lazy val traditionalChinese: Map[String, String] = Map("ok" -> "確定", "cancel" -> "取消", "close" -> "關閉",
     "done" -> "完成", "yes" -> "是", "no" -> "否",
@@ -1179,5 +1189,6 @@ object Words {
     "call.settings" -> "設定", "call.systemDefault" -> "系統預設", "call.speakerChoice" -> "喇叭",
     "call.testSound" -> "播放測試音", "call.processing" -> "音訊處理", "call.noiseSuppression" -> "降噪",
     "call.echoCancellation" -> "回音消除", "call.autoGain" -> "自動增益控制", "call.videoQuality" -> "視訊品質",
-    "call.qualityAuto" -> "自動", "call.audioOnly" -> "僅音訊")
+    "call.qualityAuto" -> "自動", "call.audioOnly" -> "僅音訊",
+    "push.copied" -> "已複製")
 }

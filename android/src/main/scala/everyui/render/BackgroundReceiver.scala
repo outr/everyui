@@ -6,10 +6,14 @@ import android.content.{BroadcastReceiver, Context, Intent}
   * (BOOT_COMPLETED), the app updated in place (MY_PACKAGE_REPLACED), and an ongoing notice's action tapped or the
   * notice swiped away (EveryUI's own explicit intents). sbt-everyui declares it where the build names a
   * `BackgroundApp` (`everyuiBackground`). Each holds the broadcast open (`goAsync`) until the handler has answered or
-  * its deadline has passed (`BackgroundAccess.receiverDeadline`). */
+  * its deadline has passed (`BackgroundAccess.receiverDeadline`). A push's copy button copies here, and runs nothing
+  * of the app's unless it is a background button too. */
 class BackgroundReceiver extends BroadcastReceiver {
   override def onReceive(context: Context, intent: Intent): Unit = {
-    val pending = goAsync()
-    BackgroundAccess.received(context, intent, () => pending.finish())
+    val action = Option(intent).filter(_.getAction == PushAccess.actionIntent).map(PushAccess.actionOf)
+    if (!action.exists(a => PushAccess.copied(context, intent, a) && !a.background)) {
+      val pending = goAsync()
+      BackgroundAccess.received(context, intent, () => pending.finish())
+    }
   }
 }

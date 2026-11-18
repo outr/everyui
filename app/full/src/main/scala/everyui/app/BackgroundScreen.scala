@@ -4,6 +4,7 @@ import everyui.{PlatformKind, SettingsPage, SystemSettings}
 import everyui.app.screen.{ScreenManager, UIScreen}
 import everyui.async.Task
 import everyui.background.{Work, WorkConstraints, WorkNetwork}
+import everyui.clipboard.Clipboard
 import everyui.component.{Button, ButtonStyle, Column, Component, Container, ScrollContainer, TextView}
 import everyui.layout.FlowLayout
 import everyui.net.*
@@ -21,9 +22,10 @@ import reactify.*
   * running; an agent's answer in Markdown, styled; and mail for three accounts (Push.deliver), each message stacked
   * under its account's summary on its account's channel, with a Reply typed into it; three channels declared up
   * front (Push.channels) at low, default and high importance, three more made by pushes asking each
-  * (channelImportance), and the loud one's settings opened (Push.openChannelSettings); data pushes (Push.deliver),
-  * heard by Push.data in front and by ExampleBackground.onPush otherwise, one slow, one handing a long sync to
-  * expedited work, and one delivered from work with the app killed. Under each, what
+  * (channelImportance), and the loud one's settings opened (Push.openChannelSettings); a one-time code pushed in
+  * three seconds, whose Copy puts it on the clipboard with the app closed, and the clipboard read; data pushes
+  * (Push.deliver), heard by Push.data in front and by ExampleBackground.onPush otherwise, one slow, one handing a
+  * long sync to expedited work, and one delivered from work with the app killed. Under each, what
   * ExampleBackground has noted, read again every two seconds and as the app comes back. */
 class BackgroundScreen extends UIScreen {
   override def manager: ScreenManager = BackgroundDemo
@@ -38,6 +40,7 @@ class BackgroundScreen extends UIScreen {
   private val pushed: Var[String] = Var("")
   private val channeled: Var[String] = Var("")
   private val synced: Var[String] = Var("")
+  private val coded: Var[String] = Var("Copy puts the code on the clipboard with the app closed")
   private var heard = ""
   private var answered = ""
 
@@ -89,6 +92,12 @@ class BackgroundScreen extends UIScreen {
         new Button("An approval", () => push(approval)),
         new Button("Mail for three accounts", () => mail()),
         new Button("An answer in Markdown", () => push(answer))),
+      section("A one-time code, in 3 s", coded)(
+        new Button("A code arrived", () => push(code(dismisses = false))),
+        new Button("Copy closes it", () => push(code(dismisses = true))),
+        new Button("Read the clipboard", () => Clipboard.read().map { text =>
+          coded @= "The clipboard holds " + text.map("\"" + _ + "\"").getOrElse("nothing readable")
+        }.start())),
       section("Data pushes (sync now), in 3 s", synced)(
         new Button("Sync mail", () => push(Map("sync" -> "mail"))),
         new Button("A slow sync, 15 s", () => push(Map("sync" -> "slow"))),
@@ -181,6 +190,13 @@ class BackgroundScreen extends UIScreen {
     "tag" -> "answer-3", "format" -> "markdown", "body" -> ("I ran **3 checks** on *staging*:\n\n1. `compile` passed\n" +
       "2. `test` had ~~2~~ ***0 failures***\n3. lint: see [the report](https://ci.example.com/r/9)\n\n- [x] migrations\n" +
       "- [ ] smoke test\n\n> Next: watch `api-7`."))
+
+  /** New mail holding a one-time code, as Voidcraft finds one: Copy 430151 puts it on the clipboard with the app
+    * closed, the notification staying unless `dismisses`; Open opens the app. */
+  private def code(dismisses: Boolean): Map[String, String] = Map("title" -> "Sign-in code",
+    "body" -> "Your code is 430151", "path" -> "/background", "tag" -> "code-1", "actions" -> PushButton.json(Vector(
+      PushButton("copy", "Copy 430151", copyText = Some("430151"), copyDismisses = dismisses),
+      PushButton("open", "Open", path = Some("/background/opened")))))
 
   /** Mail for three accounts as a mail server pushes it, from three seconds on, half a second apart: each message on
     * its account's channel (under "Mail" in the settings) and in its account's group, with Reply (typed into it, its
