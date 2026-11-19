@@ -38,9 +38,9 @@ object RichCopy {
   /** `html` and `text` on the clipboard. */
   def write(html: String, text: String): Unit = {
     val clipboard = dom.window.navigator.asInstanceOf[js.Dynamic].clipboard
-    val item = js.Dynamic.global.ClipboardItem
+    val item = WebFeatures.global("ClipboardItem").orNull
     if (js.isUndefined(clipboard)) command(html, text)
-    else if (js.isUndefined(item) || js.isUndefined(clipboard.write)) plain(clipboard, html, text)
+    else if (item == null || js.isUndefined(clipboard.write)) plain(clipboard, html, text)
     else {
       def blob(content: String, kind: String): js.Dynamic =
         js.Dynamic.newInstance(js.Dynamic.global.Blob)(js.Array(content), js.Dynamic.literal(`type` = kind))
@@ -211,7 +211,7 @@ object RichCopy {
     var said = ""
     while (said.isEmpty && at != null) {
       at match {
-        case e: html.Element => said = e.style.getPropertyValue("user-select")
+        case e: html.Element => said = e.style.getPropertyValue(WebFeatures.userSelect)
         case _ => ()
       }
       at = at.parentNode

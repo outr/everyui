@@ -74,13 +74,7 @@ class WebRichEditor(val outer: html.Element) {
   dom.document.addEventListener("selectionchange", (_: dom.Event) =>
     if (!placing && composing.isEmpty && dom.document.activeElement == content)
       hearing(RichInput.Selected(selection())))
-  locally {
-    val observer = js.Dynamic.global.ResizeObserver
-    if (!js.isUndefined(observer)) {
-      val measure: js.Function1[js.Any, Unit] = _ => heightHeard(content.offsetHeight.toDouble)
-      js.Dynamic.newInstance(observer)(measure).observe(content)
-    }
-  }
+  WebFeatures.resized(content, List("input"))(() => heightHeard(content.offsetHeight.toDouble))
 
   def hear(f: RichInput => Unit): Unit = hearing = f
   def heights(f: Double => Unit): Unit = {

@@ -44,7 +44,7 @@ class RenderNode(val el: html.Element) {
     val same = book.get(property).contains(value)
     // named, for a read after it, with whether it was to a node off the page (laid out as it is lent to the page to
     // be read)
-    val what = if (el.isConnected) property else property + " off the page"
+    val what = if (WebFeatures.connected(el)) property else property + " off the page"
     if (property == "text") everyui.perf.PerfCounters.wroteText(same, what)
     else everyui.perf.PerfCounters.wrote(same, what)
     book(property) = value
@@ -82,7 +82,9 @@ class RenderNode(val el: html.Element) {
   private def transform(): Unit = {
     turning(rotation != 0.0 || scaled != 1.0, turnedMoving)
     counted("transform", rotation.toString + " " + scaled.toString)
-    el.style.transform = "rotate(" + rotation.toString + "rad) scale(" + scaled.toString + ")"
+    // (the app's root keeps the size it is drawn at first, where that is a transform: `Platform.setUiScale`)
+    val drawn = if (el.id == "app") RenderNode.rootScale else ""
+    el.style.transform = drawn + "rotate(" + rotation.toString + "rad) scale(" + scaled.toString + ")"
     WebHover.changed()
   }
 
@@ -142,7 +144,7 @@ class RenderNode(val el: html.Element) {
   /** Whether it is in the page: a node that is not (a screen being built, before it arrives) has no box, and is
     * measured at once, on its own, out of sight (`RenderNode.offPage`), rather than with the turn's batch of reads
     * (`MeasuredFeature`), which would find it still off the page. */
-  def onPage: Boolean = el.isConnected
+  def onPage: Boolean = WebFeatures.connected(el)
 
   // Under `display: none` a node has no box and reads 0 by 0: a button made in a hidden panel was an empty pill once
   // the panel showed, since nothing measures it again then. What hides it is laid out, undrawn, for the read instead.
@@ -203,7 +205,7 @@ class RenderNode(val el: html.Element) {
   // moved by insertBefore loses the focus, and with it the menu a password manager had open under it.
   private def place(child: dom.Element, before: dom.Element): Unit = {
     val move = el.asInstanceOf[js.Dynamic].moveBefore
-    val moved = !js.isUndefined(move) && child.isConnected && el.isConnected &&
+    val moved = !js.isUndefined(move) && WebFeatures.connected(child) && WebFeatures.connected(el) &&
       (try {
         el.asInstanceOf[js.Dynamic].moveBefore(child, before)
         true
@@ -311,14 +313,20 @@ class RenderNode(val el: html.Element) {
     import everyui.motion.Track
     turning(turnedStill, tracks.exists(t => t.property == Track.Rotation || t.property == Track.Scale))
     animations.foreach(_.cancel())
+    // where the page has no `translate`, `rotate` and `scale` of their own (Chromium 104), a track of one moves the
+    // `transform`, before the node's own: one such track at a time, the last
+    val own = Option.when(!WebFeatures.transformProperties)(el.style.transform)
     animations = tracks.map { track =>
       val frames = track.keys.map { k =>
         val frame = js.Dynamic.literal(offset = k.at)
+        def moved(property: String, value: String, function: String): Unit =
+          own.fold(frame.updateDynamic(property)(value))(t => frame.updateDynamic("transform")((function + " " + t).trim))
         track.property match {
-          case Track.Position => frame.updateDynamic("translate")(k.a.toString + "px " + k.b.toString + "px")
-          case Track.Rotation => frame.updateDynamic("rotate")(k.a.toString + "rad")
+          case Track.Position => moved("translate", k.a.toString + "px " + k.b.toString + "px",
+            "translate(" + k.a.toString + "px, " + k.b.toString + "px)")
+          case Track.Rotation => moved("rotate", k.a.toString + "rad", "rotate(" + k.a.toString + "rad)")
           case Track.Opacity => frame.updateDynamic("opacity")(k.a)
-          case _ => frame.updateDynamic("scale")(k.a.toString + " " + k.b.toString)
+          case _ => moved("scale", k.a.toString + " " + k.b.toString, "scale(" + k.a.toString + ", " + k.b.toString + ")")
         }
         frame
       }
@@ -336,9 +344,11 @@ class RenderNode(val el: html.Element) {
   // paused, and only what was paused goes on: a finished one played again would start over
   private def pace(): Unit = {
     val watching = animations.nonEmpty && !hiddenNow
-    if (watching && viewWatch == null && !js.isUndefined(js.Dynamic.global.IntersectionObserver)) {
+    if (watching && viewWatch == null && WebFeatures.has("IntersectionObserver")) {
       val heard: js.Function1[js.Array[js.Dynamic], Unit] = entries => entries.lastOption.foreach { e =>
-        inView = e.isIntersecting.asInstanceOf[Boolean]
+        // (`isIntersecting` from Chromium 58; before it, any of it in view)
+        inView = if (js.isUndefined(e.isIntersecting)) e.intersectionRatio.asInstanceOf[Double] > 0.0
+          else e.isIntersecting.asInstanceOf[Boolean]
         pace()
       }
       viewWatch = js.Dynamic.newInstance(js.Dynamic.global.IntersectionObserver)(heard)
@@ -546,7 +556,8 @@ class RenderNode(val el: html.Element) {
       if (everyui.event.Pointer.menuAnswered) e.preventDefault()
     })
     else {
-      val name = if (kind == PointerKind.Click) "click" else "pointer" + kind.toString.toLowerCase
+      // (the mouse's, where the browser has no pointer events)
+      val name = if (kind == PointerKind.Click) "click" else WebFeatures.pointer(kind.toString.toLowerCase).get
       // a click made of a press on one thing and a release on another is not one (PressOwner)
       if (kind == PointerKind.Click) PressOwner.mark(el)
       el.addEventListener(name, (e: dom.MouseEvent) => {
@@ -562,7 +573,7 @@ class RenderNode(val el: html.Element) {
       if (kind == PointerKind.Click) {
         if (el.style.cursor.isEmpty) el.style.cursor = "pointer"
         clickable = true
-        if (!selectable) el.style.setProperty("user-select", "none")
+        if (!selectable) el.style.setProperty(WebFeatures.userSelect, "none")
       }
     }
   private var clickable = false
@@ -575,12 +586,12 @@ class RenderNode(val el: html.Element) {
   def setSelectable(on: Boolean): Unit = {
     selectable = on
     val value = if (on) "text" else if (clickable) "none" else ""
-    el.style.setProperty("user-select", value)
-    el.style.setProperty("-webkit-user-select", value)
+    el.style.setProperty(WebFeatures.userSelect, value)
     if (on && el.style.cursor.isEmpty) el.style.cursor = "auto"
     if (on && !hearsWords) {
       hearsWords = true
-      el.addEventListener("pointerdown", (e: dom.MouseEvent) => if (selectable && onWords(e.target)) everyui.event.Pointer.pressedText())
+      WebFeatures.pointer("down").foreach(el.addEventListener(_, (e: dom.MouseEvent) =>
+        if (selectable && onWords(e.target)) everyui.event.Pointer.pressedText()))
     }
   }
 
@@ -591,7 +602,7 @@ class RenderNode(val el: html.Element) {
     var at = target.asInstanceOf[dom.Node]
     while (at != null && at != el && !(at.isInstanceOf[html.Element] && {
       val e = at.asInstanceOf[html.Element]
-      e.style.getPropertyValue("user-select") == "none" || e.classList.contains("everyui-link") ||
+      e.style.getPropertyValue(WebFeatures.userSelect) == "none" || e.classList.contains("everyui-link") ||
         e.getAttribute("role") == "link"
     })) at = at.parentNode
     at == el
@@ -657,12 +668,17 @@ class RenderNode(val el: html.Element) {
   private var leftToRight = false
   /** How far the node has scrolled its own overflow, from its start edge. */
   def scrolled(horizontal: Boolean): Double = if (horizontal) fromStart(el.scrollLeft) else el.scrollTop
-  /** Scroll its overflow to `to` as the browser glides a smooth scroll, which a newer one takes over mid-way. */
-  def scrollSmoothly(to: Double, horizontal: Boolean): Unit = {
-    val options = js.Dynamic.literal(behavior = "smooth")
-    if (horizontal) options.left = fromStart(to) else options.top = to
-    el.asInstanceOf[js.Dynamic].scrollTo(options)
-  }
+  /** Scroll its overflow to `to` as the browser glides a smooth scroll, which a newer one takes over mid-way; at once
+    * where an element has no `scrollTo` (Chromium 61). */
+  def scrollSmoothly(to: Double, horizontal: Boolean): Unit =
+    if (js.typeOf(el.asInstanceOf[js.Dynamic].scrollTo) != "function") {
+      if (horizontal) setScrollLeft(to) else setScrollTop(to)
+    }
+    else {
+      val options = js.Dynamic.literal(behavior = "smooth")
+      if (horizontal) options.left = fromStart(to) else options.top = to
+      el.asInstanceOf[js.Dynamic].scrollTo(options)
+    }
   // a sideways scroll from its start edge as the browser counts it, and back again: in a right-to-left page the start
   // is the right, which a browser counts down from 0 (as the spec has it), up from 0 (the old Edge), or down from the
   // far end (Chrome before 85, as on an older television)
@@ -703,11 +719,11 @@ class RenderNode(val el: html.Element) {
   private def undrawn(on: Boolean): Unit = {
     el.style.visibility = if (on) "hidden" else ""
     if (on && el.style.overflow.isEmpty) {
-      el.style.overflow = "clip"
+      el.style.overflow = WebFeatures.overflowClip
       undrawnClip = true
     }
     else if (!on && undrawnClip) {
-      if (el.style.overflow == "clip") el.style.overflow = ""
+      if (el.style.overflow == WebFeatures.overflowClip) el.style.overflow = ""
       undrawnClip = false
     }
     // (hidden on purpose now, not laid out for a read and hidden again before the frame: `RenderNode.reveal`)
@@ -1057,7 +1073,7 @@ class RenderNode(val el: html.Element) {
     val takes = RenderNode.editable(el) || el.hasAttribute("data-everyui-embed") ||
       el.querySelector("input, textarea, select, [contenteditable], [data-everyui-embed]") != null
     val holds = active != null && el.contains(active)
-    if (el.isConnected && !takes && !holds && RenderNode.embedOf(active) != "field") {
+    if (WebFeatures.connected(el) && !takes && !holds && RenderNode.embedOf(active) != "field") {
       if (!(RenderNode.reading eq el) && !el.hasAttribute("tabindex")) {
         RenderNode.reading = el
         el.setAttribute("tabindex", "-1")
@@ -1161,7 +1177,7 @@ class RenderNode(val el: html.Element) {
     * units; -1 where it cannot be (no size set yet, axes set, words on more than one line, not on the page). For telling
     * words that surely fit from those to be measured on the page (`TextView`): a guess, not a measure. */
   def textWidthGuess(): Double =
-    if (guessFont.isEmpty || guessOff || !el.isConnected) -1.0
+    if (guessFont.isEmpty || guessOff || !WebFeatures.connected(el)) -1.0
     else {
       val words = el.textContent
       if (words.contains("\n")) -1.0
@@ -1207,7 +1223,9 @@ class RenderNode(val el: html.Element) {
     * under the theme's light words. */
   def setDropDown(background: String, text: String, highlight: String, chosen: String, edge: String,
                   inset: Double): Unit = {
-    el.style.setProperty("padding-inline", inset.toString + "px")
+    // (both sides alike, so left and right: `padding-inline` is Chromium 87's)
+    el.style.paddingLeft = inset.toString + "px"
+    el.style.paddingRight = inset.toString + "px"
     el.style.setProperty("--everyui-list", background)
     el.style.setProperty("--everyui-list-text", text)
     el.style.setProperty("--everyui-list-lit", highlight)
@@ -1524,6 +1542,9 @@ object RenderNode {
     * and a place on it, are read over. */
   def drawnAt: Double = everyui.theme.UiScale() * hostScale
 
+  // the size the root is drawn at as the start of its `transform` (`Platform.setUiScale`), where the page has no `scale`
+  private[render] var rootScale: String = ""
+
   /** CSS pixels to one of the app's units before any size chosen (everyui.theme.UiScale): on a TV (`AppHosts`), the
     * screen 540 units tall (`TvUnits`), so 960 by 540 at 1080p as on Android TV and a Roku; 1 in a browser. Measured
     * as the app's root is scaled (`Platform.setUiScale`) and again each time the window changes size: LG's webOS TV
@@ -1667,7 +1688,7 @@ object RenderNode {
     (r.width / at, r.height / at)
   }
 
-  def reveal(el: html.Element): Boolean = el.isConnected && el.getClientRects().length == 0 && {
+  def reveal(el: html.Element): Boolean = WebFeatures.connected(el) && el.getClientRects().length == 0 && {
     val before = revealed
     var at: dom.Node = el
     while (at != null && !(at eq dom.document)) {
@@ -2095,7 +2116,7 @@ object Nodes {
     // the family a text node starts with, until the app's (`Theme.family`) is set: a textarea's own is monospace
     el.style.fontFamily = "system-ui, " + RenderNode.emojiFaces + ", sans-serif"
     el.style.setProperty("box-sizing", "border-box")
-    el.style.setProperty("user-select", "text")
+    el.style.setProperty(WebFeatures.userSelect, "text")
     new RenderNode(el)
   }
 
@@ -2143,7 +2164,7 @@ object Nodes {
     el.style.margin = "0px"
     el.style.background = "transparent"
     el.style.setProperty("box-sizing", "border-box")
-    el.style.setProperty("user-select", "text")
+    el.style.setProperty(WebFeatures.userSelect, "text")
     new RenderNode(el)
   }
 
@@ -2513,10 +2534,7 @@ object Platform {
   }
 
   /** `f` at the end of the script's turn, before the browser draws: a microtask. */
-  def beforePaint(f: () => Unit): Unit = {
-    val task: js.Function0[Unit] = () => f()
-    js.Dynamic.global.queueMicrotask(task)
-  }
+  def beforePaint(f: () => Unit): Unit = WebFeatures.microtask(f)
 
   /** The first screen is drawn: what the server wrote into the page to stand in for it until then (the page's content
     * as plain HTML, for whatever reads the page without running it) goes. */
@@ -3095,6 +3113,11 @@ object Platform {
         app.style.setProperty("scale", at.toString)
         app.style.width = "calc(100% / " + at.toString + ")"
         app.style.height = "calc(100% / " + at.toString + ")"
+      }
+      // where the page has no `scale` (Chromium 104), the start of the root's `transform`, before its own
+      if (!WebFeatures.transformProperties) {
+        RenderNode.rootScale = if (at == 1.0) "" else "scale(" + at.toString + ") "
+        app.style.transform = RenderNode.rootScale + app.style.transform.replaceFirst("^scale\\([^)]*\\) ?", "")
       }
     }
   }

@@ -6265,6 +6265,50 @@ has 108, 25 has 120. Scala.js's default output (ES2015) runs from webOS 4 on (wi
 `ES2021` from webOS 22); the WebAssembly build needs Chromium 119, so webOS 25. A bundle sealed for a CDN
 (`WebBundle.seal`) works there as it is.
 
+#### The oldest engine: Chromium 53
+
+The web runtime's floor is Chromium 53, the browser of 2018's LG TVs (webOS 4); Samsung's Tizen 4 has 56. Link for it
+with Scala.js's ES2015 output. What an older engine lacks is asked of the browser itself (`WebFeatures`), never of its
+name, and a plainer way is taken there while every newer browser keeps its own:
+
+- **No pointer events** (before 55): the mouse's events stand in, so the Magic Remote's pointer still focuses and
+  clicks; a finger's tap on a touch screen comes as the mouse's press, release and click.
+- **No `scale`, `translate` or `rotate` properties** (before 104): the app's root is drawn at its size (`UiScale`, a
+  TV's units) by its `transform`, and a motion's position, turn or scale moves the `transform`, before the node's own;
+  one such track at a time on a node.
+- **No ResizeObserver** (before 64): a scroll's gutter and a rich editor's height are measured again as the window
+  changes size and as the scroll or the typing goes on.
+- **No AbortController** (before 66): a request whose headers are all that is wanted has its body cancelled; a form
+  sent past its time fails then, and its late answer is let go.
+- **No `queueMicrotask`** (before 71): a promise's reaction, which runs at the same point.
+- **No `overflow: clip`** (before 90): `hidden` for what is laid out while hidden; a boxed container's clip
+  (`clipsToBox`) is not drawn, its words shown whole as before.
+- **No `Element.scrollTo`** (before 61): a smooth scroll goes there at once.
+- **Unprefixed `user-select`** (from 54): `-webkit-user-select` before it (and in Safari).
+- **No BroadcastChannel** (before 54): a sign-in opens no popup, the page itself going to the provider.
+- `isIntersecting` (58) is read as any of the node in view, and the font set (which Chromium 53 iterates as pairs) by
+  its `forEach`.
+
+An older engine also draws no `backdrop-filter` blur (76), no `caret-color` (57), no `text-underline-offset` (87) and
+no `scrollbar-width` (its `::-webkit-scrollbar` rule hides a bar there), and `font-display` (60) is its own default.
+A rich editor (`RichEditor`) needs `beforeinput` (60), and a call LiveKit's client: neither is for a TV. Below 53 (webOS
+3, Chromium 38; Tizen 3, 47) is not supported: Scala.js's ES 5.1 output and `fetch`, `URLSearchParams`,
+`KeyboardEvent.key` and CSS custom properties would be needed first.
+
+Webcheck runs the example in Chromium 53 itself: a snapshot of Chromium's builds (revision 403380 is 53.0.2785.0;
+433042 is 56.0.2924.0, from the `chromium-browser-snapshots` bucket's `Linux_x64`), unzipped, with a GTK 2, its pango
+1.40 and harfbuzz 1.4 (Debian stretch's; a newer pango crashes it at start) and a gconf on its library path, run
+under `xvfb-run` (it has no headless mode). `WebOSCheck <page dir> --chrome <binary>` is the webOS check in it as
+webOS 4 (its user agent and version "4"), and `OldChromeCheck <page dir> --chrome <binary> [--shots <dir>]` loads
+the demos (tv, chat, rows, widgets, icons) from their files, gives each the remote's keys and the pointer's clicks,
+and fails on a screen not drawn or an error left uncaught. Both drive the browser over its own DevTools endpoint
+(`DevTools`), which an engine from 53 to today's speaks, so either runs in today's Chrome, headless, as well:
+
+```sh
+env -u WAYLAND_DISPLAY xvfb-run -a java -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.OldChromeCheck \
+  web/out-js --chrome /path/to/chrome53.sh --shots target/old-chrome
+```
+
 #### On a TV: Developer Mode and LG's CLI (`webosInstall`, `webosLaunch`, `webosInspect`)
 
 Installing on a TV takes LG's CLI (`npm install -g @webos-tools/cli`, or `webosCli := Some(dir)` naming where its

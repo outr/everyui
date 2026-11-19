@@ -26,19 +26,19 @@ private[render] object WebHover {
   def watch(el: dom.Element, told: Boolean => Unit): Unit = {
     val tell: js.Function1[Boolean, Unit] = on => told(on)
     el.asInstanceOf[js.Dynamic].updateDynamic(Key)(tell)
-    el.addEventListener("pointerenter", (_: dom.Event) => lit += el)
-    el.addEventListener("pointerleave", (_: dom.Event) => lit -= el)
+    el.addEventListener(WebFeatures.pointer("enter").get, (_: dom.Event) => lit += el)
+    el.addEventListener(WebFeatures.pointer("leave").get, (_: dom.Event) => lit -= el)
     if (!watching) {
       watching = true
       val at: js.Function1[dom.PointerEvent, Unit] = e =>
-        if (e.pointerType == "touch") { x = Double.NaN; y = Double.NaN }
+        if (WebFeatures.finger(e)) { x = Double.NaN; y = Double.NaN }
         else { x = e.clientX; y = e.clientY }
       val options = js.Dynamic.literal(capture = true, passive = true).asInstanceOf[dom.EventListenerOptions]
-      dom.document.addEventListener("pointermove", at, options)
-      dom.document.addEventListener("pointerdown", at, options)
-      dom.document.addEventListener("pointerup", at, options)
+      dom.document.addEventListener(WebFeatures.pointer("move").get, at, options)
+      dom.document.addEventListener(WebFeatures.pointer("down").get, at, options)
+      dom.document.addEventListener(WebFeatures.pointer("up").get, at, options)
       // off the page: nothing is under it
-      dom.document.addEventListener("pointerout", (e: dom.PointerEvent) => if (e.relatedTarget == null) {
+      dom.document.addEventListener(WebFeatures.pointer("out").get, (e: dom.PointerEvent) => if (e.relatedTarget == null) {
         x = Double.NaN
         y = Double.NaN
       }, options)

@@ -24,12 +24,8 @@ object ScrollGutter {
       dom.document.head.appendChild(style)
     }
     el.classList.add("everyui-scroll")
-    val observer = js.Dynamic.global.ResizeObserver
     // the box inside the scrollbar narrows as one appears, and widens as it goes
-    if (!js.isUndefined(observer)) {
-      val measure: js.Function1[js.Any, Unit] = _ => gutter(el)
-      js.Dynamic.newInstance(observer)(measure).observe(el)
-    }
+    WebFeatures.resized(el, List("scroll"))(() => gutter(el))
   }
 
   /** The scrollbar's width measured again now: what the box is wider than the room inside it, besides its edges (0

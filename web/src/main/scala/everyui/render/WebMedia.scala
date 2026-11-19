@@ -53,7 +53,7 @@ final class WebMedia(el: html.Element) {
   // removed, and never started again by being put back), or started while it was off the page, which a browser
   // refuses; it plays on once it is on the page again, and the page is in sight. A pause while it is on the page (a
   // media key, the browser's own controls) is the person's, and stands
-  el.addEventListener("pause", (_: dom.Event) => if (meantToPlay && !el.isConnected) onThePage())
+  el.addEventListener("pause", (_: dom.Event) => if (meantToPlay && !WebFeatures.connected(el)) onThePage())
   el.addEventListener("playing", (_: dom.Event) => {
     tries = 0
     played = true
@@ -234,7 +234,7 @@ final class WebMedia(el: html.Element) {
     dom.window.setTimeout(() => {
       waitingForPage = false
       if (meantToPlay) {
-        if (el.isConnected && dom.document.visibilityState != "hidden") {
+        if (WebFeatures.connected(el) && dom.document.visibilityState != "hidden") {
           tries += 1
           resume()
         }
@@ -255,11 +255,11 @@ final class WebMedia(el: html.Element) {
 
   // only the answer's headers are wanted, so the body is let go as soon as they are in
   private def probe(to: String, at: Int): Unit = {
-    val abort = js.Dynamic.newInstance(js.Dynamic.global.AbortController)()
-    val init = js.Dynamic.literal(headers = js.Dictionary(headers.toSeq*), signal = abort.signal)
+    val init = js.Dynamic.literal(headers = js.Dictionary(headers.toSeq*))
+    val abort = WebFeatures.abortable(init)
     val answered: js.Function1[js.Dynamic, Unit] = r => {
       val kind = Option(r.headers.get("content-type").asInstanceOf[String]).getOrElse("").toLowerCase
-      abort.abort()
+      abort(r)
       if (at == opened) {
         if (kind.contains("mpegurl")) attach(to, at) else fail(nativeError)
       }
@@ -471,11 +471,10 @@ object WebMedia {
     * let go as soon as its headers are in: `answer` hears true where it does, and false where it does not or the
     * request fails. */
   def allows(url: String, headers: Map[String, String], answer: Boolean => Unit): Unit = {
-    val abort = js.Dynamic.newInstance(js.Dynamic.global.AbortController)()
-    val init = js.Dynamic.literal(mode = "cors", credentials = "omit", headers = js.Dictionary(headers.toSeq*),
-      signal = abort.signal)
+    val init = js.Dynamic.literal(mode = "cors", credentials = "omit", headers = js.Dictionary(headers.toSeq*))
+    val abort = WebFeatures.abortable(init)
     val answered: js.Function1[js.Dynamic, Unit] = r => {
-      abort.abort()
+      abort(r)
       answer(r.ok.asInstanceOf[Boolean])
     }
     val failed: js.Function1[js.Any, Unit] = _ => answer(false)

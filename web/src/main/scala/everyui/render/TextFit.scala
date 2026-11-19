@@ -17,7 +17,7 @@ object TextFit {
     * answered at once, for ever, and the page would never draw again. */
   def ready(el: html.Element, loaded: () => Unit): Boolean = ready(el, loaded, js.Array())
 
-  private def ready(el: html.Element, loaded: () => Unit, tried: js.Array[js.Dynamic]): Boolean = el.isConnected && {
+  private def ready(el: html.Element, loaded: () => Unit, tried: js.Array[js.Dynamic]): Boolean = WebFeatures.connected(el) && {
     val fonts = dom.document.asInstanceOf[js.Dynamic].fonts
     val waiting = if (js.isUndefined(fonts)) Nil
       else faces(el).map(f => f -> waitsFor(f, fonts, el.textContent, tried)).filter(_._2.nonEmpty)
@@ -60,7 +60,10 @@ object TextFit {
   // loading, or never asked for, is ready.
   private def waitsFor(face: (String, String, String), fonts: js.Dynamic, text: String,
                        tried: js.Array[js.Dynamic]): List[js.Dynamic] = {
-    val own = js.Array.from(fonts.asInstanceOf[js.Iterable[js.Dynamic]]).toList
+    // (each by `forEach`: Chromium 53's set iterates its entries, each a pair)
+    val all = js.Array[js.Dynamic]()
+    fonts.forEach((f: js.Dynamic) => { all.push(f); () })
+    val own = all.toList
       .filter(f => named(f.family.asInstanceOf[String]) == face._1 && f.style.asInstanceOf[String] == face._2)
     FaceWait.waiting(own, face._3, text, tried.toList)(_.weight.asInstanceOf[String], _.status.asInstanceOf[String],
       _.unicodeRange.asInstanceOf[String]).toList

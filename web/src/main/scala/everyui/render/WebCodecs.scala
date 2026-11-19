@@ -36,9 +36,9 @@ object WebCodecs {
   }
 
   private def supported(mime: String): Boolean = {
-    val source = js.Dynamic.global.MediaSource
+    val source = WebFeatures.global("MediaSource").orNull
     val bySource =
-      if (js.isUndefined(source) || js.typeOf(source.isTypeSupported) != "function") None
+      if (source == null || js.typeOf(source.isTypeSupported) != "function") None
       else try Some(source.isTypeSupported(mime).asInstanceOf[Boolean]) catch { case _: Throwable => None }
     bySource.filter(identity).getOrElse {
       val tag = if (mime.startsWith("audio")) "audio" else "video"

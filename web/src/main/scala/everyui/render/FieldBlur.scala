@@ -20,8 +20,8 @@ object FieldBlur {
 
   private def listen(): Unit = if (!listening) {
     listening = true
-    dom.window.addEventListener("pointerdown", (_: dom.Event) => pressed = true, true)
-    List("pointerup", "pointercancel").foreach(name => dom.window.addEventListener(name, (_: dom.Event) => {
+    WebFeatures.pointer("down").foreach(dom.window.addEventListener(_, (_: dom.Event) => pressed = true, true))
+    List("up", "cancel").flatMap(WebFeatures.pointer).foreach(name => dom.window.addEventListener(name, (_: dom.Event) => {
       pressed = false
       val now = waiting
       waiting = Nil
@@ -36,7 +36,7 @@ object FieldBlur {
     el.addEventListener("blur", (e: dom.FocusEvent) => if (!blurring && e.relatedTarget == null) {
       val settled = () => {
         val active = dom.document.activeElement
-        if (el.isConnected && dom.document.hasFocus() && (active == null || active == dom.document.body))
+        if (WebFeatures.connected(el) && dom.document.hasFocus() && (active == null || active == dom.document.body))
           Focus.focused().foreach(c => if (c.node.el.contains(el)) Focus.dropped(c))
       }
       if (pressed) waiting = settled :: waiting else dom.window.setTimeout(() => settled(), 0)

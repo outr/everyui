@@ -21,26 +21,40 @@ object WebForm {
     val headers = new dom.Headers()
     // the browser names the body's type itself, with its boundary
     call.headers.filter(_._1.toLowerCase != "content-type").foreach((k, v) => headers.append(k, v))
-    val abort = new dom.AbortController()
-    val seconds = if (call.timeout > 0.0) call.timeout else 60.0
-    val timer = dom.window.setTimeout(() => abort.abort(), seconds * 1000.0)
-    val init = js.Dynamic.literal(method = call.method, body = form, headers = headers, signal = abort.signal,
+    val init = js.Dynamic.literal(method = call.method, body = form, headers = headers,
       credentials = if (call.credentials) "include" else "same-origin")
     val done = Task.completable[HttpResult]
+    // ended at its time by an abort (AbortController, Chromium 66), else failed then and its late answer let go
+    var over = false
+    val abort: () => Unit =
+      if (js.typeOf(js.Dynamic.global.AbortController) == "undefined") { () =>
+        if (!over) {
+          over = true
+          done.failure(new RuntimeException("No response from " + call.method + " " + call.url + ": timed out"))
+        }
+      }
+      else {
+        val controller = new dom.AbortController()
+        init.updateDynamic("signal")(controller.signal)
+        () => controller.abort()
+      }
+    val seconds = if (call.timeout > 0.0) call.timeout else 60.0
+    val timer = dom.window.setTimeout(() => abort(), seconds * 1000.0)
     dom.fetch(call.url, init.asInstanceOf[dom.RequestInit]).`then`[Unit] { (r: dom.Response) =>
       if (call.binary) r.arrayBuffer().`then`[Unit] { (buffer: ArrayBuffer) =>
         dom.window.clearTimeout(timer)
         val bytes = new Int8Array(buffer).toArray
-        done.success(HttpResult(r.status, headersOf(r), new String(bytes, "UTF-8"), Some(bytes)))
+        if (!over) done.success(HttpResult(r.status, headersOf(r), new String(bytes, "UTF-8"), Some(bytes)))
       }
       else r.text().`then`[Unit] { (text: String) =>
         dom.window.clearTimeout(timer)
-        done.success(HttpResult(r.status, headersOf(r), text))
+        if (!over) done.success(HttpResult(r.status, headersOf(r), text))
       }
       ()
     }.`catch`[Unit] { (e: Any) =>
       dom.window.clearTimeout(timer)
-      done.failure(new RuntimeException("No response from " + call.method + " " + call.url + ": " + String.valueOf(e)))
+      if (!over)
+        done.failure(new RuntimeException("No response from " + call.method + " " + call.url + ": " + String.valueOf(e)))
     }
     done
   }

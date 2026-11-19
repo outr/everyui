@@ -39,19 +39,20 @@ private[render] object PressOwner {
   private def install(): Unit = if (!installed) {
     installed = true
     val capture = js.Dynamic.literal(capture = true).asInstanceOf[dom.EventListenerOptions]
-    dom.window.addEventListener("pointerdown", (e: dom.PointerEvent) => if (e.button == 0) {
+    dom.window.addEventListener(WebFeatures.pointer("down").get, (e: dom.PointerEvent) => if (e.button == 0) {
       split = false
       strayed = false
-      pressed = if (e.pointerType == "touch") None else owner(e.target)
+      pressed = if (WebFeatures.finger(e)) None else owner(e.target)
       touchX = e.clientX
       touchY = e.clientY
     }, capture)
-    dom.window.addEventListener("pointermove", (e: dom.PointerEvent) => if (e.pointerType == "touch" && !strayed)
-      strayed = everyui.event.ScrollPress.beyond(touchX, touchY, e.clientX, e.clientY), capture)
-    dom.window.addEventListener("pointerup", (e: dom.PointerEvent) => if (e.button == 0) {
+    dom.window.addEventListener(WebFeatures.pointer("move").get, (e: dom.PointerEvent) =>
+      if (WebFeatures.finger(e) && !strayed)
+        strayed = everyui.event.ScrollPress.beyond(touchX, touchY, e.clientX, e.clientY), capture)
+    dom.window.addEventListener(WebFeatures.pointer("up").get, (e: dom.PointerEvent) => if (e.button == 0) {
       // where it came up, not the element holding a captured pointer, which the release is sent to
       val released = Option(dom.document.elementFromPoint(e.clientX, e.clientY)).flatMap(owner)
-      split = pressed.exists(p => p.isConnected && released.exists(r => !(r eq p)))
+      split = pressed.exists(p => WebFeatures.connected(p) && released.exists(r => !(r eq p)))
       pressed = None
     }, capture)
     // heard by the window last, once everything under the pointer has had the click

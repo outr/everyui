@@ -18,7 +18,7 @@ final class SelectOnFocus(el: dom.Element, select: () => Unit, collapsed: () => 
   // the keyboard lost only for now: the window or the tab left, or the field taken off the page
   private var kept = false
 
-  el.addEventListener("pointerdown", (_: dom.Event) => pressing = !(dom.document.activeElement eq el))
+  WebFeatures.pointer("down").foreach(el.addEventListener(_, (_: dom.Event) => pressing = !(dom.document.activeElement eq el)))
   el.addEventListener("focus", (_: dom.Event) => {
     if (on && !pressing && !holding && !kept) select()
     holding = true
@@ -31,6 +31,6 @@ final class SelectOnFocus(el: dom.Element, select: () => Unit, collapsed: () => 
   el.addEventListener("blur", (_: dom.Event) => {
     pressing = false
     holding = false
-    kept = (dom.document.activeElement eq el) || !el.isConnected
+    kept = (dom.document.activeElement eq el) || !WebFeatures.connected(el)
   })
 }

@@ -25,7 +25,7 @@ private[render] object TapReach {
     installed = true
     val capture = js.Dynamic.literal(capture = true).asInstanceOf[dom.EventListenerOptions]
     dom.window.addEventListener("pointerdown", (e: dom.PointerEvent) => {
-      finger = e.pointerType == "touch"
+      finger = WebFeatures.finger(e)
       downX = e.clientX
       downY = e.clientY
     }, capture)
@@ -58,8 +58,7 @@ private[render] object TapReach {
           clientY = math.max(r.top + 1.0, math.min(r.bottom - 1.0, y)),
           screenX = e.screenX, screenY = e.screenY, button = 0, detail = 1, pointerType = "touch",
           isPrimary = true)
-        val kind = if (js.isUndefined(js.Dynamic.global.PointerEvent)) js.Dynamic.global.MouseEvent
-          else js.Dynamic.global.PointerEvent
+        val kind = WebFeatures.global("PointerEvent").getOrElse(js.Dynamic.global.MouseEvent)
         c.dispatchEvent(js.Dynamic.newInstance(kind)("click", init).asInstanceOf[dom.Event])
       }
     case _ => ()

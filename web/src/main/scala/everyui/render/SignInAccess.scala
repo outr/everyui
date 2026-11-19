@@ -28,7 +28,8 @@ object SignInAccess {
     val w = dom.window
     val features = "popup,width=520,height=700,left=" + (w.screenX + math.max(0.0, (w.outerWidth - 520) / 2.0)).toInt +
       ",top=" + (w.screenY + math.max(0.0, (w.outerHeight - 700) / 2.0)).toInt
-    val held = w.open("", "everyui-signin", features)
+    // a popup tells the page where it ended on a BroadcastChannel (Chromium 54); without one the page itself goes
+    val held = if (WebFeatures.has("BroadcastChannel")) w.open("", "everyui-signin", features) else null
     if (held == null || js.isUndefined(held)) authorize(redirect).map { url =>
       if (!everyui.component.NavigationUrl.safe(url) || url.isEmpty) done(None)
       else {
