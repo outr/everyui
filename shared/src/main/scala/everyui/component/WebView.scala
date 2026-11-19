@@ -20,6 +20,7 @@ import everyui.render.{Nodes, RenderNode}
 class WebView(bridge: String, supplied: RenderNode = null)
   extends Component(if (supplied != null) supplied else Nodes.web(bridge)) {
   onDispose(() => this.node.releaseWeb())
+  this.node.onWebDownload(d => onDownload().fold(d.save())(f => f(d)))
 
   /** The address showing. Setting it again goes there again. */
   lazy val source: Prop[String] = own(new Prop[String]("", url => this.node.setWebSource(url)))
@@ -42,6 +43,14 @@ class WebView(bridge: String, supplied: RenderNode = null)
     * (`html, body { background: transparent }`, its colour scheme the app's so the browser backs it with nothing
     * either): a page laid over the app's own backdrop. Where there is no engine it is ignored, as the view is. */
   lazy val clear: Prop[Boolean] = own(new Prop[Boolean](false, c => this.node.setWebClear(c)))
+
+  /** What is done with a file the page downloads (a link answered as an attachment, `<a download>`, a Blob or a
+    * `data:` address saved by its script), where its sandbox allows downloads (None, or "allow-downloads"): None (the
+    * default) saves it, as `WebDownload.save()` does; `Some(f)` hands it to `f` instead, which may say something,
+    * route it elsewhere, or call `save()` itself. Android hands every download here; on the web the browser saves a
+    * frame's downloads itself and this is not called; where no engine shows a page (the desktop for now, a Roku, an
+    * Apple TV) and on iOS, nothing is downloaded. CONSUMING.md, WebView. */
+  lazy val onDownload: Prop[Option[WebDownload => Unit]] = own(new Prop[Option[WebDownload => Unit]](None, _ => ()))
 
   /** Say something to the page. It is script, and it runs in the page's world, not this one's. */
   def run(script: String): Unit = this.node.runWebScript(script)

@@ -7053,6 +7053,60 @@ window.addEventListener('message', e => {
 origin. Anything at all may be in those frames, so check the origin before acting on what they say. This is the web
 only, since Android's view is the page.
 
+**Downloads.** What a page downloads (a link answered `Content-Disposition: attachment`, a file the engine cannot show
+such as a zip, an installer or a PDF on Android, `<a download>`, a Blob or a `data:` address saved by its script) is
+saved where the page's sandbox allows it: unsandboxed (`sandbox` None), or sandboxed with "allow-downloads".
+`onDownload` (`Prop[Option[WebDownload => Unit]]`, None by default) says what is done with one: None saves it;
+`Some(f)` hands it to `f` instead, as a `WebDownload` (`url`, the `name` it is to be saved as, its `mime` type and its
+`size` where it is known), and `f` may say something, route it elsewhere, or save it the usual way with `save()`:
+
+```scala
+page.onDownload @= Some(d => Dialogs.confirm("Download", s"Save ${d.name}?", Words.save)
+  .map(yes => if (yes) d.save()).start())
+```
+
+The name is chosen as a browser chooses it (`WebDownload.name`): the answer's Content-Disposition (`filename*`, then
+`filename`), then the `download` name of the link clicked, then the address's last part, then "download"; an
+extension is added from the type where the name has none and never changed (Android's own `URLUtil.guessFileName`
+changes one, and reads no `filename*`), and a path, `..` or a character a file system refuses is taken out.
+
+- **The web.** The browser saves a frame's downloads itself, as its sandbox allows ("allow-downloads"); `onDownload`
+  is not called, as a page's download is never seen by the app.
+- **Android.** Each WebView has a DownloadListener (PageDownloads); a sandbox without "allow-downloads" refuses a
+  download (logged `[web] a download refused: …`). An `http:` or `https:` address is fetched by DownloadManager with
+  the page's cookies for it, the view's User-Agent and the page as its Referer, into the public Downloads, with the
+  system's notification while it runs and when it is done (`VISIBILITY_VISIBLE_NOTIFY_COMPLETED`). A `data:` address
+  is read in the app, and a `blob:` one out of the page: the page fetches it into its own memory and its bytes are
+  handed over 512 KB at a time as base64 through the view's own script calls, so nothing is lent the page for it and
+  a sandboxed page with no bridge downloads too. Both are written into MediaStore's Downloads from Android 10, with a
+  notification that opens the file when it is done (a toast where the app may not notify, or on a television).
+  Before Android 10 writing into the public Downloads takes WRITE_EXTERNAL_STORAGE: declare it in the app's manifest
+  as `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />` and it
+  is asked for once, as the first download is saved; without it, or refused, a download goes into the app's own Downloads
+  on the shared storage (`Android/data/<package>/files/Download`), still listed by the Downloads app with the system's
+  notification. From Android 10 nothing needs asking.
+- **iOS.** Not yet: WebKit's downloads are not handed over, so a download does nothing there.
+- **The desktop, the Roku and the Apple TV.** No engine shows a page (`Platform.webViews()` is false), so there is
+  nothing to download. JavaFX's web view runs only an embed's guest (`Embed`), not a WebView's page; it has no
+  download event, so a desktop page engine would have to find a download from the answer itself.
+
+Limits on Android:
+
+- A Blob is at most 256 MB (`PageBlob.limit`), as the whole of it is held in the page while it is read; a larger one
+  is refused and logged. Only the page's own frame: a Blob made by a frame inside the page is saved by name only if
+  the page can fetch it.
+- A Blob's `download` name, and its address kept for a minute after the page revokes it (a page often revokes at once
+  after its click), come from a script each document is given at its start (with the one for `parent.postMessage`,
+  through androidx.webkit). Where that cannot run (no androidx.webkit, a web view before Chromium 87) a Blob is named
+  from its type (`download.txt`) and one revoked at once is not saved.
+- A form POSTed and answered with an attachment is fetched again by DownloadManager with a GET, as Android's web view
+  never hands over the request's method or body; the server answers that GET as it does, which may not be the file.
+- DownloadManager fetches the address again, outside the page: a download that needs more than the cookies, the
+  User-Agent and the Referer (a header the page's script sets, a one-time address already spent) fails there.
+
+`demo=webview&src=<url>` shows a page; add `download=hook` to log each download (`webview download WebDownload(…)`)
+and save it, or `download=keep` to log it and save nothing.
+
 ## Monaco (everyui-monaco)
 
 `"com.outr" %% "everyui-monaco" % "0.1.0"` (Scala.js) is Monaco, VS Code's editor, as components: a port of

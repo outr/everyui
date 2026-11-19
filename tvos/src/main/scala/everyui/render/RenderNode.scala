@@ -207,6 +207,8 @@ class RenderNode(val sg: SGNode) {
   def askWeb(id: Int, request: String): Boolean = uiWebAsk(sg, id, request)
   def onWebReply(f: (Int, String) => Unit): Unit = uiWebOnReply(sg, f)
   def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = ()
+  // a download from the page (WebView.onDownload): not handed over by iOS's WebKit view yet, and no page on an Apple TV
+  def onWebDownload(f: everyui.component.WebDownload => Unit): Unit = ()
   // ---- a rich document's editing surface: none here yet (Platform.richEditing); the editor edits its Markdown ----
   def setRichDoc(doc: everyui.rich.RichDoc, selection: everyui.rich.RichRange): Unit = ()
   def setRichLook(look: everyui.rich.RichLook, placeholder: String, readOnly: Boolean): Unit = ()

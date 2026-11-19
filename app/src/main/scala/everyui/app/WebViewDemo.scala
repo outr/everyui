@@ -20,7 +20,10 @@ import everyui.ui
   * value is its flags, by commas): the page tries to read its parent, the cookies and the storage, and says what it
   * found on itself and to its parent (`{sandboxProbe: …}`, posted to any origin). Scripts on and off toggles
   * "allow-scripts", which loads it again. `clear=1` draws the view clear (`WebView.clear`), so a page with no ground of
-  * its own shows the app's behind it rather than black. */
+  * its own shows the app's behind it rather than black.
+  *
+  * `download=hook` hands what the page downloads to `onDownload`, which logs it (`webview download WebDownload(…)`) and
+  * saves it; `download=keep` logs it and saves nothing. Without it a download is saved, as by default. */
 object WebViewDemo {
   def run(): Unit = {
     ui.backgroundColor := Theme.background()
@@ -64,6 +67,13 @@ object WebViewDemo {
     }
     // clear=1: nothing of the view's own behind the page, so a transparent page shows the app behind it
     page.clear @= Platform.launchArg("clear") == "1"
+    // download=hook or keep: what the page downloads heard, and saved or not
+    val download = Platform.launchArg("download")
+    if (download.nonEmpty) page.onDownload @= Some(d => {
+      Platform.log("webview download " + d.toString)
+      heard.content @= "download " + d.name
+      if (download == "hook") d.save()
+    })
     val src = Platform.launchArg("src")
     page.source @= (if (src.nonEmpty) src else if (sandbox.nonEmpty) "sandbox.html" else "webview.html")
     page.run("ping(0)")

@@ -357,6 +357,8 @@ class RenderNode(val view: View) {
 
   // no frame inside the page is heard apart from it here
   def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = ()
+  /** What a download from the page is handed to (PageDownloads): the WebView's `onDownload`, saving it by default. */
+  def onWebDownload(f: everyui.component.WebDownload => Unit): Unit = webDownload = f
   // ---- a rich document's editing surface: none here yet (Platform.richEditing); the editor edits its Markdown ----
   def setRichDoc(doc: everyui.rich.RichDoc, selection: everyui.rich.RichRange): Unit = ()
   def setRichLook(look: everyui.rich.RichLook, placeholder: String, readOnly: Boolean): Unit = ()
@@ -374,6 +376,7 @@ class RenderNode(val view: View) {
   def releaseWeb(): Unit = if (Hop.offThread) Hop(() => releaseWeb()) else {
     webListener = _ => ()
     webReplier = (_, _) => ()
+    webDownload = _ => ()
     view match {
       // an embed's web view lets itself go (EmbedView.release)
       case w: android.webkit.WebView if !webReleased && !w.isInstanceOf[EmbedView] =>
@@ -395,6 +398,7 @@ class RenderNode(val view: View) {
 
   private[render] var webListener: String => Unit = _ => ()
   private[render] var webSandbox: WebSandbox = null
+  private[render] var webDownload: everyui.component.WebDownload => Unit = _.save()
   private var webReplier: (Int, String) => Unit = (_, _) => ()
   private var webSession: String = ""
 
@@ -2464,6 +2468,9 @@ object Nodes {
     // and what the page posts to its parent (itself, here) heard through it too, as the web hears a framed page
     PageParent.lend(view, bridge)
     node.webSandbox = new WebSandbox(view, bridge, said)
+    // what the page downloads, saved where its sandbox allows it, and its Blobs named and kept for the saving
+    view.setDownloadListener(new PageDownloads(view, node, () => node.webSandbox.downloads))
+    PageBlob.lend(view)
     node
   }
 

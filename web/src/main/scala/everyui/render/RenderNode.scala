@@ -915,6 +915,8 @@ class RenderNode(val el: html.Element) {
   def askWeb(id: Int, request: String): Boolean = webFrame != null && webFrame.ask(id, request)
   def onWebReply(f: (Int, String) => Unit): Unit = if (webFrame != null) webFrame.hearReplies(f)
   def onWebFrameMessage(f: Option[(String, String) => Unit]): Unit = if (webFrame != null) webFrame.nested(f)
+  // a download from the page (WebView.onDownload): the browser saves a frame's itself, as its sandbox allows ("allow-downloads"), and tells the app nothing
+  def onWebDownload(f: everyui.component.WebDownload => Unit): Unit = ()
   def releaseWeb(): Unit = if (webFrame != null) webFrame.release()
 
   // ---- a rich document's editing surface (Nodes.richEditor): a WebRichEditor ----

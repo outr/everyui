@@ -13,7 +13,7 @@ import android.webkit.{CookieManager, WebView, WebViewClient}
   * only with "allow-scripts"; DOM storage (localStorage, sessionStorage) is there only with "allow-same-origin"; a
   * form posted (the page's own POST) is refused without "allow-forms"; and a new window (`window.open`,
   * `target="_blank"`) opens nowhere without "allow-popups", where with it it replaces the page, as it does
-  * unsandboxed.
+  * unsandboxed; and what it downloads is saved only with "allow-downloads" (PageDownloads).
   *
   * What it cannot do: the page keeps its address's origin, as Android has no opaque one, so the cookies of that origin
   * (the store is the app's, one for every view) still go with its requests, and with "allow-scripts" its script can
@@ -28,12 +28,18 @@ class WebSandbox(view: WebView, bridge: String, bridgeObject: AnyRef) {
   private var source: String = ""
   private var flags: Option[Set[String]] = None
   private var hearing: Boolean = false
+  // unsandboxed, its links stay in the view, as they do once a sandbox is taken off: a web view with no client of its
+  // own hands every link (and so every download) to the system's browser, and the app is left
+  view.setWebViewClient(new WebViewClient)
 
   /** Whether the page is sandboxed: told nothing, and heard only where the app asked (`hear`). */
   def sandboxed: Boolean = flags.nonEmpty
 
   /** Whether what the page says is heard: unsandboxed, or sandboxed and heard all the same. */
   def heard: Boolean = !sandboxed || hearing
+
+  /** Whether the page may download: unsandboxed, or with "allow-downloads" (PageDownloads). */
+  def downloads: Boolean = everyui.component.WebDownload.allowed(flags)
 
   /** A sandboxed page lent the bridge (`on`), and nothing else, so that what it says is heard; the page loaded again
     * where it shows one and this changes what it has, as the bridge goes with the loads after it. */
