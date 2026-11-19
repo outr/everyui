@@ -2,7 +2,6 @@ package everyui.webcheck
 
 import fabric.*
 import rapid.*
-import robobrowser.{BrowserConfig, RoboBrowser, RoboBrowserConfig, TabSelector}
 
 import java.nio.file.Paths
 import scala.concurrent.duration.*
@@ -35,16 +34,21 @@ import scala.concurrent.duration.*
   *
   * Prints the page's console and each check; exits 1 where one fails.
   *
-  *   WebOSCheck <page dir> [--palm | --simulator]
+  *   WebOSCheck <page dir> [--palm | --simulator] [--chrome <binary>]
   *
   * The page dir is the app as `webosPackage` stages it (target/webos/app), loaded from its files as the TV loads it.
   * `--palm` stubs `PalmSystem` alone, as webOS before 5 has it, in place of `webOSSystem`. `--simulator` is the page as
   * LG's webOS TV 26 Simulator gives it: `webOSSystem` with `PalmSystem` the same object, no `webOS`, a pixel ratio of
   * 1.1667, and a window of no size that is given its 1920 by 1080 after the page starts.
+  * `--chrome` names the browser (else the Chrome on the path, headless). One older than 68 (an old TV's engine: webOS 4
+  * has Chromium 53, Tizen 4 has 56) is driven as webOS 4, its user agent's and its version "4", in a window of its own
+  * (it has no headless mode: run it under `xvfb-run`); the check is the same.
   */
 object WebOSCheck extends RapidApp {
-  private val agent = "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) " +
-    "Chrome/108.0.5359.211 Safari/537.36 WebAppManager"
+  // the user agent of a webOS TV whose engine is `chrome`
+  private def agent(chrome: String): String =
+    "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chrome +
+      " Safari/537.36 WebAppManager"
 
   // the runtime's object (webOSSystem; PalmSystem alone; or both, one object, as the Simulator has them) and the TV's
   // keyboard on the screen
@@ -77,8 +81,11 @@ object WebOSCheck extends RapidApp {
       |  if (window.everyuiKeyboard) { everyuiShow(false); return; }
       |  const code = { Back: 461, Up: 38, Down: 40 }[name];
       |  const key = { Back: "GoBack", Up: "ArrowUp", Down: "ArrowDown" }[name];
-      |  for (const t of ["keydown", "keyup"]) document.activeElement.dispatchEvent(
-      |    new KeyboardEvent(t, { key, keyCode: code, which: code, bubbles: true, cancelable: true }));
+      |  for (const t of ["keydown", "keyup"]) {
+      |    const e = new KeyboardEvent(t, { key, keyCode: code, which: code, bubbles: true, cancelable: true });
+      |    if (e.keyCode != code) for (const k of ["keyCode", "which"]) Object.defineProperty(e, k, { get: () => code });
+      |    document.activeElement.dispatchEvent(e);
+      |  }
       |};
       |window.everyuiVisible = "visible";
       |Object.defineProperty(document, "visibilityState", { get: () => window.everyuiVisible, configurable: true });
@@ -90,10 +97,14 @@ object WebOSCheck extends RapidApp {
     val palm = args.contains("--palm")
     val simulator = args.contains("--simulator")
     val system = if (palm) "PalmSystem" else "webOSSystem"
+    val chrome = args.dropWhile(_ != "--chrome").drop(1).headOption.getOrElse(DevTools.defaultChrome)
+    // webOS 4 on an engine older than webOS 5's, else webOS 24
+    val (version, engine) = if (DevTools.majorOf(chrome) < 68) ("4", "53.0.2785.34") else ("24", "108.0.5359.211")
     val ratio = if (simulator) 1.1667 else 1.0
     val scale = if (simulator) "2.33" else "2"
-    val page = Paths.get(args.headOption.getOrElse(sys.error("usage: WebOSCheck <page dir> [--palm | --simulator]")))
-      .toAbsolutePath.resolve("index.html").toUri.toString
+    val usage = "usage: WebOSCheck <page dir> [--palm | --simulator] [--chrome <binary>]"
+    val page = Paths.get(args.headOption.getOrElse(sys.error(usage))).toAbsolutePath
+      .resolve("index.html").toUri.toString
     val lines = new java.util.concurrent.CopyOnWriteArrayList[String]()
     var failed = List.empty[String]
     def check(what: String, ok: Boolean): Unit = {
@@ -101,13 +112,8 @@ object WebOSCheck extends RapidApp {
       System.out.flush()
       if (!ok) failed :+= what
     }
-    RoboBrowser.withBrowser(RoboBrowserConfig(
-      browserConfig = BrowserConfig(noSandbox = true, extraArgs = List("--mute-audio", "--window-size=1920,1080",
-        "--user-agent=" + agent)),
-      tabSelector = TabSelector.FirstPage
-    )) { browser =>
-      browser.event.runtime.consoleAPICalled.attach { event =>
-        val line = event.args.map(_.value).mkString(" ")
+    DevTools.around(chrome, Some(agent(engine))) { browser =>
+      browser.onLine { line =>
         lines.add(line)
         println(line)
         System.out.flush()
@@ -121,9 +127,14 @@ object WebOSCheck extends RapidApp {
           else Task.sleep(100.millis).flatMap(_ => look(left - 1))
         look(100)
       }
+      // (its key code set on the event where the engine takes none from its init, as before Chromium 63)
       def key(code: Int, name: String): Task[Unit] = browser.eval(
-        s"""for (const t of ["keydown", "keyup"])
-           |  document.dispatchEvent(new KeyboardEvent(t, { key: "$name", keyCode: $code, which: $code, bubbles: true }));
+        s"""for (const t of ["keydown", "keyup"]) {
+           |  const e = new KeyboardEvent(t, { key: "$name", keyCode: $code, which: $code, bubbles: true });
+           |  if (e.keyCode != $code)
+           |    for (const k of ["keyCode", "which"]) Object.defineProperty(e, k, { get: () => $code });
+           |  document.dispatchEvent(e);
+           |}
            |return 0""".stripMargin).unit
       def event(name: String, detail: String): Task[Unit] =
         browser.eval(s"""document.dispatchEvent(new CustomEvent("$name", { detail: $detail })); return 0""").unit
@@ -135,8 +146,9 @@ object WebOSCheck extends RapidApp {
              |const r = all[all.length - 1].getBoundingClientRect();
              |return [r.left + r.width / 2, r.top + r.height / 2]""".stripMargin)
         xy = at("result")("value").asVector.map(_.asDouble)
-        _ <- browser.send("Input.dispatchMouseEvent", obj("type" -> str("mouseMoved"), "x" -> num(5.0), "y" -> num(1000.0)))
-        _ <- browser.send("Input.dispatchMouseEvent", obj("type" -> str("mouseMoved"), "x" -> num(xy(0)), "y" -> num(xy(1))))
+        _ <- browser.send("Input.dispatchMouseEvent", obj("type" -> str("mouseMoved"), "x" -> num(5), "y" -> num(1000)))
+        _ <- browser.send("Input.dispatchMouseEvent", obj("type" -> str("mouseMoved"), "x" -> num(xy(0).round.toInt),
+          "y" -> num(xy(1).round.toInt)))
         _ <- Task.sleep(300.millis)
       } yield ()
       // a key as it reaches the page, to what has the page's focus (a field, when one has it)
@@ -152,7 +164,7 @@ object WebOSCheck extends RapidApp {
       // a key of the remote's, which the TV's keyboard answers itself while it is up ("Back", "Up", "Down")
       def remote(name: String): Task[Unit] =
         browser.eval(s"""everyuiRemote("$name"); return 0""").flatMap(_ => Task.sleep(300.millis))
-      def value(js: String): Task[Json] = browser.eval(js).map(_("result")("value"))
+      def value(js: String): Task[Json] = browser.value(js)
       // what has the page's focus: "field" for an input, else its tag
       def active: Task[String] =
         value("const a = document.activeElement; return a.tagName == 'INPUT' ? 'field' : a.tagName")
@@ -167,17 +179,15 @@ object WebOSCheck extends RapidApp {
         s"""window.everyuiVisible = "$state"; document.dispatchEvent(new Event("visibilitychange")); return 0""").unit
       // the page `width` by `height`, at the pixel ratio of the run
       def window(width: Int, height: Int): Task[Unit] = browser.send("Emulation.setDeviceMetricsOverride",
-        obj("width" -> num(width), "height" -> num(height), "deviceScaleFactor" -> num(ratio), "mobile" -> bool(false))).unit
+        obj("width" -> num(width), "height" -> num(height), "deviceScaleFactor" -> num(ratio), "mobile" -> bool(false),
+          "fitWindow" -> bool(false))).unit
       for {
-        _ <- browser.enableRuntime
-        _ <- browser.send("Page.enable")
-        _ <- browser.send("Page.addScriptToEvaluateOnNewDocument", obj("source" -> str(stub(palm, simulator))))
+        _ <- browser.addScript(stub(palm, simulator))
         // the page 1920 by 1080, as a TV's is at 1080p; in the Simulator, a window of no size until the page has started
         _ <- if (simulator) window(1, 1) else window(1920, 1080)
         _ <- browser.navigate(page)
-        _ <- browser.waitForLoaded()
-        home <- heard("tv: home shown (kind WebOS, version 24, open=/title/12)")
-        _ = check("starts on webOS 24 with its launch parameters (" + system + ")", home)
+        home <- heard(s"tv: home shown (kind WebOS, version $version, open=/title/12)")
+        _ = check(s"starts on webOS $version with its launch parameters (" + system + ")", home)
         _ <- if (simulator) Task.sleep(500.millis).flatMap(_ => window(1920, 1080)) else Task.unit
         screen <- heard("tv: screen 960x540 at " + scale)
         ruler <- value("const r = document.querySelector('[aria-label=ruler]').getBoundingClientRect(); return r.width")
@@ -192,8 +202,12 @@ object WebOSCheck extends RapidApp {
             |    document.body.scrollWidth <= innerWidth && document.body.scrollHeight <= innerHeight]""".stripMargin)
         _ = check("Home scrolls with no scrollbar, and the page runs past the window on neither side",
           bars.asVector(0).asBoolean && bars.asVector(1).asInt == 0 && bars.asVector(2).asBoolean)
-        faces <- browser.eval("return [...document.fonts].some(f => f.family.replace(/[\"']/g, '') == 'Open Sans' && f.status == 'loaded')")
-        _ = check("the page's faces load from its own files", faces("result")("value").asBoolean)
+        // words drawn in Open Sans measure apart from the fallback's (the set's word is not to be trusted: Chromium
+        // 53's can call a face unloaded that the words are drawn in)
+        faces <- value("const w = f => { const s = document.createElement('span'); s.style.font = '24px ' + f; " +
+          "s.textContent = 'Hamburgefonstiv 0123'; document.body.appendChild(s); const x = s.offsetWidth; s.remove(); " +
+          "return x; }; return w(\"'Open Sans', monospace\") != w('monospace')")
+        _ = check("the page's faces load from its own files", faces.asBoolean)
         _ <- heard("tv: focus Container \"Open details\"")
         _ <- key(13, "Enter")
         details <- heard("tv: details shown")
@@ -244,7 +258,7 @@ object WebOSCheck extends RapidApp {
         _ = check("OK on a field puts its input in the page's focus, the TV's keyboard up, and submits nothing",
           editing == "field" && raised == ((true, 1)) && count("tv: signed in") == 0 &&
             count("tv: focus Container \"Password\"") == 1)
-        _ <- browser.send("Input.insertText", obj("text" -> str("ada@example.com")))
+        _ <- browser.insertText("ada@example.com")
         _ <- press(37, "ArrowLeft")
         words <- typed
         caret <- value("return document.activeElement.selectionStart").map(_.asInt)
@@ -265,7 +279,7 @@ object WebOSCheck extends RapidApp {
         gone <- active
         _ = check("an arrow once the keyboard is away leaves the field", leaves && gone == "BODY")
         _ <- press(13, "Enter")
-        _ <- browser.send("Input.insertText", obj("text" -> str("secret")))
+        _ <- browser.insertText("secret")
         _ <- remote("Up")
         _ <- press(38, "ArrowUp")
         upward <- heard("tv: focus Container \"Email\"", 3)
@@ -293,7 +307,7 @@ object WebOSCheck extends RapidApp {
         _ <- press(461, "GoBack")
         back <- heard("tv: home shown", homes + 1)
         _ = check("Back once the keyboard is away goes back", back)
-        errors = lines.toArray.map(_.toString).filter(l => l.contains("uncaught") || l.contains("ERROR"))
+        errors = lines.toArray.map(_.toString).filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
         _ = check("no errors on the console", errors.isEmpty)
       } yield ()
     }.map { _ =>
