@@ -57,7 +57,7 @@ object Notices {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
         .putExtra("everyui.notice", key)
       val notification = NoticeChannels.builder(context, channel, NotificationManager.IMPORTANCE_DEFAULT)
-        .setSmallIcon(NoticeIcon.of(context))
+        .setSmallIcon(NoticeIcon.small(context, notice.noticeIcon))
         .setContentTitle(notice.title)
         .setContentText(notice.body)
         .setStyle(new Notification.BigTextStyle().bigText(notice.body))

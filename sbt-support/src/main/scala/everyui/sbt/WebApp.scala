@@ -81,8 +81,9 @@ object WebApp {
     * or else any (`{everyui: "data", data}`, `everyui.push.Push.data`), and with none open to nothing, a browser
     * running no app code without a window (Chrome then may show its own "updated in the background" notice). A
     * Markdown push (`"format": "markdown"`) is shown as plain words, its title, body and lines (`WebPushText`), and
-    * handed to a window as it was sent. A path off the app's own origin opens the app's start instead. A subscription
-    * the browser renews is subscribed again with the same key and handed to the open windows
+    * handed to a window as it was sent. A push's "noticePicture" (`everyui.push.PushMessage`) is its notification's
+    * icon where it names none of its own under "icon". A path off the app's own origin opens the app's start instead.
+    * A subscription the browser renews is subscribed again with the same key and handed to the open windows
     * (`everyui.push.Push.tokens`). A notification a page showed itself (`Platform.showNotice`) is answered by the page:
     * a click on it focuses the window that showed it, which the page learnt by asking the worker its id
     * (`{everyui: "client"}`), and hands it the click (`{everyui: "notice", key}`); where that window is not known, every
@@ -119,7 +120,7 @@ object WebApp {
        |const tell = (client, data) => client.postMessage(data);
        |const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group', 'groupSummary', 'lines',
        |  'silent', 'channel', 'channelName', 'channelGroup', 'channelGroupName', 'channelImportance', 'format',
-       |  'dataOnly'];
+       |  'noticeIcon', 'noticeColor', 'noticePicture', 'dataOnly'];
        |const yes = v => v === true || v === 'true';
        |${WebPushText.function}
        |self.addEventListener('push', e => {
@@ -142,7 +143,9 @@ object WebApp {
        |  const message = { title: String(m.title || ''), body: String(m.body || ''), path: m.path ? String(m.path) : null,
        |    tag: m.tag ? String(m.tag) : null, renotify: yes(m.renotify), actions, data, group: m.group ? String(m.group) : null,
        |    summary: yes(m.groupSummary), lines, silent: yes(m.silent),
-       |    format: String(m.format || '').trim().toLowerCase() === 'markdown' ? 'markdown' : 'plain' };
+       |    format: String(m.format || '').trim().toLowerCase() === 'markdown' ? 'markdown' : 'plain',
+       |    noticeIcon: m.noticeIcon ? String(m.noticeIcon) : null, noticeColor: m.noticeColor ? String(m.noticeColor) : null,
+       |    noticePicture: m.noticePicture ? String(m.noticePicture) : null };
        |  // a Markdown push shown as plain words, a notification showing no styles (the window is handed it as it was sent)
        |  const plain = t => message.format === 'markdown' ? pushText(t) : t;
        |  // those shown with a tag taken away (read elsewhere), and nothing more where that is all the push is
@@ -171,6 +174,8 @@ object WebApp {
        |    const options = { body, data: message, silent: message.silent };
        |    const tag = message.tag || message.group;
        |    if (tag) { options.tag = tag; options.renotify = message.renotify && !message.silent; }
+       |    // its picture as the notification's icon, where the push names none of its own under "icon"
+       |    if (message.noticePicture && !m.icon) options.icon = message.noticePicture;
        |    // a copy button left out: a browser writes the clipboard only from a page, as the person acts in it
        |    const shown = actions.filter(a => !a.copy);
        |    if (shown.length) options.actions = shown.map(a => a.input

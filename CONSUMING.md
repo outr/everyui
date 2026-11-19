@@ -3819,7 +3819,8 @@ while it lasts) and send it, so the server always has the current one. `Push.uns
 `path` is the app's own path, where a tap takes the person; one off the app's origin opens the app at its start. A body
 written in Markdown says so with `"format": "markdown"`: [Markdown in a push](#markdown-in-a-push-format-markdown-pushtext).
 A push with neither a title nor a body is shown never, and handed to the app's code instead:
-[Data pushes](#data-pushes-dataonly-backgroundapponpush-pushdata).
+[Data pushes](#data-pushes-dataonly-backgroundapponpush-pushdata). A push names its small icon, its colour and a
+picture on Android: [A push's icon, colour and picture](#a-pushs-icon-colour-and-picture-noticeicon-noticecolor-noticepicture).
 
 **Grouping and closing.** Two more keys group a conversation's notifications: `"tag": "c42"` shows one in place of
 the one with that tag already showing, rather than beside it, and `"renotify": true` has the replacement sound again
@@ -3882,7 +3883,8 @@ the push service with 404 or 410 at the next send; delete it then, and the app s
   The small icon is the app's drawable `everyui_notice`, which an app supplies: a monochrome white shape on
   transparent, at each density (`res/drawable-mdpi` to `-xxxhdpi`, or one vector drawable), since Android draws a small
   icon as a silhouette and a full-colour launcher icon shows as a blank square; the app's icon where it has none. The
-  app's own notices and its ongoing ones use it too.
+  app's own notices and its ongoing ones use it too, unless a push or notice names a Material icon of its own
+  (`noticeIcon`).
 - **Desktop, Roku, Apple TV**: none; `supported` is false and `subscribe` answers `PushUnsupported`. A desktop app
   hears its server over its own connection while it runs.
 
@@ -4206,6 +4208,40 @@ So `PushText.plain("**Done.** See [the log](https://x.io/7).\n\n- `build` passed
 
 `demo=background`'s "An answer in Markdown" pushes an agent's answer with bold, slanted and code words
 (struck ones left out), a link, a numbered list, a task list and a quote, styled on Android.
+
+### A push's icon, colour and picture (`noticeIcon`, `noticeColor`, `noticePicture`)
+
+So the person tells mail from a conversation from an error at a glance, a push names how Android shows it:
+
+```json
+{"title": "Build failed", "body": "voidcraft#42: 2 tests", "path": "/runs/42",
+ "noticeIcon": "error", "noticeColor": "#D32F2F", "noticePicture": "https://x.io/avatars/ci.png"}
+```
+
+- `noticeIcon` is a Material icon by the font's name (`mail`, `forum`, `error`, `terminal`, `event`: the names
+  `MaterialIcon.named` takes, as in `MaterialIcon.all`). Android draws it from the bundled Material Icons face, white
+  on transparent at the status bar's 24 dp for the screen's density, as the notification's small icon. A name the
+  face does not have, or none, keeps the app's `everyui_notice` (else its icon), as before. `PushMessage.noticeIcon`
+  is the name as sent; `shownIcon` is the icon, None for a name the face does not have.
+- `noticeColor` is `#RRGGBB`, or `#AARRGGBB` (alpha first, as Android writes it), in any case: the colour Android
+  tints the small icon and the app's name with (`Notification.Builder.setColor`). Anything else is ignored:
+  `PushMessage.noticeColor` is None (`PushMessage.colorOf` reads one).
+- `noticePicture` is a picture's URL, shown large beside the words (`setLargeIcon`): an avatar, a thumbnail. Android
+  fetches it over http or https only (`PushMessage.fetchable`; `fetchedPicture`), within 5 seconds of the push's ten,
+  up to 2 MB, decoded at the sampling nearest the large icon's size (64 dp) and cut to it from the middle. Late, too
+  large, not a picture or not there, the notification is shown without it, never held back or dropped.
+
+They are the push's own keys, not its `data`, and written back as sent (`PushMessage.fields`); a push made in code
+names none. A plain `icon`, `color` or `largeIcon` is the app's own data, unread. The app's own notices and ongoing
+ones name an icon in code: `Notice(..., noticeIcon = Some(MaterialIcon.Mail))`,
+`OngoingNotice(..., noticeIcon = Some(MaterialIcon.Sync))`.
+
+- **Android**: as above, for a push the app posts (a data message). A notification message the system shows itself
+  has the icon and colour of its own `notification` keys (`icon`, a drawable's name, and `color`), not these.
+- **Web**: a browser's notification has no small icon or tint of the app's choosing, so `noticeIcon` and
+  `noticeColor` change nothing there; `noticePicture` is the notification's `icon` where the push names no `icon` of
+  its own (the service worker sets no other). All three reach the window as `PushMessage`'s fields.
+- **Apple, desktop, Roku, Apple TV**: no push; the fields are read as anywhere.
 
 ### Data pushes (`dataOnly`, `BackgroundApp.onPush`, `Push.data`)
 

@@ -12,9 +12,10 @@ import everyui.push.{NoticeTap, OngoingNotice}
   * handler with no activity shows, updates and clears them too. Each is ongoing (not swiped away before Android 14),
   * alerts once (an update makes no sound), and is on the app's own channel. A tap that runs an action is an explicit
   * broadcast to `BackgroundReceiver`; one that opens the app is the app's launch with the path, as a widget's is, so
-  * no receiver starts an activity (Android 12 forbids it from a notice). The small icon is the drawable
-  * `everyui_notice` where the app's resources have one, the app's icon otherwise. Not on a television, which shows no
-  * notices of this kind; Android 13 and later need the person's leave (POST_NOTIFICATIONS). */
+  * no receiver starts an activity (Android 12 forbids it from a notice). The small icon is the Material icon the notice
+  * names (`NoticeIcon`), else the drawable `everyui_notice` where the app's resources have one, the app's icon otherwise.
+  * Not on a television, which shows no notices of this kind; Android 13 and later need the person's leave
+  * (POST_NOTIFICATIONS). */
 object OngoingNotices {
   private val notifications = "android.permission.POST_NOTIFICATIONS"
   private val id = 0x4f4e
@@ -50,7 +51,7 @@ object OngoingNotices {
       }
       val icon = NoticeIcon.of(context)
       val builder = NoticeChannels.builder(context, c.key, c.importance)
-        .setSmallIcon(icon)
+        .setSmallIcon(NoticeIcon.small(context, notice.noticeIcon))
         .setContentTitle(notice.title)
         .setOngoing(true)
         .setOnlyAlertOnce(true)

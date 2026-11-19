@@ -1,5 +1,8 @@
 package everyui.push
 
+import everyui.Color
+import everyui.font.MaterialIcon
+
 /** A push notification, as the server sends it: JSON `{"title": "...", "body": "...", "path": "/runs/42"}` on the
   * web (the Push API's payload), the same keys in an FCM data message on Android. `path` is where in the app a tap on
   * it goes, the app's own path (`ScreenManager.go`); None stays where the app is.
@@ -29,13 +32,29 @@ package everyui.push
   * `actions` are its buttons (`PushButton`, JSON text under "actions"), which the person may choose instead of
   * tapping it (`Push.acted`); `data` is the rest of what the server sent with it, by key.
   *
+  * How Android shows it, so the kinds of push an app sends are told apart at a glance: `noticeIcon` names the Material
+  * icon of its small icon by the font's name (`"noticeIcon": "mail"`, `MaterialIcon.named`; `shownIcon`), the app's
+  * `everyui_notice` where it names none the font has; `noticeColor` (`"noticeColor": "#1E88E5"`, or `#AARRGGBB`;
+  * `colorOf`) is the colour Android tints it with, none where it is no such colour; `noticePicture` is a picture's URL
+  * shown large beside its words (`"noticePicture": "https://..."`), fetched on Android only over http or https
+  * (`fetchable`) and shown without it where it does not come in time, and on the web the notification's icon where
+  * the push does not name one under "icon". A plain "icon", "color" or "largeIcon" is the app's own data, unread.
+  *
   * A push with neither title nor body, or with `"dataOnly": "true"`, is no notification but a data push
   * (`PushMessage.isData`), never shown: its keys go to the app's `BackgroundApp.onPush`, or `Push.data`. */
 case class PushMessage(title: String, body: String, path: Option[String], tag: Option[String] = None,
                        renotify: Boolean = false, actions: Vector[PushButton] = Vector.empty,
                        data: Map[String, String] = Map.empty, group: Option[String] = None, summary: Boolean = false,
                        lines: Vector[String] = Vector.empty, silent: Boolean = false,
-                       channel: Option[PushChannel] = None, format: PushFormat = PushFormat.Plain) {
+                       channel: Option[PushChannel] = None, format: PushFormat = PushFormat.Plain,
+                       noticeIcon: Option[String] = None, noticeColor: Option[Color] = None,
+                       noticePicture: Option[String] = None) {
+  /** The Material icon `noticeIcon` names, None where it names none the font has. */
+  def shownIcon: Option[MaterialIcon] = noticeIcon.flatMap(MaterialIcon.named)
+
+  /** `noticePicture` where it is one to fetch: an http or https URL. */
+  def fetchedPicture: Option[String] = noticePicture.filter(PushMessage.fetchable)
+
   /** The tag it is shown under: its own, or for a group's summary the group's, so that a summary takes the place of
     * the group's last and a close of the group (`{"close": group}`) takes it away. */
   def shownTag: Option[String] = tag.orElse(if (summary) group else None)
@@ -61,7 +80,8 @@ case class PushMessage(title: String, body: String, path: Option[String], tag: O
       "silent" -> (if (silent) "true" else ""), "channel" -> c.id, "channelName" -> c.name,
       "channelGroup" -> c.group, "channelGroupName" -> c.groupName,
       "channelImportance" -> (if (c.importance == NoticeImportance.Default) "" else c.importance.word),
-      "format" -> (if (format == PushFormat.Plain) "" else format.word))
+      "format" -> (if (format == PushFormat.Plain) "" else format.word), "noticeIcon" -> noticeIcon.getOrElse(""),
+      "noticeColor" -> noticeColor.map(PushMessage.hex).getOrElse(""), "noticePicture" -> noticePicture.getOrElse(""))
       .filter((_, v) => v.nonEmpty)
   }
 }
@@ -88,14 +108,15 @@ object PushMessage {
   /** The keys a push's data says what it is with; the rest are its `data`. */
   val keys: Set[String] = Set("title", "body", "path", "tag", "renotify", "close", "actions", "group", "groupSummary",
     "lines", "silent", "channel", "channelName", "channelGroup", "channelGroupName", "channelImportance",
-    "format", dataOnlyKey)
+    "format", "noticeIcon", "noticeColor", "noticePicture", dataOnlyKey)
 
   /** A push from its data as the server sent it, every value text (an FCM data message's): its title, body, path,
     * tag, renotify ("true"), its buttons (`PushButton.parse` of "actions"), its group, whether it is the group's
     * summary ("groupSummary": "true") and its lines (a JSON array), silent ("true"), its channel (where "channel"
     * names one: its name "channelName", the id where it has none, "channelGroup" with its "channelGroupName", and
     * its importance "channelImportance", `NoticeImportance.named`: default where it names none it knows),
-    * its format ("format": "markdown", `PushFormat.named`: plain where it names none it knows),
+    * its format ("format": "markdown", `PushFormat.named`: plain where it names none it knows), how Android shows it
+    * ("noticeIcon", "noticeColor" where it is a colour, `colorOf`, and "noticePicture"),
     * and the rest as `data`, less what the push service adds itself (keys from "google." and "gcm."). */
   def of(data: Map[String, String]): PushMessage = {
     val text = (k: String) => data.getOrElse(k, "")
@@ -107,8 +128,36 @@ object PushMessage {
       some("group"), text("groupSummary") == "true", lines(text("lines")), text("silent") == "true",
       some("channel").map(id => PushChannel(id, some("channelName").getOrElse(id), group,
         some("channelGroupName").getOrElse(group), NoticeImportance.named(text("channelImportance")))),
-      PushFormat.named(text("format")))
+      PushFormat.named(text("format")), some("noticeIcon").map(_.trim).filter(_.nonEmpty),
+      colorOf(text("noticeColor")), some("noticePicture").map(_.trim).filter(_.nonEmpty))
   }
+
+  /** The colour a push's "noticeColor" names: `#RRGGBB`, or `#AARRGGBB` as Android writes a colour with its alpha
+    * first, in either case and around spaces; None for anything else. */
+  def colorOf(text: String): Option[Color] = {
+    val t = text.trim.toLowerCase
+    val digits = t.drop(1)
+    if (!t.startsWith("#") || (digits.length != 6 && digits.length != 8) || digits.exists(c => hexDigits.indexOf(c) < 0))
+      None
+    else {
+      val argb = if (digits.length == 6) "ff" + digits else digits
+      val at = (i: Int) => hexDigits.indexOf(argb.charAt(i)) * 16 + hexDigits.indexOf(argb.charAt(i + 1))
+      Some(new Color(at(2), at(4), at(6), at(0)))
+    }
+  }
+
+  /** `color` as "noticeColor" is sent: `#RRGGBB` where it is opaque, else `#AARRGGBB`. */
+  def hex(color: Color): String =
+    if (color.alphaInt == 255) color.toHex else "#" + color.alphaHex + color.redHex + color.greenHex + color.blueHex
+
+  /** Whether `url` is a picture a device fetches for "noticePicture": an http or https URL with a host. */
+  def fetchable(url: String): Boolean = {
+    val t = url.trim.toLowerCase
+    val rest = if (t.startsWith("https://")) t.drop(8) else if (t.startsWith("http://")) t.drop(7) else ""
+    rest.nonEmpty && !rest.startsWith("/")
+  }
+
+  private val hexDigits = "0123456789abcdef"
 
   /** The lines of a summary: a JSON array's text, in order; none where it is not one. */
   private def lines(text: String): Vector[String] = PushJson.parse(text) match {

@@ -159,6 +159,8 @@ object PushAccess {
     val lines = if (js.isUndefined(m.lines) || m.lines == null) Vector.empty[String]
       else m.lines.asInstanceOf[js.Array[Any]].toVector.map(String.valueOf)
     PushMessage(text(m.title), text(m.body), some(m.path), some(m.tag), (m.renotify: Any) == true, buttons, data,
-      some(m.group), (m.summary: Any) == true, lines, (m.silent: Any) == true, format = PushFormat.named(text(m.format)))
+      some(m.group), (m.summary: Any) == true, lines, (m.silent: Any) == true, format = PushFormat.named(text(m.format)),
+      noticeIcon = some(m.noticeIcon), noticeColor = PushMessage.colorOf(text(m.noticeColor)),
+      noticePicture = some(m.noticePicture))
   }
 }

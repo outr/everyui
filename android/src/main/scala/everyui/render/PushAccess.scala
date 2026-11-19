@@ -25,7 +25,9 @@ import scala.jdk.CollectionConverters.*
   * shows itself when the app is not in front; its data's "path" still reaches the app on a tap. One with neither title
   * nor body, or with "dataOnly" "true", is a data push (`PushMessage.isData`), never posted: `Push.data` hears it in
   * front, the app's `BackgroundApp.onPush` otherwise, in a process started for it where the app was closed. Android
-  * 13 and later ask the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). */
+  * 13 and later ask the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). A posted
+  * one has the small icon its "noticeIcon" names (`NoticeIcon`), the colour of its "noticeColor" and the picture of
+  * its "noticePicture" (`NoticePicture`), where it names them. */
 object PushAccess {
   /** A notification's button that runs in the background, as `BackgroundReceiver` hears it. */
   val actionIntent = "everyui.push.ACTION"
@@ -112,9 +114,15 @@ object PushAccess {
   def withdraw(context: Context, tag: String): Unit = manager(context).cancel(tag, tagged)
 
   /** `message` posted: as `at` (its tag and id) where it is posted again in its own place, else under its shown tag or
-    * an id of its own; quietly where it is posted again, with `replies` under it (Android's reply history). */
+    * an id of its own; quietly where it is posted again, with `replies` under it (Android's reply history). Off the
+    * main thread where its picture is still to fetch (`NoticePicture`). */
   private def show(context: Context, message: PushMessage, at: Option[(String, Int)] = None,
-                   replies: Vector[String] = Vector.empty): Unit = {
+                   replies: Vector[String] = Vector.empty): Unit =
+    if (message.fetchedPicture.forall(u => NoticePicture.ready(context, u))) post(context, message, at, replies)
+    else NoticePicture.later("push: notification not posted", () => post(context, message, at, replies))
+
+  private def post(context: Context, message: PushMessage, at: Option[(String, Int)],
+                   replies: Vector[String]): Unit = {
     val notify = manager(context)
     val channel = message.channel.getOrElse(PushChannel.default)
     open(notify, channel)
@@ -127,7 +135,7 @@ object PushAccess {
     val body = PushSpans.body(message)
     val title = if (message.title.nonEmpty) message.shownTitle else context.getPackageManager.getApplicationLabel(info).toString
     val builder = NoticeChannels.builder(context, channel.id, channel.importance)
-      .setSmallIcon(NoticeIcon.of(context))
+      .setSmallIcon(NoticeIcon.small(context, message.shownIcon))
       .setContentTitle(title)
       .setContentText(if (message.format == PushFormat.Markdown) PushSpans.firstLine(body) else body)
       .setStyle(new Notification.BigTextStyle().bigText(body))
@@ -135,6 +143,9 @@ object PushAccess {
       // in place of the one shown with its tag, sounding again only where it says so
       .setOnlyAlertOnce(at.nonEmpty || (message.shownTag.nonEmpty && !message.renotify))
       .setContentIntent(PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
+    message.noticeColor.foreach(c =>
+      builder.setColor((c.alphaInt << 24) | (c.redInt << 16) | (c.greenInt << 8) | c.blueInt))
+    message.fetchedPicture.flatMap(u => NoticePicture.of(context, u)).foreach(b => builder.setLargeIcon(b))
     message.group.foreach(g => builder.setGroup(g))
     if (message.summary && message.group.nonEmpty) {
       builder.setGroupSummary(true)

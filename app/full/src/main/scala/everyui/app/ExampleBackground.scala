@@ -3,16 +3,17 @@ package everyui.app
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
 import everyui.background.{BackgroundApp, RestartReason, Work, WorkResult}
+import everyui.font.MaterialIcon
 import everyui.push.{NoticeAction, NoticeChannel, NoticeTap, Ongoing, OngoingNotice, Push, PushAction, ReplyOutcome}
 import everyui.render.Platform
 
 /** What the example runs with the app closed (build.sbt names this object, `everyuiBackground`; `demo=background`
   * drives it): each run of scheduled work noted with its time, whether the app was open, and how many runs there have
-  * been; an ongoing notice ("status") whose Pause and Resume run here and whose Open opens `/background/opened`, shown
-  * again when it is swiped away and after a restart; each restart noted with its reason; a push notification's button
-  * that runs in the background noted with its push; a reply typed into a mail push noted with its words, the push
-  * then shown with the reply, taken away or shown as sent as its data's "after" says; a data push noted with its keys,
-  * synced at once, past its ten seconds ("slow"), or handed to expedited work ("long", "example.sync"), and one
+  * been; an ongoing notice ("status", its small icon sync or pause) whose Pause and Resume run here and whose Open
+  * opens `/background/opened`, shown again when it is swiped away and after a restart; each restart noted with its
+  * reason; a push notification's button that runs in the background noted with its push; a reply typed into a mail
+  * push noted with its words, the push then shown with the reply, taken away or shown as sent as its data's "after"
+  * says; a data push noted with its keys, synced at once, past its ten seconds ("slow"), or handed to expedited work ("long", "example.sync"), and one
   * delivered by work ("example.datapush") in a process started for it. What it notes is in the settings
   * ("example.bg.*"), which the demo reads, and in the log ("[ui] example background: ..."). */
 object ExampleBackground extends BackgroundApp {
@@ -114,7 +115,8 @@ object ExampleBackground extends BackgroundApp {
     Ongoing.show(OngoingNotice("status", if (paused) "Paused" else "Running",
       (if (paused) "Paused at " else "Running since ") + now(), channel,
       Vector(toggle, NoticeAction("Open", NoticeTap.OpenApp("/background/opened"))),
-      tap = Some(NoticeTap.OpenApp("/background"))))
+      tap = Some(NoticeTap.OpenApp("/background")),
+      noticeIcon = Some(if (paused) MaterialIcon.Pause else MaterialIcon.Sync)))
   }
 
   /** The status notice taken away, and not shown again after a restart. */

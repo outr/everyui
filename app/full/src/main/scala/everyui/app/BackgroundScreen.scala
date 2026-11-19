@@ -19,7 +19,8 @@ import reactify.*
   * Pause, Resume and Open run in ExampleBackground); each settings page opened, and whether unused-app restrictions
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
   * ExampleBackground with the app closed (Approve once the device is unlocked) and are heard by Push.acted with it
-  * running; an agent's answer in Markdown, styled; and mail for three accounts (Push.deliver), each message stacked
+  * running; an agent's answer in Markdown, styled; kinds of push told apart by their icon, colour and picture
+  * (noticeIcon, noticeColor, noticePicture); and mail for three accounts (Push.deliver), each message stacked
   * under its account's summary on its account's channel, with a Reply typed into it; three channels declared up
   * front (Push.channels) at low, default and high importance, three more made by pushes asking each
   * (channelImportance), and the loud one's settings opened (Push.openChannelSettings); a one-time code pushed in
@@ -91,7 +92,8 @@ class BackgroundScreen extends UIScreen {
         new Button("A reminder", () => push(reminder)),
         new Button("An approval", () => push(approval)),
         new Button("Mail for three accounts", () => mail()),
-        new Button("An answer in Markdown", () => push(answer))),
+        new Button("An answer in Markdown", () => push(answer)),
+        new Button("Kinds at a glance", () => kinds())),
       section("A one-time code, in 3 s", coded)(
         new Button("A code arrived", () => push(code(dismisses = false))),
         new Button("Copy closes it", () => push(code(dismisses = true))),
@@ -222,6 +224,27 @@ class BackgroundScreen extends UIScreen {
     }
     Platform.log("example background: mail in 3 s, " + pushes.size.toString + " pushes")
     pushes.zipWithIndex.foreach((p, i) => Platform.after(3.0 + i * 0.5, () => Push.deliver(p)))
+  }
+
+  /** Mail, a conversation, an error and a plain one, from three seconds on, a second apart: the first three each with
+    * its own small icon and colour (noticeIcon, noticeColor), the first two with a picture (noticePicture: the
+    * launch's "picture", an http(s) URL, where it has one), so the kinds are told apart at a glance; the last names an
+    * icon the font does not have and a colour that is none, and shows as a push always has. */
+  private def kinds(): Unit = {
+    val picture = Platform.launchArg("picture")
+    val pushes = Vector(
+      Map("title" -> "Ann", "body" -> "Lunch on Friday?", "noticeIcon" -> "mail", "noticeColor" -> "#1E88E5",
+        "noticePicture" -> picture),
+      Map("title" -> "Team chat", "body" -> "Build 42 is green", "noticeIcon" -> "forum", "noticeColor" -> "#43A047",
+        "noticePicture" -> picture),
+      Map("title" -> "Deploy failed", "body" -> "voidcraft#42: 2 tests", "noticeIcon" -> "error",
+        "noticeColor" -> "#D32F2F"),
+      Map("title" -> "Plain", "body" -> "No icon the font has", "noticeIcon" -> "not_an_icon", "noticeColor" -> "red"))
+    pushed @= "Mail, a conversation, an error and a plain one, from 3 s on: leave the app"
+    pushes.zipWithIndex.foreach { (p, i) =>
+      val data = (p ++ Map("path" -> "/background", "tag" -> ("kind-" + i.toString))).filter((_, v) => v.nonEmpty)
+      Platform.after(3.0 + i * 1.0, () => Push.deliver(data))
+    }
   }
 
   /** Three channels declared before any push names them, under "Example", one at each of low, default and high. */
