@@ -1525,8 +1525,20 @@ object RenderNode {
   def drawnAt: Double = everyui.theme.UiScale() * hostScale
 
   /** CSS pixels to one of the app's units before any size chosen (everyui.theme.UiScale): on a TV (`AppHosts`), the
-    * screen 540 units tall (`TvUnits`), so 960 by 540 at 1080p as on Android TV and a Roku; 1 in a browser. */
-  lazy val hostScale: Double = AppHosts.current.fold(1.0)(_ => TvUnits.scale(dom.window.innerHeight.toDouble))
+    * screen 540 units tall (`TvUnits`), so 960 by 540 at 1080p as on Android TV and a Roku; 1 in a browser. Measured
+    * as the app's root is scaled (`Platform.setUiScale`) and again each time the window changes size: LG's webOS TV
+    * Simulator starts the page in a window of no size and gives it the screen after, and a size read once, at the start,
+    * left the app laid out at 1 there. */
+  def hostScale: Double = hostAt
+  private var hostAt: Double = 1.0
+
+  /** `hostScale` measured again, from the window as it is now: whether it changed. */
+  private[render] def measureHost(): Boolean = {
+    val now = AppHosts.current.fold(1.0)(_ => TvUnits.scale(dom.window.innerHeight.toDouble))
+    val changed = now != hostAt
+    hostAt = now
+    changed
+  }
 
   /** The size `e`'s place is read over: the size drawn at as the first node heard it, kept on the event, so one that
     * changes the size as it is heard (a click on a + that turns it up) is the same place to every node it climbs
@@ -1836,6 +1848,12 @@ object RenderNode {
     if (n == 1) token else token + "-" + n.toString
   }
 
+  /** The page's rules for an app on a TV: no scrollbar on the page or on anything in it, by the standard rule and
+    * the older Chromium's (webOS before 23), over the thin one a scroll gives itself (its own style, outranked). */
+  val noScrollbars: String =
+    " html, body, #app, #app * { scrollbar-width: none !important; }" +
+      " ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }"
+
   /** The page's rules for its fields under the browser's autofill: the words keep the field's colour (`--everyui-fill`)
     * and the box keeps its own, where the browser would paint both, and the `everyui-autofill` animation starts, so a
     * value filled without a word to the page is heard (`onValue`). */
@@ -1955,7 +1973,9 @@ object Nodes {
       // what holds the page's focus for the app's draws no outline of the browser's: the app draws its focus, or the
       // focus layer a ring in the element's own style (`setFocusRing`), which outranks this
       " [data-everyui-held]:focus { outline: none; }" +
-      RenderNode.autofillStyle + RenderNode.selectStyle
+      RenderNode.autofillStyle + RenderNode.selectStyle +
+      // on a TV (`AppHosts`) no scrollbar: a remote scrolls by the focus, and the browser's bar was drawn down Home's edge
+      (if (AppHosts.current.nonEmpty) RenderNode.noScrollbars else "")
     dom.document.head.appendChild(style)
     new RenderNode(app)
   }
@@ -3048,7 +3068,20 @@ object Platform {
     * (`getWidth`); a pointer's place too. The page's stylesheets have it too, as `--everyui-ui-scale` on the page's
     * root, for what a guest draws over the page outside the app's root (Monaco's tooltips and menus). */
   def setUiScale(factor: Double): Unit = {
-    // and on a TV, its units' size (RenderNode.hostScale)
+    chosenScale = factor
+    RenderNode.measureHost()
+    drawAt(factor)
+  }
+  private var chosenScale = 1.0
+  // on a TV, the screen measured again as the window changes size, before the app hears of it (`onResize`, heard after
+  // this, which is listened for as the backend starts), and the root scaled again where its units changed
+  AppHosts.current.foreach { _ =>
+    RenderNode.measureHost()
+    dom.window.addEventListener("resize", (_: dom.Event) => if (RenderNode.measureHost()) drawAt(chosenScale))
+  }
+
+  // the app's root drawn at `factor` times its size and, on a TV, its units' size (RenderNode.hostScale)
+  private def drawAt(factor: Double): Unit = {
     val at = factor * RenderNode.hostScale
     dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("--everyui-ui-scale", at.toString)
     val app = dom.document.getElementById("app").asInstanceOf[html.Element]
@@ -3198,9 +3231,14 @@ object Platform {
     }))
     // a TV's remote saying its pointer showed or hid with a key (webOS 1) says only that
     def pointerKey(e: dom.KeyboardEvent): Option[Boolean] = AppHosts.current.flatMap(_.pointerKey(e.keyCode))
-    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) =>
-      pointerKey(e).fold(hear(e, true))(shown => everyui.focus.Focus.remotePointer @= shown))
-    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => if (pointerKey(e).isEmpty) hear(e, false))
+    // in a TV's runtime, heard on the window as they come down to the page, before anything there: LG's webOS TV
+    // Simulator keeps the keys that reach the page from it while its keyboard is up (stopping them at the window), and a
+    // Back or an arrow that reaches the page while a field is typed in still ends the typing (TextInput) and goes on
+    val target: dom.EventTarget = if (AppHosts.current.nonEmpty) dom.window else dom.document
+    val first = AppHosts.current.nonEmpty
+    target.addEventListener("keydown", (e: dom.KeyboardEvent) =>
+      pointerKey(e).fold(hear(e, true))(shown => everyui.focus.Focus.remotePointer @= shown), first)
+    target.addEventListener("keyup", (e: dom.KeyboardEvent) => if (pointerKey(e).isEmpty) hear(e, false), first)
     // a mouse's back and forward buttons are keys too, never an embed's (NavButtons)
     NavButtons.hear((name, pressed, e) => {
       held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)

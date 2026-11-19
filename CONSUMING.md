@@ -6208,8 +6208,11 @@ asks of an app:
   unit is two CSS pixels (`TvUnits`: CSS pixels over `innerHeight / 540`). The app's root is drawn at that scale, as a
   size chosen (`UiScale`) is, so words, pictures, borders and the pointer's place all follow it, and a size chosen
   multiplies it. `Platform.pixelRatio()` is the CSS pixels to a unit times the page's `devicePixelRatio`: 2 on an LG at
-  1080p, as on Android TV, so a picture asked for by its width in pixels stays sharp. Any host (`AppHosts`: Tizen's and
-  Vega's next) is laid out so; a browser, a phone's or a desktop's, is not.
+  1080p, as on Android TV, so a picture asked for by its width in pixels stays sharp (about 2.33 in LG's Simulator,
+  whose page has a pixel ratio of 1.1667). The scale is measured again each time the window changes size, before the
+  app hears of it (`Platform.onResize`): the Simulator starts the page in a window of no size and gives it the screen
+  after. No scrollbar is drawn, on the page or on anything that scrolls in it; a remote scrolls by the focus. Any host
+  (`AppHosts`: Tizen's and Vega's next) is laid out so; a browser, a phone's or a desktop's, is not.
 - **Text fields**: as on Android TV. The arrows move the focus onto a field and off it, lighting it and no more: its
   `<input>` is not given the page's focus, so the TV's keyboard does not come up and the arrows go on. OK gives the
   input the page's focus, which brings the TV's keyboard up (webOS shows it for any focused text input), and submits
@@ -6220,10 +6223,11 @@ asks of an app:
   `AppHost.hearKeyboard`) leaves the input focused, as webOS does, and is not answered at once (LG warns that taking the
   focus from the field then breaks its voice input, whose button takes the keyboard down and up again): the next key
   the remote sends lets the field go first (`SystemKeyboard`), so an arrow moves the focus on from it, OK starts the
-  typing again, and Back goes back. A USB keyboard typing on keeps it. Where Back, Up or Down do reach the page while a
-  field is typed in (a host whose keyboard leaves them to the app), Back ends the typing and goes no further, and Up
-  and Down end it and move the focus on, as they do in `TextInput` and `SearchField` wherever the keyboard is on the
-  screen.
+  typing again, and Back goes back. A USB keyboard typing on keeps it. The keys are heard on the window as they come
+  down to the page (on a host only), so where Back, Up or Down do reach the page while a field is typed in, with no
+  word from the keyboard (one sent to the page, which the Simulator stops at the window while its keyboard is up),
+  Back ends the typing and goes no further, and Up and Down end it and move the focus on, as they do in `TextInput`
+  and `SearchField` wherever the keyboard is on the screen.
 
 #### Packaging (`everyuiWebOS`, `webosPackage`)
 
@@ -6311,9 +6315,11 @@ HLS player with its sound tracks and subtitles, `Platform.decodes`' answers, and
 with `ares-install`. In a headless Chrome made to look like webOS 24 (its user agent, a stubbed `webOSSystem`, or
 `PalmSystem` alone as in the Simulator, the TV's events dispatched), the example's package, staged and loaded from its
 files, starts with its faces loaded, and its `demo=tv` goes Back from its second screen, leaves by `platformBack` at its first,
-hears a relaunch's parameters and the pointer's focus, lays its screen out 960 by 540 at a scale of 2, and on a sign-in form
-moves over the fields, types in one only after OK, and ends the typing with Back, an arrow or the keyboard's Enter, with
-the TV's keyboard stubbed as the Simulator has it (webcheck's `WebOSCheck`).
+hears a relaunch's parameters and the pointer's focus, lays its screen out 960 by 540 at a scale of 2 (2.33 as in the
+Simulator, whose window is sized after the page starts), draws no scrollbar on a Home that scrolls, and on a sign-in
+form moves over the fields, types in one only after OK, and ends the typing with the remote's Back, a Back sent to the
+page, an arrow or the keyboard's Enter, with the TV's keyboard stubbed as the Simulator has it (webcheck's
+`WebOSCheck`, with `--simulator` for the Simulator's page).
 
 ## Launches (`Platform.launchArg`, `Platform.onLaunch`)
 

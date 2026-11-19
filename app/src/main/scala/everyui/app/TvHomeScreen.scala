@@ -10,7 +10,7 @@ import everyui.theme.Theme
 
 /** The TV demo's first screen (TvDemo): where the app starts, what it was launched with and the screen it has, a button
   * to the details, one beside it for the remote's pointer to come onto, one to a sign-in form, and a ruler 100 units
-  * across ("ruler"), measured on the page as the screen's units are. */
+  * across ("ruler"), measured on the page as the screen's units are, and room below it, so Home scrolls. */
 class TvHomeScreen extends ScrollScreen {
   override def manager: ScreenManager = TvDemo
   override def title: String = "Home"
@@ -19,6 +19,11 @@ class TvHomeScreen extends ScrollScreen {
   private val open = Button.bound("Open details", () => TvDemo.show(TvDemo.details).startUnit())
   private val settings = Button.bound("Settings", () => Platform.log("tv: pressed Settings"))
   private val signIn = Button.bound("Sign in", () => TvDemo.show(TvDemo.signIn).startUnit())
+  // what Home holds below, as an app's Home runs on past the screen: it scrolls (by the focus, with no scrollbar on a TV)
+  private val below = new Container {
+    size.width @= 100.0
+    size.height @= 800.0
+  }
   private val ruler = new Container {
     size.width @= 100.0
     size.height @= 4.0
@@ -29,13 +34,12 @@ class TvHomeScreen extends ScrollScreen {
   override def defaultFocus(): Component = open
 
   override def createUI(): Task[Unit] = Task {
-    body.children ++= List(open, settings, signIn, ruler)
+    body.children ++= List(open, settings, signIn, ruler, below)
   }
 
   override protected def activate(): Task[Unit] = super.activate().map { _ =>
     Platform.log("tv: home shown (kind " + Platform.kind.toString + ", version " + Platform.osVersion() + ", open=" +
       Platform.launchArg("open") + ")")
-    Platform.log("tv: screen " + math.round(Platform.screenWidth()).toString + "x" +
-      math.round(Platform.screenHeight()).toString + " at " + Platform.pixelRatio().toString)
+    TvDemo.logScreen()
   }
 }

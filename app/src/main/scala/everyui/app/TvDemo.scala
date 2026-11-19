@@ -12,6 +12,7 @@ import everyui.render.Platform
   *   [ui] tv: focus Container "Settings"
   *   [ui] tv: launch open=/title/7
   *   [ui] tv: away, tv: resumed
+  *   [ui] tv: screen 960x540 at 2 (as Home shows, and as the window changes size)
   *
   * On webOS, Back at Home leaves the app by the system's own way ("[ui] webOS: leaving by webOSSystem"). */
 object TvDemo extends ScreenManager {
@@ -25,6 +26,11 @@ object TvDemo extends ScreenManager {
     Platform.onAway(() => Platform.log("tv: away"))
     Platform.onResume(() => Platform.log("tv: resumed"))
     Focus.focused.attach(_.foreach(c => Platform.log("tv: focus " + Focus.named(c))))
+    Platform.onResize(() => logScreen())
     run(home, details, signIn)
   }
+
+  /** The screen in the app's units and their scale: "[ui] tv: screen 960x540 at 2". */
+  def logScreen(): Unit = Platform.log("tv: screen " + math.round(Platform.screenWidth()).toString + "x" +
+    math.round(Platform.screenHeight()).toString + " at " + Platform.pixelRatio().toString)
 }
