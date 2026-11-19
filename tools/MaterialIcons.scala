@@ -4,24 +4,35 @@ import java.nio.file.{Files, Paths}
 
 /** Generate everyui.font.MaterialIcon from the icon font's own codepoint table (assets/fonts/
   * MaterialIcons-Regular.codepoints, from google/material-design-icons): one `lazy val` per icon, named as youi
-  * names them (`3d_rotation` → `3dRotation`, `home` → `Home`).
+  * names them (`3d_rotation` → `3dRotation`, `home` → `Home`), and every icon by its name in `table`, read the first
+  * time `all` or `named` is asked for.
   *
   *   scala-cli run tools/MaterialIcons.scala */
 @main def materialIcons(): Unit = {
   val table = Paths.get("assets/fonts/MaterialIcons-Regular.codepoints")
   val out = Paths.get("shared/src/main/scala/everyui/font/MaterialIcon.scala")
   // the table lists a few icons twice (an alias at a second codepoint): the first wins
-  var seen = Set.empty[String]
-  val entries = Files.readAllLines(table).toArray.map(_.toString.trim).filter(_.nonEmpty).flatMap { line =>
+  val icons = Files.readAllLines(table).toArray.map(_.toString.trim).filter(_.nonEmpty).map { line =>
     val Array(name, code) = line.split(" ")
+    name -> Integer.parseInt(code, 16)
+  }.distinctBy(_._1).toVector
+  // a codepoint as the escapes of its UTF-16 units, so the source is ASCII ("goat" is past U+FFFF, a surrogate pair)
+  def glyph(code: Int): String = new String(Character.toChars(code)).map(c => "\\u%04x".format(c.toInt)).mkString
+  // BrightScript names are case-insensitive, so `AddChart` and `Addchart` would collide there: the first wins
+  var seen = Set.empty[String]
+  val vals = icons.flatMap { (name, code) =>
     val camel = name.split("_").map(_.capitalize).mkString
-    // BrightScript names are case-insensitive, so `AddChart` and `Addchart` would collide there: the first wins
     if (seen.contains(camel.toLowerCase)) None
     else {
       seen += camel.toLowerCase
       val ident = if (camel.head.isDigit) "`" + camel + "`" else camel
-      Some(s"""  lazy val $ident: MaterialIcon = MaterialIcon("$name", "\\u$code")""")
+      Some(s"""  lazy val $ident: MaterialIcon = MaterialIcon("$name", "${glyph(code)}")""")
     }
+  }
+  // every icon as `name=glyph`, by spaces, a line for each first letter, so no string the Roku compiler is given is
+  // very long
+  val lines = icons.groupBy(_._1.head).toVector.sortBy(_._1).map { (_, group) =>
+    "    \"" + group.map((name, code) => name + "=" + glyph(code)).mkString(" ") + "\""
   }
   val text =
     s"""package everyui.font
@@ -35,9 +46,28 @@ import java.nio.file.{Files, Paths}
        |
        |object MaterialIcon {
        |  lazy val Empty: MaterialIcon = MaterialIcon("", "")
-       |${entries.mkString("\n")}
+       |${vals.mkString("\n")}
+       |
+       |  /** Every icon in the face, ${icons.size} of them, in the face's order, which is by name: an icon picker's "show more".
+       |    * Made the first time it is asked for, so an app that never asks pays nothing for it; on the web, its glyphs
+       |    * are shipped only by an app that reaches it. Each is equal to its `lazy val` (`Home`), and the few names a
+       |    * `lazy val` would clash on (`addchart` beside `add_chart`) are here too. */
+       |  lazy val all: Vector[MaterialIcon] = table.flatMap(_.split(' ')).toVector.map { entry =>
+       |    val at = entry.indexOf('=')
+       |    MaterialIcon(entry.substring(0, at), entry.substring(at + 1))
+       |  }
+       |
+       |  private lazy val byName: Map[String, MaterialIcon] = all.map(icon => icon.name -> icon).toMap
+       |
+       |  /** The icon the face calls `name` ("local_shipping"), as an icon chosen is stored and drawn again: None for a
+       |    * name the face does not have. Builds `all` the first time it is asked. */
+       |  def named(name: String): Option[MaterialIcon] = byName.get(name)
+       |
+       |  // every icon as `name=glyph`, by spaces, a line for each first letter
+       |  private def table: List[String] = scala.List(
+       |${lines.mkString(",\n")})
        |}
        |""".stripMargin
   Files.writeString(out, text)
-  println(s"${entries.length} icons → $out")
+  println(s"${vals.length} vals, ${icons.size} icons → $out")
 }

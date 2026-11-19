@@ -2660,8 +2660,10 @@ object SwiftEmitter {
   /** The program's files: `App.swift`, then `App2.swift`, `App3.swift` and on. */
   def partName(i: Int): String = if (i == 0) "App.swift" else "App" + (i + 1) + ".swift"
 
-  /** `code` with every string literal emptied, so what is checked is code alone. */
-  def withoutStrings(code: String): String = """"(?:[^"\\\n]|\\.)*"""".r.replaceAllIn(code, "\"\"")
+  /** `code` with every string literal emptied, so what is checked is code alone. Its runs of plain characters are
+    * taken whole (possessively), as a pattern that took them one at a time went a frame deeper for each and overflowed
+    * the stack on a long literal (MaterialIcon.all's table). */
+  def withoutStrings(code: String): String = """"(?:[^"\\\n]++|\\.)*+"""".r.replaceAllIn(code, "\"\"")
 
   /** The free functions `code` calls (a name followed by `(`, not a member, a subscript's result or a label), each
     * with how often. */

@@ -860,6 +860,18 @@ email.invalid := (if (tried() && !valid(email.value())) "Enter an email address"
 
 ## General components
 
+Each glyph of the bundled Material Icons is a `lazy val` of `everyui.font.MaterialIcon` (`MaterialIcon.Home`), and
+`MaterialIcon.all` lists every one, 2,234 of them, in the face's order (by name), for an icon picker's "show more".
+`MaterialIcon.named(name)` finds one by the face's name ("local_shipping"), None for a name it does not have, so a
+choice is stored as `icon.name` and drawn again from it. Both are made the first time either is asked for, so an app
+that never asks pays nothing; a web bundle ships only the glyphs its scripts reach, all of them once it reaches `all`
+or `named`. A name the face lists twice is at its first codepoint, as its `lazy val` is.
+
+```scala
+val picked = MaterialIcon.named(settings.icon).getOrElse(MaterialIcon.Folder)
+val more = MaterialIcon.all.filter(_.name.contains(query))
+```
+
 An icon that is at work says so itself, with no ring drawn over it. `busy @= true` on an `IconButton` or any
 `MaterialIconView` moves the glyph, run by the platform as any `motion` is. A glyph that is itself a turning symbol
 (Sync, Autorenew, Refresh, Loop, Cached, the Rotate ones, HourglassEmpty: `BusyMotion.of`) turns once every 1.3

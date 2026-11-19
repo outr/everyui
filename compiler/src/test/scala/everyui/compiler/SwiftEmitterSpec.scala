@@ -59,6 +59,13 @@ class SwiftEmitterSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "SwiftEmitter.withoutStrings" should {
+    "empty a very long literal, escapes and all, without running out of stack" in {
+      val long = "a" * 200000 + "\\\"" + "" * 200000
+      SwiftEmitter.withoutStrings("x = f(\"" + long + "\", \"b\\\\\")\n") shouldBe "x = f(\"\", \"\")\n"
+    }
+  }
+
   "SwiftRuntimeNames" should {
     "hold every helper the Roku runtime has that the Swift emitter's templates call" in {
       SwiftRuntimeNames.all should contain allOf ("_div", "_rem", "_quot", "_mapOfPairs", "_strIndexFrom",
