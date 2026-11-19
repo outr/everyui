@@ -8,11 +8,12 @@ import scala.jdk.CollectionConverters.*
 
 /** An Android archive (.aar) among an app's dependencies, opened for its build (AarCache): the module it is
   * (`androidx.media3:media3-common`), its name (`media3-common-1.9.2`), its classes jar, the shrinker rules it ships,
-  * and its resources where its classes read them through their own R class (AndroidLibraries), which
-  * `AndroidApk.build` links and writes that R class for. Each is `AndroidApk.build`'s to dex, apply and link
-  * (`libraries`); the plugin's `everyuiAndroidLibraries` is every archive a project depends on, each once. */
+  * its resources where its classes read them through their own R class (AndroidLibraries), which `AndroidApk.build`
+  * links and writes that R class for, and the baseline profile rules it ships (`baseline-prof.txt`, BaselineProfile).
+  * Each is `AndroidApk.build`'s to dex, apply, link and profile (`libraries`); the plugin's `everyuiAndroidLibraries`
+  * is every archive a project depends on, each once. */
 case class AndroidArchive(module: String, name: String, classes: Option[File], rules: Option[File],
-                          resources: Option[AarResources])
+                          resources: Option[AarResources], profile: Option[File] = None)
 
 object AndroidArchive {
   private val needs = new ConcurrentHashMap[(String, Long, Long), Option[String]]()
@@ -48,7 +49,7 @@ object AndroidArchive {
     val pkg = needs.computeIfAbsent(key, _ => AndroidLibraries.needsResources(aar))
     AndroidArchive(module, AarCache.nameOf(aar), Some(AarCache.classes(aar, room)).filter(_.isFile),
       Some(AarCache.rules(aar, room)).filter(_.isFile),
-      pkg.map(p => AarResources(AarCache.nameOf(aar), p, AarCache.resources(aar, room))))
+      pkg.map(p => AarResources(AarCache.nameOf(aar), p, AarCache.resources(aar, room))), AarCache.profile(aar, room))
   }
 
   /** What R8 dexes: the jars and directories of `program`, a jar of the same bytes as one before it left out, then

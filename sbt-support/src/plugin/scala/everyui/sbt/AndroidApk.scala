@@ -44,11 +44,16 @@ object AndroidApk {
 
   /** `libraries` are the app's Android archives (`everyuiAndroidLibraries`, every one among its dependencies): each
     * one's classes are dexed with the program unless it holds them already, its rules applied with `rules`, and its
-    * resources, where its classes read them, linked with its R class written. An app opens no archive of its own. */
+    * resources, where its classes read them, linked with its R class written. An app opens no archive of its own.
+    *
+    * The APK carries a baseline profile (BaselineProfile) unless `baselineProfile` is false: the rules of the jars
+    * on `program` (everyui-android's), of the archives (`libraries`) and the app's own (`profileRules`, the plugin's
+    * `everyuiProfileRules`), renamed by R8 as it renames the program and compiled against the dex (Profgen). */
   def build(log: String => Unit, sdk: File, platform: String, buildTools: String, minSdk: String, targetSdk: String,
             program: Seq[File], manifest: File, resources: File, assets: File, rules: Seq[File], work: File, apk: File,
             versionName: String, versionCode: Int, signing: Signing, desugar: Option[Desugar] = None,
-            bundletool: Option[Seq[File]] = None, libraries: Seq[AndroidArchive] = Nil): File = {
+            bundletool: Option[Seq[File]] = None, libraries: Seq[AndroidArchive] = Nil, profileRules: Seq[File] = Nil,
+            baselineProfile: Boolean = true): File = {
     val tools = sdk / "build-tools" / buildTools
     val androidJar = sdk / "platforms" / platform / "android.jar"
     IO.delete(work)
@@ -113,9 +118,23 @@ object AndroidApk {
     // the back-port itself. (The command line has no way to hand L8 the list of back-port classes the program
     // reaches, so the back-port goes in whole rather than shrunk to them.)
     val desugarArgs = desugar.toList.flatMap(d => Seq("--desugared-lib", d.config.toString))
+    // the profile's rules, named as in the source, which R8 renames with the program (and follows into what it
+    // inlines and makes, as the Gradle plugin has it do)
+    val sourceRules = work / "baseline-prof.txt"
+    val renamedRules = work / "baseline-prof-r8.txt"
+    val profiled = baselineProfile && {
+      val found = BaselineProfile.onClasspath(dexable, work / "profiles") ++ libraries.flatMap(_.profile) ++ profileRules
+      val count = BaselineProfile.merge(found, sourceRules)
+      log(s"AndroidApk: baseline profile of $count rules from ${found.count(_.isFile)} files")
+      // R8 renames exact rules only (the Gradle plugin widens a pattern over the classes first)
+      val patterns = IO.readLines(sourceRules).count(_.contains('*'))
+      if (patterns > 0) log(s"AndroidApk: $patterns baseline profile rules with wildcards (*) passed over")
+      count > 0
+    }
     exec(Seq("java", "-cp", (tools / "lib" / "d8.jar").toString, "com.android.tools.r8.R8",
       "--release", "--min-api", minSdk, "--lib", androidJar.toString) ++ desugarArgs ++
       AndroidArchive.rules(rules, libraries).flatMap(r => Seq("--pg-conf", r.toString)) ++
+      (if (profiled) Seq("--art-profile", sourceRules.toString, renamedRules.toString) else Nil) ++
       Seq("--pg-map-output", (work / "mapping.txt").toString, "--pg-conf", diagnostics.toString, "--output", dex.toString) ++
       inputs.map(_.toString))
     keepMapping(work / "mapping.txt", apk.getParentFile / "mappings", versionCode, log)
@@ -137,6 +156,17 @@ object AndroidApk {
       log("AndroidApk: desugared Java library dexed for min-api " + minSdk)
     }
     (dex * "*.dex").get().foreach(d => log(s"AndroidApk: ${d.getName} ${d.length / 1024} KB"))
+    // the profile compiled against the dex: as profileinstaller reads it (Android 7 to 13), and as ART reads it at
+    // install (14 and later)
+    val prof = work / "dexopt" / "baseline.prof"
+    val profm = work / "dexopt" / "baseline.profm"
+    val art = work / "art-profile" / "baseline.prof"
+    if (profiled) {
+      val problems = Profgen.compile(Profgen.classpath(log), renamedRules,
+        BaselineProfile.dexOrder((dex * "*.dex").get()), prof, profm, art)
+      problems.take(5).foreach(p => log("AndroidApk: warning: baseline profile: " + p))
+      log(s"AndroidApk: baseline profile ${prof.length / 1024} KB (${IO.readLines(renamedRules).size} rules as renamed)")
+    }
 
     if (!signing.keystore.exists) sys.error(s"AndroidApk: no keystore at ${signing.keystore}")
     IO.createDirectory(apk.getParentFile)
@@ -172,8 +202,10 @@ object AndroidApk {
           out.close()
         }
         IO.delete(apk)
-        exec(Seq("java", "-cp", tool.mkString(java.io.File.pathSeparator), "com.android.tools.build.bundletool.BundleToolMain",
-          "build-bundle", "--modules=" + module, "--output=" + apk))
+        exec(Seq("java", "-cp", tool.mkString(java.io.File.pathSeparator), "com.android.tools.build.bundletool.BundleToolMain") ++
+          Seq("build-bundle", "--modules=" + module, "--output=" + apk) ++
+          // where Play takes a bundle's profile from, as the Gradle plugin puts it
+          (if (profiled) Seq(prof, profm).map(f => s"--metadata-file=com.android.tools.build.profiles/${f.getName}:$f") else Nil))
         // a bundle is signed as a jar is, not as an APK: apksigner will not take one
         exec(Seq("jarsigner", "-keystore", signing.keystore.toString, "-storepass:env", "APK_KS_PASS",
           "-keypass:env", "APK_KEY_PASS", "-sigalg", "SHA256withRSA", "-digestalg", "SHA-256", apk.toString, signing.alias),
@@ -205,6 +237,8 @@ object AndroidApk {
             out.write(IO.readBytes(d))
             out.closeEntry()
           }
+          // the profiles stored, not compressed, where profileinstaller and ART look for them
+          if (profiled) BaselineProfile.entries(prof, profm, art).foreach { case (name, f) => BaselineProfile.store(out, name, f) }
         } finally {
           in.close()
           out.close()
@@ -217,6 +251,7 @@ object AndroidApk {
           "--ks-pass", "env:APK_KS_PASS", "--key-pass", "env:APK_KEY_PASS", "--ks-key-alias", signing.alias,
           "--out", apk.toString, aligned.toString),
           "APK_KS_PASS" -> signing.storePass, "APK_KEY_PASS" -> signing.keyPass)
+        if (profiled) BaselineProfile.problem(apk).foreach(p => sys.error("AndroidApk: " + p))
         log(s"AndroidApk: $apk (v$versionCode $versionName, signed ${signing.keystore.getName} alias ${signing.alias})")
         apk
     }

@@ -65,8 +65,8 @@ object EveryUILibraries {
     * concurrent-futures. Left out: what another of these already is (Guava's ListenableFuture for `listenablefuture`,
     * `annotation-jvm` and `collection-jvm` for their roots, the `-jvm` and `-android` builds for theirs), annotations
     * only (`jspecify`, JetBrains' `annotations`), and what only `core` reaches for (`interpolator`,
-    * `versionedparcelable`, `profileinstaller`). Its archives' resources are linked and their R classes written by
-    * `AndroidApk.build` (`libraries`), which WorkManager reads its own through. */
+    * `versionedparcelable`; `profileinstaller` is `android`'s own, `profileInstaller`). Its archives' resources are
+    * linked and their R classes written by `AndroidApk.build` (`libraries`), which WorkManager reads its own through. */
   def work: Seq[ModuleID] = Seq(
     ("androidx.work", "work-runtime", workVersion, "aar"),
     ("androidx.room", "room-runtime-android", "2.7.0", "aar"),
@@ -94,14 +94,21 @@ object EveryUILibraries {
     else (group % name % version).intransitive()
   }
 
+  /** androidx.profileinstaller, which hands an APK's baseline profile (sbt-everyui's AndroidApk writes it) to ART on
+    * its first launch where the installer did not (everyui.activity.ProfileInstall calls it, as its own initialiser
+    * would through androidx.startup). What it runs with is in `work` (startup, concurrent-futures) or `android`
+    * (Guava's ListenableFuture, annotation). An app that leaves it out runs the same, compiled later. */
+  def profileInstaller: ModuleID =
+    ("androidx.profileinstaller" % "profileinstaller" % "1.4.1").intransitive().artifacts(Artifact("profileinstaller", "aar", "aar"))
+
   /** What everyui-android compiles against beside android.jar: Media3's archives, Credential Manager's,
-    * androidx.webkit's (`webkit`) and WorkManager's (`work`), each named and none taken transitively (an archive's
-    * dependencies are archives too, and a build takes only those it can open), and what their classes reach for:
-    * androidx's collections and core among them, without which the shrinker fails on a class it cannot find (Media3's
-    * AsynchronousMediaCodecCallback's CircularIntArray). Resolved from `google`. */
+    * androidx.webkit's (`webkit`), profileinstaller's (`profileInstaller`) and WorkManager's (`work`), each named and
+    * none taken transitively (an archive's dependencies are archives too, and a build takes only those it can open),
+    * and what their classes reach for: androidx's collections and core among them, without which the shrinker fails
+    * on a class it cannot find (Media3's AsynchronousMediaCodecCallback's CircularIntArray). Resolved from `google`. */
   def android: Seq[ModuleID] =
     media3Modules.map(m => ("androidx.media3" % m % media3Version).intransitive().artifacts(Artifact(m, "aar", "aar"))) ++
-      Seq(credentials, webkit, "androidx.annotation" % "annotation-jvm" % "1.9.1",
+      Seq(credentials, webkit, profileInstaller, "androidx.annotation" % "annotation-jvm" % "1.9.1",
         "com.google.guava" % "guava" % "33.4.0-android",
         "androidx.collection" % "collection-jvm" % "1.5.0",
         ("androidx.core" % "core" % "1.13.1").intransitive().artifacts(Artifact("core", "aar", "aar"))) ++ work

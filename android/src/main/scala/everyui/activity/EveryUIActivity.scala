@@ -69,6 +69,8 @@ abstract class EveryUIActivity extends Activity {
     everyui.render.PushAccess.launched(getIntent)
     // what keeps it busy while nothing moves, logged where the launch asks (`--es idleAudit 1`)
     everyui.render.IdleAudit.start()
+    // the APK's baseline profile, to ART where the installer did not hand it over (ProfileInstall)
+    ProfileInstall.later(this)
   }
 
   /** The render root, made. */

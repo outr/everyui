@@ -37,6 +37,7 @@ object EveryUIPlugin extends AutoPlugin {
     def AppleApp: everyui.sbt.AppleApp.type = everyui.sbt.AppleApp
     def VLCKit: everyui.sbt.VLCKit.type = everyui.sbt.VLCKit
     def EveryUILibraries: everyui.sbt.EveryUILibraries.type = everyui.sbt.EveryUILibraries
+    def ProfileCollector: everyui.sbt.ProfileCollector.type = everyui.sbt.ProfileCollector
     // a Roku channel's split into its package and the remote bundle (RokuChannel.remote)
     type RokuRemote = everyui.sbt.RokuRemote
     def RokuRemote: everyui.sbt.RokuRemote.type = everyui.sbt.RokuRemote
@@ -70,6 +71,17 @@ object EveryUIPlugin extends AutoPlugin {
     val everyuiBackground = settingKey[Option[String]]("What runs with the app closed on Android: the BackgroundApp object (\"com.example.Background\"), whose handlers hear scheduled work, an ongoing notice's actions and the device starting again, or None, the default, for none")
     @transient val everyuiAndroidLibraries = taskKey[Seq[AndroidArchive]]("Every Android archive among the project's dependencies, each once (one a module, at the version resolved), opened: its classes, which the plugin puts on the compile classpath, its shrinker rules, and its resources where its classes read their own R class, for AndroidApk.build's libraries, which dexes, applies and links them")
     @transient val everyuiBackgroundRules = taskKey[Seq[File]]("The shrinker's rules for what runs with the app closed: the BackgroundApp object, EveryUI's receiver and job service, or none without everyuiBackground (everyuiAndroidRules has them too)")
+
+    // the APK's baseline profile (BaselineProfile): EveryUI's rules and the archives' come by themselves, the app's own
+    // are its baseline-prof.txt, which everyuiCollectProfile writes from a run on an emulator
+    val everyuiProfileRules = settingKey[Seq[File]]("The app's own baseline profile rules, for AndroidApk.build's profileRules: baseline-prof.txt under the project (a file that is not there is passed over), the first of them the one everyuiCollectProfile writes")
+    @transient val everyuiProfileApk = taskKey[File]("The APK everyuiCollectProfile runs: the app's own build of it (everyuiProfileApk := androidApk.value), whose R8 mapping AndroidApk.build keeps beside it")
+    val everyuiProfileLaunches = settingKey[Seq[Seq[String]]]("The cold starts everyuiCollectProfile runs, each the extras of its launch (Seq(\"--es\", \"demo\", \"chat\")): one plain launch unless others are named")
+    val everyuiProfileSeconds = settingKey[Int]("How long everyuiCollectProfile leaves each launch running, in seconds (20)")
+    val everyuiProfileKeep = settingKey[Seq[String]]("The classes everyuiCollectProfile keeps rules for, by the start of their names (\"everyui/\"), one starting with - left out (\"-everyui/app/\"): every class where none is named")
+    val everyuiProfileDevice = settingKey[Option[String]]("The device or emulator everyuiCollectProfile runs on (its adb serial; ANDROID_SERIAL's, or the only one, by default): Android 14 or later")
+    val everyuiAndroidSdk = settingKey[File]("The Android SDK whose adb and aapt2 everyuiCollectProfile runs (ANDROID_HOME's)")
+    @transient val everyuiCollectProfile = taskKey[File]("Run the APK (everyuiProfileApk) on an emulator, cold, once for each of everyuiProfileLaunches, and write the methods and classes it ran, named as in the source, as the first of everyuiProfileRules")
   }
   import autoImport.*
 
@@ -293,6 +305,28 @@ object EveryUIPlugin extends AutoPlugin {
           (entry.startsWith("everyui-monaco/") || entry.startsWith("everyui-terminal/")) && !entry.endsWith("/")))
       IO.createDirectory(out)
       out
+    },
+    everyuiProfileRules := Seq(baseDirectory.value / "baseline-prof.txt"),
+    everyuiProfileApk := Def.uncached(sys.error("sbt-everyui: everyuiCollectProfile runs the app's own APK: set " +
+      "everyuiProfileApk := androidApk.value (the task that calls AndroidApk.build)")),
+    everyuiProfileLaunches := Seq(Nil),
+    everyuiProfileSeconds := 20,
+    everyuiProfileKeep := Nil,
+    everyuiProfileDevice := sys.env.get("ANDROID_SERIAL").filter(_.nonEmpty),
+    everyuiAndroidSdk := file(sys.env.get("ANDROID_HOME").orElse(sys.env.get("ANDROID_SDK_ROOT"))
+      .getOrElse(sys.props("user.home") + "/Android/Sdk")),
+    everyuiCollectProfile := Def.uncached {
+      val sdk = everyuiAndroidSdk.value
+      val buildTools = Option((sdk / "build-tools").listFiles()).toSeq.flatten.filter(d => (d / "aapt2").isFile)
+        .sortWith((a, b) => AndroidArchive.newer(a.getName, b.getName)).headOption
+        .getOrElse(sys.error(s"sbt-everyui: no build-tools with aapt2 in $sdk (everyuiAndroidSdk)"))
+      val keep = everyuiProfileKeep.value
+      val (out, in) = keep.partition(_.startsWith("-"))
+      val rules = ProfileCollector.collect(streams.value.log.info(_), sdk / "platform-tools" / "adb", buildTools,
+        everyuiProfileDevice.value, everyuiProfileApk.value, everyuiProfileLaunches.value, everyuiProfileSeconds.value,
+        c => (in.isEmpty || in.exists(c.startsWith)) && !out.exists(p => c.startsWith(p.drop(1))))
+      val to = everyuiProfileRules.value.headOption.getOrElse(sys.error("sbt-everyui: everyuiProfileRules names no file"))
+      ProfileCollector.write(rules, to, "Baseline profile rules collected by sbt-everyui's everyuiCollectProfile")
     }
   )
 }

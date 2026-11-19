@@ -654,6 +654,8 @@ lazy val android = (project in file("android"))
     libraryDependencies ++= EveryUILibraries.firebase,
     // androidx.webkit, which runs a script at a page's start (EveryUILibraries.webkit, everyui.render.PageParent)
     libraryDependencies += EveryUILibraries.webkit,
+    // profileinstaller, which hands the APK's baseline profile to ART on a first launch (EveryUILibraries.profileInstaller)
+    libraryDependencies += EveryUILibraries.profileInstaller,
     // WorkManager, which scheduled work runs on (everyui.background.Work, EveryUILibraries.work), and what it runs with
     libraryDependencies ++= EveryUILibraries.work,
     libraryDependencies ++= Seq(
@@ -696,8 +698,18 @@ lazy val android = (project in file("android"))
         target.value / "apk", baseDirectory.value / "out-apk" / "everyui.apk",
         // the demo app is never uploaded anywhere, so it keeps the throwaway key and a code that need not climb
         version.value, 1, AndroidApk.debug, desugar = Some(desugarJdkLibs.value),
-        libraries = everyuiAndroidLibraries.value)
-    }
+        libraries = everyuiAndroidLibraries.value,
+        // EveryUI's baseline profile rules (android/baseline-prof.txt), which everyui-android carries
+        profileRules = everyuiProfileRules.value)
+    },
+    // EveryUI's baseline profile rules, collected from the example on an emulator of Android 14 or later
+    // (`android/everyuiCollectProfile`): its start and the demos that exercise text, lists, the transcript and input,
+    // kept for EveryUI and the libraries every app has (reactify, fabric, Scala's, Spice's), not the example's own
+    everyuiProfileApk := packageApk.value,
+    everyuiProfileLaunches := Seq(Nil) ++ Seq("chat", "chatperf", "rows", "composer", "input", "widgets", "swipe")
+      .map(d => Seq("--es", "demo", d)),
+    everyuiProfileKeep := Seq("everyui/", "-everyui/app/", "reactify/", "fabric/", "scala/", "spice/", "rapid/"),
+    everyuiAndroidSdk := androidSdk
   )
 
 // --- the other backends, published: each with the shared layer compiled in, as everyui-web has it ----------------
@@ -748,7 +760,7 @@ lazy val androidPublished = (project in file("published/android"))
     Compile / scalacOptions ++= Seq("-release", "17", "-Ylegacy-lazy-vals"),
     Compile / resourceGenerators += fontResources.taskValue,
     Compile / resourceGenerators += sharedLicenses.taskValue,
-    Compile / resourceGenerators += bundled("everyui/android", root => Seq(root / "android" / "proguard-rules.pro")).taskValue,
+    Compile / resourceGenerators += bundled("everyui/android", root => Seq(root / "android" / "proguard-rules.pro", root / "android" / "baseline-prof.txt")).taskValue,
     // the layouts and drawables a home-screen widget is drawn with, under everyui/android/res/ as they are in
     // android/widget-res (sbt-everyui's everyuiWidgetLayouts)
     Compile / resourceGenerators += Def.task {
@@ -1077,7 +1089,9 @@ lazy val monacoAndroid = (project in file("monaco/android"))
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-monaco.apk",
         version.value, 1, AndroidApk.debug, desugar = Some(desugarJdkLibs.value),
-        libraries = everyuiAndroidLibraries.value)
+        libraries = everyuiAndroidLibraries.value,
+        // EveryUI's baseline profile rules, which everyui-android carries (an app's build finds them in the jar)
+        profileRules = Seq(buildRoot / "android" / "baseline-prof.txt"))
     }
   )
 
@@ -1192,7 +1206,9 @@ lazy val terminalAndroid = (project in file("terminal/android"))
         Seq(buildRoot / "android" / "proguard-rules.pro", baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "everyui-terminal.apk",
         version.value, 1, AndroidApk.debug, desugar = Some(desugarJdkLibs.value),
-        libraries = everyuiAndroidLibraries.value)
+        libraries = everyuiAndroidLibraries.value,
+        // EveryUI's baseline profile rules, which everyui-android carries (an app's build finds them in the jar)
+        profileRules = Seq(buildRoot / "android" / "baseline-prof.txt"))
     }
   )
 

@@ -99,3 +99,7 @@
 # it out builds all the same, and a page there is heard through its bridge alone; its annotations are not shipped.
 -dontwarn androidx.webkit.**
 -dontwarn org.jspecify.**
+
+# androidx.profileinstaller (EveryUILibraries.profileInstaller) hands the APK's baseline profile to ART on a first launch
+# (everyui.activity.ProfileInstall): an app that leaves it out builds all the same, its profile compiled later
+-dontwarn androidx.profileinstaller.**

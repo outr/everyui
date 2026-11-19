@@ -5520,7 +5520,7 @@ lazy val android = project.in(file("android"))
         everyuiAndroidManifest.value, everyuiAndroidResources.value, assets,
         Seq(everyuiAndroidRules.value, baseDirectory.value / "proguard-rules.pro"), target.value / "apk",
         baseDirectory.value / "out-apk" / "myapp.apk", version.value, 1, AndroidApk.debug,
-        libraries = everyuiAndroidLibraries.value)
+        libraries = everyuiAndroidLibraries.value, profileRules = everyuiProfileRules.value)
     }
   )
 ```
@@ -5551,6 +5551,40 @@ is what it was; with them, they add what the widgets need (below).
 The app's own `proguard-rules.pro` keeps its activity (`-keep class myapp.MainActivity { *; }`) and anything else the
 manifest names; `everyuiAndroidRules` has the rest. A shipping build passes its release key as an
 `AndroidApk.Signing`, a `Desugar` for the Java library on Android before 8, and `bundletool` for an app bundle.
+
+**Baseline profile.** Every APK `AndroidApk.build` makes carries a baseline profile, so a new install starts in code
+compiled ahead of time rather than in the interpreter. Its rules (ART's human-readable form, `baseline-prof.txt`) are
+EveryUI's own, which everyui-android carries (`everyui/android/baseline-prof.txt`: its start, layout, text, lists, the
+transcript, reactify, fabric and the Scala library, collected from the example app), those any Android archive ships
+(androidx's `baseline-prof.txt`), and the app's: `profileRules = everyuiProfileRules.value` (`baseline-prof.txt`
+under the project, passed over where it is not there). R8 renames them as it renames the program (`--art-profile`,
+as the Gradle plugin has it do), Google's profgen (out of the Android Gradle plugin's jar, fetched once for the machine
+into `~/.cache/everyui/profgen` and checked by its SHA-256) compiles them against the dex, and the APK stores them,
+uncompressed and aligned, before it is signed: `assets/dexopt/baseline.prof` and `baseline.profm`, which
+androidx.profileinstaller (`EveryUILibraries.profileInstaller`, in `android`) hands to ART on the first launch
+(`everyui.activity.ProfileInstall`, five seconds after the first frame; compiled at the device's next idle
+compilation), and `assets/art-profile/baseline.prof`, which ART reads itself as it installs the APK on Android 14 and
+later where its ART module is recent enough (the API 35 emulator's 35.08 is, a Google TV Streamer's 34.09 is not):
+there `adb install` and a sideload come out `speed-profile` at once. An app bundle carries it where Play reads it
+(`BUNDLE-METADATA/com.android.tools.build.profiles`). A rule with a wildcard is passed over (R8 takes exact rules
+only). `baselineProfile = false` builds without one.
+
+The app's own rules are better collected than written: `everyuiCollectProfile` installs the app's APK
+(`everyuiProfileApk := androidApk.value`) without its profile on an emulator of Android 14 or later
+(`everyuiProfileDevice`, else `ANDROID_SERIAL`; a Google APIs image, where adb can be root and ART is told to save what
+it ran, else a minute is waited for each launch), starts it cold once for each of `everyuiProfileLaunches` (each its
+`am start` extras) for `everyuiProfileSeconds` (20), dumps what ART saw (`pm dump-profiles --dump-classes-and-methods`),
+names it as in the source through the APK's own R8 mapping (the one `AndroidApk.build` keeps beside it, by the map id
+in its dex) and writes it, sorted, as the first of `everyuiProfileRules`, those classes `everyuiProfileKeep` keeps
+(`Seq("myapp/", "-myapp/debug/")`; every class by default). Commit the file and build again.
+
+```scala
+everyuiProfileApk := apk.value,
+everyuiProfileLaunches := Seq(Nil, Seq("--es", "screen", "inbox")),
+everyuiProfileKeep := Seq("myapp/"),
+everyuiAndroidSdk := androidSdk
+```
+
 
 **Site-absolute paths off the web.** On the desktop and Android, an `ImageView`'s, a video's or a `WebView`'s
 site-absolute source (`/images/logo.png`, `/api/portrait/3`) is read from the app's own files where it has one there:

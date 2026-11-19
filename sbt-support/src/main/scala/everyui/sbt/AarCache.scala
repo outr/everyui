@@ -37,6 +37,29 @@ object AarCache {
   def rules(aar: File, room: File): File = new File(entry(aar, room), nameOf(aar) + ".pro")
   def resources(aar: File, room: File): File = new File(entry(aar, room), "res")
 
+  /** The baseline profile rules the archive ships (its `baseline-prof.txt`), or None where it ships none: kept beside
+    * its entry (`<entry>.baseline-prof.txt`, which entries opened before profiles were read have not), put in place
+    * whole by a rename as an entry is. */
+  def profile(aar: File, room: File): Option[File] = {
+    val kept = new File(room, entry(aar, room).getName + ".baseline-prof.txt")
+    if (kept.isFile) Some(kept)
+    else {
+      val zip = new ZipFile(aar)
+      val rules = try Option(zip.getEntry("baseline-prof.txt")).map(e => zip.getInputStream(e).readAllBytes())
+      finally zip.close()
+      rules.map { bytes =>
+        Files.createDirectories(room.toPath)
+        val nonce = java.lang.Long.toHexString(java.util.concurrent.ThreadLocalRandom.current().nextLong())
+        val bench = new File(room, s".${kept.getName}.tmp-${ProcessHandle.current().pid()}-$nonce")
+        Files.write(bench.toPath, bytes)
+        try Files.move(bench.toPath, kept.toPath, StandardCopyOption.ATOMIC_MOVE)
+        catch { case _: IOException if kept.isFile => () }   // another build's, the same bytes
+        finally Files.deleteIfExists(bench.toPath)
+        kept
+      }
+    }
+  }
+
   /** Opens `aar` into its entry under `room` unless it is there already; whether this call opened it. */
   def open(aar: File, room: File): Boolean = {
     val target = entry(aar, room)
