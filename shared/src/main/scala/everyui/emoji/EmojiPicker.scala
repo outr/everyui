@@ -3,6 +3,7 @@ package everyui.emoji
 import everyui.component.{Component, Container, Modal, ScrollContainer, TextView}
 import everyui.component.types.Semantics
 import everyui.event.{Key, KeyEvent}
+import everyui.focus.Focus
 import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.SearchField
@@ -185,9 +186,9 @@ class EmojiPicker(columns: Int = EmojiPicker.columns) extends Container {
     position.left := ListRow.along((i % columns) * cell, cell, across)
     position.top @= (i / columns) * cell
     semantics @= Semantics.button(e.shortcodes.headOption.getOrElse(e.emoji))
-    // lit where the arrows are, while the grid has the focus
-    backgroundColor := (if (lit() == i && cells.focused()) Theme.controlLit() else if (event.pointer.over()) Theme.control()
-      else everyui.Color.Clear)
+    // lit where the arrows are, while the grid has the focus and it is drawn (not on a phone opened on the grid)
+    backgroundColor := (if (lit() == i && cells.focusShown()) Theme.controlLit()
+      else if (event.pointer.over()) Theme.control() else everyui.Color.Clear)
     glyph.position.center := size.center()
     glyph.position.middle := size.middle()
     children += glyph
@@ -265,9 +266,11 @@ object EmojiPicker {
   private[emoji] def savedTone(): Int = Platform.setting(toneKey).toIntOption.filter(t => t >= 0 && t <= 5).getOrElse(0)
   private[emoji] def keepTone(t: Int): Unit = Platform.saveSetting(toneKey, t.toString)
 
-  /** A picker under `anchor` (over it where below has no room), the focus in its search: closed once an emoji is chosen,
-    * which `picked` hears, or as Escape, a click elsewhere or Back closes it. */
-  def open(anchor: Component, picked: String => Unit): EmojiPicker = {
+  /** A picker under `anchor` (over it where below has no room): closed once an emoji is chosen, which `picked`
+    * hears, or as Escape, a click elsewhere or Back closes it. The focus starts in its search with `focusField`, else
+    * on the grid, the search focused (and a phone's keyboard brought up) once it is tapped; by default as the
+    * platform and the press that opened it say (`Focus.typesFirst`: on a phone, the grid). */
+  def open(anchor: Component, picked: String => Unit, focusField: Boolean = Focus.typesFirst): EmojiPicker = {
     val picker = new EmojiPicker
     val left = anchor.absoluteLeft
     val top = anchor.absoluteTop
@@ -282,7 +285,7 @@ object EmojiPicker {
       Modal.remove(picker)
       picked(emoji)
     }
-    Modal.over(picker, picker.field, dim = false, centre = false)
+    Modal.over(picker, if (focusField) picker.field else picker.cells, dim = false, centre = false)
     picker
   }
 }

@@ -207,6 +207,13 @@ object Focus {
     * the pointer has nothing lit, unless it starts at a field. */
   def starts(c: Component, always: Boolean): Boolean = restores || always || c.takesTyping
 
+  /** Whether a picker or a search put up now starts with the focus in its field, to be typed into at once: wherever a
+    * remote moves the focus, and where a fine pointer is at hand, unless a finger put it up (a touch laptop's tap). On a
+    * phone it starts on what is to be chosen from, and the keyboard comes up only once the field is tapped, as a native
+    * switcher's does. */
+  def typesFirst: Boolean =
+    Platform.remoteNavigation() || (Platform.pointerSupport() && !everyui.event.Pointer.byFinger)
+
   // How often the focus is checked for, on a platform with only a remote to move it; and whether the last check
   // found it lost, since a screen that has just taken its rows down to build them again puts its own focus back a
   // moment later, and is not to be raced to it.

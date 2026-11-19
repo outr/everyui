@@ -24,6 +24,13 @@ object Pointer {
   /** Whether a pointer was used just now: a focus that moves now was moved by it, not by a key. */
   def recent: Boolean = Platform.ticks() - usedAt < lately
 
+  /** Whether the pointer last pressed, moved or clicked was a finger on the screen (`PointerEvent.finger`) rather than
+    * a mouse or a trackpad. */
+  var finger: Boolean = false
+
+  /** Whether a finger was used just now: what is put up now was put up by a touch, on a touch laptop as on a phone. */
+  def byFinger: Boolean = recent && finger
+
   private var focusing: Option[PointerEvent] = None
   private var focusingAt: Double = 0.0
   private var focusingEvent: Long = -1L

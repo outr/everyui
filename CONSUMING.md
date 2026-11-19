@@ -1227,6 +1227,17 @@ FilterPicker.show[FileEntry](q => index.search(q), _.path, _.name, _.folder, pla
 }
 ```
 
+Where a fine pointer or a remote is at hand, it opens with the focus in the field, to be typed into at once. On a phone
+(`Platform.pointerSupport()` false), or where a finger opened it on a touch laptop, it opens on the list instead, as a
+native switcher does: the rows show whole, a screen reader lands in the list, Back closes it, and the keyboard comes up
+only once the field is tapped. `Focus.typesFirst` says which, as it is asked; an app that knows better says so with
+`open(initial, focusField = …)` or `FilterPicker.show(…, focusField = …)`. `EmojiPicker.open(anchor, picked,
+focusField = …)` does the same, opening on its grid.
+
+```scala
+picker.open(focusField = true)                      // the field first, even on a phone
+```
+
 By default a row is the item's label with what the query matched lit (`Match.spans(query, text)`: the query's letters in
 order, as early as they fall) and its detail after it, muted. An app with its own matching gives its own rows, handed
 the words in the field:

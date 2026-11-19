@@ -92,6 +92,7 @@ class PointerEvents(component: Component) {
     val pointed = kind == PointerKind.Enter || kind == PointerKind.Leave
     if (use) everyui.focus.Focus.used()
     if ((use && kind != PointerKind.Wheel) || pointed) Pointer.usedAt = everyui.render.Platform.ticks()
+    if (use && kind != PointerKind.Wheel) Pointer.finger = event.finger
     // a press ends the keys' moving of the focus, and may let it go (Focus.pointerDown, pointerUp)
     if (kind == PointerKind.Down) everyui.focus.Focus.pointerDown(event)
     else if (kind == PointerKind.Up) everyui.focus.Focus.pointerUp()

@@ -4,6 +4,7 @@ import everyui.async.Task
 import everyui.component.*
 import everyui.component.types.{Autofill, WhiteSpace}
 import everyui.event.Key
+import everyui.focus.Focus
 import everyui.font.MaterialIcon
 import everyui.i18n.{Direction, Words}
 import everyui.keymap.{Chord, Command, Keymap}
@@ -19,6 +20,11 @@ import reactify.*
   * symbol, a command. Each change to the words asks `query` for the matches, once the typing pauses for `debounce`
   * seconds; an answer to words since changed is dropped, so a slow one never replaces a newer one. The list makes only
   * the rows that show (`everyui.list.VirtualList`), so tens of thousands of matches cost what a screenful does.
+  *
+  * It opens with the focus in the field, to be typed into at once, where a fine pointer or a remote is at hand; on a
+  * phone, or where a finger opened it, it opens on the list, which a screen reader lands in and Back closes, and the
+  * keyboard comes up only once the field is tapped, as a native switcher's does (`Focus.typesFirst`; `open`'s
+  * `focusField` says otherwise).
   *
   * Up and Down (and the page keys) move through the matches from the field, Enter or a click chooses one, which closes
   * the picker and is heard on `chosen`; Escape, Back or a click outside closes it with nothing chosen. Rows are
@@ -127,9 +133,12 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
   // a chip clicked or tapped where there is a keyboard gives the focus back to the field, where the arrows and Enter
   // move through the matches and choose (left on the chip, they reached the list no more); one chosen with Enter, by
   // the keys, keeps it, and on a remote the chips are a stop of their own, left by the arrows
+  // (once the field has been typed in: opened on the list, a phone's chip tapped leaves the keyboard down)
+  private var typing = false
+  field.focused.attach(f => if (f) typing = true)
   if (keyboard && !Platform.remoteNavigation())
     chips.children().foreach(c => c.event.click.attach(_ =>
-      if (everyui.event.Pointer.recent) Platform.later(() => field.focus())))
+      if (everyui.event.Pointer.recent && typing) Platform.later(() => field.focus())))
   /** The heading's line, under the field (and the second field), over the chips and the list: muted words wrapped to
     * the picker's width, drawn only while there are words. Never focused, and no row of the list. */
   val headingLine: Option[TextView] = heading.map { h =>
@@ -262,13 +271,17 @@ class FilterPicker[T](query: String => Task[Vector[T]], keyOf: T => String, labe
     headingLine.toList ++ List(chips, list, empty)
 
   /** Put it up, a fifth of the way down the screen, with `initial` in the field: over a dialog it is opened from, which
-    * is there again once it closes, and in place of another picker on top. */
-  def open(initial: String = ""): Unit = {
+    * is there again once it closes, and in place of another picker on top. The focus starts in the field with
+    * `focusField`, else on the list, the field focused (and a phone's keyboard brought up) once it is tapped; by
+    * default as the platform and the press that opened it say (`Focus.typesFirst`). */
+  def open(initial: String = "", focusField: Boolean = Focus.typesFirst): Unit = {
+    typing = focusField
     position.left := (ui.size.width() - size.width()) / 2.0
     position.top := math.max(16.0, ui.size.height() * 0.12)
     val gone = () => Keymap.global.commands @= Keymap.global.commands().filterNot(c => commands.exists(_ eq c))
-    if (Modal.top.exists(_.kind == kind)) Modal.show(this, field, gone, dim = false, centre = false)
-    else Modal.over(this, field, gone, dim = false, centre = false)
+    val first = if (focusField) field else list
+    if (Modal.top.exists(_.kind == kind)) Modal.show(this, first, gone, dim = false, centre = false)
+    else Modal.over(this, first, gone, dim = false, centre = false)
     // the options' chords ahead of the app's own while it is up, as the keys of what is in front
     if (commands.nonEmpty) Keymap.global.commands @= commands ++ Keymap.global.commands()
     if (words() == initial) ask(initial) else words @= initial
@@ -370,14 +383,14 @@ object FilterPicker {
   /** What a tooltip says after an option's name: its chord, " (Alt+C)"; nothing without one. */
   def said(chord: Option[Chord]): String = chord.map(c => " (" + c.label + ")").getOrElse("")
 
-  /** A picker put up at once; `choose` hears what is chosen. */
+  /** A picker put up at once, the focus in its field or not as `open` has it; `choose` hears what is chosen. */
   def show[T](query: String => Task[Vector[T]], keyOf: T => String, labelOf: T => String,
               detailOf: T => String = (_: T) => "", placeholder: String = Words.search, initial: String = "",
-              inUse: T => Boolean = (_: T) => false)
+              inUse: T => Boolean = (_: T) => false, focusField: Boolean = Focus.typesFirst)
              (choose: T => Unit): FilterPicker[T] = {
     val picker = new FilterPicker[T](query, keyOf, labelOf, detailOf, placeholder, inUse = inUse)
     picker.chosen.attach(choose)
-    picker.open(initial)
+    picker.open(initial, focusField)
     picker
   }
 }
