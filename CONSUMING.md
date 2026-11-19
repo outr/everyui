@@ -6411,7 +6411,7 @@ env -u WAYLAND_DISPLAY xvfb-run -a java -cp "$(cat webcheck/out/classpath.txt)" 
   web/out-js --chrome /path/to/chrome38.sh --shots target/old-chrome
 ```
 
-#### On a TV: Developer Mode and LG's CLI (`webosInstall`, `webosLaunch`, `webosInspect`)
+#### On a TV: Developer Mode and LG's CLI (`webosInstall`, `webosLaunch`, `webosClose`, `webosInspect`)
 
 Installing on a TV takes LG's CLI (`npm install -g @webos-tools/cli`, or `webosCli := Some(dir)` naming where its
 `ares-*` are) and the TV in Developer Mode, once:
@@ -6428,12 +6428,34 @@ Then:
     sbt webosPackage                   target/webos/<id>_<version>_all.ipk
     sbt webosInstall                   the package on the TV (ares-install)
     sbt "webosLaunch open=/title/12"   the app started, with launch parameters (ares-launch --params)
+    sbt webosClose                     the app closed (ares-launch --close)
     sbt webosInspect                   Chrome DevTools on the running app (ares-inspect --open)
 
 `webosInspect` is the TV's console: the app's `Platform.log` lines, its errors, its DOM and its network, in Chrome's
 DevTools, as an app installed in Developer Mode can be inspected. LG's CLI has no log stream for a TV (`ares-log` is not
 for its profile), so there is no tail like the Roku's port 8085; DevTools' console keeps what was said from when it is
-opened. `ares-launch --close <id>` closes the app; `ares-install --remove <id>` removes it.
+opened. `ares-install --remove <id>` removes the app.
+
+A webOS 3.x TV is not reached by LG's CLI: its OpenSSH 6.1 signs in only with `ssh-rsa`, which the CLI's client
+refuses ("All configured authentication methods failed"). There the tasks go over the system's `ssh` instead, as the
+CLI would:
+
+```scala
+webosDevice := "lgtv",   // as ares-setup-device named it, its key fetched with ares-novacom --getkey
+webosSsh := true         // or webosSshDevice := Some(WebOSDevice(host = "192.168.1.118", key = file("..."), ...))
+```
+
+`webosInstall` sends the package through `ssh` into `/media/developer/temp` (the TV has no `scp`), installs it with
+`luna-send-pub -i luna://com.webos.appInstallService/dev/install '{"id":…,"ipkUrl":…,"subscribe":true}'`, follows its
+states ("installing : start" … "installed") to the end or a failure, and removes the file; `webosLaunch` is
+`luna://com.webos.applicationManager/launch` with the parameters, and `webosClose` is `…/dev/closeByAppId` (webOS 3
+has no `closeByAppId` of its own). `luna-send-pub` (`luna-send` is not the developer's) ends at the end of its input,
+answering nothing, so its input is held open until its answer has come; no terminal is asked for, which the TV
+refuses. `ssh` is given `-o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa`, the device's port and
+user, and its key: the device is read from the CLI's list (`~/.webos/tv/novacom-devices.json`, else `ose`'s), its key
+`~/.ssh/<name>_webos`, which is an encrypted PEM; it is decrypted with the passphrase the list keeps into a copy of
+mode 600 under `target/webos/ssh`, removed after, and the passphrase is never logged (`WebOSSsh`, `WebOSDevice`).
+`webosInspect` still takes the CLI. Not yet seen: the tasks on a TV (NaboTV's script, which they follow, was).
 
 #### Video on webOS
 

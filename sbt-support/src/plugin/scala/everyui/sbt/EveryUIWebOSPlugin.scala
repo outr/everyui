@@ -18,7 +18,11 @@ import sbt.complete.DefaultParsers.*
   *   sbt webosPackage                  target/webos/<id>_<version>_all.ipk
   *   sbt webosInstall                  the package on the TV (ares-install)
   *   sbt "webosLaunch open=/title/12"  the app started, with launch parameters (ares-launch)
-  *   sbt webosInspect                  Chrome DevTools on the app running on the TV (ares-inspect --open) */
+  *   sbt webosClose                    the app closed (ares-launch --close)
+  *   sbt webosInspect                  Chrome DevTools on the app running on the TV (ares-inspect --open)
+  *
+  * A webOS 3.x TV, which LG's CLI cannot sign in to, is reached over plain ssh instead with `webosSsh := true`
+  * (`WebOSSsh`): install, launch and close, the device as `ares-setup-device` set it up, or `webosSshDevice`. */
 object EveryUIWebOSPlugin extends AutoPlugin {
   override def requires: Plugins = EveryUIWebPlugin
   override def trigger: PluginTrigger = allRequirements
@@ -27,13 +31,18 @@ object EveryUIWebOSPlugin extends AutoPlugin {
     type WebOSApp = everyui.sbt.WebOSApp
     val WebOSApp: everyui.sbt.WebOSApp.type = everyui.sbt.WebOSApp
     def WebOSPackage: everyui.sbt.WebOSPackage.type = everyui.sbt.WebOSPackage
+    type WebOSDevice = everyui.sbt.WebOSDevice
+    val WebOSDevice: everyui.sbt.WebOSDevice.type = everyui.sbt.WebOSDevice
 
     val everyuiWebOS = settingKey[Option[WebOSApp]]("The app as an LG webOS TV app (its id, version, title, icons: WebOSApp), or None, the default, for none")
     @transient val webosBundle = taskKey[File]("The web bundle webosPackage packages: a directory with the app's index.html and what it loads (the app's own bundle task)")
     @transient val webosPackage = taskKey[File]("The app's webOS package, target/webos/<id>_<version>_all.ipk, built from webosBundle and everyuiWebOS")
     val webosDevice = settingKey[String]("The TV LG's CLI reaches, by the name ares-setup-device gave it (\"\", the default, for the CLI's default device)")
     val webosCli = settingKey[Option[File]]("The directory of LG's CLI (ares-install, ares-launch, ares-inspect), or None, the default, for the PATH")
+    val webosSsh = settingKey[Boolean]("Install, launch and close over plain ssh rather than LG's CLI, which cannot sign in to a webOS 3.x TV (false, the default: the CLI)")
+    val webosSshDevice = settingKey[Option[WebOSDevice]]("The TV webosSsh reaches, or None, the default, for webosDevice as ares-setup-device set it up")
     @transient val webosInstall = taskKey[Unit]("Install the app's webOS package on webosDevice (ares-install)")
+    @transient val webosClose = taskKey[Unit]("Close the app on webosDevice (ares-launch --close)")
     val webosLaunch = inputKey[Unit]("Launch the app on webosDevice (ares-launch), with any name=value words as its launch parameters")
     @transient val webosInspect = taskKey[Unit]("Open Chrome DevTools on the app running on webosDevice (ares-inspect --open): its console, its DOM, its network")
   }
@@ -43,6 +52,8 @@ object EveryUIWebOSPlugin extends AutoPlugin {
     everyuiWebOS := None,
     webosDevice := "",
     webosCli := None,
+    webosSsh := false,
+    webosSshDevice := None,
     webosBundle := Def.uncached(sys.error("sbt-everyui: set webosBundle to the app's web bundle (webosBundle := webBundle.value)")),
     webosPackage := Def.uncached {
       val a = everyuiWebOS.value.getOrElse(sys.error("sbt-everyui: set everyuiWebOS to the app's WebOSApp"))
@@ -52,18 +63,37 @@ object EveryUIWebOSPlugin extends AutoPlugin {
       ipk
     },
     webosInstall := Def.uncached {
-      WebOSCli.run(streams.value.log.info(_), webosCli.value, "ares-install", webosDevice.value,
-        Seq(webosPackage.value.getAbsolutePath))
+      val ipk = webosPackage.value
+      val log = streams.value.log
+      if (webosSsh.value) {
+        val a = everyuiWebOS.value.getOrElse(sys.error("sbt-everyui: set everyuiWebOS to the app's WebOSApp"))
+        sshTo(webosSshDevice.value, webosDevice.value, target.value).install(log.info(_), ipk, a.id)
+      }
+      else WebOSCli.run(log.info(_), webosCli.value, "ares-install", webosDevice.value, Seq(ipk.getAbsolutePath))
     },
     webosLaunch := {
       val words = spaceDelimited("<name=value>").parsed
       val a = everyuiWebOS.value.getOrElse(sys.error("sbt-everyui: set everyuiWebOS to the app's WebOSApp"))
-      WebOSCli.run(streams.value.log.info(_), webosCli.value, "ares-launch", webosDevice.value,
+      if (webosSsh.value) sshTo(webosSshDevice.value, webosDevice.value, target.value)
+        .launch(streams.value.log.info(_), a.id, WebOSCli.params(words))
+      else WebOSCli.run(streams.value.log.info(_), webosCli.value, "ares-launch", webosDevice.value,
         (if (words.isEmpty) Nil else Seq("--params", WebOSCli.params(words))) :+ a.id)
+    },
+    webosClose := Def.uncached {
+      val a = everyuiWebOS.value.getOrElse(sys.error("sbt-everyui: set everyuiWebOS to the app's WebOSApp"))
+      val log = streams.value.log
+      if (webosSsh.value) sshTo(webosSshDevice.value, webosDevice.value, target.value).close(log.info(_), a.id)
+      else WebOSCli.run(log.info(_), webosCli.value, "ares-launch", webosDevice.value, Seq("--close", a.id))
     },
     webosInspect := Def.uncached {
       val a = everyuiWebOS.value.getOrElse(sys.error("sbt-everyui: set everyuiWebOS to the app's WebOSApp"))
       WebOSCli.run(streams.value.log.info(_), webosCli.value, "ares-inspect", webosDevice.value, Seq("--open", "--app", a.id))
     }
   )
+
+  // the TV over plain ssh: the device given, else the one LG's CLI set up under `name`; the key's copy in target/webos
+  private def sshTo(device: Option[WebOSDevice], name: String, target: File): WebOSSsh = WebOSSsh(device.getOrElse {
+    if (name.isEmpty) sys.error("sbt-everyui: set webosDevice, or webosSshDevice, for webosSsh")
+    WebOSDevice.ares(name)
+  }, target / "webos" / "ssh")
 }
