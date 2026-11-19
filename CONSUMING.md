@@ -867,8 +867,9 @@ Each glyph of the bundled Material Icons is a `lazy val` of `everyui.font.Materi
 `MaterialIcon.all` lists every one, 2,234 of them, in the face's order (by name), for an icon picker's "show more".
 `MaterialIcon.named(name)` finds one by the face's name ("local_shipping"), None for a name it does not have, so a
 choice is stored as `icon.name` and drawn again from it. Both are made the first time either is asked for, so an app
-that never asks pays nothing; a web bundle ships only the glyphs its scripts reach, all of them once it reaches `all`
-or `named`. A name the face lists twice is at its first codepoint, as its `lazy val` is.
+that never asks pays nothing. A web bundle that reaches them still starts with only the glyphs its code names; the rest
+of the face is a file of its own, which the browser fetches only when it first draws one of them (`WebGlyphs.Reached`,
+under the faces below). A name the face lists twice is at its first codepoint, as its `lazy val` is.
 
 ```scala
 val picked = MaterialIcon.named(settings.icon).getOrElse(MaterialIcon.Folder)
@@ -5266,7 +5267,7 @@ Each is shipped as WOFF2, cut to what the app draws (`glyphs`, a `WebGlyphs`):
 | `glyphs` | What is shipped | For |
 |---|---|---|
 | `WebGlyphs.Scripts` (the default) | every glyph, in slices by script (`<file>.latin.woff2`, `.latin-ext`, `.vietnamese`, `.cyrillic`, `.greek`, `.other`), each rule naming the characters its slice holds (`unicode-range`); the browser fetches only the slices the words on the page need | words |
-| `WebGlyphs.Reached` | only the icons main.js or main.wasm names (the characters in Unicode's private use areas there; a `MaterialIcon` the app reaches is its codepoint), in one file; none at all, and no rule, where it names none | an icon face drawn by codepoint (`WebFace.MaterialIcons`) |
+| `WebGlyphs.Reached` | only the icons main.js or main.wasm names (the characters in Unicode's private use areas there; a `MaterialIcon` the app reaches is its codepoint), in one file; none at all, and no rule, where it names none; where they also list every icon (`MaterialIcon.all` or `named` reached), the others in a second file, `<file>.rest.woff2`, never preloaded, its rule naming exactly the characters it holds (`unicode-range`), so the browser fetches it only when it first draws one of them, and draws them blank till then (`font-display: block`) | an icon face drawn by codepoint (`WebFace.MaterialIcons`) |
 | `WebGlyphs.All` | every glyph, in one file (a CFF face, `.otf`, is always shipped so) | anything else |
 
 A slice keeps every glyph's number and the face's layout tables, so kerning, ligatures and accents are the whole
@@ -5287,6 +5288,11 @@ Measured on NaboTV (six Roboto faces of its own, four at the start, with Materia
 italic, and Roboto Mono later): the faces fetched at the start went from 643 KB (whole TrueType, brotli) to 139 KB
 (Material Icons 16 KB for its 270 icons, a Roboto Latin slice 29 to 30 KB), and the first words on a cold load over
 "Slow 4G" with the CPU four times slower from 22.5 s to 13.5 s (the median of five runs each).
+
+Measured on the example app with `MaterialIcon.all` reached (`demo=icons`, a release build, in headless Chrome): the
+faces fetched at launch went from 172 KB to 46 KB, Material Icons from 133 KB (every icon) to 6.7 KB (the 108 its code
+names), and the page's whole launch from 1,012 KB to 887 KB; the rest of the icons (130 KB) came in one request once
+"Show all icons" drew the first of them, the icons keeping their 24-pixel boxes while it loaded.
 
 To move a page that writes its own rules: take its `@font-face` lines out, name the app's faces in `everyuiWebFaces`
 (and their files in `everyuiAppFonts`), and in the bundle task write `everyuiWebFaceFiles.value.writeTo(out)` after the

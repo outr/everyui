@@ -2,11 +2,11 @@ package everyui.render
 
 /** Which faces words wait for before they are measured (TextFit), worked out from what the page's faces say of
   * themselves: plain Scala, so a spec runs it on the JVM. Words wait for the faces of their family and slant in the
-  * weight the browser draws them in (`matched`), that are loading, or not yet asked for and meant for any letter or
-  * for one of theirs (a slice of a face by script, a build's), and never for one asked for once already (`tried`):
-  * the browser answers a load of words in a weight with the face it takes for them, so another (a heavier one the
-  * page declared for later) would stay unloaded, be asked for again, be answered at once, and keep the page from ever
-  * drawing again. */
+  * weight the browser draws them in (`matched`), loading or not yet asked for, that are meant for any letter or for
+  * one of theirs (a slice of a face by script, a build's), and never for one asked for once already (`tried`): the
+  * browser answers a load of words in a weight with the face it takes for them, so another (a heavier one the page
+  * declared for later, or a slice still loading that holds none of their letters) would be asked for again, be
+  * answered at once, and keep the page from ever drawing again. */
 object FaceWait {
   /** The faces of `faces` (one family and slant: their weight, status and `unicode-range` as `document.fonts` says
     * them) that words of `text` in `wanted` (a CSS weight) wait for. */
@@ -15,7 +15,7 @@ object FaceWait {
     val drawn = matched(weight(wanted), faces.map(f => weight(weightOf(f))).distinct)
     faces.filter { f =>
       drawn.contains(weight(weightOf(f))) && !tried.contains(f) && (status(f) == "loading" ||
-        (status(f) == "unloaded" && (range(f).equalsIgnoreCase("U+0-10FFFF") || holds(range(f), text))))
+        status(f) == "unloaded") && (range(f).equalsIgnoreCase("U+0-10FFFF") || holds(range(f), text))
     }
   }
 

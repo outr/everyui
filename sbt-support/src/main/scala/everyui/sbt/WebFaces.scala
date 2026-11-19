@@ -19,6 +19,8 @@ import java.util.regex.Matcher
   * `</head>`, a `<style id="everyui-fonts">` of the rules, a preload for each face at the start (its Latin slice, for
   * one in slices), and `<meta name="everyui-fonts">`, which tells the runtime which faces to wait for before the first
   * frame and which the build declared. A face nothing reaches (an icon face no script names an icon of) is left out.
+  * An icon face whose every icon the scripts list (`MaterialIcon.all`) ships the rest of them apart, never preloaded:
+  * the browser fetches that file the first time it draws one of them.
   * The page must not declare a family the build does: it would be fetched twice. Plain Scala, for an sbt build to
   * compile in (CONSUMING.md). */
 final case class WebFaces(fonts: File, faces: Seq[WebFace]) {
@@ -30,10 +32,10 @@ final case class WebFaces(fonts: File, faces: Seq[WebFace]) {
     val twice = WebFaces.pageFamilies(html).filter(families)
     if (twice.nonEmpty) sys.error(s"$page declares @font-face for ${twice.mkString(", ")}, which the build now writes " +
       "(everyuiWebFaces): take those rules out of the page")
-    lazy val reached = WebFaces.reached(out)
+    lazy val scripts = WebFaces.scan(out)
     val dir = new File(out, "fonts")
     dir.mkdirs()
-    val shipped = Parallel.map(faces)(face => face -> WebFaces.files(fonts, face, reached))
+    val shipped = Parallel.map(faces)(face => face -> WebFaces.files(fonts, face, scripts._1, scripts._2))
     val written = shipped.flatMap { case (_, files) =>
       files.map { f =>
         val file = new File(dir, f.name)
@@ -46,7 +48,8 @@ final case class WebFaces(fonts: File, faces: Seq[WebFace]) {
       files.map { f =>
         s"""  @font-face { font-family: '${face.family}'; font-style: ${if (face.italic) "italic" else "normal"}; """ +
           s"""font-weight: ${face.weight}; src: url(fonts/${f.name}) format('woff2');""" +
-          f.range.map(r => s" unicode-range: $r;").getOrElse("") + " }"
+          f.range.map(r => s" unicode-range: $r;").getOrElse("") +
+          (if (f.slice.contains(WebFaces.rest)) " font-display: block;" else "") + " }"
       }
     }
     val preloads = drawn.filter(_._1.start).flatMap { case (_, files) =>
@@ -81,8 +84,16 @@ object WebFaces {
       0xA640 to 0xA69F, 0xFE2E to 0xFE2F),
     "greek" -> Seq(0x370 to 0x3FF, 0x1F00 to 0x1FFF))
 
-  /** The files `face` ships as, out of `fonts`: none where it is an icon face none of the `reached` characters is in. */
-  def files(fonts: File, face: WebFace, reached: => Set[Int]): Seq[FaceFile] = {
+  /** The slice of an icon face that holds the icons the scripts only list (`listed`, less those they name), shipped
+    * apart and never preloaded: `<file>.rest.woff2`, its rule naming exactly those characters (`unicode-range`), so
+    * the browser fetches it the first time one of them is drawn, and draws nothing for them till then
+    * (`font-display: block`) rather than a fallback's boxes. */
+  val rest = "rest"
+
+  /** The files `face` ships as, out of `fonts`: none where it is an icon face none of the `reached` characters is in.
+    * An icon face ships the icons `reached` in one file, and those only `listed` (MaterialIcon.all) in another, the
+    * `rest`. */
+  def files(fonts: File, face: WebFace, reached: => Set[Int], listed: => Set[Int] = Set.empty): Seq[FaceFile] = {
     val source = new File(fonts, face.file)
     if (!source.isFile) sys.error(s"everyuiWebFaces: ${face.file} (${face.css}) is not among the fonts in $fonts")
     val font = Sfnt.read(source)
@@ -92,7 +103,11 @@ object WebFaces {
       case WebGlyphs.All => Seq(FaceFile(base + ".woff2", Woff2(font), None, None))
       case WebGlyphs.Reached =>
         val icons = font.characters.keySet.filter(reached)
-        if (icons.isEmpty) Nil else Seq(FaceFile(base + ".woff2", Woff2(FontSubset.compact(font, icons)), None, None))
+        val others = font.characters.keySet.filter(listed) -- icons
+        Seq(icons -> None, others -> Some(rest)).filter(_._1.nonEmpty).map { case (cs, slice) =>
+          FaceFile(base + slice.fold("")("." + _) + ".woff2", Woff2(FontSubset.compact(font, cs)), slice,
+            slice.map(_ => unicodeRange(cs)))
+        }
       case WebGlyphs.Scripts =>
         // the combining marks go in every slice, so a letter and the accent after it are drawn from one file, the
         // accent placed on the letter (a browser keeps them together where one file has both)
@@ -124,28 +139,49 @@ object WebFaces {
   def pageFamilies(html: String): Set[String] =
     """(?s)@font-face\s*\{[^}]*?font-family\s*:\s*['"]?([^'";}]+)""".r.findAllMatchIn(html).map(_.group(1).trim).toSet
 
-  /** The characters in Unicode's private use areas the scripts in `out` hold (main.js, the loader, and the WebAssembly
-    * build's directory): a string in main.js is the character or its `\u` escape, in main.wasm the name of an
-    * import (Scala.js imports each string constant). */
-  def reached(out: File): Set[Int] = {
+  /** The characters in Unicode's private use areas the scripts in `out` name (main.js, the loader, and the WebAssembly
+    * build's directory): a string in main.js is the character or its `\u` escape, in main.wasm the name of an import
+    * (Scala.js imports each string constant). Those the scripts only list, as an icon table's `name=glyph`
+    * (MaterialIcon.all), are not among them, but `listed`. */
+  def reached(out: File): Set[Int] = scan(out)._1
+
+  /** The characters in Unicode's private use areas the scripts in `out` list as a table of icons, each written
+    * `name=glyph`, as MaterialIcon.all's table has every icon of the face. */
+  def listed(out: File): Set[Int] = scan(out)._2
+
+  // what the scripts in `out` name and what they list, read once for both
+  private[sbt] def scan(out: File): (Set[Int], Set[Int]) = {
     val top = Option(out.listFiles()).getOrElse(Array.empty[File]).toSeq
     val scripts = top.filter(f => f.isFile && f.getName.endsWith(".js")) ++
       top.filter(d => d.isDirectory && d.getName.startsWith("wasm-")).flatMap(d => d.listFiles().toSeq.filter(_.isFile))
     if (!scripts.exists(_.getName.startsWith("main")))
       sys.error(s"$out has no main.js or WebAssembly build: write the scripts before the faces")
-    scripts.flatMap { f =>
+    val each = scripts.map { f =>
       val bytes = Files.readAllBytes(f.toPath)
-      if (f.getName.endsWith(".wasm")) wasmStrings(bytes) else jsCharacters(new String(bytes, UTF_8))
-    }.filter(privateUse).toSet
+      if (f.getName.endsWith(".wasm")) wasmCharacters(bytes) else jsCharacters(new String(bytes, UTF_8))
+    }
+    (each.flatMap(_._1).filter(privateUse).toSet, each.flatMap(_._2).filter(privateUse).toSet)
   }
 
   def privateUse(c: Int): Boolean = (c >= 0xE000 && c <= 0xF8FF) || c >= 0xF0000
 
-  // every character of a script, its `\uXXXX` escapes (a surrogate pair of them too) and `\u{X}` ones read as the
-  // characters they are
+  // a character as a script's string writes it: its `\uXXXX` escape (a surrogate pair of them too) or `\u{X}` one
   private val escape =
     """\\u(?:\{([0-9a-fA-F]+)\}|([dD][89abAB][0-9a-fA-F]{2})\\u([dD][c-fC-F][0-9a-fA-F]{2})|([0-9a-fA-F]{4}))""".r
-  private def jsCharacters(text: String): Iterator[Int] = {
+  // an icon's glyph so, or as itself
+  private val glyph = """\\u\{[0-9a-fA-F]+\}|\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}|""" +
+    """\\u[0-9a-fA-F]{4}|[\x{E000}-\x{F8FF}\x{F0000}-\x{10FFFF}]"""
+  // an icon table's entry, `name=glyph`, wherever a string has one (Closure joins the table's lines into one string,
+  // by `;`, and writes `=` as `\x3d`); and one as a word on its own
+  private val entry = ("(?<![a-z0-9_])[a-z0-9_]+(?:=|\\\\x3[dD]|\\\\u003[dD])(" + glyph + ")").r
+  private val word = ("[a-z0-9_]+=(?:" + glyph + ")").r
+
+  // the characters a script names (every one, its escapes read as the characters they are, but its icon tables') and
+  // those its icon tables list
+  private def jsCharacters(text: String): (Iterator[Int], Iterator[Int]) =
+    (characters(entry.replaceAllIn(text, "")), entry.findAllMatchIn(text).flatMap(m => characters(m.group(1))))
+
+  private def characters(text: String): Iterator[Int] = {
     def hex(s: String): Int = Integer.parseInt(s, 16)
     text.codePoints().toArray.iterator ++ escape.findAllMatchIn(text).map { m =>
       if (m.group(1) != null) hex(m.group(1))
@@ -154,9 +190,14 @@ object WebFaces {
     }
   }
 
-  // the code points of a WebAssembly module's string constants: Scala.js imports each from the module "", named by the
-  // string itself
-  private def wasmStrings(b: Array[Byte]): Seq[Int] = {
+  // the same of a WebAssembly module's string constants, word by word
+  private def wasmCharacters(b: Array[Byte]): (Iterator[Int], Iterator[Int]) = {
+    val (listing, naming) = wasmStrings(b).flatMap(_.split(" ")).partition(word.matches)
+    (naming.iterator.flatMap(_.codePoints().toArray), listing.iterator.flatMap(_.codePoints().toArray))
+  }
+
+  // a WebAssembly module's string constants: Scala.js imports each from the module "", named by the string itself
+  private def wasmStrings(b: Array[Byte]): Seq[String] = {
     var p = 8
     def leb(): Long = {
       var result = 0L
@@ -172,7 +213,7 @@ object WebFaces {
     }
     def valueType(): Unit = { val t = b(p) & 0xFF; p += 1; if (t == 0x63 || t == 0x64) leb() }
     def limits(): Unit = { val flags = b(p); p += 1; leb(); if ((flags & 1) != 0) leb() }
-    val found = Seq.newBuilder[Int]
+    val found = Seq.newBuilder[String]
     while (p < b.length) {
       val id = b(p) & 0xFF
       p += 1
@@ -181,7 +222,7 @@ object WebFaces {
         (0 until leb().toInt).foreach { _ =>
           val module = name()
           val field = name()
-          if (module.isEmpty) field.codePoints().forEach(c => found += c)
+          if (module.isEmpty) found += field
           val kind = b(p)
           p += 1
           kind match {

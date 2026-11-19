@@ -77,6 +77,20 @@ class FaceWaitSpec extends AnyWordSpec with Matchers {
     "wait for nothing where no character of theirs is in a slice not loaded" in {
       waiting(roboto(), "400", "Home 🎬 中文") shouldBe empty
     }
+
+    "not wait for a slice still loading that holds none of their letters" in {
+      // an icon face in two (WebFaces): the icons the app names, loaded, and the rest of them, loading for a picker.
+      // An icon of the first, waiting for the rest, would be answered at once and ask again, for ever, and the rest
+      // would never come in
+      val named = new Face("400", "U+0-10FFFF", "loaded")
+      val rest = new Face("400", "U+E003-E004, U+E8B6", "loading")
+      waiting(Seq(named, rest), "400", "\ue88a") shouldBe empty
+      waiting(Seq(named, rest), "400", "\ue8b6") shouldBe Seq(rest)
+      val faces = roboto().filter(_.weight == "400")
+      faces.filter(_.range == cyrillic).foreach(_.status = "loading")
+      waiting(faces, "400", "Continue watching") shouldBe empty
+      waiting(faces, "400", "Привет").map(_.range) shouldBe Seq(cyrillic)
+    }
   }
 
   "The weight drawn" should {
