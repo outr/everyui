@@ -75,9 +75,9 @@ object WebOSTv extends AppHost {
     })
 
   /** The Application Manager's `getAppLoadStatus` (webOS 4 and later; `application.query` in `requiredACG` from
-    * webOS TV 26). `listApps` is not one a store app may call. */
+    * webOS TV 26); None on webOS 3, which has no such call. `listApps` is not one a store app may call. */
   override def appInstalled(id: String, done: Option[Boolean] => Unit): Unit =
-    if (id.isEmpty) done(None)
+    if (id.isEmpty || !WebOSApps.loadStatusAsked(osVersion)) done(None)
     else call(WebOSApps.service, "getAppLoadStatus", WebOSApps.loadStatus(id), reply => done(WebOSApps.exists(reply)))
 
   /** The runtime plays HLS itself, in the TV's own media pipeline, which LG recommends over Media Source Extensions:

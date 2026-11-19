@@ -257,7 +257,7 @@ object SnapshotAccess {
     if (url.startsWith("data:")) js.Promise.resolve[String](url)
     else fetched.getOrElseUpdate(url, {
       val init = js.Dynamic.literal(mode = "cors", credentials = "same-origin").asInstanceOf[dom.RequestInit]
-      dom.fetch(url, init).`then`[dom.Blob]((r: dom.Response) =>
+      WebFetch.response(url, init.asInstanceOf[js.Dynamic]).`then`[dom.Blob]((r: dom.Response) =>
         if (!r.ok) js.Promise.reject(r.status.toString) else r.blob()
       ).`then`[String]((b: dom.Blob) => new js.Promise[String]((resolve, _) => {
         val reader = new dom.FileReader()
@@ -362,7 +362,7 @@ object SnapshotAccess {
           }
           waits.push(js.Promise.resolve[js.Array[FaceRule]](found))
         case None if sheet.href != null =>
-          waits.push(dom.fetch(sheet.href).`then`[String]((r: dom.Response) => r.text())
+          waits.push(WebFetch.response(sheet.href).`then`[String]((r: dom.Response) => r.text())
             .`then`[js.Array[FaceRule]]((css: String) => js.Array(blocks(css).flatMap(faceOf(_, base))*))
             .`catch`[js.Array[FaceRule]]((_: Any) => js.Array[FaceRule]())
             .asInstanceOf[js.Promise[js.Array[FaceRule]]])

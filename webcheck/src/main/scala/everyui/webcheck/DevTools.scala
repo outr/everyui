@@ -11,10 +11,11 @@ import java.util.concurrent.{CompletableFuture, CompletionStage, ConcurrentHashM
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
 
-/** A Chrome of any age driven over its DevTools protocol at the page's own endpoint, with nothing between: what a 2018
-  * TV's Chromium 53 speaks as well as today's. A Chrome from 59 on runs headless; an older one has no headless mode and
+/** A Chrome of any age driven over its DevTools protocol at the page's own endpoint, with nothing between: what a 2016
+  * TV's Chromium 38 speaks as well as today's. A Chrome from 59 on runs headless; an older one has no headless mode and
   * opens a window on `$DISPLAY` (run it under `xvfb-run`). Where the protocol changed, the older way is taken where the
-  * newer one is refused (`addScript`, `insertText`), and the page's console is read from either domain.
+  * newer one is refused (`addScript`, `insertText`, `size`: the Page domain's metrics before Chromium 39's Emulation),
+  * and the page's console is read from either domain.
   *
   * Its profile is a new directory under `java.io.tmpdir`, removed with it. */
 final class DevTools private (process: Process, profile: Path, val major: Int, socket: WebSocket) {
@@ -104,10 +105,15 @@ final class DevTools private (process: Process, profile: Path, val major: Int, s
       "unmodifiedText" -> str(c.toString))).unit).foldLeft(Task.unit)((a, b) => a.flatMap(_ => b))
   }
 
-  /** The page shown `width` by `height` CSS pixels, at one device pixel to each. */
-  def size(width: Int, height: Int): Task[Unit] = send("Emulation.setDeviceMetricsOverride", obj(
-    "width" -> num(width), "height" -> num(height), "deviceScaleFactor" -> num(1), "mobile" -> bool(false),
-    "fitWindow" -> bool(false))).unit
+  /** The page shown `width` by `height` CSS pixels, at `ratio` device pixels to each: the Emulation domain's, or
+    * before it (Chromium 39) the Page domain's. */
+  def size(width: Int, height: Int, ratio: Double = 1.0): Task[Unit] = call("Emulation.setDeviceMetricsOverride", obj(
+    "width" -> num(width), "height" -> num(height), "deviceScaleFactor" -> num(ratio), "mobile" -> bool(false),
+    "fitWindow" -> bool(false))).flatMap { answer =>
+    if (answer.get("error").isEmpty) Task.unit
+    else send("Page.setDeviceMetricsOverride", obj("width" -> num(width), "height" -> num(height),
+      "deviceScaleFactor" -> num(ratio), "mobile" -> bool(false), "fitWindow" -> bool(false))).unit
+  }
 
   /** `url` loaded, once its document has loaded. */
   def navigate(url: String): Task[Unit] = send("Page.navigate", obj("url" -> str(url))).flatMap(_ => loaded(200))

@@ -229,7 +229,7 @@ object BusyDisplay {
   /** An SVG icon whose <svg> has no width and height of its own is drawn inside the ring (at a size the browser makes
     * up), but Chrome shows no icon for it in the tab at all: said once, since the page looks broken while idle. */
   private def sized(href: String): Unit =
-    dom.fetch(href).`then`[String](_.text()).`then`[Unit] { (text: String) =>
+    WebFetch.response(href).`then`[String](_.text()).`then`[Unit] { (text: String) =>
       val root = new dom.DOMParser().parseFromString(text, dom.MIMEType.`image/svg+xml`).documentElement
       if (root.localName == "svg" && !(root.hasAttribute("width") && root.hasAttribute("height")))
         warn(s"$href has no width and height of its own, so Chrome shows no icon for it in the tab$unsized", ring = false)

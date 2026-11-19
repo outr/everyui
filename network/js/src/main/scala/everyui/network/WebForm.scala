@@ -7,8 +7,9 @@ import scala.scalajs.js
 import scala.scalajs.js.typedarray.*
 
 /** A multipart form on the web, as the browser sends one: a FormData of the parts, each file a Blob of its bytes and
-  * type, sent with `fetch`, so the browser writes the body and its boundary. The answer is read as Spice's client reads
-  * one: any status is a result, and only a request that got none (refused, timed out, blocked by CORS) fails. */
+  * type, sent with `fetch` (`WebFetch`: an XMLHttpRequest where there is none), so the browser writes the body and
+  * its boundary. The answer is read as Spice's client reads one: any status is a result, and only a request that got
+  * none (refused, timed out, blocked by CORS) fails. */
 object WebForm {
   def send(call: HttpCall): Task[HttpResult] = {
     val form = new dom.FormData()
@@ -18,9 +19,8 @@ object WebForm {
         val blob = new dom.Blob(js.Array(bytes.toTypedArray.buffer), new dom.BlobPropertyBag { `type` = contentType })
         form.asInstanceOf[js.Dynamic].append(name, blob, fileName)
     }
-    val headers = new dom.Headers()
     // the browser names the body's type itself, with its boundary
-    call.headers.filter(_._1.toLowerCase != "content-type").foreach((k, v) => headers.append(k, v))
+    val headers = js.Dictionary(call.headers.filter(_._1.toLowerCase != "content-type")*)
     val init = js.Dynamic.literal(method = call.method, body = form, headers = headers,
       credentials = if (call.credentials) "include" else "same-origin")
     val done = Task.completable[HttpResult]
@@ -40,7 +40,7 @@ object WebForm {
       }
     val seconds = if (call.timeout > 0.0) call.timeout else 60.0
     val timer = dom.window.setTimeout(() => abort(), seconds * 1000.0)
-    dom.fetch(call.url, init.asInstanceOf[dom.RequestInit]).`then`[Unit] { (r: dom.Response) =>
+    everyui.render.WebFetch.response(call.url, init).`then`[Unit] { (r: dom.Response) =>
       if (call.binary) r.arrayBuffer().`then`[Unit] { (buffer: ArrayBuffer) =>
         dom.window.clearTimeout(timer)
         val bytes = new Int8Array(buffer).toArray

@@ -275,6 +275,7 @@ def publishedSources(backend: String, network: String, spice: Boolean): Seq[File
 //
 //   mkdir -p web/out-js && cp web/index.html web/webview.html web/sandbox.html web/out-js/ && cp -r assets/images assets/fonts web/out-js/
 //   scala-cli --power package web -o web/out-js/main.js -f   (add --js-mode release for Closure)
+//     (with --js-es-version es5_1, the ES 5.1 the oldest TV reads: webOS 3's Chromium 38; es2015 for webOS 4's 53)
 //   sbt server/run                                           (serves web/out-js)
 lazy val web = (project in file("web"))
   .enablePlugins(ScalaJSPlugin)
@@ -548,8 +549,9 @@ lazy val desktop = (project in file("desktop"))
     Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
     // and what an LG TV's runtime says of itself and launches the app with (WebOSFacts, LaunchParams), what it
     // asks its Application Manager (WebOSApps), when its keyboard on the screen lets a field go (SystemKeyboard) and its
-    // units (TvUnits), plain Scala too
-    Test / unmanagedSources ++= Seq("WebOSFacts.scala", "WebOSApps.scala", "LaunchParams.scala", "SystemKeyboard.scala", "TvUnits.scala")
+    // units (TvUnits), and a key named by its code where the engine names none (KeyCodes), plain Scala too
+    Test / unmanagedSources ++= Seq("WebOSFacts.scala", "WebOSApps.scala", "LaunchParams.scala", "SystemKeyboard.scala", "TvUnits.scala",
+      "KeyCodes.scala")
       .map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // and how Android starts another app for a link (IntentPlan), plain Scala as well
     Test / unmanagedSources += (file("android") / "src" / "main" / "scala" / "everyui" / "render" / "IntentPlan.scala").getAbsoluteFile,

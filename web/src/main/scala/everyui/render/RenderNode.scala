@@ -162,7 +162,7 @@ class RenderNode(val el: html.Element) {
   // `data-everyui-turned`): elsewhere its box is under no transform but the root's, and the second read (offsetWidth,
   // which makes the browser lay the page out) is spared.
   private def transformed(r: dom.DOMRect): Boolean =
-    RenderNode.turned > 0 && el.closest("[data-everyui-turned]") != null && {
+    RenderNode.turned > 0 && WebFeatures.closest(el, "[data-everyui-turned]") != null && {
       val at = RenderNode.drawnAt
       math.abs(r.width / at - el.offsetWidth) > 1.0 || math.abs(r.height / at - el.offsetHeight) > 1.0
     }
@@ -361,14 +361,15 @@ class RenderNode(val el: html.Element) {
     }
     val run = !hiddenNow && inView
     animations.foreach { a =>
-      val state = a.playState.asInstanceOf[String]
+      // (Chromium 38's player has no `playState` and no `pause`: its motions run on)
+      val state = if (js.typeOf(a.playState) == "string") a.playState.asInstanceOf[String] else ""
       if (run) { if (state == "paused") a.play() } else if (state == "running") a.pause()
     }
   }
 
   /** A soft shadow under the box, or none for `""`. */
   def setBlur(radius: Double): Unit =
-    el.style.setProperty("filter", if (radius <= 0.0) "" else "blur(" + radius.toString + "px)")
+    el.style.setProperty(WebFeatures.filter, if (radius <= 0.0) "" else "blur(" + radius.toString + "px)")
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
     drop = if (hex.isEmpty) "" else x.toString + "px " + y.toString + "px " + blur.toString + "px " + hex
     paintShadows()
@@ -1205,6 +1206,7 @@ class RenderNode(val el: html.Element) {
     case s: html.Select => s.value = value
     case _ => ()
   }
+  private var listColors: Option[(String, String)] = None
   /** A drop-down's choices (`Nodes.select`), each answering with its index as its value. */
   def setOptions(labels: List[String]): Unit = {
     val chosen = getValue()
@@ -1213,6 +1215,10 @@ class RenderNode(val el: html.Element) {
       val option = dom.document.createElement("option").asInstanceOf[html.Option]
       option.value = i.toString
       option.textContent = label
+      listColors.foreach { case (background, text) =>
+        option.style.backgroundColor = background
+        option.style.color = text
+      }
       el.appendChild(option)
     }
     setValue(chosen)
@@ -1233,6 +1239,16 @@ class RenderNode(val el: html.Element) {
     el.style.setProperty("--everyui-list-lit", highlight)
     el.style.setProperty("--everyui-list-chosen", chosen)
     el.style.setProperty("--everyui-list-edge", edge)
+    // (each option's own, where there are no custom properties: Chromium 49)
+    if (!WebFeatures.customProperties) {
+      listColors = Some((background, text))
+      val options = el.getElementsByTagName("option")
+      (0 until options.length).foreach { i =>
+        val o = options(i).asInstanceOf[html.Element]
+        o.style.backgroundColor = background
+        o.style.color = text
+      }
+    }
     el.style.setProperty("color-scheme", if (RenderNode.light(background)) "light" else "dark")
   }
   def setPlaceholder(text: String): Unit = el.setAttribute("placeholder", text)
@@ -1350,7 +1366,7 @@ class RenderNode(val el: html.Element) {
   }
   /** Enter in the field, its keyboard's action key. */
   def onInputAction(f: () => Unit): Unit =
-    el.addEventListener("keydown", (e: dom.KeyboardEvent) => if (e.key == "Enter" && !e.shiftKey) f())
+    el.addEventListener("keydown", (e: dom.KeyboardEvent) => if (WebFeatures.key(e) == "Enter" && !e.shiftKey) f())
   /** All of what the field holds chosen, so what is typed next replaces it. */
   def selectAllInput(): Unit = el.asInstanceOf[js.Dynamic].select()
   /** All of what the field holds chosen as it takes the keyboard, or not (`SelectOnFocus`). */
@@ -1823,7 +1839,7 @@ object RenderNode {
   def embedOf(el: dom.Element): String =
     if (el == null || (el eq dom.document.body) || (el eq dom.document.documentElement)) ""
     else {
-      val embed = el.closest("[data-everyui-embed]")
+      val embed = WebFeatures.closest(el, "[data-everyui-embed]")
       val app = dom.document.getElementById("app")
       if (embed != null) {
         val name = embed.getAttribute("data-everyui-embed")
@@ -1843,9 +1859,10 @@ object RenderNode {
     * types nothing, by its key ("c") rather than the character Option makes of it on a Mac ("ç"), so that a chord of
     * Cmd+Alt and a letter (`everyui.keymap.Chord`) matches there. */
   def keyName(e: dom.KeyboardEvent): String =
-    if (e.metaKey && e.altKey && "Key[A-Z]|Digit[0-9]".r.matches(e.code)) e.code.last.toLower.toString
+    if (e.metaKey && e.altKey && js.typeOf(e.asInstanceOf[js.Dynamic].code) == "string" &&
+      "Key[A-Z]|Digit[0-9]".r.matches(e.code)) e.code.last.toLower.toString
     // a TV's remote by its key code (its Back is 461), where the engine's `key` is not to be relied on
-    else AppHosts.current.flatMap(_.keyName(e.keyCode)).getOrElse(e.key)
+    else AppHosts.current.flatMap(_.keyName(e.keyCode)).getOrElse(WebFeatures.key(e))
 
   /** Whether `e` is a key the page's focused field types or edits with (a character, Backspace, Delete, the caret's
     * keys along the line), which the browser must be left to act on whatever the app made of it: kept from the field,
@@ -1854,10 +1871,11 @@ object RenderNode {
     * Option and Command with them move a word and a line, and are. Shift+Delete is the app's where it takes it (a
   * field's list of completions removing its lit row), and the field's (a cut, on Windows) where it does not. */
   def fieldKey(e: dom.KeyboardEvent): Boolean = editable(dom.document.activeElement) && {
-    val character = e.key.codePointCount(0, e.key.length) == 1 && !e.metaKey && (!e.ctrlKey || e.altKey)
-    val history = e.altKey && (e.key == "ArrowLeft" || e.key == "ArrowRight") && !Platform.commandKey()
-    val removing = e.shiftKey && e.key == "Delete" && !e.ctrlKey && !e.metaKey && !e.altKey
-    character || (fieldKeys.contains(e.key) && !history && !removing)
+    val key = WebFeatures.key(e)
+    val character = key.codePointCount(0, key.length) == 1 && !e.metaKey && (!e.ctrlKey || e.altKey)
+    val history = e.altKey && (key == "ArrowLeft" || key == "ArrowRight") && !Platform.commandKey()
+    val removing = e.shiftKey && key == "Delete" && !e.ctrlKey && !e.metaKey && !e.altKey
+    character || (fieldKeys.contains(key) && !history && !removing)
   }
   private val fieldKeys = Set("Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End")
 
@@ -2427,7 +2445,7 @@ object Platform {
   /** The setting as it changes, which the browser says at once. */
   def watchReduceMotion(f: Boolean => Unit): Unit = {
     val query = dom.window.matchMedia(lessMotion)
-    query.addEventListener("change", (_: dom.Event) => f(query.matches))
+    WebFeatures.changes(query)(() => f(query.matches))
   }
   private val lessMotion = "(prefers-reduced-motion: reduce)"
   /** "dark" or "light": what the person has asked the browser and the system for (`prefers-color-scheme`). */
@@ -2437,7 +2455,7 @@ object Platform {
   /** The scheme as the person changes it, told as the browser says it changed. */
   def watchColorScheme(f: String => Unit): Unit = {
     val query = dom.window.matchMedia(darkScheme)
-    query.addEventListener("change", (_: dom.Event) => f(if (query.matches) "dark" else "light"))
+    WebFeatures.changes(query)(() => f(if (query.matches) "dark" else "light"))
   }
   private val darkScheme = "(prefers-color-scheme: dark)"
   /** How large the person asked the browser to draw text: its default size (`font-size: medium`) over 16 pixels, 1 as
@@ -2552,7 +2570,7 @@ object Platform {
   def tint(red: Double, green: Double, blue: Double): Boolean = {
     val app = dom.document.getElementById("app").asInstanceOf[html.Element]
     if (app != null) {
-      if (red >= 0.999 && green >= 0.999 && blue >= 0.999) app.style.removeProperty("filter")
+      if (red >= 0.999 && green >= 0.999 && blue >= 0.999) app.style.removeProperty(WebFeatures.filter)
       else {
         var svg = dom.document.getElementById("everyui-tint")
         if (svg == null) {
@@ -2566,7 +2584,7 @@ object Platform {
         svg.innerHTML = "<filter id=\"everyui-tint-matrix\" color-interpolation-filters=\"sRGB\"><feColorMatrix " +
           "type=\"matrix\" values=\"" + red.toString + " 0 0 0 0 0 " + green.toString + " 0 0 0 0 0 " + blue.toString +
           " 0 0 0 0 0 1 0\"/></filter>"
-        app.style.setProperty("filter", "url(#everyui-tint-matrix)")
+        app.style.setProperty(WebFeatures.filter, "url(#everyui-tint-matrix)")
       }
     }
     true
@@ -2748,11 +2766,11 @@ object Platform {
     val text: js.Function1[js.Dynamic, js.Any] = r => if (r.ok.asInstanceOf[Boolean]) r.text() else ""
     val ok: js.Function1[js.Any, Unit] = t => done(t.toString)
     val failed: js.Function1[js.Any, Unit] = _ => done("")
-    js.Dynamic.global.fetch(path).applyDynamic("then")(text).applyDynamic("then")(ok, failed)
+    WebFetch(path).applyDynamic("then")(text).applyDynamic("then")(ok, failed)
   }
 
   /** The character at a Unicode code point, as a string. */
-  def fromCodePoint(codePoint: Int): String = js.Dynamic.global.String.fromCodePoint(codePoint).asInstanceOf[String]
+  def fromCodePoint(codePoint: Int): String = new String(Character.toChars(codePoint))
 
   /** The browser's language, as a BCP 47 tag (`en-US`). */
   def language(): String = dom.window.navigator.language
@@ -2763,6 +2781,16 @@ object Platform {
     dom.document.documentElement.setAttribute("dir", dir)
     // for what a scroll run from its left in every language holds (.everyui-ltr)
     dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("--everyui-dir", dir)
+    // (written in, where there are no custom properties: Chromium 49)
+    if (!WebFeatures.customProperties) {
+      var rule = dom.document.getElementById("everyui-dir")
+      if (rule == null) {
+        rule = dom.document.createElement("style")
+        rule.id = "everyui-dir"
+        dom.document.head.appendChild(rule)
+      }
+      rule.textContent = ".everyui-ltr > :not([dir]) { direction: " + dir + "; }"
+    }
   }
   /** The page's language (`zh-Hant`), which the browser chooses CJK faces by. */
   def setLanguage(code: String): Unit = dom.document.documentElement.setAttribute("lang", code.replace("_", "-"))
@@ -3127,8 +3155,7 @@ object Platform {
   /** `?freeze=<seconds>` in the page URL: step the animation that far on a virtual clock and stop (tools/check.sh).
     * Negative when absent. */
   def freezeSeconds(): Double = {
-    val value = new dom.URLSearchParams(dom.window.location.search).get("freeze")
-    if (value == null) -1.0 else value.toDoubleOption.getOrElse(-1.0)
+    WebFeatures.query("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
   }
 
   /** The frozen frame is complete. (tools/check.sh screenshots the page itself.) */
@@ -3143,10 +3170,7 @@ object Platform {
   /** What the app was launched with: on a TV, the parameters the system launched it with (webOS's `launchParams`, and
     * from a launch while it runs on, those of that launch, as on a Roku), else `?name=value` in the page URL; "" for a
     * name not given. How a launch chooses a demo (`demo`) and hands it a URL (`socket`). */
-  def launchArg(name: String): String = tvLaunch.flatMap(_.get(name)).getOrElse {
-    val value = new dom.URLSearchParams(dom.window.location.search).get(name)
-    if (value == null) "" else value
-  }
+  def launchArg(name: String): String = tvLaunch.flatMap(_.get(name)).orElse(WebFeatures.query(name)).getOrElse("")
 
   // a TV's launch parameters, the latest launch's, or None off a TV
   private var tvLaunch: Option[Map[String, String]] = AppHosts.current.map(_.launchParams())

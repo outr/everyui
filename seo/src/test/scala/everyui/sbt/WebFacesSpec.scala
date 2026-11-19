@@ -88,6 +88,17 @@ class WebFacesSpec extends AnyWordSpec with Matchers {
       files.filter(_.endsWith(".ttf")) shouldBe empty
     }
 
+    "write each file as TrueType too, named after its WOFF2, for an engine that reads no WOFF2 (trueType)" in {
+      val o = staged("render(\"\\ue145\")")
+      WebFaces(fonts, WebFace.bundled, trueType = true).writeTo(o)
+      val files = new File(o, "fonts").list().toSet
+      files.filter(_.endsWith(".woff2")).map(_.stripSuffix(".woff2")) shouldBe
+        files.filter(_.endsWith(".ttf")).map(_.stripSuffix(".ttf"))
+      Sfnt.read(new File(o, "fonts/OpenSans-Regular.latin.ttf")).characters.keySet should contain('A'.toInt)
+      read(new File(o, "index.html")) should include("src: url(fonts/OpenSans-Regular.latin.woff2) format('woff2'), " +
+        "url(fonts/OpenSans-Regular.latin.ttf) format('truetype'); unicode-range:")
+    }
+
     "cut the icon face to the icons the scripts name" in {
       val woff = Files.readAllBytes(new File(out, "fonts/MaterialIcons-Regular.woff2").toPath)
       woff.length should be < 4000

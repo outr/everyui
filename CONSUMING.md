@@ -5395,6 +5395,11 @@ Each is shipped as WOFF2, cut to what the app draws (`glyphs`, a `WebGlyphs`):
 | `WebGlyphs.Reached` | only the icons main.js or main.wasm names (the characters in Unicode's private use areas there; a `MaterialIcon` the app reaches is its codepoint), in one file; none at all, and no rule, where it names none; where they also list every icon (`MaterialIcon.all` or `named` reached), the others in a second file, `<file>.rest.woff2`, never preloaded, its rule naming exactly the characters it holds (`unicode-range`), so the browser fetches it only when it first draws one of them, and draws them blank till then (`font-display: block`) | an icon face drawn by codepoint (`WebFace.MaterialIcons`) |
 | `WebGlyphs.All` | every glyph, in one file (a CFF face, `.otf`, is always shipped so) | anything else |
 
+With `everyuiWebFaceTrueType := true` each file is also written as TrueType (OpenType for a CFF face) beside it,
+named in its rule after the WOFF2 (`src: url(x.woff2) format('woff2'), url(x.ttf) format('truetype')`), for an
+engine that reads no WOFF2 of today's: webOS 3's Chromium 38 fails the WOFF2 and fetches the TrueType, any other
+browser only the WOFF2. A TV's package carries both.
+
 A slice keeps every glyph's number and the face's layout tables, so kerning, ligatures and accents are the whole
 face's within it; the combining accents are in every slice, so a letter and its accent are drawn from one file. A
 pair of letters from two slices (Ł and ó in "Łódź") is not kerned, as with any face served in slices. On Linux, where
@@ -6304,17 +6309,53 @@ default) or "1280x720", what the page is laid out at (a web app has no 4K); `ico
 held to LG's rules (lowercase reverse DNS, not under com.lge, com.webos, com.palm; three numbers, no leading zeros) and
 the build fails on either.
 
-Link the JavaScript for the oldest TV the app supports: webOS 4 has Chromium 53, 5 has 68, 6 has 79, 22 has 87, 24
-has 108, 25 has 120. Scala.js's default output (ES2015) runs from webOS 4 on (with `withESVersion(ES2018)` from webOS 5,
-`ES2021` from webOS 22); the WebAssembly build needs Chromium 119, so webOS 25. A bundle sealed for a CDN
-(`WebBundle.seal`) works there as it is.
+Link the JavaScript for the oldest TV the app supports: webOS 3 has Chromium 38, 4 has 53, 5 has 68, 6 has 79, 22 has
+87, 24 has 108, 25 has 120. Scala.js's ES 5.1 output runs from webOS 3 on, its default output (ES2015) from webOS 4
+(with `withESVersion(ES2018)` from webOS 5, `ES2021` from webOS 22); the WebAssembly build needs Chromium 119, so
+webOS 25. A bundle sealed for a CDN (`WebBundle.seal`) works there as it is.
 
-#### The oldest engine: Chromium 53
+#### The oldest engine: Chromium 38
 
-The web runtime's floor is Chromium 53, the browser of 2018's LG TVs (webOS 4); Samsung's Tizen 4 has 56. Link for it
-with Scala.js's ES2015 output. What an older engine lacks is asked of the browser itself (`WebFeatures`), never of its
-name, and a plainer way is taken there while every newer browser keeps its own:
+The web runtime's floor is Chromium 38, the browser of LG's 2016 and 2017 TVs (webOS 3.x: 3.0, and 3.5, whose
+`webos_api_version` says 4.1); webOS 4 has 53, Samsung's Tizen 4 has 56. For webOS 3, link with Scala.js's ES 5.1
+output:
 
+```scala
+scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.NoModule)
+  .withESFeatures(_.withESVersion(org.scalajs.linker.interface.ESVersion.ES5_1)))
+```
+
+Scala.js 1.22 has it, deprecated since 1.19 ("will eventually be removed"), so the build warns; Closure's
+`fullLinkJS` then reads and writes ECMAScript 5 strict (its `language_out` follows). An app's own `index.html` must be
+ES 5.1 too: no arrow functions, `let` or `const`, classes, template literals, spread, destructuring, `for … of` or
+default parameters in its inline scripts. EveryUI's own (the example's pages, the service worker's registration) are,
+and `ShippedScriptsSpec` holds them to it. The WebAssembly build's loader (`everyui-loader.js`) is not (it loads an
+ES module, which no engine before Chromium 61 can): link a webOS 3 app as `WebTarget.Js`, which loads main.js
+directly. Against the ES2015 build, the ES 5.1 one is about 4% larger (Closure's: 5.26 MB against 5.08, 850 KB
+against 836 with Brotli) and as fast. Its faces need TrueType beside WOFF2 (`everyuiWebFaceTrueType := true`): Chromium
+38 fails today's WOFF2, and takes the TrueType file named after it in the same rule.
+
+What an older engine lacks is asked of the browser itself (`WebFeatures`), never of its name, and a plainer way is
+taken there while every newer browser keeps its own:
+
+- **No `fetch`** (before 42): EveryUI's own requests (a translation, an SVG icon, a form, HLS's probes, byte ranges)
+  go through an XMLHttpRequest that answers as `fetch` does (`WebFetch`), a file's answer read as 200; Spice's client
+  uses XMLHttpRequest already.
+- **No `KeyboardEvent.key`** (before 51): a key is named by its code (`KeyCodes`: the arrows, OK, Backspace and the
+  rest as the web names them, a character by the US layout, Shift taken); the remote's own keys by webOS's codes, as
+  before (Back 461).
+- **No CSS custom properties** (before 49): what they carry is written in: the direction of what a left-to-right
+  scroll holds, a drop-down's list colours on each option. An autofilled field's colour, and a scroll's gutter in a
+  right-to-left page (a TV draws no scrollbar), are not kept there.
+- **No `URLSearchParams`** (before 49): `?name=` (`Platform.launchArg`) read from the address by hand.
+- **No `Element.closest`** (before 41): asked of each holder by `matches`.
+- **No `MediaQueryList` events** (before 45): its `addListener`.
+- **No options object for a listener** (before 49, where one is taken for `true`): a capture flag alone
+  (`WebFeatures.listening`).
+- **No unprefixed `filter`** (before 53): `-webkit-filter`.
+- **No `String.fromCodePoint`** (before 41): Scala's own.
+- **A Web Animations player with no `playState` or `pause`** (before 39): a motion runs on while its node is hidden.
+- **No IntersectionObserver** (before 51): every motion runs on, as above.
 - **No pointer events** (before 55): the mouse's events stand in, so the Magic Remote's pointer still focuses and
   clicks; a finger's tap on a touch screen comes as the mouse's press, release and click.
 - **No `scale`, `translate` or `rotate` properties** (before 104): the app's root is drawn at its size (`UiScale`, a
@@ -6331,26 +6372,43 @@ name, and a plainer way is taken there while every newer browser keeps its own:
 - **Unprefixed `user-select`** (from 54): `-webkit-user-select` before it (and in Safari).
 - **No BroadcastChannel** (before 54): a sign-in opens no popup, the page itself going to the provider.
 - `isIntersecting` (58) is read as any of the node in view, and the font set (which Chromium 53 iterates as pairs) by
-  its `forEach`.
+  its `forEach`; `isConnected` (54) as whether the page holds the node.
+
+Chromium 38 has what else the runtime uses: flexbox and `transform` unprefixed, `classList`, `matches` (34),
+`requestAnimationFrame`, `performance.now`, Promise, Map, Set and `Symbol.iterator`, `Math.fround`, `imul`, `clz32`
+and `trunc`, `TextDecoder`, `atob`, WebSocket, `localStorage`, `document.fonts` with `FontFace` and its `load`, and
+`unicode-range`. Scala.js's ES 5.1 output brings its own for the rest of the language (`Object.is`, its classes, its
+strings' `startsWith` and `includes`), so neither `Object.assign` nor `Array.prototype.includes` is needed.
 
 An older engine also draws no `backdrop-filter` blur (76), no `caret-color` (57), no `text-underline-offset` (87) and
-no `scrollbar-width` (its `::-webkit-scrollbar` rule hides a bar there), and `font-display` (60) is its own default.
-A rich editor (`RichEditor`) needs `beforeinput` (60), and a call LiveKit's client: neither is for a TV. Below 53 (webOS
-3, Chromium 38; Tizen 3, 47) is not supported: Scala.js's ES 5.1 output and `fetch`, `URLSearchParams`,
-`KeyboardEvent.key` and CSS custom properties would be needed first.
+no `scrollbar-width` (its `::-webkit-scrollbar` rule hides a bar there), and `font-display` (60) is its own default;
+Chromium 38 also scrolls a field into view as it takes the focus (`preventScroll`, 64). A rich editor (`RichEditor`)
+needs `beforeinput` (60), and a call LiveKit's client: neither is for a TV. Below 38 (webOS 1 and 2, WebKit 537 and
+538) is not supported.
 
-Webcheck runs the example in Chromium 53 itself: a snapshot of Chromium's builds (revision 403380 is 53.0.2785.0;
-433042 is 56.0.2924.0, from the `chromium-browser-snapshots` bucket's `Linux_x64`), unzipped, with a GTK 2, its pango
-1.40 and harfbuzz 1.4 (Debian stretch's; a newer pango crashes it at start) and a gconf on its library path, run
-under `xvfb-run` (it has no headless mode). `WebOSCheck <page dir> --chrome <binary>` is the webOS check in it as
-webOS 4 (its user agent and version "4"), and `OldChromeCheck <page dir> --chrome <binary> [--shots <dir>]` loads
-the demos (tv, chat, rows, widgets, icons) from their files, gives each the remote's keys and the pointer's clicks,
-and fails on a screen not drawn or an error left uncaught. Both drive the browser over its own DevTools endpoint
-(`DevTools`), which an engine from 53 to today's speaks, so either runs in today's Chrome, headless, as well:
+On webOS 3 the runtime's object is `PalmSystem` alone (`webOSSystem` comes with webOS 5): its `launchParams`,
+`deviceInfo` and `platformBack()` (the launcher, as on every webOS before 6), `webOSRelaunch` on the document with its
+parameters, the Magic Remote's `cursorStateChange` (webOS 2 on) and the keyboard's `keyboardStateChange` (webOS 3 on),
+the same key codes. `Platform.osVersion` reads "3" from its user agent (`QtWebEngine/5.2.1 Chrome/38.0.2125.122`, as
+LG gives it). Another app is launched through the Application Manager as on later TVs, but whether one is installed is
+not to be had there (`getAppLoadStatus` comes with webOS 4, and `listApps` is not the app's): `Apps.installed` says
+None.
+
+Webcheck runs the example in Chromium 38 itself, and in 53 and 56: snapshots of Chromium's builds (revision 290069 is
+38.0.2125.0; 403380 is 53.0.2785.0; 433042 is 56.0.2924.0, from the `chromium-browser-snapshots` bucket's
+`Linux_x64`), unzipped, with a GTK 2, its pango 1.40 and harfbuzz 1.4 (Debian stretch's; a newer pango crashes them at
+start) and a gconf on their library path (and for 38 today's `libudev.so.1` as its `libudev.so.0`), run under
+`xvfb-run` (none has a headless mode). `WebOSCheck <page dir> --chrome <binary>` is the webOS check in it as webOS 3
+(below 53: its user agent and version "3", `PalmSystem` with `--palm`) or 4, and `OldChromeCheck <page dir> --chrome
+<binary> [--shots <dir>]` loads the demos (tv, chat, rows, widgets, icons) from their files, gives each the remote's
+keys and the pointer's clicks, and fails on a screen not drawn or an error left uncaught. Both drive the browser over
+its own DevTools endpoint (`DevTools`), which an engine from 38 to today's speaks, so either runs in today's Chrome,
+headless, as well:
 
 ```sh
+scala-cli --power package web --js-es-version es5_1 -o web/out-js/main.js -f
 env -u WAYLAND_DISPLAY xvfb-run -a java -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.OldChromeCheck \
-  web/out-js --chrome /path/to/chrome53.sh --shots target/old-chrome
+  web/out-js --chrome /path/to/chrome38.sh --shots target/old-chrome
 ```
 
 #### On a TV: Developer Mode and LG's CLI (`webosInstall`, `webosLaunch`, `webosInspect`)

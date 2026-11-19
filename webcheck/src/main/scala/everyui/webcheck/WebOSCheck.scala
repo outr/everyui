@@ -46,16 +46,19 @@ import scala.concurrent.duration.*
   * 1.1667, and a window of no size that is given its 1920 by 1080 after the page starts.
   * `--chrome` names the browser (else the Chrome on the path, headless). One older than 68 (an old TV's engine: webOS 4
   * has Chromium 53, Tizen 4 has 56) is driven as webOS 4, its user agent's and its version "4", in a window of its own
-  * (it has no headless mode: run it under `xvfb-run`); the check is the same.
+  * (it has no headless mode: run it under `xvfb-run`); one older than 53 (webOS 3's Chromium 38, which gives a key no
+  * `key` but its code) as webOS 3, LG's user agent for it (QtWebEngine 5.2.1, Chrome 38) and its version "3", where
+  * whether another app is installed is unknown (webOS 3 has no `getAppLoadStatus`) and only its launch is asked. The
+  * check is the same otherwise, and what it runs in the page is ES 5.1, as Chromium 38 reads it.
   */
 object WebOSCheck extends RapidApp {
-  // the user agent of a webOS TV whose engine is `chrome`
-  private def agent(chrome: String): String =
-    "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chrome +
+  // the user agent of a webOS TV whose engine is `engine` (webOS 3's names its QtWebEngine before its Chrome)
+  private def agent(engine: String): String =
+    "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) " + engine +
       " Safari/537.36 WebAppManager"
 
   // the runtime's object (webOSSystem; PalmSystem alone; or both, one object, as the Simulator has them) and the TV's
-  // keyboard on the screen
+  // keyboard on the screen, in ES5.1 as the oldest engine (webOS 3's Chromium 38) reads it
   private def stub(palm: Boolean, simulator: Boolean): String = {
     val system = if (palm) "PalmSystem" else "webOSSystem"
     s"""window.everyuiExits = [];
@@ -67,49 +70,56 @@ object WebOSCheck extends RapidApp {
       |${if (simulator) "Object.defineProperty(window, \"PalmSystem\", { value: window.webOSSystem });" else ""}
       |window.everyuiKeyboard = false;
       |window.everyuiKeyboards = 0;
-      |const everyuiShow = v => {
+      |var everyuiShow = function (v) {
       |  if (window.everyuiKeyboard == v) return;
       |  window.everyuiKeyboard = v;
       |  if (v) window.everyuiKeyboards++;
       |  document.dispatchEvent(new CustomEvent("keyboardStateChange", { detail: { visibility: v } }));
       |};
-      |const everyuiTyped = e => e instanceof HTMLInputElement &&
-      |  ["text", "email", "password", "search", "url", "tel", "number"].includes(e.type);
-      |window.addEventListener("focus", e => { if (everyuiTyped(e.target)) everyuiShow(true); }, true);
-      |window.addEventListener("blur", e => { if (everyuiTyped(e.target)) everyuiShow(false); }, true);
-      |for (const t of ["keydown", "keyup", "keypress"]) window.addEventListener(t, e => {
-      |  if (window.everyuiKeyboard && !["Enter", "ArrowLeft", "ArrowRight", "Unidentified"].includes(e.key))
+      |var everyuiTyped = function (e) { return e instanceof HTMLInputElement &&
+      |  ["text", "email", "password", "search", "url", "tel", "number"].indexOf(e.type) >= 0; };
+      |window.addEventListener("focus", function (e) { if (everyuiTyped(e.target)) everyuiShow(true); }, true);
+      |window.addEventListener("blur", function (e) { if (everyuiTyped(e.target)) everyuiShow(false); }, true);
+      |["keydown", "keyup", "keypress"].forEach(function (t) { window.addEventListener(t, function (e) {
+      |  var key = e.key || ({ 13: "Enter", 37: "ArrowLeft", 39: "ArrowRight" })[e.keyCode] || "Unidentified";
+      |  if (window.everyuiKeyboard && ["Enter", "ArrowLeft", "ArrowRight", "Unidentified"].indexOf(key) < 0)
       |    e.stopPropagation();
-      |}, true);
-      |window.everyuiRemote = name => {
+      |}, true); });
+      |window.everyuiKey = function (target, type, key, code) {
+      |  var e = new KeyboardEvent(type, { key: key, keyCode: code, which: code, bubbles: true, cancelable: true });
+      |  if (e.keyCode != code) ["keyCode", "which"].forEach(function (k) {
+      |    Object.defineProperty(e, k, { get: function () { return code; } });
+      |  });
+      |  target.dispatchEvent(e);
+      |};
+      |window.everyuiRemote = function (name) {
       |  if (window.everyuiKeyboard) { everyuiShow(false); return; }
-      |  const code = { Back: 461, Up: 38, Down: 40 }[name];
-      |  const key = { Back: "GoBack", Up: "ArrowUp", Down: "ArrowDown" }[name];
-      |  for (const t of ["keydown", "keyup"]) {
-      |    const e = new KeyboardEvent(t, { key, keyCode: code, which: code, bubbles: true, cancelable: true });
-      |    if (e.keyCode != code) for (const k of ["keyCode", "which"]) Object.defineProperty(e, k, { get: () => code });
-      |    document.activeElement.dispatchEvent(e);
-      |  }
+      |  var code = { Back: 461, Up: 38, Down: 40 }[name];
+      |  var key = { Back: "GoBack", Up: "ArrowUp", Down: "ArrowDown" }[name];
+      |  ["keydown", "keyup"].forEach(function (t) { everyuiKey(document.activeElement, t, key, code); });
       |};
       |window.everyuiLuna = [];
-      |const everyuiAnswer = (uri, params) => {
+      |var everyuiAnswer = function (uri, params) {
       |  window.everyuiLuna.push(uri + " " + params);
-      |  const there = JSON.parse(params).id != "missing" && JSON.parse(params).appId != "missing";
-      |  return uri.endsWith("/getAppLoadStatus") ? { returnValue: true, exist: there }
+      |  var there = JSON.parse(params).id != "missing" && JSON.parse(params).appId != "missing";
+      |  return /\\/getAppLoadStatus$$/.test(uri) ? { returnValue: true, exist: there }
       |    : there ? { returnValue: true } : { returnValue: false, errorCode: -101, errorText: "no such app" };
       |};
       |window.PalmServiceBridge = function () {
-      |  const bridge = this;
-      |  bridge.call = (uri, params) => setTimeout(() =>
-      |    bridge.onservicecallback(JSON.stringify(everyuiAnswer(uri, params))), 10);
+      |  var bridge = this;
+      |  bridge.call = function (uri, params) { setTimeout(function () {
+      |    bridge.onservicecallback(JSON.stringify(everyuiAnswer(uri, params))); }, 10); };
       |};
-      |window.everyuiService = () => { window.webOS = { service: { request: (uri, o) => setTimeout(() => {
-      |  const r = everyuiAnswer(uri + "/" + o.method, JSON.stringify(o.parameters));
-      |  (r.returnValue ? o.onSuccess : o.onFailure)(r);
-      |}, 10) } }; };
+      |window.everyuiService = function () { window.webOS = { service: { request: function (uri, o) {
+      |  setTimeout(function () {
+      |    var r = everyuiAnswer(uri + "/" + o.method, JSON.stringify(o.parameters));
+      |    (r.returnValue ? o.onSuccess : o.onFailure)(r);
+      |  }, 10); } } }; };
       |window.everyuiVisible = "visible";
-      |Object.defineProperty(document, "visibilityState", { get: () => window.everyuiVisible, configurable: true });
-      |Object.defineProperty(document, "hidden", { get: () => window.everyuiVisible == "hidden", configurable: true });
+      |Object.defineProperty(document, "visibilityState",
+      |  { get: function () { return window.everyuiVisible; }, configurable: true });
+      |Object.defineProperty(document, "hidden",
+      |  { get: function () { return window.everyuiVisible == "hidden"; }, configurable: true });
       |""".stripMargin
   }
 
@@ -118,8 +128,17 @@ object WebOSCheck extends RapidApp {
     val simulator = args.contains("--simulator")
     val system = if (palm) "PalmSystem" else "webOSSystem"
     val chrome = args.dropWhile(_ != "--chrome").drop(1).headOption.getOrElse(DevTools.defaultChrome)
-    // webOS 4 on an engine older than webOS 5's, else webOS 24
-    val (version, engine) = if (DevTools.majorOf(chrome) < 68) ("4", "53.0.2785.34") else ("24", "108.0.5359.211")
+    // webOS 3 on an engine older than webOS 4's, webOS 4 on one older than webOS 5's, else webOS 24
+    val major = DevTools.majorOf(chrome)
+    val (version, engine) =
+      if (major < 53) ("3", "QtWebEngine/5.2.1 Chrome/38.0.2125.122")
+      else if (major < 68) ("4", "Chrome/53.0.2785.34") else ("24", "Chrome/108.0.5359.211")
+    // webOS 3 has no getAppLoadStatus: whether an app is installed is unknown there, and only its launch is asked
+    val asks = version != "3"
+    val installed = (id: String, there: Boolean) =>
+      "tv: installed " + id + " " + (if (asks) there.toString else "unknown")
+    val asked = (id: String) =>
+      if (asks) Vector("luna://com.webos.applicationManager/getAppLoadStatus {\"appId\":\"" + id + "\"}") else Vector()
     val ratio = if (simulator) 1.1667 else 1.0
     val scale = if (simulator) "2.33" else "2"
     val usage = "usage: WebOSCheck <page dir> [--palm | --simulator] [--chrome <binary>]"
@@ -149,21 +168,15 @@ object WebOSCheck extends RapidApp {
       }
       // (its key code set on the event where the engine takes none from its init, as before Chromium 63)
       def key(code: Int, name: String): Task[Unit] = browser.eval(
-        s"""for (const t of ["keydown", "keyup"]) {
-           |  const e = new KeyboardEvent(t, { key: "$name", keyCode: $code, which: $code, bubbles: true });
-           |  if (e.keyCode != $code)
-           |    for (const k of ["keyCode", "which"]) Object.defineProperty(e, k, { get: () => $code });
-           |  document.dispatchEvent(e);
-           |}
-           |return 0""".stripMargin).unit
+        s"""["keydown", "keyup"].forEach(function (t) { everyuiKey(document, t, "$name", $code); }); return 0""").unit
       def event(name: String, detail: String): Task[Unit] =
         browser.eval(s"""document.dispatchEvent(new CustomEvent("$name", { detail: $detail })); return 0""").unit
       // the pointer moved onto the words `label`, as the Magic Remote moves it
       def pointTo(label: String): Task[Unit] = for {
         at <- browser.eval(
-          s"""const all = [...document.querySelectorAll("#app *")].filter(e => e.textContent.trim() == "$label" &&
-             |  e.getBoundingClientRect().width > 0);
-             |const r = all[all.length - 1].getBoundingClientRect();
+          s"""var all = [].slice.call(document.querySelectorAll("#app *")).filter(function (e) {
+             |  return e.textContent.trim() == "$label" && e.getBoundingClientRect().width > 0; });
+             |var r = all[all.length - 1].getBoundingClientRect();
              |return [r.left + r.width / 2, r.top + r.height / 2]""".stripMargin)
         xy = at("result")("value").asVector.map(_.asDouble)
         _ <- browser.send("Input.dispatchMouseEvent", obj("type" -> str("mouseMoved"), "x" -> num(5), "y" -> num(1000)))
@@ -187,7 +200,7 @@ object WebOSCheck extends RapidApp {
       def value(js: String): Task[Json] = browser.value(js)
       // what has the page's focus: "field" for an input, else its tag
       def active: Task[String] =
-        value("const a = document.activeElement; return a.tagName == 'INPUT' ? 'field' : a.tagName")
+        value("var a = document.activeElement; return a.tagName == 'INPUT' ? 'field' : a.tagName")
         .map(_.asString)
       def keyboard: Task[(Boolean, Int)] = value("return [window.everyuiKeyboard, window.everyuiKeyboards]")
         .map(v => (v.asVector(0).asBoolean, v.asVector(1).asInt))
@@ -198,9 +211,7 @@ object WebOSCheck extends RapidApp {
       def visible(state: String): Task[Unit] = browser.eval(
         s"""window.everyuiVisible = "$state"; document.dispatchEvent(new Event("visibilitychange")); return 0""").unit
       // the page `width` by `height`, at the pixel ratio of the run
-      def window(width: Int, height: Int): Task[Unit] = browser.send("Emulation.setDeviceMetricsOverride",
-        obj("width" -> num(width), "height" -> num(height), "deviceScaleFactor" -> num(ratio), "mobile" -> bool(false),
-          "fitWindow" -> bool(false))).unit
+      def window(width: Int, height: Int): Task[Unit] = browser.size(width, height, ratio)
       for {
         _ <- browser.addScript(stub(palm, simulator))
         // the page 1920 by 1080, as a TV's is at 1080p; in the Simulator, a window of no size until the page has started
@@ -210,23 +221,24 @@ object WebOSCheck extends RapidApp {
         _ = check(s"starts on webOS $version with its launch parameters (" + system + ")", home)
         _ <- if (simulator) Task.sleep(500.millis).flatMap(_ => window(1920, 1080)) else Task.unit
         screen <- heard("tv: screen 960x540 at " + scale)
-        ruler <- value("const r = document.querySelector('[aria-label=ruler]').getBoundingClientRect(); return r.width")
+        ruler <- value("var r = document.querySelector('[aria-label=ruler]').getBoundingClientRect(); return r.width")
         _ = check("the screen is 960 by 540 units at a scale of " + scale + ", 100 units 200 CSS pixels",
           screen && math.abs(ruler.asDouble - 200.0) < 0.5)
         bars <- value(
-          """const all = [...document.querySelectorAll("#app *")];
-            |const d = document.documentElement;
-            |return [all.some(e => e.scrollHeight > e.clientHeight + 1 && getComputedStyle(e).overflowY == "auto"),
-            |  all.filter(e => e.offsetWidth - e.clientWidth - e.clientLeft * 2 > 0).length,
+          """var all = [].slice.call(document.querySelectorAll("#app *"));
+            |var d = document.documentElement;
+            |return [all.some(function (e) {
+            |    return e.scrollHeight > e.clientHeight + 1 && getComputedStyle(e).overflowY == "auto"; }),
+            |  all.filter(function (e) { return e.offsetWidth - e.clientWidth - e.clientLeft * 2 > 0; }).length,
             |  d.scrollWidth <= innerWidth && d.scrollHeight <= innerHeight &&
             |    document.body.scrollWidth <= innerWidth && document.body.scrollHeight <= innerHeight]""".stripMargin)
         _ = check("Home scrolls with no scrollbar, and the page runs past the window on neither side",
           bars.asVector(0).asBoolean && bars.asVector(1).asInt == 0 && bars.asVector(2).asBoolean)
         // words drawn in Open Sans measure apart from the fallback's (the set's word is not to be trusted: Chromium
         // 53's can call a face unloaded that the words are drawn in)
-        faces <- value("const w = f => { const s = document.createElement('span'); s.style.font = '24px ' + f; " +
-          "s.textContent = 'Hamburgefonstiv 0123'; document.body.appendChild(s); const x = s.offsetWidth; s.remove(); " +
-          "return x; }; return w(\"'Open Sans', monospace\") != w('monospace')")
+        faces <- value("var w = function (f) { var s = document.createElement('span'); s.style.font = '24px ' + f; " +
+          "s.textContent = 'Hamburgefonstiv 0123'; document.body.appendChild(s); var x = s.offsetWidth; " +
+          "s.parentNode.removeChild(s); return x; }; return w(\"'Open Sans', monospace\") != w('monospace')")
         _ = check("the page's faces load from its own files", faces.asBoolean)
         _ <- heard("tv: focus Container \"Open details\"")
         _ <- key(13, "Enter")
@@ -250,18 +262,18 @@ object WebOSCheck extends RapidApp {
         bridged <- heard("tv: launched netflix true")
         bridgeCalls <- value("return window.everyuiLuna")
         _ = check("another app is asked for and launched through PalmServiceBridge",
-          bridged && count("tv: installed netflix true") == 1 && bridgeCalls.asVector.map(_.asString) == Vector(
-            "luna://com.webos.applicationManager/getAppLoadStatus {\"appId\":\"netflix\"}",
+          bridged && count(installed("netflix", true)) == 1 &&
+            bridgeCalls.asVector.map(_.asString) == asked("netflix") :+
             "luna://com.webos.applicationManager/launch {\"id\":\"netflix\",\"params\":" +
-              "{\"contentTarget\":\"https://www.netflix.com/watch/80100172\"}}"))
+              "{\"contentTarget\":\"https://www.netflix.com/watch/80100172\"}}")
         _ <- browser.eval("everyuiService(); window.everyuiLuna = []; return 0")
         _ <- event("webOSRelaunch", """{ other: "missing" }""")
         refused <- heard("tv: launched missing false")
         serviceCalls <- value("return window.everyuiLuna")
         _ = check("one not installed reads so, and is not launched, through webOS.service",
-          refused && count("tv: installed missing false") == 1 && serviceCalls.asVector.map(_.asString) == Vector(
-            "luna://com.webos.applicationManager/getAppLoadStatus {\"appId\":\"missing\"}",
-            "luna://com.webos.applicationManager/launch {\"id\":\"missing\",\"params\":{}}"))
+          refused && count(installed("missing", false)) == 1 &&
+            serviceCalls.asVector.map(_.asString) == asked("missing") :+
+            "luna://com.webos.applicationManager/launch {\"id\":\"missing\",\"params\":{}}")
         _ <- pointTo("Settings")
         hidden = count("tv: focus Container \"Settings\"") == 0
         _ <- event("cursorStateChange", "{ visibility: true }")

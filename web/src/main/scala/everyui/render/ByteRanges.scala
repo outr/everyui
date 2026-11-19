@@ -46,6 +46,6 @@ object ByteRanges {
     val init = js.Dynamic.literal(mode = "cors", credentials = "omit", headers = js.Dictionary(sent.toSeq*))
     val ok: js.Function1[js.Dynamic, Unit] = r => answered(r)
     val not: js.Function1[js.Any, Unit] = _ => failed
-    js.Dynamic.global.fetch(url, init).`then`(ok, not)
+    WebFetch(url, init).`then`(ok, not)
   }
 }

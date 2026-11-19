@@ -60,6 +60,7 @@ object EveryUIWebPlugin extends AutoPlugin {
     val everyuiWasmLinkJS = taskKey[File]("The web app linked at everyuiWebStage to WebAssembly: a directory of main.js, __loader.js and main.wasm")
     val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath, with everyuiAppFonts: a directory for the bundle to copy as fonts/")
     val everyuiWebFaces = settingKey[Seq[WebFace]]("The faces the web app draws with, EveryUI's (WebFace.OpenSans, …) and its own (files in everyuiAppFonts), which everyuiWebFaceFiles ships as WOFF2 cut to what the app draws, with the page's @font-face rules and preloads: WebFace.bundled by default")
+    val everyuiWebFaceTrueType = settingKey[Boolean]("Ship each face as TrueType too, after its WOFF2, for an engine that reads no WOFF2 of today's (webOS 3's Chromium 38): false by default")
     val everyuiWebFaceFiles = taskKey[WebFaces]("everyuiWebFaces over everyuiWebFonts: writeTo(out), once the scripts are written, writes their files into out/fonts and their rules into out/index.html")
     val everyuiWebGuests = taskKey[File]("The web guests' files (everyui-web's hls.js, everyui-monaco's editor, everyui-terminal's xterm.js), taken from their modules on the classpath: a directory whose everyui-<module>/ directories the bundle copies next to the page")
   }
@@ -70,7 +71,9 @@ object EveryUIWebPlugin extends AutoPlugin {
     everyuiWebStage := WebStage.Full,
     everyuiWebMinify := true,
     everyuiWebFaces := WebFace.bundled,
-    everyuiWebFaceFiles := Def.uncached(WebFaces(everyuiWebFonts.value, everyuiWebFaces.value)),
+    everyuiWebFaceTrueType := false,
+    everyuiWebFaceFiles :=
+      Def.uncached(WebFaces(everyuiWebFonts.value, everyuiWebFaces.value, everyuiWebFaceTrueType.value)),
     Compile / fullLinkJS / scalaJSLinkerConfig := (Compile / fullLinkJS / scalaJSLinkerConfig).value
       .withMinify(everyuiWebMinify.value),
     everyuiWasmLinkJS := Def.uncached {

@@ -26,6 +26,10 @@ class AppsSpec extends AnyWordSpec with Matchers {
     "ask getAppLoadStatus by appId" in {
       WebOSApps.loadStatus("hulu") shouldBe "{\"appId\":\"hulu\"}"
     }
+    "not ask getAppLoadStatus of webOS 3, which has none" in {
+      List("1", "2", "3").foreach(v => WebOSApps.loadStatusAsked(v) shouldBe false)
+      List("4", "6", "24", "25+", "").foreach(v => WebOSApps.loadStatusAsked(v) shouldBe true)
+    }
     "read a launch taken or refused" in {
       WebOSApps.launched("""{"returnValue":true}""") shouldBe true
       WebOSApps.launched("""{"returnValue":false,"errorCode":-101,"errorText":"no such app"}""") shouldBe false

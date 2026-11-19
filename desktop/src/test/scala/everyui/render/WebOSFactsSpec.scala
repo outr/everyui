@@ -46,6 +46,11 @@ class WebOSFactsSpec extends AnyWordSpec with Matchers {
       WebOSFacts.version(webOS1, "") shouldBe "1"
       WebOSFacts.version(webOS1.replace("537.41", "538.2"), "") shouldBe "2"
     }
+    "read webOS 3.x (3.0 and 3.5) from the user agent LG gives it, QtWebEngine before its Chrome 38" in {
+      val e7 = "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.2.1 " +
+        "Chrome/38.0.2125.122 Safari/537.36 WebAppManager"
+      WebOSFacts.version(e7, """{"modelName":"OLED55E7P-U","platformVersionMajor":"3"}""") shouldBe "3"
+    }
     "say nothing in a browser" in {
       WebOSFacts.version("Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/140.0", "") shouldBe ""
     }

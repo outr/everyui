@@ -33,7 +33,7 @@ private[render] object WebHover {
       val at: js.Function1[dom.PointerEvent, Unit] = e =>
         if (WebFeatures.finger(e)) { x = Double.NaN; y = Double.NaN }
         else { x = e.clientX; y = e.clientY }
-      val options = js.Dynamic.literal(capture = true, passive = true).asInstanceOf[dom.EventListenerOptions]
+      val options = WebFeatures.listening(capture = true, passive = true)
       dom.document.addEventListener(WebFeatures.pointer("move").get, at, options)
       dom.document.addEventListener(WebFeatures.pointer("down").get, at, options)
       dom.document.addEventListener(WebFeatures.pointer("up").get, at, options)

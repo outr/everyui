@@ -6,11 +6,12 @@ import rapid.*
 import java.nio.file.{Files, Paths}
 import scala.concurrent.duration.*
 
-/** The example app's demos in an old TV's engine (Chromium 53, webOS 4's; 56, Tizen 4's), or any Chrome: each loaded
-  * from its files at 1920 by 1080, given a few of the remote's keys and the pointer's moves and clicks, and checked to
-  * have drawn its screen and left no error uncaught. `--shots` keeps a picture of each, for a look at what it drew.
-  * Prints the page's console and each check; exits 1 where one fails. With WebOSCheck (its `--chrome`), the check that
-  * a change still runs on the oldest TV EveryUI supports.
+/** The example app's demos in an old TV's engine (Chromium 38, webOS 3's; 53, webOS 4's; 56, Tizen 4's), or any
+  * Chrome: each loaded from its files at 1920 by 1080, given a few of the remote's keys and the pointer's moves and
+  * clicks, and checked to have drawn its screen and left no error uncaught. `--shots` keeps a picture of each, for a
+  * look at what it drew. Prints the page's console and each check; exits 1 where one fails. With WebOSCheck (its
+  * `--chrome`), the check that a change still runs on the oldest TV EveryUI supports (Chromium 38, on the app linked
+  * as ES 5.1). What it runs in the page is ES 5.1 too.
   *
   *   OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [demo ...]
   *
@@ -64,8 +65,8 @@ object OldChromeCheck extends RapidApp {
         for {
           _ <- browser.navigate(page + "?demo=" + name)
           _ <- Task.sleep(3.seconds)
-          drawn <- browser.value("let n = 0; document.querySelectorAll('#app *').forEach(e => { " +
-            "const r = e.getBoundingClientRect(); if (r.width > 0 && r.height > 0) n++; }); return n")
+          drawn <- browser.value("var n = 0; [].forEach.call(document.querySelectorAll('#app *'), function (e) { " +
+            "var r = e.getBoundingClientRect(); if (r.width > 0 && r.height > 0) n++; }); return n")
           _ <- shots.map(d => browser.screenshot(d.resolve(name + ".png"))).getOrElse(Task.unit)
           _ = check(name + ": its screen drawn (" + drawn.asInt + " boxes shown)", drawn.asInt >= 5)
           _ <- key(40, "ArrowDown")

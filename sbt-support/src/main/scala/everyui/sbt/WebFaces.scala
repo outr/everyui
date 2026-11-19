@@ -21,9 +21,10 @@ import java.util.regex.Matcher
   * frame and which the build declared. A face nothing reaches (an icon face no script names an icon of) is left out.
   * An icon face whose every icon the scripts list (`MaterialIcon.all`) ships the rest of them apart, never preloaded:
   * the browser fetches that file the first time it draws one of them.
-  * The page must not declare a family the build does: it would be fetched twice. Plain Scala, for an sbt build to
-  * compile in (CONSUMING.md). */
-final case class WebFaces(fonts: File, faces: Seq[WebFace]) {
+  * The page must not declare a family the build does: it would be fetched twice. With `trueType`, each file is written
+  * as TrueType (or OpenType) too, named in its rule after the WOFF2, for an engine that reads no WOFF2 of today's:
+  * webOS 3's Chromium 38 fails it and takes the next. Plain Scala, for an sbt build to compile in (CONSUMING.md). */
+final case class WebFaces(fonts: File, faces: Seq[WebFace], trueType: Boolean = false) {
   def writeTo(out: File): Seq[File] = {
     val page = new File(out, "index.html")
     if (!page.isFile) sys.error(s"$out has no index.html to write the faces into")
@@ -37,17 +38,21 @@ final case class WebFaces(fonts: File, faces: Seq[WebFace]) {
     dir.mkdirs()
     val shipped = Parallel.map(faces)(face => face -> WebFaces.files(fonts, face, scripts._1, scripts._2))
     val written = shipped.flatMap { case (_, files) =>
-      files.map { f =>
+      files.flatMap { f =>
         val file = new File(dir, f.name)
         Files.write(file.toPath, f.bytes)
-        file
+        val plain = Option.when(trueType)(new File(dir, WebFaces.plainName(f)))
+        plain.foreach(p => Files.write(p.toPath, f.cut.bytes))
+        file +: plain.toSeq
       }
     }
     val drawn = shipped.filter(_._2.nonEmpty)
     val rules = drawn.flatMap { case (face, files) =>
       files.map { f =>
         s"""  @font-face { font-family: '${face.family}'; font-style: ${if (face.italic) "italic" else "normal"}; """ +
-          s"""font-weight: ${face.weight}; src: url(fonts/${f.name}) format('woff2');""" +
+          s"""font-weight: ${face.weight}; src: url(fonts/${f.name}) format('woff2')""" +
+          (if (trueType) s""", url(fonts/${WebFaces.plainName(f)}) format('${WebFaces.plainFormat(f)}')"""
+          else "") + ";" +
           f.range.map(r => s" unicode-range: $r;").getOrElse("") +
           (if (f.slice.contains(WebFaces.rest)) " font-display: block;" else "") + " }"
       }
@@ -68,7 +73,12 @@ final case class WebFaces(fonts: File, faces: Seq[WebFace]) {
 
 object WebFaces {
   /** One file of a face: its name in fonts/, its bytes, and the characters it holds where it is one slice of several. */
-  final case class FaceFile(name: String, bytes: Array[Byte], slice: Option[String], range: Option[String])
+  final case class FaceFile(name: String, bytes: Array[Byte], slice: Option[String], range: Option[String], cut: Sfnt)
+
+  /** A file's TrueType (or OpenType, for CFF outlines) twin's name, and its format as `@font-face` names it. */
+  def plainName(f: FaceFile): String =
+    f.name.stripSuffix(".woff2") + (if (f.cut.flavor == 0x00010000L) ".ttf" else ".otf")
+  def plainFormat(f: FaceFile): String = if (f.cut.flavor == 0x00010000L) "truetype" else "opentype"
 
   /** The slices a face in slices is cut into, by the characters they hold (Google Fonts' groups, but for the combining
     * marks, which are in every slice); "other" holds the rest. */
@@ -100,13 +110,13 @@ object WebFaces {
     val base = face.file.replaceAll("\\.[^.]*$", "")
     val glyphs = if (font.tables.contains("glyf")) face.glyphs else WebGlyphs.All
     glyphs match {
-      case WebGlyphs.All => Seq(FaceFile(base + ".woff2", Woff2(font), None, None))
+      case WebGlyphs.All => Seq(FaceFile(base + ".woff2", Woff2(font), None, None, font))
       case WebGlyphs.Reached =>
         val icons = font.characters.keySet.filter(reached)
         val others = font.characters.keySet.filter(listed) -- icons
         Seq(icons -> None, others -> Some(rest)).filter(_._1.nonEmpty).map { case (cs, slice) =>
-          FaceFile(base + slice.fold("")("." + _) + ".woff2", Woff2(FontSubset.compact(font, cs)), slice,
-            slice.map(_ => unicodeRange(cs)))
+          val cut = FontSubset.compact(font, cs)
+          FaceFile(base + slice.fold("")("." + _) + ".woff2", Woff2(cut), slice, slice.map(_ => unicodeRange(cs)), cut)
         }
       case WebGlyphs.Scripts =>
         // the combining marks go in every slice, so a letter and the accent after it are drawn from one file, the
@@ -121,7 +131,8 @@ object WebFaces {
         val all = each :+ ("other" -> (characters -- each.flatMap(_._2)))
         all.filter(_._2.nonEmpty).map { case (name, letters) =>
           val cs = letters ++ marks
-          FaceFile(s"$base.$name.woff2", Woff2(FontSubset.retained(font, cs)), Some(name), Some(unicodeRange(cs)))
+          val cut = FontSubset.retained(font, cs)
+          FaceFile(s"$base.$name.woff2", Woff2(cut), Some(name), Some(unicodeRange(cs)), cut)
         }
     }
   }

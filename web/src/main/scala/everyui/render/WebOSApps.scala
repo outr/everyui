@@ -15,6 +15,10 @@ object WebOSApps {
   /** `getAppLoadStatus`'s parameters (webOS 4 and later). */
   def loadStatus(id: String): String = "{\"appId\":" + quote(id) + "}"
 
+  /** Whether a webOS of `version` (as `WebOSFacts.version` names it) has `getAppLoadStatus`: from webOS 4; webOS 3
+    * answers it "Unknown method", and its `listApps` too, so whether an app is installed is not to be had there. */
+  def loadStatusAsked(version: String): Boolean = !Set("1", "2", "3").contains(version)
+
   /** Whether `launch`'s answer took the launch. */
   def launched(reply: String): Boolean = LaunchParams.parse(reply).get("returnValue").contains("true")
 

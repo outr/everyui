@@ -17,7 +17,7 @@ object Gestures {
   def take(node: RenderNode, pinch: (Double, Double, Double) => Unit, ended: () => Unit): Unit = {
     val el = node.el
     el.style.setProperty("touch-action", "none")
-    val kept = js.Dynamic.literal(passive = false).asInstanceOf[dom.EventListenerOptions]
+    val kept = WebFeatures.listening(capture = false, passive = false)
     el.addEventListener("wheel", (e: dom.WheelEvent) => {
       e.preventDefault()
       e.stopPropagation()

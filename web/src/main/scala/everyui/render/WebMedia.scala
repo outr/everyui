@@ -265,7 +265,7 @@ final class WebMedia(el: html.Element) {
       }
     }
     val failed: js.Function1[js.Any, Unit] = _ => if (at == opened) fail(nativeError)
-    js.Dynamic.global.fetch(to, init).`then`(answered, failed)
+    WebFetch(to, init).`then`(answered, failed)
   }
 
   private def nativeError: String = {
@@ -478,7 +478,7 @@ object WebMedia {
       answer(r.ok.asInstanceOf[Boolean])
     }
     val failed: js.Function1[js.Any, Unit] = _ => answer(false)
-    js.Dynamic.global.fetch(url, init).`then`(answered, failed)
+    WebFetch(url, init).`then`(answered, failed)
   }
 
   /** Whether the browser has Media Source Extensions (Safari on an iPhone, the managed kind). */
