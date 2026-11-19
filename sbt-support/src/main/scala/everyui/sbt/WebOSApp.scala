@@ -22,7 +22,7 @@ import java.io.File
   * @param requiredMemory the least memory the app starts in, in megabytes.
   * @param description    LG's `appDescription`, a tagline of up to 60 characters.
   * @param requiredACG    the Luna service groups the app calls (none for an app that calls none, which LG's newer
-  *                       store checks want declared, as an empty list).
+  *                       store checks want declared, as an empty list; `WebOSApp.appsACG` for `everyui.apps.Apps`).
   * @param extra          any other appinfo.json field, as its JSON text (`"transparent" -> "true"`). */
 case class WebOSApp(id: String, version: String, vendor: String, title: String, icon: File,
                     largeIcon: Option[File] = None, splash: Option[File] = None, resolution: String = "1920x1080",
@@ -79,6 +79,10 @@ object WebOSApp {
   val idPattern: scala.util.matching.Regex = "[a-z0-9][a-z0-9.-]+".r
   val versionPattern: scala.util.matching.Regex = "(0|[1-9]\\d{0,8})\\.(0|[1-9]\\d{0,8})\\.(0|[1-9]\\d{0,8})".r
   val reserved: List[String] = List("com.palm", "com.webos", "com.lge", "com.palmdts")
+
+  /** The groups `everyui.apps.Apps` calls in: the Application Manager's `launch` (`application.launcher`) and
+    * `getAppLoadStatus` (`application.query`), for `requiredACG = WebOSApp.appsACG`. */
+  val appsACG: Seq[String] = Seq("application.launcher", "application.query")
 
   // the fields written from the parameters, which `extra` does not write again
   private val written: Set[String] = Set("id", "version", "vendor", "type", "main", "title", "icon", "largeIcon",

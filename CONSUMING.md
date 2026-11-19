@@ -6254,7 +6254,8 @@ lazy val webos = project.in(file("web"))   // the app's Scala.js project, with i
 ```
 
 `WebOSApp` writes `type` "web", `main` "index.html", `disableBackHistoryAPI` true and `requiredACG` (empty, unless
-the app names the Luna groups it calls: LG's newer store checks want it declared); `resolution` is "1920x1080" (the
+the app names the Luna groups it calls: LG's newer store checks want it declared; `WebOSApp.appsACG` for
+`everyui.apps.Apps`, Other apps below); `resolution` is "1920x1080" (the
 default) or "1280x720", what the page is laid out at (a web app has no 4K); `iconColor`, `requiredMemory`,
 `description` (`appDescription`) and `extra` fields as LG's appinfo.json reference has them. The id and the version are
 held to LG's rules (lowercase reverse DNS, not under com.lge, com.webos, com.palm; three numbers, no leading zeros) and
@@ -6395,6 +6396,76 @@ Platform.onLaunch(params => params.get("open").foreach(path => App.openLink(path
 
 `demo=launch` logs the launch it started with and each later one (`[ui] launch: later open=/settings | launchArg
 open=/settings`).
+
+## Other apps (`everyui.apps.Apps`)
+
+`Apps.launch(link)` opens another app on the device, to its start or to a title in it ("watch on Netflix"), and
+answers whether the platform took the launch; `Apps.installed(id)` answers whether an app is there, None where the
+platform cannot tell. Both are Tasks, heard on the thread that draws; `Apps.launches` says whether the platform opens
+other apps at all. The app opened comes in front, and this one goes on behind it (`Platform.onAway`).
+
+An `AppLink` carries each platform's way at once, and each platform reads the fields it has:
+
+| field    | webOS                    | Android                                   | Roku                    | Tizen, Vega (to come)      |
+|----------|--------------------------|-------------------------------------------|-------------------------|----------------------------|
+| `id`     | the app id (`netflix`)   | the package (`com.netflix.ninja`)         | the channel id (`12`)   | the app id, the package    |
+| `params` | `params`, as strings     | string extras                             | (no launch)             | AppControl data            |
+| `json`   | `params` as a JSON object, in place of `params` | —                  | —                       | —                          |
+| `uri`    | —                        | the data URI, opened in `id`'s package    | —                       | AppControl uri, deep link  |
+| `intent` | —                        | a whole intent URI (`Intent.parseUri`), in place of `id` and `uri` | — | —                    |
+| `action` | —                        | the intent's action (VIEW with a `uri`)   | —                       | AppControl operation       |
+| `mime`   | —                        | the intent's type                         | —                       | AppControl mime            |
+
+```scala
+val netflix = AppLink(if (Platform.kind == PlatformKind.WebOS) "netflix" else "com.netflix.ninja",
+  params = Map("contentTarget" -> "https://www.netflix.com/watch/80100172"),   // webOS
+  uri = "https://www.netflix.com/watch/80100172")                              // Android
+Apps.installed(netflix.id).flatMap {
+  case Some(false) => Task.pure(false)
+  case _ => Apps.launch(netflix)
+}.map(opened => if (!opened) Toast.show("Netflix could not be opened")).start()
+```
+
+Each streaming app takes its own parameters (Netflix's `contentTarget` on webOS, YouTube's `contentTarget` of
+`v=<id>`, an Android app's own URL or scheme): they are the app's to know, and EveryUI passes them as they are.
+
+- **LG webOS**: the Application Manager (`luna://com.webos.applicationManager`): `launch` with `{id, params}`, and
+  `getAppLoadStatus` with `{appId}` for `installed` (its `exist`; webOS 4 and later, None before). The call goes by
+  webOSTV.js's `webOS.service.request` where the app bundles it, else by the runtime's own `PalmServiceBridge` (webOS
+  3 and later, and LG's Simulator); nothing needs webOSTV.js. From webOS TV 26 an app that declares `requiredACG` is
+  held to it, and from 27 every app must: `launch` is in the `application.launcher` group and `getAppLoadStatus` in
+  `application.query`, so an app that opens others declares both (`requiredACG = WebOSApp.appsACG`). A call outside
+  the declared groups is refused ("Denied method call"), which reads as not launched and as None. webOS 4 to 25 have
+  no ACG. `listApps` is not one a store app may call, so there is no list of the apps installed. A launch refused says
+  why on the console (`[ui] webOS: netflix was not launched: {...}`).
+- **Android** (and Android TV, Fire TV): an activity started for the link. With only an `id`, the package's own
+  launcher (a TV's LEANBACK_LAUNCHER on a television, the phone's otherwise); with a `uri`, the `action` (VIEW) on it
+  in that package (in whichever app takes it where `id` is empty); with an `intent`, that intent. `params` go as
+  string extras. False where no activity takes it. `installed` asks the PackageManager. From Android 11 an app sees
+  only the packages its manifest names, so name each app it launches or asks of in the app's own
+  `AndroidManifest.xml` (a package not named reads as not installed, and its launcher is not found; a `uri` or an
+  `intent` starts without it):
+
+  ```xml
+  <queries>
+    <package android:name="com.netflix.ninja" />
+    <package android:name="com.google.android.youtube.tv" />
+  </queries>
+  ```
+
+  (`QUERY_ALL_PACKAGES` would see every app, and Google Play allows it only to apps whose core purpose needs it.)
+- **Roku**: `installed` asks roAppManager's `IsAppInstalled`. A channel opens no other: roAppManager's `LaunchApp`
+  would, and Roku's static analysis fails any channel that names it (certification 2.4, 4.6 and 5.3), so the runtime
+  does not; `launch` is false. Another channel is opened from outside, by ECP's `/launch/<channel id>?contentId=…`.
+- **Web, desktop, Apple TV**: `launch` is false and `installed` None. An Apple TV app opens another only by an address
+  that app answers (`Platform.openUrl` with its scheme or universal link).
+
+`Platform.installedApps(ids)` (Android's packages and a Roku's channels, at once, Nil elsewhere) is still there.
+
+The example's `demo=tv` opens another app on a launch with `other=<id>` (and `target=` as its `contentTarget`, `uri=`,
+`intent=`), logging
+`[ui] tv: installed netflix true` and `[ui] tv: launched netflix true`; webcheck's WebOSCheck checks it through a
+stubbed `PalmServiceBridge` and `webOS.service`.
 
 ## Away and back (`Platform.onAway`, `Platform.onResume`)
 

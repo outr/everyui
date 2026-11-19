@@ -8,13 +8,17 @@ import scala.concurrent.duration.*
 
 /** The example app (its web build: `demo=tv`, TvDemo) as an LG TV runs it, in a headless Chrome made to look like one:
   * webOS 24's user agent, and `webOSSystem` stubbed before the page's scripts, with launch parameters, the TV's
-  * deviceInfo and a `platformBack` that records being called. Driven by the events the TV sends, it checks that:
+  * deviceInfo and a `platformBack` that records being called, and the Luna bus as `PalmServiceBridge` (and later
+  * webOSTV.js's `webOS.service`), which records each call and answers it as the Application Manager would. Driven by
+  * the events the TV sends, it checks that:
   *
   *  - the app is told it is on webOS 24, and starts with the launch parameters (`demo=tv`, `open`);
   *  - OK opens the details, and the remote's Back (key code 461) comes back from them, leaving nothing;
   *  - the page's faces load from its own files (file://);
   *  - Back at Home leaves the app by the runtime's `platformBack()`, once;
   *  - a `webOSRelaunch` reaches the app as a launch, with its parameters;
+  *  - another app is asked for (`getAppLoadStatus`) and launched (`launch`) through the runtime's PalmServiceBridge,
+  *    and through webOSTV.js's `webOS.service.request` where the app has it, one not installed read so;
   *  - the Magic Remote's pointer focuses what it comes onto while it shows (`cursorStateChange`), and not while hidden;
   *  - the page hidden and shown again is away and resumed;
   *  - the screen is 960 by 540 units at 1080p, a box 100 units across 200 CSS pixels, at a scale of 2 (2.33 where the
@@ -87,6 +91,22 @@ object WebOSCheck extends RapidApp {
       |    document.activeElement.dispatchEvent(e);
       |  }
       |};
+      |window.everyuiLuna = [];
+      |const everyuiAnswer = (uri, params) => {
+      |  window.everyuiLuna.push(uri + " " + params);
+      |  const there = JSON.parse(params).id != "missing" && JSON.parse(params).appId != "missing";
+      |  return uri.endsWith("/getAppLoadStatus") ? { returnValue: true, exist: there }
+      |    : there ? { returnValue: true } : { returnValue: false, errorCode: -101, errorText: "no such app" };
+      |};
+      |window.PalmServiceBridge = function () {
+      |  const bridge = this;
+      |  bridge.call = (uri, params) => setTimeout(() =>
+      |    bridge.onservicecallback(JSON.stringify(everyuiAnswer(uri, params))), 10);
+      |};
+      |window.everyuiService = () => { window.webOS = { service: { request: (uri, o) => setTimeout(() => {
+      |  const r = everyuiAnswer(uri + "/" + o.method, JSON.stringify(o.parameters));
+      |  (r.returnValue ? o.onSuccess : o.onFailure)(r);
+      |}, 10) } }; };
       |window.everyuiVisible = "visible";
       |Object.defineProperty(document, "visibilityState", { get: () => window.everyuiVisible, configurable: true });
       |Object.defineProperty(document, "hidden", { get: () => window.everyuiVisible == "hidden", configurable: true });
@@ -225,6 +245,23 @@ object WebOSCheck extends RapidApp {
         _ <- event("webOSRelaunch", """{ open: "/title/7", contentId: "7" }""")
         relaunch <- heard("tv: launch contentId=7 open=/title/7")
         _ = check("a relaunch reaches the app with its parameters", relaunch)
+        // another app opened, through the runtime's PalmServiceBridge, then through webOSTV.js's webOS.service
+        _ <- event("webOSRelaunch", """{ other: "netflix", target: "https://www.netflix.com/watch/80100172" }""")
+        bridged <- heard("tv: launched netflix true")
+        bridgeCalls <- value("return window.everyuiLuna")
+        _ = check("another app is asked for and launched through PalmServiceBridge",
+          bridged && count("tv: installed netflix true") == 1 && bridgeCalls.asVector.map(_.asString) == Vector(
+            "luna://com.webos.applicationManager/getAppLoadStatus {\"appId\":\"netflix\"}",
+            "luna://com.webos.applicationManager/launch {\"id\":\"netflix\",\"params\":" +
+              "{\"contentTarget\":\"https://www.netflix.com/watch/80100172\"}}"))
+        _ <- browser.eval("everyuiService(); window.everyuiLuna = []; return 0")
+        _ <- event("webOSRelaunch", """{ other: "missing" }""")
+        refused <- heard("tv: launched missing false")
+        serviceCalls <- value("return window.everyuiLuna")
+        _ = check("one not installed reads so, and is not launched, through webOS.service",
+          refused && count("tv: installed missing false") == 1 && serviceCalls.asVector.map(_.asString) == Vector(
+            "luna://com.webos.applicationManager/getAppLoadStatus {\"appId\":\"missing\"}",
+            "luna://com.webos.applicationManager/launch {\"id\":\"missing\",\"params\":{}}"))
         _ <- pointTo("Settings")
         hidden = count("tv: focus Container \"Settings\"") == 0
         _ <- event("cursorStateChange", "{ visibility: true }")

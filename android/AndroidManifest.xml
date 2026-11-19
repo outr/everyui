@@ -13,6 +13,12 @@
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <!-- the apps the example asks of and opens by their package (everyui.apps.Apps: `demo=tv` with `other=`), which
+       Android 11 and later show it only once named here -->
+  <queries>
+    <package android:name="com.android.settings" />
+    <package android:name="com.google.android.youtube.tv" />
+  </queries>
   <application android:label="EveryUI" android:icon="@mipmap/ic_launcher" android:banner="@drawable/banner"
     android:supportsRtl="true"
     android:enableOnBackInvokedCallback="false"

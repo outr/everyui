@@ -546,10 +546,13 @@ lazy val desktop = (project in file("desktop"))
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
     // the web's choice of which faces words wait for (FaceWait), plain Scala, checked here with the rest
     Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
-    // and what an LG TV's runtime says of itself and launches the app with (WebOSFacts, LaunchParams), and when its
-    // keyboard on the screen lets a field go (SystemKeyboard) and its units (TvUnits), plain Scala too
-    Test / unmanagedSources ++= Seq("WebOSFacts.scala", "LaunchParams.scala", "SystemKeyboard.scala", "TvUnits.scala")
+    // and what an LG TV's runtime says of itself and launches the app with (WebOSFacts, LaunchParams), what it
+    // asks its Application Manager (WebOSApps), when its keyboard on the screen lets a field go (SystemKeyboard) and its
+    // units (TvUnits), plain Scala too
+    Test / unmanagedSources ++= Seq("WebOSFacts.scala", "WebOSApps.scala", "LaunchParams.scala", "SystemKeyboard.scala", "TvUnits.scala")
       .map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
+    // and how Android starts another app for a link (IntentPlan), plain Scala as well
+    Test / unmanagedSources += (file("android") / "src" / "main" / "scala" / "everyui" / "render" / "IntentPlan.scala").getAbsoluteFile,
     // the web service worker's reading of a Markdown push (WebPushText), plain Scala, checked against PushText here
     Test / unmanagedSources += (file("sbt-support") / "src" / "main" / "scala" / "everyui" / "sbt" / "WebPushText.scala").getAbsoluteFile,
     // the memory cases (MemorySpec), the same the web's memory check measures
