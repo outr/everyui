@@ -3,7 +3,7 @@ package everyui.component
 import reactify.Var
 import everyui.component.types.Prop
 import everyui.file.Files
-import everyui.image.Image
+import everyui.image.{Image, ImageBudget}
 import everyui.render.{Nodes, Platform, RenderNode}
 
 class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(node) {
@@ -15,7 +15,8 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
         Files.release(made)
         made = ""
       }
-      if (holding()) node.setImageSource(i.source)
+      // a picture kept out of sight is another's now: let go, and this one drawn as the view comes back
+      if (holding()) draw(i.source) else letGo()
       if (sizedByPicture()) {
         size.width @= i.width
         size.height @= i.height
@@ -29,13 +30,58 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
     * the middle of another change once was, drawn at the picture's own size after the app had set its own. */
   lazy val sizedByPicture: Var[Boolean] = own(Var(true))
 
-  /** Whether the picture is drawn at all. A view out of sight lets its picture go (a rail scrolled far past keeps a
-    * poster apiece otherwise, which on a television is most of the memory the app takes, and a tab not shown its
-    * every picture) and takes it up again as it comes back: what it shows is remembered either way. */
+  /** Whether the picture is in sight. A view out of sight keeps its picture while those so kept fit in
+    * `ImageBudget.megabytes`, and else lets it go (a rail scrolled far past keeps a poster apiece otherwise, which on
+    * a television is most of the memory the app takes, and a tab not shown its every picture), taking it up again as it
+    * comes back: what it shows is remembered either way. */
   private[everyui] lazy val holding: Var[Boolean] = {
     val v = Var(true)
-    v.attach(on => node.setImageSource(if (on) image().source else ""))
+    v.attach { on =>
+      if (on) {
+        unkeep()
+        draw(image().source)
+      }
+      else {
+        // (kept is drawn as it was: nothing to do)
+        outKept = !ended && ImageBudget.aside(this, drawnBytes, Platform.ticks() - drawnSince)
+        if (!outKept) draw("")
+      }
+    }
     v
+  }
+
+  // the source the node draws, the bytes it is counted at (`ImageBudget`) and since when, whether it is kept out of
+  // sight, and whether the view is being taken apart
+  private[everyui] var drawnSource = ""
+  private[everyui] var drawnBytes: Double = 0.0
+  private var drawnSince = 0.0
+  private var outKept = false
+  private var ended = false
+
+  /** `source` drawn (or nothing, for ""), counted as its picture's bytes. */
+  private def draw(source: String): Unit = {
+    if (source.nonEmpty) drawnSince = Platform.ticks()
+    if (source != drawnSource || source.isEmpty) {
+      drawnSource = source
+      node.setImageSource(source)
+    }
+    val bytes = if (source.isEmpty) 0.0 else ImageBudget.bytesOf(image())
+    if (bytes != drawnBytes) {
+      ImageBudget.counted(drawnBytes, bytes)
+      drawnBytes = bytes
+      if (bytes > 0.0) ImageBudget.sized(this, image())
+    }
+  }
+
+  private def unkeep(): Unit = if (outKept) {
+    outKept = false
+    ImageBudget.back(this, drawnBytes)
+  }
+
+  /** Its picture let go: out of sight past `ImageBudget`, or another picture set while it is out of sight. */
+  private[everyui] def letGo(): Unit = {
+    unkeep()
+    if (drawnSource.nonEmpty || drawnBytes > 0.0) draw("")
   }
 
   /** What the picture shows, in words, for whatever cannot see it: a screen reader, a search engine. Empty says it is
@@ -75,6 +121,8 @@ class ImageView(node: RenderNode = Nodes.image("", 0.0, 0.0)) extends Component(
 
   /** Its picture let go too, in case something that lives on still holds the view, and the source made for it. */
   override def dispose(): Unit = {
+    ended = true
+    letGo()
     holding @= false
     letWaitingGo()
     if (made.nonEmpty) {
@@ -92,9 +140,11 @@ object ImageView {
     * away keeps no poster and a tab not shown no picture, and on again as it comes back, but for a card still out of
     * its rail's view, which its rail turns on as it comes into it (`ScrollContainer`). What drops a picture is the
     * platform's: the page's `img` its `src`, JavaFX's and Android's view their bitmap (held on only by the platform's
-    * cache of pictures, which lets the longest unwanted go), a Roku's Poster and tvOS's view their texture. Walked with
-    * a list rather than by recursion (a Roku's stack is small). */
-  def showing(c: Component, on: Boolean): Unit = {
+    * cache of pictures, which lets the longest unwanted go), a Roku's Poster and tvOS's view their texture, each once
+    * those kept out of sight are past `ImageBudget`. With `passHidden`, what is hidden under `c` (`visible` false: a
+    * tab kept but not shown) is passed over, left as it was. Walked with a list rather than by recursion (a Roku's
+    * stack is small). */
+  def showing(c: Component, on: Boolean, passHidden: Boolean = false): Unit = {
     var pending: List[Component] = List(c)
     while (pending.nonEmpty) {
       val at = pending.head
@@ -103,7 +153,7 @@ object ImageView {
         case s: ScrollContainer => s.outOfView(at)
         case _ => false
       }
-      if (!scrolledAway) {
+      if (!scrolledAway && !(passHidden && !(at eq c) && !at.notHidden)) {
         pending = at.childComponents.toList ::: pending
         at match {
           case i: ImageView => i.holding @= on

@@ -13,7 +13,7 @@ import scala.concurrent.duration.*
 
 /** EveryUI's own parts follow the quality level: an animation takes half as long at Reduced and a quarter at Minimal
   * while a pause takes as long as it did, a scroll's glide is half as long and then a jump, a box's shadow and blur go
-  * from Reduced and a text's shadow and the platform's motion at Minimal (what is already drawn with them too), and a
+  * from Reduced (a blurred one drawn darker in its place) and a text's shadow and the platform's motion at Minimal (what is already drawn with them too), and a
   * list builds fewer rows beyond what shows. */
 class QualityPartsSpec extends FxSpec {
   private def at(level: QualityLevel): Unit = fx {
@@ -129,8 +129,9 @@ class QualityPartsSpec extends FxSpec {
         fx(box.node.fx.getEffect) shouldBe null
         lettered should not be empty
         moving shouldBe turn
+        // a blur is drawn as the box darker in its place
         fx(box.blur @= 4.0)
-        fx(box.node.fx.getEffect) shouldBe null
+        fx(box.node.fx.getEffect) shouldBe a[javafx.scene.effect.ColorAdjust]
         fx(box.shadow()) shouldBe glow
         fx(Quality.start(Some(QualityLevel.Minimal)))
         lettered shouldBe empty

@@ -1463,10 +1463,29 @@ class RenderNode(val view: View) {
   /** The picture in one colour (`"#rrggbb"`), its transparency kept, or as it is for `""`. */
   def setTint(hex: String): Unit = if (Hop.needed(this)) Hop(() => setTint(hex)) else view match {
     case i: ImageView =>
-      if (hex.isEmpty) i.clearColorFilter()
+      tinted = hex.nonEmpty
+      if (hex.isEmpty) darkenPicture(i)
       else i.setColorFilter(RenderNode.color(hex), android.graphics.PorterDuff.Mode.SRC_IN)
     case _ => ()
   }
+
+  /** A picture drawn `share` darker (0 as it is): its stand-in for a blur where blur is not drawn
+    * (`everyui.perf.Quality`), the colours multiplied once rather than blurred; nothing on a tinted one, or on any other
+    * view. */
+  def setDarken(share: Double): Unit = if (Hop.needed(this)) Hop(() => setDarken(share)) else view match {
+    case i: ImageView =>
+      darkened = share
+      if (!tinted) darkenPicture(i)
+    case _ => ()
+  }
+  private var tinted = false
+  private var darkened = 0.0
+  private def darkenPicture(i: ImageView): Unit =
+    if (darkened <= 0.0) i.clearColorFilter()
+    else {
+      val v = math.round(255.0 * math.max(0.0, 1.0 - darkened)).toInt
+      i.setColorFilter(android.graphics.Color.rgb(v, v, v), android.graphics.PorterDuff.Mode.MULTIPLY)
+    }
 
   /** The picture the view draws, or none (which lets the one it was drawing go): the last one asked for, never one
     * that came after another was. An SVG is drawn again sharper where the view shows it larger than it was drawn. */
@@ -3025,6 +3044,13 @@ object Platform {
     val r = Runtime.getRuntime
     ((r.totalMemory - r.freeMemory).toDouble * 100.0 / r.maxMemory.toDouble).toInt
   }
+  /** Its memory in words, for `everyui.perf.FrameLog`: the heap in use and what it may grow to. */
+  def memoryNote(): String = {
+    val r = Runtime.getRuntime
+    val used = (r.totalMemory - r.freeMemory).toDouble
+    "heap " + everyui.perf.FrameLog.megabytes(used) + " of " + math.round(r.maxMemory.toDouble / 1048576.0).toString +
+      " MB (" + math.round(used * 100.0 / r.maxMemory.toDouble).toString + "%)"
+  }
 
   /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): the
     * display's own (Display.getRefreshRate), or 0 where it cannot be read. */
@@ -3113,8 +3139,8 @@ object Platform {
 
   /** Something large was let go: nothing to do where the runtime collects on its own. */
   def collect(): Unit = ()
-  /** Whether `blur` is drawn: it is. */
-  def blurs(): Boolean = true
+  /** Whether `blur` is drawn: it is, but below Full (`everyui.perf.Quality`). */
+  def blurs(): Boolean = everyui.perf.Quality.effects
   /** Whether text can hold emoji: yes, where the app ships an emoji face for what the television's own fonts lack. */
   def emoji(): Boolean = true
   /** Whether it can listen: a speech recognizer to turn what is said into words ([[Dictation]]). */

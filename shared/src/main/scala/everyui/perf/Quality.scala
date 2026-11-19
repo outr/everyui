@@ -13,18 +13,19 @@ import reactify.*
   *  - animations (`x to 1.0 in 300.millis`, a task's fades and slides, a screen's treatment blending) take half as long
   *    at Reduced and a quarter at Minimal, and a fling as long as that; a ScrollContainer's glides take half as long at
   *    Reduced and jump at Minimal;
-  *  - a box's shadow and blur go from Reduced; a text's shadow, and motion run by the platform (`Component.motion`), at
-  *    Minimal;
-  *  - fewer pictures are kept (Android's cache at half and then a quarter) and Android decodes downloads in 16 bits
-  *    a pixel; a picture on the screen is never decoded smaller than it is drawn, which blurred posters asked at about
-  *    their drawn size for little memory saved;
+  *  - a box's shadow and blur go from Reduced, a blurred picture drawn darker in its place (`blurDarkens`) and a pane
+  *    of frosted glass given a fill nearly solid (`frostedFill`); a text's shadow, and motion run by the platform
+  *    (`Component.motion`), at Minimal;
+  *  - fewer pictures are kept (Android's cache and the pictures kept out of sight, `ImageBudget`, at half and then a
+  *    quarter) and Android decodes downloads in 16 bits a pixel; a picture on the screen is never decoded smaller than
+  *    it is drawn, which blurred posters asked at about their drawn size for little memory saved;
   *  - less is built and drawn beyond what shows: a ScrollContainer's slack beyond its viewport, a VirtualList's
   *    `overscan`.
   *
   * The app reads the same for its own costly parts, `Quality.level` as it changes, or `Quality.reduced` where it builds:
   *
   * {{{
-  *   Quality.start(stored)                                   // the server's level for this device, or None for Full
+  *   Quality.start(stored)                                   // the server's level for this device, or None
   *   Perf.summaries.attach(s => Api.perfSession(s))          // how the session went, now and then and as it goes away
   *   follow(Quality.level, (l: QualityLevel) => particles.visible @= l == QualityLevel.Full)
   * }}} */
@@ -43,16 +44,33 @@ object Quality {
   private var slowRun: Int = 0
   private var stepped: String = ""
 
-  /** Run at `stored` (Full for None): the level kept for this device, with whatever the person chose folded in. From
-    * now on the session is measured (`Perf`), steps itself down where it is slow for long enough, and says how it has
-    * gone (`Perf.summaries`). Given again later (the server's answer come in after launch), the level given changes,
-    * but never back above what the session has stepped down to, and the session goes on: the same `Perf.sessionId`, and
-    * what was measured before it. One run of the app is one session, however many times it is started. */
+  /** Run at `stored` (for None, the device's own, `suggested`): the level kept for this device, with whatever the
+    * person chose folded in. From now on the session is measured (`Perf`), steps itself down where it is slow for long
+    * enough, and says how it has gone (`Perf.summaries`). Given again later (the server's answer come in after launch),
+    * the level given changes, but never back above what the session has stepped down to, and the session goes on: the
+    * same `Perf.sessionId`, and what was measured before it. One run of the app is one session, however many times it
+    * is started. */
   def start(stored: Option[QualityLevel]): Unit = {
-    handed = stored.getOrElse(QualityLevel.Full)
+    handed = stored.getOrElse(suggested)
     settle()
     Perf.begin()
   }
+
+  /** The level a device runs at where none is kept for it (`start(None)`): Reduced on a slow one, as it says of
+    * itself at launch (`Perf.device`, `slow`), else Full. */
+  def suggested: QualityLevel = if (Quality.slow(Perf.device)) QualityLevel.Reduced else QualityLevel.Full
+
+  /** Whether `device` is a slow one: it says so (`DeviceHint.lowPower`: a TV's browser engine of 2018 or before), it is
+    * one of Android's low-memory devices, or it has 1.5 GB of memory or less. A Roku says nothing that is taken to. */
+  def slow(device: DeviceHint): Boolean =
+    device.lowPower.getOrElse(false) || device.lowRam.getOrElse(false) || device.ramMb.exists(mb => mb <= 1536)
+
+  /** How much darker a blurred picture is drawn below Full, where its blur is not drawn (0 to 1; 0 draws it as it
+    * is): the web's, Android's and the desktop's. */
+  var blurDarkens: Double = 0.35
+  /** How solid the fill of a pane of frosted glass (`Component.backdropBlur`) is made below Full, where nothing behind
+    * it is blurred: at least this opaque. */
+  var frostedFill: Double = 0.9
 
   /** The level `start` was given. */
   def givenLevel: QualityLevel = handed
@@ -91,6 +109,8 @@ object Quality {
     slowRun = 0
     stepped = ""
     policy = QualityPolicy()
+    blurDarkens = 0.35
+    frostedFill = 0.9
     settle()
   }
 

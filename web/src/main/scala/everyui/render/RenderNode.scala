@@ -368,8 +368,24 @@ class RenderNode(val el: html.Element) {
   }
 
   /** A soft shadow under the box, or none for `""`. */
-  def setBlur(radius: Double): Unit =
-    el.style.setProperty(WebFeatures.filter, if (radius <= 0.0) "" else "blur(" + radius.toString + "px)")
+  def setBlur(radius: Double): Unit = {
+    blurPx = radius
+    filtered()
+  }
+  /** Drawn `share` darker (0 as it is): a picture's stand-in for its blur where blur is not drawn
+    * (`everyui.perf.Quality`), one pass of the colours rather than a blur's many. */
+  def setDarken(share: Double): Unit = {
+    darkened = share
+    filtered()
+  }
+  private var blurPx = 0.0
+  private var darkened = 0.0
+  // the blur and the darkening in the one filter, by the name the engine knows it (`-webkit-filter` before Chromium 53)
+  private def filtered(): Unit = {
+    val blur = if (blurPx <= 0.0) "" else "blur(" + blurPx.toString + "px)"
+    val dark = if (darkened <= 0.0) "" else "brightness(" + math.max(0.0, 1.0 - darkened).toString + ")"
+    el.style.setProperty(WebFeatures.filter, if (blur.isEmpty) dark else if (dark.isEmpty) blur else blur + " " + dark)
+  }
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
     drop = if (hex.isEmpty) "" else x.toString + "px " + y.toString + "px " + blur.toString + "px " + hex
     paintShadows()
@@ -2902,7 +2918,8 @@ object Platform {
     everyui.perf.DeviceHint(
       model = if (model.isEmpty) None else Some(model),
       ramMb = memory.map(gb => (gb * 1024.0).toInt),
-      cores = cores.map(_.toInt))
+      cores = cores.map(_.toInt),
+      lowPower = Some(TvEngine.slow(remoteNavigation(), dom.window.navigator.userAgent)))
   }
   /** A browser says nothing of the device's memory running low. */
   def memoryLevel(): String = ""
@@ -2913,6 +2930,20 @@ object Platform {
     else {
       val limit = memory.jsHeapSizeLimit.asInstanceOf[Double]
       if (limit <= 0.0) -1 else (memory.usedJSHeapSize.asInstanceOf[Double] * 100.0 / limit).toInt
+    }
+  }
+  /** The page's memory in words, for `everyui.perf.FrameLog`: its script heap and the most it may grow to, where the
+    * engine says (`performance.memory`, Chrome's: rounded unless Chrome is started with `--enable-precise-memory-info`),
+    * and how many elements the page holds. */
+  def memoryNote(): String = {
+    val memory = dom.window.performance.asInstanceOf[js.Dynamic].memory
+    val nodes = dom.document.getElementsByTagName("*").length.toString + " nodes"
+    if (js.isUndefined(memory) || memory == null) nodes
+    else {
+      val used = memory.usedJSHeapSize.asInstanceOf[Double]
+      val limit = memory.jsHeapSizeLimit.asInstanceOf[Double]
+      "heap " + everyui.perf.FrameLog.megabytes(used) + " of " + math.round(limit / 1048576.0).toString + " MB" +
+        (if (limit > 0.0) " (" + math.round(used * 100.0 / limit).toString + "%)" else "") + ", " + nodes
     }
   }
 
@@ -2976,8 +3007,9 @@ object Platform {
 
   /** Something large was let go: nothing to do where the runtime collects on its own. */
   def collect(): Unit = ()
-  /** Whether `blur` is drawn: it is. */
-  def blurs(): Boolean = true
+  /** Whether `blur` is drawn: it is, but below Full (`everyui.perf.Quality`), where a picture is drawn darker in its
+    * place. */
+  def blurs(): Boolean = everyui.perf.Quality.effects
   /** Whether text can hold emoji: the system's fonts draw them. */
   def emoji(): Boolean = true
   // nothing here turns speech into words

@@ -309,19 +309,33 @@ class RenderNode(val fx: Node) {
     clipToBox()
   }
   /** A gaussian blur, its kernel three times the spread wide (as far as JavaFX goes), over the shadow if there is one. */
+  /** Drawn `share` darker (0 as it is): its stand-in for a blur not drawn (`everyui.perf.Quality`), a ColorAdjust's
+    * brightness, one pass of the colours rather than a blur's. */
+  def setDarken(share: Double): Unit = if (Hop.needed(this)) Hop(() => setDarken(share)) else {
+    darkened = share
+    paintEffect()
+  }
+  private var darkened: Double = 0.0
   def setBlur(radius: Double): Unit = if (Hop.needed(this)) Hop(() => setBlur(radius)) else {
     blurRadius = radius
     paintEffect()
   }
   private var dropShadow: Option[javafx.scene.effect.DropShadow] = None
   private var blurRadius: Double = 0.0
-  private def paintEffect(): Unit =
-    if (blurRadius <= 0.0) fx.setEffect(dropShadow.orNull)
+  private def paintEffect(): Unit = {
+    val blurred = if (blurRadius <= 0.0) dropShadow.orNull
+      else {
+        val gaussian = new javafx.scene.effect.GaussianBlur(math.min(63.0, blurRadius * 3.0))
+        dropShadow.foreach(s => gaussian.setInput(s))
+        gaussian
+      }
+    if (darkened <= 0.0) fx.setEffect(blurred)
     else {
-      val gaussian = new javafx.scene.effect.GaussianBlur(math.min(63.0, blurRadius * 3.0))
-      dropShadow.foreach(s => gaussian.setInput(s))
-      fx.setEffect(gaussian)
+      val dark = new javafx.scene.effect.ColorAdjust(0.0, 0.0, -math.min(1.0, darkened), 0.0)
+      if (blurred != null) dark.setInput(blurred)
+      fx.setEffect(dark)
     }
+  }
   /** Lines of wrapped text keep the face's own spacing here. */
   def setLineHeight(px: Double): Unit = ()
   /** Extra space after each letter, in pixels: JavaFX spaces no letters, so the words take the spaced width and their
@@ -2011,6 +2025,13 @@ object Platform {
     val r = Runtime.getRuntime
     ((r.totalMemory - r.freeMemory).toDouble * 100.0 / r.maxMemory.toDouble).toInt
   }
+  /** Its memory in words, for `everyui.perf.FrameLog`: the heap in use and what it may grow to. */
+  def memoryNote(): String = {
+    val r = Runtime.getRuntime
+    val used = (r.totalMemory - r.freeMemory).toDouble
+    "heap " + everyui.perf.FrameLog.megabytes(used) + " of " + math.round(r.maxMemory.toDouble / 1048576.0).toString +
+      " MB (" + math.round(used * 100.0 / r.maxMemory.toDouble).toString + "%)"
+  }
 
   /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): not
     * said here, 0. */
@@ -2070,8 +2091,8 @@ object Platform {
     done(Some("Updates install only on Android"))
   /** Something large was let go: nothing to do where the runtime collects on its own. */
   def collect(): Unit = ()
-  /** Whether `blur` is drawn: it is. */
-  def blurs(): Boolean = true
+  /** Whether `blur` is drawn: it is, but below Full (`everyui.perf.Quality`). */
+  def blurs(): Boolean = everyui.perf.Quality.effects
   /** Whether text can hold emoji: the system's fonts draw them. */
   def emoji(): Boolean = true
   // nothing here turns speech into words

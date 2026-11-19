@@ -232,7 +232,7 @@ class Component(val node: RenderNode) {
   private[everyui] def drawsGradient: Boolean = graded
   lazy val backgroundColor: Prop[Color] =
     own(new Prop[Color](Color.Clear, c => {
-      node.setBackgroundColor(Component.css(c))
+      node.setBackgroundColor(Component.css(fillOf(c)))
       filled = c.alphaInt > 0
       boxDrawn()
     }))
@@ -308,15 +308,25 @@ class Component(val node: RenderNode) {
     shadowed = true
     drawShadow()
   }))
-  // none below Full (`everyui.perf.Quality`)
+  // none below Full (`everyui.perf.Quality`): a blurred one drawn darker in its place (`Quality.blurDarkens`), the
+  // look of a blurred picture behind words kept for one pass of its colours, and frosted glass given a fill nearly
+  // solid (`Quality.frostedFill`), as the glass would have read
   private def drawBlur(): Unit = {
-    node.setBlur(if (Quality.effects) blur() else 0.0)
+    val drawn = Quality.effects
+    node.setBlur(if (drawn) blur() else 0.0)
+    node.setDarken(if (drawn || blur() <= 0.0) 0.0 else Quality.blurDarkens)
     if (backdropBlur() > 0.0 || backdropBlurred) {
       backdropBlurred = true
-      node.setBackdropBlur(if (Quality.effects) backdropBlur() else 0.0)
+      node.setBackdropBlur(if (drawn) backdropBlur() else 0.0)
+      node.setBackgroundColor(Component.css(fillOf(backgroundColor())))
     }
   }
   private var backdropBlurred = false
+  /** The fill `c` is drawn with: as it is, but on a pane of frosted glass whose blur is not drawn, where it is made
+    * nearly solid. */
+  private def fillOf(c: Color): Color =
+    if (!backdropBlurred || Quality.effects || backdropBlur() <= 0.0 || c.alphaInt == 0) c
+    else c.withAlpha(math.max(c.alpha, Quality.frostedFill))
   private def drawShadow(): Unit = {
     val all = if (Quality.effects) shadow().toList ++ shadows() else Nil
     all.headOption match {

@@ -3638,11 +3638,17 @@ sent, with the person's own choice folded in).
 ```scala
 import everyui.perf.{Perf, Quality, QualityLevel}
 
-Quality.start(stored)                                  // the device's level (None: Full); measuring starts here
+Quality.start(stored)                                  // the device's level (None: its own); measuring starts here
 Perf.summaries.attach(s => Api.perfSession(s))         // how this run is going, now and then and as it goes away
 follow(Quality.level, (l: QualityLevel) => particles.visible @= l == QualityLevel.Full)   // the app's own parts
 ```
 
+- `start(None)`, where nothing is kept for the device yet, runs at the device's own level (`Quality.suggested`): Reduced
+  on a slow one, Full on any other. A device is slow (`Quality.slow`) where it says so of itself at launch
+  (`DeviceHint.lowPower`: a TV's browser engine of 2018 or before, Chromium 67 or older, `TvEngine`: webOS 3.5 and 4,
+  Tizen 3 and 4), where Android calls it a low-memory device (`isLowRamDevice`), or where it has 1.5 GB of memory or
+  less (Android's `totalMem`, the web's `navigator.deviceMemory`). A Roku says nothing that is taken to: it runs at Full
+  unless the app gives another. An app with its own level for the device (its server's) gives it, and that wins.
 - `start` may be called again (the server's answer come in after launch): the level given changes, but never back above
   what the session has stepped down to, and the session goes on, with the same `sessionId` and what it has measured
   (`perf: session … goes on, given Reduced, at Reduced` in the log). One run is one session. Nothing is measured, at
@@ -3657,14 +3663,34 @@ What EveryUI's own parts do:
 |---|---|---|
 | animations (`to … in`, fades, slides, a screen's treatment blending; not `sleep`) | half as long | a quarter |
 | a ScrollContainer's glides (`glideTo`, `reveal`), a fling | half as long | at once |
-| a box's `shadow` and `blur` | none | none |
+| a box's `shadow` and `blur` | none; a blurred box drawn darker in its place (`blurDarkens`) | as Reduced |
+| a pane of frosted glass (`backdropBlur`) | nothing behind blurred; its fill made at least `frostedFill` opaque (0.9) | as Reduced |
 | a text's `textShadow`, `motion` run by the platform | as at Full | none |
-| pictures | Android's downloads in 16 bits a pixel where they have no transparency, and its picture cache at half; never decoded smaller than drawn | the cache at a quarter |
+| pictures | Android's downloads in 16 bits a pixel where they have no transparency, its picture cache and the pictures kept out of sight (`ImageBudget`) at half; never decoded smaller than drawn | the cache and those kept at a quarter |
 | built beyond what shows | a ScrollContainer's slack a quarter of a viewport each way (half at Full); a VirtualList's `overscan` halved | a tenth; one row |
 
 What was drawn before a change is drawn again: what is on the screen at once, and what was made before and put on the
 screen later as it goes on. A level that lowers mid-session takes effect where the app's own parts follow `level`.
 The web decodes its pictures as the browser does, at every level.
+
+Where a blur is not drawn, a picture behind words is drawn `Quality.blurDarkens` (0.35) darker in its place: the look
+of a blurred backdrop, quiet under the words over it, kept for one pass of its colours (the web's `brightness` filter,
+`-webkit-filter` before Chromium 53; Android's colour filter on a picture; JavaFX's ColorAdjust) rather than a blur's
+many. Nothing is asked of a server: a picture's effects are drawn on the device. `Platform.blurs()` says whether blur
+is drawn now, so an app that fakes a blur where there is none (a tiny copy of the picture, stretched) does it below
+Full too. What each platform drops:
+
+| | web | Android | desktop | Roku | Apple TV |
+|---|---|---|---|---|---|
+| `blur` | darkened in its place | darkened (a picture), else none | darkened | never drawn | none |
+| `backdropBlur` | a fill nearly solid | never drawn; the fill as on the web | the same | the same | the same |
+| `shadow`, `shadows` | none | none (no elevation) | none | never drawn | none |
+| animations, glides | shorter, or at once | shorter, or at once | the same | the same | the same |
+| `motion` (spinners, breathing) at Minimal | still | still | still | still | still |
+| pictures kept out of sight | half the budget | the cache at half | none kept | none kept | none kept |
+
+A spinner at Minimal is drawn standing (its glyph, unmoved): what it says is unchanged, and a TV's GPU draws nothing
+each frame for it.
 
 What is measured (`Perf`), counted into buckets as it comes, never logged per event:
 
@@ -3728,6 +3754,34 @@ logged in one line with the window and the device (`quality: stepped down Full -
 `demo=quality` shows the level, the window under way and the device, a button for each level, and shadowed cards, a
 glide, a turning square and a blurred one that each level draws differently (`window=5`, `slow=2` to step down soon,
 `level=Reduced` to start there, `tiles=<n>` for work to feel on a slow or throttled device).
+
+### Frames and memory in the log (`FrameLog`)
+
+Launched with `perf=1` (`?perf=1`, `--perf=1`, `--es perf 1`, a Roku's launch parameter; on webOS, `webosLaunch
+perf=1`), or with `FrameLog.start()` from the app (a hidden switch), every platform says two lines every ten seconds of
+frames, the first as NaboTV's FrameWatch writes it:
+
+```
+[ui] frames: 4/212 slow (2%) worst 84.3ms = build 40.1ms + raster 44.2ms screen 1920x1080.0, 9 dropped (4%) at 25ms
+[ui] memory: heap 41.2 of 1432 MB (3%), 1830 nodes, 412 components, pictures 18.4 MB in 23, 4 kept out of sight 6.3 MB
+```
+
+- **frames**: the screen manager's own loop (the web's `requestAnimationFrame`s, Android's Choreographer, a Roku's
+  render Timer), each timed from the start of the one before: slow at `FrameLog.slowMs` (32) or more, the worst with
+  the app's own update in it ("build", the screen manager's update and layout) and the rest ("raster": the platform
+  drawing it, and whatever else held the thread), the screen in pixels at its ratio, and the frames dropped, a vsync
+  or more late by the display's refresh (`QualityPolicy.dropMs`, as `Perf` counts them). A gap of five seconds or more
+  is the app away, not a frame. A window in which nothing moved (no frames: they run on demand) says nothing.
+- **memory**: the platform's (`Platform.memoryNote`): the web's script heap and its limit from `performance.memory`
+  where the engine has it (Chrome's, from long before Chromium 38; rounded to coarse steps unless Chrome is started
+  with `--enable-precise-memory-info`) and the page's elements; the desktop's and Android's heap; a Roku's share of
+  its limit; then the components made and not yet disposed of (`Component.liveNow`) and the pictures drawn and kept
+  out of sight (`ImageBudget`), counted at 4 bytes a pixel.
+
+Off, it costs a test of a flag a frame. `FrameLog.framesLine()` and `memoryLine()` are the lines at any moment, for an
+overlay or a report of the app's own. While it is on, a picture with more than twice the pixels it is drawn at is said
+(`ImageBudget`). `demo=railperf rails=8 n=30 posters=1 perf=1` is a TV's Home of 240 poster cards to read it over
+(`blur=30` a blurred picture behind it, `level=Reduced` at that level).
 
 ## Relative URLs and the origin
 
@@ -5736,8 +5790,38 @@ card comes back into it, not before. An app hiding a view of its own the same wa
 `ImageView.showing(view, on)`. What letting go frees is each platform's: the web takes the `<img>`'s `src` away (set
 again from the page's own store of pictures, with no fetch), the desktop's and Android's views drop their bitmap (held
 on only by the platform's cache of pictures, which lets the longest unwanted go), and a Roku's Poster and tvOS's view
-their texture. `showBytes(bytes, mime)` shows a picture from bytes through a source made for the view alone
-(`Files.source`), which it lets go (`Files.release`) as another picture takes its place or the view is disposed of.
+their texture. A screen left behind (on the back stack, or kept to be shown again) lets its pictures go as the next is
+shown, and takes them up as it is shown again; what is hidden under it (a tab kept but not shown) is left as it was.
+`showBytes(bytes, mime)` shows a picture from bytes through a source made for the view alone (`Files.source`), which
+it lets go (`Files.release`) as another picture takes its place or the view is disposed of.
+
+**Pictures kept out of sight (`ImageBudget`).** A picture going out of sight is kept, its source still set, while the
+pictures so kept fit in `ImageBudget.megabytes` (each counted as decoded: 4 bytes a pixel at its own size); past it,
+the one longest out of sight is let go as above, and drawn again from its source as it comes back. A kept one comes
+back at once, as it was: a rail scrolled back, a screen gone back to. One in sight for less than `ImageBudget.seenMs`
+(100: built out of sight and culled the turn it was made, or passed in a fling) is never kept, nor one disposed of.
+
+| | budget |
+|---|---|
+| a browser on a TV (`Platform.remoteNavigation`: webOS, Tizen) | 16 MB |
+| any other browser | 32 MB |
+| the desktop, Android, a Roku, Apple's | none, each let go at once: the platform keeps a cache of its own, or has no memory to spare |
+
+Below Full it is halved, and quartered at Minimal (`Quality`). An app sets its own, and may let every kept one go
+when it is short of memory:
+
+```scala
+ImageBudget.megabytes @= 8.0          // 0 lets each go as it leaves the screen
+ImageBudget.trim()                    // every one kept out of sight let go now
+```
+
+`ImageBudget.heldBytes` and `held` are what every picture drawn or kept holds, and `keptBytes` and `keptCount` those
+kept, on every platform: `FrameLog`'s memory line says them. A picture is decoded at its own size wherever it is
+drawn (the web's, the desktop's and Android's; Apple's decode to the size drawn), so ask a picture's source for the
+size it is drawn at, its box in the app's units times `Platform.pixelRatio()` (on a TV's browser the TV's units are in
+the ratio already: `TvUnits`), never larger: a 3840 by 2160 backdrop in a 1280 by 720 page holds nine times what it
+shows. While frames are logged (`perf=1`) the first twenty pictures with more than twice the pixels they are drawn at
+are said (`images: 942x260 drawn at 120x180, 11x the pixels: <address>`).
 
 **Which pictures each platform draws.** `Image(url)`, `ImageView` and `Avatar` take an http(s) URL, a site-absolute or
 relative path of the app's own files, or a `data:` address (base64 or percent-encoded).

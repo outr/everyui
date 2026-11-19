@@ -571,6 +571,9 @@ class RenderNode(val sg: SGNode) {
   }
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** Drawn `share` darker, the web's, Android's and the desktop's stand-in for a blur not drawn
+    * (`everyui.perf.Quality`): drawn as it is here. */
+  def setDarken(share: Double): Unit = ()
   /** A Roku draws nothing blurred. */
   def setBlur(radius: Double): Unit = ()
   /** A Label spaces no letters: they sit as the face sets them, and the width is theirs. */
@@ -1257,6 +1260,8 @@ object Platform {
     val pct = uiDeviceFact("memoryPct")
     if (pct.isEmpty) -1 else pct.toInt
   }
+  /** Nothing more is said of its memory than its share in use (`memoryUsedPct`). */
+  def memoryNote(): String = ""
 
   /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): the
     * rate the video mode names (roDeviceInfo.GetVideoMode: "720p50", "1080p30"), 60 for a mode that names none after

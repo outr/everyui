@@ -449,6 +449,9 @@ class RenderNode(val sg: SGNode) {
   def setMotion(tracks: List[everyui.motion.Track]): Unit = ()
   /** No shadow is drawn. */
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = ()
+  /** Drawn `share` darker, the web's, Android's and the desktop's stand-in for a blur not drawn
+    * (`everyui.perf.Quality`): drawn as it is here. */
+  def setDarken(share: Double): Unit = ()
   /** A gaussian blur of deviation `radius` (the web's `filter: blur()`): an image node's picture blurred on the device
     * (Core Image); anything else is drawn sharp here. */
   def setBlur(radius: Double): Unit = uiSetBlur(sg, radius)
@@ -1012,6 +1015,8 @@ object Platform {
   /** Nothing is read of its memory here. */
   def memoryLevel(): String = ""
   def memoryUsedPct(): Int = -1
+  /** Nothing more is said of its memory here. */
+  def memoryNote(): String = ""
 
   /** How often the display is drawn, in Hz, for where a frame counts as dropped (`everyui.perf.QualityPolicy`): not
     * read here, 0. */

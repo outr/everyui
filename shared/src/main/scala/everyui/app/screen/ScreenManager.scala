@@ -8,7 +8,7 @@ import everyui.focus.Focus
 import everyui.keymap.Keymap
 import everyui.layout.LayoutPass
 import everyui.net.URLPath
-import everyui.perf.Perf
+import everyui.perf.{FrameLog, Perf}
 import everyui.render.Platform
 import everyui.seo.SEO
 import everyui.task.TaskSupport
@@ -481,6 +481,7 @@ trait ScreenManager extends TaskSupport {
       if (last >= 0.0) {
         frame(now - from, worked)
         if (Perf.on) Perf.frame(now - from, worked, now)
+        if (FrameLog.on) FrameLog.frame(now - from, worked, now)
       }
       update(if (last < 0.0) 0.0 else (now - from) / 1000.0)
       worked = Platform.ticks() - now

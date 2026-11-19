@@ -3,7 +3,7 @@ package everyui.app
 import everyui.Color
 import everyui.app.screen.{ScreenManager, UIScreen}
 import everyui.async.Task
-import everyui.component.{Component, Container, ProgressBar, ScrollContainer, TextView, VideoView}
+import everyui.component.{Component, Container, ImageView, ProgressBar, ScrollContainer, TextView, VideoView}
 import everyui.component.types.{FontWeight, WhiteSpace}
 import everyui.layout.HorizontalLayout
 import everyui.net.*
@@ -19,6 +19,10 @@ class RailPerfScreen extends UIScreen {
   private val count: Int = Platform.launchArg("n").toIntOption.getOrElse(20)
   private val railCount: Int = math.max(1, Platform.launchArg("rails").toIntOption.getOrElse(1))
   private val videoUrl: String = Platform.launchArg("video")
+  // a picture on each card (`posters=1`), each its own address so each is its own to decode, and one behind it all
+  // blurred (`blur=<px>`), as a television's Home has
+  private val posters: Boolean = Platform.launchArg("posters") == "1"
+  private val blurPx: Double = Platform.launchArg("blur").toDoubleOption.getOrElse(0.0)
   /** The card the focus is on, which the hero tells of. */
   private val chosen: Var[Int] = Var(0)
 
@@ -86,6 +90,12 @@ class RailPerfScreen extends UIScreen {
     radius @= 10.0
     backgroundColor @= Color.fromHex(if (i % 2 == 0) "#2a3d5c" else "#4a2a4c")
     focusable @= true
+    if (posters) children += new ImageView {
+      sizedByPicture @= false
+      size.width @= 120.0
+      size.height @= 180.0
+      everyui.image.Image("/images/logo.png?card=" + i.toString).map(loaded => image @= loaded).startUnit()
+    }
     children += new TextView {
       content @= (i + 1).toString
       font.size @= 18.0
@@ -150,6 +160,16 @@ class RailPerfScreen extends UIScreen {
 
   override def createUI(): Task[Unit] = Task {
     container.backgroundColor @= Color.fromHex("#101418")
+    // `level=Reduced` or `level=Minimal` runs at that level (`everyui.perf.Quality`)
+    everyui.perf.QualityLevel.values.find(_.toString == Platform.launchArg("level"))
+      .foreach(l => everyui.perf.Quality.start(Some(l)))
+    if (blurPx > 0.0) container.children += new ImageView {
+      sizedByPicture @= false
+      size.width := container.size.width()
+      size.height := container.size.height()
+      blur @= blurPx
+      everyui.image.Image("/images/logo.png?behind").map(loaded => image @= loaded).startUnit()
+    }
     rows.content.children @= rail +: Vector.tabulate(railCount - 1)(k => makeRail(k + 1))
     container.children ++= List(name, about, synopsis, progress, rows)
   }

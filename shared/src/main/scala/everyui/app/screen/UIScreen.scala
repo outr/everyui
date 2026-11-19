@@ -2,7 +2,7 @@ package everyui.app.screen
 
 import reactify.*
 import everyui.async.Task
-import everyui.component.{Component, Container}
+import everyui.component.{Component, Container, ImageView}
 import everyui.component.types.PositionType
 import everyui.layout.LayoutPass
 
@@ -77,15 +77,22 @@ trait UIScreen extends Screen with PathActivation {
   }
 
   /** Showing a screen swaps its container into the host, in front of the backdrop and its washes when those share the
-    * host. */
+    * host. The screens taken out of it let their pictures go (`ImageView.showing`: kept while they fit in
+    * `everyui.image.ImageBudget`, so going back to one finds them), and one shown again takes its own up. */
   override protected def activate(): Task[Unit] = {
     // laid out before it is put on the screen: a screen built in a change of screen is laid out at the end of the change,
     // a turn after this, and a television drew it once in between, every part where it was made, at its corner
     everyui.layout.LayoutPass.settle()
-    manager.host.children @= manager.host.children().filter(c => (c eq manager.backdrop) || (c eq manager.washes)) :+
-      container
+    val was = manager.host.children()
+    manager.host.children @= was.filter(c => (c eq manager.backdrop) || (c eq manager.washes)) :+ container
+    val leaving = was.filter(c => !(c eq manager.backdrop) && !(c eq manager.washes))
+    leaving.foreach(c => if (!(c eq container)) ImageView.showing(c, false, passHidden = true))
+    if (shownBefore) ImageView.showing(container, true, passHidden = true)
+    shownBefore = true
     super.activate()
   }
+  // whether it has been shown before, and so may have let its pictures go as it was left
+  private var shownBefore = false
 
   /** What has the focus when the screen activates. Every screen names one, so a remote always has somewhere to
     * start; returning to the screen with Back puts the focus back where it was instead. */
