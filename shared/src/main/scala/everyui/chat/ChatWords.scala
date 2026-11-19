@@ -65,6 +65,12 @@ object ChatWords {
   def questionsForYou(n: Int): String = said("chat.questionsForYou", Map("n" -> n.toString))
   /** A highlighted passage with no label of its own, to a screen reader (`MessageHighlight.said`). */
   def highlighted: String = word("chat.highlighted")
+  /** "To everyui", over a message sent elsewhere (`MessageDirection.To`). */
+  def sentTo(name: String): String = word("chat.to").replace("{name}", name)
+  /** "From NaboTV", over a message that came from elsewhere (`MessageDirection.From`), and to a screen reader. */
+  def cameFrom(name: String): String = word("chat.from").replace("{name}", name)
+  /** "Reply to everyui", a message sent elsewhere to a screen reader. */
+  def replyTo(name: String): String = word("chat.replyTo").replace("{name}", name)
   def selectAll: String = word("chat.selectAll")
   /** "About Ada", the menu's way to a message's author. */
   def about(name: String): String = word("chat.about").replace("{name}", name)

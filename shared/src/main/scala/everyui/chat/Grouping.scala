@@ -4,9 +4,11 @@ package everyui.chat
   * name on the first alone, and a separator goes in wherever the day changes between one dated entry and the next. */
 object Grouping {
   /** Whether `entry`, coming after `previous`, starts a group of its own: anything but a message by the same author
-    * (by id: two people can share a name) straight after one of theirs. */
+    * (by id: two people can share a name) straight after one of theirs. A message sent elsewhere or come from elsewhere
+    * (`ChatEntry.Message.direction`) is a group of its own, never joined to its author's messages either side. */
   def leads(previous: Option[ChatEntry], entry: ChatEntry): Boolean = (previous, entry) match {
-    case (Some(p: ChatEntry.Message), m: ChatEntry.Message) => p.author.id != m.author.id
+    case (Some(p: ChatEntry.Message), m: ChatEntry.Message) =>
+      p.author.id != m.author.id || p.directionNow.nonEmpty || m.directionNow.nonEmpty
     case _ => true
   }
 

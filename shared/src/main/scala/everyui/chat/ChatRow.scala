@@ -97,6 +97,9 @@ class ChatRow(transcript: Transcript) extends ListRow[ChatEntry] {
     semantics := item().map(e => Semantics("listitem", label = transcript.named(e))).getOrElse(Semantics.Plain)
     accessibleDescription := item().map(transcript.describedOf).getOrElse("")
   }
+  /** Its view made again where its entry now leads its group and did not, or no longer does (`Transcript.regroup`). */
+  private[chat] def regroup(): Unit = rebuild()
+
   resay()
   item.attach { _ =>
     rebuild()

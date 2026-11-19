@@ -2638,6 +2638,34 @@ Neither costs a message anything until the app asks for it: both are made the fi
 until then nothing drawing the message listens for them, binds an edge or makes a component. `demo=chat` shows a
 question with Ignore under it and one set aside.
 
+### Where a message goes or came from (`ChatEntry.Message.direction`)
+
+In an agent's conversation, not every message is between the agent and the reader: the agent may reply to another
+session or conversation, or a message may arrive from one. `direction` (a `Var[Option[MessageDirection]]`, None by
+default) says so, and is set, changed and cleared at any time:
+
+- `MessageDirection.To(label, face)`: sent elsewhere. A small line at the top of the bubble says "↪ To everyui"
+  (`chat.to`), with `face` (a `Participant`, the other party) small between the arrow and the words; the bubble is edged
+  in the theme's accent, muted, with a little of it in its wash.
+- `MessageDirection.From(label, face)`: come from elsewhere: "↩ From NaboTV" (`chat.from`), edged in the theme's info
+  tone.
+
+Both tones are the theme's, so they read in a light theme and a dark one. A message that also asks
+(`Attention.Asking`) is edged and washed as it asks, its line still over its words. A directed message is never
+grouped with its author's other messages: it leads a group of its own, with the avatar and the name, and the author's
+next message leads again; set or cleared later, the transcript groups the rows again. A screen reader hears it after
+the author and before the words: "Helper, Reply to everyui: …" (`chat.replyTo`) or "Helper, From NaboTV: …".
+
+```scala
+reply.direction @= Some(MessageDirection.To("everyui", Participant("s-everyui", "everyui")))
+val came = ChatEntry.message("m-9", helper, self = false, text, direction = Some(MessageDirection.From("NaboTV", nabo)))
+reply.direction @= None                     // cleared: the line goes, the bubble as it was
+```
+
+It is made the first time it is read or set, so a message never given one costs nothing more, and setting, changing
+or clearing it draws that bubble again in place (only a row whose grouping changes is made again). `demo=chat` ends
+with a reply to another session, a message from one, and one of Helper's own after them.
+
 ### Passages highlighted where they are (`ChatEntry.Message.highlights`)
 
 An agent's long reply may hold several questions for the person, or one that is not at its end. `highlights` (a

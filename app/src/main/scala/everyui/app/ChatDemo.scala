@@ -38,7 +38,9 @@ import reactify.*
   * message of yours each reply answers (`Transcript.turnHeader`). `working=inline` shows who is working in the transcript
   * (`ChatView.workingInline`) rather than over the composer, the release notes' worker with a long brief, cut to three
   * lines. Helper's first message links a file shared in the room (`demo-file:plan.md`), which the app answers
-  * (`Link.handle`), logging `chat file plan.md`. Logs `chat ok` once built. */
+  * (`Link.handle`), logging `chat file plan.md`. Last, Helper's reply to another session and a message come
+  * from one say so over their words (`ChatEntry.Message.direction`). In `queue=1` where the message is sent from is a
+  * chip after the files (`Composer.extraChips`), `place=1` to start with one. Logs `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -47,6 +49,9 @@ object ChatDemo {
   private def layla: Participant = Participant("u-layla", "ليلى")
   private def oracle: Participant =
     Participant("agent-oracle", "The Oracle", Some(Platform.resolvePath("/images/icon.png")))
+  // the sessions elsewhere that Helper writes to and hears from
+  private def elsewhere: Participant = Participant("s-everyui", "everyui")
+  private def nabo: Participant = Participant("s-nabotv", "NaboTV")
 
   def run(): Unit = {
     if (Platform.launchArg("theme") == "light") Theme.palette @= Palette.light
@@ -198,6 +203,7 @@ object ChatDemo {
         Platform.log("chat queue stop and send " + d.text)
         true
       })))
+    place(composer)
     // `seed=1`: a queue kept from before a reload, paused until it is resumed, one of its messages with two files
     if (Platform.launchArg("seed") == "1") {
       composer.queue @= List(Draft("Kept from before the reload", Nil), Draft("With the two logs from last night",
@@ -205,6 +211,25 @@ object ChatDemo {
       composer.queuePaused @= true
     }
     composer
+  }
+
+  // where the message is sent from, as a chip after the files (`Composer.extraChips`): pressed, a menu of places; its ×
+  // takes it off, and "Add a location" in the "+" menu puts it back. Lisbon at first with `place=1`. Logs
+  // `chat place <name>` as it changes.
+  private def place(composer: Composer): Unit = {
+    val at: Var[Option[String]] = Var(if (Platform.launchArg("place") == "1") Some("Lisbon") else None)
+    val places = List("Lisbon", "Porto", "Reykjavík", "Kyoto")
+    def chose(p: Option[String]): Unit = {
+      at @= p
+      Platform.log("chat place " + p.getOrElse("none"))
+    }
+    composer.extraChips := at().toList.map(p => ComposerChip("place", MaterialIcon.Place, p,
+      Some("Where this message is sent from"),
+      onPress = (chip: Component) => everyui.menu.Menu.below(chip, places.map(c =>
+        everyui.menu.MenuItem(c, () => chose(Some(c)), MaterialIcon.Place))),
+      onRemove = Some(() => chose(None))))
+    composer.plusItems := (if (at().isEmpty) List(ComposerItem("Add a location", Some(MaterialIcon.Place),
+      action = () => chose(Some(places.head)))) else Nil)
   }
 
   /** The body of a reply in `queue=1`: long enough to take several seconds to stream. */
@@ -342,7 +367,14 @@ object ChatDemo {
       Some(start - 200000L))),
     asks(ChatEntry.message("q1", helper, self = false,
       "Shall I cut the release candidate now, or wait for the reconnect fix?", Some(start - 120000L))),
-    highlighted(asks(ChatEntry.message("q2", helper, self = false, ChatDemo.decisions, Some(start - 60000L)))))
+    highlighted(asks(ChatEntry.message("q2", helper, self = false, ChatDemo.decisions, Some(start - 60000L)))),
+    // a reply Helper sent to another session, one come from another, and one of its own after them, which is not
+    // folded into either (`ChatEntry.Message.direction`)
+    ChatEntry.message("d1", helper, self = false, "Done: the composer's chips are in. Over to you for the release notes.",
+      Some(start - 50000L), direction = Some(MessageDirection.To("everyui", elsewhere))),
+    ChatEntry.message("d2", helper, self = false, "Does 0.1.28 have the composer's chips yet? We'd like them for search.",
+      Some(start - 45000L), direction = Some(MessageDirection.From("NaboTV", nabo))),
+    ChatEntry.message("d3", helper, self = false, "I'll answer NaboTV once the build is green.", Some(start - 40000L)))
     .map(e => topic(e, 21))
 
   // a question for you, with Ignore under it, which sets it aside

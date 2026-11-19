@@ -42,7 +42,8 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
                   reacting: => Boolean = false, react: (String, Boolean) => Unit = (_: String, _: Boolean) => (),
                   addReaction: Component => Unit = (_: Component) => (), announce: String => Unit = (_: String) => (),
                   out: Option[Component] = None, onward: () => Unit = () => (),
-                  kept: () => Unit = () => (), reveal: Component => Unit = (_: Component) => ()) extends Container {
+                  kept: () => Unit = () => (), reveal: Component => Unit = (_: Component) => (),
+                  regroup: () => Unit = () => ()) extends Container {
   private val top: Double = if (leads) Transcript.groupGap else Transcript.lineGap
 
   private val name: TextView = new TextView {
@@ -189,10 +190,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   private def attend(a: Option[Attention]): Unit = {
     if (a.nonEmpty && !edged) {
       edged = true
-      bubble.backgroundColor := MessageView.fillFor(m.self, m.attention())
-      // (an edge drawn inside the box: the words stay where they are)
-      bubble.borderWidth := MessageView.edgeWidth(m.attention())
-      bubble.borderColor := MessageView.edge(m.attention())
+      paint()
     }
     if (MessageView.label(a).nonEmpty && note.isEmpty) noted()
     told(a)
@@ -270,6 +268,57 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   private[chat] def asking: Option[Container] = note
   /** The words under the bubble, where a press on them brings its highlights into view. */
   private[chat] def jumper: Option[Container] = note.filter(_ => jumps)
+
+  // the bubble's fill and edge, bound again as what it asks or where it goes is first made, to follow both: what it asks
+  // first, then where it goes
+  private def paint(): Unit = {
+    def asked: Option[Attention] = if (m.attentionKept) m.attention() else None
+    def going: Option[MessageDirection] = if (m.directionKept) m.direction() else None
+    bubble.backgroundColor := MessageView.fillOf(m.self, asked, going)
+    // (an edge drawn inside the box: the words stay where they are)
+    bubble.borderWidth := MessageView.edgeWidthOf(asked, going)
+    bubble.borderColor := MessageView.edgeOf(asked, going)
+  }
+
+  // ---- where it goes or came from: nothing made or bound for a message with neither ----
+
+  // the line over its words ("To everyui", the other party's face), made the first time it has a direction and kept,
+  // hidden, once it has none
+  private var heading: Option[Container] = None
+  private def direct(d: Option[MessageDirection]): Unit = if (d.nonEmpty && heading.isEmpty) {
+    val arrow = new everyui.component.MaterialIconView(everyui.font.MaterialIcon.Redo, 14.0)
+    arrow.icon := MessageView.arrowOf(m.direction())
+    arrow.color := m.direction().map(MessageView.toneText).getOrElse(Theme.muted())
+    val face = new Avatar(m.direction().map(MessageDirection.faceOf).getOrElse(m.author), MessageView.faceSize)
+    face.statusDot @= false
+    val said = new TextView {
+      content := m.direction().map(MessageDirection.shown).getOrElse("")
+      direction @= TextDirection.Auto
+      font.size @= 11.5
+      font.weight @= FontWeight.SemiBold
+      color := m.direction().map(MessageView.toneText).getOrElse(Theme.muted())
+      maxWidth := Transcript.widest(width) - Transcript.padX * 2.0 - 44.0
+    }
+    val line = Row(5.0, middle = true)(arrow, face, said)
+    line.visible := m.direction().nonEmpty
+    line.position.left := ListRow.along(Transcript.padX, line.size.width(), bubble.size.width())
+    line.position.top @= Transcript.padY
+    heading = Some(line)
+    bubble.children += line
+    def over: Double = if (line.visible()) line.size.height() + 4.0 else 0.0
+    words.position.top := Transcript.padY + over
+    bubble.size.width := math.max(Transcript.padX * 2.0 + 8.0,
+      math.max(words.size.width(), if (line.visible()) line.size.width() else 0.0) + Transcript.padX * 2.0)
+    bubble.size.height := words.size.height() + over + Transcript.padY * 2.0
+    paint()
+  }
+  // (a change of direction may join it to its neighbours or part it from them: the transcript groups them again)
+  private def turned(d: Option[MessageDirection]): Unit = {
+    direct(d)
+    regroup()
+  }
+  /** The line over its words saying where it goes or came from, where it has been made. */
+  private[chat] def directed: Option[Container] = heading
 
   // ---- its highlights: nothing made or bound for a message with none ----
 
@@ -405,11 +454,13 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   // (after the rest: the actions come last to the focus too)
   attend(m.attentionNow)
   acts(m.actionsNow)
+  direct(m.directionNow)
   // what it asks and its actions followed once the app has made them (`ChatEntry.Message.attention`, `actions`):
   // until then nothing listens for them
   private var hearing = false
   private var acted = false
   private var marking = false
+  private var going = false
   private def watch(): Unit = {
     if (!marking && m.highlightsKept) {
       marking = true
@@ -427,6 +478,11 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     if (!acted && m.actionsKept) {
       acted = true
       follow(m.actions, acts)
+    }
+    if (!going && m.directionKept) {
+      going = true
+      follow(m.direction, turned)
+      kept()
     }
   }
   private val watcher: () => Unit = () => watch()
@@ -498,4 +554,38 @@ object MessageView {
     case Some(Attention.SetAside) => 1.0
     case None => 0.0
   }
+
+  /** How large the other party's face is in the line over a directed message's words. */
+  val faceSize: Double = 16.0
+
+  /** The tone of a message sent elsewhere (the accent) or come from elsewhere (the theme's info): its edge, and a
+    * little of it in its bubble. */
+  def tone(direction: MessageDirection): Color = direction match {
+    case MessageDirection.To(_, _) => Theme.accent()
+    case MessageDirection.From(_, _) => Theme.info()
+  }
+  /** The tone's words, which read on a bubble in a light theme and a dark one. */
+  def toneText(direction: MessageDirection): Color = direction match {
+    case MessageDirection.To(_, _) => Theme.accentText()
+    case MessageDirection.From(_, _) => Theme.infoText()
+  }
+  /** The arrow before the words: out (↪) for one sent elsewhere, back (↩) for one come from elsewhere. */
+  def arrowOf(direction: Option[MessageDirection]): everyui.font.MaterialIcon = direction match {
+    case Some(MessageDirection.From(_, _)) => everyui.font.MaterialIcon.Undo
+    case _ => everyui.font.MaterialIcon.Redo
+  }
+
+  /** A bubble's colour as it asks (`fillFor`), else with a little of its direction's tone, as opaque as it was. */
+  def fillOf(self: Boolean, attention: Option[Attention], direction: Option[MessageDirection]): Color =
+    (attention, direction) match {
+      case (Some(Attention.Asking(_)), _) | (_, None) => fillFor(self, attention)
+      case (_, Some(d)) =>
+        val c = fill(self)
+        c.blend(tone(d).withAlpha(c.alpha), 0.1)
+    }
+  /** A bubble's edge: what it asks first (`edge`), else its direction's tone, muted. */
+  def edgeOf(attention: Option[Attention], direction: Option[MessageDirection]): Color =
+    if (attention.nonEmpty) edge(attention) else direction.map(d => tone(d).withAlpha(0.55)).getOrElse(Color.Clear)
+  def edgeWidthOf(attention: Option[Attention], direction: Option[MessageDirection]): Double =
+    if (attention.nonEmpty) edgeWidth(attention) else if (direction.nonEmpty) 1.0 else 0.0
 }

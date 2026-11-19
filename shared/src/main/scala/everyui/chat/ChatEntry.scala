@@ -42,11 +42,12 @@ object ChatEntry {
     /** What people reacted to it with, the app's to keep (`Transcript.reactionsEnabled` shows them). */
     val reactions: Var[List[ChatReaction]] = Var(Nil)
 
-    // `attention`, `actions` and `highlights`, made the first time they are asked for, so a message given none costs
-    // nothing and nothing drawing it listens for them: what draws it is told (`made`) as one is made
+    // `attention`, `actions`, `highlights` and `direction`, made the first time they are asked for, so a message given
+    // none costs nothing and nothing drawing it listens for them: what draws it is told (`made`) as one is made
     private var attentionMade: Option[Var[Option[Attention]]] = None
     private var actionsMade: Option[Var[List[MessageAction]]] = None
     private var highlightsMade: Option[Var[Vector[MessageHighlight]]] = None
+    private var directionMade: Option[Var[Option[MessageDirection]]] = None
     private[chat] var made: List[() => Unit] = Nil
 
     /** Whether it asks something of the person (`Attention`): None by default, an open question (`Attention.asking`)
@@ -79,6 +80,17 @@ object ChatEntry {
       made.foreach(_())
       v
     }
+    /** Where it goes or came from, where that is not this conversation (`MessageDirection`): None by default; "To
+      * everyui" for a reply its author sent elsewhere, "From NaboTV" for one come from elsewhere. Its bubble says so in
+      * a small line over its words with the other party's face, edged and washed in a tone of its own; it is never
+      * grouped with its author's other messages, nor they with it; and a screen reader hears it before its words. Set,
+      * changed or cleared at any time, the bubble is drawn again in place. */
+    def direction: Var[Option[MessageDirection]] = directionMade.getOrElse {
+      val v: Var[Option[MessageDirection]] = Var(None)
+      directionMade = Some(v)
+      made.foreach(_())
+      v
+    }
     /** What it asks, and its actions, as they stand, without making either: followed where they have been made. */
     private[chat] def attentionNow: Option[Attention] = attentionMade.flatMap(_())
     private[chat] def actionsNow: List[MessageAction] = actionsMade.map(_()).getOrElse(Nil)
@@ -86,6 +98,8 @@ object ChatEntry {
     private[chat] def actionsKept: Boolean = actionsMade.nonEmpty
     private[chat] def highlightsNow: Vector[MessageHighlight] = highlightsMade.map(_()).getOrElse(Vector.empty)
     private[chat] def highlightsKept: Boolean = highlightsMade.nonEmpty
+    private[chat] def directionNow: Option[MessageDirection] = directionMade.flatMap(_())
+    private[chat] def directionKept: Boolean = directionMade.nonEmpty
   }
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it
@@ -142,11 +156,13 @@ object ChatEntry {
   final class Custom(val id: String, val make: () => Component, val time: Option[Long] = None) extends ChatEntry
 
   def message(id: String, author: Participant, self: Boolean, text: String = "", time: Option[Long] = None,
-              streaming: Boolean = false, meta: Option[String] = None, rail: Option[Color] = None): Message = {
+              streaming: Boolean = false, meta: Option[String] = None, rail: Option[Color] = None,
+              direction: Option[MessageDirection] = None): Message = {
     val m = new Message(id, author, self, time)
     m.text @= text
     m.streaming @= streaming
     m.meta @= meta
+    if (direction.nonEmpty) m.direction @= direction
     railed(m, rail)
   }
 
