@@ -1978,9 +1978,12 @@ object Host {
   var embedded: String = ""
   /** Whether the key the activity is reporting is one held down repeating (`Platform.keyRepeat`). */
   var repeat: Boolean = false
-  /** Whether the app reads right to left (`Platform.setDirection`), and the text nodes that follow it. */
+  /** Whether the app reads right to left (`Platform.setDirection`), and the text nodes that follow it. A text node is
+    * made on whatever thread makes it (a row built on a worker, `Hop`), so the set is locked: two threads adding at once
+    * broke its table, and the next walk over it went round it for good, the main thread with it. */
   var rtl: Boolean = false
-  val aligned: java.util.Set[RenderNode] = java.util.Collections.newSetFromMap(new java.util.WeakHashMap[RenderNode, java.lang.Boolean]())
+  val aligned: java.util.Set[RenderNode] = java.util.Collections.synchronizedSet(
+    java.util.Collections.newSetFromMap(new java.util.WeakHashMap[RenderNode, java.lang.Boolean]()))
 
   /** An Android key by the web's name: the remote's keys by their names, anything typed by its character. */
   def keyName(e: KeyEvent): String = {
@@ -3163,8 +3166,9 @@ object Platform {
   def setDirection(rtl: Boolean): Unit = if (Hop.offThread) Hop(() => setDirection(rtl)) else {
     Host.rtl = rtl
     Host.root.setLayoutDirection(if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
-    // by its iterator: Iterable.forEach is Android 7's
-    val each = Host.aligned.iterator
+    // over a copy, so a node made meanwhile on a worker waits only for the copy; by its iterator: Iterable.forEach is
+    // Android 7's
+    val each = Host.aligned.synchronized(new java.util.ArrayList[RenderNode](Host.aligned)).iterator
     while (each.hasNext) each.next().applyAlign()
   }
 

@@ -298,12 +298,15 @@ virtual thread on the desktop), so `ask(…).map { … }.startUnit()` changes it
 `Var`s, their children) change where they are changed; what that does to a node on the screen (a child added, removed
 or moved, words, a colour, a size, the focus) is queued and made on the thread that draws, in the order it was made in,
 before anything that thread changes after it. A node not on the screen yet (a row being built) is changed where it is,
-as both platforms allow. A player and a web page are their thread's alone, and every call to one goes there. What is
-read off that thread is answered as it was last made there: a size is read again on the thread that draws once the
-change has been made there (`Platform.readsLater`), and a player's place, length, tracks and buffering are what it last
-said there. Nothing ever waits for the other thread. Without this, JavaFX threw (`Not on FX application thread`) for a
-child added to a node in a window, and Android threw `CalledFromWrongThreadException` (Android 11) or logged it and
-lost a child taken away while it drew (a calendar left empty).
+as both platforms allow. What the change asks of the turn (a container laid out, words looked at against their box,
+the count of components) is done on the thread that draws, on its next turn, there or not: two threads at those lists
+lost what one of them put there, and words after it were never cut to their box nor containers laid out again. A
+player and a web page are their thread's alone, and every call to one goes there. What is read off that thread is
+answered as it was last made there: a size is read again on the thread that draws once the change has been made there
+(`Platform.readsLater`), and a player's place, length, tracks and buffering are what it last said there. Nothing ever
+waits for the other thread. Without this, JavaFX threw (`Not on FX application thread`) for a child added to a node in
+a window, and Android threw `CalledFromWrongThreadException` (Android 11) or logged it and lost a child taken away
+while it drew (a calendar left empty).
 
 It costs each change made off the thread a closure, and its size a turn, so make the change there yourself where you
 can. `onScreen` (`import everyui.network.onScreen`) runs a task's answer there, at once where it already is (the

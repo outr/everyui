@@ -1130,9 +1130,12 @@ object RenderNode {
 object Host {
   /** The app's name: the window's title, and where its settings are kept. */
   var app: String = "EveryUI"
-  /** Whether the window reads right to left, and every text node that follows it (held weakly). */
+  /** Whether the window reads right to left, and every text node that follows it (held weakly). A text node is made on
+    * whatever thread makes it (a row built on a worker, `Hop`), so the set is locked: two threads adding at once broke
+    * its table, and the next walk over it (`setDirection`) went round it for good, the FX thread with it. */
   var rtl: Boolean = false
-  val aligned: java.util.Set[RenderNode] = java.util.Collections.newSetFromMap(new java.util.WeakHashMap[RenderNode, java.lang.Boolean]())
+  val aligned: java.util.Set[RenderNode] = java.util.Collections.synchronizedSet(
+    java.util.Collections.newSetFromMap(new java.util.WeakHashMap[RenderNode, java.lang.Boolean]()))
 
   /** The path the app is at: `--path=` to start somewhere, then wherever it last pushed. */
   var path: String = ""
@@ -1150,14 +1153,15 @@ object Host {
   private var imageBytes = 0L
   private val imageBudget = 192L * 1024L * 1024L
 
-  /** A bundled face at `size`. JavaFX registers a font file by loading it once; after that it is found by name. */
+  /** A bundled face at `size`. JavaFX registers a font file by loading it once; after that it is found by name. Asked
+    * on any thread that makes text (a worker building a row), so the names are locked. */
   def font(face: Face, size: Double): Font = {
-    val name = fontNames.getOrElseUpdate(face.file, {
+    val name = fontNames.synchronized(fontNames.getOrElseUpdate(face.file, {
       val loaded = Font.loadFont(new File(assets, "fonts/" + face.file).toURI.toString, size)
       if (loaded == null) throw new IllegalStateException("could not load font " + face.file)
       FontWeights.forget()
       loaded.getName
-    })
+    }))
     new Font(name, size)
   }
 
@@ -1813,7 +1817,9 @@ object Platform {
   /** The window's reading direction: every text node and field re-aligns. */
   def setDirection(rtl: Boolean): Unit = if (Hop.offThread) Hop(() => setDirection(rtl)) else {
     Host.rtl = rtl
-    Host.aligned.forEach(_.applyAlign())
+    // (walked over a copy, so a node made meanwhile on a worker waits only for the copy)
+    val nodes = Host.aligned.synchronized(new java.util.ArrayList[RenderNode](Host.aligned))
+    nodes.forEach(_.applyAlign())
   }
 
   /** Run `f` on the JavaFX thread, soon: how a reply from another thread reaches the components. */

@@ -524,10 +524,14 @@ class TextView(node: RenderNode = Nodes.text()) extends Component(node) {
 /** A line of text in one call: `TextView("Hello")`, `TextView.bound(name() + "!")`, `TextView.wrapped(long, 320.0)`. */
 object TextView {
   // the text views to look at against their box once the turn is over (keepToBox): every one asked for in a turn, in
-  // one look, after what they are in has settled (a box bound to the words' width has followed them by then)
+  // one look, after what they are in has settled (a box bound to the words' width has followed them by then). The
+  // drawing thread's alone: words changed on a worker (`Hop`) are put on it from there, as two threads at it lost a view
+  // put on it while the look emptied it, and every view after it waited for a look that never came
   private val waiting: Array[List[TextView]] = Array(Nil)
 
   private[component] def check(view: TextView): Unit =
+    if (Platform.onDrawingThread()) toLook(view) else Platform.later(() => toLook(view))
+  private def toLook(view: TextView): Unit =
     // (words that have any, asked without reading a size: a read of words not on the page yet lends them to it, which
     // made the browser lay the page out for every label of a screen being built)
     if (!view.boxCheckWaits && !view.takenApart && (view.boxed || view.content().nonEmpty)) {

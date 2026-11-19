@@ -24,8 +24,13 @@ object LayoutPass {
   private var flushing: Boolean = false
 
   /** Lay `container` out: now, or at the end of the batch or pass under way. A container asking while it is being
-    * laid out is already being placed. */
-  def request(container: Container): Unit = if (!container.placing && container.layout().nonEmpty) {
+    * laid out is already being placed. Asked on another thread (a component changed on a worker, `Hop`), it is laid
+    * out on the drawing thread's next turn: what waits to be laid out and the batches are that thread's alone, as two
+    * threads at them lost what one of them asked for, or left a batch open that held every layout after it. */
+  def request(container: Container): Unit =
+    if (Platform.onDrawingThread()) ask(container) else Platform.later(() => ask(container))
+
+  private def ask(container: Container): Unit = if (!container.placing && container.layout().nonEmpty) {
     if (!container.layoutPending) {
       container.layoutPending = true
       pending = container :: pending
@@ -33,8 +38,9 @@ object LayoutPass {
     if (batches == 0 && !waits) flush()
   }
 
-  /** Run `f` with layout held until it is done, then lay out everything it asked for in one pass. */
-  def batch[T](f: => T): T = {
+  /** Run `f` with layout held until it is done, then lay out everything it asked for in one pass. On another thread,
+    * just `f`: what it asks for is laid out on the drawing thread (`request`). */
+  def batch[T](f: => T): T = if (!Platform.onDrawingThread()) f else {
     batches += 1
     try f
     finally close()
@@ -46,8 +52,12 @@ object LayoutPass {
     * ends at the bottom of a chain of callbacks, whose nesting a Roku's small stack cannot also carry a screen's
     * layout under. A task that throws as it starts, or as it goes on after a `turn`, releases the batch on its way
     * out: held, every layout after it waited for a batch that never closed, and nothing on the screen was laid out
-    * again. */
+    * again. Started on another thread, it starts on the drawing thread's next turn, whose alone the batches are. */
   def batched[T](task: Task[T]): Task[T] = Task.async[T] { done =>
+    if (Platform.onDrawingThread()) hold(task, done) else Platform.later(() => hold(task, done))
+  }
+
+  private def hold[T](task: Task[T], done: T => Unit): Unit = {
     var open = true
     batches += 1
     // let go of the batch where the task has stopped short of completing on anything but a turn of its own
@@ -75,9 +85,10 @@ object LayoutPass {
 
   /** A turn of its own (`Platform.later`, from a fresh stack) between the parts of a long piece of work in a
     * `batched` task, with the batch held across it: a screen built over several turns, so no one turn holds the whole
-    * of it (a Roku stops one that runs too long), still laid out once, when it is done. Outside a batch, just a turn. */
+    * of it (a Roku stops one that runs too long), still laid out once, when it is done. Outside a batch, or off the
+    * drawing thread, just a turn. */
   def turn: Task[Unit] = Task.async[Unit] { done =>
-    if (batches == 0) Platform.later(() => done(()))
+    if (!Platform.onDrawingThread() || batches == 0) Platform.later(() => done(()))
     else {
       batches += 1
       carried += 1
@@ -96,19 +107,23 @@ object LayoutPass {
     }
   }
 
-  private def release(next: () => Unit): Unit = {
-    batches -= 1
-    if (batches == 0) Platform.later(() => {
-      flush()
-      next()
-    })
-    else next()
-  }
+  // a task that went on on a worker lets go of its batch on the drawing thread
+  private def release(next: () => Unit): Unit =
+    if (!Platform.onDrawingThread()) Platform.later(() => release(next))
+    else {
+      batches -= 1
+      if (batches == 0) Platform.later(() => {
+        flush()
+        next()
+      })
+      else next()
+    }
 
   /** Lay out every container asked for, the deepest first, until none is left: all those at the deepest level, then
     * the deepest of what is left and what they asked for. A level at a time rather than a container at a time: finding
-    * the deepest of a thousand rows for each row was a pass over them all for each. */
-  def flush(): Unit = if (!flushing) {
+    * the deepest of a thousand rows for each row was a pass over them all for each. Asked on another thread, on the
+    * drawing thread's next turn. */
+  def flush(): Unit = if (!Platform.onDrawingThread()) Platform.later(() => flush()) else if (!flushing) {
     flushing = true
     everyui.perf.PerfCounters.flushed()
     try {
@@ -150,7 +165,7 @@ object LayoutPass {
 
   /** Lay out what has been asked for so far, inside a batch as outside one, unless it waits for sizes still to be read
     * (`MeasuredFeature.layoutWaits`): what is about to be put on the screen, laid out before it is drawn. */
-  def settle(): Unit = if (!waits) flush()
+  def settle(): Unit = if (!Platform.onDrawingThread()) Platform.later(() => settle()) else if (!waits) flush()
 
   // whether what is asked for waits for the sizes held back to be read (`MeasuredFeature.layoutWaits`), which lays it
   // out then, once, rather than now with sizes not yet known and again once they are

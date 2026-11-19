@@ -349,9 +349,7 @@ object ContainerFeature {
       val c = added(i)
       if (from(i) >= 0.0 && c.measured.readOrQueued) {
         c.leftWidth = from(i)
-        val first = returning(0).isEmpty
-        returning(0) = c :: returning(0)
-        if (first) everyui.render.Platform.afterTurn(() => settleReturns())
+        returned(c)
       }
       else {
         c.leftWidth = -1.0
@@ -365,6 +363,15 @@ object ContainerFeature {
   // what came back this turn (`measureAdded`), the newest first, each with the width it came from in `leftWidth`: an
   // array of one rather than a var, which a Roku may not be able to set
   private val returning: Array[List[Component]] = Array(Nil)
+
+  // `c` on what came back, from the drawing thread, whose alone it is (as TextView's words waiting for a look)
+  private def returned(c: Component): Unit =
+    if (!everyui.render.Platform.onDrawingThread()) everyui.render.Platform.later(() => returned(c))
+    else {
+      val first = returning(0).isEmpty
+      returning(0) = c :: returning(0)
+      if (first) everyui.render.Platform.afterTurn(() => settleReturns())
+    }
 
   // each that came back and is still where it came to, measured as its room says (`measureAdded`); one taken out again
   // meanwhile has the width it left then, and one put back twice is looked at once

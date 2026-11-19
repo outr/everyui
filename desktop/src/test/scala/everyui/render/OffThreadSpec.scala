@@ -196,6 +196,66 @@ class OffThreadSpec extends FxSpec {
     }
   }
 
+  "Words made on a worker while the FX thread makes and keeps words to their box" should {
+    "leave the words on the screen kept to their box, and every text node turned with the reading direction, after" in {
+      // the worker puts words in boxes off the screen, each asking for a look at its box (TextView.check), while the FX
+      // thread puts words in a box on the screen and looks: the two once shared the list of words waiting, and a view
+      // the worker put on it as the FX thread emptied it was left there with no look to come, nor for any after it;
+      // and the set of text nodes that follow the reading direction (Host.aligned), which both add to, had its table
+      // broken, and the next turn of the direction went round it for good
+      val box = watched()
+      @volatile var running = true
+      val worker = new CountDownLatch(1)
+      @volatile var failed: Throwable = null
+      Task.sleep(1.millis).map { _ =>
+        var i = 0
+        while (i < 3000) {
+          val off = new Container
+          off.size.width @= 120.0
+          off.children += label("words made on the worker, " + i)
+          off.dispose()
+          i += 1
+        }
+      }.handleError(t => Task { failed = t }).map { _ =>
+        running = false
+        worker.countDown()
+      }.startUnit()
+      var turn = 0
+      while (running) {
+        fx {
+          val was = box.children()
+          box.children @= Vector(label("words put on the screen, " + turn))
+          was.foreach(_.dispose())
+        }
+        turn += 1
+      }
+      worker.await(60, TimeUnit.SECONDS) shouldBe true
+      if (failed != null) throw failed
+      val long = "A rather long line of words that will not fit in a narrow panel at all"
+      val t = fx {
+        val was = box.children()
+        box.children.clear()
+        was.foreach(_.dispose())
+        val t = label(long)
+        t.textOverflow @= everyui.component.types.TextOverflow.Ellipsis
+        val panel = new Container {
+          size.width @= 200.0
+          size.height @= 100.0
+          children += t
+        }
+        box.children @= Vector(panel)
+        t
+      }
+      eventually(t.elided() && t.node.getText().endsWith("…")) shouldBe true
+      fx(t.size.width()) should be <= 200.0
+      fx {
+        everyui.i18n.Direction.set(true)
+        everyui.i18n.Direction.set(false)
+      }
+      clean()
+    }
+  }
+
   "onScreen" should {
     "run a task's answer on the FX thread, and hand on what it worked out" in {
       val (on, value) = Task.sleep(5.millis).map(_ => 20).onScreen(n => (fxThread, n + 1)).sync()

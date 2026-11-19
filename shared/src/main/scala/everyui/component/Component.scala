@@ -642,13 +642,21 @@ object Component {
     byKind(0).filter(_._2 != 0)
   }
 
-  private[component] def made(c: Component): Unit = {
+  // counted on the drawing thread, whose alone the count is: one made or disposed of on a worker (`Hop`) is counted
+  // there, as two threads at the count lost what one of them added
+  private[component] def made(c: Component): Unit =
+    if (everyui.render.Platform.onDrawingThread()) count(c) else everyui.render.Platform.later(() => count(c))
+
+  private[component] def gone(c: Component): Unit =
+    if (everyui.render.Platform.onDrawingThread()) uncount(c) else everyui.render.Platform.later(() => uncount(c))
+
+  private def count(c: Component): Unit = {
     counted(0) += 1
     if (kinds(0)) uncounted(0) = c :: uncounted(0)
     if (following(0) || kinds(0)) settleLater()
   }
 
-  private[component] def gone(c: Component): Unit = {
+  private def uncount(c: Component): Unit = {
     counted(0) -= 1
     if (c.countedAs.nonEmpty) {
       byKind(0) = byKind(0).updated(c.countedAs, byKind(0).getOrElse(c.countedAs, 0) - 1)
@@ -709,10 +717,17 @@ object Component {
   /** Whether children taken out are looked at again at the turn's end (`warnUndisposed`). */
   private[everyui] def watchesTakenOut: Boolean = warning(0)
 
-  /** `c` was taken out of `from`, and is in no container: looked at again once the turn is done. */
+  /** `c` was taken out of `from`, and is in no container: looked at again once the turn is done. What is taken out on
+    * a worker is listed from the drawing thread, the only one that lists or looks. */
   private[everyui] def takenOut(c: Component, from: Component): Unit = if (warning(0) && !c.keptAside) {
+    val line = lineage(from)
+    if (everyui.render.Platform.onDrawingThread()) listTaken(c, line)
+    else everyui.render.Platform.later(() => listTaken(c, line))
+  }
+
+  private def listTaken(c: Component, from: String): Unit = {
     if (takenThisTurn(0).isEmpty) everyui.render.Platform.later(() => lookAgain())
-    takenThisTurn(0) = (c, lineage(from)) :: takenThisTurn(0)
+    takenThisTurn(0) = (c, from) :: takenThisTurn(0)
   }
 
   private def lookAgain(): Unit = {
