@@ -102,6 +102,10 @@ class Composer(onSend: Draft => Unit,
   val text: Var[String] = own(Var(""))
   /** The files going with it, both ways. */
   val attachments: Var[List[Attachment]] = own(Var(Nil))
+  /** The app's own chips, after the files in their row and drawn as they are (`ComposerChip`): what is set on the
+    * draft, such as where it goes, pressed to change and taken off by their ×. They are the draft's, not files: never
+    * sent, and kept or cleared by the app as messages go. A chip set again under the same key is changed in place. */
+  val extraChips: Var[List[ComposerChip]] = own(Var(Nil))
   /** Whether a reply is coming: Send is Stop, and Enter sends nothing. */
   val busy: Var[Boolean] = own(Var(false))
   /** Whether it is in use at all. */
@@ -246,6 +250,9 @@ class Composer(onSend: Draft => Unit,
   private val end = Row(4.0, middle = true)()
   private val tray = aside(Row(6.0, middle = true)())
   private val chips = aside(new Container)
+  // what the row of chips holds: a chip for each file, then the app's
+  private var fileChips: List[AttachmentChip] = Nil
+  private var appChips: List[ComposerChipView] = Nil
   private val chip = aside(new Container)
   private val chipWords = new TextView {
     font.size @= 13.0
@@ -291,7 +298,7 @@ class Composer(onSend: Draft => Unit,
 
   private def state(): ComposerState = ComposerState(touch, enabled(), busy(), field.editing(), sendable(),
     suggesting() && !asChip, popup.nonEmpty, queueWhileBusy(), queueShown(),
-    queueShown() && field.field.exists(_.caret == 0))
+    (queueShown() || chipsShown()) && field.field.exists(_.caret == 0), chipsShown())
 
   size.width @= width
 
@@ -392,7 +399,8 @@ class Composer(onSend: Draft => Unit,
   card.borderColor := (if (dropping() || field.focused()) Theme.accent() else Theme.border())
 
   private val trayShown: Val[Boolean] = own(Val(crowded() && trayOpen()))
-  private val chipsShown: Val[Boolean] = own(Val(attachments().nonEmpty))
+  /** Whether the row of chips shows: the files, and the app's own (`extraChips`). */
+  val chipsShown: Val[Boolean] = own(Val(attachments().nonEmpty || extraChips().nonEmpty))
   private val lineTop: Val[Double] = own(Val(pad() + queueSpace() +
     (if (trayShown()) tray.size.height() + gap else 0.0) + (if (chipsShown()) chips.size.height() + gap else 0.0)))
   private val line: Val[Double] = own(Val(math.max(field.size.height(), lineHeight)))
@@ -460,11 +468,28 @@ class Composer(onSend: Draft => Unit,
     // what left the draft (taken off, sent, or cleared by the app) lets its picture go, unless it waits in the queue
     if (!shuffling) letGo(held)
     held = list
-    val was = chips.children()
-    chips.children.clear()
+    val was = fileChips
+    fileChips = list.map(a => new AttachmentChip(a, words.remove, () => remove(a)))
+    chips.children @= (fileChips ++ appChips).toVector
     was.foreach(_.dispose())
-    chips.children ++= list.map(a => new AttachmentChip(a, words.remove, () => remove(a)))
   }
+  // the app's chips by key, each changed in place, those gone taken apart and those new made
+  extraChips.attach { list =>
+    val before = appChips
+    appChips = list.map(c => before.find(_.chip().key == c.key) match {
+      case Some(v) =>
+        v.chip @= c
+        v
+      case None => new ComposerChipView(c, words.remove, enabled())
+    })
+    chips.children @= (fileChips ++ appChips).toVector
+    before.filterNot(v => appChips.exists(_ eq v)).foreach(_.dispose())
+  }
+  // the row reached by Up from the field and left by Down, while it shows
+  chips.exitFocus(Key.ArrowDown, field)
+  chipsShown.attach(on => if (on) field.exitFocus(Key.ArrowUp, chips) else field.dropExit(Key.ArrowUp))
+  queueShown.attach(on =>
+    if (on) chips.exitAction(Key.ArrowUp, () => queueView.focusLast()) else chips.dropExit(Key.ArrowUp))
   arrange()
 
   // --- the queue -------------------------------------------------------------------------------------------------
@@ -748,6 +773,7 @@ class Composer(onSend: Draft => Unit,
     case ComposerAction.Complete => choose(lit())
     case ComposerAction.Close => closeCompletions()
     case ComposerAction.ToQueue => if (queueShown()) queueView.focusLast()
+    case ComposerAction.ToChips => if (chipsShown()) Focus.candidates(chips).headOption.foreach(_.focus())
     case _ => ()
   }
 

@@ -2883,6 +2883,21 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
   picture with no name of its own is "pasted-image-1.png", numbered on; words on the clipboard beside it still paste as
   words. `pastedFiles` (`Var[Option[Attachment => Option[Attachment]]]`, None by default: each taken as it is) can take
   another in its place or refuse one, and `Some(_ => None)` turns it off; none is taken where `attachable` is off.
+- The app's own chips (`extraChips`, a `Var[List[ComposerChip]]`, none by default) go in the same row, after the files
+  and drawn as they are: what is set on the draft rather than sent with it, such as where the message goes or is sent
+  from. `ComposerChip(key, icon, label, tooltip = None, onPress, onRemove = None)`: a press on its icon and label (a
+  click, Enter, a remote's OK) is `onPress`, handed the chip so that a menu can open at it, and `onRemove`, where it is
+  given, puts a × after it. The row shows while there are files or chips (`chipsShown`). A chip is never sent as an
+  attachment and never cleared by sending: the app keeps it or clears it as messages go. Set again, chips are matched by
+  `key` and changed in place, the others left as they were. A screen reader hears a button named by its label, and the
+  × as "Remove" and the label (`composer.remove`). Up at the very start of the field (or Up on a remote) goes to the
+  row, Left and Right go along it, and Down comes back to the field; nothing out of use (`enabled` off) is pressed.
+
+  ```scala
+  composer.extraChips := place().toList.map(p => ComposerChip("place", MaterialIcon.Place, p,
+    Some("Where this message is sent from"), onPress = chip => Menu.below(chip, places),
+    onRemove = Some(() => place @= None)))
+  ```
 - Completions list over the composer for the word at the caret after a trigger: Up and Down, Enter or Tab to put the
   lit one in place of the word, Escape to close.
 - Under `compactWidth` (480) the controls are a phone's, and `leading` folds behind a "+" with the attach button, in

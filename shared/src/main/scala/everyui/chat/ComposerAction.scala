@@ -24,4 +24,6 @@ object ComposerAction {
   case object Close extends ComposerAction
   /** The focus taken up to the queue above the field, onto its last message. */
   case object ToQueue extends ComposerAction
+  /** The focus taken up to the row of chips above the field (`Composer.extraChips`, the files). */
+  case object ToChips extends ComposerAction
 }
