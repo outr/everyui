@@ -3271,6 +3271,9 @@ object Platform {
     done()
   }
 
+  /** Android's version, as its settings show it ("14", "9"). */
+  def osVersion(): String = Option(android.os.Build.VERSION.RELEASE).getOrElse("")
+
   /** What this device calls itself: the name its owner gave it ("Bedroom TV") where there is one, and what it is
     * otherwise. The name is what a person picking a television out of a list is looking for. */
   def deviceName(): String = {

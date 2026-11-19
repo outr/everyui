@@ -270,6 +270,10 @@ class SGNode
 @native object uiDeviceName {
   def apply(): String = native.value
 }
+/** The Roku OS version: major, minor and revision ("15.0.4"). */
+@native object uiOsVersion {
+  def apply(): String = native.value
+}
 /** One fact of the device and its memory, as text ("" where it does not say): "model", "graphics" (opengl or directfb),
   * "appLimitKb" (the most the channel may use, in the foreground), "appMemoryKb" (what it has left of that), "memoryLevel"
   * (normal, low, critical) or "memoryPct" (the share of its limit in use). */

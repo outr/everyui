@@ -2089,6 +2089,9 @@ object Platform {
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
 
+  /** The system's version, as the JVM has it ("6.17.2", "15.4", "10.0"). */
+  def osVersion(): String = System.getProperty("os.version", "")
+
   def deviceName(): String =
     try java.net.InetAddress.getLocalHost.getHostName
     catch { case _: Exception => "Desktop" }

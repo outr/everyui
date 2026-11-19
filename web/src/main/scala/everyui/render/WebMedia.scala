@@ -488,8 +488,9 @@ object WebMedia {
     !js.isUndefined(window.MediaSource) || !js.isUndefined(window.ManagedMediaSource)
   }
 
-  /** Whether the browser plays HLS in `media` itself and lists its tracks, as Safari does. */
+  /** Whether the browser plays HLS in `media` itself and lists its tracks, as Safari does; or a TV's runtime plays it
+    * itself, which is preferred there (`AppHost.nativeHls`: webOS), whether or not it lists its sound tracks. */
   def nativeHls(media: js.Dynamic): Boolean =
     media.canPlayType("application/vnd.apple.mpegurl").asInstanceOf[String].nonEmpty &&
-      !js.isUndefined(media.audioTracks)
+      (!js.isUndefined(media.audioTracks) || AppHosts.current.exists(_.nativeHls))
 }

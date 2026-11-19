@@ -65,6 +65,10 @@ object Focus {
     * an arrow, Enter, Page Up and Down, Home and End, any key the focus moves on) sets it; a pointer put down clears
     * it. Where a remote moves the focus, it is always drawn, and this is not asked. */
   val visible: Var[Boolean] = Var(false)
+  /** Whether a remote's pointer is showing (LG's Magic Remote, `PlatformKinds.pointerRemote`), as the platform says:
+    * while it shows, what it comes onto takes the focus, as a press of OK on it would; hidden, the focus stays where
+    * the pointer left it, drawn, and the arrows go on from there. */
+  val remotePointer: Var[Boolean] = Var(false)
 
   /** Somebody used the app just now. */
   def used(): Unit = {

@@ -1803,7 +1803,9 @@ object RenderNode {
     * types nothing, by its key ("c") rather than the character Option makes of it on a Mac ("ç"), so that a chord of
     * Cmd+Alt and a letter (`everyui.keymap.Chord`) matches there. */
   def keyName(e: dom.KeyboardEvent): String =
-    if (e.metaKey && e.altKey && "Key[A-Z]|Digit[0-9]".r.matches(e.code)) e.code.last.toLower.toString else e.key
+    if (e.metaKey && e.altKey && "Key[A-Z]|Digit[0-9]".r.matches(e.code)) e.code.last.toLower.toString
+    // a TV's remote by its key code (its Back is 461), where the engine's `key` is not to be relied on
+    else AppHosts.current.flatMap(_.keyName(e.keyCode)).getOrElse(e.key)
 
   /** Whether `e` is a key the page's focused field types or edits with (a character, Backspace, Delete, the caret's
     * keys along the line), which the browser must be left to act on whatever the app made of it: kept from the field,
@@ -2329,12 +2331,16 @@ object Platform {
 
   // The window's inner size, as youi's `ui` measures it. The root clips its
   // content, so no scrollbar ever takes space out of it.
-  def kind: PlatformKind = PlatformKind.Web
+  /** Web, or the host the app is packaged for (`AppHosts`: a TV's web runtime, `WebOS`). */
+  def kind: PlatformKind = AppHosts.current.fold(PlatformKind.Web)(_.kind)
   /** A TV browser (webOS, Tizen, a set-top box) is driven by a remote; anything else by a pointer, touch, or both. */
-  def remoteNavigation(): Boolean = {
+  def remoteNavigation(): Boolean = AppHosts.current.nonEmpty || {
     val agent = dom.window.navigator.userAgent
     agent.contains("Web0S") || agent.contains("Tizen") || agent.contains("SmartTV") || agent.contains("SMART-TV") || agent.contains("Roku")
   }
+  /** The TV's system version as its maker names it (webOS "6", "22", "25": `WebOSFacts.version`); "" in a browser,
+    * whose system the page is not told reliably. */
+  def osVersion(): String = AppHosts.current.fold("")(_.osVersion)
   def touchSupport(): Boolean = {
     val points = dom.window.navigator.asInstanceOf[js.Dynamic].maxTouchPoints
     !js.isUndefined(points) && points.asInstanceOf[Int] > 0
@@ -2558,26 +2564,31 @@ object Platform {
   }
 
   /** The page's path and query (`/runs?state=x`) — what a screen is reached at. */
-  def path(): String = dom.window.location.pathname + dom.window.location.search
+  /** On a TV, which has no address bar and whose Back is the app's, the path is the app's own, starting at "/". */
+  def path(): String = tvPath.getOrElse(dom.window.location.pathname + dom.window.location.search)
   /** Show `path` in the address bar as a new history entry, without loading anything. */
-  def pushPath(path: String): Unit = dom.window.history.pushState(null, "", path)
-  /** The path after the browser's back or forward. */
-  def onPath(f: String => Unit): Unit = dom.window.addEventListener("popstate", (_: dom.Event) => f(path()))
+  def pushPath(path: String): Unit =
+    if (tvPath.nonEmpty) tvPath = Some(path) else dom.window.history.pushState(null, "", path)
+  /** The path after the browser's back or forward: never on a TV, whose screens go back by themselves. */
+  def onPath(f: String => Unit): Unit =
+    if (tvPath.isEmpty) dom.window.addEventListener("popstate", (_: dom.Event) => f(path()))
+  private var tvPath: Option[String] = AppHosts.current.map(_ => "/")
 
   /** Run `f` after the current event: one thread, but the same order as every other backend. */
   /** Back is the browser's own, so the address bar and its back button stay in step (the screen manager hears the
     * new path). */
-  def historyBack(): Boolean = {
+  def historyBack(): Boolean = tvPath.isEmpty && {
     dom.window.history.back()
     true
   }
 
   /** Show `path` in the address bar in place of the entry showing, without a new one and without loading anything:
     * what an address used once becomes (`/join/<token>` as `/join`), so the token is not left in the history. */
-  def replacePath(path: String): Unit = dom.window.history.replaceState(dom.window.history.state, "", path)
+  def replacePath(path: String): Unit =
+    if (tvPath.nonEmpty) tvPath = Some(path) else dom.window.history.replaceState(dom.window.history.state, "", path)
 
   /** Forward is the browser's own, as back is. */
-  def historyForward(): Boolean = {
+  def historyForward(): Boolean = tvPath.isEmpty && {
     dom.window.history.forward()
     true
   }
@@ -2956,12 +2967,12 @@ object Platform {
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
 
-  def deviceName(): String = {
+  def deviceName(): String = AppHosts.current.fold {
     val agent = dom.window.navigator.userAgent
     val browser = if (agent.contains("Edg/")) "Edge" else if (agent.contains("Chrome/")) "Chrome" else if (agent.contains("Firefox/")) "Firefox" else if (agent.contains("Safari/")) "Safari" else "Browser"
     val system = if (agent.contains("Windows")) "Windows" else if (agent.contains("Android")) "Android" else if (agent.contains("iPhone") || agent.contains("iPad")) "iOS" else if (agent.contains("Mac OS")) "macOS" else if (agent.contains("Linux")) "Linux" else ""
     if (system.isEmpty) browser else browser + " on " + system
-  }
+  }(_.deviceName)
 
   /** A browser has text fields of its own. */
   def nativeInput(): Boolean = true
@@ -3063,30 +3074,54 @@ object Platform {
   /** No media servers to find from a page: a browser can send no UDP. */
   def findMediaServers(seconds: Double, found: List[everyui.MediaServer] => Unit): Unit = later(() => found(Nil))
 
-  /** `?name=value` in the page URL, or "" — how a launch chooses a demo (`demo`) and hands it a URL (`socket`). */
-  def launchArg(name: String): String = {
+  /** What the app was launched with: on a TV, the parameters the system launched it with (webOS's `launchParams`, and
+    * from a launch while it runs on, those of that launch, as on a Roku), else `?name=value` in the page URL; "" for a
+    * name not given. How a launch chooses a demo (`demo`) and hands it a URL (`socket`). */
+  def launchArg(name: String): String = tvLaunch.flatMap(_.get(name)).getOrElse {
     val value = new dom.URLSearchParams(dom.window.location.search).get(name)
     if (value == null) "" else value
   }
 
+  // a TV's launch parameters, the latest launch's, or None off a TV
+  private var tvLaunch: Option[Map[String, String]] = AppHosts.current.map(_.launchParams())
+
   /** Each launch that reaches the app once it is running, with what it was launched with (a Roku's resume or deep
-    * link, an Android intent). Nothing launches a running app again here, so it is never called. */
+    * link, an Android intent): on a TV, the system launching it again while it runs (webOS's `webOSRelaunch`), where
+    * the launch says something (a return from the launcher with no parameters is not one); `launchArg` reads its values
+    * from then on. Nothing launches a page in a browser again, so there it is never called. */
   def onLaunch(f: Map[String, String] => Unit): () => Unit = {
     launchers = launchers :+ f
     () => launchers = launchers.filterNot(_ eq f)
   }
 
+  /** Each deep link the app is given, as a Roku's deep linking has it (`contentId`, `mediaType`): on a TV, the one it
+    * was launched with, a turn after this is asked, and any it is launched with while it runs, where its parameters
+    * hold a `contentId`. Never in a browser. */
+  def onDeepLink(f: (String, String) => Unit): Unit = {
+    linkers = linkers :+ f
+    tvLaunch.foreach(p => p.get("contentId").filter(_.nonEmpty).foreach(id =>
+      later(() => f(id, p.getOrElse("mediaType", "")))))
+  }
+
   def launched(params: Map[String, String]): Unit = launchers.foreach(f => f(params))
 
   private var launchers: List[Map[String, String] => Unit] = Nil
+  private var linkers: List[(String, String) => Unit] = Nil
+
+  // the TV's launches while the app runs, and its remote's pointer showing and hiding
+  AppHosts.current.foreach(_.listen(params => if (params.nonEmpty) {
+    tvLaunch = Some(params)
+    launched(params)
+    params.get("contentId").filter(_.nonEmpty).foreach(id => linkers.foreach(f => f(id, params.getOrElse("mediaType", ""))))
+  }, shown => everyui.focus.Focus.remotePointer @= shown))
 
   /** Which build of the app is running: "wasm" when it was linked to WebAssembly, "js" otherwise. Fixed when the
     * app is linked, so it cannot disagree with what the page loaded; `everyui.sbt.WasmLoader`'s loader says the same
     * in `window.everyuiBuild`. For an about box or a log line. */
   val build: String = if (scala.scalajs.LinkingInfo.isWebAssembly) "wasm" else "js"
 
-  /** A page has nowhere to exit to; a demo that is done just stops. */
-  def quit(): Unit = ()
+  /** A page has nowhere to exit to; a demo that is done just stops. An app on a TV closes. */
+  def quit(): Unit = AppHosts.current.foreach(_.quit())
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
   def localDateTime(millis: Long): String = {
@@ -3098,12 +3133,18 @@ object Platform {
 
   /** The WebSocket origin of the page itself (`ws://host:port`), so an app served by its own server needs no address. */
   /** Where this app's server is, to resolve its relative URLs against: the page's origin ("https://example.com"). */
-  def origin(): String = dom.window.location.origin
+  /** An app packaged for a TV is loaded from its own files, from no server: there, as on a Roku, what the app set as
+    * the setting "everyui.origin", else "". */
+  def origin(): String = if (packaged) setting("everyui.origin") else dom.window.location.origin
 
-  def webSocketOrigin(): String = {
+  /** "" in an app packaged for a TV, which names its server. */
+  def webSocketOrigin(): String = if (packaged) "" else {
     val l = dom.window.location
     (if (l.protocol == "https:") "wss://" else "ws://") + l.host
   }
+
+  // an app packaged for a TV, loaded from the files it was installed with
+  private def packaged: Boolean = AppHosts.current.nonEmpty && dom.window.location.protocol == "file:"
 
   /** Called whenever the window changes size. */
   /** Every key on the page, by its DOM name, pressed or released; a key the hook takes is kept from the browser. */
@@ -3120,12 +3161,34 @@ object Platform {
       // key came to, asked before the app hears it, since a key the app takes may put the focus in a field (E on a
       // queued message edits it in the composer's field), which must not then type it as well
       val typed = RenderNode.fieldKey(e)
+      val name = RenderNode.keyName(e)
       RenderNode.inKey = pressed
-      try { if (f(RenderNode.keyName(e), pressed) && !typed) e.preventDefault() }
-      finally RenderNode.inKey = false
+      val taken = try f(name, pressed) finally RenderNode.inKey = false
+      if (taken && !typed) e.preventDefault()
+      else if (leaves(name, pressed, taken)) e.preventDefault()
     }
-    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => hear(e, true))
-    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => hear(e, false))
+    // Back that nothing in the app answered, in an app's host (a TV): the app leaves, as the system's own back would
+    def leaves(name: String, pressed: Boolean, taken: Boolean): Boolean =
+      !taken && pressed && everyui.event.Keys.of(name) == everyui.event.Key.Back && AppHosts.current.exists { host =>
+        host.exit()
+        true
+      }
+    // the keys a host sends itself (a shell's bridge), heard as the page's own are
+    AppHosts.current.foreach(_.hearKeys((name, pressed) => {
+      held = everyui.event.Modifiers(false, false, false, false)
+      embedded = ""
+      repeating = false
+      composing = false
+      RenderNode.inKey = pressed
+      val taken = try f(name, pressed) finally RenderNode.inKey = false
+      leaves(name, pressed, taken)
+      ()
+    }))
+    // a TV's remote saying its pointer showed or hid with a key (webOS 1) says only that
+    def pointerKey(e: dom.KeyboardEvent): Option[Boolean] = AppHosts.current.flatMap(_.pointerKey(e.keyCode))
+    dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) =>
+      pointerKey(e).fold(hear(e, true))(shown => everyui.focus.Focus.remotePointer @= shown))
+    dom.document.addEventListener("keyup", (e: dom.KeyboardEvent) => if (pointerKey(e).isEmpty) hear(e, false))
     // a mouse's back and forward buttons are keys too, never an embed's (NavButtons)
     NavButtons.hear((name, pressed, e) => {
       held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)

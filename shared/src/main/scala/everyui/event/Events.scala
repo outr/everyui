@@ -26,6 +26,11 @@ class Events(component: Component) {
         if (!takes || Focus.focused().contains(component)) Pointer.focused(e)
       }
     }
+    // a remote's pointer focuses what it comes onto, as it shows (Focus.remotePointer): the TV's own focus, on the
+    // pointer's moves only (`enter`), never on the keys scrolling something under it
+    if (everyui.PlatformKinds.pointerRemote(everyui.render.Platform.kind)) pointer.enter.attach { _ =>
+      if (Focus.remotePointer() && component.focusable() && !Focus.focused().contains(component)) component.focus()
+    }
     channel
   }
 

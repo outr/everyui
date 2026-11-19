@@ -60,7 +60,7 @@ object VectorIcon {
     case None if waiting.contains(url) => waiting = waiting.updated(url, got :: waiting(url))
     case None =>
       waiting = waiting.updated(url, List(got))
-      val web = Platform.kind == everyui.PlatformKind.Web
+      val web = everyui.PlatformKinds.browser(Platform.kind)
       val where = if (web || url.contains("://")) url else Platform.resolvePath(url)
       Platform.readText(where, text => {
         val art = if (text == null || text.isEmpty) None else VectorArt.parse(text)

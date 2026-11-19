@@ -3,7 +3,8 @@ package everyui
 /** Which platform the app is running on — `Platform.kind`. What it can do is asked separately (`Platform.touchSupport`,
   * `pointerSupport`, `remoteNavigation`, `keyboardSupport`), since a TV browser is Web with a remote and an Android
   * tablet is Android with touch. `TvOS` is an Apple TV and `IOS` an iPhone or an iPad (and an iPad app on a Mac): the
-  * same Apple backend, told apart as the app runs. */
+  * same Apple backend, told apart as the app runs. `WebOS` is an app packaged for an LG TV, on the web backend in the
+  * TV's own runtime: a browser for everything a browser does (`PlatformKinds.browser`). */
 enum PlatformKind {
-  case Web, Desktop, Android, Roku, TvOS, IOS
+  case Web, Desktop, Android, Roku, TvOS, IOS, WebOS
 }

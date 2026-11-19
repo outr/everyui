@@ -8,7 +8,7 @@ import everyui.clipboard.Clipboard
 import everyui.file.{Files, SaveResult}
 import everyui.passkey.{PasskeyResult, Passkeys}
 import everyui.push.{Notice, Push, PushAnswer}
-import everyui.{Permission, PlatformKind}
+import everyui.{Permission, PlatformKind, PlatformKinds}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -74,7 +74,7 @@ class PlatformDemo {
         }
       }.start(), ButtonStyle.Filled),
       new Button("Unsubscribe", () => Push.unsubscribe().map(_ => tell(pushed, "push unsubscribe", "Unsubscribed")).start())),
-    section("Notices and the unread badge", Platform.kind == PlatformKind.Web ||
+    section("Notices and the unread badge", PlatformKinds.browser(Platform.kind) ||
       (Platform.kind == PlatformKind.Android && !Platform.remoteNavigation()), noticed, noticeAllowed)(
       new Button("Allow notices", () => Platform.askNotificationPermission()),
       new Button("Notice now", () => notice(onlyWhenHidden = false), ButtonStyle.Filled),
@@ -229,7 +229,7 @@ class PlatformDemo {
   /** The page's own logo on the web; elsewhere a picture on the web (`url=` for another). */
   private def saveUrl(): Unit = {
     val asked = Platform.launchArg("url")
-    val url = if (asked.nonEmpty) asked else if (Platform.kind == PlatformKind.Web) "images/logo.png"
+    val url = if (asked.nonEmpty) asked else if (PlatformKinds.browser(Platform.kind)) "images/logo.png"
       else "https://www.scala-lang.org/resources/img/frontpage/scala-spiral.png"
     Files.saveUrl(url, url.substring(url.lastIndexOf("/") + 1)).map(r => tell(saved, "saveUrl", said(r))).start()
   }

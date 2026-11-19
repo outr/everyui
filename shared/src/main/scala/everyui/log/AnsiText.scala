@@ -1,6 +1,6 @@
 package everyui.log
 
-import everyui.{Color, PlatformKind}
+import everyui.{Color, PlatformKind, PlatformKinds}
 import everyui.component.Component
 import everyui.render.Platform
 import everyui.text.TextRun
@@ -43,7 +43,7 @@ object AnsiText {
 
   /** Whether the platform draws a run's ground (`TextRun.background`): the web and Android do; the desktop's
     * JavaFX, a Roku and an Apple TV do not. */
-  def grounds: Boolean = Platform.kind == PlatformKind.Web || Platform.kind == PlatformKind.Android
+  def grounds: Boolean = PlatformKinds.browser(Platform.kind) || Platform.kind == PlatformKind.Android
 
   /** `text` with every escape and control character taken out, a line to a line: its words as a terminal shows them. */
   def strip(text: String): String = lines(text).map(_.text).mkString("\n")

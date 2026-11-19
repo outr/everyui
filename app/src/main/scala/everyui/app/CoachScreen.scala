@@ -9,7 +9,7 @@ import everyui.menu.{Menu, MenuItem}
 import everyui.net.*
 import everyui.render.Platform
 import everyui.theme.Theme
-import everyui.{PlatformKind, ui}
+import everyui.{PlatformKinds, ui}
 
 /** The coach demo's one screen: a bar with Ask on it, a rail of twelve titles that glides with the focus, each with a
   * menu held up on it, and a title's Play and Trailer under them. The tour starts once it shows. */
@@ -63,7 +63,7 @@ class CoachScreen extends ScrollScreen {
     label.position.top @= 14.0
     c.children += label
     // in a browser the card under the mouse takes the focus, as NaboTV's do
-    if (Platform.kind == PlatformKind.Web) c.event.pointer.enter.attach(_ => if (!c.focused()) c.focus())
+    if (PlatformKinds.browser(Platform.kind)) c.event.pointer.enter.attach(_ => if (!c.focused()) c.focus())
     Menu.context(c)(List(
       MenuItem("Mark watched", () => Platform.log("coach marked " + name)),
       MenuItem("Add to list", () => Platform.log("coach listed " + name))))

@@ -5403,7 +5403,7 @@ runs inside sbt without a Node toolchain: esbuild and terser are Node's, and Clo
 linked file, stops at the Unicode escapes Scala.js writes in identifiers (`_\uff3fself`), so it runs only as the
 linker's own (`withClosureCompilerIfAvailable`, above), which takes NaboTV's main.js from 1,350 KB to 924 KB.
 
-## The desktop, Android, the Roku and the Apple TV
+## The desktop, Android, the Roku, the Apple TV and LG's TVs
 
 Each platform is a project in the app's build that compiles the app's sources with that platform's backend artifact.
 The `sbt-everyui` plugin (`project/plugins.sbt`, as for the web) does the rest: its tasks take what a build needs out
@@ -6049,11 +6049,137 @@ What maps, against the Android player:
 `demo=player` (PlayerDemo) plays an MKV with two sound tracks and two subtitles, an MP4 and a sound alone (`src=`),
 with a bar for each control; `script=1` walks them all itself and logs each step and event.
 
+### LG webOS TVs
+
+An LG TV runs the web build: the app's web bundle, packaged with an appinfo.json as a webOS app (an `.ipk`) and
+installed on the TV, runs in the TV's own Chromium from its own files, served by no one. The web backend knows it is
+there (the runtime's `webOSSystem`, or `PalmSystem` before webOS 5, then the user agent's `Web0S`) and does what the TV
+asks of an app:
+
+- **What it is**: `Platform.kind` is `PlatformKind.WebOS`; everything the web does it does (`PlatformKinds.browser`
+  is true for both). `Platform.osVersion()` is the webOS TV version as LG names it, read from the Chromium in the user
+  agent by LG's table: "3", "4", "5", "6", then "22", "23", "24", "25"; a newer release from the runtime's
+  `deviceInfo` (`platformVersionMajor` 7 is "22", and on by a year), else "25+". `Platform.deviceName()` is "LG webOS
+  TV" and the model. `remoteNavigation()` is true: the focus is a remote's, always on something and always drawn.
+  (`Platform.osVersion()` is the system's version everywhere: Android's, the Roku OS's, the Apple TV's, the
+  desktop's; "" in a browser.)
+- **The remote**: Back (461) is `Key.Back`; the transport keys of LG's standard remote are the player's (Play 415
+  `MediaPlay`, Pause 19 `MediaPause`, Stop 413 `MediaStop`, Rewind 412 `MediaRewind`, Fast-forward 417
+  `MediaFastForward`); the coloured keys (403 to 406) come as `Key.Other` named "ColorF0Red", "ColorF1Green",
+  "ColorF2Yellow" and "ColorF3Blue" (a keymap binds them by name); channel up and down are Page Up and Down. They are
+  named by their key code, which every webOS sends alike.
+- **Back at the root**: Back that nothing in the app answers (the screen manager has no screen to go back to) leaves
+  the app the TV's way: webOSTV.js's `webOS.platformBack()` where the app bundles it, else the runtime's own
+  `platformBack()` (webOS 6 and later ask first, in their own exit prompt; before, the launcher comes up). The
+  package's appinfo.json has `disableBackHistoryAPI`, so Back is the app's. There is no address bar: `pushPath` and
+  the screen manager's history are the app's own (`Platform.path()` starts at "/"), and Back never reaches
+  `history.back()`.
+- **The Magic Remote's pointer**: while it shows (`cursorStateChange`, or key codes 1536 and 1537 on webOS 1), what it
+  comes onto takes the focus, as LG's own apps do, and a click presses it; when it hides (an arrow pressed hides it),
+  the focus stays where the pointer left it, drawn, and the arrows go on from there, so something is always focused.
+  `Focus.remotePointer` says whether it shows.
+- **Launches**: `Platform.launchArg(name)` reads the runtime's `launchParams` (a JSON object: strings as they are, other
+  values as their JSON), then the page's URL. The TV launching the app again while it runs (`webOSRelaunch`) is a
+  launch (`Platform.onLaunch`), with its parameters, which `launchArg` reads from then on; one with no parameters (the
+  app chosen again in the launcher) is not. A launch with a `contentId` also goes to `Platform.onDeepLink(contentId,
+  mediaType)`, as a Roku's deep link does, the one the app started with a turn after it is asked.
+- **Away and back**: a hidden app is suspended, and says so with `visibilitychange` (the TV's home screen or another
+  app over it): `onAway` and `onResume`, as in a browser.
+- **Its server**: the page comes from no server, so, as on a Roku, `Platform.origin()` is the setting
+  "everyui.origin" the app saves (else "") and `webSocketOrigin()` is "": the app names its server.
+
+#### Packaging (`everyuiWebOS`, `webosPackage`)
+
+The plugin builds the package itself, with no Node tool: `webosPackage` stages the app's web bundle with its
+appinfo.json, its icon (80 by 80), large icon (130 by 130) and splash picture (at the resolution), each scaled from the
+picture given, and writes `target/webos/<id>_<version>_all.ipk` as LG's `ares-package` lays one out (an `ar` of
+`debian-binary`, `control.tar.gz` and `data.tar.gz`, the app under `usr/palm/applications/<id>/` and its
+`usr/palm/packages/<id>/packageinfo.json`, every entry owned by 0). A CDN's precompressed copies (`main.js.br`) are
+left out. The page is made to run from its files (`PackagedPage.local`, for any TV's package): a `<base href>` becomes
+`./` and an address from the site's root (`src="/main.js"`) is made relative, since from `file://` either names the
+disk's root and the page stays blank; and the font preloads go, since from `file://` a preload's credentials mode never
+matches the face's own fetch. The faces still load from their `@font-face` rules, and the runtime still waits for the
+start faces before the first frame (`document.fonts.load`).
+
+```scala
+lazy val webos = project.in(file("web"))   // the app's Scala.js project, with its web bundle task
+  .settings(
+    everyuiWebOS := Some(WebOSApp(id = "com.example.app", version = "1.2.0", vendor = "Example",
+      title = "Example", icon = baseDirectory.value / "webos" / "icon.png",
+      splash = Some(baseDirectory.value / "webos" / "splash.png"))),
+    webosBundle := webBundle.value,   // a directory with the app's index.html and what it loads
+    webosDevice := "tv"               // the TV, as ares-setup-device named it
+  )
+```
+
+`WebOSApp` writes `type` "web", `main` "index.html", `disableBackHistoryAPI` true and `requiredACG` (empty, unless
+the app names the Luna groups it calls: LG's newer store checks want it declared); `resolution` is "1920x1080" (the
+default) or "1280x720", what the page is laid out at (a web app has no 4K); `iconColor`, `requiredMemory`,
+`description` (`appDescription`) and `extra` fields as LG's appinfo.json reference has them. The id and the version are
+held to LG's rules (lowercase reverse DNS, not under com.lge, com.webos, com.palm; three numbers, no leading zeros) and
+the build fails on either.
+
+Link the JavaScript for the oldest TV the app supports: webOS 4 has Chromium 53, 5 has 68, 6 has 79, 22 has 87, 24
+has 108, 25 has 120. Scala.js's default output (ES2015) runs from webOS 4 on (with `withESVersion(ES2018)` from webOS 5,
+`ES2021` from webOS 22); the WebAssembly build needs Chromium 119, so webOS 25. A bundle sealed for a CDN
+(`WebBundle.seal`) works there as it is.
+
+#### On a TV: Developer Mode and LG's CLI (`webosInstall`, `webosLaunch`, `webosInspect`)
+
+Installing on a TV takes LG's CLI (`npm install -g @webos-tools/cli`, or `webosCli := Some(dir)` naming where its
+`ares-*` are) and the TV in Developer Mode, once:
+
+1. On the TV, sign in to an LG account, install **Developer Mode** from the LG Content Store, open it, turn Dev Mode
+   Status on (the TV restarts) and Key Server on. It shows the TV's IP address and a passphrase. A Developer Mode
+   session lasts 50 hours; the app's Extend button renews it.
+2. On the computer, on the same network: `ares-setup-device -a tv -i "{'host':'<TV IP>','port':'9922','username':
+   'prisoner'}"`, then `ares-novacom --device tv --getkey` with the passphrase, and `ares-device --device tv
+   --system-info` to see it answer.
+
+Then:
+
+    sbt webosPackage                   target/webos/<id>_<version>_all.ipk
+    sbt webosInstall                   the package on the TV (ares-install)
+    sbt "webosLaunch open=/title/12"   the app started, with launch parameters (ares-launch --params)
+    sbt webosInspect                   Chrome DevTools on the running app (ares-inspect --open)
+
+`webosInspect` is the TV's console: the app's `Platform.log` lines, its errors, its DOM and its network, in Chrome's
+DevTools, as an app installed in Developer Mode can be inspected. LG's CLI has no log stream for a TV (`ares-log` is not
+for its profile), so there is no tail like the Roku's port 8085; DevTools' console keeps what was said from when it is
+opened. `ares-launch --close <id>` closes the app; `ares-install --remove <id>` removes it.
+
+#### Video on webOS
+
+A `VideoView` is the TV's own `<video>`. An HLS stream plays in the TV's own player (it says it plays
+`application/vnd.apple.mpegurl`), which LG recommends over Media Source Extensions: the TV's decoders, HDR and sound
+formats, and none of hls.js's memory; hls.js is used only where a stream needs request headers sent (the TV's player
+sends none). `Platform.decodes` asks the TV's engine (`MediaSource.isTypeSupported`, then `canPlayType`), which answers
+for its own decoders. What LG publishes, by model rather than by release: H.264 and AAC on every webOS; HEVC (Main
+and Main 10) and VP9 on UHD models; AV1 on most models from 2020 (webOS 5) on; Dolby Digital and Digital Plus (`ac-3`,
+`ec-3`) on most; no DTS on the models of 2020 and 2021. Ask rather than assume: the same release differs by model.
+
+Sound tracks are listed and chosen where the TV's engine lists `audioTracks` on the video, which Chromium keeps behind a
+flag; where it does not, the stream plays its default track and none is listed. Subtitles: the WebVTT tracks of an HLS
+playlist are the element's own text tracks, shown or hidden as on the web. Sidecar subtitles (`MediaSidecar`) are not
+added on the web yet.
+
+LG's webOS TV Simulator (`ares-launch -s <version> <app dir>`, on the staged `target/webos/app`) runs the app as a TV
+does, from its files, with `PalmSystem` alone (no `webOSSystem`, no `webOS`): the backend reads its launch parameters
+and leaves by its `platformBack()` there, and Chrome DevTools reaches it as it does a TV.
+
+Not yet seen on a TV (no TV has run these yet): the key codes and `cursorStateChange` as sent, `platformBack` and the
+exit prompt, `launchParams` and `webOSRelaunch` from a real launch, `deviceInfo`'s `platformVersionMajor`, the native
+HLS player with its sound tracks and subtitles, `Platform.decodes`' answers, and an ipk from `webosPackage` installed
+with `ares-install`. In a headless Chrome made to look like webOS 24 (its user agent, a stubbed `webOSSystem`, or
+`PalmSystem` alone as in the Simulator, the TV's events dispatched), the example's package, staged and loaded from its
+files, starts with its faces loaded, and its `demo=tv` goes Back from its second screen, leaves by `platformBack` at its first,
+hears a relaunch's parameters and the pointer's focus (webcheck's `WebOSCheck`).
+
 ## Launches (`Platform.launchArg`, `Platform.onLaunch`)
 
 `Platform.launchArg(name)` is what the app was launched with, or "": `?name=value` in a page's URL, `--name=value` on
 the desktop, `--es name value` on Android's intent, a Roku's launch parameter (`/launch/dev?name=value` over ECP, a
-deep link's `contentId` and `mediaType`, or `pkg:/<name>.txt` in a test sideload).
+deep link's `contentId` and `mediaType`, or `pkg:/<name>.txt` in a test sideload), webOS's `launchParams`.
 
 A launch can also reach the app once it is running. `Platform.onLaunch` hears each, with what it was launched with,
 and `launchArg` reads its values from then on (on a Roku, those it names replace those of the same name; on Android,
@@ -6072,6 +6198,9 @@ Platform.onLaunch(params => params.get("open").foreach(path => App.openLink(path
   `Platform.onDeepLink`, as before. The console says `[launch] arrived: open=/settings`.
 - **Android**: an intent to the running activity (`onNewIntent`) with string extras (`am start --es open /settings`),
   a tap on a push notification's included. One with none (the launcher's icon again) is not one.
+- **webOS**: the TV launching the running app again (`webOSRelaunch`), with parameters (`ares-launch --params`, a
+  deep link from the TV's home); the app chosen again in the launcher, with none, is not a launch. One with a
+  `contentId` also goes to `Platform.onDeepLink`, as on a Roku (LG webOS TVs, above).
 - **Web, desktop, Apple TV**: nothing launches a running app again, so it is never called.
 
 `demo=launch` logs the launch it started with and each later one (`[ui] launch: later open=/settings | launchArg

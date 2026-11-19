@@ -2110,6 +2110,11 @@ func uiDeviceName() -> V {
     return .vStr(name.isEmpty ? UIDevice.current.model : name)
 }
 
+/// The system's version, as UIDevice has it ("26.0").
+func uiOsVersion() -> V {
+    return .vStr(UIDevice.current.systemVersion)
+}
+
 /// The hardware's own name for itself ("iPhone18,1", "AppleTV14,1"): on the simulator the device it stands for.
 func uiDeviceModel() -> V {
     if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return .vStr(simulated) }

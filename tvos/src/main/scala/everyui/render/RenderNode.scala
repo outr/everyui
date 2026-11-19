@@ -1080,6 +1080,9 @@ object Platform {
   /** The device's own caption settings, where it has any: not here. */
   def captionStyle(): Option[everyui.text.CaptionStyle] = None
 
+  /** The system's version, as UIDevice has it ("26.0"). */
+  def osVersion(): String = uiOsVersion()
+
   /** What the device calls itself, as UIDevice names it: "Apple TV", "iPhone", "iPad". */
   def deviceName(): String = uiDeviceName()
 

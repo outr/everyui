@@ -328,6 +328,10 @@ class SGNode
 @native object uiDeviceName {
   def apply(): String = native.value
 }
+/** The system's version, as UIDevice has it ("26.0"). */
+@native object uiOsVersion {
+  def apply(): String = native.value
+}
 @native object uiDeviceModel {
   def apply(): String = native.value
 }

@@ -295,7 +295,13 @@ lazy val web = (project in file("web"))
     // LiveKit's client, for a call (everyui.call): served next to the page, loaded once a call connects
     // (project/LiveKitAssets.scala)
     Compile / resourceGenerators += Def.task(LiveKitAssets.generate(streams.value.log.info(_),
-      (ThisBuild / baseDirectory).value / "NOTICE", (Compile / resourceManaged).value)).taskValue
+      (ThisBuild / baseDirectory).value / "NOTICE", (Compile / resourceManaged).value)).taskValue,
+    // the example app as an LG webOS TV app: `web/webosPackage` packages its web build in web/out-js (scala-cli's, as
+    // tools/check.sh stages it) as web/target/webos/com.everyui.example_<version>_all.ipk (`?demo=` is no launch
+    // parameter there: `webosLaunch demo=tv`)
+    everyuiWebOS := Some(WebOSApp(id = "com.everyui.example", version = version.value.takeWhile(c => c.isDigit || c == '.'),
+      vendor = "EveryUI", title = "EveryUI Example", icon = (ThisBuild / baseDirectory).value / "assets" / "images" / "everyui-mark.png")),
+    webosBundle := Def.uncached(baseDirectory.value / "out-js")
   )
 
 // --- network, published: the module and its backend, for the JVM and the browser ------------------------------
@@ -540,6 +546,9 @@ lazy val desktop = (project in file("desktop"))
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
     // the web's choice of which faces words wait for (FaceWait), plain Scala, checked here with the rest
     Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
+    // and what an LG TV's runtime says of itself and launches the app with (WebOSFacts, LaunchParams), plain Scala too
+    Test / unmanagedSources ++= Seq("WebOSFacts.scala", "LaunchParams.scala")
+      .map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // the web service worker's reading of a Markdown push (WebPushText), plain Scala, checked against PushText here
     Test / unmanagedSources += (file("sbt-support") / "src" / "main" / "scala" / "everyui" / "sbt" / "WebPushText.scala").getAbsoluteFile,
     // the memory cases (MemorySpec), the same the web's memory check measures

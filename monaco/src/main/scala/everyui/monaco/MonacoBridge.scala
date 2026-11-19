@@ -1,6 +1,6 @@
 package everyui.monaco
 
-import everyui.PlatformKind
+import everyui.PlatformKinds
 import everyui.component.Embed
 import everyui.render.Platform
 import fabric.*
@@ -67,7 +67,7 @@ class MonacoBridge(val runtime: String) {
   }
 
   // on the web every editor shares the page's Monaco; elsewhere each has its own
-  private def shared: Boolean = Platform.kind == PlatformKind.Web
+  private def shared: Boolean = PlatformKinds.browser(Platform.kind)
 
   /** `host` gone. The last host gone closes the bridge, unless Monaco lives on in the page (the web). */
   def detach(host: Embed): Unit = {

@@ -133,6 +133,8 @@ import everyui.render.Platform
   *              and blur that each level draws differently (QualityDemo; `window=5`, `slow=2` and `level=Reduced`)
   *   launch     what the app was launched with, and each launch that reaches it once it runs (Platform.onLaunch): on a
   *              Roku, ECP's `/launch/dev?open=…` to a running or suspended channel, or `/input?open=…` (LaunchDemo)
+  *   tv         the app as a TV runs it: two screens, Back between them and, on webOS, out of the app at the first
+  *              (the system's own way), and its launches while it runs and its coming and going, logged (TvDemo)
   *   device     what the platform says of the device (its kind, name, version, safe area, input), a button that counts
   *              its presses, and errors thrown on purpose from a press and from a timer, each logged as Errors hears
   *              it (DeviceDemo)
@@ -288,6 +290,7 @@ import everyui.render.Platform
   else if (demo == "coach") CoachDemo.run()
   else if (demo == "quality") QualityDemo.run()
   else if (demo == "launch") LaunchDemo.run()
+  else if (demo == "tv") TvDemo.run()
   else if (demo == "device") DeviceDemo.run()
   else if (demo == "decodes") DecodesDemo.run()
   else if (demo == "userdata") UserDataDemo.run()

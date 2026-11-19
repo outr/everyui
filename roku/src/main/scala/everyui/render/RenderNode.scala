@@ -1352,6 +1352,9 @@ object Platform {
       new everyui.Color(0, 0, 0, 255), s(13)))
   }
 
+  /** The Roku OS version, as roDeviceInfo has it ("15.0.4"). */
+  def osVersion(): String = uiOsVersion()
+
   def deviceName(): String = uiDeviceName()
 
   /** No text fields of its own: a field shows its words, and asks Roku's keyboard for new ones (`editText`). */

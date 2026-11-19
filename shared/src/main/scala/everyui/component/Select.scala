@@ -2,7 +2,7 @@ package everyui.component
 
 import everyui.component.feature.FontFeature
 import everyui.render.{Nodes, Platform}
-import everyui.PlatformKind
+import everyui.PlatformKinds
 import everyui.theme.Theme
 import everyui.component.types.Semantics
 import reactify.*
@@ -18,7 +18,7 @@ class Select(options: => List[String]) extends Container {
 
   val selected: Var[Int] = own(Var(0))
   private val choices: Val[List[String]] = own(Val(options))
-  private val native = Platform.kind == PlatformKind.Web
+  private val native = PlatformKinds.browser(Platform.kind)
   private val field: Component = if (native) new Component(Nodes.select()) else new TextView
   /** The words' font; their colour is `color`. */
   val font: FontFeature = new FontFeature(field)

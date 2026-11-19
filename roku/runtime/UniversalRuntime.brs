@@ -1713,6 +1713,15 @@ function uiDeviceName() as string
     return name
 end function
 
+' The Roku OS version: major, minor and revision ("15.0.4"), "" where the box does not say.
+function uiOsVersion() as string
+    info = CreateObject("roDeviceInfo")
+    if FindMemberFunction(info, "GetOSVersion") = invalid then return ""
+    v = info.GetOSVersion()
+    if v = invalid then return ""
+    return v.major + "." + v.minor + "." + v.revision
+end function
+
 ' One fact of the device and its memory, as text, for everyui.perf: "" where the box does not say (an older firmware
 ' without the call, or a simulator). The model is GetModel's number with its kind (TV or STB) and name: a Roku TV and
 ' an Ultra are told apart by it. Memory is read when asked, a window at a time, never per frame.
