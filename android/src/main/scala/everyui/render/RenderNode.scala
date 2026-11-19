@@ -568,7 +568,7 @@ class RenderNode(val view: View) {
 
   private def animate(): Unit = if (tracks.nonEmpty || motion != null) moves.set(tracks.nonEmpty)
 
-  private def animators(): List[android.animation.Animator] = {
+  private def animators(): List[android.animation.ValueAnimator] = {
     import android.animation.{Keyframe, ObjectAnimator, PropertyValuesHolder, ValueAnimator}
     import everyui.motion.Track
     tracks.map { track =>
@@ -1497,9 +1497,13 @@ class RenderNode(val view: View) {
     moved()
   }
   // the group it is in, where that is laid out over its children's reach (NodeGroup.childMoved), told it moved
-  private def moved(): Unit = view.getParent match {
-    case g: NodeGroup => g.childMoved()
-    case _ => ()
+  private def moved(): Unit = {
+    view.getParent match {
+      case g: NodeGroup => g.childMoved()
+      case _ => ()
+    }
+    // a motion looks again at whether it is in sight (Motion)
+    Motion.moved()
   }
 
   // Where the view sits down its parent: a line of text by its baseline

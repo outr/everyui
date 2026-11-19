@@ -26,9 +26,21 @@ object Store {
   def get(space: String, key: String): Task[Option[String]] =
     Task.async[Option[String]](done => Platform.storeGet(space, key, done))
 
-  /** Keep `value` under `key` in `space`, replacing whatever was there. */
+  /** Keep `value` under `key` in `space`, replacing whatever was there.
+    *
+    * Where files are written synchronously (Android, the desktop) the document is written on the calling thread
+    * before this returns: called on the drawing thread, a large one holds up the frames (a 16 MB document blocked a
+    * phone's for 300 ms). Write anything large with `putOff`. */
   def put(space: String, key: String, value: String): Task[Unit] =
     Task.async[Unit](done => Platform.storePut(space, key, value, () => done(())))
+
+  /** `put`, written on a thread that does not draw (`Platform.offThread`) where the platform has one, the task
+    * completed back on the one that does: for a large document. Writes put off this way are made one after another in
+    * the order asked for, but until the task completes a `get` may still read what was there, and a `put` of the same
+    * key made meanwhile may be written over by this one: keep a key to one or the other. */
+  def putOff(space: String, key: String, value: String): Task[Unit] =
+    Task.async[Unit](done => Platform.offThread(() =>
+      Platform.storePut(space, key, value, () => Platform.later(() => done(())))))
 
   /** Forget one document. Forgetting one that is not there is not an error. */
   def delete(space: String, key: String): Task[Unit] =

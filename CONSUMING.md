@@ -350,8 +350,14 @@ Anything else can ask directly: `Frames.request()` for the next frame, `Frames.r
 runs. The first after an idle spell is timed from what woke it. `fps=1` at launch holds every frame, so the rate
 it logs is the rate the app holds, not how often it idles.
 
-On Android a component's motion runs only while its view is in the window and not hidden (`visible`): a spinner
-taken off the screen and never disposed of stops, and turns again if it is put back. To find what keeps an Android app
+On Android a component's motion runs only while its view is in the window, not hidden (`visible`) and in sight (some
+of it inside every box that clips it and the window, as the web's IntersectionObserver reads it; what covers it is not
+looked at): a spinner taken off the screen and never disposed of stops, one scrolled out of its box stops, and either
+turns again as it comes back. Android runs no app's animation on its RenderThread, so a motion is stepped on the main
+thread about 30 times a second, whatever the display's rate (an animator stepped at 120 Hz drew 120 whole frames a
+second for one busy glyph), and from Android 15 its view asks for a low frame rate. A turn or a breath reads the same.
+A turning motion (a spinner, a ring) tells accessibility its bounds changed, so `uiautomator dump` finds no idle state
+while one runs; a breathing glyph does not. To find what keeps an Android app
 busy while nothing moves, launch it with `--es idleAudit 1` (release builds too): every five seconds it logs, under
 `[idle]`, the frames the loop ran and what keeps it running (holds, frames owed, the tasks or screen that want them,
 and, once it has run a second without idling, where each wake came from), the motions running, every message the main
@@ -3365,6 +3371,10 @@ own, so a sort chosen before the change is not carried over.)
 - `Stored.connect(space, key, v)` does the same for a Var the app already has, and answers a `Task` with the value
   it applied. `Stored.get[T]` and `Stored.put[T]` read and write once. `Store.delete(space, key)` and
   `Store.clear(space)` forget (the next start is from the default).
+- `Store.put` writes on the calling thread where files are written synchronously (Android, the desktop), so a large
+  document written from the drawing thread holds up the frames. `Store.putOff` writes it on a thread that does not
+  draw and completes back on the one that does; until it completes a read may find the old document, so keep a key to
+  one or the other.
 - Codecs are given for `String`, `Int`, `Long`, `Double`, `Boolean` and `Option` of any of them. `Codec.named` covers
   one of a fixed set (`Codec.named(Sort.values.toList)(_.toString)`), and `Codec.from(encode, decode)` covers
   anything else. An app with fabric keeps a case class as JSON through its `RW`:

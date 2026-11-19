@@ -129,6 +129,24 @@ class StoredSpec extends FxSpec {
       kept shouldBe Some(None)
     }
 
+    "write documents put off in the order asked, done on the thread that draws" in {
+      val done = new java.util.concurrent.CountDownLatch(1)
+      var doneOn = ""
+      val large = "x" * 4000000
+      fx {
+        Store.putOff(space, "large", "first").start()
+        Store.putOff(space, "large", large).map { _ =>
+          doneOn = Thread.currentThread.getName
+          done.countDown()
+        }.start()
+      }
+      done.await(30, TimeUnit.SECONDS) shouldBe true
+      doneOn should include("JavaFX")
+      var kept: Option[Option[String]] = None
+      fx(Store.get(space, "large").map(k => kept = Some(k)).start())
+      kept.flatten.map(_.length) shouldBe Some(large.length)
+    }
+
     "survive the process: one JVM writes, the next reads" in {
       // the test JVM loads the specs through a loader of its own, so its classpath is read off the loaders
       def classpath: String = {
