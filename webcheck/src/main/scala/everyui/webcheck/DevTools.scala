@@ -131,6 +131,11 @@ final class DevTools private (process: Process, profile: Path, val major: Int, s
     Files.write(to, java.util.Base64.getDecoder.decode(r("data").asString))
   }.unit
 
+  /** The page as a picture, in the screen's pixels. */
+  def picture(): Task[java.awt.image.BufferedImage] = send("Page.captureScreenshot").map { r =>
+    javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder.decode(r("data").asString)))
+  }
+
   /** The browser ended and its profile removed. */
   def close(): Unit = {
     try socket.abort() catch { case _: Throwable => () }

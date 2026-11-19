@@ -47,6 +47,13 @@ object WebFeatures {
   /** `overflow: clip` (Chromium 90): elsewhere `hidden`, which clips alike and makes a scroll box no one scrolls. */
   lazy val overflowClip: String = if (css("overflow", "clip")) "clip" else "hidden"
 
+  /** Words measured on one line: `max-content` (Chromium 46), `-webkit-max-content` before it. */
+  lazy val maxContent: String = if (css("width", "max-content")) "max-content" else "-webkit-max-content"
+
+  /** A word too long for its line broken where it must be: `overflow-wrap: anywhere` (Chromium 80), else `break-word`,
+    * which breaks it alike in a box of a set width (it leaves the box's narrowest size as it was). */
+  lazy val wrapAnywhere: String = if (css("overflow-wrap", "anywhere")) "anywhere" else "break-word"
+
   /** `f` at the end of the script's turn: `queueMicrotask` (Chromium 71), else a promise's reaction, which runs there
     * too. */
   def microtask(f: () => Unit): Unit = {
@@ -125,6 +132,13 @@ object WebFeatures {
 
   /** The name the page knows `filter` by: unprefixed from Chromium 53, `-webkit-filter` before it. */
   lazy val filter: String = if (css("filter", "blur(1px)")) "filter" else "-webkit-filter"
+
+  /** Whether a node may be asked to be a layer of its own (`will-change`, `Component.cached`). Before Chromium 53
+    * (asked by the unprefixed `filter` it brings, the nearest thing to ask), what was hidden over such a layer under
+    * the app's scaled root (a TV's units) and shown again was drawn again only where it met the top left quarter of
+    * the screen: webOS 3's first screen, shown as its loading overlay went, drew 4 of its 11 buttons. None is asked
+    * for there. */
+  lazy val ownLayers: Boolean = css("filter", "blur(1px)")
 
   /** The nearest of `el` and those holding it that `selector` matches (`closest`, Chromium 41; else asked of each
     * by `matches`, or `webkitMatchesSelector` before Chromium 34), or null. */

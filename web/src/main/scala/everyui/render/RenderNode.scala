@@ -294,8 +294,9 @@ class RenderNode(val el: html.Element) {
     el.style.color = if (textFilled) "transparent" else textColor
   }
 
-  /** A layer of its own for the compositor. */
-  def setCached(cached: Boolean): Unit = el.style.setProperty("will-change", if (cached) "transform" else "auto")
+  /** A layer of its own for the compositor, where the engine draws what is over one rightly (WebFeatures.ownLayers). */
+  def setCached(cached: Boolean): Unit =
+    if (WebFeatures.ownLayers) el.style.setProperty("will-change", if (cached) "transform" else "auto")
 
   private var animations: List[js.Dynamic] = Nil
 
@@ -1169,7 +1170,8 @@ class RenderNode(val el: html.Element) {
   /** Which way the words run: "" the page's, "auto" their own (the first letter with a direction), "ltr" or "rtl". */
   def setTextDirection(value: String): Unit = if (value.isEmpty) el.removeAttribute("dir") else el.setAttribute("dir", value)
   /** A word too long for its line broken where it must be (a URL, a path), so it never runs past the box. */
-  def setWrapAnywhere(on: Boolean): Unit = el.style.setProperty("overflow-wrap", if (on) "anywhere" else "")
+  def setWrapAnywhere(on: Boolean): Unit =
+    el.style.setProperty("overflow-wrap", if (on) WebFeatures.wrapAnywhere else "")
   /** Words cut short to fit (`TextView.maxWidth`, `maxLines`) held to their room by the page until the cut is made
     * (TextFit). */
   /** Whether words held to a limit (`setTextLimit`) wrap at it here: they do. */
@@ -1178,7 +1180,7 @@ class RenderNode(val el: html.Element) {
   /** Words that wrap measured whole on one line, and wrapped only at the limit they are held to (`setTextLimit`), not at
     * the width of what holds them: a label in a box sized to it would otherwise be squeezed with it word by word. */
   def setTextWhole(on: Boolean): Unit =
-    if (on) el.style.width = "max-content" else if (el.style.width == "max-content") el.style.width = ""
+    if (on) el.style.width = WebFeatures.maxContent else if (el.style.width == WebFeatures.maxContent) el.style.width = ""
   /** Whether the words measure as they will be drawn: on the page, in a face that has loaded (TextFit); `ready` once a
     * face they wait for has. */
   def textMeasurable(ready: () => Unit): Boolean = TextFit.ready(el, ready)

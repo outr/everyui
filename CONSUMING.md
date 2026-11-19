@@ -6455,6 +6455,15 @@ taken there while every newer browser keeps its own:
 - **No `Element.scrollTo`** (before 61): a smooth scroll goes there at once.
 - **Unprefixed `user-select`** (from 54): `-webkit-user-select` before it (and in Safari).
 - **No BroadcastChannel** (before 54): a sign-in opens no popup, the page itself going to the provider.
+- **A layer of its own under the app's scaled root** (before 53, asked by the unprefixed `filter`): what was hidden
+  over one and shown again (a first screen built under a loading overlay, over the backdrop's washes, which are
+  `Component.cached`) was drawn again only where it met the top left quarter of the screen, so webOS 3 showed 4 of a
+  language screen's 11 buttons, every one of them laid out and pointed at where it should be. No node is made a layer
+  of its own there (`WebFeatures.ownLayers`): the washes are drawn with the rest.
+- **No unprefixed `max-content`** (before 46): `-webkit-max-content` for words measured on one line
+  (`TextView`'s whole words).
+- **No `overflow-wrap: anywhere`** (before 80): `break-word`, which breaks a word too long for its line alike in a box
+  of a set width (`wrapAnywhere`).
 - `isIntersecting` (58) is read as any of the node in view, and the font set (which Chromium 53 iterates as pairs) by
   its `forEach`; `isConnected` (54) as whether the page holds the node.
 
@@ -6463,6 +6472,13 @@ Chromium 38 has what else the runtime uses: flexbox and `transform` unprefixed, 
 and `trunc`, `TextDecoder`, `atob`, WebSocket, `localStorage`, `document.fonts` with `FontFace` and its `load`, and
 `unicode-range`. Scala.js's ES 5.1 output brings its own for the rest of the language (`Object.is`, its classes, its
 strings' `startsWith` and `includes`), so neither `Object.assign` nor `Array.prototype.includes` is needed.
+
+The layout is EveryUI's own: every box is placed and sized by its layouts, absolutely, so the page's CSS asks for
+none of what an older engine lacks there: no flexbox `gap` (84) or grid, no `min()`, `max()` or `clamp()` (79), no
+`aspect-ratio` (88), `inset` (87), `place-*` or logical properties (`padding-inline` and the rest, 87; only a
+customizable drop-down's picker, Chromium 135's, has one), and no `position: sticky` (56). `calc()` (26),
+`object-fit` (31), `touch-action` (36; a touch screen's `pinch-zoom` in it is 56's) and a `-webkit-mask-image` gradient
+are Chromium 38's.
 
 An older engine also draws no `backdrop-filter` blur (76), no `caret-color` (57), no `text-underline-offset` (87) and
 no `scrollbar-width` (its `::-webkit-scrollbar` rule hides a bar there), and `font-display` (60) is its own default;
@@ -6482,12 +6498,13 @@ Webcheck runs the example in Chromium 38 itself, and in 53 and 56: snapshots of 
 38.0.2125.0; 403380 is 53.0.2785.0; 433042 is 56.0.2924.0, from the `chromium-browser-snapshots` bucket's
 `Linux_x64`), unzipped, with a GTK 2, its pango 1.40 and harfbuzz 1.4 (Debian stretch's; a newer pango crashes them at
 start) and a gconf on their library path (and for 38 today's `libudev.so.1` as its `libudev.so.0`), run under
-`xvfb-run` (none has a headless mode). `WebOSCheck <page dir> --chrome <binary>` is the webOS check in it as webOS 3
-(below 53: its user agent and version "3", `PalmSystem` with `--palm`) or 4, and `OldChromeCheck <page dir> --chrome
-<binary> [--shots <dir>]` loads the demos (tv, chat, rows, widgets, icons) from their files, gives each the remote's
-keys and the pointer's clicks, and fails on a screen not drawn or an error left uncaught. Both drive the browser over
-its own DevTools endpoint (`DevTools`), which an engine from 38 to today's speaks, so either runs in today's Chrome,
-headless, as well:
+`xvfb-run` (none has a headless mode). `WebOSCheck <page dir <binary>` is the webOS check in it as webOS 3
+(below 53: its user agent and version "3", `PalmSystem` with `--palm`) or 4, a first launch's language screen among
+its checks (eleven buttons laid out, centred and each drawn, read off a screenshot), and `OldChromeCheck <page dir>
+--chrome <binary> [--shots <dir>]` loads the demos (tv, chat, rows, widgets, icons) from their files, gives each the
+remote's keys and the pointer's clicks, and fails on a screen not drawn or an error left uncaught. Both drive the
+browser over its own DevTools endpoint (`DevTools`), which an engine from 38 to today's speaks, so either runs in today's
+Chrome, headless, as well:
 
 ```sh
 scala-cli --power package web --js-es-version es5_1 -o web/out-js/main.js -f

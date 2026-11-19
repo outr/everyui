@@ -30,6 +30,8 @@ import scala.concurrent.duration.*
   *    submit), an arrow or Up leaves the field and Back goes back; a Back that reaches the page while a field is typed
   *    in, with no word from the keyboard, lets the field go and goes nowhere, and Down then moves on; the keyboard's
   *    Enter ends the typing and submits, the focus kept.
+  *  - a first launch's language screen (`screen=language`), shown as its loading overlay goes, lays out its eleven
+  *    buttons three across, centred, each found at its middle and drawn (its colour on the screen inside it).
   *
   * The TV's keyboard is stubbed as LG's webOS TV Simulator has it: it comes up as a field takes the page's focus and
   * goes down as it is let go, saying so with `keyboardStateChange`; while it is up, a key that reaches the page is kept
@@ -212,6 +214,20 @@ object WebOSCheck extends RapidApp {
         s"""window.everyuiVisible = "$state"; document.dispatchEvent(new Event("visibilitychange")); return 0""").unit
       // the page `width` by `height`, at the pixel ratio of the run
       def window(width: Int, height: Int): Task[Unit] = browser.size(width, height, ratio)
+      // the language screen, shown as the loading overlay goes: eleven buttons in a grid three across, centred, each
+      // to be seen, pointed at and drawn (its colour on the screen at a point inside it, clear of its words)
+      def languageGrid: Task[Unit] = for {
+        _ <- browser.navigate(page + "?screen=language")
+        _ <- heard("tv: focus Container \"English\"")
+        _ <- Task.sleep(1.second)
+        grid <- value(WebOSCheck.languages)
+        shot <- browser.picture()
+      } yield {
+        val laid = grid.asVector.take(4).map(_.asInt)
+        val drawn = WebOSCheck.drawn(shot, grid.asVector(4).asVector.map(_.asVector.map(_.asDouble)))
+        check("the language screen shows its 11 buttons in 3 columns, centred, each drawn (" + laid.mkString(", ") +
+          ", " + drawn.toString + " drawn)", laid == Vector(11, 11, 3, 0) && drawn == 11)
+      }
       for {
         _ <- browser.addScript(stub(palm, simulator))
         // the page 1920 by 1080, as a TV's is at 1080p; in the Simulator, a window of no size until the page has started
@@ -356,12 +372,44 @@ object WebOSCheck extends RapidApp {
         _ <- press(461, "GoBack")
         back <- heard("tv: home shown", homes + 1)
         _ = check("Back once the keyboard is away goes back", back)
+        _ <- languageGrid
         errors = lines.toArray.map(_.toString).filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
         _ = check("no errors on the console", errors.isEmpty)
       } yield ()
     }.map { _ =>
       println(if (failed.isEmpty) "[webos] all passed" else "[webos] failed: " + failed.mkString("; "))
       if (failed.nonEmpty) sys.exit(1)
+    }
+  }
+
+  /** The language screen's grid (TvLanguageScreen) as laid out, in ES 5.1: its buttons, how many of them are what the
+    * page finds at their middles (none clipped or covered), its columns, how far the middle of its rows is from the
+    * window's in CSS pixels, and for each a point inside it clear of its words (in the screen's pixels) and its colour. */
+  val languages: String =
+    """var grid = document.querySelector("[aria-label=languages]");
+      |var shown = [].slice.call(grid.children).filter(function (e) {
+      |  var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+      |var seen = shown.filter(function (e) {
+      |  var r = e.getBoundingClientRect();
+      |  return e.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }).length;
+      |var all = shown.map(function (e) { return e.getBoundingClientRect(); });
+      |var lefts = [];
+      |all.forEach(function (r) { if (lefts.indexOf(Math.round(r.left)) < 0) lefts.push(Math.round(r.left)); });
+      |var left = Math.min.apply(null, all.map(function (r) { return r.left; }));
+      |var right = Math.max.apply(null, all.map(function (r) { return r.right; }));
+      |var ratio = devicePixelRatio || 1;
+      |var points = shown.map(function (e) {
+      |  var r = e.getBoundingClientRect(), c = getComputedStyle(e).backgroundColor.match(/\d+/g);
+      |  return [(r.left + r.height / 2) * ratio, (r.top + r.height / 2) * ratio, +c[0], +c[1], +c[2]]; });
+      |return [all.length, seen, lefts.length, Math.round((left + right) / 2 - innerWidth / 2), points]""".stripMargin
+
+  /** How many of `points` (x, y, red, green, blue) are their colour in `shot`, near enough. */
+  def drawn(shot: java.awt.image.BufferedImage, points: Vector[Vector[Double]]): Int = points.count { p =>
+    val (x, y) = (p(0).toInt, p(1).toInt)
+    x < shot.getWidth && y < shot.getHeight && {
+      val rgb = shot.getRGB(x, y)
+      val got = Vector((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
+      got.zip(p.drop(2)).forall((a, b) => math.abs(a - b) <= 12.0)
     }
   }
 }
