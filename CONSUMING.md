@@ -2790,6 +2790,41 @@ component holds what was typed in it only in the component sets it to None, or m
 chat.transcript.evictAfter @= Some(2.minutes)
 ```
 
+The transcript's rows go the same way: a transcript off the screen that long (its `ChatView` set aside, in a tab not
+shown, or made ahead and never shown) lets every row go, the heights they were drawn at kept, and makes them again as
+it comes back, at the bottom where it was (a slice at a time on Android). Put back sooner, it shows at once, nothing
+made again. The focus inside it keeps them.
+
+### Opening a conversation fast (`ChatView.prepare`, `VirtualList.slice`)
+
+A transcript's rows are made once it is on the screen (in `ui`), at the size it is shown at, not for each size its view
+passes through as it is made and bound (or at the end of the turn, if it is not put there in it). On Android the first
+screen is then made a slice at a time (`VirtualList.slice`, 8 ms a frame): the newest entries first, the screen drawn
+as soon as they fill it, and the rest of the view and the rows beyond it in the frames after, the bottom held where it
+is as each comes. At least one row is made a frame. `VirtualList.slice @= None` makes every screen whole at once, as
+the other platforms do (the web makes the rows beyond the view after its first frame on its own); any list as tall as
+its rows draw (`measuredRows`) is sliced alike, and only a whole screen at once is (its first, or one jumped to), not a
+scroll.
+
+A conversation a person is likely to open next (a phone's favourite workspaces) can be made ahead, at idle, off the
+screen: `prepare(width, height)` makes its first screen at that size, a slice a frame on Android, so showing it later
+costs nothing then. Not shown within `evictAfter`, its rows go as a set-aside one's do; the view is the app's to
+dispose of either way.
+
+```scala
+val next = new ChatView(entries)
+next.prepare(ui.size.width(), ui.size.height())   // at idle
+// later, on the tap
+next.size.width := ui.size.width()
+next.size.height := ui.size.height()
+ui.children += next
+```
+
+Opening a conversation of a hundred long answers on an API 35 emulator (the example's `demo=chatperf n=100`), the main
+thread's first frame came after about 100 ms before this, the whole screen made in one task; now after about 15 ms,
+the screen at the bottom full, the rows beyond it in the next frames, no frame held more than about 23 ms; one made
+ahead shows in its first frame.
+
 Without anything set, a message costs less than it did: its spinner is made only while it streams; a paragraph that
 measures its width (a bubble as narrow as a short reply) and a table's columns read their words once, out of sight,
 and keep only the number, where each line and each cell had one or two twins kept beside it; on the web a highlighted

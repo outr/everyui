@@ -2,7 +2,7 @@ package everyui.chat
 
 import everyui.async.Task
 import everyui.clipboard.Clipboard
-import everyui.component.{Component, Container}
+import everyui.component.{Component, Container, OnScreen}
 import everyui.component.types.Semantics
 import everyui.event.{Key, KeyEvent, Pointer}
 import everyui.focus.Focus
@@ -180,7 +180,9 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     * (`everyui.component.ScrollContainer`, in the order they are in it) where it was. Two minutes by default
     * (`Transcript.evictDefault`), as memory is saved in EveryUI for every app; None keeps each until its entry leaves. What
     * holds the focus is never let go. An app whose component keeps what was typed or chosen in it only in the component
-    * (not in the app's state) sets it to None, or makes it from that state again. */
+    * (not in the app's state) sets it to None, or makes it from that state again. Its rows go the same way once the
+    * transcript has been off the screen that long (set aside, in a tab not shown, or made ahead and never shown: its
+    * `ChatView`'s `prepare`), and are made again, at the bottom where it was, as it comes back. */
   val evictAfter: Var[Option[scala.concurrent.duration.FiniteDuration]] =
     own(Var[Option[scala.concurrent.duration.FiniteDuration]](Some(Transcript.evictDefault)))
   // when each kept by entry went out of sight (`Transcript.clock`), the scrolls of each let go, and when the timer
@@ -400,9 +402,29 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   /** What is kept for each entry, by its id: a tool call's details, the app's own component. */
   private[chat] def keptNow: Map[String, Component] = kept
 
+  // since when it has been off the screen (`Transcript.clock`; -1 while it is on it, or once its rows are let go):
+  // its rows are let go once it has been off it for `evictAfter`, as what it keeps for an entry is, and made again (a
+  // slice at a time on Android) as it comes back
+  private var awaySince: Long = -1L
+  private val screen: OnScreen = new OnScreen(this, on => if (on) {
+    awaySince = -1L
+    list.refresh()
+  } else away())
+  private def away(): Unit = {
+    awaySince = Transcript.clock()
+    sweep()
+  }
+
+  /** Its rows made now, off the screen, to be shown later (`ChatView.prepare`): let go, as a transcript set aside lets
+    * them go, if it is not shown within `evictAfter`. */
+  def prepare(): Unit = {
+    list.prepare()
+    if (!screen()) away()
+  }
+
   // what has been out of sight for `evictAfter` let go, and a timer set for the next to fall due where none waits for
   // it sooner: one timer for them all, and none while nothing is to be let go
-  private def sweep(): Unit = if (!takenApart && hidden.nonEmpty) evictAfter().foreach { d =>
+  private def sweep(): Unit = if (!takenApart && (hidden.nonEmpty || awaySince >= 0L)) evictAfter().foreach { d =>
     val now = Transcript.clock()
     var next = Long.MaxValue
     hidden.foreach { case (id, since) =>
@@ -417,6 +439,15 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       }
       // (one holding the focus looked at again a while later)
       else next = math.min(next, if (held) now + d.toMillis else since + d.toMillis)
+    }
+    // its rows, off the screen that long (set aside, or made ahead and never shown), unless the focus is in it
+    if (awaySince >= 0L) {
+      val held = Focus.focused().exists(f => Focus.within(f, this))
+      if (now - awaySince >= d.toMillis && !held) {
+        awaySince = -1L
+        list.letGo()
+      }
+      else next = math.min(next, if (held) now + d.toMillis else awaySince + d.toMillis)
     }
     if (next < due) {
       due = next
@@ -1128,6 +1159,7 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   messageActions.attach(_ => retarget())
   reactionsEnabled.attach(_ => retarget())
   onDispose(() => {
+    screen.stop()
     stopTurnGlide()
     wake(0) = None
     kept.values.foreach(_.dispose())
@@ -1137,6 +1169,8 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
   })
   evictAfter.attach(_ => sweep())
   reshow()
+  // (made off the screen, as every transcript is: shown in this turn, it keeps its rows; never shown, they go)
+  if (!screen()) away()
   list.scrollTop(list.total)
   Platform.later(() => nearTop())
 

@@ -894,6 +894,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
   /** The rows placed again: those that can be seen, handed their items, the rest put aside. */
   def refresh(): Unit = if (takenApart) ()
     else if (laying) again = true
+    else if (!laid && !rooted) awaitRoot()
     else if (!node.onPage) {
       // out of the page (a view built before it is shown, on the web), the rows wait for the end of the turn, by which
       // an app has put it there: made in the page, their sizes are read in the turn's one batch, where out of it each
@@ -910,10 +911,92 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     else lay()
   private var offPage = false
 
+  // whether the rows have been placed once: until then, a list out of `ui` waits to be put in it (or for the end of
+  // the turn) rather than making rows for each size it passes through as what it is in is made and bound (a chat's
+  // view made its first screen of messages at its default size, at no width and again at the screen's)
+  private var laid = false
+  private var rootWatch: List[() => Unit] = Nil
+  private def rooted: Boolean = {
+    var at: Component = this
+    while (at.parent.get.nonEmpty) at = at.parent.get.get
+    at eq everyui.ui
+  }
+  // each of it and what it is in listened to for being put somewhere, until it is in `ui`: listened to again up the
+  // new line as one is put in something that is not
+  private def awaitRoot(): Unit = if (rootWatch.isEmpty) watchRoot()
+  private def watchRoot(): Unit = {
+    var at: Option[Component] = Some(this)
+    while (at.nonEmpty) {
+      val c = at.get
+      val heard = c.parent.attach(_ => if (rooted) rootFound() else {
+        unwatchRoot()
+        watchRoot()
+      })
+      rootWatch = (() => c.parent.reactions -= heard) :: rootWatch
+      at = c.parent.get
+    }
+    // (still out of it at the turn's end, they are made where they are; not those let go, made again only as it is put
+    // back)
+    val asked = rootWatch
+    if (!heldBack) Platform.afterTurn(() => if (rootWatch eq asked) rootFound())
+  }
+  private def unwatchRoot(): Unit = {
+    rootWatch.foreach(f => f())
+    rootWatch = Nil
+  }
+  private def rootFound(): Unit = {
+    unwatchRoot()
+    laid = true
+    heldBack = false
+    refresh()
+  }
+  // whether its rows were let go (`letGo`) and wait to be put in `ui` to be made again
+  private var heldBack = false
+
+  /** Every row let go, taken apart, as a list out of sight a while lets them go (a transcript's, `Transcript.evictAfter`):
+    * the heights they were drawn at are kept, so the scroll is where it was, and the rows are made again (a slice at a
+    * time, where they are sliced) once it is in `ui` again, or as `prepare` asks. */
+  def letGo(): Unit = if (!takenApart) {
+    val all = placed.values.toList ++ spare ++ spareStands
+    placed = Map.empty
+    spare = Nil
+    spareStands = Nil
+    slicing = false
+    if (all.nonEmpty) {
+      // (each handed no item first, so what it hands back is handed back, not taken apart with it)
+      all.foreach(_.item @= None)
+      children @= children().filterNot(c => all.exists(_ eq c))
+      all.foreach(_.dispose())
+    }
+    laid = false
+    heldBack = true
+  }
+
+  /** Its rows made now, in `ui` or out of it (a view made ahead, off the screen, to be shown later): what waited to be
+    * put in `ui` waits no longer. */
+  def prepare(): Unit = if (!takenApart) {
+    unwatchRoot()
+    laid = true
+    heldBack = false
+    refresh()
+  }
+
+  /** How many rows it has made, shown or kept to be handed another item: for a spec. */
+  private[everyui] def rowsMade: Int = placed.size + spare.size + spareStands.size
+  onDispose(() => unwatchRoot())
+
   // (nothing once it is taken apart: a turn it waited for, as it was, made a screenful of rows again that nothing
   // would take apart)
   private def lay(): Unit = if (takenApart) () else if (laying) again = true else {
+    laid = true
     laying = true
+    // (a slice's time counted from the first placing of the turn, however many follow in it)
+    if (sliced && !sliceOpen) {
+      sliceOpen = true
+      sliceFrom = Platform.ticks()
+      handedNow = 0
+      Platform.afterTurn(() => sliceOpen = false)
+    }
     try {
       again = true
       var turns = 0
@@ -923,7 +1006,14 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
         place()
       }
     } finally laying = false
+    // where rows are sliced (`VirtualList.slice`, sizes read as they are asked for), the place is kept for the heights
+    // found at once, before the frame is drawn, rather than on a turn of its own after it
+    if (sliced && waiting && !settling && everyui.component.feature.MeasuredFeature.settled) {
+      settling = true
+      try settle() finally settling = false
+    }
   }
+  private var settling = false
 
   private def place(): Unit = {
     val height = size.height()
@@ -979,34 +1069,52 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
     // sizes in one batch), rather than made and measured out of it at no width and made again
     if (made.nonEmpty) children ++= made.reverse
     if (ahead) makeAhead()
+    // a whole screen to hand items to (the first, or one jumped to), where rows are sliced: made a slice at a time
+    if (sliced && !slicing && shownLast >= shownFirst &&
+      (shownFirst to shownLast).forall(k => placed.get(k).forall(r => r.item() != itemAt(k)))) slicing = true
+    var deferred = false
     // (what a row makes for its item goes into the page with it: its sizes are read there, with the turn's batch)
     everyui.component.feature.MeasuredFeature.withBatch {
-      var at = first
-      while (at <= last) {
+      val order = if (slicing) VirtualList.nearestFirst(first, shownFirst, shownLast, last, followsEnd())
+        else Vector.empty[Int]
+      var n = 0
+      while (n <= last - first) {
+        val at = if (slicing) order(n) else first + n
+        n += 1
         placed.get(at).foreach { row =>
           val item = itemAt(at)
           val key = keyAt(at)
-          row.size.width @= rowWidth
-          row.position.left @= pad
-          row.index @= at
-          row.item @= item
-          if (row.tip().nonEmpty) tips.watch(row)
-          if (ownHeights) note(row)
-          row.selected @= everyRow != chosen.contains(key)
-          row.current @= cursor.contains(key)
-          row.active @= lit
-          row.cursorShown @= shown
-          row.inUse @= item.exists(inUse())
-          row.editing @= editing().contains(key)
-          row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
-          if (sizedSource) row.size.height @= heightAt(at)
-          else if (!ownHeights) row.size.height @= rowHeight
-          row.position.top @= top(at) - offset()
-          row.visible @= true
+          val handed = row.item() != item
+          // past the slice's time, a row handed a new item waits for the next frame (one is always made)
+          if (slicing && handed && handedNow > 0 &&
+            Platform.ticks() - sliceFrom > VirtualList.slice.get.getOrElse(0.0)) {
+            putAway(row)
+            placed = placed - at
+            deferred = true
+          } else {
+            if (handed) handedNow += 1
+            row.size.width @= rowWidth
+            row.position.left @= pad
+            row.index @= at
+            row.item @= item
+            if (row.tip().nonEmpty) tips.watch(row)
+            if (ownHeights) note(row)
+            row.selected @= everyRow != chosen.contains(key)
+            row.current @= cursor.contains(key)
+            row.active @= lit
+            row.cursorShown @= shown
+            row.inUse @= item.exists(inUse())
+            row.editing @= editing().contains(key)
+            row.drop @= dropHover().filter(_.target.contains(key)).map(_.position)
+            if (sizedSource) row.size.height @= heightAt(at)
+            else if (!ownHeights) row.size.height @= rowHeight
+            row.position.top @= top(at) - offset()
+            row.visible @= true
+          }
         }
-        at += 1
       }
     }
+    if (deferred) nextSlice() else slicing = false
     // the row under the cursor told to a screen reader as it moves, while the list has the focus
     if (!lit) toldRow = ""
     else cursor.foreach(k => if (k != toldRow) placed.values.find(_.current()).foreach { row =>
@@ -1048,6 +1156,28 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
       }
     })
   }
+
+  // rows made a slice at a time (`VirtualList.slice`): the first screen of a list as tall as its rows draw, nearest the
+  // end it follows first, on platforms that read sizes as they are asked for, its rest in the frames after
+  private def sliced: Boolean = ownHeights && !Platform.measuresInBatches && VirtualList.slice.get.nonEmpty
+  private var slicing = false
+  private var sliceFrom = 0.0
+  private var handedNow = 0
+  private var sliceWaiting = false
+  private var sliceOpen = false
+  // the next slice on the frame after the one that draws this: asked for from a frame's slice, the next frame; from
+  // anything else (the tap that opened it), the frame after the next, which draws what was made so far
+  private def nextSlice(): Unit = if (!sliceWaiting) {
+    sliceWaiting = true
+    val slice: () => Unit = () => {
+      sliceWaiting = false
+      sliceOpen = false
+      inSlice = true
+      try refresh() finally inSlice = false
+    }
+    if (inSlice) Platform.nextFrame(slice) else Platform.nextFrame(() => Platform.nextFrame(slice))
+  }
+  private var inSlice = false
 
   private var waiting = false
   // the place kept once the rows drawn at heights of their own are all in, before anything is drawn where the platform
@@ -1370,6 +1500,38 @@ object VirtualList {
   val scrollTick: Double = 0.03
   // how many turns a list waits for the sizes asked for to be read before it takes its rows' heights as they are
   private[list] val settleTries: Int = 8
+
+  /** How long, in milliseconds, a list whose rows are as tall as each draws (`measuredRows`: a chat's transcript) spends
+    * on a frame making a whole screen of rows (its first, or one it jumps to), where the platform reads sizes as they
+    * are asked for: the rows nearest the end it follows (the bottom of a transcript) first, the screen drawn with those
+    * that were made, and the rest in the frames after, the end held where it is as they come. At least one row is made
+    * a frame, however long it takes. None makes a whole screen at once. 8 ms on Android, where a long conversation's
+    * first screen held the main thread for a tenth of a second and more; None elsewhere (the web makes the rows beyond
+    * the view after the first frame on its own). An app may set it for every list. */
+  val slice: Var[Option[Double]] = Var(if (Platform.kind == everyui.PlatformKind.Android) Some(8.0) else None)
+
+  /** The places `first` to `last` in the order a sliced screen makes them: those shown (`shownFirst` to `shownLast`)
+    * from the end the list follows (the last, `fromEnd`) or from the first, then those after, then those before, each
+    * nearest the view first. */
+  private[list] def nearestFirst(first: Int, shownFirst: Int, shownLast: Int, last: Int, fromEnd: Boolean): Vector[Int] = {
+    var out = Vector.empty[Int]
+    var i = 0
+    while (i <= shownLast - shownFirst) {
+      out = out :+ (if (fromEnd) shownLast - i else shownFirst + i)
+      i += 1
+    }
+    var after = shownLast + 1
+    while (after <= last) {
+      out = out :+ after
+      after += 1
+    }
+    var before = shownFirst - 1
+    while (before >= first) {
+      out = out :+ before
+      before -= 1
+    }
+    out
+  }
 
   /** A list of text rows: each item's label, dressed as `decorate` says. */
   def text[T](items: Var[Vector[T]], key: T => String, label: T => String,

@@ -23,10 +23,14 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
                     weight: Int = 400, markable: Boolean = true) extends Container with Markable {
   /** What it shows. */
   val inlines: Var[List[MdInline]] = own(Var(content))
+  // its lines as runs, worked out once for each change of its words, the theme or the mentions, for everything that
+  // reads them (its lines, their measures, its links)
+  private val parts: Val[List[MdPart]] = own(Val(MarkdownRuns.parts(inlines(), points, weight, ctx.breaks,
+    ctx.mentions(), ctx.pressesMentions())))
   // its links, and the mentions a press on answers (`MarkdownContext.pressesMentions`), each once
   private val links: Val[List[(String, String)]] = own(Val(MarkdownRuns.links(inlines()) ++
     (if (!ctx.pressesMentions()) Nil
-      else MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), pressable = true).flatMap(_.runs)
+      else parts().flatMap(_.runs)
         .filter(r => everyui.component.RichText.acts(r.href)).map(r => (r.text, r.href))
         .foldLeft(List.empty[(String, String)])((out, l) => if (out.exists(_._2 == l._2)) out else out :+ l))))
   private var shape = ""
@@ -44,8 +48,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
     if (!ctx.measures || pictures()) None else probes.widths().map(_.foldLeft(0.0)((w, l) => math.max(w, l)))))
   // the runs of each line of words, measured where the view measures
   private val measured: Val[Vector[List[TextRun]]] = own(Val(if (!ctx.measures) Vector.empty
-    else MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions()).toVector
-      .filter(_.image.isEmpty).map(_.runs)))
+    else parts().toVector.filter(_.image.isEmpty).map(_.runs)))
   private var lineCount = -1
   // the passages marked in each line, once there have been some (`mark`): until then nothing is kept for them
   private var marks: Option[Var[Vector[Vector[MarkSpan]]]] = None
@@ -79,8 +82,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
 
   /** What its links say as the pointer rests on them (a Markdown link's title, or the app's words for it:
     * `Link.describe`), by `href`, for those that say something. */
-  def titles: Map[String, String] = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(),
-      ctx.pressesMentions()).flatMap(_.runs).filter(_.href.nonEmpty).map(Link.titled)
+  def titles: Map[String, String] = parts().flatMap(_.runs).filter(_.href.nonEmpty).map(Link.titled)
     .foldLeft(Map.empty[String, String])((out, r) =>
       if (r.title.isEmpty || out.contains(r.href)) out else out.updated(r.href, r.title))
 
@@ -108,13 +110,13 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   /** Its lines made again where they are no longer the same lines and pictures; otherwise their words follow
     * `inlines` where they stand. */
   private def build(): Unit = {
-    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions())
-    val now = parts.map(p => p.image.map(i => "i" + i.src).getOrElse("t")).mkString("|")
+    val made = parts()
+    val now = made.map(p => p.image.map(i => "i" + i.src).getOrElse("t")).mkString("|")
     if (now != shape) {
       shape = now
-      pictures @= parts.exists(_.image.nonEmpty)
+      pictures @= made.exists(_.image.nonEmpty)
       val old = children().filterNot(c => ctx.measures && probes.held.exists(_ eq c))
-      val lines = parts.indices.toVector.map(i => parts(i).image match {
+      val lines = made.indices.toVector.map(i => made(i).image match {
         case Some(image) => new MarkdownImage(image, ctx, size.width())
         case None => line(i)
       })
@@ -137,8 +139,7 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
   }
 
   def markWords: Vector[String] = if (!markable) Vector.empty
-    else MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions()).toVector
-      .map(Passages.words)
+    else parts().toVector.map(Passages.words)
 
   def mark(spans: Vector[Vector[MarkSpan]]): Unit = marks match {
     case Some(v) => if (v() != spans) v @= spans
@@ -156,8 +157,8 @@ class ParagraphView(content: List[MdInline], ctx: MarkdownContext, width: => Dou
 
   // line `i`'s runs, with the passages in it marked
   private def runsOf(i: Int): List[TextRun] = {
-    val parts = MarkdownRuns.parts(inlines(), points, weight, ctx.breaks, ctx.mentions(), ctx.pressesMentions())
-    val runs = if (i < parts.size) parts(i).runs else Nil
+    val all = parts()
+    val runs = if (i < all.size) all(i).runs else Nil
     marks match {
       case Some(v) => Passages.marked(runs, v().lift(i).getOrElse(Vector.empty))
       case None => runs

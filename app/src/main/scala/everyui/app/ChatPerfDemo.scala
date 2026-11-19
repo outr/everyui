@@ -14,7 +14,10 @@ import reactify.*
   * Markdown answers with code blocks, tables and lists, tool calls led by somebody's avatar or an icon with a body under
   * them, pictures, short replies, and some from each of four people, built into a `ChatView` `at` seconds after the app
   * starts (1 unless given), once the page has settled. It logs `chatperf built <ms> from <tick>` for the construction
-  * and the view put on the screen, then `chatperf ok <first row shown> <ms> rows <rows made>` once it has drawn.
+  * and the view put on the screen, then `chatperf ok <first row shown> <ms> rows <rows made>` once it has drawn,
+  * `chatperf frame <ms>` at the first frame after it and `chatperf filled <ms> frames <n> longest <ms>` once every row
+  * in view is made and measured and `chatperf complete` once those beyond it are too; `again=<k>` opens it k more
+  * times, a second apart, for numbers past the first open, each made ahead (`ChatView.prepare`) with `prepare=1`.
   * `reply=<words>` adds the agent's answer in those words as the newest entry, and `older=<seconds>` has earlier
   * pages come that long after they are asked for. `rails=1` gives the entries rails (`ChatEntry.rail`), a topic of seven
   * at a time in `ChatDemo.topicColors`. `theme=light` for the light theme, `rtl=1` for right to left, `picture=1` for a
@@ -31,36 +34,100 @@ object ChatPerfDemo {
     ui.backgroundColor := Theme.background()
     val n = Platform.launchArg("n").toIntOption.getOrElse(50)
     val at = Platform.launchArg("at").toDoubleOption.getOrElse(1.0)
-    Platform.after(at, () => {
-      // (and with reply=, the agent's answer in those words last)
-      val reply = Platform.launchArg("reply")
-      val entries = Var(page(n, 1790000000000L) ++ (if (reply.isEmpty) Vector.empty
-        else Vector(ChatEntry.message("reply", agent, self = false, reply, Some(1790000000000L),
-          meta = Some("model large")))))
-      val started = Platform.ticks()
-      val chat = new ChatView(entries, older)
-      if (railed) chat.rails @= true
-      if (Platform.launchArg("picture") == "1") {
-        val picture = new Backdrop
-        picture.source @= "/images/header-gradient.png"
-        picture.size.width := ui.size.width()
-        picture.size.height := ui.size.height()
-        ui.children += picture
-        chat.backgroundColor := everyui.Color.Clear
-        MessageView.othersOpacity @= 0.8
+    Platform.after(at, () => open(n, Platform.launchArg("again").toIntOption.getOrElse(0), None))
+  }
+
+  // the conversation built and shown, timed, or shown where it was made ahead (`ready`); `again` more times after it,
+  // each a second after the last filled in, each made ahead meanwhile with prepare=1 (`ChatView.prepare`)
+  private def open(n: Int, again: Int, ready: Option[ChatView]): Unit = {
+    val started = Platform.ticks()
+    val chat = ready.getOrElse(made(n))
+    if (railed) chat.rails @= true
+    if (Platform.launchArg("picture") == "1") {
+      val picture = new Backdrop
+      picture.source @= "/images/header-gradient.png"
+      picture.size.width := ui.size.width()
+      picture.size.height := ui.size.height()
+      ui.children += picture
+      chat.backgroundColor := everyui.Color.Clear
+      MessageView.othersOpacity @= 0.8
+    }
+    chat.size.width := ui.size.width()
+    chat.size.height := ui.size.height()
+    ui.children += chat
+    Platform.log("chatperf built " + (Platform.ticks() - started).toInt.toString + " from " + started.toInt.toString)
+    Platform.after(0.0, () => {
+      val t = chat.transcript
+      val first = if (t.list.count == 0) "" else t.list.keyAt(t.list.indexAt(t.list.offset()))
+      val made = t.list.rows.count(r => r.visible() && r.item().nonEmpty)
+      Platform.log("chatperf ok " + first + " " + (Platform.ticks() - started).toInt.toString + " rows " +
+        made.toString)
+    })
+    watch(chat, started, () => if (again > 0) {
+      val next = if (Platform.launchArg("prepare") != "1") None else {
+        val ahead = made(n)
+        ahead.prepare(ui.size.width(), ui.size.height())
+        Some(ahead)
       }
-      chat.size.width := ui.size.width()
-      chat.size.height := ui.size.height()
-      ui.children += chat
-      Platform.log("chatperf built " + (Platform.ticks() - started).toInt.toString + " from " + started.toInt.toString)
-      Platform.after(0.0, () => {
-        val t = chat.transcript
-        val first = if (t.list.count == 0) "" else t.list.keyAt(t.list.indexAt(t.list.offset()))
-        val made = t.list.rows.count(r => r.visible() && r.item().nonEmpty)
-        Platform.log("chatperf ok " + first + " " + (Platform.ticks() - started).toInt.toString + " rows " +
-          made.toString)
+      Platform.after(1.0, () => {
+        ui.children -= chat
+        chat.dispose()
+        open(n, again - 1, next)
       })
     })
+  }
+
+  // the conversation, made (and with reply=, the agent's answer in those words last)
+  private def made(n: Int): ChatView = {
+    val reply = Platform.launchArg("reply")
+    val entries = Var(page(n, 1790000000000L) ++ (if (reply.isEmpty) Vector.empty
+      else Vector(ChatEntry.message("reply", agent, self = false, reply, Some(1790000000000L),
+        meta = Some("model large")))))
+    new ChatView(entries, older)
+  }
+
+  // the frames after it is built, each timed: `chatperf frame <ms>` for the first drawn, `chatperf filled <ms> frames
+  // <n> longest <ms>` once every row in view is made, its sizes read and the view at the bottom, and `chatperf complete
+  // <ms> frames <n> longest <ms>` once the rows made beyond the view are too (none more for ten frames), with the
+  // longest wait between two frames from the start
+  private def watch(chat: ChatView, started: Double, done: () => Unit): Unit = {
+    var frames = 0
+    var last = started
+    var longest = 0.0
+    var filled = false
+    var made = -1
+    var madeAt = started
+    var still = 0
+    def frame(): Unit = {
+      val now = Platform.ticks()
+      longest = math.max(longest, now - last)
+      last = now
+      frames += 1
+      if (frames == 1) Platform.log("chatperf frame " + (now - started).toInt.toString)
+      val list = chat.transcript.list
+      val first = list.indexAt(list.offset())
+      val shownLast = list.indexAt(list.offset() + list.size.height())
+      if (!filled && list.count > 0 && everyui.component.feature.MeasuredFeature.settled &&
+        (first to shownLast).forall(i => list.rowAt(i).exists(_.item().nonEmpty)) &&
+        list.offset() >= list.total - list.size.height() - 1.0) {
+        filled = true
+        Platform.log("chatperf filled " + (now - started).toInt.toString + " frames " + frames.toString +
+          " longest " + longest.toInt.toString)
+      }
+      val count = list.rows.count(r => r.visible() && r.item().nonEmpty)
+      if (count != made) {
+        made = count
+        madeAt = now
+        still = 0
+      } else still += 1
+      if ((filled && still >= 10) || frames > 600) {
+        Platform.log("chatperf complete " + (madeAt - started).toInt.toString + " frames " + frames.toString +
+          " longest " + longest.toInt.toString + " rows " + made.toString)
+        done()
+      }
+      else Platform.nextFrame(() => frame())
+    }
+    Platform.nextFrame(() => frame())
   }
 
   // with older=<seconds>, earlier pages of three short messages, each that long in coming, sixty of them

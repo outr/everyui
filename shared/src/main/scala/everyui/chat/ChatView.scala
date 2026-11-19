@@ -116,6 +116,26 @@ class ChatView(val entries: Var[Vector[ChatEntry]],
   }
   stripSlot.attach(c => placeStrip(c))
 
+  /** Its transcript's first screen made now, `width` by `height`, off the screen: for a conversation the person is
+    * likely to open next (a phone's favourite workspaces), made at idle so that showing it costs nothing then. It is
+    * as big as it will be shown, its rows those it shows at the bottom, made a slice at a time where rows are sliced
+    * (`VirtualList.slice`, on Android), so the frames meanwhile are not held up. Not shown within the transcript's
+    * `evictAfter` (two minutes by default), its rows are let go, as a view set aside lets them go, and made again as it
+    * is shown; the view itself is the app's to dispose of, shown or not.
+    * {{{
+    *   val next = new ChatView(entries)
+    *   next.prepare(ui.size.width(), ui.size.height())
+    *   // later, on the tap:
+    *   next.size.width := ui.size.width()
+    *   next.size.height := ui.size.height()
+    *   ui.children += next
+    * }}} */
+  def prepare(width: Double, height: Double): Unit = {
+    size.width @= width
+    size.height @= height
+    transcript.prepare()
+  }
+
   override def focus(): Unit = transcript.focus()
   override def kind: String = "ChatView"
 }
